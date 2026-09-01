@@ -31,9 +31,9 @@ namespace Deluno.Integrations.Metadata;
 ///
 /// <para><b>Existing titles keep their old artwork until a metadata refresh</b>,
 /// because the cache key is a hash of the URL and the stored rows still hold the
-/// old one. "Update all metadata" is what moves a library across, and the old
-/// cached files are orphaned rather than replaced — there is no artwork cleanup
-/// pass yet, which is written on #326 rather than left to be discovered.</para>
+/// old one. "Update all metadata" is what moves a library across. A scheduled
+/// maintenance pass now removes unreferenced old files after a safety window,
+/// without touching artwork still referenced by either catalogue.</para>
 ///
 /// <para>Named here because the direct TMDb provider and the metadata gateway
 /// both build these URLs. A size changed in one and not the other gives half a

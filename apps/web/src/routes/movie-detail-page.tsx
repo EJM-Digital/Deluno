@@ -20,16 +20,20 @@ import {
   type ActivityEventItem,
   type DecisionExplanationItem,
   type DownloadDispatchItem,
+  type IntegrationFailure,
   type LibraryItem,
   type IntakeTitleOriginItem,
   type MovieImportRecoverySummary,
   type MovieListItem,
+  type MetadataProviderIssue,
   type MovieSearchHistoryItem
 } from "../lib/api";
 import { CreditsRow, readStoredCredits } from "../components/app/credits-row";
+import { DownloadDispatchDrawer } from "../components/app/download-dispatch-drawer";
+import { TitleTagsEditor } from "../components/app/title-tags-editor";
 import { authedFetch } from "../lib/use-auth";
 import { cn } from "../lib/utils";
-import { describeSearchReason } from "../lib/search-reasons";
+import { describeSearchReason, formatSearchFailureNotice } from "../lib/search-reasons";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { Card, CardContent } from "../components/ui/card";
@@ -37,8 +41,9 @@ import { RemoveMediaDialog, type MediaRemovalPreview, type RemoveMediaOptions } 
 import { DecisionExplanationList } from "../components/app/decision-explanation-list";
 import { MediaMetadataDrawer } from "../components/app/media-metadata-drawer";
 import { HeroBackdrop } from "../components/app/hero-backdrop";
+import { MetadataProviderIssueNotice } from "../components/app/metadata-provider-issue-notice";
 import { SourceMark } from "../components/app/source-mark";
-import { RatingLine } from "../components/app/rating-strip";
+import { RatingStrip } from "../components/app/rating-strip";
 import { Chip } from "../components/ui/chip";
 import { Drawer, DrawerFacts, DrawerFooter, DrawerSection } from "../components/ui/drawer";
 import { Input } from "../components/ui/input";
@@ -57,6 +62,7 @@ import { SummaryStrip } from "../components/ui/summary-strip";
 import { Switch } from "../components/ui/switch";
 import { toast } from "../components/shell/toaster";
 import { TitleMarkLabel } from "../components/ui/title-mark";
+import { formatDateTime as formatPreferenceDateTime, formatRuntime, formatShortDate, useDisplayPreferences } from "../lib/display-preferences";
 
 interface MovieDetailLoaderData {
   activity: ActivityEventItem[];
@@ -65,6 +71,7 @@ interface MovieDetailLoaderData {
   importRecovery: MovieImportRecoverySummary;
   libraries: LibraryItem[];
   movie: MovieListItem;
+  metadataIssue: MetadataProviderIssue | null;
   origins: IntakeTitleOriginItem[];
   removalPreview: MediaRemovalPreview;
   searchHistory: MovieSearchHistoryItem[];
@@ -93,8 +100,9 @@ export async function movieDetailLoader({
   params: { id?: string };
 }): Promise<MovieDetailLoaderData> {
   const id = params.id!;
-  const [movie, searchHistory, dispatches, importRecovery, activity, decisions, libraries, workflowStatus, origins, removalPreview] = await Promise.all([
+  const [movie, metadataIssue, searchHistory, dispatches, importRecovery, activity, decisions, libraries, workflowStatus, origins, removalPreview] = await Promise.all([
     fetchJson<MovieListItem>(`/api/movies/${id}`),
+    fetchJson<MetadataProviderIssue | null>(`/api/movies/${id}/metadata/issue`).catch(() => null),
     fetchJson<MovieSearchHistoryItem[]>("/api/movies/search-history"),
     fetchPageItems<DownloadDispatchItem>("/api/download-dispatches?mediaType=movies&pageSize=20"),
     fetchJson<MovieImportRecoverySummary>("/api/movies/import-recovery"),
@@ -106,14 +114,15 @@ export async function movieDetailLoader({
     fetchJson<MediaRemovalPreview>(`/api/movies/${id}/removal-preview`).catch(() => ({ filePaths: [], folderPaths: [], warnings: [] }))
   ]);
 
-  return { activity, decisions, dispatches, importRecovery, libraries, movie, origins, removalPreview, searchHistory, workflowStatus };
+  return { activity, decisions, dispatches, importRecovery, libraries, metadataIssue, movie, origins, removalPreview, searchHistory, workflowStatus };
 }
 
 export function MovieDetailPage() {
   const loaderData = useLoaderData() as MovieDetailLoaderData;
-  const { activity, decisions, dispatches, importRecovery, libraries, movie, origins, removalPreview, searchHistory, workflowStatus } = loaderData;
+  const { activity, decisions, dispatches, importRecovery, libraries, metadataIssue, movie, origins, removalPreview, searchHistory, workflowStatus } = loaderData;
   const navigate = useNavigate();
   const revalidator = useRevalidator();
+  const { preferences } = useDisplayPreferences();
 
   const [busyAction, setBusyAction] = useState<string | null>(null);
   const [isRemoveConfirmationOpen, setIsRemoveConfirmationOpen] = useState(false);
@@ -122,6 +131,7 @@ export function MovieDetailPage() {
   const [openCandidate, setOpenCandidate] = useState<SearchPlanCandidate | null>(null);
   const [forceReason, setForceReason] = useState<string | null>(null);
   const [openSearchId, setOpenSearchId] = useState<string | null>(null);
+  const [openDispatchId, setOpenDispatchId] = useState<string | null>(null);
   const [section, setSection] = useState<DetailSection>("destination");
 
   /*
@@ -152,6 +162,7 @@ export function MovieDetailPage() {
   );
   const { cast, crew } = readStoredCredits(movie.metadataJson);
   const openSearch = movieSearches.find((item) => item.id === openSearchId) ?? null;
+  const openDispatch = movieDispatches.find((item) => item.id === openDispatchId) ?? null;
 
   /*
     The metadata Deluno already stores, and nothing was reading.
@@ -197,7 +208,7 @@ export function MovieDetailPage() {
       ? {
           eyebrow: "Release ready",
           title: "Choose a release",
-          description: "Deluno scored the candidates it found. Pick the one to send to your download client.",
+          description: "Deluno compared the candidates it found. Pick the one to send to your download client.",
           action: "Review candidates",
           onAction: () => setSection("destination")
         }
@@ -325,6 +336,11 @@ export function MovieDetailPage() {
     setBusyAction("metadata-refresh");
     try {
       const response = await authedFetch(`/api/movies/${movie.id}/metadata/refresh`, { method: "POST" });
+      if (response.status === 409) {
+        revalidator.revalidate();
+        toast.info("The TMDb record is no longer available. Your movie and files were kept.");
+        return;
+      }
       if (!response.ok) throw new Error("movie-metadata-refresh-failed");
       toast.success(`${movie.title} metadata refreshed.`);
       revalidator.revalidate();
@@ -351,30 +367,32 @@ export function MovieDetailPage() {
         dispatchMessage?: string | null;
         reason?: string;
         candidates?: SearchPlanCandidate[];
+        failures?: IntegrationFailure[];
       };
       const best = payload.releaseName ? `${payload.releaseName}${payload.indexerName ? ` via ${payload.indexerName}` : ""}` : null;
+      const failureNotice = formatSearchFailureNotice(payload.failures);
       setReleaseCandidates(mode === "interactive" ? payload.candidates ?? [] : []);
 
       if (mode === "interactive") {
         const found = payload.candidates?.length ?? 0;
         setSection("destination");
-        if (found) toast.success(`${found} release${found === 1 ? "" : "s"} scored. Choose one below.`);
+        if (found) toast.success(`${found} release${found === 1 ? "" : "s"} compared. Choose one below.`, failureNotice ? { description: failureNotice } : undefined);
         else {
           const explained = describeSearchReason(payload.reason, payload.summary ?? "No releases matched this movie's Library Profile.");
           const action = explained.action;
           toast.info(explained.title, {
-            description: explained.description,
+            description: [explained.description, failureNotice].filter(Boolean).join(" "),
             action: action ? { label: action.label, onClick: () => navigate(action.href) } : undefined
           });
         }
       } else {
         if (best) {
-          toast.success(`Deluno selected ${best} using this movie's Library Profile.`);
+          toast.success(`Deluno selected ${best} using this movie's Library Profile.`, failureNotice ? { description: failureNotice } : undefined);
         } else {
           const explained = describeSearchReason(payload.reason, "Search finished with no accepted release.");
           const action = explained.action;
           toast.info(explained.title, {
-            description: explained.description,
+            description: [explained.description, failureNotice].filter(Boolean).join(" "),
             action: action ? { label: action.label, onClick: () => navigate(action.href) } : undefined
           });
         }
@@ -403,7 +421,7 @@ export function MovieDetailPage() {
           sizeBytes: candidate.sizeBytes,
           seeders: candidate.seeders,
           force,
-          overrideReason: force ? overrideReason || `User forced this release despite scorer result: ${candidate.summary}` : null
+          overrideReason: force ? overrideReason || `User forced this release despite Deluno's decision: ${candidate.summary}` : null
         })
       });
       if (!response.ok) throw new Error("movie-grab-failed");
@@ -444,7 +462,7 @@ export function MovieDetailPage() {
   }
 
   return (
-    <div className="grid gap-[var(--page-gap)]">
+    <div className="grid grid-cols-[minmax(0,1fr)] gap-[var(--page-gap)]">
       {/* One toolbar: which part of the movie you want, where you came from, and
           the two searches. The topbar names the section, the hero names the movie. */}
       <PageToolbar
@@ -505,7 +523,16 @@ export function MovieDetailPage() {
         }
       />
 
-      <Card className="relative isolate min-h-[19rem] overflow-hidden border-primary/25 bg-card">
+      <MetadataProviderIssueNotice
+        issue={metadataIssue}
+        subjectLabel="movie"
+        acknowledgeUrl={`/api/movies/${movie.id}/metadata/issue/acknowledge`}
+        onAcknowledged={() => revalidator.revalidate()}
+        onFindAnother={() => setIsMetadataOpen(true)}
+        onRetry={() => void handleMetadataRefresh()}
+      />
+
+      <Card className="relative isolate min-w-0 min-h-[19rem] overflow-hidden border-primary/25 bg-card">
         <HeroBackdrop url={movie.backdropUrl} />
         <CardContent className="relative p-[var(--tile-pad)] sm:p-[calc(var(--tile-pad)*1.15)]">
           <div className="grid items-start gap-[var(--grid-gap)] md:grid-cols-[16rem_minmax(0,1fr)] xl:grid-cols-[16rem_minmax(0,1fr)_14rem]">
@@ -560,29 +587,6 @@ export function MovieDetailPage() {
                 </button>
               </div>
               {movie.originalTitle && movie.originalTitle !== movie.title ? <p className="mt-1 text-sm text-muted-foreground">Also known as {movie.originalTitle}</p> : null}
-              {/*
-                Certification and the scores, where Radarr puts them: on the
-                title, not in a panel off to the side. James: *"radarr shows
-                ratings and certification - PG / M - R etc"*.
-
-                The strip MOVED here rather than being copied — the aside kept
-                the source and the actions. Two of anything on one page is the
-                thing this page has been circled for three times already.
-              */}
-              {/*
-                Radarr's stack, and the reason it is a stack.
-
-                Certification, year and runtime are one line of small type under
-                the title; the scores are the line under that. The first attempt
-                put the certification badge beside `RatingStrip` — a grid of
-                CARDS built for the narrow aside — which dominated the title,
-                shoved the chips down and left the badge floating next to a box.
-                James: *"its all cock eyed and out of alignment"*.
-
-                A card asked to be a line is the whole of that defect, so there
-                is a line now: `RatingLine`, reading the same normaliser and
-                formatter as the cards so the two can never disagree.
-              */}
               <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-muted-foreground">
                 {metaText("Certification") ? (
                   <span
@@ -594,15 +598,8 @@ export function MovieDetailPage() {
                 ) : null}
                 {movie.releaseYear ? <span>{movie.releaseYear}</span> : null}
                 {movie.runtimeMinutes ? (
-                  <span>
-                    {movie.runtimeMinutes >= 60
-                      ? `${Math.floor(movie.runtimeMinutes / 60)}h ${movie.runtimeMinutes % 60}m`
-                      : `${movie.runtimeMinutes}m`}
-                  </span>
+                  <span>{formatRuntime(movie.runtimeMinutes, preferences)}</span>
                 ) : null}
-              </div>
-              <div className="mt-1.5">
-                <RatingLine ratings={movie.ratings} fallbackRating={movie.rating} />
               </div>
               <div className="mt-4 flex flex-wrap gap-2">
                 {/*
@@ -623,6 +620,7 @@ export function MovieDetailPage() {
                 {importCases.length ? <Badge variant="warning">{importCases.length} import issue{importCases.length === 1 ? "" : "s"}</Badge> : null}
                 {movie.genres?.split(",").map((genre) => <span key={genre} className="rounded-full border border-primary/20 bg-primary/10 px-2.5 py-1 text-xs font-medium text-primary">{genre.trim()}</span>)}
               </div>
+              <TitleTagsEditor id={movie.id} mediaType="movies" metadataJson={movie.metadataJson} onSaved={() => revalidator.revalidate()} />
               {/*
                 The facts about this title, in one dense row.
 
@@ -666,7 +664,7 @@ export function MovieDetailPage() {
                   // rather than smuggled in with a layout commit.
                   { label: "Codec", value: [movie.videoCodec, movie.audioCodec].filter(Boolean).join(" · ") || null },
                   { label: "Release group", value: movie.releaseGroup || null },
-                  { label: "Added", value: movie.createdUtc ? new Date(movie.createdUtc).toLocaleDateString() : null },
+                  { label: "Added", value: movie.createdUtc ? formatShortDate(movie.createdUtc, preferences) : null },
                   { label: "Import issues", value: importCases.length ? String(importCases.length) : null }
                 ].filter((f) => f.value).map((f) => (
                   <div key={f.label} className="min-w-0">
@@ -680,25 +678,24 @@ export function MovieDetailPage() {
                 {movie.overview ?? "No overview has been stored yet. Refresh metadata when you want Deluno to enrich this title."}
               </p>
             </div>
-            <aside className="w-full self-start rounded-xl border border-white/10 bg-card/80 p-4 backdrop-blur-sm">
-              {/* "Ratings & IDs" while the ratings moved to the title line would be a
-                  heading naming something that is not underneath it. */}
-              <p className="text-[length:var(--type-micro)] font-bold uppercase tracking-[0.18em] text-muted-foreground">Metadata</p>
-              <p className="mt-1 text-xs text-muted-foreground">The metadata Deluno is using</p>
-              <div className="mt-4 space-y-2 border-t border-hairline pt-4 text-sm">
+            <aside className="w-full self-start rounded-xl border border-white/10 bg-card/80 p-3 backdrop-blur-sm xl:min-h-96">
+              <p className="text-[length:var(--type-micro)] font-bold uppercase tracking-[0.18em] text-muted-foreground">Ratings &amp; IDs</p>
+              <p className="mt-0.5 text-xs text-muted-foreground">The metadata Deluno is using</p>
+              <div className="mt-2"><RatingStrip ratings={movie.ratings} fallbackRating={movie.rating} /></div>
+              <div className="mt-3 space-y-2 border-t border-hairline pt-3 text-sm">
                 <div className="flex items-center justify-between gap-3"><span className="text-muted-foreground">Source</span>{movie.metadataProvider ? <SourceMark source={movie.metadataProvider.toLowerCase()} label={movie.metadataProvider.toUpperCase()} /> : <span className="font-medium text-foreground">Not linked</span>}</div>
                 <div className="flex items-center justify-between gap-3"><SourceMark source="imdb" label="IMDb" /><span className="font-mono text-xs font-medium text-foreground">{movie.imdbId ?? "—"}</span></div>
               </div>
-              <Button variant="outline" className="mt-4 w-full" onClick={() => void handleMetadataRefresh()} disabled={busyAction !== null}>
+              <Button variant="outline" className="mt-3 w-full" onClick={() => void handleMetadataRefresh()} disabled={busyAction !== null}>
                 {busyAction === "metadata-refresh" ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
                 Refresh metadata
               </Button>
-              <Button variant="outline" className="mt-2 w-full" onClick={() => setIsMetadataOpen(true)}>Edit metadata</Button>
+              <Button variant="outline" className="mt-1 w-full" onClick={() => setIsMetadataOpen(true)}>Edit metadata</Button>
               {/* Destructive, so it sits with the other "manage this title" controls
                   rather than beside the two searches in the toolbar. */}
               <Button
                 variant="ghost"
-                className="mt-2 w-full text-destructive hover:bg-destructive/10 hover:text-destructive"
+                className="mt-1 w-full text-destructive hover:bg-destructive/10 hover:text-destructive"
                 onClick={() => setIsRemoveConfirmationOpen(true)}
                 disabled={busyAction !== null}
               >
@@ -775,10 +772,10 @@ export function MovieDetailPage() {
                   : lastDelta === null
                     ? `plan asks for ${targetQuality}`
                     : lastDelta > 0
-                      ? "last release scored better"
+                      ? "last release was better"
                       : lastDelta < 0
-                        ? "last release scored worse"
-                        : "last release scored the same"
+                        ? "last release was worse"
+                        : "last release was equivalent"
           },
           // **Monitoring is not a tile.** The shield in the header says the state
           // and changes it in one control, so a tile beside it is the same fact
@@ -813,13 +810,12 @@ export function MovieDetailPage() {
       {section === "destination" ? (
         <>
           {releaseCandidates.length ? (
-            <ListCard title="Choose a release" count={`${releaseCandidates.length} scored`}>
+            <ListCard title="Choose a release" count={`${releaseCandidates.length} candidate${releaseCandidates.length === 1 ? "" : "s"}`}>
               <ListTable
                 columns={[
                   { label: "Release" },
                   { label: "Quality", mobile: true },
                   { label: "Size" },
-                  { label: "Score", align: "end" },
                   { label: "Decision", width: LIST_TRACK.status }
                 ]}
               >
@@ -835,7 +831,6 @@ export function MovieDetailPage() {
                     />
                     <ListCell primary={candidate.quality} mobile />
                     <ListCell primary={candidate.sizeBytes ? formatBytes(candidate.sizeBytes) : "—"} />
-                    <ListCell primary={candidate.score} align="end" numeric />
                     <ListCell>
                       <Chip tone={candidateTone(candidate)}>{candidateLabel(candidate)}</Chip>
                     </ListCell>
@@ -945,7 +940,7 @@ export function MovieDetailPage() {
                   <ListRow key={origin.id}>
                     <ListNameCell name={origin.sourceName} sub="Removing the list never removes this movie or its files." />
                     <ListCell primary={origin.provider} mobile />
-                    <ListCell primary={formatDateTime(origin.firstSeenUtc)} />
+                    <ListCell primary={formatPreferenceDateTime(origin.firstSeenUtc, preferences)} />
                   </ListRow>
                 ))}
               </ListTable>
@@ -981,7 +976,7 @@ export function MovieDetailPage() {
             {movieSearches.length === 0 ? (
               <ListEmpty
                 title="No searches yet"
-                description="Manual and scheduled searches for this movie appear here with what they scored."
+                description="Manual and scheduled searches for this movie appear here with their outcomes and explanations."
               />
             ) : (
               <ListTable
@@ -996,7 +991,7 @@ export function MovieDetailPage() {
                   <ListRow key={item.id} onClick={() => setOpenSearchId(item.id)} selected={openSearchId === item.id}>
                     <ListNameCell name={item.releaseName ?? "No release selected"} sub={item.indexerName ?? "No source yet"} />
                     <ListCell primary={formatTriggerKind(item.triggerKind)} mobile />
-                    <ListCell primary={formatDateTime(item.createdUtc)} />
+                    <ListCell primary={formatPreferenceDateTime(item.createdUtc, preferences)} />
                     <ListCell>
                       <Chip tone={searchOutcomeTone(item.outcome)}>{formatSearchOutcome(item.outcome)}</Chip>
                     </ListCell>
@@ -1023,12 +1018,12 @@ export function MovieDetailPage() {
                 description="Releases Deluno hands to a download client are listed here, with what the client said back."
               />
             ) : (
-              <ListTable chevron={false} columns={[{ label: "Release" }, { label: "Client", mobile: true }, { label: "When" }, { label: "Status", width: LIST_TRACK.status }]}>
+              <ListTable columns={[{ label: "Release" }, { label: "Client", mobile: true }, { label: "When" }, { label: "Status", width: LIST_TRACK.status }]}>
                 {movieDispatches.slice(0, 8).map((item) => (
-                  <ListRow key={item.id}>
+                  <ListRow key={item.id} onClick={() => setOpenDispatchId(item.id)} selected={openDispatchId === item.id}>
                     <ListNameCell name={item.releaseName} sub={item.indexerName} />
                     <ListCell primary={item.downloadClientName} mobile />
-                    <ListCell primary={formatDateTime(item.createdUtc)} />
+                    <ListCell primary={formatPreferenceDateTime(item.createdUtc, preferences)} />
                     <ListCell>
                       <Chip tone={dispatchTone(item.status)}>{formatDispatchStatus(item.status)}</Chip>
                     </ListCell>
@@ -1047,7 +1042,7 @@ export function MovieDetailPage() {
                   <ListRow key={item.id}>
                     <ListNameCell name={item.message} />
                     <ListCell primary={item.category} mobile />
-                    <ListCell primary={formatDateTime(item.createdUtc)} />
+                    <ListCell primary={formatPreferenceDateTime(item.createdUtc, preferences)} />
                   </ListRow>
                 ))}
               </ListTable>
@@ -1058,6 +1053,8 @@ export function MovieDetailPage() {
 
       {/* ------------------------------------------------------------ drawers */}
 
+      <DownloadDispatchDrawer dispatch={openDispatch} onClose={() => setOpenDispatchId(null)} />
+
       <Drawer
         open={openCandidate !== null}
         onOpenChange={(next) => {
@@ -1067,7 +1064,7 @@ export function MovieDetailPage() {
           }
         }}
         title={openCandidate?.releaseName ?? "Release"}
-        description={openCandidate ? `${openCandidate.indexerName} · score ${openCandidate.score}` : undefined}
+        description={openCandidate ? `${openCandidate.indexerName} · ${candidateLabel(openCandidate)}` : undefined}
         footer={
           <DrawerFooter
             state={openCandidate?.downloadUrl ? "clean" : "error"}
@@ -1082,11 +1079,13 @@ export function MovieDetailPage() {
       >
         {openCandidate ? (
           <>
-            <DrawerSection title="What Deluno scored" aside={candidateLabel(openCandidate)}>
+            <DrawerSection title="How Deluno evaluated it" aside={candidateLabel(openCandidate)}>
               <DrawerFacts
                 items={[
                   { label: "Quality", value: openCandidate.quality },
-                  { label: "Score", value: String(openCandidate.score) },
+                  ...(isTypedCandidate(openCandidate)
+                    ? [{ label: "Policy", value: "Typed release plan" }]
+                    : [{ label: "Evaluation", value: "Legacy compatibility rules" }]),
                   { label: "Meets cutoff", value: openCandidate.meetsCutoff ? "Yes" : "No" },
                   { label: "Size", value: openCandidate.sizeBytes ? formatBytes(openCandidate.sizeBytes) : "Unknown" },
                   { label: "Seeders", value: openCandidate.seeders ?? "—" },
@@ -1127,7 +1126,7 @@ export function MovieDetailPage() {
                   <div className="min-w-0">
                     <p className="text-[length:var(--type-body-sm)] font-medium text-foreground">Send it anyway</p>
                     <p className="mt-0.5 text-[length:var(--type-caption)] text-muted-foreground">
-                      Overrides the scorer. Your reason is stored in activity and search history.
+                      Overrides this decision. Your reason is stored in activity and search history.
                     </p>
                   </div>
                   {forceReason === null ? (
@@ -1180,7 +1179,7 @@ export function MovieDetailPage() {
           if (!next) setOpenSearchId(null);
         }}
         title={openSearch?.releaseName ?? "Search"}
-        description={openSearch ? formatDateTime(openSearch.createdUtc) : undefined}
+        description={openSearch ? formatPreferenceDateTime(openSearch.createdUtc, preferences) : undefined}
         footer={<DrawerFooter state="clean" readOnly saveLabel="Close" onCancel={() => setOpenSearchId(null)} />}
       >
         {openSearch ? (
@@ -1196,13 +1195,15 @@ export function MovieDetailPage() {
             </DrawerSection>
 
             {parseSearchCandidates(openSearch.detailsJson).length ? (
-              <DrawerSection title="Release scoring" aside={`${parseSearchCandidates(openSearch.detailsJson).length} scored`}>
+              <DrawerSection title="Release outcomes" aside={`${parseSearchCandidates(openSearch.detailsJson).length} considered`}>
                 <DrawerFacts
                   items={parseSearchCandidates(openSearch.detailsJson)
                     .slice(0, 6)
                     .map((candidate) => ({
                       label: candidate.releaseName,
-                      value: `${candidate.quality} · ${candidate.score}`
+                      value: isTypedCandidate(candidate)
+                        ? `${candidate.quality} · ${candidateLabel(candidate)}`
+                        : `${candidate.quality} · legacy compatibility rules`
                     }))}
                 />
               </DrawerSection>
@@ -1269,18 +1270,40 @@ interface SearchPlanCandidate {
   qualityDelta?: number;
   releaseGroup?: string | null;
   estimatedBitrateMbps?: number | null;
+  preferenceEvaluation?: unknown;
+  preferenceComparison?: unknown;
 }
 
 function candidateLabel(candidate: SearchPlanCandidate) {
+  if (isTypedCandidate(candidate)) {
+    switch (candidate.decisionStatus?.toLowerCase()) {
+      case "rejected": return "Rejected";
+      case "held": return "Needs review";
+      case "equivalent": return "Equivalent";
+      case "preferred": return "Best match";
+      case "acceptable": return "Acceptable";
+      case "eligible": return "Eligible";
+      default: return "Needs review";
+    }
+  }
   if (candidate.decisionStatus === "rejected") return "Rejected";
   if (["preferred", "eligible"].includes(candidate.decisionStatus || "") && candidate.meetsCutoff) return "Recommended";
   return "Needs review";
 }
 
 function candidateTone(candidate: SearchPlanCandidate): "ok" | "warn" | "bad" {
+  if (isTypedCandidate(candidate)) {
+    if (candidate.decisionStatus?.toLowerCase() === "rejected") return "bad";
+    return ["preferred", "acceptable"].includes(candidate.decisionStatus?.toLowerCase() ?? "") ? "ok" : "warn";
+  }
   if (candidate.decisionStatus === "rejected") return "bad";
   if (["preferred", "eligible"].includes(candidate.decisionStatus || "") && candidate.meetsCutoff) return "ok";
   return "warn";
+}
+
+function isTypedCandidate(candidate: SearchPlanCandidate) {
+  return (candidate.preferenceEvaluation !== null && candidate.preferenceEvaluation !== undefined)
+    || (candidate.preferenceComparison !== null && candidate.preferenceComparison !== undefined);
 }
 
 function parseSearchCandidates(detailsJson: string | null): SearchPlanCandidate[] {
@@ -1313,7 +1336,9 @@ function normalizeSearchCandidate(value: Record<string, unknown>): SearchPlanCan
     decisionReasons: normalizeStringArray(value.decisionReasons ?? value.DecisionReasons),
     riskFlags: normalizeStringArray(value.riskFlags ?? value.RiskFlags),
     releaseGroup: (value.releaseGroup ?? value.ReleaseGroup ?? null) as string | null,
-    estimatedBitrateMbps: (value.estimatedBitrateMbps ?? value.EstimatedBitrateMbps ?? null) as number | null
+    estimatedBitrateMbps: (value.estimatedBitrateMbps ?? value.EstimatedBitrateMbps ?? null) as number | null,
+    preferenceEvaluation: value.preferenceEvaluation ?? value.PreferenceEvaluation,
+    preferenceComparison: value.preferenceComparison ?? value.PreferenceComparison
   };
 }
 
@@ -1422,14 +1447,6 @@ function formatTriggerKind(value: string) {
   }
 }
 
-function formatDateTime(value: string) {
-  return new Intl.DateTimeFormat(undefined, {
-    month: "short",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit"
-  }).format(new Date(value));
-}
 
 function formatBytes(value: number) {
   if (!Number.isFinite(value) || value <= 0) return "0 B";

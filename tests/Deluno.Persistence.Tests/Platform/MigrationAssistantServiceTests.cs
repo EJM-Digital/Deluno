@@ -10,7 +10,10 @@ using Deluno.Movies.Data;
 using Deluno.Movies.Migration;
 using Deluno.Series.Data;
 using Deluno.Series.Migration;
+using Deluno.Series.Contracts;
 using Deluno.Quality.Data;
+using Deluno.Quality.Guides;
+using Deluno.Quality.ReleasePreferences;
 using Deluno.Connections.Data;
 using Microsoft.Extensions.Logging.Abstractions;
 
@@ -36,6 +39,28 @@ public sealed class MigrationAssistantServiceTests
         Assert.Equal(2, report.Summary.TitleCount);
         Assert.Equal(1, report.Summary.MonitoredCount);
         Assert.Equal(1, report.Summary.WantedCount);
+        var inventory = report.Inventory;
+        Assert.NotNull(inventory);
+        Assert.Equal(7, inventory.InputRowCount);
+        Assert.Equal(7, inventory.AccountedRowCount);
+        Assert.Equal(0, inventory.UnaccountedRowCount);
+        Assert.All(inventory.Entries, entry => Assert.True(entry.Complete));
+        Assert.Equal(2, Assert.Single(inventory.Entries, entry => entry.Category == "monitored-state").InputRowCount);
+        var titleInventory = Assert.Single(inventory.Entries, entry => entry.Category == "monitored-state");
+        Assert.Equal(1, titleInventory.ClassificationCounts["source-reports-installed-file"]);
+        Assert.Equal(1, titleInventory.ClassificationCounts["quality-profile-assigned"]);
+        Assert.Equal(1, titleInventory.ClassificationCounts["quality-profile-unassigned"]);
+        Assert.Equal(1, titleInventory.ClassificationCounts["library-assigned"]);
+        Assert.Equal(1, titleInventory.ClassificationCounts["library-unassigned"]);
+        Assert.Equal(1, titleInventory.ClassificationCounts["probed-media-facts"]);
+        Assert.Equal(1, titleInventory.ClassificationCounts["matched-format-history"]);
+        var titleOperation = Assert.Single(report.Operations, operation => operation.TargetType == "monitored-state");
+        Assert.Equal("1", titleOperation.Data["installedFileCount"]);
+        Assert.Equal("1", titleOperation.Data["qualityProfileAssignmentCount"]);
+        Assert.Equal("1", titleOperation.Data["libraryAssignmentCount"]);
+        Assert.Equal("1", titleOperation.Data["probedMediaFactsCount"]);
+        Assert.Equal("1", titleOperation.Data["matchedFormatHistoryCount"]);
+        Assert.Equal(1, Assert.Single(inventory.Entries, entry => entry.Category == "quality-profile").InputRowCount);
         Assert.All(report.Operations.SelectMany(operation => operation.Data), pair =>
         {
             if (pair.Key.Contains("api", StringComparison.OrdinalIgnoreCase) ||
@@ -52,6 +77,254 @@ public sealed class MigrationAssistantServiceTests
         var libraries = await librariesRepository.ListLibrariesAsync(CancellationToken.None);
         Assert.DoesNotContain(libraries, library => library.RootPath == "/mnt/media/migrated-movies");
         Assert.Empty(await repository.ListMigrationAuditReportsAsync(10, CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task PreviewAsync_preserves_custom_formats_and_keeps_profiles_with_unresolved_matchers_review_only()
+    {
+        using var storage = TestStorage.Create();
+        var service = await CreateServiceAsync(storage);
+
+        var report = await service.PreviewAsync(
+            new MigrationImportRequest("radarr", "Radarr custom formats", """
+                {
+                  "customFormats": [
+                    {
+                      "id": 17,
+                      "name": "Prefer WEB-DL",
+                      "trashId": "trash-web",
+                      "score": 500,
+                      "upgradeAllowed": true,
+                      "specifications": [
+                        { "name": "WEB-DL", "implementation": "SourceSpecification", "fields": [{ "name": "value", "value": "web-dl" }], "negate": false, "required": true }
+                      ]
+                    }
+                  ],
+                  "qualityProfiles": [
+                    {
+                      "id": 80,
+                      "name": "Migrated with formats",
+                      "cutoff": "WEB 1080p",
+                      "customFormats": [{ "id": 17, "score": 500 }],
+                      "items": [{ "allowed": true, "quality": { "id": 1, "name": "WEB 1080p" } }]
+                    }
+                  ]
+                }
+                """),
+            CancellationToken.None);
+
+        var customFormat = Assert.Single(report.Operations, operation => operation.TargetType == "custom-format");
+        Assert.Equal("report", customFormat.Action);
+        Assert.False(customFormat.CanApply);
+        Assert.Equal("trash-web", customFormat.Data["trashId"]);
+        Assert.Contains("required", customFormat.Data["rawJson"]!, StringComparison.OrdinalIgnoreCase);
+
+        var plan = Assert.Single(report.Operations, operation => operation.TargetType == "release-preference-plan");
+        Assert.Equal("report", plan.Action);
+        Assert.False(plan.CanApply);
+        Assert.Equal("True", plan.Data["requiresReview"]);
+        Assert.False(string.IsNullOrWhiteSpace(plan.Data["planHash"]));
+        Assert.Contains("quality", plan.Data["planJson"]!, StringComparison.OrdinalIgnoreCase);
+
+        var profile = Assert.Single(report.Operations, operation => operation.TargetType == "quality-profile");
+        Assert.Equal("create", profile.Action);
+        Assert.False(profile.CanApply);
+        Assert.Contains("custom-format", profile.Reason, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task ApplyAsync_imports_a_reviewed_guide_format_and_keeps_the_profile_reference()
+    {
+        using var storage = TestStorage.Create();
+        var service = await CreateServiceAsync(storage);
+        var guideFormat = GuidePackageCatalog.Current.CustomFormats.First(format =>
+            format.MappingStatus == GuideMappingStatus.Reviewed
+            && format.MappedTraitIds is { Count: > 0 });
+
+        var result = await service.ApplyAsync(
+            new MigrationImportRequest("radarr", "Reviewed guide export", $$"""
+                {
+                  "customFormats": [
+                    {
+                      "id": 17,
+                      "name": "{{guideFormat.Name}}",
+                      "trashId": "{{guideFormat.TrashId}}",
+                      "score": 500,
+                      "upgradeAllowed": true,
+                      "specifications": [
+                        { "name": "source", "implementation": "SourceSpecification", "fields": [{ "name": "value", "value": "web-dl" }], "negate": false, "required": true }
+                      ]
+                    }
+                  ],
+                  "qualityProfiles": [
+                    {
+                      "id": 80,
+                      "name": "Reviewed guide profile",
+                      "cutoff": "WEB 1080p",
+                      "customFormats": [{ "id": 17, "score": 500 }],
+                      "items": [{ "allowed": true, "quality": { "id": 1, "name": "WEB 1080p" } }]
+                    }
+                  ]
+                }
+                """),
+            CancellationToken.None);
+
+        Assert.Contains(result.Applied, item => item.TargetType == "custom-format" && item.Result == "created");
+        Assert.Contains(result.Applied, item => item.TargetType == "quality-profile" && item.Result == "created");
+        var customFormat = Assert.Single(await CreateQualityRepository(storage).ListCustomFormatsAsync(CancellationToken.None));
+        Assert.Equal(guideFormat.TrashId, customFormat.TrashId);
+        Assert.NotEmpty(customFormat.Conditions);
+        var profile = Assert.Single(await CreateQualityRepository(storage).ListQualityProfilesAsync(CancellationToken.None));
+        Assert.Contains(customFormat.Id, profile.CustomFormatIds.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries));
+        Assert.DoesNotContain(result.Report.Operations, operation =>
+            operation.TargetType == "custom-format" && operation.Action == "report");
+    }
+
+    [Fact]
+    public async Task Migration_preserves_profile_scoped_format_scores_in_immutable_plans_and_is_idempotent()
+    {
+        using var storage = TestStorage.Create();
+        var service = await CreateServiceAsync(storage, includeReleasePreferencePlans: true);
+        var guideFormat = GuidePackageCatalog.Current.CustomFormats.First(format =>
+            format.MappingStatus == GuideMappingStatus.Reviewed
+            && format.MappedTraitIds is { Count: > 0 });
+        var request = new MigrationImportRequest("radarr", "Profile assignments", $$"""
+            {
+              "customFormats": [
+                {
+                  "id": 17,
+                  "name": "Profile-scoped assignment",
+                  "trashId": "{{guideFormat.TrashId}}",
+                  "score": 100,
+                  "upgradeAllowed": true,
+                  "specifications": [
+                    { "name": "source", "implementation": "SourceSpecification", "fields": [{ "name": "value", "value": "web-dl" }], "negate": false, "required": true }
+                  ]
+                }
+              ],
+              "qualityProfiles": [
+                {
+                  "id": 801,
+                  "name": "Low preference profile",
+                  "cutoff": "WEB 1080p",
+                  "customFormats": [{ "id": 17, "score": 125 }],
+                  "items": [{ "allowed": true, "quality": { "id": 1, "name": "WEB 1080p" } }]
+                },
+                {
+                  "id": 802,
+                  "name": "High preference profile",
+                  "cutoff": "WEB 1080p",
+                  "customFormats": [{ "id": 17, "score": 875 }],
+                  "items": [{ "allowed": true, "quality": { "id": 1, "name": "WEB 1080p" } }]
+                }
+              ]
+            }
+            """);
+
+        var preview = await service.PreviewAsync(request, CancellationToken.None);
+        var plans = preview.Operations
+            .Where(operation => operation.TargetType == "release-preference-plan")
+            .ToArray();
+        Assert.Equal(2, plans.Length);
+        Assert.All(plans, operation =>
+        {
+            Assert.Equal("create", operation.Action);
+            Assert.True(operation.CanApply);
+        });
+
+        var compiled = plans
+            .Select(operation => ReleasePreferencePlanCodec.Deserialize(operation.Data["planJson"]!))
+            .OrderBy(plan => plan.Id, StringComparer.Ordinal)
+            .ToArray();
+        Assert.Equal(2, compiled.Length);
+        var lowSource = Assert.Single(compiled[0].Sources!, source => source.SourceId == guideFormat.TrashId);
+        var highSource = Assert.Single(compiled[1].Sources!, source => source.SourceId == guideFormat.TrashId);
+        Assert.Equal("125", lowSource.AssignedScore);
+        Assert.Equal("875", highSource.AssignedScore);
+        Assert.Equal(guideFormat.OriginalScore.ToString(System.Globalization.CultureInfo.InvariantCulture), lowSource.OriginalScore);
+        Assert.NotEqual(compiled[0].PlanHash, compiled[1].PlanHash);
+
+        var applied = await service.ApplyAsync(request, CancellationToken.None);
+        Assert.Equal(2, applied.Applied.Count(item => item.TargetType == "release-preference-plan"));
+        var storedPlans = await new SqliteReleasePreferencePlanRepository(
+            storage.Factory,
+            new FixedTimeProvider(DateTimeOffset.Parse("2026-04-29T00:00:00Z")))
+            .ListAsync("movies", CancellationToken.None);
+        Assert.Equal(2, storedPlans.Count);
+
+        var migratedProfiles = await CreateQualityRepository(storage)
+            .ListQualityProfilesAsync(CancellationToken.None);
+        Assert.Equal(2, migratedProfiles.Count);
+        foreach (var profile in migratedProfiles)
+        {
+            Assert.NotNull(profile.ReleasePreferencePlan);
+            var reference = profile.ReleasePreferencePlan!;
+            var storedPlan = Assert.Single(storedPlans, item =>
+                string.Equals(item.Plan.Id, reference.PlanId, StringComparison.Ordinal)
+                && string.Equals(item.Plan.Version, reference.Version, StringComparison.Ordinal));
+            Assert.Equal(storedPlan.PlanHash, reference.PlanHash);
+        }
+
+        var secondPreview = await service.PreviewAsync(request, CancellationToken.None);
+        Assert.Equal(2, secondPreview.Operations.Count(operation =>
+            operation.TargetType == "release-preference-plan" && operation.Action == "skip"));
+        Assert.DoesNotContain(secondPreview.Operations, operation =>
+            operation.TargetType == "release-preference-plan" && operation.Action == "create");
+    }
+
+    [Fact]
+    public async Task ApplyAsync_can_explicitly_retain_an_opaque_legacy_format_without_making_it_typed_intent()
+    {
+        using var storage = TestStorage.Create();
+        var service = await CreateServiceAsync(storage);
+
+        var request = new MigrationImportRequest("radarr", "Advanced legacy export", """
+                {
+                  "customFormats": [
+                    {
+                      "id": 17,
+                      "name": "Opaque legacy matcher",
+                      "trashId": "unknown-trash-id",
+                      "score": 999,
+                      "upgradeAllowed": false,
+                      "specifications": [
+                        { "name": "release group", "implementation": "ReleaseGroupSpecification", "fields": [{ "name": "value", "value": "trusted" }], "negate": true, "required": false }
+                      ]
+                    }
+                  ],
+                  "qualityProfiles": [
+                    {
+                      "id": 80,
+                      "name": "Advanced legacy profile",
+                      "cutoff": "WEB 1080p",
+                      "customFormats": [{ "id": 17, "score": 999 }],
+                      "items": [{ "allowed": true, "quality": { "id": 1, "name": "WEB 1080p" } }]
+                    }
+                  ]
+                }
+                """) with { AllowAdvancedLegacyRules = true };
+        var preview = await service.PreviewAsync(request, CancellationToken.None);
+        var previewCustomOperation = Assert.Single(preview.Operations, operation => operation.TargetType == "custom-format");
+        Assert.Equal("create", previewCustomOperation.Action);
+        Assert.True(previewCustomOperation.CanApply);
+        Assert.Equal("UnmappedAdvanced", previewCustomOperation.Data["classification"]);
+        Assert.Equal("advanced-legacy", previewCustomOperation.Data["activation"]);
+        Assert.Contains(preview.Operations, operation =>
+            operation.TargetType == "quality-profile"
+            && operation.Name == "Advanced legacy profile"
+            && operation.CanApply);
+
+        var result = await service.ApplyAsync(request,
+            CancellationToken.None);
+
+        Assert.Contains(result.Applied, item => item.TargetType == "custom-format" && item.Result == "created");
+        Assert.Contains(result.Applied, item => item.TargetType == "quality-profile" && item.Result == "created");
+        var customFormat = Assert.Single(await CreateQualityRepository(storage).ListCustomFormatsAsync(CancellationToken.None));
+        Assert.Equal(999, customFormat.Score);
+        Assert.False(customFormat.UpgradeAllowed);
+        Assert.Contains("negate", customFormat.Conditions, StringComparison.OrdinalIgnoreCase);
+        var profile = Assert.Single(await CreateQualityRepository(storage).ListQualityProfilesAsync(CancellationToken.None));
+        Assert.Contains(customFormat.Id, profile.CustomFormatIds.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries));
     }
 
     [Fact]
@@ -102,6 +375,54 @@ public sealed class MigrationAssistantServiceTests
         Assert.Contains(secondPreview.Operations, operation => operation.TargetType == "library" && operation.Action == "skip");
         Assert.Contains(secondPreview.Operations, operation => operation.TargetType == "quality-profile" && operation.Action == "skip");
         Assert.DoesNotContain(secondPreview.Operations, operation => operation.TargetType == "library" && operation.Action == "create");
+    }
+
+    [Fact]
+    public async Task ApplyAsync_records_verified_backup_evidence_when_host_backup_is_available()
+    {
+        using var storage = TestStorage.Create();
+        await CreateServiceAsync(storage);
+        var backup = new RecordingMigrationBackupService();
+        var service = new MigrationAssistantService(
+            CreateRepository(storage),
+            CreateLibrariesRepository(storage),
+            CreateQualityRepository(storage),
+            CreateConnectionsRepository(storage),
+            CreateIntakeRepository(storage),
+            backupService: backup);
+
+        var result = await service.ApplyAsync(CreateRadarrRequest(), CancellationToken.None);
+
+        Assert.True(result.Report.Valid);
+        Assert.Equal("pre-migration", backup.LastReason);
+        Assert.NotNull(result.Backup);
+        var audit = Assert.Single(await CreateRepository(storage).ListMigrationAuditReportsAsync(10, CancellationToken.None));
+        Assert.Equal(result.Backup, audit.Backup);
+        Assert.Equal("manifest-and-restore-preview-verified", audit.Backup!.Verification);
+    }
+
+    [Fact]
+    public async Task ApplyAsync_blocks_all_writes_when_verified_backup_fails()
+    {
+        using var storage = TestStorage.Create();
+        await CreateServiceAsync(storage);
+        var service = new MigrationAssistantService(
+            CreateRepository(storage),
+            CreateLibrariesRepository(storage),
+            CreateQualityRepository(storage),
+            CreateConnectionsRepository(storage),
+            CreateIntakeRepository(storage),
+            backupService: new FailingMigrationBackupService());
+
+        var result = await service.ApplyAsync(CreateRadarrRequest(), CancellationToken.None);
+
+        Assert.False(result.Report.Valid);
+        Assert.Empty(result.Applied);
+        Assert.Contains(result.Report.Errors, error => error.Contains("automatic verified backup failed", StringComparison.OrdinalIgnoreCase));
+        Assert.Empty(await CreateLibrariesRepository(storage).ListLibrariesAsync(CancellationToken.None));
+        Assert.Empty(await CreateQualityRepository(storage).ListQualityProfilesAsync(CancellationToken.None));
+        Assert.Empty(await CreateConnectionsRepository(storage).ListIndexersAsync(CancellationToken.None));
+        Assert.Empty(await CreateRepository(storage).ListMigrationAuditReportsAsync(10, CancellationToken.None));
     }
 
     [Fact]
@@ -253,10 +574,19 @@ public sealed class MigrationAssistantServiceTests
               },
               "sonarr": {
                 "rootFolders": [{ "path": "/media/tv" }],
-                "series": [{ "title": "Severance", "year": 2022, "imdbId": "tt11280740", "monitored": true, "hasFile": true }]
+                "series": [{ "title": "Severance", "year": 2022, "imdbId": "tt11280740", "monitored": true, "hasFile": true, "seriesType": "daily", "numberingScheme": "airdate", "numberingSource": "owner" }]
               }
             }
             """);
+
+        var preview = await service.PreviewAsync(request, CancellationToken.None);
+        var titleOperations = preview.Operations
+            .Where(operation => operation.TargetType == "monitored-state")
+            .ToDictionary(operation => operation.Data["mediaType"]!, StringComparer.Ordinal);
+        Assert.Equal(2, titleOperations.Count);
+        Assert.Equal("0", titleOperations["movies"].Data["installedFileCount"]);
+        Assert.Equal("1", titleOperations["tv"].Data["installedFileCount"]);
+        Assert.Equal(2, preview.Inventory!.Entries.Count(entry => entry.Category == "monitored-state"));
 
         var applied = await service.ApplyAsync(request, CancellationToken.None);
 
@@ -266,6 +596,11 @@ public sealed class MigrationAssistantServiceTests
         var show = Assert.Single(await series.ListAsync(CancellationToken.None));
         Assert.True(movie.Monitored);
         Assert.True(show.Monitored);
+        var numbering = await series.GetNumberingAsync(show.Id, CancellationToken.None);
+        Assert.NotNull(numbering);
+        Assert.Equal(SeriesTypes.Daily, numbering.SeriesType);
+        Assert.Equal(SeriesNumberingSchemes.AirDate, numbering.NumberingScheme);
+        Assert.Equal(SeriesNumberingSources.Owner, numbering.NumberingSource);
         Assert.Contains(applied.Applied, item => item.TargetType == "movie" && item.Result == "created");
         Assert.Contains(applied.Applied, item => item.TargetType == "series" && item.Result == "created");
 
@@ -409,7 +744,17 @@ public sealed class MigrationAssistantServiceTests
                 }
               ],
               "movies": [
-                { "title": "Dune Part Two", "monitored": true, "hasFile": true },
+                {
+                  "title": "Dune Part Two",
+                  "monitored": true,
+                  "hasFile": true,
+                  "qualityProfileId": 80,
+                  "rootFolderPath": "/mnt/media/migrated-movies",
+                  "movieFile": {
+                    "mediaInfo": { "videoCodec": "HEVC", "audioCodec": "TrueHD" },
+                    "customFormats": [{ "id": 17, "name": "TrueHD Atmos" }]
+                  }
+                },
                 { "title": "Anora", "monitored": false, "hasFile": false }
               ]
             }
@@ -418,7 +763,9 @@ public sealed class MigrationAssistantServiceTests
         return new MigrationImportRequest("radarr", "Radarr test", payload);
     }
 
-    private static async Task<MigrationAssistantService> CreateServiceAsync(TestStorage storage)
+    private static async Task<MigrationAssistantService> CreateServiceAsync(
+        TestStorage storage,
+        bool includeReleasePreferencePlans = false)
     {
         var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-04-29T00:00:00Z"));
         await new PlatformSchemaInitializer(
@@ -426,7 +773,17 @@ public sealed class MigrationAssistantServiceTests
             new SqliteDatabaseMigrator(storage.Factory, timeProvider),
             NullLogger<PlatformSchemaInitializer>.Instance).StartAsync(CancellationToken.None);
 
-        return new MigrationAssistantService(CreateRepository(storage), CreateLibrariesRepository(storage), CreateQualityRepository(storage), CreateConnectionsRepository(storage), CreateIntakeRepository(storage));
+        return new MigrationAssistantService(
+            CreateRepository(storage),
+            CreateLibrariesRepository(storage),
+            CreateQualityRepository(storage),
+            CreateConnectionsRepository(storage),
+            CreateIntakeRepository(storage),
+            releasePreferencePlanRepository: includeReleasePreferencePlans
+                ? new SqliteReleasePreferencePlanRepository(
+                    storage.Factory,
+                    new FixedTimeProvider(DateTimeOffset.Parse("2026-04-29T00:00:00Z")))
+                : null);
     }
 
     private static SqliteIntakeRepository CreateIntakeRepository(TestStorage storage)
@@ -463,6 +820,33 @@ public sealed class MigrationAssistantServiceTests
             storage.Factory,
             new FixedTimeProvider(DateTimeOffset.Parse("2026-04-29T00:00:00Z")),
             TestSecretProtection.Create(storage));
+    }
+
+    private sealed class RecordingMigrationBackupService : IMigrationBackupService
+    {
+        public string? LastReason { get; private set; }
+
+        public Task<MigrationBackupReceipt> CreateVerifiedBackupAsync(
+            string reason,
+            CancellationToken cancellationToken)
+        {
+            LastReason = reason;
+            return Task.FromResult(new MigrationBackupReceipt(
+                "backup-1",
+                "backup-1.zip",
+                1024,
+                DateTimeOffset.Parse("2026-04-29T00:00:00Z"),
+                reason,
+                "manifest-and-restore-preview-verified"));
+        }
+    }
+
+    private sealed class FailingMigrationBackupService : IMigrationBackupService
+    {
+        public Task<MigrationBackupReceipt> CreateVerifiedBackupAsync(
+            string reason,
+            CancellationToken cancellationToken)
+            => throw new InvalidOperationException("Synthetic backup failure.");
     }
 
     private sealed class ThrowingCatalogImporter : IMigrationCatalogImporter

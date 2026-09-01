@@ -11,6 +11,34 @@ public static class JobsEndpointRouteBuilderExtensions
 {
     public static IEndpointRouteBuilder MapDelunoJobsEndpoints(this IEndpointRouteBuilder endpoints)
     {
+        endpoints.MapGet("/api/system/tasks", async (
+            IJobQueueRepository repository,
+            CancellationToken cancellationToken) =>
+        {
+            var states = (await repository.ListSystemTaskStatesAsync(cancellationToken))
+                .ToDictionary(item => item.ScheduleKey, StringComparer.OrdinalIgnoreCase);
+
+            var items = SystemTasks.All.Select(task =>
+            {
+                states.TryGetValue(task.Key, out var state);
+                return new
+                {
+                    key = task.Key,
+                    name = task.Name,
+                    description = task.Description,
+                    intervalSeconds = (long)task.Interval.TotalSeconds,
+                    isConfigurable = task.IsConfigurable,
+                    lastStartedUtc = state?.LastStartedUtc,
+                    lastCompletedUtc = state?.LastCompletedUtc,
+                    lastResult = state?.LastResult ?? "not-run",
+                    lastDurationMs = state?.LastDurationMs,
+                    nextRunUtc = state?.NextRunUtc
+                };
+            }).ToArray();
+
+            return Results.Ok(items);
+        });
+
         endpoints.MapGet("/api/jobs", async (
             int? pageSize,
             string? pageToken,

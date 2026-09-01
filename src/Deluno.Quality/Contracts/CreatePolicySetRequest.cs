@@ -10,4 +10,5 @@ public sealed record CreatePolicySetRequest(
     int? RetryDelayOverrideHours,
     bool UpgradeUntilCutoff,
     bool IsEnabled,
-    string? Notes);
+    string? Notes,
+    MediaPlanAutomationIntent? AutomationIntent = null);

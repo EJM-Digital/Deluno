@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text.Json;
+using Deluno.Contracts;
 using Deluno.Infrastructure.Storage;
 using Deluno.Intake.Contracts;
 using static Deluno.Infrastructure.Storage.SqliteRecordHelpers;
@@ -14,7 +15,8 @@ namespace Deluno.Intake.Data;
 /// </summary>
 public sealed class SqliteIntakeRepository(
     IDelunoDatabaseConnectionFactory databaseConnectionFactory,
-    TimeProvider timeProvider)
+    TimeProvider timeProvider,
+    IUnifiedExclusionRepository? unifiedExclusionRepository = null)
     : IIntakeRepository
 {
     public async Task<IReadOnlyList<IntakeSourceItem>> ListIntakeSourcesAsync(CancellationToken cancellationToken)
@@ -63,6 +65,17 @@ public sealed class SqliteIntakeRepository(
         string sourceId,
         CancellationToken cancellationToken)
     {
+        if (unifiedExclusionRepository is not null)
+        {
+            return (await unifiedExclusionRepository.ListActiveAsync(
+                    mediaType: null,
+                    sourceKind: MediaExclusionSourceKinds.ImportList,
+                    sourceId,
+                    cancellationToken))
+                .Select(ToIntakeListExclusion)
+                .ToArray();
+        }
+
         await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
             DelunoDatabaseNames.Platform,
             cancellationToken);
@@ -70,7 +83,7 @@ public sealed class SqliteIntakeRepository(
         using var command = connection.CreateCommand();
         command.CommandText =
             """
-            SELECT id, source_id, entry_key, title, year, imdb_id, expires_utc, created_utc, updated_utc
+            SELECT id, source_id, entry_key, title, year, imdb_id, reason, expires_utc, created_utc, updated_utc
             FROM intake_source_exclusions
             WHERE source_id = @sourceId
               AND (expires_utc IS NULL OR expires_utc > @now)
@@ -102,10 +115,36 @@ public sealed class SqliteIntakeRepository(
         var imdbId = NormalizeName(request.ImdbId);
         var year = NormalizeNullableYear(request.Year);
         var entryKey = BuildIntakeEntryKey(title, year, imdbId);
+        var reason = NormalizeName(request.Reason) ?? "Excluded from import list by user";
         // A non-positive duration intentionally means no expiry; positive values are bounded to ten years.
         DateTimeOffset? expiresUtc = request.DurationDays is > 0
             ? now.AddDays(Math.Clamp(request.DurationDays.Value, 1, 3650))
             : null;
+
+        if (unifiedExclusionRepository is not null)
+        {
+            var source = await GetIntakeSourceAsync(sourceId, cancellationToken);
+            if (source is null)
+            {
+                return null;
+            }
+
+            var unified = await unifiedExclusionRepository.UpsertAsync(
+                new UpsertMediaExclusionRequest(
+                    MediaType: source.MediaType,
+                    SourceKind: MediaExclusionSourceKinds.ImportList,
+                    SourceId: source.Id,
+                    SourceName: source.Name,
+                    Provider: source.Provider,
+                    EntryKey: entryKey,
+                    Title: title,
+                    Year: year,
+                    ImdbId: imdbId,
+                    DurationDays: request.DurationDays,
+                    Reason: reason),
+                cancellationToken);
+            return unified is null ? null : ToIntakeListExclusion(unified);
+        }
 
         await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
             DelunoDatabaseNames.Platform,
@@ -114,13 +153,14 @@ public sealed class SqliteIntakeRepository(
         command.CommandText =
             """
             INSERT INTO intake_source_exclusions (
-                id, source_id, entry_key, title, year, imdb_id, expires_utc, created_utc, updated_utc
+                id, source_id, entry_key, title, year, imdb_id, reason, expires_utc, created_utc, updated_utc
             ) VALUES (
-                @id, @sourceId, @entryKey, @title, @year, @imdbId, @expiresUtc, @createdUtc, @updatedUtc
+                @id, @sourceId, @entryKey, @title, @year, @imdbId, @reason, @expiresUtc, @createdUtc, @updatedUtc
             ) ON CONFLICT(source_id, entry_key) DO UPDATE SET
                 title = excluded.title,
                 year = excluded.year,
                 imdb_id = excluded.imdb_id,
+                reason = excluded.reason,
                 expires_utc = excluded.expires_utc,
                 updated_utc = excluded.updated_utc;
             """;
@@ -130,6 +170,7 @@ public sealed class SqliteIntakeRepository(
         AddParameter(command, "@title", title);
         AddParameter(command, "@year", year);
         AddParameter(command, "@imdbId", imdbId);
+        AddParameter(command, "@reason", reason);
         AddParameter(command, "@expiresUtc", expiresUtc?.ToString("O"));
         AddParameter(command, "@createdUtc", now.ToString("O"));
         AddParameter(command, "@updatedUtc", now.ToString("O"));
@@ -138,7 +179,7 @@ public sealed class SqliteIntakeRepository(
         using var select = connection.CreateCommand();
         select.CommandText =
             """
-            SELECT id, source_id, entry_key, title, year, imdb_id, expires_utc, created_utc, updated_utc
+            SELECT id, source_id, entry_key, title, year, imdb_id, reason, expires_utc, created_utc, updated_utc
             FROM intake_source_exclusions
             WHERE source_id = @sourceId AND entry_key = @entryKey;
             """;
@@ -153,6 +194,18 @@ public sealed class SqliteIntakeRepository(
         string exclusionId,
         CancellationToken cancellationToken)
     {
+        if (unifiedExclusionRepository is not null)
+        {
+            var scoped = await unifiedExclusionRepository.ListActiveAsync(
+                mediaType: null,
+                sourceKind: MediaExclusionSourceKinds.ImportList,
+                sourceId,
+                cancellationToken);
+            var item = scoped.FirstOrDefault(candidate =>
+                string.Equals(candidate.Id, exclusionId, StringComparison.OrdinalIgnoreCase));
+            return item is not null && await unifiedExclusionRepository.DeleteAsync(item.Id, cancellationToken);
+        }
+
         await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
             DelunoDatabaseNames.Platform,
             cancellationToken);
@@ -541,10 +594,24 @@ public sealed class SqliteIntakeRepository(
             Title: reader.GetString(3),
             Year: reader.IsDBNull(4) ? null : reader.GetInt32(4),
             ImdbId: reader.IsDBNull(5) ? null : reader.GetString(5),
-            ExpiresUtc: reader.IsDBNull(6) ? null : ParseTimestamp(reader.GetString(6)),
-            CreatedUtc: ParseTimestamp(reader.GetString(7)),
-            UpdatedUtc: ParseTimestamp(reader.GetString(8)));
+            Reason: reader.IsDBNull(6) ? "Excluded from import list by user" : reader.GetString(6),
+            ExpiresUtc: reader.IsDBNull(7) ? null : ParseTimestamp(reader.GetString(7)),
+            CreatedUtc: ParseTimestamp(reader.GetString(8)),
+            UpdatedUtc: ParseTimestamp(reader.GetString(9)));
     }
+
+    private static IntakeListExclusionItem ToIntakeListExclusion(MediaExclusionItem item)
+        => new(
+            Id: item.Id,
+            SourceId: item.SourceId,
+            EntryKey: item.EntryKey,
+            Title: item.Title,
+            Year: item.Year,
+            ImdbId: item.ImdbId,
+            Reason: item.Reason,
+            ExpiresUtc: item.ExpiresUtc,
+            CreatedUtc: item.CreatedUtc,
+            UpdatedUtc: item.UpdatedUtc);
 
     private static IntakeTitleOriginItem ReadIntakeTitleOrigin(System.Data.Common.DbDataReader reader)
     {

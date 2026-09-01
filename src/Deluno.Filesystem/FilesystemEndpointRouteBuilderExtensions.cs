@@ -113,7 +113,7 @@ public static class FilesystemEndpointRouteBuilderExtensions
             CancellationToken cancellationToken) =>
         {
             var preview = await importPipeline.PreviewAsync(request.Preview, cancellationToken);
-            if (preview.SourceExists && !ImportFileReadiness.IsReady(preview.SourcePath))
+            if (preview.SourceExists && !ImportFileReadiness.IsPreviewReady(preview))
             {
                 return Results.Json(
                     new
@@ -126,6 +126,7 @@ public static class FilesystemEndpointRouteBuilderExtensions
 
             if (!preview.SourceExists ||
                 !preview.IsSupportedMediaFile ||
+                preview.Pack is { CanExecute: false } ||
                 IsSamePath(preview.SourcePath, preview.DestinationPath) ||
                 preview.MediaProbe is { Status: "failed" } ||
                 preview.MediaProbe is { Status: "succeeded", VideoStreams.Count: 0 } ||
@@ -502,7 +503,21 @@ public sealed record ImportPreviewRequest(
     IReadOnlyList<string>? Genres,
     IReadOnlyList<string>? Tags,
     string? Studio,
-    string? OriginalLanguage);
+    string? OriginalLanguage,
+    string? ImdbId = null,
+    string? TvDbId = null,
+    string? Network = null,
+    string? QualityProfile = null,
+    /// <summary>
+    /// The catalogue id that owns this TV import. When present, Deluno uses
+    /// the persisted series numbering map to turn AirDate, Absolute, and Scene
+    /// numbers into canonical episode identities before renaming or importing.
+    /// An omitted id keeps older/manual requests backward compatible and makes
+    /// alternate-number imports review-only rather than guessed.
+    /// </summary>
+    string? SeriesId = null,
+    string? SeriesType = null,
+    string? NumberingScheme = null);
 
 public sealed record ImportPreviewResponse(
     string SourcePath,
@@ -521,7 +536,23 @@ public sealed record ImportPreviewResponse(
     string TransferExplanation,
     IReadOnlyList<string> Warnings,
     string Explanation,
-    IReadOnlyList<string> DecisionSteps);
+    IReadOnlyList<string> DecisionSteps,
+    ImportPackPreview? Pack = null);
+
+public sealed record ImportPackPreview(
+    bool CanExecute,
+    bool AlreadyCommitted,
+    int SourceFileCount,
+    int EpisodeCount,
+    IReadOnlyList<ImportPackFilePreview> Files,
+    IReadOnlyList<string> BlockReasons);
+
+public sealed record ImportPackFilePreview(
+    string SourcePath,
+    string DestinationPath,
+    long SourceSizeBytes,
+    IReadOnlyList<string> EpisodeKeys,
+    IReadOnlyList<string> Warnings);
 
 public sealed record ImportExecuteRequest(
     ImportPreviewRequest Preview,
@@ -529,7 +560,9 @@ public sealed record ImportExecuteRequest(
     bool Overwrite,
     bool AllowCopyFallback,
     bool ForceReplacement = false,
-    string? DispatchId = null);
+    string? DispatchId = null,
+    string? ExpectedExistingPath = null,
+    IReadOnlyList<DispatchReplacementTarget>? ReplacementTargets = null);
 
 public sealed record ImportExecuteResponse(
     ImportPreviewResponse Preview,
@@ -537,7 +570,14 @@ public sealed record ImportExecuteResponse(
     string TransferModeUsed,
     bool UsedFallback,
     bool CatalogUpdated,
-    string Message);
+    string Message,
+    IReadOnlyList<ImportPackFileResult>? PackFiles = null);
+
+public sealed record ImportPackFileResult(
+    string SourcePath,
+    string DestinationPath,
+    IReadOnlyList<string> EpisodeKeys,
+    string TransferModeUsed);
 
 public sealed record ImportJobResponse(
     string JobId,

@@ -21,11 +21,11 @@ const GLOSSARY: GlossaryItem[] = [
   },
   {
     term: "Custom Format",
-    definition: "A rule that assigns bonus points to releases based on attributes (codec, audio, release group, source, etc.). Used to prefer specific qualities without hard blocking."
+    definition: "A legacy-compatible rule that describes release attributes (codec, audio, release group, source, and so on). Deluno translates reviewed rules into typed release preferences; unsupported or context-dependent rules remain visible as Advanced provenance."
   },
   {
     term: "Custom Format Score",
-    definition: "The total bonus points a release earns from matching custom format rules. Higher scores = better preferred release."
+    definition: "A legacy compatibility value retained for imported rules and provenance. It is not the value used by Deluno's typed release decisions; inspect it only in Advanced or legacy explanations."
   },
   {
     term: "Quality Profile",

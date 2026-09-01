@@ -28,10 +28,10 @@ const workflowSections = [
   },
   {
     icon: Brain,
-    title: "Release Scoring",
+    title: "Release Decisions",
     badge: "Safety first",
     body:
-      "Search decisions should explain quality delta, cutoff, custom formats, release group, estimated bitrate, size sanity, seeders, indexer health, language expectations, and never-grab rules. Force override is available but audited."
+      "Search decisions should explain the quality outcome, cutoff, typed release preferences, release group, estimated bitrate, size sanity, seeders, indexer health, language expectations, and never-grab rules. Any legacy scoring values are provenance only. Force override is available but audited."
   },
   {
     icon: WandSparkles,
@@ -66,7 +66,7 @@ const workflowSections = [
 const lifecycle = [
   "Title is added from metadata search, list import, or manual entry.",
   "Policy picks library, root folder, quality target, custom formats, and search sources.",
-  "Search scorer ranks releases and blocks unsafe matches instead of blindly upgrading.",
+  "Search decision engine compares releases and blocks unsafe matches instead of blindly upgrading.",
   "Approved release is sent to the chosen external download client with category context.",
   "Queue telemetry tracks progress, speed, ETA, and failure state in one normalized model.",
   "Completed download is imported directly or held for processor output, depending on library workflow.",
@@ -103,7 +103,7 @@ export function SystemDocsPage() {
         <ListTable columns={[{ label: "Guide" }, { label: "What it covers", width: "minmax(0,2fr)" }, { label: "Open", width: "140px", mobile: true, srOnly: true }]} chevron={false}>
           <ListRow>
             <ListNameCell name="Guided setup" sub="First run" />
-            <ListCell primary="Libraries, folders, a quality target, release scoring, and optionally a search source and download client." />
+            <ListCell primary="Libraries, folders, a quality target, release preferences, and optionally a search source and download client." />
             <ListCell mobile align="end">
               <Button asChild type="button" variant="outline" size="sm">
                 <Link to="/setup-guide">Open</Link>

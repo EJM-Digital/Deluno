@@ -20,6 +20,15 @@ export interface PlatformSettingsPatch {
   requireAuthentication?: boolean;
   uiTheme?: string;
   uiDensity?: string;
+  uiColorMode?: string;
+  uiLanguage?: string;
+  calendarFirstDayOfWeek?: string;
+  calendarWeekHeaderFormat?: string;
+  runtimeFormat?: string;
+  shortDateFormat?: string;
+  longDateFormat?: string;
+  timeFormat?: string;
+  showRelativeDates?: boolean;
   defaultMovieView?: string;
   defaultShowView?: string;
   metadataNfoEnabled?: boolean;

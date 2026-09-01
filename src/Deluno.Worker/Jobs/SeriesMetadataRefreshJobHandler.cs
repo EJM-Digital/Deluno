@@ -30,10 +30,33 @@ public sealed class SeriesMetadataRefreshJobHandler(
         // Stamped regardless of outcome — see the movie handler for why.
         await seriesCatalogRepository.RecordMetadataAttemptAsync(series.Id, cancellationToken);
 
-        var matches = await metadataProvider.SearchAsync(
-            new MetadataLookupRequest(series.Title, "tv", series.StartYear, series.MetadataProviderId),
-            cancellationToken);
-        var match = matches.FirstOrDefault();
+        MetadataSearchResult? match;
+        if (!string.IsNullOrWhiteSpace(series.MetadataProviderId))
+        {
+            var lookup = await metadataProvider.ResolveProviderRecordAsync(
+                new MetadataLookupRequest(series.Title, "tv", series.StartYear, series.MetadataProviderId),
+                cancellationToken);
+            if (lookup.Status == MetadataProviderRecordStatus.Missing)
+            {
+                await RecordMissingProviderIssueAsync(series.Id, series.Title, lookup, job.Id, cancellationToken);
+                return $"Kept {series.Title}; its linked {lookup.Provider.ToUpperInvariant()} record is no longer available.";
+            }
+
+            if (lookup.Status == MetadataProviderRecordStatus.Unavailable)
+            {
+                return $"Could not verify metadata for {series.Title} because the provider is temporarily unavailable.";
+            }
+
+            match = lookup.Result;
+        }
+        else
+        {
+            var matches = await metadataProvider.SearchAsync(
+                new MetadataLookupRequest(series.Title, "tv", series.StartYear, null),
+                cancellationToken);
+            match = matches.FirstOrDefault();
+        }
+
         if (match is null)
         {
             return $"No metadata match found for {series.Title}.";
@@ -70,6 +93,40 @@ public sealed class SeriesMetadataRefreshJobHandler(
         }
 
         return $"Refreshed metadata for {series.Title}.";
+    }
+
+    private async Task RecordMissingProviderIssueAsync(
+        string seriesId,
+        string title,
+        MetadataProviderRecordLookup lookup,
+        string jobId,
+        CancellationToken cancellationToken)
+    {
+        var evidenceKey = $"{lookup.Provider}:series:{lookup.ProviderId}:missing".ToLowerInvariant();
+        var isNewEvidence = await seriesCatalogRepository.RecordMetadataProviderIssueAsync(
+            seriesId,
+            new MetadataProviderIssue(
+                "provider-record-missing",
+                lookup.Provider,
+                lookup.ProviderId,
+                evidenceKey,
+                DateTimeOffset.UtcNow,
+                null),
+            cancellationToken);
+
+        if (!isNewEvidence)
+        {
+            return;
+        }
+
+        await activityFeedRepository.RecordActivityAsync(
+            "metadata.series.provider-record-missing",
+            $"{title} was kept in Deluno because its linked {lookup.Provider.ToUpperInvariant()} record is no longer available.",
+            JsonSerializer.Serialize(new { lookup.Provider, lookup.ProviderId, EvidenceKey = evidenceKey }, JobPayloads.Options),
+            jobId,
+            "series",
+            seriesId,
+            cancellationToken);
     }
 
     /// <summary>

@@ -1,0 +1,111 @@
+input_text:
+  deluno_api_url:
+    name: Deluno API URL
+    icon: mdi:server
+    initial: http://deluno:5099
+
+sensor:
+  - platform: rest
+    name: Deluno
+    resource: "{{ states('input_text.deluno_api_url') }}/api/v1/automation/summary"
+    method: GET
+    scan_interval: 60
+    headers:
+      X-Api-Key: !secret deluno_api_key
+    value_template: "{{ value_json.readiness.status }}"
+    json_attributes:
+      - readiness
+      - queue
+      - imports
+      - attention
+
+template:
+  - sensor:
+      - name: Deluno Queue Active
+        unique_id: deluno_queue_active
+        state: "{{ (state_attr('sensor.deluno', 'queue') or {}).get('active', 0) | int(0) }}"
+        unit_of_measurement: jobs
+      - name: Deluno Queue Queued
+        unique_id: deluno_queue_queued
+        state: "{{ (state_attr('sensor.deluno', 'queue') or {}).get('queued', 0) | int(0) }}"
+        unit_of_measurement: jobs
+      - name: Deluno Queue Failed
+        unique_id: deluno_queue_failed
+        state: "{{ (state_attr('sensor.deluno', 'queue') or {}).get('failed', 0) | int(0) }}"
+        unit_of_measurement: jobs
+      - name: Deluno Imports Active
+        unique_id: deluno_imports_active
+        state: "{{ (state_attr('sensor.deluno', 'imports') or {}).get('active', 0) | int(0) }}"
+        unit_of_measurement: imports
+      - name: Deluno Imports Failed
+        unique_id: deluno_imports_failed
+        state: "{{ (state_attr('sensor.deluno', 'imports') or {}).get('failed', 0) | int(0) }}"
+        unit_of_measurement: imports
+      - name: Deluno Attention Count
+        unique_id: deluno_attention_count
+        state: "{{ (state_attr('sensor.deluno', 'attention') or []) | count }}"
+        unit_of_measurement: items
+
+rest_command:
+  deluno_search_library:
+    url: "{{ states('input_text.deluno_api_url') }}/api/v1/libraries/{{ library_id }}/search-now"
+    method: POST
+    headers:
+      X-Api-Key: !secret deluno_api_key
+      Content-Type: application/json
+    payload: "{}"
+  deluno_pause_automation:
+    url: "{{ states('input_text.deluno_api_url') }}/api/v1/settings/automation"
+    method: PUT
+    headers:
+      X-Api-Key: !secret deluno_api_key
+      Content-Type: application/json
+    payload: '{"isEnabled": false}'
+  deluno_resume_automation:
+    url: "{{ states('input_text.deluno_api_url') }}/api/v1/settings/automation"
+    method: PUT
+    headers:
+      X-Api-Key: !secret deluno_api_key
+      Content-Type: application/json
+    payload: '{"isEnabled": true}'
+  deluno_pause_existing_import:
+    url: "{{ states('input_text.deluno_api_url') }}/api/v1/libraries/{{ library_id }}/import-existing/pause"
+    method: POST
+    headers:
+      X-Api-Key: !secret deluno_api_key
+      Content-Type: application/json
+    payload: "{}"
+  deluno_resume_existing_import:
+    url: "{{ states('input_text.deluno_api_url') }}/api/v1/libraries/{{ library_id }}/import-existing/resume"
+    method: POST
+    headers:
+      X-Api-Key: !secret deluno_api_key
+      Content-Type: application/json
+    payload: "{}"
+  deluno_approve_intake_preview:
+    url: "{{ states('input_text.deluno_api_url') }}/api/v1/intake-sources/{{ source_id }}/approve-preview"
+    method: POST
+    headers:
+      X-Api-Key: !secret deluno_api_key
+      Content-Type: application/json
+    payload: >-
+      {{ {"entries": entries, "searchAfterAdd": search_after_add | default(false)} | to_json }}
+
+automation:
+  - id: deluno_notification_webhook
+    alias: Deluno notification webhook
+    description: Show Deluno outbound webhook events in Home Assistant.
+    mode: queued
+    max: 10
+    trigger:
+      - platform: webhook
+        webhook_id: !secret deluno_notification_webhook_id
+        allowed_methods:
+          - POST
+        local_only: false
+    action:
+      - service: persistent_notification.create
+        data:
+          title: "{{ trigger.json.title | default('Deluno notification') }}"
+          message: >-
+            {{ trigger.json.message | default(trigger.json.eventCategory | default('Deluno event')) }}

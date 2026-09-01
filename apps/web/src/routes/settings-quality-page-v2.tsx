@@ -109,8 +109,8 @@ export function SettingsQualityPage() {
       <ListCard title="Same-quality upgrades" count="How Deluno chooses between equally ranked releases">
         <div className="grid gap-[var(--grid-gap)] p-[var(--card-pad-x)]">
           <SwitchRow
-            label="Require a score improvement at the same quality"
-            description="Only replace an equally ranked release when its release score is better."
+            label="Require a preference improvement at the same quality"
+            description="Only replace an equally ranked release when its typed preference outcome is better."
             checked={model.upgradeStop.requireCustomFormatGainForSameQuality}
             onCheckedChange={(checked) => setModel((current) => ({ ...current, upgradeStop: { ...current.upgradeStop, requireCustomFormatGainForSameQuality: checked } }))}
           />

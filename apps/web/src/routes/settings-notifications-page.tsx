@@ -6,11 +6,12 @@
  *   Drawer    (Basics · Delivery · Delete)
  *
  * Contracts: GET/POST /api/notification-webhooks,
- * PUT/DELETE /api/notification-webhooks/{id}, POST …/{id}/test, PATCH /api/settings.
+ * PUT/DELETE /api/notification-webhooks/{id}, POST …/{id}/test,
+ * GET /api/notification-webhooks/deliveries, POST …/replay, PATCH /api/settings.
  */
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { useLoaderData, useRevalidator } from "react-router-dom";
-import { Loader2, Plus, Send } from "lucide-react";
+import { Loader2, Plus, RotateCcw, Send } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { Chip, type ChipProps } from "../components/ui/chip";
 import { ConfirmDialog } from "../components/ui/confirm-dialog";
@@ -23,7 +24,7 @@ import { systemSettingsNavItems } from "../components/app/settings-shell";
 import { Select } from "../components/ui/select";
 import { Switch, SwitchRow } from "../components/ui/switch";
 import { toast } from "../components/shell/toaster";
-import { fetchJson, type NotificationWebhookItem, type PlatformSettingsSnapshot } from "../lib/api";
+import { fetchJson, type NotificationWebhookDeliveryItem, type NotificationWebhookItem, type PlatformSettingsSnapshot } from "../lib/api";
 import type { PlatformSettingsPatch } from "../lib/api/settings";
 import { useApiMutation } from "../lib/use-api-mutation";
 import { authedFetch } from "../lib/use-auth";
@@ -41,6 +42,7 @@ const EVENT_OPTIONS = [
 interface LoaderData {
   settings: PlatformSettingsSnapshot;
   webhooks: NotificationWebhookItem[];
+  deliveries: NotificationWebhookDeliveryItem[];
 }
 
 interface WebhookForm {
@@ -53,15 +55,16 @@ interface WebhookForm {
 type DrawerMode = { kind: "closed" } | { kind: "create" } | { kind: "edit"; id: string };
 
 export async function settingsNotificationsLoader(): Promise<LoaderData> {
-  const [settings, webhooks] = await Promise.all([
+  const [settings, webhooks, deliveries] = await Promise.all([
     fetchJson<PlatformSettingsSnapshot>("/api/settings"),
-    fetchJson<NotificationWebhookItem[]>("/api/notification-webhooks")
+    fetchJson<NotificationWebhookItem[]>("/api/notification-webhooks"),
+    fetchJson<NotificationWebhookDeliveryItem[]>("/api/notification-webhooks/deliveries?take=100")
   ]);
-  return { settings, webhooks };
+  return { settings, webhooks, deliveries };
 }
 
 export function SettingsNotificationsPage() {
-  const { settings, webhooks } = useLoaderData() as LoaderData;
+  const { settings, webhooks, deliveries } = useLoaderData() as LoaderData;
   const revalidator = useRevalidator();
   const settingsMutation = useApiMutation<PlatformSettingsPatch, PlatformSettingsSnapshot>("/api/settings", "PATCH");
   const sorted = useMemo(() => [...webhooks].sort((a, b) => a.name.localeCompare(b.name)), [webhooks]);
@@ -183,6 +186,16 @@ export function SettingsNotificationsPage() {
     }, `Test event sent to ${editing?.name ?? "the webhook"}`);
   }
 
+  async function replayDelivery(delivery: NotificationWebhookDeliveryItem) {
+    await run(`replay:${delivery.id}`, async () => {
+      const response = await authedFetch(`/api/notification-webhooks/deliveries/${delivery.id}/replay`, { method: "POST" });
+      const result = response.ok ? (await response.json()) as { sent?: boolean; error?: string } : null;
+      if (!response.ok || result?.sent !== true) {
+        throw new Error(result?.error ?? "Delivery could not be replayed.");
+      }
+    }, "Delivery replayed");
+  }
+
   async function toggleGlobal(enabled: boolean) {
     await run("global", async () => {
       await settingsMutation.mutate({ enableNotifications: enabled });
@@ -246,6 +259,31 @@ export function SettingsNotificationsPage() {
             </ListCell>
           </ListRow>
         </ListTable>
+      </ListCard>
+
+      <ListCard title="Delivery history" count={deliveries.length ? `${deliveries.length} recent delivery attempts · failures remain replayable` : undefined}>
+        {deliveries.length === 0 ? (
+          <ListEmpty title="No delivery history yet" description="Deluno will keep a bounded record after the first matching event or test." />
+        ) : (
+          <ListTable columns={[{ label: "Event" }, { label: "Webhook" }, { label: "Attempts" }, { label: "Last result" }, { label: "Action", width: "minmax(8rem,auto)", mobile: true }]} chevron={false}>
+            {deliveries.map((delivery) => (
+              <ListRow key={delivery.id}>
+                <ListNameCell name={delivery.title} sub={delivery.eventCategory} />
+                <ListCell mono primary={webhooks.find((webhook) => webhook.id === delivery.webhookId)?.name ?? delivery.webhookId} />
+                <ListCell numeric primary={`${delivery.attemptCount}/${delivery.maxAttempts}`} secondary={delivery.lastStatusCode ? `HTTP ${delivery.lastStatusCode}` : undefined} />
+                <ListCell primary={<Chip tone={deliveryTone(delivery.status)}>{delivery.status}</Chip>} secondary={delivery.lastError ?? (delivery.lastAttemptUtc ? relative(delivery.lastAttemptUtc) : undefined)} />
+                <ListCell mobile>
+                  {delivery.status === "dead-letter" || delivery.status === "retrying" ? (
+                    <Button type="button" variant="outline" size="sm" onClick={() => void replayDelivery(delivery)} disabled={busy !== null}>
+                      {busy === `replay:${delivery.id}` ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RotateCcw className="h-3.5 w-3.5" />}
+                      Replay
+                    </Button>
+                  ) : null}
+                </ListCell>
+              </ListRow>
+            ))}
+          </ListTable>
+        )}
       </ListCard>
 
       <Drawer
@@ -324,6 +362,12 @@ function statusChip(webhook: NotificationWebhookItem, globallyEnabled: boolean):
   if (!globallyEnabled) return { tone: "warn", label: "Paused" };
   if (webhook.lastError) return { tone: "bad", label: "Failing" };
   return webhook.lastFiredUtc ? { tone: "ok", label: "Delivering" } : { tone: "idle", label: "Untested" };
+}
+function deliveryTone(status: string): NonNullable<ChipProps["tone"]> {
+  if (status === "delivered") return "ok";
+  if (status === "dead-letter") return "bad";
+  if (status === "retrying") return "warn";
+  return "idle";
 }
 function relative(iso: string) {
   const minutes = Math.round(Math.abs(Date.now() - new Date(iso).getTime()) / 60000);

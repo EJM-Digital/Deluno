@@ -1,4 +1,7 @@
+using Deluno.Contracts;
 using Deluno.Infrastructure.Storage.Migrations;
+using Deluno.Media;
+using Deluno.Media.Migrations;
 
 namespace Deluno.Series.Migrations;
 
@@ -37,7 +40,13 @@ public static class SeriesDatabaseMigrations
         new V0029SeriesDecisionFacts(),
         new V0030SeriesSearchEffort(),
         new V0031SeriesFileProbe(),
-        new V0032SeriesTvSortIndexes()
+        new V0032SeriesTvSortIndexes(),
+        new MediaTagsMigration(MediaKind.Series, 33),
+        new V0034SeriesPreferenceEvaluations(),
+        new V0035SeriesNumbering(),
+        new V0036SeriesSubtitleFailureDetails(),
+        new V0037SeriesMetadataProviderIssues(),
+        new V0038SeriesEpisodeFileProbe()
     ];
 
     private sealed class V0001InitialSchema : SqliteSqlMigration

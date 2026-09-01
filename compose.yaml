@@ -3,13 +3,21 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    image: deluno:dev
+    # Override with a versioned tag or digest for a production deployment:
+    # DELUNO_IMAGE=ghcr.io/jampat000/deluno:1.0.0
+    # DELUNO_IMAGE=ghcr.io/jampat000/deluno@sha256:<digest>
+    image: ${DELUNO_IMAGE:-deluno:dev}
     container_name: deluno
     ports:
       - "5099:8080"
     environment:
       ASPNETCORE_URLS: http://+:8080
+      Server__Port: 8080
+      Server__AllowLan: "true"
       Storage__DataRoot: /data
+      DELUNO_MASTER_KEY: ${DELUNO_MASTER_KEY:-}
+      DELUNO_IMAGE_REF: ${DELUNO_IMAGE:-deluno:dev}
+      DELUNO_IMAGE_DIGEST: ${DELUNO_IMAGE_DIGEST:-}
       # Service credentials stay on the host (usually in an untracked .env file)
       # and are never exposed through the Deluno web interface.
       DELUNO_METADATA_PROVIDER_MODE: ${DELUNO_METADATA_PROVIDER_MODE:-hybrid}
@@ -17,4 +25,15 @@ services:
       TMDB_API_KEY: ${TMDB_API_KEY:-}
       MDBLIST_API_KEY: ${MDBLIST_API_KEY:-}
     volumes:
-      - ./artifacts/docker/data:/data
+      - ${DELUNO_DATA_DIR:-./artifacts/docker/data}:/data
+      # Add the host paths that Deluno should be able to scan/import:
+      # - /srv/media/movies:/media/movies
+      # - /srv/media/tv:/media/tv
+      # - /srv/downloads:/downloads
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "--silent", "http://127.0.0.1:8080/health"]
+      interval: 30s
+      timeout: 5s
+      start_period: 45s
+      retries: 3

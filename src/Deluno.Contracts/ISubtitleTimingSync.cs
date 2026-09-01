@@ -36,12 +36,11 @@ public sealed record SubtitleTimingResult(bool Adjusted, TimeSpan Offset, string
 /// encode and is in time by construction, and everything below it was
 /// not.</para>
 ///
-/// <para><b>So the trigger needs no setting.</b> Bazarr syncs subtitles scoring
-/// under a threshold and gives you the threshold to tune; Deluno already named
-/// that line — it is the cutoff — so the answer to "which subtitles get synced"
-/// is "the ones the shelf is still calling upgradable", and there is nothing to
-/// configure. Standing check 2: the answer to a new capability was not a new
-/// setting.</para>
+/// <para>The default trigger follows that same cutoff. A library can narrow it
+/// to the safer "below same source" rung, disable automatic repair, or exclude
+/// providers whose timing is known to be unreliable. Those choices travel with
+/// the queued job so a later worker run cannot silently fall back to a different
+/// library setting.</para>
 /// </summary>
 public interface ISubtitleTimingSync
 {
@@ -60,9 +59,15 @@ public interface ISubtitleTimingSync
     /// The title's own language, when Deluno knows it, so the audio track that
     /// actually carries the dialogue is preferred over a dub. Null is fine.
     /// </param>
+    /// <param name="policy">
+    /// The library's timing policy. Null preserves the default of syncing below
+    /// "made for this file", within a 60-second search window and a 3-sigma
+    /// confidence threshold.
+    /// </param>
     Task<SubtitleTimingResult> SyncAsync(
         string videoPath,
         string subtitlePath,
         string? originalLanguage,
-        CancellationToken cancellationToken);
+        CancellationToken cancellationToken,
+        SubtitleTimingPolicy? policy = null);
 }

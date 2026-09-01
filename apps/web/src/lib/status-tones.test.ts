@@ -108,6 +108,13 @@ describe("the mark on a title", () => {
     }
   });
 
+  it("gives every rung a distinct non-colour glyph and stable state class", () => {
+    const presentations = Object.values(TITLE_MARK_PRESENTATION);
+    expect(presentations.every((presentation) => presentation.glyph.trim().length > 0)).toBe(true);
+    expect(new Set(presentations.map((presentation) => presentation.glyph)).size).toBe(presentations.length);
+    expect(new Set(presentations.map((presentation) => presentation.stateClass)).size).toBe(presentations.length);
+  });
+
   /**
    * The half means the monitoring toggle and nothing else, so it only appears
    * where monitoring is deciding something now. A transfer under way finishes

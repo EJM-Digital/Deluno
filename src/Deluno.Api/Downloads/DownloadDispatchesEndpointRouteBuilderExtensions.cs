@@ -73,6 +73,7 @@ public static class DownloadDispatchesEndpointRouteBuilderExtensions
         string? grabStatus,
         string? importStatus,
         string? clientId,
+        string? mediaType,
         string? entityType,
         string? entityId,
         string? libraryId,
@@ -87,6 +88,7 @@ public static class DownloadDispatchesEndpointRouteBuilderExtensions
             GrabStatus = grabStatus,
             ImportStatus = importStatus,
             ClientId = clientId,
+            MediaType = mediaType,
             EntityType = entityType,
             EntityId = entityId,
             LibraryId = libraryId,
@@ -273,10 +275,10 @@ public static class DownloadDispatchesEndpointRouteBuilderExtensions
         {
             ImportStatus = status,
             LibraryId = libraryId,
-            EntityType = mediaType,
+            MediaType = mediaType,
             EntityId = entityId,
-            MinGrabTime = importedAfter.HasValue ? new DateTimeOffset(importedAfter.Value, TimeSpan.Zero) : null,
-            MaxGrabTime = importedBefore.HasValue ? new DateTimeOffset(importedBefore.Value, TimeSpan.Zero) : null
+            MinImportTime = importedAfter.HasValue ? new DateTimeOffset(importedAfter.Value, TimeSpan.Zero) : null,
+            MaxImportTime = importedBefore.HasValue ? new DateTimeOffset(importedBefore.Value, TimeSpan.Zero) : null
         };
 
         var pagination = new DispatchPaginationOptions
@@ -306,7 +308,8 @@ public static class DownloadDispatchesEndpointRouteBuilderExtensions
                 FailureMessage: d.ImportFailureMessage,
                 FailedUtc: string.Equals(d.ImportStatus, "failed", StringComparison.OrdinalIgnoreCase)
                     ? d.ImportCompletedUtc
-                    : null
+                    : null,
+                Failure: d.Failure
             ))
             .ToList();
 

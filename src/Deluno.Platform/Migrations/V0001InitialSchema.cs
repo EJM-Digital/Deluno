@@ -34,7 +34,26 @@ public static class PlatformDatabaseMigrations
         new V0026LibraryViewMonitoringFilter(),
         new V0027LibrarySubtitleLanguages(),
         new V0028SubtitleProviders(),
-        new V0029LibrarySubtitleTreatments()
+        new V0029LibrarySubtitleTreatments(),
+        new V0030IntakeExclusionReasons(),
+        new V0031LibraryViewAutomationAction(),
+        new V0032AcquisitionPolicy(),
+        new V0033UnifiedMediaExclusions(),
+        new V0034ReleasePreferencePlans(),
+        new V0035AutomationIdempotency(),
+        new V0036NotificationWebhookDeliveries(),
+        new V0037IntegrationFailureDetails(),
+        new V0038MediaPlanVersions(),
+        new V0039PlaybackGoals(),
+        new V0040MigrationBackupEvidence(),
+        new V0041GuidePackageVersions(),
+        new V0042SubtitleProviderFailureDetails(),
+        new V0043PlaybackGoalForbiddenTraits(),
+        new V0044MediaPlanAutomationIntent(),
+        new V0045QualityProfilePlanReference(),
+        new V0046NotificationWebhookFailureDetails(),
+        new V0047LibrarySubtitleContentPolicy(),
+        new V0048LibrarySubtitleTimingPolicy()
     ];
 
     private sealed class V0001InitialSchema : SqliteSqlMigration

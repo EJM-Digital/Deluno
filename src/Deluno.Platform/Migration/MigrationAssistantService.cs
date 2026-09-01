@@ -1,4 +1,6 @@
 using System.Globalization;
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 using Deluno.Platform.Contracts;
 using Deluno.Intake.Contracts;
@@ -8,6 +10,8 @@ using Deluno.Libraries.Data;
 using Deluno.Platform.Data;
 using Deluno.Quality.Contracts;
 using Deluno.Quality.Data;
+using Deluno.Quality.Guides;
+using Deluno.Quality.ReleasePreferences;
 using Deluno.Connections.Contracts;
 using Deluno.Connections.Data;
 
@@ -19,7 +23,10 @@ public sealed class MigrationAssistantService(
     IQualityRepository qualityRepository,
     IConnectionsRepository connectionsRepository,
     IIntakeRepository intakeRepository,
-    IEnumerable<IMigrationCatalogImporter>? catalogImporters = null) : IMigrationAssistantService
+    IEnumerable<IMigrationCatalogImporter>? catalogImporters = null,
+    IMigrationBackupService? backupService = null,
+    IGuidePackageStore? guidePackageStore = null,
+    IReleasePreferencePlanRepository? releasePreferencePlanRepository = null) : IMigrationAssistantService
 {
     private static readonly JsonDocumentOptions DocumentOptions = new()
     {
@@ -59,7 +66,16 @@ public sealed class MigrationAssistantService(
 
         using (document)
         {
-            var existing = await ExistingState.LoadAsync(librariesRepository, qualityRepository, connectionsRepository, intakeRepository, cancellationToken);
+            var existing = await ExistingState.LoadAsync(
+                librariesRepository,
+                qualityRepository,
+                connectionsRepository,
+                intakeRepository,
+                releasePreferencePlanRepository,
+                cancellationToken);
+            var guidePackage = guidePackageStore is null
+                ? GuidePackageCatalog.Current
+                : (await guidePackageStore.GetCurrentAsync(cancellationToken)).Package;
             var operations = new List<MigrationReportOperation>();
             var contexts = ResolveContexts(document.RootElement, sourceKind).ToArray();
 
@@ -70,34 +86,54 @@ public sealed class MigrationAssistantService(
 
             foreach (var context in contexts)
             {
-                ExtractQualityProfiles(context, existing, operations);
+                ExtractCustomFormats(context, existing, operations, guidePackage, request.AllowAdvancedLegacyRules);
+                ExtractQualityProfiles(
+                    context,
+                    existing,
+                    operations,
+                    guidePackage,
+                    request.AllowAdvancedLegacyRules,
+                    releasePreferencePlanRepository is not null);
                 ExtractLibraries(context, existing, operations);
                 ExtractIndexers(context, existing, operations);
                 ExtractDownloadClients(context, existing, operations);
                 ExtractIntakeSources(context, existing, operations);
             }
 
-            var titleStats = ExtractTitleStats(contexts);
-            if (titleStats.TitleCount > 0)
+            var contextTitleStats = contexts
+                .Select(context => (Context: context, Stats: ExtractTitleStats([context])))
+                .ToArray();
+            foreach (var (context, stats) in contextTitleStats.Where(item => item.Stats.TitleCount > 0))
             {
                 operations.Add(new MigrationReportOperation(
-                    MakeOperationId("titles", sourceKind, "monitored-state"),
+                    MakeOperationId("titles", context.SourceKind, context.MediaType),
                     "catalog",
                     "monitored-state",
-                    $"{titleStats.TitleCount.ToString(CultureInfo.InvariantCulture)} imported titles",
+                    $"{stats.TitleCount.ToString(CultureInfo.InvariantCulture)} imported {context.MediaType} titles",
                     "report",
                     false,
-                    "Deluno detected monitored/wanted state in the export. On apply, Deluno creates deduplicated catalog records only when it can safely map each title to one migrated library; existing files still require a later library scan to reconcile file associations.",
+                    "Deluno inventoried monitored state, source-reported files, assignments, probed facts, and matched-format history. On apply, Deluno creates deduplicated catalog records only when it can safely map each title to one migrated library; existing files still require a later library scan to reconcile file associations.",
                     new Dictionary<string, string?>
                     {
-                        ["titleCount"] = titleStats.TitleCount.ToString(CultureInfo.InvariantCulture),
-                        ["monitoredCount"] = titleStats.MonitoredCount.ToString(CultureInfo.InvariantCulture),
-                        ["wantedCount"] = titleStats.WantedCount.ToString(CultureInfo.InvariantCulture)
+                        ["sourceLabel"] = context.SourceLabel,
+                        ["mediaType"] = context.MediaType,
+                        ["titleCount"] = stats.TitleCount.ToString(CultureInfo.InvariantCulture),
+                        ["monitoredCount"] = stats.MonitoredCount.ToString(CultureInfo.InvariantCulture),
+                        ["wantedCount"] = stats.WantedCount.ToString(CultureInfo.InvariantCulture),
+                        ["installedFileCount"] = stats.InstalledFileCount.ToString(CultureInfo.InvariantCulture),
+                        ["qualityProfileAssignmentCount"] = stats.QualityProfileAssignmentCount.ToString(CultureInfo.InvariantCulture),
+                        ["libraryAssignmentCount"] = stats.LibraryAssignmentCount.ToString(CultureInfo.InvariantCulture),
+                        ["probedMediaFactsCount"] = stats.ProbedMediaFactsCount.ToString(CultureInfo.InvariantCulture),
+                        ["matchedFormatHistoryCount"] = stats.MatchedFormatHistoryCount.ToString(CultureInfo.InvariantCulture)
                     },
                     []));
             }
 
-            return BuildReport(sourceKind, sourceName, operations, warnings, errors, titleStats.TitleCount, titleStats.MonitoredCount, titleStats.WantedCount, redactSensitiveData);
+            var titleStats = contextTitleStats
+                .Select(item => item.Stats)
+                .Aggregate(TitleStats.Empty, static (total, next) => total.Add(next));
+            var inventory = BuildInventory(contexts, operations);
+            return BuildReport(sourceKind, sourceName, operations, warnings, errors, titleStats.TitleCount, titleStats.MonitoredCount, titleStats.WantedCount, redactSensitiveData, inventory);
         }
     }
 
@@ -109,6 +145,38 @@ public sealed class MigrationAssistantService(
             return new MigrationApplyResponse(RedactReport(report), []);
         }
 
+        MigrationBackupReceipt? backup = null;
+        if (backupService is null)
+        {
+            // Unit-level callers can intentionally omit the host backup
+            // adapter, but production application wiring must make the
+            // missing protection visible instead of implying a safe apply.
+            report = report with
+            {
+                Warnings = report.Warnings.Concat(["No verified backup service is configured for this migration execution."]).ToArray()
+            };
+        }
+        else
+        {
+            try
+            {
+                backup = await backupService.CreateVerifiedBackupAsync("pre-migration", cancellationToken);
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch (Exception exception)
+            {
+                var blocked = report with
+                {
+                    Valid = false,
+                    Errors = report.Errors.Concat([$"Migration was blocked because the automatic verified backup failed: {exception.Message}"]).ToArray()
+                };
+                return new MigrationApplyResponse(RedactReport(blocked), [], Backup: null);
+            }
+        }
+
         var applied = new List<MigrationAppliedItem>();
         string? stageFailure = null;
         var selectedOperationIds = request.SelectedOperationIds is { Count: > 0 }
@@ -116,6 +184,15 @@ public sealed class MigrationAssistantService(
             : null;
         var isSelected = (MigrationReportOperation operation) =>
             selectedOperationIds is null || selectedOperationIds.Contains(operation.Id);
+        var importedCustomFormatIds = report.Operations
+            .Where(operation => operation.TargetType == "custom-format"
+                && operation.Action is "create" or "skip"
+                && (operation.Action == "skip" || isSelected(operation))
+                && !string.IsNullOrWhiteSpace(GetData(operation, "id")))
+            .ToDictionary(
+                operation => GetData(operation, "id")!,
+                operation => GetData(operation, "existingId") ?? GetData(operation, "id")!,
+                StringComparer.OrdinalIgnoreCase);
 
         foreach (var operation in report.Operations.Where(operation => operation.CanApply && operation.Action == "create" && isSelected(operation)))
         {
@@ -123,18 +200,82 @@ public sealed class MigrationAssistantService(
             {
             switch (operation.TargetType)
             {
+                case "release-preference-plan":
+                {
+                    if (releasePreferencePlanRepository is null)
+                    {
+                        throw new InvalidOperationException(
+                            "The migration release-preference plan store is not configured; the typed plan must be persisted before activation.");
+                    }
+
+                    var planJson = GetData(operation, "planJson")
+                        ?? throw new InvalidOperationException("The migration release-preference plan operation has no plan definition.");
+                    var plan = ReleasePreferencePlanCodec.Deserialize(planJson);
+                    var stored = await releasePreferencePlanRepository.SaveAsync(plan, cancellationToken);
+                    applied.Add(new MigrationAppliedItem(
+                        operation.Id,
+                        operation.TargetType,
+                        operation.Name,
+                        stored.Plan.Id,
+                        "created"));
+                    break;
+                }
                 case "quality-profile":
                 {
+                    var planOperationId = GetData(operation, "releasePreferencePlanOperationId");
+                    if (!string.IsNullOrWhiteSpace(planOperationId))
+                    {
+                        var planOperation = report.Operations.FirstOrDefault(candidate =>
+                            string.Equals(candidate.Id, planOperationId, StringComparison.Ordinal));
+                        var planWasPersisted = planOperation is not null
+                            && (planOperation.Action == "skip"
+                                || applied.Any(item =>
+                                    string.Equals(item.OperationId, planOperation.Id, StringComparison.Ordinal)
+                                    && item.Result == "created"));
+                        if (!planWasPersisted)
+                        {
+                            throw new InvalidOperationException(
+                                "The quality profile's typed release-preference plan was not selected or persisted; Deluno will not activate a profile with a dangling plan reference.");
+                        }
+                    }
+
+                    var customFormatIds = ResolveImportedCustomFormatIds(
+                        GetData(operation, "customFormatIds"),
+                        importedCustomFormatIds);
+                    var releasePreferencePlan = string.IsNullOrWhiteSpace(GetData(operation, "releasePreferencePlanId"))
+                        ? null
+                        : new ReleasePreferencePlanReference(
+                            GetData(operation, "releasePreferencePlanId")!,
+                            GetData(operation, "releasePreferencePlanVersion") ?? string.Empty,
+                            GetData(operation, "releasePreferencePlanHash") ?? string.Empty);
                     var created = await qualityRepository.CreateQualityProfileAsync(
                         new CreateQualityProfileRequest(
                             GetData(operation, "name"),
                             GetData(operation, "mediaType"),
                             GetData(operation, "cutoffQuality"),
                             GetData(operation, "allowedQualities"),
-                            CustomFormatIds: null,
+                            CustomFormatIds: customFormatIds,
                             UpgradeUntilCutoff: ParseBool(GetData(operation, "upgradeUntilCutoff"), defaultValue: true),
-                            UpgradeUnknownItems: ParseBool(GetData(operation, "upgradeUnknownItems"), defaultValue: false)),
+                            UpgradeUnknownItems: ParseBool(GetData(operation, "upgradeUnknownItems"), defaultValue: false),
+                            ReleasePreferencePlan: releasePreferencePlan),
                         cancellationToken);
+                    applied.Add(new MigrationAppliedItem(operation.Id, operation.TargetType, operation.Name, created.Id, "created"));
+                    break;
+                }
+                case "custom-format":
+                {
+                    var stableId = GetData(operation, "id")
+                        ?? throw new InvalidOperationException("The migration custom-format operation has no stable source id.");
+                    var created = await qualityRepository.CreateCustomFormatAsync(
+                        new CreateCustomFormatRequest(
+                            GetData(operation, "name") ?? operation.Name,
+                            GetData(operation, "mediaType"),
+                            ParseInt(GetData(operation, "score"), 0),
+                            GetData(operation, "trashId"),
+                            GetData(operation, "conditions"),
+                            ParseBool(GetData(operation, "upgradeAllowed"), defaultValue: true)),
+                        cancellationToken,
+                        preferredId: stableId);
                     applied.Add(new MigrationAppliedItem(operation.Id, operation.TargetType, operation.Name, created.Id, "created"));
                     break;
                 }
@@ -313,12 +454,19 @@ public sealed class MigrationAssistantService(
                 AppliedUtc: DateTimeOffset.MinValue,
                 PreflightReport: preflight,
                 ResultReport: afterApply,
-                Applied: applied),
+                Applied: applied,
+                Backup: backup),
             cancellationToken);
-        return new MigrationApplyResponse(afterApply, applied, audit.Id);
+        return new MigrationApplyResponse(afterApply, applied, audit.Id, backup);
     }
 
-    private static void ExtractQualityProfiles(MigrationContext context, ExistingState existing, List<MigrationReportOperation> operations)
+    private static void ExtractQualityProfiles(
+        MigrationContext context,
+        ExistingState existing,
+        List<MigrationReportOperation> operations,
+        GuidePackage guidePackage,
+        bool allowAdvancedLegacyRules,
+        bool canPersistTypedPlans)
     {
         foreach (var item in EnumerateArrays(context.Root, "qualityProfiles", "profiles"))
         {
@@ -339,13 +487,21 @@ public sealed class MigrationAssistantService(
 
             var data = new Dictionary<string, string?>
             {
+                ["sourceId"] = ReadString(item, "id") ?? MakeKey(context.SourceKind, context.MediaType, name),
                 ["name"] = name,
                 ["mediaType"] = mediaType,
                 ["cutoffQuality"] = cutoffQuality,
                 ["allowedQualities"] = allowedQualities,
                 ["upgradeUntilCutoff"] = "true",
-                ["upgradeUnknownItems"] = "false"
+                ["upgradeUnknownItems"] = "false",
+                ["customFormatIds"] = ResolveCustomFormatIds(item)
             };
+
+            // Radarr/Sonarr store a custom-format assignment score on the
+            // profile, not necessarily on the global custom-format row. Read
+            // the profile-scoped values before compiling the typed plan so a
+            // migration cannot silently make two profiles equivalent.
+            var importedCustomFormats = ReadImportedCustomFormats(context, item);
 
             var nameKey = MakeKey(mediaType, name);
             if (existing.QualityProfilesByKey.TryGetValue(nameKey, out var existingProfile) &&
@@ -356,7 +512,7 @@ public sealed class MigrationAssistantService(
                 continue;
             }
 
-            operations.Add(PlanCreateOrSkip(
+            var profileOperation = PlanCreateOrSkip(
                 context,
                 existing.QualityProfileKeys,
                 "quality",
@@ -366,8 +522,340 @@ public sealed class MigrationAssistantService(
                 "Quality profile will be mapped into Deluno cutoff and allowed quality policy.",
                 "A quality profile with this name and media type already exists.",
                 data,
-                []));
+                []);
+
+            // The typed compiler keeps the entire legacy profile explainable,
+            // but an opaque custom-format matcher is not safe to activate on
+            // a migration preview. Keep the proposed plan in the report and
+            // make the profile operation explicitly review-only until #350's
+            // reviewed mapping catalogue has classified each rule.
+            var importedProfile = CreateImportedProfile(
+                context,
+                item,
+                name,
+                cutoffQuality,
+                allowedQualities,
+                data["customFormatIds"] ?? string.Empty);
+            var translation = CompileImportedProfile(importedProfile, item.GetRawText(), importedCustomFormats, guidePackage);
+            var serializedPlan = ReleasePreferencePlanCodec.Serialize(translation.Plan);
+            var planKey = MakeKey(translation.Plan.Id, translation.Plan.Version);
+            var existingPlan = existing.ReleasePreferencePlansByKey.GetValueOrDefault(planKey);
+            var hasInvalidReference = translation.AdvancedRules.Any(rule => rule.Kind == LegacyPreferenceRuleKind.Invalid);
+            var planAction = "report";
+            var planCanApply = false;
+            var planReason = translation.RequiresReview
+                ? "The deterministic typed plan is ready for review; unresolved legacy matchers remain Advanced and do not drive automatic decisions."
+                : "The deterministic typed plan is ready for use.";
+            var planWarnings = translation.Warnings.ToArray();
+            if (existingPlan is not null)
+            {
+                if (string.Equals(existingPlan.PlanHash, translation.Plan.PlanHash, StringComparison.OrdinalIgnoreCase))
+                {
+                    planAction = "skip";
+                    planReason = "This immutable typed release-preference plan version is already stored.";
+                }
+                else
+                {
+                    planAction = "conflict";
+                    planReason = "The same typed release-preference plan id and version already exist with a different definition; Deluno will not overwrite them silently.";
+                    planWarnings = planWarnings
+                        .Concat(["The stored plan is immutable. Create a new version after reviewing the imported profile differences."])
+                        .ToArray();
+                }
+            }
+            else if (canPersistTypedPlans && (!translation.RequiresReview || (allowAdvancedLegacyRules && !hasInvalidReference)))
+            {
+                planAction = "create";
+                planCanApply = true;
+                planReason = translation.RequiresReview
+                    ? "The typed portion will be stored as an immutable plan; opaque matcher rows remain Advanced input because that option was explicitly selected."
+                    : "The typed plan will be stored as an immutable version before the migrated profile is activated.";
+            }
+            else if (!canPersistTypedPlans)
+            {
+                planWarnings = planWarnings
+                    .Concat(["The typed plan is report-only because no release-preference plan store is configured for this execution."])
+                    .ToArray();
+            }
+            var planOperationId = MakeOperationId("release-preference-plan", context.SourceKind, name);
+            operations.Add(new MigrationReportOperation(
+                planOperationId,
+                "quality",
+                "release-preference-plan",
+                $"{name} release preferences",
+                planAction,
+                planCanApply,
+                planReason,
+                new Dictionary<string, string?>
+                {
+                    ["profileId"] = importedProfile.Id,
+                    ["planId"] = translation.Plan.Id,
+                    ["planVersion"] = translation.Plan.Version,
+                    ["planHash"] = translation.Plan.PlanHash,
+                    ["planJson"] = serializedPlan,
+                    ["advancedRuleCount"] = translation.AdvancedRules.Count.ToString(CultureInfo.InvariantCulture),
+                    ["requiresReview"] = translation.RequiresReview.ToString(CultureInfo.InvariantCulture),
+                    ["warningCount"] = planWarnings.Length.ToString(CultureInfo.InvariantCulture)
+                },
+                planWarnings));
+
+            if (translation.RequiresReview && (!allowAdvancedLegacyRules || hasInvalidReference))
+            {
+                profileOperation = profileOperation with
+                {
+                    CanApply = false,
+                    Reason = "The profile contains legacy custom-format rules that need an explicit typed mapping review. Its compiled plan is shown separately in this preview."
+                };
+            }
+            else if (translation.RequiresReview)
+            {
+                profileOperation = profileOperation with
+                {
+                    Reason = "The profile contains opaque matcher rows that will be retained as Advanced legacy input because that option was explicitly selected. They do not contribute numeric values to typed decisions.",
+                    Warnings = profileOperation.Warnings
+                        .Concat(["Advanced legacy rules are stored for review/export and remain outside the typed decision contract."])
+                        .ToArray()
+                };
+            }
+
+            if (canPersistTypedPlans && planAction == "conflict")
+            {
+                profileOperation = profileOperation with
+                {
+                    CanApply = false,
+                    Reason = "The profile's immutable typed release-preference plan conflicts with a stored definition; Deluno will not activate the profile until a new reviewed plan version is created."
+                };
+            }
+
+            if (canPersistTypedPlans && (planAction is "create" or "skip"))
+            {
+                var profileData = new Dictionary<string, string?>(profileOperation.Data)
+                {
+                    ["releasePreferencePlanOperationId"] = planOperationId,
+                    ["releasePreferencePlanId"] = translation.Plan.Id,
+                    ["releasePreferencePlanVersion"] = translation.Plan.Version,
+                    ["releasePreferencePlanHash"] = translation.Plan.PlanHash
+                };
+                profileOperation = profileOperation with { Data = profileData };
+            }
+
+            operations.Add(profileOperation);
         }
+    }
+
+    /// <summary>
+    /// Preserves every imported custom-format row. Reviewed guide mappings may
+    /// be applied with their stable source id. Opaque matchers remain
+    /// report-only unless the owner explicitly opts into Advanced legacy
+    /// storage. The raw matcher/specification JSON is retained because
+    /// flattening a regex, negation, required flag, or nested condition into a
+    /// name would violate the migration granularity guarantee. Numeric scores
+    /// remain provenance; they never become typed intent here.
+    /// </summary>
+    private static void ExtractCustomFormats(
+        MigrationContext context,
+        ExistingState existing,
+        List<MigrationReportOperation> operations,
+        GuidePackage guidePackage,
+        bool allowAdvancedLegacyRules)
+    {
+        foreach (var item in EnumerateArrays(context.Root, "customFormats", "custom-formats", "formats"))
+        {
+            var sourceId = ReadString(item, "id") ?? ReadString(item, "formatId");
+            var name = ReadString(item, "name") ?? ReadString(item, "displayName") ?? sourceId;
+            if (string.IsNullOrWhiteSpace(name))
+            {
+                operations.Add(Unsupported(context, "custom-format", "Unnamed custom format", "Custom format is missing both a name and a stable id."));
+                continue;
+            }
+
+            var conditions = ReadString(item, "conditions")
+                            ?? ReadRawJson(item, "specifications")
+                            ?? ReadRawJson(item, "condition");
+            var stableId = sourceId ?? MakeStableCustomFormatId(context, name!, conditions);
+            var guideMapped = !string.IsNullOrWhiteSpace(ReadString(item, "trashId") ?? ReadString(item, "trashGuid"))
+                && IsReviewedGuideMapping(
+                    guidePackage,
+                    ReadString(item, "trashId") ?? ReadString(item, "trashGuid"));
+            var classification = string.IsNullOrWhiteSpace(conditions)
+                ? LegacyPreferenceRuleKind.Invalid.ToString()
+                : guideMapped
+                    ? LegacyPreferenceRuleKind.GuideMapped.ToString()
+                    : LegacyPreferenceRuleKind.UnmappedAdvanced.ToString();
+            var reason = string.IsNullOrWhiteSpace(conditions)
+                ? "The custom format has no matcher/specification payload, so it is preserved as invalid and cannot affect decisions."
+                : guideMapped
+                    ? "The matcher has a reviewed TRaSH mapping and will be retained with its stable source id; the original score remains provenance only."
+                    : "The matcher is preserved as Advanced input. Numeric score and checkbox placement are not enough to infer required, forbidden, ranked, or tie-break intent.";
+            var mediaType = ReadString(item, "mediaType") ?? context.MediaType;
+            var trashId = ReadString(item, "trashId") ?? ReadString(item, "trashGuid");
+            var existingFormat = FindExistingCustomFormat(
+                existing.CustomFormatsByIdentity,
+                mediaType,
+                stableId,
+                trashId,
+                name,
+                conditions);
+            var isExisting = existingFormat is not null;
+            var existingMatches = existingFormat is not null
+                && string.Equals(existingFormat.Name, name, StringComparison.Ordinal)
+                && string.Equals(existingFormat.MediaType, mediaType, StringComparison.OrdinalIgnoreCase)
+                && existingFormat.Score == (ReadInt(item, "score") ?? 0)
+                && string.Equals(existingFormat.TrashId, trashId, StringComparison.OrdinalIgnoreCase)
+                && string.Equals(existingFormat.Conditions, conditions ?? string.Empty, StringComparison.Ordinal)
+                && existingFormat.UpgradeAllowed == (ReadBool(item, "upgradeAllowed") ?? true);
+            var canApply = !string.IsNullOrWhiteSpace(conditions)
+                && (guideMapped || allowAdvancedLegacyRules);
+            var action = string.IsNullOrWhiteSpace(conditions)
+                ? "report"
+                : isExisting
+                    ? existingMatches ? "skip" : "conflict"
+                    : canApply ? "create" : "report";
+
+            var data = new Dictionary<string, string?>
+            {
+                ["id"] = stableId,
+                ["sourceId"] = sourceId,
+                ["name"] = name,
+                ["mediaType"] = mediaType,
+                ["trashId"] = trashId,
+                ["score"] = ReadInt(item, "score")?.ToString(CultureInfo.InvariantCulture) ?? "0",
+                ["upgradeAllowed"] = (ReadBool(item, "upgradeAllowed") ?? true).ToString(CultureInfo.InvariantCulture),
+                ["conditions"] = conditions,
+                ["classification"] = classification,
+                ["requiresReview"] = (!string.IsNullOrWhiteSpace(conditions)).ToString(CultureInfo.InvariantCulture),
+                ["activation"] = guideMapped ? "typed" : "advanced-legacy",
+                ["existingId"] = existingFormat?.Id,
+                ["rawJson"] = item.GetRawText()
+            };
+
+            operations.Add(new MigrationReportOperation(
+                MakeOperationId("custom-format", context.SourceKind, stableId),
+                action == "report" ? "inventory" : "quality",
+                "custom-format",
+                name,
+                action,
+                action is "create",
+                reason,
+                data,
+                action == "conflict"
+                    ? ["A row with the same stable identity exists but its matcher, score, or upgrade flag differs; review before applying."]
+                    : string.IsNullOrWhiteSpace(conditions)
+                        ? ["No matcher was found; the original row is retained for repair/export but will not be evaluated."]
+                        : guideMapped
+                            ? []
+                            : ["Owner review is required before this legacy matcher can become typed intent."]));
+        }
+    }
+
+    private static QualityProfileItem CreateImportedProfile(
+        MigrationContext context,
+        JsonElement item,
+        string name,
+        string cutoffQuality,
+        string allowedQualities,
+        string customFormatIds)
+    {
+        var sourceId = ReadString(item, "id") ?? MakeKey(context.SourceKind, context.MediaType, name);
+        return new QualityProfileItem(
+            sourceId,
+            name,
+            context.MediaType,
+            cutoffQuality,
+            allowedQualities,
+            customFormatIds,
+            UpgradeUntilCutoff: true,
+            UpgradeUnknownItems: false,
+            AllowLowerQualityReplacements: false,
+            PresetId: null,
+            PresetVersion: null,
+            PresetDrifted: false,
+            CreatedUtc: DateTimeOffset.UnixEpoch,
+            UpdatedUtc: DateTimeOffset.UnixEpoch);
+    }
+
+    private static LegacyReleasePreferenceTranslation CompileImportedProfile(
+        QualityProfileItem profile,
+        string sourceJson,
+        IReadOnlyList<CustomFormatItem>? customFormats = null,
+        GuidePackage? guidePackage = null)
+    {
+        var runtimeCompilation = ReleasePreferencePlanFactory.CompileProfile(profile, customFormats, guidePackage);
+        var fingerprint = Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(
+            string.Join("|", profile.Id, profile.Name, profile.MediaType, profile.CutoffQuality,
+                profile.AllowedQualities, profile.CustomFormatIds, sourceJson))));
+        var plan = runtimeCompilation.Plan with
+        {
+            Version = $"{LegacyReleasePreferenceTranslator.MappingVersion}/import-{fingerprint[..24]}"
+        };
+        ReleasePreferencePlanValidator.ThrowIfInvalid(plan);
+        return new LegacyReleasePreferenceTranslation(
+            profile.Id,
+            plan.Version,
+            plan,
+            runtimeCompilation.AdvancedRules,
+            runtimeCompilation.Warnings,
+            runtimeCompilation.RequiresReview);
+    }
+
+    private static IReadOnlyList<CustomFormatItem> ReadImportedCustomFormats(
+        MigrationContext context,
+        JsonElement? profile = null)
+    {
+        var profileScores = profile is { } profileElement
+            ? ReadProfileCustomFormatScores(profileElement)
+            : new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        var formats = new List<CustomFormatItem>();
+        foreach (var item in EnumerateArrays(context.Root, "customFormats", "custom-formats", "formats"))
+        {
+            var sourceId = ReadString(item, "id") ?? ReadString(item, "formatId");
+            var name = ReadString(item, "name") ?? ReadString(item, "displayName") ?? sourceId;
+            if (string.IsNullOrWhiteSpace(sourceId) || string.IsNullOrWhiteSpace(name))
+            {
+                continue;
+            }
+
+            var score = profileScores.TryGetValue(sourceId, out var assignedScore)
+                ? assignedScore
+                : ReadInt(item, "score") ?? 0;
+            formats.Add(new CustomFormatItem(
+                sourceId,
+                name,
+                ReadString(item, "mediaType") ?? context.MediaType,
+                score,
+                ReadString(item, "trashId") ?? ReadString(item, "trashGuid"),
+                ReadString(item, "conditions")
+                    ?? ReadRawJson(item, "specifications")
+                    ?? ReadRawJson(item, "condition")
+                    ?? string.Empty,
+                ReadBool(item, "upgradeAllowed") ?? true,
+                DateTimeOffset.UnixEpoch,
+                DateTimeOffset.UnixEpoch));
+        }
+
+        return formats;
+    }
+
+    private static IReadOnlyDictionary<string, int> ReadProfileCustomFormatScores(JsonElement profile)
+    {
+        var scores = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        if (!TryGetPropertyCaseInsensitive(profile, "customFormats", out var customFormats)
+            || customFormats.ValueKind != JsonValueKind.Array)
+        {
+            return scores;
+        }
+
+        foreach (var item in customFormats.EnumerateArray())
+        {
+            var sourceId = ReadString(item, "id") ?? ReadString(item, "formatId");
+            var score = ReadInt(item, "score");
+            if (!string.IsNullOrWhiteSpace(sourceId) && score is not null)
+            {
+                scores[sourceId] = score.Value;
+            }
+        }
+
+        return scores;
     }
 
     private static void ExtractLibraries(MigrationContext context, ExistingState existing, List<MigrationReportOperation> operations)
@@ -587,6 +1075,11 @@ public sealed class MigrationAssistantService(
         var titleCount = 0;
         var monitoredCount = 0;
         var wantedCount = 0;
+        var installedFileCount = 0;
+        var qualityProfileAssignmentCount = 0;
+        var libraryAssignmentCount = 0;
+        var probedMediaFactsCount = 0;
+        var matchedFormatHistoryCount = 0;
 
         foreach (var context in contexts)
         {
@@ -602,10 +1095,47 @@ public sealed class MigrationAssistantService(
                 {
                     wantedCount++;
                 }
+
+                if (ReadBool(item, "hasFile") == true
+                    || ReadBool(item, "downloaded") == true
+                    || ContainsNonEmptyProperty(item, "movieFile", "episodeFile", "episodeFiles"))
+                {
+                    installedFileCount++;
+                }
+
+                if (ReadInt(item, "qualityProfileId") is not null
+                    || ContainsNonEmptyProperty(item, "qualityProfile"))
+                {
+                    qualityProfileAssignmentCount++;
+                }
+
+                if (!string.IsNullOrWhiteSpace(ReadString(item, "rootFolderPath") ?? ReadString(item, "rootPath"))
+                    || ContainsNonEmptyProperty(item, "rootFolder"))
+                {
+                    libraryAssignmentCount++;
+                }
+
+                if (ContainsNonEmptyProperty(item, "mediaInfo", "mediaFacts", "probeResult"))
+                {
+                    probedMediaFactsCount++;
+                }
+
+                if (ContainsNonEmptyProperty(item, "customFormats", "matchedFormats", "matchedFormatIds"))
+                {
+                    matchedFormatHistoryCount++;
+                }
             }
         }
 
-        return new TitleStats(titleCount, monitoredCount, wantedCount);
+        return new TitleStats(
+            titleCount,
+            monitoredCount,
+            wantedCount,
+            installedFileCount,
+            qualityProfileAssignmentCount,
+            libraryAssignmentCount,
+            probedMediaFactsCount,
+            matchedFormatHistoryCount);
     }
 
     private static IReadOnlyList<MigrationCatalogTitle> ExtractCatalogTitles(MigrationImportRequest request)
@@ -645,7 +1175,10 @@ public sealed class MigrationAssistantService(
                         tmdbId,
                         ReadBool(item, "monitored") ?? true,
                         ReadBool(item, "hasFile") == true,
-                        ReadString(item, "rootFolderPath") ?? ReadString(item, "rootPath")));
+                        ReadString(item, "rootFolderPath") ?? ReadString(item, "rootPath"),
+                        SeriesType: ReadString(item, "seriesType") ?? ReadString(item, "series_type"),
+                        NumberingScheme: ReadString(item, "numberingScheme") ?? ReadString(item, "numbering_scheme"),
+                        NumberingSource: ReadString(item, "numberingSource") ?? ReadString(item, "numbering_source")));
                 }
             }
 
@@ -666,7 +1199,8 @@ public sealed class MigrationAssistantService(
         int titleCount,
         int monitoredCount,
         int wantedCount,
-        bool redactSensitiveData)
+        bool redactSensitiveData,
+        MigrationReportInventory? inventory = null)
     {
         var summary = new MigrationReportSummary(
             CreateCount: operations.Count(operation => operation.Action == "create"),
@@ -685,7 +1219,141 @@ public sealed class MigrationAssistantService(
             summary,
             redactSensitiveData ? operations.Select(RedactOperation).ToArray() : operations,
             warnings,
-            errors);
+            errors,
+            inventory ?? MigrationReportInventory.Empty);
+    }
+
+    private static MigrationReportInventory BuildInventory(
+        IReadOnlyList<MigrationContext> contexts,
+        IReadOnlyList<MigrationReportOperation> operations)
+    {
+        var entries = new List<MigrationInventoryEntry>();
+        foreach (var context in contexts)
+        {
+            AddInventoryEntry(context, "quality", "quality-profile", ["qualityProfiles", "profiles"], operations, entries);
+            AddInventoryEntry(context, "quality", "custom-format", ["customFormats", "custom-formats", "formats"], operations, entries);
+            AddInventoryEntry(context, "libraries", "library", ["rootFolders", "rootfolders", "rootFolderPaths"], operations, entries);
+            AddInventoryEntry(context, "connections", "indexer", ["indexers", "indexerSources"], operations, entries);
+            AddInventoryEntry(context, "connections", "download-client", ["downloadClients", "downloadclients", "clients"], operations, entries);
+            AddInventoryEntry(context, "automation", "intake-source", ["importLists", "importlists", "lists", "intakeSources"], operations, entries);
+
+            var titleCount = EnumerateArrays(context.Root, "movies", "series", "shows", "titles").Count();
+            if (titleCount > 0)
+            {
+                var titleOperations = operations
+                    .Where(operation => operation.TargetType == "monitored-state"
+                        && IsOperationForContext(operation, context))
+                    .ToArray();
+                var accounted = titleOperations.Sum(operation => ParseInt(operation.Data.GetValueOrDefault("titleCount"), 0));
+                var classifications = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+                AddClassification(classifications, "source-reports-installed-file", titleOperations.Sum(operation => ParseInt(operation.Data.GetValueOrDefault("installedFileCount"), 0)));
+                AddClassification(classifications, "quality-profile-assigned", titleOperations.Sum(operation => ParseInt(operation.Data.GetValueOrDefault("qualityProfileAssignmentCount"), 0)));
+                AddClassification(classifications, "library-assigned", titleOperations.Sum(operation => ParseInt(operation.Data.GetValueOrDefault("libraryAssignmentCount"), 0)));
+                AddClassification(classifications, "probed-media-facts", titleOperations.Sum(operation => ParseInt(operation.Data.GetValueOrDefault("probedMediaFactsCount"), 0)));
+                AddClassification(classifications, "matched-format-history", titleOperations.Sum(operation => ParseInt(operation.Data.GetValueOrDefault("matchedFormatHistoryCount"), 0)));
+                AddClassification(classifications, "quality-profile-unassigned", titleCount - classifications.GetValueOrDefault("quality-profile-assigned"));
+                AddClassification(classifications, "library-unassigned", titleCount - classifications.GetValueOrDefault("library-assigned"));
+                AddInventoryEntry(
+                    context,
+                    "catalog",
+                    "monitored-state",
+                    titleCount,
+                    accounted,
+                    titleOperations,
+                    classifications,
+                    entries);
+            }
+        }
+
+        var inputCount = entries.Sum(entry => entry.InputRowCount);
+        var accountedCount = entries.Sum(entry => Math.Min(entry.InputRowCount, entry.AccountedRowCount));
+        return new MigrationReportInventory(
+            inputCount,
+            accountedCount,
+            Math.Max(0, inputCount - accountedCount),
+            entries);
+    }
+
+    private static void AddInventoryEntry(
+        MigrationContext context,
+        string category,
+        string targetType,
+        IReadOnlyList<string> arrayNames,
+        IReadOnlyList<MigrationReportOperation> operations,
+        ICollection<MigrationInventoryEntry> entries)
+    {
+        var inputCount = EnumerateArrays(context.Root, arrayNames.ToArray()).Count();
+        if (inputCount == 0)
+        {
+            return;
+        }
+
+        var matching = operations
+            .Where(operation => operation.TargetType == targetType
+                && IsOperationForContext(operation, context))
+            .ToArray();
+        AddInventoryEntry(
+            context,
+            category,
+            targetType,
+            inputCount,
+            matching.Length,
+            matching,
+            new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase),
+            entries);
+    }
+
+    private static bool IsOperationForContext(MigrationReportOperation operation, MigrationContext context)
+    {
+        var operationKey = operation.TargetType == "monitored-state" ? "titles" : operation.TargetType;
+        var prefix = MakeOperationId(operationKey, context.SourceKind, string.Empty);
+        return operation.Id.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)
+            && (operation.Id.Length == prefix.Length || operation.Id[prefix.Length] == '-');
+    }
+
+    private static void AddInventoryEntry(
+        MigrationContext context,
+        string category,
+        string targetType,
+        int inputCount,
+        int accountedCount,
+        IReadOnlyList<MigrationReportOperation> operations,
+        IReadOnlyDictionary<string, int> classifications,
+        ICollection<MigrationInventoryEntry> entries)
+    {
+        var actionCounts = operations
+            .GroupBy(operation => operation.Action, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(group => group.Key, group => group.Count(), StringComparer.OrdinalIgnoreCase);
+        var classificationCounts = classifications.Count > 0
+            ? classifications
+            : operations
+                .Select(operation => operation.Data.GetValueOrDefault("classification"))
+                .Where(value => !string.IsNullOrWhiteSpace(value))
+                .GroupBy(value => value!, StringComparer.OrdinalIgnoreCase)
+                .ToDictionary(group => group.Key, group => group.Count(), StringComparer.OrdinalIgnoreCase);
+        var warnings = new List<string>();
+        if (accountedCount < inputCount)
+        {
+            warnings.Add($"{inputCount - accountedCount} legacy {targetType} row(s) were not mapped to a report operation.");
+        }
+
+        entries.Add(new MigrationInventoryEntry(
+            context.SourceKind,
+            context.MediaType,
+            targetType,
+            inputCount,
+            accountedCount,
+            actionCounts,
+            classificationCounts,
+            warnings));
+    }
+
+    private static void AddClassification(IDictionary<string, int> classifications, string name, int count)
+    {
+        if (count > 0)
+        {
+            classifications[name] = count;
+        }
     }
 
     private static MigrationReport RedactReport(MigrationReport report)
@@ -844,6 +1512,45 @@ public sealed class MigrationAssistantService(
         return ReadString(item, "allowedQualities") ?? string.Empty;
     }
 
+    private static string ResolveCustomFormatIds(JsonElement item)
+    {
+        var scalar = ReadString(item, "customFormatIds") ?? ReadString(item, "customFormats");
+        if (!string.IsNullOrWhiteSpace(scalar))
+        {
+            return string.Join(", ", scalar
+                .Split([',', '\r', '\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .Where(value => !string.IsNullOrWhiteSpace(value))
+                .Distinct(StringComparer.OrdinalIgnoreCase));
+        }
+
+        if (!TryGetPropertyCaseInsensitive(item, "customFormatIds", out var ids)
+            && !TryGetPropertyCaseInsensitive(item, "customFormats", out ids))
+        {
+            return string.Empty;
+        }
+
+        if (ids.ValueKind != JsonValueKind.Array)
+        {
+            return string.Empty;
+        }
+
+        var values = ids.EnumerateArray()
+            .Select(value => value.ValueKind == JsonValueKind.Object
+                ? ReadString(value, "id") ?? ReadString(value, "formatId")
+                : ReadElementAsString(value))
+            .Where(value => !string.IsNullOrWhiteSpace(value))
+            .Select(value => value!.Trim())
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+        return string.Join(", ", values);
+    }
+
+    private static string? ReadRawJson(JsonElement item, string name)
+        => TryGetPropertyCaseInsensitive(item, name, out var value)
+            && value.ValueKind is not JsonValueKind.Null and not JsonValueKind.Undefined
+            ? value.GetRawText()
+            : null;
+
     private static IEnumerable<ImportedQuality> EnumerateQualityItems(JsonElement item)
     {
         if (!TryGetPropertyCaseInsensitive(item, "items", out var items) || items.ValueKind != JsonValueKind.Array)
@@ -970,6 +1677,39 @@ public sealed class MigrationAssistantService(
             JsonValueKind.String when bool.TryParse(value.GetString(), out var parsed) => parsed,
             _ => null
         };
+    }
+
+    private static bool ContainsNonEmptyProperty(JsonElement element, params string[] names)
+    {
+        if (element.ValueKind == JsonValueKind.Object)
+        {
+            foreach (var property in element.EnumerateObject())
+            {
+                if (names.Contains(property.Name, StringComparer.OrdinalIgnoreCase)
+                    && property.Value.ValueKind is not (JsonValueKind.Null or JsonValueKind.Undefined)
+                    && property.Value.GetRawText() is not ("{}" or "[]" or "\"\""))
+                {
+                    return true;
+                }
+
+                if (ContainsNonEmptyProperty(property.Value, names))
+                {
+                    return true;
+                }
+            }
+        }
+        else if (element.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var item in element.EnumerateArray())
+            {
+                if (ContainsNonEmptyProperty(item, names))
+                {
+                    return true;
+                }
+            }
+        }
+
+        return false;
     }
 
     private static bool TryGetPropertyCaseInsensitive(JsonElement item, string name, out JsonElement value)
@@ -1162,6 +1902,87 @@ public sealed class MigrationAssistantService(
         return operation.Data.TryGetValue(key, out var value) ? value : null;
     }
 
+    private static string? ResolveImportedCustomFormatIds(
+        string? sourceIds,
+        IReadOnlyDictionary<string, string> importedIds)
+    {
+        var ids = (sourceIds ?? string.Empty)
+            .Split([',', '\r', '\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Where(value => !string.IsNullOrWhiteSpace(value))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+        if (ids.Length == 0)
+        {
+            return null;
+        }
+
+        var unresolved = ids
+            .Where(id => !importedIds.ContainsKey(id))
+            .ToArray();
+        if (unresolved.Length > 0)
+        {
+            throw new InvalidOperationException(
+                $"The quality profile references custom format(s) that were not selected for migration: {string.Join(", ", unresolved)}.");
+        }
+
+        return string.Join(", ", ids.Select(id => importedIds[id]));
+    }
+
+    private static CustomFormatItem? FindExistingCustomFormat(
+        IReadOnlyDictionary<string, CustomFormatItem> formats,
+        string mediaType,
+        string stableId,
+        string? trashId,
+        string name,
+        string? conditions)
+    {
+        if (formats.TryGetValue(MakeKey("id", mediaType, stableId), out var byId))
+        {
+            return byId;
+        }
+
+        if (!string.IsNullOrWhiteSpace(trashId)
+            && formats.TryGetValue(MakeKey("trash", mediaType, trashId), out var byTrashId))
+        {
+            return byTrashId;
+        }
+
+        return formats.TryGetValue(MakeKey("content", mediaType, name, conditions), out var byContent)
+            ? byContent
+            : null;
+    }
+
+    private static bool IsReviewedGuideMapping(GuidePackage guidePackage, string? trashId)
+    {
+        if (string.IsNullOrWhiteSpace(trashId))
+        {
+            return false;
+        }
+
+        var guideFormat = guidePackage.CustomFormats.FirstOrDefault(format =>
+            string.Equals(format.TrashId, trashId, StringComparison.OrdinalIgnoreCase));
+        if (guideFormat is null
+            || guideFormat.MappingStatus != GuideMappingStatus.Reviewed
+            || guideFormat.MappedTraitIds is not { Count: > 0 })
+        {
+            return false;
+        }
+
+        return guideFormat.MappedTraitIds.All(traitId =>
+            PreferenceTraitRegistry.Current.TryResolve(traitId, out var trait)
+            && !trait.Transient);
+    }
+
+    private static string MakeStableCustomFormatId(
+        MigrationContext context,
+        string name,
+        string? conditions)
+    {
+        var fingerprint = Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(
+            MakeKey(context.SourceKind, context.MediaType, name, conditions))));
+        return $"migration-{fingerprint[..24]}";
+    }
+
     private static int ParseInt(string? value, int fallback)
     {
         return int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsed) ? parsed : fallback;
@@ -1181,7 +2002,28 @@ public sealed class MigrationAssistantService(
 
     private sealed record ImportedQuality(int? Id, string Name, bool Allowed);
 
-    private sealed record TitleStats(int TitleCount, int MonitoredCount, int WantedCount);
+    private sealed record TitleStats(
+        int TitleCount,
+        int MonitoredCount,
+        int WantedCount,
+        int InstalledFileCount,
+        int QualityProfileAssignmentCount,
+        int LibraryAssignmentCount,
+        int ProbedMediaFactsCount,
+        int MatchedFormatHistoryCount)
+    {
+        public static TitleStats Empty { get; } = new(0, 0, 0, 0, 0, 0, 0, 0);
+
+        public TitleStats Add(TitleStats other) => new(
+            TitleCount + other.TitleCount,
+            MonitoredCount + other.MonitoredCount,
+            WantedCount + other.WantedCount,
+            InstalledFileCount + other.InstalledFileCount,
+            QualityProfileAssignmentCount + other.QualityProfileAssignmentCount,
+            LibraryAssignmentCount + other.LibraryAssignmentCount,
+            ProbedMediaFactsCount + other.ProbedMediaFactsCount,
+            MatchedFormatHistoryCount + other.MatchedFormatHistoryCount);
+    }
 
     private sealed record ExistingState(
         IReadOnlySet<string> QualityProfileKeys,
@@ -1189,7 +2031,9 @@ public sealed class MigrationAssistantService(
         IReadOnlySet<string> IndexerKeys,
         IReadOnlySet<string> DownloadClientKeys,
         IReadOnlySet<string> IntakeSourceKeys,
+        IReadOnlyDictionary<string, CustomFormatItem> CustomFormatsByIdentity,
         IReadOnlyDictionary<string, QualityProfileItem> QualityProfilesByKey,
+        IReadOnlyDictionary<string, StoredReleasePreferencePlan> ReleasePreferencePlansByKey,
         IReadOnlyDictionary<string, string> LibraryNamesByMedia,
         IReadOnlyDictionary<string, string> IndexersByName,
         IReadOnlyDictionary<string, string> DownloadClientsByName,
@@ -1200,6 +2044,7 @@ public sealed class MigrationAssistantService(
             IQualityRepository qualityRepository,
             IConnectionsRepository connectionsRepository,
             IIntakeRepository intakeRepository,
+            IReleasePreferencePlanRepository? releasePreferencePlanRepository,
             CancellationToken cancellationToken)
         {
             var profiles = await qualityRepository.ListQualityProfilesAsync(cancellationToken);
@@ -1207,6 +2052,29 @@ public sealed class MigrationAssistantService(
             var indexers = await connectionsRepository.ListIndexersAsync(cancellationToken);
             var clients = await connectionsRepository.ListDownloadClientsAsync(cancellationToken);
             var intakeSources = await intakeRepository.ListIntakeSourcesAsync(cancellationToken);
+            var customFormats = await qualityRepository.ListCustomFormatsAsync(cancellationToken);
+            var releasePreferencePlans = new Dictionary<string, StoredReleasePreferencePlan>(StringComparer.Ordinal);
+            if (releasePreferencePlanRepository is not null)
+            {
+                foreach (var storedPlan in await releasePreferencePlanRepository.ListAsync(null, cancellationToken))
+                {
+                    releasePreferencePlans[MakeKey(storedPlan.Plan.Id, storedPlan.Plan.Version)] = storedPlan;
+                }
+            }
+            var customFormatsByIdentity = new Dictionary<string, CustomFormatItem>(StringComparer.Ordinal);
+            foreach (var format in customFormats)
+            {
+                AddCustomFormatIdentity(customFormatsByIdentity, MakeKey("id", format.MediaType, format.Id), format);
+                if (!string.IsNullOrWhiteSpace(format.TrashId))
+                {
+                    AddCustomFormatIdentity(customFormatsByIdentity, MakeKey("trash", format.MediaType, format.TrashId), format);
+                }
+
+                AddCustomFormatIdentity(
+                    customFormatsByIdentity,
+                    MakeKey("content", format.MediaType, format.Name, format.Conditions),
+                    format);
+            }
 
             return new ExistingState(
                 profiles.Select(profile => MakeKey(profile.MediaType, profile.Name)).ToHashSet(StringComparer.Ordinal),
@@ -1214,11 +2082,24 @@ public sealed class MigrationAssistantService(
                 indexers.Select(indexer => MakeKey(indexer.Protocol, indexer.BaseUrl)).ToHashSet(StringComparer.Ordinal),
                 clients.Select(client => MakeKey(client.Protocol, client.EndpointUrl ?? client.Host ?? client.Name)).ToHashSet(StringComparer.Ordinal),
                 intakeSources.Select(source => MakeKey(source.MediaType, source.Provider, source.FeedUrl)).ToHashSet(StringComparer.Ordinal),
+                customFormatsByIdentity,
                 profiles.GroupBy(profile => MakeKey(profile.MediaType, profile.Name)).ToDictionary(group => group.Key, group => group.First(), StringComparer.Ordinal),
+                releasePreferencePlans,
                 libraries.GroupBy(library => MakeKey(library.MediaType, library.Name)).ToDictionary(group => group.Key, group => group.First().RootPath, StringComparer.Ordinal),
                 indexers.GroupBy(indexer => MakeKey(indexer.Name)).ToDictionary(group => group.Key, group => MakeKey(group.First().Protocol, group.First().BaseUrl), StringComparer.Ordinal),
                 clients.GroupBy(client => MakeKey(client.Name)).ToDictionary(group => group.Key, group => MakeKey(group.First().Protocol, group.First().EndpointUrl ?? group.First().Host ?? group.First().Name), StringComparer.Ordinal),
                 intakeSources.GroupBy(source => MakeKey(source.MediaType, source.Name)).ToDictionary(group => group.Key, group => MakeKey(group.First().Provider, group.First().FeedUrl), StringComparer.Ordinal));
+        }
+
+        private static void AddCustomFormatIdentity(
+            IDictionary<string, CustomFormatItem> identities,
+            string key,
+            CustomFormatItem format)
+        {
+            if (!identities.ContainsKey(key))
+            {
+                identities[key] = format;
+            }
         }
     }
 }

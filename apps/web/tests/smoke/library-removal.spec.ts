@@ -19,12 +19,14 @@ test.describe("library removal", () => {
 
     await page.reload();
     await page.getByPlaceholder("Search movies…").fill(title);
-    await page.getByRole("button", { name: "Select", exact: true }).click();
+    await expect(page.getByText(title, { exact: true })).toBeVisible();
+    await page.getByRole("button", { name: `Select ${title}`, exact: true }).click();
     await page.getByRole("button", { name: "Remove", exact: true }).click();
 
     const dialog = page.getByRole("dialog");
-    await expect(dialog).toContainText("does not delete imported media files or remove anything from your download client");
-    await dialog.getByRole("button", { name: "Remove from Deluno", exact: true }).click();
+    await expect(dialog).toContainText("Imported files and download clients are left alone.");
+    await expect(dialog).toContainText("No files will be deleted by this bulk action.");
+    await dialog.getByRole("button", { name: "Remove movie", exact: true }).click();
 
     await expect(page.getByText(title, { exact: true })).toHaveCount(0);
     const list = await page.request.get(`/api/movies/page?search=${encodeURIComponent(title)}`, { headers });

@@ -28,11 +28,13 @@ import { Select } from "../components/ui/select";
 import { Switch, SwitchRow } from "../components/ui/switch";
 import { toast } from "../components/shell/toaster";
 import {
+  fetchJson,
   type IntakeListApprovalResult,
   type IntakeListPreviewItem,
   type IntakeListPreviewResult,
   type IntakeSourceItem,
   type LibraryItem,
+  type MediaExclusionItem,
   type PlatformSettingsSnapshot,
   type QualityProfileItem
 } from "../lib/api";
@@ -40,15 +42,25 @@ import { settingsOverviewLoader } from "./settings-overview-page";
 import { authedFetch } from "../lib/use-auth";
 import { useUnsavedChanges } from "../hooks/use-unsaved-changes";
 import { cn } from "../lib/utils";
+import { formatDateTime, formatShortDate, type DisplayPreferences, useDisplayPreferences } from "../lib/display-preferences";
 
 const PROVIDERS = [
   { label: "Custom list URL", value: "url-list" },
   { label: "Trakt", value: "trakt" },
   { label: "IMDb", value: "imdb" },
   { label: "TMDb", value: "tmdb" },
+  { label: "TMDb person", value: "tmdb-person" },
   { label: "Letterboxd", value: "letterboxd" },
   { label: "RSS feed", value: "rss" }
 ];
+const TMDB_PERSON_CREDIT_TYPES = [
+  { value: "cast", label: "Cast", description: "Films and shows where this person acts." },
+  { value: "director", label: "Director", description: "Films and shows this person directs." },
+  { value: "producer", label: "Producer", description: "Films and shows this person produces." },
+  { value: "sound", label: "Sound", description: "Films and shows this person is credited on for sound." },
+  { value: "writing", label: "Writing", description: "Films and shows this person writes." }
+] as const;
+type TmdbPersonCreditType = typeof TMDB_PERSON_CREDIT_TYPES[number]["value"];
 const SYNC_OPTIONS = [
   { label: "Every 6 hours", value: "6" },
   { label: "Every 12 hours", value: "12" },
@@ -64,6 +76,7 @@ interface LoaderData {
   qualityProfiles: QualityProfileItem[];
   settings: PlatformSettingsSnapshot;
   intakeSources: IntakeSourceItem[];
+  exclusions: MediaExclusionItem[];
 }
 
 interface ListForm {
@@ -82,20 +95,24 @@ interface ListForm {
   syncIntervalHours: string;
   searchOnAdd: boolean;
   isEnabled: boolean;
+  personCreditTypes: TmdbPersonCreditType[];
 }
 
 type DrawerMode = { kind: "closed" } | { kind: "create" } | { kind: "edit"; id: string };
 
 export async function settingsListsLoader(): Promise<LoaderData> {
   const overview = await settingsOverviewLoader();
-  return { ...overview, intakeSources: overview.intakeSources };
+  const exclusions = await fetchJson<MediaExclusionItem[]>("/api/exclusions");
+  return { ...overview, exclusions };
 }
 
 export function SettingsListsPage() {
-  const { intakeSources, libraries } = useLoaderData() as LoaderData;
+  const { intakeSources, libraries, exclusions } = useLoaderData() as LoaderData;
   const revalidator = useRevalidator();
+  const { preferences } = useDisplayPreferences();
 
   const [togglingId, setTogglingId] = useState<string | null>(null);
+  const [restoringExclusionId, setRestoringExclusionId] = useState<string | null>(null);
   const sorted = useMemo(() => [...intakeSources].sort((a, b) => a.name.localeCompare(b.name)), [intakeSources]);
 
   /* ---------------------------------------------------------- drawer */
@@ -105,7 +122,7 @@ export function SettingsListsPage() {
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [saveState, setSaveState] = useState<Exclude<DrawerSaveState, "clean" | "dirty">>();
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
-  const [errors, setErrors] = useState<{ name?: string; feedUrl?: string }>({});
+  const [errors, setErrors] = useState<{ name?: string; feedUrl?: string; creditTypes?: string }>({});
   const [confirmRemove, setConfirmRemove] = useState(false);
   const [confirmDiscard, setConfirmDiscard] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
@@ -164,6 +181,9 @@ export function SettingsListsPage() {
     const nextErrors: typeof errors = {};
     if (!form.name.trim()) nextErrors.name = "Give this list a name.";
     if (!form.feedUrl.trim()) nextErrors.feedUrl = "Paste the list URL or identifier.";
+    if (form.provider === "tmdb-person" && form.personCreditTypes.length === 0) {
+      nextErrors.creditTypes = "Choose at least one credit type to follow.";
+    }
     setErrors(nextErrors);
     if (Object.keys(nextErrors).length) return;
 
@@ -296,7 +316,7 @@ export function SettingsListsPage() {
     if (mode.kind !== "edit" || !preview) return;
     const id = mode.id;
     await run(`exclude:${previewEntryKey(entry)}`, async () => {
-      const response = await authedFetch(`/api/intake-sources/${id}/exclude-preview`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ title: entry.title, year: entry.year, imdbId: entry.imdbId, durationDays }) });
+      const response = await authedFetch(`/api/intake-sources/${id}/exclude-preview`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ title: entry.title, year: entry.year, imdbId: entry.imdbId, durationDays, reason: "Excluded during import list preview" }) });
       if (!response.ok) throw new Error("This entry could not be excluded.");
       const exclusion = (await response.json()) as { id: string };
       setPreview((current) =>
@@ -322,6 +342,20 @@ export function SettingsListsPage() {
       );
       setPreviewNote(`${entry.title} is eligible for this list again.`);
     });
+  }
+
+  async function restoreExclusion(exclusion: MediaExclusionItem) {
+    setRestoringExclusionId(exclusion.id);
+    try {
+      const response = await authedFetch(`/api/exclusions/${exclusion.id}`, { method: "DELETE" });
+      if (!response.ok && response.status !== 204) throw new Error("This exclusion could not be restored.");
+      toast.success(`${exclusion.title} can be added again.`);
+      revalidator.revalidate();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "This exclusion could not be restored.");
+    } finally {
+      setRestoringExclusionId(null);
+    }
   }
 
   /* ---------------------------------------------------------- render */
@@ -357,7 +391,7 @@ export function SettingsListsPage() {
                   <ListNameCell name={item.name} sub={`${providerLabel(item.provider)} · ${item.mediaType === "tv" ? "TV" : "Movies"}`} />
                   <ListCell mono primary={item.feedUrl} secondary={item.searchOnAdd ? "Adds and searches" : "Adds only"} />
                   <ListCell primary={item.libraryName ?? <span className="text-muted-foreground">No library</span>} secondary={item.libraryName ? `Every ${item.syncIntervalHours} h` : "Choose a library before syncing"} />
-                  <ListCell numeric primary={item.lastSyncUtc ? relative(item.lastSyncUtc) : <span className="text-muted-foreground">Never</span>} secondary={item.lastSyncSummary ?? (item.lastSyncStatus === "never" ? "Not synced yet" : item.lastSyncStatus)} />
+                  <ListCell numeric primary={item.lastSyncUtc ? relative(item.lastSyncUtc, preferences) : <span className="text-muted-foreground">Never</span>} secondary={item.lastSyncSummary ?? (item.lastSyncStatus === "never" ? "Not synced yet" : item.lastSyncStatus)} />
                   <ListCell mobile>
                     <Chip tone={chip.tone}>{chip.label}</Chip>
                   </ListCell>
@@ -367,6 +401,40 @@ export function SettingsListsPage() {
                 </ListRow>
               );
             })}
+          </ListTable>
+        )}
+      </ListCard>
+
+      <ListCard
+        title="Never add decisions"
+        count={exclusions.length ? `${exclusions.length} active ${exclusions.length === 1 ? "decision" : "decisions"} · all automated sources` : undefined}
+      >
+        {exclusions.length === 0 ? (
+          <ListEmpty
+            title="No exclusions"
+            description="When you exclude an entry during preview, it appears here so you can review or allow it again later."
+          />
+        ) : (
+          <ListTable columns={[{ label: "Entry" }, { label: "Source" }, { label: "Decision" }, { label: "Created" }, { label: "Action", width: "120px", mobile: true }]}>
+            {[...exclusions]
+              .sort((left, right) => new Date(right.createdUtc).getTime() - new Date(left.createdUtc).getTime())
+              .map((exclusion) => (
+                <ListRow key={exclusion.id}>
+                  <ListNameCell name={exclusion.title} sub={exclusion.year ? String(exclusion.year) : exclusion.imdbId ?? "No year or IMDb id"} />
+                  <ListCell primary={exclusion.sourceName || (intakeSources.find((source) => source.id === exclusion.sourceId)?.name ?? exclusion.sourceKind)} secondary={exclusion.sourceKind === "collection" ? "Collection" : "Import list"} />
+                  <ListCell
+                    primary={exclusion.expiresUtc ? `Ignored until ${formatShortDate(exclusion.expiresUtc, { ...preferences, showRelativeDates: false })}` : "Excluded permanently"}
+                    secondary={exclusion.reason || "Excluded from import list by user"}
+                  />
+                  <ListCell numeric primary={formatDateTime(exclusion.createdUtc, preferences)} />
+                  <ListCell mobile align="end">
+                    <Button type="button" size="sm" variant="outline" disabled={restoringExclusionId === exclusion.id} onClick={() => void restoreExclusion(exclusion)}>
+                      {restoringExclusionId === exclusion.id ? <LoaderCircle className="h-3.5 w-3.5 animate-spin" /> : null}
+                      Allow again
+                    </Button>
+                  </ListCell>
+                </ListRow>
+              ))}
           </ListTable>
         )}
       </ListCard>
@@ -390,8 +458,8 @@ export function SettingsListsPage() {
               <Select value={form.provider} onChange={(event) => setForm((current) => ({ ...current, provider: event.target.value }))} options={PROVIDERS} />
             </Field>
           </FieldRow>
-          <Field label="List URL" help={listAddressHelp(form.provider)} error={errors.feedUrl}>
-            <Input value={form.feedUrl} onChange={(event) => { setErrors((current) => ({ ...current, feedUrl: undefined })); setForm((current) => ({ ...current, feedUrl: event.target.value })); }} placeholder="https://…" className="font-mono text-[length:var(--type-caption)]" autoComplete="off" spellCheck={false} />
+          <Field label={form.provider === "tmdb-person" ? "Person" : "List URL"} help={listAddressHelp(form.provider)} error={errors.feedUrl}>
+            <Input value={form.feedUrl} onChange={(event) => { setErrors((current) => ({ ...current, feedUrl: undefined })); setForm((current) => ({ ...current, feedUrl: event.target.value })); }} placeholder={form.provider === "tmdb-person" ? "https://www.themoviedb.org/person/…" : "https://…"} className="font-mono text-[length:var(--type-caption)]" autoComplete="off" spellCheck={false} />
           </Field>
           <FieldRow>
             <Field label="Media type">
@@ -409,6 +477,40 @@ export function SettingsListsPage() {
             </Field>
           </FieldRow>
         </DrawerSection>
+
+        {form.provider === "tmdb-person" ? (
+          <DrawerSection title="Credits" aside={form.personCreditTypes.length ? `${form.personCreditTypes.length} selected` : "choose at least one"}>
+            <p className="text-[length:var(--type-caption)] text-muted-foreground">Follow titles where this person has one or more of these credits.</p>
+            <div className="grid gap-2">
+              {TMDB_PERSON_CREDIT_TYPES.map((credit) => {
+                const checked = form.personCreditTypes.includes(credit.value);
+                const id = `tmdb-person-${credit.value}`;
+                return (
+                  <label key={credit.value} htmlFor={id} className={cn("flex cursor-pointer items-start gap-3 rounded-[10px] border px-[var(--field-pad-x)] py-2.5 transition", checked ? "border-primary/30 bg-primary/[0.06]" : "border-hairline bg-card")}>
+                    <Checkbox
+                      id={id}
+                      checked={checked}
+                      onCheckedChange={(nextChecked) => {
+                        setForm((current) => ({
+                          ...current,
+                          personCreditTypes: nextChecked
+                            ? [...new Set([...current.personCreditTypes, credit.value])]
+                            : current.personCreditTypes.filter((value) => value !== credit.value)
+                        }));
+                        setErrors((current) => ({ ...current, creditTypes: undefined }));
+                      }}
+                    />
+                    <span className="grid gap-0.5">
+                      <span className="text-[length:var(--type-body-sm)] font-medium text-foreground">{credit.label}</span>
+                      <span className="text-[length:var(--type-caption)] text-muted-foreground">{credit.description}</span>
+                    </span>
+                  </label>
+                );
+              })}
+            </div>
+            {errors.creditTypes ? <p className="text-[length:var(--type-caption)] text-destructive">{errors.creditTypes}</p> : null}
+          </DrawerSection>
+        ) : null}
 
         <DrawerSection title="Filters" aside={hasFilters(form) ? "some filters set" : "none — follow the whole list"}>
           <Disclosure title="Fine-tune" summary="Genres, rating, year, age, certification, audience" open={filtersOpen} onOpenChange={setFiltersOpen}>
@@ -450,7 +552,7 @@ export function SettingsListsPage() {
         </DrawerSection>
 
         {editing ? (
-          <DrawerSection title="Preview & sync" aside={editing.lastSyncUtc ? `last sync ${relative(editing.lastSyncUtc)} · ${editing.lastSyncStatus}` : "never synced"}>
+        <DrawerSection title="Preview & sync" aside={editing.lastSyncUtc ? `last sync ${relative(editing.lastSyncUtc, preferences)} · ${editing.lastSyncStatus}` : "never synced"}>
             {editing.lastSyncSummary ? <p className="text-[length:var(--type-caption)] text-muted-foreground">{editing.lastSyncSummary}</p> : null}
             <div className="flex flex-wrap gap-2">
               <Button type="button" variant="outline" size="sm" title="Preview without adding titles" onClick={() => void loadPreview()} disabled={busy !== null || dirty}>
@@ -606,7 +708,8 @@ function emptyForm(libraries: LibraryItem[]): ListForm {
     audience: "any",
     syncIntervalHours: "24",
     searchOnAdd: true,
-    isEnabled: true
+    isEnabled: true,
+    personCreditTypes: ["cast"]
   };
 }
 
@@ -626,7 +729,8 @@ function formFrom(item: IntakeSourceItem): ListForm {
     audience: item.audience ?? "any",
     syncIntervalHours: String(item.syncIntervalHours ?? 24),
     searchOnAdd: item.searchOnAdd,
-    isEnabled: item.isEnabled
+    isEnabled: item.isEnabled,
+    personCreditTypes: item.provider === "tmdb-person" ? parseTmdbPersonAddress(item.feedUrl).creditTypes : ["cast"]
   };
 }
 
@@ -634,7 +738,7 @@ function toPayload(form: ListForm) {
   return {
     name: form.name.trim(),
     provider: form.provider,
-    feedUrl: form.feedUrl.trim(),
+    feedUrl: form.provider === "tmdb-person" ? buildTmdbPersonAddress(form.feedUrl, form.personCreditTypes) : form.feedUrl.trim(),
     mediaType: form.mediaType,
     libraryId: form.libraryId || null,
     qualityProfileId: form.qualityProfileId || null,
@@ -651,7 +755,10 @@ function toPayload(form: ListForm) {
 }
 
 function sameForm(a: ListForm, b: ListForm) {
-  return (Object.keys(a) as (keyof ListForm)[]).every((key) => a[key] === b[key]);
+  return (Object.keys(a) as (keyof ListForm)[]).every((key) =>
+    key === "personCreditTypes"
+      ? a.personCreditTypes.join(",") === b.personCreditTypes.join(",")
+      : a[key] === b[key]);
 }
 
 function hasFilters(form: ListForm) {
@@ -673,7 +780,8 @@ function syncChip(item: IntakeSourceItem): { tone: NonNullable<ChipProps["tone"]
   }
 }
 
-function relative(iso: string) {
+function relative(iso: string, preferences: DisplayPreferences) {
+  if (!preferences.showRelativeDates) return formatDateTime(iso, preferences);
   const minutes = Math.round(Math.abs(Date.now() - new Date(iso).getTime()) / 60000);
   return minutes < 1 ? "just now" : minutes < 60 ? `${minutes} min ago` : minutes < 60 * 48 ? `${Math.round(minutes / 60)} h ago` : `${Math.round(minutes / 1440)} d ago`;
 }
@@ -690,6 +798,8 @@ function listAddressHelp(provider: string) {
       return "Paste an IMDb list URL, its ls… identifier, or an IMDb CSV export URL.";
     case "tmdb":
       return "Paste a TMDb list URL or list ID.";
+    case "tmdb-person":
+      return "Paste a TMDb person URL or numeric person ID. Choose the credit types Deluno should follow below.";
     case "mdblist":
       return "For a public MDbList list, choose Custom list URL and paste https://mdblist.com/lists/owner/list-name.";
     case "letterboxd":
@@ -699,6 +809,34 @@ function listAddressHelp(provider: string) {
     default:
       return "Paste a public list URL. Deluno recognises compatible list sites automatically.";
   }
+}
+
+function parseTmdbPersonAddress(feedUrl: string): { personId: string; creditTypes: TmdbPersonCreditType[] } {
+  const fallback = { personId: "", creditTypes: ["cast"] as TmdbPersonCreditType[] };
+  const value = feedUrl.trim();
+  if (!value) return fallback;
+
+  let url: URL;
+  try {
+    url = new URL(/^\d+$/.test(value) ? `https://www.themoviedb.org/person/${value}` : value);
+  } catch {
+    return fallback;
+  }
+
+  const segments = url.pathname.split("/").filter(Boolean);
+  if (segments.length < 2 || segments[0].toLowerCase() !== "person" || !/^\d+$/.test(segments[1])) return fallback;
+  const values = (url.searchParams.get("credits") ?? "cast")
+    .split(",")
+    .map((value) => value.trim().toLowerCase())
+    .filter((value): value is TmdbPersonCreditType => TMDB_PERSON_CREDIT_TYPES.some((credit) => credit.value === value));
+  return { personId: segments[1], creditTypes: values.length ? [...new Set(values)] : ["cast"] };
+}
+
+function buildTmdbPersonAddress(feedUrl: string, creditTypes: TmdbPersonCreditType[]) {
+  const parsed = parseTmdbPersonAddress(feedUrl);
+  const selected = creditTypes.length ? creditTypes : ["cast"] as TmdbPersonCreditType[];
+  if (!parsed.personId) return feedUrl.trim();
+  return `https://www.themoviedb.org/person/${parsed.personId}?credits=${selected.join(",")}`;
 }
 
 async function readIntakeSourceError(response: Response, fallback: string) {

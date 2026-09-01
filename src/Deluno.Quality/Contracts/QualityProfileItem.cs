@@ -14,4 +14,5 @@ public sealed record QualityProfileItem(
     int? PresetVersion,
     bool PresetDrifted,
     DateTimeOffset CreatedUtc,
-    DateTimeOffset UpdatedUtc);
+    DateTimeOffset UpdatedUtc,
+    ReleasePreferencePlanReference? ReleasePreferencePlan = null);

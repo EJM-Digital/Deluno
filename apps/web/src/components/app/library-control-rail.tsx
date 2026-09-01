@@ -10,6 +10,7 @@ import type { FilterCondition, LibraryControlSet } from "../../lib/library-contr
 import { describeCondition } from "../../lib/library-controls";
 import { LibraryFilterPanel } from "./library-filter-panel";
 import { cn } from "../../lib/utils";
+import { listColumnLabel, type LibraryListColumnKey } from "../../lib/library-list-columns";
 import { Button } from "../ui/button";
 import { Drawer } from "../ui/drawer";
 import { Input } from "../ui/input";
@@ -43,6 +44,8 @@ export interface SavedFilterPreset {
   viewMode: ViewMode;
   cardSize: CardSize;
   displayOptions: DisplayOptions;
+  /** An existing automation action attached to this view, if any. */
+  automationAction: "search" | null;
   /**
    * The conditions narrowing the shelf.
    *
@@ -141,6 +144,9 @@ export interface LibraryControls {
   changeSize: (value: CardSize) => void;
   displayOptions: DisplayOptions;
   setDisplayOptions: (value: DisplayOptions) => void;
+  listColumnOrder: LibraryListColumnKey[];
+  setListColumnOrder: (value: LibraryListColumnKey[]) => void;
+  resetListColumnOrder: () => void;
   /** What the server says this media kind can be filtered by, ordered by and draw. */
   controlSet: LibraryControlSet;
   conditions: FilterCondition[];
@@ -153,6 +159,7 @@ export interface LibraryControls {
   saveCurrentPreset: () => void | Promise<void>;
   applyPreset: (preset: SavedFilterPreset) => void;
   deletePreset: (presetId: string) => void;
+  updatePresetAutomation: (presetId: string, action: "search" | null) => void | Promise<void>;
   activeFilterCount: number;
 }
 
@@ -209,9 +216,9 @@ export function ControlRail({ label, variant, facets, actions, controls }: {
   const {
     query, setQuery, libraryId, setLibraryId, libraries, quickFilter, setQuickFilter, monitoring, setMonitoring,
     sortField, setSortField, sortDirection, setSortDirection, view, setView, cardSize, changeSize,
-    displayOptions, setDisplayOptions, controlSet, conditions, setConditions, clearConditions,
+    displayOptions, setDisplayOptions, listColumnOrder, resetListColumnOrder, controlSet, conditions, setConditions, clearConditions,
     savedPresets, newPresetName, setNewPresetName, isSavingPreset, saveCurrentPreset, applyPreset,
-    deletePreset, activeFilterCount
+    deletePreset, updatePresetAutomation, activeFilterCount
   } = controls;
 
   const configuredProviders = useConfiguredProviders();
@@ -240,7 +247,6 @@ export function ControlRail({ label, variant, facets, actions, controls }: {
     airing: facets?.airing ?? 0
   };
 
-  const sortLabel = controlSet.sortFields.find((option) => option.id === sortField)?.label ?? sortField;
   const fieldsById = new Map(controlSet.filterFields.map((field) => [field.id, field]));
   const toggle = (panel: "sort" | "filter" | "view") =>
     setOpenPanel((current) => (current === panel ? null : panel));
@@ -381,7 +387,11 @@ export function ControlRail({ label, variant, facets, actions, controls }: {
               })}
 
               {/*
-                Unmonitored, as a chip — on the OTHER axis.
+                Unmonitored follows Upcoming, behind a divider, on the OTHER
+                axis. This is deliberately the same position on Movies and TV:
+                `quickFiltersFor` ends both shelves with Upcoming, and this
+                control is the monitoring filter that sits beside it without
+                becoming a lifecycle rung.
 
                 James: *"unmonitored should be a filter the same as quality
                 met, upgradeable downloading missing etc etc"*. It was a legend
@@ -403,8 +413,8 @@ export function ControlRail({ label, variant, facets, actions, controls }: {
                 A chip that could not be given a colour had no business in a row
                 that is the shelf's colour legend; this one has one.
               */}
-              {variant === "movies" ? (
-                <button
+              <span aria-hidden="true" className="mx-1 h-5 border-l border-hairline" />
+              <button
                   type="button"
                   onClick={() => setMonitoring(monitoring === "unmonitored" ? "any" : "unmonitored")}
                   aria-pressed={monitoring === "unmonitored"}
@@ -425,8 +435,7 @@ export function ControlRail({ label, variant, facets, actions, controls }: {
                   <span className="tabular rounded-md bg-foreground/[0.06] px-1.5 py-px text-[length:var(--library-badge-size)] font-bold leading-tight text-muted-foreground dark:bg-white/[0.07]">
                     {facets?.unmonitored ?? 0}
                   </span>
-                </button>
-              ) : null}
+              </button>
 
               {/*
                 The bar's legend (#327), on the row that is already the legend.
@@ -588,6 +597,17 @@ export function ControlRail({ label, variant, facets, actions, controls }: {
                           : "no narrowing"}
                       </p>
                     </button>
+                    <MenuSelect
+                      label={`Automation for ${preset.name}`}
+                      value={preset.automationAction ?? ""}
+                      onChange={(value) => void updatePresetAutomation(preset.id, value === "search" ? "search" : null)}
+                      options={[
+                        { value: "", label: "View only", hint: "Does not run automation." },
+                        { value: "search", label: "Search on cycle", hint: "Use this saved narrowing for scheduled searches." }
+                      ]}
+                      className="shrink-0"
+                      triggerClassName="h-8 min-w-[9rem] bg-foreground/[0.04] px-2 text-[length:var(--type-micro)] font-semibold ring-1 ring-inset ring-hairline/60 hover:bg-foreground/[0.07] dark:bg-white/[0.05] dark:ring-white/[0.06] dark:hover:bg-white/[0.08]"
+                    />
                     <Button type="button" size="sm" variant="ghost" onClick={() => deletePreset(preset.id)}>Remove</Button>
                   </div>
                 ))}
@@ -646,6 +666,24 @@ export function ControlRail({ label, variant, facets, actions, controls }: {
                   <PosterSizeChoice key={size} size={size} selected={cardSize === size} onClick={() => changeSize(size)} />
                 ))}
               </div>
+            </div>
+          ) : null}
+
+          {view === "list" ? (
+            <div>
+              <div className="flex items-center justify-between gap-3">
+                <SectionLabel>List columns</SectionLabel>
+                <Button type="button" size="sm" variant="ghost" onClick={resetListColumnOrder}>Reset</Button>
+              </div>
+              <p className="mt-2 text-[length:var(--type-caption)] leading-relaxed text-muted-foreground">
+                Drag the column headers in the list to reorder them. Selection and Title stay fixed.
+              </p>
+              <p
+                className="mt-2 rounded-lg border border-hairline bg-background/45 px-3 py-2 text-[length:var(--type-caption)] font-medium text-foreground"
+                aria-label="Current list column order"
+              >
+                {listColumnOrder.map(listColumnLabel).join(" · ")}
+              </p>
             </div>
           ) : null}
 

@@ -171,6 +171,16 @@ export function ClientDrawerBody({
             <dt className="text-muted-foreground">Last test</dt>
             <dd className="flex items-center gap-2"><Chip tone={chip.tone}>{chip.label}</Chip><span className="text-muted-foreground">{relative(editing.lastHealthTestUtc)}{editing.lastHealthLatencyMs != null ? ` · ${editing.lastHealthLatencyMs} ms` : ""}</span></dd>
             {editing.lastHealthMessage ? (<><dt className="text-muted-foreground">Message</dt><dd className="text-foreground">{editing.lastHealthMessage}</dd></>) : null}
+            {editing.lastHealthFailure ? (
+              <>
+                <dt className="text-muted-foreground">Cause</dt>
+                <dd className="text-foreground">
+                  <span>{editing.lastHealthFailure.summary}</span>
+                  <span className="mt-1 block text-muted-foreground">{editing.lastHealthFailure.nextAction}</span>
+                  {editing.lastHealthFailure.retryAfterUtc ? <span className="mt-1 block text-muted-foreground">Next eligible attempt: {relative(editing.lastHealthFailure.retryAfterUtc)}</span> : null}
+                </dd>
+              </>
+            ) : null}
           </dl>
           <Button type="button" variant="outline" size="sm" className="w-max" onClick={onTest} disabled={busy !== null}>
             {busy === `test:${editing.id}` ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Wifi className="h-3.5 w-3.5" />}

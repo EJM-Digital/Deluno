@@ -25,7 +25,7 @@ link.
 | --- | --- | --- |
 | Library | How Deluno reaches completed files, optionally waits for processed output, and imports the result. The parent opens the Files, processing & import landing page. | Processing & import; Final destinations; Metadata & sidecars; Tags |
 | Connections | Search sources, external download clients, file-location translation when paths differ, and per-library routing. | Indexers; Download clients; File locations; Library routing |
-| Media plans & quality | The selection policy that ties quality, size, release traits, upgrades, and destinations together. | Media Plan; Quality profiles; Quality & size limits; Release scoring |
+| Media plans & quality | The selection policy that ties quality, size, release traits, upgrades, and destinations together. | Media Plan; Quality profiles; Quality & size limits; Release preferences |
 | Discover media | Which watchlists and curated lists should feed Deluno. | Import lists |
 | Automation & recovery | The standing rules for searches, retries, upgrades, and failed downloads. | Search, retries & failed downloads |
 
@@ -52,8 +52,9 @@ link.
   target assigned to a library.
 - **Quality & size limits** defines accepted quality tiers and sensible file
   size bounds.
-- **Release scoring** prefers or avoids release traits. The page explains that
-  this is compatible with the familiar “Custom Formats” concept.
+- **Release preferences** require, prefer, avoid, or block release traits. The
+  page explains that this is compatible with the familiar “Custom Formats”
+  concept; legacy numeric fields are Advanced/provenance detail only.
 
 ## Maintain Deluno
 

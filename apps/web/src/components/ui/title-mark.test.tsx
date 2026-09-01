@@ -1,7 +1,7 @@
 import { render } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
-import { EpisodeProgressBar, MarkStrip, TitleMarkBar, TitleMarkBarLegend, TitleMarkCorner, TitleMarkTopBar } from "./title-mark";
-import { TITLE_BAR_SEGMENTS, TITLE_MARK_LADDER, TITLE_MARK_PRESENTATION } from "../../lib/status-tones";
+import { EpisodeProgressBar, MarkStrip, TitleMarkBar, TitleMarkBarLegend, TitleMarkCorner, TitleMarkDot, TitleMarkTopBar } from "./title-mark";
+import { TITLE_BAR_SEGMENTS, TITLE_MARK_LADDER, TITLE_MARK_PAINT, TITLE_MARK_PRESENTATION, UNMONITORED_PAINT } from "../../lib/status-tones";
 import { quickFiltersFor } from "../app/library-control-rail";
 import railSource from "../app/library-control-rail.tsx?raw";
 
@@ -47,6 +47,11 @@ describe("the swatch a legend wears", () => {
     }
   });
 
+  it("puts the rung glyph inside a compact dot", () => {
+    const { container } = render(<TitleMarkDot item={{ monitored: true, wantedStatus: "missing" }} />);
+    expect(container.querySelector(".title-mark-glyph")?.getAttribute("data-glyph")).toBe(TITLE_MARK_PRESENTATION.missing.glyph);
+  });
+
   it("glints only where the thing it explains glints", () => {
     // The state bar draws gold leaf; the subtitle bar is a flat gradient. A
     // swatch that glinted for both would be showing a treatment the subtitle
@@ -85,8 +90,8 @@ describe("the subtitle bar", () => {
     expect(gradient).not.toContain("--mark-quality-met");
     // The other two rungs are unchanged: they have no surface value because
     // their one colour does both jobs.
-    expect(gradient).toContain(TITLE_MARK_PRESENTATION.upgrade.cssVar);
-    expect(gradient).toContain(TITLE_MARK_PRESENTATION.missing.cssVar);
+    expect(gradient).toContain(TITLE_MARK_PAINT.upgrade.surface);
+    expect(gradient).toContain(TITLE_MARK_PAINT.missing.surface);
   });
 
   it("has no bar to paint when nothing was asked for", () => {
@@ -97,7 +102,7 @@ describe("the subtitle bar", () => {
 
 describe("the subtitle bar's legend", () => {
   it("draws one strip per segment and no dot", () => {
-    const { container } = render(<TitleMarkBarLegend />);
+    const { container } = render(<TitleMarkBarLegend type="show" />);
     const strips = swatches(container);
 
     expect(strips).toHaveLength(TITLE_BAR_SEGMENTS.length);
@@ -105,15 +110,21 @@ describe("the subtitle bar's legend", () => {
       expect(strip.className).toContain("h-1");
       expect(strip.className).toContain("w-4");
     }
+    expect(container.textContent).not.toContain("Unmonitored");
+
+    const heading = container.querySelector<HTMLElement>("[role='heading']");
+    expect(heading?.textContent).toBe("Subtitles");
+    expect(heading?.className).toContain("font-semibold");
+    expect(heading?.className).toContain("text-foreground");
   });
 
   it("shines its gold, the same as everywhere else gold is drawn", () => {
     // One gold in one treatment wherever "Deluno has finished" is said. This
     // swatch was deliberately flat while the bar beside it was painted from the
     // semantic colour; both are the leaf now, so both shine.
-    const { container } = render(<TitleMarkBarLegend />);
+    const { container } = render(<TitleMarkBarLegend type="show" />);
     const gold = swatches(container)
-      .find((strip) => strip.className.includes(TITLE_MARK_PRESENTATION.covered.dot));
+      .find((strip) => strip.style.backgroundColor.includes(TITLE_MARK_PAINT.covered.surface));
 
     expect(gold, "no gold swatch in the legend").toBeTruthy();
     expect(gold!.className).toContain(TITLE_MARK_PRESENTATION.covered.sheen);
@@ -122,7 +133,7 @@ describe("the subtitle bar's legend", () => {
   it("names nothing a poster cannot draw", () => {
     // An Episodes entry sat behind a prop nothing ever passed, for a strip
     // posters stopped carrying when episode counts moved to a show's own page.
-    const { container } = render(<TitleMarkBarLegend />);
+    const { container } = render(<TitleMarkBarLegend type="show" />);
 
     expect(container.textContent).not.toContain("Episodes");
     expect(container.textContent).toContain("Subtitles");
@@ -177,6 +188,30 @@ describe("the episode count, the way Sonarr's list draws it", () => {
     // Twelve of sixteen aired episodes held is Missing, and it is red here for
     // the same reason the poster is red.
     expect(container.innerHTML).toContain(TITLE_MARK_PRESENTATION.missing.dot);
+  });
+
+  it("uses the adopted TV bar surface and the same unmonitored override", () => {
+    const watched = render(<EpisodeProgressBar item={show} type="show" />)
+      .container.querySelector<HTMLElement>("span[aria-hidden] span")!;
+    const ignored = render(<EpisodeProgressBar item={{ ...show, monitored: false }} type="show" />)
+      .container.querySelector<HTMLElement>("span[aria-hidden] span")!;
+
+    expect(watched.style.backgroundColor).toContain(TITLE_MARK_PAINT.upgrade.surface);
+    expect(ignored.style.backgroundColor).toContain(UNMONITORED_PAINT.surface);
+
+    const watchedTrack = watched.closest<HTMLElement>("[role='img']")!;
+    const ignoredTrack = ignored.closest<HTMLElement>("[role='img']")!;
+    expect(watchedTrack.style.backgroundColor).toContain(TITLE_MARK_PAINT.missing.surface);
+    expect(ignoredTrack.style.backgroundColor).toContain(UNMONITORED_PAINT.surface);
+  });
+
+  it("uses the state surface as the track when TV coverage is empty", () => {
+    const { container } = render(
+      <EpisodeProgressBar item={{ ...show, airedWithFileCount: 0 }} type="show" />
+    );
+    const bar = container.querySelector<HTMLElement>("span[role='img']")!;
+
+    expect(bar.style.backgroundColor).toContain(TITLE_MARK_PAINT.missing.surface);
   });
 
   it("draws nothing for a title with no episodes to count", () => {
@@ -318,6 +353,14 @@ describe("the legend's swatch keeps the gold leaf", () => {
     expect(swatch.className).toContain("mark-grail");
     expect(swatch.style.backgroundColor).not.toBe("");
     expect(swatch.style.background).not.toMatch(/^hsl/);
+  });
+
+  it("uses the TV surface for the Continuing swatch once that shelf adopts bars", () => {
+    const { container } = render(<MarkStrip mark="airing" type="show" sheen />);
+    const swatch = container.firstElementChild as HTMLElement;
+
+    expect(swatch.style.backgroundColor).toContain(TITLE_MARK_PAINT.airing.surface);
+    expect(swatch.className).not.toContain("mark-grail");
   });
 });
 

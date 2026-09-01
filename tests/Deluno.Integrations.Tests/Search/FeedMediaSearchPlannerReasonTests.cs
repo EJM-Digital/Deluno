@@ -8,6 +8,9 @@ using Deluno.Libraries.Contracts;
 using Deluno.Platform.Contracts;
 using Deluno.Platform.Data;
 using Deluno.Quality;
+using Deluno.Quality.Contracts;
+using Deluno.Quality.Guides;
+using Deluno.Quality.ReleasePreferences;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
@@ -129,10 +132,199 @@ public sealed class FeedMediaSearchPlannerReasonTests
         Assert.True(plan.CandidatesTruncatedByIndexer);
     }
 
+    [Fact]
+    public async Task Equivalent_release_names_are_deduplicated_after_deterministic_ranking()
+    {
+        var indexer = CreateIndexer("duplicate-indexer", "Duplicate indexer");
+        var plan = await CreatePlanner(
+            CreateConnections(indexer).Object,
+            new FixedFeedHandler(
+                """
+                <rss><channel>
+                  <item><title>Example.Release.WEB.1080p</title><link>https://fixture.invalid/one</link></item>
+                  <item><title>example_release_web_1080p</title><link>https://fixture.invalid/two</link></item>
+                </channel></rss>
+                """)).BuildPlanAsync(
+                    "Example",
+                    2026,
+                    "movies",
+                    null,
+                    "WEB 1080p",
+                    [CreateSource(indexer)],
+                    cancellationToken: CancellationToken.None);
+
+        Assert.Single(plan.Candidates);
+        Assert.Same(plan.Candidates[0], plan.BestCandidate);
+        Assert.Equal("Example.Release.WEB.1080p", plan.BestCandidate!.ReleaseName);
+    }
+
+    [Fact]
+    public async Task Absolute_tv_numbering_uses_an_alternate_search_query()
+    {
+        var indexer = CreateIndexer("absolute-tv-indexer", "Absolute TV indexer", "tv");
+        var handler = new FixedFeedHandler(CreateFeed(1));
+
+        var plan = await CreatePlanner(
+            CreateConnections(indexer).Object,
+            handler).BuildPlanAsync(
+                "Example",
+                2026,
+                "tv",
+                null,
+                "WEB 1080p",
+                [CreateSource(indexer)],
+                seasonNumber: 1,
+                episodeNumber: 2,
+                numberingScheme: "absolute",
+                absoluteNumber: 101,
+                cancellationToken: CancellationToken.None);
+
+        Assert.Single(plan.Candidates);
+        Assert.Contains("t=search", handler.Query, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("q=Example%20101", handler.Query, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("season=", handler.Query, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("ep=", handler.Query, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task Scene_tv_numbering_uses_scene_season_and_episode_fields()
+    {
+        var indexer = CreateIndexer("scene-tv-indexer", "Scene TV indexer", "tv");
+        var handler = new FixedFeedHandler(CreateFeed(1));
+
+        var plan = await CreatePlanner(
+            CreateConnections(indexer).Object,
+            handler).BuildPlanAsync(
+                "Example",
+                2026,
+                "tv",
+                null,
+                "WEB 1080p",
+                [CreateSource(indexer)],
+                seasonNumber: 1,
+                episodeNumber: 2,
+                numberingScheme: "scene",
+                sceneSeasonNumber: 3,
+                sceneEpisodeNumber: 4,
+                cancellationToken: CancellationToken.None);
+
+        Assert.Single(plan.Candidates);
+        Assert.Contains("t=tvsearch", handler.Query, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("q=Example", handler.Query, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("season=3", handler.Query, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("ep=4", handler.Query, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task Season_search_keeps_the_title_clean_and_uses_the_dedicated_season_field()
+    {
+        var indexer = CreateIndexer("season-tv-indexer", "Season TV indexer", "tv");
+        var handler = new FixedFeedHandler(CreateFeed(1));
+
+        var plan = await CreatePlanner(
+            CreateConnections(indexer).Object,
+            handler).BuildPlanAsync(
+                "Example",
+                2026,
+                "tv",
+                null,
+                "WEB 1080p",
+                [CreateSource(indexer)],
+                seasonNumber: 2,
+                cancellationToken: CancellationToken.None);
+
+        Assert.Single(plan.Candidates);
+        Assert.Contains("t=tvsearch", handler.Query, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("q=Example", handler.Query, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("season=2", handler.Query, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("Season%202", handler.Query, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task Typed_search_exposes_and_uses_the_explicit_seeder_tie_break_family()
+    {
+        var indexer = CreateIndexer("seeders-indexer", "Seeders indexer");
+        var handler = new FixedFeedHandler(
+            """
+            <rss><channel>
+              <item><title>Example.Release.Z.WEB.1080p</title><link>https://fixture.invalid/z</link><torznab:attr xmlns:torznab="http://torznab.com/schemas/2015/feed" name="seeders" value="0" /></item>
+              <item><title>Example.Release.A.WEB.1080p</title><link>https://fixture.invalid/a</link><torznab:attr xmlns:torznab="http://torznab.com/schemas/2015/feed" name="seeders" value="12" /></item>
+            </channel></rss>
+            """);
+
+        var plan = await CreatePlanner(
+            CreateConnections(indexer).Object,
+            handler).BuildPlanAsync(
+                "Example",
+                2026,
+                "movies",
+                null,
+                "WEB 1080p",
+                [CreateSource(indexer)],
+                cancellationToken: CancellationToken.None);
+
+        Assert.Equal(2, plan.Candidates.Count);
+        Assert.Equal("Example.Release.A.WEB.1080p", plan.BestCandidate!.ReleaseName);
+        var seederFamily = Assert.Single(
+            plan.BestCandidate.PreferenceEvaluation!.Families,
+            family => family.FamilyId == "transient.seeders");
+        Assert.Equal(PreferenceFactState.Present, seederFamily.State);
+        Assert.Equal("available", seederFamily.SelectedLevelId);
+        Assert.DoesNotContain("score", seederFamily.Explanation, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task Runtime_search_compiles_against_the_persisted_active_guide_package()
+    {
+        var indexer = CreateIndexer("guide-indexer", "Guide indexer");
+        var guideFormat = GuidePackageCatalog.Current.CustomFormats
+            .First(format => format.MappingStatus == GuideMappingStatus.Reviewed && format.MappedTraitIds.Count > 0);
+        var activePackage = GuidePackageCatalog.Current with
+        {
+            Version = GuidePackageCatalog.Current.Version + 1,
+            Source = GuidePackageCatalog.Current.Source with { UpstreamRevision = "fixture-active-revision" },
+            IntegritySha256 = null
+        };
+        var guideStore = new Mock<IGuidePackageStore>();
+        guideStore
+            .Setup(store => store.GetCurrentAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new StoredGuidePackage(activePackage, true, DateTimeOffset.UtcNow));
+
+        var plan = await CreatePlanner(
+            CreateConnections(indexer).Object,
+            new FixedFeedHandler(CreateFeed(1)),
+            guidePackageStore: guideStore.Object).BuildPlanAsync(
+                "Example",
+                2026,
+                "movies",
+                null,
+                "WEB 1080p",
+                [CreateSource(indexer)],
+                customFormats:
+                [
+                    new CustomFormatItem(
+                        "format-1",
+                        guideFormat.Name,
+                        "movies",
+                        guideFormat.OriginalScore,
+                        guideFormat.TrashId,
+                        string.Join(";", guideFormat.Patterns),
+                        true,
+                        DateTimeOffset.UtcNow,
+                        DateTimeOffset.UtcNow)
+                ],
+                cancellationToken: CancellationToken.None);
+
+        var evaluation = Assert.Single(plan.Candidates).PreferenceEvaluation;
+        Assert.NotNull(evaluation);
+        Assert.Equal($"{activePackage.Version}:{activePackage.Source.UpstreamRevision}", evaluation.PlanVersion);
+    }
+
     private static FeedMediaSearchPlanner CreatePlanner(
         IConnectionsRepository connections,
         HttpMessageHandler? handler = null,
-        ILogger<FeedMediaSearchPlanner>? logger = null)
+        ILogger<FeedMediaSearchPlanner>? logger = null,
+        IGuidePackageStore? guidePackageStore = null)
     {
         var platform = new Mock<IPlatformSettingsRepository>();
         platform
@@ -165,7 +357,8 @@ public sealed class FeedMediaSearchPlannerReasonTests
             quality.Object,
             new DisabledRankingModelService(),
             throttle.Object,
-            logger ?? NullLogger<FeedMediaSearchPlanner>.Instance);
+            logger ?? NullLogger<FeedMediaSearchPlanner>.Instance,
+            guidePackageStore: guidePackageStore);
     }
 
     private static Mock<IConnectionsRepository> CreateConnections(IndexerItem indexer)
@@ -177,7 +370,7 @@ public sealed class FeedMediaSearchPlannerReasonTests
         return connections;
     }
 
-    private static IndexerItem CreateIndexer(string id, string name)
+    private static IndexerItem CreateIndexer(string id, string name, string mediaScope = "movies")
         => new(
             Id: id,
             Name: name,
@@ -188,7 +381,7 @@ public sealed class FeedMediaSearchPlannerReasonTests
             Priority: 1,
             Categories: "2000",
             Tags: "",
-            MediaScope: "movies",
+            MediaScope: mediaScope,
             IsEnabled: true,
             HealthStatus: "healthy",
             LastHealthMessage: null,

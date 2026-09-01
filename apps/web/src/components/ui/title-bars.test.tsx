@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { render } from "@testing-library/react";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { TitleBars } from "./title-mark";
+import { TitleBars, TitleMarkBarLegend } from "./title-mark";
 import { CARD_DESIGN } from "../../lib/card-design";
 import { TITLE_MARK_PAINT, UNMONITORED_PAINT } from "../../lib/status-tones";
 
@@ -26,7 +26,25 @@ const film = (over: Record<string, unknown> = {}) => ({
   ...over
 });
 
+const series = (over: Record<string, unknown> = {}) => ({
+  type: "show" as const,
+  monitored: true,
+  wantedStatus: "airing",
+  airedEpisodeCount: 8,
+  airedWithFileCount: 6,
+  subtitleLanguagesWanted: 3,
+  subtitleLanguagesHeld: 2,
+  ...over
+});
+
 function bars(item: ReturnType<typeof film>, media = true, subtitles = true) {
+  const { container } = render(
+    <TitleBars item={item} showMediaText={media} showSubtitleText={subtitles} />
+  );
+  return [...container.querySelectorAll<HTMLElement>('[role="img"]')];
+}
+
+function seriesBars(item: ReturnType<typeof series>, media = true, subtitles = true) {
   const { container } = render(
     <TitleBars item={item} showMediaText={media} showSubtitleText={subtitles} />
   );
@@ -82,6 +100,62 @@ describe("the subtitle bar inherits Upcoming, and only Upcoming", () => {
   });
 });
 
+describe("the TV card uses the approved coverage composition", () => {
+  it("shows aired coverage above and subtitle coverage below", () => {
+    const [top, bottom] = seriesBars(series({ wantedStatus: "missing", airedWithFileCount: 3, subtitleLanguagesHeld: 1 }));
+
+    expect(top.textContent).toContain("3 / 8");
+    expect(top.textContent).not.toContain("EPS");
+    expect(bottom.textContent).toContain("SUBS");
+    expect(bottom.textContent).toContain("1 / 9");
+    expect(top.style.background).toContain(TITLE_MARK_PAINT.missing.surface);
+    expect(fillOf(top).style.background).toContain(TITLE_MARK_PAINT.upgrade.surface);
+    expect(bottom.style.background).toContain(TITLE_MARK_PAINT.missing.surface);
+    expect(fillOf(bottom).style.background).toContain(TITLE_MARK_PAINT.upgrade.surface);
+  });
+
+  it("keeps the Missing track visible across an empty monitored bar", () => {
+    const [top, bottom] = seriesBars(series({ wantedStatus: "missing", airedWithFileCount: 0, subtitleLanguagesHeld: 0 }));
+
+    expect(top.style.background).toContain(TITLE_MARK_PAINT.missing.surface);
+    expect(top.style.background).not.toContain("--mark-idle");
+    expect(fillOf(top).style.width).toBe("0%");
+    expect(bottom.style.background).toContain(TITLE_MARK_PAINT.missing.surface);
+    expect(bottom.style.background).not.toContain("--mark-idle");
+  });
+
+  it("uses a red remainder and green held fill once coverage is visible", () => {
+    const [top, bottom] = seriesBars(series({ wantedStatus: "missing", airedWithFileCount: 3, subtitleLanguagesHeld: 1 }));
+
+    expect(top.style.background).toContain(TITLE_MARK_PAINT.missing.surface);
+    expect(fillOf(top).style.background).toContain(TITLE_MARK_PAINT.upgrade.surface);
+    expect(bottom.style.background).toContain(TITLE_MARK_PAINT.missing.surface);
+    expect(fillOf(bottom).style.background).toContain(TITLE_MARK_PAINT.upgrade.surface);
+  });
+
+  it("uses green for held Continuing coverage", () => {
+    const [top] = seriesBars(series({ wantedStatus: "airing", airedWithFileCount: 8 }));
+
+    expect(fillOf(top).style.background).toContain(TITLE_MARK_PAINT.upgrade.surface);
+    expect(top.style.background).toContain(TITLE_MARK_PAINT.missing.surface);
+    expect(top.getAttribute("aria-label")).toContain("Continuing");
+  });
+
+  it("uses gold when every aired episode meets quality", () => {
+    const [top] = seriesBars(series({ wantedStatus: "covered", airedWithFileCount: 8 }));
+
+    expect(fillOf(top).style.background).toContain(TITLE_MARK_PAINT.covered.surface);
+    expect(top.style.background).toContain(TITLE_MARK_PAINT.missing.surface);
+  });
+
+  it("keeps the unmonitored override flat on both TV bars", () => {
+    for (const bar of seriesBars(series({ monitored: false, wantedStatus: "airing" }))) {
+      expect(bar.style.background).toContain(UNMONITORED_PAINT.surface);
+      expect(fillOf(bar).style.background).toContain(UNMONITORED_PAINT.surface);
+    }
+  });
+});
+
 describe("unmonitored is the one override", () => {
   it("paints both bars the same single grey, fill and track alike", () => {
     // Applied to the fill alone this produced TWO greys — a 0%-wide fill shows
@@ -108,6 +182,17 @@ describe("unmonitored is the one override", () => {
         expect(bar.style.background).not.toContain(UNMONITORED_PAINT.surface);
       }
     }
+  });
+});
+
+describe("the subtitle legend leaves monitoring to the title-status row", () => {
+  it("does not include Unmonitored beside the subtitle segments", () => {
+    const { container } = render(<TitleMarkBarLegend type="show" />);
+    expect(container.textContent).not.toContain("Unmonitored");
+
+    const grey = [...container.querySelectorAll<HTMLElement>("span[aria-hidden]")]
+      .find((strip) => strip.style.backgroundColor.includes(UNMONITORED_PAINT.surface));
+    expect(grey).toBeUndefined();
   });
 });
 
@@ -223,11 +308,12 @@ describe("the two shelves are declared apart", () => {
     expect(CARD_DESIGN.show.mediaBar).toBe("episodes");
   });
 
-  it("leaves the show shelf on its existing card until it is settled", () => {
-    // James asked that the shelves not move together. Flipping this is how TV
-    // adopts DESIGN-006, and it must be a deliberate act.
+  it("adopts the TV card independently with its own grammar", () => {
     expect(CARD_DESIGN.movie.bars).toBe(true);
-    expect(CARD_DESIGN.show.bars).toBe(false);
+    expect(CARD_DESIGN.show.bars).toBe(true);
+    expect(CARD_DESIGN.show.track).toBe("missing");
+    expect(CARD_DESIGN.show.fill).toBe("held");
+    expect(CARD_DESIGN.show.leads).toBe("subtitles");
   });
 });
 

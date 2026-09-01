@@ -20,26 +20,31 @@ import {
   type ActivityEventItem,
   type DecisionExplanationItem,
   type DownloadDispatchItem,
+  type IntegrationFailure,
   type LibraryItem,
   type IntakeTitleOriginItem,
   type SeriesEpisodeInventoryItem,
   type SeriesImportRecoverySummary,
   type SeriesInventoryDetail,
   type SeriesListItem,
+  type MetadataProviderIssue,
   type SeriesSearchHistoryItem
 } from "../lib/api";
 import { authedFetch } from "../lib/use-auth";
 import { cn } from "../lib/utils";
 import { isEpisodeMissing, isEpisodeUpcoming, summariseEpisodes } from "../lib/episode-progress";
-import { describeSearchReason } from "../lib/search-reasons";
+import { describeSearchReason, formatSearchFailureNotice } from "../lib/search-reasons";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { Card, CardContent } from "../components/ui/card";
 import { RemoveMediaDialog, type MediaRemovalPreview, type RemoveMediaOptions } from "../components/app/remove-media-dialog";
 import { CreditsRow, readStoredCredits } from "../components/app/credits-row";
+import { DownloadDispatchDrawer } from "../components/app/download-dispatch-drawer";
+import { TitleTagsEditor } from "../components/app/title-tags-editor";
 import { DecisionExplanationList } from "../components/app/decision-explanation-list";
 import { MediaMetadataDrawer } from "../components/app/media-metadata-drawer";
 import { HeroBackdrop } from "../components/app/hero-backdrop";
+import { MetadataProviderIssueNotice } from "../components/app/metadata-provider-issue-notice";
 import { SourceMark } from "../components/app/source-mark";
 import { RatingStrip } from "../components/app/rating-strip";
 import { Chip } from "../components/ui/chip";
@@ -63,6 +68,7 @@ import { Switch } from "../components/ui/switch";
 import { toast } from "../components/shell/toaster";
 import { wantedStatusPresentation } from "../lib/status-tones";
 import { TitleMarkLabel } from "../components/ui/title-mark";
+import { formatDateTime as formatPreferenceDateTime, formatRuntime, formatShortDate, useDisplayPreferences } from "../lib/display-preferences";
 
 interface ShowDetailLoaderData {
   activity: ActivityEventItem[];
@@ -75,10 +81,23 @@ interface ShowDetailLoaderData {
   removalPreview: MediaRemovalPreview;
   searchHistory: SeriesSearchHistoryItem[];
   series: SeriesListItem;
+  metadataIssue: MetadataProviderIssue | null;
 }
 
 type DetailSection = "episodes" | "destination" | "history";
 type EpisodeFilter = "all" | "missing" | "upgrade" | "monitored" | "imported";
+
+interface NumberingDraft {
+  seriesType: string;
+  numberingScheme: string;
+  numberingSource: string;
+  mappings: Record<string, {
+    absoluteNumber: string;
+    sceneSeasonNumber: string;
+    sceneEpisodeNumber: string;
+    airDate: string;
+  }>;
+}
 
 export async function showDetailLoader({
   params
@@ -86,9 +105,10 @@ export async function showDetailLoader({
   params: { id?: string };
 }): Promise<ShowDetailLoaderData> {
   const id = params.id!;
-  const [series, searchHistory, dispatches, importRecovery, inventory, activity, decisions, libraries, origins, removalPreview] =
+  const [series, metadataIssue, searchHistory, dispatches, importRecovery, inventory, activity, decisions, libraries, origins, removalPreview] =
     await Promise.all([
       fetchJson<SeriesListItem>(`/api/series/${id}`),
+      fetchJson<MetadataProviderIssue | null>(`/api/series/${id}/metadata/issue`).catch(() => null),
       fetchJson<SeriesSearchHistoryItem[]>("/api/series/search-history"),
       fetchPageItems<DownloadDispatchItem>("/api/download-dispatches?mediaType=tv&pageSize=20"),
       fetchJson<SeriesImportRecoverySummary>("/api/series/import-recovery"),
@@ -102,14 +122,15 @@ export async function showDetailLoader({
       fetchJson<MediaRemovalPreview>(`/api/series/${id}/removal-preview`).catch(() => ({ filePaths: [], folderPaths: [], warnings: [] }))
     ]);
 
-  return { activity, decisions, importRecovery, inventory, libraries, origins, removalPreview, searchHistory, series, dispatches };
+  return { activity, decisions, importRecovery, inventory, libraries, metadataIssue, origins, removalPreview, searchHistory, series, dispatches };
 }
 
 export function ShowDetailPage() {
   const loaderData = useLoaderData() as ShowDetailLoaderData;
-  const { activity, decisions, dispatches, importRecovery, inventory, libraries, origins, removalPreview, searchHistory, series } = loaderData;
+  const { activity, decisions, dispatches, importRecovery, inventory, libraries, metadataIssue, origins, removalPreview, searchHistory, series } = loaderData;
   const navigate = useNavigate();
   const revalidator = useRevalidator();
+  const { preferences } = useDisplayPreferences();
 
   const [busyAction, setBusyAction] = useState<string | null>(null);
   const [isRemoveConfirmationOpen, setIsRemoveConfirmationOpen] = useState(false);
@@ -119,10 +140,12 @@ export function ShowDetailPage() {
   const [forceReason, setForceReason] = useState<string | null>(null);
   const [openEpisodeId, setOpenEpisodeId] = useState<string | null>(null);
   const [openSearchId, setOpenSearchId] = useState<string | null>(null);
+  const [openDispatchId, setOpenDispatchId] = useState<string | null>(null);
   const [episodeFilter, setEpisodeFilter] = useState<EpisodeFilter>("all");
   const [openSeasons, setOpenSeasons] = useState<number[] | null>(null);
   const [query, setQuery] = useState("");
   const [section, setSection] = useState<DetailSection>("episodes");
+  const [numberingDraft, setNumberingDraft] = useState<NumberingDraft | null>(null);
 
   /*
     The title's own record carries its search state.
@@ -151,6 +174,14 @@ export function ShowDetailPage() {
     (item) => item.title.trim().toLowerCase() === series.title.trim().toLowerCase()
   );
   const { cast, crew } = readStoredCredits(series.metadataJson);
+  const meta = useMemo<Record<string, unknown> | null>(() => {
+    if (!series.metadataJson) return null;
+    try { return JSON.parse(series.metadataJson) as Record<string, unknown>; } catch { return null; }
+  }, [series.metadataJson]);
+  const metaText = (key: string) => {
+    const value = meta?.[key] ?? meta?.[key.charAt(0).toLowerCase() + key.slice(1)];
+    return typeof value === "string" && value.trim() ? value.trim() : null;
+  };
 
   const visibleEpisodes = useMemo(
     () => inventory.episodes.filter((episode) => matchesEpisodeFilter(episode, episodeFilter, query)),
@@ -179,6 +210,7 @@ export function ShowDetailPage() {
   const expanded = openSeasons ?? defaultOpenSeasons;
   const allExpanded = visibleSeasons.length > 0 && expanded.length === visibleSeasons.length;
   const openSearch = seriesSearches.find((item) => item.id === openSearchId) ?? null;
+  const openDispatch = seriesDispatches.find((item) => item.id === openDispatchId) ?? null;
   // Deferring only touches a wanted state that is actually being searched for, so
   // offering it on a settled title produced an enabled button and a 404.
   const isBeingSearchedFor = wantedItem?.wantedStatus === "missing" || wantedItem?.wantedStatus === "upgrade";
@@ -195,7 +227,7 @@ export function ShowDetailPage() {
       ? {
           eyebrow: "Release ready",
           title: "Choose a release",
-          description: "Deluno scored the candidates it found. Pick the one to send to your download client.",
+          description: "Deluno compared the candidates it found. Pick the one to send to your download client.",
           action: "Review candidates",
           onAction: () => setSection("episodes")
         }
@@ -329,11 +361,75 @@ export function ShowDetailPage() {
     setBusyAction("metadata-refresh");
     try {
       const response = await authedFetch(`/api/series/${series.id}/metadata/refresh`, { method: "POST" });
+      if (response.status === 409) {
+        revalidator.revalidate();
+        toast.info("The TMDb record is no longer available. Your show and files were kept.");
+        return;
+      }
       if (!response.ok) throw new Error("series-metadata-refresh-failed");
       toast.success(`${series.title} metadata refreshed.`);
       revalidator.revalidate();
     } catch {
       toast.error("This TV show's metadata could not be refreshed.");
+    } finally {
+      setBusyAction(null);
+    }
+  }
+
+  function openNumberingEditor() {
+    const detail = inventory.numbering;
+    const episodes = detail?.episodes ?? inventory.episodes.map((episode) => ({
+      episodeId: episode.episodeId,
+      absoluteNumber: episode.absoluteNumber ?? null,
+      sceneSeasonNumber: episode.sceneSeasonNumber ?? null,
+      sceneEpisodeNumber: episode.sceneEpisodeNumber ?? null,
+      airDate: episode.airDate ?? null
+    }));
+
+    setNumberingDraft({
+      seriesType: detail?.seriesType ?? series.seriesType ?? "standard",
+      numberingScheme: detail?.numberingScheme ?? series.numberingScheme ?? "standard",
+      numberingSource: detail?.numberingSource ?? series.numberingSource ?? "provider",
+      mappings: Object.fromEntries(episodes.map((episode) => [episode.episodeId, {
+        absoluteNumber: episode.absoluteNumber === null || episode.absoluteNumber === undefined ? "" : String(episode.absoluteNumber),
+        sceneSeasonNumber: episode.sceneSeasonNumber === null || episode.sceneSeasonNumber === undefined ? "" : String(episode.sceneSeasonNumber),
+        sceneEpisodeNumber: episode.sceneEpisodeNumber === null || episode.sceneEpisodeNumber === undefined ? "" : String(episode.sceneEpisodeNumber),
+        airDate: episode.airDate ?? ""
+      }]))
+    });
+  }
+
+  async function handleNumberingSave() {
+    if (!numberingDraft) return;
+    setBusyAction("numbering-save");
+
+    const mappings = Object.entries(numberingDraft.mappings)
+      .map(([episodeId, mapping]) => ({
+        episodeId,
+        absoluteNumber: mapping.absoluteNumber.trim() ? Number(mapping.absoluteNumber) : null,
+        sceneSeasonNumber: mapping.sceneSeasonNumber.trim() ? Number(mapping.sceneSeasonNumber) : null,
+        sceneEpisodeNumber: mapping.sceneEpisodeNumber.trim() ? Number(mapping.sceneEpisodeNumber) : null,
+        airDate: mapping.airDate.trim() || null
+      }))
+      .filter((mapping) => mapping.absoluteNumber !== null || mapping.sceneSeasonNumber !== null || mapping.sceneEpisodeNumber !== null || mapping.airDate !== null);
+
+    try {
+      const response = await authedFetch(`/api/series/${series.id}/numbering`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          seriesType: numberingDraft.seriesType,
+          numberingScheme: numberingDraft.numberingScheme,
+          numberingSource: numberingDraft.numberingSource,
+          mappings: numberingDraft.numberingSource === "provider" ? [] : mappings
+        })
+      });
+      if (!response.ok) throw new Error("series-numbering-failed");
+      toast.success("TV numbering updated.");
+      setNumberingDraft(null);
+      revalidator.revalidate();
+    } catch {
+      toast.error("TV numbering could not be updated.");
     } finally {
       setBusyAction(null);
     }
@@ -355,30 +451,32 @@ export function ShowDetailPage() {
         dispatchMessage?: string | null;
         reason?: string;
         candidates?: SearchPlanCandidate[];
+        failures?: IntegrationFailure[];
       };
       const best = payload.releaseName ? `${payload.releaseName}${payload.indexerName ? ` via ${payload.indexerName}` : ""}` : null;
+      const failureNotice = formatSearchFailureNotice(payload.failures);
       setReleaseCandidates(mode === "interactive" ? payload.candidates ?? [] : []);
 
       if (mode === "interactive") {
         const found = payload.candidates?.length ?? 0;
         setSection("episodes");
-        if (found) toast.success(`${found} release${found === 1 ? "" : "s"} scored. Choose one below.`);
+        if (found) toast.success(`${found} release${found === 1 ? "" : "s"} compared. Choose one below.`, failureNotice ? { description: failureNotice } : undefined);
         else {
           const explained = describeSearchReason(payload.reason, payload.summary ?? "No releases matched this show's Library Profile.");
           const action = explained.action;
           toast.info(explained.title, {
-            description: explained.description,
+            description: [explained.description, failureNotice].filter(Boolean).join(" "),
             action: action ? { label: action.label, onClick: () => navigate(action.href) } : undefined
           });
         }
       } else {
         if (best) {
-          toast.success(`Deluno selected ${best} using this show's Library Profile.`);
+          toast.success(`Deluno selected ${best} using this show's Library Profile.`, failureNotice ? { description: failureNotice } : undefined);
         } else {
           const explained = describeSearchReason(payload.reason, "Search finished with no accepted release.");
           const action = explained.action;
           toast.info(explained.title, {
-            description: explained.description,
+            description: [explained.description, failureNotice].filter(Boolean).join(" "),
             action: action ? { label: action.label, onClick: () => navigate(action.href) } : undefined
           });
         }
@@ -407,7 +505,7 @@ export function ShowDetailPage() {
           sizeBytes: candidate.sizeBytes,
           seeders: candidate.seeders,
           force,
-          overrideReason: force ? overrideReason || `User forced this release despite scorer result: ${candidate.summary}` : null
+          overrideReason: force ? overrideReason || `User forced this release despite Deluno's decision: ${candidate.summary}` : null
         })
       });
       if (!response.ok) throw new Error("series-grab-failed");
@@ -452,21 +550,24 @@ export function ShowDetailPage() {
         plannedCount?: number;
         failedCount?: number;
         reason?: string;
+        failures?: IntegrationFailure[];
       };
       const searched = payload.searchedEpisodes ?? episodeIds.length;
       const matched = payload.matchedCount ?? 0;
+      const failureNotice = formatSearchFailureNotice(payload.failures);
       if (payload.reason && payload.reason !== "ok") {
         const explained = describeSearchReason(payload.reason, `Searched ${searched} episode${searched === 1 ? "" : "s"}. Nothing matched yet.`);
         const action = explained.action;
         toast.info(explained.title, {
-          description: explained.description,
+          description: [explained.description, failureNotice].filter(Boolean).join(" "),
           action: action ? { label: action.label, onClick: () => navigate(action.href) } : undefined
         });
       } else {
         toast.success(
           matched > 0
             ? `Searched ${searched} episode${searched === 1 ? "" : "s"}, matched ${matched}. ${formatDispatchSummary(payload)}`
-            : `Searched ${searched} episode${searched === 1 ? "" : "s"}. Nothing matched yet.`
+            : `Searched ${searched} episode${searched === 1 ? "" : "s"}. Nothing matched yet.`,
+          failureNotice ? { description: failureNotice } : undefined
         );
       }
       revalidator.revalidate();
@@ -490,21 +591,24 @@ export function ShowDetailPage() {
         dispatchStatus?: string | null;
         dispatchMessage?: string | null;
         reason?: string;
+        failures?: IntegrationFailure[];
       };
       const resolved = payload.seasonNumber ?? seasonNumber;
       const matched = payload.matchedCount ?? 0;
+      const failureNotice = formatSearchFailureNotice(payload.failures);
       if (payload.reason && payload.reason !== "ok") {
         const explained = describeSearchReason(payload.reason, `${formatSeasonLabel(resolved)}: search finished with no matches.`);
         const action = explained.action;
         toast.info(explained.title, {
-          description: explained.description,
+          description: [explained.description, failureNotice].filter(Boolean).join(" "),
           action: action ? { label: action.label, onClick: () => navigate(action.href) } : undefined
         });
       } else {
         toast.success(
           matched > 0
             ? `${formatSeasonLabel(resolved)}: ${matched} episode match${matched === 1 ? "" : "es"}. ${formatDispatchSummary(payload)}`
-            : `${formatSeasonLabel(resolved)}: search finished with no matches.`
+            : `${formatSeasonLabel(resolved)}: search finished with no matches.`,
+          failureNotice ? { description: failureNotice } : undefined
         );
       }
       revalidator.revalidate();
@@ -530,7 +634,7 @@ export function ShowDetailPage() {
   }
 
   return (
-    <div className="grid gap-[var(--page-gap)]">
+    <div className="grid grid-cols-[minmax(0,1fr)] gap-[var(--page-gap)]">
       {/* One toolbar: which part of the show you want, where you came from, and
           the two searches. The topbar names the section, the hero names the show. */}
       <PageToolbar
@@ -592,20 +696,28 @@ export function ShowDetailPage() {
         }
       />
 
-      <Card className="relative isolate min-h-[19rem] overflow-hidden border-primary/25 bg-card">
+      <MetadataProviderIssueNotice
+        issue={metadataIssue}
+        subjectLabel="show"
+        acknowledgeUrl={`/api/series/${series.id}/metadata/issue/acknowledge`}
+        onAcknowledged={() => revalidator.revalidate()}
+        onFindAnother={() => setIsMetadataOpen(true)}
+        onRetry={() => void handleMetadataRefresh()}
+      />
+
+      <Card className="relative isolate min-w-0 min-h-[19rem] overflow-hidden border-primary/25 bg-card">
         <HeroBackdrop url={series.backdropUrl} />
         <CardContent className="relative p-[var(--tile-pad)] sm:p-[calc(var(--tile-pad)*1.15)]">
-          <div className="grid min-h-[15rem] items-center gap-[var(--grid-gap)] md:grid-cols-[10rem_minmax(0,1fr)] xl:grid-cols-[10rem_minmax(0,1fr)_14rem]">
+          <div className="grid items-start gap-[var(--grid-gap)] md:grid-cols-[16rem_minmax(0,1fr)] xl:grid-cols-[16rem_minmax(0,1fr)_14rem]">
             {series.posterUrl ? (
-              <img src={series.posterUrl} alt={`${series.title} poster`} className="h-64 w-40 justify-self-center rounded-2xl border border-white/15 bg-surface-1 object-cover shadow-2xl md:justify-self-start" />
+              <img src={series.posterUrl} alt={`${series.title} poster`} className="h-96 w-64 justify-self-center rounded-2xl border border-white/15 bg-surface-1 object-cover shadow-2xl md:justify-self-start" />
             ) : (
-              <div className="flex h-64 w-40 justify-self-center items-center justify-center rounded-2xl border border-hairline bg-surface-1 px-3 text-center text-xs text-muted-foreground md:justify-self-start">Artwork is being refreshed</div>
+              <div className="flex h-96 w-64 justify-self-center items-center justify-center rounded-2xl border border-hairline bg-surface-1 px-3 text-center text-xs text-muted-foreground md:justify-self-start">Artwork is being refreshed</div>
             )}
-            <div className="min-w-0 self-center">
+            <div className="min-w-0 self-start">
               <p className="text-[length:var(--section-eyebrow-size)] font-bold uppercase tracking-[0.18em] text-primary">TV series</p>
-              <div className="mt-1 flex flex-wrap items-baseline gap-x-3 gap-y-1">
+              <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1">
                 <h1 className="font-display text-4xl font-semibold tracking-tight text-foreground sm:text-5xl">{series.title}</h1>
-                {series.startYear ? <span className="font-display text-2xl text-muted-foreground sm:text-3xl">{series.startYear}</span> : null}
                 {/* The shield, beside the title — one control, both shelves. */}
                 <button
                   type="button"
@@ -626,6 +738,17 @@ export function ShowDetailPage() {
                 </button>
               </div>
               {series.originalTitle && series.originalTitle !== series.title ? <p className="mt-1 text-sm text-muted-foreground">Also known as {series.originalTitle}</p> : null}
+              <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-muted-foreground">
+                {metaText("Certification") ? (
+                  <span className="rounded border border-hairline px-1.5 py-px text-xs font-bold uppercase tracking-wide" title="Classification">
+                    {metaText("Certification")}
+                  </span>
+                ) : null}
+                {series.startYear ? <span>{series.startYear}</span> : null}
+                {series.runtimeMinutes ? (
+                  <span>{formatRuntime(series.runtimeMinutes, preferences)}</span>
+                ) : null}
+              </div>
               <div className="mt-4 flex flex-wrap gap-2">
                 {/*
                   The mark, and nothing beside it about monitoring.
@@ -653,28 +776,48 @@ export function ShowDetailPage() {
                 {importCases.length ? <Badge variant="warning">{importCases.length} import issue{importCases.length === 1 ? "" : "s"}</Badge> : null}
                 {series.genres?.split(",").map((genre) => <span key={genre} className="rounded-full border border-primary/20 bg-primary/10 px-2.5 py-1 text-xs font-medium text-primary">{genre.trim()}</span>)}
               </div>
+              <TitleTagsEditor id={series.id} mediaType="series" metadataJson={series.metadataJson} onSaved={() => revalidator.revalidate()} />
+              <dl className="mt-4 grid grid-cols-2 gap-x-6 gap-y-3 sm:grid-cols-3 lg:grid-cols-4">
+                {[
+                  { label: "Episodes", value: progress.aired ? `${progress.held}/${progress.aired} aired held` : null },
+                  { label: "Network", value: metaText("Network") },
+                  { label: "Studio", value: metaText("Studio") },
+                  { label: "Language", value: metaText("OriginalLanguage") },
+                  { label: "Collection", value: metaText("Collection") },
+                  { label: "Numbering", value: `${formatSeriesType(series.seriesType)} · ${formatNumberingScheme(series.numberingScheme)}` },
+                  { label: "Director", value: metaText("Director") },
+                  { label: "Status", value: metaText("Status") },
+                  { label: "Added", value: series.createdUtc ? formatShortDate(series.createdUtc, preferences) : null },
+                  { label: "Import issues", value: importCases.length ? String(importCases.length) : null }
+                ].filter((fact) => fact.value).map((fact) => (
+                  <div key={fact.label} className="min-w-0">
+                    <dt className="text-[length:var(--type-micro)] font-semibold uppercase tracking-[0.1em] text-muted-foreground">{fact.label}</dt>
+                    <dd className="truncate text-sm text-foreground" title={String(fact.value)}>{fact.value}</dd>
+                  </div>
+                ))}
+              </dl>
               <p className="mt-4 max-w-4xl text-sm leading-relaxed text-muted-foreground">
                 {series.overview ?? "No overview has been stored yet. Refresh metadata when you want Deluno to enrich this series."}
               </p>
             </div>
-            <aside className="w-full self-center rounded-xl border border-white/10 bg-card/80 p-4 backdrop-blur-sm">
+            <aside className="w-full self-start rounded-xl border border-white/10 bg-card/80 p-3 backdrop-blur-sm xl:min-h-96">
               <p className="text-[length:var(--type-micro)] font-bold uppercase tracking-[0.18em] text-muted-foreground">Ratings &amp; IDs</p>
-              <p className="mt-1 text-xs text-muted-foreground">The metadata Deluno is using</p>
-              <div className="mt-3"><RatingStrip ratings={series.ratings} fallbackRating={series.rating} /></div>
-              <div className="mt-4 space-y-2 border-t border-hairline pt-4 text-sm">
+              <p className="mt-0.5 text-xs text-muted-foreground">The metadata Deluno is using</p>
+              <div className="mt-2"><RatingStrip ratings={series.ratings} fallbackRating={series.rating} /></div>
+              <div className="mt-3 space-y-2 border-t border-hairline pt-3 text-sm">
                 <div className="flex items-center justify-between gap-3"><span className="text-muted-foreground">Source</span>{series.metadataProvider ? <SourceMark source={series.metadataProvider.toLowerCase()} label={series.metadataProvider.toUpperCase()} /> : <span className="font-medium text-foreground">Not linked</span>}</div>
                 <div className="flex items-center justify-between gap-3"><SourceMark source="imdb" label="IMDb" /><span className="font-mono text-xs font-medium text-foreground">{series.imdbId ?? "—"}</span></div>
               </div>
-              <Button variant="outline" className="mt-4 w-full" onClick={() => void handleMetadataRefresh()} disabled={busyAction !== null}>
+              <Button variant="outline" className="mt-3 w-full" onClick={() => void handleMetadataRefresh()} disabled={busyAction !== null}>
                 {busyAction === "metadata-refresh" ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
                 Refresh metadata
               </Button>
-              <Button variant="outline" className="mt-2 w-full" onClick={() => setIsMetadataOpen(true)}>Edit metadata</Button>
+              <Button variant="outline" className="mt-1 w-full" onClick={() => setIsMetadataOpen(true)}>Edit metadata</Button>
               {/* Destructive, so it sits with the other "manage this title" controls
                   rather than beside the two searches in the toolbar. */}
               <Button
                 variant="ghost"
-                className="mt-2 w-full text-destructive hover:bg-destructive/10 hover:text-destructive"
+                className="mt-1 w-full text-destructive hover:bg-destructive/10 hover:text-destructive"
                 onClick={() => setIsRemoveConfirmationOpen(true)}
                 disabled={busyAction !== null}
               >
@@ -744,13 +887,12 @@ export function ShowDetailPage() {
           />
 
           {releaseCandidates.length ? (
-            <ListCard title="Choose a release" count={`${releaseCandidates.length} scored`}>
+            <ListCard title="Choose a release" count={`${releaseCandidates.length} candidate${releaseCandidates.length === 1 ? "" : "s"}`}>
               <ListTable
                 columns={[
                   { label: "Release" },
                   { label: "Quality", mobile: true },
                   { label: "Size" },
-                  { label: "Score", align: "end" },
                   { label: "Decision", width: LIST_TRACK.status }
                 ]}
               >
@@ -766,7 +908,6 @@ export function ShowDetailPage() {
                     />
                     <ListCell primary={candidate.quality} mobile />
                     <ListCell primary={candidate.sizeBytes ? formatBytes(candidate.sizeBytes) : "—"} />
-                    <ListCell primary={candidate.score} align="end" numeric />
                     <ListCell>
                       <Chip tone={candidateTone(candidate)}>{candidateLabel(candidate)}</Chip>
                     </ListCell>
@@ -888,8 +1029,8 @@ export function ShowDetailPage() {
                         selected={openEpisodeId === episode.episodeId}
                       >
                         <ListNameCell name={formatEpisodeCode(episode)} sub={episode.title ?? "Episode title pending"} />
-                        <ListCell primary={episode.airDateUtc ? formatDate(episode.airDateUtc) : "—"} />
-                        <ListCell primary={episode.lastSearchUtc ? formatDateTime(episode.lastSearchUtc) : "Never"} />
+                        <ListCell primary={episode.airDateUtc ? formatShortDate(episode.airDateUtc, { ...preferences, showRelativeDates: false }) : "—"} />
+                        <ListCell primary={episode.lastSearchUtc ? formatPreferenceDateTime(episode.lastSearchUtc, preferences) : "Never"} />
                         <ListCell>
                           {/* An episode is a title. Same five marks (DESIGN-001). */}
                           <TitleMarkLabel item={{ monitored: episode.monitored, wantedStatus: episode.wantedStatus }} type="show" />
@@ -914,6 +1055,27 @@ export function ShowDetailPage() {
 
       {section === "destination" ? (
         <>
+          <ListCard
+            title="TV numbering"
+            count={`${formatSeriesType(inventory.numbering?.seriesType ?? series.seriesType)} · ${formatNumberingScheme(inventory.numbering?.numberingScheme ?? series.numberingScheme)}`}
+            actions={<Button type="button" size="sm" variant="outline" onClick={openNumberingEditor}>Edit numbering</Button>}
+          >
+            <ListTable chevron={false} columns={[{ label: "Setting" }, { label: "Value", width: "minmax(0,2fr)", mobile: true }]}>
+              <ListRow>
+                <ListNameCell name="Series type" sub="Standard, daily, and anime use different identity clues." />
+                <ListCell primary={formatSeriesType(inventory.numbering?.seriesType ?? series.seriesType)} mobile />
+              </ListRow>
+              <ListRow>
+                <ListNameCell name="Numbering scheme" sub="The key Deluno uses before it will match a file to an episode." />
+                <ListCell primary={formatNumberingScheme(inventory.numbering?.numberingScheme ?? series.numberingScheme)} mobile />
+              </ListRow>
+              <ListRow>
+                <ListNameCell name="Mapping source" sub="Owner mappings are protected from provider refreshes." />
+                <ListCell primary={formatNumberingSource(inventory.numbering?.numberingSource ?? series.numberingSource)} mobile />
+              </ListRow>
+            </ListTable>
+          </ListCard>
+
           <ListCard title="Routing and destination" count={library?.name ?? "No library linked"}>
             <ListTable chevron={false} columns={[{ label: "Setting" }, { label: "Value", width: "minmax(0,2fr)", mobile: true }]}>
               {[
@@ -990,7 +1152,7 @@ export function ShowDetailPage() {
                   <ListRow key={origin.id}>
                     <ListNameCell name={origin.sourceName} sub="Removing the list never removes this show or its files." />
                     <ListCell primary={origin.provider} mobile />
-                    <ListCell primary={formatDateTime(origin.firstSeenUtc)} />
+                    <ListCell primary={formatPreferenceDateTime(origin.firstSeenUtc, preferences)} />
                   </ListRow>
                 ))}
               </ListTable>
@@ -1026,7 +1188,7 @@ export function ShowDetailPage() {
             {seriesSearches.length === 0 ? (
               <ListEmpty
                 title="No searches yet"
-                description="Manual and scheduled searches for this show — series, season and episode alike — appear here with what they scored."
+                description="Manual and scheduled searches for this show — series, season and episode alike — appear here with their outcomes and explanations."
               />
             ) : (
               <ListTable
@@ -1043,7 +1205,7 @@ export function ShowDetailPage() {
                     <ListNameCell name={item.releaseName ?? "No release selected"} sub={item.indexerName ?? "No source yet"} />
                     <ListCell primary={formatSearchScope(item)} mobile />
                     <ListCell primary={formatTriggerKind(item.triggerKind)} />
-                    <ListCell primary={formatDateTime(item.createdUtc)} />
+                    <ListCell primary={formatPreferenceDateTime(item.createdUtc, preferences)} />
                     <ListCell>
                       <Chip tone={searchOutcomeTone(item.outcome)}>
                         {formatSearchOutcome(item.outcome)}
@@ -1072,12 +1234,12 @@ export function ShowDetailPage() {
                 description="Releases Deluno hands to a download client are listed here, with what the client said back."
               />
             ) : (
-              <ListTable chevron={false} columns={[{ label: "Release" }, { label: "Client", mobile: true }, { label: "When" }, { label: "Status", width: LIST_TRACK.status }]}>
+              <ListTable columns={[{ label: "Release" }, { label: "Client", mobile: true }, { label: "When" }, { label: "Status", width: LIST_TRACK.status }]}>
                 {seriesDispatches.slice(0, 8).map((item) => (
-                  <ListRow key={item.id}>
+                  <ListRow key={item.id} onClick={() => setOpenDispatchId(item.id)} selected={openDispatchId === item.id}>
                     <ListNameCell name={item.releaseName} sub={item.indexerName} />
                     <ListCell primary={item.downloadClientName} mobile />
-                    <ListCell primary={formatDateTime(item.createdUtc)} />
+                    <ListCell primary={formatPreferenceDateTime(item.createdUtc, preferences)} />
                     <ListCell>
                       <Chip tone={dispatchTone(item.status)}>{formatDispatchStatus(item.status)}</Chip>
                     </ListCell>
@@ -1096,7 +1258,7 @@ export function ShowDetailPage() {
                   <ListRow key={item.id}>
                     <ListNameCell name={item.message} />
                     <ListCell primary={item.category} mobile />
-                    <ListCell primary={formatDateTime(item.createdUtc)} />
+                    <ListCell primary={formatPreferenceDateTime(item.createdUtc, preferences)} />
                   </ListRow>
                 ))}
               </ListTable>
@@ -1106,6 +1268,101 @@ export function ShowDetailPage() {
       ) : null}
 
       {/* ------------------------------------------------------------ drawers */}
+
+      <DownloadDispatchDrawer dispatch={openDispatch} onClose={() => setOpenDispatchId(null)} />
+
+      <Drawer
+        open={numberingDraft !== null}
+        onOpenChange={(next) => {
+          if (!next) setNumberingDraft(null);
+        }}
+        title="TV numbering"
+        description="Choose how Deluno identifies episodes. Unmatched files remain recoverable instead of being guessed."
+        footer={
+          <DrawerFooter
+            state="clean"
+            saveType="button"
+            saveLabel="Save numbering"
+            saveEnabled={numberingDraft !== null && busyAction === null}
+            onSave={() => void handleNumberingSave()}
+            onCancel={() => setNumberingDraft(null)}
+          />
+        }
+      >
+        {numberingDraft ? (
+          <>
+            <DrawerSection title="Series model">
+              <div className="grid gap-3 sm:grid-cols-2">
+                <label className="grid gap-1.5 text-sm">
+                  <span className="font-medium text-foreground">Series type</span>
+                  <Select
+                    aria-label="Series type"
+                    value={numberingDraft.seriesType}
+                    onChange={(event) => setNumberingDraft({ ...numberingDraft, seriesType: event.target.value })}
+                    options={[
+                      { value: "standard", label: "Standard" },
+                      { value: "daily", label: "Daily" },
+                      { value: "anime", label: "Anime" }
+                    ]}
+                  />
+                </label>
+                <label className="grid gap-1.5 text-sm">
+                  <span className="font-medium text-foreground">Numbering scheme</span>
+                  <Select
+                    aria-label="Numbering scheme"
+                    value={numberingDraft.numberingScheme}
+                    onChange={(event) => setNumberingDraft({ ...numberingDraft, numberingScheme: event.target.value })}
+                    options={[
+                      { value: "standard", label: "Season / episode" },
+                      { value: "airdate", label: "Air date" },
+                      { value: "absolute", label: "Absolute episode" },
+                      { value: "scene", label: "Scene season / episode" }
+                    ]}
+                  />
+                </label>
+                <label className="grid gap-1.5 text-sm sm:col-span-2">
+                  <span className="font-medium text-foreground">Mapping source</span>
+                  <Select
+                    aria-label="Mapping source"
+                    value={numberingDraft.numberingSource}
+                    onChange={(event) => setNumberingDraft({ ...numberingDraft, numberingSource: event.target.value })}
+                    options={[
+                      { value: "provider", label: "Provider metadata (clear owner mappings)" },
+                      { value: "owner", label: "Owner mappings (protected from refresh)" }
+                    ]}
+                  />
+                </label>
+              </div>
+              <p className="mt-3 text-[length:var(--type-caption)] leading-snug text-muted-foreground">
+                Deluno matches only an exact, unique key. If a filename cannot be matched safely it stays in import recovery for review.
+              </p>
+            </DrawerSection>
+
+            <DrawerSection title="Episode mappings" aside={`${Object.keys(numberingDraft.mappings).length} episodes`}>
+              <div className="max-h-[28rem] space-y-2 overflow-y-auto pr-1">
+                {inventory.episodes.map((episode) => {
+                  const mapping = numberingDraft.mappings[episode.episodeId] ?? { absoluteNumber: "", sceneSeasonNumber: "", sceneEpisodeNumber: "", airDate: "" };
+                  const updateMapping = (field: keyof NumberingDraft["mappings"][string], value: string) => setNumberingDraft({
+                    ...numberingDraft,
+                    mappings: { ...numberingDraft.mappings, [episode.episodeId]: { ...mapping, [field]: value } }
+                  });
+                  return (
+                    <div key={episode.episodeId} className="rounded-lg border border-hairline p-2.5">
+                      <p className="mb-2 text-sm font-medium text-foreground">{formatEpisodeCode(episode)} · {episode.title ?? "Episode"}</p>
+                      <div className="grid gap-2 sm:grid-cols-4">
+                        <Input aria-label={`${formatEpisodeCode(episode)} absolute number`} type="number" min={1} placeholder="Absolute" value={mapping.absoluteNumber} onChange={(event) => updateMapping("absoluteNumber", event.target.value)} />
+                        <Input aria-label={`${formatEpisodeCode(episode)} scene season`} type="number" min={0} placeholder="Scene season" value={mapping.sceneSeasonNumber} onChange={(event) => updateMapping("sceneSeasonNumber", event.target.value)} />
+                        <Input aria-label={`${formatEpisodeCode(episode)} scene episode`} type="number" min={1} placeholder="Scene episode" value={mapping.sceneEpisodeNumber} onChange={(event) => updateMapping("sceneEpisodeNumber", event.target.value)} />
+                        <Input aria-label={`${formatEpisodeCode(episode)} air date`} type="date" value={mapping.airDate} onChange={(event) => updateMapping("airDate", event.target.value)} />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </DrawerSection>
+          </>
+        ) : null}
+      </Drawer>
 
       <Drawer
         open={openEpisode !== null}
@@ -1131,7 +1388,12 @@ export function ShowDetailPage() {
                 items={[
                   { label: "Season", value: formatSeasonLabel(openEpisode.seasonNumber) },
                   { label: "Episode", value: `#${openEpisode.episodeNumber}` },
-                  { label: "First aired", value: openEpisode.airDateUtc ? formatDate(openEpisode.airDateUtc) : "Not announced" }
+                  { label: "First aired", value: openEpisode.airDateUtc ? formatShortDate(openEpisode.airDateUtc, { ...preferences, showRelativeDates: false }) : "Not announced" },
+                  ...(openEpisode.absoluteNumber !== null && openEpisode.absoluteNumber !== undefined ? [{ label: "Absolute", value: `#${openEpisode.absoluteNumber}` }] : []),
+                  ...(openEpisode.sceneSeasonNumber !== null && openEpisode.sceneSeasonNumber !== undefined && openEpisode.sceneEpisodeNumber !== null && openEpisode.sceneEpisodeNumber !== undefined
+                    ? [{ label: "Scene", value: `S${String(openEpisode.sceneSeasonNumber).padStart(2, "0")}E${String(openEpisode.sceneEpisodeNumber).padStart(2, "0")}` }]
+                    : []),
+                  ...(openEpisode.airDate ? [{ label: "Air-date key", value: openEpisode.airDate }] : [])
                 ]}
               />
             </DrawerSection>
@@ -1152,10 +1414,10 @@ export function ShowDetailPage() {
               <DrawerFacts
                 items={[
                   { label: "Quality cutoff met", value: openEpisode.qualityCutoffMet ? "Yes" : "No" },
-                  { label: "Last searched", value: openEpisode.lastSearchUtc ? formatDateTime(openEpisode.lastSearchUtc) : "Never" },
+                  { label: "Last searched", value: openEpisode.lastSearchUtc ? formatPreferenceDateTime(openEpisode.lastSearchUtc, preferences) : "Never" },
                   {
                     label: "Next eligible search",
-                    value: openEpisode.nextEligibleSearchUtc ? formatDateTime(openEpisode.nextEligibleSearchUtc) : "As soon as a cycle runs"
+                    value: openEpisode.nextEligibleSearchUtc ? formatPreferenceDateTime(openEpisode.nextEligibleSearchUtc, preferences) : "As soon as a cycle runs"
                   }
                 ]}
               />
@@ -1187,7 +1449,7 @@ export function ShowDetailPage() {
           }
         }}
         title={openCandidate?.releaseName ?? "Release"}
-        description={openCandidate ? `${openCandidate.indexerName} · score ${openCandidate.score}` : undefined}
+        description={openCandidate ? `${openCandidate.indexerName} · ${candidateLabel(openCandidate)}` : undefined}
         footer={
           <DrawerFooter
             state={openCandidate?.downloadUrl ? "clean" : "error"}
@@ -1202,11 +1464,13 @@ export function ShowDetailPage() {
       >
         {openCandidate ? (
           <>
-            <DrawerSection title="What Deluno scored" aside={candidateLabel(openCandidate)}>
+            <DrawerSection title="How Deluno evaluated it" aside={candidateLabel(openCandidate)}>
               <DrawerFacts
                 items={[
                   { label: "Quality", value: openCandidate.quality },
-                  { label: "Score", value: String(openCandidate.score) },
+                  ...(isTypedCandidate(openCandidate)
+                    ? [{ label: "Policy", value: "Typed release plan" }]
+                    : [{ label: "Evaluation", value: "Legacy compatibility rules" }]),
                   { label: "Meets cutoff", value: openCandidate.meetsCutoff ? "Yes" : "No" },
                   { label: "Size", value: openCandidate.sizeBytes ? formatBytes(openCandidate.sizeBytes) : "Unknown" },
                   { label: "Seeders", value: openCandidate.seeders ?? "—" },
@@ -1247,7 +1511,7 @@ export function ShowDetailPage() {
                   <div className="min-w-0">
                     <p className="text-[length:var(--type-body-sm)] font-medium text-foreground">Send it anyway</p>
                     <p className="mt-0.5 text-[length:var(--type-caption)] text-muted-foreground">
-                      Overrides the scorer. Your reason is stored in activity and search history.
+                      Overrides this decision. Your reason is stored in activity and search history.
                     </p>
                   </div>
                   {forceReason === null ? (
@@ -1300,7 +1564,7 @@ export function ShowDetailPage() {
           if (!next) setOpenSearchId(null);
         }}
         title={openSearch?.releaseName ?? "Search"}
-        description={openSearch ? `${formatSearchScope(openSearch)} · ${formatDateTime(openSearch.createdUtc)}` : undefined}
+        description={openSearch ? `${formatSearchScope(openSearch)} · ${formatPreferenceDateTime(openSearch.createdUtc, preferences)}` : undefined}
         footer={
           <DrawerFooter
             state="clean"
@@ -1324,13 +1588,15 @@ export function ShowDetailPage() {
             </DrawerSection>
 
             {parseSearchCandidates(openSearch.detailsJson).length ? (
-              <DrawerSection title="Release scoring" aside={`${parseSearchCandidates(openSearch.detailsJson).length} scored`}>
+              <DrawerSection title="Release outcomes" aside={`${parseSearchCandidates(openSearch.detailsJson).length} considered`}>
                 <DrawerFacts
                   items={parseSearchCandidates(openSearch.detailsJson)
                     .slice(0, 6)
                     .map((candidate) => ({
                       label: candidate.releaseName,
-                      value: `${candidate.quality} · ${candidate.score}`
+                      value: isTypedCandidate(candidate)
+                        ? `${candidate.quality} · ${candidateLabel(candidate)}`
+                        : `${candidate.quality} · legacy compatibility rules`
                     }))}
                 />
               </DrawerSection>
@@ -1379,6 +1645,27 @@ export function ShowDetailPage() {
 }
 
 /* -------------------------------------------------------------- helpers */
+
+function formatSeriesType(value: string | null | undefined) {
+  switch (value?.toLowerCase()) {
+    case "daily": return "Daily";
+    case "anime": return "Anime";
+    default: return "Standard";
+  }
+}
+
+function formatNumberingScheme(value: string | null | undefined) {
+  switch (value?.toLowerCase()) {
+    case "airdate": return "Air date";
+    case "absolute": return "Absolute episode";
+    case "scene": return "Scene numbering";
+    default: return "Season / episode";
+  }
+}
+
+function formatNumberingSource(value: string | null | undefined) {
+  return value?.toLowerCase() === "owner" ? "Owner mapping" : "Provider metadata";
+}
 
 function matchesEpisodeFilter(episode: SeriesEpisodeInventoryItem, filter: EpisodeFilter, query: string) {
   const haystack = `${formatEpisodeCode(episode)} ${episode.title ?? ""}`.toLowerCase();
@@ -1446,18 +1733,40 @@ interface SearchPlanCandidate {
   sizeScore?: number;
   releaseGroup?: string | null;
   estimatedBitrateMbps?: number | null;
+  preferenceEvaluation?: unknown;
+  preferenceComparison?: unknown;
 }
 
 function candidateLabel(candidate: SearchPlanCandidate) {
+  if (isTypedCandidate(candidate)) {
+    switch (candidate.decisionStatus?.toLowerCase()) {
+      case "rejected": return "Rejected";
+      case "held": return "Needs review";
+      case "equivalent": return "Equivalent";
+      case "preferred": return "Best match";
+      case "acceptable": return "Acceptable";
+      case "eligible": return "Eligible";
+      default: return "Needs review";
+    }
+  }
   if (candidate.decisionStatus === "rejected") return "Rejected";
   if (["preferred", "eligible"].includes(candidate.decisionStatus || "") && candidate.meetsCutoff) return "Recommended";
   return "Needs review";
 }
 
 function candidateTone(candidate: SearchPlanCandidate): "ok" | "warn" | "bad" {
+  if (isTypedCandidate(candidate)) {
+    if (candidate.decisionStatus?.toLowerCase() === "rejected") return "bad";
+    return ["preferred", "acceptable"].includes(candidate.decisionStatus?.toLowerCase() ?? "") ? "ok" : "warn";
+  }
   if (candidate.decisionStatus === "rejected") return "bad";
   if (["preferred", "eligible"].includes(candidate.decisionStatus || "") && candidate.meetsCutoff) return "ok";
   return "warn";
+}
+
+function isTypedCandidate(candidate: SearchPlanCandidate) {
+  return (candidate.preferenceEvaluation !== null && candidate.preferenceEvaluation !== undefined)
+    || (candidate.preferenceComparison !== null && candidate.preferenceComparison !== undefined);
 }
 
 function parseSearchCandidates(detailsJson: string | null): SearchPlanCandidate[] {
@@ -1490,7 +1799,9 @@ function normalizeSearchCandidate(value: Record<string, unknown>): SearchPlanCan
     decisionReasons: normalizeStringArray(value.decisionReasons ?? value.DecisionReasons),
     riskFlags: normalizeStringArray(value.riskFlags ?? value.RiskFlags),
     releaseGroup: (value.releaseGroup ?? value.ReleaseGroup ?? null) as string | null,
-    estimatedBitrateMbps: (value.estimatedBitrateMbps ?? value.EstimatedBitrateMbps ?? null) as number | null
+    estimatedBitrateMbps: (value.estimatedBitrateMbps ?? value.EstimatedBitrateMbps ?? null) as number | null,
+    preferenceEvaluation: value.preferenceEvaluation ?? value.PreferenceEvaluation,
+    preferenceComparison: value.preferenceComparison ?? value.PreferenceComparison
   };
 }
 
@@ -1638,19 +1949,6 @@ function formatTriggerKind(value: string) {
     default:
       return "Scheduled";
   }
-}
-
-function formatDate(value: string) {
-  return new Intl.DateTimeFormat(undefined, { day: "numeric", month: "short", year: "numeric" }).format(new Date(value));
-}
-
-function formatDateTime(value: string) {
-  return new Intl.DateTimeFormat(undefined, {
-    month: "short",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit"
-  }).format(new Date(value));
 }
 
 function formatBytes(value: number) {

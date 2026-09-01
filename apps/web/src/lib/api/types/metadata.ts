@@ -33,6 +33,7 @@ export interface MetadataProviderStatus {
   mode: "live" | "unconfigured" | string;
   message: string;
   sources: MetadataSourceStatus[];
+  lastFailure?: import("./resources").IntegrationFailure | null;
 }
 
 export interface MetadataSourceStatus {
@@ -51,6 +52,44 @@ export interface MetadataTestResponse {
   message: string;
   resultCount: number;
   sampleResults: MetadataSearchResult[];
+  failure?: import("./resources").IntegrationFailure | null;
+}
+
+export interface MetadataLinkIdentity {
+  provider: string | null;
+  providerId: string | null;
+  title: string;
+  year: number | null;
+  imdbId: string | null;
+  context: string | null;
+}
+
+export interface MetadataIdentityConflict {
+  id: string;
+  title: string;
+  reason: "provider-id" | "imdb-id" | "title-year" | string;
+}
+
+export interface MetadataCatalogueImpact {
+  existingEpisodeCount: number;
+  importedEpisodeCount: number;
+  proposedEpisodeCount: number;
+  proposedSeasonCount: number;
+  existingEpisodesOutsideProposed: number;
+}
+
+export interface MetadataLinkPreview {
+  mediaType: "movies" | "tv" | string;
+  subjectId: string;
+  current: MetadataLinkIdentity;
+  proposed: MetadataLinkIdentity;
+  changes: string[];
+  consequences: string[];
+  conflict: MetadataIdentityConflict | null;
+  catalogueImpact: MetadataCatalogueImpact | null;
+  canApply: boolean;
+  blockReason: string | null;
+  confirmationToken: string;
 }
 
 export interface MetadataRefreshJobsResponse {
@@ -69,6 +108,8 @@ export interface MetadataCastMember {
   name: string;
   character: string | null;
   profileUrl: string | null;
+  personId: string | null;
+  imdbUrl: string | null;
 }
 
 /** `job` holds every job this person did on the title, joined. */
@@ -76,4 +117,6 @@ export interface MetadataCrewMember {
   name: string;
   job: string | null;
   profileUrl: string | null;
+  personId: string | null;
+  imdbUrl: string | null;
 }

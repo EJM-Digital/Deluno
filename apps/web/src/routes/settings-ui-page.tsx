@@ -10,11 +10,12 @@
  */
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { useLoaderData } from "react-router-dom";
-import { Field } from "../components/ui/field";
+import { Field, FieldRow } from "../components/ui/field";
 import { ListCard } from "../components/ui/list-card";
 import { PageFooter } from "../components/ui/page-footer";
 import { PageToolbar } from "../components/ui/page-toolbar";
 import { SegmentedControl } from "../components/ui/segmented-control";
+import { Switch } from "../components/ui/switch";
 import { systemSettingsNavItems } from "../components/app/settings-shell";
 import { useUnsavedChanges } from "../hooks/use-unsaved-changes";
 import { isDensity, useDensity, type Density } from "../lib/use-density";
@@ -23,6 +24,8 @@ import { settingsOverviewLoader } from "./settings-overview-page";
 import type { LibraryItem, PlatformSettingsSnapshot, QualityProfileItem } from "../lib/api";
 import type { PlatformSettingsPatch } from "../lib/api/settings";
 import { useApiMutation } from "../lib/use-api-mutation";
+import { isColorMode, useColorMode, type ColorMode } from "../lib/use-color-mode";
+import { useDisplayPreferences } from "../lib/display-preferences";
 
 /** One line each — the four presets differ by degree, so a paragraph apiece said nothing. */
 const DENSITY_OPTIONS: { value: Density; label: string; help: string }[] = [
@@ -45,15 +48,28 @@ interface UiForm {
   density: string;
   movieView: string;
   showView: string;
+  uiLanguage: string;
+  calendarFirstDayOfWeek: string;
+  calendarWeekHeaderFormat: string;
+  runtimeFormat: string;
+  shortDateFormat: string;
+  longDateFormat: string;
+  timeFormat: string;
+  showRelativeDates: boolean;
 }
 
 export function SettingsUiPage() {
   const { settings } = useLoaderData() as LoaderData;
   const settingsMutation = useApiMutation<PlatformSettingsPatch, PlatformSettingsSnapshot>("/api/settings", "PATCH");
   const { density, setDensity } = useDensity();
+  const { setColorMode } = useColorMode();
+  const { replaceFromSettings } = useDisplayPreferences();
+  const initialColorMode: ColorMode = isColorMode(settings.uiColorMode) ? settings.uiColorMode : "standard";
 
   const [savedForm, setSavedForm] = useState<UiForm>(() => formFrom(settings));
   const [form, setForm] = useState<UiForm>(savedForm);
+  const [savedColorMode, setSavedColorMode] = useState<ColorMode>(initialColorMode);
+  const [colorModeDraft, setColorModeDraft] = useState<ColorMode>(initialColorMode);
   const [saveState, setSaveState] = useState<Exclude<DrawerSaveState, "clean" | "dirty">>();
   const [message, setMessage] = useState<string | null>(null);
 
@@ -63,13 +79,17 @@ export function SettingsUiPage() {
     if (isDensity(form.density) && density !== form.density) setDensity(form.density as Density);
   }, [form.density, density, setDensity]);
 
-  const dirty = !same(form, savedForm);
+  const dirty = !same(form, savedForm) || colorModeDraft !== savedColorMode;
   const settingsForm = useMemo(() => formFrom(settings), [settings]);
+  const settingsColorMode: ColorMode = isColorMode(settings.uiColorMode) ? settings.uiColorMode : "standard";
   useEffect(() => {
-    if (dirty || same(savedForm, settingsForm)) return;
+    if (dirty || (same(savedForm, settingsForm) && savedColorMode === settingsColorMode)) return;
     setSavedForm(settingsForm);
     setForm(settingsForm);
-  }, [dirty, savedForm, settingsForm]);
+    setSavedColorMode(settingsColorMode);
+    setColorModeDraft(settingsColorMode);
+    setColorMode(settingsColorMode);
+  }, [dirty, savedColorMode, settingsColorMode, savedForm, settingsForm, setColorMode]);
 
   const state: DrawerSaveState = saveState === "saving" ? "saving" : dirty ? "dirty" : saveState ?? "clean";
   useUnsavedChanges(dirty);
@@ -82,13 +102,25 @@ export function SettingsUiPage() {
     if (state === "saving") return;
     setSaveState("saving");
     try {
-      await settingsMutation.mutate({
+      const updated = await settingsMutation.mutate({
         uiTheme: form.theme,
         uiDensity: form.density,
         defaultMovieView: form.movieView,
-        defaultShowView: form.showView
+        defaultShowView: form.showView,
+        uiColorMode: colorModeDraft,
+        uiLanguage: form.uiLanguage,
+        calendarFirstDayOfWeek: form.calendarFirstDayOfWeek,
+        calendarWeekHeaderFormat: form.calendarWeekHeaderFormat,
+        runtimeFormat: form.runtimeFormat,
+        shortDateFormat: form.shortDateFormat,
+        longDateFormat: form.longDateFormat,
+        timeFormat: form.timeFormat,
+        showRelativeDates: form.showRelativeDates
       });
       setSavedForm(form);
+      setSavedColorMode(colorModeDraft);
+      setColorMode(colorModeDraft);
+      replaceFromSettings(updated);
       setSaveState("saved");
       setMessage("Saved just now");
     } catch (error) {
@@ -124,6 +156,125 @@ export function SettingsUiPage() {
               onValueChange={(value) => setForm((current) => ({ ...current, density: value }))}
               options={DENSITY_OPTIONS.map((option) => ({ value: option.value, label: option.label }))}
             />
+          </Field>
+          <Field label="Colour-impaired mode" help="Keeps the mark glyphs and uses a palette with stronger lightness separation. The glyphs remain on in every mode.">
+            <SegmentedControl<string>
+              aria-label="Colour-impaired mode"
+              value={colorModeDraft}
+              onValueChange={(value) => {
+                if (!isColorMode(value)) return;
+                setColorModeDraft(value);
+                setColorMode(value);
+              }}
+              options={[
+                { value: "standard", label: "Standard" },
+                { value: "impaired", label: "Colour-impaired" }
+              ]}
+            />
+          </Field>
+          <Field label="Interface language" help="Controls Deluno's labels and display formatting. Metadata language is configured separately under Media management." className="max-w-[30rem]">
+            <SegmentedControl<string>
+              aria-label="Interface language"
+              value={form.uiLanguage}
+              onValueChange={(value) => setForm((current) => ({ ...current, uiLanguage: value }))}
+              options={[
+                { value: "en-AU", label: "English (Australia)" },
+                { value: "en-US", label: "English (United States)" }
+              ]}
+            />
+          </Field>
+        </div>
+      </ListCard>
+
+      <ListCard title="Calendar" count="Choose how dates and week columns read across Deluno">
+        <div className="grid gap-[var(--grid-gap)] p-[var(--card-pad-x)]">
+          <FieldRow>
+            <Field label="First day of week" help="Changes calendar column order and week grouping.">
+              <SegmentedControl<string>
+                aria-label="First day of week"
+                value={form.calendarFirstDayOfWeek}
+                onValueChange={(value) => setForm((current) => ({ ...current, calendarFirstDayOfWeek: value }))}
+                options={[
+                  { value: "monday", label: "Monday" },
+                  { value: "sunday", label: "Sunday" }
+                ]}
+              />
+            </Field>
+            <Field label="Week column headers" help="The compact date format used above calendar columns.">
+              <SegmentedControl<string>
+                aria-label="Week column headers"
+                value={form.calendarWeekHeaderFormat}
+                onValueChange={(value) => setForm((current) => ({ ...current, calendarWeekHeaderFormat: value }))}
+                options={[
+                  { value: "ddd d/M", label: "Tue 25/03" },
+                  { value: "ddd m/d", label: "Tue 03/25" },
+                  { value: "ddd d mmm", label: "Tue 25 Mar" }
+                ]}
+              />
+            </Field>
+          </FieldRow>
+        </div>
+      </ListCard>
+
+      <ListCard title="Formats" count="The same preferences are used in lists, details, activity and the dashboard">
+        <div className="grid gap-[var(--grid-gap)] p-[var(--card-pad-x)]">
+          <FieldRow>
+            <Field label="Runtime" help="How movie and episode runtimes are written.">
+              <SegmentedControl<string>
+                aria-label="Runtime format"
+                value={form.runtimeFormat}
+                onValueChange={(value) => setForm((current) => ({ ...current, runtimeFormat: value }))}
+                options={[
+                  { value: "hoursMinutes", label: "1h 15m" },
+                  { value: "minutes", label: "75 minutes" }
+                ]}
+              />
+            </Field>
+            <Field label="Time" help="The clock style used with dates and activity timestamps.">
+              <SegmentedControl<string>
+                aria-label="Time format"
+                value={form.timeFormat}
+                onValueChange={(value) => setForm((current) => ({ ...current, timeFormat: value }))}
+                options={[
+                  { value: "12", label: "12-hour" },
+                  { value: "24", label: "24-hour" }
+                ]}
+              />
+            </Field>
+          </FieldRow>
+          <FieldRow>
+            <Field label="Short date" help="Used for compact list and activity dates.">
+              <SegmentedControl<string>
+                aria-label="Short date format"
+                value={form.shortDateFormat}
+                onValueChange={(value) => setForm((current) => ({ ...current, shortDateFormat: value }))}
+                options={[
+                  { value: "dmy", label: "25/03/2026" },
+                  { value: "mdy", label: "03/25/2026" },
+                  { value: "iso", label: "2026-03-25" }
+                ]}
+              />
+            </Field>
+            <Field label="Long date" help="Used where a date needs more context.">
+              <SegmentedControl<string>
+                aria-label="Long date format"
+                value={form.longDateFormat}
+                onValueChange={(value) => setForm((current) => ({ ...current, longDateFormat: value }))}
+                options={[
+                  { value: "full", label: "Wednesday, 25 March" },
+                  { value: "mdy", label: "Wednesday, March 25" }
+                ]}
+              />
+            </Field>
+          </FieldRow>
+          <Field label="Relative dates" help="Show Today, Yesterday and Tomorrow when the exact date is not needed.">
+            <div className="flex min-h-[var(--control-height)] items-center gap-3">
+              <Switch
+                checked={form.showRelativeDates}
+                onCheckedChange={(checked) => setForm((current) => ({ ...current, showRelativeDates: checked }))}
+              />
+              <span className="text-[length:var(--type-body-sm)] text-muted-foreground">Use relative labels where they improve scanning</span>
+            </div>
           </Field>
         </div>
       </ListCard>
@@ -171,6 +322,14 @@ function formFrom(settings: PlatformSettingsSnapshot): UiForm {
     theme: settings.uiTheme,
     density: settings.uiDensity,
     movieView: settings.defaultMovieView,
-    showView: settings.defaultShowView
+    showView: settings.defaultShowView,
+    uiLanguage: settings.uiLanguage,
+    calendarFirstDayOfWeek: settings.calendarFirstDayOfWeek,
+    calendarWeekHeaderFormat: settings.calendarWeekHeaderFormat,
+    runtimeFormat: settings.runtimeFormat,
+    shortDateFormat: settings.shortDateFormat,
+    longDateFormat: settings.longDateFormat,
+    timeFormat: settings.timeFormat,
+    showRelativeDates: settings.showRelativeDates
   };
 }

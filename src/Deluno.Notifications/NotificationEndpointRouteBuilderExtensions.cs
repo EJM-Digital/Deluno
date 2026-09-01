@@ -28,6 +28,57 @@ public static class NotificationEndpointRouteBuilderExtensions
             return Results.Ok(items);
         });
 
+        notificationWebhooks.MapGet("/deliveries", async (
+            HttpContext httpContext,
+            string? status,
+            string? webhookId,
+            int? take,
+            [FromServices] INotificationRepository repository,
+            CancellationToken cancellationToken) =>
+        {
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
+            if (denied is not null)
+            {
+                return denied;
+            }
+
+            if (!string.IsNullOrWhiteSpace(status) &&
+                status.Trim().ToLowerInvariant() is not (
+                    NotificationWebhookDeliveryStatuses.Pending or
+                    NotificationWebhookDeliveryStatuses.Retrying or
+                    NotificationWebhookDeliveryStatuses.Delivered or
+                    NotificationWebhookDeliveryStatuses.DeadLetter))
+            {
+                return Results.ValidationProblem(new Dictionary<string, string[]>
+                {
+                    ["status"] = ["Status must be pending, retrying, delivered, or dead-letter."]
+                });
+            }
+
+            var items = await repository.ListNotificationWebhookDeliveriesAsync(
+                status,
+                webhookId,
+                Math.Clamp(take ?? 100, 1, 500),
+                cancellationToken);
+            return Results.Ok(items);
+        });
+
+        notificationWebhooks.MapPost("/deliveries/{deliveryId}/replay", async (
+            string deliveryId,
+            HttpContext httpContext,
+            [FromServices] IOutboundNotificationService notificationService,
+            CancellationToken cancellationToken) =>
+        {
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
+            if (denied is not null)
+            {
+                return denied;
+            }
+
+            var result = await notificationService.ReplayAsync(deliveryId, cancellationToken);
+            return result is null ? Results.NotFound() : Results.Ok(result);
+        });
+
         notificationWebhooks.MapPost(string.Empty, async (
             HttpContext httpContext,
             [FromBody] CreateNotificationWebhookRequest request,
@@ -103,14 +154,17 @@ public static class NotificationEndpointRouteBuilderExtensions
                 return Results.Ok(new { sent = false, message = "Notifications are paused. Turn on Send notifications to test this webhook." });
             }
 
-            await notificationService.DispatchAsync(
+            var result = await notificationService.DispatchToWebhookAsync(
+                id,
                 "test",
                 "Deluno Webhook Test",
                 "This is a test notification from Deluno. Your webhook is configured correctly.",
                 null,
                 cancellationToken);
 
-            return Results.Ok(new { sent = true });
+            return result is null
+                ? Results.NotFound()
+                : Results.Ok(result);
         });
 
         // Notification endpoints

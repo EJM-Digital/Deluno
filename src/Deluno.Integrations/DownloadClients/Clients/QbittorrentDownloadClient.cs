@@ -40,7 +40,7 @@ public sealed class QbittorrentDownloadClient : DownloadClientBase
     public override async Task<DownloadClientTelemetrySnapshot?> GetSnapshotAsync(DownloadClientItem client, DateTimeOffset capturedUtc, CancellationToken cancellationToken)
     {
         var baseUri = DownloadClientHelpers.ResolveEndpoint(client);
-        if (baseUri is null) return null;
+        if (baseUri is null) return CreateConfigurationSnapshot(client, capturedUtc, "Download client address is missing.");
 
         using var handler = new HttpClientHandler { CookieContainer = new CookieContainer() };
         using var http = new HttpClient(handler) { BaseAddress = baseUri, Timeout = TimeSpan.FromSeconds(8) };
@@ -154,8 +154,14 @@ public sealed class QbittorrentDownloadClient : DownloadClientBase
         }
         using (lastResponse)
         {
-            return new DownloadClientActionResult(client.Id, queueItemId, action, lastResponse?.IsSuccessStatusCode == true,
-                lastResponse?.IsSuccessStatusCode == true ? "qBittorrent action sent." : $"qBittorrent returned {(int?)lastResponse?.StatusCode ?? 0}.");
+            return lastResponse?.IsSuccessStatusCode == true
+                ? DownloadClientHelpers.ActionSuccess(client, queueItemId, action, "qBittorrent action sent.")
+                : DownloadClientHelpers.ActionFailure(
+                    client,
+                    queueItemId,
+                    action,
+                    $"qBittorrent returned {(int?)lastResponse?.StatusCode ?? 0}.",
+                    lastResponse?.StatusCode);
         }
     }
 

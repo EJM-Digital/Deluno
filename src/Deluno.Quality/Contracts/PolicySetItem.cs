@@ -15,4 +15,6 @@ public sealed record PolicySetItem(
     bool IsEnabled,
     string? Notes,
     DateTimeOffset CreatedUtc,
-    DateTimeOffset UpdatedUtc);
+    DateTimeOffset UpdatedUtc,
+    MediaPlanAutomationIntent? AutomationIntent = null,
+    ReleasePreferencePlanReference? ReleasePreferencePlan = null);

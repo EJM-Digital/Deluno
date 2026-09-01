@@ -10,7 +10,11 @@ public sealed record CatalogueEpisodeItem(
     int EpisodeNumber,
     string? Title,
     string? Overview,
-    DateTimeOffset? AirDateUtc);
+    DateTimeOffset? AirDateUtc,
+    int? AbsoluteNumber = null,
+    int? SceneSeasonNumber = null,
+    int? SceneEpisodeNumber = null,
+    string? NumberingSource = null);
 
 /// <summary>What a catalogue sync did, so the caller can say so out loud.</summary>
 public sealed record SeriesCatalogueSyncResult(

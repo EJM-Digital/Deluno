@@ -101,6 +101,7 @@ Implemented endpoints:
 - `POST /api/movies/{id}/search`
 - `POST /api/movies/{id}/grab`
 - `POST /api/movies/{id}/metadata/refresh`
+- `POST /api/movies/{id}/metadata/link/preview` — resolves the exact provider record and returns current/proposed identity, title/year/IMDb/collection changes, preserved local state, any held-title conflict, and a confirmation token bound to the current title state
 - `POST /api/movies/{id}/metadata/link`
 - `PUT /api/movies/{id}/metadata/override`
 - `GET /api/movies/page` — the paged catalogue list; see below
@@ -121,6 +122,7 @@ Current UI contract expectations:
 - library rows should treat `GET /api/movies/page` as the source of truth for catalog state
 - wanted and import-recovery are first-class operational views, not hidden utilities
 - monitoring, search, metadata, and bulk actions are already part of the live product surface
+- metadata remaps are two-step operations: the UI must show the preview and submit its confirmation token; a missing/stale token or a newly claimed identity is rejected without changing the title
 
 Current gaps:
 
@@ -138,18 +140,21 @@ Implemented endpoints:
 - `POST /api/series/import-recovery`
 - `DELETE /api/series/import-recovery/{id}`
 - `GET /api/series/{id}`
+- `GET /api/series/{id}/numbering`
+- `PUT /api/series/{id}/numbering` — selects standard/daily/anime and standard/air-date/absolute/scene keys; explicit owner mappings are protected from provider refreshes
 - `PUT /api/series/monitoring`
 - `PUT /api/series/episodes/monitoring`
 - `POST /api/series/{id}/search`
 - `POST /api/series/{id}/metadata/refresh`
+- `POST /api/series/{id}/metadata/link/preview` — adds proposed season/episode counts and the number of existing episodes absent from the proposed provider catalogue
 - `POST /api/series/{id}/metadata/link`
 - `PUT /api/series/{id}/metadata/override`
 - `GET /api/series/page` — the paged catalogue list; see below
 - `POST /api/series/{id}/metadata/jobs`
 - `POST /api/series/metadata/jobs` — same shape as the movie twin
-- `POST /api/series/{id}/episodes/search`
+- `POST /api/series/{id}/episodes/search` — each selected episode resolves its own installed path, size, current/target quality, and same-library immutable-plan evaluation before candidate comparison; replacement authority is bound to that exact path
 - `POST /api/series/{id}/grab`
-- `POST /api/series/{id}/seasons/{seasonNumber}/search`
+- `POST /api/series/{id}/seasons/{seasonNumber}/search` — one season-pack search; the query planner owns the season token and an imported `S01`/`Season 01` pack is expanded against the persisted catalogue inside one transaction. For a partly installed season, every installed episode must have an exact snapshot under the current immutable plan and the candidate must compare as a typed `Upgrade` against every snapshot. Missing/stale evidence or one lateral/worse comparison returns `held` and makes no dispatch. An accepted dispatch persists an episode→owned-path manifest; import revalidates it, backs up every distinct current file, places the complete pack, updates the catalogue atomically, and restores all old files/sources if the transaction fails.
 - `POST /api/series`
 - `POST /api/series/bulk`
 - `DELETE /api/series/bulk`
@@ -162,6 +167,7 @@ Implemented endpoints:
 Current UI contract expectations:
 
 - series routes already support episode-level monitoring and episode/season search initiation
+- TV imports resolve standard multi-episode ranges (`S01E01-E03`), specials (`S00`), daily air dates, anime absolute numbers, scene numbers, and season packs without replacing the canonical provider episode identity; ambiguous alternate numbers remain unmatched for review
 - inventory endpoints are the current bridge between a series shell and episode-aware workflows
 - wanted/import-recovery/search-history should be treated as operational views, not future placeholders
 
@@ -191,6 +197,17 @@ Current behavior:
 - artwork URLs from provider responses are localized into Deluno's cached artwork route when downloadable
 - metadata refresh jobs can be queued manually from movie/series routes, and maintenance automation schedules stale or missing metadata refreshes
 - manual override routes allow users to patch metadata fields when provider payloads are incomplete
+- provider status, broker status/search and metadata test results retain a typed
+  failure when a provider returns an authentication, rate-limit, timeout,
+  unavailable or malformed-response boundary. The UI should lead with its
+  `message` and `nextAction`, while keeping provider/operation/status details
+  available in the maintenance drawer.
+
+Subtitle provider rows and test results follow the same typed failure contract.
+When a provider fails and a later fallback succeeds, the successful subtitle or
+metadata result remains successful while the earlier failure remains attached
+to provider health/history for diagnosis. A failed attempt is never represented
+as an unexplained empty search result.
 
 ## Platform Settings And Configuration
 
@@ -214,11 +231,42 @@ Implemented CRUD surfaces:
 - `GET|POST|PUT|DELETE /api/destination-rules`
 - `POST /api/destination-rules/resolve`
 - `GET|POST|PUT|DELETE /api/policy-sets`
+- `POST /api/policy-sets/{id}/effective-preview`
+- `GET /api/media-plan-scenarios`
+- `GET /api/media-plan-scenarios/{id}/compile?mediaType=movies|tv`
+- `POST /api/media-plan-scenarios/{id}/apply`
 - `GET|POST|PUT|DELETE /api/library-views`
 - `POST /api/migration/preview`
 - `POST /api/migration/apply`
 
+Migration preview responses include operation-level provenance and warnings,
+plus a secret-free `inventory` reconciliation. It reports input rows,
+accounted rows, actions, and legacy classifications per source/category.
+`unaccountedRowCount` is non-zero when an input row has no corresponding
+operation, so callers should keep the preview in review rather than treating a
+partial mapping as complete. The migration page can download this redacted
+report before apply; apply persists the same inventory inside its audit report.
+
+Media Plan scenarios are versioned, server-owned starting points. A dual-scope
+scenario must be compiled with an explicit `mediaType`; the compiler returns
+the existing policy-set request plus the readable consequences for size,
+search, upgrades, subtitles, routing, sharing, cleanup, notifications, and
+naming. Applying a scenario reuses an existing matching starter Quality Profile
+when possible, creates the policy set through the normal policy-set repository,
+and is idempotent for the generated scenario name/version. It does not create
+a second release-ranking engine.
+
+`POST /api/policy-sets/{id}/effective-preview` accepts optional field-level
+`libraryOverride` and `titleOverride` objects plus the global automation gate.
+It returns the resolved plan and one source record per field (`media-plan`,
+`library`, `title`, or `global-safety`). The global gate is non-overridable and
+can only pause a plan; this route is read-only and does not persist either
+override.
+
 Current UI contract expectations:
+
+- TV remaps are blocked when another held show owns the proposed identity or when the proposed provider catalogue omits any existing episode row; Deluno does not silently merge shows or mix episode catalogues
+- an accepted, reviewed remap refreshes provider-owned identity/catalogue fields while keeping files, monitoring, history, tags, numbering overrides, and plan assignments
 
 - quality profiles, tags, intake sources, custom formats, destination rules, policy sets, and saved library views are all active configuration concepts
 - platform settings now include `searchScoringMode` (`hybrid`, `rules-only`, `ml-only`) so users can explicitly choose deterministic ranking, model-priority ranking, or both
@@ -247,7 +295,9 @@ Implemented endpoints:
 Current UI contract expectations:
 
 - release explain responses include deterministic decision details plus ML model probability/boost explanation when enabled
-- release explain responses now include `ruleScore`, resolved `scoringMode`, and `scoringExplanation` so users can see how final score composition was chosen
+- raw totals in the explicit release-explain diagnostic response are labelled
+  legacy scoring provenance; they are not the typed release-preference decision
+  value and are not used by normal candidate lists or upgrade decisions
 - ranking model status exposes active model version, last training metadata, sample count, and evaluation metrics
 - training and rollback controls are operational endpoints for guarded model lifecycle actions
 - intelligent-routing snapshot exposes learned quality/release-group preferences and success-rate maps for indexers and download clients
@@ -325,6 +375,18 @@ Implemented endpoints:
 - `GET /api/filesystem/directories?path=...` — server-visible drives and folders for advanced browsing
 - `POST /api/filesystem/native-folder-picker` — opens the native Windows folder picker when Deluno is running in an interactive desktop session
 - `POST /api/filesystem/path-diagnostics` — checks whether the Deluno server can read and write the selected path
+- `POST /api/filesystem/import/preview` — returns the authoritative destination and media checks; a multi-file TV directory also returns `pack` with every source, canonical episode key, destination, and whole-pack block reason
+- `POST /api/filesystem/import/jobs` — queues only a currently executable preview; an ambiguous or colliding TV pack is rejected before a job exists
+- `POST /api/filesystem/import/execute` — stages every file in an executable TV pack, finalizes every unique destination, and records the episode manifest in one catalogue transaction
+
+Multi-file TV import is deliberately all-or-nothing. A directory must identify one
+season, every video must map to one or more episodes in the selected show's persisted
+catalogue, and no episode or destination may be claimed by two files. Deluno places no
+file when that review fails. Once approved, filesystem placement is compensated if the
+single catalogue transaction fails: copied or linked destinations are removed and moved
+sources are restored. A retry is reported as already committed only when every episode
+still owns its reviewed path and the source and destination SHA-256 content match; file
+size alone is not accepted as proof.
 
 The native picker is available in the installed interactive Windows tray app and in an interactive Windows development host. It can select local folders, mapped drives, and UNC locations visible to the same Windows user session. When Deluno runs as a Windows service, in Docker, or on a non-Windows host, the endpoint reports that the picker is unavailable; the web UI then opens the advanced server browser and manual path entry instead. If the browser is remote, the native dialog belongs to the backend desktop session, so advanced browse or manual entry is the appropriate path. Server-side path visibility and permissions remain authoritative, especially for services and network shares.
 

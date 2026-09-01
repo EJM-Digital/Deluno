@@ -4,6 +4,7 @@ import { ThemeProvider } from "next-themes";
 import { RouterProvider } from "react-router-dom";
 import { TooltipProvider } from "./components/ui/tooltip";
 import { AuthProvider } from "./lib/use-auth";
+import { ColorModeProvider } from "./lib/use-color-mode";
 import { router } from "./router";
 import "./index.css";
 
@@ -26,10 +27,12 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
         disableTransitionOnChange={false}
         storageKey="deluno-theme"
       >
-        <AuthProvider>
-          {/* Toaster now lives inside <AppLayout> so it inherits density and theme */}
-          <RouterProvider router={router} />
-        </AuthProvider>
+        <ColorModeProvider>
+          <AuthProvider>
+            {/* Toaster now lives inside <AppLayout> so it inherits density and theme */}
+            <RouterProvider router={router} />
+          </AuthProvider>
+        </ColorModeProvider>
       </ThemeProvider>
     </TooltipProvider>
   </React.StrictMode>

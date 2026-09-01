@@ -19,6 +19,24 @@ namespace Deluno.Persistence.Tests.Catalogue;
 public sealed class RatingPosterOptionsTests
 {
     [Fact]
+    public void Media_bar_toggles_follow_the_shelf_they_describe()
+    {
+        var movie = CatalogueControls.For(MediaKind.Movie).PosterOptions;
+        var series = CatalogueControls.For(MediaKind.Series).PosterOptions;
+
+        Assert.Contains(movie, option => option.Id == "showQualityOnBar" && option.DefaultOn && !option.Line);
+        Assert.DoesNotContain(movie, option => option.Id == "showEpisodeCountOnBar");
+
+        Assert.Contains(series, option => option.Id == "showEpisodeCountOnBar" && option.DefaultOn && !option.Line);
+        Assert.DoesNotContain(series, option => option.Id == "showQualityOnBar");
+
+        // The subtitle bar is the shared bottom fact, so both shelves expose
+        // the same word toggle and the browser can use one option id for it.
+        Assert.Contains(movie, option => option.Id == "showSubtitleCountOnBar" && option.DefaultOn && !option.Line);
+        Assert.Contains(series, option => option.Id == "showSubtitleCountOnBar" && option.DefaultOn && !option.Line);
+    }
+
+    [Fact]
     public void Every_rating_toggle_the_server_offers_is_one_the_grid_draws()
     {
         var source = File.ReadAllText(Path.Combine(

@@ -30,6 +30,7 @@ import { SummaryStrip } from "../components/ui/summary-strip";
 import { toast } from "../components/shell/toaster";
 import { TitleMarkLabel } from "../components/ui/title-mark";
 import { describeSearchReason } from "../lib/search-reasons";
+import { formatDateTime as formatPreferenceDateTime, formatShortDate, useDisplayPreferences } from "../lib/display-preferences";
 
 interface WantedEpisode {
   episodeId: string;
@@ -45,7 +46,6 @@ interface WantedEpisode {
   lastSearchUtc: string | null;
   nextEligibleSearchUtc: string | null;
 }
-
 interface EpisodeSearchLoaderData {
   episodes: WantedEpisode[];
 }
@@ -64,6 +64,7 @@ export function EpisodeSearchPage() {
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<Filter>("all");
   const [busy, setBusy] = useState<string | null>(null);
+  const { preferences } = useDisplayPreferences();
 
   const { episodes } = data;
 
@@ -237,9 +238,9 @@ export function EpisodeSearchPage() {
                   return (
                     <ListRow key={episode.episodeId} onClick={() => navigate(`/tv/${episode.seriesId}`)}>
                       <ListNameCell name={code(episode)} sub={episode.title ?? "Episode title pending"} />
-                      <ListCell primary={episode.airDateUtc ? formatDate(episode.airDateUtc) : "Not announced"} />
-                      <ListCell primary={episode.lastSearchUtc ? formatDateTime(episode.lastSearchUtc) : "Never"} />
-                      <ListCell primary={episode.nextEligibleSearchUtc ? formatDateTime(episode.nextEligibleSearchUtc) : "Any time"} />
+                      <ListCell primary={episode.airDateUtc ? formatShortDate(episode.airDateUtc, { ...preferences, showRelativeDates: false }) : "Not announced"} />
+                      <ListCell primary={episode.lastSearchUtc ? formatPreferenceDateTime(episode.lastSearchUtc, preferences) : "Never"} />
+                      <ListCell primary={episode.nextEligibleSearchUtc ? formatPreferenceDateTime(episode.nextEligibleSearchUtc, preferences) : "Any time"} />
                       <ListCell>
                         {/* An episode is a title. Same five marks (DESIGN-001). */}
                         <TitleMarkLabel item={{ monitored: episode.monitored, wantedStatus: episode.wantedStatus }} type="show" />
@@ -275,17 +276,4 @@ export function EpisodeSearchPage() {
 
 function code(episode: WantedEpisode) {
   return `S${String(episode.seasonNumber).padStart(2, "0")}E${String(episode.episodeNumber).padStart(2, "0")}`;
-}
-
-function formatDate(value: string) {
-  return new Intl.DateTimeFormat(undefined, { day: "numeric", month: "short", year: "numeric" }).format(new Date(value));
-}
-
-function formatDateTime(value: string) {
-  return new Intl.DateTimeFormat(undefined, {
-    month: "short",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit"
-  }).format(new Date(value));
 }

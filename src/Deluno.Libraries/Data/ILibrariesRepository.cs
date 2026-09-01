@@ -10,6 +10,13 @@ public interface ILibrariesRepository : ILibrarySubtitlePreferences
 
     Task<IReadOnlyList<LibraryViewItem>> ListLibraryViewsAsync(string userId, string variant, CancellationToken cancellationToken);
 
+    /// <summary>
+    /// The single-user worker view of saved filters that opted into an existing
+    /// library automation cycle. This intentionally returns only actionable
+    /// views, so the worker never needs to know a user identity.
+    /// </summary>
+    Task<IReadOnlyList<LibraryViewItem>> ListAutomatedLibraryViewsAsync(CancellationToken cancellationToken);
+
     Task<DestinationRuleItem> CreateDestinationRuleAsync(
         CreateDestinationRuleRequest request,
         CancellationToken cancellationToken);

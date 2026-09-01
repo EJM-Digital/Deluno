@@ -1,8 +1,10 @@
 using System.Data.Common;
 using System.Globalization;
+using System.Text.Json;
 using Deluno.Contracts;
 using Deluno.Infrastructure.Storage;
 using Deluno.Quality;
+using Deluno.Quality.ReleasePreferences;
 using static Deluno.Infrastructure.Storage.SqliteRecordHelpers;
 
 namespace Deluno.Media;
@@ -19,11 +21,18 @@ public sealed class SqliteMediaStateRepository(
     IDelunoDatabaseConnectionFactory databaseConnectionFactory,
     TimeProvider timeProvider) : IMediaStateRepository
 {
+    private static readonly JsonSerializerOptions PreferenceJsonOptions =
+        new(JsonSerializerDefaults.Web)
+        {
+            WriteIndented = false
+        };
+
     public async Task<MediaWantedSummary> GetWantedSummaryAsync(
         MediaKind kind,
         CancellationToken cancellationToken)
     {
         var map = MediaTableMap.For(kind);
+        var availabilityColumn = AvailabilityColumn(kind, map.EntryAlias);
         var items = new List<MediaWantedItem>();
         var totalWanted = 0;
         var missingCount = 0;
@@ -64,7 +73,9 @@ public sealed class SqliteMediaStateRepository(
                 {map.EntryAlias}.id, {map.EntryAlias}.title, {map.EntryAlias}.{map.YearColumn}, {map.EntryAlias}.imdb_id,
                 w.library_id, w.wanted_status, w.wanted_reason, w.has_file, w.current_quality, w.target_quality,
                 w.quality_cutoff_met, w.missing_since_utc, w.last_search_utc, w.next_eligible_search_utc,
-                w.last_search_result, w.prevent_lower_quality_replacements, w.quality_delta_last_decision, w.updated_utc
+                w.last_search_result, w.prevent_lower_quality_replacements, w.quality_delta_last_decision, w.updated_utc,
+                {availabilityColumn} AS available_utc,
+                w.file_path, w.file_size_bytes
             FROM {map.WantedTable} w
             INNER JOIN {map.EntryTable} {map.EntryAlias} ON {map.EntryAlias}.id = w.{map.WantedMediaIdColumn}
             ORDER BY w.updated_utc DESC, {map.EntryAlias}.title ASC
@@ -95,6 +106,7 @@ public sealed class SqliteMediaStateRepository(
         }
 
         var map = MediaTableMap.For(kind);
+        var availabilityColumn = AvailabilityColumn(kind, map.EntryAlias);
         await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
             map.DatabaseName,
             cancellationToken);
@@ -115,7 +127,9 @@ public sealed class SqliteMediaStateRepository(
                     {map.EntryAlias}.id, {map.EntryAlias}.title, {map.EntryAlias}.{map.YearColumn}, {map.EntryAlias}.imdb_id,
                     w.library_id, w.wanted_status, w.wanted_reason, w.has_file, w.current_quality, w.target_quality,
                     w.quality_cutoff_met, w.missing_since_utc, w.last_search_utc, w.next_eligible_search_utc,
-                    w.last_search_result, w.prevent_lower_quality_replacements, w.quality_delta_last_decision, w.updated_utc
+                    w.last_search_result, w.prevent_lower_quality_replacements, w.quality_delta_last_decision, w.updated_utc,
+                    {availabilityColumn} AS available_utc,
+                    w.file_path, w.file_size_bytes
                 FROM {map.WantedTable} w
                 INNER JOIN {map.EntryTable} {map.EntryAlias} ON {map.EntryAlias}.id = w.{map.WantedMediaIdColumn}
                 WHERE w.{map.WantedMediaIdColumn} IN ({string.Join(", ", parameters)})
@@ -139,9 +153,11 @@ public sealed class SqliteMediaStateRepository(
         DateTimeOffset now,
         bool ignoreRetryWindow,
         CancellationToken cancellationToken,
-        string? wantedStatus = null)
+        string? wantedStatus = null,
+        CatalogueFilters? filters = null)
     {
         var map = MediaTableMap.For(kind);
+        var availabilityColumn = AvailabilityColumn(kind, map.EntryAlias);
         await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
             map.DatabaseName,
             cancellationToken);
@@ -183,6 +199,8 @@ public sealed class SqliteMediaStateRepository(
         var statusFilter = string.IsNullOrWhiteSpace(wantedStatus)
             ? $"AND (w.wanted_status IN ({searchable}) {stuckDownload})"
             : "AND w.wanted_status = @wantedStatus";
+        var customFilterSql = CatalogueKeyset.CustomFilters(filters, kind, map.EntryAlias, map.YearColumn);
+        var customFilter = string.IsNullOrWhiteSpace(customFilterSql) ? string.Empty : $"AND {customFilterSql}";
 
         using var command = connection.CreateCommand();
         command.CommandText = $"""
@@ -190,7 +208,9 @@ public sealed class SqliteMediaStateRepository(
                 {map.EntryAlias}.id, {map.EntryAlias}.title, {map.EntryAlias}.{map.YearColumn}, {map.EntryAlias}.imdb_id,
                 w.library_id, w.wanted_status, w.wanted_reason, w.has_file, w.current_quality, w.target_quality,
                 w.quality_cutoff_met, w.missing_since_utc, w.last_search_utc, w.next_eligible_search_utc,
-                w.last_search_result, w.prevent_lower_quality_replacements, w.quality_delta_last_decision, w.updated_utc
+                w.last_search_result, w.prevent_lower_quality_replacements, w.quality_delta_last_decision, w.updated_utc,
+                {availabilityColumn} AS available_utc,
+                w.file_path, w.file_size_bytes
             FROM {map.WantedTable} w
             INNER JOIN {map.EntryTable} {map.EntryAlias} ON {map.EntryAlias}.id = w.{map.WantedMediaIdColumn}
             WHERE w.library_id = @libraryId
@@ -198,6 +218,7 @@ public sealed class SqliteMediaStateRepository(
               {monitored}
               {retry}
               {availability}
+              {customFilter}
             ORDER BY
                 CASE w.wanted_status WHEN 'missing' THEN 0 ELSE 1 END,
                 COALESCE(w.last_search_utc, w.missing_since_utc, w.updated_utc) ASC,
@@ -214,6 +235,7 @@ public sealed class SqliteMediaStateRepository(
         {
             AddParameter(command, "@wantedStatus", WantedStatuses.Normalize(wantedStatus));
         }
+        CatalogueKeyset.BindCustomFilters(command, filters, kind, now);
 
         var items = new List<MediaWantedItem>();
         using var reader = await command.ExecuteReaderAsync(cancellationToken);
@@ -688,33 +710,89 @@ public sealed class SqliteMediaStateRepository(
     /// <summary>
     /// What the media probe still owes.
     ///
-    /// <para>A file qualifies when it has never been read, or when its size no
-    /// longer matches the size recorded at the last read — a repack or an
-    /// upgrade that reused the path. Ordered oldest-first so a large library
-    /// works through evenly rather than re-reading the same slice.</para>
+    /// <para>A file qualifies when it has never been read, when its size no
+    /// longer matches the size recorded at the last read, or when that exact
+    /// path/size has no installed preference snapshot for the library's
+    /// expected immutable plan id, version and hash. The last case repairs
+    /// libraries whose files were probed before typed preference snapshots
+    /// existed, and re-evaluates them when their plan changes; otherwise those
+    /// files would be marked read forever while every automatic replacement
+    /// remained held for a missing or stale baseline.</para>
     /// </summary>
     public async Task<IReadOnlyList<MediaFileProbeCandidate>> ListFileProbeCandidatesAsync(
         MediaKind kind,
         int take,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        IReadOnlyList<MediaPreferencePlanExpectation>? preferencePlans = null)
     {
         var map = MediaTableMap.For(kind);
         await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
             map.DatabaseName,
             cancellationToken);
 
+        var expectations = (preferencePlans ?? [])
+            .Where(item => !string.IsNullOrWhiteSpace(item.LibraryId)
+                && !string.IsNullOrWhiteSpace(item.PlanId)
+                && !string.IsNullOrWhiteSpace(item.PlanVersion)
+                && !string.IsNullOrWhiteSpace(item.PlanHash))
+            .GroupBy(item => item.LibraryId, StringComparer.OrdinalIgnoreCase)
+            .Select(group => group.First())
+            .ToArray();
+
+        // A show's wanted row carries a representative file for list-level
+        // presentation, not the complete set of files that make up the show.
+        // Replacement authority is deliberately episode-owned, so using that
+        // representative row here left every other installed episode without
+        // a current-plan snapshot. Keep movies on the shared title query and
+        // make TV's probe queue explicitly episode-file scoped.
+        if (kind == MediaKind.Series)
+        {
+            return await ListSeriesFileProbeCandidatesAsync(
+                connection,
+                take,
+                cancellationToken,
+                expectations);
+        }
+
+        var planRepairClauses = expectations
+            .Select((_, index) => $"""
+                (w.library_id = @planLibrary{index}
+                 AND NOT EXISTS (
+                     SELECT 1
+                     FROM {map.PreferenceEvaluationTable} p
+                     WHERE p.media_id = w.{map.WantedMediaIdColumn}
+                       AND p.library_id = w.library_id
+                       AND p.file_path = w.file_path
+                       AND p.file_size_bytes IS w.file_size_bytes
+                       AND p.plan_id = @planId{index}
+                       AND p.plan_version = @planVersion{index}
+                       AND p.plan_hash = @planHash{index}))
+                """)
+            .ToArray();
+        var planRepair = planRepairClauses.Length == 0
+            ? string.Empty
+            : $"OR ({string.Join(" OR ", planRepairClauses)})";
+
         using var command = connection.CreateCommand();
         command.CommandText = $"""
-            SELECT {map.WantedMediaIdColumn}, file_path, file_size_bytes
-            FROM {map.WantedTable}
-            WHERE has_file = 1
-              AND file_path IS NOT NULL
-              AND (facts_probed_utc IS NULL
-                   OR facts_probed_size_bytes IS NOT file_size_bytes)
-            ORDER BY facts_probed_utc IS NOT NULL, facts_probed_utc
+            SELECT w.{map.WantedMediaIdColumn}, w.library_id, w.file_path, w.file_size_bytes
+            FROM {map.WantedTable} w
+            WHERE w.has_file = 1
+              AND w.file_path IS NOT NULL
+              AND (w.facts_probed_utc IS NULL
+                   OR w.facts_probed_size_bytes IS NOT w.file_size_bytes
+                   {planRepair})
+            ORDER BY w.facts_probed_utc IS NOT NULL, w.facts_probed_utc
             LIMIT @take;
             """;
         AddParameter(command, "@take", take);
+        for (var index = 0; index < expectations.Length; index++)
+        {
+            AddParameter(command, $"@planLibrary{index}", expectations[index].LibraryId);
+            AddParameter(command, $"@planId{index}", expectations[index].PlanId);
+            AddParameter(command, $"@planVersion{index}", expectations[index].PlanVersion);
+            AddParameter(command, $"@planHash{index}", expectations[index].PlanHash);
+        }
 
         var candidates = new List<MediaFileProbeCandidate>();
         using var reader = await command.ExecuteReaderAsync(cancellationToken);
@@ -722,8 +800,74 @@ public sealed class SqliteMediaStateRepository(
         {
             candidates.Add(new MediaFileProbeCandidate(
                 reader.GetString(0),
-                reader.GetString(1),
-                reader.IsDBNull(2) ? null : reader.GetInt64(2)));
+                reader.GetString(2),
+                reader.IsDBNull(3) ? null : reader.GetInt64(3),
+                reader.IsDBNull(1) ? null : reader.GetString(1)));
+        }
+
+        return candidates;
+    }
+
+    private static async Task<IReadOnlyList<MediaFileProbeCandidate>> ListSeriesFileProbeCandidatesAsync(
+        DbConnection connection,
+        int take,
+        CancellationToken cancellationToken,
+        IReadOnlyList<MediaPreferencePlanExpectation> expectations)
+    {
+        var planRepairClauses = expectations
+            .Select((_, index) => $"""
+                (w.library_id = @planLibrary{index}
+                 AND NOT EXISTS (
+                     SELECT 1
+                     FROM media_preference_evaluations p
+                     WHERE p.media_id = e.series_id
+                       AND p.library_id = w.library_id
+                       AND p.file_path = e.file_path
+                       AND p.file_size_bytes IS e.file_size_bytes
+                       AND p.plan_id = @planId{index}
+                       AND p.plan_version = @planVersion{index}
+                       AND p.plan_hash = @planHash{index}))
+                """)
+            .ToArray();
+        var planRepair = planRepairClauses.Length == 0
+            ? string.Empty
+            : $"OR ({string.Join(" OR ", planRepairClauses)})";
+
+        using var command = connection.CreateCommand();
+        command.CommandText = $"""
+            SELECT e.series_id, w.library_id, e.file_path, e.file_size_bytes
+            FROM episode_entries e
+            INNER JOIN episode_wanted_state w ON w.episode_id = e.id
+            WHERE e.has_file = 1
+              AND e.file_path IS NOT NULL
+              AND (e.facts_probed_utc IS NULL
+                   OR e.facts_probed_size_bytes IS NOT e.file_size_bytes
+                   {planRepair})
+            ORDER BY e.facts_probed_utc IS NOT NULL,
+                     e.facts_probed_utc,
+                     e.series_id,
+                     e.season_number,
+                     e.episode_number
+            LIMIT @take;
+            """;
+        AddParameter(command, "@take", take);
+        for (var index = 0; index < expectations.Count; index++)
+        {
+            AddParameter(command, $"@planLibrary{index}", expectations[index].LibraryId);
+            AddParameter(command, $"@planId{index}", expectations[index].PlanId);
+            AddParameter(command, $"@planVersion{index}", expectations[index].PlanVersion);
+            AddParameter(command, $"@planHash{index}", expectations[index].PlanHash);
+        }
+
+        var candidates = new List<MediaFileProbeCandidate>();
+        using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            candidates.Add(new MediaFileProbeCandidate(
+                reader.GetString(0),
+                reader.GetString(2),
+                reader.IsDBNull(3) ? null : reader.GetInt64(3),
+                reader.IsDBNull(1) ? null : reader.GetString(1)));
         }
 
         return candidates;
@@ -747,7 +891,8 @@ public sealed class SqliteMediaStateRepository(
         string mediaId,
         string filePath,
         ProbedFileFacts facts,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        string? libraryId = null)
     {
         var map = MediaTableMap.For(kind);
         await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
@@ -755,6 +900,34 @@ public sealed class SqliteMediaStateRepository(
             cancellationToken);
 
         using var command = connection.CreateCommand();
+        if (kind == MediaKind.Series)
+        {
+            // The stream facts feed the file's immutable snapshot below. The
+            // series-level wanted row has only a representative path, so its
+            // probe stamp cannot stand in for the installed episode files.
+            command.CommandText = """
+                UPDATE episode_entries
+                SET facts_probed_utc = @updatedUtc,
+                    facts_probed_size_bytes = file_size_bytes,
+                    updated_utc = @updatedUtc
+                WHERE series_id = @mediaId
+                  AND file_path = @filePath
+                  AND (@libraryId IS NULL OR EXISTS (
+                      SELECT 1
+                      FROM episode_wanted_state w
+                      WHERE w.episode_id = episode_entries.id
+                        AND w.library_id = @libraryId));
+                """;
+
+            AddParameter(command, "@mediaId", mediaId);
+            AddParameter(command, "@filePath", filePath);
+            AddParameter(command, "@updatedUtc", timeProvider.GetUtcNow().ToString("O"));
+            AddParameter(command, "@libraryId", NormalizeText(libraryId));
+
+            await command.ExecuteNonQueryAsync(cancellationToken);
+            return;
+        }
+
         command.CommandText = $"""
             UPDATE {map.WantedTable}
             SET video_codec = COALESCE(@videoCodec, video_codec),
@@ -768,7 +941,8 @@ public sealed class SqliteMediaStateRepository(
                 facts_probed_size_bytes = file_size_bytes,
                 updated_utc = @updatedUtc
             WHERE {map.WantedMediaIdColumn} = @mediaId
-              AND file_path = @filePath;
+              AND file_path = @filePath
+              AND (@libraryId IS NULL OR library_id = @libraryId);
             """;
 
         AddParameter(command, "@mediaId", mediaId);
@@ -777,8 +951,99 @@ public sealed class SqliteMediaStateRepository(
         AddParameter(command, "@audioCodec", NormalizeText(facts.AudioCodec));
         AddParameter(command, "@audioChannels", NormalizeText(facts.AudioChannels));
         AddParameter(command, "@updatedUtc", timeProvider.GetUtcNow().ToString("O"));
+        AddParameter(command, "@libraryId", NormalizeText(libraryId));
 
         await command.ExecuteNonQueryAsync(cancellationToken);
+    }
+
+    public async Task SavePreferenceEvaluationSnapshotAsync(
+        MediaKind kind,
+        PreferenceEvaluationSnapshot snapshot,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(snapshot);
+        ValidatePreferenceSnapshot(snapshot);
+
+        var map = MediaTableMap.For(kind);
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            map.DatabaseName,
+            cancellationToken);
+        await PersistPreferenceEvaluationSnapshotAsync(connection, null, map, snapshot, cancellationToken);
+    }
+
+    public async Task<PreferenceEvaluationSnapshot?> GetLatestPreferenceEvaluationSnapshotAsync(
+        MediaKind kind,
+        string mediaId,
+        string? libraryId,
+        string? fileIdentity,
+        CancellationToken cancellationToken,
+        string? filePath = null,
+        long? fileSizeBytes = null)
+    {
+        var map = MediaTableMap.For(kind);
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            map.DatabaseName,
+            cancellationToken);
+
+        using var command = connection.CreateCommand();
+        command.CommandText = $"""
+            SELECT media_id, library_id, file_identity, file_path, file_size_bytes,
+                   plan_id, plan_version, plan_hash, facts_json, evaluation_json,
+                   matched_rule_ids_json, evaluated_utc, source
+            FROM {map.PreferenceEvaluationTable}
+            WHERE media_id = @mediaId
+              AND library_id = @libraryId
+              AND (@fileIdentity IS NULL OR file_identity = @fileIdentity)
+              AND (@filePath IS NULL OR file_path = @filePath)
+              AND (@fileSizeBytes IS NULL OR file_size_bytes = @fileSizeBytes)
+            ORDER BY evaluated_utc DESC, id DESC
+            LIMIT 1;
+            """;
+        AddParameter(command, "@mediaId", mediaId);
+        AddParameter(command, "@libraryId", libraryId?.Trim() ?? string.Empty);
+        AddParameter(command, "@fileIdentity", string.IsNullOrWhiteSpace(fileIdentity) ? null : fileIdentity.Trim());
+        AddParameter(command, "@filePath", string.IsNullOrWhiteSpace(filePath) ? null : filePath.Trim());
+        AddParameter(command, "@fileSizeBytes", fileSizeBytes);
+
+        using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        if (!await reader.ReadAsync(cancellationToken))
+        {
+            return null;
+        }
+
+        try
+        {
+            var facts = JsonSerializer.Deserialize<List<PreferenceFact>>(reader.GetString(8), PreferenceJsonOptions) ?? [];
+            var evaluation = JsonSerializer.Deserialize<PreferenceEvaluation>(reader.GetString(9), PreferenceJsonOptions);
+            var matchedRuleIds = JsonSerializer.Deserialize<List<string>>(reader.GetString(10), PreferenceJsonOptions) ?? [];
+            if (evaluation is null)
+            {
+                return null;
+            }
+
+            return new PreferenceEvaluationSnapshot(
+                MediaId: reader.GetString(0),
+                LibraryId: EmptyToNull(reader.GetString(1)),
+                FileIdentity: reader.GetString(2),
+                FilePath: reader.IsDBNull(3) ? null : reader.GetString(3),
+                FileSizeBytes: reader.IsDBNull(4) ? null : reader.GetInt64(4),
+                PlanId: reader.GetString(5),
+                PlanVersion: reader.GetString(6),
+                PlanHash: reader.GetString(7),
+                Facts: facts,
+                Evaluation: evaluation,
+                MatchedRuleIds: matchedRuleIds,
+                EvaluatedUtc: ParseTimestamp(reader.GetString(11)),
+                Source: reader.IsDBNull(12) ? null : reader.GetString(12));
+        }
+        catch (JsonException)
+        {
+            // A malformed snapshot cannot safely become a current-file
+            // baseline. The caller receives no baseline and the ordinary
+            // probe/re-evaluation path can repair it without blocking the
+            // catalogue detail surface.
+            return null;
+        }
     }
 
     public async Task<bool> UpdateMetadataAsync(
@@ -796,6 +1061,8 @@ public sealed class SqliteMediaStateRepository(
         command.CommandText = $"""
             UPDATE {map.EntryTable}
             SET
+                title = COALESCE(@title, title),
+                {map.YearColumn} = COALESCE(@year, {map.YearColumn}),
                 imdb_id = COALESCE(@imdbId, imdb_id),
                 metadata_provider = @metadataProvider,
                 metadata_provider_id = @metadataProviderId,
@@ -826,6 +1093,8 @@ public sealed class SqliteMediaStateRepository(
             """;
 
         AddParameter(command, "@id", update.Id);
+        AddParameter(command, "@title", NormalizeText(update.Title));
+        AddParameter(command, "@year", update.Year);
         AddParameter(command, "@runtimeMinutes", update.RuntimeMinutes);
         AddParameter(command, "@popularity", update.Popularity);
         AddParameter(command, "@voteCount", update.VoteCount);
@@ -1080,8 +1349,113 @@ public sealed class SqliteMediaStateRepository(
         AddParameter(wanted, "@releaseGroup", fileFacts.ReleaseGroup);
         await wanted.ExecuteNonQueryAsync(cancellationToken);
 
+        var preferenceEvaluations = new List<PreferenceEvaluationSnapshot>();
+        if (request.PreferenceEvaluation is { } preferenceEvaluation)
+        {
+            preferenceEvaluations.Add(preferenceEvaluation);
+        }
+        if (request.PreferenceEvaluations is { Count: > 0 })
+        {
+            preferenceEvaluations.AddRange(request.PreferenceEvaluations);
+        }
+
+        // A TV pack is one catalogue update for several independently
+        // addressable files. Persist all of its file-scoped evaluations on
+        // this same transaction, rather than leaving every file but the first
+        // one to be repaired by a later probe pass.
+        foreach (var evaluationSnapshot in preferenceEvaluations)
+        {
+            var normalizedSnapshot = string.IsNullOrWhiteSpace(evaluationSnapshot.MediaId)
+                ? evaluationSnapshot with { MediaId = mediaId }
+                : evaluationSnapshot;
+            ValidatePreferenceSnapshot(normalizedSnapshot with { MediaId = mediaId });
+            await PersistPreferenceEvaluationSnapshotAsync(
+                connection,
+                transaction,
+                map,
+                normalizedSnapshot with { MediaId = mediaId },
+                cancellationToken);
+        }
+
         return new MediaImportResult(mediaId, created);
     }
+
+    private async Task PersistPreferenceEvaluationSnapshotAsync(
+        DbConnection connection,
+        DbTransaction? transaction,
+        MediaTableMap map,
+        PreferenceEvaluationSnapshot snapshot,
+        CancellationToken cancellationToken)
+    {
+        var canonicalJson = ReleasePreferenceSnapshotCodec.Serialize(snapshot);
+        var canonical = ReleasePreferenceSnapshotCodec.Deserialize(canonicalJson);
+        var factsJson = JsonSerializer.Serialize(canonical.Facts, PreferenceJsonOptions);
+        var evaluationJson = JsonSerializer.Serialize(canonical.Evaluation, PreferenceJsonOptions);
+        var matchedRuleIdsJson = JsonSerializer.Serialize(canonical.MatchedRuleIds, PreferenceJsonOptions);
+        var now = timeProvider.GetUtcNow().ToString("O");
+
+        using var command = connection.CreateCommand();
+        command.Transaction = transaction;
+        command.CommandText = $"""
+            INSERT INTO {map.PreferenceEvaluationTable} (
+                id, media_id, library_id, file_identity, file_path, file_size_bytes,
+                plan_id, plan_version, plan_hash, facts_json, evaluation_json,
+                matched_rule_ids_json, evaluated_utc, source, created_utc, updated_utc
+            )
+            VALUES (
+                @id, @mediaId, @libraryId, @fileIdentity, @filePath, @fileSizeBytes,
+                @planId, @planVersion, @planHash, @factsJson, @evaluationJson,
+                @matchedRuleIdsJson, @evaluatedUtc, @source, @createdUtc, @updatedUtc
+            )
+            ON CONFLICT(media_id, library_id, file_identity, plan_hash) DO UPDATE SET
+                file_path = excluded.file_path,
+                file_size_bytes = excluded.file_size_bytes,
+                plan_id = excluded.plan_id,
+                plan_version = excluded.plan_version,
+                facts_json = excluded.facts_json,
+                evaluation_json = excluded.evaluation_json,
+                matched_rule_ids_json = excluded.matched_rule_ids_json,
+                evaluated_utc = excluded.evaluated_utc,
+                source = excluded.source,
+                updated_utc = excluded.updated_utc;
+            """;
+        AddParameter(command, "@id", Guid.CreateVersion7().ToString("N"));
+        AddParameter(command, "@mediaId", snapshot.MediaId);
+        AddParameter(command, "@libraryId", snapshot.LibraryId?.Trim() ?? string.Empty);
+        AddParameter(command, "@fileIdentity", snapshot.FileIdentity.Trim());
+        AddParameter(command, "@filePath", snapshot.FilePath);
+        AddParameter(command, "@fileSizeBytes", snapshot.FileSizeBytes);
+        AddParameter(command, "@planId", snapshot.PlanId);
+        AddParameter(command, "@planVersion", snapshot.PlanVersion);
+        AddParameter(command, "@planHash", snapshot.PlanHash);
+        AddParameter(command, "@factsJson", factsJson);
+        AddParameter(command, "@evaluationJson", evaluationJson);
+        AddParameter(command, "@matchedRuleIdsJson", matchedRuleIdsJson);
+        AddParameter(command, "@evaluatedUtc", snapshot.EvaluatedUtc.ToUniversalTime().ToString("O"));
+        AddParameter(command, "@source", snapshot.Source);
+        AddParameter(command, "@createdUtc", now);
+        AddParameter(command, "@updatedUtc", now);
+        await command.ExecuteNonQueryAsync(cancellationToken);
+    }
+
+    private static void ValidatePreferenceSnapshot(PreferenceEvaluationSnapshot snapshot)
+    {
+        if (string.IsNullOrWhiteSpace(snapshot.MediaId))
+            throw new ArgumentException("Preference snapshot media id is required.", nameof(snapshot));
+        if (string.IsNullOrWhiteSpace(snapshot.FileIdentity))
+            throw new ArgumentException("Preference snapshot file identity is required.", nameof(snapshot));
+        if (string.IsNullOrWhiteSpace(snapshot.PlanId)
+            || string.IsNullOrWhiteSpace(snapshot.PlanVersion)
+            || string.IsNullOrWhiteSpace(snapshot.PlanHash))
+            throw new ArgumentException("Preference snapshot plan identity is incomplete.", nameof(snapshot));
+        if (!string.Equals(snapshot.Evaluation.PlanId, snapshot.PlanId, StringComparison.Ordinal)
+            || !string.Equals(snapshot.Evaluation.PlanVersion, snapshot.PlanVersion, StringComparison.Ordinal)
+            || !string.Equals(snapshot.Evaluation.PlanHash, snapshot.PlanHash, StringComparison.Ordinal))
+            throw new ArgumentException("Preference snapshot evaluation and plan identities must match.", nameof(snapshot));
+    }
+
+    private static string? EmptyToNull(string? value)
+        => string.IsNullOrWhiteSpace(value) ? null : value;
 
     public async IAsyncEnumerable<MediaTrackedFileItem> StreamTrackedFilesAsync(
         MediaKind kind,
@@ -1135,6 +1509,7 @@ public sealed class SqliteMediaStateRepository(
         CancellationToken cancellationToken)
     {
         var map = MediaTableMap.For(kind);
+        var availabilityColumn = AvailabilityColumn(kind, map.EntryAlias);
         await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
             map.DatabaseName,
             cancellationToken);
@@ -1172,7 +1547,8 @@ public sealed class SqliteMediaStateRepository(
                 {map.EntryAlias}.primary_audio_channels,
                 {map.EntryAlias}.primary_release_group,
                 {map.EntryAlias}.runtime_minutes,
-            {CatalogueWantedState.PageColumns}
+                {CatalogueWantedState.PageColumns}
+                , {availabilityColumn} AS available_utc
             FROM {map.EntryTable} {map.EntryAlias}
             {CatalogueWantedState.Join(map.EntryAlias, map.WantedTable, map.WantedMediaIdColumn, scopedToLibrary: false)}
             WHERE {map.EntryAlias}.id = @id
@@ -1186,9 +1562,8 @@ public sealed class SqliteMediaStateRepository(
             return null;
         }
 
-        // Ordinal 19 is the current quality, 20..26 are the file's own facts, and
-        // the search-state columns follow, in the order
-        // CatalogueWantedState.PageColumns declares.
+        // Ordinal 19 is the current quality, 20..26 are the file's own facts,
+        // 27..33 are the search-state columns, and 34 is the availability date.
         var wanted = CatalogueWantedState.Read(reader, 27);
 
         return new MediaEntryDetails(
@@ -1225,7 +1600,8 @@ public sealed class SqliteMediaStateRepository(
             AudioCodec: ReadNullableString(reader, 23),
             AudioChannels: ReadNullableString(reader, 24),
             ReleaseGroup: ReadNullableString(reader, 25),
-            RuntimeMinutes: ReadNullableInt(reader, 26));
+            RuntimeMinutes: ReadNullableInt(reader, 26),
+            AvailableUtc: ReadAvailableUtc(reader, 34, kind));
     }
 
     public async Task<MediaDailyMetrics> GetDailyMetricsAsync(
@@ -1322,7 +1698,40 @@ public sealed class SqliteMediaStateRepository(
             reader.IsDBNull(14) ? null : reader.GetString(14),
             reader.GetInt64(15) == 1,
             reader.IsDBNull(16) ? null : reader.GetInt32(16),
-            ParseTimestamp(reader.GetString(17)));
+            ParseTimestamp(reader.GetString(17)),
+            ReadAvailableUtc(reader, 18, null),
+            reader.FieldCount > 19 ? ReadNullableString(reader, 19) : null,
+            reader.FieldCount > 20 && !reader.IsDBNull(20) ? reader.GetInt64(20) : null);
+
+    private static string AvailabilityColumn(MediaKind kind, string alias)
+        => kind == MediaKind.Movie
+            ? $"COALESCE({alias}.digital_release_date, {alias}.physical_release_date, {alias}.in_cinemas_date)"
+            : $"(SELECT MIN(ep.air_date_utc) FROM episode_entries ep WHERE ep.series_id = {alias}.id)";
+
+    private static DateTimeOffset? ReadAvailableUtc(
+        DbDataReader reader,
+        int ordinal,
+        MediaKind? kind)
+    {
+        if (reader.IsDBNull(ordinal))
+        {
+            return null;
+        }
+
+        var raw = reader.GetString(ordinal);
+        if (kind == MediaKind.Movie && DateOnly.TryParse(raw, CultureInfo.InvariantCulture, DateTimeStyles.None, out var date))
+        {
+            return new DateTimeOffset(date.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc));
+        }
+
+        return DateTimeOffset.TryParse(
+            raw,
+            CultureInfo.InvariantCulture,
+            DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal,
+            out var timestamp)
+            ? timestamp
+            : null;
+    }
 
     private static string? ReadNullableString(DbDataReader reader, int ordinal)
         => reader.IsDBNull(ordinal) ? null : reader.GetString(ordinal);

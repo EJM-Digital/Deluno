@@ -6,6 +6,7 @@ using Deluno.Jobs.Data;
 using Deluno.Jobs.Decisions;
 using Deluno.Libraries.Data;
 using Deluno.Platform.Data;
+using Deluno.Platform.Contracts;
 using Deluno.Quality.Data;
 using Deluno.Quality;
 
@@ -20,10 +21,11 @@ public sealed record MediaSearchResult(
     string? IndexerName,
     string? DispatchStatus,
     string? DispatchMessage,
-    IReadOnlyList<MediaSearchCandidate> Candidates)
+    IReadOnlyList<MediaSearchCandidate> Candidates,
+    IReadOnlyList<IntegrationFailure>? Failures = null)
 {
     public static MediaSearchResult NotFoundResult()
-        => new(true, string.Empty, string.Empty, string.Empty, null, null, null, null, []);
+        => new(true, string.Empty, string.Empty, string.Empty, null, null, null, null, [], []);
 }
 
 /// <summary>
@@ -46,7 +48,9 @@ public static class MediaSearchHandler
         IActivityFeedRepository activityFeedRepository,
         TimeProvider timeProvider,
         RecordMediaSearchAttemptAsync recordSearchAttemptAsync,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        IMediaTagStore? mediaTagStore = null,
+        IReleasePreferencePlanRepository? releasePreferencePlanRepository = null)
     {
         var item = await mediaStateRepository.GetByIdAsync(kind, id, cancellationToken);
         if (item is null)
@@ -56,8 +60,8 @@ public static class MediaSearchHandler
 
         var entityType = kind == MediaKind.Movie ? "movie" : "series";
         var mediaType = kind == MediaKind.Movie ? "movies" : "tv";
-        var wanted = await mediaStateRepository.GetWantedSummaryAsync(kind, cancellationToken);
-        var wantedItem = wanted.RecentItems.FirstOrDefault(candidate => candidate.Id == id);
+        var wantedItem = (await mediaStateRepository.ListWantedByIdsAsync(kind, [id], cancellationToken))
+            .FirstOrDefault(candidate => candidate.Id == id);
         if (wantedItem is null || string.IsNullOrWhiteSpace(wantedItem.LibraryId))
         {
             return BlockedResult(
@@ -84,6 +88,31 @@ public static class MediaSearchHandler
             qualityRepository,
             library.QualityProfileId,
             cancellationToken);
+        var upgradeUntilCutoff = await QualityProfileResolver.ResolveUpgradeUntilCutoffAsync(
+            qualityRepository,
+            library.QualityProfileId,
+            cancellationToken);
+        var preferencePlan = await QualityProfileResolver.ResolveReleasePreferencePlanAsync(
+            qualityRepository,
+            releasePreferencePlanRepository,
+            library.QualityProfileId,
+            cancellationToken,
+            customFormats);
+        var currentPreferenceEvaluation = wantedItem.HasFile
+            ? await mediaStateRepository.GetLatestPreferenceEvaluationSnapshotAsync(
+                kind,
+                item.Id,
+                library.Id,
+                 fileIdentity: null,
+                 cancellationToken,
+                 filePath: wantedItem.FilePath,
+                 fileSizeBytes: wantedItem.FileSizeBytes)
+            : null;
+        var tagNames = mediaTagStore is null
+            ? []
+            : (await mediaTagStore.ListAsync(kind, item.Id, cancellationToken))
+                .Select(tag => tag.Name)
+                .ToArray();
         var decisionPlan = await acquisitionPipeline.PlanAsync(
             new AcquisitionDecisionRequest(
                 item.Title,
@@ -95,11 +124,20 @@ public static class MediaSearchHandler
                 routing?.DownloadClients ?? [],
                 customFormats,
                 PreviewOnly: string.Equals(mode, "preview", StringComparison.OrdinalIgnoreCase),
-                AllowedQualities: allowedQualities),
+                AllowedQualities: allowedQualities,
+                TagNames: tagNames,
+                SearchKind: AcquisitionSearchKinds.Interactive,
+                AvailableUtc: item.AvailableUtc,
+                CurrentFilePresent: wantedItem.HasFile,
+                CurrentReleaseName: wantedItem.FilePath,
+                UpgradeUntilCutoff: upgradeUntilCutoff,
+                PreferencePlan: preferencePlan,
+                CurrentPreferenceEvaluation: currentPreferenceEvaluation),
             cancellationToken);
         var searchPlan = decisionPlan.SearchPlan;
         var bestCandidate = searchPlan.BestCandidate;
         var outcome = decisionPlan.Outcome;
+        var failures = (searchPlan.Failures ?? []).ToList();
         DownloadClientGrabResult? grabResult = null;
 
         if (decisionPlan.ShouldDispatch
@@ -114,10 +152,23 @@ public static class MediaSearchHandler
                     false,
                     "planned",
                     "No download URL was available.")
+                {
+                    Failure = IntegrationFailureFactory.FromLegacy(
+                        "download-client",
+                        downloadClient.DownloadClientId,
+                        downloadClient.DownloadClientName,
+                        "grab",
+                        "planned",
+                        "No downloadable URL was available for this release.")
+                }
                 : await downloadClientGrabService.GrabAsync(
                     downloadClient.DownloadClientId,
                     decisionPlan.DispatchRequest,
                     cancellationToken);
+            if (grabResult.Failure is { } dispatchFailure)
+            {
+                failures.Add(dispatchFailure);
+            }
             await jobQueueRepository.RecordDownloadDispatchAsync(
                 library.Id,
                 mediaType,
@@ -130,8 +181,11 @@ public static class MediaSearchHandler
                 grabResult.Status,
                 JsonSerializer.Serialize(new { searchPlan, grabResult }),
                 grabResponseCode: grabResult.Succeeded ? 200 : 400,
-                grabFailureCode: null,
-                cancellationToken: cancellationToken);
+                grabFailureCode: grabResult.Failure?.Code ?? grabResult.FailureCode,
+                cancellationToken: cancellationToken,
+                replacementAuthorized: wantedItem.HasFile,
+                replacementExpectedPath: wantedItem.FilePath,
+                clientExternalId: grabResult.ExternalId);
         }
 
         await recordSearchAttemptAsync(
@@ -189,7 +243,8 @@ public static class MediaSearchHandler
             IndexerName: bestCandidate?.IndexerName,
             DispatchStatus: grabResult?.Status,
             DispatchMessage: grabResult?.Message,
-            Candidates: searchPlan.Candidates);
+            Candidates: searchPlan.Candidates,
+            Failures: failures.Distinct().ToArray());
     }
 
     private static MediaSearchResult BlockedResult(string summary, string reason)
@@ -202,7 +257,8 @@ public static class MediaSearchHandler
             IndexerName: null,
             DispatchStatus: null,
             DispatchMessage: null,
-            Candidates: []);
+            Candidates: [],
+            Failures: []);
 
     private static async Task<IReadOnlyList<Deluno.Quality.Contracts.CustomFormatItem>> ResolveCustomFormatsAsync(
         IQualityRepository repository,

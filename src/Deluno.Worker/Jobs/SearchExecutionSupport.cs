@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Deluno.Contracts;
 using Deluno.Integrations.DownloadClients;
 using Deluno.Integrations.Search;
 using Deluno.Quality.Contracts;
@@ -28,7 +29,16 @@ internal static class SearchExecutionSupport
                 candidate.ReleaseName,
                 false,
                 "planned",
-                "No download URL was available.");
+                "No download URL was available.")
+            {
+                Failure = IntegrationFailureFactory.FromLegacy(
+                    "download-client",
+                    downloadClientId,
+                    downloadClientId,
+                    "grab",
+                    "planned",
+                    "No downloadable URL was available for this release.")
+            };
         }
 
         return await downloadClientGrabService.GrabAsync(

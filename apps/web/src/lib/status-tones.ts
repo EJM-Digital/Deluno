@@ -141,6 +141,10 @@ export interface TitleMarkPresentation {
    */
   /** The dot's fill. */
   dot: string;
+  /** A stable class used by the accessibility palette and card texture. */
+  stateClass: string;
+  /** A non-colour carrier shown inside compact title marks. */
+  glyph: string;
   /** The same colour as text, for a count or a label. */
   text: string;
   /** A faint wash of it, for a chip that is carrying the colour rather than wearing it. */
@@ -277,34 +281,45 @@ export const UNMONITORED_PAINT = {
 
 export const TITLE_MARK_PRESENTATION: Record<TitleMark, TitleMarkPresentation> = {
   missing: {
-    dot: "bg-destructive",
-    text: "text-destructive",
-    tint: "bg-destructive/15",
-    cssVar: "--destructive",
+    dot: "bg-mark-missing",
+    stateClass: "title-mark-missing",
+    glyph: "×",
+    text: "text-mark-missing",
+    tint: "bg-mark-missing/15",
+    cssVar: "--mark-missing",
+    surfaceVar: "--mark-missing-surface",
     label: "Missing",
     hint: "It is out and Deluno does not have it yet. Deluno searches for this on its schedule.",
     canBeHalf: true
   },
   downloading: {
-    dot: "bg-info",
-    text: "text-info",
-    tint: "bg-info/15",
-    cssVar: "--info",
+    dot: "bg-mark-downloading",
+    stateClass: "title-mark-downloading",
+    glyph: "↓",
+    text: "text-mark-downloading",
+    tint: "bg-mark-downloading/15",
+    cssVar: "--mark-downloading",
+    surfaceVar: "--mark-downloading-surface",
     label: "Downloading",
     hint: "Coming down, processing, or importing.",
     canBeHalf: false
   },
   upgrade: {
-    dot: "bg-success",
-    text: "text-success",
-    tint: "bg-success/15",
-    cssVar: "--success",
+    dot: "bg-mark-upgrade",
+    stateClass: "title-mark-upgrade",
+    glyph: "↑",
+    text: "text-mark-upgrade",
+    tint: "bg-mark-upgrade/15",
+    cssVar: "--mark-upgrade",
+    surfaceVar: "--mark-upgrade-surface",
     label: "Upgradable",
     hint: "You have this and can watch it tonight. Deluno is still looking for a better copy.",
     canBeHalf: true
   },
   covered: {
     dot: "bg-mark-quality-met",
+    stateClass: "title-mark-covered",
+    glyph: "✓",
     text: "text-mark-quality-met",
     tint: "bg-mark-quality-met/15",
     cssVar: "--mark-quality-met",
@@ -316,6 +331,8 @@ export const TITLE_MARK_PRESENTATION: Record<TitleMark, TitleMarkPresentation> =
   },
   airing: {
     dot: "bg-mark-airing",
+    stateClass: "title-mark-airing",
+    glyph: "~",
     text: "text-mark-airing",
     tint: "bg-mark-airing/15",
     cssVar: "--mark-airing",
@@ -330,6 +347,8 @@ export const TITLE_MARK_PRESENTATION: Record<TitleMark, TitleMarkPresentation> =
   },
   upcoming: {
     dot: "bg-mark-upcoming",
+    stateClass: "title-mark-upcoming",
+    glyph: "◇",
     text: "text-mark-upcoming",
     tint: "bg-mark-upcoming/15",
     cssVar: "--mark-upcoming",
@@ -354,6 +373,8 @@ export const UNRECOGNISED_TITLE_MARK: TitleMarkPresentation = {
   // Upcoming became violet and this would have inherited a hue that claims a
   // place on the ladder for a state nobody here understands.
   dot: "bg-muted-foreground",
+  stateClass: "title-mark-unrecognised",
+  glyph: "?",
   text: "text-muted-foreground",
   tint: "bg-muted-foreground/15",
   cssVar: "--muted-foreground",

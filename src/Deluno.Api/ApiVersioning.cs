@@ -54,7 +54,8 @@ public static class ApiVersioning
             // HTTP 200. This keeps removed or mistyped endpoints discoverably
             // absent.
             if (context.Request.Path.StartsWithSegments("/api", StringComparison.OrdinalIgnoreCase) &&
-                context.GetEndpoint() is null)
+                context.GetEndpoint() is null &&
+                !IsApiDocumentationPath(context.Request.Path))
             {
                 context.Response.StatusCode = StatusCodes.Status404NotFound;
                 return;
@@ -64,6 +65,10 @@ public static class ApiVersioning
         });
     }
 
+    private static bool IsApiDocumentationPath(PathString path)
+        => path.StartsWithSegments("/api/openapi", StringComparison.OrdinalIgnoreCase)
+            || path.StartsWithSegments("/api/docs", StringComparison.OrdinalIgnoreCase);
+
     // These operational endpoints deliberately use a versioned route because
     // their unversioned names are already occupied by legacy dashboard data.
     // Keep their canonical /api/v1 path intact; other v1 routes remain aliases
@@ -72,5 +77,7 @@ public static class ApiVersioning
         => path.StartsWithSegments("/v1/download-dispatches", StringComparison.OrdinalIgnoreCase) ||
            path.StartsWithSegments("/v1/import-resolutions", StringComparison.OrdinalIgnoreCase) ||
            path.StartsWithSegments("/v1/dispatch-alerts", StringComparison.OrdinalIgnoreCase) ||
-           path.StartsWithSegments("/v1/dispatch-metrics", StringComparison.OrdinalIgnoreCase);
+           path.StartsWithSegments("/v1/dispatch-metrics", StringComparison.OrdinalIgnoreCase) ||
+           path.StartsWithSegments("/v1/release-preferences", StringComparison.OrdinalIgnoreCase) ||
+           path.StartsWithSegments("/v1/guides", StringComparison.OrdinalIgnoreCase);
 }

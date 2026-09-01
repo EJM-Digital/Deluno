@@ -1,4 +1,5 @@
 using Deluno.Connections.Contracts;
+using Deluno.Contracts;
 
 namespace Deluno.Connections.Data;
 
@@ -27,7 +28,8 @@ public interface ISubtitleProviderRepository
         int? latencyMs,
         bool success,
         DateTimeOffset? rateLimitedUntilUtc,
-        CancellationToken cancellationToken);
+        CancellationToken cancellationToken,
+        IntegrationFailure? failure = null);
 
     Task<bool> DeleteAsync(string providerKey, CancellationToken cancellationToken);
 }

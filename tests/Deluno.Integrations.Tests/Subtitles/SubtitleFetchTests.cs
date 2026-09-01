@@ -1,4 +1,5 @@
 using System.IO.Compression;
+using System.Net;
 using System.Text;
 using Deluno.Connections.Contracts;
 using Deluno.Connections.Data;
@@ -41,6 +42,38 @@ public sealed class SubtitleFetchTests
     }
 
     [Fact]
+    public async Task Applies_the_library_content_policy_before_writing()
+    {
+        var provider = new FakeProvider(
+            "first",
+            [Candidate("en")],
+            Encoding.UTF8.GetBytes("1\n00:00:01,000 --> 00:00:03,000\n<i>HELLO   WORLD</i> 😀\n[MUSIC]\n\n"));
+        var writer = new FakeWriter();
+        var service = Build([provider], writer);
+
+        var outcome = await service.FetchAsync(
+            Request(),
+            "en",
+            false,
+            @"D:\Media\Dune\Dune.mkv",
+            false,
+            CancellationToken.None,
+            new SubtitleContentModificationPolicy(
+                StripHearingImpairedAnnotations: true,
+                RemoveStyleTags: true,
+                RemoveEmoji: true,
+                NormalizeWhitespace: true,
+                FixAllUppercase: true));
+
+        var written = Encoding.UTF8.GetString(Assert.Single(writer.Written).Payload);
+        Assert.True(outcome.Found);
+        Assert.Contains("Hello world", written, StringComparison.Ordinal);
+        Assert.DoesNotContain("[MUSIC]", written, StringComparison.Ordinal);
+        Assert.DoesNotContain("<i>", written, StringComparison.Ordinal);
+        Assert.Contains("style tags", outcome.AppliedModifications!);
+    }
+
+    [Fact]
     public async Task Refuses_an_error_page_a_provider_served_with_a_200()
     {
         // This is the failure that would otherwise be invisible: the bar goes
@@ -55,6 +88,8 @@ public sealed class SubtitleFetchTests
 
         Assert.False(outcome.Found);
         Assert.Empty(writer.Written);
+        Assert.Equal(IntegrationFailureKind.MalformedResponse, Assert.Single(outcome.Failures!).Kind);
+        Assert.Equal("download", outcome.Failure!.Operation);
     }
 
     [Fact]
@@ -107,6 +142,7 @@ public sealed class SubtitleFetchTests
         // eventually disable a source that never broke.
         Assert.True(health.Success);
         Assert.NotNull(health.RateLimitedUntil);
+        Assert.Equal(IntegrationFailureKind.RateLimit, Assert.Single(repository.TypedFailures)!.Kind);
     }
 
     [Fact]
@@ -145,6 +181,8 @@ public sealed class SubtitleFetchTests
         // unhelpful answer does not throw.
         Assert.True(outcome.Found);
         Assert.Equal("second", outcome.ProviderKey);
+        Assert.Equal(IntegrationFailureKind.Unavailable, Assert.Single(outcome.Failures!).Kind);
+        Assert.Null(outcome.Failure);
     }
 
     [Fact]
@@ -156,6 +194,24 @@ public sealed class SubtitleFetchTests
 
         Assert.False(outcome.Found);
         Assert.Contains("No subtitle providers", outcome.Reason, StringComparison.Ordinal);
+        Assert.Equal(IntegrationFailureKind.Configuration, outcome.Failure!.Kind);
+    }
+
+    [Theory]
+    [InlineData(HttpStatusCode.Unauthorized)]
+    [InlineData(HttpStatusCode.InternalServerError)]
+    public async Task Http_errors_keep_their_status_for_typed_failure_classification(HttpStatusCode statusCode)
+    {
+        using var client = new HttpClient(new ResponseHandler(statusCode));
+
+        var exception = await Assert.ThrowsAsync<HttpRequestException>(() =>
+            SubtitleProviderHttp.GetJsonAsync<Dictionary<string, string>>(
+                client,
+                "https://subtitle.test/search",
+                "provider",
+                CancellationToken.None));
+
+        Assert.Equal(statusCode, exception.StatusCode);
     }
 
     /* ------------------------------------------------------------ helpers */
@@ -219,6 +275,17 @@ public sealed class SubtitleFetchTests
             => Task.FromResult(payload);
     }
 
+    private sealed class ResponseHandler(HttpStatusCode statusCode) : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(
+            HttpRequestMessage request,
+            CancellationToken cancellationToken)
+            => Task.FromResult(new HttpResponseMessage(statusCode)
+            {
+                Content = new StringContent("{}", Encoding.UTF8, "application/json")
+            });
+    }
+
     private sealed class FakeWriter : ISubtitleFileWriter
     {
         public List<(string Path, byte[] Payload)> Written { get; } = [];
@@ -238,6 +305,7 @@ public sealed class SubtitleFetchTests
     private sealed class FakeRepository(IReadOnlyList<SubtitleProviderConnection> rows) : ISubtitleProviderRepository
     {
         public List<(string Status, bool Success, DateTimeOffset? RateLimitedUntil)> Health { get; } = [];
+        public List<IntegrationFailure?> TypedFailures { get; } = [];
 
         public Task<IReadOnlyList<SubtitleProviderConnection>> ListAsync(CancellationToken cancellationToken)
             => Task.FromResult(rows);
@@ -248,9 +316,11 @@ public sealed class SubtitleFetchTests
 
         public Task RecordHealthAsync(
             string providerKey, string status, string? message, int? latencyMs, bool success,
-            DateTimeOffset? rateLimitedUntilUtc, CancellationToken cancellationToken)
+            DateTimeOffset? rateLimitedUntilUtc, CancellationToken cancellationToken,
+            IntegrationFailure? failure = null)
         {
             Health.Add((status, success, rateLimitedUntilUtc));
+            TypedFailures.Add(failure);
             return Task.CompletedTask;
         }
 

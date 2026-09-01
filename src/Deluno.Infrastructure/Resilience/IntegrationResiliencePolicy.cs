@@ -1,3 +1,4 @@
+using Deluno.Contracts;
 using Deluno.Infrastructure.Observability;
 using Deluno.Infrastructure.Storage;
 using Microsoft.Extensions.Logging;
@@ -31,7 +32,8 @@ public sealed record IntegrationResilienceResult<T>(
     bool CircuitOpened,
     int Attempts,
     string? FailureMessage,
-    DateTimeOffset? RetryAfterUtc);
+    DateTimeOffset? RetryAfterUtc,
+    IntegrationFailure? Failure = null);
 
 public enum IntegrationResilienceOutcome
 {
@@ -67,19 +69,30 @@ public sealed class IntegrationResiliencePolicy(
         var normalized = Normalize(request);
         if (TryGetOpenCircuit(normalized.Key, out var retryAfterUtc))
         {
+            var circuitFailure = IntegrationFailureFactory.CircuitOpen(
+                "integration",
+                normalized.Key,
+                normalized.Operation,
+                normalized.Operation,
+                retryAfterUtc,
+                $"{normalized.Operation} is temporarily disabled after repeated failures.");
             return new IntegrationResilienceResult<T>(
                 Value: default,
                 CircuitOpen: true,
                 CircuitOpened: false,
                 Attempts: 0,
-                FailureMessage: $"{normalized.Operation} is temporarily disabled after repeated failures.",
-                RetryAfterUtc: retryAfterUtc);
+                FailureMessage: circuitFailure.Message,
+                RetryAfterUtc: retryAfterUtc,
+                Failure: circuitFailure);
         }
 
         Exception? lastException = null;
         T? lastValue = default;
+        var attemptsMade = 0;
+        var retryableFailure = false;
         for (var attempt = 1; attempt <= normalized.MaxAttempts; attempt++)
         {
+            attemptsMade = attempt;
             cancellationToken.ThrowIfCancellationRequested();
             try
             {
@@ -96,13 +109,28 @@ public sealed class IntegrationResiliencePolicy(
                 {
                     return new IntegrationResilienceResult<T>(value, false, false, attempt, null, null);
                 }
+
+                retryableFailure = true;
             }
-            catch (Exception exception) when (IsTransient(exception))
+            catch (Exception exception)
             {
+                // A caller cancellation belongs to the caller. A timeout raised
+                // by an external service, however, must become the same typed
+                // integration failure as every other transport error.
+                if (exception is OperationCanceledException && cancellationToken.IsCancellationRequested)
+                {
+                    throw;
+                }
+
                 lastException = exception;
+                retryableFailure = IsTransient(exception);
+                if (!retryableFailure)
+                {
+                    break;
+                }
             }
 
-            if (attempt < normalized.MaxAttempts)
+            if (retryableFailure && attempt < normalized.MaxAttempts)
             {
                 DelunoObservability.IntegrationRetries.Add(1,
                     new KeyValuePair<string, object?>("operation", normalized.Operation));
@@ -110,7 +138,7 @@ public sealed class IntegrationResiliencePolicy(
             }
         }
 
-        var openedUntil = RecordRetryableFailure(normalized);
+        var openedUntil = retryableFailure ? RecordRetryableFailure(normalized) : null;
         if (openedUntil is not null)
         {
             DelunoObservability.IntegrationCircuitOpened.Add(1,
@@ -118,6 +146,25 @@ public sealed class IntegrationResiliencePolicy(
         }
 
         var failureMessage = lastException?.Message;
+        var failure = lastException is null
+            ? IntegrationFailureFactory.FromLegacy(
+                "integration",
+                normalized.Key,
+                normalized.Operation,
+                normalized.Operation,
+                "connectivity",
+                "The integration operation did not complete successfully after the configured attempts.",
+                retryAfterUtc: openedUntil,
+                attempts: attemptsMade)
+            : IntegrationFailureFactory.FromException(
+                "integration",
+                normalized.Key,
+                normalized.Operation,
+                normalized.Operation,
+                lastException,
+                retryScheduled: retryableFailure,
+                retryAfterUtc: openedUntil,
+                attempts: attemptsMade);
         if (lastException is not null)
         {
             logger.LogWarning(
@@ -131,9 +178,10 @@ public sealed class IntegrationResiliencePolicy(
             lastValue,
             CircuitOpen: false,
             CircuitOpened: openedUntil is not null,
-            Attempts: normalized.MaxAttempts,
+            Attempts: attemptsMade,
             FailureMessage: failureMessage,
-            RetryAfterUtc: openedUntil);
+            RetryAfterUtc: openedUntil,
+            Failure: failure);
     }
 
     public bool IsCircuitOpen(string key, out DateTimeOffset retryAfterUtc)
@@ -182,7 +230,7 @@ public sealed class IntegrationResiliencePolicy(
             HttpRequestException httpRequestException
                 => httpRequestException.StatusCode is null ||
                    IsTransientHttpStatusCode(httpRequestException.StatusCode.Value),
-            TaskCanceledException => true,
+            OperationCanceledException => true,
             IOException => true,
             _ => false
         };

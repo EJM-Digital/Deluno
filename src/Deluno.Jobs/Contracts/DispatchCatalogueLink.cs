@@ -25,4 +25,17 @@ public sealed record DispatchCatalogueLink(
     string EntityType,
     string EntityId,
     string IndexerName = "",
-    string LibraryId = "");
+    string LibraryId = "",
+    bool ReplacementAuthorized = false,
+    bool ForceReplacementAuthorized = false,
+    string? ReplacementExpectedPath = null,
+    IReadOnlyList<DispatchReplacementTarget>? ReplacementTargets = null);
+
+/// <summary>
+/// One catalogue entity and the exact file it owned when acquisition was
+/// authorized. Multi-file TV replacements persist one target per episode;
+/// several episodes may legitimately name the same multi-episode file.
+/// </summary>
+public sealed record DispatchReplacementTarget(
+    string EntityId,
+    string ExpectedPath);

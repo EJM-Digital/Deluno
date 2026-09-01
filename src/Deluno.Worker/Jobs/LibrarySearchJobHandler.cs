@@ -1,5 +1,6 @@
 using Deluno.Integrations.DownloadClients;
 using Deluno.Integrations.Search;
+using Deluno.Contracts;
 using Deluno.Jobs.Contracts;
 using Deluno.Jobs.Data;
 using Deluno.Libraries.Contracts;
@@ -8,6 +9,9 @@ using Deluno.Movies.Data;
 using Deluno.Quality.Data;
 using Deluno.Series.Data;
 using Deluno.Quality;
+using Deluno.Quality.ReleasePreferences;
+using Deluno.Platform.Contracts;
+using Deluno.Media;
 
 namespace Deluno.Worker.Jobs;
 
@@ -20,7 +24,10 @@ public abstract class LibrarySearchJobHandler(
     IAcquisitionDecisionPipeline acquisitionPipeline,
     IDownloadClientGrabService downloadClientGrabService,
     IActivityFeedRepository activityFeedRepository,
-    TimeProvider timeProvider) : IJobHandler
+    TimeProvider timeProvider,
+    IMediaTagStore? mediaTagStore = null,
+    IMediaStateRepository? mediaStateRepository = null,
+    IReleasePreferencePlanRepository? releasePreferencePlanRepository = null) : IJobHandler
 {
     /// <summary>
     /// Both catalogues run the same handler; only the lane differs.
@@ -49,6 +56,7 @@ public abstract class LibrarySearchJobHandler(
         var libraries = await librariesRepository.ListLibrariesAsync(cancellationToken);
         var library = libraries.FirstOrDefault(item => item.Id == payload.LibraryId);
         var searchStatus = ResolveSearchStatus(payload);
+        var scopeFilters = ResolveScopeFilters(payload, payload.MediaType == "movies" ? MediaKind.Movie : MediaKind.Series);
         var customFormats = await SearchExecutionSupport.ResolveCustomFormatsAsync(
             qualityRepository,
             library?.QualityProfileId,
@@ -57,22 +65,35 @@ public abstract class LibrarySearchJobHandler(
             qualityRepository,
             library?.QualityProfileId,
             cancellationToken);
+        var upgradeUntilCutoff = await QualityProfileResolver.ResolveUpgradeUntilCutoffAsync(
+            qualityRepository,
+            library?.QualityProfileId,
+            cancellationToken);
+        var preferencePlan = await QualityProfileResolver.ResolveReleasePreferencePlanAsync(
+            qualityRepository,
+            releasePreferencePlanRepository,
+            library?.QualityProfileId,
+            cancellationToken,
+            customFormats);
 
         if (payload.MediaType == "movies")
         {
-            return await SearchMoviesAsync(job, payload, searchStatus, routing, customFormats, allowedQualities, configuredSources, configuredClients, now, cancellationToken);
+            return await SearchMoviesAsync(job, payload, searchStatus, scopeFilters, routing, customFormats, allowedQualities, upgradeUntilCutoff, preferencePlan, configuredSources, configuredClients, now, cancellationToken);
         }
 
-        return await SearchSeriesAsync(job, payload, searchStatus, routing, customFormats, allowedQualities, configuredSources, configuredClients, now, cancellationToken);
+        return await SearchSeriesAsync(job, payload, searchStatus, scopeFilters, routing, customFormats, allowedQualities, upgradeUntilCutoff, preferencePlan, configuredSources, configuredClients, now, cancellationToken);
     }
 
     private async Task<string> SearchMoviesAsync(
         JobQueueItem job,
         JobPayloads.LibrarySearchPayload payload,
         string? searchStatus,
+        CatalogueFilters? scopeFilters,
         LibraryRoutingSnapshot? routing,
         IReadOnlyList<Deluno.Quality.Contracts.CustomFormatItem> customFormats,
         IReadOnlyList<string> allowedQualities,
+        bool upgradeUntilCutoff,
+        ReleasePreferencePlan? preferencePlan,
         int configuredSources,
         int configuredClients,
         DateTimeOffset now,
@@ -89,7 +110,8 @@ public abstract class LibrarySearchJobHandler(
             now,
             ignoreRetryWindow,
             cancellationToken,
-            searchStatus))
+            searchStatus,
+            scopeFilters))
             .Where(candidate => string.IsNullOrWhiteSpace(payload.TargetEntityId) || string.Equals(candidate.MovieId, payload.TargetEntityId, StringComparison.OrdinalIgnoreCase))
             .ToArray();
         var matchedCount = 0;
@@ -132,6 +154,14 @@ public abstract class LibrarySearchJobHandler(
                 continue;
             }
 
+            var currentPreferenceEvaluation = await GetCurrentPreferenceEvaluationAsync(
+                MediaKind.Movie,
+                candidate.MovieId,
+                payload.LibraryId,
+                candidate.HasFile,
+                candidate.FilePath,
+                candidate.FileSizeBytes,
+                cancellationToken);
             var decisionPlan = await acquisitionPipeline.PlanAsync(
                 new AcquisitionDecisionRequest(
                     candidate.Title,
@@ -142,7 +172,17 @@ public abstract class LibrarySearchJobHandler(
                     routing?.Sources ?? [],
                     routing?.DownloadClients ?? [],
                     customFormats,
-                    AllowedQualities: allowedQualities),
+                    AllowedQualities: allowedQualities,
+                    TagNames: mediaTagStore is null
+                        ? []
+                     : (await mediaTagStore.ListAsync(MediaKind.Movie, candidate.MovieId, cancellationToken)).Select(tag => tag.Name).ToArray(),
+                     SearchKind: AcquisitionSearchKinds.Automatic,
+                     AvailableUtc: candidate.AvailableUtc,
+                     CurrentFilePresent: candidate.HasFile,
+                     CurrentReleaseName: candidate.FilePath,
+                     UpgradeUntilCutoff: upgradeUntilCutoff,
+                     PreferencePlan: preferencePlan,
+                     CurrentPreferenceEvaluation: currentPreferenceEvaluation),
                 cancellationToken);
             if (decisionPlan.SourceCount > 0 && decisionPlan.DownloadClientCount > 0)
             {
@@ -191,8 +231,12 @@ public abstract class LibrarySearchJobHandler(
                     grabResult.Status,
                     SearchExecutionSupport.SerializeSearchPlan(searchPlan, grabResult),
                     grabResponseCode: grabResult.Succeeded ? 200 : 400,
-                    grabFailureCode: null,
-                    cancellationToken: cancellationToken);
+                    grabFailureCode: grabResult.Failure?.Code ?? grabResult.FailureCode,
+                    cancellationToken: cancellationToken,
+                    failure: grabResult.Failure,
+                    replacementAuthorized: candidate.HasFile,
+                    replacementExpectedPath: candidate.FilePath,
+                    clientExternalId: grabResult.ExternalId);
                 if (bestCandidate?.SizeBytes is > 0)
                 {
                     queuedReleaseBytes += bestCandidate.SizeBytes.Value;
@@ -257,9 +301,12 @@ public abstract class LibrarySearchJobHandler(
         JobQueueItem job,
         JobPayloads.LibrarySearchPayload payload,
         string? searchStatus,
+        CatalogueFilters? scopeFilters,
         LibraryRoutingSnapshot? routing,
         IReadOnlyList<Deluno.Quality.Contracts.CustomFormatItem> customFormats,
         IReadOnlyList<string> allowedQualities,
+        bool upgradeUntilCutoff,
+        ReleasePreferencePlan? preferencePlan,
         int configuredSources,
         int configuredClients,
         DateTimeOffset now,
@@ -272,7 +319,8 @@ public abstract class LibrarySearchJobHandler(
             now,
             seriesIgnoreRetryWindow,
             cancellationToken,
-            searchStatus))
+            searchStatus,
+            scopeFilters))
             .Where(candidate => string.IsNullOrWhiteSpace(payload.TargetEntityId) || string.Equals(candidate.SeriesId, payload.TargetEntityId, StringComparison.OrdinalIgnoreCase))
             .ToArray();
         var seriesStartedUtc = now;
@@ -320,6 +368,14 @@ public abstract class LibrarySearchJobHandler(
                 continue;
             }
 
+            var currentPreferenceEvaluation = await GetCurrentPreferenceEvaluationAsync(
+                MediaKind.Series,
+                candidate.SeriesId,
+                payload.LibraryId,
+                candidate.HasFile,
+                candidate.FilePath,
+                candidate.FileSizeBytes,
+                cancellationToken);
             var decisionPlan = await acquisitionPipeline.PlanAsync(
                 new AcquisitionDecisionRequest(
                     candidate.Title,
@@ -330,7 +386,17 @@ public abstract class LibrarySearchJobHandler(
                     routing?.Sources ?? [],
                     routing?.DownloadClients ?? [],
                     customFormats,
-                    AllowedQualities: allowedQualities),
+                    AllowedQualities: allowedQualities,
+                    TagNames: mediaTagStore is null
+                        ? []
+                     : (await mediaTagStore.ListAsync(MediaKind.Series, candidate.SeriesId, cancellationToken)).Select(tag => tag.Name).ToArray(),
+                     SearchKind: AcquisitionSearchKinds.Automatic,
+                     AvailableUtc: candidate.AvailableUtc,
+                     CurrentFilePresent: candidate.HasFile,
+                     CurrentReleaseName: candidate.FilePath,
+                     UpgradeUntilCutoff: upgradeUntilCutoff,
+                     PreferencePlan: preferencePlan,
+                     CurrentPreferenceEvaluation: currentPreferenceEvaluation),
                 cancellationToken);
             if (decisionPlan.SourceCount > 0 && decisionPlan.DownloadClientCount > 0)
             {
@@ -379,8 +445,12 @@ public abstract class LibrarySearchJobHandler(
                     grabResult.Status,
                     SearchExecutionSupport.SerializeSearchPlan(searchPlan, grabResult),
                     grabResponseCode: grabResult.Succeeded ? 200 : 400,
-                    grabFailureCode: null,
-                    cancellationToken: cancellationToken);
+                    grabFailureCode: grabResult.Failure?.Code ?? grabResult.FailureCode,
+                    cancellationToken: cancellationToken,
+                    failure: grabResult.Failure,
+                    replacementAuthorized: candidate.HasFile,
+                    replacementExpectedPath: candidate.FilePath,
+                    clientExternalId: grabResult.ExternalId);
                 if (bestCandidate?.SizeBytes is > 0)
                 {
                     seriesQueuedReleaseBytes += bestCandidate.SizeBytes.Value;
@@ -438,7 +508,8 @@ public abstract class LibrarySearchJobHandler(
             now,
             seriesIgnoreRetryWindow,
             cancellationToken,
-            searchStatus))
+            searchStatus,
+            scopeFilters))
             .Where(episode => string.IsNullOrWhiteSpace(payload.TargetEntityId) || string.Equals(episode.SeriesId, payload.TargetEntityId, StringComparison.OrdinalIgnoreCase))
             .Select(episode => new EpisodeSearchPlanItem(
                 EpisodeId: episode.EpisodeId,
@@ -484,6 +555,30 @@ public abstract class LibrarySearchJobHandler(
         return SearchExecutionSupport.FormatCompletionMessage(payload.LibraryName, seriesCandidates.Length, configuredSources, configuredClients, "TV show");
     }
 
+    private async Task<PreferenceEvaluationSnapshot?> GetCurrentPreferenceEvaluationAsync(
+        MediaKind kind,
+        string mediaId,
+        string libraryId,
+        bool hasFile,
+        string? filePath,
+        long? fileSizeBytes,
+        CancellationToken cancellationToken)
+    {
+        if (mediaStateRepository is null || !hasFile || string.IsNullOrWhiteSpace(filePath))
+        {
+            return null;
+        }
+
+        return await mediaStateRepository.GetLatestPreferenceEvaluationSnapshotAsync(
+            kind,
+            mediaId,
+            libraryId,
+            fileIdentity: null,
+            cancellationToken,
+            filePath,
+            fileSizeBytes);
+    }
+
     private static string? ResolveSearchStatus(JobPayloads.LibrarySearchPayload payload)
     {
         if (string.Equals(payload.SearchKind, "missing", StringComparison.OrdinalIgnoreCase)) return "missing";
@@ -491,5 +586,35 @@ public abstract class LibrarySearchJobHandler(
         if (payload.CheckMissing && !payload.CheckUpgrades) return "missing";
         if (payload.CheckUpgrades && !payload.CheckMissing) return "upgrade";
         return null;
+    }
+
+    private static CatalogueFilters? ResolveScopeFilters(
+        JobPayloads.LibrarySearchPayload payload,
+        MediaKind kind)
+    {
+        // Null in both fields is the legacy/unscoped payload. An attached view
+        // with no conditions has an empty condition list and intentionally
+        // remains distinguishable from this case for the TV episode query.
+        if (payload.ScopeId is null && payload.ScopeConditions is null)
+        {
+            return null;
+        }
+
+        var conditions = payload.ScopeConditions ?? [];
+        foreach (var condition in conditions)
+        {
+            if (condition.Values is null ||
+                CatalogueFilterFields.Find(kind, condition.FieldId) is not { } field ||
+                !field.Operators.Contains(condition.Operator) ||
+                (CatalogueFilterOperators.TakesValues(condition.Operator)
+                    ? condition.Values.Count == 0 || condition.Values.Any(string.IsNullOrWhiteSpace)
+                    : condition.Values.Count != 0))
+            {
+                throw new InvalidOperationException(
+                    $"Saved search scope {payload.ScopeId ?? "(unknown)"} contains an invalid catalogue filter.");
+            }
+        }
+
+        return conditions.Count == 0 ? CatalogueFilters.None : new CatalogueFilters(conditions);
     }
 }

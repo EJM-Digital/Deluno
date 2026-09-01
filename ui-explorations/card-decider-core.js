@@ -15,6 +15,27 @@
   Mount with:  mountDecider({ medium: "movies" })  or  { medium: "tv" }
 */
 
+/* The render is useful in two places: served by Deluno Lab, and opened directly
+   from this folder while we review the spec. Keep both paths pointed at the same
+   artwork/API origin without starting a second local application. */
+const DEFAULT_RENDER_ORIGIN = "http://192.168.1.142:5099";
+function renderOrigin() {
+  try {
+    const requested = new URLSearchParams(location.search).get("origin");
+    if (requested) {
+      const url = new URL(requested);
+      if (url.protocol === "http:" || url.protocol === "https:") return url.origin;
+    }
+    if (location.protocol === "http:" || location.protocol === "https:") return location.origin;
+  } catch (e) { /* use the lab origin below */ }
+  return DEFAULT_RENDER_ORIGIN;
+}
+const RENDER_ORIGIN = renderOrigin();
+function renderUrl(value) {
+  if (!value) return "";
+  try { return new URL(value, RENDER_ORIGIN).href; } catch (e) { return value; }
+}
+
 /* ══════════════════════════════════════════════════════════════
    Colour maths — so every number on the page is computed, never typed
    ══════════════════════════════════════════════════════════════ */
@@ -69,7 +90,7 @@ const SURFACES = {
   },
   /* Deep and Jewel are ONE set for both themes: a bar sits on artwork, not on
      the page, so it has no reason to invert. Same argument as --mark-leaf-*. */
-  deep:  { both: { miss:"356 84% 41%", down:"214 94% 40%", upg:"150 90% 25%", cont:"178 96% 24%", gold:"49 100% 62%", soon:"270 76% 47%" } },
+  deep:  { both: { miss:"356 84% 41%", down:"214 94% 40%", upg:"150 90% 25%", cont:"318 78% 38%", gold:"49 100% 62%", soon:"270 76% 47%" } },
   jewel: { both: { miss:"352 88% 34%", down:"219 96% 33%", upg:"156 94% 20%", cont:"182 100% 19%", gold:"49 100% 62%", soon:"272 84% 39%" } }
 };
 
@@ -87,17 +108,17 @@ const SURFACES = {
   the light one. The audit re-checks every value against the element it lands on.
 */
 const ON_TRACK = {
-  dark:  { miss:"0 84% 77%", down:"207 92% 67%", upg:"145 72% 45%", cont:"178 74% 45%",
+  dark:  { miss:"0 84% 77%", down:"207 92% 67%", upg:"145 72% 45%", cont:"318 78% 75%",
            gold:"44 98% 45%", soon:"268 72% 78%", off:"220 8% 69%" },
-  light: { miss:"0 84% 37%", down:"207 92% 32%", upg:"145 72% 23%", cont:"178 74% 22%",
+  light: { miss:"0 84% 37%", down:"207 92% 32%", upg:"145 72% 23%", cont:"318 78% 35%",
            gold:"44 98% 22%", soon:"268 72% 45%", off:"220 8% 35%" }
 };
 
 /* The text colour for a count or a word on a ground — per theme, and NOT the
    surface. The deep surfaces used as text fail AA on the dark card. */
 const TEXT = {
-  dark:  { miss:"0 84% 62%", down:"207 96% 62%", upg:"145 78% 52%", cont:"178 76% 50%", gold:"44 98% 58%", soon:"268 82% 72%" },
-  light: { miss:"0 84% 48%", down:"207 92% 45%", upg:"145 72% 34%", cont:"178 74% 30%", gold:"42 96% 40%", soon:"268 62% 50%" }
+  dark:  { miss:"0 84% 62%", down:"207 96% 62%", upg:"145 78% 52%", cont:"318 76% 50%", gold:"44 98% 58%", soon:"268 82% 72%" },
+  light: { miss:"0 84% 48%", down:"207 92% 45%", upg:"145 72% 34%", cont:"318 74% 30%", gold:"42 96% 40%", soon:"268 62% 50%" }
 };
 
 /* Gold is floored at 52% lightness, so white can never sit on it. Every other
@@ -128,10 +149,10 @@ const labelOn = mark => mark === "gold" ? "hsl(40 90% 12%)" : "hsl(0 0% 100%)";
 
   4. What James settled on: *"the poster option should stay as a grey or black bar
      on the poster and the shield removed from the poster and kept under in the
-     selectable options"*. **The bars go neutral, the artwork stays clean, and the
-     shield keeps its existing home under the poster.** Two facts, two places,
-     neither borrowing the other's space — which is the same rule the top and bottom
-     bars already follow.
+     selectable options"*. **The bars go flat grey, the artwork stays clean, and
+     the shield keeps its existing home under the poster.** Two facts, two places,
+     neither borrowing the other's space — which is the same rule the top and
+     bottom bars already follow.
 
   Black or grey is a switch. The thing to watch is that the TRACK is already grey,
   so a grey fill on a grey track could make the bar vanish and take the fraction
@@ -197,12 +218,12 @@ const UNMONITORED = {
 
 /* ── Continuing's hue: a TV-only question ─────────────────────── */
 const CONT_CANDIDATES = {
-  teal:    { label: "Teal 178",    hsl: "178 96% 24%" },
-  cyan:    { label: "Cyan 192",    hsl: "192 95% 27%" },
-  magenta: { label: "Magenta 318", hsl: "318 78% 38%" },
-  pink:    { label: "Pink 330",    hsl: "330 78% 40%" },
-  lime:    { label: "Lime 92",     hsl: "92 88% 24%" },
-  steel:   { label: "Steel",       hsl: "200 26% 40%" }
+  magenta: { label: "Magenta 318 — recommended", hsl: "318 78% 38%" },
+  steel:   { label: "Steel",                    hsl: "200 26% 40%" },
+  pink:    { label: "Pink 330",                 hsl: "330 78% 40%" },
+  teal:    { label: "Teal 178",                 hsl: "178 96% 24%" },
+  cyan:    { label: "Cyan 192",                 hsl: "192 95% 27%" },
+  lime:    { label: "Lime 92",                  hsl: "92 88% 24%" }
 };
 const NEIGHBOURS = {
   Missing: "356 84% 41%", Downloading: "214 94% 40%", Upgradable: "150 90% 25%",
@@ -230,9 +251,9 @@ const S = {
   media: "on",         // "Quality on the bar" / "Episode count on the bar"
   subs: "on",          // "Subtitle count on the bar"
   leads: "subs",       // none | subs | both — the DESIGN choice, lead words
-  rem: "missing",      // missing | neutral — grey is reserved for unmonitored
-  fill: "mixed",       // state | mixed | held
-  cont: "magenta",     // TV only
+  rem: "missing",      // Recommended: the part not held is Missing red
+  fill: "held",        // Recommended: held green; Quality met gold when complete
+  cont: "magenta",     // Continuing remains a TV-only state in the legend.
   size: "md"
 };
 
@@ -246,10 +267,9 @@ function controlsFor(medium) {
       opts: [["on","On"],["off","Off"]], user: true },
     { key: "subs",   label: "Subtitle count", opts: [["on","On"],["off","Off"]], user: true },
     { key: "leads",  label: "Lead words", opts: [["none","None"],["subs","SUBS only"],["both","Both"]] },
-    /* Neutral grey is kept only so the collision can be looked at: grey now means
-       "unmonitored" and nothing else, so a grey track makes a monitored title with
-       nothing held look unmonitored. */
-    { key: "rem",    label: "Track",  opts: [["missing","Missing red"],["neutral","Neutral grey — collides"]] },
+    /* The recommended track is the composition rule: the part not held is
+       Missing red. Neutral is retained only for comparing Sonarr's grammar. */
+    { key: "rem",    label: "Track",  opts: [["missing","Missing red — recommended"],["neutral","Neutral remainder — exploratory"]] },
   ];
   /*
     **Two controls the movie shelf must not carry**, and both for the same reason:
@@ -269,17 +289,17 @@ function controlsFor(medium) {
   */
   if (medium === "tv") {
     base.push({ key: "cont", label: "Continuing", opts: CONT_OPTS });
-    base.push({ key: "fill", label: "Fill", opts: [["mixed","State, held green"],["state","State colour"],["held","What you hold"]] });
+    base.push({ key: "fill", label: "Fill", opts: [["held","Held green · Quality met gold — recommended"],["mixed","State, held green"],["state","State colour — exploratory"]] });
   }
   base.push({ key: "size", label: "Card", opts: [["sm","Small"],["md","Medium"],["lg","Large"]] });
   return base;
 }
 
 const PRESETS = [
-  { label: "Sonarr's grammar", why: "state fill over a neutral track — but grey now means unmonitored, so this collides",
-    set: { fill: "state", rem: "neutral" } },
-  { label: "Composition, like SUBS", why: "no neutral anywhere — every segment is what that part IS",
-    set: { fill: "held", rem: "missing" } }
+  { label: "Recommended — Deluno composition", why: "held green, Quality met gold, Missing red remainder, and grey only for unmonitored",
+    set: { fill: "held", rem: "missing" } },
+  { label: "Alternative — Sonarr grammar", why: "state-coloured fill over a neutral remainder, for comparison",
+    set: { fill: "state", rem: "neutral" } }
 ];
 
 function surfaces() {
@@ -447,28 +467,28 @@ function twoTone(fillColour, pct, label, lead, onFill, remColour, onRem) {
 /*
   The track.
 
-  Measured in Sonarr's own DOM, every poster, no exceptions: the track is neutral
-  grey and the fill is the state's colour filled to the fraction held. Colour says
-  the state, length says how much, and neither is lost — precisely because the
-  track is neutral. Painting the track Missing red is what made a Missing title's
-  fill and track the same colour, so its fraction vanished.
+  The approved composition is deliberately literal: the remainder is Missing
+  red, the held portion is green, and a fully held Quality met title is gold.
+  Unlike the Sonarr comparison, no monitored card uses grey. Unmonitored is the
+  only override and is applied to both layers before this rule is considered.
 
-  At 0% fill a neutral bar would say its state nowhere, and Deluno has deleted the
-  corner pill that used to carry it. So the track's label wears the state's own
-  TEXT colour — the text token, not the surface, because surfaces are tuned for
-  white-on-bar and text tokens for reading on a ground.
+  Neutral remains available as an exploratory renderer setting so the supplied
+  Sonarr reference can still be compared, but it is not the product default.
 */
-function track(mark) {
-  if (S.rem === "neutral") return { colour: "var(--idle)", label: "hsl(" + ON_TRACK[S.theme][mark] + ")" };
+function track(mark, pct) {
+  if (S.rem === "neutral") {
+    if (pct <= 0) return { colour: "hsl(" + surfaces()[mark] + ")", label: labelOn(mark) };
+    return { colour: "var(--idle)", label: "hsl(" + ON_TRACK[S.theme][mark] + ")" };
+  }
   return { colour: "hsl(" + surfaces().miss + ")", label: "hsl(0 0% 100%)" };
 }
 
 /*
   With the track painted Missing red, a Missing title's fill must not ALSO be red or
   the bar goes flat and the fraction vanishes — Severance at 3 of 20 drawing the same
-  bar as Foundation at 0 of 29. That is why `mixed` exists and why it is the default:
-  the fill is the rung's colour, except a Missing title's held part, which is green
-  because what you hold is held regardless of the rung.
+  bar as Foundation at 0 of 29. `held` makes the held portion green regardless of
+  the lifecycle rung; Quality met is the one exception because it means the target
+  quality has been reached.
 */
 function fillColourFor(mark, fullyHeld, C) {
   if (S.fill === "held") return "hsl(" + (fullyHeld && mark === "gold" ? C.gold : C.upg) + ")";
@@ -488,25 +508,23 @@ function cardHtml(it, isShow, withCaption) {
   const subLabel = subs.wanted ? subs.held + " / " + subs.wanted : MARKS[subState];
 
 
-  /* A bar with no fraction keeps its state's colour under either grammar: an
-     Upcoming title has not started, a downloading one has no held part yet. */
   /* Unmonitored wins over every colour rule, on both bars. */
   const off = monitored ? null : UNMONITORED;
   /* Unmonitored overrules the Track choice as well as the Fill: it is an override
      on the whole bar, not a recolouring of part of it. */
   const NEUTRAL = { colour: UNMONITORED.track, label: UNMONITORED.label };
-  const T = off ? NEUTRAL : track(mark);
-  const TS = off ? NEUTRAL : track(subState);
+  const T = off ? NEUTRAL : track(mark, media.pct);
   const topFillFlat = media.fraction ? fillColourFor(mark, media.pct === 100, C) : "hsl(" + C[mark] + ")";
   const topFill = off ? off.fill : topFillFlat;
   const topOnFill = off ? off.label
     : topFillFlat === "hsl(" + C.gold + ")" ? labelOn("gold") : "hsl(0 0% 100%)";
 
   const subSettled = subs.wanted > 0 && subs.held === subs.wanted;
-  /* With no files there is nothing held, so the bar carries the title's own
-     state at full width rather than an empty green one. */
+  /* With no files there is nothing held, so the bar carries Upcoming at full
+     width rather than inventing a green fraction. */
   const subNoFiles = subs.files === 0;
   const subPctDrawn = subNoFiles ? (subState === "miss" ? 0 : 100) : subPct;
+  const TS = off ? NEUTRAL : track(subState, subPctDrawn);
   const subFillFlat = subNoFiles ? "hsl(" + C[subState] + ")"
     : subSettled ? "hsl(" + C.gold + ")" : "hsl(" + C.upg + ")";
   const subFill = off ? off.fill : subFillFlat;
@@ -549,27 +567,21 @@ function cardHtml(it, isShow, withCaption) {
     card without being part of it.
   */
   const art = '<div class="art">'
-    + (it.posterUrl ? '<img loading="lazy" src="' + esc(it.posterUrl) + '" alt="">'
+    + (it.posterUrl ? '<img loading="lazy" data-artwork src="' + esc(renderUrl(it.posterUrl)) + '" alt="">'
                     : '<div class="noart">no art</div>')
     + '</div>';
 
 
   /* No corner pill, and the bars are always on the artwork — both settled:
      "corner pill is a complete removal and bars always on artwork". */
-  /* The monitoring line is not part of this design decision — it is an existing
-     poster option with its own switch — but it is drawn here because it is now
-     the ONLY thing that says a title is unmonitored, and a render that omits it
-     would make those scenarios look identical to the monitored ones. */
-  /* The whole card: two bars and the artwork. Monitoring is said by the bars going
-     neutral, and by nothing else. */
+  /* The whole card: two bars and the artwork. Unmonitored is said by both bars
+     becoming one flat grey, and by nothing else. */
   const card = '<div class="card">' + topBar + art + botBar + '</div>';
   if (!withCaption) return card;
 
   const note = barNote(media, subs, mark, isShow);
   const halfNote = off
-    ? " Deluno is not watching this one, so both bars go neutral — an unmonitored title's"
-      + " rung is not telling you to do anything, so its colour is the thing least worth"
-      + " keeping."
+    ? " Deluno is not watching this one, so both bars take the one grey override."
     : "";
   return '<div class="titled">' + card
     + '<div class="cap">'
@@ -821,6 +833,19 @@ const SCENARIOS = {
   ]
 };
 
+/* The supplied Sonarr screenshot is a useful baseline, not a specification for
+   Deluno. It gives us five quick colour readings; the comparison below keeps
+   those readings visible while showing the extra facts the Deluno card carries.
+   The colours are deliberately labelled as a visual reference, not imported as
+   Deluno's semantic tokens. */
+const SONARR_REFERENCE = [
+  { key: "continuing", label: "Continuing", detail: "All episodes downloaded", colour: "#5d9cec", pct: 100, count: "8 / 8" },
+  { key: "ended", label: "Ended", detail: "All episodes downloaded", colour: "#27c24c", pct: 100, count: "20 / 20" },
+  { key: "missing-monitored", label: "Missing Episodes", detail: "Series monitored", colour: "#f05050", pct: 15, count: "3 / 20" },
+  { key: "missing-unmonitored", label: "Missing Episodes", detail: "Series not monitored", colour: "#f0a000", pct: 15, count: "3 / 20" },
+  { key: "downloading", label: "Downloading", detail: "One or more episodes", colour: "#7b4bb3", pct: 33, count: "4 / 12" }
+];
+
 /* NOT a state - a legibility test, kept apart so it cannot duplicate one. */
 const STRESS = {
   movies: { scenario: "The longest strings this card must survive",
@@ -927,6 +952,148 @@ function mountDecider({ medium }) {
       + " and press enter. The session token lives in that tab only.";
   }
 
+  function drawArtworkSource() {
+    const el = document.getElementById("artwork-source");
+    if (!el) return;
+    const seen = new Set();
+    const sourceItems = [];
+    for (const item of (DATA.items.length ? DATA.items : SCENARIOS[medium])) {
+      const title = typeof item.title === "string" && item.title.trim() ? item.title.trim() : "Untitled";
+      if (seen.has(title) || !item.posterUrl) continue;
+      seen.add(title);
+      sourceItems.push({ ...item, title });
+      if (sourceItems.length === 6) break;
+    }
+    const live = DATA.items.length > 0;
+    el.innerHTML = '<div class="artwork-head">'
+      + '<div><b>' + (live ? "Live lab artwork" : "Reference artwork") + '</b>'
+      + '<span>' + (live
+        ? "The first six TV posters currently in Deluno Lab."
+        : "The render uses TV reference posters until it can read the signed-in lab library.") + '</span></div>'
+      + '<code>' + esc(RENDER_ORIGIN) + '</code>'
+      + '</div>'
+      + '<div class="artwork-strip">'
+      + sourceItems.map(item => '<figure><div class="art artwork-preview">'
+        + '<img loading="lazy" data-artwork src="' + esc(renderUrl(item.posterUrl)) + '" alt="' + esc(item.title + " artwork") + '">'
+        + '</div><figcaption title="' + esc(item.title) + '">' + esc(item.title) + '</figcaption></figure>').join("")
+      + '</div>';
+  }
+
+  function wireArtworkFallbacks() {
+    document.querySelectorAll("img[data-artwork]").forEach(img => {
+      const fallback = () => {
+        if (!img.isConnected) return;
+        const placeholder = document.createElement("div");
+        placeholder.className = "noart";
+        placeholder.textContent = "Artwork unavailable";
+        img.replaceWith(placeholder);
+      };
+      if (img.complete && img.naturalWidth === 0) fallback();
+      else img.addEventListener("error", fallback, { once: true });
+    });
+  }
+
+  function sonarrBarHtml(sample) {
+    return '<div class="sonarr-progress" style="--sonarr-colour:' + esc(sample.colour)
+      + ';--sonarr-pct:' + sample.pct + '%">'
+      + '<div class="sonarr-fill"></div><span>' + esc(sample.count) + '</span></div>';
+  }
+
+  function sonarrPosterHtml(item, sample) {
+    return '<figure class="compare-card sonarr-sample"><div class="sonarr-poster">'
+      + (item.posterUrl
+        ? '<img loading="lazy" data-artwork src="' + esc(renderUrl(item.posterUrl)) + '" alt="' + esc(item.title + " artwork") + '">'
+        : '<div class="noart">no art</div>')
+      + sonarrBarHtml(sample)
+      + '</div><figcaption><b>' + esc(sample.label) + '</b><span>' + esc(sample.detail) + '</span></figcaption></figure>';
+  }
+
+  function delunoProposalHtml(item, label, detail) {
+    return '<figure class="compare-card deluno-sample"><div class="deluno-card-frame">'
+      + cardHtml(item, true)
+      + '</div><figcaption><b>' + esc(label) + '</b><span>' + esc(detail) + '</span></figcaption></figure>';
+  }
+
+  function drawComparison() {
+    const el = document.getElementById("comparison");
+    if (!el || !isShow) return;
+
+    const findScenario = phrase => SCENARIOS.tv.find(it => it.scenario.includes(phrase)) || SCENARIOS.tv[0];
+    const sonarrItems = [
+      [findScenario("Continuing - subtitles short"), SONARR_REFERENCE[0]],
+      [findScenario("Quality met - subtitles complete"), SONARR_REFERENCE[1]],
+      [findScenario("Missing, part way - subtitles short"), SONARR_REFERENCE[2]],
+      [findScenario("Downloading - subtitles short"), SONARR_REFERENCE[4]]
+    ];
+    const delunoItems = [
+      [findScenario("Missing, none held"), "Missing at zero coverage", "0 / 29 aired · SUBS Missing"],
+      [findScenario("Missing, part way - subtitles short"), "Missing", "3 / 20 aired · SUBS 3 / 9"],
+      [findScenario("Continuing - subtitles short"), "Continuing", "8 / 8 aired · SUBS 8 / 24"],
+      [findScenario("Quality met - subtitles complete"), "Quality met", "10 / 10 aired · SUBS 20 / 20"]
+    ];
+    const saved = { rem: S.rem, fill: S.fill };
+    let proposalCards = "";
+    try {
+      /* The comparison is deliberately fixed to the approved Deluno grammar:
+         Missing red remainder, held green fill, and gold when quality is met.
+         The controls below still let us compare the Sonarr alternative. */
+      S.rem = "missing";
+      S.fill = "held";
+      proposalCards = delunoItems.map(([item, label, detail]) => delunoProposalHtml(item, label, detail)).join("");
+    } finally {
+      S.rem = saved.rem;
+      S.fill = saved.fill;
+    }
+
+    const recommendedPalette = [
+      { mark: "miss", label: "Missing", colour: SURFACES.deep.both.miss, note: "Movies" },
+      { mark: "down", label: "Downloading", colour: SURFACES.deep.both.down, note: "Movies" },
+      { mark: "upg", label: "Upgradable", colour: SURFACES.deep.both.upg, note: "Movies" },
+      { mark: "gold", label: "Quality met", colour: SURFACES.deep.both.gold, note: "Movies" },
+      { mark: "soon", label: "Upcoming", colour: SURFACES.deep.both.soon, note: "Movies" },
+      { mark: "cont", label: "Continuing", colour: CONT_CANDIDATES.magenta.hsl, note: "TV only" }
+    ];
+    const paletteHtml = recommendedPalette.map(item =>
+      '<span style="background:hsl(' + item.colour + ');color:' + labelOn(item.mark) + '">'
+      + '<b>' + esc(item.label) + '</b><small>' + esc(item.note) + '</small></span>').join("");
+
+    el.innerHTML = '<div class="comparison-heading">'
+      + '<div><span class="eyebrow">Sonarr reference → recommended Deluno direction</span>'
+      + '<h2 id="comparison-title">Recommendation: keep Sonarr\'s instant read. Add Deluno\'s missing facts.</h2>'
+      + '<p>Sonarr gives the shelf a fast colour legend. Deluno keeps that glanceable signal while separating the facts Sonarr compresses into it.</p></div>'
+      + '<span class="decision-badge">Recommended · renderer only</span></div>'
+      + '<div class="palette-rule"><div class="palette-copy"><span class="eyebrow">Palette rule</span>'
+      + '<b>Reuse the movie colours wherever the state matches.</b>'
+      + '<small>Continuing remains a TV-only state in the legend; coverage fill follows held/quality semantics.</small></div>'
+      + '<div class="palette-swatches">' + paletteHtml + '</div></div>'
+      + '<div class="comparison-grid">'
+      + '<article class="comparison-panel sonarr-reference">'
+      + '<span class="eyebrow">From the supplied screenshot</span>'
+      + '<h3>Sonarr\'s five-state legend</h3>'
+      + '<p class="comparison-copy">One coloured reading tells you the series state and whether the series is complete, missing, or arriving.</p>'
+      + '<ul class="sonarr-legend">'
+      + SONARR_REFERENCE.map(item => '<li><span class="sonarr-swatch" style="background:' + esc(item.colour) + '"></span>'
+        + '<span><b>' + esc(item.label) + '</b><small>' + esc(item.detail) + '</small></span></li>').join("")
+      + '</ul>'
+      + '<div class="sonarr-samples">' + sonarrItems.map(([item, sample]) => sonarrPosterHtml(item, sample)).join("") + '</div>'
+      + '</article>'
+      + '<article class="comparison-panel deluno-proposal">'
+      + '<span class="eyebrow">Recommendation based on DESIGN-006</span>'
+      + '<h3>Deluno enhanced TV card</h3>'
+      + '<p class="comparison-copy">The state stays immediate, but the card also tells you coverage of aired episodes and subtitle coverage without using a second status legend.</p>'
+      + '<div class="deluno-samples">' + proposalCards + '</div>'
+      + '<p class="proposal-callout"><b>Implemented renderer settings:</b> Deep · movie palette for matching states · Missing red remainder · held green fill · Quality met gold when complete · episode count on · subtitle count on · <b>SUBS</b> only. Unmonitored is always the flat grey override; <b>Upcoming</b> and <b>Downloading</b> stay distinct. This direction is now applied to the product TV shelf.</p>'
+      + '</article>'
+      + '</div>'
+      + '<table class="compare-table"><thead><tr><th>Sonarr compresses</th><th>Deluno keeps separate</th></tr></thead><tbody>'
+      + '<tr><td>Continuing / Ended / Missing / Downloading</td><td><b>Action state</b> — Continuing, Quality met, Upgradable, Missing, Downloading, or Upcoming.</td></tr>'
+      + '<tr><td>One episode-progress signal</td><td><b>Top bar</b> — aired episodes held, with the fill measuring coverage of what has aired.</td></tr>'
+      + '<tr><td>No subtitle signal in the legend</td><td><b>Bottom bar</b> — SUBS held / wanted, counted across episodes actually held.</td></tr>'
+      + '<tr><td>Not monitored gets another status colour</td><td><b>Grey override</b> — both bars are flat grey, taking priority over Missing red or any held fill.</td></tr>'
+      + '<tr><td>Ended means all episodes downloaded</td><td><b>No duplicate lifecycle colour</b> — a finished show can still be Missing or Upgradable, so the card keeps the actionable state.</td></tr>'
+      + '</tbody></table>';
+  }
+
   function clearanceHtml() {
     if (!isShow) return "";
     const rows = Object.keys(CONT_CANDIDATES).map(k => {
@@ -944,7 +1111,9 @@ function mountDecider({ medium }) {
     const C = surfaces();
     return '<div class="legend">' + LADDER_FOR[medium].map(k =>
       '<span class="lchip"><span class="lstrip" style="background:hsl(' + C[k] + ')"></span>'
-      + MARKS[k] + '</span>').join("") + '</div>';
+      + MARKS[k] + '</span>').join("")
+      + '<span class="lchip"><span class="lstrip" style="background:' + UNMONITORED.track + '"></span>Unmonitored</span>'
+      + '</div>';
   }
 
   /*
@@ -1007,7 +1176,7 @@ function mountDecider({ medium }) {
 
   function drawAll() {
     document.body.className = S.theme === "light" ? "light" : "";
-    drawRail(); drawPresets(); drawBanner(); drawShelf();
+    drawRail(); drawPresets(); drawBanner(); drawComparison(); drawArtworkSource(); drawShelf(); wireArtworkFallbacks();
   }
 
   document.addEventListener("click", e => {
@@ -1025,7 +1194,8 @@ function mountDecider({ medium }) {
     if (!token) { DATA.reason = "notab"; return; }
     const path = isShow ? "/api/series/page" : "/api/movies/page";
     try {
-      const res = await fetch(path + "?pageSize=60&sort=title&direction=asc",
+      const url = new URL(path + "?pageSize=60&sort=title&direction=asc", RENDER_ORIGIN);
+      const res = await fetch(url,
                              { headers: { Authorization: "Bearer " + token } });
       if (!res.ok) throw res.status;
       const page = await res.json();
@@ -1038,5 +1208,6 @@ function mountDecider({ medium }) {
   loadLive().then(drawAll);
 
   /* Exposed so the page can be checked from the console rather than by eye. */
-  window.__decider = { S, CONTROLS, surfaces, nearestTo, whiteOn, deltaE, medium };
+  window.__decider = { S, CONTROLS, surfaces, nearestTo, whiteOn, deltaE, medium,
+    renderOrigin: RENDER_ORIGIN };
 }

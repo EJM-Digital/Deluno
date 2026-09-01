@@ -18,4 +18,7 @@ public sealed record MovieWantedItem(
     string? LastSearchResult,
     bool PreventLowerQualityReplacements,
     int? LastQualityDeltaDecision,
-    DateTimeOffset UpdatedUtc);
+    DateTimeOffset UpdatedUtc,
+    DateTimeOffset? AvailableUtc = null,
+    string? FilePath = null,
+    long? FileSizeBytes = null);

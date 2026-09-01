@@ -18,4 +18,5 @@ public sealed record UpdateLibraryViewRequest(
     string ViewMode,
     string CardSize,
     string DisplayOptionsJson,
-    string RulesJson);
+    string RulesJson,
+    string? AutomationAction = null);

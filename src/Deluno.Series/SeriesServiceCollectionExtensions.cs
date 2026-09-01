@@ -17,6 +17,7 @@ public static class SeriesServiceCollectionExtensions
     public static IServiceCollection AddDelunoSeriesModule(this IServiceCollection services)
     {
         services.TryAddSingleton<IMediaStateRepository, SqliteMediaStateRepository>();
+        services.TryAddSingleton<IMediaTagStore, SqliteMediaTagStore>();
         services.TryAddSingleton<IMediaSubtitleRepository, SqliteMediaSubtitleRepository>();
         services.AddSingleton<ISeriesCatalogRepository, SqliteSeriesCatalogRepository>();
         // The quality ladder has to reach this catalogue's own database for a

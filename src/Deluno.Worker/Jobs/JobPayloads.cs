@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Deluno.Contracts;
 
 namespace Deluno.Worker.Jobs;
 
@@ -19,7 +20,10 @@ internal static class JobPayloads
         int RetryDelayHours,
         string TriggeredBy,
         string? TargetEntityId = null,
-        string SearchKind = "combined");
+        string SearchKind = "combined",
+        string? ScopeId = null,
+        string? ScopeName = null,
+        IReadOnlyList<CatalogueFilterCondition>? ScopeConditions = null);
 
     internal sealed record LibraryQualityPayload(
         string LibraryId,

@@ -70,14 +70,16 @@ public static class MetadataEndpointRouteBuilderExtensions
             var results = status.IsConfigured
                 ? await provider.SearchAsync(lookup, cancellationToken)
                 : [];
+            var latestStatus = await provider.GetStatusAsync(cancellationToken);
 
             return Results.Ok(new MetadataTestResponse(
-                status.Provider,
-                status.IsConfigured,
-                status.Mode,
-                status.Message,
+                latestStatus.Provider,
+                latestStatus.IsConfigured,
+                latestStatus.Mode,
+                latestStatus.Message,
                 results.Count,
-                results.Take(5).ToArray()));
+                results.Take(5).ToArray(),
+                latestStatus.LastFailure));
         });
 
         metadata.MapDelete("/cache", async (
@@ -138,7 +140,8 @@ public static class MetadataEndpointRouteBuilderExtensions
                 "local-direct",
                 appStatus.IsConfigured
                     ? "Local broker-compatible endpoint is backed by direct TMDb lookup. Hosted broker can implement the same /metadata/search contract later."
-                    : "Local broker-compatible endpoint is available, but direct TMDb lookup needs a key before it can return provider metadata."));
+                    : "Local broker-compatible endpoint is available, but direct TMDb lookup needs a key before it can return provider metadata.",
+                appStatus.LastFailure));
         });
 
         broker.MapGet("/search", async (
@@ -162,7 +165,8 @@ public static class MetadataEndpointRouteBuilderExtensions
                 "deluno-broker",
                 "local-direct",
                 results.Count,
-                results));
+                results,
+                provider.LastFailure));
         });
 
         return endpoints;
@@ -181,16 +185,19 @@ public sealed record MetadataTestResponse(
     string Mode,
     string Message,
     int ResultCount,
-    IReadOnlyList<MetadataSearchResult> SampleResults);
+    IReadOnlyList<MetadataSearchResult> SampleResults,
+    Deluno.Contracts.IntegrationFailure? Failure = null);
 
 public sealed record MetadataBrokerStatusResponse(
     string Provider,
     bool IsConfigured,
     string Mode,
-    string Message);
+    string Message,
+    Deluno.Contracts.IntegrationFailure? Failure = null);
 
 public sealed record MetadataBrokerSearchResponse(
     string Provider,
     string Mode,
     int ResultCount,
-    IReadOnlyList<MetadataSearchResult> Results);
+    IReadOnlyList<MetadataSearchResult> Results,
+    Deluno.Contracts.IntegrationFailure? Failure = null);

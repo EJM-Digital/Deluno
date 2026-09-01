@@ -27,10 +27,10 @@ export interface CardDesign {
   /**
    * Whether this shelf draws the card settled in DESIGN-006.
    *
-   * TV is deliberately still `false`: its Continuing hue is unsettled, and James
-   * asked that the shelves not move together — *"frozen on today's card"* until
-   * TV is decided on its own terms. Flipping this is how TV adopts it, and
-   * nothing about the movie card changes when it does.
+   * Movies and TV opt in independently. TV now uses the shared mechanism with
+   * its own episode-coverage bar, red Missing remainder, held/quality fill,
+   * and Continuing hue; changing this declaration does not change the movie
+   * shelf.
    */
   readonly bars: boolean;
 
@@ -49,16 +49,16 @@ export interface CardDesign {
    */
   readonly fillMeans: "download" | "coverage";
 
-  /** Which bars carry a lead word. Settled for movies as the subtitle bar only. */
+  /** Which bars carry a lead word. Settled for both shelves as the subtitle bar only. */
   readonly leads: "none" | "subtitles" | "both";
 
   /**
    * What the unfilled part of a bar is.
    *
    * `missing` — Missing red, which is what the part you do not have *is*.
-   * `neutral` — the idle grey. Not used: grey means "unmonitored" and nothing
-   * else, so a grey track makes a monitored title holding nothing read as
-   * unmonitored.
+   * `neutral` — the idle grey remainder, with the state colour carried by the
+   * filled portion. It is retained for renderer comparisons; the product
+   * shelves use `missing` so the part not held is visibly Missing.
    */
   readonly track: "missing" | "neutral";
 
@@ -66,9 +66,16 @@ export interface CardDesign {
    * What the filled part is coloured by.
    *
    * `mixed` — the rung's colour, except a Missing title's held part, which is
-   * green because what you hold is held regardless of the rung. Required once
+   * green because what you hold is held regardless of the rung. Required when
    * the track is red: without it a Missing title's fill and track are the same
    * colour and the fraction vanishes.
+   *
+   * `held` — the held portion is green, except a fully held Quality met title,
+   * which is gold. This is the active TV composition and keeps the same
+   * meaning as the subtitle bar: colour says what that segment is.
+   *
+   * `state` — the rung's colour is retained in the held portion. This is kept
+   * for renderer comparisons and exploratory designs.
    *
    * Inert on the movie shelf — measured, zero movie cards render differently
    * across the three rules, because a film is held or it is not. It is declared
@@ -88,14 +95,15 @@ const MOVIES: CardDesign = {
 };
 
 const SHOWS: CardDesign = {
-  // Frozen until TV is settled on its own terms. See `bars` above.
-  bars: false,
+  // TV now adopts DESIGN-006 independently of Movies. Its media bar measures
+  // aired-episode coverage, and its Continuing rung has its own TV-only hue.
+  bars: true,
   ladder: ["missing", "downloading", "upgrade", "airing", "covered", "upcoming"],
   mediaBar: "episodes",
   fillMeans: "coverage",
   leads: "subtitles",
   track: "missing",
-  fill: "mixed"
+  fill: "held"
 };
 
 export const CARD_DESIGN: Record<MediaType, CardDesign> = {

@@ -1,4 +1,5 @@
 using System.Text.Json.Serialization;
+using Deluno.Contracts;
 
 namespace Deluno.Connections.Contracts;
 
@@ -37,6 +38,9 @@ public sealed record SubtitleProviderConnection(
     public bool HasSecret => !string.IsNullOrWhiteSpace(Secret);
 
     public bool HasApiKey => !string.IsNullOrWhiteSpace(ApiKey);
+
+    /// <summary>Last typed failure from a provider test or real subtitle fetch.</summary>
+    public IntegrationFailure? LastHealthFailure { get; init; }
 
     /// <summary>
     /// Whether this source is one Deluno will actually ask right now.
@@ -88,4 +92,5 @@ public sealed record SubtitleProviderTestResult(
     string Status,
     string Message,
     int? LatencyMs,
-    int? ResultCount);
+    int? ResultCount,
+    IntegrationFailure? Failure = null);

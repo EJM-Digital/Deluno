@@ -1,3 +1,5 @@
+using Deluno.Quality.ReleasePreferences;
+
 namespace Deluno.Integrations.Search;
 
 public sealed record ReleaseDecision(
@@ -13,4 +15,6 @@ public sealed record ReleaseDecision(
     int SeederScore,
     int SizeScore,
     string? ReleaseGroup,
-    double? EstimatedBitrateMbps);
+    double? EstimatedBitrateMbps,
+    PreferenceEvaluation? PreferenceEvaluation = null,
+    PreferenceComparison? PreferenceComparison = null);

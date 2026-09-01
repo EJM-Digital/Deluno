@@ -12,6 +12,22 @@ public static class ImportFileReadiness
 
     private static readonly TimeSpan MinimumStableAge = TimeSpan.FromSeconds(2);
 
+    public static bool IsPreviewReady(ImportPreviewResponse preview)
+    {
+        if (!preview.SourceExists)
+        {
+            return false;
+        }
+
+        // A reviewed season pack's source path is a directory. Checking that
+        // directory with FileInfo always reports a zero-length non-file and
+        // incorrectly blocks the job. The executable unit is every member of
+        // the authoritative pack plan, so each source file must be stable.
+        return preview.Pack is { } pack
+            ? pack.Files.Count > 0 && pack.Files.All(file => IsReady(file.SourcePath))
+            : IsReady(preview.SourcePath);
+    }
+
     public static bool IsReady(string path)
     {
         try

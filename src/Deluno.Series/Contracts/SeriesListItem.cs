@@ -115,4 +115,8 @@ public sealed record SeriesListItem(
     /// <see cref="SubtitleLanguagesHeld"/> in green: you have it, you can watch
     /// it, and something better may still turn up.</para>
     /// </summary>
-    int SubtitleLanguagesSettled = 0);
+    int SubtitleLanguagesSettled = 0,
+    /// <summary>The TV numbering model selected for this series.</summary>
+    string SeriesType = SeriesTypes.Standard,
+    string NumberingScheme = SeriesNumberingSchemes.Standard,
+    string? NumberingSource = null);

@@ -2,13 +2,15 @@
   "name": "deluno-monorepo",
   "private": true,
   "workspaces": [
-    "apps/web"
+    "apps/web",
+    "sdk/typescript"
   ],
   "scripts": {
     "dev:web": "npm --workspace apps/web run dev",
     "build:web": "npm --workspace apps/web run build",
     "test:web": "npm --workspace apps/web run test:smoke",
     "test:unit:web": "npm --workspace apps/web run test:unit",
+    "typecheck:sdk": "npm --workspace sdk/typescript run typecheck",
     "preview:web": "npm --workspace apps/web run preview",
     "check:metadata-gateway": "npm --prefix services/metadata-gateway run check && npm --prefix services/metadata-gateway test",
     "ci:check": "node scripts/run-ci-check.mjs",

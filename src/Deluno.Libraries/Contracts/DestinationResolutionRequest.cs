@@ -7,7 +7,11 @@ public sealed record DestinationResolutionRequest(
     IReadOnlyList<string>? Genres,
     IReadOnlyList<string>? Tags,
     string? Studio,
-    string? OriginalLanguage);
+    string? OriginalLanguage,
+    string? ImdbId = null,
+    string? TvDbId = null,
+    string? QualityProfile = null,
+    string? Network = null);
 
 public sealed record DestinationResolutionResult(
     string MediaType,

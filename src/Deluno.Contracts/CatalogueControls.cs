@@ -164,26 +164,25 @@ public sealed record CatalogueControls(
         //
         // These are on the movie shelf ONLY, and deliberately so. James: "they
         // should be independant of each other, tv and movie" — the film card is
-        // settled and the show card is not, so TV keeps what it has until it is
-        // decided on its own terms. The TV equivalent is "Episode count on the
-        // bar" and it arrives with that decision, not with this one.
+        // settled and the show card has its own declaration below. The TV
+        // equivalent is "Episode count on the bar" and is not copied here.
         //
         // Named for what they put on the card rather than for the widget. Sonarr
         // and Radarr both call this "Detailed Progress Bar — show text on
         // progress bar", which names the control and says nothing about what
         // appears; a reader of the movie shelf wants to know it is the quality.
-        new("showQualityOnBar", "Quality on the bar", "The quality you hold, written across the top bar", DefaultOn: true),
-        new("showSubtitleCountOnBar", "Subtitle count on the bar", "How many of the languages you asked for are here", DefaultOn: true)
+        new("showQualityOnBar", "Quality on the bar", "The quality you hold, written across the top bar", DefaultOn: true)
     ];
 
     /// <summary>What only a show's card can show.</summary>
     private static IReadOnlyList<CataloguePosterOption> SeriesOnlyPosterOptions =>
     [
-        new("showNextAiring", "Next airing", "When the next episode is due", DefaultOn: false, Line: true)
-        // Episode progress is not here either, and for the opposite reason: it
-        // is now on every show's card whether you ask for it or not, in the
-        // corner. A switch for a line reading "3/20 episodes" underneath would
-        // be the same fact twice on one card.
+        new("showNextAiring", "Next airing", "When the next episode is due", DefaultOn: false, Line: true),
+        // A show has no one quality to print: its top bar measures the aired
+        // episodes held instead. This switch owns only that bar's words.
+        new("showEpisodeCountOnBar", "Episode count on the bar", "How many aired episodes you hold, written across the top bar", DefaultOn: true)
+        // Episode coverage is on the top bar, so a second line underneath the
+        // poster would repeat the same fact in a less glanceable place.
     ];
 
     /// <summary>
@@ -195,6 +194,8 @@ public sealed record CatalogueControls(
     private static IReadOnlyList<CataloguePosterOption> SharedPosterOptions =>
     [
         new("showTitle", "Title", "The movie or series name", DefaultOn: true),
+        // Both shelves use the bottom bar for this same subtitle question.
+        new("showSubtitleCountOnBar", "Subtitle count on the bar", "How many of the languages you asked for are here", DefaultOn: true),
         // A line under the poster, on both shelves, on by default.
         //
         // This was briefly taken off the movie shelf on the reasoning that the
@@ -272,6 +273,7 @@ public sealed record CatalogueControls(
                 CatalogueFilterValueKind.Boolean => "boolean",
                 CatalogueFilterValueKind.QualityTier => "quality",
                 CatalogueFilterValueKind.Genre => "genre",
+                CatalogueFilterValueKind.Tag => "tag",
                 CatalogueFilterValueKind.Enum => "enum",
                 _ => "text"
             },

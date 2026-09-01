@@ -4,6 +4,8 @@ using Deluno.Libraries.Contracts;
 using Deluno.Platform.Contracts;
 using Deluno.Platform.Data;
 using Deluno.Quality.Contracts;
+using Deluno.Quality.Guides;
+using Deluno.Quality.ReleasePreferences;
 using Deluno.Connections.Contracts;
 using Deluno.Connections.Data;
 
@@ -46,6 +48,14 @@ public sealed class AcquisitionDecisionPipeline : IAcquisitionDecisionPipeline
         var sourceCount = readyConnections.Sources.Count;
         var clientCount = readyConnections.DownloadClients.Count;
         var selectedClient = await SelectDownloadClientAsync(readyConnections.DownloadClients, cancellationToken);
+        var currentCustomFormatScore = request.CurrentCustomFormatScore;
+        if (currentCustomFormatScore is null && !string.IsNullOrWhiteSpace(request.CurrentReleaseName))
+        {
+            currentCustomFormatScore = CustomFormatMatcher.EvaluateUpgradeScore(
+                request.CurrentReleaseName,
+                request.CustomFormats,
+                out _);
+        }
 
         var searchPlan = sourceCount == 0 || clientCount == 0
             ? new MediaSearchPlan(
@@ -69,7 +79,21 @@ public sealed class AcquisitionDecisionPipeline : IAcquisitionDecisionPipeline
                 request.SeasonNumber,
                 request.EpisodeNumber,
                 request.AllowedQualities,
-                cancellationToken);
+                cancellationToken,
+                request.TagNames,
+                request.SearchKind,
+                request.AvailableUtc,
+                currentCustomFormatScore,
+                request.CurrentReleaseName,
+                request.UpgradeUntilCutoff,
+                request.NumberingScheme,
+                request.AbsoluteNumber,
+                request.AirDate,
+                request.SceneSeasonNumber,
+                request.SceneEpisodeNumber,
+                request.CurrentPreferenceEvaluation,
+                request.PreferencePlan,
+                request.CurrentFilePresent);
 
         var bestCandidate = searchPlan.BestCandidate;
         var outcome = sourceCount == 0 || clientCount == 0
@@ -104,10 +128,19 @@ public sealed class AcquisitionDecisionPipeline : IAcquisitionDecisionPipeline
         var quality = request.CandidateQuality
             ?? Deluno.Quality.LibraryQualityDecider.DetectQuality(request.ReleaseName)
             ?? "WEB 1080p";
-        var customFormatScore = CustomFormatMatcher.Evaluate(
+        // A selected release must be judged by the same immutable profile plan
+        // as automatic search.  Manual selection is still an acquisition path,
+        // not a licence to silently recompile a migrated profile against the
+        // current guide package.
+        var preferencePlan = request.PreferencePlan ?? ReleasePreferencePlanFactory.CreateQualityPlan(
+            request.MediaType,
+            request.TargetQuality,
+            upgradeUntilCutoff: true,
+            customFormats: request.CustomFormats,
+            guidePackage: request.GuidePackage);
+        var matchedCustomFormats = CustomFormatMatcher.EvaluateMatches(
             request.ReleaseName,
-            request.CustomFormats,
-            out var matchedCustomFormats);
+            request.CustomFormats);
         var decision = ReleaseDecisionEngine.Decide(new ReleaseDecisionInput(
             request.ReleaseName,
             quality,
@@ -117,8 +150,12 @@ public sealed class AcquisitionDecisionPipeline : IAcquisitionDecisionPipeline
             request.Seeders,
             request.DownloadUrl,
             SourcePriorityScore: request.SourcePriorityScore ?? 0,
-            CustomFormatScore: customFormatScore,
-            request.NeverGrabPatterns));
+            CustomFormatScore: 0,
+            request.NeverGrabPatterns,
+            PreferencePlan: preferencePlan,
+            CurrentReleaseName: request.CurrentReleaseName,
+            CurrentPreferenceEvaluation: request.CurrentPreferenceEvaluation,
+            CurrentFilePresent: request.CurrentFilePresent));
         var boost = rankingModelService.Score(new ReleaseRankingFeatures(
             Seeders: request.Seeders,
             SizeBytes: request.SizeBytes,
@@ -128,13 +165,17 @@ public sealed class AcquisitionDecisionPipeline : IAcquisitionDecisionPipeline
             EstimatedBitrateMbps: decision.EstimatedBitrateMbps,
             ReleaseAgeHours: null), hardBlocked: decision.Status == "rejected");
         var scoreComputation = ReleaseScoringModePolicy.Compute(decision.Score, boost, request.ScoringMode);
-        var boostedScore = scoreComputation.FinalScore;
-        var boostedSummary = scoreComputation.UsesModelSignal && boost.Applied
-            ? $"{decision.Summary} {boost.Explanation} {scoreComputation.Explanation}"
-            : $"{decision.Summary} {scoreComputation.Explanation}";
-        var boostedReasons = scoreComputation.UsesModelSignal
-            ? decision.Reasons.Concat([boost.Explanation, scoreComputation.Explanation]).ToArray()
-            : decision.Reasons.Concat([scoreComputation.Explanation]).ToArray();
+        var boostedScore = preferencePlan is null ? scoreComputation.FinalScore : 0;
+        var boostedSummary = preferencePlan is null
+            ? scoreComputation.UsesModelSignal && boost.Applied
+                ? $"{decision.Summary} {boost.Explanation} {scoreComputation.Explanation}"
+                : $"{decision.Summary} {scoreComputation.Explanation}"
+            : decision.Summary;
+        var boostedReasons = preferencePlan is null
+            ? scoreComputation.UsesModelSignal
+                ? decision.Reasons.Concat([boost.Explanation, scoreComputation.Explanation]).ToArray()
+                : decision.Reasons.Concat([scoreComputation.Explanation]).ToArray()
+            : decision.Reasons;
 
         var candidate = new MediaSearchCandidate(
             ReleaseName: request.ReleaseName,
@@ -157,7 +198,9 @@ public sealed class AcquisitionDecisionPipeline : IAcquisitionDecisionPipeline
             ReleaseGroup: decision.ReleaseGroup,
             EstimatedBitrateMbps: decision.EstimatedBitrateMbps,
             PolicyVersion: decision.PolicyVersion,
-            MatchedCustomFormats: matchedCustomFormats);
+            MatchedCustomFormats: matchedCustomFormats,
+            PreferenceEvaluation: decision.PreferenceEvaluation,
+            PreferenceComparison: decision.PreferenceComparison);
 
         var safe = IsSafeForAutomaticDispatch(candidate);
 
@@ -259,7 +302,7 @@ public sealed class AcquisitionDecisionPipeline : IAcquisitionDecisionPipeline
                 Name: candidate.ReleaseName,
                 Status: candidate.DecisionStatus,
                 Reason: candidate.Summary,
-                Score: candidate.Score))
+                Score: candidate.PreferenceEvaluation is null ? candidate.Score : null))
             .ToArray();
 
     private async Task<LibraryDownloadClientLinkItem?> SelectDownloadClientAsync(
@@ -367,7 +410,27 @@ public sealed record AcquisitionDecisionRequest(
     /// Quality tiers the governing profile permits. Empty leaves selection to
     /// the cutoff; a populated list rejects anything outside it.
     /// </summary>
-    IReadOnlyList<string>? AllowedQualities = null);
+    IReadOnlyList<string>? AllowedQualities = null,
+    IReadOnlyList<string>? TagNames = null,
+    string SearchKind = AcquisitionSearchKinds.Automatic,
+    DateTimeOffset? AvailableUtc = null,
+    string? CurrentReleaseName = null,
+    int? CurrentCustomFormatScore = null,
+    bool UpgradeUntilCutoff = true,
+    string? NumberingScheme = null,
+    int? AbsoluteNumber = null,
+    DateOnly? AirDate = null,
+    int? SceneSeasonNumber = null,
+    int? SceneEpisodeNumber = null,
+    /// <summary>
+    /// The last installed-file evaluation, when one was persisted for this
+    /// title. The decision engine accepts it only when its plan hash matches
+    /// the plan compiled for this search; otherwise it re-derives a baseline
+    /// instead of comparing evidence from different policy versions.
+    /// </summary>
+    PreferenceEvaluationSnapshot? CurrentPreferenceEvaluation = null,
+    ReleasePreferencePlan? PreferencePlan = null,
+    bool CurrentFilePresent = false);
 
 public sealed record AcquisitionDecisionPlan(
     MediaSearchPlan SearchPlan,
@@ -397,7 +460,14 @@ public sealed record AcquisitionSelectedReleaseRequest(
     string? OverrideReason = null,
     IReadOnlyList<string>? NeverGrabPatterns = null,
     bool PreventLowerQualityReplacements = false,
-    string? ScoringMode = null);
+    string? ScoringMode = null,
+    string? CurrentReleaseName = null,
+    int? CurrentCustomFormatScore = null,
+    string MediaType = "movies",
+    GuidePackage? GuidePackage = null,
+    ReleasePreferencePlan? PreferencePlan = null,
+    PreferenceEvaluationSnapshot? CurrentPreferenceEvaluation = null,
+    bool CurrentFilePresent = false);
 
 public sealed record AcquisitionSelectedReleaseDecision(
     MediaSearchCandidate Candidate,

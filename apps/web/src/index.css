@@ -53,6 +53,9 @@
       carries no verdict of its own, which suits a rung that means "nothing to
       do yet", and it is what a calendar uses for something scheduled.
     */
+    --mark-missing: 0 84% 48%;
+    --mark-downloading: 207 92% 45%;
+    --mark-upgrade: 145 72% 34%;
     --mark-quality-met: 42 96% 40%;
     /*
       Gold is a *material*, and a flat fill of it reads as yellow. This is the
@@ -81,18 +84,14 @@
       Continuing, and up to date.
 
       Sonarr paints this blue. Deluno's blue is Downloading and the app's
-      primary, so taking it would make one colour mean two things depending on
-      which shelf you were looking at — the failure the whole mark table exists
-      to prevent. Teal is the nearest free hue to the one Sonarr chose: it sits
-      between Upgradable's green and Downloading's blue, reads as steady rather
-      than as a verdict, and is the only slot left now that violet has gone to
-      Upcoming.
+      primary, so the approved TV treatment uses the open magenta arc instead.
+      It is deliberately not gold: gold is Quality met — Deluno has stopped
+      looking — while a show still airing has emphatically not stopped.
 
-      It is deliberately not gold. Gold is Quality met — Deluno has stopped
-      looking — and a show still airing is the one state where Deluno is up to
-      date and has emphatically not stopped.
+      The semantic text colour is theme-specific because it sits on the page;
+      the bar surface below is one artwork colour in both themes.
     */
-    --mark-airing: 178 74% 30%;
+    --mark-airing: 318 74% 30%;
     --mark-idle: 220 10% 82%;
 
     /*
@@ -113,7 +112,7 @@
     --mark-missing-surface: 356 84% 41%;
     --mark-downloading-surface: 214 94% 40%;
     --mark-upgrade-surface: 150 90% 25%;
-    --mark-airing-surface: 178 96% 24%;
+    --mark-airing-surface: 318 78% 38%;
     --mark-upcoming-surface: 270 76% 47%;
     /* The label a surface carries. White everywhere but gold. */
     --mark-on-surface: 0 0% 100%;
@@ -135,7 +134,7 @@
     --mark-missing-on-track: 0 84% 37%;
     --mark-downloading-on-track: 207 92% 32%;
     --mark-upgrade-on-track: 145 72% 23%;
-    --mark-airing-on-track: 178 74% 22%;
+    --mark-airing-on-track: 318 78% 35%;
     --mark-quality-met-on-track: 44 98% 22%;
     --mark-upcoming-on-track: 268 72% 45%;
     --mark-unmonitored-on-track: 220 8% 35%;
@@ -212,16 +211,19 @@
     --warning-foreground: 28 40% 10%;
     --info: 207 96% 62%;
     --info-foreground: 210 30% 98%;
+    --mark-missing: 0 84% 62%;
+    --mark-downloading: 207 96% 62%;
+    --mark-upgrade: 145 78% 52%;
     --mark-quality-met: 44 98% 58%;
     --mark-upcoming: 265 82% 72%;
-    --mark-airing: 178 76% 50%;
+    --mark-airing: 318 76% 50%;
     --mark-idle: 217 16% 26%;
     /* The surfaces do NOT invert — they sit on artwork. Only the on-track
        labels do, because the track itself inverts. */
     --mark-missing-on-track: 0 84% 77%;
     --mark-downloading-on-track: 207 92% 67%;
     --mark-upgrade-on-track: 145 72% 45%;
-    --mark-airing-on-track: 178 74% 45%;
+    --mark-airing-on-track: 318 78% 75%;
     --mark-quality-met-on-track: 44 98% 45%;
     --mark-upcoming-on-track: 268 72% 78%;
     --mark-unmonitored-on-track: 220 8% 69%;
@@ -1762,6 +1764,60 @@ html .text-\[64px\] {
 
 .deluno-range-input::-moz-range-track {
   background: transparent;
+}
+
+/*
+  A title mark never relies on hue alone (#318). The dot carries a small glyph;
+  the thin poster state bar carries a texture so TV cards remain legible when
+  the bar is the only compact visual state. Textures use the bar's own current
+  colour and do not introduce a second status palette.
+*/
+.title-mark-glyph {
+  font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+  text-shadow: 0 1px 1px hsl(0 0% 0% / 0.45);
+}
+
+.title-mark-glyph::before {
+  content: attr(data-glyph);
+}
+
+.title-mark-covered .title-mark-glyph {
+  color: hsl(var(--mark-on-gold));
+  text-shadow: none;
+}
+
+.title-mark-pattern {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  opacity: 0.34;
+  color: hsl(var(--mark-on-surface));
+}
+
+.title-mark-missing.title-mark-pattern {
+  background-image: repeating-linear-gradient(135deg, currentColor 0 1px, transparent 1px 4px);
+}
+
+.title-mark-downloading.title-mark-pattern {
+  background-image: repeating-linear-gradient(90deg, currentColor 0 1px, transparent 1px 4px);
+}
+
+.title-mark-upgrade.title-mark-pattern {
+  background-image: radial-gradient(circle, currentColor 0 1px, transparent 1.2px);
+  background-size: 4px 4px;
+}
+
+.title-mark-covered.title-mark-pattern {
+  background-image: repeating-linear-gradient(45deg, currentColor 0 1px, transparent 1px 3px);
+}
+
+.title-mark-airing.title-mark-pattern {
+  background-image: repeating-linear-gradient(0deg, currentColor 0 1px, transparent 1px 4px);
+}
+
+.title-mark-upcoming.title-mark-pattern {
+  background-image: repeating-linear-gradient(45deg, currentColor 0 1px, transparent 1px 2px, currentColor 2px 3px, transparent 3px 5px);
 }
 
 /*

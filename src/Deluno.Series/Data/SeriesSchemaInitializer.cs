@@ -9,15 +9,25 @@ namespace Deluno.Series.Data;
 public sealed class SeriesSchemaInitializer(
     IDelunoDatabaseConnectionFactory databaseConnectionFactory,
     IDelunoDatabaseMigrator migrator,
-    ILogger<SeriesSchemaInitializer> logger)
+    ILogger<SeriesSchemaInitializer> logger,
+    IDelunoStartupGate? startupGate = null)
     : IHostedService
 {
     public async Task StartAsync(CancellationToken cancellationToken)
     {
-        await migrator.ApplyAsync(
-            DelunoDatabaseNames.Series,
-            SeriesDatabaseMigrations.All,
-            cancellationToken);
+        try
+        {
+            await migrator.ApplyAsync(
+                DelunoDatabaseNames.Series,
+                SeriesDatabaseMigrations.All,
+                cancellationToken);
+            startupGate?.MarkReady(DelunoDatabaseNames.Series);
+        }
+        catch (Exception exception)
+        {
+            startupGate?.MarkFailed(DelunoDatabaseNames.Series, exception);
+            throw;
+        }
 
         logger.LogInformation(
             "Series database migrations are current at {DatabasePath}.",

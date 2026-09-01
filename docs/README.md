@@ -16,6 +16,8 @@ Deluno keeps product, architecture, and repo-state context in the repository so 
 - `deluno-frontend-backend-map.md`: user-facing IA and backend ownership map.
 - `deluno-ui-api-contract.md`: implemented UI-facing API contract and active gaps.
 - `external-integration-api.md`: external automation and refine-before-import surface.
+- `RELEASE_PREFERENCE_SPEC.md`: typed release-preference semantics, truth tables, comparison order, and invariants.
+- `guide-packages.md`: backend-owned guide package contract, provenance, mapping safety, and update procedure.
 - `metadata-broker-contract.md`: managed TMDb gateway contract, deployment endpoint, and privacy boundary.
 - `packaging.md`: source-backed Docker and Windows packaging guide.
 - `DEPLOYMENT.md`: current deployment instructions for Docker, Compose, and Windows publish runs.
@@ -39,7 +41,10 @@ Deluno keeps product, architecture, and repo-state context in the repository so 
 Current note:
 
 - `agent-first-realignment.md` is completed work and now belongs under `exec-plans/completed/`.
-- `exec-plans/active/` is intentionally empty apart from `.gitkeep` until another multi-surface plan starts.
+- `exec-plans/active/HANDOVER-next-chat.md` is the current Git, lab, validation,
+  deployed-versus-local, and open-backlog baseline.
+- `exec-plans/active/E2E-full-product-test-run-2026-08-31.md` is the live execution
+  ledger for the current multi-surface product run.
 
 ## Source Of Truth Rules
 

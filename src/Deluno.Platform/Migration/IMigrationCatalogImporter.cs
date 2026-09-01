@@ -31,7 +31,10 @@ public sealed record MigrationCatalogTitle(
     string? MetadataProviderId,
     bool Monitored,
     bool SourceReportsFile,
-    string? RootPath);
+    string? RootPath,
+    string? SeriesType = null,
+    string? NumberingScheme = null,
+    string? NumberingSource = null);
 
 public sealed record MigrationCatalogLibrary(
     string Id,

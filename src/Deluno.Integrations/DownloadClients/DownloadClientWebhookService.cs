@@ -1,3 +1,4 @@
+using Deluno.Contracts;
 using Deluno.Jobs.Contracts;
 using Deluno.Jobs.Data;
 using Microsoft.Extensions.Logging;
@@ -92,7 +93,16 @@ public sealed class DownloadClientWebhookService(
             importedFilePath: null,
             importFailureCode: "client-reported-failure",
             importFailureMessage: request.FailureReason ?? "Download client reported failure.",
-            cancellationToken);
+            cancellationToken,
+            failure: IntegrationFailureFactory.FromLegacy(
+                "download-client",
+                dispatch.DownloadClientId,
+                dispatch.DownloadClientName,
+                "download",
+                "failed",
+                request.FailureReason ?? "Download client reported failure.",
+                code: "client-reported-failure",
+                externalId: dispatch.Id));
 
         await dispatchesRepository.RecordTimelineEventAsync(
             dispatch.Id,

@@ -26,10 +26,10 @@ public sealed class SqliteDownloadDispatchesRepository(
                 id, library_id, media_type, entity_type, entity_id, release_name,
                 indexer_name, download_client_id, download_client_name, status, notes_json,
                 created_utc, grab_status, grab_attempted_utc, grab_response_code,
-                grab_message, grab_failure_code, grab_response_json, detected_utc,
+                grab_message, grab_failure_code, grab_response_json, grab_failure_json, detected_utc,
                 torrent_hash_or_item_id, downloaded_bytes, import_status, import_detected_utc,
                 import_completed_utc, imported_file_path, import_failure_code,
-                import_failure_message, circuit_open_until_utc, next_retry_eligible_utc, attempt_count
+                import_failure_message, import_failure_json, circuit_open_until_utc, next_retry_eligible_utc, attempt_count
             FROM download_dispatches
             WHERE id = @dispatchId AND status != 'archived'
             """;
@@ -52,7 +52,9 @@ public sealed class SqliteDownloadDispatchesRepository(
         string? grabMessage,
         string? grabFailureCode,
         string? grabResponseJson,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        IntegrationFailure? failure = null,
+        string? externalId = null)
     {
         var now = timeProvider.GetUtcNow();
 
@@ -74,7 +76,9 @@ public sealed class SqliteDownloadDispatchesRepository(
                     grab_response_code = @grabResponseCode,
                     grab_message = @grabMessage,
                     grab_failure_code = @grabFailureCode,
-                    grab_response_json = @grabResponseJson
+                    grab_response_json = @grabResponseJson,
+                    grab_failure_json = @grabFailureJson,
+                    torrent_hash_or_item_id = COALESCE(@externalId, torrent_hash_or_item_id)
                 WHERE id = @dispatchId
                 """;
 
@@ -85,6 +89,8 @@ public sealed class SqliteDownloadDispatchesRepository(
             AddParameter(command, "@grabMessage", grabMessage);
             AddParameter(command, "@grabFailureCode", grabFailureCode);
             AddParameter(command, "@grabResponseJson", grabResponseJson);
+            AddParameter(command, "@grabFailureJson", failure is null ? null : JsonSerializer.Serialize(failure));
+            AddParameter(command, "@externalId", string.IsNullOrWhiteSpace(externalId) ? null : externalId.Trim());
 
             await command.ExecuteNonQueryAsync(cancellationToken);
         }
@@ -99,7 +105,8 @@ public sealed class SqliteDownloadDispatchesRepository(
                 grabStatus,
                 grabResponseCode,
                 grabMessage,
-                grabFailureCode
+                grabFailureCode,
+                externalId
             }),
             cancellationToken);
 
@@ -186,7 +193,8 @@ public sealed class SqliteDownloadDispatchesRepository(
         string? importedFilePath,
         string? importFailureCode,
         string? importFailureMessage,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        IntegrationFailure? failure = null)
     {
         var now = timeProvider.GetUtcNow();
         importStatus = NormalizeImportStatus(importStatus);
@@ -196,6 +204,18 @@ public sealed class SqliteDownloadDispatchesRepository(
             cancellationToken);
 
         await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+
+        var persistedFailure = importStatus == "failed"
+            ? failure ?? IntegrationFailureFactory.FromLegacy(
+                "deluno",
+                dispatchId,
+                "Deluno import",
+                "import",
+                "rejected",
+                importFailureMessage ?? "The downloaded file could not be imported.",
+                code: importFailureCode,
+                externalId: dispatchId)
+            : null;
 
         using (var command = connection.CreateCommand())
         {
@@ -215,7 +235,8 @@ public sealed class SqliteDownloadDispatchesRepository(
                     END,
                     imported_file_path = @importedFilePath,
                     import_failure_code = @importFailureCode,
-                    import_failure_message = @importFailureMessage
+                    import_failure_message = @importFailureMessage,
+                    import_failure_json = @importFailureJson
                 WHERE id = @dispatchId
                 """;
 
@@ -226,6 +247,10 @@ public sealed class SqliteDownloadDispatchesRepository(
             AddParameter(command, "@importedFilePath", importedFilePath);
             AddParameter(command, "@importFailureCode", importFailureCode);
             AddParameter(command, "@importFailureMessage", importFailureMessage);
+            AddParameter(
+                command,
+                "@importFailureJson",
+                persistedFailure is null ? null : JsonSerializer.Serialize(persistedFailure));
 
             await command.ExecuteNonQueryAsync(cancellationToken);
         }
@@ -241,7 +266,8 @@ public sealed class SqliteDownloadDispatchesRepository(
                 importStatus,
                 importedFilePath,
                 importFailureCode,
-                importFailureMessage
+                importFailureMessage,
+                failure = persistedFailure
             }),
             cancellationToken);
 
@@ -283,6 +309,12 @@ public sealed class SqliteDownloadDispatchesRepository(
             parameters["clientId"] = filter.ClientId;
         }
 
+        if (!string.IsNullOrEmpty(filter.MediaType))
+        {
+            whereConditions.Add("media_type = @mediaType");
+            parameters["mediaType"] = filter.MediaType;
+        }
+
         if (!string.IsNullOrEmpty(filter.EntityType))
         {
             whereConditions.Add("entity_type = @entityType");
@@ -313,6 +345,18 @@ public sealed class SqliteDownloadDispatchesRepository(
             parameters["maxGrabTime"] = filter.MaxGrabTime.Value.ToString("O");
         }
 
+        if (filter.MinImportTime.HasValue)
+        {
+            whereConditions.Add("import_completed_utc >= @minImportTime");
+            parameters["minImportTime"] = filter.MinImportTime.Value.ToString("O");
+        }
+
+        if (filter.MaxImportTime.HasValue)
+        {
+            whereConditions.Add("import_completed_utc <= @maxImportTime");
+            parameters["maxImportTime"] = filter.MaxImportTime.Value.ToString("O");
+        }
+
         var pageSize = new PageRequest(pagination.PageSize, pagination.PageToken).BoundedPageSize;
         var token = DelunoPageToken.Decode(pagination.PageToken, 2);
 
@@ -328,10 +372,10 @@ public sealed class SqliteDownloadDispatchesRepository(
                 id, library_id, media_type, entity_type, entity_id, release_name,
                 indexer_name, download_client_id, download_client_name, status, notes_json,
                 created_utc, grab_status, grab_attempted_utc, grab_response_code,
-                grab_message, grab_failure_code, grab_response_json, detected_utc,
+                grab_message, grab_failure_code, grab_response_json, grab_failure_json, detected_utc,
                 torrent_hash_or_item_id, downloaded_bytes, import_status, import_detected_utc,
                 import_completed_utc, imported_file_path, import_failure_code,
-                import_failure_message, circuit_open_until_utc, next_retry_eligible_utc, attempt_count
+                import_failure_message, import_failure_json, circuit_open_until_utc, next_retry_eligible_utc, attempt_count
             FROM download_dispatches
             WHERE {{whereClause}}
               AND (@sortUtc IS NULL
@@ -389,10 +433,10 @@ public sealed class SqliteDownloadDispatchesRepository(
                 id, library_id, media_type, entity_type, entity_id, release_name,
                 indexer_name, download_client_id, download_client_name, status, notes_json,
                 created_utc, grab_status, grab_attempted_utc, grab_response_code,
-                grab_message, grab_failure_code, grab_response_json, detected_utc,
+                grab_message, grab_failure_code, grab_response_json, grab_failure_json, detected_utc,
                 torrent_hash_or_item_id, downloaded_bytes, import_status, import_detected_utc,
                 import_completed_utc, imported_file_path, import_failure_code,
-                import_failure_message, circuit_open_until_utc, next_retry_eligible_utc, attempt_count
+                import_failure_message, import_failure_json, circuit_open_until_utc, next_retry_eligible_utc, attempt_count
             FROM download_dispatches
             WHERE
                 grab_status = 'succeeded'
@@ -595,10 +639,10 @@ public sealed class SqliteDownloadDispatchesRepository(
                 id, library_id, media_type, entity_type, entity_id, release_name,
                 indexer_name, download_client_id, download_client_name, status, notes_json,
                 created_utc, grab_status, grab_attempted_utc, grab_response_code,
-                grab_message, grab_failure_code, grab_response_json, detected_utc,
+                grab_message, grab_failure_code, grab_response_json, grab_failure_json, detected_utc,
                 torrent_hash_or_item_id, downloaded_bytes, import_status, import_detected_utc,
                 import_completed_utc, imported_file_path, import_failure_code,
-                import_failure_message, circuit_open_until_utc, next_retry_eligible_utc, attempt_count
+                import_failure_message, import_failure_json, circuit_open_until_utc, next_retry_eligible_utc, attempt_count
             FROM download_dispatches
             WHERE status = 'failed'
               AND grab_attempted_utc < @cutoff
@@ -635,10 +679,10 @@ public sealed class SqliteDownloadDispatchesRepository(
                 id, library_id, media_type, entity_type, entity_id, release_name,
                 indexer_name, download_client_id, download_client_name, status, notes_json,
                 created_utc, grab_status, grab_attempted_utc, grab_response_code,
-                grab_message, grab_failure_code, grab_response_json, detected_utc,
+                grab_message, grab_failure_code, grab_response_json, grab_failure_json, detected_utc,
                 torrent_hash_or_item_id, downloaded_bytes, import_status, import_detected_utc,
                 import_completed_utc, imported_file_path, import_failure_code,
-                import_failure_message, circuit_open_until_utc, next_retry_eligible_utc, attempt_count
+                import_failure_message, import_failure_json, circuit_open_until_utc, next_retry_eligible_utc, attempt_count
             FROM download_dispatches
             WHERE download_client_id = @clientId
               AND torrent_hash_or_item_id = @hash
@@ -669,10 +713,10 @@ public sealed class SqliteDownloadDispatchesRepository(
                 id, library_id, media_type, entity_type, entity_id, release_name,
                 indexer_name, download_client_id, download_client_name, status, notes_json,
                 created_utc, grab_status, grab_attempted_utc, grab_response_code,
-                grab_message, grab_failure_code, grab_response_json, detected_utc,
+                grab_message, grab_failure_code, grab_response_json, grab_failure_json, detected_utc,
                 torrent_hash_or_item_id, downloaded_bytes, import_status, import_detected_utc,
                 import_completed_utc, imported_file_path, import_failure_code,
-                import_failure_message, circuit_open_until_utc, next_retry_eligible_utc, attempt_count
+                import_failure_message, import_failure_json, circuit_open_until_utc, next_retry_eligible_utc, attempt_count
             FROM download_dispatches
             WHERE download_client_id = @clientId
               AND release_name = @releaseName
@@ -691,7 +735,7 @@ public sealed class SqliteDownloadDispatchesRepository(
 
     private static DownloadDispatchItem ReadDispatch(DbDataReader reader)
     {
-        return new DownloadDispatchItem(
+        var dispatch = new DownloadDispatchItem(
             Id: reader.GetString(0),
             LibraryId: reader.GetString(1),
             MediaType: reader.GetString(2),
@@ -710,18 +754,186 @@ public sealed class SqliteDownloadDispatchesRepository(
             GrabMessage: reader.IsDBNull(15) ? null : reader.GetString(15),
             GrabFailureCode: reader.IsDBNull(16) ? null : reader.GetString(16),
             GrabResponseJson: reader.IsDBNull(17) ? null : reader.GetString(17),
-            DetectedUtc: reader.IsDBNull(18) ? null : DateTimeOffset.Parse(reader.GetString(18)),
-            TorrentHashOrItemId: reader.IsDBNull(19) ? null : reader.GetString(19),
-            DownloadedBytes: reader.IsDBNull(20) ? null : reader.GetInt64(20),
-            ImportStatus: reader.IsDBNull(21) ? null : reader.GetString(21),
-            ImportDetectedUtc: reader.IsDBNull(22) ? null : DateTimeOffset.Parse(reader.GetString(22)),
-            ImportCompletedUtc: reader.IsDBNull(23) ? null : DateTimeOffset.Parse(reader.GetString(23)),
-            ImportedFilePath: reader.IsDBNull(24) ? null : reader.GetString(24),
-            ImportFailureCode: reader.IsDBNull(25) ? null : reader.GetString(25),
-            ImportFailureMessage: reader.IsDBNull(26) ? null : reader.GetString(26),
-            CircuitOpenUntilUtc: reader.IsDBNull(27) ? null : DateTimeOffset.Parse(reader.GetString(27)),
-            NextRetryEligibleUtc: reader.IsDBNull(28) ? null : DateTimeOffset.Parse(reader.GetString(28)),
-            AttemptCount: reader.IsDBNull(29) ? null : reader.GetInt32(29));
+            DetectedUtc: reader.IsDBNull(19) ? null : DateTimeOffset.Parse(reader.GetString(19)),
+            TorrentHashOrItemId: reader.IsDBNull(20) ? null : reader.GetString(20),
+            DownloadedBytes: reader.IsDBNull(21) ? null : reader.GetInt64(21),
+            ImportStatus: reader.IsDBNull(22) ? null : reader.GetString(22),
+            ImportDetectedUtc: reader.IsDBNull(23) ? null : DateTimeOffset.Parse(reader.GetString(23)),
+            ImportCompletedUtc: reader.IsDBNull(24) ? null : DateTimeOffset.Parse(reader.GetString(24)),
+            ImportedFilePath: reader.IsDBNull(25) ? null : reader.GetString(25),
+            ImportFailureCode: reader.IsDBNull(26) ? null : reader.GetString(26),
+            ImportFailureMessage: reader.IsDBNull(27) ? null : reader.GetString(27),
+            CircuitOpenUntilUtc: reader.IsDBNull(29) ? null : DateTimeOffset.Parse(reader.GetString(29)),
+            NextRetryEligibleUtc: reader.IsDBNull(30) ? null : DateTimeOffset.Parse(reader.GetString(30)),
+            AttemptCount: reader.IsDBNull(31) ? null : reader.GetInt32(31));
+
+        return dispatch with
+        {
+            Failure = ReadFailure(
+                dispatch,
+                reader.IsDBNull(18) ? null : DeserializeFailure(reader.GetString(18)),
+                reader.IsDBNull(28) ? null : DeserializeFailure(reader.GetString(28)))
+        };
+    }
+
+    private static IntegrationFailure? ReadFailure(
+        DownloadDispatchItem dispatch,
+        IntegrationFailure? persistedGrabFailure,
+        IntegrationFailure? persistedImportFailure)
+    {
+        // Import is the terminal outcome for a dispatch. A grab response may
+        // legitimately contain an earlier failed attempt (or a provider
+        // payload that happens to include a failure-shaped object), but once
+        // the import stage has failed that is the failure the owner needs to
+        // act on. Do not let stale grab JSON mask it.
+        if (persistedImportFailure is not null)
+        {
+            return persistedImportFailure;
+        }
+
+        if (persistedGrabFailure is not null)
+        {
+            return persistedGrabFailure;
+        }
+
+        if (!string.IsNullOrWhiteSpace(dispatch.ImportFailureCode)
+            || !string.IsNullOrWhiteSpace(dispatch.ImportFailureMessage)
+            || string.Equals(dispatch.ImportStatus, "failed", StringComparison.OrdinalIgnoreCase))
+        {
+            return IntegrationFailureFactory.FromLegacy(
+                "deluno",
+                dispatch.LibraryId,
+                "Deluno import",
+                "import",
+                "rejected",
+                dispatch.ImportFailureMessage ?? "The downloaded file could not be imported.",
+                code: dispatch.ImportFailureCode,
+                externalId: dispatch.Id);
+        }
+
+        foreach (var json in new[] { dispatch.GrabResponseJson, dispatch.NotesJson })
+        {
+            if (TryReadTypedFailure(json) is { } typedFailure)
+            {
+                return typedFailure;
+            }
+        }
+
+        if (IsFailedGrab(dispatch))
+        {
+            return IntegrationFailureFactory.FromLegacy(
+                "download-client",
+                dispatch.DownloadClientId,
+                dispatch.DownloadClientName,
+                "grab",
+                dispatch.GrabFailureCode ?? dispatch.GrabStatus,
+                dispatch.GrabMessage ?? "The download client did not accept the release.",
+                dispatch.GrabResponseCode,
+                retryAfterUtc: dispatch.NextRetryEligibleUtc,
+                code: dispatch.GrabFailureCode);
+        }
+
+        return null;
+    }
+
+    private static bool IsFailedGrab(DownloadDispatchItem dispatch)
+        => !string.IsNullOrWhiteSpace(dispatch.GrabFailureCode)
+            || dispatch.GrabStatus?.Trim().ToLowerInvariant() is "failed" or "not_found" or "circuit_open" or "paused";
+
+    private static IntegrationFailure? TryReadTypedFailure(string? json)
+    {
+        if (string.IsNullOrWhiteSpace(json))
+        {
+            return null;
+        }
+
+        try
+        {
+            using var document = JsonDocument.Parse(json);
+            var root = document.RootElement;
+
+            if (LooksLikeFailure(root) && TryDeserializeFailure(root) is { } direct)
+            {
+                return direct;
+            }
+
+            if (TryGetPropertyIgnoreCase(root, "failure", out var failure))
+            {
+                var nested = TryDeserializeFailure(failure);
+                if (nested is not null)
+                {
+                    return nested;
+                }
+            }
+
+            if (TryGetPropertyIgnoreCase(root, "grabResult", out var grabResult)
+                && TryGetPropertyIgnoreCase(grabResult, "failure", out var grabFailure))
+            {
+                var grab = TryDeserializeFailure(grabFailure);
+                if (grab is not null)
+                {
+                    return grab;
+                }
+            }
+        }
+        catch (JsonException)
+        {
+            // Legacy response bodies are allowed to be arbitrary provider
+            // payloads. The column fallback below still gives them a typed
+            // product failure.
+        }
+
+        return null;
+    }
+
+    private static bool LooksLikeFailure(JsonElement element)
+        => element.ValueKind == JsonValueKind.Object
+            && TryGetPropertyIgnoreCase(element, "serviceType", out _)
+            && TryGetPropertyIgnoreCase(element, "operation", out _)
+            && TryGetPropertyIgnoreCase(element, "message", out _);
+
+    private static bool TryGetPropertyIgnoreCase(JsonElement element, string name, out JsonElement value)
+    {
+        if (element.ValueKind == JsonValueKind.Object)
+        {
+            foreach (var property in element.EnumerateObject())
+            {
+                if (string.Equals(property.Name, name, StringComparison.OrdinalIgnoreCase))
+                {
+                    value = property.Value;
+                    return true;
+                }
+            }
+        }
+
+        value = default;
+        return false;
+    }
+
+    private static IntegrationFailure? TryDeserializeFailure(JsonElement element)
+    {
+        try
+        {
+            return element.ValueKind == JsonValueKind.Object
+                ? JsonSerializer.Deserialize<IntegrationFailure>(element.GetRawText())
+                : null;
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+    }
+
+    private static IntegrationFailure? DeserializeFailure(string json)
+    {
+        try
+        {
+            return JsonSerializer.Deserialize<IntegrationFailure>(json);
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
     }
 
     public async Task<int> IncrementAttemptCountAsync(string dispatchId, CancellationToken cancellationToken)
@@ -776,10 +988,10 @@ public sealed class SqliteDownloadDispatchesRepository(
                 id, library_id, media_type, entity_type, entity_id, release_name,
                 indexer_name, download_client_id, download_client_name, status, notes_json,
                 created_utc, grab_status, grab_attempted_utc, grab_response_code,
-                grab_message, grab_failure_code, grab_response_json, detected_utc,
+                grab_message, grab_failure_code, grab_response_json, grab_failure_json, detected_utc,
                 torrent_hash_or_item_id, downloaded_bytes, import_status, import_detected_utc,
                 import_completed_utc, imported_file_path, import_failure_code,
-                import_failure_message, circuit_open_until_utc, next_retry_eligible_utc, attempt_count
+                import_failure_message, import_failure_json, circuit_open_until_utc, next_retry_eligible_utc, attempt_count
             FROM download_dispatches
             WHERE status != 'archived'
               AND created_utc < @cutoff
@@ -849,10 +1061,10 @@ public sealed class SqliteDownloadDispatchesRepository(
                 id, library_id, media_type, entity_type, entity_id, release_name,
                 indexer_name, download_client_id, download_client_name, status, notes_json,
                 created_utc, grab_status, grab_attempted_utc, grab_response_code,
-                grab_message, grab_failure_code, grab_response_json, detected_utc,
+                grab_message, grab_failure_code, grab_response_json, grab_failure_json, detected_utc,
                 torrent_hash_or_item_id, downloaded_bytes, import_status, import_detected_utc,
                 import_completed_utc, imported_file_path, import_failure_code,
-                import_failure_message, circuit_open_until_utc, next_retry_eligible_utc, attempt_count
+                import_failure_message, import_failure_json, circuit_open_until_utc, next_retry_eligible_utc, attempt_count
             FROM download_dispatches
             WHERE status != 'archived'
               AND next_retry_eligible_utc IS NOT NULL

@@ -14,11 +14,12 @@ import {
   type MetadataProviderStatus,
   type MetadataSearchResult,
   type MovieListItem,
-  type SeriesListItem
+  type SeriesListItem,
+  type UpdateLibraryViewRequest
 } from "../../lib/api";
 import { adaptMovieItems, adaptSeriesItems } from "../../lib/ui-adapters";
 import { isMonitoringFilter, monitoringParam, type MonitoringFilter } from "../../lib/library-filters";
-import { applyConditions, parseConditions } from "../../lib/library-controls";
+import { applyConditions, isCompleteCondition, parseConditions } from "../../lib/library-controls";
 import { LibraryCreateDialog } from "./library-create-dialog";
 import { LibraryResults } from "./library-results";
 import { LibrarySelectionCommandBar } from "./library-selection-command-bar";
@@ -33,7 +34,7 @@ import { useBulkEdit } from "../../hooks/use-bulk-edit";
 import { createInitialLibraryForm, metadataCreatePayload, useLibraryCreate, type CreateFormDraft } from "../../hooks/use-library-create";
 import { authedFetch } from "../../lib/use-auth";
 import { toast } from "../shell/toaster";
-import { ConfirmDialog } from "../ui/confirm-dialog";
+import { BulkRemoveDialog, type BulkRemoveOptions } from "./bulk-remove-dialog";
 import { LibraryBulkToolsDialog } from "./library-bulk-tools-dialog";
 import { LibrarySelectAllToggle } from "./library-select-all-toggle";
 import { LibraryActions } from "./library-actions";
@@ -112,7 +113,7 @@ export function LibraryView({
   const { density } = useDensity();
   const {
     query, setQuery, libraryId, setLibraryId, quickFilter, setQuickFilter, view, setView, sortField, setSortField,
-    sortDirection, setSortDirection, cardSize, displayOptions,
+    sortDirection, setSortDirection, cardSize, listColumnOrder, setListColumnOrder, resetListColumnOrder, displayOptions,
     savedPresets, setSavedPresets, newPresetName, setNewPresetName, isSavingPreset,
     setIsSavingPreset, changeSize, updateDisplayOptions, activeFilterCount,
     monitoring, setMonitoring, controlSet, conditions, setConditions, clearConditions
@@ -401,6 +402,7 @@ export function LibraryView({
             viewMode: item.viewMode === "list" ? "list" : "grid",
             cardSize: item.cardSize === "sm" || item.cardSize === "lg" ? item.cardSize : "md",
             displayOptions: JSON.parse(item.displayOptionsJson || "{}") as Record<string, boolean>,
+            automationAction: item.automationAction === "search" ? "search" : null,
             conditions: parseConditions(item.rulesJson)
           }))
         );
@@ -469,6 +471,7 @@ export function LibraryView({
 
     setIsSavingPreset(true);
     try {
+      const savedConditions = conditions.filter(isCompleteCondition);
       const payload: CreateLibraryViewRequest = {
         variant,
         libraryId,
@@ -487,7 +490,7 @@ export function LibraryView({
         // Rows written before #324 hold the nine-property record and are
         // migrated on read; older ones hold `[]` and read back as no filters,
         // which is what they meant.
-        rulesJson: JSON.stringify(conditions)
+        rulesJson: JSON.stringify(savedConditions)
       };
 
       const created = await fetchJson<LibraryViewItem>("/api/library-views", {
@@ -509,6 +512,7 @@ export function LibraryView({
           viewMode: created.viewMode === "list" ? "list" : "grid",
           cardSize: created.cardSize === "sm" || created.cardSize === "lg" ? created.cardSize : "md",
           displayOptions: JSON.parse(created.displayOptionsJson || "{}") as Record<string, boolean>,
+          automationAction: created.automationAction === "search" ? "search" : null,
           conditions: parseConditions(created.rulesJson)
         }
       ]);
@@ -545,6 +549,41 @@ export function LibraryView({
       setSavedPresets((current) => current.filter((preset) => preset.id !== presetId));
     } catch {
       toast.error("Could not remove this custom filter.");
+    }
+  }
+
+  async function updatePresetAutomation(presetId: string, action: "search" | null) {
+    const preset = savedPresets.find((item) => item.id === presetId);
+    if (!preset) return;
+
+    const payload: UpdateLibraryViewRequest = {
+      libraryId: preset.libraryId,
+      name: preset.name,
+      quickFilter: preset.quickFilter,
+      monitoring: preset.monitoring,
+      sortField: preset.sortField,
+      sortDirection: preset.sortDirection,
+      viewMode: preset.viewMode,
+      cardSize: preset.cardSize,
+      displayOptionsJson: JSON.stringify(preset.displayOptions),
+      rulesJson: JSON.stringify(preset.conditions),
+      automationAction: action
+    };
+
+    try {
+      const updated = await fetchJson<LibraryViewItem>(`/api/library-views/${presetId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      });
+      setSavedPresets((current) => current.map((item) => item.id === presetId
+        ? { ...item, automationAction: updated.automationAction === "search" ? "search" : null }
+        : item));
+      toast.success(action === "search"
+        ? `${preset.name} will scope the next library search cycle.`
+        : `${preset.name} is view-only again.`);
+    } catch {
+      toast.error(`Could not update automation for ${preset.name}.`);
     }
   }
 
@@ -685,7 +724,7 @@ export function LibraryView({
     });
   }
 
-  async function handleRemoveFromDeluno() {
+  async function handleRemoveFromDeluno({ addImportListExclusion }: BulkRemoveOptions) {
     if (!selectedIds.length) return;
 
     setIsBulkUpdating(true);
@@ -695,8 +734,8 @@ export function LibraryView({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(
           variant === "movies"
-            ? { movieIds: selectedIds, operation: "remove" }
-            : { seriesIds: selectedIds, operation: "remove" }
+            ? { movieIds: selectedIds, operation: "remove", addImportListExclusion }
+            : { seriesIds: selectedIds, operation: "remove", addImportListExclusion }
         )
       });
       if (!response.ok) throw new Error("remove-from-deluno-failed");
@@ -920,12 +959,13 @@ export function LibraryView({
           controls={{
             query, setQuery, quickFilter, setQuickFilter, monitoring, setMonitoring, sortField, setSortField,
             sortDirection, setSortDirection, view, setView, cardSize, changeSize,
+            listColumnOrder, setListColumnOrder, resetListColumnOrder,
             displayOptions, setDisplayOptions: updateDisplayOptions,
             controlSet, conditions, setConditions, clearConditions, savedPresets,
             libraryId, setLibraryId, libraries: compatibleLibraries,
 
             newPresetName, setNewPresetName, isSavingPreset, saveCurrentPreset,
-            applyPreset, deletePreset, activeFilterCount
+            applyPreset, deletePreset, updatePresetAutomation, activeFilterCount
           }}
         />
 
@@ -977,6 +1017,8 @@ export function LibraryView({
           cardSize={cardSize}
           density={density}
           displayOptions={displayOptions}
+          listColumnOrder={listColumnOrder}
+          onListColumnOrderChange={setListColumnOrder}
           selectedIds={selectedIds}
           keyBust={`${cardSize}-${libraryId ?? "all"}-${quickFilter}-${monitoring}-${query}-${sortField}-${sortDirection}-${displayOptions.showMonitored}-${displayOptions.showQualityBadge}-${displayOptions.showRating}`}
           sortField={sortField}
@@ -1032,14 +1074,13 @@ export function LibraryView({
         onExecute={() => void executeBulkToolsOperation()}
       />
 
-      <ConfirmDialog
+      <BulkRemoveDialog
         open={isRemovalConfirmationOpen}
         onOpenChange={setIsRemovalConfirmationOpen}
-        title={`Remove ${selectedIds.length} ${singular}${selectedIds.length === 1 ? "" : "s"} from Deluno?`}
-        description="This removes the selected catalogue record and stops Deluno managing it. It does not delete imported media files or remove anything from your download client."
-        confirmLabel="Remove from Deluno"
+        count={selectedIds.length}
+        mediaLabel={singular}
         busy={isBulkUpdating}
-        onConfirm={() => void handleRemoveFromDeluno()}
+        onConfirm={(options) => void handleRemoveFromDeluno(options)}
       />
 
     </>

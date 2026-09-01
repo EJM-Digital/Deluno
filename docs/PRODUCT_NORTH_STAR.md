@@ -142,6 +142,10 @@ checked" #194 asked for, and it is why the issue can close: the check outlives i
 4. Keep setup separate from daily media management, while linking decisions in both directions.
 5. Explain every consequential decision and provide a safe path to change it.
 6. Never overstate readiness: implemented, tested, and production-proven are distinct states.
+7. Treat a title disappearing from an external metadata provider as a recoverable,
+   title-scoped condition—not a system emergency. Keep the title, files, history,
+   monitoring, and local metadata; let the user dismiss the unchanged evidence;
+   offer retry or remap; and make removal a separate, deliberate choice.
 
 ## How to use this document
 

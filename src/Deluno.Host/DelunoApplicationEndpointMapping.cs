@@ -18,6 +18,7 @@ using Deluno.Quality;
 using Deluno.Realtime;
 using Deluno.Security;
 using Deluno.Security.Hardening;
+using Deluno.Host.Automation;
 using Deluno.Series;
 
 namespace Deluno.Host;
@@ -47,18 +48,22 @@ public static class DelunoApplicationEndpointMapping
         writeEndpoints.MapDelunoLibraryActionEndpoints();
         endpoints.MapDelunoExternalIntegrationEndpoints();
         writeEndpoints.MapDelunoQuality();
+        endpoints.MapDelunoGuidePackageEndpoints();
         endpoints.MapDelunoConnections();
         // Where subtitles come from. Beside the other Connections, because that
         // is what they are (DESIGN-002 rule 4) — the routes live in
         // Deluno.Integrations only because the provider registry does.
         endpoints.MapDelunoSubtitleProviders();
         writeEndpoints.MapDelunoLibraries();
+        endpoints.MapDelunoReleasePreferenceEndpoints();
         endpoints.MapDelunoSecurityEndpoints();
         writeEndpoints.MapDelunoNotificationEndpoints();
         writeEndpoints.MapDelunoIntakeEndpoints();
         systemEndpoints.MapDelunoSecretsDiagnostics();
         writeEndpoints.MapDelunoMoviesEndpoints();
         writeEndpoints.MapDelunoSeriesEndpoints();
+        writeEndpoints.MapDelunoAutomationEndpoints();
+        readEndpoints.MapDelunoAutomationReadEndpoints();
         writeEndpoints.MapDelunoJobsEndpoints();
         queueEndpoints.MapDelunoDownloadClientIntegrationEndpoints();
         writeEndpoints.MapDelunoSearchEndpoints();

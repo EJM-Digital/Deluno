@@ -1,3 +1,5 @@
+using Deluno.Platform.Migration;
+
 namespace Deluno.Platform.Contracts;
 
 /// <summary>
@@ -13,4 +15,5 @@ public sealed record MigrationAuditReport(
     DateTimeOffset AppliedUtc,
     MigrationReport PreflightReport,
     MigrationReport ResultReport,
-    IReadOnlyList<MigrationAppliedItem> Applied);
+    IReadOnlyList<MigrationAppliedItem> Applied,
+    MigrationBackupReceipt? Backup = null);

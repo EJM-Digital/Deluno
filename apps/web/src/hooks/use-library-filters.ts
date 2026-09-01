@@ -17,6 +17,13 @@ import {
   type ViewMode
 } from "../components/app/library-control-rail";
 import type { CardSize, DisplayOptions } from "../components/app/library-grid";
+import {
+  listColumnStorageKey,
+  listColumnsFor,
+  normalizeListColumnOrder,
+  parseListColumnOrder,
+  type LibraryListColumnKey
+} from "../lib/library-list-columns";
 
 const sizeStorageKey = (variant: MediaVariant) => `deluno-card-size-${variant}`;
 const displayStorageKey = (variant: MediaVariant) => `deluno-display-options-${variant}`;
@@ -28,6 +35,14 @@ function initialCardSize(variant: MediaVariant): CardSize {
     return stored === "sm" || stored === "lg" ? stored : "md";
   } catch {
     return "md";
+  }
+}
+
+function initialListColumnOrder(variant: MediaVariant): LibraryListColumnKey[] {
+  try {
+    return parseListColumnOrder(localStorage.getItem(listColumnStorageKey(variant)), variant);
+  } catch {
+    return [...listColumnsFor(variant)];
   }
 }
 
@@ -78,6 +93,7 @@ export function useLibraryFilters(variant: MediaVariant, urlFilter: string | nul
   const [sortField, setSortField] = useState<SortField>("title");
   const [sortDirection, setSortDirection] = useState<SortDirection>("asc");
   const [cardSize, setCardSize] = useState<CardSize>(() => initialCardSize(variant));
+  const [listColumnOrder, setListColumnOrderState] = useState<LibraryListColumnKey[]>(() => initialListColumnOrder(variant));
   const [controlSet, setControlSet] = useState<LibraryControlSet>(() => emptyControlSet(variant));
   const [displayOptions, setDisplayOptions] = useState<DisplayOptions>({});
   const [conditions, setConditions] = useState<FilterCondition[]>([]);
@@ -93,6 +109,7 @@ export function useLibraryFilters(variant: MediaVariant, urlFilter: string | nul
     setSortField("title");
     setSortDirection("asc");
     setCardSize(initialCardSize(variant));
+    setListColumnOrderState(initialListColumnOrder(variant));
     setViewState(initialView(variant));
     // Movies and TV do not share a quality tier list or a genre list, and a
     // 4K-Remux filter carried across to the TV shelf would silently empty it.
@@ -135,6 +152,16 @@ export function useLibraryFilters(variant: MediaVariant, urlFilter: string | nul
     try { localStorage.setItem(sizeStorageKey(variant), size); } catch { /* ignore */ }
   }
 
+  function setListColumnOrder(next: LibraryListColumnKey[]) {
+    const normalized = normalizeListColumnOrder(next, variant);
+    setListColumnOrderState(normalized);
+    try { localStorage.setItem(listColumnStorageKey(variant), JSON.stringify(normalized)); } catch { /* ignore */ }
+  }
+
+  function resetListColumnOrder() {
+    setListColumnOrder([...listColumnsFor(variant)]);
+  }
+
   function updateDisplayOptions(options: DisplayOptions) {
     setDisplayOptions(options);
     try { localStorage.setItem(displayStorageKey(variant), JSON.stringify(options)); } catch { /* ignore */ }
@@ -146,7 +173,7 @@ export function useLibraryFilters(variant: MediaVariant, urlFilter: string | nul
     controlSet,
     conditions, setConditions,
     clearConditions: () => setConditions([]),
-    sortDirection, setSortDirection, cardSize,
+    sortDirection, setSortDirection, cardSize, listColumnOrder, setListColumnOrder, resetListColumnOrder,
     displayOptions: Object.keys(displayOptions).length > 0
       ? displayOptions
       : defaultDisplayOptions(controlSet.posterOptions),

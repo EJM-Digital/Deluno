@@ -2,6 +2,7 @@ using System.Text.Json;
 using Deluno.Contracts;
 using Deluno.Filesystem;
 using Deluno.Integrations.DownloadClients;
+using Deluno.Integrations.Metadata;
 using Deluno.Jobs.Contracts;
 using Deluno.Jobs.Data;
 using Deluno.Media;
@@ -11,6 +12,7 @@ using Deluno.Movies.Contracts;
 using Deluno.Movies.Data;
 using Deluno.Platform.Contracts;
 using Deluno.Platform.Data;
+using Deluno.Platform;
 using Deluno.Connections.Data;
 using Deluno.Recovery.Contracts;
 using Deluno.Recovery.Policies;
@@ -34,7 +36,8 @@ namespace Deluno.Worker.Services;
 public sealed class WorkPlanner(
     ILogger<WorkPlanner> logger,
     IJobQueueRepository jobQueueRepository,
-    IConfiguration configuration)
+    IConfiguration configuration,
+    TimeProvider timeProvider)
 {
     private static readonly JsonSerializerOptions PayloadJsonOptions = new()
     {
@@ -55,24 +58,20 @@ public sealed class WorkPlanner(
     /// </summary>
     private static readonly TimeSpan MetadataTopUpInterval = TimeSpan.FromMinutes(1);
 
-    public async Task RunDispatchCleanupAsync(
+    /// <summary>
+    /// Gives browsers, search-result caches and an in-flight metadata refresh
+    /// time to stop using an old artwork URL before its file is reclaimed.
+    /// </summary>
+    private static readonly TimeSpan ArtworkCacheGrace = TimeSpan.FromHours(24);
+
+    public Task RunDispatchCleanupAsync(
         IDispatchCleanupService cleanupService,
         CancellationToken cancellationToken)
-    {
-        if (!await jobQueueRepository.TryClaimScheduledPassAsync(SystemTasks.DispatchCleanup, SystemTasks.IntervalFor(SystemTasks.DispatchCleanup), cancellationToken))
-        {
-            return;
-        }
-
-        try
-        {
-            await cleanupService.RunCleanupPassAsync(cancellationToken);
-        }
-        catch (Exception ex) when (ex is not OperationCanceledException)
-        {
-            logger.LogWarning(ex, "Dispatch cleanup pass failed.");
-        }
-    }
+        => RunScheduledPassAsync(
+            SystemTasks.DispatchCleanup,
+            () => cleanupService.RunCleanupPassAsync(cancellationToken),
+            "Dispatch cleanup pass failed.",
+            cancellationToken);
 
     /// <summary>
     /// Puts titles back on the work list when the download they were waiting on
@@ -88,77 +87,128 @@ public sealed class WorkPlanner(
     /// DESIGN-002 rule 3 is emphatic that recurring work rides what already
     /// exists.</para>
     /// </summary>
-    public async Task RunDownloadStateReconcileAsync(
+    public Task RunDownloadStateReconcileAsync(
         IDownloadStateReconciler reconciler,
         CancellationToken cancellationToken)
-    {
-        if (!await jobQueueRepository.TryClaimScheduledPassAsync(SystemTasks.DownloadState, SystemTasks.IntervalFor(SystemTasks.DownloadState), cancellationToken))
-        {
-            return;
-        }
+        => RunScheduledPassAsync(
+            SystemTasks.DownloadState,
+            () => reconciler.ReconcileAsync(cancellationToken),
+            "Download state reconciliation failed.",
+            cancellationToken);
 
-        try
-        {
-            await reconciler.ReconcileAsync(cancellationToken);
-        }
-        catch (Exception ex) when (ex is not OperationCanceledException)
-        {
-            logger.LogWarning(ex, "Download state reconciliation failed.");
-        }
-    }
-
-    public async Task RunDispatchRetryPassAsync(
+    public Task RunDispatchRetryPassAsync(
         IDownloadRetryService downloadRetryService,
         CancellationToken cancellationToken)
-    {
-        if (!await jobQueueRepository.TryClaimScheduledPassAsync(SystemTasks.DispatchRetry, SystemTasks.IntervalFor(SystemTasks.DispatchRetry), cancellationToken))
-        {
-            return;
-        }
+        => RunScheduledPassAsync(
+            SystemTasks.DispatchRetry,
+            () => downloadRetryService.RunRetryPassAsync(cancellationToken),
+            "Dispatch retry pass failed.",
+            cancellationToken);
 
-        try
-        {
-            await downloadRetryService.RunRetryPassAsync(cancellationToken);
-        }
-        catch (Exception ex) when (ex is not OperationCanceledException)
-        {
-            logger.LogWarning(ex, "Dispatch retry pass failed.");
-        }
-    }
-
-    public async Task PlanMetadataRefreshAutomationAsync(
+    public Task PlanMetadataRefreshAutomationAsync(
         IJobScheduler jobScheduler,
         IMovieCatalogRepository movieCatalogRepository,
         ISeriesCatalogRepository seriesCatalogRepository,
         TimeProvider timeProvider,
         CancellationToken cancellationToken)
-    {
-        if (!await jobQueueRepository.TryClaimScheduledPassAsync(SystemTasks.MetadataRefresh, SystemTasks.IntervalFor(SystemTasks.MetadataRefresh), cancellationToken))
-        {
-            return;
-        }
+        => RunScheduledPassAsync(
+            SystemTasks.MetadataRefresh,
+            async () =>
+            {
+                var now = timeProvider.GetUtcNow();
+                // Shared with the manual refresh endpoints, so the count they
+                // report as still to go is the count this planner will actually
+                // work through.
+                var staleBefore = now - MetadataStalenessWindow.StaleAfter;
+                var retryAttemptsBefore = now - MetadataStalenessWindow.AttemptCooldown;
 
-        var now = timeProvider.GetUtcNow();
-        // Shared with the manual refresh endpoints, so the count they
-        // report as still to go is the count this planner will actually
-        // work through.
-        var staleBefore = now - MetadataStalenessWindow.StaleAfter;
-        var retryAttemptsBefore = now - MetadataStalenessWindow.AttemptCooldown;
+                await TopUpMetadataQueueAsync(
+                    jobScheduler,
+                    jobType: "movies.metadata.refresh",
+                    relatedEntityType: "movie",
+                    fetchCandidates: take => movieCatalogRepository.ListStaleMetadataCandidatesAsync(staleBefore, retryAttemptsBefore, take, cancellationToken),
+                    cancellationToken);
 
-        await TopUpMetadataQueueAsync(
-            jobScheduler,
-            jobType: "movies.metadata.refresh",
-            relatedEntityType: "movie",
-            fetchCandidates: take => movieCatalogRepository.ListStaleMetadataCandidatesAsync(staleBefore, retryAttemptsBefore, take, cancellationToken),
+                await TopUpMetadataQueueAsync(
+                    jobScheduler,
+                    jobType: "series.metadata.refresh",
+                    relatedEntityType: "series",
+                    fetchCandidates: take => seriesCatalogRepository.ListStaleMetadataCandidatesAsync(staleBefore, retryAttemptsBefore, take, cancellationToken),
+                    cancellationToken);
+            },
+            "Metadata refresh planning failed.",
             cancellationToken);
 
-        await TopUpMetadataQueueAsync(
-            jobScheduler,
-            jobType: "series.metadata.refresh",
-            relatedEntityType: "series",
-            fetchCandidates: take => seriesCatalogRepository.ListStaleMetadataCandidatesAsync(staleBefore, retryAttemptsBefore, take, cancellationToken),
+    /// <summary>
+    /// Reclaims localized artwork after checking both catalogues for live URL
+    /// references. This is a maintenance pass, not a second scheduler: it
+    /// rides the existing maintenance lane and records its result in Activity.
+    /// </summary>
+    public Task RunArtworkCacheCleanupAsync(
+        TmdbMetadataProvider metadataProvider,
+        IMovieCatalogRepository movieCatalogRepository,
+        ISeriesCatalogRepository seriesCatalogRepository,
+        TimeProvider timeProvider,
+        IActivityFeedRepository activityFeedRepository,
+        CancellationToken cancellationToken)
+        => RunScheduledPassAsync(
+            SystemTasks.ArtworkCacheCleanup,
+            async () =>
+            {
+            var referencedKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            referencedKeys.UnionWith(await movieCatalogRepository.ListReferencedArtworkCacheKeysAsync(cancellationToken));
+            referencedKeys.UnionWith(await seriesCatalogRepository.ListReferencedArtworkCacheKeysAsync(cancellationToken));
+
+            var result = await metadataProvider.CleanupArtworkCacheAsync(
+                referencedKeys,
+                timeProvider.GetUtcNow() - ArtworkCacheGrace,
+                cancellationToken);
+
+            logger.LogInformation(
+                "Artwork cache cleanup scanned {ScannedCount} old entries, deleted {DeletedCount}, reclaimed {ReclaimedBytes} bytes, skipped {SkippedReferencedCount} referenced entries, and had {FailedCount} failures.",
+                result.ScannedCount,
+                result.DeletedCount,
+                result.ReclaimedBytes,
+                result.SkippedReferencedCount,
+                result.FailedCount);
+
+            await activityFeedRepository.RecordActivityAsync(
+                "metadata.artwork.cleanup",
+                result.DeletedCount > 0
+                    ? $"Artwork cache cleanup reclaimed {result.ReclaimedBytes:N0} bytes from {result.DeletedCount} unreferenced entr{(result.DeletedCount == 1 ? "y" : "ies")}."
+                    : "Artwork cache cleanup found no unreferenced artwork ready to remove.",
+                JsonSerializer.Serialize(new
+                {
+                    result.ScannedCount,
+                    result.DeletedCount,
+                    result.ReclaimedBytes,
+                    result.SkippedReferencedCount,
+                    result.FailedCount,
+                    GraceHours = ArtworkCacheGrace.TotalHours
+                }, PayloadJsonOptions),
+                null,
+                "artwork-cache",
+                null,
+                cancellationToken);
+            },
+            "Artwork cache cleanup pass failed.",
             cancellationToken);
-    }
+
+    public Task RunRecycleBinCleanupAsync(
+        IRecycleBinService recycleBinService,
+        CancellationToken cancellationToken)
+        => RunScheduledPassAsync(
+            SystemTasks.RecycleBinCleanup,
+            async () =>
+            {
+                var removed = await recycleBinService.CleanupAsync(cancellationToken);
+                if (removed > 0)
+                {
+                    logger.LogInformation("Recycle-bin cleanup permanently removed {RemovedCount} expired or over-capacity item(s).", removed);
+                }
+            },
+            "Recycle-bin cleanup pass failed.",
+            cancellationToken);
 
     /// <summary>
     /// Keeps a metadata queue topped up to <see cref="MetadataQueueTargetDepth"/>
@@ -232,42 +282,76 @@ public sealed class WorkPlanner(
     /// dependency on any other pass. The handler re-queues itself while there
     /// is more to read, so this only has to start it.</para>
     /// </summary>
-    public async Task PlanMediaProbeAsync(
+    public Task PlanMediaProbeAsync(
         IJobScheduler jobScheduler,
         CancellationToken cancellationToken)
-    {
-        if (!await jobQueueRepository.TryClaimScheduledPassAsync(
-                SystemTasks.MediaProbe,
-                SystemTasks.IntervalFor(SystemTasks.MediaProbe),
-                cancellationToken))
-        {
-            return;
-        }
+        => RunScheduledPassAsync(
+            SystemTasks.MediaProbe,
+            async () =>
+            {
+                foreach (var entity in new[] { "movie", "series" })
+                {
+                    await jobScheduler.EnqueueAsync(
+                        new EnqueueJobRequest(
+                            JobType: "library.media.probe",
+                            Source: "system",
+                            PayloadJson: null,
+                            RelatedEntityType: entity,
+                            RelatedEntityId: null,
+                            DedupeKey: $"media-probe:{entity}"),
+                        cancellationToken);
+                }
+            },
+            "Media probe planning failed.",
+            cancellationToken);
 
-        foreach (var entity in new[] { "movie", "series" })
+    public Task PlanIntakeAutomationAsync(
+        IIntakeSyncService intakeSyncService,
+        CancellationToken cancellationToken)
+        => RunScheduledPassAsync(
+            SystemTasks.IntakeAutomation,
+            () => intakeSyncService.PlanDueSyncJobsAsync(cancellationToken),
+            "Intake automation planning failed.",
+            cancellationToken);
+
+    /// <summary>
+    /// Folds monitored movie collections into the existing automation cycle.
+    /// The collection repository claims its own due rows, while the resulting
+    /// jobs run on the existing movie-search lane; there is deliberately no
+    /// second timer or worker lane for franchises.
+    /// </summary>
+    public async Task PlanMovieCollectionSyncAsync(
+        IJobScheduler jobScheduler,
+        IMovieCollectionsRepository collectionsRepository,
+        TimeProvider timeProvider,
+        CancellationToken cancellationToken)
+    {
+        var now = timeProvider.GetUtcNow();
+        var due = await collectionsRepository.ClaimDueAsync(
+            now,
+            TimeSpan.FromHours(24),
+            cancellationToken);
+
+        foreach (var collection in due)
         {
             await jobScheduler.EnqueueAsync(
                 new EnqueueJobRequest(
-                    JobType: "library.media.probe",
-                    Source: "system",
-                    PayloadJson: null,
-                    RelatedEntityType: entity,
-                    RelatedEntityId: null,
-                    DedupeKey: $"media-probe:{entity}"),
+                    JobType: MovieCollectionJobTypes.Sync,
+                    Source: "collections",
+                    PayloadJson: JsonSerializer.Serialize(new { collectionId = collection.Id }, PayloadJsonOptions),
+                    RelatedEntityType: "movie-collection",
+                    RelatedEntityId: collection.Id,
+                    IdempotencyKey: $"movie-collection.sync:{collection.Id}:{now:yyyyMMddHH}",
+                    DedupeKey: $"movie-collection.sync:{collection.Id}"),
                 cancellationToken);
         }
-    }
 
-    public async Task PlanIntakeAutomationAsync(
-        IIntakeSyncService intakeSyncService,
-        CancellationToken cancellationToken)
-    {
-        if (!await jobQueueRepository.TryClaimScheduledPassAsync(SystemTasks.IntakeAutomation, SystemTasks.IntervalFor(SystemTasks.IntakeAutomation), cancellationToken))
+        if (due.Count > 0)
         {
-            return;
+            logger.LogInformation(
+                "Queued {CollectionCount} monitored movie collection refresh job(s).",
+                due.Count);
         }
-
-        await intakeSyncService.PlanDueSyncJobsAsync(cancellationToken);
     }
 
     /// <summary>
@@ -290,22 +374,15 @@ public sealed class WorkPlanner(
     /// Bounded by construction: there is at most one active run per library, and
     /// the query is capped regardless.
     /// </summary>
-    public async Task PlanLibraryImportResumeAsync(
+    public Task PlanLibraryImportResumeAsync(
         IJobScheduler jobScheduler,
         IExistingLibraryImportService importService,
         TimeProvider timeProvider,
         CancellationToken cancellationToken)
-    {
-        if (!await jobQueueRepository.TryClaimScheduledPassAsync(
-                SystemTasks.LibraryImportResume,
-                SystemTasks.IntervalFor(SystemTasks.LibraryImportResume),
-                cancellationToken))
-        {
-            return;
-        }
-
-        try
-        {
+        => RunScheduledPassAsync(
+            SystemTasks.LibraryImportResume,
+            async () =>
+            {
             var idleBefore = timeProvider.GetUtcNow() - ImportRunIdleBeforeResume;
             var stalled = await importService.ListResumableRunsAsync(idleBefore, 25, cancellationToken);
 
@@ -327,12 +404,9 @@ public sealed class WorkPlanner(
                         DedupeKey: LibraryImportSliceOutcome.ContinuationDedupeKey(run.RunId, run.ProcessedCount)),
                     cancellationToken);
             }
-        }
-        catch (Exception ex) when (ex is not OperationCanceledException)
-        {
-            logger.LogWarning(ex, "Library import resume pass failed.");
-        }
-    }
+            },
+            "Library import resume pass failed.",
+            cancellationToken);
 
     /// <summary>
     /// Lets go of downloads that have finished sharing, and records what is
@@ -363,11 +437,10 @@ public sealed class WorkPlanner(
         SharingReclaimService reclaimService,
         CancellationToken cancellationToken)
     {
-        if (!await jobQueueRepository.TryClaimScheduledPassAsync(SystemTasks.SharingReclaim, SystemTasks.IntervalFor(SystemTasks.SharingReclaim), cancellationToken))
-        {
-            return;
-        }
-
+        await RunScheduledPassAsync(
+            SystemTasks.SharingReclaim,
+            async () =>
+            {
         var settings = await platformSettingsRepository.GetAsync(cancellationToken);
         var globalPolicy = new SharingPolicy(
             settings.SharingMode,
@@ -494,6 +567,9 @@ public sealed class WorkPlanner(
         }
 
         await sharingRepository.ReplaceHoldsAsync(holds, driveNote, cancellationToken);
+            },
+            "Sharing reclaim pass failed.",
+            cancellationToken);
     }
 
     /// <summary>
@@ -547,11 +623,10 @@ public sealed class WorkPlanner(
         TimeProvider timeProvider,
         CancellationToken cancellationToken)
     {
-        if (!await jobQueueRepository.TryClaimScheduledPassAsync(SystemTasks.ImportAutomation, SystemTasks.IntervalFor(SystemTasks.ImportAutomation), cancellationToken))
-        {
-            return;
-        }
-
+        await RunScheduledPassAsync(
+            SystemTasks.ImportAutomation,
+            async () =>
+            {
         var now = timeProvider.GetUtcNow();
 
         var libraries = await librariesRepository.ListLibrariesAsync(cancellationToken);
@@ -568,7 +643,14 @@ public sealed class WorkPlanner(
         var maintenancePlanningBatchSize = configuration.GetValue("Deluno:Worker:MaintenancePlanningBatchSize", 600);
         var existingJobs = await jobQueueRepository.ListAsync(maintenancePlanningBatchSize, cancellationToken);
         var knownImportSources = existingJobs
-            .Where(job => job.JobType == "filesystem.import.execute")
+            // A live or completed import reserves its source. A dead-letter
+            // import does not: after the user repairs the source or sends a
+            // fresh release, permanently reserving that path makes recovery
+            // impossible. Enqueue's payload/dedupe key still prevents two live
+            // jobs for the same request.
+            .Where(job =>
+                job.JobType == "filesystem.import.execute" &&
+                !string.Equals(job.Status, "dead-letter", StringComparison.OrdinalIgnoreCase))
             .Select(job => TryReadImportSourcePath(job.PayloadJson))
             .Where(source => !string.IsNullOrWhiteSpace(source))
             .Select(source => NormalizeSourceKey(source!))
@@ -610,7 +692,7 @@ public sealed class WorkPlanner(
 
         var telemetry = await downloadClientTelemetryService.GetOverviewAsync(cancellationToken);
         await downloadClientTelemetryService.RunConfiguredHealthRemediationAsync(telemetry, cancellationToken);
-        foreach (var item in telemetry.Clients.SelectMany(client => client.Queue))
+        foreach (var item in GetImportCandidates(telemetry))
         {
             // `waitingForProcessor` belongs here too, and leaving it out deadlocked the
             // Processing stage. GetOverviewAsync rewrites a finished download in a
@@ -642,7 +724,12 @@ public sealed class WorkPlanner(
             }
 
             var sourceKey = NormalizeSourceKey(item.SourcePath);
-            if (knownImportSources.Contains(sourceKey))
+            var dispatch = await jobQueueRepository.FindRecentDispatchLinkAsync(
+                item.ClientId,
+                item.ReleaseName,
+                cancellationToken);
+
+            if (HasImportReservation(existingJobs, sourceKey, dispatch))
             {
                 continue;
             }
@@ -733,16 +820,11 @@ public sealed class WorkPlanner(
                 continue;
             }
 
-            var dispatch = await jobQueueRepository.FindRecentDispatchLinkAsync(
-                item.ClientId,
-                item.ReleaseName,
-                cancellationToken);
-
             // Name from the catalogue when Deluno knows which title it grabbed.
             // The client reports a release name ("Blade.Runner.2049.2017.1080p…"),
             // and parsing it produced both a mangled folder name and the wrong
             // year — 2049 is part of the title, not the release year (#268).
-            var (catalogueTitle, catalogueYear) = await ResolveCatalogueNamingAsync(
+            var catalogue = await ResolveCatalogueNamingAsync(
                 dispatch,
                 movieCatalogRepository,
                 seriesCatalogRepository,
@@ -753,17 +835,25 @@ public sealed class WorkPlanner(
                     SourcePath: item.SourcePath,
                     FileName: InferImportFileName(item),
                     MediaType: item.MediaType,
-                    Title: catalogueTitle ?? item.Title,
-                    Year: catalogueYear ?? InferYear(item.ReleaseName),
-                    Genres: [],
+                    Title: catalogue.Title ?? item.Title,
+                    Year: catalogue.Year ?? InferYear(item.ReleaseName),
+                    Genres: catalogue.Genres,
                     Tags: string.IsNullOrWhiteSpace(item.Category) ? [] : [item.Category],
-                    Studio: null,
-                    OriginalLanguage: null),
+                    Studio: catalogue.Studio,
+                    OriginalLanguage: null,
+                    ImdbId: catalogue.ImdbId,
+                    TvDbId: catalogue.TvDbId,
+                    Network: catalogue.Network,
+                    SeriesId: catalogue.SeriesId,
+                    SeriesType: catalogue.SeriesType,
+                    NumberingScheme: catalogue.NumberingScheme),
                 TransferMode: "auto",
-                Overwrite: false,
+                Overwrite: dispatch?.ReplacementAuthorized == true,
                 AllowCopyFallback: true,
-                ForceReplacement: false,
-                DispatchId: dispatch?.DispatchId);
+                ForceReplacement: dispatch?.ForceReplacementAuthorized == true,
+                DispatchId: dispatch?.DispatchId,
+                ExpectedExistingPath: dispatch?.ReplacementExpectedPath,
+                ReplacementTargets: dispatch?.ReplacementTargets);
 
             var job = await jobScheduler.EnqueueAsync(
                 new EnqueueJobRequest(
@@ -796,6 +886,9 @@ public sealed class WorkPlanner(
                 library.Id,
                 cancellationToken);
         }
+            },
+            "Import automation planning failed.",
+            cancellationToken);
     }
 
     private static async Task RecordUnmatchedProcessorOutputsAsync(
@@ -956,7 +1049,7 @@ public sealed class WorkPlanner(
                 handoff.ClientId,
                 handoff.ReleaseName,
                 cancellationToken);
-            var (catalogueTitle, catalogueYear) = await ResolveCatalogueNamingAsync(
+            var catalogue = await ResolveCatalogueNamingAsync(
                 dispatch,
                 movieCatalogRepository,
                 seriesCatalogRepository,
@@ -967,17 +1060,25 @@ public sealed class WorkPlanner(
                     SourcePath: outputPath,
                     FileName: Path.GetFileName(outputPath),
                     MediaType: library.MediaType,
-                    Title: catalogueTitle ?? Path.GetFileNameWithoutExtension(outputPath),
-                    Year: catalogueYear ?? InferYear(handoff.ReleaseName),
-                    Genres: [],
+                    Title: catalogue.Title ?? Path.GetFileNameWithoutExtension(outputPath),
+                    Year: catalogue.Year ?? InferYear(handoff.ReleaseName),
+                    Genres: catalogue.Genres,
                     Tags: ["processed"],
-                    Studio: null,
-                    OriginalLanguage: null),
+                    Studio: catalogue.Studio,
+                    OriginalLanguage: null,
+                    ImdbId: catalogue.ImdbId,
+                    TvDbId: catalogue.TvDbId,
+                    Network: catalogue.Network,
+                    SeriesId: catalogue.SeriesId,
+                    SeriesType: catalogue.SeriesType,
+                    NumberingScheme: catalogue.NumberingScheme),
                 TransferMode: "auto",
-                Overwrite: false,
+                Overwrite: dispatch?.ReplacementAuthorized == true,
                 AllowCopyFallback: true,
-                ForceReplacement: false,
-                DispatchId: dispatch?.DispatchId);
+                ForceReplacement: dispatch?.ForceReplacementAuthorized == true,
+                DispatchId: dispatch?.DispatchId,
+                ExpectedExistingPath: dispatch?.ReplacementExpectedPath,
+                ReplacementTargets: dispatch?.ReplacementTargets);
 
             var importJob = await jobScheduler.EnqueueAsync(
                 new EnqueueJobRequest(
@@ -1240,6 +1341,58 @@ public sealed class WorkPlanner(
         return mediaLibraries.FirstOrDefault();
     }
 
+    internal static IReadOnlyList<DownloadQueueItem> GetImportCandidates(DownloadTelemetryOverview telemetry)
+    {
+        var candidates = new List<DownloadQueueItem>();
+        foreach (var client in telemetry.Clients)
+        {
+            candidates.AddRange(client.Queue);
+
+            // Fast clients such as SABnzbd can download and post-process a small
+            // item completely between worker polls. In that case there is never
+            // a completed queue row for this planner to observe, but native
+            // history still contains the authoritative source path. Dispatch-
+            // derived history is deliberately excluded: it proves only that
+            // Deluno sent the release, not that the client completed it.
+            candidates.AddRange(client.History
+                .Where(item =>
+                    string.Equals(item.HistorySource, "native", StringComparison.OrdinalIgnoreCase) &&
+                    string.Equals(item.Outcome, "completed", StringComparison.OrdinalIgnoreCase) &&
+                    !string.IsNullOrWhiteSpace(item.SourcePath))
+                .Select(item => new DownloadQueueItem(
+                    item.ExternalId ?? item.Id,
+                    item.ClientId,
+                    item.ClientName,
+                    item.Protocol,
+                    item.MediaType,
+                    item.Title,
+                    item.ReleaseName,
+                    item.Category,
+                    DownloadQueueStatuses.Completed,
+                    Progress: 1,
+                    SpeedMbps: 0,
+                    EtaSeconds: 0,
+                    item.SizeBytes,
+                    DownloadedBytes: item.SizeBytes,
+                    Peers: 0,
+                    item.IndexerName,
+                    item.ErrorMessage,
+                    AddedUtc: item.CompletedUtc,
+                    item.SourcePath)));
+        }
+
+        // A client can briefly expose the same completion in both queue and
+        // native history. Prefer the live queue row and process the physical
+        // source once; job/dispatch reservations provide durable dedupe on
+        // later planning passes and across restarts.
+        return candidates
+            .GroupBy(
+                item => $"{item.ClientId}:{NormalizeSourceKey(item.SourcePath ?? item.Id)}",
+                StringComparer.OrdinalIgnoreCase)
+            .Select(group => group.First())
+            .ToArray();
+    }
+
     private static async Task<IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>>> LoadRouteCategoriesAsync(
         IReadOnlyList<LibraryItem> libraries,
         ILibrariesRepository librariesRepository,
@@ -1283,6 +1436,63 @@ public sealed class WorkPlanner(
         }
     }
 
+    internal static bool HasImportReservation(
+        IEnumerable<JobQueueItem> jobs,
+        string normalizedSourcePath,
+        DispatchCatalogueLink? dispatch)
+    {
+        foreach (var job in jobs)
+        {
+            if (!string.Equals(job.JobType, "filesystem.import.execute", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(job.Status, "dead-letter", StringComparison.OrdinalIgnoreCase)
+                || !string.Equals(
+                    NormalizeSourceKey(TryReadImportSourcePath(job.PayloadJson) ?? string.Empty),
+                    normalizedSourcePath,
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            // A source path alone is not an import identity. Download clients
+            // commonly reuse the same completed folder when a release is
+            // grabbed again. A completed job for an older dispatch must not
+            // permanently reserve that folder and suppress the new import.
+            // Unscoped/manual imports retain the legacy source reservation.
+            if (dispatch is null)
+            {
+                return true;
+            }
+
+            if (string.Equals(TryReadImportDispatchId(job.PayloadJson), dispatch.DispatchId, StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static string? TryReadImportDispatchId(string? payloadJson)
+    {
+        if (string.IsNullOrWhiteSpace(payloadJson))
+        {
+            return null;
+        }
+
+        try
+        {
+            using var document = JsonDocument.Parse(payloadJson);
+            return TryGetProperty(document.RootElement, "dispatchId", out var dispatchId)
+                && dispatchId.ValueKind == JsonValueKind.String
+                ? dispatchId.GetString()
+                : null;
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+    }
+
     private static bool TryGetProperty(JsonElement element, string name, out JsonElement value)
     {
         foreach (var property in element.EnumerateObject())
@@ -1301,7 +1511,68 @@ public sealed class WorkPlanner(
     private static string NormalizeSourceKey(string value)
         => value.Trim().TrimEnd('\\', '/').Replace('\\', '/');
 
-    private static string InferImportFileName(DownloadQueueItem item)
+    /// <summary>
+    /// Claims and records one recurring pass. Keeping this wrapper beside the
+    /// planner prevents a pass from being reported as healthy merely because
+    /// its lease was claimed; the System screen gets a terminal result and
+    /// duration instead.
+    /// </summary>
+    private async Task RunScheduledPassAsync(
+        string scheduleKey,
+        Func<Task> operation,
+        string failureMessage,
+        CancellationToken cancellationToken)
+    {
+        if (!await jobQueueRepository.TryClaimScheduledPassAsync(
+                scheduleKey,
+                SystemTasks.IntervalFor(scheduleKey),
+                cancellationToken))
+        {
+            return;
+        }
+
+        var startedUtc = timeProvider.GetUtcNow();
+        try
+        {
+            await operation();
+            await RecordScheduledPassOutcomeAsync(scheduleKey, startedUtc, "completed", cancellationToken);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            await RecordScheduledPassOutcomeAsync(scheduleKey, startedUtc, "cancelled", CancellationToken.None);
+        }
+        catch (Exception exception)
+        {
+            await RecordScheduledPassOutcomeAsync(scheduleKey, startedUtc, "failed", CancellationToken.None);
+            logger.LogWarning(exception, failureMessage);
+        }
+    }
+
+    private async Task RecordScheduledPassOutcomeAsync(
+        string scheduleKey,
+        DateTimeOffset startedUtc,
+        string result,
+        CancellationToken cancellationToken)
+    {
+        var completedUtc = timeProvider.GetUtcNow();
+        var durationMs = Math.Max(0, (long)(completedUtc - startedUtc).TotalMilliseconds);
+        try
+        {
+            await jobQueueRepository.RecordScheduledPassOutcomeAsync(
+                scheduleKey,
+                completedUtc,
+                result,
+                durationMs,
+                startedUtc.Add(SystemTasks.IntervalFor(scheduleKey)),
+                cancellationToken);
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            logger.LogWarning(exception, "Could not record scheduled pass outcome for {ScheduleKey}.", scheduleKey);
+        }
+    }
+
+    internal static string InferImportFileName(DownloadQueueItem item)
     {
         var invalid = Path.GetInvalidFileNameChars();
         var cleaned = new string(item.ReleaseName
@@ -1324,15 +1595,22 @@ public sealed class WorkPlanner(
             return cleaned;
         }
 
+        var sourceExtension = Path.GetExtension(item.SourcePath);
+        if (!string.IsNullOrWhiteSpace(sourceExtension) &&
+            IsImportableVideoFile($"placeholder{sourceExtension}"))
+        {
+            return $"{(string.IsNullOrWhiteSpace(cleaned) ? item.Id : cleaned)}{sourceExtension.ToLowerInvariant()}";
+        }
+
         return $"{(string.IsNullOrWhiteSpace(cleaned) ? item.Id : cleaned)}.mkv";
     }
 
     /// <summary>
-    /// The catalogue title and year behind a dispatched release, or (null,
-    /// null) when the grab cannot be tied to a catalogue item — in which case
-    /// the caller falls back to parsing the release name.
+    /// The catalogue metadata behind a dispatched release, or empty values when
+    /// the grab cannot be tied to a catalogue item — in which case the caller
+    /// falls back to parsing the release name.
     /// </summary>
-    private static async Task<(string? Title, int? Year)> ResolveCatalogueNamingAsync(
+    private static async Task<CatalogueNaming> ResolveCatalogueNamingAsync(
         DispatchCatalogueLink? dispatch,
         IMovieCatalogRepository movieCatalogRepository,
         ISeriesCatalogRepository seriesCatalogRepository,
@@ -1340,20 +1618,88 @@ public sealed class WorkPlanner(
     {
         if (dispatch is null || string.IsNullOrWhiteSpace(dispatch.EntityId))
         {
-            return (null, null);
+            return CatalogueNaming.Empty;
         }
 
         if (string.Equals(dispatch.EntityType, "series", StringComparison.OrdinalIgnoreCase))
         {
             var series = await seriesCatalogRepository.GetByIdAsync(dispatch.EntityId, cancellationToken);
-            return series is null ? (null, null) : (series.Title, series.StartYear);
+            return series is null
+                ? CatalogueNaming.Empty
+                : new CatalogueNaming(
+                    series.Title,
+                    series.StartYear,
+                    series.ImdbId,
+                    ReadMetadataText(series.MetadataJson, "TvDbId", "tvdbId", "tvdb_id"),
+                    null,
+                    ReadMetadataText(series.MetadataJson, "Network", "network"),
+                    SplitCsv(series.Genres),
+                    dispatch.EntityId,
+                    series.SeriesType,
+                    series.NumberingScheme);
         }
 
         var movie = await movieCatalogRepository.GetByIdAsync(dispatch.EntityId, cancellationToken);
-        return movie is null ? (null, null) : (movie.Title, movie.ReleaseYear);
+        return movie is null
+            ? CatalogueNaming.Empty
+            : new CatalogueNaming(
+                movie.Title,
+                movie.ReleaseYear,
+                movie.ImdbId,
+                null,
+                ReadMetadataText(movie.MetadataJson, "Studio", "studio"),
+                null,
+                SplitCsv(movie.Genres));
+    }
+
+    private static IReadOnlyList<string> SplitCsv(string? value)
+        => string.IsNullOrWhiteSpace(value)
+            ? []
+            : value.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
+
+    private static string? ReadMetadataText(string? metadataJson, params string[] names)
+    {
+        if (string.IsNullOrWhiteSpace(metadataJson))
+        {
+            return null;
+        }
+
+        try
+        {
+            using var document = JsonDocument.Parse(metadataJson);
+            foreach (var property in document.RootElement.EnumerateObject())
+            {
+                if (names.Any(name => string.Equals(property.Name, name, StringComparison.OrdinalIgnoreCase)) &&
+                    property.Value.ValueKind == JsonValueKind.String)
+                {
+                    return property.Value.GetString();
+                }
+            }
+        }
+        catch (JsonException)
+        {
+            // Provider metadata is optional and may be an older/manual blob.
+        }
+
+        return null;
     }
 
     private static int? InferYear(string value) => ReleaseNameParser.InferYear(value);
+
+    private sealed record CatalogueNaming(
+        string? Title,
+        int? Year,
+        string? ImdbId,
+        string? TvDbId,
+        string? Studio,
+        string? Network,
+        IReadOnlyList<string> Genres,
+        string? SeriesId = null,
+        string? SeriesType = null,
+        string? NumberingScheme = null)
+    {
+        public static CatalogueNaming Empty { get; } = new(null, null, null, null, null, null, []);
+    }
 
     private sealed record ProcessingWaitDetails(
         string? LibraryId,

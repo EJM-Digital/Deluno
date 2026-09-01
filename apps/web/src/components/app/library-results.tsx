@@ -10,6 +10,7 @@ import { EmptyState } from "../shell/empty-state";
 import { GlassTile } from "../shell/page-hero";
 import { LibraryGridSkeleton } from "../shell/skeleton";
 import { Button } from "../ui/button";
+import type { LibraryListColumnKey } from "../../lib/library-list-columns";
 
 type LibraryResultsProps = {
   /**
@@ -30,6 +31,8 @@ type LibraryResultsProps = {
   cardSize: CardSize;
   density: Density;
   displayOptions: DisplayOptions;
+  listColumnOrder: LibraryListColumnKey[];
+  onListColumnOrderChange: (next: LibraryListColumnKey[]) => void;
   selectedIds: string[];
   keyBust: string;
   sortField: SortField;
@@ -48,6 +51,7 @@ type LibraryResultsProps = {
 export function LibraryResults({
   variant,
   hasLoadedOnce, items, label, singular, libraryCount, hasActiveFilter, view, cardSize, density, displayOptions, selectedIds,
+  listColumnOrder, onListColumnOrderChange,
   keyBust, sortField, sortDirection, isComplete, onOpenCreate,
   onClearFilters, onSelect, onToggle, onToggleAll, onEndReached,
 }: LibraryResultsProps) {
@@ -85,7 +89,7 @@ export function LibraryResults({
     ) : view === "grid" ? (
       <ProgressiveGrid items={items} cardSize={cardSize} density={density} displayOptions={displayOptions} selectedIds={selectedIds} keyBust={keyBust} sortField={sortField} sortDirection={sortDirection} isComplete={isComplete} onSelect={onSelect} onToggle={onToggle} onEndReached={onEndReached} />
     ) : (
-      <GlassTile className="p-0"><LibraryTable variant={variant} items={items} selectedIds={selectedIds} onSelect={onSelect} onToggle={onToggle} onToggleAll={onToggleAll} allSelected={items.length > 0 && items.every((item) => selectedIds.includes(item.id))} someSelected={selectedIds.length > 0 && !items.every((item) => selectedIds.includes(item.id))} sortField={sortField} sortDirection={sortDirection} isComplete={isComplete} onEndReached={onEndReached} /></GlassTile>
+      <GlassTile className="p-0"><LibraryTable variant={variant} items={items} selectedIds={selectedIds} onSelect={onSelect} onToggle={onToggle} onToggleAll={onToggleAll} allSelected={items.length > 0 && items.every((item) => selectedIds.includes(item.id))} someSelected={selectedIds.length > 0 && !items.every((item) => selectedIds.includes(item.id))} sortField={sortField} sortDirection={sortDirection} isComplete={isComplete} onEndReached={onEndReached} columnOrder={listColumnOrder} onColumnOrderChange={onListColumnOrderChange} /></GlassTile>
     )}
     {/*
       `Previous 100` / `Next 100` and the line "Only this page is kept in

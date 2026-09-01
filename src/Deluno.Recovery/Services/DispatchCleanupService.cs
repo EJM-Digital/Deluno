@@ -1,4 +1,5 @@
 using Deluno.Jobs.Data;
+using Deluno.Jobs.Contracts;
 using Deluno.Recovery.Contracts;
 using Microsoft.Extensions.Logging;
 
@@ -7,11 +8,13 @@ namespace Deluno.Recovery.Services;
 public sealed class DispatchCleanupService(
     IDownloadDispatchesRepository dispatchesRepository,
     TimeProvider timeProvider,
-    ILogger<DispatchCleanupService> logger)
+    ILogger<DispatchCleanupService> logger,
+    IIndexerQueryStatsRepository? indexerQueryStatsRepository = null)
     : IDispatchCleanupService
 {
     private static readonly TimeSpan StaleFailedAge = TimeSpan.FromDays(7);
     private static readonly TimeSpan StaleUnresolvedAge = TimeSpan.FromDays(14);
+    private static readonly TimeSpan IndexerQueryStatsRetention = TimeSpan.FromDays(30);
     private const int BatchLimit = 50;
 
     public async Task<DispatchCleanupResult> RunCleanupPassAsync(CancellationToken cancellationToken)
@@ -61,6 +64,28 @@ public sealed class DispatchCleanupService(
             logger.LogInformation(
                 "Dispatch cleanup pass complete: archived {Archived}, skipped {Skipped}.",
                 archivedCount, skippedCount);
+        }
+
+        if (indexerQueryStatsRepository is not null)
+        {
+            try
+            {
+                var prunedCount = await indexerQueryStatsRepository.PruneAsync(
+                    timeProvider.GetUtcNow() - IndexerQueryStatsRetention,
+                    cancellationToken);
+                if (prunedCount > 0)
+                {
+                    logger.LogInformation(
+                        "Indexer query telemetry housekeeping removed {PrunedCount} event(s) older than {RetentionDays} days.",
+                        prunedCount,
+                        IndexerQueryStatsRetention.TotalDays);
+                }
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                // Diagnostics retention must not prevent dispatch recovery.
+                logger.LogWarning(ex, "Indexer query telemetry housekeeping failed.");
+            }
         }
 
         var summary = archivedCount > 0 || skippedCount > 0

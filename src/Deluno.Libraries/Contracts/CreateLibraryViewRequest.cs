@@ -19,4 +19,10 @@ public sealed record CreateLibraryViewRequest(
     string ViewMode,
     string CardSize,
     string DisplayOptionsJson,
-    string RulesJson);
+    string RulesJson,
+    /// <summary>
+    /// An optional action performed by the existing library automation cycle.
+    /// Null means this remains a presentation-only view; <c>search</c> scopes
+    /// the normal library search pass to this view's saved narrowing.
+    /// </summary>
+    string? AutomationAction = null);

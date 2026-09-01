@@ -1,5 +1,6 @@
 using Deluno.Api;
 using Deluno.Api.Downloads;
+using Deluno.Contracts;
 using Deluno.Jobs.Contracts;
 using Deluno.Jobs.Data;
 using Deluno.Persistence.Tests.Support;
@@ -73,7 +74,12 @@ public sealed class DownloadDispatchesApiTests : IAsyncDisposable
             NullLogger<JobsSchemaInitializer>.Instance).StartAsync(CancellationToken.None);
     }
 
-    private async Task InsertDispatchAsync(string dispatchId, string libraryId, string entityId, string releaseName)
+    private async Task InsertDispatchAsync(
+        string dispatchId,
+        string libraryId,
+        string entityId,
+        string releaseName,
+        string mediaType = "movie")
     {
         await using var connection = await _storage.Factory.OpenConnectionAsync(
             DelunoDatabaseNames.Jobs,
@@ -86,7 +92,7 @@ public sealed class DownloadDispatchesApiTests : IAsyncDisposable
                 id, library_id, media_type, entity_type, entity_id, release_name,
                 indexer_name, download_client_id, download_client_name, status, created_utc
             ) VALUES (
-                @id, @libraryId, 'movie', 'movie', @entityId, @releaseName,
+                @id, @libraryId, @mediaType, @mediaType, @entityId, @releaseName,
                 'test-indexer', 'qbittorrent-main', 'qBittorrent', 'initial', datetime('now')
             )
             """;
@@ -110,6 +116,11 @@ public sealed class DownloadDispatchesApiTests : IAsyncDisposable
         nameParam.ParameterName = "@releaseName";
         nameParam.Value = releaseName;
         command.Parameters.Add(nameParam);
+
+        var mediaTypeParam = command.CreateParameter();
+        mediaTypeParam.ParameterName = "@mediaType";
+        mediaTypeParam.Value = mediaType;
+        command.Parameters.Add(mediaTypeParam);
 
         await command.ExecuteNonQueryAsync(CancellationToken.None);
     }
@@ -135,6 +146,22 @@ public sealed class DownloadDispatchesApiTests : IAsyncDisposable
         var json = JsonDocument.Parse(await response.Content.ReadAsStreamAsync());
         var items = json.RootElement.GetProperty("items");
         Assert.True(items.GetArrayLength() > 0);
+    }
+
+    [Fact]
+    public async Task GetDispatches_honors_media_type_filter()
+    {
+        var movieDispatchId = Guid.CreateVersion7().ToString("N");
+        var seriesDispatchId = Guid.CreateVersion7().ToString("N");
+        await InsertDispatchAsync(movieDispatchId, "movies-main", "movie-1", "Test.Movie.2024.1080p", "movie");
+        await InsertDispatchAsync(seriesDispatchId, "series-main", "series-1", "Test.Show.S01E01.1080p", "series");
+
+        var response = await _client.GetAsync("/api/v1/download-dispatches?mediaType=series");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        using var json = JsonDocument.Parse(await response.Content.ReadAsStreamAsync());
+        var item = Assert.Single(json.RootElement.GetProperty("items").EnumerateArray());
+        Assert.Equal(seriesDispatchId, item.GetProperty("id").GetString());
     }
 
     [Fact]
@@ -260,6 +287,78 @@ public sealed class DownloadDispatchesApiTests : IAsyncDisposable
         var items = json.RootElement.GetProperty("items");
         Assert.True(items.GetArrayLength() > 0);
         Assert.Equal("imported", items[0].GetProperty("status").GetString());
+    }
+
+    [Fact]
+    public async Task GetImportResolutions_preserves_typed_external_failure_details()
+    {
+        var dispatchId = Guid.CreateVersion7().ToString("N");
+        await InsertDispatchAsync(dispatchId, "movies-main", "failure-123", "Test.Movie.2024.1080p");
+
+        var failure = IntegrationFailureFactory.FromLegacy(
+            serviceType: "sabnzbd",
+            serviceId: "sab-1",
+            serviceName: "SABnzbd",
+            operation: "download",
+            category: "failed",
+            message: "SABnzbd rejected the job.",
+            code: "client-reported-failure",
+            externalId: "sab-job-42");
+
+        await _repository.RecordImportOutcomeAsync(
+            dispatchId,
+            importStatus: "failed",
+            importedFilePath: null,
+            importFailureCode: failure.Code,
+            importFailureMessage: failure.Message,
+            cancellationToken: CancellationToken.None,
+            failure: failure);
+
+        var response = await _client.GetAsync("/api/v1/import-resolutions?status=failed&mediaType=movie");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        using var json = JsonDocument.Parse(await response.Content.ReadAsStreamAsync());
+        var item = Assert.Single(json.RootElement.GetProperty("items").EnumerateArray(),
+            element => element.GetProperty("dispatchId").GetString() == dispatchId);
+        var typedFailure = item.GetProperty("failure");
+        Assert.Equal("sabnzbd", typedFailure.GetProperty("serviceType").GetString());
+        Assert.Equal("sab-job-42", typedFailure.GetProperty("externalId").GetString());
+        Assert.Equal("RejectedAction", typedFailure.GetProperty("kind").GetString());
+    }
+
+    [Fact]
+    public async Task GetImportResolutions_filters_by_import_completion_time()
+    {
+        var dispatchId = Guid.CreateVersion7().ToString("N");
+        await InsertDispatchAsync(dispatchId, "movies-main", "123", "Test.Movie.2024.1080p");
+
+        await _repository.RecordImportOutcomeAsync(
+            dispatchId,
+            importStatus: "imported",
+            importedFilePath: "/library/file.mkv",
+            importFailureCode: null,
+            importFailureMessage: null,
+            CancellationToken.None);
+
+        await using (var connection = await _storage.Factory.OpenConnectionAsync(
+                         DelunoDatabaseNames.Jobs,
+                         CancellationToken.None))
+        {
+            using var command = connection.CreateCommand();
+            command.CommandText = "UPDATE download_dispatches SET import_completed_utc = '2026-04-01T04:00:00.0000000+00:00' WHERE id = @id;";
+            var parameter = command.CreateParameter();
+            parameter.ParameterName = "@id";
+            parameter.Value = dispatchId;
+            command.Parameters.Add(parameter);
+            await command.ExecuteNonQueryAsync(CancellationToken.None);
+        }
+
+        var response = await _client.GetAsync(
+            "/api/v1/import-resolutions?status=imported&importedAfter=2026-04-15T00:00:00Z");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        using var json = JsonDocument.Parse(await response.Content.ReadAsStreamAsync());
+        Assert.Empty(json.RootElement.GetProperty("items").EnumerateArray());
     }
 
     public async ValueTask DisposeAsync()

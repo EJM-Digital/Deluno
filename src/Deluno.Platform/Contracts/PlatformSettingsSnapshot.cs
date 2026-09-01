@@ -51,4 +51,13 @@ public sealed record PlatformSettingsSnapshot(
     int? SharingForHours = 72,
     double? SharingUntilRatio = null,
     string SharingStuckAction = SharingPolicy.StuckGiveUp,
-    int SharingStuckAfterDays = 14);
+    int SharingStuckAfterDays = 14,
+    string UiColorMode = "standard",
+    string UiLanguage = "en-AU",
+    string CalendarFirstDayOfWeek = "monday",
+    string CalendarWeekHeaderFormat = "ddd d/M",
+    string RuntimeFormat = "hoursMinutes",
+    string ShortDateFormat = "dmy",
+    string LongDateFormat = "full",
+    string TimeFormat = "12",
+    bool ShowRelativeDates = true);

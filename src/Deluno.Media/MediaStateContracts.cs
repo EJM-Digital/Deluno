@@ -1,4 +1,5 @@
 using Deluno.Contracts;
+using Deluno.Quality.ReleasePreferences;
 namespace Deluno.Media;
 
 public sealed record MediaWantedItem(
@@ -19,7 +20,20 @@ public sealed record MediaWantedItem(
     string? LastSearchResult,
     bool PreventLowerQualityReplacements,
     int? LastQualityDeltaDecision,
-    DateTimeOffset UpdatedUtc);
+    DateTimeOffset UpdatedUtc,
+    /// <summary>
+    /// The earliest known date this title can be searched. Acquisition delay
+    /// rules use this rather than guessing from the release year.
+    /// </summary>
+    DateTimeOffset? AvailableUtc = null,
+    /// <summary>The installed file path, when one is tracked for this title.</summary>
+    string? FilePath = null,
+    /// <summary>
+    /// The recorded size of that exact file. Search uses it with the path so a
+    /// replacement written in place cannot inherit the previous file's
+    /// preference evidence while the next probe pass is still pending.
+    /// </summary>
+    long? FileSizeBytes = null);
 
 public sealed record MediaWantedSummary(
     int TotalWanted,
@@ -119,7 +133,14 @@ public sealed record MediaMetadataUpdate(
     /// What it is about, beyond its genre. Stored as one comma-separated
     /// column the way genres are, because nothing joins on a keyword.
     /// </summary>
-    string? Keywords = null);
+    string? Keywords = null,
+    /// <summary>
+    /// A reviewed identity replacement may deliberately change the catalogue
+    /// title and year. Ordinary refreshes leave these null so provider updates
+    /// cannot overwrite user-owned identity fields without confirmation.
+    /// </summary>
+    string? Title = null,
+    int? Year = null);
 
 /// <summary>
 /// One source's score for one title, on the way to its own column.
@@ -147,7 +168,20 @@ public sealed record ProbedFileFacts(string? VideoCodec, string? AudioCodec, str
 public sealed record MediaFileProbeCandidate(
     string MediaId,
     string FilePath,
-    long? FileSizeBytes);
+    long? FileSizeBytes,
+    /// <summary>
+    /// The library owning this copy. A title may be held in more than one
+    /// library, so probe facts and the installed preference baseline must not
+    /// be written to every row sharing the same media id and path.
+    /// </summary>
+    string? LibraryId = null);
+
+/// <summary>The immutable plan one library expects for installed-file baselines.</summary>
+public sealed record MediaPreferencePlanExpectation(
+    string LibraryId,
+    string PlanId,
+    string PlanVersion,
+    string PlanHash);
 
 public sealed record MediaEntryCreate(
     string Title,
@@ -225,7 +259,8 @@ public sealed record MediaEntryDetails(
     string? AudioCodec = null,
     string? AudioChannels = null,
     string? ReleaseGroup = null,
-    int? RuntimeMinutes = null);
+    int? RuntimeMinutes = null,
+    DateTimeOffset? AvailableUtc = null);
 
 public sealed record MediaExistingImportRequest(
     string Title,
@@ -237,7 +272,20 @@ public sealed record MediaExistingImportRequest(
     bool QualityCutoffMet,
     bool UnmonitorWhenCutoffMet,
     string? FilePath,
-    long? FileSizeBytes);
+    long? FileSizeBytes,
+    /// <summary>
+    /// Optional typed evaluation produced during import. When supplied it is
+    /// written in the same transaction as the file state; when absent the
+    /// import remains readable and the independent probe/re-evaluation pass
+    /// can fill it later.
+    /// </summary>
+    PreferenceEvaluationSnapshot? PreferenceEvaluation = null,
+    /// <summary>
+    /// Additional installed-file evaluations from the same atomic import. TV
+    /// season packs place more than one physical file while still updating one
+    /// series record, so each file needs its own durable plan evidence.
+    /// </summary>
+    IReadOnlyList<PreferenceEvaluationSnapshot>? PreferenceEvaluations = null);
 
 public sealed record MediaImportResult(string Id, bool Created);
 
@@ -272,7 +320,8 @@ public interface IMediaStateRepository
         DateTimeOffset now,
         bool ignoreRetryWindow,
         CancellationToken cancellationToken,
-        string? wantedStatus = null);
+        string? wantedStatus = null,
+        CatalogueFilters? filters = null);
 
     Task<int> CountRetryDelayedWantedAsync(
         MediaKind kind,
@@ -379,25 +428,50 @@ public interface IMediaStateRepository
     /// held in two libraries and the probe read one of them.</para>
     /// </summary>
     /// <summary>
-    /// Files whose streams Deluno has not read, or has read before they
-    /// changed.
+    /// Files whose streams Deluno has not read, has read before they changed,
+    /// or whose exact path/size has no snapshot for the library's expected
+    /// immutable preference plan.
     ///
     /// <para>Answers only to this pass's own bookkeeping — nothing about
     /// subtitles, libraries or metadata decides what it returns. That is the
     /// point: a pass that depends on another feature being switched on is a
-    /// pass that silently stops.</para>
+    /// pass that silently stops. Supplying expected plans also lets the pass
+    /// repair baselines created before typed snapshots existed, or made stale
+    /// by a plan version/hash change, without repeatedly probing files already
+    /// current for that plan.</para>
     /// </summary>
     Task<IReadOnlyList<MediaFileProbeCandidate>> ListFileProbeCandidatesAsync(
         MediaKind kind,
         int take,
-        CancellationToken cancellationToken);
+        CancellationToken cancellationToken,
+        IReadOnlyList<MediaPreferencePlanExpectation>? preferencePlans = null);
 
     Task UpdateProbedFileFactsAsync(
         MediaKind kind,
         string mediaId,
         string filePath,
         ProbedFileFacts facts,
+        CancellationToken cancellationToken,
+        string? libraryId = null);
+
+    /// <summary>
+    /// Retains the complete typed evaluation for one installed file and plan.
+    /// A plan hash is part of the key so changing a plan never overwrites the
+    /// evidence needed to explain or roll back the previous decision.
+    /// </summary>
+    Task SavePreferenceEvaluationSnapshotAsync(
+        MediaKind kind,
+        PreferenceEvaluationSnapshot snapshot,
         CancellationToken cancellationToken);
+
+    Task<PreferenceEvaluationSnapshot?> GetLatestPreferenceEvaluationSnapshotAsync(
+        MediaKind kind,
+        string mediaId,
+        string? libraryId,
+        string? fileIdentity,
+        CancellationToken cancellationToken,
+        string? filePath = null,
+        long? fileSizeBytes = null);
 
     Task<bool> UpdateMetadataAsync(
         MediaKind kind,

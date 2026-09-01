@@ -9,15 +9,25 @@ namespace Deluno.Jobs.Data;
 public sealed class JobsSchemaInitializer(
     IDelunoDatabaseConnectionFactory databaseConnectionFactory,
     IDelunoDatabaseMigrator migrator,
-    ILogger<JobsSchemaInitializer> logger)
+    ILogger<JobsSchemaInitializer> logger,
+    IDelunoStartupGate? startupGate = null)
     : IHostedService
 {
     public async Task StartAsync(CancellationToken cancellationToken)
     {
-        await migrator.ApplyAsync(
-            DelunoDatabaseNames.Jobs,
-            JobsDatabaseMigrations.All,
-            cancellationToken);
+        try
+        {
+            await migrator.ApplyAsync(
+                DelunoDatabaseNames.Jobs,
+                JobsDatabaseMigrations.All,
+                cancellationToken);
+            startupGate?.MarkReady(DelunoDatabaseNames.Jobs);
+        }
+        catch (Exception exception)
+        {
+            startupGate?.MarkFailed(DelunoDatabaseNames.Jobs, exception);
+            throw;
+        }
 
         logger.LogInformation(
             "Jobs database migrations are current at {DatabasePath}.",

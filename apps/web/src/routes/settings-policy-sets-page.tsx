@@ -31,10 +31,16 @@ import {
   type CustomFormatItem,
   type DestinationRuleItem,
   type LibraryItem,
+  type MediaPlanAutomationIntent,
+  type MediaPlanPreview,
+  type MediaPlanScenario,
+  type MediaPlanScenarioCompilation,
+  type MediaPlanVersionItem,
   type PlatformSettingsSnapshot,
   type PolicySetItem,
   type QualityProfileItem
 } from "../lib/api";
+import { fetchMediaPlanScenarioCompilation } from "../lib/api/scenarios";
 import { settingsOverviewLoader } from "./settings-overview-page";
 import { authedFetch } from "../lib/use-auth";
 import { useUnsavedChanges } from "../hooks/use-unsaved-changes";
@@ -48,6 +54,7 @@ interface SettingsPolicySetsLoaderData {
   customFormats: CustomFormatItem[];
   destinationRules: DestinationRuleItem[];
   policySets: PolicySetItem[];
+  mediaPlanScenarios: MediaPlanScenario[];
   settings: PlatformSettingsSnapshot;
 }
 
@@ -62,16 +69,18 @@ interface PolicySetFormState {
   upgradeUntilCutoff: boolean;
   isEnabled: boolean;
   notes: string;
+  automationIntent: MediaPlanAutomationIntent | null;
 }
 
 type DrawerMode = { kind: "closed" } | { kind: "create" } | { kind: "edit"; id: string };
 
 export async function settingsPolicySetsLoader(): Promise<SettingsPolicySetsLoaderData> {
-  const [overview, customFormats, destinationRules, policySets] = await Promise.all([
+  const [overview, customFormats, destinationRules, policySets, mediaPlanScenarios] = await Promise.all([
     settingsOverviewLoader(),
     fetchJson<CustomFormatItem[]>("/api/custom-formats"),
     fetchJson<DestinationRuleItem[]>("/api/destination-rules"),
-    fetchJson<PolicySetItem[]>("/api/policy-sets")
+    fetchJson<PolicySetItem[]>("/api/policy-sets"),
+    fetchJson<MediaPlanScenario[]>("/api/media-plan-scenarios")
   ]);
 
   return {
@@ -80,12 +89,13 @@ export async function settingsPolicySetsLoader(): Promise<SettingsPolicySetsLoad
     customFormats,
     destinationRules,
     policySets,
+    mediaPlanScenarios,
     settings: overview.settings
   };
 }
 
 export function SettingsPolicySetsPage() {
-  const { libraries, qualityProfiles, customFormats, destinationRules, policySets } = useLoaderData() as SettingsPolicySetsLoaderData;
+  const { libraries, qualityProfiles, customFormats, destinationRules, policySets, mediaPlanScenarios } = useLoaderData() as SettingsPolicySetsLoaderData;
   const revalidator = useRevalidator();
   const location = useLocation();
   const navigate = useNavigate();
@@ -137,9 +147,20 @@ export function SettingsPolicySetsPage() {
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [confirmDiscard, setConfirmDiscard] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [planVersions, setPlanVersions] = useState<MediaPlanVersionItem[]>([]);
+  const [planVersionsBusy, setPlanVersionsBusy] = useState(false);
+  const [historyReload, setHistoryReload] = useState(0);
+  const [preview, setPreview] = useState<MediaPlanPreview | null>(null);
+  const [previewBusy, setPreviewBusy] = useState(false);
+  const [rollbackTarget, setRollbackTarget] = useState<MediaPlanVersionItem | null>(null);
+  const [rollbackBusy, setRollbackBusy] = useState(false);
+  const [scenarioId, setScenarioId] = useState<string | null>(null);
+  const [scenarioCompilation, setScenarioCompilation] = useState<MediaPlanScenarioCompilation | null>(null);
+  const [scenarioCompilationBusy, setScenarioCompilationBusy] = useState(false);
 
   const isOpen = mode.kind !== "closed";
   const editingPlan = mode.kind === "edit" ? policySets.find((plan) => plan.id === mode.id) ?? null : null;
+  const editingPlanId = mode.kind === "edit" ? mode.id : null;
 
   const dirty = useMemo(
     () => isOpen && (!sameForm(form, initialForm) || !sameIds(targetLibraryIds, initialTargetIds)),
@@ -148,6 +169,55 @@ export function SettingsPolicySetsPage() {
   const footerState: DrawerSaveState = saveState === "saving" ? "saving" : dirty ? "dirty" : saveState ?? "clean";
 
   useUnsavedChanges(dirty);
+
+  useEffect(() => {
+    if (!editingPlanId) {
+      setPlanVersions([]);
+      setPreview(null);
+      return;
+    }
+
+    let cancelled = false;
+    setPlanVersionsBusy(true);
+    fetchJson<MediaPlanVersionItem[]>(`/api/policy-sets/${editingPlanId}/versions`)
+      .then((items) => {
+        if (!cancelled) setPlanVersions(items);
+      })
+      .catch(() => {
+        if (!cancelled) setPlanVersions([]);
+      })
+      .finally(() => {
+        if (!cancelled) setPlanVersionsBusy(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [editingPlanId, historyReload]);
+
+  useEffect(() => {
+    if (mode.kind !== "create" || !scenarioId) {
+      setScenarioCompilation(null);
+      setScenarioCompilationBusy(false);
+      return;
+    }
+
+    let cancelled = false;
+    setScenarioCompilationBusy(true);
+    fetchMediaPlanScenarioCompilation(scenarioId, form.mediaType)
+      .then((compilation) => {
+        if (!cancelled) setScenarioCompilation(compilation);
+      })
+      .catch(() => {
+        if (!cancelled) setScenarioCompilation(null);
+      })
+      .finally(() => {
+        if (!cancelled) setScenarioCompilationBusy(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [form.mediaType, mode.kind, scenarioId]);
 
   // Any edit clears a stale saved/error status.
   useEffect(() => {
@@ -167,7 +237,9 @@ export function SettingsPolicySetsPage() {
     setInitialTargetIds([]);
     setSaveState(undefined);
     setNameError(null);
-    setQualityProfileError(null);
+      setQualityProfileError(null);
+      setPreview(null);
+    setScenarioId(null);
   }
 
   const openEdit = useCallback((plan: PolicySetItem) => {
@@ -181,6 +253,8 @@ export function SettingsPolicySetsPage() {
     setSaveState(undefined);
     setNameError(null);
     setQualityProfileError(null);
+    setPreview(null);
+    setScenarioId(null);
   }, [librariesByPlan]);
 
   useEffect(() => {
@@ -218,7 +292,51 @@ export function SettingsPolicySetsPage() {
     if (mediaType === form.mediaType) return;
     setTargetLibraryIds([]);
     setQualityProfileError(null);
-    setForm((current) => ({ ...current, mediaType, qualityProfileId: "", customFormatIds: [], destinationRuleId: "" }));
+    setScenarioId(null);
+    setForm((current) => ({ ...current, mediaType, qualityProfileId: "", customFormatIds: [], destinationRuleId: "", automationIntent: null }));
+  }
+
+  function applyScenario(id: string) {
+    const scenario = mediaPlanScenarios.find((item) => item.id === id);
+    const variant = scenario?.variants.find((item) => item.mediaType === form.mediaType);
+    if (!scenario || !variant) {
+      setScenarioId(null);
+      return;
+    }
+
+    const qualityProfile = qualityProfiles.find((profile) =>
+      profile.mediaType === form.mediaType && profile.presetId?.toLowerCase() === variant.qualityPresetId.toLowerCase());
+    setScenarioId(id);
+    setQualityProfileError(null);
+    setForm((current) => ({
+      ...current,
+      name: current.name.trim() ? current.name : `${scenario.name} · ${form.mediaType === "tv" ? "TV" : "Movies"}`,
+      qualityProfileId: qualityProfile?.id ?? "",
+      customFormatIds: [],
+      searchIntervalOverrideHours: variant.searchIntervalHours.toString(),
+      retryDelayOverrideHours: variant.retryDelayHours.toString(),
+      upgradeUntilCutoff: variant.upgradeUntilCutoff,
+      automationIntent: {
+        scenarioId: scenario.id,
+        scenarioVersion: scenario.version,
+        sizeTierId: variant.sizeTierId,
+        sizeTierName: variant.sizeTierName,
+        sizeDescription: variant.sizeDescription,
+        subtitleIntent: variant.subtitleIntent,
+        routingIntent: variant.routingIntent,
+        sharingIntent: variant.sharingIntent,
+        cleanupIntent: variant.cleanupIntent,
+        notificationIntent: variant.notificationIntent,
+        namingIntent: variant.namingIntent
+      },
+      notes: [
+        `Scenario: ${scenario.id} v${scenario.version}`,
+        `${scenario.name} · ${variant.summary}`,
+        `Size tier: ${variant.sizeTierName} — ${variant.sizeDescription}`,
+        `Routing: ${variant.routingIntent}`,
+        `Subtitles: ${variant.subtitleIntent}`
+      ].join("\n")
+    }));
   }
 
   function selectReleasePreference(id: string) {
@@ -281,6 +399,8 @@ export function SettingsPolicySetsPage() {
       };
       setForm(savedForm);
       setInitialForm(savedForm);
+      setPreview(null);
+      setHistoryReload((current) => current + 1);
       const settledTargets = targetLibraryIds.filter((id) => !failed.includes(libraries.find((library) => library.id === id)?.name ?? id));
       setTargetLibraryIds(settledTargets);
       setInitialTargetIds(settledTargets);
@@ -346,6 +466,57 @@ export function SettingsPolicySetsPage() {
       toast.error(error instanceof Error ? error.message : "Library profile could not be updated.");
     } finally {
       setTogglingId(null);
+    }
+  }
+
+  async function handlePreview() {
+    if (!editingPlanId || previewBusy) return;
+    setPreviewBusy(true);
+    try {
+      const response = await authedFetch(`/api/policy-sets/${editingPlanId}/preview`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(toPayload(form, form.qualityProfileId, form.customFormatIds))
+      });
+      if (!response.ok) throw new Error("Could not preview these changes.");
+      setPreview((await response.json()) as MediaPlanPreview);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not preview these changes.");
+    } finally {
+      setPreviewBusy(false);
+    }
+  }
+
+  async function handleRollback() {
+    if (!editingPlanId || !rollbackTarget || rollbackBusy) return;
+    setRollbackBusy(true);
+    try {
+      const response = await authedFetch(`/api/policy-sets/${editingPlanId}/rollback`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ version: rollbackTarget.version })
+      });
+      if (!response.ok) {
+        const problem = await response.json().catch(() => null) as { message?: string; title?: string; errors?: Record<string, string[]> } | null;
+        const detail = problem?.message
+          ?? problem?.title
+          ?? Object.values(problem?.errors ?? {}).flat()[0]
+          ?? "Could not restore that media-plan version.";
+        throw new Error(response.status === 409 ? `Rollback needs review: ${detail}` : detail);
+      }
+      const restored = (await response.json()) as PolicySetItem;
+      const next = formFromPlan(restored);
+      setForm(next);
+      setInitialForm(next);
+      setPreview(null);
+      setRollbackTarget(null);
+      setHistoryReload((current) => current + 1);
+      toast.success(`Restored media-plan version ${rollbackTarget.version}`);
+      revalidator.revalidate();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not restore that media-plan version.");
+    } finally {
+      setRollbackBusy(false);
     }
   }
 
@@ -500,6 +671,74 @@ export function SettingsPolicySetsPage() {
               />
             </Field>
           </FieldRow>
+          {mode.kind === "create" ? (
+            <Field label="Start from a scenario" optional help="A scenario fills the plan with readable defaults for quality, size, upgrades, search, subtitles, routing, and retention. Review every field before saving.">
+              <Select
+                value={scenarioId ?? ""}
+                onChange={(event) => applyScenario(event.target.value)}
+                placeholder="Build a custom plan"
+                options={mediaPlanScenarios
+                  .filter((scenario) => scenario.mediaTypes.includes(form.mediaType))
+                  .map((scenario) => ({ value: scenario.id, label: scenario.name }))}
+              />
+            </Field>
+          ) : null}
+          {mode.kind === "create" && scenarioId ? (() => {
+            const scenario = mediaPlanScenarios.find((item) => item.id === scenarioId);
+            const variant = scenario?.variants.find((item) => item.mediaType === form.mediaType);
+            return scenario && variant ? (
+              <div className="rounded-[10px] border border-primary/20 bg-surface-2/60 px-3 py-2 text-[length:var(--type-caption)] text-muted-foreground">
+                <p className="font-medium text-foreground">{scenario.name} · {variant.sizeTierName} size tier</p>
+                <p className="mt-0.5">{variant.summary}</p>
+                <p className="mt-0.5">{scenario.requirements.join(" ")}</p>
+                {scenarioCompilationBusy ? <p className="mt-2">Checking which scenario behaviours are active…</p> : null}
+                {scenarioCompilation?.behaviors?.length ? (
+                  <div className="mt-3 grid gap-2 border-t border-primary/15 pt-3">
+                    <p className="font-medium text-foreground">What this scenario will do</p>
+                    {scenarioCompilation.behaviors.map((behavior) => (
+                      <div key={behavior.id} className="grid gap-1 rounded-[8px] border border-hairline bg-surface px-2.5 py-2">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <span className="font-medium text-foreground">{behavior.area}</span>
+                          <Chip tone={scenarioBehaviorTone(behavior.applicationStatus)}>{scenarioBehaviorLabel(behavior.applicationStatus)}</Chip>
+                        </div>
+                        <p>{behavior.intent}</p>
+                        <p className="text-muted-foreground">{behavior.explanation}{behavior.configurationSurface ? ` Configure in ${behavior.configurationSurface}.` : ""}</p>
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+            ) : null;
+          })() : null}
+          {form.automationIntent ? (
+            <div className="grid gap-2 rounded-[10px] border border-info/30 bg-info/5 px-3 py-2 text-[length:var(--type-caption)]">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <span className="font-medium text-foreground">Captured automation intent</span>
+                <Chip tone="info">
+                  {form.automationIntent.scenarioId
+                    ? `${form.automationIntent.scenarioId} · v${form.automationIntent.scenarioVersion ?? "?"}`
+                    : "Typed plan detail"}
+                </Chip>
+              </div>
+              <p className="text-muted-foreground">These scenario details are stored with the Media Plan so each recommendation remains visible and auditable. They only become executable where the owning Deluno setting is configured.</p>
+              <div className="grid gap-1 sm:grid-cols-2">
+                {[
+                  ["Size", [form.automationIntent.sizeTierName, form.automationIntent.sizeDescription].filter(Boolean).join(" — ")],
+                  ["Subtitles", form.automationIntent.subtitleIntent],
+                  ["Routing", form.automationIntent.routingIntent],
+                  ["Sharing", form.automationIntent.sharingIntent],
+                  ["Cleanup", form.automationIntent.cleanupIntent],
+                  ["Notifications", form.automationIntent.notificationIntent],
+                  ["Naming", form.automationIntent.namingIntent]
+                ].filter(([, value]) => Boolean(value)).map(([label, value]) => (
+                  <div key={label} className="rounded-[8px] border border-info/15 bg-surface px-2.5 py-2">
+                    <span className="font-medium text-foreground">{label}</span>
+                    <span className="ml-1 text-muted-foreground">{value}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : null}
           <SwitchRow
             label="Enabled"
             description="Libraries attached to this profile use these quality and release choices."
@@ -609,6 +848,57 @@ export function SettingsPolicySetsPage() {
         </DrawerSection>
 
         {mode.kind === "edit" ? (
+          <DrawerSection title="Plan history" aside={planVersionsBusy ? "Loading…" : planVersions.length ? `${planVersions.length} immutable ${planVersions.length === 1 ? "version" : "versions"}` : "No history yet"} className="min-w-0 !py-4">
+            <p className="text-[length:var(--type-caption)] text-muted-foreground">
+              Every saved change is retained as a version. Rollback creates a new version, so the audit trail is never rewritten.
+            </p>
+            {planVersions.length ? (
+              <div className="grid gap-1.5">
+                {planVersions.slice(0, 8).map((version, index) => (
+                  <div key={`${version.planId}-${version.version}`} className="flex items-center justify-between gap-3 rounded-[10px] border border-hairline bg-surface-2/30 px-3 py-2">
+                    <div className="min-w-0">
+                      <p className="truncate text-[length:var(--type-body-sm)] font-medium text-foreground">
+                        Version {version.version} · {formatChangeKind(version.changeKind)}
+                        {index === 0 ? <span className="ml-1.5 text-success">· current</span> : null}
+                      </p>
+                      <p className="truncate font-mono text-[length:var(--type-micro)] text-muted-foreground" title={version.planHash}>
+                        {version.planHash.slice(0, 12)}
+                      </p>
+                    </div>
+                    {index > 0 ? (
+                      <Button type="button" size="sm" variant="outline" onClick={() => setRollbackTarget(version)} disabled={busy || rollbackBusy}>
+                        Restore
+                      </Button>
+                    ) : null}
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-[length:var(--type-caption)] text-muted-foreground">History starts when this profile is next saved.</p>
+            )}
+            {dirty ? (
+              <div className="grid gap-2">
+                <Button type="button" size="sm" variant="outline" onClick={() => void handlePreview()} disabled={previewBusy}>
+                  {previewBusy ? "Previewing…" : "Preview unsaved changes"}
+                </Button>
+                {preview ? (
+                  <div className="rounded-[10px] border border-info/30 bg-info/5 px-3 py-2">
+                    <p className="text-[length:var(--type-body-sm)] font-medium text-foreground">
+                      {preview.hasChanges ? `${preview.changes.length} change${preview.changes.length === 1 ? "" : "s"} will create the next version.` : "No effective changes."}
+                    </p>
+                    {preview.changes.length ? (
+                      <ul className="mt-1 grid gap-1 text-[length:var(--type-caption)] text-muted-foreground">
+                        {preview.changes.map((change) => <li key={change.field}>{formatField(change.field)}: {change.currentValue ?? "none"} → {change.proposedValue ?? "none"}</li>)}
+                      </ul>
+                    ) : null}
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
+          </DrawerSection>
+        ) : null}
+
+        {mode.kind === "edit" ? (
           <DrawerSection className="min-w-0 !py-4 border-b-0">
             <DrawerDanger
               title="Delete this Library Profile"
@@ -632,6 +922,18 @@ export function SettingsPolicySetsPage() {
         confirmLabel="Delete Library Profile"
         busy={busy}
         onConfirm={() => void handleDelete()}
+      />
+
+      <ConfirmDialog
+        open={rollbackTarget !== null}
+        onOpenChange={(open) => {
+          if (!open && !rollbackBusy) setRollbackTarget(null);
+        }}
+        title={`Restore version ${rollbackTarget?.version ?? ""}?`}
+        description="The selected snapshot will become the active profile. The restore itself is saved as a new version and the existing history is preserved."
+        confirmLabel="Restore version"
+        busy={rollbackBusy}
+        onConfirm={() => void handleRollback()}
       />
 
       <ConfirmDialog
@@ -665,7 +967,8 @@ function emptyForm(mediaType: "movies" | "tv" = "movies"): PolicySetFormState {
     retryDelayOverrideHours: "",
     upgradeUntilCutoff: true,
     isEnabled: true,
-    notes: ""
+    notes: "",
+    automationIntent: null
   };
 }
 
@@ -682,7 +985,8 @@ function formFromPlan(plan: PolicySetItem): PolicySetFormState {
     retryDelayOverrideHours: plan.retryDelayOverrideHours?.toString() ?? "",
     upgradeUntilCutoff: plan.upgradeUntilCutoff,
     isEnabled: plan.isEnabled,
-    notes: plan.notes ?? ""
+    notes: plan.notes ?? "",
+    automationIntent: plan.automationIntent ?? null
   };
 }
 
@@ -697,7 +1001,8 @@ function toPayload(form: PolicySetFormState, qualityProfileId: string | null, cu
     retryDelayOverrideHours: form.retryDelayOverrideHours ? Number(form.retryDelayOverrideHours) : null,
     upgradeUntilCutoff: form.upgradeUntilCutoff,
     isEnabled: form.isEnabled,
-    notes: form.notes.trim() || null
+    notes: form.notes.trim() || null,
+    automationIntent: form.automationIntent
   };
 }
 
@@ -721,7 +1026,8 @@ function sameForm(a: PolicySetFormState, b: PolicySetFormState) {
     a.retryDelayOverrideHours === b.retryDelayOverrideHours &&
     a.upgradeUntilCutoff === b.upgradeUntilCutoff &&
     a.isEnabled === b.isEnabled &&
-    a.notes === b.notes
+    a.notes === b.notes &&
+    JSON.stringify(a.automationIntent) === JSON.stringify(b.automationIntent)
   );
 }
 
@@ -740,4 +1046,26 @@ function splitCsv(value: string | null | undefined) {
 
 function describeUsage(count: number, singular = "library", plural = "libraries") {
   return `${count} ${count === 1 ? singular : plural}`;
+}
+
+function formatChangeKind(value: string) {
+  return value.replace(/[-_]/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+function formatField(value: string) {
+  return value
+    .replace(/([a-z])([A-Z])/g, "$1 $2")
+    .replace(/^./, (letter) => letter.toUpperCase());
+}
+
+function scenarioBehaviorLabel(value: string) {
+  return value === "applied"
+    ? "Applied"
+    : value === "requires-configuration"
+      ? "Configure before relying on it"
+      : "Informational";
+}
+
+function scenarioBehaviorTone(value: string): "ok" | "warn" | "idle" {
+  return value === "applied" ? "ok" : value === "requires-configuration" ? "warn" : "idle";
 }

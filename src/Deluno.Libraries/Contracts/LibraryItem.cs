@@ -1,3 +1,5 @@
+using Deluno.Contracts;
+
 namespace Deluno.Libraries.Contracts;
 
 public sealed record LibraryItem(
@@ -71,4 +73,11 @@ public sealed record LibraryItem(
     /// which some people want, because a player handles the two differently and
     /// an embedded track cannot be swapped or corrected (#321).</para>
     /// </summary>
-    bool SubtitleEmbeddedCounts = true);
+    bool SubtitleEmbeddedCounts = true,
+    /// <summary>
+    /// Named cleanup applied to subtitles after download and before they are
+    /// written beside the video. Null means provider content is preserved.
+    /// </summary>
+    SubtitleContentModificationPolicy? SubtitleContentPolicy = null,
+    /// <summary>Automatic timing-repair policy for fetched subtitles.</summary>
+    SubtitleTimingPolicy? SubtitleTimingPolicy = null);

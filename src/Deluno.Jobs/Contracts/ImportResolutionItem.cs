@@ -1,3 +1,5 @@
+using Deluno.Contracts;
+
 namespace Deluno.Jobs.Contracts;
 
 public sealed record ImportResolutionItem(
@@ -13,4 +15,5 @@ public sealed record ImportResolutionItem(
     DateTimeOffset? ImportedUtc,
     string? FailureCode,
     string? FailureMessage,
-    DateTimeOffset? FailedUtc);
+    DateTimeOffset? FailedUtc,
+    IntegrationFailure? Failure = null);

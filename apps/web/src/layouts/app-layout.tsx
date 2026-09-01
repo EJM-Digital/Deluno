@@ -30,6 +30,7 @@ import { useAuth, type UserProfile } from "../lib/use-auth";
 import { DENSITY_LABELS, DensityProvider, useDensity, type Density } from "../lib/use-density";
 import { RealtimeGroups, SignalRProvider, useSignalREvent } from "../lib/use-signalr";
 import { cn } from "../lib/utils";
+import { DisplayPreferencesProvider } from "../lib/display-preferences";
 import { commandPaletteShortcut } from "../lib/platform-shortcuts";
 import { UnsavedChangesProvider } from "../components/shell/unsaved-changes-provider";
 import { configurationNavAreas, maintenanceNavItems, settingsPageMeta } from "../components/app/settings-shell";
@@ -80,6 +81,7 @@ const libraryNav = [
   { to: "/", label: "Dashboard", icon: "dashboard", end: true, attention: "none" as const },
   { to: "/movies", label: "Movies", icon: "movies", end: false, attention: "movies" as const },
   { to: "/tv", label: "TV Shows", icon: "shows", end: false, attention: "tv" as const },
+  { to: "/collections", label: "Collections", icon: "library", end: false, attention: "none" as const },
   { to: "/calendar", label: "Schedule", icon: "schedule", end: false, attention: "none" as const }
 ] as const;
 
@@ -94,6 +96,7 @@ const routeMeta = [
   { match: (path: string) => path === "/", title: "Dashboard", subtitle: "Your movies and shows, in one place" },
   { match: (path: string) => path.startsWith("/movies"), title: "Movies", subtitle: "Manage and grow your movie library" },
   { match: (path: string) => path.startsWith("/tv"), title: "TV Shows", subtitle: "Manage your shows, episodes, and upgrades" },
+  { match: (path: string) => path.startsWith("/collections"), title: "Collections", subtitle: "Follow movie franchises and keep their libraries current" },
   { match: (path: string) => path.startsWith("/calendar"), title: "Schedule", subtitle: "Upcoming releases and retry windows" },
   { match: (path: string) => path.startsWith("/queue"), title: "Transfers", subtitle: "Follow downloads through processing and safe import" },
   { match: (path: string) => path.startsWith("/indexers"), title: "Find & Download", subtitle: "Search sources and download clients Deluno uses" },
@@ -103,7 +106,7 @@ const routeMeta = [
   // Profiles" in the sidebar, while owning tabs of both names — so no name
   // told you whether you were in the parent or one of its parts (#255). It is
   // named for what it governs, matching the sidebar's other "X & Y" areas.
-  { match: (path: string) => path.startsWith("/settings/policy-sets") || path.startsWith("/settings/profiles") || path.startsWith("/settings/quality") || path.startsWith("/settings/custom-formats"), title: "Quality & Release", subtitle: "How Deluno judges a release — and the Library Profiles that apply those choices to a library" },
+  { match: (path: string) => path.startsWith("/settings/policy-sets") || path.startsWith("/settings/profiles") || path.startsWith("/settings/quality") || path.startsWith("/settings/custom-formats") || path.startsWith("/settings/release-rules"), title: "Quality & Release", subtitle: "How Deluno judges a release — and the Library Profiles that apply those choices to a library" },
   { match: (path: string) => path.startsWith("/settings/lists"), title: "Discover Media", subtitle: "Bring movies and shows in from watchlists and curated feeds" },
   { match: (path: string) => path.startsWith("/settings/general") || path.startsWith("/settings/notifications") || path.startsWith("/settings/ui") || path.startsWith("/settings/migration"), title: "Preferences", subtitle: "How you want Deluno to behave, look, and tell you things" },
   // Every /settings route is named by settingsPageMeta, which is the single
@@ -128,7 +131,7 @@ const routeMeta = [
  * mistaken for one, or the topbar yields its heading to a page without one.
  */
 const MEDIA_SUB_ROUTES = new Set(["episodes", "wanted", "upgrades", "import", "library"]);
-const TOOLBAR_ROUTE_PREFIXES = ["/activity", "/calendar", "/indexers", "/queue", "/search-cycles", "/settings", "/system"];
+const TOOLBAR_ROUTE_PREFIXES = ["/activity", "/calendar", "/collections", "/indexers", "/queue", "/search-cycles", "/settings", "/system"];
 
 function isDetailRoute(pathname: string) {
   const match = /^\/(?:movies|tv)\/([^/]+)$/.exec(pathname);
@@ -154,9 +157,11 @@ function AppLayoutInner() {
   return (
     <QueryClientProvider client={queryClient}>
       <SignalRProvider accessToken={token}>
-        <UnsavedChangesProvider>
-          <AppLayoutContent />
-        </UnsavedChangesProvider>
+        <DisplayPreferencesProvider token={token}>
+          <UnsavedChangesProvider>
+            <AppLayoutContent />
+          </UnsavedChangesProvider>
+        </DisplayPreferencesProvider>
       </SignalRProvider>
     </QueryClientProvider>
   );

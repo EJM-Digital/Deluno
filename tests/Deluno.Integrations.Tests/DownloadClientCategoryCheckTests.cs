@@ -8,6 +8,31 @@ namespace Deluno.Integrations.Tests;
 public sealed class DownloadClientCategoryCheckTests
 {
     [Fact]
+    public async Task Sabnzbd_grab_retains_the_native_history_identity()
+    {
+        var handler = new StubHandler(request =>
+        {
+            Assert.Contains("mode=addurl", request.RequestUri?.Query, StringComparison.OrdinalIgnoreCase);
+            return JsonResponse("{\"status\":true,\"nzo_ids\":[\"native-sab-id-42\"]}");
+        });
+        var request = new DownloadClientGrabRequest(
+            "Example.Show.S01E01",
+            "http://indexer.test/download/42",
+            "tv",
+            "tv",
+            "Fixture indexer",
+            "dispatch-42");
+
+        var result = await new SabnzbdDownloadClient(new StubHttpClientFactory(handler))
+            .GrabAsync(CreateClient("sabnzbd"), request, CancellationToken.None);
+
+        Assert.True(result.Succeeded);
+        Assert.Equal("native-sab-id-42", result.ExternalId);
+        Assert.Equal(200, result.ResponseCode);
+        Assert.Contains("native-sab-id-42", result.ResponseJson);
+    }
+
+    [Fact]
     public async Task Sabnzbd_category_check_reports_a_matching_category_as_ready()
     {
         var handler = new StubHandler(request =>

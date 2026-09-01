@@ -20,4 +20,9 @@ public sealed record LibraryAutomationPlanItem(
     /// A shelf that has asked for none is never planned a subtitle scan, which
     /// is what keeps this feature free for everybody not using it.
     /// </summary>
-    bool WantsSubtitles = false);
+    bool WantsSubtitles = false,
+    /// <summary>
+    /// Saved views that scope scheduled searches for this library. Null or an
+    /// empty list means the normal unfiltered cycle remains in effect.
+    /// </summary>
+    IReadOnlyList<LibraryAutomationScope>? SearchScopes = null);

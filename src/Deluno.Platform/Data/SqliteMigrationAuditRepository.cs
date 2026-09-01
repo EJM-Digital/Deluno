@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Deluno.Infrastructure.Storage;
 using Deluno.Platform.Contracts;
+using Deluno.Platform.Migration;
 using static Deluno.Infrastructure.Storage.SqliteRecordHelpers;
 
 namespace Deluno.Platform.Data;
@@ -27,9 +28,9 @@ public sealed class SqliteMigrationAuditRepository(
         command.CommandText =
             """
             INSERT INTO migration_audit_reports (
-                id, source_kind, source_name, applied_utc, preflight_report_json, result_report_json, applied_items_json
+                id, source_kind, source_name, applied_utc, preflight_report_json, result_report_json, applied_items_json, backup_receipt_json
             ) VALUES (
-                @id, @sourceKind, @sourceName, @appliedUtc, @preflightReportJson, @resultReportJson, @appliedItemsJson
+                @id, @sourceKind, @sourceName, @appliedUtc, @preflightReportJson, @resultReportJson, @appliedItemsJson, @backupReceiptJson
             );
             """;
         AddParameter(command, "@id", persisted.Id);
@@ -39,6 +40,7 @@ public sealed class SqliteMigrationAuditRepository(
         AddParameter(command, "@preflightReportJson", JsonSerializer.Serialize(persisted.PreflightReport));
         AddParameter(command, "@resultReportJson", JsonSerializer.Serialize(persisted.ResultReport));
         AddParameter(command, "@appliedItemsJson", JsonSerializer.Serialize(persisted.Applied));
+        AddParameter(command, "@backupReceiptJson", persisted.Backup is null ? null : JsonSerializer.Serialize(persisted.Backup));
         await command.ExecuteNonQueryAsync(cancellationToken);
         return persisted;
     }
@@ -54,7 +56,7 @@ public sealed class SqliteMigrationAuditRepository(
         using var command = connection.CreateCommand();
         command.CommandText =
             """
-            SELECT id, source_kind, source_name, applied_utc, preflight_report_json, result_report_json, applied_items_json
+            SELECT id, source_kind, source_name, applied_utc, preflight_report_json, result_report_json, applied_items_json, backup_receipt_json
             FROM migration_audit_reports
             ORDER BY applied_utc DESC
             LIMIT @take;
@@ -79,7 +81,7 @@ public sealed class SqliteMigrationAuditRepository(
         using var command = connection.CreateCommand();
         command.CommandText =
             """
-            SELECT id, source_kind, source_name, applied_utc, preflight_report_json, result_report_json, applied_items_json
+            SELECT id, source_kind, source_name, applied_utc, preflight_report_json, result_report_json, applied_items_json, backup_receipt_json
             FROM migration_audit_reports
             WHERE id = @id
             LIMIT 1;
@@ -96,6 +98,9 @@ public sealed class SqliteMigrationAuditRepository(
         var result = JsonSerializer.Deserialize<MigrationReport>(reader.GetString(5))
             ?? throw new InvalidOperationException("Stored migration result report could not be read.");
         var applied = JsonSerializer.Deserialize<IReadOnlyList<MigrationAppliedItem>>(reader.GetString(6)) ?? [];
+        var backup = reader.IsDBNull(7)
+            ? null
+            : JsonSerializer.Deserialize<MigrationBackupReceipt>(reader.GetString(7));
         return new MigrationAuditReport(
             reader.GetString(0),
             reader.GetString(1),
@@ -103,6 +108,7 @@ public sealed class SqliteMigrationAuditRepository(
             ParseTimestamp(reader.GetString(3)),
             preflight,
             result,
-            applied);
+            applied,
+            backup);
     }
 }

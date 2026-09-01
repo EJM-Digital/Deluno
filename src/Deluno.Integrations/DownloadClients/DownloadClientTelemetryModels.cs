@@ -1,3 +1,5 @@
+using Deluno.Contracts;
+
 namespace Deluno.Integrations.DownloadClients;
 
 public static class DownloadQueueStatuses
@@ -89,7 +91,8 @@ public sealed record DownloadQueueItem(
     /// What this item is currently giving back, in MB/s. Always zero on usenet,
     /// which has nothing to upload.
     /// </summary>
-    double UploadSpeedMbps = 0);
+    double UploadSpeedMbps = 0,
+    IntegrationFailure? Failure = null);
 
 /// <summary>
 /// An observational queue-health signal. These findings never cause Deluno to remove
@@ -122,7 +125,10 @@ public sealed record DownloadClientHistoryItem(
     long SizeBytes,
     DateTimeOffset CompletedUtc,
     string? ErrorMessage,
-    string? SourcePath = null);
+    string? SourcePath = null,
+    string HistorySource = "queue-derived",
+    string? ExternalId = null,
+    IntegrationFailure? Failure = null);
 
 public sealed record DownloadClientTelemetryCapabilities(
     bool SupportsQueue,
@@ -145,7 +151,11 @@ public sealed record DownloadClientTelemetrySnapshot(
     IReadOnlyList<DownloadQueueItem> Queue,
     IReadOnlyList<DownloadClientHistoryItem> History,
     DateTimeOffset CapturedUtc,
-    bool HistoryTruncated = false);
+    bool HistoryTruncated = false)
+{
+    /// <summary>Last live integration failure, if this snapshot is degraded.</summary>
+    public IntegrationFailure? LastFailure { get; init; }
+}
 
 public sealed record DownloadTelemetryOverview(
     DownloadTelemetrySummary Summary,
@@ -161,7 +171,11 @@ public sealed record DownloadClientActionResult(
     string QueueItemId,
     string Action,
     bool Succeeded,
-    string Message);
+    string Message)
+{
+    /// <summary>Attributable failure details when the client rejected the action.</summary>
+    public IntegrationFailure? Failure { get; init; }
+}
 
 public sealed record DownloadHealthRemediationReport(
     int Evaluated,

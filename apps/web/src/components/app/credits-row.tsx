@@ -23,6 +23,8 @@ export interface CreditedPerson {
   profileUrl: string | null;
   /** The provider's person id. Absent on credits stored before it was read. */
   personId: string | null;
+  /** A lazy broker URL that resolves this person to IMDb without title fan-out. */
+  imdbUrl: string | null;
 }
 
 interface CreditsRowProps {
@@ -101,12 +103,9 @@ export function CreditsRow({ heading, people, className }: CreditsRowProps) {
  * One credit — a link when the person can be looked up, a plain card when they
  * cannot.
  *
- * <p>A face with a name under it invites a click, and until now nothing happened
- * — James: <i>"clicking on cast and crew should bring up their imdb link dont
- * you think?"</i>. The destination is the provider's own person page, because
- * the person id is the one identifier we actually hold: a name is not a link,
- * two people share one routinely, and an IMDb id would cost a separate lookup
- * per person on every metadata refresh — fifty extra upstream calls a title.</p>
+ * <p>A face with a name under it invites a click, and the destination is IMDb.
+ * The broker resolves the provider person id lazily, so opening a title does not
+ * fan out into one external-id request for every credited person.</p>
  *
  * <p>Credits stored before the id was read have no `personId`, so they stay
  * plain cards rather than linking somewhere wrong. A metadata refresh fills
@@ -132,10 +131,10 @@ function CreditCard({ person }: { person: CreditedPerson }) {
 
   return (
     <a
-      href={`https://www.themoviedb.org/person/${person.personId}`}
+      href={person.imdbUrl ?? `https://www.themoviedb.org/person/${person.personId}`}
       target="_blank"
       rel="noreferrer"
-      title={`${person.name} on TMDb`}
+      title={`${person.name} on IMDb`}
       className="group/credit w-[7.5rem] shrink-0 no-underline"
     >
       <figure>{portrait}{caption}</figure>
@@ -205,12 +204,20 @@ function readPeople(value: unknown, roleKeys: readonly string[]): CreditedPerson
     const role = roleKeys.map((key) => item[key]).find((candidate) => typeof candidate === "string" && candidate.trim());
     const profileUrl = item.profileUrl ?? item.ProfileUrl;
     const personId = item.personId ?? item.PersonId;
+    const imdbUrl = item.imdbUrl ?? item.ImdbUrl;
+
+    const normalizedPersonId = typeof personId === "string" && personId.trim()
+      ? personId.trim()
+      : typeof personId === "number" && Number.isSafeInteger(personId) && personId > 0
+        ? String(personId)
+        : null;
 
     return [{
       name: name.trim(),
       role: typeof role === "string" ? role : null,
       profileUrl: typeof profileUrl === "string" ? profileUrl : null,
-      personId: typeof personId === "string" && personId.trim() ? personId : null
+      personId: normalizedPersonId,
+      imdbUrl: typeof imdbUrl === "string" && imdbUrl.trim() ? imdbUrl : null
     }];
   });
 }

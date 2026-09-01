@@ -1,4 +1,5 @@
 using Deluno.Connections.Contracts;
+using Deluno.Contracts;
 
 namespace Deluno.Connections.Data;
 
@@ -52,7 +53,8 @@ public interface IConnectionsRepository
         string message,
         string? failureCategory,
         int? latencyMs,
-        CancellationToken cancellationToken);
+        CancellationToken cancellationToken,
+        IntegrationFailure? failure = null);
 
     Task<IndexerItem?> ResetIndexerCircuitAsync(string id, CancellationToken cancellationToken);
 
@@ -62,7 +64,8 @@ public interface IConnectionsRepository
         string message,
         string? failureCategory,
         int? latencyMs,
-        CancellationToken cancellationToken);
+        CancellationToken cancellationToken,
+        IntegrationFailure? failure = null);
 
     Task<bool> DeleteConnectionAsync(string id, CancellationToken cancellationToken);
     Task<bool> DeleteIndexerAsync(string id, CancellationToken cancellationToken);

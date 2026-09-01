@@ -1,3 +1,5 @@
+using System.Text.Json;
+
 namespace Deluno.Contracts;
 
 /// <summary>
@@ -132,6 +134,149 @@ public sealed record CatalogueFilters(IReadOnlyList<CatalogueFilterCondition>? C
 
         errors = problems;
         return conditions.Count == 0 ? None : new CatalogueFilters(conditions);
+    }
+
+    /// <summary>
+    /// Reads the condition array stored by a saved library view.
+    ///
+    /// <para>Saved views predate the worker's automation scope and have held
+    /// more than one shape over their lifetime. Automation cannot afford the
+    /// browser parser's forgiving migration behaviour: an unreadable rule must
+    /// disable that scope rather than become an unfiltered library search.
+    /// Every field and operator is therefore checked against the same registry
+    /// used by the catalogue endpoints.</para>
+    /// </summary>
+    public static bool TryParseJson(MediaKind kind, string? raw, out CatalogueFilters filters)
+    {
+        filters = None;
+        if (string.IsNullOrWhiteSpace(raw))
+        {
+            return true;
+        }
+
+        try
+        {
+            using var document = JsonDocument.Parse(raw);
+            if (document.RootElement.ValueKind != JsonValueKind.Array)
+            {
+                return false;
+            }
+
+            var conditions = new List<CatalogueFilterCondition>();
+            foreach (var element in document.RootElement.EnumerateArray())
+            {
+                if (element.ValueKind != JsonValueKind.Object ||
+                    !TryGetStringProperty(element, "field", out var fieldId) ||
+                    !TryGetOperator(element, out var op) ||
+                    !TryGetValues(element, out var values))
+                {
+                    return false;
+                }
+
+                var field = CatalogueFilterFields.Find(kind, fieldId);
+                if (field is null || !field.Operators.Contains(op))
+                {
+                    return false;
+                }
+
+                if (CatalogueFilterOperators.TakesValues(op)
+                    ? values.Count == 0 || values.Any(string.IsNullOrWhiteSpace)
+                    : values.Count != 0)
+                {
+                    return false;
+                }
+
+                conditions.Add(new CatalogueFilterCondition(field.Id, op, values));
+            }
+
+            filters = conditions.Count == 0 ? None : new CatalogueFilters(conditions);
+            return true;
+        }
+        catch (JsonException)
+        {
+            return false;
+        }
+    }
+
+    private static bool TryGetStringProperty(JsonElement element, string name, out string value)
+    {
+        foreach (var property in element.EnumerateObject())
+        {
+            if (string.Equals(property.Name, name, StringComparison.OrdinalIgnoreCase) &&
+                property.Value.ValueKind == JsonValueKind.String)
+            {
+                value = property.Value.GetString()?.Trim() ?? string.Empty;
+                return value.Length > 0;
+            }
+        }
+
+        value = string.Empty;
+        return false;
+    }
+
+    private static bool TryGetOperator(JsonElement element, out CatalogueFilterOperator op)
+    {
+        op = default;
+        foreach (var property in element.EnumerateObject())
+        {
+            if (!string.Equals(property.Name, "operator", StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            if (property.Value.ValueKind == JsonValueKind.String)
+            {
+                var raw = property.Value.GetString();
+                if (CatalogueFilterOperators.TryParse(raw, out op))
+                {
+                    return true;
+                }
+
+                return Enum.TryParse(raw, ignoreCase: true, out op) && Enum.IsDefined(op);
+            }
+
+            if (property.Value.ValueKind == JsonValueKind.Number &&
+                property.Value.TryGetInt32(out var numeric) &&
+                Enum.IsDefined(typeof(CatalogueFilterOperator), numeric))
+            {
+                op = (CatalogueFilterOperator)numeric;
+                return true;
+            }
+
+            return false;
+        }
+
+        return false;
+    }
+
+    private static bool TryGetValues(JsonElement element, out IReadOnlyList<string> values)
+    {
+        foreach (var property in element.EnumerateObject())
+        {
+            if (!string.Equals(property.Name, "values", StringComparison.OrdinalIgnoreCase) ||
+                property.Value.ValueKind != JsonValueKind.Array)
+            {
+                continue;
+            }
+
+            var parsed = new List<string>();
+            foreach (var value in property.Value.EnumerateArray())
+            {
+                if (value.ValueKind != JsonValueKind.String)
+                {
+                    values = [];
+                    return false;
+                }
+
+                parsed.Add(value.GetString() ?? string.Empty);
+            }
+
+            values = parsed;
+            return true;
+        }
+
+        values = [];
+        return false;
     }
 
     /// <summary>

@@ -27,9 +27,13 @@ namespace Deluno.Integrations.Search;
 /// <item><c>releaseGroup</c> — substring match on the inferred release group</item>
 /// <item><c>language</c>     — substring match: multi | dubbed | subbed | english | french …</item>
 /// </list>
-/// All conditions within a format must match for the format to be applied
-/// (logical AND).  A legacy plain-text conditions field (no JSON) falls back
-/// to the old substring-match behaviour so existing saved formats keep working.
+/// Custom-rule required conditions must all match (logical AND). Optional
+/// conditions are explanatory and do not veto a match; an optional-only rule
+/// still needs one condition to match so an empty/unknown rule cannot match
+/// every release. Guide-backed rules use their stored required patterns as
+/// alternatives (logical OR), which mirrors the catalogue's "any of these
+/// patterns" meaning. A legacy plain-text conditions field (no JSON) is also
+/// supported so existing saved formats keep working.
 /// </summary>
 public static partial class CustomFormatMatcher
 {
@@ -43,6 +47,43 @@ public static partial class CustomFormatMatcher
     public static int Evaluate(
         string releaseName,
         IReadOnlyList<CustomFormatItem>? formats,
+        out IReadOnlyList<CustomFormatMatchResult> matched)
+        => EvaluateCore(releaseName, formats, includeInformationalScores: true, out matched);
+
+    /// <summary>
+    /// Returns only the score from formats that are allowed to drive an
+    /// upgrade. Informational matches are still returned in
+    /// <paramref name="matched"/> so explanations and audits do not lose
+    /// provenance.
+    ///
+    /// <para>This distinction matters once a profile contains a format that
+    /// describes the installed file but must not trigger replacement. Before
+    /// this method existed, <c>UpgradeAllowed = false</c> was persisted and
+    /// then ignored by every search path.</para>
+    /// </summary>
+    public static int EvaluateUpgradeScore(
+        string releaseName,
+        IReadOnlyList<CustomFormatItem>? formats,
+        out IReadOnlyList<CustomFormatMatchResult> matched)
+        => EvaluateCore(releaseName, formats, includeInformationalScores: false, out matched);
+
+    /// <summary>
+    /// Returns matcher provenance without producing a numeric decision value.
+    /// Typed release plans use this to show which legacy/guide rules matched
+    /// while keeping their score out of candidate ordering and upgrades.
+    /// </summary>
+    public static IReadOnlyList<CustomFormatMatchResult> EvaluateMatches(
+        string releaseName,
+        IReadOnlyList<CustomFormatItem>? formats)
+    {
+        _ = EvaluateCore(releaseName, formats, includeInformationalScores: false, out var matched);
+        return matched;
+    }
+
+    private static int EvaluateCore(
+        string releaseName,
+        IReadOnlyList<CustomFormatItem>? formats,
+        bool includeInformationalScores,
         out IReadOnlyList<CustomFormatMatchResult> matched)
     {
         if (formats is null || formats.Count == 0)
@@ -60,18 +101,23 @@ public static partial class CustomFormatMatcher
         {
             var conditions = ParseConditions(format.Conditions);
             var (isMatch, matchedConditions, missedConditions) = EvaluateConditions(
-                releaseName, lower, inferredGroup, conditions);
+                releaseName, lower, inferredGroup, conditions, anyCondition: format.TrashId is not null);
 
             if (!isMatch)
                 continue;
 
-            totalScore += format.Score;
+            if (includeInformationalScores || format.UpgradeAllowed)
+            {
+                totalScore += format.Score;
+            }
+
             results.Add(new CustomFormatMatchResult(
                 FormatId: format.Id,
                 FormatName: format.Name,
                 Score: format.Score,
                 MatchedConditions: matchedConditions,
-                MissedConditions: []));
+                MissedConditions: [],
+                UpgradeAllowed: format.UpgradeAllowed));
         }
 
         matched = results;
@@ -95,7 +141,7 @@ public static partial class CustomFormatMatcher
         {
             var conditions = ParseConditions(format.Conditions);
             var (isMatch, matchedConditions, missedConditions) = EvaluateConditions(
-                releaseName, lower, inferredGroup, conditions);
+                releaseName, lower, inferredGroup, conditions, anyCondition: format.TrashId is not null);
 
             results.Add(new CustomFormatDryRunResult(
                 FormatId: format.Id,
@@ -133,22 +179,39 @@ public static partial class CustomFormatMatcher
             }
         }
 
-        // Legacy plain-text "type:value" (single condition, backward-compat)
+        // Legacy saved rules used one condition per line. In particular,
+        // guide-backed rules used "regex: <pattern>" lines, while older
+        // hand-written rules used "type:value".
+        return trimmed
+            .Split(['\r', '\n'], StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries)
+            .Select(ParseLegacyCondition)
+            .ToArray();
+    }
+
+    private static CustomFormatCondition ParseLegacyCondition(string rawCondition)
+    {
+        var trimmed = rawCondition.Trim();
+        if (trimmed.StartsWith("regex:", StringComparison.OrdinalIgnoreCase))
+        {
+            return new CustomFormatCondition(
+                Type: "releaseTitle",
+                Value: trimmed["regex:".Length..].Trim(),
+                Negate: false,
+                Required: true);
+        }
+
         var colonIdx = trimmed.IndexOf(':');
         if (colonIdx > 0 && colonIdx < trimmed.Length - 1)
         {
-            return
-            [
-                new CustomFormatCondition(
-                    Type: trimmed[..colonIdx].Trim(),
-                    Value: trimmed[(colonIdx + 1)..].Trim(),
-                    Negate: false,
-                    Required: true)
-            ];
+            return new CustomFormatCondition(
+                Type: trimmed[..colonIdx].Trim(),
+                Value: trimmed[(colonIdx + 1)..].Trim(),
+                Negate: false,
+                Required: true);
         }
 
-        // Bare token — treat as releaseTitle substring
-        return [new CustomFormatCondition(Type: "releaseTitle", Value: trimmed, Negate: false, Required: true)];
+        // Bare token — treat as releaseTitle substring.
+        return new CustomFormatCondition(Type: "releaseTitle", Value: trimmed, Negate: false, Required: true);
     }
 
     // ── Condition evaluation ───────────────────────────────────────────────
@@ -157,13 +220,16 @@ public static partial class CustomFormatMatcher
         string releaseName,
         string lower,
         string? inferredGroup,
-        IReadOnlyList<CustomFormatCondition> conditions)
+        IReadOnlyList<CustomFormatCondition> conditions,
+        bool anyCondition)
     {
         if (conditions.Count == 0)
             return (false, [], ["No conditions defined"]);
 
         var matched = new List<string>();
         var missed = new List<string>();
+        var requiredCount = conditions.Count(condition => condition.Required);
+        var requiredMatchedCount = 0;
 
         foreach (var condition in conditions)
         {
@@ -173,14 +239,25 @@ public static partial class CustomFormatMatcher
             if (condition.Negate) label = "NOT " + label;
 
             if (effectiveHit)
+            {
                 matched.Add(label);
+                if (condition.Required)
+                {
+                    requiredMatchedCount++;
+                }
+            }
             else
                 missed.Add(label);
         }
 
-        // All conditions must match (AND semantics)
-        var allMatch = missed.Count == 0;
-        return (allMatch, matched.ToArray(), missed.ToArray());
+        var isMatch = anyCondition
+            ? requiredCount > 0
+                ? requiredMatchedCount > 0
+                : matched.Count > 0
+            : requiredCount > 0
+                ? requiredMatchedCount == requiredCount
+                : matched.Count > 0;
+        return (isMatch, matched.ToArray(), missed.ToArray());
     }
 
     private static bool EvaluateSingleCondition(
@@ -195,6 +272,10 @@ public static partial class CustomFormatMatcher
         return condition.Type?.ToLowerInvariant() switch
         {
             "releasetitle" => MatchReleaseTitle(releaseName, lower, val),
+            // Older persisted guide rules used the human-readable
+            // "regex: <pattern>" legacy shape. ParseConditions preserves that
+            // type/value pair for backward compatibility.
+            "regex"        => MatchReleaseTitle(releaseName, lower, val),
             "source"       => MatchSource(lower, val),
             "resolution"   => MatchResolution(lower, val),
             "hdr"          => MatchHdr(lower, val),
@@ -209,6 +290,12 @@ public static partial class CustomFormatMatcher
 
     private static bool MatchReleaseTitle(string releaseName, string lower, string pattern)
     {
+        // Guide-backed rules are persisted by the web UI with an explicit
+        // `regex:` marker so the stored condition remains understandable to a
+        // person editing it. The marker is metadata, not part of the pattern.
+        if (pattern.StartsWith("regex:", StringComparison.OrdinalIgnoreCase))
+            pattern = pattern["regex:".Length..].Trim();
+
         // If the pattern looks like a regex (contains meta chars), try regex
         if (pattern.AsSpan().ContainsAny(['*', '+', '?', '(', '|', '[', '\\', '^', '$']))
         {
@@ -308,7 +395,8 @@ public sealed record CustomFormatMatchResult(
     string FormatName,
     int Score,
     IReadOnlyList<string> MatchedConditions,
-    IReadOnlyList<string> MissedConditions);
+    IReadOnlyList<string> MissedConditions,
+    bool UpgradeAllowed = true);
 
 /// <summary>Per-format dry-run result for the UI explanation panel.</summary>
 public sealed record CustomFormatDryRunResult(

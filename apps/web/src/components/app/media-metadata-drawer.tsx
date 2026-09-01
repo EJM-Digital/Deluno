@@ -10,7 +10,7 @@
  *   Fine-tune         — the manual override fields, saved by the footer
  */
 import { useEffect, useState } from "react";
-import { ExternalLink, LoaderCircle, RefreshCw, Search } from "lucide-react";
+import { AlertTriangle, ExternalLink, LoaderCircle, RefreshCw, Search, ShieldCheck } from "lucide-react";
 import { Button } from "../ui/button";
 import { ConfirmDialog } from "../ui/confirm-dialog";
 import { Disclosure } from "../ui/disclosure";
@@ -18,7 +18,7 @@ import { Drawer, DrawerFacts, DrawerFooter, DrawerSection, type DrawerSaveState 
 import { Field, FieldRow } from "../ui/field";
 import { Input } from "../ui/input";
 import { Textarea } from "../ui/textarea";
-import { fetchJson, type MetadataSearchResult } from "../../lib/api";
+import { fetchJson, type MetadataLinkPreview, type MetadataSearchResult } from "../../lib/api";
 import { authedFetch } from "../../lib/use-auth";
 import { useUnsavedChanges } from "../../hooks/use-unsaved-changes";
 
@@ -76,6 +76,8 @@ export function MediaMetadataDrawer({
   const [message, setMessage] = useState<string | null>(null);
   const [fineTuneOpen, setFineTuneOpen] = useState(false);
   const [confirmDiscard, setConfirmDiscard] = useState(false);
+  const [linkPreview, setLinkPreview] = useState<MetadataLinkPreview | null>(null);
+  const [pendingMatch, setPendingMatch] = useState<MetadataSearchResult | null>(null);
 
   const dirty = open && state === "dirty";
   useUnsavedChanges(dirty);
@@ -90,6 +92,8 @@ export function MediaMetadataDrawer({
     setState("clean");
     setMessage(null);
     setFineTuneOpen(false);
+    setLinkPreview(null);
+    setPendingMatch(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
@@ -108,6 +112,8 @@ export function MediaMetadataDrawer({
       if (year) params.set("year", String(year));
       const results = await fetchJson<MetadataSearchResult[]>(`/api/metadata/search?${params.toString()}`);
       setMatches(results.slice(0, 6));
+      setLinkPreview(null);
+      setPendingMatch(null);
       if (state === "clean") {
         setMessage(results.length ? `${results.length} match${results.length === 1 ? "" : "es"} found` : "No matches found");
       }
@@ -119,23 +125,57 @@ export function MediaMetadataDrawer({
     }
   }
 
-  async function handleLink(match: MetadataSearchResult) {
-    setBusy(`link:${match.providerId}`);
+  async function handlePreviewLink(match: MetadataSearchResult) {
+    setBusy(`preview:${match.providerId}`);
+    setMessage(null);
+    try {
+      const response = await authedFetch(`${endpointBase}/metadata/link/preview`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ providerId: match.providerId })
+      });
+      const payload = await response.json().catch(() => null) as MetadataLinkPreview | { message?: string } | null;
+      if (!response.ok || !payload || !("confirmationToken" in payload)) {
+        throw new Error(payload && "message" in payload ? payload.message : "preview-failed");
+      }
+      setPendingMatch(match);
+      setLinkPreview(payload);
+      setMessage(payload.canApply ? "Review the changes before linking" : payload.blockReason ?? "This remap is blocked");
+    } catch {
+      setState("error");
+      setMessage("That remap could not be previewed");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function handleApplyLink() {
+    if (!pendingMatch || !linkPreview?.canApply) return;
+    setBusy(`link:${pendingMatch.providerId}`);
     setMessage(null);
     try {
       const response = await authedFetch(`${endpointBase}/metadata/link`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ providerId: match.providerId })
+        body: JSON.stringify({
+          providerId: pendingMatch.providerId,
+          confirmationToken: linkPreview.confirmationToken
+        })
       });
-      if (!response.ok) throw new Error("link-failed");
+      const payload = await response.json().catch(() => null) as { message?: string; preview?: MetadataLinkPreview } | null;
+      if (!response.ok) {
+        if (payload?.preview) setLinkPreview(payload.preview);
+        throw new Error(payload?.message ?? "link-failed");
+      }
       setMatches([]);
+      setLinkPreview(null);
+      setPendingMatch(null);
       setState("saved");
-      setMessage(`Linked to ${match.title}${match.year ? ` (${match.year})` : ""}`);
+      setMessage(`Linked to ${pendingMatch.title}${pendingMatch.year ? ` (${pendingMatch.year})` : ""}`);
       onChanged();
     } catch {
       setState("error");
-      setMessage("That match could not be linked");
+      setMessage("The remap changed or is no longer safe. Review it again.");
     } finally {
       setBusy(null);
     }
@@ -297,9 +337,9 @@ export function MediaMetadataDrawer({
                     {match.overview ?? `${match.provider.toUpperCase()} ${match.providerId}`}
                   </p>
                 </div>
-                <Button type="button" size="sm" onClick={() => void handleLink(match)} disabled={busy !== null}>
-                  {busy === `link:${match.providerId}` ? <LoaderCircle className="h-4 w-4 animate-spin" /> : null}
-                  Use this
+                <Button type="button" size="sm" onClick={() => void handlePreviewLink(match)} disabled={busy !== null}>
+                  {busy === `preview:${match.providerId}` ? <LoaderCircle className="h-4 w-4 animate-spin" /> : null}
+                  Preview
                 </Button>
               </div>
             ))}
@@ -308,6 +348,83 @@ export function MediaMetadataDrawer({
           <p className="text-[length:var(--type-caption)] text-muted-foreground">
             No matches. Try adding the year, the original title, or an IMDb ID.
           </p>
+        ) : null}
+
+        {linkPreview ? (
+          <section
+            role="region"
+            aria-label="Metadata remap preview"
+            className="grid gap-[var(--grid-gap)] rounded-[10px] border border-hairline bg-surface-1 p-[var(--field-pad-x)]"
+          >
+            <div className="flex items-start gap-3">
+              {linkPreview.canApply ? (
+                <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-success" aria-hidden="true" />
+              ) : (
+                <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-warning" aria-hidden="true" />
+              )}
+              <div className="min-w-0">
+                <p className="font-medium text-foreground">Review this remap</p>
+                <p className="mt-1 text-[length:var(--type-caption)] text-muted-foreground">
+                  Nothing changes until you apply this reviewed preview.
+                </p>
+              </div>
+            </div>
+
+            <div className="grid gap-3 sm:grid-cols-2">
+              <IdentityPreview label="Current" identity={linkPreview.current} />
+              <IdentityPreview label="Proposed" identity={linkPreview.proposed} />
+            </div>
+
+            <div>
+              <p className="text-[length:var(--type-caption)] font-semibold uppercase tracking-wide text-muted-foreground">Identity changes</p>
+              <ul className="mt-1.5 grid gap-1 text-[length:var(--type-body-sm)] text-foreground">
+                {linkPreview.changes.map((change) => <li key={change}>• {change}</li>)}
+              </ul>
+            </div>
+
+            <div>
+              <p className="text-[length:var(--type-caption)] font-semibold uppercase tracking-wide text-muted-foreground">What stays and what refreshes</p>
+              <ul className="mt-1.5 grid gap-1 text-[length:var(--type-body-sm)] text-muted-foreground">
+                {linkPreview.consequences.map((consequence) => <li key={consequence}>• {consequence}</li>)}
+              </ul>
+            </div>
+
+            {linkPreview.catalogueImpact ? (
+              <DrawerFacts
+                items={[
+                  { label: "Episodes now", value: String(linkPreview.catalogueImpact.existingEpisodeCount) },
+                  { label: "With files", value: String(linkPreview.catalogueImpact.importedEpisodeCount) },
+                  { label: "Proposed episodes", value: String(linkPreview.catalogueImpact.proposedEpisodeCount) },
+                  { label: "Outside proposed", value: String(linkPreview.catalogueImpact.existingEpisodesOutsideProposed) }
+                ]}
+              />
+            ) : null}
+
+            {linkPreview.blockReason ? (
+              <p className="rounded-[8px] border border-warning/35 bg-warning/10 px-3 py-2 text-[length:var(--type-body-sm)] text-foreground">
+                {linkPreview.blockReason}
+              </p>
+            ) : null}
+
+            <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+              <Button
+                type="button"
+                variant="ghost"
+                onClick={() => {
+                  setLinkPreview(null);
+                  setPendingMatch(null);
+                  setMessage(null);
+                }}
+                disabled={busy !== null}
+              >
+                Cancel preview
+              </Button>
+              <Button type="button" onClick={() => void handleApplyLink()} disabled={!linkPreview.canApply || busy !== null}>
+                {busy?.startsWith("link:") ? <LoaderCircle className="h-4 w-4 animate-spin" /> : null}
+                Apply remap
+              </Button>
+            </div>
+          </section>
         ) : null}
       </DrawerSection>
 
@@ -369,6 +486,20 @@ export function MediaMetadataDrawer({
       }}
     />
     </>
+  );
+}
+
+function IdentityPreview({ label, identity }: { label: string; identity: MetadataLinkPreview["current"] }) {
+  return (
+    <div className="rounded-[8px] border border-hairline bg-card px-3 py-2">
+      <p className="text-[length:var(--type-caption)] font-semibold uppercase tracking-wide text-muted-foreground">{label}</p>
+      <p className="mt-1 font-medium text-foreground">{identity.title}{identity.year ? ` (${identity.year})` : ""}</p>
+      <p className="mt-0.5 font-mono text-[length:var(--type-caption)] text-muted-foreground">
+        {identity.provider?.toUpperCase() ?? "Unlinked"} {identity.providerId ?? "—"}
+      </p>
+      <p className="mt-0.5 font-mono text-[length:var(--type-caption)] text-muted-foreground">IMDb {identity.imdbId ?? "—"}</p>
+      {identity.context ? <p className="mt-1 text-[length:var(--type-caption)] text-muted-foreground">{identity.context}</p> : null}
+    </div>
   );
 }
 

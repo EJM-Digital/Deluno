@@ -46,8 +46,8 @@ Quality goals and file sizes are one decision, not separate pages:
 - A plan has a quality profile with ordered tiers and an upgrade cutoff.
 - Every plan exposes a simple, selectable **size tier** for each quality goal. The tier is described in ordinary language and its resulting ranges are visible before it is saved.
 - Advanced editing exposes a per-quality minimum/typical/maximum size envelope, expressed in friendly units and optionally normalized by runtime for episodes.
-- Deluno scores ordinary variance inside the chosen envelope and rejects obvious hard-boundary outliers. The detailed editor can make a boundary stricter, or choose hold/review behaviour where that better suits the library.
-- Release groups are plan preferences: **preferred**, **acceptable**, **avoid**, or **blocked**. Preferred/acceptable/avoid affect scoring; blocked is an explicit reject.
+- Deluno compares ordinary variance inside the chosen envelope and rejects obvious hard-boundary outliers. The detailed editor can make a boundary stricter, or choose hold/review behaviour where that better suits the library.
+- Release groups are plan preferences: **preferred**, **acceptable**, **avoid**, or **blocked**. Preferred/acceptable/avoid participate in typed comparison; blocked is an explicit reject.
 - Deluno can offer a curated starter list of well-known groups, but it must also accept a user-entered group and must state the source and version of every supplied list.
 
 The proposed ordinary defaults are intentionally small: no group requirement unless selected, and only broadly useful quality/size scenarios. A user who wants strict group enforcement chooses it knowingly.
@@ -64,7 +64,8 @@ A Media Plan can:
 - inspect the bundled pack, its provenance, and exactly which fields it would set;
 - choose a supplied release-group tier or start without group enforcement;
 - add a release group manually, with a preference (preferred, acceptable,
-  avoid, or blocked) and an optional score;
+  avoid, or blocked); any legacy numeric value remains Advanced/provenance
+  detail only;
 - keep those additions as explicit local rules; and
 - preview the field-level changes that arrive with a newer Deluno release
   before adopting them.

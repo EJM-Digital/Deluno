@@ -41,7 +41,10 @@ public sealed class DownloadClientTelemetryService(
         var pathMappings = await connectionsRepository.ListDownloadClientPathMappingsAsync(null, cancellationToken);
         var libraries = await librariesRepository.ListLibrariesAsync(cancellationToken);
         var routeCategoriesByLibrary = await LoadRouteCategoriesAsync(libraries, cancellationToken);
-        var dispatches = await jobQueueRepository.ListDownloadDispatchesAsync(100, null, cancellationToken);
+        var dispatches = await jobQueueRepository.ListDownloadDispatchesAsync(
+            DownloadClientTelemetryLimits.HistoryWindow,
+            null,
+            cancellationToken);
         var importJobs = await jobQueueRepository.ListAsync(200, cancellationToken);
         // The hand-off is the only thing that knows a download in
         // C:\...\Downloads-Complete and a refined file in C:\...\Refined are
@@ -64,16 +67,17 @@ public sealed class DownloadClientTelemetryService(
                 var clientDispatches = dispatches
                     .Where(dispatch => string.Equals(dispatch.DownloadClientId, client.Id, StringComparison.OrdinalIgnoreCase))
                     .ToArray();
-                snapshots.Add(EnrichQueueImportState(
-                    EnrichWithDispatchHistory(
-                        liveSnapshot,
+                snapshots.Add(DownloadClientHelpers.NormalizeSnapshotFailures(
+                    EnrichQueueImportState(
+                        EnrichWithDispatchHistory(
+                            liveSnapshot,
+                            clientDispatches,
+                            capturedUtc),
+                        libraries,
                         clientDispatches,
-                        capturedUtc),
-                    libraries,
-                    clientDispatches,
-                    importJobs,
-                    handoffs,
-                    routeCategoriesByLibrary));
+                        importJobs,
+                        handoffs,
+                        routeCategoriesByLibrary)));
                 continue;
             }
 
@@ -88,7 +92,8 @@ public sealed class DownloadClientTelemetryService(
                 capturedUtc,
                 NormalizeHealth(client.HealthStatus),
                 client.LastHealthMessage ?? "Live telemetry unavailable; showing Deluno dispatch history only.",
-                dispatchHistory));
+                dispatchHistory,
+                client.LastHealthFailure));
         }
 
         var mappedSnapshots = snapshots
@@ -111,13 +116,31 @@ public sealed class DownloadClientTelemetryService(
             .FirstOrDefault(item => string.Equals(item.Id, clientId, StringComparison.OrdinalIgnoreCase));
         if (client is null)
         {
-            return new DownloadClientActionResult(clientId, request.QueueItemId, request.Action, false, "Download client was not found.");
+            return new DownloadClientActionResult(clientId, request.QueueItemId, request.Action, false, "Download client was not found.")
+            {
+                Failure = IntegrationFailureFactory.FromLegacy(
+                    "download-client",
+                    clientId,
+                    clientId,
+                    $"action:{request.Action}",
+                    "notFound",
+                    "Download client was not found.")
+            };
         }
 
         var action = NormalizeAction(request.Action);
         if (action is null)
         {
-            return new DownloadClientActionResult(client.Id, request.QueueItemId, request.Action, false, "Unsupported action.");
+            return new DownloadClientActionResult(client.Id, request.QueueItemId, request.Action, false, "Unsupported action.")
+            {
+                Failure = IntegrationFailureFactory.FromLegacy(
+                    "download-client",
+                    client.Id,
+                    client.Name,
+                    $"action:{request.Action}",
+                    "rejected",
+                    "Unsupported action.")
+            };
         }
 
         // An item owned by another downloader can be shared or cross-seeded. Queue
@@ -132,7 +155,16 @@ public sealed class DownloadClientTelemetryService(
                 request.QueueItemId,
                 action,
                 false,
-                "External-client queue removal is disabled. Enable it in Library setup > Connections > Download clients before removing an item from Deluno.");
+                "External-client queue removal is disabled. Enable it in Library setup > Connections > Download clients before removing an item from Deluno.")
+            {
+                Failure = IntegrationFailureFactory.FromLegacy(
+                    "download-client",
+                    client.Id,
+                    client.Name,
+                    "action:delete",
+                    "configuration",
+                    "External-client queue removal is disabled.")
+            };
         }
 
         var result = await resiliencePolicy.ExecuteAsync(
@@ -154,10 +186,39 @@ public sealed class DownloadClientTelemetryService(
                 request.QueueItemId,
                 action,
                 false,
-                "Deluno paused queue actions for this client after repeated failures. Test the client connection before trying again.");
+                "Deluno paused queue actions for this client after repeated failures. Test the client connection before trying again.")
+            {
+                Failure = result.Failure ?? IntegrationFailureFactory.CircuitOpen(
+                    "download-client",
+                    client.Id,
+                    client.Name,
+                    $"action:{action}",
+                    result.RetryAfterUtc)
+            };
         }
 
-        return result.Value ?? new DownloadClientActionResult(client.Id, request.QueueItemId, action, false, result.FailureMessage ?? "Download client action failed.");
+        var actionResult = result.Value ?? new DownloadClientActionResult(
+            client.Id,
+            request.QueueItemId,
+            action,
+            false,
+            result.FailureMessage ?? "Download client action failed.")
+        {
+            Failure = result.Failure
+        };
+        return !actionResult.Succeeded && actionResult.Failure is null
+            ? actionResult with
+            {
+                Failure = result.Failure ?? IntegrationFailureFactory.FromLegacy(
+                    "download-client",
+                    client.Id,
+                    client.Name,
+                    $"action:{action}",
+                    "failed",
+                    actionResult.Message,
+                    attempts: result.Attempts)
+            }
+            : actionResult;
     }
 
     private async Task<DownloadClientTelemetrySnapshot?> TryGetLiveSnapshotAsync(
@@ -185,13 +246,25 @@ public sealed class DownloadClientTelemetryService(
                 [],
                 capturedUtc,
                 "degraded",
-                "Live telemetry is temporarily paused after repeated connection failures.");
+                "Live telemetry is temporarily paused after repeated connection failures.",
+                failure: result.Failure ?? IntegrationFailureFactory.CircuitOpen(
+                    "download-client",
+                    client.Id,
+                    client.Name,
+                    "telemetry",
+                    result.RetryAfterUtc));
         }
 
         return result.Value ??
             (result.FailureMessage is null
                 ? null
-                : CreateSnapshot(client, [], capturedUtc, "degraded", result.FailureMessage));
+                : CreateSnapshot(
+                    client,
+                    [],
+                    capturedUtc,
+                    "degraded",
+                    result.FailureMessage,
+                    failure: result.Failure));
     }
 
     private async Task<DownloadClientActionResult> ExecuteActionCoreAsync(
@@ -204,11 +277,29 @@ public sealed class DownloadClientTelemetryService(
         {
             return !downloadClientRegistry.TryGet(client.Protocol, out var implementation)
                 ? new DownloadClientActionResult(client.Id, queueItemId, action, false, $"'{client.Protocol}' is not a supported download client protocol. Supported protocols: {string.Join(", ", downloadClientRegistry.KnownProtocols)}.")
+                {
+                    Failure = IntegrationFailureFactory.FromLegacy(
+                        "download-client",
+                        client.Id,
+                        client.Name,
+                        $"action:{action}",
+                        "configuration",
+                        $"'{client.Protocol}' is not a supported download client protocol.")
+                }
                 : await implementation.ExecuteActionAsync(client, action, queueItemId, cancellationToken);
         }
-        catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException or InvalidOperationException or IOException)
+        catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException or InvalidOperationException or IOException or JsonException)
         {
-            return new DownloadClientActionResult(client.Id, queueItemId, action, false, exception.Message);
+            return new DownloadClientActionResult(client.Id, queueItemId, action, false, exception.Message)
+            {
+                Failure = IntegrationFailureFactory.FromException(
+                    "download-client",
+                    client.Id,
+                    client.Name,
+                    $"action:{action}",
+                    exception,
+                    retryScheduled: true)
+            };
         }
     }
 
@@ -225,7 +316,19 @@ public sealed class DownloadClientTelemetryService(
         }
         catch (Exception exception) when (exception is not HttpRequestException and not TaskCanceledException and not IOException)
         {
-            return CreateSnapshot(client, [], capturedUtc, "degraded", exception.Message);
+            return CreateSnapshot(
+                client,
+                [],
+                capturedUtc,
+                "degraded",
+                exception.Message,
+                failure: IntegrationFailureFactory.FromException(
+                    "download-client",
+                    client.Id,
+                    client.Name,
+                    "telemetry",
+                    exception,
+                    retryScheduled: true));
         }
     }
 
@@ -235,9 +338,15 @@ public sealed class DownloadClientTelemetryService(
         DateTimeOffset capturedUtc,
         string health,
         string? message,
-        IReadOnlyList<DownloadClientHistoryItem>? history = null)
+        IReadOnlyList<DownloadClientHistoryItem>? history = null,
+        IntegrationFailure? failure = null)
     {
-        var historyItems = (history ?? CreateHistoryFromQueue(client, queue, capturedUtc)).ToArray();
+        var normalizedQueue = (queue ?? [])
+            .Select(DownloadClientHelpers.NormalizeQueueFailure)
+            .ToArray();
+        var historyItems = (history ?? CreateHistoryFromQueue(client, normalizedQueue, capturedUtc))
+            .Select(DownloadClientHelpers.NormalizeHistoryFailure)
+            .ToArray();
         return new(
             ClientId: client.Id,
             ClientName: client.Name,
@@ -248,11 +357,14 @@ public sealed class DownloadClientTelemetryService(
             Capabilities: downloadClientRegistry.TryGet(client.Protocol, out var implementation)
                 ? implementation.Capabilities
                 : new DownloadClientTelemetryCapabilities(false, false, false, false, false, false, "unknown"),
-            Summary: Summarize(queue),
-            Queue: queue,
+            Summary: Summarize(normalizedQueue),
+            Queue: normalizedQueue,
             History: historyItems.Take(DownloadClientTelemetryLimits.HistoryWindow).ToArray(),
             CapturedUtc: capturedUtc,
-            HistoryTruncated: historyItems.Length > DownloadClientTelemetryLimits.HistoryWindow);
+            HistoryTruncated: historyItems.Length > DownloadClientTelemetryLimits.HistoryWindow)
+        {
+            LastFailure = failure
+        };
     }
 
     private async Task<DownloadClientTelemetrySnapshot> AttachHealthFindingsAsync(
@@ -445,7 +557,16 @@ public sealed class DownloadClientTelemetryService(
                     null,
                     "health-remediation-applied",
                     string.Join("; ", applied),
-                    cancellationToken);
+                    cancellationToken,
+                    failure: IntegrationFailureFactory.FromLegacy(
+                        "deluno",
+                        dispatch.LibraryId,
+                        "Deluno health remediation",
+                        "remediate",
+                        "rejected",
+                        string.Join("; ", applied),
+                        code: "health-remediation-applied",
+                        externalId: dispatch.Id));
                 await activityFeedRepository.RecordActivityAsync(
                     "download.health.remediated",
                     $"Applied failed-download handling to {item.ReleaseName}: {string.Join(", ", applied)}.",
@@ -552,14 +673,24 @@ public sealed class DownloadClientTelemetryService(
         }
     }
 
-    private static DownloadClientTelemetrySnapshot EnrichWithDispatchHistory(
+    internal static DownloadClientTelemetrySnapshot EnrichWithDispatchHistory(
         DownloadClientTelemetrySnapshot snapshot,
         IEnumerable<DownloadDispatchItem> dispatches,
         DateTimeOffset capturedUtc)
     {
-        var liveIds = new HashSet<string>(snapshot.History.Select(item => item.Id), StringComparer.OrdinalIgnoreCase);
+        // Native usenet history and Deluno dispatch history use different row
+        // identifiers. Match on both identities so a completed grab is shown
+        // once while still retaining dispatch-only rows when the client has
+        // forgotten them. This is especially important after restart: duplicate
+        // rows make the grab -> client -> import trace look like two downloads.
+        var liveIdentifiers = snapshot.History
+            .SelectMany(item => new[] { item.Id, item.ExternalId })
+            .Where(identifier => !string.IsNullOrWhiteSpace(identifier))
+            .Select(identifier => identifier!.Trim())
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
         var dispatchHistory = dispatches
-            .Where(dispatch => !liveIds.Contains(dispatch.Id))
+            .Where(dispatch => !liveIdentifiers.Contains(dispatch.Id) &&
+                               !liveIdentifiers.Contains(dispatch.TorrentHashOrItemId ?? string.Empty))
             .Select(dispatch => CreateDispatchHistoryItem(snapshot, dispatch, capturedUtc))
             .ToArray();
 
@@ -623,13 +754,15 @@ public sealed class DownloadClientTelemetryService(
             if (!string.IsNullOrWhiteSpace(item.SourcePath) &&
                 jobsBySource.TryGetValue(NormalizeSourceKey(item.SourcePath), out var job))
             {
-                var status = job.Status switch
-                {
-                    "queued" or "running" => DownloadQueueStatuses.ImportQueued,
-                    "completed" => DownloadQueueStatuses.Imported,
-                    "failed" => DownloadQueueStatuses.ImportFailed,
-                    _ => item.Status
-                };
+                var status = ShouldApplyImportJobState(item, job, dispatches)
+                    ? job.Status switch
+                    {
+                        "queued" or "running" => DownloadQueueStatuses.ImportQueued,
+                        "completed" => DownloadQueueStatuses.Imported,
+                        "failed" => DownloadQueueStatuses.ImportFailed,
+                        _ => item.Status
+                    }
+                    : item.Status;
                 return item with { Status = status };
             }
 
@@ -873,7 +1006,10 @@ public sealed class DownloadClientTelemetryService(
                 SizeBytes: item.SizeBytes,
                 CompletedUtc: item.Status is DownloadQueueStatuses.Completed or DownloadQueueStatuses.ImportReady ? capturedUtc : item.AddedUtc,
                 ErrorMessage: item.ErrorMessage,
-                SourcePath: item.SourcePath))
+                SourcePath: item.SourcePath,
+                HistorySource: "queue-derived",
+                ExternalId: item.Id,
+                Failure: item.Failure))
             .ToArray();
     }
 
@@ -899,13 +1035,23 @@ public sealed class DownloadClientTelemetryService(
             dispatch,
             capturedUtc);
 
-    private static DownloadClientHistoryItem CreateDispatchHistoryItem(
+    internal static DownloadClientHistoryItem CreateDispatchHistoryItem(
         string clientId,
         string clientName,
         string protocol,
         DownloadDispatchItem dispatch,
         DateTimeOffset capturedUtc)
     {
+        var dispatchFailure = dispatch.Failure;
+        var failureMessage = dispatchFailure?.Message ?? DescribeDispatchFailure(dispatch);
+        var failureOperation = IsFailureStatus(dispatch.ImportStatus)
+            ? "import"
+            : IsFailureStatus(dispatch.GrabStatus)
+                ? "grab"
+                : "dispatch";
+        var failureCode = IsFailureStatus(dispatch.ImportStatus)
+            ? dispatch.ImportFailureCode
+            : dispatch.GrabFailureCode ?? dispatch.ImportFailureCode;
         return new DownloadClientHistoryItem(
             Id: dispatch.Id,
             ClientId: clientId,
@@ -915,15 +1061,76 @@ public sealed class DownloadClientTelemetryService(
             Title: DownloadClientHelpers.CleanReleaseTitle(dispatch.ReleaseName),
             ReleaseName: dispatch.ReleaseName,
             Category: dispatch.MediaType,
-            Outcome: NormalizeHistoryOutcome(dispatch.Status),
+            Outcome: NormalizeHistoryOutcome(dispatch),
             IndexerName: dispatch.IndexerName,
-            SizeBytes: 0,
-            CompletedUtc: dispatch.CreatedUtc == default ? capturedUtc : dispatch.CreatedUtc,
+            SizeBytes: dispatch.DownloadedBytes ?? 0,
+            CompletedUtc: dispatch.ImportCompletedUtc
+                ?? dispatch.ImportDetectedUtc
+                ?? dispatch.DetectedUtc
+                ?? dispatch.GrabAttemptedUtc
+                ?? (dispatch.CreatedUtc == default ? capturedUtc : dispatch.CreatedUtc),
             // Only a real failure message belongs here. NotesJson is the
             // dispatch's diagnostic payload (the search plan), and passing it
             // as an error message painted successful "sent" rows red and
             // leaked raw JSON into the activity list (#257).
-            ErrorMessage: DescribeDispatchFailure(dispatch));
+            ErrorMessage: failureMessage,
+            HistorySource: "dispatch-derived",
+            ExternalId: dispatch.TorrentHashOrItemId ?? dispatch.Id,
+            Failure: dispatchFailure ?? (failureMessage is { } message
+                ? IntegrationFailureFactory.FromLegacy(
+                    "download-client",
+                    clientId,
+                    clientName,
+                    failureOperation,
+                    "rejected",
+                    message,
+                    code: failureCode ?? dispatch.Status,
+                    externalId: dispatch.TorrentHashOrItemId ?? dispatch.Id)
+                : null));
+    }
+
+    internal static bool ShouldApplyImportJobState(
+        DownloadQueueItem item,
+        JobQueueItem job,
+        IReadOnlyList<DownloadDispatchItem> dispatches)
+    {
+        var latestDispatch = dispatches
+            .Where(dispatch =>
+                string.Equals(dispatch.DownloadClientId, item.ClientId, StringComparison.OrdinalIgnoreCase)
+                && string.Equals(dispatch.ReleaseName, item.ReleaseName, StringComparison.OrdinalIgnoreCase))
+            .OrderByDescending(dispatch => dispatch.CreatedUtc)
+            .FirstOrDefault();
+        if (latestDispatch is null
+            || string.Equals(latestDispatch.ImportStatus, "imported", StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        return string.Equals(
+            TryReadImportDispatchId(job.PayloadJson),
+            latestDispatch.Id,
+            StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string? TryReadImportDispatchId(string? payloadJson)
+    {
+        if (string.IsNullOrWhiteSpace(payloadJson))
+        {
+            return null;
+        }
+
+        try
+        {
+            using var document = JsonDocument.Parse(payloadJson);
+            return TryGetProperty(document.RootElement, "dispatchId", out var dispatchId)
+                && dispatchId.ValueKind == JsonValueKind.String
+                ? dispatchId.GetString()
+                : null;
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
     }
 
     /// <summary>
@@ -938,7 +1145,17 @@ public sealed class DownloadClientTelemetryService(
 
         if (IsFailureStatus(dispatch.ImportStatus) || IsFailureStatus(dispatch.GrabStatus) || IsFailureStatus(dispatch.Status))
         {
-            return dispatch.GrabMessage ?? dispatch.GrabFailureCode ?? dispatch.ImportFailureCode ?? "The download client reported a failure.";
+            if (IsFailureStatus(dispatch.ImportStatus))
+            {
+                return dispatch.ImportFailureMessage
+                    ?? dispatch.ImportFailureCode
+                    ?? "The download client reported an import failure.";
+            }
+
+            return dispatch.GrabMessage
+                ?? dispatch.GrabFailureCode
+                ?? dispatch.ImportFailureCode
+                ?? "The download client reported a failure.";
         }
 
         return null;
@@ -1008,10 +1225,41 @@ public sealed class DownloadClientTelemetryService(
                         ? "down"
                         : "unknown";
 
-    private static string NormalizeHistoryOutcome(string value)
+    private static string NormalizeHistoryOutcome(DownloadDispatchItem dispatch)
     {
-        var normalized = value.Trim().ToLowerInvariant();
+        if (dispatch.Failure is not null ||
+            IsFailureStatus(dispatch.ImportStatus) ||
+            IsFailureStatus(dispatch.GrabStatus) ||
+            IsFailureStatus(dispatch.Status))
+        {
+            return "failed";
+        }
+
+        // Import is the latest durable lifecycle state. A dispatch can still
+        // have Status=sent or GrabStatus=succeeded after the import callback
+        // has completed, so history must not regress to the earlier stage.
+        var importOutcome = NormalizeHistoryOutcomeValue(dispatch.ImportStatus);
+        if (importOutcome is not "unknown")
+        {
+            return importOutcome == DownloadQueueStatuses.Completed
+                ? DownloadQueueStatuses.Imported
+                : importOutcome;
+        }
+
+        var grabOutcome = NormalizeHistoryOutcomeValue(dispatch.GrabStatus);
+        if (grabOutcome is not "unknown" and not "sent")
+        {
+            return grabOutcome;
+        }
+
+        return NormalizeHistoryOutcomeValue(dispatch.Status);
+    }
+
+    private static string NormalizeHistoryOutcomeValue(string? value)
+    {
+        var normalized = value?.Trim().ToLowerInvariant() ?? string.Empty;
         if (normalized is "completed" or "succeeded" or "success") return DownloadQueueStatuses.Completed;
+        if (normalized is "imported") return DownloadQueueStatuses.Imported;
         if (normalized.Contains("fail") || normalized.Contains("error")) return "failed";
         if (normalized.Contains("import")) return DownloadQueueStatuses.ImportReady;
         return normalized.Length == 0 ? "unknown" : normalized;

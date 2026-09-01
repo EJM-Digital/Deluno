@@ -48,7 +48,10 @@ public sealed class SeriesMigrationCatalogImporter(ISeriesCatalogRepository repo
                 title.ImdbId,
                 title.Monitored,
                 title.MetadataProvider,
-                title.MetadataProviderId), cancellationToken);
+                title.MetadataProviderId,
+                SeriesType: title.SeriesType,
+                NumberingScheme: title.NumberingScheme,
+                NumberingSource: title.NumberingSource), cancellationToken);
             var alreadyPresent = existingId is not null;
             await repository.EnsureWantedStateAsync(
                 series.Id,

@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { Star } from "lucide-react";
+import { GripVertical, Star } from "lucide-react";
 import type { MediaItem } from "../../lib/media-types";
 import { cn, formatBytesFromGb } from "../../lib/utils";
 import { Badge } from "../ui/badge";
@@ -12,6 +12,23 @@ import { titleBar } from "../../lib/status-tones";
 import { buildJumpBuckets } from "../../lib/library-buckets";
 import type { SortField } from "../../lib/library-filters";
 import { JumpRail, useJumpRail } from "./library-jump-rail";
+import {
+  listColumnLabel,
+  moveListColumn,
+  shiftListColumn,
+  type LibraryListColumnKey
+} from "../../lib/library-list-columns";
+
+const LIST_COLUMN_CLASSES: Record<LibraryListColumnKey, string> = {
+  quality: "hidden md:table-cell",
+  status: "",
+  episodes: "hidden lg:table-cell",
+  subtitles: "hidden lg:table-cell",
+  genre: "hidden text-muted-foreground lg:table-cell",
+  size: "num hidden text-muted-foreground lg:table-cell",
+  rating: "num hidden md:table-cell",
+  added: "hidden text-muted-foreground xl:table-cell"
+};
 
 export function LibraryTable(
 {
@@ -27,11 +44,14 @@ export function LibraryTable(
   isComplete,
   onEndReached,
   /**
-   * Which shelf this is. Only used to decide whether the Episodes column
-   * exists: a film has no fraction of itself, so the column would be a
-   * dash on every row — the same defect as a filter that can never match.
+   * Which shelf this is. It validates the Episodes column and keeps the
+   * column definitions honest: a film has no fraction of itself, so that
+   * column would be a dash on every row — the same defect as a filter that can
+   * never match.
    */
-  variant
+  variant,
+  columnOrder,
+  onColumnOrderChange
 }: {
   items: MediaItem[];
   selectedIds: string[];
@@ -45,10 +65,15 @@ export function LibraryTable(
   isComplete: boolean;
   onEndReached: () => void;
   variant: "movies" | "shows";
+  /** The user order for the columns after the fixed selection and Title cells. */
+  columnOrder: LibraryListColumnKey[];
+  onColumnOrderChange: (next: LibraryListColumnKey[]) => void;
 }) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const tableRef = useRef<HTMLTableElement>(null);
   const [focusIndex, setFocusIndex] = useState(0);
+  const [draggingColumn, setDraggingColumn] = useState<LibraryListColumnKey | null>(null);
+  const [dropTargetColumn, setDropTargetColumn] = useState<LibraryListColumnKey | null>(null);
   const rowVirtualizer = useVirtualizer({ count: items.length, getScrollElement: () => scrollRef.current, estimateSize: () => 65, overscan: 10 });
   const virtualRows = rowVirtualizer.getVirtualItems();
 
@@ -86,6 +111,30 @@ export function LibraryTable(
     );
     row?.focus();
     row?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  }
+
+  function moveColumn(source: LibraryListColumnKey, target: LibraryListColumnKey) {
+    onColumnOrderChange(moveListColumn(columnOrder, source, target));
+  }
+
+  function handleColumnDragStart(event: React.DragEvent<HTMLTableCellElement>, column: LibraryListColumnKey) {
+    setDraggingColumn(column);
+    event.dataTransfer.effectAllowed = "move";
+    event.dataTransfer.setData("text/plain", column);
+  }
+
+  function handleColumnDrop(event: React.DragEvent<HTMLTableCellElement>, target: LibraryListColumnKey) {
+    event.preventDefault();
+    const source = draggingColumn ?? event.dataTransfer.getData("text/plain") as LibraryListColumnKey;
+    if (source) moveColumn(source, target);
+    setDraggingColumn(null);
+    setDropTargetColumn(null);
+  }
+
+  function handleColumnKeyDown(event: React.KeyboardEvent<HTMLTableCellElement>, column: LibraryListColumnKey) {
+    if (!event.altKey || (event.key !== "ArrowLeft" && event.key !== "ArrowRight")) return;
+    event.preventDefault();
+    onColumnOrderChange(shiftListColumn(columnOrder, column, event.key === "ArrowLeft" ? -1 : 1));
   }
 
   function handleRowKey(event: React.KeyboardEvent<HTMLTableRowElement>, index: number, item: MediaItem) {
@@ -136,10 +185,10 @@ export function LibraryTable(
   );
   const { slotWidth, activeIndex, jumpTo } = useJumpRail(rowVirtualizer, 1, virtualRows, buckets);
 
-  // The spacer rows the virtualiser needs have to span every column. It was
-  // hard-coded to 9, which was right until a column was added — and a spacer
-  // one column short does not fail, it quietly skews the layout.
-  const columnCount = variant === "shows" ? 10 : 9;
+  // The spacer rows the virtualiser needs have to span every column. Keep this
+  // derived from the same order that draws the header and cells, so a drag
+  // cannot quietly skew the virtualised layout.
+  const columnCount = columnOrder.length + 2;
 
   return (
     <div className="flex items-stretch gap-1">
@@ -161,21 +210,42 @@ export function LibraryTable(
               />
             </th>
             <th scope="col" className="col-sticky" style={{ left: 40, minWidth: 280 }}>Title</th>
-            <th scope="col" className="hidden md:table-cell">Quality</th>
-            <th scope="col">Status</th>
-            {/* The same question the poster's bar asks, in words. The list had
-                no subtitle state at all, so the two views of one library
-                disagreed about what they could tell you (DESIGN-001, #301). */}
-            {/*
-              Sonarr's Episodes column, which is where its list puts the count
-              that its poster wall leaves off. Shows only.
-            */}
-            {variant === "shows" ? <th scope="col" className="hidden lg:table-cell">Episodes</th> : null}
-            <th scope="col" className="hidden lg:table-cell">Subtitles</th>
-            <th scope="col" className="hidden lg:table-cell">Genre</th>
-            <th scope="col" className="num hidden lg:table-cell">Size</th>
-            <th scope="col" className="num hidden md:table-cell">Rating</th>
-            <th scope="col" className="hidden xl:table-cell">Added</th>
+            {columnOrder.map((column) => (
+              <th
+                key={column}
+                scope="col"
+                data-column-key={column}
+                draggable
+                tabIndex={0}
+                aria-label={`${listColumnLabel(column)} column. Drag to reorder.`}
+                aria-grabbed={draggingColumn === column}
+                aria-keyshortcuts="Alt+ArrowLeft Alt+ArrowRight"
+                title="Drag to reorder. Alt + Left/Right also moves this column."
+                onDragStart={(event) => handleColumnDragStart(event, column)}
+                onDragOver={(event) => {
+                  event.preventDefault();
+                  event.dataTransfer.dropEffect = "move";
+                  setDropTargetColumn(column);
+                }}
+                onDrop={(event) => handleColumnDrop(event, column)}
+                onDragEnd={() => {
+                  setDraggingColumn(null);
+                  setDropTargetColumn(null);
+                }}
+                onKeyDown={(event) => handleColumnKeyDown(event, column)}
+                className={cn(
+                  LIST_COLUMN_CLASSES[column],
+                  "cursor-grab select-none",
+                  draggingColumn === column && "opacity-45",
+                  dropTargetColumn === column && draggingColumn !== column && "bg-primary/[0.08]"
+                )}
+              >
+                <span className="inline-flex items-center gap-1.5">
+                  <GripVertical className="h-3.5 w-3.5 shrink-0 text-muted-foreground/60" aria-hidden="true" />
+                  {listColumnLabel(column)}
+                </span>
+              </th>
+            ))}
           </tr>
         </thead>
         <tbody>
@@ -230,69 +300,11 @@ export function LibraryTable(
                     </div>
                   </div>
                 </td>
-                <td className="hidden md:table-cell">
-                  {/*
-                    What the file is, at the grain the ladder uses — a Remux and
-                    a WEB at the same resolution are different files and this
-                    column used to call them the same thing.
-
-                    A title with no file gets a dash rather than "Unknown": it is
-                    not that the quality is unknown, it is that there is nothing
-                    to have a quality. The mark in the next column says why.
-                  */}
-                  {heldQualityLabel(item)
-                    ? <Badge className="whitespace-nowrap">{heldQualityLabel(item)}</Badge>
-                    : <span className="text-muted-foreground">—</span>}
-                </td>
-                <td>
-                  {/*
-                    **`type`, or this row draws a different red from the poster.**
-                    A shelf that has adopted DESIGN-006 paints its marks from the
-                    bar SURFACES; without the medium, this label falls back to the
-                    page-text palette — measured on the rig as rgb(239,77,77) here
-                    against rgb(192,17,28) on the card for the same title.
-
-                    That is the third place this exact mismatch has appeared: the
-                    legend chips, this row, and the marks inside them. A list and
-                    the shelf it mirrors must not disagree about a colour.
-                  */}
-                  <TitleMarkLabel item={item} type={variant === "shows" ? "show" : "movie"} />
-                </td>
-                {variant === "shows" ? (
-                  <td className="hidden lg:table-cell">
-                    <EpisodeCell item={item} />
+                {columnOrder.map((column) => (
+                  <td key={column} data-column-key={column} className={LIST_COLUMN_CLASSES[column]}>
+                    {renderListCell(column, item, variant)}
                   </td>
-                ) : null}
-                <td className="hidden lg:table-cell">
-                  <SubtitleCell item={item} />
-                </td>
-                <td className="hidden text-muted-foreground lg:table-cell">
-                  {item.genres.slice(0, 2).join(", ")}
-                </td>
-                <td className="num hidden text-muted-foreground lg:table-cell">
-                  {/*
-                    Same dash, same reason as Quality: a title with no file has
-                    no size, and "Unknown" claims the number exists and could not
-                    be read. Ten rows of "Unknown" down a column is a screen
-                    saying it does not know things it knows perfectly well.
-                  */}
-                  {item.hasFile === false ? "—" : formatBytesFromGb(item.sizeGb)}
-                </td>
-                <td className="num hidden md:table-cell">
-                  {/*
-                    A filled star beside the word "Unknown" reads as a rating.
-                    No rating, no star.
-                  */}
-                  {item.rating !== null ? (
-                    <span className="inline-flex items-center gap-1 text-foreground">
-                      <Star className="h-3 w-3 fill-warning text-warning" />
-                      {item.rating.toFixed(1)}
-                    </span>
-                  ) : (
-                    <span className="text-muted-foreground">—</span>
-                  )}
-                </td>
-                <td className="hidden text-muted-foreground xl:table-cell">{item.added}</td>
+                ))}
               </tr>
             );
           })}
@@ -306,6 +318,41 @@ export function LibraryTable(
       </div>
     </div>
   );
+}
+
+function renderListCell(column: LibraryListColumnKey, item: MediaItem, variant: "movies" | "shows") {
+  switch (column) {
+    case "quality": {
+      const quality = heldQualityLabel(item);
+      return quality
+        ? <Badge className="whitespace-nowrap">{quality}</Badge>
+        : <span className="text-muted-foreground">—</span>;
+    }
+    case "status":
+      /* `type` keeps the row on the same surface palette as its poster. */
+      return <TitleMarkLabel item={item} type={variant === "shows" ? "show" : "movie"} />;
+    case "episodes":
+      return <EpisodeCell item={item} />;
+    case "subtitles":
+      return <SubtitleCell item={item} />;
+    case "genre":
+      return item.genres.slice(0, 2).join(", ");
+    case "size":
+      return item.hasFile === false ? "—" : formatBytesFromGb(item.sizeGb);
+    case "rating":
+      return item.rating !== null ? (
+        <span className="inline-flex items-center gap-1 text-foreground">
+          <Star className="h-3 w-3 fill-warning text-warning" />
+          {item.rating.toFixed(1)}
+        </span>
+      ) : (
+        <span className="text-muted-foreground">—</span>
+      );
+    case "added":
+      return item.added;
+    default:
+      return null;
+  }
 }
 
 /**
@@ -334,8 +381,9 @@ export function LibraryTable(
  * it is that there is no number yet, and printing "0 / 0" claims otherwise.
  */
 function EpisodeCell({ item }: { item: MediaItem }) {
-  const bar = <EpisodeProgressBar item={item} />;
-  return bar ?? <span className="text-muted-foreground">—</span>;
+  return typeof item.airedEpisodeCount === "number" && item.airedEpisodeCount > 0
+    ? <EpisodeProgressBar item={item} type="show" />
+    : <span className="text-muted-foreground">—</span>;
 }
 
 function SubtitleCell({ item }: { item: MediaItem }) {

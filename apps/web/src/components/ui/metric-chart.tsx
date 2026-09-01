@@ -16,12 +16,12 @@
  */
 import { useId, useRef, useState } from "react";
 import { cn } from "../../lib/utils";
+import { formatRangeDate, formatTime as formatPreferenceTime, useDisplayPreferences } from "../../lib/display-preferences";
 
 export interface MetricPoint {
   date: string;
   value: number;
 }
-
 export type MetricTone = "primary" | "success" | "warning" | "danger";
 
 const TONE: Record<MetricTone, { stroke: string; fill: string; text: string }> = {
@@ -97,8 +97,11 @@ export function MetricChart({
   size = "sm",
   className
 }: MetricChartProps) {
+  const { preferences } = useDisplayPreferences();
   const readValue = formatValue ?? ((reading: number) => reading.toLocaleString());
-  const formatPoint = axis === "time" ? formatTime : formatDay;
+  const formatPoint = axis === "time"
+    ? (value?: string) => formatPreferenceTime(value, preferences)
+    : (value?: string) => formatRangeDate(value, preferences);
   const unitNoun = axis === "time" ? "readings" : "days";
   const gradientId = useId();
   const height = size === "lg" ? HEIGHT_LG : HEIGHT;
@@ -359,17 +362,4 @@ export function MetricChart({
       </footer>
     </section>
   );
-}
-
-function formatDay(value?: string) {
-  if (!value) return "";
-  return new Intl.DateTimeFormat(undefined, { day: "numeric", month: "short" }).format(new Date(`${value}T00:00:00`));
-}
-
-/** A full timestamp, read as a clock time — the scale a live sample lives at. */
-function formatTime(value?: string) {
-  if (!value) return "";
-  const parsed = new Date(value);
-  if (Number.isNaN(parsed.getTime())) return "";
-  return new Intl.DateTimeFormat(undefined, { hour: "2-digit", minute: "2-digit" }).format(parsed);
 }

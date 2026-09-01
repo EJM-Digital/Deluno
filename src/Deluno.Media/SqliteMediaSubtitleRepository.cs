@@ -1,4 +1,5 @@
 using System.Data.Common;
+using System.Text.Json;
 using Deluno.Contracts;
 using Deluno.Infrastructure.Storage;
 using Deluno.Libraries.Data;
@@ -103,6 +104,14 @@ public sealed class SqliteMediaSubtitleRepository(
                     WHERE att.{map.SubtitleMediaIdColumn} = {map.SubtitleFileIdColumn}
                       AND att.language IN ({languageParameters})
                       AND att.next_eligible_search_utc > @now
+                ),
+                (
+                    SELECT att.failure_json
+                    FROM {map.SubtitleAttemptTable} att
+                    WHERE att.{map.SubtitleMediaIdColumn} = {map.SubtitleFileIdColumn}
+                      AND att.failure_json IS NOT NULL
+                    ORDER BY att.last_search_utc DESC
+                    LIMIT 1
                 )
             FROM {map.SubtitleFileSource}
             {map.SubtitleSearchJoin}
@@ -155,12 +164,13 @@ public sealed class SqliteMediaSubtitleRepository(
         using var reader = await command.ExecuteReaderAsync(cancellationToken);
         while (await reader.ReadAsync(cancellationToken))
         {
-            // Ordinals 8 and 9: the id and the path are 0 and 1, and the map's
+            // Ordinals 8, 9 and 10: the id and the path are 0 and 1, and the map's
             // search columns are the six after them. Reading one short of that
             // silently returns the release name as the held-language list, which
             // never matches, and every file looks short of everything for ever.
             var held = Split(reader, 8);
             var waiting = Split(reader, 9);
+            var lastFailure = reader.IsDBNull(10) ? null : ReadFailure(reader.GetString(10));
 
             var missing = languages
                 .Where(language =>
@@ -182,7 +192,8 @@ public sealed class SqliteMediaSubtitleRepository(
                 EpisodeNumber: reader.IsDBNull(5) ? null : reader.GetInt32(5),
                 EpisodeTitle: reader.IsDBNull(6) ? null : reader.GetString(6),
                 ReleaseName: reader.IsDBNull(7) ? null : reader.GetString(7),
-                LanguagesToFetch: missing));
+                LanguagesToFetch: missing,
+                LastFailure: lastFailure));
         }
 
         return items;
@@ -208,7 +219,8 @@ public sealed class SqliteMediaSubtitleRepository(
         string language,
         string? result,
         TimeSpan baseDelay,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        IntegrationFailure? failure = null)
     {
         var map = MediaTableMap.For(kind);
         var now = timeProvider.GetUtcNow();
@@ -220,9 +232,9 @@ public sealed class SqliteMediaSubtitleRepository(
         using var command = connection.CreateCommand();
         command.CommandText = $"""
             INSERT INTO {map.SubtitleAttemptTable} (
-                {map.SubtitleMediaIdColumn}, language, attempts, last_search_utc, next_eligible_search_utc, last_result
+                {map.SubtitleMediaIdColumn}, language, attempts, last_search_utc, next_eligible_search_utc, last_result, failure_json
             )
-            VALUES (@mediaId, @language, 1, @now, @firstRetry, @result)
+            VALUES (@mediaId, @language, 1, @now, @firstRetry, @result, @failureJson)
             ON CONFLICT ({map.SubtitleMediaIdColumn}, language) DO UPDATE SET
                 attempts = attempts + 1,
                 last_search_utc = @now,
@@ -231,7 +243,8 @@ public sealed class SqliteMediaSubtitleRepository(
                 next_eligible_search_utc = MIN(
                     datetime(@now, '+' || (@baseMinutes * (1 << MIN(attempts, @maxDoublings))) || ' minutes'),
                     @cap),
-                last_result = @result;
+                last_result = @result,
+                failure_json = @failureJson;
             """;
 
         var baseMinutes = Math.Max(1, (int)baseDelay.TotalMinutes);
@@ -243,6 +256,7 @@ public sealed class SqliteMediaSubtitleRepository(
         AddParameter(command, "@maxDoublings", MaxDoublings);
         AddParameter(command, "@cap", now.Add(MaxBackoff).ToString("O"));
         AddParameter(command, "@result", result);
+        AddParameter(command, "@failureJson", failure is null ? null : JsonSerializer.Serialize(failure));
 
         await command.ExecuteNonQueryAsync(cancellationToken);
     }
@@ -288,6 +302,18 @@ public sealed class SqliteMediaSubtitleRepository(
         => reader.IsDBNull(ordinal)
             ? []
             : reader.GetString(ordinal).Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
+    private static IntegrationFailure? ReadFailure(string json)
+    {
+        try
+        {
+            return JsonSerializer.Deserialize<IntegrationFailure>(json);
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+    }
 
     public async Task RecordFetchedAsync(
         MediaKind kind,

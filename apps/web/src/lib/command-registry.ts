@@ -66,6 +66,14 @@ export const navigationCommands: CommandItem[] = [
     shortcut: ["g", "m"]
   },
   {
+    id: "nav.collections",
+    label: "Collections",
+    keywords: ["library", "collections", "franchises", "movies"],
+    group: "navigation",
+    icon: FolderTree,
+    to: "/collections"
+  },
+  {
     id: "nav.tv",
     label: "TV",
     keywords: ["shows", "series"],
@@ -251,6 +259,14 @@ export const settingsCommands: CommandItem[] = [
     group: "navigation",
     icon: Wand2,
     to: "/settings/custom-formats"
+  },
+  {
+    id: "settings.release-rules",
+    label: "Quality & Release · Acquisition Rules",
+    keywords: ["quality", "acquisition", "delay", "hold", "release", "terms", "indexer"],
+    group: "navigation",
+    icon: Wand2,
+    to: "/settings/release-rules"
   },
   {
     id: "settings.lists",

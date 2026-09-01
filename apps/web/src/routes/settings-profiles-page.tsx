@@ -30,34 +30,24 @@ import { SwitchRow } from "../components/ui/switch";
 import { toast } from "../components/shell/toaster";
 import { configurationNavAreas } from "../components/app/settings-shell";
 import {
+  compileQualityProfilePreferences,
+  fetchTrashGuidePackage,
   fetchJson,
   readValidationProblem,
   type CustomFormatItem,
+  type GuidePackage,
   type LibraryItem,
   type PlatformSettingsSnapshot,
   type QualityModelSnapshot,
-  type QualityProfileItem
+  type QualityProfileItem,
+  type ReleasePreferencePlanCompilation
 } from "../lib/api";
 import { settingsOverviewLoader } from "./settings-overview-page";
-import { findBundledCF, QUALITY_PRESETS } from "../lib/trash-guide-data";
 import { authedFetch } from "../lib/use-auth";
 import { useUnsavedChanges } from "../hooks/use-unsaved-changes";
 import { cn } from "../lib/utils";
 
 const TABS = configurationNavAreas.find((area) => area.label === "Quality & Release")?.items ?? [];
-
-/**
- * Starters expressed in the backend's own tier names, each linked to the TRaSH
- * preset whose recommended custom formats we create on first save.
- */
-const PROFILE_STARTERS: { id: string; label: string; mediaType: "movies" | "tv"; allowed: string[]; cutoff: string; summary: string; trashPresetId?: string }[] = [
-  { id: "movies-1080p", label: "1080p streaming", mediaType: "movies", allowed: ["WEB 1080p", "Bluray 1080p", "Remux 1080p"], cutoff: "WEB 1080p", summary: "Great quality, small files. The most popular choice.", trashPresetId: "web-1080p" },
-  { id: "movies-bluray", label: "1080p Blu-ray", mediaType: "movies", allowed: ["WEB 1080p", "Bluray 1080p", "Remux 1080p"], cutoff: "Bluray 1080p", summary: "Starts at WEB, upgrades to Blu-ray when available.", trashPresetId: "bluray-1080p" },
-  { id: "movies-4k", label: "4K streaming", mediaType: "movies", allowed: ["WEB 2160p", "Bluray 2160p", "Remux 2160p"], cutoff: "WEB 2160p", summary: "4K from streaming platforms, without Remux file sizes.", trashPresetId: "web-2160p" },
-  { id: "movies-remux", label: "4K Remux", mediaType: "movies", allowed: ["WEB 2160p", "Bluray 2160p", "Remux 2160p"], cutoff: "Remux 2160p", summary: "Uncompromising quality; very large files.", trashPresetId: "remux-2160p" },
-  { id: "tv-1080p", label: "1080p TV", mediaType: "tv", allowed: ["WEB 720p", "WEB 1080p", "HDTV 1080p"], cutoff: "WEB 1080p", summary: "Everyday TV at 1080p with a 720p fallback.", trashPresetId: "web-1080p-tv" },
-  { id: "tv-4k", label: "4K TV", mediaType: "tv", allowed: ["WEB 1080p", "WEB 2160p", "Bluray 2160p"], cutoff: "WEB 2160p", summary: "4K episodes where available, 1080p otherwise." },
-];
 
 interface LoaderData {
   libraries: LibraryItem[];
@@ -65,6 +55,7 @@ interface LoaderData {
   customFormats: CustomFormatItem[];
   settings: PlatformSettingsSnapshot;
   qualityModel: QualityModelSnapshot;
+  guide: GuidePackage;
 }
 
 interface ProfileForm {
@@ -81,19 +72,21 @@ interface ProfileForm {
 type DrawerMode = { kind: "closed" } | { kind: "create" } | { kind: "edit"; id: string };
 
 export async function settingsProfilesLoader(): Promise<LoaderData> {
-  const [overview, customFormats, qualityModel] = await Promise.all([
+  const [overview, customFormats, qualityModel, guide] = await Promise.all([
     settingsOverviewLoader(),
     fetchJson<CustomFormatItem[]>("/api/custom-formats"),
-    fetchJson<QualityModelSnapshot>("/api/quality-model")
+    fetchJson<QualityModelSnapshot>("/api/quality-model"),
+    fetchTrashGuidePackage()
   ]);
-  return { ...overview, customFormats, qualityModel };
+  return { ...overview, customFormats, qualityModel, guide };
 }
 
 export function SettingsProfilesPage() {
-  const { libraries, qualityProfiles, customFormats, qualityModel } = useLoaderData() as LoaderData;
+  const { libraries, qualityProfiles, customFormats, qualityModel, guide } = useLoaderData() as LoaderData;
   const revalidator = useRevalidator();
 
   const tiers = useMemo(() => [...qualityModel.tiers].sort((a, b) => b.rank - a.rank), [qualityModel.tiers]);
+  const profileStarters = useMemo(() => guideStarters(guide, tiers), [guide, tiers]);
   const sorted = useMemo(() => [...qualityProfiles].sort((a, b) => a.mediaType.localeCompare(b.mediaType) || a.name.localeCompare(b.name)), [qualityProfiles]);
   const split = useMediaTypeSplit(sorted, (profile) => profile.mediaType);
 
@@ -119,6 +112,10 @@ export function SettingsProfilesPage() {
   const [confirmRemove, setConfirmRemove] = useState(false);
   const [confirmDiscard, setConfirmDiscard] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [planCompilation, setPlanCompilation] = useState<ReleasePreferencePlanCompilation | null>(null);
+  const [planLoading, setPlanLoading] = useState(false);
+  const [planError, setPlanError] = useState<string | null>(null);
+  const [advancedPlanOpen, setAdvancedPlanOpen] = useState(false);
 
   const isOpen = mode.kind !== "closed";
   const editing = mode.kind === "edit" ? qualityProfiles.find((profile) => profile.id === mode.id) ?? null : null;
@@ -128,6 +125,36 @@ export function SettingsProfilesPage() {
   useEffect(() => {
     if (dirty && (saveState === "saved" || saveState === "error")) setSaveState(undefined);
   }, [dirty, saveState]);
+
+  useEffect(() => {
+    if (!editing) {
+      setPlanCompilation(null);
+      setPlanError(null);
+      setPlanLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+    setPlanLoading(true);
+    setPlanError(null);
+    void compileQualityProfilePreferences(editing.id)
+      .then((compilation) => {
+        if (!cancelled) setPlanCompilation(compilation);
+      })
+      .catch((error) => {
+        if (!cancelled) {
+          setPlanCompilation(null);
+          setPlanError(error instanceof Error ? error.message : "The typed preference plan could not be loaded.");
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setPlanLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [editing?.id]);
 
   const availableFormats = useMemo(() => customFormats.filter((format) => format.mediaType === form.mediaType), [customFormats, form.mediaType]);
   const unusedTiers = useMemo(() => tiers.filter((tier) => !form.allowed.includes(tier.name)), [tiers, form.allowed]);
@@ -143,6 +170,9 @@ export function SettingsProfilesPage() {
     setFineTuneOpen(false);
     setSaveState(undefined);
     setErrors({});
+    setPlanCompilation(null);
+    setPlanError(null);
+    setAdvancedPlanOpen(false);
   }
   function openEdit(profile: QualityProfileItem) {
     const next = formFrom(profile);
@@ -153,6 +183,9 @@ export function SettingsProfilesPage() {
     setFineTuneOpen(false);
     setSaveState(undefined);
     setErrors({});
+    setPlanCompilation(null);
+    setPlanError(null);
+    setAdvancedPlanOpen(false);
   }
   function closeDrawer() {
     setMode({ kind: "closed" });
@@ -165,7 +198,7 @@ export function SettingsProfilesPage() {
 
   function applyStarter(id: string) {
     setStarterId(id);
-    const starter = PROFILE_STARTERS.find((item) => item.id === id);
+    const starter = profileStarters.find((item) => item.id === id);
     if (!starter) {
       setForm(emptyForm());
       return;
@@ -228,7 +261,7 @@ export function SettingsProfilesPage() {
     setBusy(true);
     setSaveState("saving");
     try {
-      const starterFormatIds = mode.kind === "create" && addRecommended ? await ensureRecommendedFormats(starterId, form.mediaType, customFormats) : [];
+      const starterFormatIds = mode.kind === "create" && addRecommended ? await ensureRecommendedFormats(starterId, form.mediaType, customFormats, guide) : [];
       const formatIds = [...new Set([...form.customFormatIds, ...starterFormatIds])];
       const payload = {
         name: form.name.trim(),
@@ -288,7 +321,7 @@ export function SettingsProfilesPage() {
 
   /* ---------------------------------------------------------- render */
   const usedBy = editing ? librariesByProfile.get(editing.id) ?? [] : [];
-  const recommendedCount = recommendedFormatsFor(starterId).length;
+  const recommendedCount = recommendedFormatsFor(starterId, guide).length;
 
   return (
     <div className="grid gap-[var(--page-gap)]">
@@ -354,13 +387,13 @@ export function SettingsProfilesPage() {
         {mode.kind === "create" ? (
           <DrawerSection title="Template">
             <Field label="Choose a template" help="A predefined starting point based on TRaSH Guide recommendations. Everything below stays editable.">
-              <Select value={starterId} onChange={(event) => applyStarter(event.target.value)} options={[{ value: "", label: "Create a custom Quality Profile" }, ...PROFILE_STARTERS.map((starter) => ({ value: starter.id, label: `${starter.label} · ${starter.mediaType === "tv" ? "TV" : "Movies"}` }))]} />
+              <Select value={starterId} onChange={(event) => applyStarter(event.target.value)} options={[{ value: "", label: "Create a custom Quality Profile" }, ...profileStarters.map((starter) => ({ value: starter.id, label: `${starter.label} · ${starter.mediaType === "tv" ? "TV" : "Movies"}` }))]} />
             </Field>
-            {starterId ? <p className="-mt-1 text-[length:var(--type-caption)] text-muted-foreground">{PROFILE_STARTERS.find((starter) => starter.id === starterId)?.summary}</p> : null}
+            {starterId ? <p className="-mt-1 text-[length:var(--type-caption)] text-muted-foreground">{profileStarters.find((starter) => starter.id === starterId)?.summary}</p> : null}
             {recommendedCount ? (
               <SwitchRow
                 label="Add the recommended formats"
-                description={`${recommendedCount} TRaSH-guide scoring rule${recommendedCount === 1 ? "" : "s"} — repack/proper preferences, codec and upscale penalties. Created on save if they don't exist yet.`}
+                description={`${recommendedCount} TRaSH-guide preference rule${recommendedCount === 1 ? "" : "s"} — repack/proper preferences, codec and upscale handling. Created on save if they don't exist yet.`}
                 checked={addRecommended}
                 onCheckedChange={setAddRecommended}
               />
@@ -435,7 +468,7 @@ export function SettingsProfilesPage() {
                     )}
                   >
                     {format.name}
-                    <span className={cn("tabular-nums", active ? "text-primary/80" : "text-muted-foreground/70")}>{format.score >= 0 ? `+${format.score}` : format.score}</span>
+                    <span className={cn(active ? "text-primary/80" : "text-muted-foreground/70")}>{preferenceIntent(format.score)}</span>
                   </button>
                 );
               })}
@@ -447,6 +480,87 @@ export function SettingsProfilesPage() {
             <SwitchRow label="Upgrade files of unknown quality" description="Replace files Deluno can't identify when a matching release appears." checked={form.upgradeUnknownItems} onCheckedChange={(checked) => setForm((current) => ({ ...current, upgradeUnknownItems: checked }))} />
           </Disclosure>
         </DrawerSection>
+
+        {editing ? (
+          <DrawerSection
+            title="Effective release preferences"
+            aside={planLoading ? "Loading…" : planCompilation ? `${planCompilation.plan.families.length} typed families` : undefined}
+          >
+            {planLoading ? (
+              <p className="text-[length:var(--type-caption)] text-muted-foreground">Compiling the saved profile into the typed decision plan…</p>
+            ) : planError ? (
+              <p role="alert" className="text-[length:var(--type-caption)] text-destructive">{planError}</p>
+             ) : planCompilation ? (
+               <div className="grid gap-3">
+                 {editing.releasePreferencePlan ? (
+                   <div className="rounded-[10px] border border-info/30 bg-info/5 px-3 py-2 text-[length:var(--type-caption)]">
+                     <div className="flex flex-wrap items-center justify-between gap-2">
+                       <span className="font-medium text-foreground">Pinned immutable plan</span>
+                       <Chip tone="info">{editing.releasePreferencePlan.version}</Chip>
+                     </div>
+                     <p className="mt-1 text-muted-foreground">
+                       This profile uses the persisted typed plan it was migrated or compiled from. Editing the quality policy clears this reference until the profile is compiled again.
+                     </p>
+                     <p className="mt-1 truncate font-mono text-[length:var(--type-micro)] text-muted-foreground" title={editing.releasePreferencePlan.planHash}>
+                       {editing.releasePreferencePlan.planId} · {editing.releasePreferencePlan.planHash}
+                     </p>
+                   </div>
+                 ) : null}
+                 {dirty ? (
+                   <p className="rounded-[10px] border border-warning/30 bg-warning/8 px-3 py-2 text-[length:var(--type-caption)] text-warning">
+                     This preview reflects the last saved profile. Save the current edits to recompile it.
+                  </p>
+                ) : null}
+                <div className="grid gap-2 sm:grid-cols-3">
+                  <PlanSummary label="Hard gates" value={planCompilation.plan.requiredTraitIds?.length ?? 0} detail="required traits" />
+                  <PlanSummary label="Forbidden" value={planCompilation.plan.forbiddenTraitIds?.length ?? 0} detail="blocked traits" />
+                  <PlanSummary label="Review" value={planCompilation.advancedRules.length} detail={planCompilation.requiresReview ? "needs attention" : "no open review"} tone={planCompilation.requiresReview ? "warn" : "ok"} />
+                </div>
+                {planCompilation.plan.families.length ? (
+                  <div className="grid gap-2" aria-label="Typed preference families">
+                    {planCompilation.plan.families.map((family) => (
+                      <div key={family.id} className="rounded-[10px] border border-hairline px-3 py-2">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <span className="text-[length:var(--type-body-sm)] font-medium text-foreground">{humanizePreferenceFamily(family.dimension)}</span>
+                          <span className="text-[length:var(--type-caption)] text-muted-foreground">{preferenceIntentLabel(family.intent)}{family.upgradeDriving ? " · upgrade-driving" : " · tie-break"}</span>
+                        </div>
+                        <p className="mt-1 text-[length:var(--type-caption)] text-muted-foreground">
+                          {family.levels.map((level) => level.traitIds.map(humanizeTrait).join(" or ")).join(" → ") || "No explicit levels"}
+                          {family.targetLevelId ? ` · stops at ${humanizeLevel(family, family.targetLevelId)}` : ""}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-[length:var(--type-caption)] text-muted-foreground">No typed preference families are active yet. Add formats or start from a guide template.</p>
+                )}
+                {planCompilation.advancedRules.length ? (
+                  <Disclosure title="Advanced review" summary={`${planCompilation.advancedRules.length} compatibility rule${planCompilation.advancedRules.length === 1 ? "" : "s"} retained with provenance`} open={advancedPlanOpen} onOpenChange={setAdvancedPlanOpen}>
+                    <div className="grid gap-2">
+                      <p className="text-[length:var(--type-caption)] text-muted-foreground">These rules remain available for compatibility and migration review. They are not the normal typed decision value.</p>
+                      {planCompilation.advancedRules.map((rule) => (
+                        <div key={rule.ruleId} className="rounded-[10px] border border-hairline px-3 py-2">
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <span className="text-[length:var(--type-body-sm)] font-medium text-foreground">{rule.name}</span>
+                            <Chip tone={rule.requiresReview ? "warn" : "idle"}>{rule.requiresReview ? "Review" : "Mapped"}</Chip>
+                          </div>
+                          <p className="mt-1 text-[length:var(--type-caption)] text-muted-foreground">{rule.explanation}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </Disclosure>
+                ) : null}
+                {planCompilation.warnings.length ? (
+                  <ul className="grid gap-1 text-[length:var(--type-caption)] text-warning" aria-label="Preference plan warnings">
+                    {planCompilation.warnings.map((warning) => <li key={warning}>{warning}</li>)}
+                  </ul>
+                ) : null}
+              </div>
+            ) : (
+              <p className="text-[length:var(--type-caption)] text-muted-foreground">The typed preference plan is not available for this saved profile yet.</p>
+            )}
+          </DrawerSection>
+        ) : null}
 
         {editing ? (
           <DrawerSection title="Used by" aside={usedBy.length ? `${usedBy.length} ${usedBy.length === 1 ? "library" : "libraries"}` : undefined}>
@@ -518,15 +632,61 @@ function sameIds(a: string[], b: string[]) {
 function splitCsv(value: string | null | undefined) {
   return (value ?? "").split(",").map((item) => item.trim()).filter(Boolean);
 }
-function recommendedFormatsFor(starterId: string) {
-  const trashPresetId = PROFILE_STARTERS.find((starter) => starter.id === starterId)?.trashPresetId;
-  if (!trashPresetId) return [];
-  return QUALITY_PRESETS.find((preset) => preset.id === trashPresetId)?.recommendedCFs ?? [];
+
+interface ProfileStarter {
+  id: string;
+  label: string;
+  mediaType: "movies" | "tv";
+  allowed: string[];
+  cutoff: string;
+  summary: string;
+}
+
+/**
+ * Converts the backend guide package's best-first tier order into the profile
+ * editor's least-first storage order. The quality model remains authoritative
+ * for the exact display name, so WEB-DL/WEBRip aliases cannot create a tier the
+ * decision engine does not recognise.
+ */
+function guideStarters(guide: GuidePackage, tiers: { name: string; rank: number }[]): ProfileStarter[] {
+  const byGuideId = new Map(guide.qualityTiers.map((tier) => [tier.id, tier.label]));
+  const resolveModelName = (label: string) => {
+    const normalise = (value: string) => value
+      .toLowerCase()
+      .replaceAll("web-dl", "web")
+      .replaceAll("webrip", "web")
+      .replaceAll("blu-ray", "bluray")
+      .replaceAll("4k", "2160p")
+      .replaceAll(/\s+/g, " ")
+      .trim();
+    return tiers.find((tier) => normalise(tier.name) === normalise(label))?.name ?? label;
+  };
+
+  return guide.qualityProfiles.map((profile) => {
+    const qualityOrder = profile.qualityOrder
+      .map((id) => byGuideId.get(id))
+      .filter((label): label is string => Boolean(label))
+      .map(resolveModelName);
+    const cutoff = resolveModelName(byGuideId.get(profile.cutoffQualityId) ?? profile.cutoffQualityId);
+    const allowedBestFirst = [...new Set([...qualityOrder, cutoff])];
+    return {
+      id: profile.id,
+      label: profile.name,
+      mediaType: profile.mediaType === "movies" ? "movies" : "tv",
+      allowed: allowedBestFirst.reverse(),
+      cutoff,
+      summary: profile.description
+    };
+  });
+}
+
+function recommendedFormatsFor(starterId: string, guide: GuidePackage) {
+  return guide.qualityProfiles.find((preset) => preset.id === starterId)?.recommendedFormats ?? [];
 }
 
 /** Create any recommended TRaSH formats this starter needs, and return every id to attach. */
-async function ensureRecommendedFormats(starterId: string, mediaType: "movies" | "tv", existing: CustomFormatItem[]) {
-  const recommended = recommendedFormatsFor(starterId);
+async function ensureRecommendedFormats(starterId: string, mediaType: "movies" | "tv", existing: CustomFormatItem[], guide: GuidePackage) {
+  const recommended = recommendedFormatsFor(starterId, guide);
   if (!recommended.length) return [];
   const byTrashId = new Map(existing.filter((format) => format.trashId).map((format) => [format.trashId!, format]));
   const ids: string[] = [];
@@ -537,7 +697,7 @@ async function ensureRecommendedFormats(starterId: string, mediaType: "movies" |
       ids.push(match.id);
       continue;
     }
-    const bundled = findBundledCF(trashId);
+    const bundled = guide.customFormats.find((format) => format.trashId === trashId);
     if (!bundled) continue;
     const response = await authedFetch("/api/custom-formats", {
       method: "POST",
@@ -561,4 +721,44 @@ async function ensureRecommendedFormats(starterId: string, mediaType: "movies" |
 
 function rankOf(tiers: { name: string; rank: number }[], name: string) {
   return tiers.find((tier) => tier.name === name)?.rank ?? 0;
+}
+
+function preferenceIntent(score: number) {
+  if (score <= -10000) return "Must not have";
+  if (score < 0) return "Avoid";
+  if (score === 0) return "I do not care";
+  if (score >= 500) return "Strongly prefer";
+  return "Prefer";
+}
+
+function preferenceIntentLabel(intent: string) {
+  return intent === "required" ? "Required" : intent === "forbidden" ? "Forbidden" : intent === "ranked" ? "Prefer" : intent === "tieBreak" ? "Tie-break" : "Neutral";
+}
+
+function humanizePreferenceFamily(value: string) {
+  return value
+    .split(/[._-]+/)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+}
+
+function humanizeTrait(value: string) {
+  return humanizePreferenceFamily(value.split(".").slice(-1)[0] ?? value);
+}
+
+function humanizeLevel(family: ReleasePreferencePlanCompilation["plan"]["families"][number], levelId: string) {
+  const level = family.levels.find((candidate) => candidate.id === levelId);
+  return level?.traitIds.map(humanizeTrait).join(" or ") ?? levelId;
+}
+
+function PlanSummary({ label, value, detail, tone = "idle" }: { label: string; value: number; detail: string; tone?: "idle" | "warn" | "ok" }) {
+  return (
+    <div className="rounded-[10px] border border-hairline bg-surface-2 px-3 py-2">
+      <p className="text-[length:var(--type-caption)] text-muted-foreground">{label}</p>
+      <p className={cn("mt-0.5 text-[length:var(--type-body-sm)] font-semibold", tone === "warn" ? "text-warning" : tone === "ok" ? "text-success" : "text-foreground")}>
+        {value} <span className="font-normal text-muted-foreground">{detail}</span>
+      </p>
+    </div>
+  );
 }

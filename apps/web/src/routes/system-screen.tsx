@@ -10,6 +10,7 @@ import {
   Server,
   ShieldCheck,
   TimerReset,
+  Trash2,
   Upload,
   Wifi,
   WifiOff
@@ -17,6 +18,7 @@ import {
 import { JOB_STATUS, type JobStatus, isJobActive, isJobFailed, isJobSuccessful } from "../lib/job-status-constants";
 import { SystemShell } from "../components/app/settings-shell";
 import { MetadataMaintenanceCard } from "../components/app/metadata-maintenance-card";
+import { ProviderHealthDrawer, type ProviderHealthSelection } from "../components/app/provider-health-drawer";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card";
 import { AuditTimeline, type TimelineEvent } from "../components/shell/audit-timeline";
 import { SaveStatus, useSaveStatus } from "../components/shell/save-status";
@@ -35,8 +37,11 @@ import {
   type MonitoringDashboardSnapshot,
   type PlatformSettingsSnapshot,
   type RestorePreviewResponse,
+  type RecycleBinItem,
+  type RecycleBinSettings,
   type SearchCycleRunItem,
   type SearchRetryWindowItem,
+  type SystemTaskItem,
   type UpdateActionResponse,
   type UpdatePreferencesResponse,
   type UpdateStatusResponse
@@ -56,6 +61,7 @@ import { Chip, type ChipProps } from "../components/ui/chip";
 import { ListCard, ListCell, ListEmpty, ListNameCell, ListRow, ListTable, LIST_TRACK } from "../components/ui/list-card";
 import { SummaryStrip } from "../components/ui/summary-strip";
 import { useUnsavedChanges } from "../hooks/use-unsaved-changes";
+import { formatDateTime, type DisplayPreferences, useDisplayPreferences } from "../lib/display-preferences";
 
 interface SystemLoaderData {
   activity: ActivityEventItem[];
@@ -70,10 +76,13 @@ interface SystemLoaderData {
   searchCycles: SearchCycleRunItem[];
   retryWindows: SearchRetryWindowItem[];
   monitoring: MonitoringDashboardSnapshot;
+  systemTasks: SystemTaskItem[];
+  recycleBin: RecycleBinItem[];
+  recycleBinSettings: RecycleBinSettings;
 }
 
 export async function systemLoader(): Promise<SystemLoaderData> {
-  const [settings, jobs, activity, indexers, downloadClients, backups, backupSettings, updateStatus, automation, searchCycles, retryWindows, monitoring] = await Promise.all([
+  const [settings, jobs, activity, indexers, downloadClients, backups, backupSettings, updateStatus, automation, searchCycles, retryWindows, monitoring, systemTasks, recycleBin, recycleBinSettings] = await Promise.all([
     fetchJson<PlatformSettingsSnapshot>("/api/settings"),
     fetchPageItems<JobQueueItem>("/api/jobs?pageSize=25"),
     fetchPageItems<ActivityEventItem>("/api/activity?pageSize=200"),
@@ -85,21 +94,26 @@ export async function systemLoader(): Promise<SystemLoaderData> {
     fetchPageItems<LibraryAutomationStateItem>("/api/library-automation?pageSize=50"),
     fetchPageItems<SearchCycleRunItem>("/api/search-cycles?pageSize=12"),
     fetchPageItems<SearchRetryWindowItem>("/api/search-retry-windows?pageSize=12"),
-    fetchJson<MonitoringDashboardSnapshot>("/api/monitoring/dashboard")
+    fetchJson<MonitoringDashboardSnapshot>("/api/monitoring/dashboard"),
+    fetchJson<SystemTaskItem[]>("/api/system/tasks"),
+    fetchJson<RecycleBinItem[]>("/api/recycle-bin"),
+    fetchJson<RecycleBinSettings>("/api/recycle-bin/settings")
   ]);
 
-  return { activity, automation, backupSettings, backups, downloadClients, indexers, jobs, monitoring, retryWindows, searchCycles, settings, updateStatus };
+  return { activity, automation, backupSettings, backups, downloadClients, indexers, jobs, monitoring, recycleBin, recycleBinSettings, retryWindows, searchCycles, settings, systemTasks, updateStatus };
 }
 
 export function SystemPage() {
   const location = useLocation();
   const revalidator = useRevalidator();
   const loaderData = useLoaderData() as SystemLoaderData;
-  const { activity, automation, backupSettings, backups, downloadClients, indexers, jobs, monitoring, retryWindows, searchCycles, settings, updateStatus } = loaderData;
+  const { activity, automation, backupSettings, backups, downloadClients, indexers, jobs, monitoring, recycleBin, recycleBinSettings, retryWindows, searchCycles, settings, systemTasks, updateStatus } = loaderData;
+  const { preferences } = useDisplayPreferences();
 
   const activeJobs = jobs.filter((job) => isJobActive(job.status as JobStatus)).length;
   const healthyIndexers = indexers.filter((item) => item.healthStatus === "healthy").length;
   const healthyClients = downloadClients.filter((item) => item.healthStatus === "healthy").length;
+  const [selectedProvider, setSelectedProvider] = useState<ProviderHealthSelection | null>(null);
 
   /* Live events prepended from WebSocket */
   const [liveEvents, setLiveEvents] = useState<TimelineEvent[]>([]);
@@ -133,9 +147,9 @@ export function SystemPage() {
       {indexers.length + downloadClients.length === 0 ? (
         <ListEmpty title="Nothing connected yet" description="Add a search source or a download client under Find & Download and its health shows up here." />
       ) : (
-        <ListTable columns={[{ label: "Provider" }, { label: "Kind", width: "minmax(0,1fr)" }, { label: "Status", width: LIST_TRACK.status, mobile: true }]} chevron={false}>
+        <ListTable columns={[{ label: "Provider" }, { label: "Kind", width: "minmax(0,1fr)" }, { label: "Status", width: LIST_TRACK.status, mobile: true }]}>
           {indexers.map((indexer) => (
-            <ListRow key={`indexer:${indexer.id}`}>
+            <ListRow key={`indexer:${indexer.id}`} onClick={() => setSelectedProvider({ kind: "indexer", provider: indexer })}>
               <ListNameCell name={indexer.name} sub="Search source" />
               <ListCell primary={indexer.protocol} />
               <ListCell mobile>
@@ -144,7 +158,7 @@ export function SystemPage() {
             </ListRow>
           ))}
           {downloadClients.map((client) => (
-            <ListRow key={`client:${client.id}`}>
+            <ListRow key={`client:${client.id}`} onClick={() => setSelectedProvider({ kind: "download-client", provider: client })}>
               <ListNameCell name={client.name} sub="Download client" />
               <ListCell primary={client.protocol} />
               <ListCell mobile>
@@ -154,6 +168,7 @@ export function SystemPage() {
           ))}
         </ListTable>
       )}
+      <ProviderHealthDrawer selection={selectedProvider} onClose={() => setSelectedProvider(null)} />
     </ListCard>
   );
 
@@ -167,7 +182,7 @@ export function SystemPage() {
             <ListRow key={job.id}>
               <ListNameCell name={jobTypeLabel(job.jobType)} sub={job.jobType} />
               <ListCell primary={job.source} secondary={job.lastError ?? undefined} />
-              <ListCell numeric primary={formatWhen(job.createdUtc)} />
+              <ListCell numeric primary={formatWhen(job.createdUtc, preferences)} />
               <ListCell mobile>
                 <Chip tone={jobTone(job.status)}>{job.status}</Chip>
               </ListCell>
@@ -204,6 +219,14 @@ export function SystemPage() {
     );
   }
 
+  if (location.pathname.startsWith("/system/recycle-bin")) {
+    return (
+      <SystemShell>
+        <RecycleBinCard initialItems={recycleBin} initialSettings={recycleBinSettings}>{runtimeCard}</RecycleBinCard>
+      </SystemShell>
+    );
+  }
+
   if (location.pathname.startsWith("/system/updates")) {
     return (
       <SystemShell>
@@ -235,6 +258,7 @@ export function SystemPage() {
 
       {monitoring.alerts.length ? <MonitoringCard monitoring={monitoring} /> : null}
       {providerCard}
+      <SystemTasksCard tasks={systemTasks} />
       <MetadataMaintenanceCard onRefresh={() => revalidator.revalidate()} />
       <AutomationCard automation={automation} cycles={searchCycles} retryWindows={retryWindows} onRefresh={() => revalidator.revalidate()} />
       {jobsCard}
@@ -247,8 +271,8 @@ export function SystemPage() {
 
 function healthTone(status: string): NonNullable<ChipProps["tone"]> {
   if (status === "healthy" || status === "ok") return "ok";
-  if (status === "degraded" || status === "warning") return "warn";
-  if (status === "unhealthy" || status === "failed") return "bad";
+  if (status === "degraded" || status === "warning" || status === "rate-limited") return "warn";
+  if (status === "unhealthy" || status === "failed" || status === "unreachable") return "bad";
   return "idle";
 }
 
@@ -273,6 +297,221 @@ function jobTypeLabel(jobType: string) {
   return tail.charAt(0).toUpperCase() + tail.slice(1).replace(/([A-Z])/g, " $1");
 }
 
+function SystemTasksCard({ tasks }: { tasks: SystemTaskItem[] }) {
+  const { preferences } = useDisplayPreferences();
+
+  return (
+    <ListCard title="System tasks" count={`${tasks.length} recurring passes · durable across restarts`}>
+      <ListTable columns={[{ label: "Task" }, { label: "Cadence", width: "140px" }, { label: "Last execution", width: "180px" }, { label: "Next execution", width: "180px" }, { label: "Result", width: LIST_TRACK.status, mobile: true }]} chevron={false}>
+        {tasks.map((task) => (
+          <ListRow key={task.key}>
+            <ListNameCell name={task.name} sub={task.description} />
+            <ListCell primary={`${formatInterval(task.intervalSeconds)}${task.isConfigurable ? " · configured" : ""}`} />
+            <ListCell numeric primary={task.lastCompletedUtc ? formatWhen(task.lastCompletedUtc, preferences) : "Not run yet"} secondary={task.lastDurationMs === null ? undefined : `${task.lastDurationMs}ms`} />
+            <ListCell numeric primary={task.nextRunUtc ? formatWhen(task.nextRunUtc, preferences) : "Not scheduled"} />
+            <ListCell mobile>
+              <Chip tone={jobTone(task.lastResult)}>{task.lastResult}</Chip>
+            </ListCell>
+          </ListRow>
+        ))}
+      </ListTable>
+    </ListCard>
+  );
+}
+
+function formatInterval(seconds: number) {
+  if (seconds % 86400 === 0) return `${seconds / 86400}d`;
+  if (seconds % 3600 === 0) return `${seconds / 3600}h`;
+  if (seconds % 60 === 0) return `${seconds / 60}m`;
+  return `${seconds}s`;
+}
+
+function RecycleBinCard({
+  initialItems,
+  initialSettings,
+  children
+}: {
+  initialItems: RecycleBinItem[];
+  initialSettings: RecycleBinSettings;
+  children: ReactNode;
+}) {
+  const { preferences } = useDisplayPreferences();
+  const [items, setItems] = useState(initialItems);
+  const [savedSettings, setSavedSettings] = useState(initialSettings);
+  const [settings, setSettings] = useState(initialSettings);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [saveState, setSaveState] = useState<Exclude<DrawerSaveState, "clean" | "dirty">>();
+  const [message, setMessage] = useState<string | null>(null);
+  const [deleteItem, setDeleteItem] = useState<RecycleBinItem | null>(null);
+  const dirty = useMemo(() => JSON.stringify(settings) !== JSON.stringify(savedSettings), [settings, savedSettings]);
+  const footerState: DrawerSaveState = saveState === "saving" ? "saving" : dirty ? "dirty" : saveState ?? "clean";
+
+  async function reload() {
+    const [nextItems, nextSettings] = await Promise.all([
+      fetchJson<RecycleBinItem[]>("/api/recycle-bin"),
+      fetchJson<RecycleBinSettings>("/api/recycle-bin/settings")
+    ]);
+    setItems(nextItems);
+    if (!dirty) {
+      setSavedSettings(nextSettings);
+      setSettings(nextSettings);
+    }
+  }
+
+  async function save() {
+    if (!dirty || saveState === "saving") return;
+    setSaveState("saving");
+    setMessage(null);
+    try {
+      const next = await fetchJson<RecycleBinSettings>("/api/recycle-bin/settings", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(settings)
+      });
+      setSavedSettings(next);
+      setSettings(next);
+      setSaveState("saved");
+      setMessage("Recycle-bin settings saved.");
+      await reload();
+    } catch (error) {
+      setSaveState("error");
+      setMessage(error instanceof Error ? error.message : "Recycle-bin settings could not be saved.");
+    }
+  }
+
+  async function restore(item: RecycleBinItem) {
+    setBusy(`restore:${item.id}`);
+    setMessage(null);
+    try {
+      const result = await fetchJson<{ message: string }>(`/api/recycle-bin/${item.id}/restore`, { method: "POST" });
+      setMessage(result.message);
+      await reload();
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "The item could not be restored.");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function permanentlyDelete(item: RecycleBinItem) {
+    setDeleteItem(null);
+    setBusy(`delete:${item.id}`);
+    setMessage(null);
+    try {
+      const result = await fetchJson<{ message: string }>(`/api/recycle-bin/${item.id}`, { method: "DELETE" });
+      setMessage(result.message);
+      await reload();
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "The item could not be deleted.");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function cleanup() {
+    setBusy("cleanup");
+    setMessage(null);
+    try {
+      const result = await fetchJson<{ removed: number }>("/api/recycle-bin/cleanup", { method: "POST" });
+      setMessage(result.removed ? `Removed ${result.removed} expired recycle-bin item${result.removed === 1 ? "" : "s"}.` : "No recycle-bin items were ready to expire.");
+      await reload();
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Recycle-bin cleanup failed.");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  return (
+    <>
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Trash2 className="h-4 w-4 text-primary" />
+            Recycle bin
+          </CardTitle>
+          <CardDescription>Library removals and replaced files stay recoverable until their retention window expires.</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-[var(--page-gap)]">
+          {message ? <p className="rounded-xl border border-hairline bg-surface-1 px-3 py-2 text-sm text-muted-foreground">{message}</p> : null}
+          <div className="grid gap-2 sm:grid-cols-2">
+            <Field label="Retention days">
+              <Input
+                type="number"
+                min={1}
+                max={365}
+                value={settings.retentionDays}
+                onChange={(event) => setSettings((current) => ({ ...current, retentionDays: Number(event.target.value || 30) }))}
+              />
+            </Field>
+            <Field label="Maximum size (MB)">
+              <Input
+                type="number"
+                min={1}
+                value={settings.maxSizeMb}
+                onChange={(event) => setSettings((current) => ({ ...current, maxSizeMb: Number(event.target.value || 102400) }))}
+              />
+            </Field>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button type="button" variant="outline" disabled={busy !== null} onClick={() => void cleanup()}>
+              {busy === "cleanup" ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+              Clean expired items
+            </Button>
+            <span className="text-xs text-muted-foreground">{items.length} stored item{items.length === 1 ? "" : "s"}</span>
+          </div>
+          {items.length ? (
+            <div className="space-y-2">
+              {items.map((item) => (
+                <div key={item.id} className="rounded-xl border border-hairline bg-surface-1 p-3">
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-medium text-foreground">{item.libraryName} · {item.mediaType}{item.isDirectory ? " · folder" : " · file"}</p>
+                      <p className="mt-1 break-all text-xs text-muted-foreground">{item.originalPath}</p>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        {formatBytes(item.sizeBytes)} · removed {formatWhen(item.createdUtc, preferences)} · expires {formatWhen(item.expiresUtc, preferences)}
+                      </p>
+                    </div>
+                    <div className="flex shrink-0 gap-2">
+                      <Button type="button" size="sm" variant="outline" disabled={busy !== null} onClick={() => void restore(item)}>
+                        {busy === `restore:${item.id}` ? <LoaderCircle className="h-3.5 w-3.5 animate-spin" /> : null}
+                        Restore
+                      </Button>
+                      <Button type="button" size="sm" variant="ghost" disabled={busy !== null} onClick={() => setDeleteItem(item)}>
+                        Delete permanently
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <ListEmpty title="Recycle bin is empty" description="Files removed from a library will appear here when the recycle-bin policy is enabled." />
+          )}
+        </CardContent>
+      </Card>
+      {children}
+      <PageFooter
+        state={footerState}
+        message={message}
+        saveLabel="Save recycle-bin settings"
+        saveType="button"
+        disabled={!dirty || busy !== null}
+        onSave={() => void save()}
+      />
+      <ConfirmDialog
+        open={deleteItem !== null}
+        onOpenChange={(open) => { if (!open) setDeleteItem(null); }}
+        title="Delete this item permanently?"
+        description="The stored library file will be removed and cannot be restored by Deluno."
+        confirmLabel="Delete permanently"
+        busy={busy?.startsWith("delete:") ?? false}
+        onConfirm={() => { if (deleteItem) void permanentlyDelete(deleteItem); }}
+      />
+    </>
+  );
+}
+
 function AutomationCard({
   automation,
   cycles,
@@ -284,6 +523,7 @@ function AutomationCard({
   retryWindows: SearchRetryWindowItem[];
   onRefresh: () => void;
 }) {
+  const { preferences } = useDisplayPreferences();
   const [busyLibraryId, setBusyLibraryId] = useState<string | null>(null);
   const running = automation.filter((item) => isJobActive(item.status as JobStatus) || item.searchRequested).length;
   const latest = cycles[0] ?? null;
@@ -326,7 +566,7 @@ function AutomationCard({
               <div className="min-w-0">
                 <p className="truncate text-sm font-semibold text-foreground">{latest.libraryName}</p>
                 <p className="mt-1 text-xs text-muted-foreground">
-                  {latest.triggerKind} / {formatWhen(latest.startedUtc)}
+                  {latest.triggerKind} / {formatWhen(latest.startedUtc, preferences)}
                 </p>
               </div>
               <JobStatusBadge status={latest.status} />
@@ -352,7 +592,7 @@ function AutomationCard({
                   <p className="truncate text-xs font-semibold text-foreground">{item.mediaType} / {item.actionKind}</p>
                   <p className="text-[length:var(--type-caption)] text-muted-foreground">{item.lastResult || "Last search recorded"}</p>
                 </div>
-                <span className="text-[length:var(--type-caption)] tabular-nums text-muted-foreground">{formatWhen(item.nextEligibleUtc)}</span>
+                <span className="text-[length:var(--type-caption)] tabular-nums text-muted-foreground">{formatWhen(item.nextEligibleUtc, preferences)}</span>
               </div>
             ))}
           </div>
@@ -366,7 +606,7 @@ function AutomationCard({
                 <div className="min-w-0">
                   <p className="truncate text-xs font-semibold text-foreground">{item.libraryName}</p>
                   <p className="text-[length:var(--type-caption)] text-muted-foreground">
-                    {item.status}{item.nextSearchUtc ? ` / next ${formatWhen(item.nextSearchUtc)}` : ""}
+                    {item.status}{item.nextSearchUtc ? ` / next ${formatWhen(item.nextSearchUtc, preferences)}` : ""}
                   </p>
                 </div>
                 <Button
@@ -435,6 +675,7 @@ function BackupCard({
   initialSettings: BackupSettingsSnapshot;
   children: ReactNode;
 }) {
+  const { preferences } = useDisplayPreferences();
   const [backups, setBackups] = useState(initialBackups);
   const [savedSettings, setSavedSettings] = useState(initialSettings);
   const [settings, setSettings] = useState(initialSettings);
@@ -627,7 +868,7 @@ function BackupCard({
           </Field>
           <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
             <p className="text-xs text-muted-foreground">
-              Next run: {settings.nextRunUtc ? formatWhen(settings.nextRunUtc) : "Not scheduled"} · Retains latest {settings.retentionCount} backup{settings.retentionCount === 1 ? "" : "s"}
+              Next run: {settings.nextRunUtc ? formatWhen(settings.nextRunUtc, preferences) : "Not scheduled"} · Retains latest {settings.retentionCount} backup{settings.retentionCount === 1 ? "" : "s"}
             </p>
           </div>
         </div>
@@ -655,7 +896,7 @@ function BackupCard({
               <p className={restorePreview.valid ? "text-success" : "text-destructive"}>{restorePreview.message}</p>
               {restorePreview.manifest ? (
                 <p className="mt-1 text-xs text-muted-foreground">
-                  {restorePreview.manifest.files.length} files · {formatWhen(restorePreview.manifest.createdUtc)}
+                  {restorePreview.manifest.files.length} files · {formatWhen(restorePreview.manifest.createdUtc, preferences)}
                 </p>
               ) : null}
               <Button
@@ -677,7 +918,7 @@ function BackupCard({
             <div key={backup.id} className="flex items-center justify-between gap-3 rounded-xl border border-hairline bg-surface-1 p-3">
               <div className="min-w-0">
                 <p className="truncate text-sm font-medium text-foreground">{backup.fileName}</p>
-                <p className="text-xs text-muted-foreground">{formatBytes(backup.sizeBytes)} · {formatWhen(backup.createdUtc)}</p>
+                <p className="text-xs text-muted-foreground">{formatBytes(backup.sizeBytes)} · {formatWhen(backup.createdUtc, preferences)}</p>
               </div>
               <Button type="button" variant="ghost" size="sm" asChild>
                 <a href={`/api/backups/${backup.id}/download`}>Download</a>
@@ -820,6 +1061,8 @@ function UpgradeCard({ status, children }: { status: UpdateStatusResponse; child
         <HealthRow label="Latest version" status={current.latestVersion ?? "No update available"} />
         <HealthRow label="Channel" status={current.channel} />
         <HealthRow label="Install kind" status={installKindLabel(current.installKind)} />
+        {isDocker && current.currentImageRef ? <HealthRow label="Image" status={current.currentImageRef} /> : null}
+        {isDocker && current.currentImageDigest ? <HealthRow label="Image digest" status={current.currentImageDigest} /> : null}
         <HealthRow label="State" status={updateStateLabel(current.state)} />
         <p className="text-sm leading-relaxed text-muted-foreground">{current.message}</p>
         {current.progressPercent !== null ? (
@@ -1078,13 +1321,8 @@ function JobStatusBadge({ status }: { status: string }) {
   );
 }
 
-function formatWhen(value: string) {
-  return new Intl.DateTimeFormat(undefined, {
-    month: "short",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit"
-  }).format(new Date(value));
+function formatWhen(value: string, preferences: DisplayPreferences) {
+  return formatDateTime(value, preferences);
 }
 
 function formatBytes(value: number) {

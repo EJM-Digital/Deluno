@@ -1,7 +1,10 @@
 using Deluno.Media;
 using MetadataSearchResult = Deluno.Integrations.Metadata.MetadataSearchResult;
+using MetadataProviderIssue = Deluno.Integrations.Metadata.MetadataProviderIssue;
+using MetadataIdentityConflict = Deluno.Integrations.Metadata.MetadataIdentityConflict;
 using Deluno.Contracts;
 using Deluno.Series.Contracts;
+using Deluno.Quality.ReleasePreferences;
 using Deluno.Recovery.Contracts;
 
 namespace Deluno.Series.Data;
@@ -11,6 +14,23 @@ public interface ISeriesCatalogRepository : ISeriesImportRecoveryRetentionReposi
     Task<SeriesListItem> AddAsync(CreateSeriesRequest request, CancellationToken cancellationToken);
 
     Task<SeriesListItem?> GetByIdAsync(string id, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Returns the selected TV numbering model and the alternate keys attached
+    /// to its canonical episodes.
+    /// </summary>
+    Task<SeriesNumberingDetail?> GetNumberingAsync(
+        string seriesId,
+        CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Changes numbering metadata without changing canonical episode identity.
+    /// Owner mappings are explicit and survive provider catalogue refreshes.
+    /// </summary>
+    Task<SeriesNumberingDetail?> UpdateNumberingAsync(
+        string seriesId,
+        UpdateSeriesNumberingRequest request,
+        CancellationToken cancellationToken);
 
     /// <summary>
     /// Every genre this catalogue actually holds, in alphabetical order.
@@ -46,6 +66,15 @@ public interface ISeriesCatalogRepository : ISeriesImportRecoveryRetentionReposi
         string? metadataProviderId,
         CancellationToken cancellationToken);
 
+    Task<MetadataIdentityConflict?> FindMetadataIdentityConflictAsync(
+        string excludeId,
+        string title,
+        int? startYear,
+        string? imdbId,
+        string metadataProvider,
+        string metadataProviderId,
+        CancellationToken cancellationToken);
+
     /// <summary>
     /// One page of the catalogue — searched, filtered, sorted and counted in
     /// SQL. This is what a list surface should use; <see cref="ListAsync"/>
@@ -56,6 +85,13 @@ public interface ISeriesCatalogRepository : ISeriesImportRecoveryRetentionReposi
         CancellationToken cancellationToken);
 
     Task<IReadOnlyList<SeriesListItem>> ListAsync(CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Returns the cache keys used by poster and backdrop URLs still stored in
+    /// this catalogue. Artwork maintenance uses this set as its safety fence
+    /// before removing old files.
+    /// </summary>
+    Task<IReadOnlySet<string>> ListReferencedArtworkCacheKeysAsync(CancellationToken cancellationToken);
 
     /// <summary>
     /// The stalest series still wanting metadata, filtered, ordered and
@@ -95,6 +131,19 @@ public interface ISeriesCatalogRepository : ISeriesImportRecoveryRetentionReposi
     /// unmatchable entry is not re-selected by every backfill pass.
     /// </summary>
     Task RecordMetadataAttemptAsync(string id, CancellationToken cancellationToken);
+
+    Task<MetadataProviderIssue?> GetMetadataProviderIssueAsync(string id, CancellationToken cancellationToken);
+
+    Task<bool> RecordMetadataProviderIssueAsync(
+        string id,
+        MetadataProviderIssue issue,
+        CancellationToken cancellationToken);
+
+    Task<MetadataProviderIssue?> AcknowledgeMetadataProviderIssueAsync(
+        string id,
+        CancellationToken cancellationToken);
+
+    Task ClearMetadataProviderIssueAsync(string id, CancellationToken cancellationToken);
 
     Task<int> UpdateMonitoredAsync(IReadOnlyList<string> seriesIds, bool monitored, CancellationToken cancellationToken);
 
@@ -173,7 +222,8 @@ public interface ISeriesCatalogRepository : ISeriesImportRecoveryRetentionReposi
         DateTimeOffset now,
         bool ignoreRetryWindow,
         CancellationToken cancellationToken,
-        string? wantedStatus = null);
+        string? wantedStatus = null,
+        CatalogueFilters? filters = null);
 
     Task<int> CountRetryDelayedWantedAsync(
         string libraryId,
@@ -205,7 +255,11 @@ public interface ISeriesCatalogRepository : ISeriesImportRecoveryRetentionReposi
         string? filePath,
         long? fileSizeBytes,
         IReadOnlyList<ImportedEpisodeItem>? episodes,
-        CancellationToken cancellationToken);
+        CancellationToken cancellationToken,
+        PreferenceEvaluationSnapshot? preferenceEvaluation = null,
+        IReadOnlyList<ImportedEpisodeNumberingItem>? alternateEpisodes = null,
+        IReadOnlyList<ImportedSeasonPackItem>? seasonPacks = null,
+        IReadOnlyList<PreferenceEvaluationSnapshot>? preferenceEvaluations = null);
 
     /// <summary>
     /// Imports a slice of already-on-disk shows, and the episodes detected
@@ -347,7 +401,8 @@ public interface ISeriesCatalogRepository : ISeriesImportRecoveryRetentionReposi
         DateTimeOffset now,
         bool ignoreRetryWindow,
         CancellationToken cancellationToken,
-        string? wantedStatus = null);
+        string? wantedStatus = null,
+        CatalogueFilters? filters = null);
 
     /// <summary>Get target quality for a specific episode</summary>
     Task<string?> GetEpisodeTargetQualityAsync(
@@ -357,6 +412,15 @@ public interface ISeriesCatalogRepository : ISeriesImportRecoveryRetentionReposi
 
     /// <summary>Get current quality for a specific episode</summary>
     Task<string?> GetEpisodeCurrentQualityAsync(
+        string episodeId,
+        CancellationToken cancellationToken);
+
+    /// <summary>Get the installed file path for a specific episode.</summary>
+    Task<string?> GetEpisodeFilePathAsync(
+        string episodeId,
+        CancellationToken cancellationToken);
+
+    Task<long?> GetEpisodeFileSizeBytesAsync(
         string episodeId,
         CancellationToken cancellationToken);
 

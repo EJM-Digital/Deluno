@@ -1,16 +1,24 @@
 using Deluno.Connections.Contracts;
 using Deluno.Connections.Data;
+using Deluno.Contracts;
 using Deluno.Filesystem;
+using Deluno.Infrastructure.Storage;
 using Deluno.Infrastructure.Storage.Migrations;
+using Deluno.Jobs.Contracts;
 using Deluno.Jobs.Data;
 using Deluno.Libraries.Contracts;
 using Deluno.Libraries.Data;
+using Deluno.Media;
 using Deluno.Movies.Contracts;
 using Deluno.Movies.Data;
 using Deluno.Persistence.Tests.Support;
 using Deluno.Platform.Contracts;
 using Deluno.Platform.Data;
 using Deluno.Quality;
+using Deluno.Quality.Contracts;
+using Deluno.Quality.Data;
+using Deluno.Quality.ReleasePreferences;
+using Deluno.Series.Contracts;
 using Deluno.Series.Data;
 using Microsoft.Extensions.Logging.Abstractions;
 
@@ -738,6 +746,755 @@ public sealed class ImportPipelineServiceTests
         Assert.True(resolution.IsSuccessful);
     }
 
+    [Fact]
+    public async Task Tv_import_uses_persisted_airdate_numbering_for_rename_and_catalogue_identity()
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-04-29T08:00:00Z"));
+        await InitializeAllAsync(storage, timeProvider);
+
+        var downloadsPath = Path.Combine(storage.DataRoot, "downloads");
+        var movieRootPath = Path.Combine(storage.DataRoot, "movies");
+        var seriesRootPath = Path.Combine(storage.DataRoot, "series");
+        Directory.CreateDirectory(downloadsPath);
+        Directory.CreateDirectory(movieRootPath);
+        Directory.CreateDirectory(seriesRootPath);
+        var sourcePath = Path.Combine(downloadsPath, "Daily.Show.2026-04-29.1080p.WEB-DL.mkv");
+        await File.WriteAllBytesAsync(sourcePath, Enumerable.Range(0, 4096).Select(value => (byte)(value % 251)).ToArray());
+        File.SetLastWriteTimeUtc(sourcePath, DateTime.UtcNow.AddMinutes(-1));
+
+        var platform = CreatePlatformRepository(storage, timeProvider);
+        var libraries = CreateLibrariesRepository(storage, timeProvider);
+        await SaveSettingsAsync(
+            platform,
+            movieRootPath,
+            downloadsPath,
+            seriesRootPath,
+            "{Series Title} - S{season:00}E{episode:00} - {Episode Title} [{Quality}]");
+        await CreateTvLibraryAsync(libraries, seriesRootPath, downloadsPath);
+
+        var seriesRepository = new SqliteSeriesCatalogRepository(storage.Factory, timeProvider);
+        var series = await seriesRepository.AddAsync(
+            new CreateSeriesRequest(
+                "Daily Show",
+                2026,
+                "tt1234567",
+                SeriesType: SeriesTypes.Daily,
+                NumberingScheme: SeriesNumberingSchemes.AirDate),
+            CancellationToken.None);
+        await seriesRepository.SyncEpisodeCatalogueAsync(
+            series.Id,
+            [new CatalogueEpisodeItem(1, 3, "The Episode", null, timeProvider.GetUtcNow())],
+            "provider",
+            CancellationToken.None);
+
+        var movies = new SqliteMovieCatalogRepository(storage.Factory, timeProvider);
+        var service = CreateService(storage, timeProvider, platform, libraries, movies);
+        var request = new ImportExecuteRequest(
+            Preview: new ImportPreviewRequest(
+                SourcePath: sourcePath,
+                FileName: Path.GetFileName(sourcePath),
+                MediaType: "tv",
+                Title: "Daily Show",
+                Year: 2026,
+                Genres: [],
+                Tags: [],
+                Studio: null,
+                OriginalLanguage: null,
+                SeriesId: series.Id,
+                SeriesType: SeriesTypes.Daily,
+                NumberingScheme: SeriesNumberingSchemes.AirDate),
+            TransferMode: "copy",
+            Overwrite: false,
+            AllowCopyFallback: true);
+
+        var preview = await service.PreviewAsync(request.Preview, CancellationToken.None);
+        Assert.EndsWith(
+            Path.Combine("Daily Show (2026)", "Daily Show - S01E03 - The Episode [WEB 1080p].mkv"),
+            preview.DestinationPath,
+            StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain(preview.Warnings, warning => warning.Contains("could not safely determine", StringComparison.OrdinalIgnoreCase));
+
+        var result = await service.ExecuteAsync(request, CancellationToken.None);
+        Assert.True(result.Succeeded, result.Message);
+        Assert.True(result.Response?.CatalogUpdated);
+        Assert.True(File.Exists(preview.DestinationPath));
+
+        var detail = await seriesRepository.GetInventoryDetailAsync(series.Id, CancellationToken.None);
+        var episode = Assert.Single(detail!.Episodes);
+        Assert.True(episode.HasFile);
+        Assert.Equal(3, episode.EpisodeNumber);
+
+        await using var connection = await storage.Factory.OpenConnectionAsync(
+            DelunoDatabaseNames.Series,
+            CancellationToken.None);
+        await using var command = connection.CreateCommand();
+        command.CommandText =
+            "SELECT file_path FROM episode_entries WHERE id = @episodeId;";
+        var episodeId = command.CreateParameter();
+        episodeId.ParameterName = "@episodeId";
+        episodeId.Value = episode.EpisodeId;
+        command.Parameters.Add(episodeId);
+        Assert.Equal(preview.DestinationPath, await command.ExecuteScalarAsync(CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task Tv_multi_episode_import_persists_one_library_destination_for_every_episode()
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-04-29T08:00:00Z"));
+        await InitializeAllAsync(storage, timeProvider);
+
+        var downloadsPath = Path.Combine(storage.DataRoot, "downloads");
+        var movieRootPath = Path.Combine(storage.DataRoot, "movies");
+        var seriesRootPath = Path.Combine(storage.DataRoot, "series");
+        Directory.CreateDirectory(downloadsPath);
+        Directory.CreateDirectory(movieRootPath);
+        Directory.CreateDirectory(seriesRootPath);
+        var sourcePath = Path.Combine(downloadsPath, "Example.Show.S01E02E03.2160p.WEB-DL.mkv");
+        await File.WriteAllBytesAsync(sourcePath, Enumerable.Range(0, 4096).Select(value => (byte)(value % 251)).ToArray());
+        File.SetLastWriteTimeUtc(sourcePath, DateTime.UtcNow.AddMinutes(-1));
+
+        var platform = CreatePlatformRepository(storage, timeProvider);
+        var libraries = CreateLibrariesRepository(storage, timeProvider);
+        await SaveSettingsAsync(platform, movieRootPath, downloadsPath, seriesRootPath);
+        await CreateTvLibraryAsync(libraries, seriesRootPath, downloadsPath);
+
+        var seriesRepository = new SqliteSeriesCatalogRepository(storage.Factory, timeProvider);
+        var series = await seriesRepository.AddAsync(
+            new CreateSeriesRequest("Example Show", 2026, "tt7654321"),
+            CancellationToken.None);
+        await seriesRepository.SyncEpisodeCatalogueAsync(
+            series.Id,
+            [
+                new CatalogueEpisodeItem(1, 2, "Two", null, timeProvider.GetUtcNow().AddDays(-2)),
+                new CatalogueEpisodeItem(1, 3, "Three", null, timeProvider.GetUtcNow().AddDays(-1))
+            ],
+            "provider",
+            CancellationToken.None);
+
+        var service = CreateService(
+            storage,
+            timeProvider,
+            platform,
+            libraries,
+            new SqliteMovieCatalogRepository(storage.Factory, timeProvider));
+        var request = new ImportExecuteRequest(
+            new ImportPreviewRequest(
+                sourcePath,
+                Path.GetFileName(sourcePath),
+                "tv",
+                "Example Show",
+                2026,
+                [],
+                [],
+                null,
+                null,
+                SeriesId: series.Id,
+                SeriesType: SeriesTypes.Standard,
+                NumberingScheme: SeriesNumberingSchemes.Standard),
+            "copy",
+            Overwrite: false,
+            AllowCopyFallback: true);
+
+        var preview = await service.PreviewAsync(request.Preview, CancellationToken.None);
+        Assert.Equal(Path.GetFileName(sourcePath), Path.GetFileName(preview.DestinationPath));
+
+        var result = await service.ExecuteAsync(request, CancellationToken.None);
+        Assert.True(result.Succeeded, result.Message);
+        Assert.True(File.Exists(preview.DestinationPath));
+
+        await using var connection = await storage.Factory.OpenConnectionAsync(
+            DelunoDatabaseNames.Series,
+            CancellationToken.None);
+        await using var command = connection.CreateCommand();
+        command.CommandText =
+            """
+            SELECT episode_number, file_path, imported_utc
+            FROM episode_entries
+            WHERE series_id = @seriesId AND season_number = 1 AND episode_number IN (2, 3)
+            ORDER BY episode_number;
+            """;
+        var seriesId = command.CreateParameter();
+        seriesId.ParameterName = "@seriesId";
+        seriesId.Value = series.Id;
+        command.Parameters.Add(seriesId);
+
+        var imported = new List<(int EpisodeNumber, string FilePath, string ImportedUtc)>();
+        await using var reader = await command.ExecuteReaderAsync(CancellationToken.None);
+        while (await reader.ReadAsync(CancellationToken.None))
+        {
+            imported.Add((reader.GetInt32(0), reader.GetString(1), reader.GetString(2)));
+        }
+
+        Assert.Equal([2, 3], imported.Select(item => item.EpisodeNumber).ToArray());
+        Assert.All(imported, item => Assert.Equal(preview.DestinationPath, item.FilePath));
+        Assert.Single(imported.Select(item => item.FilePath).Distinct(StringComparer.OrdinalIgnoreCase));
+        Assert.Single(imported.Select(item => item.ImportedUtc).Distinct(StringComparer.Ordinal));
+    }
+
+    [Fact]
+    public async Task Tv_season_label_is_review_only_but_an_explicit_multi_file_pack_commits_every_episode_and_retries_idempotently()
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-04-29T08:00:00Z"));
+        await InitializeAllAsync(storage, timeProvider);
+
+        var downloadsPath = Path.Combine(storage.DataRoot, "downloads");
+        var movieRootPath = Path.Combine(storage.DataRoot, "movies");
+        var seriesRootPath = Path.Combine(storage.DataRoot, "series");
+        Directory.CreateDirectory(downloadsPath);
+        Directory.CreateDirectory(movieRootPath);
+        Directory.CreateDirectory(seriesRootPath);
+
+        var platform = CreatePlatformRepository(storage, timeProvider);
+        var libraries = CreateLibrariesRepository(storage, timeProvider);
+        await SaveSettingsAsync(platform, movieRootPath, downloadsPath, seriesRootPath);
+        var qualityRepository = new SqliteQualityRepository(storage.Factory, timeProvider);
+        var profile = await qualityRepository.CreateQualityProfileAsync(
+            new CreateQualityProfileRequest(
+                "Pack evidence",
+                "tv",
+                "WEB 2160p",
+                "WEB 1080p,WEB 2160p",
+                null,
+                UpgradeUntilCutoff: true,
+                UpgradeUnknownItems: true),
+            CancellationToken.None);
+        var library = await CreateTvLibraryAsync(libraries, seriesRootPath, downloadsPath, profile.Id);
+
+        var mediaState = new SqliteMediaStateRepository(storage.Factory, timeProvider);
+        var seriesRepository = new SqliteSeriesCatalogRepository(storage.Factory, timeProvider, mediaState);
+        var series = await seriesRepository.AddAsync(
+            new CreateSeriesRequest("Pack Review", 2026, "tt7654321"),
+            CancellationToken.None);
+        await seriesRepository.SyncEpisodeCatalogueAsync(
+            series.Id,
+            [
+                new CatalogueEpisodeItem(1, 1, "One", null, timeProvider.GetUtcNow().AddDays(-2)),
+                new CatalogueEpisodeItem(1, 2, "Two", null, timeProvider.GetUtcNow().AddDays(-1))
+            ],
+            "provider",
+            CancellationToken.None);
+
+        var service = CreateService(
+            storage,
+            timeProvider,
+            platform,
+            libraries,
+            new SqliteMovieCatalogRepository(storage.Factory, timeProvider),
+            seriesCatalogRepository: seriesRepository,
+            qualityRepository: qualityRepository);
+        var seasonLabelPath = Path.Combine(downloadsPath, "Pack.Review.S01.2160p.WEB-DL.mkv");
+        await File.WriteAllBytesAsync(seasonLabelPath, Enumerable.Repeat((byte)0x31, 4096).ToArray());
+        File.SetLastWriteTimeUtc(seasonLabelPath, DateTime.UtcNow.AddMinutes(-1));
+        var seasonLabelRequest = new ImportExecuteRequest(
+            new ImportPreviewRequest(
+                seasonLabelPath,
+                Path.GetFileName(seasonLabelPath),
+                "tv",
+                "Pack Review",
+                2026,
+                [],
+                [],
+                null,
+                null,
+                SeriesId: series.Id,
+                SeriesType: SeriesTypes.Standard,
+                NumberingScheme: SeriesNumberingSchemes.Standard),
+            "copy",
+            Overwrite: false,
+            AllowCopyFallback: true);
+
+        var seasonLabelResult = await service.ExecuteAsync(seasonLabelRequest, CancellationToken.None);
+        Assert.False(seasonLabelResult.Succeeded);
+        Assert.Equal(409, seasonLabelResult.StatusCode);
+        Assert.Contains("does not prove", seasonLabelResult.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.True(File.Exists(seasonLabelPath));
+
+        var packDirectory = Path.Combine(downloadsPath, "Pack.Review.S01.2160p.WEB-DL");
+        Directory.CreateDirectory(packDirectory);
+        foreach (var episodeNumber in new[] { 1, 2 })
+        {
+            var path = Path.Combine(packDirectory, $"Pack.Review.S01E{episodeNumber:D2}.2160p.WEB-DL.mkv");
+            await File.WriteAllBytesAsync(path, Enumerable.Repeat((byte)(0x40 + episodeNumber), 4096).ToArray());
+            File.SetLastWriteTimeUtc(path, DateTime.UtcNow.AddMinutes(-1));
+        }
+
+        var directoryRequest = seasonLabelRequest with
+        {
+            Preview = seasonLabelRequest.Preview with
+            {
+                SourcePath = packDirectory,
+                FileName = "Pack.Review.S01.2160p.WEB-DL.mkv"
+            }
+        };
+        var directoryPreview = await service.PreviewAsync(directoryRequest.Preview, CancellationToken.None);
+        Assert.NotNull(directoryPreview.Pack);
+        Assert.True(directoryPreview.Pack.CanExecute);
+        Assert.False(directoryPreview.Pack.AlreadyCommitted);
+        Assert.Equal(2, directoryPreview.Pack.SourceFileCount);
+        Assert.Equal(2, directoryPreview.Pack.EpisodeCount);
+        Assert.Equal(
+            ["S01E01", "S01E02"],
+            directoryPreview.Pack.Files.SelectMany(file => file.EpisodeKeys).OrderBy(key => key).ToArray());
+        Assert.True(ImportFileReadiness.IsPreviewReady(directoryPreview));
+
+        var directoryResult = await service.ExecuteAsync(directoryRequest, CancellationToken.None);
+        Assert.True(directoryResult.Succeeded);
+        Assert.Equal(200, directoryResult.StatusCode);
+        Assert.Equal(2, directoryResult.Response!.PackFiles!.Count);
+        Assert.Equal(2, Directory.GetFiles(packDirectory, "*.mkv").Length);
+
+        var detail = await seriesRepository.GetInventoryDetailAsync(series.Id, CancellationToken.None);
+        Assert.Equal(2, detail!.Episodes.Count(episode => episode.HasFile));
+        var placedFolder = Path.Combine(seriesRootPath, "Pack Review (2026)");
+        Assert.Equal(2, Directory.GetFiles(placedFolder, "*.mkv").Length);
+
+        var preferenceSnapshots = new List<PreferenceEvaluationSnapshot>();
+        foreach (var file in directoryPreview.Pack.Files)
+        {
+            var snapshot = await mediaState.GetLatestPreferenceEvaluationSnapshotAsync(
+                MediaKind.Series,
+                series.Id,
+                library.Id,
+                fileIdentity: null,
+                CancellationToken.None,
+                file.DestinationPath,
+                new FileInfo(file.DestinationPath).Length);
+            preferenceSnapshots.Add(Assert.IsType<PreferenceEvaluationSnapshot>(snapshot));
+        }
+        Assert.Equal(2, preferenceSnapshots.Select(item => item.FileIdentity).Distinct(StringComparer.Ordinal).Count());
+        Assert.All(preferenceSnapshots, snapshot =>
+        {
+            Assert.Equal($"quality-profile/{profile.Id}", snapshot.PlanId);
+            Assert.Equal("filesystem.import", snapshot.Source);
+        });
+
+        await using (var connection = await storage.Factory.OpenConnectionAsync(
+                         DelunoDatabaseNames.Series,
+                         CancellationToken.None))
+        await using (var command = connection.CreateCommand())
+        {
+            command.CommandText =
+                "SELECT episode_number, file_path, imported_utc FROM episode_entries WHERE series_id = @seriesId AND season_number = 1 ORDER BY episode_number;";
+            var parameter = command.CreateParameter();
+            parameter.ParameterName = "@seriesId";
+            parameter.Value = series.Id;
+            command.Parameters.Add(parameter);
+            var rows = new List<(int Episode, string Path, string ImportedUtc)>();
+            await using var reader = await command.ExecuteReaderAsync(CancellationToken.None);
+            while (await reader.ReadAsync(CancellationToken.None))
+            {
+                rows.Add((reader.GetInt32(0), reader.GetString(1), reader.GetString(2)));
+            }
+            Assert.Equal([1, 2], rows.Select(row => row.Episode).ToArray());
+            Assert.Equal(2, rows.Select(row => row.Path).Distinct(StringComparer.OrdinalIgnoreCase).Count());
+            Assert.Single(rows.Select(row => row.ImportedUtc).Distinct(StringComparer.Ordinal));
+            Assert.All(rows, row => Assert.StartsWith(placedFolder, row.Path, StringComparison.OrdinalIgnoreCase));
+        }
+
+        var retryPreview = await service.PreviewAsync(directoryRequest.Preview, CancellationToken.None);
+        Assert.True(retryPreview.Pack!.CanExecute);
+        Assert.True(retryPreview.Pack.AlreadyCommitted);
+        var retry = await service.ExecuteAsync(directoryRequest, CancellationToken.None);
+        Assert.True(retry.Succeeded);
+        Assert.Contains("already placed and catalogued", retry.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal("already-committed", retry.Response!.TransferModeUsed);
+        Assert.All(retry.Response.PackFiles!, file => Assert.Equal("already-committed", file.TransferModeUsed));
+        Assert.Equal(2, Directory.GetFiles(placedFolder, "*.mkv").Length);
+
+        var firstPlan = directoryPreview.Pack.Files.Single(file => file.EpisodeKeys.Contains("S01E01"));
+        var expectedBytes = await File.ReadAllBytesAsync(firstPlan.SourcePath);
+        await File.WriteAllBytesAsync(firstPlan.DestinationPath, Enumerable.Repeat((byte)0x7F, expectedBytes.Length).ToArray());
+        var tamperedRetry = await service.PreviewAsync(directoryRequest.Preview, CancellationToken.None);
+        Assert.False(tamperedRetry.Pack!.CanExecute);
+        Assert.False(tamperedRetry.Pack.AlreadyCommitted);
+        Assert.Contains(tamperedRetry.Pack.BlockReasons, reason => reason.Contains("not the fully committed pack", StringComparison.OrdinalIgnoreCase));
+        await File.WriteAllBytesAsync(firstPlan.DestinationPath, expectedBytes);
+
+        var afterRestart = new SqliteSeriesCatalogRepository(storage.Factory, timeProvider);
+        var restartedDetail = await afterRestart.GetInventoryDetailAsync(series.Id, CancellationToken.None);
+        Assert.Equal(2, restartedDetail!.Episodes.Count(episode => episode.HasFile));
+
+        var recovery = await seriesRepository.GetImportRecoverySummaryAsync(CancellationToken.None);
+        Assert.Single(recovery.RecentCases, item => item.FailureKind == "unmatched");
+        Assert.Contains(recovery.RecentCases, item => item.Summary.Contains("does not prove", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public async Task Tv_pack_with_duplicate_episode_claims_is_blocked_before_any_file_is_placed()
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-04-29T08:00:00Z"));
+        await InitializeAllAsync(storage, timeProvider);
+        var downloadsPath = Path.Combine(storage.DataRoot, "downloads");
+        var movieRootPath = Path.Combine(storage.DataRoot, "movies");
+        var seriesRootPath = Path.Combine(storage.DataRoot, "series");
+        Directory.CreateDirectory(downloadsPath);
+        Directory.CreateDirectory(movieRootPath);
+        Directory.CreateDirectory(seriesRootPath);
+        var platform = CreatePlatformRepository(storage, timeProvider);
+        var libraries = CreateLibrariesRepository(storage, timeProvider);
+        await SaveSettingsAsync(platform, movieRootPath, downloadsPath, seriesRootPath);
+        await CreateTvLibraryAsync(libraries, seriesRootPath, downloadsPath);
+        var repository = new SqliteSeriesCatalogRepository(storage.Factory, timeProvider);
+        var series = await repository.AddAsync(new CreateSeriesRequest("Duplicate Pack", 2026, null), CancellationToken.None);
+        await repository.SyncEpisodeCatalogueAsync(
+            series.Id,
+            [new CatalogueEpisodeItem(1, 1, "One", null, timeProvider.GetUtcNow().AddDays(-1))],
+            "provider",
+            CancellationToken.None);
+        var packDirectory = Path.Combine(downloadsPath, "Duplicate.Pack.S01");
+        Directory.CreateDirectory(packDirectory);
+        foreach (var suffix in new[] { "A", "B" })
+        {
+            var source = Path.Combine(packDirectory, $"Duplicate.Pack.S01E01.{suffix}.mkv");
+            await File.WriteAllBytesAsync(source, Enumerable.Repeat((byte)0x55, 4096).ToArray());
+            File.SetLastWriteTimeUtc(source, DateTime.UtcNow.AddMinutes(-1));
+        }
+        var service = CreateService(storage, timeProvider, platform, libraries, new SqliteMovieCatalogRepository(storage.Factory, timeProvider));
+        var request = new ImportExecuteRequest(
+            new ImportPreviewRequest(
+                packDirectory, null, "tv", series.Title, series.StartYear, [], [], null, null,
+                SeriesId: series.Id, SeriesType: SeriesTypes.Standard, NumberingScheme: SeriesNumberingSchemes.Standard),
+            "copy", false, true);
+
+        var preview = await service.PreviewAsync(request.Preview, CancellationToken.None);
+        Assert.False(preview.Pack!.CanExecute);
+        Assert.Contains(preview.Pack.BlockReasons, reason => reason.Contains("more than one file", StringComparison.OrdinalIgnoreCase));
+        var result = await service.ExecuteAsync(request, CancellationToken.None);
+        Assert.False(result.Succeeded);
+        Assert.Equal(409, result.StatusCode);
+        Assert.Equal(2, Directory.GetFiles(packDirectory, "*.mkv").Length);
+        Assert.False(Directory.Exists(Path.Combine(seriesRootPath, "Duplicate Pack (2026)")));
+        Assert.DoesNotContain((await repository.GetInventoryDetailAsync(series.Id, CancellationToken.None))!.Episodes, episode => episode.HasFile);
+    }
+
+    [Theory]
+    [InlineData("copy")]
+    [InlineData("move")]
+    public async Task Tv_pack_catalogue_failure_rolls_back_every_destination_and_keeps_every_source(string transferMode)
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-04-29T08:00:00Z"));
+        await InitializeAllAsync(storage, timeProvider);
+        var downloadsPath = Path.Combine(storage.DataRoot, "downloads");
+        var movieRootPath = Path.Combine(storage.DataRoot, "movies");
+        var seriesRootPath = Path.Combine(storage.DataRoot, "series");
+        Directory.CreateDirectory(downloadsPath);
+        Directory.CreateDirectory(movieRootPath);
+        Directory.CreateDirectory(seriesRootPath);
+        var platform = CreatePlatformRepository(storage, timeProvider);
+        var libraries = CreateLibrariesRepository(storage, timeProvider);
+        await SaveSettingsAsync(platform, movieRootPath, downloadsPath, seriesRootPath);
+        await CreateTvLibraryAsync(libraries, seriesRootPath, downloadsPath);
+        var repository = new SqliteSeriesCatalogRepository(storage.Factory, timeProvider);
+        var series = await repository.AddAsync(new CreateSeriesRequest("Rollback Pack", 2026, null), CancellationToken.None);
+        await repository.SyncEpisodeCatalogueAsync(
+            series.Id,
+            [
+                new CatalogueEpisodeItem(1, 1, "One", null, timeProvider.GetUtcNow().AddDays(-2)),
+                new CatalogueEpisodeItem(1, 2, "Two", null, timeProvider.GetUtcNow().AddDays(-1))
+            ],
+            "provider",
+            CancellationToken.None);
+        var packDirectory = Path.Combine(downloadsPath, "Rollback.Pack.S01");
+        Directory.CreateDirectory(packDirectory);
+        foreach (var episode in new[] { 1, 2 })
+        {
+            var source = Path.Combine(packDirectory, $"Rollback.Pack.S01E{episode:D2}.mkv");
+            await File.WriteAllBytesAsync(source, Enumerable.Repeat((byte)(0x60 + episode), 4096).ToArray());
+            File.SetLastWriteTimeUtc(source, DateTime.UtcNow.AddMinutes(-1));
+        }
+        var service = CreateService(storage, timeProvider, platform, libraries, new SqliteMovieCatalogRepository(storage.Factory, timeProvider));
+        var request = new ImportExecuteRequest(
+            new ImportPreviewRequest(
+                packDirectory, null, "tv", series.Title, series.StartYear, [], [], null, null,
+                SeriesId: series.Id, SeriesType: SeriesTypes.Standard, NumberingScheme: SeriesNumberingSchemes.Standard),
+            transferMode, false, true);
+        var preview = await service.PreviewAsync(request.Preview, CancellationToken.None);
+        Assert.True(preview.Pack!.CanExecute, string.Join(" | ", preview.Pack.BlockReasons));
+
+        await using (var connection = await storage.Factory.OpenConnectionAsync(DelunoDatabaseNames.Series, CancellationToken.None))
+        await using (var trigger = connection.CreateCommand())
+        {
+            trigger.CommandText =
+                "CREATE TRIGGER fail_pack_catalogue BEFORE UPDATE OF has_file ON episode_entries BEGIN SELECT RAISE(ABORT, 'injected pack catalogue failure'); END;";
+            await trigger.ExecuteNonQueryAsync(CancellationToken.None);
+        }
+
+        var result = await service.ExecuteAsync(request, CancellationToken.None);
+        Assert.False(result.Succeeded);
+        Assert.Equal(500, result.StatusCode);
+        Assert.Contains("rolled back", result.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(2, Directory.GetFiles(packDirectory, "*.mkv").Length);
+        var placedFolder = Path.Combine(seriesRootPath, "Rollback Pack (2026)");
+        Assert.Empty(Directory.Exists(placedFolder) ? Directory.GetFiles(placedFolder, "*.mkv") : []);
+        Assert.DoesNotContain((await repository.GetInventoryDetailAsync(series.Id, CancellationToken.None))!.Episodes, episode => episode.HasFile);
+        var recovery = await repository.GetImportRecoverySummaryAsync(CancellationToken.None);
+        Assert.Contains(recovery.RecentCases, item => item.Summary.Contains("rolled back", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public async Task Tv_pack_replacement_requires_exact_episode_ownership_and_converges_idempotently()
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-04-29T08:00:00Z"));
+        await InitializeAllAsync(storage, timeProvider);
+        var downloadsPath = Path.Combine(storage.DataRoot, "downloads");
+        var movieRootPath = Path.Combine(storage.DataRoot, "movies");
+        var seriesRootPath = Path.Combine(storage.DataRoot, "series");
+        Directory.CreateDirectory(downloadsPath);
+        Directory.CreateDirectory(movieRootPath);
+        Directory.CreateDirectory(seriesRootPath);
+        var platform = CreatePlatformRepository(storage, timeProvider);
+        var libraries = CreateLibrariesRepository(storage, timeProvider);
+        await SaveSettingsAsync(platform, movieRootPath, downloadsPath, seriesRootPath);
+        await CreateTvLibraryAsync(libraries, seriesRootPath, downloadsPath);
+        var repository = new SqliteSeriesCatalogRepository(storage.Factory, timeProvider);
+        var series = await repository.AddAsync(new CreateSeriesRequest("Replace Pack", 2026, null), CancellationToken.None);
+        await repository.SyncEpisodeCatalogueAsync(
+            series.Id,
+            [
+                new CatalogueEpisodeItem(1, 1, "One", null, timeProvider.GetUtcNow().AddDays(-2)),
+                new CatalogueEpisodeItem(1, 2, "Two", null, timeProvider.GetUtcNow().AddDays(-1))
+            ],
+            "provider",
+            CancellationToken.None);
+        var service = CreateService(storage, timeProvider, platform, libraries, new SqliteMovieCatalogRepository(storage.Factory, timeProvider));
+
+        var oldDirectory = Path.Combine(downloadsPath, "old", "Replace.Pack.S01");
+        Directory.CreateDirectory(oldDirectory);
+        foreach (var episode in new[] { 1, 2 })
+        {
+            var source = Path.Combine(oldDirectory, $"Replace.Pack.S01E{episode:D2}.mkv");
+            await File.WriteAllBytesAsync(source, Enumerable.Repeat((byte)(0x20 + episode), 4096).ToArray());
+            File.SetLastWriteTimeUtc(source, DateTime.UtcNow.AddMinutes(-1));
+        }
+        var oldRequest = new ImportExecuteRequest(
+            new ImportPreviewRequest(
+                oldDirectory, null, "tv", series.Title, series.StartYear, [], [], null, null,
+                SeriesId: series.Id, SeriesType: SeriesTypes.Standard, NumberingScheme: SeriesNumberingSchemes.Standard),
+            "copy", false, true);
+        Assert.True((await service.ExecuteAsync(oldRequest, CancellationToken.None)).Succeeded);
+
+        var installed = (await repository.GetInventoryDetailAsync(series.Id, CancellationToken.None))!.Episodes
+            .OrderBy(episode => episode.EpisodeNumber)
+            .ToArray();
+        var targets = new List<DispatchReplacementTarget>();
+        foreach (var episode in installed)
+        {
+            targets.Add(new DispatchReplacementTarget(
+                episode.EpisodeId,
+                (await repository.GetEpisodeFilePathAsync(episode.EpisodeId, CancellationToken.None))!));
+        }
+        var oldBytesByPath = targets.Select(target => target.ExpectedPath)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(path => path, path => File.ReadAllBytes(path), StringComparer.OrdinalIgnoreCase);
+
+        var newDirectory = Path.Combine(downloadsPath, "new", "Replace.Pack.S01");
+        Directory.CreateDirectory(newDirectory);
+        foreach (var episode in new[] { 1, 2 })
+        {
+            var source = Path.Combine(newDirectory, $"Replace.Pack.S01E{episode:D2}.mkv");
+            await File.WriteAllBytesAsync(source, Enumerable.Repeat((byte)(0x70 + episode), 4096).ToArray());
+            File.SetLastWriteTimeUtc(source, DateTime.UtcNow.AddMinutes(-1));
+        }
+        var replacementRequest = oldRequest with
+        {
+            Preview = oldRequest.Preview with { SourcePath = newDirectory },
+            Overwrite = true,
+            ForceReplacement = true,
+            DispatchId = "season-dispatch-1",
+            ReplacementTargets = targets
+        };
+
+        var wrongTargets = targets
+            .Select((target, index) => index == 0
+                ? target with { ExpectedPath = target.ExpectedPath + ".wrong" }
+                : target)
+            .ToArray();
+        var rejected = await service.ExecuteAsync(
+            replacementRequest with { ReplacementTargets = wrongTargets },
+            CancellationToken.None);
+        Assert.False(rejected.Succeeded);
+        Assert.Equal(409, rejected.StatusCode);
+        Assert.All(oldBytesByPath, item => Assert.Equal(item.Value, File.ReadAllBytes(item.Key)));
+
+        var replaced = await service.ExecuteAsync(replacementRequest, CancellationToken.None);
+        Assert.True(replaced.Succeeded, replaced.Message);
+        Assert.Equal(2, replaced.Response!.PackFiles!.Count);
+        foreach (var file in replaced.Response.PackFiles)
+        {
+            Assert.Equal(await File.ReadAllBytesAsync(file.SourcePath), await File.ReadAllBytesAsync(file.DestinationPath));
+        }
+        Assert.Empty(Directory.EnumerateFiles(seriesRootPath, "*.deluno-pack-backup*", SearchOption.AllDirectories));
+
+        var retry = await service.ExecuteAsync(replacementRequest, CancellationToken.None);
+        Assert.True(retry.Succeeded, retry.Message);
+        Assert.Equal("already-committed", retry.Response!.TransferModeUsed);
+        Assert.Equal(2, (await repository.GetInventoryDetailAsync(series.Id, CancellationToken.None))!.Episodes.Count(episode => episode.HasFile));
+    }
+
+    [Fact]
+    public async Task Tv_pack_replacement_catalogue_failure_restores_every_owned_file_and_source()
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-04-29T08:00:00Z"));
+        await InitializeAllAsync(storage, timeProvider);
+        var downloadsPath = Path.Combine(storage.DataRoot, "downloads");
+        var movieRootPath = Path.Combine(storage.DataRoot, "movies");
+        var seriesRootPath = Path.Combine(storage.DataRoot, "series");
+        Directory.CreateDirectory(downloadsPath);
+        Directory.CreateDirectory(movieRootPath);
+        Directory.CreateDirectory(seriesRootPath);
+        var platform = CreatePlatformRepository(storage, timeProvider);
+        var libraries = CreateLibrariesRepository(storage, timeProvider);
+        await SaveSettingsAsync(platform, movieRootPath, downloadsPath, seriesRootPath);
+        await CreateTvLibraryAsync(libraries, seriesRootPath, downloadsPath);
+        var repository = new SqliteSeriesCatalogRepository(storage.Factory, timeProvider);
+        var series = await repository.AddAsync(new CreateSeriesRequest("Restore Pack", 2026, null), CancellationToken.None);
+        await repository.SyncEpisodeCatalogueAsync(
+            series.Id,
+            [
+                new CatalogueEpisodeItem(1, 1, "One", null, timeProvider.GetUtcNow().AddDays(-2)),
+                new CatalogueEpisodeItem(1, 2, "Two", null, timeProvider.GetUtcNow().AddDays(-1))
+            ],
+            "provider",
+            CancellationToken.None);
+        var service = CreateService(storage, timeProvider, platform, libraries, new SqliteMovieCatalogRepository(storage.Factory, timeProvider));
+
+        var oldDirectory = Path.Combine(downloadsPath, "old", "Restore.Pack.S01");
+        Directory.CreateDirectory(oldDirectory);
+        foreach (var episode in new[] { 1, 2 })
+        {
+            var source = Path.Combine(oldDirectory, $"Restore.Pack.S01E{episode:D2}.mkv");
+            await File.WriteAllBytesAsync(source, Enumerable.Repeat((byte)(0x30 + episode), 4096).ToArray());
+            File.SetLastWriteTimeUtc(source, DateTime.UtcNow.AddMinutes(-1));
+        }
+        var baseRequest = new ImportExecuteRequest(
+            new ImportPreviewRequest(
+                oldDirectory, null, "tv", series.Title, series.StartYear, [], [], null, null,
+                SeriesId: series.Id, SeriesType: SeriesTypes.Standard, NumberingScheme: SeriesNumberingSchemes.Standard),
+            "copy", false, true);
+        Assert.True((await service.ExecuteAsync(baseRequest, CancellationToken.None)).Succeeded);
+
+        var targets = new List<DispatchReplacementTarget>();
+        foreach (var episode in (await repository.GetInventoryDetailAsync(series.Id, CancellationToken.None))!.Episodes)
+        {
+            targets.Add(new DispatchReplacementTarget(
+                episode.EpisodeId,
+                (await repository.GetEpisodeFilePathAsync(episode.EpisodeId, CancellationToken.None))!));
+        }
+        var originalBytes = targets.Select(target => target.ExpectedPath)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(path => path, path => File.ReadAllBytes(path), StringComparer.OrdinalIgnoreCase);
+        var newDirectory = Path.Combine(downloadsPath, "new", "Restore.Pack.S01");
+        Directory.CreateDirectory(newDirectory);
+        foreach (var episode in new[] { 1, 2 })
+        {
+            var source = Path.Combine(newDirectory, $"Restore.Pack.S01E{episode:D2}.mkv");
+            await File.WriteAllBytesAsync(source, Enumerable.Repeat((byte)(0x60 + episode), 4096).ToArray());
+            File.SetLastWriteTimeUtc(source, DateTime.UtcNow.AddMinutes(-1));
+        }
+        await using (var connection = await storage.Factory.OpenConnectionAsync(DelunoDatabaseNames.Series, CancellationToken.None))
+        await using (var trigger = connection.CreateCommand())
+        {
+            trigger.CommandText =
+                "CREATE TRIGGER fail_pack_replacement BEFORE UPDATE OF has_file ON episode_entries BEGIN SELECT RAISE(ABORT, 'injected replacement catalogue failure'); END;";
+            await trigger.ExecuteNonQueryAsync(CancellationToken.None);
+        }
+
+        var result = await service.ExecuteAsync(
+            baseRequest with
+            {
+                Preview = baseRequest.Preview with { SourcePath = newDirectory },
+                Overwrite = true,
+                ForceReplacement = true,
+                DispatchId = "season-dispatch-rollback",
+                ReplacementTargets = targets
+            },
+            CancellationToken.None);
+
+        Assert.False(result.Succeeded);
+        Assert.Equal(500, result.StatusCode);
+        Assert.Contains("rolled back", result.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.All(originalBytes, item => Assert.Equal(item.Value, File.ReadAllBytes(item.Key)));
+        Assert.Equal(2, Directory.GetFiles(newDirectory, "*.mkv").Length);
+        Assert.Empty(Directory.EnumerateFiles(seriesRootPath, "*.deluno-pack-backup*", SearchOption.AllDirectories));
+        Assert.All(targets, target => Assert.Equal(target.ExpectedPath, repository.GetEpisodeFilePathAsync(target.EntityId, CancellationToken.None).GetAwaiter().GetResult()));
+    }
+
+    [Fact]
+    public async Task Automated_replacement_cannot_overwrite_a_destination_the_title_did_not_own()
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.UtcNow);
+        await InitializeAllAsync(storage, timeProvider);
+
+        var downloadsPath = Path.Combine(storage.DataRoot, "downloads");
+        var movieRootPath = Path.Combine(storage.DataRoot, "movies");
+        Directory.CreateDirectory(downloadsPath);
+        Directory.CreateDirectory(movieRootPath);
+        var sourcePath = Path.Combine(downloadsPath, "Sintel.2010.WEB.1080p.mkv");
+        var incoming = Enumerable.Range(0, 4096).Select(value => (byte)(value % 251)).ToArray();
+        await File.WriteAllBytesAsync(sourcePath, incoming);
+        File.SetLastWriteTimeUtc(sourcePath, DateTime.UtcNow.AddMinutes(-1));
+
+        var platform = CreatePlatformRepository(storage, timeProvider);
+        var libraries = CreateLibrariesRepository(storage, timeProvider);
+        await SaveSettingsAsync(platform, movieRootPath, downloadsPath);
+        await CreateMovieLibraryAsync(libraries, movieRootPath, downloadsPath);
+        var movies = new SqliteMovieCatalogRepository(storage.Factory, timeProvider);
+        var service = CreateService(storage, timeProvider, platform, libraries, movies);
+        var previewRequest = new ImportPreviewRequest(
+            SourcePath: sourcePath,
+            FileName: null,
+            MediaType: "movies",
+            Title: "Sintel",
+            Year: 2010,
+            Genres: [],
+            Tags: [],
+            Studio: null,
+            OriginalLanguage: null);
+        var preview = await service.PreviewAsync(previewRequest, CancellationToken.None);
+        Directory.CreateDirectory(Path.GetDirectoryName(preview.DestinationPath)!);
+        var existing = Enumerable.Repeat((byte)0xA5, 4096).ToArray();
+        await File.WriteAllBytesAsync(preview.DestinationPath, existing);
+
+        var result = await service.ExecuteAsync(
+            new ImportExecuteRequest(
+                Preview: previewRequest,
+                TransferMode: "copy",
+                Overwrite: true,
+                AllowCopyFallback: true,
+                ForceReplacement: true,
+                DispatchId: "dispatch-1",
+                ExpectedExistingPath: Path.Combine(movieRootPath, "Some Other Title", "Some Other Title.mkv")),
+            CancellationToken.None);
+
+        Assert.False(result.Succeeded);
+        Assert.Equal(409, result.StatusCode);
+        Assert.Contains("not the file this title owned", result.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(existing, await File.ReadAllBytesAsync(preview.DestinationPath));
+        Assert.True(File.Exists(sourcePath));
+
+        var ownedReplacement = await service.ExecuteAsync(
+            new ImportExecuteRequest(
+                Preview: previewRequest,
+                TransferMode: "copy",
+                Overwrite: true,
+                AllowCopyFallback: true,
+                ForceReplacement: true,
+                DispatchId: "dispatch-2",
+                ExpectedExistingPath: preview.DestinationPath),
+            CancellationToken.None);
+
+        Assert.True(ownedReplacement.Succeeded, ownedReplacement.Message);
+        Assert.Equal(incoming, await File.ReadAllBytesAsync(preview.DestinationPath));
+    }
+
     private static async Task InitializeAllAsync(TestStorage storage, TimeProvider timeProvider)
     {
         var migrator = new SqliteDatabaseMigrator(storage.Factory, timeProvider);
@@ -775,12 +1532,14 @@ public sealed class ImportPipelineServiceTests
         SqlitePlatformSettingsRepository platform,
         ILibrariesRepository librariesRepository,
         SqliteMovieCatalogRepository movies,
-        IMediaProbeService? mediaProbeService = null)
+        IMediaProbeService? mediaProbeService = null,
+        ISeriesCatalogRepository? seriesCatalogRepository = null,
+        IQualityRepository? qualityRepository = null)
         => new(
             platform,
             librariesRepository,
             movies,
-            new SqliteSeriesCatalogRepository(storage.Factory, timeProvider),
+            seriesCatalogRepository ?? new SqliteSeriesCatalogRepository(storage.Factory, timeProvider),
             new SqliteJobStore(storage.Factory, timeProvider, new NullRealtimeEventPublisher(), new NullDownloadDispatchesRepository()),
             mediaProbeService ?? new SuccessfulProbeService(),
             new MediaDecisionService(new VersionedMediaPolicyEngine()),
@@ -789,7 +1548,9 @@ public sealed class ImportPipelineServiceTests
             null,
             null,
             NullLogger<ImportPipelineService>.Instance,
-            null);
+            null,
+            null,
+            qualityRepository);
 
     private static FilesystemReconciliationService CreateReconciliationService(
         TestStorage storage,
@@ -833,16 +1594,44 @@ public sealed class ImportPipelineServiceTests
         await librariesRepository.CreateLibraryAsync(request, CancellationToken.None);
     }
 
+    private static Task<LibraryItem> CreateTvLibraryAsync(
+        ILibrariesRepository librariesRepository,
+        string seriesRootPath,
+        string downloadsPath,
+        string? qualityProfileId = null)
+        => librariesRepository.CreateLibraryAsync(
+            new CreateLibraryRequest(
+                Name: "TV",
+                MediaType: "tv",
+                Purpose: "Main",
+                RootPath: seriesRootPath,
+                DownloadsPath: downloadsPath,
+                QualityProfileId: qualityProfileId,
+                ImportWorkflow: "standard",
+                ProcessorName: null,
+                ProcessorOutputPath: null,
+                ProcessorTimeoutMinutes: null,
+                ProcessorFailureMode: null,
+                AutoSearchEnabled: true,
+                MissingSearchEnabled: true,
+                UpgradeSearchEnabled: true,
+                SearchIntervalHours: 6,
+                RetryDelayHours: 24,
+                MaxItemsPerRun: 25),
+            CancellationToken.None);
+
     private static async Task SaveSettingsAsync(
         SqlitePlatformSettingsRepository platform,
         string movieRootPath,
-        string downloadsPath)
+        string downloadsPath,
+        string? seriesRootPath = null,
+        string episodeFileFormat = "{Series Title} - S{season:00}E{episode:00} - {Episode Title}")
     {
         await platform.SaveAsync(
             new UpdatePlatformSettingsRequest(
                 AppInstanceName: "Deluno",
                 MovieRootPath: movieRootPath,
-                SeriesRootPath: null,
+                SeriesRootPath: seriesRootPath,
                 DownloadsPath: downloadsPath,
                 IncompleteDownloadsPath: null,
                 AutoStartJobs: false,
@@ -854,7 +1643,7 @@ public sealed class ImportPipelineServiceTests
                 UnmonitorWhenCutoffMet: false,
                 MovieFolderFormat: "{Movie Title} ({Release Year})",
                 SeriesFolderFormat: "{Series Title} ({Series Year})",
-                EpisodeFileFormat: "{Series Title} - S{season:00}E{episode:00} - {Episode Title}",
+                EpisodeFileFormat: episodeFileFormat,
                 HostBindAddress: null,
                 HostPort: 5099,
                 UrlBase: null,

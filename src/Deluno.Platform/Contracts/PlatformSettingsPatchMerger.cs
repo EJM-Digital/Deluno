@@ -54,5 +54,14 @@ public static class PlatformSettingsPatchMerger
             SharingForHours: patch.SharingMode is null ? current.SharingForHours : patch.SharingForHours,
             SharingUntilRatio: patch.SharingMode is null ? current.SharingUntilRatio : patch.SharingUntilRatio,
             SharingStuckAction: patch.SharingStuckAction ?? current.SharingStuckAction,
-            SharingStuckAfterDays: patch.SharingStuckAfterDays ?? current.SharingStuckAfterDays);
+            SharingStuckAfterDays: patch.SharingStuckAfterDays ?? current.SharingStuckAfterDays,
+            UiColorMode: patch.UiColorMode ?? current.UiColorMode,
+            UiLanguage: patch.UiLanguage ?? current.UiLanguage,
+            CalendarFirstDayOfWeek: patch.CalendarFirstDayOfWeek ?? current.CalendarFirstDayOfWeek,
+            CalendarWeekHeaderFormat: patch.CalendarWeekHeaderFormat ?? current.CalendarWeekHeaderFormat,
+            RuntimeFormat: patch.RuntimeFormat ?? current.RuntimeFormat,
+            ShortDateFormat: patch.ShortDateFormat ?? current.ShortDateFormat,
+            LongDateFormat: patch.LongDateFormat ?? current.LongDateFormat,
+            TimeFormat: patch.TimeFormat ?? current.TimeFormat,
+            ShowRelativeDates: patch.ShowRelativeDates ?? current.ShowRelativeDates);
 }

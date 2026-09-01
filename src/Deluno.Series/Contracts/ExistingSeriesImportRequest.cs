@@ -1,3 +1,5 @@
+using Deluno.Quality.ReleasePreferences;
+
 namespace Deluno.Series.Contracts;
 
 /// <summary>
@@ -20,4 +22,8 @@ public sealed record ExistingSeriesImportRequest(
     bool UnmonitorWhenCutoffMet,
     string? FilePath,
     long? FileSizeBytes,
-    IReadOnlyList<ImportedEpisodeItem>? Episodes);
+    IReadOnlyList<ImportedEpisodeItem>? Episodes,
+    PreferenceEvaluationSnapshot? PreferenceEvaluation = null,
+    IReadOnlyList<ImportedEpisodeNumberingItem>? AlternateEpisodes = null,
+    IReadOnlyList<ImportedSeasonPackItem>? SeasonPacks = null,
+    IReadOnlyList<PreferenceEvaluationSnapshot>? PreferenceEvaluations = null);

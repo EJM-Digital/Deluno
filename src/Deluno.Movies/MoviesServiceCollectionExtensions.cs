@@ -17,6 +17,7 @@ public static class MoviesServiceCollectionExtensions
     public static IServiceCollection AddDelunoMoviesModule(this IServiceCollection services)
     {
         services.TryAddSingleton<IMediaStateRepository, SqliteMediaStateRepository>();
+        services.TryAddSingleton<IMediaTagStore, SqliteMediaTagStore>();
 
         // Registered beside the state it repairs. It is the other half of
         // WantedStatuses.Downloading: without it a failed dispatch leaves a
@@ -25,6 +26,7 @@ public static class MoviesServiceCollectionExtensions
         services.TryAddSingleton<IDownloadStateReconciler, DownloadStateReconciler>();
         services.TryAddSingleton<IMediaSubtitleRepository, SqliteMediaSubtitleRepository>();
         services.AddSingleton<IMovieCatalogRepository, SqliteMovieCatalogRepository>();
+        services.AddSingleton<IMovieCollectionsRepository, SqliteMovieCollectionsRepository>();
         // The quality ladder has to reach this catalogue's own database for a
         // shelf to be sortable by quality; the model service pushes it here on
         // save. Resolved from the repository so there is one connection, one
@@ -32,9 +34,11 @@ public static class MoviesServiceCollectionExtensions
         services.AddSingleton<IQualityRankSink>(provider => provider.GetRequiredService<IMovieCatalogRepository>());
         services.AddSingleton<IMovieImportRecoveryRetentionRepository>(provider => provider.GetRequiredService<IMovieCatalogRepository>());
         services.AddSingleton<IMovieWorkflowService, MovieWorkflowService>();
+        services.AddScoped<IMovieCollectionService, MovieCollectionService>();
         services.AddSingleton<IDispatchRecoveryHandlerComponent, MovieDispatchRecoveryHandler>();
         services.AddSingleton<IMigrationCatalogImporter, MovieMigrationCatalogImporter>();
         services.AddHostedService<MoviesSchemaInitializer>();
+        services.AddHostedService<CollectionExclusionMigrationHostedService>();
         return services;
     }
 }

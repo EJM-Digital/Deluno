@@ -6,6 +6,10 @@ using Deluno.Libraries.Data;
 using Deluno.Movies.Contracts;
 using Deluno.Movies.Data;
 using Deluno.Quality;
+using Deluno.Quality.Contracts;
+using Deluno.Quality.Data;
+using Deluno.Quality.Guides;
+using Deluno.Quality.ReleasePreferences;
 using Deluno.Series.Contracts;
 using Deluno.Series.Data;
 using Microsoft.Extensions.Logging;
@@ -50,7 +54,10 @@ public sealed class ExistingLibraryImportService(
     IQualityModelService qualityModelService,
     TimeProvider timeProvider,
     ILogger<ExistingLibraryImportService> logger,
-    LibraryImportSliceOptions? sliceOptions = null)
+    LibraryImportSliceOptions? sliceOptions = null,
+    IQualityRepository? qualityRepository = null,
+    IGuidePackageStore? guidePackageStore = null,
+    IReleasePreferencePlanRepository? releasePreferencePlanRepository = null)
     : IExistingLibraryImportService
 {
     private readonly LibraryImportSliceOptions _slice = sliceOptions ?? LibraryImportSliceOptions.Default;
@@ -62,8 +69,9 @@ public sealed class ExistingLibraryImportService(
 
     private static readonly Regex YearPattern = new(@"\b(19|20)\d{2}\b", RegexOptions.Compiled);
     private static readonly Regex EpisodePattern = new(@"^(?<title>.+?)[\s._-]+S\d{1,2}E\d{1,2}", RegexOptions.IgnoreCase | RegexOptions.Compiled);
-    private static readonly Regex EpisodeNumberPattern = new(@"S(?<season>\d{1,2})(?<episodes>(?:E\d{1,2})+)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
-    private static readonly Regex MultiEpisodeSegmentPattern = new(@"E(?<episode>\d{1,2})", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    private static readonly Regex SeasonPackTitlePattern = new(
+        @"(?<![A-Za-z0-9])(?:Season[.\s_-]+|S)\d{1,3}(?!E\d{1,3})(?![A-Za-z0-9])",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled);
     private static readonly Regex CleanupTokensPattern = new(
         @"(?<![A-Za-z0-9])(?:remux|blu[-\s]?ray|bdrip|brrip|web[-\s]?dl|webrip|web|hdtv|sdtv|dvd|dvdrip|proper|repack|internal|hdr|sdr|uhd|4k|x264|x265|h[-\s]?264|h[-\s]?265|hevc|avc|av1|xvid|divx|mpeg[-\s]?2|vp9|truehd|atmos|dts(?:[-\s]?(?:hd(?:[-\s]?ma)?|x))?|e[-\s]?ac[-\s]?3|ddp|dd\+|eac3|ac[-\s]?3|dd|flac|opus|aac|mp3|[1-9][\s-][0-2]|480p|720p|1080p|2160p)(?![A-Za-z0-9])",
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
@@ -299,17 +307,20 @@ public sealed class ExistingLibraryImportService(
         // of twenty thousand files would otherwise ask the settings database
         // twenty thousand times for an answer that does not change.
         var model = await qualityModelService.GetAsync(cancellationToken);
+        var (preferenceProfile, customFormats) = await ResolvePreferenceInputsAsync(library, cancellationToken);
+        var preferencePlan = await ResolvePreferencePlanAsync(preferenceProfile, cancellationToken);
+        var guidePackage = preferencePlan is null ? await GetGuidePackageAsync(cancellationToken) : null;
 
         try
         {
             return isMovies
                 ? await movieCatalogRepository.ImportExistingBatchAsync(
                     library.Id,
-                    batch.Select(item => ToMovieRequest(library, item, model)).ToArray(),
+                    batch.Select(item => ToMovieRequest(library, item, model, preferenceProfile, customFormats, guidePackage, preferencePlan)).ToArray(),
                     cancellationToken)
                 : await seriesCatalogRepository.ImportExistingBatchAsync(
                     library.Id,
-                    batch.Select(item => ToSeriesRequest(library, item, model)).ToArray(),
+                    batch.Select(item => ToSeriesRequest(library, item, model, preferenceProfile, customFormats, guidePackage, preferencePlan)).ToArray(),
                     cancellationToken);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
@@ -320,8 +331,8 @@ public sealed class ExistingLibraryImportService(
                 try
                 {
                     imported += isMovies
-                        ? await movieCatalogRepository.ImportExistingBatchAsync(library.Id, [ToMovieRequest(library, item, model)], cancellationToken)
-                        : await seriesCatalogRepository.ImportExistingBatchAsync(library.Id, [ToSeriesRequest(library, item, model)], cancellationToken);
+                        ? await movieCatalogRepository.ImportExistingBatchAsync(library.Id, [ToMovieRequest(library, item, model, preferenceProfile, customFormats, guidePackage, preferencePlan)], cancellationToken)
+                        : await seriesCatalogRepository.ImportExistingBatchAsync(library.Id, [ToSeriesRequest(library, item, model, preferenceProfile, customFormats, guidePackage, preferencePlan)], cancellationToken);
                 }
                 catch (Exception itemException) when (itemException is not OperationCanceledException)
                 {
@@ -546,17 +557,20 @@ public sealed class ExistingLibraryImportService(
         // of twenty thousand files would otherwise ask the settings database
         // twenty thousand times for an answer that does not change.
         var model = await qualityModelService.GetAsync(cancellationToken);
+        var (preferenceProfile, customFormats) = await ResolvePreferenceInputsAsync(library, cancellationToken);
+        var preferencePlan = await ResolvePreferencePlanAsync(preferenceProfile, cancellationToken);
+        var guidePackage = preferencePlan is null ? await GetGuidePackageAsync(cancellationToken) : null;
 
         try
         {
             created = isMovies
                 ? await movieCatalogRepository.ImportExistingBatchAsync(
                     library.Id,
-                    pending.Select(item => ToMovieRequest(library, item.Item, model)).ToArray(),
+                    pending.Select(item => ToMovieRequest(library, item.Item, model, preferenceProfile, customFormats, guidePackage, preferencePlan)).ToArray(),
                     cancellationToken)
                 : await seriesCatalogRepository.ImportExistingBatchAsync(
                     library.Id,
-                    pending.Select(item => ToSeriesRequest(library, item.Item, model)).ToArray(),
+                    pending.Select(item => ToSeriesRequest(library, item.Item, model, preferenceProfile, customFormats, guidePackage, preferencePlan)).ToArray(),
                     cancellationToken);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
@@ -564,7 +578,7 @@ public sealed class ExistingLibraryImportService(
             // One bad title must not cost the other 249 in the batch, and must
             // not stop the run. Retry the batch one at a time so the failure is
             // attributed to the title that actually caused it.
-            created = await FlushIndividuallyAsync(run, library, isMovies, pending, progress, cancellationToken);
+            created = await FlushIndividuallyAsync(run, library, isMovies, pending, progress, guidePackage, preferencePlan, cancellationToken);
         }
 
         progress.Imported += created;
@@ -582,23 +596,26 @@ public sealed class ExistingLibraryImportService(
         bool isMovies,
         List<PendingImport> pending,
         SliceProgress progress,
+        GuidePackage? guidePackage,
+        ReleasePreferencePlan? preferencePlan,
         CancellationToken cancellationToken)
     {
         var created = 0;
         var model = await qualityModelService.GetAsync(cancellationToken);
+        var (preferenceProfile, customFormats) = await ResolvePreferenceInputsAsync(library, cancellationToken);
 
         foreach (var item in pending)
         {
             try
             {
-                created += isMovies
-                    ? await movieCatalogRepository.ImportExistingBatchAsync(
-                        library.Id,
-                        [ToMovieRequest(library, item.Item, model)],
+                    created += isMovies
+                        ? await movieCatalogRepository.ImportExistingBatchAsync(
+                            library.Id,
+                        [ToMovieRequest(library, item.Item, model, preferenceProfile, customFormats, guidePackage, preferencePlan)],
                         cancellationToken)
-                    : await seriesCatalogRepository.ImportExistingBatchAsync(
-                        library.Id,
-                        [ToSeriesRequest(library, item.Item, model)],
+                        : await seriesCatalogRepository.ImportExistingBatchAsync(
+                            library.Id,
+                        [ToSeriesRequest(library, item.Item, model, preferenceProfile, customFormats, guidePackage, preferencePlan)],
                         cancellationToken);
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
@@ -636,9 +653,30 @@ public sealed class ExistingLibraryImportService(
         => (await librariesRepository.ListLibrariesAsync(cancellationToken))
             .FirstOrDefault(item => string.Equals(item.Id, libraryId, StringComparison.OrdinalIgnoreCase));
 
-    private ExistingMovieImportRequest ToMovieRequest(LibraryItem library, DetectedLibraryItem item, QualityModelSnapshot model)
+    private ExistingMovieImportRequest ToMovieRequest(
+        LibraryItem library,
+        DetectedLibraryItem item,
+        QualityModelSnapshot model,
+        QualityProfileItem? preferenceProfile,
+        IReadOnlyList<CustomFormatItem>? customFormats,
+        GuidePackage? guidePackage,
+        ReleasePreferencePlan? preferencePlan)
     {
         var decision = Decide(library, item, model);
+        var preferenceEvaluation = preferenceProfile is null || item.FilePath is null
+            ? null
+            : InstalledPreferenceEvaluationFactory.Create(
+                preferenceProfile,
+                mediaId: string.Empty,
+                libraryId: library.Id,
+                filePath: item.FilePath,
+                fileSizeBytes: item.FileSizeBytes,
+                currentQuality: decision.CurrentQuality,
+                evaluatedUtc: timeProvider.GetUtcNow(),
+                source: "existing-library-import",
+                customFormats: customFormats,
+                guidePackage: guidePackage,
+                preferencePlan: preferencePlan);
 
         return new ExistingMovieImportRequest(
             Title: item.Title,
@@ -650,12 +688,34 @@ public sealed class ExistingLibraryImportService(
             QualityCutoffMet: decision.QualityCutoffMet,
             UnmonitorWhenCutoffMet: false,
             FilePath: item.FilePath,
-            FileSizeBytes: item.FileSizeBytes);
+            FileSizeBytes: item.FileSizeBytes,
+            PreferenceEvaluation: preferenceEvaluation);
     }
 
-    private ExistingSeriesImportRequest ToSeriesRequest(LibraryItem library, DetectedLibraryItem item, QualityModelSnapshot model)
+    private ExistingSeriesImportRequest ToSeriesRequest(
+        LibraryItem library,
+        DetectedLibraryItem item,
+        QualityModelSnapshot model,
+        QualityProfileItem? preferenceProfile,
+        IReadOnlyList<CustomFormatItem>? customFormats,
+        GuidePackage? guidePackage,
+        ReleasePreferencePlan? preferencePlan)
     {
         var decision = Decide(library, item, model);
+        var preferenceEvaluation = preferenceProfile is null || item.FilePath is null
+            ? null
+            : InstalledPreferenceEvaluationFactory.Create(
+                preferenceProfile,
+                mediaId: string.Empty,
+                libraryId: library.Id,
+                filePath: item.FilePath,
+                fileSizeBytes: item.FileSizeBytes,
+                currentQuality: decision.CurrentQuality,
+                evaluatedUtc: timeProvider.GetUtcNow(),
+                source: "existing-library-import",
+                customFormats: customFormats,
+                guidePackage: guidePackage,
+                preferencePlan: preferencePlan);
 
         return new ExistingSeriesImportRequest(
             Title: item.Title,
@@ -668,8 +728,69 @@ public sealed class ExistingLibraryImportService(
             UnmonitorWhenCutoffMet: false,
             FilePath: item.FilePath,
             FileSizeBytes: item.FileSizeBytes,
-            Episodes: item.Episodes);
+            Episodes: item.Episodes,
+            PreferenceEvaluation: preferenceEvaluation,
+            AlternateEpisodes: item.AlternateEpisodes,
+            SeasonPacks: item.SeasonPacks);
     }
+
+    private async Task<(QualityProfileItem? Profile, IReadOnlyList<CustomFormatItem>? CustomFormats)> ResolvePreferenceInputsAsync(
+        LibraryItem library,
+        CancellationToken cancellationToken)
+    {
+        if (qualityRepository is not null && !string.IsNullOrWhiteSpace(library.QualityProfileId))
+        {
+            var profiles = await qualityRepository.ListQualityProfilesAsync(cancellationToken);
+            var profile = profiles.FirstOrDefault(item =>
+                string.Equals(item.Id, library.QualityProfileId, StringComparison.OrdinalIgnoreCase));
+            if (profile is not null)
+            {
+                return (
+                    profile,
+                    await qualityRepository.ListCustomFormatsAsync(cancellationToken));
+            }
+        }
+
+        if (string.IsNullOrWhiteSpace(library.CutoffQuality))
+        {
+            return (null, null);
+        }
+
+        var now = timeProvider.GetUtcNow();
+        return (
+            new QualityProfileItem(
+                Id: $"library/{library.Id}",
+                Name: library.QualityProfileName ?? library.Name,
+                MediaType: library.MediaType,
+                CutoffQuality: library.CutoffQuality,
+                AllowedQualities: library.CutoffQuality,
+                CustomFormatIds: string.Empty,
+                UpgradeUntilCutoff: library.UpgradeUntilCutoff,
+                UpgradeUnknownItems: library.UpgradeUnknownItems,
+                AllowLowerQualityReplacements: false,
+                PresetId: null,
+                PresetVersion: null,
+                PresetDrifted: false,
+                CreatedUtc: library.CreatedUtc == default ? now : library.CreatedUtc,
+                UpdatedUtc: library.UpdatedUtc == default ? now : library.UpdatedUtc),
+            null);
+    }
+
+    private Task<ReleasePreferencePlan?> ResolvePreferencePlanAsync(
+        QualityProfileItem? profile,
+        CancellationToken cancellationToken)
+        => profile is null || qualityRepository is null
+            ? Task.FromResult<ReleasePreferencePlan?>(null)
+            : QualityProfileResolver.ResolveReleasePreferencePlanAsync(
+                qualityRepository,
+                releasePreferencePlanRepository,
+                profile.Id,
+                cancellationToken);
+
+    private async Task<GuidePackage?> GetGuidePackageAsync(CancellationToken cancellationToken)
+        => guidePackageStore is null
+            ? null
+            : (await guidePackageStore.GetCurrentAsync(cancellationToken)).Package;
 
     /// <summary>
     /// What an imported file is worth, judged on the file rather than its name.
@@ -794,7 +915,10 @@ public sealed class ExistingLibraryImportService(
         {
             var fileName = Path.GetFileNameWithoutExtension(entry);
             var match = EpisodePattern.Match(fileName);
-            if (!match.Success)
+            var fileEpisodes = DetectEpisodes([entry]);
+            var fileAlternateEpisodes = DetectAlternateEpisodes([entry]);
+            var fileHasSeasonPackLabel = SeriesNumberingResolver.ParseSeasonPackNumbers(entry).Count > 0;
+            if (!match.Success && fileEpisodes.Count == 0 && fileAlternateEpisodes.Count == 0)
             {
                 // A loose video file at the root of a TV library that carries no
                 // season/episode marker could be anything. Guessing at thousands
@@ -806,14 +930,22 @@ public sealed class ExistingLibraryImportService(
             }
 
             return new DetectionResult(
-                ParseTitle(match.Groups["title"].Value) with
+                ParseTitle(match.Success
+                    ? match.Groups["title"].Value
+                    : fileHasSeasonPackLabel ? RemoveSeasonPackMarker(fileName) : fileName) with
                 {
                     DetectedQuality = LibraryQualityDecider.DetectQuality(fileName),
                     FilePath = entry,
                     FileSizeBytes = GetFileSize(entry),
-                    Episodes = DetectEpisodes([entry])
+                    Episodes = fileEpisodes,
+                    AlternateEpisodes = fileAlternateEpisodes,
+                    SeasonPacks = []
                 },
-                null);
+                fileEpisodes.Count == 0 && fileAlternateEpisodes.Count > 0
+                    ? new DetectionIssue(
+                        "alternateEpisode",
+                        "The file uses alternate TV numbering. Deluno will import it only when that number resolves to one catalogued episode; unmatched or ambiguous numbers remain for review.")
+                    : null);
         }
 
         string[] videoFiles;
@@ -834,23 +966,31 @@ public sealed class ExistingLibraryImportService(
 
         var rawName = Path.GetFileName(entry);
         var episodes = DetectEpisodes(videoFiles);
-        var item = ParseTitle(rawName) with
+        var alternateEpisodes = DetectAlternateEpisodes(videoFiles);
+        var hasSeasonPackLabel = SeriesNumberingResolver.ParseSeasonPackNumbers(rawName).Count > 0;
+        var item = ParseTitle(hasSeasonPackLabel ? RemoveSeasonPackMarker(rawName) : rawName) with
         {
             DetectedQuality = videoFiles
                 .Select(file => LibraryQualityDecider.DetectQuality(Path.GetFileNameWithoutExtension(file)))
                 .FirstOrDefault(value => !string.IsNullOrWhiteSpace(value)),
             FilePath = videoFiles[0],
             FileSizeBytes = GetFileSize(videoFiles[0]),
-            Episodes = episodes
+            Episodes = episodes,
+            AlternateEpisodes = alternateEpisodes,
+            SeasonPacks = []
         };
 
         // The show is still imported — it exists, and the user can see it. What
         // is set aside is the claim to know which episodes are present.
-        var issue = episodes.Count == 0
+        var issue = episodes.Count == 0 && alternateEpisodes.Count == 0
             ? new DetectionIssue(
                 "ambiguousEpisode",
                 $"Found {videoFiles.Length} video file{(videoFiles.Length == 1 ? string.Empty : "s")} but no season or episode numbers in their names.")
-            : null;
+            : episodes.Count == 0 && alternateEpisodes.Count > 0
+                ? new DetectionIssue(
+                    "alternateEpisode",
+                    "The files use alternate TV numbering. Deluno will import only numbers that resolve to one catalogued episode; unmatched or ambiguous numbers remain for review.")
+                : null;
 
         return new DetectionResult(item, issue);
     }
@@ -907,6 +1047,14 @@ public sealed class ExistingLibraryImportService(
         return new DetectedLibraryItem(string.IsNullOrWhiteSpace(normalized) ? raw.Trim() : normalized, year);
     }
 
+    private static string RemoveSeasonPackMarker(string fileName)
+    {
+        var marker = SeasonPackTitlePattern.Match(fileName);
+        return marker.Success
+            ? fileName[..marker.Index].Trim('.', '_', '-', ' ')
+            : fileName;
+    }
+
     private IReadOnlyList<ImportedEpisodeItem> DetectEpisodes(IEnumerable<string> files)
         => files
             .SelectMany(ExtractEpisodes)
@@ -917,22 +1065,54 @@ public sealed class ExistingLibraryImportService(
 
     private IEnumerable<ImportedEpisodeItem> ExtractEpisodes(string filePath)
     {
-        var fileName = Path.GetFileNameWithoutExtension(filePath);
-        var match = EpisodeNumberPattern.Match(fileName);
-        if (!match.Success)
-        {
-            yield break;
-        }
-
-        var seasonNumber = int.Parse(match.Groups["season"].Value);
-        foreach (Match episodeMatch in MultiEpisodeSegmentPattern.Matches(match.Groups["episodes"].Value))
+        var parsed = SeriesNumberingResolver.ParseFileName(filePath, SeriesNumberingSchemes.Standard);
+        foreach (var episode in parsed.Matches.Where(item => item.SeasonNumber is not null && item.EpisodeNumber is not null))
         {
             yield return new ImportedEpisodeItem(
-                SeasonNumber: seasonNumber,
-                EpisodeNumber: int.Parse(episodeMatch.Groups["episode"].Value),
+                SeasonNumber: episode.SeasonNumber!.Value,
+                EpisodeNumber: episode.EpisodeNumber!.Value,
                 HasFile: true,
                 FilePath: filePath,
                 FileSizeBytes: GetFileSize(filePath));
+        }
+    }
+
+    private IReadOnlyList<ImportedEpisodeNumberingItem> DetectAlternateEpisodes(IEnumerable<string> files)
+        => files
+            .SelectMany(ExtractAlternateEpisodes)
+            .Distinct()
+            .ToArray();
+
+    private IEnumerable<ImportedEpisodeNumberingItem> ExtractAlternateEpisodes(string filePath)
+    {
+        foreach (var scheme in new[]
+        {
+            SeriesNumberingSchemes.AirDate,
+            SeriesNumberingSchemes.Absolute,
+            SeriesNumberingSchemes.Scene
+        })
+        {
+            var parsed = SeriesNumberingResolver.ParseFileName(filePath, scheme);
+            foreach (var episode in parsed.Matches)
+            {
+                if (scheme == SeriesNumberingSchemes.Scene &&
+                    (episode.SceneSeasonNumber is null || episode.SceneEpisodeNumber is null))
+                {
+                    continue;
+                }
+
+                yield return new ImportedEpisodeNumberingItem(
+                    NumberingScheme: episode.NumberingScheme,
+                    SeasonNumber: episode.SeasonNumber,
+                    EpisodeNumber: episode.EpisodeNumber,
+                    AbsoluteNumber: episode.AbsoluteNumber,
+                    SceneSeasonNumber: episode.SceneSeasonNumber,
+                    SceneEpisodeNumber: episode.SceneEpisodeNumber,
+                    AirDate: episode.AirDate,
+                    HasFile: true,
+                    FilePath: filePath,
+                    FileSizeBytes: GetFileSize(filePath));
+            }
         }
     }
 
@@ -942,7 +1122,9 @@ public sealed class ExistingLibraryImportService(
         string? DetectedQuality = null,
         string? FilePath = null,
         long? FileSizeBytes = null,
-        IReadOnlyList<ImportedEpisodeItem>? Episodes = null);
+        IReadOnlyList<ImportedEpisodeItem>? Episodes = null,
+        IReadOnlyList<ImportedEpisodeNumberingItem>? AlternateEpisodes = null,
+        IReadOnlyList<ImportedSeasonPackItem>? SeasonPacks = null);
 
     private sealed record DetectionResult(DetectedLibraryItem? Item, DetectionIssue? Issue);
 

@@ -74,6 +74,80 @@ h1 a:hover { color: var(--fg); border-color: hsl(211 100% 50% / .5); }
 .banner.warn { border-color: hsl(28 90% 50% / .45); background: hsl(28 90% 50% / .1); }
 .banner.ok   { border-color: hsl(150 70% 45% / .4); background: hsl(150 70% 45% / .1); }
 
+.artwork-source { margin: 14px 0 0; padding: 13px 14px 14px; border: 1px solid var(--line);
+                  border-radius: 9px; background: var(--card); }
+.artwork-head { display: flex; align-items: baseline; justify-content: space-between; gap: 14px; }
+.artwork-head b { font-size: 13px; }
+.artwork-head span { margin-left: 9px; color: var(--muted); font-size: 12px; }
+.artwork-head code { flex: none; color: var(--muted); font: 600 10px/1.3 "JetBrains Mono", monospace; }
+.artwork-strip { display: flex; gap: 12px; overflow-x: auto; margin-top: 10px; padding-bottom: 2px; }
+.artwork-strip figure { width: 104px; flex: 0 0 104px; margin: 0; }
+.artwork-preview { border-radius: 8px; }
+.artwork-strip figcaption { overflow: hidden; margin-top: 6px; white-space: nowrap; text-overflow: ellipsis;
+                             color: var(--fg); font-size: 11px; }
+
+.comparison { margin-top: 22px; }
+.comparison-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px;
+                      padding: 15px 16px; border: 1px solid var(--line); border-radius: 10px;
+                      background: var(--card); }
+.comparison-heading h2 { margin: 4px 0 3px; font-size: 18px; line-height: 1.25; }
+.comparison-heading p { max-width: 76ch; margin: 0; color: var(--muted); font-size: 13px; }
+.eyebrow { display: block; color: var(--muted); font: 600 10px/1.2 "JetBrains Mono", monospace;
+           letter-spacing: .1em; text-transform: uppercase; }
+.decision-badge { flex: none; border: 1px solid hsl(211 100% 50% / .35); border-radius: 999px;
+                  padding: 6px 9px; color: var(--fg); background: hsl(211 100% 50% / .1);
+                  font: 600 10px/1.2 "JetBrains Mono", monospace; white-space: nowrap; }
+.comparison-grid { display: grid; grid-template-columns: minmax(0, .9fr) minmax(0, 1.1fr); gap: 14px; margin-top: 14px; }
+.comparison-panel { min-width: 0; padding: 14px 15px 15px; border: 1px solid var(--line); border-radius: 10px;
+                    background: var(--card); }
+.comparison-panel h3 { margin: 5px 0 3px; font-size: 15px; }
+.comparison-copy { margin: 0 0 12px; color: var(--muted); font-size: 12.5px; }
+.sonarr-reference { border-top: 3px solid #5d9cec; }
+.deluno-proposal { border-top: 3px solid hsl(318 78% 38%); }
+.palette-rule { display: flex; align-items: center; justify-content: space-between; gap: 18px; margin-top: 14px;
+                padding: 12px 14px; border: 1px solid hsl(318 78% 38% / .35); border-radius: 9px;
+                background: hsl(318 78% 38% / .08); }
+.palette-copy { min-width: 230px; }
+.palette-copy b { display: block; margin-top: 3px; color: var(--fg); font-size: 12.5px; }
+.palette-copy small { display: block; margin-top: 3px; color: var(--muted); font-size: 11px; }
+.palette-swatches { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; }
+.palette-swatches span { display: inline-flex; align-items: baseline; gap: 5px; padding: 6px 7px; border-radius: 6px;
+                         font-size: 10px; line-height: 1; }
+.palette-swatches b { font-size: 10px; }
+.palette-swatches small { opacity: .75; font: 600 8px/1 "JetBrains Mono", monospace; text-transform: uppercase; }
+.sonarr-legend { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px 12px;
+                 margin: 0; padding: 0; list-style: none; }
+.sonarr-legend li { display: flex; align-items: flex-start; gap: 8px; min-width: 0; }
+.sonarr-swatch { width: 26px; height: 14px; flex: none; margin-top: 2px; border-radius: 4px; }
+.sonarr-legend b { display: block; font-size: 11.5px; line-height: 1.2; }
+.sonarr-legend small { display: block; margin-top: 2px; color: var(--muted); font-size: 10.5px; line-height: 1.2; }
+.sonarr-samples, .deluno-samples { display: flex; gap: 10px; overflow-x: auto; margin-top: 14px; padding-bottom: 2px; }
+.compare-card { margin: 0; }
+.sonarr-sample { width: 112px; flex: 0 0 112px; }
+.sonarr-poster { position: relative; aspect-ratio: 2 / 3; overflow: hidden; border-radius: 8px; background: hsl(220 12% 30%); }
+.sonarr-poster img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.sonarr-poster .noart { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+                         color: hsl(0 0% 100% / .55); background: linear-gradient(150deg, hsl(220 14% 26%), hsl(222 20% 14%)); font-size: 10px; }
+.sonarr-progress { position: absolute; right: 0; bottom: 10px; left: 0; height: 17px; overflow: hidden; background: hsl(0 0% 36%); }
+.sonarr-fill { position: absolute; inset: 0 auto 0 0; width: var(--sonarr-pct); background: var(--sonarr-colour); }
+.sonarr-progress span { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+                         color: white; font: 700 10px/1 "JetBrains Mono", monospace; text-shadow: 0 1px 2px hsl(0 0% 0% / .5); }
+.compare-card figcaption { display: grid; gap: 2px; margin-top: 6px; }
+.compare-card figcaption b { color: var(--fg); font-size: 10.5px; line-height: 1.2; }
+.compare-card figcaption span { color: var(--muted); font-size: 10px; line-height: 1.2; }
+.deluno-sample { width: 148px; flex: 0 0 148px; }
+.deluno-card-frame { width: 148px; }
+.deluno-card-frame .card { border-radius: 8px; }
+.proposal-callout { margin: 14px 0 0; padding: 10px 11px; border: 1px solid hsl(178 96% 32% / .35);
+                    border-radius: 8px; background: hsl(178 96% 32% / .08); color: var(--muted); font-size: 12px; }
+.proposal-callout b { color: var(--fg); }
+.compare-table { width: 100%; margin-top: 14px; border-collapse: collapse; font-size: 12.5px; }
+.compare-table th { padding: 7px 12px 7px 0; border-bottom: 1px solid var(--line); text-align: left;
+                    color: var(--muted); font: 600 10px/1.2 "JetBrains Mono", monospace; letter-spacing: .08em; text-transform: uppercase; }
+.compare-table td { width: 50%; padding: 8px 14px 8px 0; border-bottom: 1px solid var(--line); vertical-align: top; }
+.compare-table td:first-child { color: var(--muted); }
+.compare-table td b { color: var(--fg); }
+
 /* ── the shelf ── */
 .wall { display: grid; gap: 14px; margin-top: 14px; }
 .card { border-radius: 10px; overflow: hidden; background: var(--chip); position: relative; }
@@ -159,3 +233,22 @@ h2.mx small { font: 500 12px/1 "Inter", system-ui, sans-serif; color: var(--mute
           width: 20px; height: 20px; border-radius: 6px;
           background: var(--card); color: var(--fg); }
 .mbadge.off { color: var(--muted); }
+
+@media (max-width: 980px) {
+  .rail { position: relative; padding: 11px 14px; gap: 13px; align-items: flex-start; }
+  .grp { align-items: flex-start; flex-direction: column; gap: 6px; }
+  .readout { width: 100%; margin-left: 0; }
+  .readout code { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  main { padding: 18px 14px 0; }
+  h1 { flex-wrap: wrap; }
+  .spec { display: block; overflow-x: auto; }
+  .artwork-head { align-items: flex-start; flex-direction: column; gap: 7px; }
+  .artwork-head span { display: block; margin: 4px 0 0; }
+  .comparison-heading { flex-direction: column; gap: 10px; }
+  .decision-badge { white-space: normal; }
+  .palette-rule { align-items: flex-start; flex-direction: column; gap: 10px; }
+  .palette-swatches { justify-content: flex-start; }
+  .comparison-grid { grid-template-columns: 1fr; }
+  .sonarr-legend { grid-template-columns: 1fr; }
+  .compare-table { display: block; overflow-x: auto; min-width: 620px; }
+}

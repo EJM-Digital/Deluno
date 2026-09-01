@@ -317,6 +317,7 @@ public static class CatalogueKeyset
     private static bool IsTextual(CatalogueFilterValueKind kind)
         => kind is CatalogueFilterValueKind.Text
             or CatalogueFilterValueKind.Genre
+            or CatalogueFilterValueKind.Tag
             or CatalogueFilterValueKind.QualityTier
             or CatalogueFilterValueKind.Enum;
 
@@ -358,6 +359,15 @@ public static class CatalogueKeyset
 
             case CatalogueFilterOperator.Excludes when field.ValueKind == CatalogueFilterValueKind.Genre:
                 return $"NOT ({string.Join(" OR ", names.Select(name => GenreMatch(column, name)))})";
+
+            case CatalogueFilterOperator.Includes when field.ValueKind == CatalogueFilterValueKind.Tag:
+                return $"({string.Join(" OR ", names.Select(name => TagMatch(column, name)))})";
+
+            case CatalogueFilterOperator.IncludesAll when field.ValueKind == CatalogueFilterValueKind.Tag:
+                return string.Join(" AND ", names.Select(name => TagMatch(column, name)));
+
+            case CatalogueFilterOperator.Excludes when field.ValueKind == CatalogueFilterValueKind.Tag:
+                return $"NOT ({string.Join(" OR ", names.Select(name => TagMatch(column, name)))})";
 
             case CatalogueFilterOperator.Includes:
                 return $"{comparable} IN ({string.Join(", ", names)})";
@@ -422,6 +432,15 @@ public static class CatalogueKeyset
     /// </summary>
     private static string GenreMatch(string column, string parameterName)
         => $"(',' || replace(lower(COALESCE({column}, '')), ', ', ',') || ',') LIKE {parameterName}";
+
+    /// <summary>
+    /// User tags live in a catalogue-local join because the platform tag
+    /// catalogue and the movie/series catalogues are separate SQLite databases.
+    /// Row membership keeps assignment atomic with the title and avoids
+    /// substring collisions in arbitrary labels.
+    /// </summary>
+    private static string TagMatch(string column, string parameterName)
+        => $"EXISTS (SELECT 1 FROM media_tags mt WHERE mt.media_id = {column} AND lower(trim(mt.tag_name)) = lower({parameterName}))";
 
     /// <summary>
     /// Binds what <see cref="CustomFilters"/> wrote. Kept immediately beside it
@@ -510,6 +529,11 @@ public static class CatalogueKeyset
         if (field.ValueKind == CatalogueFilterValueKind.Genre)
         {
             return $"%,{value.ToLowerInvariant()},%";
+        }
+
+        if (field.ValueKind == CatalogueFilterValueKind.Tag)
+        {
+            return value;
         }
 
         return field.ValueKind switch

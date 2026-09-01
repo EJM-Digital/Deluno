@@ -9,15 +9,25 @@ namespace Deluno.Movies.Data;
 public sealed class MoviesSchemaInitializer(
     IDelunoDatabaseConnectionFactory databaseConnectionFactory,
     IDelunoDatabaseMigrator migrator,
-    ILogger<MoviesSchemaInitializer> logger)
+    ILogger<MoviesSchemaInitializer> logger,
+    IDelunoStartupGate? startupGate = null)
     : IHostedService
 {
     public async Task StartAsync(CancellationToken cancellationToken)
     {
-        await migrator.ApplyAsync(
-            DelunoDatabaseNames.Movies,
-            MoviesDatabaseMigrations.All,
-            cancellationToken);
+        try
+        {
+            await migrator.ApplyAsync(
+                DelunoDatabaseNames.Movies,
+                MoviesDatabaseMigrations.All,
+                cancellationToken);
+            startupGate?.MarkReady(DelunoDatabaseNames.Movies);
+        }
+        catch (Exception exception)
+        {
+            startupGate?.MarkFailed(DelunoDatabaseNames.Movies, exception);
+            throw;
+        }
 
         logger.LogInformation(
             "Movies database migrations are current at {DatabasePath}.",

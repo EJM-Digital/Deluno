@@ -17,4 +17,12 @@ public sealed record CreateIndexerRequest(
     int? SharingForHours = null,
     double? SharingUntilRatio = null,
     string? SharingStuckAction = null,
-    int? SharingStuckAfterDays = null);
+    int? SharingStuckAfterDays = null,
+    int? MinimumAgeMinutes = null,
+    int? RetentionDays = null,
+    int? MaximumSizeMb = null,
+    string? PreferIndexerFlags = null,
+    int? AvailabilityDelayDays = null,
+    bool RssEnabled = true,
+    bool AutomaticSearchEnabled = true,
+    bool InteractiveSearchEnabled = true);

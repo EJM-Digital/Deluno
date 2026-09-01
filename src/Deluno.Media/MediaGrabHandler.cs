@@ -6,7 +6,9 @@ using Deluno.Jobs.Data;
 using Deluno.Jobs.Decisions;
 using Deluno.Libraries.Data;
 using Deluno.Platform.Data;
+using Deluno.Quality;
 using Deluno.Quality.Data;
+using Deluno.Quality.Guides;
 
 namespace Deluno.Media;
 
@@ -72,7 +74,9 @@ public static class MediaGrabHandler
         IActivityFeedRepository activityFeedRepository,
         TimeProvider timeProvider,
         RecordMediaSearchAttemptAsync recordSearchAttemptAsync,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        IGuidePackageStore? guidePackageStore = null,
+        IReleasePreferencePlanRepository? releasePreferencePlanRepository = null)
     {
         var item = await mediaStateRepository.GetByIdAsync(kind, id, cancellationToken);
         if (item is null)
@@ -86,8 +90,8 @@ public static class MediaGrabHandler
             return MediaGrabResult.ValidationResult(validation);
         }
 
-        var wanted = await mediaStateRepository.GetWantedSummaryAsync(kind, cancellationToken);
-        var wantedItem = wanted.RecentItems.FirstOrDefault(candidate => candidate.Id == id);
+        var wantedItem = (await mediaStateRepository.ListWantedByIdsAsync(kind, [id], cancellationToken))
+            .FirstOrDefault(candidate => candidate.Id == id);
         var entityType = kind == MediaKind.Movie ? "movie" : "series";
         var mediaType = kind == MediaKind.Movie ? "movies" : "tv";
         if (wantedItem is null || string.IsNullOrWhiteSpace(wantedItem.LibraryId))
@@ -119,6 +123,26 @@ public static class MediaGrabHandler
         }
 
         var platformSettings = await platformSettingsRepository.GetAsync(cancellationToken);
+        var customFormats = await ResolveCustomFormatsAsync(
+            qualityRepository,
+            library.QualityProfileId,
+            cancellationToken);
+        var preferencePlan = await QualityProfileResolver.ResolveReleasePreferencePlanAsync(
+            qualityRepository,
+            releasePreferencePlanRepository,
+            library.QualityProfileId,
+            cancellationToken,
+            customFormats);
+        var currentPreferenceEvaluation = wantedItem.HasFile
+            ? await mediaStateRepository.GetLatestPreferenceEvaluationSnapshotAsync(
+                kind,
+                item.Id,
+                library.Id,
+                 fileIdentity: null,
+                 cancellationToken,
+                 filePath: wantedItem.FilePath,
+                 fileSizeBytes: wantedItem.FileSizeBytes)
+            : null;
         // The per-library routing override, or nothing. It must not be a literal:
         // passing "movies" here looked like a category and behaved like one, so
         // DownloadClientHelpers.ResolveCategory never reached its fallback and
@@ -131,10 +155,6 @@ public static class MediaGrabHandler
         var overrideReason = string.IsNullOrWhiteSpace(request.OverrideReason)
             ? "User manually forced this release from search results."
             : request.OverrideReason.Trim();
-        var customFormats = await ResolveCustomFormatsAsync(
-            qualityRepository,
-            library.QualityProfileId,
-            cancellationToken);
         var sourcePriorityScore = routing?.Sources
             .FirstOrDefault(source => string.Equals(source.IndexerId, request.IndexerId, StringComparison.OrdinalIgnoreCase)) is { } selectedSource
                 ? Math.Max(0, 200 - selectedSource.Priority)
@@ -153,9 +173,22 @@ public static class MediaGrabHandler
                 sourcePriorityScore,
                 customFormats,
                 ForceOverride: forceOverride,
-                OverrideReason: forceOverride ? overrideReason : null,
-                PreventLowerQualityReplacements: wantedItem.PreventLowerQualityReplacements,
-                ScoringMode: platformSettings.SearchScoringMode));
+                 OverrideReason: forceOverride ? overrideReason : null,
+                 PreventLowerQualityReplacements: wantedItem.PreventLowerQualityReplacements,
+                 ScoringMode: platformSettings.SearchScoringMode,
+                 MediaType: mediaType,
+                 CurrentReleaseName: wantedItem.FilePath,
+                 PreferencePlan: preferencePlan,
+                 CurrentPreferenceEvaluation: currentPreferenceEvaluation,
+                 CurrentFilePresent: wantedItem.HasFile,
+                 // A profile-pinned plan is the immutable source of truth for
+                 // manual selection. Do not require the mutable guide store
+                 // when that plan is available; a guide refresh or an
+                 // unavailable guide service must not change or block the
+                 // selected-release decision.
+                 GuidePackage: preferencePlan is not null || guidePackageStore is null
+                     ? null
+                     : (await guidePackageStore.GetCurrentAsync(cancellationToken)).Package));
         if (!selectedDecision.CanDispatch)
         {
             var hint = selectedDecision.RequiresOverride
@@ -201,8 +234,12 @@ public static class MediaGrabHandler
             grabResult.Status,
             serializedAudit,
             grabResponseCode: grabResult.Succeeded ? 200 : 400,
-            grabFailureCode: null,
-            cancellationToken: cancellationToken);
+            grabFailureCode: grabResult.Failure?.Code ?? grabResult.FailureCode,
+            cancellationToken: cancellationToken,
+            replacementAuthorized: wantedItem.HasFile,
+            forceReplacementAuthorized: wantedItem.HasFile && forceOverride,
+            replacementExpectedPath: wantedItem.FilePath,
+            clientExternalId: grabResult.ExternalId);
 
         var now = timeProvider.GetUtcNow();
 

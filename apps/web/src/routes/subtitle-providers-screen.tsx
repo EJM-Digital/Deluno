@@ -3,6 +3,7 @@ import { useLoaderData, useRevalidator } from "react-router-dom";
 import { Check, TestTube2 } from "lucide-react";
 import { toast } from "sonner";
 import { fetchJson, readValidationProblem } from "../lib/api";
+import type { IntegrationFailure } from "../lib/api/types";
 import { authedFetch } from "../lib/use-auth";
 import { configurationNavAreas } from "../components/app/settings-shell";
 import { Button } from "../components/ui/button";
@@ -46,9 +47,10 @@ interface SubtitleProviderOption {
     lastHealthMessage: string | null;
     lastHealthLatencyMs: number | null;
     lastHealthTestUtc: string | null;
-    consecutiveFailures: number;
-    rateLimitedUntilUtc: string | null;
-  } | null;
+     consecutiveFailures: number;
+     rateLimitedUntilUtc: string | null;
+     lastHealthFailure?: IntegrationFailure | null;
+   } | null;
 }
 
 export async function subtitleProvidersLoader() {
@@ -135,12 +137,12 @@ export function SubtitleProvidersPage() {
         body: JSON.stringify({ providerKey: editing.key, ...form })
       });
 
-      const result = await response.json() as { ok: boolean; message: string };
+      const result = await response.json() as { ok: boolean; message: string; failure?: IntegrationFailure | null };
       // Both outcomes are said out loud. A provider answering 200 with an empty
       // list because the key is wrong is the failure people actually hit, and
       // "connected" would be a lie about it.
       if (result.ok) toast.success(result.message);
-      else toast.error(result.message);
+      else toast.error(result.failure?.nextAction ? `${result.message} ${result.failure.nextAction}` : result.message);
       revalidator.revalidate();
     } catch {
       toast.error("The test could not be run.");
@@ -288,6 +290,14 @@ export function SubtitleProvidersPage() {
                 ) : null}
               </>
             )}
+
+            {editing.configured?.lastHealthFailure ? (
+              <div className="rounded-[var(--radius-sm)] border border-border bg-muted/30 p-3 text-[length:var(--type-caption)]">
+                <p className="font-medium text-foreground">Last typed failure</p>
+                <p className="mt-1 text-muted-foreground">{editing.configured.lastHealthFailure.message}</p>
+                <p className="mt-1 text-muted-foreground">{editing.configured.lastHealthFailure.nextAction}</p>
+              </div>
+            ) : null}
 
             <Field label="Priority" help="Lower is asked first. Deluno stops at the first provider that has the subtitle.">
               <Input

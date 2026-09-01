@@ -27,7 +27,7 @@ Execution artifacts:
 - No open `P0` or `P1` release-blocking issues.
 - Full regression gates pass on candidate commit:
   - `npm run ci:check`
-  - `dotnet test Deluno.slnx --configuration Release`
+  - `dotnet test Deluno.slnx --configuration Release` (or `scripts/test-dotnet-serial.ps1` in CI when the solution-level runner exhibits the known cross-project hang)
   - `npm run test:web`
 
 ## RC1 Checklist

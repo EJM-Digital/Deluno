@@ -11,6 +11,7 @@ public sealed record IntakeListExclusionItem(
     string Title,
     int? Year,
     string? ImdbId,
+    string Reason,
     DateTimeOffset? ExpiresUtc,
     DateTimeOffset CreatedUtc,
     DateTimeOffset UpdatedUtc);
@@ -19,4 +20,5 @@ public sealed record CreateIntakeListExclusionRequest(
     string Title,
     int? Year,
     string? ImdbId,
-    int? DurationDays);
+    int? DurationDays,
+    string? Reason = null);

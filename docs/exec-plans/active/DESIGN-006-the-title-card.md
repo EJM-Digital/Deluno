@@ -3,11 +3,11 @@
 > **Films: built and on the rig.** Settled by James as *Depth: Deep · Quality on
 > bar: On · Subtitle count: On · Lead words: SUBS only · Track: Missing red*.
 >
-> **Shows: not yet.** James: *"they should be independant of each other, tv and
-> movie"* — the TV shelf is deliberately frozen on its existing card until its own
-> open question (the Continuing hue, §4) is decided. `CARD_DESIGN.show.bars` is the
-> whole of the opt-in, and a test asserts it is still `false` so it cannot be
-> flipped by accident.
+> **Shows: built and on the rig.** Approved as *Depth: Deep · Episode count on
+> bar: On · Subtitle count: On · Lead words: SUBS only · Track: Missing red ·
+> Fill: held green, Quality met gold when complete · Unmonitored: one flat grey
+> override*. TV keeps its own episode-coverage declaration and adopts the shared
+> mechanism independently of Movies.
 
 Settled 2026-08-30 with James. Supersedes the card half of
 [DESIGN-001](DESIGN-001-title-marks.md) and the poster half of the Option A
@@ -114,7 +114,7 @@ and Radarr arrived at is the correct one:
 |---|---|---|
 | **Top bar says** | the quality on disk — `Bluray-1080p` | aired episodes held — `3 / 20` |
 | **Top bar fills to** | download progress, or solid when held | the fraction of aired episodes held |
-| **When nothing is held** | the state's word — `Missing`, `Upcoming` | `0 / 29`, no fill |
+| **When nothing is held** | the state's word — `Missing`, `Upcoming` | `0 / 29`, with the Missing-red remainder across an empty monitored bar |
 | **Bottom bar says** | `SUBS 1 / 3` | `SUBS 2 / 6` |
 | **Bottom bar counts over** | its one file | the episodes you actually hold |
 
@@ -131,38 +131,27 @@ only fraction that medium has.
 
 ### What the unfilled part of a bar is
 
-**Neutral. Measured in Sonarr, not reasoned about.**
+**Missing red.** The remainder is the part Deluno still needs to acquire, so it
+uses the same Missing surface as the movie bar and the subtitle bar. This is the
+approved composition rule for TV, not a faded state colour and not a neutral
+placeholder.
 
-An earlier revision of this document asserted the remainder should be Missing red,
-on the argument that *the part you do not have* is Missing and the subtitle bar's
-`titleBarGradient` already ends in red. That argument is tidy and it is wrong, and
-it caused the defect it then needed two more rules to repair: with the remainder
-red, a Missing title's fill and remainder were the same colour and the fraction
-vanished — Severance at 3 of 20 drew the same flat bar as Foundation at 0 of 29.
+The filled part is deliberately different so a partial Missing show remains
+readable: **green means the aired episode is held**, while **gold means every
+aired episode is held at the requested quality**. The length remains the fraction
+of aired episodes held. For example:
 
-Read out of Sonarr's own DOM, every poster, no exceptions:
-
-| Series state | Track | Fill | Fill width |
+| Series state | Track/remainder | Held fill | Fill width |
 |---|---|---|---|
-| Continuing, all held | grey `rgb(91,91,91)` | blue `rgb(93,156,236)` | 100% |
-| Ended, all held | grey `rgb(91,91,91)` | green `rgb(39,194,76)` | 100% |
-| Missing episodes | grey `rgb(91,91,91)` | **red** `rgb(240,80,80)` | **86%** |
+| Continuing, all held | Missing red | green | 100% |
+| Quality met, all held | Missing red | gold | 100% |
+| Missing episodes | Missing red | green | 15% for `3 / 20` |
+| Missing, none held | Missing red | no visible fill | 0% |
 
-**The colour is the state and the length is the fraction.** A series missing
-episodes is a red bar filled to how much you hold. Both facts on one bar, neither
-lost, and it works precisely *because* the track is neutral. Deluno had this right
-before the red remainder was introduced.
-
-#### The one gap, and it closes for free
-
-At 0% fill a neutral bar is wholly grey, so its state is drawn nowhere — and Deluno
-has deleted the corner pill that used to carry it. Sonarr has the same gap and gets
-away with it because its poster carries nothing else either.
-
-So **on the neutral track the label wears the state's own text colour**: Foundation's
-`0 / 29` is red on grey. The *text* token, not the surface — surfaces are tuned for
-white-on-bar, text tokens for reading on a ground (§4). The fill still means exactly
-what Sonarr's means, and nothing is spent to keep the state.
+There is no monitored empty-bar exception: the red remainder is already visible
+at `0 / 29`. The only grey is the explicit **Unmonitored override**, which paints
+both fill and remainder one flat grey and takes priority over every lifecycle or
+coverage colour.
 
 ### The subtitle bar counts only files you hold
 
@@ -305,11 +294,11 @@ never a reason for it to invert — the same argument that already makes
 | Missing | `hsl(356 84% 41%)` | white | 6.27 |
 | Downloading | `hsl(214 94% 40%)` | white | 6.44 |
 | Upgradable | `hsl(150 90% 25%)` | white | 5.49 |
-| Continuing | `hsl(178 96% 24%)` | white | 5.33 |
+| Continuing | `hsl(318 78% 38%)` | white | 6.60 |
 | Quality met | the existing `--mark-leaf-*` gradient | **near-black** `hsl(40 90% 12%)` | 10.46 |
 | Upcoming | `hsl(270 76% 47%)` | white | 7.22 |
-| Remainder (track) | `--mark-idle`, per theme | the **state's text colour** — see §2 | — |
-| Unmonitored half | `--mark-idle`, per theme | — | — |
+| Remainder (track) | Missing red `hsl(356 84% 41%)` | white | 6.27 |
+| Unmonitored override | `--mark-unmonitored` | white | — |
 
 **Gold's label is the one asymmetry, and it is forced.** Gold is floored at 52%
 lightness — below that yellow reads as bronze, which is the whole of
@@ -318,14 +307,15 @@ white; gold takes near-black. Do not "fix" this by darkening gold.
 
 ### Text — what a count or a word is coloured with
 
-Per theme, unchanged from what ships today except Continuing, which has to move.
+Per theme, the matching movie values stay unchanged; Continuing now uses the
+approved magenta hue on the page as well as on the TV card.
 
 | Rung | Light | Dark |
 |---|---|---|
 | Missing | `hsl(0 84% 48%)` | `hsl(0 84% 62%)` |
 | Downloading | `hsl(207 92% 45%)` | `hsl(207 96% 62%)` |
 | Upgradable | `hsl(145 72% 34%)` | `hsl(145 78% 52%)` |
-| Continuing | `hsl(178 74% 30%)` | `hsl(178 76% 50%)` |
+| Continuing | `hsl(318 74% 30%)` | `hsl(318 76% 50%)` |
 | Quality met | `hsl(42 96% 40%)` | `hsl(44 98% 58%)` |
 | Upcoming | `hsl(268 62% 50%)` | `hsl(268 82% 72%)` |
 
@@ -371,14 +361,14 @@ The pair James flagged was Continuing and Upcoming. Measured, those two are the
 two rungs and both a bright cool blue. He confirmed that is the one he was
 looking at.
 
-Continuing moves 184 → 178 and, as a surface, down to 24% lightness. Downloading
+Continuing moves from the crowded cool-blue/teal area to Magenta 318. Downloading
 does not move: it is the app's primary.
 
 | Pair | Before | After |
 |---|---|---|
-| Downloading vs Continuing, surface | ΔE 49 | **ΔE 76** |
-| Downloading vs Continuing, text (dark) | ΔE 49 | **ΔE 61** |
-| Upgradable vs Continuing, surface | — | ΔE 33 |
+| Downloading vs Continuing, surface | ΔE 49 | **ΔE 60.3** |
+| Downloading vs Continuing, text (dark) | ΔE 49 | **ΔE 85.9** |
+| Upgradable vs Continuing, surface | — | **ΔE 115.7** |
 
 Upgradable vs Continuing at ΔE 33 is the new nearest pair and is comfortably
 clear; it is recorded here so the next person moving a hue knows which neighbour
@@ -387,9 +377,9 @@ they are moving toward.
 ### Pre-existing, not fixed here
 
 Several **light-theme text** tokens already fall short of AA on white and this
-document does not change them: Downloading 4.20, Upgradable 3.85, Continuing
-4.46, Quality met 2.89. Gold's is deliberate — it is the dark "Quality met"
-count. The others predate this work. **The deep surfaces do not make any of them
+document does not change them: Downloading 4.20, Upgradable 3.85, Quality met
+2.89. Gold's is deliberate — it is the dark "Quality met" count. The others
+predate this work. **The deep surfaces do not make any of them
 worse**, and fixing them is its own issue, not a silent rider on this one.
 
 ---
@@ -454,11 +444,11 @@ mattering. James: *"why is the martian different grey to mad max and big buck bu
 come on."* An unmonitored card is one flat grey bar, identical everywhere. The count
 or quality is still written on it, so the number survives; only the colour goes.
 
-**And grey therefore means exactly one thing.** That rules out the neutral track:
-with a grey track, a *monitored* title holding nothing went grey too and read as
-unmonitored. So the track is **Missing red** — which in turn is why the fill rule is
-*state, held green* (§13): with a red track, a Missing title's fill must not also be
-red or the bar goes flat and the fraction vanishes.
+**And grey therefore means exactly one thing on each shelf.** Movies retain the
+**Missing red** track, with held green and Quality met gold. TV now uses the same
+composition for its episode-coverage bar: held green, Quality met gold, and
+Missing red for the remainder. The unmonitored override replaces both with
+`--mark-unmonitored`, so grey is never a monitored coverage state.
 
 **This is the only override in the design.** Everywhere else colour is decided by the
 title's state; here the state is overruled outright. On the shelf that reads as: two
@@ -667,7 +657,7 @@ and keeps amber meaning "a person is needed" — amber never appears on a title.
 
 | File | Change |
 |---|---|
-| `apps/web/src/index.css` | Six `--mark-*-surface` tokens, theme-independent. `--mark-airing` → hue 178, both themes. Gold untouched. |
+| `apps/web/src/index.css` | Six `--mark-*-surface` tokens, theme-independent. TV-only Continuing uses the approved magenta hue 318 in both themes; matching movie states keep their existing palette. Gold untouched. |
 | `tailwind.config.*` | The surface tokens spelled out as literals, like every other mark colour. |
 | `lib/status-tones.ts` | `surfaceVar` becomes required, not optional, on `TitleMarkPresentation`. Add `labelOnSurface` — every rung white except gold. |
 | `components/ui/title-mark.tsx` | `TitleMarkTopBar` grows to 14px and takes the two-tone label. New `TitleMarkSubtitleBar` on the same primitive. `TitleMarkCorner` deleted. |
@@ -710,10 +700,9 @@ length first.
 
 ---
 
-## 12. Decisions James still has to confirm
+## 12. Decisions settled for implementation
 
-He asked for the document rather than picking from the render, so these are
-chosen here with reasons and are his to overturn:
+These are the choices now confirmed against the renderer and live lab:
 
 1. **Depth: Deep, not Jewel.** Jewel puts Continuing at 22% lightness, which
    leaves no headroom and starts to read as black at 5px on a dark card. Deep
@@ -722,12 +711,18 @@ chosen here with reasons and are his to overturn:
 2. **Treatment: both bars speak, only the subtitle bar is labelled.** §3.
 3. **Three switches, named per shelf.** §6. The alternative is one switch called
    something generic, which is what the arrs did and what he objected to.
-4. **The remainder is a neutral track and the fill is the state's colour**, which
-   is what Sonarr does and was measured rather than argued (§2, §13). An earlier
-   revision of this document got that backwards and caused a defect with it.
+4. **The remainder is Missing red; the held portion is green, and a fully held
+   Quality met title is gold.** This is the TV composition grammar: colour says
+   what each segment is and length says how much aired coverage is held. The
+   unmonitored override is one flat grey and takes priority (§2, §13).
    *None asked for* is gone (§2), and the subtitle bar still counts — James:
    *"bar should count I was wrong, we are doing it now and no reason to stop it"*.
 5. **Continuing goes magenta.** §4.
+
+The top shelf legend keeps the monitoring axis beside, but separate from, the
+title-status chips: **Unmonitored sits immediately after Upcoming behind a
+divider on both Movies and TV**. The subtitle legend contains only the subtitle
+segments; it does not repeat the monitoring override.
 
 **Settled, no longer switches:** the corner pill is deleted and the bars are always
 on the artwork — *"corner pill is a complete removal and bars always on artwork"*.
@@ -761,7 +756,8 @@ Invariants asserted, each one a bug that had already happened:
 1. **Unmonitored is grey** — every *visible* region, fill and track, on both bars.
 2. **Unmonitored is one grey** — fill and track the same value, so the rung cannot
    change which grey you see.
-3. **Grey appears nowhere else** — a monitored card never shows it.
+3. **Grey is never a monitored remainder** — monitored cards use Missing red for
+   the remainder, while unmonitored cards remain entirely grey.
 4. **Upcoming never says Missing.**
 5. **Every visible label clears 4.5:1** against the ground actually under it — the
    fill where the fill is wide enough to be seen, the track otherwise.
@@ -822,33 +818,35 @@ James, looking at Severance drawing a flat red bar at 3 of 20: *"why cant we do 
 episodes the same as the subs with the bar and number?"* — then, on being shown the
 options: *"Im torn with this fill thing now, what does sonarr do?"*
 
-Going and looking settled it, and settled §2 with it. Sonarr colours the **fill by
-the state** and fills it to the **fraction held**, over a neutral track. There is no
-tension to resolve: the flat bar was caused by the red remainder, not by the fill
-rule, and removing the red remainder removes the need for any of the alternatives.
+Going and looking gave us the useful comparison, but the product decision is now
+the composition grammar: **the held portion is green, a fully held Quality met
+title is gold, and the remainder is Missing red**. This is the same semantic
+composition already used by the subtitle bar. It keeps both coverage and the
+remaining work visible without using grey for a monitored title.
 
-Two coherent grammars remain, both one click on the decider page:
+The renderer retains Sonarr's neutral remainder as an exploratory alternative,
+but it is not the product default:
 
 | | Track | Fill | Missing title at 3/20 | Continuing, fully held |
 |---|---|---|---|---|
-| **Sonarr's grammar** ← *recommended* | neutral | the state's colour | red sliver, then grey | magenta |
-| Composition, like SUBS | none | what you hold | green sliver, then red | **green — Continuing's colour gone** |
+| **Deluno composition** ← *recommended* | Missing red | held green; Quality met gold | green sliver, then red | green |
+| Sonarr's grammar | neutral remainder; state surface when empty | the state's colour | red sliver, then grey; full red at 0% | magenta |
 
-*Composition* is the more internally consistent of the two and the more expensive: a
-fully-held show is green whether it is Continuing or Upgradable, so Continuing loses
-its colour on the shelf entirely, which would make the whole magenta question in §4
-moot.
+**Deluno composition** is the approved rule because it reads the same way as the
+subtitle bar: colour says what the segment is, and length says how much is held.
+Quality met is still unambiguously gold, while Continuing remains available as a
+TV-only lifecycle label in the legend and status column.
 
-*Sonarr's grammar* is recommended because it carries both facts on one bar, it is
-proven in the app Deluno is replacing, and with the tinted track label (§2) it has no
-remaining blind spot.
+**Sonarr's grammar** remains useful as the reference implementation: it carries
+state in the fill over a neutral track and preserves a state-coloured empty bar.
+It is available on the renderer's alternative preset for comparison, not shipped
+as the product setting.
 
 **A bar with no fraction** keeps its state's colour under either grammar, because
 there is no held part to colour: an Upcoming title has not started, and a downloading
-one has no held part yet. `mediaBar` says whether there is a fraction outright — the
-first attempt inferred it from `pct > 0 && pct < 100`, which quietly excluded a
-fully-held Continuing show, the single case the composition rule exists to show, so
-that rule silently rendered identically to the one beside it.
+one has no held part yet. Under Deluno composition a zero-percent coverage bar is
+simply all Missing red, which is already the correct visible remainder. The
+unmonitored override is applied first and paints both layers flat grey.
 
 ---
 

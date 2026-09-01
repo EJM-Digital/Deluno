@@ -14,6 +14,14 @@ import { authedFetch } from "../../lib/use-auth";
 import { cn } from "../../lib/utils";
 import { TitleBars, TitleMarkBar, TitleMarkCorner, TitleMarkTopBar } from "../ui/title-mark";
 import { cardDesign } from "../../lib/card-design";
+import {
+  DEFAULT_DISPLAY_PREFERENCES,
+  formatRuntime,
+  formatShortDate,
+  formatWeekday,
+  type DisplayPreferences,
+  useDisplayPreferences
+} from "../../lib/display-preferences";
 
 export type CardSize = "sm" | "md" | "lg";
 
@@ -262,7 +270,7 @@ function PosterCard({
       <button
         type="button"
         onClick={(e) => { e.stopPropagation(); onToggle(); }}
-        aria-label={selected ? "Deselect" : "Select"}
+        aria-label={selected ? `Deselect ${item.title}` : `Select ${item.title}`}
         className={cn(
           "absolute left-2 top-2 z-10 flex shrink-0 items-center justify-center rounded-full transition-all duration-200",
           size === "sm" ? "h-5 w-5" : "h-6 w-6",
@@ -369,9 +377,8 @@ function PosterCard({
           {/*
             DESIGN-006 replaces all three of the above on a shelf that has opted
             in, and only that shelf. James: *"they should be independant of each
-            other, tv and movie"* — the movie card is settled, TV's Continuing
-            hue is not, and he asked that TV stay *"frozen on today's card"*
-            until it is decided on its own terms.
+            other, tv and movie"* — each shelf keeps its own declaration even
+            though TV now has its approved bar treatment.
 
             `cardDesign(item.type).bars` is the whole of the opt-in. Flipping it
             for shows is how TV adopts this, and nothing about the movie card
@@ -393,7 +400,7 @@ function PosterCard({
                 subtitleLanguagesHeld: item.subtitleLanguagesHeld,
                 subtitleLanguagesSettled: item.subtitleLanguagesSettled
               }}
-              showMediaText={displayOptions.showQualityOnBar !== false}
+              showMediaText={displayOptions[item.type === "show" ? "showEpisodeCountOnBar" : "showQualityOnBar"] !== false}
               showSubtitleText={displayOptions.showSubtitleCountOnBar !== false}
             />
           ) : (
@@ -576,7 +583,7 @@ function PosterCard({
  * nothing has recomputed the show yet — a window of at most a few minutes — and
  * printing "last Tuesday" under a poster would be worse than printing nothing.
  */
-function nextAiringLabel(nextAirDateUtc: string): string | null {
+function nextAiringLabel(nextAirDateUtc: string, preferences: DisplayPreferences = DEFAULT_DISPLAY_PREFERENCES): string | null {
   const next = new Date(nextAirDateUtc);
   if (Number.isNaN(next.getTime())) return null;
 
@@ -584,8 +591,8 @@ function nextAiringLabel(nextAirDateUtc: string): string | null {
   if (days < 0) return null;
 
   return days < 7
-    ? next.toLocaleDateString(undefined, { weekday: "long" })
-    : next.toLocaleDateString(undefined, { day: "numeric", month: "short" });
+    ? formatWeekday(next, preferences)
+    : formatShortDate(next, { ...preferences, showRelativeDates: false });
 }
 
 /**
@@ -629,7 +636,8 @@ function PosterExtras({ item, displayOptions }: { item: MediaItem; displayOption
   // nothing from a switch that is broken — five of them produce no value on a
   // library with no release groups in its filenames and no OMDb key, and
   // silence made all five look like defects.
-  const rows = posterRowsFor(item, displayOptions);
+  const { preferences } = useDisplayPreferences();
+  const rows = posterRowsFor(item, displayOptions, preferences);
 
   if (rows.length === 0) return null;
 
@@ -751,10 +759,14 @@ function PosterAction({
  * and drawn on the next silently changes what a column means. Both of those got
  * past a browser sweep that measured row counts and alignment.</p>
  */
-export function posterRowsFor(item: MediaItem, displayOptions: DisplayOptions) {
+export function posterRowsFor(
+  item: MediaItem,
+  displayOptions: DisplayOptions,
+  preferences: DisplayPreferences = DEFAULT_DISPLAY_PREFERENCES
+) {
   return POSTER_ROWS
     .filter((row) => displayOptions[row.option])
-    .map((row) => ({ ...row, value: row.read(item) }));
+    .map((row) => ({ ...row, value: row.read(item, preferences) }));
 }
 
 /**
@@ -774,7 +786,7 @@ const POSTER_ROWS: {
   /** Named for the tooltip, because a glyph on its own is a guess. */
   label: string;
   icon: LucideIcon;
-  read: (item: MediaItem) => string | null;
+  read: (item: MediaItem, preferences: DisplayPreferences) => string | null;
 }[] = [
   {
     option: "showRating",
@@ -795,7 +807,7 @@ const POSTER_ROWS: {
     option: "showRuntime",
     label: "Runtime",
     icon: Timer,
-    read: (item) => item.runtimeMinutes ? runtimeLabel(item.runtimeMinutes) : null
+    read: (item, preferences) => item.runtimeMinutes ? formatRuntime(item.runtimeMinutes, preferences) : null
   },
   {
     option: "showGenres",
@@ -828,7 +840,7 @@ const POSTER_ROWS: {
     icon: CalendarDays,
     // Labelled now that it has a row of its own: on its own line, a bare date
     // could be any of the four this card can show.
-    read: (item) => item.added ?? null
+    read: (item, preferences) => item.added ? formatShortDate(item.added, { ...preferences, showRelativeDates: false }) : null
   },
   ...RATING_SOURCES.map((source) => ({
     option: source.option,
@@ -847,9 +859,9 @@ const POSTER_ROWS: {
     option: release.option,
     label: release.label,
     icon: release.icon,
-    read: (item: MediaItem) => {
+    read: (item: MediaItem, preferences: DisplayPreferences) => {
       const value = item[release.field];
-      return value ? releaseDateLabel(value) : null;
+      return value ? releaseDateLabel(value, preferences) : null;
     }
   })),
   {
@@ -860,7 +872,7 @@ const POSTER_ROWS: {
     option: "showEpisodeProgress",
     label: "Episodes held",
     icon: ListVideo,
-    read: (item) => typeof item.airedEpisodeCount === "number" && item.airedEpisodeCount > 0
+    read: (item, _preferences: DisplayPreferences) => typeof item.airedEpisodeCount === "number" && item.airedEpisodeCount > 0
       ? `${item.airedWithFileCount ?? 0}/${item.airedEpisodeCount} episodes`
       : null
   },
@@ -868,15 +880,9 @@ const POSTER_ROWS: {
     option: "showNextAiring",
     label: "Next airing",
     icon: Tv,
-    read: (item) => item.nextAirDateUtc ? nextAiringLabel(item.nextAirDateUtc) : null
+    read: (item, preferences) => item.nextAirDateUtc ? nextAiringLabel(item.nextAirDateUtc, preferences) : null
   }
 ];
-
-/** Hours and minutes, the way a person says them. */
-function runtimeLabel(minutes: number) {
-  const hours = Math.floor(minutes / 60);
-  return hours > 0 ? `${hours}h ${minutes % 60}m` : `${minutes}m`;
-}
 
 export function PosterArtwork({
   src,
@@ -916,14 +922,8 @@ export function PosterArtwork({
  * for something that is not. An unparseable value is printed as it arrived
  * rather than as "Invalid Date".
  */
-function releaseDateLabel(value: string) {
+function releaseDateLabel(value: string, preferences: DisplayPreferences = DEFAULT_DISPLAY_PREFERENCES) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
-
-  const sameYear = date.getFullYear() === new Date().getFullYear();
-  return date.toLocaleDateString(undefined, {
-    day: "numeric",
-    month: "short",
-    ...(sameYear ? {} : { year: "numeric" })
-  });
+  return formatShortDate(date, { ...preferences, showRelativeDates: false });
 }

@@ -69,8 +69,9 @@ export function MarkStrip({
    * on the rig: Missing rgb(239,77,77) in the legend against rgb(192,17,28) on
    * the card, and every other rung likewise.
    *
-   * Absent, or a shelf that has not adopted the bars, keeps the old swatch — TV
-   * is deliberately frozen, and its legend must go on matching its own cards.
+   * Absent, or a shelf that has not adopted the bars, keeps the semantic swatch.
+   * The adopted movie and TV shelves pass their medium so this uses the same
+   * surface token as the bar below it.
    */
   type,
   /**
@@ -106,6 +107,7 @@ export function MarkStrip({
       aria-hidden
       className={cn(
         "h-1 w-4 shrink-0 rounded-full",
+        presentation.stateClass,
         !paintsBars && presentation.dot,
         // No gold leaf on a title nothing is watching: the grail says "Deluno
         // has finished", and it has not been asked to start.
@@ -199,7 +201,8 @@ export function TitleMarkDot({
         // 52%, gold 58%, violet 72%. At 2px on a 13px dot it was nearly a third
         // of the diameter and read as a grey fringe; at 1px it was still an
         // outline nobody asked for. The colours carry themselves.
-        "inline-block shrink-0 rounded-full",
+        "relative inline-flex shrink-0 items-center justify-center overflow-hidden rounded-full",
+        presentation.stateClass,
         // The half is a gradient rather than two elements, so the dot stays one
         // shape at every size and keeps a hard edge down the middle.
         // `currentColor` for the filled half, so the gradient is written once
@@ -218,7 +221,9 @@ export function TitleMarkDot({
         className
       )}
       style={{ width: size, height: size }}
-    />
+    >
+      <span aria-hidden data-glyph={presentation.glyph} className="title-mark-glyph pointer-events-none absolute inset-0 flex items-center justify-center text-[0.58em] font-black leading-none text-white" />
+    </span>
   );
 }
 
@@ -259,13 +264,12 @@ function labelTone(fillPercent: number): string {
  * the detail page already.</p>
  *
  * <p><b>Full-strength colours, nothing translucent.</b> <i>"ensure colours are
- * full and not transparent or washed out"</i>. The fill is the mark's own
- * colour at full opacity and the unfilled remainder is a solid neutral — not
- * the mark dimmed, which is what a track was before and what read as a smear.
- * The remainder is not a weaker version of the state; it is the part you do not
- * have yet, and it says so by being a different thing rather than a faded one.
- * The state itself is never lost, because {@link TitleMarkCorner} carries it in
- * full colour whatever the bar is filled to.</p>
+ * full and not transparent or washed out"</i>. On the active shelves the held
+ * portion is green, a fully held Quality met title is gold, and the unfilled
+ * remainder is solid Missing red. It is the part you do not have yet, not a
+ * dimmed version of the state. An unmonitored title overrides both with one
+ * flat grey, so grey has one meaning and no monitored coverage disappears into
+ * it.</p>
  *
  * <p>The width is how far through the show you are. A film is not partway
  * through itself, so its bar is solid.</p>
@@ -301,7 +305,8 @@ function TwoToneBar({
   label,
   title,
   ariaLabel,
-  edge
+  edge,
+  pattern
 }: {
   /** 0 to 100. */
   fill: number;
@@ -313,6 +318,8 @@ function TwoToneBar({
   label?: string;
   title: string;
   ariaLabel: string;
+  /** Stable non-colour texture for the title-state bar. */
+  pattern?: string;
   /**
    * Which edge of the artwork this bar pins to.
    *
@@ -377,7 +384,7 @@ function TwoToneBar({
     >
       <span
         aria-hidden="true"
-        className="absolute inset-y-0 left-0 block"
+        className={cn("absolute inset-y-0 left-0 block", pattern)}
         style={{ width: `${pct}%`, background: fillColour }}
       />
       {inner ? (
@@ -394,6 +401,11 @@ function TwoToneBar({
           </span>
         </>
       ) : null}
+      {/* Keep the decorative texture after the two text layers. Apart from
+          preserving the paint order, this means consumers that inspect the
+          aria-hidden layers still see the fill followed by the two clipped
+          label copies, rather than mistaking the texture for a label layer. */}
+      {pattern ? <span aria-hidden="true" className={cn("title-mark-pattern", pattern)} /> : null}
     </div>
   );
 }
@@ -440,6 +452,32 @@ function mediaBarOf(item: TitleBarsInput, mark: TitleMark) {
   // An Upcoming film is not 0% of anything; it has not been released.
   if (mark === "upcoming") return { pct: 100, label: word, lead: "QLTY", fraction: false };
   return { pct: 0, label: word, lead: "QLTY", fraction: true };
+}
+
+/**
+ * Chooses the colour of the held portion of a bar.
+ *
+ * The composition is deliberately shared by the poster and the list: a held
+ * episode is green, a fully held title at the requested quality is gold, and
+ * the red Missing track remains visible behind any coverage that is not held.
+ * A zero-width fill is still assigned the same colour; the track is what the
+ * reader sees in that case.
+ */
+function barFillMark(
+  design: ReturnType<typeof cardDesign>,
+  mark: TitleMark,
+  fillPercent: number,
+  hasFraction: boolean
+): TitleMark {
+  if (design.fill === "held") {
+    return fillPercent === 100 && mark === "covered" ? "covered" : "upgrade";
+  }
+
+  if (design.fill === "mixed" && mark === "missing" && hasFraction) {
+    return "upgrade";
+  }
+
+  return mark;
 }
 
 /**
@@ -494,32 +532,34 @@ export function TitleBars({
   const off = !monitored;
   const paint = (m: TitleMark) => (off ? UNMONITORED_PAINT : TITLE_MARK_PAINT[m]);
 
-  /*
-    With the track painted Missing red, a Missing title's fill must not also be
-    red or the bar goes flat and the fraction vanishes.
-  */
-  const topMark: TitleMark =
-    design.fill === "held"
-      ? (media.pct === 100 && mark === "covered" ? "covered" : "upgrade")
-      : design.fill === "mixed" && mark === "missing" && media.fraction
-        ? "upgrade"
-        : mark;
+  const topMark = barFillMark(design, mark, media.pct, media.fraction);
   const topPaint = paint(media.fraction ? topMark : mark);
-  const trackPaint = off ? UNMONITORED_PAINT : TITLE_MARK_PAINT.missing;
   /*
-    **The label on the track takes the track's own kind of colour.**
+    The track is part of the medium's card grammar. Movies use Missing red as
+    the remainder, so the track label uses the Missing surface's white label.
+    TV uses the same Missing red remainder: coverage is the green held portion,
+    Quality met is gold when the aired set is complete, and red is what remains
+    to acquire. The subtitle bar can have a different state from the media bar
+    (for example Upcoming with no files), hence two values.
 
-    `onTrack` is solved against the *neutral grey* track — the option the spec
-    keeps only so its collision with the unmonitored grey can be looked at. This
-    shelf's track is Missing red, which is a SURFACE, so its label is that
-    surface's label: white.
-
-    Wiring `onTrack` here put a red-for-grey colour on red and measured 2.85:1 on
-    the live shelf, under the 4.5 the spec requires of every visible label. The
-    spec said both things and I connected the wrong two.
+    Unmonitored remains a complete override: both the fill and remainder are
+    the same grey, with its surface label, regardless of the shelf grammar.
   */
-  const trackLabel = design.track === "neutral" ? trackPaint.onTrack : trackPaint.onSurface;
+  const trackFor = (barMark: TitleMark, fillPct: number) => {
+    if (off) {
+      return { surface: UNMONITORED_PAINT.surface, label: UNMONITORED_PAINT.onSurface };
+    }
+    if (design.track === "neutral") {
+      if (fillPct <= 0) {
+        return { surface: TITLE_MARK_PAINT[barMark].surface, label: TITLE_MARK_PAINT[barMark].onSurface };
+      }
+      return { surface: "--mark-idle", label: TITLE_MARK_PAINT[barMark].onTrack };
+    }
+    return { surface: TITLE_MARK_PAINT.missing.surface, label: TITLE_MARK_PAINT.missing.onSurface };
+  };
+  const topTrack = trackFor(mark, media.pct);
   const subPaint = paint(files === 0 ? subState : subSettled ? "covered" : "upgrade");
+  const subTrack = trackFor(subState, subPct);
 
   const rung = TITLE_MARK_PRESENTATION[mark];
   const watch = monitored ? "" : " · unmonitored";
@@ -530,8 +570,8 @@ export function TitleBars({
         fill={media.pct}
         fillColour={paintVar(topPaint.surface)}
         onFill={paintVar(topPaint.onSurface)}
-        trackColour={paintVar(trackPaint.surface)}
-        onTrack={paintVar(trackLabel)}
+        trackColour={paintVar(topTrack.surface)}
+        onTrack={paintVar(topTrack.label)}
         lead={design.leads === "both" ? media.lead : undefined}
         label={showMediaText ? media.label : undefined}
         title={rung.hint + (monitored ? "" : " Deluno is not watching this one.")}
@@ -539,13 +579,14 @@ export function TitleBars({
         ariaLabel={`${rung.label}${watch}${
           isShow && media.fraction ? ` · ${media.label} aired episodes on disk` : ""
         }${!isShow && item.hasFile && item.quality ? ` · ${item.quality}` : ""}`}
+        pattern={monitored ? rung.stateClass : undefined}
       />
       <TwoToneBar
         fill={subPct}
         fillColour={paintVar(subPaint.surface)}
         onFill={paintVar(subPaint.onSurface)}
-        trackColour={paintVar(trackPaint.surface)}
-        onTrack={paintVar(trackLabel)}
+        trackColour={paintVar(subTrack.surface)}
+        onTrack={paintVar(subTrack.label)}
         lead={design.leads === "none" ? undefined : "SUBS"}
         label={showSubtitleText ? subLabel : undefined}
         edge="bottom"
@@ -601,6 +642,7 @@ export function TitleMarkTopBar({
         aria-hidden="true"
         className={cn(
           "block h-full",
+          presentation.stateClass,
           half
             ? "bg-[linear-gradient(90deg,currentColor_0_50%,hsl(var(--mark-idle))_50%_100%)]"
             : presentation.dot,
@@ -609,6 +651,7 @@ export function TitleMarkTopBar({
         )}
         style={{ width: `${fillPercent}%` }}
       />
+      {item.monitored ? <span aria-hidden="true" className={cn("title-mark-pattern", presentation.stateClass)} /> : null}
     </div>
   );
 }
@@ -662,14 +705,17 @@ export function TitleMarkCorner({ item, className }: { item: TitleMarkInput; cla
       <span
         aria-hidden
         className={cn(
-          "h-2 w-2 shrink-0 rounded-full",
+          "relative flex h-2 w-2 shrink-0 items-center justify-center rounded-full",
+          presentation.stateClass,
           half
             ? "bg-[linear-gradient(90deg,currentColor_0_50%,hsl(var(--mark-idle))_50%_100%)]"
             : presentation.dot,
           half && presentation.text,
           !half && presentation.sheen
         )}
-      />
+      >
+        <span aria-hidden data-glyph={presentation.glyph} className="title-mark-glyph pointer-events-none text-[0.58em] font-black leading-none text-white" />
+      </span>
       {text}
     </span>
   );
@@ -686,16 +732,16 @@ export function TitleMarkCorner({ item, className }: { item: TitleMarkInput; cla
  * count as plain text on a status chip and no bar at all, so this is the half
  * that was missing.</p>
  *
- * <p>The colour is the mark's, from the one table, so a row and the poster it
- * corresponds to cannot disagree. Gold takes dark text for the same reason the
- * state bar does: every rung on the ladder is a light colour and white would
- * vanish into it.</p>
+ * <p>The colour follows the same composition as the poster: held coverage is
+ * green, a fully held Quality met show is gold, and a monitored remainder is
+ * Missing red. Gold takes dark text for the same reason the state bar does:
+ * every rung on the ladder is a light colour and white would vanish into it.</p>
  *
  * <p>A film has no fraction — it is here or it is not — so this draws nothing
  * and the caller shows a dash. That is not the same as zero of zero, which is
  * what a show whose episodes Deluno has not learned about yet has.</p>
  */
-export function EpisodeProgressBar({ item, className }: { item: TitleMarkInput; className?: string }) {
+export function EpisodeProgressBar({ item, type, className }: { item: TitleMarkInput; type?: MediaType; className?: string }) {
   const aired = item.airedEpisodeCount;
   if (typeof aired !== "number" || aired <= 0) {
     return null;
@@ -704,7 +750,23 @@ export function EpisodeProgressBar({ item, className }: { item: TitleMarkInput; 
   const held = Math.min(Math.max(0, item.airedWithFileCount ?? 0), aired);
   const mark = titleMark(item);
   const presentation = TITLE_MARK_PRESENTATION[mark];
+  const design = type ? cardDesign(type) : null;
   const percent = Math.round((held / aired) * 100);
+  const fillMark = design && item.monitored !== false
+    ? barFillMark(design, mark, percent, true)
+    : mark;
+  const paint = design?.bars
+    ? item.monitored === false ? UNMONITORED_PAINT : TITLE_MARK_PAINT[fillMark]
+    : null;
+  const track = paint
+    ? item.monitored === false
+      ? paint
+      : design?.track === "missing"
+        ? TITLE_MARK_PAINT.missing
+        : percent <= 0
+          ? paint
+          : { surface: "--mark-idle" }
+    : null;
   const label = `${held} of ${aired} aired episodes on disk`;
 
   return (
@@ -717,6 +779,7 @@ export function EpisodeProgressBar({ item, className }: { item: TitleMarkInput; 
         "bg-mark-idle/70 text-[length:var(--library-badge-size)] font-bold tabular-nums",
         className
       )}
+      style={track ? { backgroundColor: paintVar(track.surface) } : undefined}
     >
       {/*
         The fill is its own layer rather than a background on the box, because
@@ -725,7 +788,10 @@ export function EpisodeProgressBar({ item, className }: { item: TitleMarkInput; 
         in this file already.
       */}
       <span aria-hidden className="absolute inset-y-0 left-0" style={{ width: `${percent}%` }}>
-        <span className={cn("block h-full w-full", presentation.dot, presentation.sheen)} />
+        <span
+          className={cn("block h-full w-full", !paint && presentation.dot, paint && item.monitored !== false && presentation.sheen)}
+          style={paint ? { backgroundColor: paintVar(paint.surface) } : undefined}
+        />
       </span>
       <span className={cn("relative px-1.5", labelTone(percent))}>
         {held} / {aired}
@@ -833,12 +899,19 @@ export function titleBarGradient(settledPercent: number, heldPercent: number): s
  * carrying when episode counts moved to a show's own page: a legend for
  * something that cannot appear, which is the defect a chip that can never match
  * is. Declared, never populated, and no test could see it.
+ *
+ * <b>Monitoring is not part of this legend.</b> Unmonitored is a grey override
+ * rather than another lifecycle rung. The shelf control rail places its
+ * filter immediately after Upcoming, behind a divider, so this component can
+ * stay a subtitle-only legend.
  */
 export function TitleMarkBarLegend({ className, type }: { className?: string; type?: MediaType }) {
   return (
-    <div className={cn("flex items-center gap-2.5", className)}>
+    <div className={cn("flex shrink-0 items-center gap-2.5 whitespace-nowrap", className)}>
       <span
-        className="text-[length:var(--library-toolbar-size)] font-medium text-muted-foreground"
+        role="heading"
+        aria-level={3}
+        className="shrink-0 text-[length:var(--library-toolbar-size)] font-semibold text-foreground"
         title={"The strip on a poster's bottom edge: the subtitle languages this shelf asked for. "
           + "Counted over the files a title has, so a show you have downloaded nothing of shows no bar."}
       >

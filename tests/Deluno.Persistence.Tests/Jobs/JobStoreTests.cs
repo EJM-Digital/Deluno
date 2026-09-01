@@ -282,6 +282,67 @@ public sealed class JobStoreTests
         Assert.DoesNotContain(insertedAfterPageOne.Id, returnedIds);
     }
 
+    [Fact]
+    public async Task Legacy_dispatch_list_uses_the_typed_lifecycle_projection()
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-08-20T00:00:00Z"));
+        await InitializeJobsAsync(storage, timeProvider);
+
+        var dispatches = new SqliteDownloadDispatchesRepository(storage.Factory, timeProvider);
+        var store = new SqliteJobStore(
+            storage.Factory,
+            timeProvider,
+            new NullRealtimeEventPublisher(),
+            dispatches);
+
+        var dispatchId = await store.RecordDownloadDispatchAsync(
+            libraryId: "movies-main",
+            mediaType: "movies",
+            entityType: "movie",
+            entityId: "movie-typed-failure",
+            releaseName: "Movie.2026.1080p-GROUP",
+            indexerName: "Indexer One",
+            downloadClientId: "sab-1",
+            downloadClientName: "SABnzbd",
+            status: "sent",
+            notesJson: null,
+            cancellationToken: CancellationToken.None);
+
+        var failure = IntegrationFailureFactory.FromLegacy(
+            serviceType: "sabnzbd",
+            serviceId: "sab-1",
+            serviceName: "SABnzbd",
+            operation: "download",
+            category: "failed",
+            message: "SABnzbd rejected the job.",
+            code: "client-reported-failure",
+            externalId: "sab-job-42");
+
+        await dispatches.RecordImportOutcomeAsync(
+            dispatchId,
+            importStatus: "failed",
+            importedFilePath: null,
+            importFailureCode: failure.Code,
+            importFailureMessage: failure.Message,
+            cancellationToken: CancellationToken.None,
+            failure: failure);
+
+        var list = await store.ListDownloadDispatchesAsync(10, "movies", CancellationToken.None);
+        var listed = Assert.Single(list);
+        Assert.Equal(dispatchId, listed.Id);
+        Assert.Equal(IntegrationFailureKind.RejectedAction, listed.Failure?.Kind);
+        Assert.Equal("sab-job-42", listed.Failure?.ExternalId);
+        Assert.Equal("failed", listed.ImportStatus);
+
+        var page = await store.ListDownloadDispatchesPageAsync(
+            new PageRequest(10),
+            "movies",
+            CancellationToken.None);
+        var paged = Assert.Single(page.Items);
+        Assert.Equal(listed.Failure, paged.Failure);
+    }
+
     /// <summary>
     /// #292 — activity said "Deluno sent … to qBittorrent" while the dispatch
     /// failed and the client's torrent list stayed empty. The line has to report
@@ -319,6 +380,34 @@ public sealed class JobStoreTests
 
         Assert.Equal(expectedMessage, dispatch.Message);
         Assert.Equal(expectedCategory, dispatch.Category);
+    }
+
+    [Fact]
+    public async Task RecordDownloadDispatchAsync_retains_the_external_id_returned_by_the_client()
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-05-13T05:00:00Z"));
+        await InitializeJobsAsync(storage, timeProvider);
+        var dispatches = new SqliteDownloadDispatchesRepository(storage.Factory, timeProvider);
+        var store = new SqliteJobStore(storage.Factory, timeProvider, new NullRealtimeEventPublisher(), dispatches);
+
+        var dispatchId = await store.RecordDownloadDispatchAsync(
+            libraryId: "tv-main",
+            mediaType: "tv",
+            entityType: "episode",
+            entityId: "episode-1",
+            releaseName: "Example.Show.S01E01",
+            indexerName: "Indexer One",
+            downloadClientId: "sab-1",
+            downloadClientName: "SABnzbd",
+            status: "sent",
+            notesJson: "{\"grabResult\":{\"externalId\":\"native-sab-id-42\"}}",
+            cancellationToken: CancellationToken.None,
+            clientExternalId: "native-sab-id-42");
+
+        var dispatch = await dispatches.GetDispatchAsync(dispatchId, CancellationToken.None);
+
+        Assert.Equal("native-sab-id-42", dispatch?.TorrentHashOrItemId);
     }
 
     [Fact]
@@ -455,6 +544,43 @@ public sealed class JobStoreTests
     }
 
     [Fact]
+    public async Task PlanLibrarySearchesAsync_uses_an_attached_saved_view_as_the_cycle_scope()
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-05-14T01:00:00Z"));
+        await InitializeJobsAsync(storage, timeProvider);
+        var store = new SqliteJobStore(storage.Factory, timeProvider, new NullRealtimeEventPublisher(), new NullDownloadDispatchesRepository());
+        var scope = new LibraryAutomationScope(
+            Id: "saved-filter-1",
+            Name: "Highly rated missing",
+            QuickFilter: "missing",
+            Monitoring: "monitored",
+            Filters: CatalogueFilters.Of(CatalogueFilters.Where("rating", CatalogueFilterOperator.AtLeast, "8")));
+        var library = new LibraryAutomationPlanItem(
+            LibraryId: "movies-main",
+            LibraryName: "Movies",
+            MediaType: "movies",
+            AutoSearchEnabled: true,
+            MissingSearchEnabled: true,
+            UpgradeSearchEnabled: true,
+            SearchIntervalHours: 6,
+            RetryDelayHours: 24,
+            MaxItemsPerRun: 25,
+            SearchWindowStartHour: null,
+            SearchWindowEndHour: null,
+            SearchScopes: [scope]);
+
+        await store.PlanLibrarySearchesAsync([library], CancellationToken.None);
+
+        var job = Assert.Single(await store.ListAsync(20, CancellationToken.None));
+        Assert.Equal("library.search:movies-main:missing:scope:saved-filter-1", job.DedupeKey);
+        Assert.Contains("\"searchKind\":\"missing\"", job.PayloadJson, StringComparison.Ordinal);
+        Assert.Contains("\"scopeId\":\"saved-filter-1\"", job.PayloadJson, StringComparison.Ordinal);
+        Assert.Contains("\"scopeConditions\"", job.PayloadJson, StringComparison.Ordinal);
+        Assert.DoesNotContain("\"searchKind\":\"upgrade\"", job.PayloadJson, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task EnqueueAsync_signals_the_lane_for_a_job_that_is_runnable_now()
     {
         using var storage = TestStorage.Create();
@@ -500,6 +626,42 @@ public sealed class JobStoreTests
             CancellationToken.None);
 
         Assert.Equal(0, gate.CurrentCount);
+    }
+
+    [Fact]
+    public async Task Library_planning_signals_the_split_catalogue_lane_not_the_legacy_lane()
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-09-01T02:00:00Z"));
+        await InitializeJobsAsync(storage, timeProvider);
+
+        var laneSignal = new JobLaneSignal();
+        var moviesGate = laneSignal.Register("search.movies", [LibrarySearchJobTypes.Movies]);
+        var legacyGate = laneSignal.Register("search.legacy", [LibrarySearchJobTypes.Legacy]);
+        var store = new SqliteJobStore(
+            storage.Factory,
+            timeProvider,
+            new NullRealtimeEventPublisher(),
+            new NullDownloadDispatchesRepository(),
+            laneSignal);
+        var library = new LibraryAutomationPlanItem(
+            LibraryId: "movies-main",
+            LibraryName: "Movies",
+            MediaType: "movies",
+            AutoSearchEnabled: true,
+            MissingSearchEnabled: true,
+            UpgradeSearchEnabled: true,
+            SearchIntervalHours: 6,
+            RetryDelayHours: 24,
+            MaxItemsPerRun: 25,
+            SearchWindowStartHour: null,
+            SearchWindowEndHour: null);
+
+        Assert.True(await store.RequestLibrarySearchAsync(library, CancellationToken.None));
+        await store.PlanLibrarySearchesAsync([library], CancellationToken.None);
+
+        Assert.Equal(1, moviesGate.CurrentCount);
+        Assert.Equal(0, legacyGate.CurrentCount);
     }
 
     [Fact]

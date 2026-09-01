@@ -381,6 +381,80 @@ public sealed class IntakeSyncServiceTests
         Assert.Equal("application/json", handler.Accept);
     }
 
+    [Fact]
+    public async Task PreviewAsync_fetches_selected_tmdb_person_roles_and_keeps_the_source_media_type()
+    {
+        var source = CreateWatchlistSource() with
+        {
+            Provider = "tmdb-person",
+            FeedUrl = "https://www.themoviedb.org/person/6384?credits=cast,director",
+            MediaType = "movies"
+        };
+        var platform = new Mock<IPlatformSettingsRepository>();
+        platform.Setup(repo => repo.GetMetadataProviderSecretAsync("tmdb", It.IsAny<CancellationToken>()))
+            .ReturnsAsync("tmdb-secret");
+        var libraries = new Mock<ILibrariesRepository>();
+        var intake = new Mock<IIntakeRepository>();
+        var movies = new Mock<IMovieCatalogRepository>();
+        intake.Setup(repo => repo.GetIntakeSourceAsync(source.Id, It.IsAny<CancellationToken>())).ReturnsAsync(source);
+        intake.Setup(repo => repo.ListActiveIntakeListExclusionsAsync(source.Id, It.IsAny<CancellationToken>())).ReturnsAsync([]);
+        libraries.Setup(repo => repo.ListLibrariesAsync(It.IsAny<CancellationToken>())).ReturnsAsync([]);
+        movies.Setup(repo => repo.FindExistingIdAsync(
+                It.IsAny<string>(),
+                It.IsAny<int?>(),
+                It.IsAny<string?>(),
+                It.IsAny<string?>(),
+                It.IsAny<string?>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync((string?)null);
+
+        var service = new IntakeSyncService(
+            platform.Object,
+            libraries.Object,
+            intake.Object,
+            new Mock<IJobScheduler>().Object,
+            new Mock<IJobQueueRepository>().Object,
+            movies.Object,
+            new Mock<ISeriesCatalogRepository>().Object,
+            new Mock<IMetadataProvider>().Object,
+            new Mock<IMediaDecisionService>().Object,
+            new Mock<IActivityFeedRepository>().Object,
+            new ConfigurationBuilder().Build(),
+            TimeProvider.System,
+            new SingleClientFactory(new TmdbPersonHandler()),
+            NullLogger<IntakeSyncService>.Instance);
+
+        var preview = await service.PreviewAsync(source.Id, CancellationToken.None);
+
+        Assert.Equal(2, preview.FetchedCount);
+        Assert.Collection(
+            preview.Items,
+            first =>
+            {
+                Assert.Equal("The Matrix", first.Title);
+                Assert.Equal("movies", first.MediaType);
+            },
+            second =>
+            {
+                Assert.Equal("Inception", second.Title);
+                Assert.Equal("movies", second.MediaType);
+            });
+        movies.Verify(repo => repo.FindExistingIdAsync(
+            "The Matrix",
+            1999,
+            null,
+            "tmdb",
+            "603",
+            It.IsAny<CancellationToken>()), Times.Once);
+        movies.Verify(repo => repo.FindExistingIdAsync(
+            "Inception",
+            2010,
+            null,
+            "tmdb",
+            "27205",
+            It.IsAny<CancellationToken>()), Times.Once);
+    }
+
     private sealed class SingleClientFactory(HttpMessageHandler handler) : IHttpClientFactory
     {
         public HttpClient CreateClient(string name)
@@ -413,6 +487,21 @@ public sealed class IntakeSyncServiceTests
             {
                 Content = new StringContent(
                     "[{\"title\":\"90 Day Fianc\\u00e9\",\"release_year\":2014,\"imdb_id\":\"tt3469050\",\"mediatype\":\"show\"}]",
+                    Encoding.UTF8,
+                    "application/json")
+            });
+        }
+    }
+
+    private sealed class TmdbPersonHandler : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            Assert.Contains("api.themoviedb.org/3/person/6384/combined_credits", request.RequestUri?.ToString());
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent(
+                    "{\"cast\":[{\"id\":603,\"title\":\"The Matrix\",\"media_type\":\"movie\",\"release_date\":\"1999-03-30\",\"vote_average\":8.2},{\"id\":1396,\"name\":\"Breaking Bad\",\"media_type\":\"tv\",\"first_air_date\":\"2008-01-20\"}],\"crew\":[{\"id\":27205,\"title\":\"Inception\",\"media_type\":\"movie\",\"release_date\":\"2010-07-15\",\"department\":\"Directing\",\"job\":\"Director\"},{\"id\":27205,\"title\":\"Inception\",\"media_type\":\"movie\",\"release_date\":\"2010-07-15\",\"department\":\"Production\",\"job\":\"Producer\"}]} ",
                     Encoding.UTF8,
                     "application/json")
             });

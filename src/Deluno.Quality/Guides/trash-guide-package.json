@@ -1,0 +1,2091 @@
+{
+  "id": "trash-guides",
+  "name": "TRaSH Guides — Deluno curated package",
+  "version": 1,
+  "schemaVersion": 1,
+  "source": {
+    "sourceName": "TRaSH Guides",
+    "repositoryUrl": "https://github.com/TRaSH-Guides/Guides",
+    "guideUrl": "https://trash-guides.info/Radarr/Radarr-collection-of-custom-formats/",
+    "upstreamRevision": "a63c1d05510d73887be1b0198f95a363c4f7bef6",
+    "reviewedUtc": "2026-08-31",
+    "adaptation": "Reviewed Deluno adaptation of the upstream quality, custom-format, and profile guidance. Curated matching rules are explicitly marked and unreviewed semantics remain Advanced; this package is not a verbatim Recyclarr export."
+  },
+  "integritySha256": null,
+  "qualityTiers": [
+    {
+      "id": "hdtv-720p",
+      "label": "HDTV 720p",
+      "source": "hdtv",
+      "resolution": "720p",
+      "minMbPerMin": 17.1,
+      "maxMbPerMin": 2000,
+      "rank": 10
+    },
+    {
+      "id": "webdl-720p",
+      "label": "WEB-DL 720p",
+      "source": "webdl",
+      "resolution": "720p",
+      "minMbPerMin": 12.5,
+      "maxMbPerMin": 2000,
+      "rank": 20
+    },
+    {
+      "id": "webrip-720p",
+      "label": "WEBRip 720p",
+      "source": "webrip",
+      "resolution": "720p",
+      "minMbPerMin": 12.5,
+      "maxMbPerMin": 2000,
+      "rank": 21
+    },
+    {
+      "id": "bluray-720p",
+      "label": "Bluray 720p",
+      "source": "bluray",
+      "resolution": "720p",
+      "minMbPerMin": 25.7,
+      "maxMbPerMin": 2000,
+      "rank": 25
+    },
+    {
+      "id": "hdtv-1080p",
+      "label": "HDTV 1080p",
+      "source": "hdtv",
+      "resolution": "1080p",
+      "minMbPerMin": 33.8,
+      "maxMbPerMin": 2000,
+      "rank": 30
+    },
+    {
+      "id": "webdl-1080p",
+      "label": "WEB-DL 1080p",
+      "source": "webdl",
+      "resolution": "1080p",
+      "minMbPerMin": 12.5,
+      "maxMbPerMin": 2000,
+      "rank": 40
+    },
+    {
+      "id": "webrip-1080p",
+      "label": "WEBRip 1080p",
+      "source": "webrip",
+      "resolution": "1080p",
+      "minMbPerMin": 12.5,
+      "maxMbPerMin": 2000,
+      "rank": 41
+    },
+    {
+      "id": "bluray-1080p",
+      "label": "Bluray 1080p",
+      "source": "bluray",
+      "resolution": "1080p",
+      "minMbPerMin": 50.8,
+      "maxMbPerMin": 2000,
+      "rank": 50
+    },
+    {
+      "id": "remux-1080p",
+      "label": "Remux 1080p",
+      "source": "remux",
+      "resolution": "1080p",
+      "minMbPerMin": 102,
+      "maxMbPerMin": 2000,
+      "rank": 60
+    },
+    {
+      "id": "hdtv-2160p",
+      "label": "HDTV 4K",
+      "source": "hdtv",
+      "resolution": "2160p",
+      "minMbPerMin": 85,
+      "maxMbPerMin": 2000,
+      "rank": 65
+    },
+    {
+      "id": "webdl-2160p",
+      "label": "WEB-DL 4K",
+      "source": "webdl",
+      "resolution": "2160p",
+      "minMbPerMin": 34.5,
+      "maxMbPerMin": 2000,
+      "rank": 70
+    },
+    {
+      "id": "webrip-2160p",
+      "label": "WEBRip 4K",
+      "source": "webrip",
+      "resolution": "2160p",
+      "minMbPerMin": 34.5,
+      "maxMbPerMin": 2000,
+      "rank": 71
+    },
+    {
+      "id": "bluray-2160p",
+      "label": "Bluray 4K",
+      "source": "bluray",
+      "resolution": "2160p",
+      "minMbPerMin": 102,
+      "maxMbPerMin": 2000,
+      "rank": 80
+    },
+    {
+      "id": "remux-2160p",
+      "label": "Remux 4K",
+      "source": "remux",
+      "resolution": "2160p",
+      "minMbPerMin": 187.4,
+      "maxMbPerMin": 2000,
+      "rank": 90
+    }
+  ],
+  "customFormats": [
+    {
+      "trashId": "493b6d1dbec3c3364c59d7607f7e3405",
+      "name": "HDR",
+      "category": "hdr",
+      "description": "Any HDR content — HDR10, HDR10+, Dolby Vision, or HLG. A must-have for 4K libraries.",
+      "originalScore": 500,
+      "patterns": [
+        "\\bHDR(\\b|\\d)",
+        "\\bHDR10\\b",
+        "\\bHLG\\b"
+      ],
+      "bundleOnly": false,
+      "mappingStatus": "advanced",
+      "mappedTraitIds": [],
+      "sourceKind": "curated-adaptation"
+    },
+    {
+      "trashId": "7878c33f1963fefb3d6c8657d46c2f0a",
+      "name": "HDR10",
+      "category": "hdr",
+      "description": "HDR10 — the baseline open standard. Works on all HDR-capable displays.",
+      "originalScore": 510,
+      "patterns": [
+        "\\bHDR10\\b"
+      ],
+      "bundleOnly": false,
+      "mappingStatus": "reviewed",
+      "mappedTraitIds": [
+        "video.dynamic-range.hdr10"
+      ],
+      "sourceKind": "curated-adaptation"
+    },
+    {
+      "trashId": "5d96ce331b98e077abb8ceb60553aa16",
+      "name": "HDR10+",
+      "category": "hdr",
+      "description": "HDR10+ — dynamic metadata, better than HDR10 on supported displays.",
+      "originalScore": 520,
+      "patterns": [
+        "\\bHDR10(\\+|Plus)\\b"
+      ],
+      "bundleOnly": false,
+      "mappingStatus": "reviewed",
+      "mappedTraitIds": [
+        "video.dynamic-range.hdr10-plus"
+      ],
+      "sourceKind": "curated-adaptation"
+    },
+    {
+      "trashId": "e23edd2482476e595fb990b12e7c609c",
+      "name": "Dolby Vision",
+      "category": "hdr",
+      "description": "Dolby Vision — the best HDR format with dynamic metadata. Requires a DV-capable display.",
+      "originalScore": 0,
+      "patterns": [
+        "\\b(DV|DoVi|Dolby.?Vision)\\b"
+      ],
+      "bundleOnly": false,
+      "mappingStatus": "reviewed",
+      "mappedTraitIds": [
+        "video.dynamic-range.dolby-vision"
+      ],
+      "sourceKind": "curated-adaptation"
+    },
+    {
+      "trashId": "b337d6812e06c200ec9a2d3cfa9d20a7",
+      "name": "DV Boost",
+      "category": "hdr",
+      "description": "Boost score for Dolby Vision releases. Add this if you have a DV display and want DV preferred over HDR10.",
+      "originalScore": 1000,
+      "patterns": [
+        "\\b(DV|DoVi|Dolby.?Vision)\\b"
+      ],
+      "bundleOnly": false,
+      "mappingStatus": "advanced",
+      "mappedTraitIds": [],
+      "sourceKind": "curated-adaptation"
+    },
+    {
+      "trashId": "caa37d0df9c348912df1fb1d88f9273a",
+      "name": "HDR10+ Boost",
+      "category": "hdr",
+      "description": "Boost score for HDR10+ releases. Add if you have an HDR10+-capable display.",
+      "originalScore": 100,
+      "patterns": [
+        "\\bHDR10(\\+|Plus)\\b"
+      ],
+      "bundleOnly": false,
+      "mappingStatus": "advanced",
+      "mappedTraitIds": [],
+      "sourceKind": "curated-adaptation"
+    },
+    {
+      "trashId": "923b6abef9b17f937fab56cfcf89e1f1",
+      "name": "DV (No HDR Fallback)",
+      "category": "hdr",
+      "description": "Dolby Vision WITHOUT an HDR10 fallback layer. Will look washed-out on non-DV displays. Penalise unless you only have DV displays.",
+      "originalScore": -10000,
+      "patterns": [
+        "\\b(DV|DoVi)\\b(?!.*HDR10)"
+      ],
+      "bundleOnly": false,
+      "mappingStatus": "advanced",
+      "mappedTraitIds": [],
+      "sourceKind": "curated-adaptation"
+    },
+    {
+      "trashId": "9d27d9d2181838f76dee150882bdc58c",
+      "name": "HLG",
+      "category": "hdr",
+      "description": "Hybrid Log-Gamma HDR — used mainly by broadcast. No tonemapping needed on HLG displays.",
+      "originalScore": 0,
+      "patterns": [
+        "\\bHLG\\b"
+      ],
+      "bundleOnly": false,
+      "mappingStatus": "reviewed",
+      "mappedTraitIds": [
+        "video.dynamic-range.hlg"
+      ],
+      "sourceKind": "curated-adaptation"
+    },
+    {
+      "trashId": "aadb0e9ebba39a5fcf97c5a6d5ed0cff",
+      "name": "x265 (HD)",
+      "category": "codec",
+      "description": "Penalise x265/HEVC encodes at 720p and 1080p — these are often lower quality than x264 at those resolutions.",
+      "originalScore": -10000,
+      "patterns": [
+        "\\b(x265|HEVC|h265|H.265)\\b(?!.*2160p)(?!.*4K)"
+      ],
+      "bundleOnly": false,
+      "mappingStatus": "advanced",
+      "mappedTraitIds": [],
+      "sourceKind": "curated-adaptation"
+    },
+    {
+      "trashId": "9170d55c319f4fe40da8711ba9d8050d",
+      "name": "x265 (4K)",
+      "category": "codec",
+      "description": "x265/HEVC at 4K resolution — excellent efficiency and quality. No penalty needed here.",
+      "originalScore": 0,
+      "patterns": [
+        "\\b(x265|HEVC|h265|H.265)\\b.*2160p|2160p.*\\b(x265|HEVC|h265|H.265)\\b"
+      ],
+      "bundleOnly": false,
+      "mappingStatus": "reviewed",
+      "mappedTraitIds": [
+        "video.codec.hevc"
+      ],
+      "sourceKind": "curated-adaptation"
+    },
+    {
+      "trashId": "403f405f92f536f18ea8e2a99ddb9db5",
+      "name": "AV1",
+      "category": "codec",
+      "description": "AV1 — next-generation codec with excellent compression. Relatively new; not all devices support it.",
+      "originalScore": 0,
+      "patterns": [
+        "\\bAV1\\b"
+      ],
+      "bundleOnly": false,
+      "mappingStatus": "reviewed",
+      "mappedTraitIds": [
+        "video.codec.av1"
+      ],
+      "sourceKind": "curated-adaptation"
+    },
+    {
+      "trashId": "496f355514737f7d83bf7aa4d24f8169",
+      "name": "TrueHD Atmos",
+      "category": "audio",
+      "description": "TrueHD with Dolby Atmos — the best lossless surround format. Found on Blu-ray and Remux releases.",
+      "originalScore": 5,
+      "patterns": [
+        "\\bTrueHD\\b.*\\bAtmos\\b|\\bAtmos\\b.*\\bTrueHD\\b"
+      ],
+      "bundleOnly": false,
+      "mappingStatus": "reviewed",
+      "mappedTraitIds": [
+        "audio.format.truehd-atmos"
+      ],
+      "sourceKind": "curated-adaptation"
+    },
+    {
+      "trashId": "2f22d89048b01681dde8afe203bf2e95",
+      "name": "DTS X",
+      "category": "audio",
+      "description": "DTS:X — immersive audio, the DTS alternative to Atmos.",
+      "originalScore": 4,
+      "patterns": [
+        "\\bDTS[-. ]?X\\b"
+      ],
+      "bundleOnly": false,
+      "mappingStatus": "reviewed",
+      "mappedTraitIds": [
+        "audio.format.dtsx"
+      ],
+      "sourceKind": "curated-adaptation"
+    },
+    {
+      "trashId": "1c1a4c5e823891c75bc50380a6866f73",
+      "name": "TrueHD",
+      "category": "audio",
+      "description": "TrueHD lossless audio without Atmos — still excellent quality.",
+      "originalScore": 3,
+      "patterns": [
+        "\\bTrueHD\\b(?!.*Atmos)"
+      ],
+      "bundleOnly": false,
+      "mappingStatus": "reviewed",
+      "mappedTraitIds": [
+        "audio.format.truehd"
+      ],
+      "sourceKind": "curated-adaptation"
+    },
+    {
+      "trashId": "ca3e897c30fb3d15b3f643e8dfae1ce6",
+      "name": "DTS-HD MA",
+      "category": "audio",
+      "description": "DTS-HD Master Audio — lossless DTS, common on Blu-ray releases.",
+      "originalScore": 2,
+      "patterns": [
+        "\\bDTS[-. ]?HD[-. ]?MA\\b"
+      ],
+      "bundleOnly": false,
+      "mappingStatus": "reviewed",
+      "mappedTraitIds": [
+        "audio.format.dts-hd-ma"
+      ],
+      "sourceKind": "curated-adaptation"
+    },
+    {
+      "trashId": "240770601cc226190c367ef59aba7463",
+      "name": "DD+ Atmos",
+      "category": "audio",
+      "description": "Dolby Digital Plus with Atmos — used by streaming services. Lossy but Atmos-capable.",
+      "originalScore": 1,
+      "patterns": [
+        "\\b(EAC3|DD\\+|Dolby.?Digital.?Plus)\\b.*\\bAtmos\\b"
+      ],
+      "bundleOnly": false,
+      "mappingStatus": "reviewed",
+      "mappedTraitIds": [
+        "audio.format.eac3-atmos"
+      ],
+      "sourceKind": "curated-adaptation"
+    },
+    {
+      "trashId": "185f1dd7264c4562b9022d963ac37424",
+      "name": "FLAC",
+      "category": "audio",
+      "description": "FLAC lossless audio — common in MKV and other high-quality releases.",
+      "originalScore": 2,
+      "patterns": [
+        "\\bFLAC\\b"
+      ],
+      "bundleOnly": false,
+      "mappingStatus": "reviewed",
+      "mappedTraitIds": [
+        "audio.format.flac"
+      ],
+      "sourceKind": "curated-adaptation"
+    },
+    {
+      "trashId": "9f86d08ede6d42d86c2d1b30a10c16f8",
+      "name": "REMUX",
+      "category": "source",
+      "description": "Remux — a direct copy of the Blu-ray disc without re-encoding. The highest quality source available.",
+      "originalScore": 0,
+      "patterns": [
+        "\\bREMUX\\b"
+      ],
+      "bundleOnly": false,
+      "mappingStatus": "reviewed",
+      "mappedTraitIds": [
+        "source.remux"
+      ],
+      "sourceKind": "curated-adaptation"
+    },
+    {
+      "trashId": "bfd8eb01832d646a0a89c4deb46f8564",
+      "name": "Blu-ray",
+      "category": "source",
+      "description": "Blu-ray source (encoded) — very high quality, significantly smaller than Remux.",
+      "originalScore": 0,
+      "patterns": [
+        "\\b(BluRay|Blu-Ray|BLURAY|BDRip)\\b"
+      ],
+      "bundleOnly": false,
+      "mappingStatus": "reviewed",
+      "mappedTraitIds": [
+        "source.bluray"
+      ],
+      "sourceKind": "curated-adaptation"
+    },
+    {
+      "trashId": "9de657fd3d327ecf144ec73dfe3a3e9a",
+      "name": "IMAX Enhanced",
+      "category": "source",
+      "description": "IMAX Enhanced — expanded aspect ratio, higher resolution for IMAX-certified scenes.",
+      "originalScore": 800,
+      "patterns": [
+        "\\bIMAX.?Enhanced\\b",
+        "\\bDECH\\b",
+        "\\bIMAX\\b.*\\bEnhanced\\b"
+      ],
+      "bundleOnly": false,
+      "mappingStatus": "advanced",
+      "mappedTraitIds": [],
+      "sourceKind": "curated-adaptation"
+    },
+    {
+      "trashId": "4b900e171accbfb172729b63323f9d5e",
+      "name": "IMAX",
+      "category": "source",
+      "description": "IMAX version — filmed or presented in IMAX format.",
+      "originalScore": 800,
+      "patterns": [
+        "\\bIMAX\\b"
+      ],
+      "bundleOnly": false,
+      "mappingStatus": "reviewed",
+      "mappedTraitIds": [
+        "edition.imax"
+      ],
+      "sourceKind": "curated-adaptation"
+    },
+    {
+      "trashId": "3a4127d8aa781b44120d907f2cd62627",
+      "name": "Repack / Proper",
+      "category": "misc",
+      "description": "Proper or Repack — a corrected re-release, usually fixing technical issues with the original.",
+      "originalScore": 5,
+      "patterns": [
+        "\\b(PROPER|REPACK)\\b"
+      ],
+      "bundleOnly": false,
+      "mappingStatus": "reviewed",
+      "mappedTraitIds": [
+        "release.revision.proper"
+      ],
+      "sourceKind": "curated-adaptation"
+    },
+    {
+      "trashId": "4eee26f9ab44a27e8e4dd0a7a2f14697",
+      "name": "Repack2",
+      "category": "misc",
+      "description": "Second repack — slightly preferred over the first repack.",
+      "originalScore": 6,
+      "patterns": [
+        "\\bREPACK2\\b"
+      ],
+      "bundleOnly": false,
+      "mappingStatus": "reviewed",
+      "mappedTraitIds": [
+        "release.revision.repack2"
+      ],
+      "sourceKind": "curated-adaptation"
+    },
+    {
+      "trashId": "9b64dff695c2115facf1b6ea59c9bd07",
+      "name": "Repack3",
+      "category": "misc",
+      "description": "Third repack — highest repack preference.",
+      "originalScore": 7,
+      "patterns": [
+        "\\bREPACK3\\b"
+      ],
+      "bundleOnly": false,
+      "mappingStatus": "reviewed",
+      "mappedTraitIds": [
+        "release.revision.repack3"
+      ],
+      "sourceKind": "curated-adaptation"
+    },
+    {
+      "trashId": "4e9a630db98d5391aec1368a0256e2fe",
+      "name": "Amazon Prime",
+      "category": "streaming",
+      "description": "Amazon Prime Video release — identified by AMZN tag.",
+      "originalScore": 0,
+      "patterns": [
+        "\\bAMZN\\b",
+        "\\bAmazon\\b"
+      ],
+      "bundleOnly": false,
+      "mappingStatus": "reviewed",
+      "mappedTraitIds": [
+        "service.amazon"
+      ],
+      "sourceKind": "curated-adaptation"
+    },
+    {
+      "trashId": "cc5f3e7c8f2b61f4a56f0001a2a0daab",
+      "name": "Apple TV+",
+      "category": "streaming",
+      "description": "Apple TV+ release — identified by ATVP tag.",
+      "originalScore": 0,
+      "patterns": [
+        "\\bATVP\\b",
+        "\\bApple.?TV\\b"
+      ],
+      "bundleOnly": false,
+      "mappingStatus": "reviewed",
+      "mappedTraitIds": [
+        "service.apple"
+      ],
+      "sourceKind": "curated-adaptation"
+    },
+    {
+      "trashId": "4e9a630db98d5391aec1368a0256e2ef",
+      "name": "Netflix",
+      "category": "streaming",
+      "description": "Netflix original release — identified by NF tag.",
+      "originalScore": 0,
+      "patterns": [
+        "\\bNF\\b",
+        "\\bNetflix\\b"
+      ],
+      "bundleOnly": false,
+      "mappingStatus": "reviewed",
+      "mappedTraitIds": [
+        "service.netflix"
+      ],
+      "sourceKind": "curated-adaptation"
+    },
+    {
+      "trashId": "bf7e73dd1d85b12cc527dc619761c840",
+      "name": "Disney+",
+      "category": "streaming",
+      "description": "Disney+ release — identified by DSNP or DSNY tag.",
+      "originalScore": 0,
+      "patterns": [
+        "\\b(DSNP|DSNY|Disney\\+)\\b"
+      ],
+      "bundleOnly": false,
+      "mappingStatus": "reviewed",
+      "mappedTraitIds": [
+        "service.disney"
+      ],
+      "sourceKind": "curated-adaptation"
+    },
+    {
+      "trashId": "526d445d4c16214309f0fd2b3be18a89",
+      "name": "HBO Max",
+      "category": "streaming",
+      "description": "HBO Max / Max release — identified by HMAX or MAX tag.",
+      "originalScore": 0,
+      "patterns": [
+        "\\b(HMAX|MAX|HBO)\\b"
+      ],
+      "bundleOnly": false,
+      "mappingStatus": "reviewed",
+      "mappedTraitIds": [
+        "service.max"
+      ],
+      "sourceKind": "curated-adaptation"
+    },
+    {
+      "trashId": "2a6039655313bf5dab785a6e4b82f6e6",
+      "name": "Peacock",
+      "category": "streaming",
+      "description": "Peacock streaming release.",
+      "originalScore": 0,
+      "patterns": [
+        "\\bPCOK\\b",
+        "\\bPeacock\\b"
+      ],
+      "bundleOnly": false,
+      "mappingStatus": "advanced",
+      "mappedTraitIds": [],
+      "sourceKind": "curated-adaptation"
+    },
+    {
+      "trashId": "7a235133c87f7da4c8cccceca7e3c7a6",
+      "name": "Paramount+",
+      "category": "streaming",
+      "description": "Paramount+ streaming release.",
+      "originalScore": 0,
+      "patterns": [
+        "\\bPMTP\\b",
+        "\\bParamount\\+?\\b"
+      ],
+      "bundleOnly": false,
+      "mappingStatus": "advanced",
+      "mappedTraitIds": [],
+      "sourceKind": "curated-adaptation"
+    },
+    {
+      "trashId": "ade9a7a4b13e7e5b0f31b2f87f5e9e98",
+      "name": "Extended Edition",
+      "category": "edition",
+      "description": "Extended cut with additional scenes not in the theatrical release.",
+      "originalScore": 0,
+      "patterns": [
+        "\\bEXTENDED\\b"
+      ],
+      "bundleOnly": false,
+      "mappingStatus": "reviewed",
+      "mappedTraitIds": [
+        "edition.extended"
+      ],
+      "sourceKind": "curated-adaptation"
+    },
+    {
+      "trashId": "ae9b7c9ebde1f3bd336a8cbd1b5fbd67",
+      "name": "Director's Cut",
+      "category": "edition",
+      "description": "The director's preferred version of the movie.",
+      "originalScore": 0,
+      "patterns": [
+        "\\bDIRECTOR'?S?.?CUT\\b",
+        "\\bDC\\b"
+      ],
+      "bundleOnly": false,
+      "mappingStatus": "reviewed",
+      "mappedTraitIds": [
+        "edition.directors-cut"
+      ],
+      "sourceKind": "curated-adaptation"
+    },
+    {
+      "trashId": "ed27ebfef2f323293b7b9c9c9b7e4f25",
+      "name": "HD Bluray Tier 01",
+      "category": "groups",
+      "description": "Top-tier trusted Blu-ray release groups — consistently excellent quality (FraMeSToR, BLURAYBITS, SiNNERS, etc.).",
+      "originalScore": 1800,
+      "patterns": [
+        "\\b(FraMeSToR|BLURAYBITS|SiNNERS|EPSiLON|TRiToN|iFT|decibeL|NCmt|DON|HiDt)\\b"
+      ],
+      "bundleOnly": false,
+      "mappingStatus": "advanced",
+      "mappedTraitIds": [],
+      "sourceKind": "curated-adaptation"
+    },
+    {
+      "trashId": "a58f517a70193f8e578056642178419d",
+      "name": "HD Bluray Tier 02",
+      "category": "groups",
+      "description": "Second-tier trusted Blu-ray groups.",
+      "originalScore": 1750,
+      "patterns": [
+        "\\b(Flights|HANDJOB|BHDStudio|CRiSC|THORA|BluDragon|ZQ|D-Z0N3|W4NK3R|HQMUX)\\b"
+      ],
+      "bundleOnly": false,
+      "mappingStatus": "advanced",
+      "mappedTraitIds": [],
+      "sourceKind": "curated-adaptation"
+    },
+    {
+      "trashId": "e61e28db84184857a8ca8e7e2e8d6ef2",
+      "name": "WEB Tier 01",
+      "category": "groups",
+      "description": "Top-tier trusted WEB-DL release groups — NTb, NTG, FLUX, etc.",
+      "originalScore": 1700,
+      "patterns": [
+        "\\b(NTb|NTG|FLUX|NPMS|KiNGS|MZABI|TEPES|GNOME|NOSiViD|XEBEC|TOMMY)\\b"
+      ],
+      "bundleOnly": false,
+      "mappingStatus": "advanced",
+      "mappedTraitIds": [],
+      "sourceKind": "curated-adaptation"
+    },
+    {
+      "trashId": "58790d4e2fdcd9733aa7ae68ba2bb503",
+      "name": "WEB Tier 02",
+      "category": "groups",
+      "description": "Second-tier trusted WEB-DL groups.",
+      "originalScore": 1650,
+      "patterns": [
+        "\\b(AJP69|YIFY|YTS|GOLDENBEARD|PSA|CMRG|GHOST|SiC|GGEZ|BYNDR)\\b"
+      ],
+      "bundleOnly": false,
+      "mappingStatus": "advanced",
+      "mappedTraitIds": [],
+      "sourceKind": "curated-adaptation"
+    },
+    {
+      "trashId": "b8cd450cbfa689c0259a01d9e29ba3d6",
+      "name": "3D",
+      "category": "unwanted",
+      "description": "3D releases — usually unwanted unless you have a 3D display. Heavily penalised by default.",
+      "originalScore": -10000,
+      "patterns": [
+        "\\b3D\\b",
+        "\\bHSBS\\b",
+        "\\bSBS\\b",
+        "\\bHOU\\b"
+      ],
+      "bundleOnly": false,
+      "mappingStatus": "advanced",
+      "mappedTraitIds": [],
+      "sourceKind": "curated-adaptation"
+    },
+    {
+      "trashId": "90a87bd7b54af7e7f0c5c5c5a6b2e9b3",
+      "name": "No Release Group",
+      "category": "unwanted",
+      "description": "Release has no group tag — often scene or low-quality encode. Penalise to prefer tagged releases.",
+      "originalScore": -10000,
+      "patterns": [
+        "-(?!\\w)$"
+      ],
+      "bundleOnly": false,
+      "mappingStatus": "advanced",
+      "mappedTraitIds": [],
+      "sourceKind": "curated-adaptation"
+    },
+    {
+      "trashId": "ae9b7c9ebde1f3bd336a8cbd1b5fbd68",
+      "name": "Upscaled",
+      "category": "unwanted",
+      "description": "Artificially upscaled to 4K — not true 4K content. Should be avoided in 4K libraries.",
+      "originalScore": -10000,
+      "patterns": [
+        "\\bUpscale\\b",
+        "\\bUpscaled\\b",
+        "\\bAI.?Upscale\\b"
+      ],
+      "bundleOnly": false,
+      "mappingStatus": "reviewed",
+      "mappedTraitIds": [
+        "unwanted.upscaled"
+      ],
+      "sourceKind": "curated-adaptation"
+    },
+    {
+      "trashId": "cae4ca30163749d0b87284ca3be2980a",
+      "name": "LQ (Low Quality Groups)",
+      "category": "unwanted",
+      "description": "Releases from known low-quality groups — avoid these in favour of trusted tiers.",
+      "originalScore": -10000,
+      "patterns": [
+        "\\b(mSD|STUTTERSHIT|YIFY|YTS(?!\\s)|nhanc3|Sprinter|Ghost|0SEC|FRDS)\\b"
+      ],
+      "bundleOnly": false,
+      "mappingStatus": "advanced",
+      "mappedTraitIds": [],
+      "sourceKind": "curated-adaptation"
+    },
+    {
+      "trashId": "dc98083864ea246d05a42df0d05f81cc",
+      "name": "Extras",
+      "category": "unwanted",
+      "description": "Extra content (featurettes, interviews, deleted scenes) — not the main feature.",
+      "originalScore": -10000,
+      "patterns": [
+        "\\b(Featurette|Interview|Deleted.?Scene|Behind.?the.?Scene|Extra|Bonus)\\b"
+      ],
+      "bundleOnly": false,
+      "mappingStatus": "advanced",
+      "mappedTraitIds": [],
+      "sourceKind": "curated-adaptation"
+    },
+    {
+      "trashId": "deluno-trash-audio-pcm",
+      "name": "PCM",
+      "category": "audio",
+      "description": "PCM/LPCM lossless audio.",
+      "originalScore": 2,
+      "patterns": [
+        "\\b(LPCM|PCM)\\b"
+      ],
+      "bundleOnly": false,
+      "mappingStatus": "reviewed",
+      "mappedTraitIds": [
+        "audio.format.pcm"
+      ],
+      "sourceKind": "curated-adaptation"
+    },
+    {
+      "trashId": "deluno-trash-audio-dts-hra",
+      "name": "DTS-HD HRA",
+      "category": "audio",
+      "description": "DTS-HD High Resolution Audio.",
+      "originalScore": 1,
+      "patterns": [
+        "\\bDTS[-. ]?HD[-. ]?HRA\\b"
+      ],
+      "bundleOnly": false,
+      "mappingStatus": "advanced",
+      "mappedTraitIds": [],
+      "sourceKind": "curated-adaptation"
+    },
+    {
+      "trashId": "deluno-trash-audio-ddplus",
+      "name": "DD+",
+      "category": "audio",
+      "description": "Dolby Digital Plus audio without Atmos.",
+      "originalScore": 0,
+      "patterns": [
+        "\\b(EAC3|DD\\+|Dolby.?Digital.?Plus)\\b(?!.*Atmos)"
+      ],
+      "bundleOnly": false,
+      "mappingStatus": "reviewed",
+      "mappedTraitIds": [
+        "audio.format.eac3"
+      ],
+      "sourceKind": "curated-adaptation"
+    },
+    {
+      "trashId": "deluno-trash-audio-aac",
+      "name": "AAC",
+      "category": "audio",
+      "description": "AAC audio. Common for smaller WEB releases.",
+      "originalScore": 0,
+      "patterns": [
+        "\\bAAC\\b"
+      ],
+      "bundleOnly": false,
+      "mappingStatus": "reviewed",
+      "mappedTraitIds": [
+        "audio.format.aac"
+      ],
+      "sourceKind": "curated-adaptation"
+    },
+    {
+      "trashId": "deluno-trash-audio-dts",
+      "name": "DTS",
+      "category": "audio",
+      "description": "Standard DTS audio.",
+      "originalScore": 0,
+      "patterns": [
+        "\\bDTS\\b(?![-. ]?HD|[-. ]?X)"
+      ],
+      "bundleOnly": false,
+      "mappingStatus": "reviewed",
+      "mappedTraitIds": [
+        "audio.format.dts"
+      ],
+      "sourceKind": "curated-adaptation"
+    },
+    {
+      "trashId": "deluno-trash-audio-opus",
+      "name": "Opus",
+      "category": "audio",
+      "description": "Opus audio. Efficient, but not universally supported by every playback chain.",
+      "originalScore": 0,
+      "patterns": [
+        "\\bOpus\\b"
+      ],
+      "bundleOnly": false,
+      "mappingStatus": "reviewed",
+      "mappedTraitIds": [
+        "audio.format.opus"
+      ],
+      "sourceKind": "curated-adaptation"
+    },
+    {
+      "trashId": "deluno-trash-channel-mono",
+      "name": "1.0 Mono",
+      "category": "channels",
+      "description": "Mono audio. Useful for older titles, but usually not preferred for modern releases.",
+      "originalScore": -50,
+      "patterns": [
+        "\\b1\\.0\\b",
+        "\\bMono\\b"
+      ],
+      "bundleOnly": false,
+      "mappingStatus": "reviewed",
+      "mappedTraitIds": [
+        "audio.channels.1-0"
+      ],
+      "sourceKind": "curated-adaptation"
+    },
+    {
+      "trashId": "deluno-trash-channel-stereo",
+      "name": "2.0 Stereo",
+      "category": "channels",
+      "description": "Stereo audio.",
+      "originalScore": 0,
+      "patterns": [
+        "\\b2\\.0\\b",
+        "\\bStereo\\b"
+      ],
+      "bundleOnly": false,
+      "mappingStatus": "reviewed",
+      "mappedTraitIds": [
+        "audio.channels.2-0"
+      ],
+      "sourceKind": "curated-adaptation"
+    },
+    {
+      "trashId": "deluno-trash-channel-51",
+      "name": "5.1 Surround",
+      "category": "channels",
+      "description": "5.1 surround audio.",
+      "originalScore": 1,
+      "patterns": [
+        "\\b5\\.1\\b"
+      ],
+      "bundleOnly": false,
+      "mappingStatus": "reviewed",
+      "mappedTraitIds": [
+        "audio.channels.5-1"
+      ],
+      "sourceKind": "curated-adaptation"
+    },
+    {
+      "trashId": "deluno-trash-channel-71",
+      "name": "7.1 Surround",
+      "category": "channels",
+      "description": "7.1 surround audio.",
+      "originalScore": 2,
+      "patterns": [
+        "\\b7\\.1\\b"
+      ],
+      "bundleOnly": false,
+      "mappingStatus": "reviewed",
+      "mappedTraitIds": [
+        "audio.channels.7-1"
+      ],
+      "sourceKind": "curated-adaptation"
+    },
+    {
+      "trashId": "deluno-trash-hdr-dv-disk",
+      "name": "DV Disk",
+      "category": "hdr",
+      "description": "Dolby Vision from disc/remux sources. Prefer only when your playback chain handles DV correctly.",
+      "originalScore": 0,
+      "patterns": [
+        "\\b(DV|DoVi)\\b.*\\b(REMUX|BluRay|Blu-Ray)\\b",
+        "\\b(REMUX|BluRay|Blu-Ray)\\b.*\\b(DV|DoVi)\\b"
+      ],
+      "bundleOnly": false,
+      "mappingStatus": "advanced",
+      "mappedTraitIds": [],
+      "sourceKind": "curated-adaptation"
+    },
+    {
+      "trashId": "deluno-trash-hdr-sdr",
+      "name": "SDR",
+      "category": "hdr",
+      "description": "Standard dynamic range release. Useful when you want non-HDR compatibility.",
+      "originalScore": 0,
+      "patterns": [
+        "\\bSDR\\b"
+      ],
+      "bundleOnly": false,
+      "mappingStatus": "advanced",
+      "mappedTraitIds": [],
+      "sourceKind": "curated-adaptation"
+    },
+    {
+      "trashId": "deluno-trash-edition-hybrid",
+      "name": "Hybrid",
+      "category": "edition",
+      "description": "Hybrid release assembled from multiple sources. Often desirable when done by trusted groups.",
+      "originalScore": 0,
+      "patterns": [
+        "\\bHybrid\\b"
+      ],
+      "bundleOnly": false,
+      "mappingStatus": "advanced",
+      "mappedTraitIds": [],
+      "sourceKind": "curated-adaptation"
+    },
+    {
+      "trashId": "deluno-trash-edition-remaster",
+      "name": "Remaster",
+      "category": "edition",
+      "description": "Remastered release.",
+      "originalScore": 0,
+      "patterns": [
+        "\\bRemaster(ed)?\\b"
+      ],
+      "bundleOnly": false,
+      "mappingStatus": "advanced",
+      "mappedTraitIds": [],
+      "sourceKind": "curated-adaptation"
+    },
+    {
+      "trashId": "deluno-trash-edition-criterion",
+      "name": "Criterion Collection",
+      "category": "edition",
+      "description": "Criterion Collection release.",
+      "originalScore": 0,
+      "patterns": [
+        "\\bCriterion\\b"
+      ],
+      "bundleOnly": false,
+      "mappingStatus": "advanced",
+      "mappedTraitIds": [],
+      "sourceKind": "curated-adaptation"
+    },
+    {
+      "trashId": "deluno-trash-edition-open-matte",
+      "name": "Open Matte",
+      "category": "edition",
+      "description": "Open matte presentation with more vertical image area.",
+      "originalScore": 0,
+      "patterns": [
+        "\\bOpen.?Matte\\b"
+      ],
+      "bundleOnly": false,
+      "mappingStatus": "advanced",
+      "mappedTraitIds": [],
+      "sourceKind": "curated-adaptation"
+    },
+    {
+      "trashId": "deluno-trash-groups-remux-tier-01",
+      "name": "Remux Tier 01",
+      "category": "groups",
+      "description": "Top-tier remux groups. Best used inside premium/remux profiles.",
+      "originalScore": 1900,
+      "patterns": [
+        "\\b(FraMeSToR|EPSiLON|TRiToN|BLURANiUM|PmP|KRaLiMaRKo|WiLDCAT|HiFi)\\b"
+      ],
+      "bundleOnly": false,
+      "mappingStatus": "advanced",
+      "mappedTraitIds": [],
+      "sourceKind": "curated-adaptation"
+    },
+    {
+      "trashId": "deluno-trash-groups-remux-tier-02",
+      "name": "Remux Tier 02",
+      "category": "groups",
+      "description": "Second-tier remux groups.",
+      "originalScore": 1850,
+      "patterns": [
+        "\\b(PTer|DecibeL|NCmt|iFT|CtrlHD|BMF|ZQ)\\b"
+      ],
+      "bundleOnly": false,
+      "mappingStatus": "advanced",
+      "mappedTraitIds": [],
+      "sourceKind": "curated-adaptation"
+    },
+    {
+      "trashId": "deluno-trash-groups-uhd-bluray-tier-01",
+      "name": "UHD Bluray Tier 01",
+      "category": "groups",
+      "description": "Top-tier UHD Blu-ray encode groups.",
+      "originalScore": 1800,
+      "patterns": [
+        "\\b(DON|HQMUX|TayTO|EbP|CRiSC|CtrlHD|NTb)\\b"
+      ],
+      "bundleOnly": false,
+      "mappingStatus": "advanced",
+      "mappedTraitIds": [],
+      "sourceKind": "curated-adaptation"
+    },
+    {
+      "trashId": "deluno-trash-groups-web-tier-03",
+      "name": "WEB Tier 03",
+      "category": "groups",
+      "description": "Third-tier WEB groups. Useful as a fallback, not a primary preference.",
+      "originalScore": 1600,
+      "patterns": [
+        "\\b(MiU|MEMENTO|EDITH|LAZY|PECULATE|SMURF|HONE|TrollHD|TEPES)\\b"
+      ],
+      "bundleOnly": false,
+      "mappingStatus": "advanced",
+      "mappedTraitIds": [],
+      "sourceKind": "curated-adaptation"
+    },
+    {
+      "trashId": "deluno-trash-streaming-hulu",
+      "name": "Hulu",
+      "category": "streaming",
+      "description": "Hulu streaming release.",
+      "originalScore": 0,
+      "patterns": [
+        "\\bHULU\\b"
+      ],
+      "bundleOnly": false,
+      "mappingStatus": "reviewed",
+      "mappedTraitIds": [
+        "service.hulu"
+      ],
+      "sourceKind": "curated-adaptation"
+    },
+    {
+      "trashId": "deluno-trash-streaming-itunes",
+      "name": "iTunes",
+      "category": "streaming",
+      "description": "iTunes source tag.",
+      "originalScore": 0,
+      "patterns": [
+        "\\b(iT|iTunes)\\b"
+      ],
+      "bundleOnly": false,
+      "mappingStatus": "advanced",
+      "mappedTraitIds": [],
+      "sourceKind": "curated-adaptation"
+    },
+    {
+      "trashId": "deluno-trash-streaming-roku",
+      "name": "Roku",
+      "category": "streaming",
+      "description": "Roku Channel streaming release.",
+      "originalScore": 0,
+      "patterns": [
+        "\\bROKU\\b"
+      ],
+      "bundleOnly": false,
+      "mappingStatus": "advanced",
+      "mappedTraitIds": [],
+      "sourceKind": "curated-adaptation"
+    },
+    {
+      "trashId": "deluno-trash-streaming-crunchyroll",
+      "name": "Crunchyroll",
+      "category": "streaming",
+      "description": "Crunchyroll anime streaming release.",
+      "originalScore": 0,
+      "patterns": [
+        "\\b(CR|Crunchyroll)\\b"
+      ],
+      "bundleOnly": false,
+      "mappingStatus": "advanced",
+      "mappedTraitIds": [],
+      "sourceKind": "curated-adaptation"
+    },
+    {
+      "trashId": "deluno-trash-streaming-hidive",
+      "name": "HIDIVE",
+      "category": "streaming",
+      "description": "HIDIVE anime streaming release.",
+      "originalScore": 0,
+      "patterns": [
+        "\\bHIDIVE\\b"
+      ],
+      "bundleOnly": false,
+      "mappingStatus": "advanced",
+      "mappedTraitIds": [],
+      "sourceKind": "curated-adaptation"
+    },
+    {
+      "trashId": "deluno-trash-unwanted-br-disk",
+      "name": "BR-DISK",
+      "category": "unwanted",
+      "description": "Full Blu-ray disc folder/image instead of a normal media file. Usually not wanted for library automation.",
+      "originalScore": -10000,
+      "patterns": [
+        "\\b(BD25|BD50|BD66|BD100|BR.?DISK|Blu.?ray.?Disk)\\b"
+      ],
+      "bundleOnly": false,
+      "mappingStatus": "advanced",
+      "mappedTraitIds": [],
+      "sourceKind": "curated-adaptation"
+    },
+    {
+      "trashId": "deluno-trash-unwanted-generated-dynamic-hdr",
+      "name": "Generated Dynamic HDR",
+      "category": "unwanted",
+      "description": "Generated or converted dynamic HDR metadata. Avoid unless explicitly wanted.",
+      "originalScore": -10000,
+      "patterns": [
+        "\\b(DV.?HDR10|Generated.?HDR|Dynamic.?HDR)\\b"
+      ],
+      "bundleOnly": false,
+      "mappingStatus": "advanced",
+      "mappedTraitIds": [],
+      "sourceKind": "curated-adaptation"
+    },
+    {
+      "trashId": "deluno-trash-unwanted-obfuscated",
+      "name": "Obfuscated",
+      "category": "unwanted",
+      "description": "Obfuscated release names. Usually harder to identify and import cleanly.",
+      "originalScore": -10000,
+      "patterns": [
+        "\\b(Obfuscated|Scrambled|Randomized)\\b"
+      ],
+      "bundleOnly": false,
+      "mappingStatus": "advanced",
+      "mappedTraitIds": [],
+      "sourceKind": "curated-adaptation"
+    },
+    {
+      "trashId": "deluno-trash-unwanted-retags",
+      "name": "Retags",
+      "category": "unwanted",
+      "description": "Retagged releases that only change the release group tag.",
+      "originalScore": -10000,
+      "patterns": [
+        "\\b(RETAG|Re.?tag)\\b"
+      ],
+      "bundleOnly": false,
+      "mappingStatus": "advanced",
+      "mappedTraitIds": [],
+      "sourceKind": "curated-adaptation"
+    },
+    {
+      "trashId": "deluno-trash-unwanted-line-mic-dubbed",
+      "name": "Line / Mic Dubbed",
+      "category": "unwanted",
+      "description": "Line, mic, or dubbed cinema audio. Avoid for normal libraries.",
+      "originalScore": -10000,
+      "patterns": [
+        "\\b(LiNE|LINE|Mic|MIC|Dubbed)\\b"
+      ],
+      "bundleOnly": false,
+      "mappingStatus": "advanced",
+      "mappedTraitIds": [],
+      "sourceKind": "curated-adaptation"
+    },
+    {
+      "trashId": "deluno-trash-unwanted-hfr",
+      "name": "HFR",
+      "category": "unwanted",
+      "description": "High-frame-rate releases. Neutral by default because this is user preference.",
+      "originalScore": 0,
+      "patterns": [
+        "\\b(HFR|48FPS|60FPS)\\b"
+      ],
+      "bundleOnly": false,
+      "mappingStatus": "advanced",
+      "mappedTraitIds": [],
+      "sourceKind": "curated-adaptation"
+    },
+    {
+      "trashId": "deluno-trash-misc-720p",
+      "name": "720p",
+      "category": "misc",
+      "description": "Resolution tag for 720p releases.",
+      "originalScore": 0,
+      "patterns": [
+        "\\b720p\\b"
+      ],
+      "bundleOnly": false,
+      "mappingStatus": "reviewed",
+      "mappedTraitIds": [
+        "video.resolution.720p"
+      ],
+      "sourceKind": "curated-adaptation"
+    },
+    {
+      "trashId": "deluno-trash-misc-1080p",
+      "name": "1080p",
+      "category": "misc",
+      "description": "Resolution tag for 1080p releases.",
+      "originalScore": 0,
+      "patterns": [
+        "\\b1080p\\b"
+      ],
+      "bundleOnly": false,
+      "mappingStatus": "reviewed",
+      "mappedTraitIds": [
+        "video.resolution.1080p"
+      ],
+      "sourceKind": "curated-adaptation"
+    },
+    {
+      "trashId": "deluno-trash-misc-2160p",
+      "name": "2160p",
+      "category": "misc",
+      "description": "Resolution tag for 4K / 2160p releases.",
+      "originalScore": 0,
+      "patterns": [
+        "\\b(2160p|4K|UHD)\\b"
+      ],
+      "bundleOnly": false,
+      "mappingStatus": "reviewed",
+      "mappedTraitIds": [
+        "video.resolution.2160p"
+      ],
+      "sourceKind": "curated-adaptation"
+    },
+    {
+      "trashId": "deluno-trash-anime-bd-tier-01",
+      "name": "Anime BD Tier 01",
+      "category": "anime",
+      "description": "Top anime Blu-ray groups. Use in anime profiles.",
+      "originalScore": 1600,
+      "patterns": [
+        "\\b(Beatrice-Raws|sam|SCY|ZQ|Kawaiika-Raws|VCB-Studio)\\b"
+      ],
+      "bundleOnly": false,
+      "mappingStatus": "advanced",
+      "mappedTraitIds": [],
+      "sourceKind": "curated-adaptation"
+    },
+    {
+      "trashId": "deluno-trash-anime-web-tier-01",
+      "name": "Anime WEB Tier 01",
+      "category": "anime",
+      "description": "Top anime WEB groups. Use in anime streaming profiles.",
+      "originalScore": 1500,
+      "patterns": [
+        "\\b(SubsPlease|Erai-raws|ASW|GJM|EMBER|Judas)\\b"
+      ],
+      "bundleOnly": false,
+      "mappingStatus": "advanced",
+      "mappedTraitIds": [],
+      "sourceKind": "curated-adaptation"
+    },
+    {
+      "trashId": "deluno-trash-anime-raws",
+      "name": "Anime Raws",
+      "category": "anime",
+      "description": "Raw anime release without subtitles.",
+      "originalScore": -10000,
+      "patterns": [
+        "\\b(RAW|Raws)\\b"
+      ],
+      "bundleOnly": false,
+      "mappingStatus": "advanced",
+      "mappedTraitIds": [],
+      "sourceKind": "curated-adaptation"
+    },
+    {
+      "trashId": "deluno-trash-anime-uncensored",
+      "name": "Uncensored",
+      "category": "anime",
+      "description": "Uncensored anime release.",
+      "originalScore": 100,
+      "patterns": [
+        "\\bUncensored\\b"
+      ],
+      "bundleOnly": false,
+      "mappingStatus": "advanced",
+      "mappedTraitIds": [],
+      "sourceKind": "curated-adaptation"
+    },
+    {
+      "trashId": "deluno-trash-anime-10bit",
+      "name": "10bit",
+      "category": "anime",
+      "description": "10-bit anime encode.",
+      "originalScore": 0,
+      "patterns": [
+        "\\b(10bit|10-bit|Hi10P)\\b"
+      ],
+      "bundleOnly": false,
+      "mappingStatus": "reviewed",
+      "mappedTraitIds": [
+        "video.bit-depth.10"
+      ],
+      "sourceKind": "curated-adaptation"
+    },
+    {
+      "trashId": "deluno-trash-anime-dual-audio",
+      "name": "Anime Dual Audio",
+      "category": "anime",
+      "description": "Anime release with more than one audio language.",
+      "originalScore": 100,
+      "patterns": [
+        "\\b(Dual.?Audio|Multi.?Audio)\\b"
+      ],
+      "bundleOnly": false,
+      "mappingStatus": "reviewed",
+      "mappedTraitIds": [
+        "audio.language.multi"
+      ],
+      "sourceKind": "curated-adaptation"
+    },
+    {
+      "trashId": "deluno-trash-language-not-english",
+      "name": "Not English",
+      "category": "language",
+      "description": "Release is not English. Useful for English-only profiles.",
+      "originalScore": -10000,
+      "patterns": [
+        "\\b(FRENCH|GERMAN|SPANISH|ITALIAN|DUTCH|RUSSIAN|PORTUGUESE)\\b"
+      ],
+      "bundleOnly": false,
+      "mappingStatus": "advanced",
+      "mappedTraitIds": [],
+      "sourceKind": "curated-adaptation"
+    },
+    {
+      "trashId": "deluno-trash-language-french",
+      "name": "French Audio",
+      "category": "language",
+      "description": "French audio/version tags such as VFF, VFQ, VOSTFR, FanSUB and FastSUB.",
+      "originalScore": 0,
+      "patterns": [
+        "\\b(VFF|VOF|VFI|VF2|VFQ|VOQ|VQ|VFB|VOSTFR|FanSUB|FastSUB)\\b"
+      ],
+      "bundleOnly": false,
+      "mappingStatus": "reviewed",
+      "mappedTraitIds": [
+        "audio.language.fr"
+      ],
+      "sourceKind": "curated-adaptation"
+    },
+    {
+      "trashId": "deluno-trash-language-german",
+      "name": "German Audio",
+      "category": "language",
+      "description": "German or German dual-language release.",
+      "originalScore": 0,
+      "patterns": [
+        "\\b(German|Deutsch|GERMAN.?DL|DL.?German)\\b"
+      ],
+      "bundleOnly": false,
+      "mappingStatus": "reviewed",
+      "mappedTraitIds": [
+        "audio.language.de"
+      ],
+      "sourceKind": "curated-adaptation"
+    }
+  ],
+  "qualityProfiles": [
+    {
+      "id": "web-1080p",
+      "name": "1080p Streaming",
+      "tagline": "Great quality, small files",
+      "description": "The most popular choice. Grabs WEB-DL 1080p releases from Netflix, Amazon, Apple TV+ and other streaming services. Perfect balance of quality and storage.",
+      "highlights": [
+        "WEB-DL 1080p from streaming platforms",
+        "WEBRip as a fallback source",
+        "Smaller file sizes than Blu-ray",
+        "Works on all displays"
+      ],
+      "mediaType": "movies",
+      "qualityOrder": [
+        "webdl-1080p",
+        "webrip-1080p",
+        "webdl-720p",
+        "hdtv-1080p"
+      ],
+      "cutoffQualityId": "webdl-1080p",
+      "upgradeAllowed": true,
+      "minFormatScore": 0,
+      "cutoffFormatScore": 10000,
+      "recommendedFormats": [
+        {
+          "trashId": "3a4127d8aa781b44120d907f2cd62627",
+          "score": 5
+        },
+        {
+          "trashId": "4eee26f9ab44a27e8e4dd0a7a2f14697",
+          "score": 6
+        },
+        {
+          "trashId": "9b64dff695c2115facf1b6ea59c9bd07",
+          "score": 7
+        },
+        {
+          "trashId": "aadb0e9ebba39a5fcf97c5a6d5ed0cff",
+          "score": -10000
+        },
+        {
+          "trashId": "b8cd450cbfa689c0259a01d9e29ba3d6",
+          "score": -10000
+        },
+        {
+          "trashId": "dc98083864ea246d05a42df0d05f81cc",
+          "score": -10000
+        }
+      ]
+    },
+    {
+      "id": "bluray-1080p",
+      "name": "1080p HD Blu-ray + WEB",
+      "tagline": "Best 1080p quality",
+      "description": "Starts with WEB-DL 1080p, then automatically upgrades to Blu-ray 1080p when available. Recommended for cinephiles who want the best 1080p experience.",
+      "highlights": [
+        "Grabs WEB-DL 1080p immediately",
+        "Automatically upgrades to Blu-ray 1080p",
+        "Trusted release groups scored highly",
+        "Proper/Repack corrections preferred"
+      ],
+      "mediaType": "movies",
+      "qualityOrder": [
+        "bluray-1080p",
+        "webdl-1080p",
+        "webrip-1080p",
+        "bluray-720p"
+      ],
+      "cutoffQualityId": "bluray-1080p",
+      "upgradeAllowed": true,
+      "minFormatScore": 0,
+      "cutoffFormatScore": 10000,
+      "recommendedFormats": [
+        {
+          "trashId": "ed27ebfef2f323293b7b9c9c9b7e4f25",
+          "score": 1800
+        },
+        {
+          "trashId": "a58f517a70193f8e578056642178419d",
+          "score": 1750
+        },
+        {
+          "trashId": "e61e28db84184857a8ca8e7e2e8d6ef2",
+          "score": 1700
+        },
+        {
+          "trashId": "58790d4e2fdcd9733aa7ae68ba2bb503",
+          "score": 1650
+        },
+        {
+          "trashId": "3a4127d8aa781b44120d907f2cd62627",
+          "score": 5
+        },
+        {
+          "trashId": "4eee26f9ab44a27e8e4dd0a7a2f14697",
+          "score": 6
+        },
+        {
+          "trashId": "9b64dff695c2115facf1b6ea59c9bd07",
+          "score": 7
+        },
+        {
+          "trashId": "aadb0e9ebba39a5fcf97c5a6d5ed0cff",
+          "score": -10000
+        },
+        {
+          "trashId": "b8cd450cbfa689c0259a01d9e29ba3d6",
+          "score": -10000
+        },
+        {
+          "trashId": "cae4ca30163749d0b87284ca3be2980a",
+          "score": -10000
+        }
+      ]
+    },
+    {
+      "id": "web-2160p",
+      "name": "4K Streaming",
+      "tagline": "4K from streaming platforms",
+      "description": "Grabs WEB-DL 4K (2160p) releases from Netflix, Amazon, Apple TV+ and others. Includes HDR content. Perfect for 4K displays without needing massive Remux files.",
+      "highlights": [
+        "WEB-DL 4K from streaming platforms",
+        "HDR10 and HDR10+ preferred",
+        "Dolby Vision optional boost",
+        "Much smaller than Blu-ray Remux"
+      ],
+      "mediaType": "movies",
+      "qualityOrder": [
+        "webdl-2160p",
+        "webrip-2160p",
+        "webdl-1080p",
+        "webrip-1080p"
+      ],
+      "cutoffQualityId": "webdl-2160p",
+      "upgradeAllowed": true,
+      "minFormatScore": 0,
+      "cutoffFormatScore": 10000,
+      "recommendedFormats": [
+        {
+          "trashId": "493b6d1dbec3c3364c59d7607f7e3405",
+          "score": 500
+        },
+        {
+          "trashId": "5d96ce331b98e077abb8ceb60553aa16",
+          "score": 520
+        },
+        {
+          "trashId": "e61e28db84184857a8ca8e7e2e8d6ef2",
+          "score": 1700
+        },
+        {
+          "trashId": "58790d4e2fdcd9733aa7ae68ba2bb503",
+          "score": 1650
+        },
+        {
+          "trashId": "3a4127d8aa781b44120d907f2cd62627",
+          "score": 5
+        },
+        {
+          "trashId": "4eee26f9ab44a27e8e4dd0a7a2f14697",
+          "score": 6
+        },
+        {
+          "trashId": "9b64dff695c2115facf1b6ea59c9bd07",
+          "score": 7
+        },
+        {
+          "trashId": "923b6abef9b17f937fab56cfcf89e1f1",
+          "score": -10000
+        },
+        {
+          "trashId": "b8cd450cbfa689c0259a01d9e29ba3d6",
+          "score": -10000
+        }
+      ]
+    },
+    {
+      "id": "remux-2160p",
+      "name": "4K Remux",
+      "tagline": "Uncompromising 4K quality",
+      "description": "The absolute best quality — a bit-for-bit copy of the 4K Blu-ray disc. Largest file sizes but perfect video and audio with all HDR formats and lossless audio.",
+      "highlights": [
+        "Direct copy from 4K Blu-ray disc",
+        "Lossless audio (TrueHD Atmos, DTS-HD MA)",
+        "All HDR formats: DV, HDR10+, HDR10",
+        "No re-encoding quality loss"
+      ],
+      "mediaType": "movies",
+      "qualityOrder": [
+        "remux-2160p",
+        "bluray-2160p",
+        "webdl-2160p",
+        "webrip-2160p",
+        "remux-1080p"
+      ],
+      "cutoffQualityId": "remux-2160p",
+      "upgradeAllowed": true,
+      "minFormatScore": 0,
+      "cutoffFormatScore": 10000,
+      "recommendedFormats": [
+        {
+          "trashId": "493b6d1dbec3c3364c59d7607f7e3405",
+          "score": 500
+        },
+        {
+          "trashId": "5d96ce331b98e077abb8ceb60553aa16",
+          "score": 520
+        },
+        {
+          "trashId": "b337d6812e06c200ec9a2d3cfa9d20a7",
+          "score": 1000
+        },
+        {
+          "trashId": "caa37d0df9c348912df1fb1d88f9273a",
+          "score": 100
+        },
+        {
+          "trashId": "496f355514737f7d83bf7aa4d24f8169",
+          "score": 5
+        },
+        {
+          "trashId": "ca3e897c30fb3d15b3f643e8dfae1ce6",
+          "score": 3
+        },
+        {
+          "trashId": "2f22d89048b01681dde8afe203bf2e95",
+          "score": 4
+        },
+        {
+          "trashId": "9de657fd3d327ecf144ec73dfe3a3e9a",
+          "score": 800
+        },
+        {
+          "trashId": "4b900e171accbfb172729b63323f9d5e",
+          "score": 800
+        },
+        {
+          "trashId": "b8cd450cbfa689c0259a01d9e29ba3d6",
+          "score": -10000
+        },
+        {
+          "trashId": "cae4ca30163749d0b87284ca3be2980a",
+          "score": -10000
+        }
+      ]
+    },
+    {
+      "id": "web-1080p-tv",
+      "name": "TV — 1080p Streaming",
+      "tagline": "Standard quality for TV series",
+      "description": "The recommended profile for TV shows. Grabs WEB-DL 1080p from streaming platforms. Same day as Netflix, Amazon, etc.",
+      "highlights": [
+        "1080p WEB-DL from streaming platforms",
+        "Season packs supported",
+        "WEBRip as fallback",
+        "Proper/Repack corrections preferred"
+      ],
+      "mediaType": "tv",
+      "qualityOrder": [
+        "webdl-1080p",
+        "webrip-1080p",
+        "webdl-720p"
+      ],
+      "cutoffQualityId": "webdl-1080p",
+      "upgradeAllowed": true,
+      "minFormatScore": 0,
+      "cutoffFormatScore": 10000,
+      "recommendedFormats": [
+        {
+          "trashId": "e61e28db84184857a8ca8e7e2e8d6ef2",
+          "score": 1700
+        },
+        {
+          "trashId": "58790d4e2fdcd9733aa7ae68ba2bb503",
+          "score": 1650
+        },
+        {
+          "trashId": "3a4127d8aa781b44120d907f2cd62627",
+          "score": 5
+        },
+        {
+          "trashId": "4eee26f9ab44a27e8e4dd0a7a2f14697",
+          "score": 6
+        },
+        {
+          "trashId": "9b64dff695c2115facf1b6ea59c9bd07",
+          "score": 7
+        },
+        {
+          "trashId": "aadb0e9ebba39a5fcf97c5a6d5ed0cff",
+          "score": -10000
+        },
+        {
+          "trashId": "b8cd450cbfa689c0259a01d9e29ba3d6",
+          "score": -10000
+        }
+      ]
+    },
+    {
+      "id": "anime-1080p",
+      "name": "Anime — 1080p Remux",
+      "tagline": "Best quality for anime",
+      "description": "Optimised for anime releases. Prefers Blu-ray Remux sources from trusted anime groups. Supports both dual audio and Japanese audio with subtitles.",
+      "highlights": [
+        "Blu-ray Remux from trusted anime groups",
+        "Dual audio (EN/JP) preferred",
+        "FLAC lossless audio scored",
+        "x265 allowed (efficient for anime)"
+      ],
+      "mediaType": "anime",
+      "qualityOrder": [
+        "remux-1080p",
+        "bluray-1080p",
+        "webdl-1080p",
+        "webrip-1080p"
+      ],
+      "cutoffQualityId": "remux-1080p",
+      "upgradeAllowed": true,
+      "minFormatScore": 0,
+      "cutoffFormatScore": 10000,
+      "recommendedFormats": [
+        {
+          "trashId": "185f1dd7264c4562b9022d963ac37424",
+          "score": 5
+        },
+        {
+          "trashId": "3a4127d8aa781b44120d907f2cd62627",
+          "score": 5
+        },
+        {
+          "trashId": "b8cd450cbfa689c0259a01d9e29ba3d6",
+          "score": -10000
+        }
+      ]
+    }
+  ],
+  "bundles": [
+    {
+      "id": "starter-streaming-1080p",
+      "name": "Simple 1080p Streaming",
+      "level": "starter",
+      "mediaType": "all",
+      "description": "A safe default for most users. Prefer clean WEB releases, block obvious bad releases, and avoid fragile HDR rules.",
+      "bestFor": "First setup, small libraries, families, laptops, and users who just want reliable 1080p playback.",
+      "includes": [
+        {
+          "trashId": "deluno-trash-misc-1080p",
+          "score": null
+        },
+        {
+          "trashId": "deluno-trash-streaming-itunes",
+          "score": null
+        },
+        {
+          "trashId": "deluno-trash-streaming-hulu",
+          "score": null
+        },
+        {
+          "trashId": "deluno-trash-unwanted-br-disk",
+          "score": null
+        },
+        {
+          "trashId": "deluno-trash-unwanted-obfuscated",
+          "score": null
+        },
+        {
+          "trashId": "deluno-trash-unwanted-retags",
+          "score": null
+        },
+        {
+          "trashId": "deluno-trash-unwanted-line-mic-dubbed",
+          "score": null
+        },
+        {
+          "trashId": "aadb0e9ebba39a5fcf97c5a6d5ed0cff",
+          "score": null
+        }
+      ],
+      "warnings": []
+    },
+    {
+      "id": "balanced-1080p",
+      "name": "Balanced 1080p",
+      "level": "balanced",
+      "mediaType": "all",
+      "description": "A better everyday profile with sensible audio, trusted WEB groups, and common bad-release blocking.",
+      "bestFor": "Main libraries where quality matters but storage should not explode.",
+      "includes": [
+        {
+          "trashId": "deluno-trash-misc-1080p",
+          "score": null
+        },
+        {
+          "trashId": "deluno-trash-groups-web-tier-03",
+          "score": 1200
+        },
+        {
+          "trashId": "496f355514737f7d83bf7aa4d24f8169",
+          "score": null
+        },
+        {
+          "trashId": "1c1a4c5e823891c75bc50380a6866f73",
+          "score": null
+        },
+        {
+          "trashId": "deluno-trash-audio-ddplus",
+          "score": null
+        },
+        {
+          "trashId": "deluno-trash-channel-51",
+          "score": null
+        },
+        {
+          "trashId": "deluno-trash-unwanted-br-disk",
+          "score": null
+        },
+        {
+          "trashId": "deluno-trash-unwanted-obfuscated",
+          "score": null
+        },
+        {
+          "trashId": "deluno-trash-unwanted-retags",
+          "score": null
+        },
+        {
+          "trashId": "deluno-trash-unwanted-line-mic-dubbed",
+          "score": null
+        }
+      ],
+      "warnings": []
+    },
+    {
+      "id": "premium-4k-streaming",
+      "name": "Premium 4K Streaming",
+      "level": "premium",
+      "mediaType": "all",
+      "description": "Prioritises 2160p WEB releases, HDR, good audio, and clean source tags without forcing full remux sizes.",
+      "bestFor": "4K televisions, Apple TV / Shield / Plex users, and users who want a premium library without huge files.",
+      "includes": [
+        {
+          "trashId": "deluno-trash-misc-2160p",
+          "score": null
+        },
+        {
+          "trashId": "493b6d1dbec3c3364c59d7607f7e3405",
+          "score": null
+        },
+        {
+          "trashId": "7878c33f1963fefb3d6c8657d46c2f0a",
+          "score": null
+        },
+        {
+          "trashId": "5d96ce331b98e077abb8ceb60553aa16",
+          "score": null
+        },
+        {
+          "trashId": "b337d6812e06c200ec9a2d3cfa9d20a7",
+          "score": null
+        },
+        {
+          "trashId": "deluno-trash-hdr-sdr",
+          "score": null
+        },
+        {
+          "trashId": "deluno-trash-groups-web-tier-03",
+          "score": null
+        },
+        {
+          "trashId": "deluno-trash-audio-ddplus",
+          "score": null
+        },
+        {
+          "trashId": "deluno-trash-channel-51",
+          "score": null
+        },
+        {
+          "trashId": "deluno-trash-unwanted-generated-dynamic-hdr",
+          "score": null
+        },
+        {
+          "trashId": "deluno-trash-unwanted-br-disk",
+          "score": null
+        },
+        {
+          "trashId": "deluno-trash-unwanted-obfuscated",
+          "score": null
+        }
+      ],
+      "warnings": [
+        "Dolby Vision is boosted. If your display does not support it, keep the no-fallback blocker enabled."
+      ]
+    },
+    {
+      "id": "archive-4k-remux",
+      "name": "Archive 4K Remux",
+      "level": "premium",
+      "mediaType": "movies",
+      "description": "Large-file movie archive preset. Prefers remux, UHD Blu-ray groups, lossless audio, HDR, and special editions.",
+      "bestFor": "Reference movie libraries, home cinema rooms, and users who care more about quality than disk usage.",
+      "includes": [
+        {
+          "trashId": "deluno-trash-misc-2160p",
+          "score": null
+        },
+        {
+          "trashId": "493b6d1dbec3c3364c59d7607f7e3405",
+          "score": null
+        },
+        {
+          "trashId": "b337d6812e06c200ec9a2d3cfa9d20a7",
+          "score": null
+        },
+        {
+          "trashId": "deluno-trash-groups-remux-tier-01",
+          "score": null
+        },
+        {
+          "trashId": "deluno-trash-groups-remux-tier-02",
+          "score": null
+        },
+        {
+          "trashId": "deluno-trash-groups-uhd-bluray-tier-01",
+          "score": null
+        },
+        {
+          "trashId": "496f355514737f7d83bf7aa4d24f8169",
+          "score": null
+        },
+        {
+          "trashId": "2f22d89048b01681dde8afe203bf2e95",
+          "score": null
+        },
+        {
+          "trashId": "deluno-trash-audio-dts-hra",
+          "score": null
+        },
+        {
+          "trashId": "deluno-trash-channel-71",
+          "score": null
+        },
+        {
+          "trashId": "deluno-trash-edition-criterion",
+          "score": null
+        },
+        {
+          "trashId": "deluno-trash-edition-remaster",
+          "score": null
+        },
+        {
+          "trashId": "deluno-trash-unwanted-br-disk",
+          "score": null
+        },
+        {
+          "trashId": "deluno-trash-unwanted-obfuscated",
+          "score": null
+        },
+        {
+          "trashId": "deluno-trash-unwanted-retags",
+          "score": null
+        }
+      ],
+      "warnings": [
+        "This can create very large files. Pair it with a dedicated movie root or storage policy."
+      ]
+    },
+    {
+      "id": "anime-balanced",
+      "name": "Anime Balanced",
+      "level": "specialist",
+      "mediaType": "tv",
+      "description": "Anime-specific release groups, dual-audio preference, uncensored boost, and raw-release blocking.",
+      "bestFor": "Anime libraries where normal Sonarr-style scoring is not enough.",
+      "includes": [
+        {
+          "trashId": "deluno-trash-anime-web-tier-01",
+          "score": null
+        },
+        {
+          "trashId": "deluno-trash-anime-bd-tier-01",
+          "score": null
+        },
+        {
+          "trashId": "deluno-trash-anime-dual-audio",
+          "score": null
+        },
+        {
+          "trashId": "deluno-trash-anime-uncensored",
+          "score": null
+        },
+        {
+          "trashId": "deluno-trash-anime-10bit",
+          "score": null
+        },
+        {
+          "trashId": "deluno-trash-streaming-crunchyroll",
+          "score": null
+        },
+        {
+          "trashId": "deluno-trash-streaming-hidive",
+          "score": null
+        },
+        {
+          "trashId": "deluno-trash-anime-raws",
+          "score": null
+        },
+        {
+          "trashId": "deluno-trash-unwanted-obfuscated",
+          "score": null
+        }
+      ],
+      "warnings": []
+    },
+    {
+      "id": "storage-saver",
+      "name": "Storage Saver",
+      "level": "starter",
+      "mediaType": "all",
+      "description": "Keeps quality sane while discouraging remux-sized and very high bitrate releases.",
+      "bestFor": "NAS storage limits, remote users, slower upload links, or libraries with many users.",
+      "includes": [
+        {
+          "trashId": "deluno-trash-misc-1080p",
+          "score": null
+        },
+        {
+          "trashId": "aadb0e9ebba39a5fcf97c5a6d5ed0cff",
+          "score": null
+        },
+        {
+          "trashId": "deluno-trash-unwanted-br-disk",
+          "score": null
+        },
+        {
+          "trashId": "deluno-trash-unwanted-obfuscated",
+          "score": null
+        },
+        {
+          "trashId": "deluno-trash-unwanted-retags",
+          "score": null
+        },
+        {
+          "trashId": "deluno-trash-unwanted-generated-dynamic-hdr",
+          "score": null
+        },
+        {
+          "trashId": "deluno-trash-unwanted-hfr",
+          "score": -100
+        }
+      ],
+      "warnings": []
+    }
+  ]
+}

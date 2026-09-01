@@ -166,6 +166,15 @@ public sealed class SqlitePlatformSettingsRepository(
         await UpsertSettingAsync(connection, transaction, "security.requireAuthentication", "true", updatedUtc, cancellationToken);
         await UpsertSettingAsync(connection, transaction, "ui.theme", NormalizeUiTheme(request.UiTheme), updatedUtc, cancellationToken);
         await UpsertSettingAsync(connection, transaction, "ui.density", NormalizeUiDensity(request.UiDensity), updatedUtc, cancellationToken);
+        await UpsertSettingAsync(connection, transaction, "ui.colorMode", NormalizeUiColorMode(request.UiColorMode), updatedUtc, cancellationToken);
+        await UpsertSettingAsync(connection, transaction, "ui.language", NormalizeUiLanguage(request.UiLanguage), updatedUtc, cancellationToken);
+        await UpsertSettingAsync(connection, transaction, "ui.calendarFirstDay", NormalizeCalendarFirstDay(request.CalendarFirstDayOfWeek), updatedUtc, cancellationToken);
+        await UpsertSettingAsync(connection, transaction, "ui.calendarWeekHeader", NormalizeCalendarWeekHeader(request.CalendarWeekHeaderFormat), updatedUtc, cancellationToken);
+        await UpsertSettingAsync(connection, transaction, "ui.runtimeFormat", NormalizeRuntimeFormat(request.RuntimeFormat), updatedUtc, cancellationToken);
+        await UpsertSettingAsync(connection, transaction, "ui.shortDateFormat", NormalizeShortDateFormat(request.ShortDateFormat), updatedUtc, cancellationToken);
+        await UpsertSettingAsync(connection, transaction, "ui.longDateFormat", NormalizeLongDateFormat(request.LongDateFormat), updatedUtc, cancellationToken);
+        await UpsertSettingAsync(connection, transaction, "ui.timeFormat", NormalizeTimeFormat(request.TimeFormat), updatedUtc, cancellationToken);
+        await UpsertSettingAsync(connection, transaction, "ui.relativeDates", request.ShowRelativeDates is false ? "false" : "true", updatedUtc, cancellationToken);
         await UpsertSettingAsync(connection, transaction, "ui.defaultMovieView", NormalizeUiView(request.DefaultMovieView), updatedUtc, cancellationToken);
         await UpsertSettingAsync(connection, transaction, "ui.defaultShowView", NormalizeUiView(request.DefaultShowView), updatedUtc, cancellationToken);
         await UpsertSettingAsync(connection, transaction, "metadata.nfoEnabled", request.MetadataNfoEnabled ? "true" : "false", updatedUtc, cancellationToken);
@@ -469,7 +478,16 @@ public sealed class SqlitePlatformSettingsRepository(
             SharingStuckAction: SharingPolicy.NormalizeStuckAction(GetValue(settings, "sharing.stuckAction")),
             SharingStuckAfterDays: ReadOptionalInt(GetValue(settings, "sharing.stuckAfterDays"), SharingPolicy.Default.StuckAfterDays) ?? SharingPolicy.Default.StuckAfterDays,
             CleanupPurgePayloadAfterThreshold: string.Equals(GetValue(settings, "cleanup.purgePayloadAfterThreshold"), "true", StringComparison.OrdinalIgnoreCase),
-            WorkflowVerified: string.Equals(GetValue(settings, "setup.workflowVerified"), "true", StringComparison.OrdinalIgnoreCase));
+            WorkflowVerified: string.Equals(GetValue(settings, "setup.workflowVerified"), "true", StringComparison.OrdinalIgnoreCase),
+            UiColorMode: NormalizeUiColorMode(GetValue(settings, "ui.colorMode")),
+            UiLanguage: NormalizeUiLanguage(GetValue(settings, "ui.language")),
+            CalendarFirstDayOfWeek: NormalizeCalendarFirstDay(GetValue(settings, "ui.calendarFirstDay")),
+            CalendarWeekHeaderFormat: NormalizeCalendarWeekHeader(GetValue(settings, "ui.calendarWeekHeader")),
+            RuntimeFormat: NormalizeRuntimeFormat(GetValue(settings, "ui.runtimeFormat")),
+            ShortDateFormat: NormalizeShortDateFormat(GetValue(settings, "ui.shortDateFormat")),
+            LongDateFormat: NormalizeLongDateFormat(GetValue(settings, "ui.longDateFormat")),
+            TimeFormat: NormalizeTimeFormat(GetValue(settings, "ui.timeFormat")),
+            ShowRelativeDates: !string.Equals(GetValue(settings, "ui.relativeDates"), "false", StringComparison.OrdinalIgnoreCase));
     }
 
     private static int ReadDownloadHealthStrikeThreshold(IReadOnlyDictionary<string, string> settings)
@@ -656,6 +674,47 @@ public sealed class SqlitePlatformSettingsRepository(
         };
     }
 
+    private static string NormalizeUiColorMode(string? value)
+    {
+        return string.Equals(value?.Trim(), "impaired", StringComparison.OrdinalIgnoreCase)
+            ? "impaired"
+            : "standard";
+    }
+
+    private static string NormalizeUiLanguage(string? value)
+    {
+        var normalized = value?.Trim();
+        return string.IsNullOrWhiteSpace(normalized) ? "en-AU" : normalized[..Math.Min(normalized.Length, 35)];
+    }
+
+    private static string NormalizeCalendarFirstDay(string? value)
+        => string.Equals(value?.Trim(), "sunday", StringComparison.OrdinalIgnoreCase) ? "sunday" : "monday";
+
+    private static string NormalizeCalendarWeekHeader(string? value)
+    {
+        var normalized = value?.Trim();
+        if (string.Equals(normalized, "ddd m/d", StringComparison.OrdinalIgnoreCase)) return "ddd m/d";
+        if (string.Equals(normalized, "ddd d mmm", StringComparison.OrdinalIgnoreCase)) return "ddd d mmm";
+        return "ddd d/M";
+    }
+
+    private static string NormalizeRuntimeFormat(string? value)
+        => string.Equals(value?.Trim(), "minutes", StringComparison.OrdinalIgnoreCase) ? "minutes" : "hoursMinutes";
+
+    private static string NormalizeShortDateFormat(string? value)
+        => value?.Trim().ToLowerInvariant() switch
+        {
+            "mdy" => "mdy",
+            "iso" => "iso",
+            _ => "dmy"
+        };
+
+    private static string NormalizeLongDateFormat(string? value)
+        => string.Equals(value?.Trim(), "mdy", StringComparison.OrdinalIgnoreCase) ? "mdy" : "full";
+
+    private static string NormalizeTimeFormat(string? value)
+        => string.Equals(value?.Trim(), "24", StringComparison.OrdinalIgnoreCase) ? "24" : "12";
+
     private static string NormalizeMetadataProviderMode(string? value)
     {
         var normalized = value?.Trim().ToLowerInvariant();
@@ -730,4 +789,3 @@ public sealed class SqlitePlatformSettingsRepository(
     }
 
 }
-

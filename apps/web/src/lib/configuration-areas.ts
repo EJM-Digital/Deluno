@@ -64,12 +64,13 @@ export const CONFIGURATION_AREAS: readonly ConfigurationArea[] = [
       path.startsWith("/settings/policy-sets") ||
       path.startsWith("/settings/profiles") ||
       path.startsWith("/settings/quality") ||
-      path.startsWith("/settings/custom-formats"),
+      path.startsWith("/settings/custom-formats") ||
+      path.startsWith("/settings/release-rules"),
     explainer: {
-      lead: "Deluno scores every release it finds and takes the best one that passes. Four things shape that score, and they stack: the qualities you accept, how big a file of that quality should be, the words you want or refuse in a release name, and — last — the Library Profile that points one of your libraries at a particular set of those choices.",
+      lead: "Deluno compares every release it finds against the preferences you set and takes the best one that passes. Four things shape that decision: the qualities you accept, how big a file of that quality should be, the words you want or refuse in a release name, and — last — the Library Profile that points one of your libraries at a particular set of those choices.",
       steps: [
         { title: "Say which qualities you accept", body: "A Quality Profile lists the qualities you will take, best first, and the one good enough to stop upgrading at." },
-        { title: "Add the details that decide close calls", body: "Size Rules rule out files too small or too large to be what they claim. Release Preferences add or subtract points for things like a preferred group or an unwanted codec." },
+        { title: "Add the details that decide close calls", body: "Size Rules rule out files too small or too large to be what they claim. Release Preferences express what you require, prefer, or refuse — such as a preferred group or an unwanted codec." },
         { title: "Point a library at it", body: "A Library Profile attaches those choices to Movies, TV Shows, or any library you have made — so different libraries can want different things." }
       ]
     }

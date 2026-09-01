@@ -132,6 +132,24 @@ public sealed class CatalogueFilterRegistryTests
         Assert.Equal(condition.Values, round.Values);
     }
 
+    [Fact]
+    public void A_saved_view_condition_array_is_validated_against_the_same_registry()
+    {
+        var raw = "[{\"field\":\"rating\",\"operator\":\"min\",\"values\":[\"8.2\"]},{\"field\":\"tag\",\"operator\":\"in\",\"values\":[\"4K rewatch\"]}]";
+
+        Assert.True(CatalogueFilters.TryParseJson(MediaKind.Movie, raw, out var filters));
+        Assert.Equal(2, filters.Conditions!.Count);
+        Assert.Equal(CatalogueFilterOperator.AtLeast, filters.Conditions[0].Operator);
+
+        // Legacy nine-field objects and fields from the other media kind must
+        // not be interpreted as an empty, therefore unfiltered, automation pass.
+        Assert.False(CatalogueFilters.TryParseJson(MediaKind.Movie, "{\"qualities\":[\"4K\"]}", out _));
+        Assert.False(CatalogueFilters.TryParseJson(
+            MediaKind.Series,
+            "[{\"field\":\"inCinemas\",\"operator\":\"before\",\"values\":[\"2020-01-01\"]}]",
+            out _));
+    }
+
     /// <summary>
     /// The two lists that have to agree: what the toolbar offers to order by,
     /// and what the paged query can actually perform. They were a browser array

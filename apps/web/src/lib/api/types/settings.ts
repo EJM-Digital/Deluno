@@ -41,6 +41,15 @@ export interface PlatformSettingsSnapshot {
   requireAuthentication: boolean;
   uiTheme: string;
   uiDensity: string;
+  uiColorMode: "standard" | "impaired" | string;
+  uiLanguage: string;
+  calendarFirstDayOfWeek: "monday" | "sunday" | string;
+  calendarWeekHeaderFormat: string;
+  runtimeFormat: "hoursMinutes" | "minutes" | string;
+  shortDateFormat: "dmy" | "mdy" | "iso" | string;
+  longDateFormat: "full" | "mdy" | string;
+  timeFormat: "12" | "24" | string;
+  showRelativeDates: boolean;
   defaultMovieView: string;
   defaultShowView: string;
   metadataNfoEnabled: boolean;
@@ -140,6 +149,15 @@ export const emptyPlatformSettingsSnapshot: PlatformSettingsSnapshot = {
   requireAuthentication: true,
   uiTheme: "system",
   uiDensity: "comfortable",
+  uiColorMode: "standard",
+  uiLanguage: "en-AU",
+  calendarFirstDayOfWeek: "monday",
+  calendarWeekHeaderFormat: "ddd d/M",
+  runtimeFormat: "hoursMinutes",
+  shortDateFormat: "dmy",
+  longDateFormat: "full",
+  timeFormat: "12",
+  showRelativeDates: true,
   defaultMovieView: "grid",
   defaultShowView: "grid",
   metadataNfoEnabled: false,

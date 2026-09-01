@@ -13,7 +13,26 @@ namespace Deluno.Contracts;
 /// What it actually does, in a sentence, in the words a person would use. Not
 /// the class name.
 /// </param>
-public sealed record SystemTask(string Key, string Name, string Description, TimeSpan Interval);
+public sealed record SystemTask(
+    string Key,
+    string Name,
+    string Description,
+    TimeSpan Interval,
+    bool IsConfigurable = false);
+
+/// <summary>
+/// The persisted run state for one recurring pass. The schedule definition is
+/// deliberately kept separate from this state so fixed engineering cadences
+/// and user-configured cadences can be displayed without pretending they are
+/// the same thing.
+/// </summary>
+public sealed record SystemTaskState(
+    string ScheduleKey,
+    DateTimeOffset? LastStartedUtc,
+    DateTimeOffset? LastCompletedUtc,
+    string? LastResult,
+    long? LastDurationMs,
+    DateTimeOffset? NextRunUtc);
 
 /// <summary>
 /// Every scheduled pass, in one place, on a fixed interval.
@@ -49,6 +68,12 @@ public static class SystemTasks
     public const string SharingReclaim = "sharing.reclaim";
     public const string ImportAutomation = "import.automation";
     public const string MediaProbe = "media.probe";
+    public const string ArtworkCacheCleanup = "artwork.cache.cleanup";
+    public const string Backup = "backup.schedule";
+    public const string RankingModelTraining = "ranking.model.training";
+    public const string ImportRecoveryRetention = "import.recovery.retention";
+    public const string DownloadDispatchPolling = "dispatch.polling";
+    public const string RecycleBinCleanup = "recycle.bin.cleanup";
 
     /// <summary>
     /// Ordered as somebody reading the screen would want them: the things that
@@ -86,6 +111,28 @@ public static class SystemTasks
         new(MediaProbe, "Read media files",
             "Reads the codec, audio and channel layout out of the files you hold, for the ones whose names do not say.",
             TimeSpan.FromMinutes(30)),
+        new(ArtworkCacheCleanup, "Clean cached artwork",
+            "Removes artwork no movie or show still references after a safety window.",
+            TimeSpan.FromHours(6)),
+        new(Backup, "Create scheduled backups",
+            "Creates a backup when the backup schedule says one is due.",
+            TimeSpan.FromDays(1),
+            IsConfigurable: true),
+        new(RankingModelTraining, "Train release ranking",
+            "Learns from recorded release outcomes when ranking training is enabled.",
+            TimeSpan.FromDays(1),
+            IsConfigurable: true),
+        new(ImportRecoveryRetention, "Expire recovery cases",
+            "Removes resolved import recovery cases older than the configured retention.",
+            TimeSpan.FromDays(1),
+            IsConfigurable: true),
+        new(DownloadDispatchPolling, "Poll dispatch recovery",
+            "Checks unresolved downloads for grab, detection and import timeouts.",
+            TimeSpan.FromHours(1)),
+        new(RecycleBinCleanup, "Clean the recycle bin",
+            "Removes library files whose recycle-bin retention has expired.",
+            TimeSpan.FromHours(6),
+            IsConfigurable: true),
         new(DispatchCleanup, "Housekeeping",
             "Clears finished dispatch records that nothing needs any more.",
             TimeSpan.FromHours(6))
@@ -103,4 +150,23 @@ public static class SystemTasks
         => All.FirstOrDefault(task => task.Key == key)?.Interval
            ?? throw new KeyNotFoundException(
                $"'{key}' is not a declared system task. Add it to SystemTasks.All so it can be shown and scheduled.");
+
+    /// <summary>
+    /// Resolves a user-configured hourly cadence while still requiring the
+    /// pass to be declared in the registry. Configuration belongs at the
+    /// settings boundary; hosted services must not invent an invisible task.
+    /// </summary>
+    public static TimeSpan IntervalForHours(string key, int hours)
+    {
+        var task = All.FirstOrDefault(item => item.Key == key)
+            ?? throw new KeyNotFoundException(
+                $"'{key}' is not a declared system task. Add it to SystemTasks.All so it can be shown and scheduled.");
+
+        if (!task.IsConfigurable)
+        {
+            throw new InvalidOperationException($"'{key}' is not a configurable system task.");
+        }
+
+        return TimeSpan.FromHours(Math.Clamp(hours, 1, 168));
+    }
 }
