@@ -8,6 +8,7 @@ using Deluno.Contracts;
 using Deluno.Filesystem;
 using Deluno.Infrastructure;
 using Deluno.Infrastructure.Observability;
+using Deluno.Infrastructure.Storage;
 using Deluno.Integrations;
 using Deluno.Intake;
 using Deluno.Integrations.DownloadClients;
@@ -228,6 +229,37 @@ app.UseDelunoApiVersioning();
 // unrewritten /api/v1/... path and the version alias above would have no
 // effect on dispatch even though it edited the path.
 app.UseRouting();
+
+// Kestrel can accept a request while hosted-service startup is still applying
+// database migrations. Hold normal UI/API traffic behind the schema gate so a
+// fresh install cannot execute a search against a half-created catalogue.
+app.Use(async (context, next) =>
+{
+    var path = context.Request.Path;
+    var isHealthProbe = path.Equals("/health", StringComparison.OrdinalIgnoreCase) ||
+                        path.Equals("/api/health/live", StringComparison.OrdinalIgnoreCase) ||
+                        path.Equals("/api/health/ready", StringComparison.OrdinalIgnoreCase);
+
+    if (!isHealthProbe)
+    {
+        var startupGate = context.RequestServices.GetRequiredService<IDelunoStartupGate>();
+        try
+        {
+            await startupGate.WaitAsync(TimeSpan.FromSeconds(30), context.RequestAborted);
+        }
+        catch (TimeoutException)
+        {
+            context.Response.StatusCode = StatusCodes.Status503ServiceUnavailable;
+            context.Response.ContentType = "application/json";
+            await context.Response.WriteAsync(
+                "{\"error\":\"Deluno is still completing database migrations. Try again shortly.\"}",
+                context.RequestAborted);
+            return;
+        }
+    }
+
+    await next();
+});
 
 app.UseRateLimiter();
 app.UseDefaultFiles();

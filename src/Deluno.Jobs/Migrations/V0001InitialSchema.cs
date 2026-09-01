@@ -23,7 +23,14 @@ public static class JobsDatabaseMigrations
         new V0015MachineTelemetrySamples(),
         new V0016DispatchImportStatusVocabulary(),
         new V0017LibrarySearchPerMediaTypeJobTypes(),
-        new V0018LibrarySubtitleSchedule()
+        new V0018LibrarySubtitleSchedule(),
+        new V0019IndexerQueryStats(),
+        new V0020SystemTaskRunState(),
+        new V0021IndexerQueryFailureDetails(),
+        new V0022DownloadDispatchImportFailureDetails(),
+        new V0023DownloadDispatchGrabFailureDetails(),
+        new V0024DownloadDispatchReplacementAuthority(),
+        new V0025DownloadDispatchReplacementManifest()
     ];
 
     private sealed class V0001InitialSchema : SqliteSqlMigration

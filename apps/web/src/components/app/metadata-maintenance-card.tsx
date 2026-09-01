@@ -139,7 +139,7 @@ export function MetadataMaintenanceCard({ onRefresh }: { onRefresh?: () => void 
           <ListNameCell name="Title matching and library details" sub="Posters, descriptions, ratings, dates" />
           <ListCell
             primary={testResult ? (testResult.isConfigured ? `${testResult.resultCount} ${testResult.resultCount === 1 ? "match" : "matches"} for “The Matrix”` : "The check could not reach the service") : "Not checked this session"}
-            secondary={testResult?.message ?? (ready ? "Deluno can match titles and collect their details." : "You can still add a movie or show by hand.")}
+            secondary={testResult?.failure?.nextAction ?? testResult?.message ?? metadataStatus?.lastFailure?.nextAction ?? (ready ? "Deluno can match titles and collect their details." : "You can still add a movie or show by hand.")}
           />
           <ListCell mobile>
             <Chip tone={testResult ? (testResult.isConfigured ? "ok" : "bad") : ready ? "ok" : "warn"}>

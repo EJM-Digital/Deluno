@@ -1,5 +1,6 @@
 using Deluno.Infrastructure.Resilience;
 using Deluno.Infrastructure.Storage;
+using Deluno.Contracts;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using System.Net;
@@ -166,6 +167,50 @@ public sealed class IntegrationResiliencePolicyTests
         Assert.Equal("ok", result.Value);
         Assert.Equal(2, result.Attempts);
         Assert.Equal(2, calls);
+    }
+
+    [Fact]
+    public async Task Converts_non_retryable_http_exceptions_to_typed_failures_without_opening_a_circuit()
+    {
+        var policy = CreatePolicy();
+
+        var result = await policy.ExecuteAsync<string>(
+            new IntegrationResilienceRequest(
+                "download-client:auth-failure",
+                "download-client.telemetry",
+                MaxAttempts: 3,
+                FailureThreshold: 1,
+                InitialDelay: TimeSpan.Zero,
+                MaxDelay: TimeSpan.Zero),
+            _ => throw new HttpRequestException(
+                "The client rejected the API key.",
+                null,
+                HttpStatusCode.Unauthorized),
+            _ => IntegrationResilienceOutcome.Success,
+            CancellationToken.None);
+
+        Assert.Null(result.Value);
+        Assert.Equal(1, result.Attempts);
+        Assert.False(result.CircuitOpened);
+        Assert.Equal(IntegrationFailureKind.Authentication, result.Failure!.Kind);
+        Assert.Equal(IntegrationRetryState.ManualAction, result.Failure.RetryState);
+        Assert.Equal(401, result.Failure.HttpStatus);
+        Assert.Equal("The client rejected the API key.", result.Failure.Message);
+        Assert.False(policy.IsCircuitOpen("download-client:auth-failure", out _));
+    }
+
+    [Fact]
+    public async Task Rethrows_caller_cancellation_instead_of_recording_it_as_an_integration_failure()
+    {
+        var policy = CreatePolicy();
+        using var cancellation = new CancellationTokenSource();
+        cancellation.Cancel();
+
+        await Assert.ThrowsAsync<OperationCanceledException>(() => policy.ExecuteAsync(
+            new IntegrationResilienceRequest("integration:cancel", "integration.test"),
+            _ => Task.FromResult("never"),
+            _ => IntegrationResilienceOutcome.Success,
+            cancellation.Token));
     }
 
     private static IntegrationResiliencePolicy CreatePolicy(TimeProvider? timeProvider = null)

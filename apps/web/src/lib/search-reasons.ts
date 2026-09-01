@@ -1,3 +1,5 @@
+import type { IntegrationFailure } from "./api/types";
+
 export interface SearchReasonExplanation {
   title: string;
   description?: string;
@@ -5,6 +7,19 @@ export interface SearchReasonExplanation {
     label: string;
     href: string;
   };
+}
+
+/** Keep source failures visible when a search also has a usable result. */
+export function formatSearchFailureNotice(failures?: IntegrationFailure[] | null): string | undefined {
+  if (!failures?.length) return undefined;
+
+  const [first] = failures;
+  const summary = first.summary || `${first.serviceName} ${first.operation} failed: ${first.message}`;
+  const nextAction = first.nextAction ? ` ${first.nextAction}` : "";
+  const remainder = failures.length > 1
+    ? ` ${failures.length - 1} other source${failures.length === 2 ? "" : "s"} also need attention.`
+    : "";
+  return `${summary}${nextAction}${remainder}`;
 }
 
 export function describeSearchReason(reason: string | undefined, fallback: string): SearchReasonExplanation {
@@ -48,6 +63,21 @@ export function describeSearchReason(reason: string | undefined, fallback: strin
         title: "The linked library is missing",
         description: "Choose an existing library before searching this title.",
         action: { label: "Open Libraries", href: "/settings/libraries" }
+      };
+    case "season_pack_replacement_requires_episode_scope":
+      return {
+        title: "Season upgrades need episode review",
+        description: "This season already has episode files. Deluno held the whole-season replacement so each installed file can be compared under the current plan; search the selected episodes instead."
+      };
+    case "season_pack_installed_evidence_missing":
+      return {
+        title: "Installed episodes need file evaluation",
+        description: "Deluno held the season search because at least one installed episode does not yet have evidence under the current release plan. Let the file probe finish or search episodes individually."
+      };
+    case "season_pack_candidate_not_upgrade_for_every_episode":
+      return {
+        title: "The season pack would not improve every installed episode",
+        description: "Deluno found a pack, but replacing the whole season would be lateral or worse for at least one installed episode. No download was sent."
       };
     default:
       return { title: fallback };

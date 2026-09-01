@@ -15,7 +15,7 @@ import { Select } from "../components/ui/select";
 import { Textarea } from "../components/ui/textarea";
 import { toast } from "../components/shell/toaster";
 import { librarySetupNavItems } from "../components/app/settings-shell";
-import { fetchJson, type LibraryItem, type PlatformSettingsSnapshot, type QualityProfileItem, type TagItem } from "../lib/api";
+import { fetchJson, type LibraryItem, type PlatformSettingsSnapshot, type QualityProfileItem, type TagItem, type TagUsageItem } from "../lib/api";
 import { settingsOverviewLoader } from "./settings-overview-page";
 import { authedFetch } from "../lib/use-auth";
 import { useUnsavedChanges } from "../hooks/use-unsaved-changes";
@@ -28,6 +28,7 @@ interface LoaderData {
   qualityProfiles: QualityProfileItem[];
   settings: PlatformSettingsSnapshot;
   tags: TagItem[];
+  usage: TagUsageItem[];
 }
 
 interface TagForm {
@@ -39,13 +40,18 @@ interface TagForm {
 type DrawerMode = { kind: "closed" } | { kind: "create" } | { kind: "edit"; id: string };
 
 export async function settingsTagsLoader(): Promise<LoaderData> {
-  const [overview, tags] = await Promise.all([settingsOverviewLoader(), fetchJson<TagItem[]>("/api/tags")]);
-  return { ...overview, tags };
+  const [overview, tags, usage] = await Promise.all([
+    settingsOverviewLoader(),
+    fetchJson<TagItem[]>("/api/tags"),
+    fetchJson<TagUsageItem[]>("/api/tags/usage").catch(() => [])
+  ]);
+  return { ...overview, tags, usage };
 }
 
 export function SettingsTagsPage() {
-  const { tags } = useLoaderData() as LoaderData;
+  const { tags, usage } = useLoaderData() as LoaderData;
   const revalidator = useRevalidator();
+  const usageById = useMemo(() => new Map(usage.map((item) => [item.id, item])), [usage]);
   const sorted = useMemo(() => [...tags].sort((a, b) => a.name.localeCompare(b.name)), [tags]);
 
   const [mode, setMode] = useState<DrawerMode>({ kind: "closed" });
@@ -156,7 +162,7 @@ export function SettingsTagsPage() {
             }
           />
         ) : (
-          <ListTable columns={[{ label: "Name" }, { label: "Colour" }, { label: "Description", width: "minmax(0,2fr)" }]}>
+        <ListTable columns={[{ label: "Name" }, { label: "Colour" }, { label: "Used by" }, { label: "Description", width: "minmax(0,2fr)" }]}>
             {sorted.map((tag) => (
               <ListRow key={tag.id} onClick={() => open(tag)} selected={mode.kind === "edit" && mode.id === tag.id}>
                 <div role="cell" className="flex min-w-0 items-center gap-2.5">
@@ -164,6 +170,7 @@ export function SettingsTagsPage() {
                   <span className="truncate text-[length:var(--type-body-sm)] font-semibold text-foreground">{tag.name}</span>
                 </div>
                 <ListCell primary={capitalise(tag.color)} />
+                <ListCell primary={usageById.get(tag.id)?.totalCount ? `${usageById.get(tag.id)?.totalCount} title${usageById.get(tag.id)!.totalCount === 1 ? "" : "s"}` : "None"} />
                 <ListCell primary={tag.description || <span className="text-muted-foreground">—</span>} />
               </ListRow>
             ))}
@@ -196,12 +203,12 @@ export function SettingsTagsPage() {
         </DrawerSection>
         {editing ? (
           <DrawerSection>
-            <DrawerDanger title="Delete this tag" description="Anything referring to it simply loses the label." action={<Button type="button" variant="destructive" size="sm" onClick={() => setConfirmRemove(true)} disabled={busy}>Delete</Button>} />
+            <DrawerDanger title="Delete this tag" description={usageById.get(editing.id)?.totalCount ? `${usageById.get(editing.id)!.totalCount} title${usageById.get(editing.id)!.totalCount === 1 ? "" : "s"} will lose this label.` : "No titles currently carry this label."} action={<Button type="button" variant="destructive" size="sm" onClick={() => setConfirmRemove(true)} disabled={busy}>Delete</Button>} />
           </DrawerSection>
         ) : null}
       </Drawer>
 
-      <ConfirmDialog open={confirmRemove} onOpenChange={setConfirmRemove} title={`Delete “${editing?.name ?? form.name}”?`} description="Anything referring to this tag simply loses the label." confirmLabel="Delete tag" busy={busy} onConfirm={() => void handleRemove()} />
+      <ConfirmDialog open={confirmRemove} onOpenChange={setConfirmRemove} title={`Delete “${editing?.name ?? form.name}”?`} description={editing && usageById.get(editing.id)?.totalCount ? `${usageById.get(editing.id)!.totalCount} title${usageById.get(editing.id)!.totalCount === 1 ? "" : "s"} will lose this label. This cannot be undone.` : "No titles currently carry this label."} confirmLabel="Delete tag" busy={busy} onConfirm={() => void handleRemove()} />
       <ConfirmDialog
         open={confirmDiscard}
         onOpenChange={(open) => {

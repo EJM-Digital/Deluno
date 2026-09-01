@@ -30,6 +30,7 @@ import {
   type DownloadDispatchItem,
   type DownloadQueueItem,
   type DownloadTelemetryOverview,
+  type IntegrationFailure,
   type ActivityEventItem,
   type ImportJobResponse,
   type ImportPreviewRequest,
@@ -61,6 +62,7 @@ import { Select } from "../components/ui/select";
 import { SummaryStrip } from "../components/ui/summary-strip";
 import { toast } from "../components/shell/toaster";
 import { RealtimeGroups, useSignalREvent } from "../lib/use-signalr";
+import { formatDateTime as formatPreferenceDateTime, useDisplayPreferences } from "../lib/display-preferences";
 
 type QueueAction = "pause" | "resume" | "delete" | "recheck";
 
@@ -134,6 +136,7 @@ export function QueuePage() {
     useLoaderData() as QueueLoaderData;
   const revalidator = useRevalidator();
   const lastDispatchRefresh = useRef(0);
+  const { preferences } = useDisplayPreferences();
 
   const scheduleDispatchRefresh = () => {
     const now = Date.now();
@@ -262,10 +265,11 @@ export function QueuePage() {
     await run(`preview:${item.id}`, async () => {
       const sourcePath = resolveImportSourcePath(item, libraries);
       if (!sourcePath) throw new Error("The download client has not reported a completed file location, and this library has no folder override.");
+      const dispatch = findDispatchForQueueItem(item, dispatches);
       const preview = await fetchJson<ImportPreviewResponse>("/api/filesystem/import/preview", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(buildImportRequest(item, libraries))
+        body: JSON.stringify(buildImportRequest(item, libraries, dispatch))
       });
       setImportPreviews((current) => ({ ...current, [item.id]: preview }));
     });
@@ -277,15 +281,17 @@ export function QueuePage() {
       async () => {
         const sourcePath = resolveImportSourcePath(item, libraries);
         if (!sourcePath) throw new Error("The download client has not reported a completed file location, and this library has no folder override.");
+        const dispatch = findDispatchForQueueItem(item, dispatches);
         const result = await fetchJson<ImportJobResponse>("/api/filesystem/import/jobs", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            preview: buildImportRequest(item, libraries),
+            preview: buildImportRequest(item, libraries, dispatch),
             transferMode: "auto",
             overwrite: false,
             allowCopyFallback: true,
-            forceReplacement: false
+            forceReplacement: false,
+            dispatchId: dispatch?.id ?? null
           })
         });
         setImportPreviews((current) => ({ ...current, [item.id]: result.preview }));
@@ -460,7 +466,7 @@ export function QueuePage() {
               // a full saturated bar at 100% and 0.0 MB/s — while a failure sat
               // in plain text below it (#263).
               const transferring = item.speedMbps > 0 || (item.progress > 0 && item.progress < 100);
-              const needsAttention = chip.tone === "bad" || chip.tone === "warn";
+              const needsAttention = chip.tone === "bad" || chip.tone === "warn" || Boolean(item.failure);
               return (
                 <ListRow key={`${item.clientId}:${item.id}`} onClick={() => setDrawer({ kind: "queue", id: item.id })} selected={openQueueItem?.id === item.id}>
                   <ListNameCell
@@ -693,7 +699,7 @@ export function QueuePage() {
               >
                 <ListNameCell name={entry.name} sub={entry.sub} />
                 <ListCell primary={entry.detail} secondary={entry.extra} />
-                <ListCell numeric primary={formatAgo(entry.whenUtc)} secondary={formatDateTime(entry.whenUtc)} />
+                <ListCell numeric primary={formatAgo(entry.whenUtc, preferences)} secondary={preferences.showRelativeDates ? formatPreferenceDateTime(entry.whenUtc, preferences) : undefined} />
                 <ListCell mobile>
                   <Chip tone={entry.tone}>{entry.status}</Chip>
                 </ListCell>
@@ -727,8 +733,9 @@ export function QueuePage() {
               </div>
             </DrawerSection>
 
-            {openQueueItem.errorMessage || openQueueItem.healthFindings?.length ? (
+            {openQueueItem.errorMessage || openQueueItem.failure || openQueueItem.healthFindings?.length ? (
               <DrawerSection title="Health">
+                {openQueueItem.failure ? <IntegrationFailureDetails failure={openQueueItem.failure} preferences={preferences} /> : null}
                 {openQueueItem.errorMessage ? <p className="text-[length:var(--type-body-sm)] text-destructive">{openQueueItem.errorMessage}</p> : null}
                 {(openQueueItem.healthFindings ?? []).map((finding, index) => (
                   <div key={index} className="grid gap-0.5 border-b border-hairline py-2 last:border-b-0">
@@ -900,11 +907,17 @@ export function QueuePage() {
                 <Fact label="Indexer" value={openDispatchDetail.dispatch.indexerName || "Unknown source"} />
                 <Fact label="Client" value={openDispatchDetail.dispatch.downloadClientName || "Unassigned client"} />
                 <Fact label="Grab" value={dispatchOutcome(openDispatchDetail.dispatch.grabStatus, openDispatchDetail.dispatch.grabMessage)} />
-                <Fact label="Detected" value={openDispatchDetail.dispatch.detectedUtc ? formatDateTime(openDispatchDetail.dispatch.detectedUtc) : "Not detected by the client"} />
+                <Fact label="Detected" value={openDispatchDetail.dispatch.detectedUtc ? formatPreferenceDateTime(openDispatchDetail.dispatch.detectedUtc, preferences) : "Not detected by the client"} />
                 <Fact label="Import" value={dispatchOutcome(openDispatchDetail.dispatch.importStatus, openDispatchDetail.dispatch.importFailureMessage)} />
                 <Fact label="Attempts" value={String(openDispatchDetail.dispatch.attemptCount ?? 0)} />
               </div>
             </DrawerSection>
+
+            {openDispatchDetail.dispatch.failure ? (
+              <DrawerSection title="Integration finding">
+                <IntegrationFailureDetails failure={openDispatchDetail.dispatch.failure} preferences={preferences} />
+              </DrawerSection>
+            ) : null}
 
             {openDispatchDetail.dispatch.importedFilePath || openDispatchDetail.dispatch.importFailureMessage || openDispatchDetail.dispatch.grabFailureCode ? (
               <DrawerSection title="File and outcome">
@@ -913,7 +926,7 @@ export function QueuePage() {
                   {openDispatchDetail.dispatch.downloadedBytes ? <Fact label="Downloaded" value={formatBytes(openDispatchDetail.dispatch.downloadedBytes)} /> : null}
                   {openDispatchDetail.dispatch.grabFailureCode ? <Fact label="Grab issue" value={openDispatchDetail.dispatch.grabFailureCode} /> : null}
                   {openDispatchDetail.dispatch.importFailureMessage ? <Fact label="Import issue" value={openDispatchDetail.dispatch.importFailureMessage} /> : null}
-                  {openDispatchDetail.dispatch.nextRetryEligibleUtc ? <Fact label="Next retry" value={formatDateTime(openDispatchDetail.dispatch.nextRetryEligibleUtc)} /> : null}
+                  {openDispatchDetail.dispatch.nextRetryEligibleUtc ? <Fact label="Next retry" value={formatPreferenceDateTime(openDispatchDetail.dispatch.nextRetryEligibleUtc, preferences)} /> : null}
                 </div>
               </DrawerSection>
             ) : null}
@@ -925,7 +938,7 @@ export function QueuePage() {
                     <div key={event.id} className="grid gap-0.5 border-b border-hairline py-2 last:border-b-0">
                       <div className="flex items-baseline justify-between gap-3">
                         <span className="text-[length:var(--type-body-sm)] font-medium text-foreground">{timelineEventLabel(event.eventType)}</span>
-                        <span className="shrink-0 text-[length:var(--type-caption)] text-muted-foreground">{formatAgo(event.timestamp)}</span>
+                        <span className="shrink-0 text-[length:var(--type-caption)] text-muted-foreground">{formatAgo(event.timestamp, preferences)}</span>
                       </div>
                       {timelineEventDetail(event) ? <span className="text-[length:var(--type-caption)] text-muted-foreground">{timelineEventDetail(event)}</span> : null}
                     </div>
@@ -975,7 +988,7 @@ export function QueuePage() {
             <div className="grid gap-1.5">
               <Fact label="Outcome" value={openActivity.detail} />
               {openActivity.extra ? <Fact label="Detail" value={openActivity.extra} mono /> : null}
-              <Fact label="When" value={formatDateTime(openActivity.whenUtc)} />
+              <Fact label="When" value={formatPreferenceDateTime(openActivity.whenUtc, preferences)} />
               <Fact label="Kind" value={activityKindLabel(openActivity.kind)} />
             </div>
           </DrawerSection>
@@ -1028,21 +1041,72 @@ function Fact({ label, value, mono }: { label: string; value: string; mono?: boo
   );
 }
 
-function ImportPreviewFacts({ preview }: { preview: ImportPreviewResponse }) {
+function IntegrationFailureDetails({
+  failure,
+  preferences
+}: {
+  failure: IntegrationFailure;
+  preferences: ReturnType<typeof useDisplayPreferences>["preferences"];
+}) {
+  const retryLabel = integrationRetryLabel(failure.retryState);
+  const technicalFacts = [
+    failure.serviceName ? { label: "Service", value: failure.serviceName } : null,
+    failure.operation ? { label: "Operation", value: failure.operation } : null,
+    failure.code ? { label: "Code", value: failure.code, mono: true } : null,
+    failure.httpStatus != null ? { label: "HTTP status", value: String(failure.httpStatus) } : null,
+    failure.externalId ? { label: "External ID", value: failure.externalId, mono: true } : null,
+    failure.attempts > 0 ? { label: "Attempts", value: String(failure.attempts) } : null,
+    failure.retryAfterUtc ? { label: "Next eligible", value: formatPreferenceDateTime(failure.retryAfterUtc, preferences) } : null
+  ].filter((fact): fact is { label: string; value: string; mono?: boolean } => fact !== null);
+
+  return (
+    <div className="grid gap-2 rounded-[var(--radius-sm)] border border-border bg-muted/30 p-3">
+      <div className="flex flex-wrap items-center gap-2">
+        <Chip tone={integrationFailureTone(failure)}>{integrationFailureKindLabel(failure.kind)}</Chip>
+        <span className="text-[length:var(--type-caption)] text-muted-foreground">{retryLabel}</span>
+      </div>
+      <div className="grid gap-0.5">
+        <p className="text-[length:var(--type-body-sm)] font-medium text-foreground">{failure.summary || failure.message}</p>
+        {failure.message && failure.message !== failure.summary ? <p className="text-[length:var(--type-caption)] text-muted-foreground">{failure.message}</p> : null}
+        <p className="text-[length:var(--type-caption)] text-muted-foreground">{failure.nextAction}</p>
+      </div>
+      {technicalFacts.length ? (
+        <div className="grid gap-0.5 border-t border-border/70 pt-1.5">
+          {technicalFacts.map((fact) => <Fact key={fact.label} {...fact} />)}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+export function ImportPreviewFacts({ preview }: { preview: ImportPreviewResponse }) {
   return (
     <div className="grid gap-1.5">
-      <Fact label="Would land at" value={preview.destinationPath || "Not resolved"} mono />
+      <Fact label={preview.pack ? "Pack destination" : "Would land at"} value={preview.destinationPath || "Not resolved"} mono />
       <Fact label="In folder" value={preview.destinationFolder || "Not resolved"} mono />
       <Fact label="Matched rule" value={preview.matchedRuleName ?? "No destination rule matched"} />
       <Fact label="How" value={preview.transferExplanation || preview.preferredTransferMode} />
       <Fact label="Source" value={preview.sourceExists ? formatBytes(preview.sourceSizeBytes) : "Not found on disk"} />
       {preview.destinationExists ? <Fact label="Careful" value="Something already exists at the destination" /> : null}
+      {preview.pack ? (
+        <div className="grid gap-1 rounded-[var(--radius-sm)] border border-border/70 bg-muted/20 p-2" role="region" aria-label="Season pack import preview">
+          <Fact label="Season pack" value={`${preview.pack.sourceFileCount} files · ${preview.pack.episodeCount} episodes`} />
+          <Fact label="Readiness" value={preview.pack.alreadyCommitted ? "Already imported as this exact pack" : preview.pack.canExecute ? "Every file and episode is resolved" : "Needs recovery review"} />
+          {preview.pack.files.map((file) => (
+            <div key={file.sourcePath} className="grid gap-0.5 border-t border-border/60 pt-1.5">
+              <Fact label={file.episodeKeys.join(", ") || "Unmatched"} value={file.destinationPath} mono />
+            </div>
+          ))}
+          {preview.pack.blockReasons.length ? <Fact label="Blocked because" value={preview.pack.blockReasons.join(" · ")} /> : null}
+        </div>
+      ) : null}
       {preview.warnings.length ? <Fact label="Warnings" value={preview.warnings.join(" · ")} /> : null}
     </div>
   );
 }
 
 function queueChip(item: DownloadQueueItem): { tone: NonNullable<ChipProps["tone"]>; label: string } {
+  if (item.failure) return { tone: integrationFailureTone(item.failure), label: integrationFailureShortLabel(item.failure) };
   if (item.errorMessage || item.status === downloadQueueStatuses.stalled) return { tone: statusTone("transfer.stalled"), label: queueStatusLabel(item.status) };
   if (item.healthFindings?.length) return statusPresentation("transfer.needsALook");
   // Was green here and grey in the pipeline strip. Green is the colour for
@@ -1077,6 +1141,7 @@ function pipelineStage(item: DownloadQueueItem) {
 }
 
 function pipelineDetail(item: DownloadQueueItem) {
+  if (item.failure) return item.failure.summary || item.failure.message || item.failure.nextAction;
   if (item.errorMessage) return item.errorMessage;
   if (item.status === downloadQueueStatuses.waitingForProcessor) return "Waiting for the cleaned output before import.";
   if (item.status === downloadQueueStatuses.processing || item.status === downloadQueueStatuses.processed) return "Media quality and processor output are being checked.";
@@ -1089,13 +1154,54 @@ function pipelineDetail(item: DownloadQueueItem) {
 function attentionReason(item: DownloadQueueItem) {
   const blocked = item.healthFindings?.find((finding) => finding.candidateBlocked);
   if (blocked) return "Release blocked after repeated health failures";
-  return item.errorMessage ?? item.healthFindings?.[0]?.summary ?? "This download has stalled.";
+  return item.failure?.summary ?? item.errorMessage ?? item.healthFindings?.[0]?.summary ?? "This download has stalled.";
 }
 
 function attentionEvidence(item: DownloadQueueItem) {
   const blocked = item.healthFindings?.find((finding) => finding.candidateBlocked);
   if (blocked) return `${blocked.strikeCount} strikes · ${blocked.evidence}`;
+  if (item.failure) return [integrationFailureShortLabel(item.failure), item.failure.attempts > 0 ? `${item.failure.attempts} attempts` : undefined].filter(Boolean).join(" · ");
   return item.healthFindings?.length ? `${item.healthFindings.length} health ${item.healthFindings.length === 1 ? "finding" : "findings"}` : undefined;
+}
+
+function integrationFailureTone(failure: IntegrationFailure): NonNullable<ChipProps["tone"]> {
+  return failure.retryState === "Retrying" || failure.retryState === "RetryScheduled" || failure.retryState === "CircuitOpen" ? "warn" : "bad";
+}
+
+function integrationFailureKindLabel(kind: string) {
+  return kind.replace(/([a-z])([A-Z])/g, "$1 $2").replace(/[_-]+/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+function integrationRetryLabel(retryState: string) {
+  switch (retryState) {
+    case "Retrying": return "Retrying automatically";
+    case "RetryScheduled": return "Retry scheduled";
+    case "CircuitOpen": return "Paused after repeated failures";
+    case "ManualAction": return "Needs your action";
+    case "NotRetryable": return "Not retryable automatically";
+    default: return retryState || "Retry status unknown";
+  }
+}
+
+function integrationFailureShortLabel(failure: IntegrationFailure) {
+  if (failure.retryState === "ManualAction") return "Needs action";
+  if (failure.retryState === "CircuitOpen") return "Paused after failures";
+  if (failure.retryState === "Retrying" || failure.retryState === "RetryScheduled") return "Retry scheduled";
+  return "Failed";
+}
+
+function integrationFailureActivityDetail(failure: IntegrationFailure) {
+  return [
+    failure.summary || failure.message,
+    integrationRetryLabel(failure.retryState),
+    failure.retryAfterUtc ? `next eligible ${failureRetryAfterLabel(failure.retryAfterUtc)}` : undefined,
+    failure.nextAction
+  ].filter(Boolean).join(" · ");
+}
+
+function failureRetryAfterLabel(value: string) {
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? value : date.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
 }
 
 function isProcessorTerminal(status: string) {
@@ -1154,7 +1260,8 @@ function processorConnectionTone(connection: ProcessorConnectionItem): NonNullab
 function isDispatchFailure(dispatch: DownloadDispatchItem) {
   return [dispatch.status, dispatch.grabStatus, dispatch.importStatus, dispatch.grabFailureCode, dispatch.importFailureCode]
     .filter((value): value is string => Boolean(value))
-    .some((value) => ["failed", "blocked", "rejected", "unresolved", "error"].includes(value.toLowerCase()));
+    .some((value) => ["failed", "blocked", "rejected", "unresolved", "error", "not_found", "circuit_open", "paused"].includes(value.toLowerCase()))
+    || dispatch.failure !== null && dispatch.failure !== undefined;
 }
 
 function dispatchStageLabel(dispatch: DownloadDispatchItem) {
@@ -1174,6 +1281,7 @@ function dispatchActivityDetail(dispatch: DownloadDispatchItem) {
 }
 
 function dispatchFailureDetail(dispatch: DownloadDispatchItem) {
+  if (dispatch.failure) return integrationFailureActivityDetail(dispatch.failure);
   if (dispatch.importFailureMessage) return dispatch.importFailureMessage;
   if (dispatch.grabMessage) return dispatch.grabMessage;
   if (dispatch.grabFailureCode) return `Grab failed with ${dispatch.grabFailureCode}.`;
@@ -1305,9 +1413,17 @@ function buildActivity({
         kind: "client",
         name: item.title || item.releaseName,
         sub: client.clientName,
-        detail: item.errorMessage ?? `Client reported ${item.outcome}`,
-        extra: item.sizeBytes ? formatBytes(item.sizeBytes) : undefined,
-        tone: item.errorMessage ? "bad" : "ok",
+        detail: item.errorMessage
+          ?? (item.failure
+            ? integrationFailureActivityDetail(item.failure)
+            : `Client reported ${item.outcome}`),
+        extra: [
+          historySourceLabel(item.historySource),
+          item.failure ? integrationFailureShortLabel(item.failure) : undefined,
+          item.externalId ? `External ID ${item.externalId}` : undefined,
+          item.sizeBytes ? formatBytes(item.sizeBytes) : undefined
+        ].filter(Boolean).join(" · ") || undefined,
+        tone: item.errorMessage || item.failure ? "bad" : "ok",
         status: item.outcome,
         whenUtc: item.completedUtc
       });
@@ -1357,6 +1473,20 @@ function activityKindLabel(kind: ActivityEntry["kind"]) {
       return "Reported by a client";
     default:
       return "Health finding";
+  }
+}
+
+function historySourceLabel(source: string | undefined) {
+  switch (source) {
+    case "native":
+      return "Native client history";
+    case "dispatch-derived":
+      return "Deluno dispatch history";
+    case "inferred":
+      return "Inferred history";
+    case "queue-derived":
+    default:
+      return "Queue-derived history";
   }
 }
 
@@ -1424,7 +1554,11 @@ function parseActivityDetails(detailsJson: string | null): Record<string, unknow
   }
 }
 
-function buildImportRequest(item: DownloadQueueItem, libraries: LibraryItem[]): ImportPreviewRequest {
+export function buildImportRequest(
+  item: DownloadQueueItem,
+  libraries: LibraryItem[],
+  dispatch: DownloadDispatchItem | null = null
+): ImportPreviewRequest {
   return {
     sourcePath: resolveImportSourcePath(item, libraries) || "",
     fileName: inferImportFileName(item),
@@ -1434,8 +1568,25 @@ function buildImportRequest(item: DownloadQueueItem, libraries: LibraryItem[]): 
     genres: null,
     tags: null,
     studio: null,
-    originalLanguage: null
+    originalLanguage: null,
+    seriesId: item.mediaType === "tv" && dispatch?.entityType.toLowerCase() === "series"
+      ? dispatch.entityId
+      : null
   };
+}
+
+export function findDispatchForQueueItem(
+  item: DownloadQueueItem,
+  dispatches: DownloadDispatchItem[]
+): DownloadDispatchItem | null {
+  const clientDispatches = dispatches.filter((dispatch) =>
+    dispatch.downloadClientId.toLowerCase() === item.clientId.toLowerCase()
+  );
+  return clientDispatches.find((dispatch) =>
+    dispatch.torrentHashOrItemId?.toLowerCase() === item.id.toLowerCase()
+  ) ?? clientDispatches.find((dispatch) =>
+    dispatch.releaseName.toLowerCase() === item.releaseName.toLowerCase()
+  ) ?? null;
 }
 
 function inferImportFileName(item: DownloadQueueItem) {
@@ -1479,11 +1630,8 @@ function formatEta(seconds: number) {
   return `${(seconds / 3600).toFixed(1)}h left`;
 }
 
-function formatDateTime(value: string) {
-  return new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }).format(new Date(value));
-}
-
-function formatAgo(value: string) {
+function formatAgo(value: string, preferences: ReturnType<typeof useDisplayPreferences>["preferences"]) {
+  if (!preferences.showRelativeDates) return formatPreferenceDateTime(value, preferences);
   const minutes = Math.round((Date.now() - new Date(value).getTime()) / 60000);
   if (minutes < 1) return "just now";
   if (minutes < 60) return `${minutes} min ago`;

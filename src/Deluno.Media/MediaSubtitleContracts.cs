@@ -116,7 +116,8 @@ public sealed record MediaSubtitleWantedItem(
     int? EpisodeNumber,
     string? EpisodeTitle,
     string? ReleaseName,
-    IReadOnlyList<string> LanguagesToFetch);
+    IReadOnlyList<string> LanguagesToFetch,
+    IntegrationFailure? LastFailure = null);
 
 public interface IMediaSubtitleRepository
 {
@@ -169,7 +170,8 @@ public interface IMediaSubtitleRepository
         string language,
         string? result,
         TimeSpan baseDelay,
-        CancellationToken cancellationToken);
+        CancellationToken cancellationToken,
+        IntegrationFailure? failure = null);
 
     /// <summary>Forgets an outstanding attempt, because the subtitle arrived.</summary>
     Task ClearAttemptAsync(

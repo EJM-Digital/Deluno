@@ -332,7 +332,16 @@ public static class LibraryActionEndpointRouteBuilderExtensions
         var rootPath = match?.RootPath ?? rootFallback;
         var template = match?.FolderTemplate ??
                        (mediaType == "tv" ? settings.SeriesFolderFormat : settings.MovieFolderFormat);
-        var folderName = ApplyFolderTemplate(template, title, request.Year);
+        var folderName = NamingTemplateRenderer.RenderFolder(
+            template,
+            title,
+            request.Year,
+            request.ImdbId,
+            request.TvDbId,
+            request.QualityProfile,
+            request.Genres?.FirstOrDefault(),
+            request.Tags?.FirstOrDefault(),
+            request.Network);
         var fullPath = string.IsNullOrWhiteSpace(rootPath)
             ? folderName
             : Path.Combine(rootPath, folderName);
@@ -381,34 +390,6 @@ public static class LibraryActionEndpointRouteBuilderExtensions
     private static bool ContainsText(string? value, string expected)
         => !string.IsNullOrWhiteSpace(value) &&
            value.Contains(expected, StringComparison.OrdinalIgnoreCase);
-
-    private static string ApplyFolderTemplate(string? template, string title, int? year)
-    {
-        var resolved = string.IsNullOrWhiteSpace(template)
-            ? "{Title} ({Year})"
-            : template;
-        var safeTitle = SanitizePathSegment(title);
-        var safeYear = year?.ToString(CultureInfo.InvariantCulture) ?? "Unknown Year";
-
-        return SanitizePathSegment(resolved
-            .Replace("{Movie Title}", safeTitle, StringComparison.OrdinalIgnoreCase)
-            .Replace("{MovieTitle}", safeTitle, StringComparison.OrdinalIgnoreCase)
-            .Replace("{Series Title}", safeTitle, StringComparison.OrdinalIgnoreCase)
-            .Replace("{SeriesTitle}", safeTitle, StringComparison.OrdinalIgnoreCase)
-            .Replace("{Title}", safeTitle, StringComparison.OrdinalIgnoreCase)
-            .Replace("{Release Year}", safeYear, StringComparison.OrdinalIgnoreCase)
-            .Replace("{ReleaseYear}", safeYear, StringComparison.OrdinalIgnoreCase)
-            .Replace("{Series Year}", safeYear, StringComparison.OrdinalIgnoreCase)
-            .Replace("{SeriesYear}", safeYear, StringComparison.OrdinalIgnoreCase)
-            .Replace("{Year}", safeYear, StringComparison.OrdinalIgnoreCase));
-    }
-
-    private static string SanitizePathSegment(string value)
-    {
-        var invalid = Path.GetInvalidFileNameChars();
-        var cleaned = new string(value.Select(character => invalid.Contains(character) ? '-' : character).ToArray());
-        return string.IsNullOrWhiteSpace(cleaned) ? "Untitled" : cleaned.Trim();
-    }
 
 }
 

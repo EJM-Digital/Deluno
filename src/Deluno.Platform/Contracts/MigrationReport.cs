@@ -1,3 +1,5 @@
+using Deluno.Platform.Migration;
+
 namespace Deluno.Platform.Contracts;
 
 public sealed record MigrationReport(
@@ -7,7 +9,8 @@ public sealed record MigrationReport(
     MigrationReportSummary Summary,
     IReadOnlyList<MigrationReportOperation> Operations,
     IReadOnlyList<string> Warnings,
-    IReadOnlyList<string> Errors);
+    IReadOnlyList<string> Errors,
+    MigrationReportInventory? Inventory = null);
 
 public sealed record MigrationReportSummary(
     int CreateCount,
@@ -33,7 +36,8 @@ public sealed record MigrationReportOperation(
 public sealed record MigrationApplyResponse(
     MigrationReport Report,
     IReadOnlyList<MigrationAppliedItem> Applied,
-    string? AuditReportId = null);
+    string? AuditReportId = null,
+    MigrationBackupReceipt? Backup = null);
 
 public sealed record MigrationAppliedItem(
     string OperationId,

@@ -10,6 +10,7 @@ import {
   type DownloadClientTelemetrySnapshot,
   type DownloadTelemetryOverview,
   type IndexerItem,
+  type IndexerScoreboardSnapshot,
   type LibraryItem,
   type LibraryRoutingSnapshot,
   type OutboundThrottleHostState,
@@ -36,6 +37,7 @@ import { formatSeconds, healthChip, indexerHost, protocolLabel, relative, scopeL
 import { ClientDrawerBody } from "./connections/client-drawer-body";
 import { IndexerDrawerBody } from "./connections/indexer-drawer-body";
 import { RoutingDrawerBody } from "./connections/routing-drawer-body";
+import { IndexerScoreboard } from "./connections/indexer-scoreboard";
 
 const TABS = configurationNavAreas.find((area) => area.to === "/indexers/indexers")?.items ?? [];
 
@@ -48,6 +50,7 @@ interface LoaderData {
   settings: PlatformSettingsSnapshot;
   telemetry: DownloadTelemetryOverview | null;
   outboundThrottle: OutboundThrottleSnapshot;
+  scoreboard: IndexerScoreboardSnapshot;
 }
 
 type RouteCategories = Record<string, string>;
@@ -58,13 +61,14 @@ function sameRouteCategories(left: RouteCategories, right: RouteCategories) {
 }
 
 export async function indexersLoader(): Promise<LoaderData> {
-  const [indexers, clients, libraries, settings, telemetry, outboundThrottle] = await Promise.all([
+  const [indexers, clients, libraries, settings, telemetry, outboundThrottle, scoreboard] = await Promise.all([
     fetchJson<IndexerItem[]>("/api/indexers"),
     fetchJson<DownloadClientItem[]>("/api/download-clients"),
     fetchJson<LibraryItem[]>("/api/libraries"),
     fetchJson<PlatformSettingsSnapshot>("/api/settings"),
     fetchJson<DownloadTelemetryOverview>("/api/download-clients/telemetry").catch(() => null),
-    fetchJson<OutboundThrottleSnapshot>("/api/integrations/outbound-throttle").catch(() => ({ hosts: [] }))
+    fetchJson<OutboundThrottleSnapshot>("/api/integrations/outbound-throttle").catch(() => ({ hosts: [] })),
+    fetchJson<IndexerScoreboardSnapshot>("/api/indexers/scoreboard?days=30").catch(() => emptyScoreboard())
   ]);
   const routing = await Promise.all(
     libraries.map((lib) =>
@@ -74,7 +78,23 @@ export async function indexersLoader(): Promise<LoaderData> {
   const pathMappings = (
     await Promise.all(clients.map((client) => fetchJson<DownloadClientPathMappingItem[]>(`/api/download-clients/${client.id}/path-mappings`).catch(() => [])))
   ).flat();
-  return { clients, pathMappings, indexers, libraries, routing, settings, telemetry, outboundThrottle };
+  return { clients, pathMappings, indexers, libraries, routing, settings, telemetry, outboundThrottle, scoreboard };
+}
+
+function emptyScoreboard(): IndexerScoreboardSnapshot {
+  return {
+    windowDays: 30,
+    fromUtc: new Date().toISOString(),
+    toUtc: new Date().toISOString(),
+    activeIndexers: 0,
+    totalIndexers: 0,
+    totalQueries: 0,
+    totalGrabs: 0,
+    successfulGrabs: 0,
+    conversionRate: null,
+    insight: "No indexer activity has been recorded yet.",
+    indexers: []
+  };
 }
 
 async function send(url: string, method: string, body?: unknown, failure = "Request failed.") {
@@ -88,7 +108,7 @@ async function send(url: string, method: string, body?: unknown, failure = "Requ
 }
 
 export function IndexersPage() {
-  const { clients, pathMappings, indexers, libraries, routing, settings, telemetry, outboundThrottle } = useLoaderData() as LoaderData;
+  const { clients, pathMappings, indexers, libraries, routing, settings, telemetry, outboundThrottle, scoreboard } = useLoaderData() as LoaderData;
   const location = useLocation();
   const navigate = useNavigate();
   const revalidator = useRevalidator();
@@ -96,7 +116,7 @@ export function IndexersPage() {
   const lastTelemetryRefresh = useRef(0);
   const [liveOutboundThrottle, setLiveOutboundThrottle] = useState(outboundThrottle);
 
-  const section: Section = location.pathname.endsWith("/download-clients") ? "clients" : location.pathname.endsWith("/library-routing") ? "routing" : "indexers";
+  const section: Section = location.pathname.endsWith("/scoreboard") ? "scoreboard" : location.pathname.endsWith("/download-clients") ? "clients" : location.pathname.endsWith("/library-routing") ? "routing" : "indexers";
 
   useEffect(() => {
     setLiveOutboundThrottle(outboundThrottle);
@@ -264,6 +284,19 @@ export function IndexersPage() {
           priority: Number(indexerForm.priority || 10),
           requestIntervalSeconds: indexerForm.requestIntervalSeconds.trim() ? Number(indexerForm.requestIntervalSeconds) : null,
           clearRequestInterval: Boolean(drawer.id) && !indexerForm.requestIntervalSeconds.trim(),
+          minimumAgeMinutes: indexerForm.minimumAgeMinutes.trim() ? Number(indexerForm.minimumAgeMinutes) : null,
+          clearMinimumAge: Boolean(drawer.id) && !indexerForm.minimumAgeMinutes.trim(),
+          retentionDays: indexerForm.retentionDays.trim() ? Number(indexerForm.retentionDays) : null,
+          clearRetention: Boolean(drawer.id) && !indexerForm.retentionDays.trim(),
+          maximumSizeMb: indexerForm.maximumSizeMb.trim() ? Number(indexerForm.maximumSizeMb) : null,
+          clearMaximumSize: Boolean(drawer.id) && !indexerForm.maximumSizeMb.trim(),
+          preferIndexerFlags: indexerForm.preferIndexerFlags.trim() || null,
+          clearPreferIndexerFlags: Boolean(drawer.id) && !indexerForm.preferIndexerFlags.trim(),
+          availabilityDelayDays: indexerForm.availabilityDelayDays.trim() ? Number(indexerForm.availabilityDelayDays) : null,
+          clearAvailabilityDelay: Boolean(drawer.id) && !indexerForm.availabilityDelayDays.trim(),
+          rssEnabled: indexerForm.rssEnabled,
+          automaticSearchEnabled: indexerForm.automaticSearchEnabled,
+          interactiveSearchEnabled: indexerForm.interactiveSearchEnabled,
           categories: indexerForm.categories,
           tags: "",
           mediaScope: indexerForm.scope,
@@ -456,6 +489,7 @@ export function IndexersPage() {
     <div className="grid gap-[var(--page-gap)]">
       <PageToolbar tabs={TABS} actions={toolbarAction} />
 
+      {section === "scoreboard" ? <IndexerScoreboard snapshot={scoreboard} /> : null}
 
       {section === "indexers" ? (
         <ListCard title="Indexers" count={indexers.length ? `${indexers.length} ${indexers.length === 1 ? "indexer" : "indexers"} · ${healthyIndexers}/${enabledIndexers} healthy` : undefined}>

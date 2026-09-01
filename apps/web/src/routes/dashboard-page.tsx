@@ -40,12 +40,11 @@ import { LibraryComposition } from "../components/app/library-composition";
 import { SystemPulse } from "../components/app/system-pulse";
 import { OnboardingBanner } from "../components/shell/onboarding-banner";
 import { SetupProgressLadder } from "../components/shell/setup-progress-ladder";
-import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { ListCard, ListEmpty } from "../components/ui/list-card";
 import { MetricChart, type MetricPoint } from "../components/ui/metric-chart";
 import { SegmentedControl } from "../components/ui/segmented-control";
-import { TitleMarkDot } from "../components/ui/title-mark";
+import { TitleBars } from "../components/ui/title-mark";
 import {
   DEFAULT_HISTORY_DAYS,
   HISTORY_RANGES,
@@ -57,7 +56,12 @@ import {
 import { useCoalescedRevalidate } from "../hooks/use-visible-interval";
 import { StatusLed, type LedTone } from "../components/ui/status-led";
 import { RealtimeGroups, useSignalREvent, useSignalRResync } from "../lib/use-signalr";
-import { heldQualityLabel } from "../lib/quality-label";
+import {
+  displayPreferencesFromSettings,
+  formatTime,
+  formatWeekday,
+  type DisplayPreferences
+} from "../lib/display-preferences";
 
 interface OutcomeSeries {
   succeeded: MetricPoint[];
@@ -222,12 +226,34 @@ export async function dashboardLoader(): Promise<DashboardLoaderData> {
   });
 }
 
+/**
+ * The two catalogue calls are independently sorted. Recently added is one
+ * mixed shelf, so it must be merged before taking the limit or a large movie
+ * library can hide newer TV additions simply because movies were concatenated
+ * first.
+ */
+export function newestDashboardItems(
+  movies: MediaItem[],
+  shows: MediaItem[],
+  limit = 12
+): MediaItem[] {
+  return [...movies, ...shows]
+    .map((item, index) => {
+      const parsed = Date.parse(item.addedUtc ?? "");
+      return { item, index, addedTime: Number.isFinite(parsed) ? parsed : 0 };
+    })
+    .sort((left, right) => right.addedTime - left.addedTime || left.index - right.index)
+    .slice(0, limit)
+    .map(({ item }) => item);
+}
+
 function buildDashboardData(sources: DashboardSources): DashboardLoaderData {
   const {
     moviePage, movieWanted, showPage, showWanted, telemetry, indexers, clients,
     libraries, automation, searchCycles, retryWindows, upcomingEpisodes,
     setupProgress, settings, policySets, qualityProfiles, metrics, monitoring, activity, processors, throughput, sharing
   } = sources;
+  const displayPreferences = displayPreferencesFromSettings(settings);
   const adaptedMovies = adaptMovieItems(moviePage.items);
   const adaptedShows = adaptSeriesItems(showPage.items);
   const activeDownloads = adaptTelemetryDownloads(telemetry);
@@ -261,11 +287,11 @@ function buildDashboardData(sources: DashboardSources): DashboardLoaderData {
     movieCount: moviePage.totalCount ?? 0,
     movieMissingCount: movieWanted.missingCount,
     monitoredCount,
-    recentlyAdded: [...adaptedMovies, ...adaptedShows].slice(0, 14),
+    recentlyAdded: newestDashboardItems(adaptedMovies, adaptedShows),
     totalCount: (moviePage.totalCount ?? 0) + (showPage.totalCount ?? 0),
     showCount: showPage.totalCount ?? 0,
     showMissingCount: showWanted.missingCount,
-    upcoming: buildDashboardUpcoming(upcomingEpisodes, showWanted, movieWanted),
+    upcoming: buildDashboardUpcoming(upcomingEpisodes, showWanted, movieWanted, displayPreferences),
     upgradeCount: movieWanted.upgradeCount + showWanted.upgradeCount,
     coveredCount: movieWanted.coveredCount + showWanted.coveredCount,
     upcomingCount: movieWanted.upcomingCount + showWanted.upcomingCount,
@@ -775,7 +801,7 @@ export function DashboardPage() {
           }
         >
           <div className="dashboard-poster-grid p-[var(--card-pad-x)]">
-            {data.recentlyAdded.slice(0, 12).map((item) => (
+            {data.recentlyAdded.map((item) => (
               <PosterPreview key={`${item.type}-${item.id}`} item={item} />
             ))}
           </div>
@@ -917,21 +943,13 @@ function PosterPreview({ item }: { item: MediaItem }) {
     <Link to={item.type === "show" ? `/tv/${item.id}` : `/movies/${item.id}`} className="group min-w-0">
       <div className="relative aspect-[2/3] overflow-hidden rounded-xl border border-hairline bg-surface-2 shadow-card transition duration-200 group-hover:border-primary/40 group-hover:shadow-lg">
         <Artwork src={item.poster} title={item.title} className="h-full w-full" />
-        <div className="absolute left-2 top-2">
-          <Badge className="border-white/15 bg-background/55 text-[length:var(--type-micro)] text-foreground backdrop-blur-md">
-            {item.type === "show" ? "TV" : "Movie"}
-          </Badge>
-        </div>
-        <div className="absolute right-2 top-2">
-          <TitleMarkDot item={item} size={10} />
-        </div>
-        <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-background/95 via-background/55 to-transparent p-3 pt-12">
-          <p className="line-clamp-1 text-[length:var(--type-body-sm)] font-semibold text-foreground">{item.title}</p>
-          <p className="mt-0.5 flex items-center justify-between gap-2 text-[length:var(--type-caption)] text-muted-foreground">
-            <span className="tabular">{item.year ?? "Unknown"}</span>
-            <span className="tabular">{heldQualityLabel(item) ?? "—"}</span>
-          </p>
-        </div>
+        <TitleBars item={item} showMediaText showSubtitleText />
+      </div>
+      <div className="mt-2 min-w-0 text-center">
+        <p className="truncate text-[length:var(--type-body-sm)] font-semibold text-foreground" title={item.title}>{item.title}</p>
+        <p className="mt-0.5 text-[length:var(--type-caption)] text-muted-foreground">
+          {item.type === "show" ? "TV" : "Movie"} · {item.year ?? "Unknown"}
+        </p>
       </div>
     </Link>
   );
@@ -960,7 +978,8 @@ function Artwork({
 function buildDashboardUpcoming(
   episodes: SeriesUpcomingEpisodeItem[],
   seriesWanted: SeriesWantedSummary,
-  movieWanted: MovieWantedSummary
+  movieWanted: MovieWantedSummary,
+  preferences: DisplayPreferences
 ): DashboardUpcomingItem[] {
   const now = Date.now();
   const horizon = now + 1000 * 60 * 60 * 72;
@@ -970,10 +989,10 @@ function buildDashboardUpcoming(
     .filter(({ time }) => time >= now && time <= horizon)
     .map(({ episode, time }) => ({
       id: episode.episodeId,
-      day: formatDashboardDay(new Date(time)),
+      day: formatDashboardDay(new Date(time), preferences),
       title: episode.title,
       episode: `S${String(episode.seasonNumber).padStart(2, "0")}E${String(episode.episodeNumber).padStart(2, "0")}`,
-      dateLabel: formatDashboardTime(new Date(time)),
+      dateLabel: formatDashboardTime(new Date(time), preferences),
       network: episode.episodeTitle ?? "Upcoming episode",
       poster: episode.posterUrl ?? null,
       href: `/tv/${episode.seriesId}`,
@@ -1009,10 +1028,10 @@ function buildDashboardUpcoming(
     .filter((item) => item.time >= now && item.time <= horizon)
     .map((item) => ({
       id: item.id,
-      day: formatDashboardDay(new Date(item.time)),
+      day: formatDashboardDay(new Date(item.time), preferences),
       title: item.title,
       episode: item.episode,
-      dateLabel: formatDashboardTime(new Date(item.time)),
+      dateLabel: formatDashboardTime(new Date(item.time), preferences),
       network: item.network,
       poster: item.poster,
       href: item.href,
@@ -1053,21 +1072,21 @@ function groupDashboardUpcoming(items: DashboardUpcomingItem[]) {
   return groups;
 }
 
-function formatDashboardDay(date: Date) {
+function formatDashboardDay(date: Date, preferences: DisplayPreferences) {
   const start = new Date();
   start.setHours(0, 0, 0, 0);
   const target = new Date(date);
   target.setHours(0, 0, 0, 0);
   const diffDays = Math.round((target.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
 
-  if (diffDays === 0) return "Today";
-  if (diffDays === 1) return "Tomorrow";
+  if (preferences.showRelativeDates && diffDays === 0) return "Today";
+  if (preferences.showRelativeDates && diffDays === 1) return "Tomorrow";
 
-  return date.toLocaleDateString(undefined, { weekday: "long" });
+  return formatWeekday(date, preferences);
 }
 
-function formatDashboardTime(date: Date) {
-  return date.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+function formatDashboardTime(date: Date, preferences: DisplayPreferences) {
+  return formatTime(date, preferences);
 }
 
 /**

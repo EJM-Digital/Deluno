@@ -8,4 +8,7 @@
     <ProjectReference Include="..\Deluno.Security\Deluno.Security.csproj" />
     <ProjectReference Include="..\Deluno.Realtime\Deluno.Realtime.csproj" />
   </ItemGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="Guides\trash-guide-package.json" />
+  </ItemGroup>
 </Project>

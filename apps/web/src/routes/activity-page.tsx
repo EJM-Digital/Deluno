@@ -40,8 +40,10 @@ import { PageToolbar } from "../components/ui/page-toolbar";
 import { SegmentedControl } from "../components/ui/segmented-control";
 import { SummaryStrip } from "../components/ui/summary-strip";
 import { toast } from "../components/shell/toaster";
+import { DownloadDispatchDrawer } from "../components/app/download-dispatch-drawer";
 import { useVisibleInterval } from "../hooks/use-visible-interval";
 import { RealtimeGroups, useSignalREvent } from "../lib/use-signalr";
+import { formatDateTime as formatPreferenceDateTime, useDisplayPreferences } from "../lib/display-preferences";
 
 interface ActivityLoaderData {
   activity: ActivityEventItem[];
@@ -71,8 +73,10 @@ export function ActivityPage() {
   const lastDispatchRefresh = useRef(0);
   const [section, setSection] = useState<Section>("jobs");
   const [openJobId, setOpenJobId] = useState<string | null>(null);
+  const [openDispatchId, setOpenDispatchId] = useState<string | null>(null);
   const [openEventId, setOpenEventId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const { preferences } = useDisplayPreferences();
 
   // Active work needs a short refresh, but hidden tabs must not contend with it.
   useVisibleInterval(() => revalidator.revalidate(), 10_000);
@@ -104,6 +108,7 @@ export function ActivityPage() {
   );
 
   const openJob = jobs.find((job) => job.id === openJobId) ?? null;
+  const openDispatch = dispatches.find((dispatch) => dispatch.id === openDispatchId) ?? null;
   const openEvent = activity.find((event) => event.id === openEventId) ?? null;
 
   async function handleRetryFailedJobs() {
@@ -180,7 +185,7 @@ export function ActivityPage() {
                     <ListNameCell name={formatJobType(job.jobType)} sub={job.lastError ?? job.workerId ?? "—"} />
                     <ListCell primary={job.source} mobile />
                     <ListCell primary={job.attempts} align="end" numeric />
-                    <ListCell primary={formatDateTime(job.completedUtc ?? job.startedUtc ?? job.scheduledUtc)} />
+                    <ListCell primary={formatPreferenceDateTime(job.completedUtc ?? job.startedUtc ?? job.scheduledUtc, preferences)} />
                     <ListCell>
                       <Chip tone={jobTone(job.status)}>{formatJobStatus(job.status)}</Chip>
                     </ListCell>
@@ -195,7 +200,6 @@ export function ActivityPage() {
               <ListEmpty title="Nothing sent yet" description="Releases Deluno hands to a download client are listed here, with what the client said back." />
             ) : (
               <ListTable
-                chevron={false}
                 columns={[
                   { label: "Release" },
                   { label: "Client", mobile: true },
@@ -205,11 +209,15 @@ export function ActivityPage() {
                 ]}
               >
                 {dispatches.map((dispatch) => (
-                  <ListRow key={dispatch.id}>
+                  <ListRow
+                    key={dispatch.id}
+                    onClick={() => setOpenDispatchId(dispatch.id)}
+                    selected={openDispatchId === dispatch.id}
+                  >
                     <ListNameCell name={dispatch.releaseName} sub={dispatch.indexerName} />
                     <ListCell primary={dispatch.downloadClientName} mobile />
                     <ListCell primary={dispatch.mediaType === "tv" ? "TV" : "Movies"} />
-                    <ListCell primary={formatDateTime(dispatch.createdUtc)} />
+                    <ListCell primary={formatPreferenceDateTime(dispatch.createdUtc, preferences)} />
                     <ListCell>
                       <Chip tone={dispatchTone(dispatch.status)}>{formatDispatchStatus(dispatch.status)}</Chip>
                     </ListCell>
@@ -231,7 +239,7 @@ export function ActivityPage() {
                 <ListRow key={event.id} onClick={() => setOpenEventId(event.id)} selected={openEventId === event.id}>
                   <ListNameCell name={event.message} sub={event.detail} />
                   <ListCell primary={event.category} mobile />
-                  <ListCell primary={formatDateTime(event.createdUtc)} />
+                  <ListCell primary={formatPreferenceDateTime(event.createdUtc, preferences)} />
                 </ListRow>
               ))}
             </ListTable>
@@ -261,7 +269,7 @@ export function ActivityPage() {
                   <ListNameCell name={`${formatFailureKind(item.failureKind)} · ${item.title}`} sub={item.summary} />
                   <ListCell primary={item.mediaLabel} mobile />
                   <ListCell primary={item.recommendedAction} />
-                  <ListCell primary={formatDateTime(item.detectedUtc)} />
+                  <ListCell primary={formatPreferenceDateTime(item.detectedUtc, preferences)} />
                 </ListRow>
               ))}
             </ListTable>
@@ -284,9 +292,9 @@ export function ActivityPage() {
               <DrawerFacts
                 items={[
                   { label: "Attempts", value: String(openJob.attempts) },
-                  { label: "Scheduled", value: formatDateTime(openJob.scheduledUtc) },
-                  { label: "Started", value: openJob.startedUtc ? formatDateTime(openJob.startedUtc) : "Not started" },
-                  { label: "Finished", value: openJob.completedUtc ? formatDateTime(openJob.completedUtc) : "Not finished" },
+                  { label: "Scheduled", value: formatPreferenceDateTime(openJob.scheduledUtc, preferences) },
+                  { label: "Started", value: openJob.startedUtc ? formatPreferenceDateTime(openJob.startedUtc, preferences) : "Not started" },
+                  { label: "Finished", value: openJob.completedUtc ? formatPreferenceDateTime(openJob.completedUtc, preferences) : "Not finished" },
                   { label: "Worker", value: openJob.workerId ?? "—", mono: true }
                 ]}
               />
@@ -320,13 +328,15 @@ export function ActivityPage() {
         ) : null}
       </Drawer>
 
+      <DownloadDispatchDrawer dispatch={openDispatch} onClose={() => setOpenDispatchId(null)} />
+
       <Drawer
         open={openEvent !== null}
         onOpenChange={(next) => {
           if (!next) setOpenEventId(null);
         }}
         title={openEvent?.message ?? "Event"}
-        description={openEvent ? `${openEvent.category} · ${formatDateTime(openEvent.createdUtc)}` : undefined}
+        description={openEvent ? `${openEvent.category} · ${formatPreferenceDateTime(openEvent.createdUtc, preferences)}` : undefined}
         footer={<DrawerFooter state="clean" readOnly saveLabel="Close" onCancel={() => setOpenEventId(null)} />}
       >
         {openEvent ? (
@@ -389,8 +399,10 @@ function jobTone(status: string): Tone {
 function dispatchTone(status: string): "ok" | "warn" | "bad" | "info" {
   switch (status) {
     case "sent":
+    case "imported":
       return "ok";
     case "failed":
+    case "importFailed":
       return "bad";
     case "planned":
       return "warn";
@@ -407,9 +419,18 @@ function formatDispatchStatus(status: string) {
       return "Failed";
     case "planned":
       return "Needs URL";
+    case "imported":
+      return "Imported";
+    case "importFailed":
+      return "Import failed";
     default:
-      return status.charAt(0).toUpperCase() + status.slice(1);
+      return formatOperation(status);
   }
+}
+
+function formatOperation(value: string) {
+  const spaced = value.replace(/([a-z0-9])([A-Z])/g, "$1 $2").replace(/[._-]/g, " ");
+  return spaced.charAt(0).toUpperCase() + spaced.slice(1);
 }
 
 function formatFailureKind(value: string) {
@@ -435,13 +456,4 @@ function prettyJson(value: string) {
   } catch {
     return value;
   }
-}
-
-function formatDateTime(value: string) {
-  return new Intl.DateTimeFormat(undefined, {
-    month: "short",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit"
-  }).format(new Date(value));
 }

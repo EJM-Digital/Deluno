@@ -22,7 +22,7 @@ public sealed class NzbGetDownloadClient(IHttpClientFactory httpClientFactory) :
     public override async Task<DownloadClientTelemetrySnapshot?> GetSnapshotAsync(DownloadClientItem client, DateTimeOffset capturedUtc, CancellationToken cancellationToken)
     {
         var baseUri = DownloadClientHelpers.ResolveEndpoint(client);
-        if (baseUri is null) return null;
+        if (baseUri is null) return CreateConfigurationSnapshot(client, capturedUtc, "Download client address is missing.");
         var http = CreateHttp(client);
         var response = await DownloadClientHelpers.PostJsonAsync<NzbGetResponse<IReadOnlyList<NzbGetQueueItem>>>(http, new Uri(baseUri, "jsonrpc"), new NzbGetRequest("listgroups", []), cancellationToken);
         var status = await GetStatusAsync(http, baseUri, cancellationToken);
@@ -70,20 +70,17 @@ public sealed class NzbGetDownloadClient(IHttpClientFactory httpClientFactory) :
 
     private static async Task<IReadOnlyList<DownloadClientHistoryItem>> GetHistoryCoreAsync(HttpClient http, DownloadClientItem client, Uri baseUri, DateTimeOffset capturedUtc, CancellationToken cancellationToken)
     {
-        try
-        {
-            var response = await DownloadClientHelpers.PostJsonAsync<NzbGetResponse<IReadOnlyList<NzbGetHistoryItem>>>(http, new Uri(baseUri, "jsonrpc"), new NzbGetRequest("history", []), cancellationToken);
-            return (response?.Result ?? []).Select(item => new DownloadClientHistoryItem(item.NzbId.ToString(CultureInfo.InvariantCulture), client.Id, client.Name, client.Protocol,
-                DownloadClientHelpers.InferMediaType(client, item.Category), DownloadClientHelpers.CleanReleaseTitle(item.NzbName ?? item.Name ?? "Unknown NZBGet history item"), item.NzbName ?? item.Name ?? "Unknown NZBGet history item",
-                item.Category ?? string.Empty, NormalizeOutcome(item.Status ?? string.Empty), "NZBGet", item.FileSizeHi * 1_000_000L, DownloadClientHelpers.FromUnix(item.HistoryTime), QueueError(item.Status), DownloadClientHelpers.ResolveDownloadPath(item.DestDir, item.NzbName ?? item.Name))).ToArray();
-        }
-        catch { return []; }
+        var response = await DownloadClientHelpers.PostJsonAsync<NzbGetResponse<IReadOnlyList<NzbGetHistoryItem>>>(http, new Uri(baseUri, "jsonrpc"), new NzbGetRequest("history", []), cancellationToken);
+        return (response?.Result ?? []).Select(item => new DownloadClientHistoryItem(item.NzbId.ToString(CultureInfo.InvariantCulture), client.Id, client.Name, client.Protocol,
+            DownloadClientHelpers.InferMediaType(client, item.Category), DownloadClientHelpers.CleanReleaseTitle(item.NzbName ?? item.Name ?? "Unknown NZBGet history item"), item.NzbName ?? item.Name ?? "Unknown NZBGet history item",
+            item.Category ?? string.Empty, NormalizeOutcome(item.Status ?? string.Empty), "NZBGet", item.FileSizeHi * 1_000_000L, DownloadClientHelpers.FromUnix(item.HistoryTime), QueueError(item.Status), DownloadClientHelpers.ResolveDownloadPath(item.DestDir, item.NzbName ?? item.Name),
+            HistorySource: "native",
+            ExternalId: item.NzbId.ToString(CultureInfo.InvariantCulture))).ToArray();
     }
 
     private static async Task<NzbGetStatus?> GetStatusAsync(HttpClient http, Uri baseUri, CancellationToken cancellationToken)
     {
-        try { return (await DownloadClientHelpers.PostJsonAsync<NzbGetResponse<NzbGetStatus>>(http, new Uri(baseUri, "jsonrpc"), new NzbGetRequest("status", []), cancellationToken))?.Result; }
-        catch { return null; }
+        return (await DownloadClientHelpers.PostJsonAsync<NzbGetResponse<NzbGetStatus>>(http, new Uri(baseUri, "jsonrpc"), new NzbGetRequest("status", []), cancellationToken))?.Result;
     }
 
     private static int CalculateEta(long remainingBytes, long? bytesPerSecond) => remainingBytes <= 0 || bytesPerSecond is null or <= 0 ? 0 : Convert.ToInt32(Math.Clamp(remainingBytes / (double)bytesPerSecond.Value, 0, int.MaxValue));

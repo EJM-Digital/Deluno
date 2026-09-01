@@ -1,4 +1,5 @@
 using Deluno.Infrastructure.Storage.Migrations;
+using Deluno.Contracts;
 using Deluno.Libraries.Contracts;
 using Deluno.Libraries.Data;
 using Deluno.Persistence.Tests.Support;
@@ -98,6 +99,105 @@ public sealed class LibrarySubtitleLanguagePersistenceTests
 
         Assert.Equal(["es", "en", "fr"], updated!.SubtitleLanguages);
         Assert.Equal("first", updated.SubtitleLanguageMode);
+    }
+
+    [Fact]
+    public async Task Unknown_language_and_embedded_treatment_round_trip_through_library_reads()
+    {
+        using var storage = TestStorage.Create();
+        var repository = await CreateRepositoryAsync(storage);
+        var library = await repository.CreateLibraryAsync(NewLibrary("Movies", "movies"), CancellationToken.None);
+
+        var updated = await repository.UpdateLibrarySubtitlesAsync(
+            library.Id,
+            new UpdateLibrarySubtitlesRequest(["en"], "all", UnknownLanguage: "eng", EmbeddedCounts: false),
+            CancellationToken.None);
+
+        Assert.Equal("en", updated!.SubtitleUnknownLanguage);
+        Assert.False(updated.SubtitleEmbeddedCounts);
+
+        var listed = (await repository.ListLibrariesAsync(CancellationToken.None)).Single(item => item.Id == library.Id);
+        Assert.Equal("en", listed.SubtitleUnknownLanguage);
+        Assert.False(listed.SubtitleEmbeddedCounts);
+    }
+
+    [Fact]
+    public async Task Existing_library_defaults_keep_embedded_subtitles_held_and_unknown_names_unassigned()
+    {
+        using var storage = TestStorage.Create();
+        var repository = await CreateRepositoryAsync(storage);
+        var library = await repository.CreateLibraryAsync(NewLibrary("Movies", "movies"), CancellationToken.None);
+
+        var listed = (await repository.ListLibrariesAsync(CancellationToken.None)).Single(item => item.Id == library.Id);
+
+        Assert.Equal(string.Empty, listed.SubtitleUnknownLanguage);
+        Assert.True(listed.SubtitleEmbeddedCounts);
+    }
+
+    [Fact]
+    public async Task Subtitle_content_policy_round_trips_and_disabled_policy_is_not_persisted()
+    {
+        using var storage = TestStorage.Create();
+        var repository = await CreateRepositoryAsync(storage);
+        var library = await repository.CreateLibraryAsync(NewLibrary("Movies", "movies"), CancellationToken.None);
+
+        var policy = new SubtitleContentModificationPolicy(
+            StripHearingImpairedAnnotations: true,
+            RemoveStyleTags: true,
+            NormalizeWhitespace: true);
+        var updated = await repository.UpdateLibrarySubtitlesAsync(
+            library.Id,
+            new UpdateLibrarySubtitlesRequest(["en"], "all", ContentPolicy: policy),
+            CancellationToken.None);
+
+        Assert.Equal(policy, updated!.SubtitleContentPolicy);
+        var listed = (await repository.ListLibrariesAsync(CancellationToken.None)).Single(item => item.Id == library.Id);
+        Assert.Equal(policy, listed.SubtitleContentPolicy);
+
+        var cleared = await repository.UpdateLibrarySubtitlesAsync(
+            library.Id,
+            new UpdateLibrarySubtitlesRequest(["en"], "all", ContentPolicy: new SubtitleContentModificationPolicy()),
+            CancellationToken.None);
+
+        Assert.Null(cleared!.SubtitleContentPolicy);
+    }
+
+    [Fact]
+    public async Task Subtitle_timing_policy_round_trips_with_safe_bounds_and_provider_exclusions()
+    {
+        using var storage = TestStorage.Create();
+        var repository = await CreateRepositoryAsync(storage);
+        var library = await repository.CreateLibraryAsync(NewLibrary("Movies", "movies"), CancellationToken.None);
+
+        var updated = await repository.UpdateLibrarySubtitlesAsync(
+            library.Id,
+            new UpdateLibrarySubtitlesRequest(
+                ["en"],
+                "all",
+                TimingPolicy: new SubtitleTimingPolicy(
+                    Enabled: false,
+                    SyncOnlyBelow: "same-source",
+                    MaxOffsetSeconds: 999,
+                    RequiredPeakSigma: 99,
+                    ExcludedProviders: [" ProviderB ", "providerA", "PROVIDERA"])),
+            CancellationToken.None);
+
+        Assert.NotNull(updated);
+        Assert.NotNull(updated!.SubtitleTimingPolicy);
+        Assert.False(updated.SubtitleTimingPolicy!.Enabled);
+        Assert.Equal("same-source", updated.SubtitleTimingPolicy.SyncOnlyBelow);
+        Assert.Equal(300, updated.SubtitleTimingPolicy.MaxOffsetSeconds);
+        Assert.Equal(10, updated.SubtitleTimingPolicy.RequiredPeakSigma);
+        Assert.Equal(["providera", "providerb"], updated.SubtitleTimingPolicy.ExcludedProviders);
+
+        var listed = (await repository.ListLibrariesAsync(CancellationToken.None)).Single(item => item.Id == library.Id);
+
+        Assert.NotNull(listed.SubtitleTimingPolicy);
+        Assert.Equal(updated.SubtitleTimingPolicy.Enabled, listed.SubtitleTimingPolicy!.Enabled);
+        Assert.Equal(updated.SubtitleTimingPolicy.SyncOnlyBelow, listed.SubtitleTimingPolicy.SyncOnlyBelow);
+        Assert.Equal(updated.SubtitleTimingPolicy.MaxOffsetSeconds, listed.SubtitleTimingPolicy.MaxOffsetSeconds);
+        Assert.Equal(updated.SubtitleTimingPolicy.RequiredPeakSigma, listed.SubtitleTimingPolicy.RequiredPeakSigma);
+        Assert.Equal(updated.SubtitleTimingPolicy.ExcludedProviders, listed.SubtitleTimingPolicy.ExcludedProviders);
     }
 
     /// <summary>

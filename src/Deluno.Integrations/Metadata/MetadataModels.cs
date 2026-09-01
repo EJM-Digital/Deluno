@@ -1,3 +1,5 @@
+using Deluno.Contracts;
+
 namespace Deluno.Integrations.Metadata;
 
 public sealed record MetadataSearchResult(
@@ -62,6 +64,8 @@ public sealed record MetadataSearchResult(
     string? Studio = null,
     string? Network = null,
     string? Collection = null,
+    /// <summary>The provider identifier for <see cref="Collection"/>, when one exists.</summary>
+    string? CollectionProviderId = null,
     string? Director = null,
     string? TrailerUrl = null,
     string? Tagline = null,
@@ -78,7 +82,13 @@ public sealed record MetadataSearchResult(
     /// always read empty — the same shape as the certification and collection
     /// fields beside it.</para>
     /// </summary>
-    IReadOnlyList<string>? Keywords = null);
+    IReadOnlyList<string>? Keywords = null,
+    /// <summary>
+    /// The TVDb identifier when the provider exposes one. TMDb carries this in
+    /// its external-id response; keeping it beside IMDb lets the TV folder
+    /// naming preset work without pretending a TMDb id is a TVDb id.
+    /// </summary>
+    string? TvDbId = null);
 
 /// <summary>
 /// When a movie can actually be obtained. A cinema date is not an availability
@@ -93,6 +103,27 @@ public sealed record MetadataReleaseDates(
 
     public bool HasAny => InCinemas is not null || Digital is not null || Physical is not null;
 }
+
+/// <summary>A provider collection and its full movie membership.</summary>
+public sealed record MetadataCollection(
+    string Provider,
+    string ProviderId,
+    string Name,
+    string? Overview,
+    string? PosterUrl,
+    string? BackdropUrl,
+    IReadOnlyList<MetadataCollectionMovie> Movies);
+
+/// <summary>One movie in a provider collection, whether Deluno holds it or not.</summary>
+public sealed record MetadataCollectionMovie(
+    string ProviderId,
+    string Title,
+    int? Year,
+    string? Overview,
+    string? PosterUrl,
+    string? BackdropUrl,
+    string? ExternalUrl,
+    string? ImdbId = null);
 
 /// <summary>One season of a series as the provider describes it.</summary>
 public sealed record MetadataSeason(
@@ -124,7 +155,9 @@ public sealed record MetadataCastMember(
     /// would key on. Neither is possible from a name: names collide, and two
     /// different Chris Evanses are one row if you key on the string.</para>
     /// </summary>
-    string? PersonId = null);
+    string? PersonId = null,
+    /// <summary>Lazy-resolved IMDb person URL, when the broker can provide one.</summary>
+    string? ImdbUrl = null);
 
 /// <summary>
 /// A crew credit. <paramref name="Job"/> holds every job this person did on the
@@ -136,7 +169,9 @@ public sealed record MetadataCrewMember(
     string? Job,
     string? ProfileUrl,
     /// <summary>The provider's id for this person. See <see cref="MetadataCastMember.PersonId"/>.</summary>
-    string? PersonId = null);
+    string? PersonId = null,
+    /// <summary>Lazy-resolved IMDb person URL, when the broker can provide one.</summary>
+    string? ImdbUrl = null);
 
 public sealed record MetadataRatingItem(
     string Source,
@@ -153,12 +188,157 @@ public sealed record MetadataLookupRequest(
     int? Year,
     string? ProviderId);
 
+/// <summary>
+/// The result of resolving a title Deluno has already linked to a provider.
+/// Exact identity lookup is deliberately separate from fuzzy discovery: a
+/// missing provider record must never be replaced by the first similar title.
+/// </summary>
+public sealed record MetadataProviderRecordLookup(
+    MetadataProviderRecordStatus Status,
+    string Provider,
+    string ProviderId,
+    MetadataSearchResult? Result = null,
+    Deluno.Contracts.IntegrationFailure? Failure = null);
+
+public enum MetadataProviderRecordStatus
+{
+    Found,
+    Missing,
+    Unavailable
+}
+
+/// <summary>A calm, title-scoped notice about a provider identity that no longer exists.</summary>
+public sealed record MetadataProviderIssue(
+    string Kind,
+    string Provider,
+    string ProviderId,
+    string EvidenceKey,
+    DateTimeOffset DetectedUtc,
+    DateTimeOffset? AcknowledgedUtc);
+
+/// <summary>The identity facts compared before a held title is linked to another provider record.</summary>
+public sealed record MetadataLinkIdentity(
+    string? Provider,
+    string? ProviderId,
+    string Title,
+    int? Year,
+    string? ImdbId,
+    string? Context = null);
+
+/// <summary>A different held title that already owns one of the proposed identities.</summary>
+public sealed record MetadataIdentityConflict(
+    string Id,
+    string Title,
+    string Reason);
+
+public sealed class MetadataIdentityConflictException(string message, Exception innerException)
+    : InvalidOperationException(message, innerException);
+
+/// <summary>The TV catalogue effect of accepting a provider remap.</summary>
+public sealed record MetadataCatalogueImpact(
+    int ExistingEpisodeCount,
+    int ImportedEpisodeCount,
+    int ProposedEpisodeCount,
+    int ProposedSeasonCount,
+    int ExistingEpisodesOutsideProposed);
+
+public sealed record MetadataEpisodeIdentity(
+    int SeasonNumber,
+    int EpisodeNumber,
+    bool HasFile = false);
+
+public sealed record MetadataCatalogueEvaluation(
+    MetadataCatalogueImpact Impact,
+    int NewEpisodeCount,
+    IReadOnlyList<string> ProposedKeys)
+{
+    public bool PreservesExistingCatalogue => Impact.ExistingEpisodesOutsideProposed == 0;
+}
+
+public static class MetadataCatalogueSafety
+{
+    public static MetadataCatalogueEvaluation Evaluate(
+        IEnumerable<MetadataEpisodeIdentity> existingEpisodes,
+        IEnumerable<MetadataEpisodeIdentity> proposedEpisodes)
+    {
+        var existing = existingEpisodes
+            .GroupBy(EpisodeKey, StringComparer.Ordinal)
+            .Select(group => group.First())
+            .ToArray();
+        var existingKeys = existing.Select(EpisodeKey).ToHashSet(StringComparer.Ordinal);
+        var proposed = proposedEpisodes
+            .GroupBy(EpisodeKey, StringComparer.Ordinal)
+            .Select(group => group.First())
+            .ToArray();
+        var proposedKeys = proposed
+            .Select(EpisodeKey)
+            .OrderBy(key => key, StringComparer.Ordinal)
+            .ToArray();
+        var proposedSet = proposedKeys.ToHashSet(StringComparer.Ordinal);
+        var impact = new MetadataCatalogueImpact(
+            existing.Length,
+            existing.Count(episode => episode.HasFile),
+            proposed.Length,
+            proposed.Select(episode => episode.SeasonNumber).Distinct().Count(),
+            existingKeys.Count(key => !proposedSet.Contains(key)));
+        return new MetadataCatalogueEvaluation(
+            impact,
+            proposedSet.Count(key => !existingKeys.Contains(key)),
+            proposedKeys);
+    }
+
+    private static string EpisodeKey(MetadataEpisodeIdentity episode)
+        => $"S{episode.SeasonNumber:D4}E{episode.EpisodeNumber:D4}";
+}
+
+/// <summary>
+/// A reviewable metadata remap. Applying it requires <see cref="ConfirmationToken"/>,
+/// which binds the reviewed provider answer to the current stored title state.
+/// </summary>
+public sealed record MetadataLinkPreview(
+    string MediaType,
+    string SubjectId,
+    MetadataLinkIdentity Current,
+    MetadataLinkIdentity Proposed,
+    IReadOnlyList<string> Changes,
+    IReadOnlyList<string> Consequences,
+    MetadataIdentityConflict? Conflict,
+    MetadataCatalogueImpact? CatalogueImpact,
+    bool CanApply,
+    string? BlockReason,
+    string ConfirmationToken);
+
+public static class MetadataLinkPreviewTokens
+{
+    public static string Create(
+        string subjectId,
+        DateTimeOffset subjectUpdatedUtc,
+        MetadataLinkIdentity proposed,
+        IEnumerable<string>? catalogueKeys = null)
+    {
+        var payload = string.Join('\n', new[]
+        {
+            subjectId,
+            subjectUpdatedUtc.ToUniversalTime().ToString("O"),
+            proposed.Provider ?? string.Empty,
+            proposed.ProviderId ?? string.Empty,
+            proposed.Title,
+            proposed.Year?.ToString() ?? string.Empty,
+            proposed.ImdbId ?? string.Empty,
+            proposed.Context ?? string.Empty,
+            string.Join(',', catalogueKeys ?? [])
+        });
+        return Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(payload)));
+    }
+}
+
 public sealed record MetadataProviderStatus(
     string Provider,
     bool IsConfigured,
     string Mode,
     string Message,
-    IReadOnlyList<MetadataSourceStatus> Sources);
+    IReadOnlyList<MetadataSourceStatus> Sources,
+    IntegrationFailure? LastFailure = null);
 
 public sealed record MetadataSourceStatus(
     string Source,

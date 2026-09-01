@@ -6,6 +6,7 @@ using Deluno.Api.Monitoring;
 using Deluno.Api.Updates;
 using Deluno.Infrastructure.Storage;
 using Deluno.Security;
+using Deluno.Platform.Migration;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
@@ -22,6 +23,7 @@ public static class DelunoApiExtensions
         services.AddRouting();
         services.AddSingleton<DelunoBackupService>();
         services.AddSingleton<IDelunoBackupService>(sp => sp.GetRequiredService<DelunoBackupService>());
+        services.AddSingleton<IMigrationBackupService>(sp => sp.GetRequiredService<DelunoBackupService>());
         services.AddHostedService(sp => sp.GetRequiredService<DelunoBackupService>());
         services.AddSingleton<IDelunoReadinessService, DelunoReadinessService>();
         services.AddSingleton<IApiLatencyTracker, InMemoryApiLatencyTracker>();

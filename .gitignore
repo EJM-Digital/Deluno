@@ -25,3 +25,11 @@ apps/web/playwright-report/
 # FFmpeg, fetched by scripts/fetch-ffmpeg.ps1 and copied into the publish.
 # ~128 MB of binaries that do not belong in git.
 tools/ffmpeg/
+
+# Python-backed lab fixtures compile locally during validation.
+__pycache__/
+*.py[cod]
+
+# Test hosts write TRX, dumps, and run folders beside each test project.
+# CI publishes any diagnostics it needs; these local artifacts do not belong in source control.
+**/TestResults/

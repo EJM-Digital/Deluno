@@ -85,7 +85,19 @@ public sealed record MediaTableMap(
     /// the movie for a film and the episode for a show — so a show missing one
     /// episode's subtitle is not a show Deluno stops asking about.</para>
     /// </summary>
-    string SubtitleAttemptTable)
+    string SubtitleAttemptTable,
+    /// <summary>
+    /// The catalogue-local join table for user-owned platform tags. The table
+    /// name is shared; the database and entry table are the two mapped parts.
+    /// </summary>
+    string TagTable,
+    string TagMediaIdColumn,
+    /// <summary>
+    /// Installed-file preference evaluations are kept in the catalogue's own
+    /// database so movie and TV engines can retain separate history while
+    /// sharing the typed contract.
+    /// </summary>
+    string PreferenceEvaluationTable)
 {
     public static MediaTableMap For(MediaKind kind)
         => kind switch
@@ -114,7 +126,10 @@ public sealed record MediaTableMap(
                 "JOIN movie_entries t ON t.id = f.movie_id",
                 // title, year, season, episode, episode title, release name
                 "t.title, t.release_year, NULL, NULL, NULL, f.release_group",
-                "movie_subtitle_attempt"),
+                "movie_subtitle_attempt",
+                "media_tags",
+                "media_id",
+                "media_preference_evaluations"),
             MediaKind.Series => new(
                 DelunoDatabaseNames.Series,
                 "network",
@@ -151,7 +166,10 @@ public sealed record MediaTableMap(
                 // "Severance S01E02", and half of them have no idea what
                 // "Good News About Hell" is.
                 "t.title, t.start_year, f.season_number, f.episode_number, f.title, NULL",
-                "episode_subtitle_attempt"),
+                "episode_subtitle_attempt",
+                "media_tags",
+                "media_id",
+                "media_preference_evaluations"),
             _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, null)
         };
 }

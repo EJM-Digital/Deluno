@@ -1,6 +1,7 @@
 namespace Deluno.Connections.Contracts;
 
 using System.Text.Json.Serialization;
+using Deluno.Contracts;
 
 public sealed record DownloadClientItem(
     string Id,
@@ -22,4 +23,8 @@ public sealed record DownloadClientItem(
     int? LastHealthLatencyMs,
     DateTimeOffset? LastHealthTestUtc,
     DateTimeOffset CreatedUtc,
-    DateTimeOffset UpdatedUtc);
+    DateTimeOffset UpdatedUtc)
+{
+    /// <summary>Last typed health failure, when the client did not pass its most recent test.</summary>
+    public IntegrationFailure? LastHealthFailure { get; init; }
+}

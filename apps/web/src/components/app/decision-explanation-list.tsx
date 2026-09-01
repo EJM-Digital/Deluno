@@ -3,16 +3,19 @@
  *
  * Every consequential thing Deluno does has to be explainable, so the row says
  * what it decided and the drawer says why: the inputs it weighed, the outcome,
- * and the alternatives it turned down with their scores.
+ * and the alternatives it considered, with legacy scores shown only when an
+ * older score-based decision supplied one.
  */
 import { useState } from "react";
 import { Chip } from "../ui/chip";
 import { Drawer, DrawerFacts, DrawerFooter, DrawerSection } from "../ui/drawer";
 import { ListCard, ListCell, ListEmpty, ListNameCell, ListRow, ListTable, LIST_TRACK } from "../ui/list-card";
 import type { DecisionExplanationItem } from "../../lib/api";
+import { formatDateTime, useDisplayPreferences } from "../../lib/display-preferences";
 
 export function DecisionExplanationList({ decisions }: { decisions: DecisionExplanationItem[] }) {
   const [openId, setOpenId] = useState<string | null>(null);
+  const { preferences } = useDisplayPreferences();
   const open = decisions.find((item) => item.id === openId) ?? null;
   const shown = decisions.slice(0, 12);
 
@@ -42,7 +45,7 @@ export function DecisionExplanationList({ decisions }: { decisions: DecisionExpl
                     outcome; showing it twice in one row reads as a rendering fault. */}
                 <ListNameCell name={item.reason} sub={item.outcome === item.reason ? undefined : item.outcome} />
                 <ListCell primary={item.scope} mobile />
-                <ListCell primary={formatDateTime(item.occurredUtc)} />
+                <ListCell primary={formatDateTime(item.occurredUtc, preferences)} />
                 <ListCell>
                   <Chip tone={statusTone(item.status)}>{formatStatus(item.status)}</Chip>
                 </ListCell>
@@ -58,7 +61,7 @@ export function DecisionExplanationList({ decisions }: { decisions: DecisionExpl
           if (!next) setOpenId(null);
         }}
         title={open?.reason ?? "Decision"}
-        description={open ? `${open.scope} · ${formatDateTime(open.occurredUtc)}` : undefined}
+        description={open ? `${open.scope} · ${formatDateTime(open.occurredUtc, preferences)}` : undefined}
         footer={
           <DrawerFooter state="clean" readOnly saveLabel="Close" onCancel={() => setOpenId(null)} />
         }
@@ -85,7 +88,9 @@ export function DecisionExplanationList({ decisions }: { decisions: DecisionExpl
                   <DrawerFacts
                     items={open.alternatives.map((alternative) => ({
                       label: alternative.name,
-                      value: alternative.score === null ? alternative.status : `${alternative.status} · ${alternative.score}`
+                      value: alternative.score === null
+                        ? alternative.status
+                        : `${alternative.status} · legacy score ${alternative.score}`
                     }))}
                   />
                 </div>
@@ -100,7 +105,6 @@ export function DecisionExplanationList({ decisions }: { decisions: DecisionExpl
     </>
   );
 }
-
 function formatStatus(status: string) {
   const spaced = status.replace(/[-_]/g, " ");
   return spaced.charAt(0).toUpperCase() + spaced.slice(1);
@@ -112,13 +116,4 @@ function statusTone(status: string): "ok" | "warn" | "bad" | "info" {
   if (["held", "checked", "planned", "started"].includes(normalized)) return "warn";
   if (["failed", "dead-letter", "blocked"].includes(normalized)) return "bad";
   return "info";
-}
-
-function formatDateTime(value: string) {
-  return new Intl.DateTimeFormat(undefined, {
-    day: "numeric",
-    month: "short",
-    hour: "numeric",
-    minute: "2-digit"
-  }).format(new Date(value));
 }

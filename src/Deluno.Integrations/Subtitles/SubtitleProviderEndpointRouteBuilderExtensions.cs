@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using Deluno.Connections.Contracts;
 using Deluno.Connections.Data;
+using Deluno.Contracts;
 using Deluno.Security;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
@@ -125,7 +126,8 @@ public static class SubtitleProviderEndpointRouteBuilderExtensions
                     result.LatencyMs,
                     result.Ok,
                     rateLimitedUntilUtc: null,
-                    cancellationToken);
+                    cancellationToken,
+                    result.Failure);
             }
 
             return Results.Ok(result);
@@ -155,7 +157,14 @@ public static class SubtitleProviderEndpointRouteBuilderExtensions
                 Status: "untested",
                 Message: $"{provider.DisplayName} needs its account details before it can be tested.",
                 LatencyMs: null,
-                ResultCount: null);
+                ResultCount: null,
+                Failure: IntegrationFailureFactory.FromLegacy(
+                    "subtitle",
+                    provider.Key,
+                    provider.DisplayName,
+                    "test",
+                    "configuration",
+                    $"{provider.DisplayName} needs its account details before it can be tested."));
         }
 
         var request = provider.Scope == SubtitleProviderScope.TvOnly
@@ -184,9 +193,10 @@ public static class SubtitleProviderEndpointRouteBuilderExtensions
                     LatencyMs: (int)stopwatch.ElapsedMilliseconds,
                     ResultCount: 0);
         }
-        catch (SubtitleProviderRateLimitedException)
+        catch (SubtitleProviderRateLimitedException rateLimited)
         {
             stopwatch.Stop();
+            var until = DateTimeOffset.UtcNow.Add(rateLimited.RetryAfter ?? TimeSpan.FromHours(1));
             return new SubtitleProviderTestResult(
                 Ok: true,
                 Status: "rate-limited",
@@ -194,7 +204,15 @@ public static class SubtitleProviderEndpointRouteBuilderExtensions
                 // an indexer already draws the same distinction.
                 Message: $"{provider.DisplayName} is working and is rate limiting Deluno. Nothing is wrong; it will be asked again later.",
                 LatencyMs: (int)stopwatch.ElapsedMilliseconds,
-                ResultCount: null);
+                ResultCount: null,
+                Failure: IntegrationFailureFactory.FromLegacy(
+                    "subtitle",
+                    provider.Key,
+                    provider.DisplayName,
+                    "test",
+                    "rate-limited",
+                    $"{provider.DisplayName} is working and is rate limiting Deluno.",
+                    retryAfterUtc: until));
         }
         catch (Exception exception) when (exception is not OperationCanceledException)
         {
@@ -204,7 +222,14 @@ public static class SubtitleProviderEndpointRouteBuilderExtensions
                 Status: "failed",
                 Message: $"{provider.DisplayName} could not be reached: {exception.Message}",
                 LatencyMs: (int)stopwatch.ElapsedMilliseconds,
-                ResultCount: null);
+                ResultCount: null,
+                Failure: IntegrationFailureFactory.FromException(
+                    "subtitle",
+                    provider.Key,
+                    provider.DisplayName,
+                    "test",
+                    exception,
+                    retryScheduled: true));
         }
     }
 

@@ -15,12 +15,12 @@ import { CreditsRow, readStoredCredits } from "./credits-row";
 describe("readStoredCredits", () => {
   it("reads a camelCase blob, the shape the gateway answers with", () => {
     const { cast, crew } = readStoredCredits(JSON.stringify({
-      cast: [{ personId: "1245", name: "Amy Adams", character: "Louise Banks", profileUrl: "/amy.jpg" }],
-      crew: [{ personId: "137427", name: "Denis Villeneuve", job: "Director, Producer", profileUrl: "/dv.jpg" }]
+      cast: [{ personId: "1245", name: "Amy Adams", character: "Louise Banks", profileUrl: "/amy.jpg", imdbUrl: "https://metadata.example/person/1245/imdb" }],
+      crew: [{ personId: "137427", name: "Denis Villeneuve", job: "Director, Producer", profileUrl: "/dv.jpg", imdbUrl: "https://metadata.example/person/137427/imdb" }]
     }));
 
-    expect(cast).toEqual([{ name: "Amy Adams", role: "Louise Banks", profileUrl: "/amy.jpg", personId: "1245" }]);
-    expect(crew).toEqual([{ name: "Denis Villeneuve", role: "Director, Producer", profileUrl: "/dv.jpg", personId: "137427" }]);
+    expect(cast).toEqual([{ name: "Amy Adams", role: "Louise Banks", profileUrl: "/amy.jpg", personId: "1245", imdbUrl: "https://metadata.example/person/1245/imdb" }]);
+    expect(crew).toEqual([{ name: "Denis Villeneuve", role: "Director, Producer", profileUrl: "/dv.jpg", personId: "137427", imdbUrl: "https://metadata.example/person/137427/imdb" }]);
   });
 
   it("reads a PascalCase blob, the shape Deluno's own record serialises", () => {
@@ -29,8 +29,8 @@ describe("readStoredCredits", () => {
       Crew: [{ Name: "Denis Villeneuve", Job: "Director", ProfileUrl: null }]
     }));
 
-    expect(cast[0]).toEqual({ name: "Amy Adams", role: "Louise Banks", profileUrl: "/amy.jpg", personId: "1245" });
-    expect(crew[0]).toEqual({ name: "Denis Villeneuve", role: "Director", profileUrl: null, personId: null });
+    expect(cast[0]).toEqual({ name: "Amy Adams", role: "Louise Banks", profileUrl: "/amy.jpg", personId: "1245", imdbUrl: null });
+    expect(crew[0]).toEqual({ name: "Denis Villeneuve", role: "Director", profileUrl: null, personId: null, imdbUrl: null });
   });
 
   it("answers with two empty lists rather than throwing on anything unusable", () => {
@@ -44,7 +44,13 @@ describe("readStoredCredits", () => {
       cast: [{ character: "Uncredited" }, { name: "  Tzi Ma  " }]
     }));
 
-    expect(cast).toEqual([{ name: "Tzi Ma", role: null, profileUrl: null, personId: null }]);
+    expect(cast).toEqual([{ name: "Tzi Ma", role: null, profileUrl: null, personId: null, imdbUrl: null }]);
+  });
+
+  it("normalizes numeric person ids from older stored metadata", () => {
+    expect(readStoredCredits(JSON.stringify({ cast: [{ id: 1245, name: "Amy Adams", personId: 1245 }] })).cast).toEqual([
+      { name: "Amy Adams", role: null, profileUrl: null, personId: "1245", imdbUrl: null }
+    ]);
   });
 });
 
@@ -60,7 +66,8 @@ describe("CreditsRow", () => {
       name: `Player ${index + 1}`,
       role: `Role ${index + 1}`,
       profileUrl: null,
-      personId: null
+      personId: null,
+      imdbUrl: null
     }));
 
     render(<CreditsRow heading="Cast" people={people} />);
@@ -71,7 +78,7 @@ describe("CreditsRow", () => {
 
   it("scrolls sideways rather than wrapping into a block you have to parse", () => {
     const { container } = render(
-      <CreditsRow heading="Cast" people={[{ name: "Amy Adams", role: "Louise Banks", profileUrl: "/amy.jpg", personId: null }]} />
+      <CreditsRow heading="Cast" people={[{ name: "Amy Adams", role: "Louise Banks", profileUrl: "/amy.jpg", personId: null, imdbUrl: null }]} />
     );
 
     const row = container.querySelector(".overflow-x-auto");
@@ -86,7 +93,7 @@ describe("CreditsRow arrows", () => {
     // jsdom gives every element a zero layout, so clientWidth === scrollWidth
     // and neither end has more to show. That is the honest reading of "nothing
     // overflows", and it is what a short row does in a browser too.
-    render(<CreditsRow heading="Cast" people={[{ name: "Amy Adams", role: "Louise Banks", profileUrl: null, personId: null }]} />);
+    render(<CreditsRow heading="Cast" people={[{ name: "Amy Adams", role: "Louise Banks", profileUrl: null, personId: null, imdbUrl: null }]} />);
 
     expect(screen.getByLabelText("Scroll cast left")).toBeDisabled();
     expect(screen.getByLabelText("Scroll cast right")).toBeDisabled();
@@ -97,7 +104,7 @@ describe("CreditsRow arrows", () => {
     // — trackpad, touch, and arrow keys after tabbing in. Losing it to a pair
     // of buttons would be a downgrade wearing a nicer coat.
     const { container } = render(
-      <CreditsRow heading="Crew" people={[{ name: "Denis Villeneuve", role: "Director", profileUrl: null, personId: null }]} />
+        <CreditsRow heading="Crew" people={[{ name: "Denis Villeneuve", role: "Director", profileUrl: null, personId: null, imdbUrl: null }]} />
     );
 
     const row = container.querySelector(".overflow-x-auto");
@@ -115,15 +122,16 @@ describe("a credit as a link", () => {
       <CreditsRow
         heading="Cast"
         people={[
-          { name: "Amy Adams", role: "Louise Banks", profileUrl: null, personId: "1245" },
-          { name: "Someone Older", role: "Extra", profileUrl: null, personId: null }
+          { name: "Amy Adams", role: "Louise Banks", profileUrl: null, personId: "1245", imdbUrl: "https://metadata.example/person/1245/imdb" },
+          { name: "Someone Older", role: "Extra", profileUrl: null, personId: null, imdbUrl: null }
         ]}
       />
     );
 
     const links = container.querySelectorAll("a");
     expect(links).toHaveLength(1);
-    expect(links[0].getAttribute("href")).toBe("https://www.themoviedb.org/person/1245");
+    expect(links[0].getAttribute("href")).toBe("https://metadata.example/person/1245/imdb");
+    expect(links[0].getAttribute("title")).toBe("Amy Adams on IMDb");
     // Opened away from Deluno, and without handing the destination a referrer
     // window it could drive.
     expect(links[0].getAttribute("rel")).toContain("noreferrer");

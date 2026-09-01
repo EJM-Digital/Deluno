@@ -18,4 +18,9 @@ public sealed record SeriesEpisodeInventoryItem(
     int? LastQualityDeltaDecision,
     DateTimeOffset? LastSearchUtc,
     DateTimeOffset? NextEligibleSearchUtc,
-    DateTimeOffset UpdatedUtc);
+    DateTimeOffset UpdatedUtc,
+    int? AbsoluteNumber = null,
+    int? SceneSeasonNumber = null,
+    int? SceneEpisodeNumber = null,
+    DateOnly? AirDate = null,
+    string? NumberingSource = null);

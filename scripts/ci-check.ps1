@@ -202,6 +202,14 @@ if ($web.ExitCode -eq 0) {
     Write-Fail "build:web failed"
 }
 
+$sdk = Invoke-LoggedCommand -FilePath $npmPath -Arguments @("run", "typecheck:sdk", "--silent")
+if ($sdk.ExitCode -eq 0) {
+    Write-Ok "supported TypeScript SDK"
+} else {
+    if ($sdk.Output) { Write-Host $sdk.Output }
+    Write-Fail "supported TypeScript SDK failed"
+}
+
 Write-Host ""
 Write-Host "Metadata gateway"
 

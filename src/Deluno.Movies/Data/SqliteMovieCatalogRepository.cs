@@ -1,4 +1,7 @@
 using MetadataSearchResult = Deluno.Integrations.Metadata.MetadataSearchResult;
+using ArtworkCacheKeys = Deluno.Integrations.Metadata.ArtworkCacheKeys;
+using MetadataProviderIssue = Deluno.Integrations.Metadata.MetadataProviderIssue;
+using MetadataIdentityConflict = Deluno.Integrations.Metadata.MetadataIdentityConflict;
 using Deluno.Contracts;
 using Deluno.Platform.Contracts;
 using Deluno.Platform.Data;
@@ -8,6 +11,7 @@ using Deluno.Infrastructure.Storage;
 using Deluno.Media;
 using Deluno.Movies.Contracts;
 using Deluno.Quality;
+using Deluno.Quality.ReleasePreferences;
 using Microsoft.Data.Sqlite;
 using Deluno.Libraries.Data;
 
@@ -418,6 +422,106 @@ public sealed class SqliteMovieCatalogRepository(
         await command.ExecuteNonQueryAsync(cancellationToken);
     }
 
+    public async Task<MetadataProviderIssue?> GetMetadataProviderIssueAsync(
+        string id,
+        CancellationToken cancellationToken)
+    {
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Movies,
+            cancellationToken);
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            """
+            SELECT kind, provider, provider_id, evidence_key, detected_utc, acknowledged_utc
+            FROM movie_metadata_provider_issue
+            WHERE movie_id = @id
+            LIMIT 1;
+            """;
+        AddParameter(command, "@id", id);
+        using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        if (!await reader.ReadAsync(cancellationToken))
+        {
+            return null;
+        }
+
+        return new MetadataProviderIssue(
+            reader.GetString(0),
+            reader.GetString(1),
+            reader.GetString(2),
+            reader.GetString(3),
+            DateTimeOffset.Parse(reader.GetString(4), CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind),
+            reader.IsDBNull(5)
+                ? null
+                : DateTimeOffset.Parse(reader.GetString(5), CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind));
+    }
+
+    public async Task<bool> RecordMetadataProviderIssueAsync(
+        string id,
+        MetadataProviderIssue issue,
+        CancellationToken cancellationToken)
+    {
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Movies,
+            cancellationToken);
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            """
+            INSERT INTO movie_metadata_provider_issue (
+                movie_id, kind, provider, provider_id, evidence_key, detected_utc, acknowledged_utc
+            ) VALUES (
+                @id, @kind, @provider, @providerId, @evidenceKey, @detectedUtc, @acknowledgedUtc
+            )
+            ON CONFLICT(movie_id) DO UPDATE SET
+                kind = excluded.kind,
+                provider = excluded.provider,
+                provider_id = excluded.provider_id,
+                evidence_key = excluded.evidence_key,
+                detected_utc = excluded.detected_utc,
+                acknowledged_utc = NULL
+            WHERE movie_metadata_provider_issue.evidence_key <> excluded.evidence_key
+            RETURNING 1;
+            """;
+        AddParameter(command, "@id", id);
+        AddParameter(command, "@kind", issue.Kind);
+        AddParameter(command, "@provider", issue.Provider);
+        AddParameter(command, "@providerId", issue.ProviderId);
+        AddParameter(command, "@evidenceKey", issue.EvidenceKey);
+        AddParameter(command, "@detectedUtc", issue.DetectedUtc.ToString("O"));
+        AddParameter(command, "@acknowledgedUtc", issue.AcknowledgedUtc?.ToString("O"));
+        return await command.ExecuteScalarAsync(cancellationToken) is not null;
+    }
+
+    public async Task<MetadataProviderIssue?> AcknowledgeMetadataProviderIssueAsync(
+        string id,
+        CancellationToken cancellationToken)
+    {
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Movies,
+            cancellationToken);
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            """
+            UPDATE movie_metadata_provider_issue
+            SET acknowledged_utc = COALESCE(acknowledged_utc, @now)
+            WHERE movie_id = @id;
+            """;
+        AddParameter(command, "@now", timeProvider.GetUtcNow().ToString("O"));
+        AddParameter(command, "@id", id);
+        await command.ExecuteNonQueryAsync(cancellationToken);
+        return await GetMetadataProviderIssueAsync(id, cancellationToken);
+    }
+
+    public async Task ClearMetadataProviderIssueAsync(string id, CancellationToken cancellationToken)
+    {
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Movies,
+            cancellationToken);
+        using var command = connection.CreateCommand();
+        command.CommandText = "DELETE FROM movie_metadata_provider_issue WHERE movie_id = @id;";
+        AddParameter(command, "@id", id);
+        await command.ExecuteNonQueryAsync(cancellationToken);
+    }
+
     /// <summary>
     /// What counts as stale, in one place so the list and the count cannot
     /// disagree about it.
@@ -603,6 +707,55 @@ public sealed class SqliteMovieCatalogRepository(
         AddParameter(command, "@releaseYear", releaseYear);
 
         return await command.ExecuteScalarAsync(cancellationToken) as string;
+    }
+
+    public async Task<MetadataIdentityConflict?> FindMetadataIdentityConflictAsync(
+        string excludeId,
+        string title,
+        int? releaseYear,
+        string? imdbId,
+        string metadataProvider,
+        string metadataProviderId,
+        CancellationToken cancellationToken)
+    {
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Movies,
+            cancellationToken);
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            """
+            SELECT id, title,
+                CASE
+                    WHEN metadata_provider = @metadataProvider AND metadata_provider_id = @metadataProviderId THEN 'provider-id'
+                    WHEN @imdbId IS NOT NULL AND imdb_id = @imdbId THEN 'imdb-id'
+                    ELSE 'title-year'
+                END AS reason
+            FROM movie_entries
+            WHERE id <> @excludeId
+              AND (
+                    (metadata_provider = @metadataProvider AND metadata_provider_id = @metadataProviderId)
+                 OR (@imdbId IS NOT NULL AND imdb_id = @imdbId)
+                 OR (lower(title) = lower(@title) AND COALESCE(release_year, -1) = COALESCE(@releaseYear, -1))
+              )
+            ORDER BY
+                CASE
+                    WHEN metadata_provider = @metadataProvider AND metadata_provider_id = @metadataProviderId THEN 0
+                    WHEN @imdbId IS NOT NULL AND imdb_id = @imdbId THEN 1
+                    ELSE 2
+                END,
+                created_utc ASC
+            LIMIT 1;
+            """;
+        AddParameter(command, "@excludeId", excludeId);
+        AddParameter(command, "@title", title.Trim());
+        AddParameter(command, "@releaseYear", releaseYear);
+        AddParameter(command, "@imdbId", NormalizeExternalId(imdbId));
+        AddParameter(command, "@metadataProvider", NormalizeExternalId(metadataProvider));
+        AddParameter(command, "@metadataProviderId", NormalizeExternalId(metadataProviderId));
+        using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        return await reader.ReadAsync(cancellationToken)
+            ? new MetadataIdentityConflict(reader.GetString(0), reader.GetString(1), reader.GetString(2))
+            : null;
     }
 
     /// <summary>
@@ -1140,6 +1293,39 @@ public sealed class SqliteMovieCatalogRepository(
         return movies;
     }
 
+    public async Task<IReadOnlySet<string>> ListReferencedArtworkCacheKeysAsync(
+        CancellationToken cancellationToken)
+    {
+        var keys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Movies,
+            cancellationToken);
+
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            """
+            SELECT poster_url
+            FROM movie_entries
+            WHERE poster_url LIKE '/api/metadata/artwork/%'
+            UNION ALL
+            SELECT backdrop_url
+            FROM movie_entries
+            WHERE backdrop_url LIKE '/api/metadata/artwork/%';
+            """;
+
+        using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            if (!reader.IsDBNull(0) && ArtworkCacheKeys.TryGet(reader.GetString(0), out var key))
+            {
+                keys.Add(key);
+            }
+        }
+
+        return keys;
+    }
+
     public async Task<int> UpdateMonitoredAsync(
         IReadOnlyList<string> movieIds,
         bool monitored,
@@ -1193,8 +1379,24 @@ public sealed class SqliteMovieCatalogRepository(
 
     public async Task<MovieListItem?> UpdateMetadataAsync(MediaMetadataUpdate update, CancellationToken cancellationToken)
     {
-        var updated = await SharedMediaState.UpdateMetadataAsync(MediaKind.Movie, update, cancellationToken);
-        return updated ? await GetByIdAsync(update.Id, cancellationToken) : null;
+        bool updated;
+        try
+        {
+            updated = await SharedMediaState.UpdateMetadataAsync(MediaKind.Movie, update, cancellationToken);
+        }
+        catch (SqliteException exception) when (exception.SqliteErrorCode == 19)
+        {
+            throw new Deluno.Integrations.Metadata.MetadataIdentityConflictException(
+                "Another movie already owns the proposed metadata identity.",
+                exception);
+        }
+        if (!updated)
+        {
+            return null;
+        }
+
+        await ClearMetadataProviderIssueAsync(update.Id, cancellationToken);
+        return await GetByIdAsync(update.Id, cancellationToken);
     }
 
     public async Task<MovieWantedSummary> GetWantedSummaryAsync(CancellationToken cancellationToken)
@@ -1255,7 +1457,8 @@ public sealed class SqliteMovieCatalogRepository(
                 m.id, m.title, m.release_year, m.imdb_id,
                 w.library_id, w.wanted_status, w.wanted_reason, w.has_file, w.current_quality, w.target_quality, w.quality_cutoff_met,
                 w.missing_since_utc, w.last_search_utc, w.next_eligible_search_utc, w.last_search_result, w.updated_utc,
-                w.prevent_lower_quality_replacements, w.quality_delta_last_decision
+                w.prevent_lower_quality_replacements, w.quality_delta_last_decision,
+                NULL AS available_utc, w.file_path, w.file_size_bytes
             FROM movie_wanted_state w
             INNER JOIN movie_entries m ON m.id = w.movie_id
             ORDER BY w.updated_utc DESC, m.title ASC
@@ -1327,7 +1530,8 @@ public sealed class SqliteMovieCatalogRepository(
         DateTimeOffset now,
         bool ignoreRetryWindow,
         CancellationToken cancellationToken,
-        string? wantedStatus = null)
+        string? wantedStatus = null,
+        CatalogueFilters? filters = null)
     {
         if (sharedMediaStateRepository is not null)
         {
@@ -1338,7 +1542,8 @@ public sealed class SqliteMovieCatalogRepository(
                 now,
                 ignoreRetryWindow,
                 cancellationToken,
-                wantedStatus);
+                wantedStatus,
+                filters);
             return sharedItems.Select(MapWanted).ToArray();
         }
 
@@ -1346,6 +1551,8 @@ public sealed class SqliteMovieCatalogRepository(
         var statusFilter = string.IsNullOrWhiteSpace(wantedStatus)
             ? "w.wanted_status IN ('missing', 'upgrade')"
             : "w.wanted_status = @wantedStatus";
+        var customFilterSql = CatalogueKeyset.CustomFilters(filters, MediaKind.Movie, "m", "release_year");
+        var customFilter = string.IsNullOrWhiteSpace(customFilterSql) ? string.Empty : $"AND {customFilterSql}";
 
         await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
             DelunoDatabaseNames.Movies,
@@ -1359,11 +1566,13 @@ public sealed class SqliteMovieCatalogRepository(
                       m.id, m.title, m.release_year, m.imdb_id,
                       w.library_id, w.wanted_status, w.wanted_reason, w.has_file, w.current_quality, w.target_quality, w.quality_cutoff_met,
                       w.missing_since_utc, w.last_search_utc, w.next_eligible_search_utc, w.last_search_result, w.updated_utc,
-                      w.prevent_lower_quality_replacements, w.quality_delta_last_decision
+                      w.prevent_lower_quality_replacements, w.quality_delta_last_decision,
+                      NULL AS available_utc, w.file_path, w.file_size_bytes
                   FROM movie_wanted_state w
                   INNER JOIN movie_entries m ON m.id = w.movie_id
                   WHERE w.library_id = @libraryId
                     AND {statusFilter}
+                    {customFilter}
                   ORDER BY
                       CASE w.wanted_status WHEN 'missing' THEN 0 ELSE 1 END,
                       COALESCE(w.last_search_utc, w.missing_since_utc, w.updated_utc) ASC,
@@ -1375,11 +1584,13 @@ public sealed class SqliteMovieCatalogRepository(
                       m.id, m.title, m.release_year, m.imdb_id,
                       w.library_id, w.wanted_status, w.wanted_reason, w.has_file, w.current_quality, w.target_quality, w.quality_cutoff_met,
                       w.missing_since_utc, w.last_search_utc, w.next_eligible_search_utc, w.last_search_result, w.updated_utc,
-                      w.prevent_lower_quality_replacements, w.quality_delta_last_decision
+                      w.prevent_lower_quality_replacements, w.quality_delta_last_decision,
+                      NULL AS available_utc, w.file_path, w.file_size_bytes
                   FROM movie_wanted_state w
                   INNER JOIN movie_entries m ON m.id = w.movie_id
                   WHERE w.library_id = @libraryId
                     AND {statusFilter}
+                    {customFilter}
                     AND m.monitored = 1
                     AND (w.next_eligible_search_utc IS NULL OR w.next_eligible_search_utc <= @now)
                     -- Nothing to find before a movie is obtainable, so do not spend
@@ -1408,6 +1619,7 @@ public sealed class SqliteMovieCatalogRepository(
         {
             AddParameter(command, "@wantedStatus", WantedStatuses.Normalize(wantedStatus));
         }
+        CatalogueKeyset.BindCustomFilters(command, filters, MediaKind.Movie, now);
 
         using var reader = await command.ExecuteReaderAsync(cancellationToken);
         while (await reader.ReadAsync(cancellationToken))
@@ -1539,7 +1751,8 @@ public sealed class SqliteMovieCatalogRepository(
         bool unmonitorWhenCutoffMet,
         string? filePath,
         long? fileSizeBytes,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        PreferenceEvaluationSnapshot? preferenceEvaluation = null)
     {
         var created = await ImportExistingBatchAsync(
             libraryId,
@@ -1554,7 +1767,8 @@ public sealed class SqliteMovieCatalogRepository(
                     QualityCutoffMet: qualityCutoffMet,
                     UnmonitorWhenCutoffMet: unmonitorWhenCutoffMet,
                     FilePath: filePath,
-                    FileSizeBytes: fileSizeBytes)
+                    FileSizeBytes: fileSizeBytes,
+                    PreferenceEvaluation: preferenceEvaluation)
             ],
             cancellationToken);
 
@@ -1625,7 +1839,8 @@ public sealed class SqliteMovieCatalogRepository(
                     request.QualityCutoffMet,
                     request.UnmonitorWhenCutoffMet,
                     request.FilePath,
-                    request.FileSizeBytes),
+                    request.FileSizeBytes,
+                    request.PreferenceEvaluation),
                 connection,
                 transaction,
                 cancellationToken);
@@ -2812,8 +3027,18 @@ public sealed class SqliteMovieCatalogRepository(
             LastSearchResult: reader.IsDBNull(14) ? null : reader.GetString(14),
             UpdatedUtc: ParseTimestamp(reader.GetString(15)),
             PreventLowerQualityReplacements: reader.GetInt64(16) == 1,
-            LastQualityDeltaDecision: reader.IsDBNull(17) ? null : reader.GetInt32(17));
+            LastQualityDeltaDecision: reader.IsDBNull(17) ? null : reader.GetInt32(17),
+            AvailableUtc: ReadOptionalAvailableUtc(reader),
+            FilePath: reader.FieldCount > 19 ? (reader.IsDBNull(19) ? null : reader.GetString(19)) : null,
+            FileSizeBytes: reader.FieldCount > 20 && !reader.IsDBNull(20) ? reader.GetInt64(20) : null);
     }
+
+    private static DateTimeOffset? ReadOptionalAvailableUtc(System.Data.Common.DbDataReader reader)
+        => reader.FieldCount <= 18 || reader.IsDBNull(18)
+            ? null
+            : DateTimeOffset.TryParse(reader.GetString(18), CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal, out var value)
+                ? value
+                : null;
 
     private static void AddParameter(System.Data.Common.DbCommand command, string name, object? value)
     {
@@ -3090,7 +3315,10 @@ public sealed class SqliteMovieCatalogRepository(
             LastSearchResult: item.LastSearchResult,
             PreventLowerQualityReplacements: item.PreventLowerQualityReplacements,
             LastQualityDeltaDecision: item.LastQualityDeltaDecision,
-            UpdatedUtc: item.UpdatedUtc);
+            UpdatedUtc: item.UpdatedUtc,
+            AvailableUtc: item.AvailableUtc,
+            FilePath: item.FilePath,
+            FileSizeBytes: item.FileSizeBytes);
 
     private static MovieSearchHistoryItem MapSearchHistory(MediaSearchHistoryItem item)
         => new(

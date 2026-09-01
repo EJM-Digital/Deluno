@@ -1,4 +1,5 @@
 using Deluno.Quality.Data;
+using Deluno.Quality.Guides;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.DependencyInjection;
@@ -13,6 +14,9 @@ public static class QualityServiceCollectionExtensions
         services.AddSingleton<IVersionedMediaPolicyEngine, VersionedMediaPolicyEngine>();
         services.AddSingleton<IQualityModelService, QualityModelService>();
         services.AddSingleton<IMediaDecisionService, MediaDecisionService>();
+        services.AddSingleton<IReleasePreferencePlanRepository, SqliteReleasePreferencePlanRepository>();
+        services.AddSingleton<IPlaybackGoalRepository, SqlitePlaybackGoalRepository>();
+        services.AddSingleton<IGuidePackageStore, SqliteGuidePackageStore>();
         return services;
     }
 

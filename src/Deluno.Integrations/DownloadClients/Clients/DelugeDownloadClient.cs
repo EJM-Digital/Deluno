@@ -22,7 +22,7 @@ public sealed class DelugeDownloadClient(IHttpClientFactory httpClientFactory) :
     public override async Task<DownloadClientTelemetrySnapshot?> GetSnapshotAsync(DownloadClientItem client, DateTimeOffset capturedUtc, CancellationToken cancellationToken)
     {
         var baseUri = DownloadClientHelpers.ResolveEndpoint(client);
-        if (baseUri is null) return null;
+        if (baseUri is null) return CreateConfigurationSnapshot(client, capturedUtc, "Download client address is missing.");
         var http = CreateHttp();
         await LoginAsync(http, baseUri, client, cancellationToken);
         var payload = new DelugeRequest("web.update_ui", [new[] { "name", "state", "progress", "download_payload_rate", "upload_payload_rate", "eta", "total_size", "total_done", "num_peers", "time_added", "label", "message", "save_path" }, new Dictionary<string, object>()], 2);

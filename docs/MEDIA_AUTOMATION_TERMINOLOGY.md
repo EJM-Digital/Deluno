@@ -54,7 +54,7 @@ column.
 |---|---|---|---|
 | TV shows | TV | `/tv` | `Deluno.Series`, `SeriesListItem`, `series_*` tables |
 | Media plans | Media Plans | `/settings/policy-sets` | `PolicySetItem`, `policy_sets` table |
-| Release scoring rules | Release preferences | `/settings/custom-formats` | `CustomFormatItem`, `custom_formats` table |
+| Release preference rules | Release preferences | `/settings/custom-formats` | `CustomFormatItem`, `custom_formats` table |
 | Quality ladders | Quality profiles | `/settings/profiles` | `QualityProfileItem` (already aligned) |
 | File-size boundaries | Size rules | `/settings/quality` | quality profile "tier" fields (already aligned in spirit) |
 | Final file destinations | Final destinations | `/settings/destination-rules` | `DestinationRuleItem` (already aligned) |

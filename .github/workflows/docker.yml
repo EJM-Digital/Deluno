@@ -1,0 +1,98 @@
+name: Docker image
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+concurrency:
+  group: docker-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  image:
+    name: Build and verify container image
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Calculate image metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository }}
+          flavor: |
+            latest=auto
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=ref,event=pr
+            type=ref,event=branch
+            type=raw,value=ci-${{ github.run_id }},enable=${{ github.event_name == 'workflow_dispatch' }}
+
+      - name: Validate Compose contract
+        run: docker compose config --quiet
+
+      - name: Build image
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          platforms: linux/amd64
+          push: ${{ startsWith(github.ref, 'refs/tags/v') }}
+          load: ${{ !startsWith(github.ref, 'refs/tags/v') }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Verify local image starts and serves health endpoint
+        if: ${{ !startsWith(github.ref, 'refs/tags/v') }}
+        env:
+          IMAGE_TAGS: ${{ steps.meta.outputs.tags }}
+        run: |
+          set -euo pipefail
+          image_tag="$(printf '%s\n' "$IMAGE_TAGS" | sed -n '1p')"
+          docker run --detach --name deluno-docker-ci \
+            --publish 18080:8080 \
+            --env Server__Port=8080 \
+            --env Server__AllowLan=true \
+            --env Storage__DataRoot=/data \
+            "$image_tag"
+          cleanup() { docker logs deluno-docker-ci || true; docker rm --force deluno-docker-ci || true; }
+          trap cleanup EXIT
+          for attempt in $(seq 1 60); do
+            if curl --fail --silent http://127.0.0.1:18080/health >/dev/null; then
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "Container did not become live within 120 seconds."
+          exit 1
+
+      - name: Verify pushed digest is addressable
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          IMAGE_NAME: ghcr.io/${{ github.repository }}
+          IMAGE_DIGEST: ${{ steps.build.outputs.digest }}
+        run: docker buildx imagetools inspect "${IMAGE_NAME}@${IMAGE_DIGEST}"

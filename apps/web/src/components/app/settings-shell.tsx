@@ -62,6 +62,8 @@ export const configurationNavAreas = [
       { to: "/settings/profiles", label: "Quality Profiles", end: false },
       { to: "/settings/quality", label: "Size Rules", end: false },
       { to: "/settings/custom-formats", label: "Release Preferences", end: false },
+      { to: "/settings/playback", label: "Playback Goals", end: false },
+      { to: "/settings/release-rules", label: "Acquisition Rules", end: false },
       { to: "/settings/policy-sets", label: "Library Profiles", end: false }
     ]
   },
@@ -73,6 +75,7 @@ export const configurationNavAreas = [
     tabsInToolbar: true,
     items: [
       { to: "/indexers/indexers", label: "Indexers", end: false },
+      { to: "/indexers/scoreboard", label: "Scoreboard", end: false },
       { to: "/indexers/download-clients", label: "Download Clients", end: false },
       { to: "/indexers/library-routing", label: "Library Routing", end: false },
       { to: "/indexers/subtitle-providers", label: "Subtitle Providers", end: false }
@@ -109,6 +112,7 @@ export const systemHealthNavItems = [
   { to: "/system", label: "Health", end: true },
   { to: "/system/audit", label: "Audit", end: false },
   { to: "/system/backups", label: "Backups", end: false },
+  { to: "/system/recycle-bin", label: "Recycle bin", end: false },
   { to: "/system/updates", label: "Updates", end: false },
   { to: "/system/api", label: "API Access", end: false },
   { to: "/system/docs", label: "Help & Guides", end: false }
@@ -150,6 +154,7 @@ const systemNavItems = [
   { to: "/system/api", label: "API", end: false, tip: "Generate and revoke API keys for integrations and automation" },
   { to: "/system/docs", label: "Guide", end: false, tip: "Plain-English workflow guide for setup, routing, scoring, imports, and integrations" },
   { to: "/system/backups", label: "Backups", end: false, tip: "Manual backups, automatic schedule, restore preview, and downloads" },
+  { to: "/system/recycle-bin", label: "Recycle bin", end: false, tip: "Recover removed library files or permanently delete expired items" },
   { to: "/system/updates", label: "Updates", end: false, tip: "Version status, update mode, download progress, and restart flow" }
 ] as const;
 
@@ -224,6 +229,18 @@ export const settingsPageMeta = [
     match: (path: string) => path.startsWith("/settings/custom-formats"),
     title: "Release Preferences",
     description: "Preference rules for source, codec, HDR, language, group, and custom-format scoring used by Library Profiles.",
+    chrome: "none"
+  },
+  {
+    match: (path: string) => path.startsWith("/settings/release-rules"),
+    title: "Acquisition Rules",
+    description: "Hold, prefer, or reject releases by tag, protocol, timing, and release terms before they reach a download client.",
+    chrome: "none"
+  },
+  {
+    match: (path: string) => path.startsWith("/settings/playback"),
+    title: "Playback Goals",
+    description: "Describe the screens and players your library must work on, then inspect the typed compatibility plan.",
     chrome: "none"
   },
   {
@@ -307,6 +324,11 @@ const systemPageMeta = [
     match: (path: string) => path.startsWith("/system/backups"),
     title: "Backups",
     description: "Manual backups, automatic schedules, restore previews, and backup downloads."
+  },
+  {
+    match: (path: string) => path.startsWith("/system/recycle-bin"),
+    title: "Recycle Bin",
+    description: "Recover removed library files and control how long replaced or deleted media remains recoverable."
   },
   {
     match: (path: string) => path.startsWith("/system/updates"),

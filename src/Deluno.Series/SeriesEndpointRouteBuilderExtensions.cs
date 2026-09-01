@@ -17,6 +17,7 @@ using Deluno.Platform.Contracts;
 using Deluno.Platform;
 using Deluno.Quality;
 using Deluno.Quality.Data;
+using Deluno.Quality.Guides;
 using Deluno.Security;
 using Deluno.Series.Contracts;
 using Deluno.Series.Data;
@@ -55,6 +56,54 @@ public static class SeriesEndpointRouteBuilderExtensions
         series.MapGet("/genres", async (
             [FromServices] ISeriesCatalogRepository repository,
             CancellationToken cancellationToken) => Results.Ok(await repository.ListGenresAsync(cancellationToken)));
+
+        series.MapGet("/{id}/tags", async (
+            string id,
+            [FromServices] IMediaTagStore tagStore,
+            CancellationToken cancellationToken) =>
+            Results.Ok(await tagStore.ListAsync(MediaKind.Series, id, cancellationToken)));
+
+        series.MapGet("/{id}/numbering", async (
+            string id,
+            ISeriesCatalogRepository repository,
+            CancellationToken cancellationToken) =>
+        {
+            var numbering = await repository.GetNumberingAsync(id, cancellationToken);
+            return numbering is null ? Results.NotFound() : Results.Ok(numbering);
+        });
+
+        series.MapPut("/{id}/numbering", async (
+            string id,
+            HttpContext httpContext,
+            [FromBody] UpdateSeriesNumberingRequest request,
+            ISeriesCatalogRepository repository,
+            CancellationToken cancellationToken) =>
+        {
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
+            if (denied is not null)
+            {
+                return denied;
+            }
+
+            var errors = Validate(request);
+            if (errors.Count > 0)
+            {
+                return Results.ValidationProblem(errors);
+            }
+
+            try
+            {
+                var numbering = await repository.UpdateNumberingAsync(id, request, cancellationToken);
+                return numbering is null ? Results.NotFound() : Results.Ok(numbering);
+            }
+            catch (ArgumentException exception)
+            {
+                return Results.ValidationProblem(new Dictionary<string, string[]>
+                {
+                    ["mappings"] = [exception.Message]
+                });
+            }
+        });
 
         series.MapGet("/page", async (
             string? search,
@@ -318,6 +367,22 @@ public static class SeriesEndpointRouteBuilderExtensions
             return removed ? Results.NoContent() : Results.NotFound();
         });
 
+        series.MapGet("/{id}/preference-evaluation", async (
+            string id,
+            string? libraryId,
+            string? fileIdentity,
+            IMediaStateRepository mediaStateRepository,
+            CancellationToken cancellationToken) =>
+        {
+            var snapshot = await mediaStateRepository.GetLatestPreferenceEvaluationSnapshotAsync(
+                MediaKind.Series,
+                id,
+                libraryId,
+                fileIdentity,
+                cancellationToken);
+            return snapshot is null ? Results.NotFound() : Results.Ok(snapshot);
+        });
+
         series.MapGet("/{id}", async (string id, ISeriesCatalogRepository repository, CancellationToken cancellationToken) =>
         {
             var item = await repository.GetByIdAsync(id, cancellationToken);
@@ -449,6 +514,8 @@ public static class SeriesEndpointRouteBuilderExtensions
             IDownloadClientGrabService downloadClientGrabService,
             IActivityFeedRepository activityFeedRepository,
             TimeProvider timeProvider,
+            IMediaTagStore tagStore,
+            IReleasePreferencePlanRepository releasePreferencePlanRepository,
             CancellationToken cancellationToken) =>
         {
             var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
@@ -483,7 +550,9 @@ public static class SeriesEndpointRouteBuilderExtensions
                         indexerName,
                         detailsJson,
                         cancellationToken),
-                cancellationToken);
+                cancellationToken,
+                tagStore,
+                releasePreferencePlanRepository);
 
             if (result.NotFound)
             {
@@ -499,12 +568,13 @@ public static class SeriesEndpointRouteBuilderExtensions
                 result.IndexerName,
                 result.DispatchStatus,
                 result.DispatchMessage,
+                failures = result.Failures ?? [],
                 candidates = result.Candidates.Select(candidate => new
                 {
                     candidate.ReleaseName,
                     candidate.IndexerName,
                     candidate.Quality,
-                    candidate.Score,
+                    Score = candidate.PreferenceEvaluation is null ? (int?)candidate.Score : null,
                     candidate.MeetsCutoff,
                     candidate.Summary,
                     candidate.DownloadUrl,
@@ -514,12 +584,14 @@ public static class SeriesEndpointRouteBuilderExtensions
                     candidate.DecisionReasons,
                     candidate.RiskFlags,
                     candidate.QualityDelta,
-                    candidate.CustomFormatScore,
-                    candidate.SeederScore,
-                    candidate.SizeScore,
+                    CustomFormatScore = candidate.PreferenceEvaluation is null ? (int?)candidate.CustomFormatScore : null,
+                    SeederScore = candidate.PreferenceEvaluation is null ? (int?)candidate.SeederScore : null,
+                    SizeScore = candidate.PreferenceEvaluation is null ? (int?)candidate.SizeScore : null,
                     candidate.ReleaseGroup,
                     candidate.EstimatedBitrateMbps,
-                    candidate.PolicyVersion
+                    candidate.PolicyVersion,
+                    candidate.PreferenceEvaluation,
+                    candidate.PreferenceComparison
                 }).ToArray()
             });
         });
@@ -545,16 +617,68 @@ public static class SeriesEndpointRouteBuilderExtensions
                 return Results.NotFound();
             }
 
-            var matches = await metadataProvider.SearchAsync(
-                new MetadataLookupRequest(item.Title, "tv", item.StartYear, item.MetadataProviderId),
-                cancellationToken);
-            var match = matches.FirstOrDefault();
+            MetadataSearchResult? match;
+            if (!string.IsNullOrWhiteSpace(item.MetadataProviderId))
+            {
+                var lookup = await metadataProvider.ResolveProviderRecordAsync(
+                    new MetadataLookupRequest(item.Title, "tv", item.StartYear, item.MetadataProviderId),
+                    cancellationToken);
+                if (lookup.Status == MetadataProviderRecordStatus.Missing)
+                {
+                    var issue = MissingProviderIssue("series", lookup);
+                    var isNewEvidence = await repository.RecordMetadataProviderIssueAsync(item.Id, issue, cancellationToken);
+                    if (isNewEvidence)
+                    {
+                        await activityFeedRepository.RecordActivityAsync(
+                            "metadata.series.provider-record-missing",
+                            $"{item.Title} was kept in Deluno because its linked {lookup.Provider.ToUpperInvariant()} record is no longer available.",
+                            JsonSerializer.Serialize(issue),
+                            null,
+                            "series",
+                            item.Id,
+                            cancellationToken);
+                    }
+
+                    return Results.Conflict(new
+                    {
+                        code = "metadata-provider-record-missing",
+                        message = $"{item.Title} was kept. Its linked {lookup.Provider.ToUpperInvariant()} record is no longer available."
+                    });
+                }
+
+                if (lookup.Status == MetadataProviderRecordStatus.Unavailable)
+                {
+                    return Results.StatusCode(StatusCodes.Status503ServiceUnavailable);
+                }
+
+                match = lookup.Result;
+            }
+            else
+            {
+                var matches = await metadataProvider.SearchAsync(
+                    new MetadataLookupRequest(item.Title, "tv", item.StartYear, null),
+                    cancellationToken);
+                match = matches.FirstOrDefault();
+            }
+
             if (match is null)
             {
                 return Results.NotFound(new { message = "No metadata match was found for this TV show." });
             }
 
-            var updated = await ApplyMetadataAsync(repository, item.Id, match, cancellationToken);
+            SeriesListItem? updated;
+            try
+            {
+                updated = await ApplyMetadataAsync(repository, item.Id, match, cancellationToken);
+            }
+            catch (MetadataIdentityConflictException)
+            {
+                return Results.Conflict(new
+                {
+                    code = "metadata-link-identity-claimed",
+                    message = "Another held show claimed this metadata identity after the preview. Review the remap again."
+                });
+            }
             await SyncCatalogueAsync(
                 repository,
                 metadataProvider,
@@ -575,6 +699,83 @@ public static class SeriesEndpointRouteBuilderExtensions
             if (updated is null) return Results.NotFound();
             await realtimeEventPublisher.PublishEntityChangedAsync("Series", updated.Id, cancellationToken);
             return Results.Ok(updated);
+        });
+
+        series.MapGet("/{id}/metadata/issue", async (
+            string id,
+            ISeriesCatalogRepository repository,
+            CancellationToken cancellationToken) =>
+        {
+            if (await repository.GetByIdAsync(id, cancellationToken) is null)
+            {
+                return Results.NotFound();
+            }
+
+            return Results.Ok(await repository.GetMetadataProviderIssueAsync(id, cancellationToken));
+        });
+
+        series.MapPost("/{id}/metadata/issue/acknowledge", async (
+            string id,
+            HttpContext httpContext,
+            ISeriesCatalogRepository repository,
+            IActivityFeedRepository activityFeedRepository,
+            CancellationToken cancellationToken) =>
+        {
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
+            if (denied is not null) return denied;
+
+            var item = await repository.GetByIdAsync(id, cancellationToken);
+            if (item is null) return Results.NotFound();
+
+            var before = await repository.GetMetadataProviderIssueAsync(id, cancellationToken);
+            if (before is null) return Results.NoContent();
+
+            var issue = await repository.AcknowledgeMetadataProviderIssueAsync(id, cancellationToken);
+            if (before.AcknowledgedUtc is null)
+            {
+                await activityFeedRepository.RecordActivityAsync(
+                    "metadata.series.provider-record-missing.acknowledged",
+                    $"The metadata notice for {item.Title} was acknowledged. The show and its files were kept.",
+                    JsonSerializer.Serialize(issue),
+                    null,
+                    "series",
+                    item.Id,
+                    cancellationToken);
+            }
+
+            return Results.Ok(issue);
+        });
+
+        series.MapPost("/{id}/metadata/link/preview", async (
+            string id,
+            [FromBody] MetadataLinkRequest request,
+            HttpContext httpContext,
+            ISeriesCatalogRepository repository,
+            IMetadataProvider metadataProvider,
+            CancellationToken cancellationToken) =>
+        {
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
+            if (denied is not null) return denied;
+
+            var item = await repository.GetByIdAsync(id, cancellationToken);
+            if (item is null) return Results.NotFound();
+            if (string.IsNullOrWhiteSpace(request.ProviderId))
+            {
+                return Results.ValidationProblem(new Dictionary<string, string[]>
+                {
+                    ["providerId"] = ["Choose the metadata match Deluno should preview for this series."]
+                });
+            }
+
+            var plan = await BuildMetadataLinkPlanAsync(item, request.ProviderId, repository, metadataProvider, cancellationToken);
+            return plan.Status switch
+            {
+                MetadataProviderRecordStatus.Missing => Results.NotFound(new { message = "The selected metadata record no longer exists." }),
+                MetadataProviderRecordStatus.Unavailable => Results.Json(
+                    new { message = "The metadata provider or its episode catalogue is temporarily unavailable. Nothing was changed." },
+                    statusCode: StatusCodes.Status503ServiceUnavailable),
+                _ => Results.Ok(plan.Preview)
+            };
         });
 
         series.MapPost("/{id}/metadata/link", async (
@@ -607,16 +808,63 @@ public static class SeriesEndpointRouteBuilderExtensions
                 });
             }
 
-            var matches = await metadataProvider.SearchAsync(
-                new MetadataLookupRequest(item.Title, "tv", item.StartYear, request.ProviderId.Trim()),
-                cancellationToken);
-            var match = matches.FirstOrDefault(match => string.Equals(match.ProviderId, request.ProviderId.Trim(), StringComparison.OrdinalIgnoreCase));
-            if (match is null)
+            if (string.IsNullOrWhiteSpace(request.ConfirmationToken))
             {
-                return Results.NotFound(new { message = "The selected metadata match could not be refreshed from the provider." });
+                return Results.ValidationProblem(new Dictionary<string, string[]>
+                {
+                    ["confirmationToken"] = ["Preview this metadata remap before applying it."]
+                });
             }
 
-            var updated = await ApplyMetadataAsync(repository, item.Id, match, cancellationToken);
+            var plan = await BuildMetadataLinkPlanAsync(item, request.ProviderId, repository, metadataProvider, cancellationToken);
+            if (plan.Status == MetadataProviderRecordStatus.Missing)
+            {
+                return Results.NotFound(new { message = "The selected metadata record no longer exists. Nothing was changed." });
+            }
+            if (plan.Status == MetadataProviderRecordStatus.Unavailable)
+            {
+                return Results.Json(
+                    new { message = "The metadata provider or its episode catalogue is temporarily unavailable. Nothing was changed." },
+                    statusCode: StatusCodes.Status503ServiceUnavailable);
+            }
+            if (plan.Preview is null || plan.Match is null)
+            {
+                return Results.NotFound(new { message = "The selected metadata match could not be resolved." });
+            }
+            if (!plan.Preview.CanApply)
+            {
+                return Results.Conflict(new
+                {
+                    code = "metadata-link-blocked",
+                    message = plan.Preview.BlockReason,
+                    preview = plan.Preview
+                });
+            }
+            if (!string.Equals(request.ConfirmationToken, plan.Preview.ConfirmationToken, StringComparison.Ordinal))
+            {
+                return Results.Conflict(new
+                {
+                    code = "metadata-link-preview-stale",
+                    message = "The title, episode catalogue, or provider record changed after the preview. Review the remap again.",
+                    preview = plan.Preview
+                });
+            }
+
+            var match = plan.Match;
+
+            SeriesListItem? updated;
+            try
+            {
+                updated = await ApplyMetadataAsync(repository, item.Id, match, cancellationToken, replaceIdentity: true);
+            }
+            catch (MetadataIdentityConflictException)
+            {
+                return Results.Conflict(new
+                {
+                    code = "metadata-link-identity-claimed",
+                    message = "Another held show claimed this metadata identity after the preview. Review the remap again."
+                });
+            }
             await SyncCatalogueAsync(
                 repository,
                 metadataProvider,
@@ -807,13 +1055,16 @@ public static class SeriesEndpointRouteBuilderExtensions
             HttpContext httpContext,
             [FromBody] SearchSeriesEpisodesRequest request,
             ISeriesCatalogRepository repository,
+            IMediaStateRepository mediaStateRepository,
             ILibrariesRepository platformSettingsRepository,
             IQualityRepository qualityRepository,
+            IReleasePreferencePlanRepository releasePreferencePlanRepository,
             IJobQueueRepository jobQueueRepository,
             IAcquisitionDecisionPipeline acquisitionPipeline,
             IDownloadClientGrabService downloadClientGrabService,
             IActivityFeedRepository activityFeedRepository,
             TimeProvider timeProvider,
+            IMediaTagStore tagStore,
             CancellationToken cancellationToken) =>
         {
             var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
@@ -859,8 +1110,13 @@ public static class SeriesEndpointRouteBuilderExtensions
                 });
             }
 
-            var wanted = await repository.GetWantedSummaryAsync(cancellationToken);
-            var wantedItem = wanted.RecentItems.FirstOrDefault(item => item.SeriesId == id);
+            var wantedItem = (await mediaStateRepository.ListWantedByIdsAsync(
+                    MediaKind.Series,
+                    [id],
+                    cancellationToken))
+                .OrderByDescending(item => item.UpdatedUtc)
+                .ThenBy(item => item.LibraryId, StringComparer.Ordinal)
+                .FirstOrDefault();
             if (wantedItem is null || string.IsNullOrWhiteSpace(wantedItem.LibraryId))
             {
                 return Results.Ok(new
@@ -900,7 +1156,16 @@ public static class SeriesEndpointRouteBuilderExtensions
             var nextEligibleSearchUtc = now.AddHours(Math.Max(1, library.RetryDelayHours));
             var customFormats = await ResolveCustomFormatsAsync(qualityRepository, library.QualityProfileId, cancellationToken);
             var allowedQualities = await QualityProfileResolver.ResolveAllowedQualitiesAsync(qualityRepository, library.QualityProfileId, cancellationToken);
-
+            var upgradeUntilCutoff = await QualityProfileResolver.ResolveUpgradeUntilCutoffAsync(qualityRepository, library.QualityProfileId, cancellationToken);
+            var preferencePlan = await QualityProfileResolver.ResolveReleasePreferencePlanAsync(
+                qualityRepository,
+                releasePreferencePlanRepository,
+                library.QualityProfileId,
+                cancellationToken,
+                customFormats);
+            var tagNames = (await tagStore.ListAsync(MediaKind.Series, seriesItem.Id, cancellationToken))
+                .Select(tag => tag.Name)
+                .ToArray();
             if (configuredSources == 0 || configuredClients == 0)
             {
                 foreach (var episode in targetEpisodes)
@@ -947,28 +1212,54 @@ public static class SeriesEndpointRouteBuilderExtensions
             var plannedCount = 0;
             var failedCount = 0;
             var searchReasons = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var failures = new List<IntegrationFailure>();
 
             foreach (var episode in targetEpisodes)
             {
-                var queryTitle = BuildEpisodeSearchTitle(seriesItem.Title, episode.SeasonNumber, episode.EpisodeNumber);
+                var baseline = await SeriesSearchBaselineResolver.ResolveEpisodeAsync(
+                    repository,
+                    mediaStateRepository,
+                    seriesItem.Id,
+                    episode.EpisodeId,
+                    library.Id,
+                    cancellationToken);
+                // The planner owns the numbering suffix. Keeping the title
+                // itself clean is important for TV-search APIs, where the
+                // canonical season/episode (or an alternate numbering key)
+                // is sent in dedicated fields.
+                var queryTitle = seriesItem.Title;
                 var decisionPlan = await acquisitionPipeline.PlanAsync(
                     new AcquisitionDecisionRequest(
                         queryTitle,
                         seriesItem.StartYear,
                         "tv",
-                        wantedItem.CurrentQuality,
-                        wantedItem.TargetQuality,
+                        baseline.CurrentQuality,
+                        baseline.TargetQuality,
                         routing?.Sources ?? [],
                         routing?.DownloadClients ?? [],
                         customFormats,
                         SeasonNumber: episode.SeasonNumber,
                         EpisodeNumber: episode.EpisodeNumber,
-                        AllowedQualities: allowedQualities),
+                        AllowedQualities: allowedQualities,
+                        TagNames: tagNames,
+                        SearchKind: AcquisitionSearchKinds.Interactive,
+                        AvailableUtc: wantedItem.AvailableUtc,
+                        CurrentFilePresent: !string.IsNullOrWhiteSpace(baseline.FilePath),
+                        CurrentReleaseName: baseline.FilePath,
+                        UpgradeUntilCutoff: upgradeUntilCutoff,
+                        NumberingScheme: seriesItem.NumberingScheme,
+                        AbsoluteNumber: episode.AbsoluteNumber,
+                        AirDate: episode.AirDate,
+                        SceneSeasonNumber: episode.SceneSeasonNumber,
+                        SceneEpisodeNumber: episode.SceneEpisodeNumber,
+                        CurrentPreferenceEvaluation: baseline.PreferenceEvaluation,
+                        PreferencePlan: preferencePlan),
                     cancellationToken);
                 var searchPlan = decisionPlan.SearchPlan;
                 var bestCandidate = searchPlan.BestCandidate;
                 var outcome = decisionPlan.Outcome;
                 searchReasons.Add(searchPlan.Reason);
+                failures.AddRange(searchPlan.Failures ?? []);
 
                 if (decisionPlan.ShouldDispatch && decisionPlan.SelectedDownloadClient is not null && decisionPlan.DispatchRequest is not null)
                 {
@@ -977,7 +1268,20 @@ public static class SeriesEndpointRouteBuilderExtensions
                     var downloadClient = decisionPlan.SelectedDownloadClient;
                     var grabResult = bestCandidate!.DownloadUrl is null
                         ? new DownloadClientGrabResult(downloadClient.DownloadClientId, bestCandidate.ReleaseName, false, "planned", "No download URL was available.")
+                        {
+                            Failure = IntegrationFailureFactory.FromLegacy(
+                                "download-client",
+                                downloadClient.DownloadClientId,
+                                downloadClient.DownloadClientName,
+                                "grab",
+                                "planned",
+                                "No downloadable URL was available for this release.")
+                        }
                         : await downloadClientGrabService.GrabAsync(downloadClient.DownloadClientId, decisionPlan.DispatchRequest, cancellationToken);
+                    if (grabResult.Failure is { } dispatchFailure)
+                    {
+                        failures.Add(dispatchFailure);
+                    }
                     if (grabResult.Status == "sent")
                     {
                         sentCount++;
@@ -1011,8 +1315,12 @@ public static class SeriesEndpointRouteBuilderExtensions
                             grabResult
                         }),
                         grabResponseCode: grabResult.Succeeded ? 200 : 400,
-                        grabFailureCode: null,
-                        cancellationToken: cancellationToken);
+                        grabFailureCode: grabResult.Failure?.Code ?? grabResult.FailureCode,
+                        cancellationToken: cancellationToken,
+                        failure: grabResult.Failure,
+                        replacementAuthorized: !string.IsNullOrWhiteSpace(baseline.FilePath),
+                        replacementExpectedPath: baseline.FilePath,
+                        clientExternalId: grabResult.ExternalId);
                 }
 
                 await repository.RecordSearchAttemptAsync(
@@ -1093,7 +1401,8 @@ public static class SeriesEndpointRouteBuilderExtensions
                 queuedCount,
                 sentCount,
                 plannedCount,
-                failedCount
+                failedCount,
+                failures = failures.Distinct().ToArray()
             });
         });
 
@@ -1107,6 +1416,7 @@ public static class SeriesEndpointRouteBuilderExtensions
             IJobQueueRepository jobQueueRepository,
             IActivityFeedRepository activityFeedRepository,
             IRealtimeEventPublisher realtimeEventPublisher,
+            IRecycleBinService recycleBinService,
             CancellationToken cancellationToken) =>
         {
             var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
@@ -1159,6 +1469,7 @@ public static class SeriesEndpointRouteBuilderExtensions
                                 intakeRepository,
                                 jobQueueRepository,
                                 activityFeedRepository,
+                                recycleBinService,
                                 cancellationToken);
                             successCount++;
                             results.Add(new BulkSeriesItemResult(series.Id, series.Title, true, null, removalMetadata));
@@ -1388,6 +1699,8 @@ public static class SeriesEndpointRouteBuilderExtensions
             HttpContext httpContext,
             [FromBody] BulkTagsRequest request,
             ISeriesCatalogRepository repository,
+            IMediaTagStore tagStore,
+            IPlatformSettingsRepository platformSettingsRepository,
             IRealtimeEventPublisher realtimeEventPublisher,
             CancellationToken cancellationToken) =>
         {
@@ -1406,6 +1719,15 @@ public static class SeriesEndpointRouteBuilderExtensions
             }
 
             var normalizedTags = NormalizeTags(request.Tags);
+            var managedTags = await platformSettingsRepository.ListTagsAsync(cancellationToken);
+            var assignments = normalizedTags
+                .Select(name =>
+                {
+                    var managed = managedTags.FirstOrDefault(tag =>
+                        string.Equals(tag.Name, name, StringComparison.OrdinalIgnoreCase));
+                    return new MediaTagAssignment(managed?.Id ?? MediaTagIds.ForLegacyName(name), name);
+                })
+                .ToArray();
             var updated = 0;
             foreach (var id in request.SeriesIds)
             {
@@ -1415,26 +1737,7 @@ public static class SeriesEndpointRouteBuilderExtensions
                     continue;
                 }
 
-                var metadata = ParseMetadataDictionary(seriesItem.MetadataJson);
-                metadata["tags"] = normalizedTags;
-                await repository.UpdateMetadataAsync(
-                    new MediaMetadataUpdate(
-                        seriesItem.Id,
-                        seriesItem.MetadataProvider,
-                        seriesItem.MetadataProviderId,
-                        seriesItem.OriginalTitle,
-                        seriesItem.Overview,
-                        seriesItem.PosterUrl,
-                        seriesItem.BackdropUrl,
-                        seriesItem.Rating,
-                        seriesItem.Genres,
-                        seriesItem.ExternalUrl,
-                        seriesItem.ImdbId,
-                        JsonSerializer.Serialize(metadata),
-                        RuntimeMinutes: null,
-                        Popularity: null,
-                        VoteCount: null),
-                    cancellationToken);
+                await tagStore.ReplaceAsync(MediaKind.Series, seriesItem.Id, assignments, cancellationToken);
                 updated++;
                 await realtimeEventPublisher.PublishEntityChangedAsync("Series", seriesItem.Id, cancellationToken);
             }
@@ -1483,7 +1786,14 @@ public static class SeriesEndpointRouteBuilderExtensions
                     seriesItem.Title,
                     seriesItem.StartYear,
                     template,
-                    proposedName = ApplySeriesRenameTemplate(template, seriesItem.Title, seriesItem.StartYear)
+                    proposedName = NamingTemplateRenderer.RenderSegment(
+                        template,
+                        seriesItem.Title,
+                        seriesItem.StartYear,
+                        seriesItem.ImdbId,
+                        tvDbId: ReadMetadataText(seriesItem.MetadataJson, "TvDbId", "tvdbId", "tvdb_id"),
+                        network: ReadMetadataText(seriesItem.MetadataJson, "Network", "network"),
+                        genre: seriesItem.Genres?.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries).FirstOrDefault())
                 });
             }
 
@@ -1504,6 +1814,9 @@ public static class SeriesEndpointRouteBuilderExtensions
             IDownloadClientGrabService downloadClientGrabService,
             IActivityFeedRepository activityFeedRepository,
             TimeProvider timeProvider,
+            IMediaTagStore tagStore,
+            IGuidePackageStore guidePackageStore,
+            IReleasePreferencePlanRepository releasePreferencePlanRepository,
             CancellationToken cancellationToken) =>
         {
             var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
@@ -1548,7 +1861,9 @@ public static class SeriesEndpointRouteBuilderExtensions
                         indexerName,
                         detailsJson,
                         cancellationToken),
-                cancellationToken);
+                cancellationToken,
+                guidePackageStore,
+                releasePreferencePlanRepository);
 
             if (result.NotFound)
             {
@@ -1576,13 +1891,16 @@ public static class SeriesEndpointRouteBuilderExtensions
             int seasonNumber,
             HttpContext httpContext,
             ISeriesCatalogRepository repository,
+            IMediaStateRepository mediaStateRepository,
             ILibrariesRepository platformSettingsRepository,
             IQualityRepository qualityRepository,
+            IReleasePreferencePlanRepository releasePreferencePlanRepository,
             IJobQueueRepository jobQueueRepository,
             IAcquisitionDecisionPipeline acquisitionPipeline,
             IDownloadClientGrabService downloadClientGrabService,
             IActivityFeedRepository activityFeedRepository,
             TimeProvider timeProvider,
+            IMediaTagStore tagStore,
             CancellationToken cancellationToken) =>
         {
             var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
@@ -1616,8 +1934,13 @@ public static class SeriesEndpointRouteBuilderExtensions
                 });
             }
 
-            var wanted = await repository.GetWantedSummaryAsync(cancellationToken);
-            var wantedItem = wanted.RecentItems.FirstOrDefault(item => item.SeriesId == id);
+            var wantedItem = (await mediaStateRepository.ListWantedByIdsAsync(
+                    MediaKind.Series,
+                    [id],
+                    cancellationToken))
+                .OrderByDescending(item => item.UpdatedUtc)
+                .ThenBy(item => item.LibraryId, StringComparer.Ordinal)
+                .FirstOrDefault();
             if (wantedItem is null || string.IsNullOrWhiteSpace(wantedItem.LibraryId))
             {
                 return Results.Ok(new
@@ -1661,6 +1984,141 @@ public static class SeriesEndpointRouteBuilderExtensions
             var nextEligibleSearchUtc = now.AddHours(Math.Max(1, library.RetryDelayHours));
             var customFormats = await ResolveCustomFormatsAsync(qualityRepository, library.QualityProfileId, cancellationToken);
             var allowedQualities = await QualityProfileResolver.ResolveAllowedQualitiesAsync(qualityRepository, library.QualityProfileId, cancellationToken);
+            var upgradeUntilCutoff = await QualityProfileResolver.ResolveUpgradeUntilCutoffAsync(qualityRepository, library.QualityProfileId, cancellationToken);
+            var preferencePlan = await QualityProfileResolver.ResolveReleasePreferencePlanAsync(
+                qualityRepository,
+                releasePreferencePlanRepository,
+                library.QualityProfileId,
+                cancellationToken,
+                customFormats);
+            var tagNames = (await tagStore.ListAsync(MediaKind.Series, seriesItem.Id, cancellationToken))
+                .Select(tag => tag.Name)
+                .ToArray();
+
+            // A season pack is one candidate, but an installed season has one
+            // independently evaluated current file per episode. Load every
+            // exact baseline now; a missing or stale snapshot holds before an
+            // indexer query, while complete evidence is compared after the
+            // search against the same candidate and immutable plan.
+            var installedEpisodeIds = await SeriesSearchBaselineResolver.ListInstalledEpisodeIdsAsync(
+                repository,
+                seasonEpisodes.Select(episode => episode.EpisodeId).ToArray(),
+                cancellationToken);
+            var installedEpisodes = new List<SeasonPackInstalledEpisode>();
+            foreach (var episodeId in installedEpisodeIds)
+            {
+                var baseline = await SeriesSearchBaselineResolver.ResolveEpisodeAsync(
+                    repository,
+                    mediaStateRepository,
+                    seriesItem.Id,
+                    episodeId,
+                    library.Id,
+                    cancellationToken);
+                installedEpisodes.Add(new SeasonPackInstalledEpisode(
+                    episodeId,
+                    baseline.FilePath ?? string.Empty,
+                    baseline.PreferenceEvaluation));
+            }
+            var missingInstalledEvidence = preferencePlan is null
+                ? installedEpisodes
+                : installedEpisodes.Where(item =>
+                        string.IsNullOrWhiteSpace(item.FilePath) ||
+                        item.PreferenceEvaluation is null ||
+                        !string.Equals(item.PreferenceEvaluation.PlanId, preferencePlan.Id, StringComparison.OrdinalIgnoreCase) ||
+                        !string.Equals(item.PreferenceEvaluation.PlanVersion, preferencePlan.Version, StringComparison.Ordinal) ||
+                        !string.Equals(item.PreferenceEvaluation.PlanHash, preferencePlan.PlanHash, StringComparison.OrdinalIgnoreCase))
+                    .ToList();
+
+            if (missingInstalledEvidence.Count > 0)
+            {
+                const string holdMessage = "Whole-season replacement was held because at least one installed episode does not have an exact evaluation under the current release-preference plan.";
+                foreach (var episode in seasonEpisodes)
+                {
+                    await repository.RecordSearchAttemptAsync(
+                        seriesItem.Id,
+                        episode.EpisodeId,
+                        library.Id,
+                        "manual-season",
+                        "held",
+                        now,
+                        nextEligibleSearchUtc,
+                        holdMessage,
+                        null,
+                        null,
+                        JsonSerializer.Serialize(new
+                        {
+                            episode.EpisodeId,
+                            episode.SeasonNumber,
+                            episode.EpisodeNumber,
+                            installedFilePresent = installedEpisodeIds.Contains(episode.EpisodeId, StringComparer.OrdinalIgnoreCase),
+                            currentPlanEvidencePresent = !missingInstalledEvidence.Any(item => string.Equals(item.EpisodeId, episode.EpisodeId, StringComparison.OrdinalIgnoreCase)),
+                            preferencePlanId = preferencePlan?.Id,
+                            preferencePlanVersion = preferencePlan?.Version,
+                            preferencePlanHash = preferencePlan?.PlanHash
+                        }),
+                        cancellationToken);
+                }
+
+                await activityFeedRepository.RecordActivityAsync(
+                    "series.search.season",
+                    $"{seriesItem.Title} season {seasonNumber} search was held until installed-file evidence is current.",
+                    JsonSerializer.Serialize(new
+                    {
+                        seasonNumber,
+                        installedEpisodeIds,
+                        reason = MediaSearchReasons.SeasonPackInstalledEvidenceMissing,
+                        missingEvidenceEpisodeIds = missingInstalledEvidence.Select(item => item.EpisodeId).ToArray()
+                    }),
+                    null,
+                    "series",
+                    seriesItem.Id,
+                    cancellationToken);
+
+                await activityFeedRepository.RecordDecisionAsync(
+                    new DecisionExplanationPayload(
+                        Scope: "series.season-search",
+                        Status: "held",
+                        Reason: holdMessage,
+                        Inputs: new Dictionary<string, string?>
+                        {
+                            ["title"] = seriesItem.Title,
+                            ["seasonNumber"] = seasonNumber.ToString(),
+                            ["libraryId"] = library.Id,
+                            ["episodeCount"] = seasonEpisodes.Count.ToString(),
+                            ["installedEpisodeCount"] = installedEpisodeIds.Count.ToString(),
+                            ["preferencePlanId"] = preferencePlan?.Id,
+                            ["preferencePlanVersion"] = preferencePlan?.Version,
+                            ["preferencePlanHash"] = preferencePlan?.PlanHash
+                        },
+                        Outcome: "No indexer query or download dispatch was made until every installed episode has same-plan evidence.",
+                        Alternatives:
+                        [
+                            new DecisionAlternativeExplanation(
+                                "Targeted episode search",
+                                "available",
+                                "Search selected episodes individually or let the file probe produce the missing current-plan evaluation.")
+                        ]),
+                    null,
+                    "series",
+                    seriesItem.Id,
+                    cancellationToken);
+
+                return Results.Ok(new
+                {
+                    outcome = "held",
+                    reason = MediaSearchReasons.SeasonPackInstalledEvidenceMissing,
+                    seasonNumber,
+                    searchedEpisodes = seasonEpisodes.Count,
+                    installedEpisodeCount = installedEpisodeIds.Count,
+                    missingEvidenceEpisodeCount = missingInstalledEvidence.Count,
+                    matchedCount = 0,
+                    queuedCount = 0,
+                    releaseName = (string?)null,
+                    indexerName = (string?)null,
+                    dispatchStatus = (string?)null,
+                    dispatchMessage = holdMessage
+                });
+            }
 
             if (configuredSources == 0 || configuredClients == 0)
             {
@@ -1694,35 +2152,68 @@ public static class SeriesEndpointRouteBuilderExtensions
                 });
             }
 
-            var seasonQueryTitle = BuildSeasonSearchTitle(seriesItem.Title, seasonNumber);
             var decisionPlan = await acquisitionPipeline.PlanAsync(
                 new AcquisitionDecisionRequest(
-                    seasonQueryTitle,
+                    // The planner owns the season suffix and the TV API's
+                    // dedicated season parameter. Passing a title that already
+                    // contains "Season 01" produced queries such as
+                    // "Show Season 01 S01" and made season-pack matching
+                    // dependent on an accidental duplicate token.
+                    seriesItem.Title,
                     seriesItem.StartYear,
                     "tv",
-                    wantedItem.CurrentQuality,
+                    null,
                     wantedItem.TargetQuality,
                     routing?.Sources ?? [],
                     routing?.DownloadClients ?? [],
                     customFormats,
                     SeasonNumber: seasonNumber,
-                    AllowedQualities: allowedQualities),
+                    AllowedQualities: allowedQualities,
+                    TagNames: tagNames,
+                    SearchKind: AcquisitionSearchKinds.Interactive,
+                    AvailableUtc: wantedItem.AvailableUtc,
+                    UpgradeUntilCutoff: upgradeUntilCutoff,
+                    NumberingScheme: seriesItem.NumberingScheme,
+                    PreferencePlan: preferencePlan),
                 cancellationToken);
             var searchPlan = decisionPlan.SearchPlan;
             var bestCandidate = searchPlan.BestCandidate;
-            var outcome = decisionPlan.Outcome;
+            SeasonPackReplacementDecision? replacementDecision = null;
+            if (installedEpisodes.Count > 0 && preferencePlan is not null && bestCandidate is not null)
+            {
+                replacementDecision = SeriesSearchBaselineResolver.EvaluateSeasonPackCandidate(
+                    preferencePlan,
+                    bestCandidate,
+                    installedEpisodes);
+            }
+            var replacementHeld = replacementDecision is { Authorized: false };
+            var outcome = replacementHeld ? "held" : decisionPlan.Outcome;
+            var failures = (searchPlan.Failures ?? []).ToList();
             DownloadClientGrabResult? grabResult = null;
-            if (decisionPlan.ShouldDispatch && decisionPlan.SelectedDownloadClient is not null && decisionPlan.DispatchRequest is not null)
+            if (!replacementHeld && decisionPlan.ShouldDispatch && decisionPlan.SelectedDownloadClient is not null && decisionPlan.DispatchRequest is not null)
             {
                 var downloadClient = decisionPlan.SelectedDownloadClient;
                 grabResult = bestCandidate!.DownloadUrl is null
                     ? new DownloadClientGrabResult(downloadClient.DownloadClientId, bestCandidate.ReleaseName, false, "planned", "No download URL was available.")
+                    {
+                        Failure = IntegrationFailureFactory.FromLegacy(
+                            "download-client",
+                            downloadClient.DownloadClientId,
+                            downloadClient.DownloadClientName,
+                            "grab",
+                            "planned",
+                            "No downloadable URL was available for this release.")
+                    }
                     : await downloadClientGrabService.GrabAsync(downloadClient.DownloadClientId, decisionPlan.DispatchRequest, cancellationToken);
+                if (grabResult.Failure is { } dispatchFailure)
+                {
+                    failures.Add(dispatchFailure);
+                }
                 await jobQueueRepository.RecordDownloadDispatchAsync(
                     library.Id,
                     "tv",
-                    "season",
-                    $"{seriesItem.Id}:season:{seasonNumber}",
+                    "series",
+                    seriesItem.Id,
                     bestCandidate.ReleaseName,
                     bestCandidate.IndexerName,
                     downloadClient.DownloadClientId,
@@ -1733,11 +2224,16 @@ public static class SeriesEndpointRouteBuilderExtensions
                         seasonNumber,
                         episodeIds = seasonEpisodes.Select(item => item.EpisodeId).ToArray(),
                         searchPlan,
+                        replacementComparisons = replacementDecision?.Comparisons,
                         grabResult
                     }),
                     grabResponseCode: grabResult.Succeeded ? 200 : 400,
-                    grabFailureCode: null,
-                    cancellationToken: cancellationToken);
+                    grabFailureCode: grabResult.Failure?.Code ?? grabResult.FailureCode,
+                    cancellationToken: cancellationToken,
+                    failure: grabResult.Failure,
+                    replacementAuthorized: replacementDecision is { Authorized: true, Targets.Count: > 0 },
+                    replacementTargets: replacementDecision?.Targets,
+                    clientExternalId: grabResult.ExternalId);
             }
 
             foreach (var episode in seasonEpisodes)
@@ -1750,7 +2246,7 @@ public static class SeriesEndpointRouteBuilderExtensions
                     outcome,
                     now,
                     nextEligibleSearchUtc,
-                    decisionPlan.SearchResult,
+                    replacementHeld ? replacementDecision!.Reason : decisionPlan.SearchResult,
                     searchPlan.BestCandidate?.ReleaseName,
                     searchPlan.BestCandidate?.IndexerName,
                     // The route's `seasonNumber` and `episode.SeasonNumber` differ
@@ -1772,7 +2268,8 @@ public static class SeriesEndpointRouteBuilderExtensions
                             episode.EpisodeId,
                             episode.SeasonNumber,
                             episode.EpisodeNumber,
-                            searchPlan
+                            searchPlan,
+                            replacementComparisons = replacementDecision?.Comparisons
                         }),
                     cancellationToken);
             }
@@ -1795,7 +2292,7 @@ public static class SeriesEndpointRouteBuilderExtensions
                 new DecisionExplanationPayload(
                     Scope: "series.season-search",
                     Status: outcome,
-                    Reason: decisionPlan.SearchResult,
+                    Reason: replacementHeld ? replacementDecision!.Reason : decisionPlan.SearchResult,
                     Inputs: new Dictionary<string, string?>
                     {
                         ["title"] = seriesItem.Title,
@@ -1806,7 +2303,9 @@ public static class SeriesEndpointRouteBuilderExtensions
                         ["downloadClientCount"] = configuredClients.ToString(),
                         ["policyVersion"] = decisionPlan.PolicyVersion
                     },
-                    Outcome: grabResult is null
+                    Outcome: replacementHeld
+                        ? "No dispatch was made because the candidate was not a proven upgrade for every installed episode."
+                        : grabResult is null
                         ? searchPlan.Summary
                         : $"{grabResult.Status}: {grabResult.Message}",
                     Alternatives: decisionPlan.Alternatives),
@@ -1819,20 +2318,26 @@ public static class SeriesEndpointRouteBuilderExtensions
             {
                 outcome,
                 seasonNumber,
-                reason = searchPlan.Reason,
+                reason = replacementHeld
+                    ? MediaSearchReasons.SeasonPackCandidateNotUpgradeForEveryEpisode
+                    : searchPlan.Reason,
                 searchedEpisodes = seasonEpisodes.Count,
-                matchedCount = searchPlan.BestCandidate is null ? 0 : seasonEpisodes.Count,
-                queuedCount = searchPlan.BestCandidate is null ? 0 : 1,
+                installedEpisodeCount = installedEpisodes.Count,
+                matchedCount = searchPlan.BestCandidate is null || replacementHeld ? 0 : seasonEpisodes.Count,
+                queuedCount = searchPlan.BestCandidate is null || replacementHeld ? 0 : 1,
                 releaseName = searchPlan.BestCandidate?.ReleaseName,
                 indexerName = searchPlan.BestCandidate?.IndexerName,
                 dispatchStatus = grabResult?.Status,
-                dispatchMessage = grabResult?.Message
+                dispatchMessage = replacementHeld ? replacementDecision!.Reason : grabResult?.Message,
+                replacementComparisons = replacementDecision?.Comparisons,
+                failures = failures.Distinct().ToArray()
             });
         });
 
         series.MapGet("/{id}/workflow-status", async (
             string id,
             ISeriesCatalogRepository repository,
+            IMediaStateRepository mediaStateRepository,
             ILibrariesRepository platformSettingsRepository,
             ISeriesWorkflowService workflowService,
             CancellationToken cancellationToken) =>
@@ -1843,8 +2348,13 @@ public static class SeriesEndpointRouteBuilderExtensions
                 return Results.NotFound();
             }
 
-            var wanted = await repository.GetWantedSummaryAsync(cancellationToken);
-            var wantedItem = wanted.RecentItems.FirstOrDefault(item => item.SeriesId == id);
+            var wantedItem = (await mediaStateRepository.ListWantedByIdsAsync(
+                    MediaKind.Series,
+                    [id],
+                    cancellationToken))
+                .OrderByDescending(item => item.UpdatedUtc)
+                .ThenBy(item => item.LibraryId, StringComparer.Ordinal)
+                .FirstOrDefault();
             if (wantedItem is null)
             {
                 return Results.Ok(new
@@ -1891,6 +2401,7 @@ public static class SeriesEndpointRouteBuilderExtensions
             [FromBody] UpdateSeriesReplacementProtectionRequest request,
             HttpContext httpContext,
             ISeriesCatalogRepository repository,
+            IMediaStateRepository mediaStateRepository,
             IRealtimeEventPublisher realtimeEventPublisher,
             CancellationToken cancellationToken) =>
         {
@@ -1906,8 +2417,13 @@ public static class SeriesEndpointRouteBuilderExtensions
                 return Results.NotFound();
             }
 
-            var wanted = await repository.GetWantedSummaryAsync(cancellationToken);
-            var wantedItem = wanted.RecentItems.FirstOrDefault(item => item.SeriesId == id);
+            var wantedItem = (await mediaStateRepository.ListWantedByIdsAsync(
+                    MediaKind.Series,
+                    [id],
+                    cancellationToken))
+                .OrderByDescending(item => item.UpdatedUtc)
+                .ThenBy(item => item.LibraryId, StringComparer.Ordinal)
+                .FirstOrDefault();
             if (wantedItem is null)
             {
                 return Results.ValidationProblem(new Dictionary<string, string[]>
@@ -1930,6 +2446,7 @@ public static class SeriesEndpointRouteBuilderExtensions
         series.MapGet("/{id}/monitored-missing", async (
             string id,
             ISeriesCatalogRepository repository,
+            IMediaStateRepository mediaStateRepository,
             ISeriesWorkflowService workflowService,
             CancellationToken cancellationToken) =>
         {
@@ -1939,8 +2456,13 @@ public static class SeriesEndpointRouteBuilderExtensions
                 return Results.NotFound();
             }
 
-            var wanted = await repository.GetWantedSummaryAsync(cancellationToken);
-            var wantedItem = wanted.RecentItems.FirstOrDefault(item => item.SeriesId == id);
+            var wantedItem = (await mediaStateRepository.ListWantedByIdsAsync(
+                    MediaKind.Series,
+                    [id],
+                    cancellationToken))
+                .OrderByDescending(item => item.UpdatedUtc)
+                .ThenBy(item => item.LibraryId, StringComparer.Ordinal)
+                .FirstOrDefault();
             if (wantedItem is null)
             {
                 return Results.Ok(new { episodes = Array.Empty<object>(), seasonPackRecommendations = Array.Empty<object>() });
@@ -2134,6 +2656,80 @@ public static class SeriesEndpointRouteBuilderExtensions
             errors["startYear"] = ["Start year must be between 1888 and 2100."];
         }
 
+        if (request.SeriesType is not null && !SeriesTypes.IsKnown(request.SeriesType))
+        {
+            errors["seriesType"] = ["Series type must be standard, daily, or anime."];
+        }
+
+        if (request.NumberingScheme is not null && !SeriesNumberingSchemes.IsKnown(request.NumberingScheme))
+        {
+            errors["numberingScheme"] = ["Numbering scheme must be standard, airdate, absolute, or scene."];
+        }
+
+        if (request.NumberingSource is not null &&
+            !string.Equals(request.NumberingSource, SeriesNumberingSources.Provider, StringComparison.OrdinalIgnoreCase) &&
+            !string.Equals(request.NumberingSource, SeriesNumberingSources.Owner, StringComparison.OrdinalIgnoreCase))
+        {
+            errors["numberingSource"] = ["Numbering source must be provider or owner."];
+        }
+
+        return errors;
+    }
+
+    private static Dictionary<string, string[]> Validate(UpdateSeriesNumberingRequest request)
+    {
+        var errors = new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase);
+
+        if (request.SeriesType is not null && !SeriesTypes.IsKnown(request.SeriesType))
+        {
+            errors["seriesType"] = ["Series type must be standard, daily, or anime."];
+        }
+
+        if (request.NumberingScheme is not null && !SeriesNumberingSchemes.IsKnown(request.NumberingScheme))
+        {
+            errors["numberingScheme"] = ["Numbering scheme must be standard, airdate, absolute, or scene."];
+        }
+
+        if (request.NumberingSource is not null &&
+            !string.Equals(request.NumberingSource, SeriesNumberingSources.Provider, StringComparison.OrdinalIgnoreCase) &&
+            !string.Equals(request.NumberingSource, SeriesNumberingSources.Owner, StringComparison.OrdinalIgnoreCase))
+        {
+            errors["numberingSource"] = ["Numbering source must be provider or owner."];
+        }
+
+        if (request.Mappings is not null)
+        {
+            var duplicateIds = request.Mappings
+                .Where(mapping => !string.IsNullOrWhiteSpace(mapping.EpisodeId))
+                .GroupBy(mapping => mapping.EpisodeId, StringComparer.OrdinalIgnoreCase)
+                .Where(group => group.Count() > 1)
+                .Select(group => group.Key)
+                .ToArray();
+            if (duplicateIds.Length > 0)
+            {
+                errors["mappings"] = ["Each episode may appear only once in a numbering mapping."];
+            }
+
+            for (var index = 0; index < request.Mappings.Count; index++)
+            {
+                var mapping = request.Mappings[index];
+                if (string.IsNullOrWhiteSpace(mapping.EpisodeId))
+                {
+                    errors[$"mappings[{index}].episodeId"] = ["A numbering mapping must identify an episode."];
+                }
+
+                if (mapping.AbsoluteNumber is <= 0 or > 9999)
+                {
+                    errors[$"mappings[{index}].absoluteNumber"] = ["Absolute episode numbers must be between 1 and 9999."];
+                }
+
+                if ((mapping.SceneSeasonNumber is null) != (mapping.SceneEpisodeNumber is null))
+                {
+                    errors[$"mappings[{index}].scene"] = ["Scene season and episode numbers must be supplied together."];
+                }
+            }
+        }
+
         return errors;
     }
 
@@ -2169,34 +2765,35 @@ public static class SeriesEndpointRouteBuilderExtensions
         }
     }
 
-    private static string ApplySeriesRenameTemplate(string template, string title, int? startYear)
+    private static string? ReadMetadataText(string? metadataJson, params string[] names)
     {
-        var resolved = (template ?? "{Series Title} ({Series Year})")
-            .Replace("{Series Title}", title ?? string.Empty, StringComparison.OrdinalIgnoreCase)
-            .Replace("{Title}", title ?? string.Empty, StringComparison.OrdinalIgnoreCase)
-            .Replace("{Series Year}", startYear?.ToString() ?? string.Empty, StringComparison.OrdinalIgnoreCase)
-            .Replace("{Year}", startYear?.ToString() ?? string.Empty, StringComparison.OrdinalIgnoreCase);
-
-        var cleaned = SanitizePathSegment(resolved).Trim();
-        return string.IsNullOrWhiteSpace(cleaned)
-            ? SanitizePathSegment(title ?? "Untitled")
-            : cleaned;
-    }
-
-    private static string SanitizePathSegment(string value)
-    {
-        if (string.IsNullOrWhiteSpace(value))
+        if (string.IsNullOrWhiteSpace(metadataJson))
         {
-            return "Untitled";
+            return null;
         }
 
-        var invalid = Path.GetInvalidFileNameChars();
-        var chars = value
-            .Select(ch => invalid.Contains(ch) ? ' ' : ch)
-            .ToArray();
+        try
+        {
+            using var document = JsonDocument.Parse(metadataJson);
+            foreach (var property in document.RootElement.EnumerateObject())
+            {
+                if (!names.Any(name => string.Equals(property.Name, name, StringComparison.OrdinalIgnoreCase)))
+                {
+                    continue;
+                }
 
-        return string.Join(' ', new string(chars)
-            .Split(' ', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries));
+                return property.Value.ValueKind == JsonValueKind.String
+                    ? property.Value.GetString()
+                    : null;
+            }
+        }
+        catch (JsonException)
+        {
+            // Metadata is user/provider data. A malformed blob must not stop a
+            // rename preview from showing the safe title fallback.
+        }
+
+        return null;
     }
 
     private static Dictionary<string, string[]> ValidateImportRecovery(string? title, string? summary)
@@ -2224,6 +2821,7 @@ public static class SeriesEndpointRouteBuilderExtensions
         IIntakeRepository intakeRepository,
         IJobQueueRepository jobQueueRepository,
         IActivityFeedRepository activityFeedRepository,
+        IRecycleBinService recycleBinService,
         CancellationToken cancellationToken)
     {
         var metadata = new Dictionary<string, string?>();
@@ -2245,9 +2843,10 @@ public static class SeriesEndpointRouteBuilderExtensions
                 }
             }
 
-            var deletion = LibraryMediaDeletion.Delete(trackedFiles, libraries, cancellationToken);
-            metadata["deletedFileCount"] = deletion.DeletedFileCount.ToString();
-            metadata["deletedFolderCount"] = deletion.DeletedFolderCount.ToString();
+            var deletion = await recycleBinService.MoveAsync(trackedFiles, libraries, cancellationToken);
+            metadata["deletedFileCount"] = deletion.MovedFileCount.ToString();
+            metadata["deletedFolderCount"] = deletion.MovedFolderCount.ToString();
+            metadata["recycleBinItemCount"] = deletion.Items.Count.ToString();
             if (deletion.Warnings.Count > 0)
             {
                 metadata["fileDeletionWarnings"] = string.Join(" ", deletion.Warnings);
@@ -2265,7 +2864,7 @@ public static class SeriesEndpointRouteBuilderExtensions
                 {
                     var exclusion = await intakeRepository.CreateIntakeListExclusionAsync(
                         origin.SourceId,
-                        new CreateIntakeListExclusionRequest(series.Title, series.StartYear, series.ImdbId, null),
+                        new CreateIntakeListExclusionRequest(series.Title, series.StartYear, series.ImdbId, null, "Removed from library by user"),
                         cancellationToken);
                     if (exclusion is not null) exclusionsAdded++;
                 }
@@ -2297,16 +2896,6 @@ public static class SeriesEndpointRouteBuilderExtensions
             cancellationToken);
 
         return metadata;
-    }
-
-    private static string BuildEpisodeSearchTitle(string title, int seasonNumber, int episodeNumber)
-    {
-        return $"{title} S{seasonNumber:D2}E{episodeNumber:D2}";
-    }
-
-    private static string BuildSeasonSearchTitle(string title, int seasonNumber)
-    {
-        return $"{title} Season {seasonNumber:D2}";
     }
 
     private static async Task<IReadOnlyList<CustomFormatItem>> ResolveCustomFormatsAsync(
@@ -2350,8 +2939,26 @@ public static class SeriesEndpointRouteBuilderExtensions
         ISeriesCatalogRepository repository,
         string seriesId,
         MetadataSearchResult result,
-        CancellationToken cancellationToken)
-        => repository.UpdateMetadataAsync(seriesId, result, cancellationToken);
+        CancellationToken cancellationToken,
+        bool replaceIdentity = false)
+        => repository.UpdateMetadataAsync(
+            CatalogueMetadata.ToUpdate(seriesId, result, result.Network) with
+            {
+                Title = replaceIdentity ? result.Title : null,
+                Year = replaceIdentity ? result.Year : null
+            },
+            cancellationToken);
+
+    private static MetadataProviderIssue MissingProviderIssue(
+        string mediaType,
+        MetadataProviderRecordLookup lookup)
+        => new(
+            "provider-record-missing",
+            lookup.Provider,
+            lookup.ProviderId,
+            $"{lookup.Provider}:{mediaType}:{lookup.ProviderId}:missing".ToLowerInvariant(),
+            DateTimeOffset.UtcNow,
+            null);
 
     private sealed record ReleaseGrabRequest(
         string ReleaseName,
@@ -2368,7 +2975,144 @@ public static class SeriesEndpointRouteBuilderExtensions
         bool ForceAll,
         int? Take);
 
-    private sealed record MetadataLinkRequest(string? ProviderId);
+    private static async Task<SeriesMetadataLinkPlan> BuildMetadataLinkPlanAsync(
+        SeriesListItem item,
+        string providerId,
+        ISeriesCatalogRepository repository,
+        IMetadataProvider metadataProvider,
+        CancellationToken cancellationToken)
+    {
+        var lookup = await metadataProvider.ResolveProviderRecordAsync(
+            new MetadataLookupRequest(item.Title, "tv", item.StartYear, providerId.Trim()),
+            cancellationToken);
+        if (lookup.Status != MetadataProviderRecordStatus.Found || lookup.Result is null)
+        {
+            return new SeriesMetadataLinkPlan(lookup.Status, null, null);
+        }
+
+        IReadOnlyList<MetadataSeason> seasons;
+        try
+        {
+            seasons = await metadataProvider.GetSeriesCatalogueAsync(lookup.Result.ProviderId, cancellationToken);
+        }
+        catch (Exception) when (!cancellationToken.IsCancellationRequested)
+        {
+            return new SeriesMetadataLinkPlan(MetadataProviderRecordStatus.Unavailable, null, null);
+        }
+
+        var match = lookup.Result;
+        var inventory = await repository.GetInventoryDetailAsync(item.Id, cancellationToken);
+        var evaluation = MetadataCatalogueSafety.Evaluate(
+            (inventory?.Episodes ?? []).Select(episode => new MetadataEpisodeIdentity(
+                episode.SeasonNumber,
+                episode.EpisodeNumber,
+                episode.HasFile)),
+            seasons
+            .SelectMany(season => season.Episodes)
+            .Select(episode => new MetadataEpisodeIdentity(
+                episode.SeasonNumber,
+                episode.EpisodeNumber)));
+        var proposedKeys = evaluation.ProposedKeys;
+        var existingEpisodes = inventory?.Episodes ?? [];
+        var impact = evaluation.Impact;
+
+        var current = new MetadataLinkIdentity(
+            item.MetadataProvider,
+            item.MetadataProviderId,
+            item.Title,
+            item.StartYear,
+            item.ImdbId,
+            ReadMetadataText(item.MetadataJson, "Network", "network"));
+        var proposed = new MetadataLinkIdentity(
+            match.Provider,
+            match.ProviderId,
+            match.Title,
+            match.Year,
+            match.ImdbId,
+            match.Network);
+        var changes = DescribeMetadataIdentityChanges(current, proposed);
+        var conflict = await repository.FindMetadataIdentityConflictAsync(
+            item.Id,
+            match.Title,
+            match.Year,
+            match.ImdbId,
+            match.Provider,
+            match.ProviderId,
+            cancellationToken);
+        var consequences = new List<string>
+        {
+            "Imported files, monitoring, history, tags, numbering overrides, and plan assignments will be kept.",
+            "Provider artwork, overview, ratings, genres, IDs, network, and episode catalogue will be refreshed from the selected record.",
+            $"The selected catalogue has {impact.ProposedEpisodeCount} episodes across {impact.ProposedSeasonCount} seasons; {evaluation.NewEpisodeCount} new episode rows will be added."
+        };
+        if (!string.Equals(current.Context, proposed.Context, StringComparison.OrdinalIgnoreCase))
+        {
+            consequences.Add($"Network will change from {DisplayMetadataValue(current.Context)} to {DisplayMetadataValue(proposed.Context)}.");
+        }
+        if (!evaluation.PreservesExistingCatalogue)
+        {
+            consequences.Add($"{impact.ExistingEpisodesOutsideProposed} existing episode row{(impact.ExistingEpisodesOutsideProposed == 1 ? " is" : "s are")} absent from the selected catalogue.");
+        }
+
+        string? blockReason = null;
+        if (conflict is not null)
+        {
+            blockReason = $"{conflict.Title} already owns the proposed {DescribeConflictReason(conflict.Reason)}. Deluno will not merge or duplicate the two shows.";
+        }
+        else if (!evaluation.PreservesExistingCatalogue)
+        {
+            blockReason = "This remap would mix the current episode identity with a different provider catalogue. Resolve the unmatched episodes before linking it.";
+        }
+
+        var token = MetadataLinkPreviewTokens.Create(item.Id, item.UpdatedUtc, proposed, proposedKeys);
+        var preview = new MetadataLinkPreview(
+            "tv",
+            item.Id,
+            current,
+            proposed,
+            changes,
+            consequences,
+            conflict,
+            impact,
+            blockReason is null,
+            blockReason,
+            token);
+        return new SeriesMetadataLinkPlan(lookup.Status, match, preview);
+    }
+
+    private static IReadOnlyList<string> DescribeMetadataIdentityChanges(
+        MetadataLinkIdentity current,
+        MetadataLinkIdentity proposed)
+    {
+        var changes = new List<string>();
+        AddMetadataChange(changes, "Provider record", current.ProviderId, proposed.ProviderId);
+        AddMetadataChange(changes, "Title", current.Title, proposed.Title);
+        AddMetadataChange(changes, "Year", current.Year?.ToString(), proposed.Year?.ToString());
+        AddMetadataChange(changes, "IMDb ID", current.ImdbId, proposed.ImdbId);
+        return changes.Count == 0 ? ["The core identity is unchanged; provider metadata will be refreshed."] : changes;
+    }
+
+    private static void AddMetadataChange(List<string> changes, string label, string? before, string? after)
+    {
+        if (string.Equals(before, after, StringComparison.OrdinalIgnoreCase)) return;
+        changes.Add($"{label}: {DisplayMetadataValue(before)} → {DisplayMetadataValue(after)}");
+    }
+
+    private static string DisplayMetadataValue(string? value) => string.IsNullOrWhiteSpace(value) ? "not set" : value;
+
+    private static string DescribeConflictReason(string reason) => reason switch
+    {
+        "provider-id" => "provider record",
+        "imdb-id" => "IMDb identity",
+        _ => "title and year"
+    };
+
+    private sealed record SeriesMetadataLinkPlan(
+        MetadataProviderRecordStatus Status,
+        MetadataSearchResult? Match,
+        MetadataLinkPreview? Preview);
+
+    private sealed record MetadataLinkRequest(string? ProviderId, string? ConfirmationToken = null);
 
     private sealed record MetadataOverrideRequest(
         string? OriginalTitle,

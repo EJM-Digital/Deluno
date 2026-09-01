@@ -1,4 +1,5 @@
 using Deluno.Platform.Data;
+using Deluno.Contracts;
 using Deluno.Platform.Migration;
 using Deluno.Security;
 using Deluno.Security.Hardening;
@@ -11,11 +12,15 @@ public static class PlatformServiceCollectionExtensions
     public static IServiceCollection AddDelunoPlatformModule(this IServiceCollection services)
     {
         services.AddSingleton<IPlatformSettingsRepository, SqlitePlatformSettingsRepository>();
+        services.AddSingleton<IReleaseProfileRepository, SqliteReleaseProfileRepository>();
+        services.AddSingleton<IUnifiedExclusionRepository, SqliteUnifiedExclusionRepository>();
+        services.AddSingleton<IRecycleBinService, RecycleBinService>();
         services.AddSingleton<IDownloadHealthRepository, SqliteDownloadHealthRepository>();
         services.AddSingleton<IDownloadSharingRepository, SqliteDownloadSharingRepository>();
         services.AddSingleton<IProcessorRepository, SqliteProcessorRepository>();
         services.AddSingleton<IMigrationAuditRepository, SqliteMigrationAuditRepository>();
         services.AddSingleton<IMigrationAssistantService, MigrationAssistantService>();
+        services.AddSingleton<IAutomationIdempotencyStore, SqliteAutomationIdempotencyStore>();
         services.AddHostedService<PlatformSchemaInitializer>();
         return services;
     }

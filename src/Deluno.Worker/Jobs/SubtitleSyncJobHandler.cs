@@ -22,8 +22,9 @@ namespace Deluno.Worker.Jobs;
 /// names your exact release group was cut against this encode and is in time by
 /// construction; there is nothing to fix and every reason not to touch it. Bazarr
 /// arrives at the same place from the other direction, syncing what scores under
-/// a threshold and asking you to choose the threshold. Deluno already named that
-/// line, so there is nothing to choose.</para>
+/// a threshold and asking you to choose the threshold. Deluno defaults to its
+/// named cutoff, while a library may narrow or disable that behaviour; the
+/// queued payload carries the choice.</para>
 ///
 /// <para><b>Doing nothing is the common outcome and is reported as one.</b> Most
 /// subtitles are already in time. The job says which of the several reasons
@@ -48,7 +49,8 @@ public sealed class SubtitleSyncJobHandler(ISubtitleTimingSync timingSync) : IJo
             payload.VideoPath,
             payload.SubtitlePath,
             payload.OriginalLanguage,
-            cancellationToken);
+            cancellationToken,
+            payload.Policy);
 
         var name = Path.GetFileName(payload.SubtitlePath);
         return $"{name}: {result.Reason}";
@@ -76,5 +78,9 @@ public sealed class SubtitleSyncJobHandler(ISubtitleTimingSync timingSync) : IJo
     /// should be: the service checks the file is there and says so if it is
     /// not.</para>
     /// </summary>
-    public sealed record SubtitleSyncPayload(string VideoPath, string SubtitlePath, string? OriginalLanguage);
+    public sealed record SubtitleSyncPayload(
+        string VideoPath,
+        string SubtitlePath,
+        string? OriginalLanguage,
+        SubtitleTimingPolicy? Policy = null);
 }

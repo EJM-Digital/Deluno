@@ -1,4 +1,6 @@
 using Deluno.Integrations.Search;
+using Deluno.Platform.Contracts;
+using Deluno.Quality.ReleasePreferences;
 
 namespace Deluno.Persistence.Tests.Integrations;
 
@@ -14,7 +16,15 @@ public sealed class ReleaseDecisionEngineTests
         int sourcePriority = 100,
         int customFormatScore = 0,
         IReadOnlyList<string>? neverGrab = null,
-        IReadOnlyList<string>? allowedQualities = null)
+        IReadOnlyList<string>? allowedQualities = null,
+        IReadOnlyList<ReleaseProfileItem>? releaseProfiles = null,
+        string? indexerProtocol = null,
+        double? releaseAgeHours = null,
+        int? minimumAgeMinutes = null,
+        int? retentionDays = null,
+        int? maximumSizeMb = null,
+        string? indexerFlags = null,
+        string? preferIndexerFlags = null)
         => new(
             ReleaseName: releaseName,
             Quality: quality,
@@ -26,7 +36,15 @@ public sealed class ReleaseDecisionEngineTests
             SourcePriorityScore: sourcePriority,
             CustomFormatScore: customFormatScore,
             NeverGrabPatterns: neverGrab,
-            AllowedQualities: allowedQualities);
+            AllowedQualities: allowedQualities,
+            ReleaseProfiles: releaseProfiles,
+            IndexerProtocol: indexerProtocol,
+            ReleaseAgeHours: releaseAgeHours,
+            MinimumAgeMinutes: minimumAgeMinutes,
+            RetentionDays: retentionDays,
+            MaximumSizeMb: maximumSizeMb,
+            IndexerFlags: indexerFlags,
+            PreferIndexerFlags: preferIndexerFlags);
 
     // ── Allowed qualities (#283) ──────────────────────────────────────────
 
@@ -77,7 +95,7 @@ public sealed class ReleaseDecisionEngineTests
         // Empty must mean "the cutoff decides", never "nothing is allowed".
         var decision = ReleaseDecisionEngine.Decide(GoodInput(allowedQualities: []));
 
-        Assert.Equal("preferred", decision.Status);
+        Assert.True(decision.Status == "preferred", $"{decision.Status}: {decision.Summary} | {string.Join("; ", decision.Reasons)} | {string.Join("; ", decision.RiskFlags)}");
     }
 
     // ── Size rules (#284) ─────────────────────────────────────────────────
@@ -101,6 +119,33 @@ public sealed class ReleaseDecisionEngineTests
 
         Assert.Equal("preferred", decision.Status);
         Assert.True(decision.MeetsCutoff);
+    }
+
+    [Fact]
+    public void Typed_decisions_do_not_publish_legacy_numeric_explanations()
+    {
+        var decision = ReleaseDecisionEngine.Decide(new ReleaseDecisionInput(
+            ReleaseName: "Movie.2024.1080p.WEB-DL.x265-GRP",
+            Quality: "WEB 1080p",
+            CurrentQuality: null,
+            TargetQuality: "WEB 1080p",
+            SizeBytes: 2_000_000_000,
+            Seeders: 20,
+            DownloadUrl: "https://example.test/release",
+            SourcePriorityScore: 100,
+            CustomFormatScore: 900,
+            IndexerProtocol: "newznab",
+            IndexerFlags: "free",
+            PreferIndexerFlags: "free",
+            ReleaseProfiles: [Profile(
+                preferredProtocol: "usenet",
+                preferredTerms: [new ReleaseTermScore("x265", 150)])],
+            PreferencePlan: SnapshotPlan()));
+
+        Assert.Equal(0, decision.Score);
+        Assert.DoesNotContain(decision.Reasons, reason =>
+            reason.Contains("points", StringComparison.OrdinalIgnoreCase)
+            || reason.Contains("(+", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -250,6 +295,35 @@ public sealed class ReleaseDecisionEngineTests
 
         var expectedRank = ReleaseDecisionEngine.QualityRank("WEB 1080p");
         Assert.Equal(expectedRank, decision.QualityDelta);
+    }
+
+    [Fact]
+    public void Decide_blocks_an_equivalent_same_quality_candidate_when_installed_formats_are_known()
+    {
+        var decision = ReleaseDecisionEngine.Decide(GoodInput(
+            currentQuality: "WEB 1080p",
+            targetQuality: "WEB 1080p",
+            customFormatScore: 100) with
+        {
+            CurrentCustomFormatScore = 100
+        });
+
+        Assert.Equal("rejected", decision.Status);
+        Assert.Contains(decision.RiskFlags, risk => risk.Contains("Equivalent replacement", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void Decide_allows_a_same_quality_candidate_when_it_improves_installed_formats()
+    {
+        var decision = ReleaseDecisionEngine.Decide(GoodInput(
+            currentQuality: "WEB 1080p",
+            targetQuality: "WEB 1080p",
+            customFormatScore: 125) with
+        {
+            CurrentCustomFormatScore = 100
+        });
+
+        Assert.Equal("preferred", decision.Status);
     }
 
     // ── Seeder scoring ────────────────────────────────────────────────────
@@ -487,4 +561,236 @@ public sealed class ReleaseDecisionEngineTests
 
         Assert.Contains(decision.RiskFlags, r => r.Contains("URL", StringComparison.OrdinalIgnoreCase));
     }
+
+    // ── Acquisition profiles (#316) ─────────────────────────────────────
+
+    [Fact]
+    public void Decide_rejects_when_a_release_profile_required_term_is_missing()
+    {
+        var decision = ReleaseDecisionEngine.Decide(GoodInput(
+            releaseProfiles: [Profile(mustContain: "Remux")]));
+
+        Assert.Equal("rejected", decision.Status);
+        Assert.Contains(decision.RiskFlags, risk => risk.Contains("missing required term 'Remux'", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void Decide_rejects_when_a_release_profile_excluded_term_is_present()
+    {
+        var decision = ReleaseDecisionEngine.Decide(GoodInput(
+            releaseName: "Movie.2024.1080p.WEB-DL.CAM-GRP",
+            releaseProfiles: [Profile(mustNotContain: "CAM")]));
+
+        Assert.Equal("rejected", decision.Status);
+        Assert.Contains(decision.RiskFlags, risk => risk.Contains("excluded term 'CAM'", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void Decide_holds_a_release_until_the_profile_delay_clears()
+    {
+        var decision = ReleaseDecisionEngine.Decide(GoodInput(
+            indexerProtocol: "newznab",
+            releaseAgeHours: 0.5,
+            releaseProfiles: [Profile(preferredProtocol: "usenet", usenetDelayMinutes: 60)]));
+
+        Assert.Equal("delayed", decision.Status);
+        Assert.Contains(decision.RiskFlags, risk => risk.Contains("acquisition delay is active", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void Decide_scores_matching_profile_terms_and_protocol()
+    {
+        var decision = ReleaseDecisionEngine.Decide(GoodInput(
+            indexerProtocol: "newznab",
+            releaseProfiles: [Profile(
+                preferredProtocol: "usenet",
+                preferredTerms: [new ReleaseTermScore("WEB-DL", 125)])]));
+
+        Assert.Equal("preferred", decision.Status);
+        Assert.Contains(decision.Reasons, reason => reason.Contains("WEB-DL", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(decision.Reasons, reason => reason.Contains("Preferred usenet protocol", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void Decide_rejects_when_release_exceeds_indexer_size_limit()
+    {
+        var decision = ReleaseDecisionEngine.Decide(GoodInput(
+            sizeBytes: 2_000_000_000L,
+            maximumSizeMb: 1000));
+
+        Assert.Equal("rejected", decision.Status);
+        Assert.Contains(decision.RiskFlags, risk => risk.Contains("maximum", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void Decide_prefers_matching_indexer_flags()
+    {
+        var withoutFlag = ReleaseDecisionEngine.Decide(GoodInput());
+        var withFlag = ReleaseDecisionEngine.Decide(GoodInput(
+            indexerFlags: "freeleech, double-upload",
+            preferIndexerFlags: "freeleech"));
+
+        Assert.Equal("preferred", withFlag.Status);
+        Assert.True(withFlag.Score > withoutFlag.Score);
+        Assert.Contains(withFlag.Reasons, reason => reason.Contains("freeleech", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void Decide_uses_the_persisted_current_file_facts_when_the_plan_hash_matches()
+    {
+        var plan = SnapshotPlan();
+        var currentFacts = new[]
+        {
+            new PreferenceFact("quality.web-1080p", PreferenceFactState.Present),
+            new PreferenceFact("audio.format.truehd", PreferenceFactState.Absent),
+            new PreferenceFact("audio.format.dts", PreferenceFactState.Present)
+        };
+        var snapshot = new PreferenceEvaluationSnapshot(
+            "movie-1",
+            "library-1",
+            "file-1",
+            "/library/Movie.2024.1080p.WEB-DL.DTS-GRP.mkv",
+            100,
+            plan.Id,
+            plan.Version,
+            plan.PlanHash,
+            currentFacts,
+            ReleasePreferenceEvaluator.Evaluate(plan, currentFacts),
+            [],
+            DateTimeOffset.UnixEpoch,
+            "test");
+
+        var decision = ReleaseDecisionEngine.Decide(new ReleaseDecisionInput(
+            ReleaseName: "Movie.2024.1080p.WEB-DL.TrueHD-GRP",
+            Quality: "WEB 1080p",
+            CurrentQuality: "WEB 1080p",
+            TargetQuality: "WEB 1080p",
+            SizeBytes: 2_000_000_000,
+            Seeders: 10,
+            DownloadUrl: "https://example.test/release",
+            SourcePriorityScore: 100,
+            CustomFormatScore: 0,
+            PreferencePlan: plan,
+            CurrentPreferenceEvaluation: snapshot));
+
+        Assert.Equal("preferred", decision.Status);
+        Assert.Equal(PreferenceCandidateStatus.Upgrade, decision.PreferenceComparison?.Status);
+        Assert.Contains(decision.PreferenceComparison?.Reasons ?? [], reason => reason.Contains("Audio", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void Decide_does_not_compare_a_snapshot_from_a_different_plan_version()
+    {
+        var plan = SnapshotPlan();
+        var facts = new[]
+        {
+            new PreferenceFact("quality.web-1080p", PreferenceFactState.Present),
+            new PreferenceFact("audio.format.truehd", PreferenceFactState.Absent),
+            new PreferenceFact("audio.format.dts", PreferenceFactState.Present)
+        };
+        var evaluation = ReleasePreferenceEvaluator.Evaluate(plan, facts);
+        var stale = new PreferenceEvaluationSnapshot(
+            "movie-1",
+            "library-1",
+            "file-1",
+            "/library/Movie.2024.1080p.WEB-DL.DTS-GRP.mkv",
+            100,
+            plan.Id,
+            "old-version",
+            "old-plan-hash",
+            facts,
+            evaluation,
+            [],
+            DateTimeOffset.UnixEpoch,
+            "test");
+
+        var decision = ReleaseDecisionEngine.Decide(new ReleaseDecisionInput(
+            ReleaseName: "Movie.2024.1080p.WEB-DL.TrueHD-GRP",
+            Quality: "WEB 1080p",
+            CurrentQuality: "WEB 1080p",
+            TargetQuality: "WEB 1080p",
+            SizeBytes: 2_000_000_000,
+            Seeders: 10,
+            DownloadUrl: "https://example.test/release",
+            SourcePriorityScore: 100,
+            CustomFormatScore: 0,
+            PreferencePlan: plan,
+            CurrentPreferenceEvaluation: stale,
+            CurrentFilePresent: true));
+
+        Assert.True(decision.Status == "held", $"{decision.Status}: {decision.Summary} | {string.Join("; ", decision.Reasons)} | {string.Join("; ", decision.RiskFlags)}");
+        Assert.Equal(PreferenceCandidateStatus.NeedsReview, decision.PreferenceComparison?.Status);
+        Assert.Contains(decision.Reasons, reason => reason.Contains("re-evaluate", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void Decide_holds_an_installed_file_when_no_same_plan_baseline_can_be_rebuilt()
+    {
+        var decision = ReleaseDecisionEngine.Decide(new ReleaseDecisionInput(
+            ReleaseName: "Movie.2024.1080p.WEB-DL.TrueHD-GRP",
+            Quality: "WEB 1080p",
+            CurrentQuality: null,
+            TargetQuality: "WEB 1080p",
+            SizeBytes: 2_000_000_000,
+            Seeders: 10,
+            DownloadUrl: "https://example.test/release",
+            SourcePriorityScore: 100,
+            CustomFormatScore: 0,
+            PreferencePlan: SnapshotPlan(),
+            CurrentFilePresent: true));
+
+        Assert.Equal("held", decision.Status);
+        Assert.Contains(
+            decision.Reasons,
+            reason => reason.Contains("installed-file preference evidence is missing", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(
+            decision.RiskFlags,
+            risk => risk.Contains("cannot prove", StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static ReleasePreferencePlan SnapshotPlan()
+        => new(
+            Id: "snapshot-test",
+            Version: "1",
+            MediaType: "movies",
+            Families:
+            [
+                new PreferenceFamily(
+                    "quality",
+                    "Quality",
+                    1,
+                    PreferenceIntent.Ranked,
+                    [new PreferenceFamilyLevel("web-1080", 0, ["quality.web-1080p"])],
+                    TargetLevelId: "web-1080"),
+                new PreferenceFamily(
+                    "audio",
+                    "Audio",
+                    2,
+                    PreferenceIntent.Ranked,
+                    [
+                        new PreferenceFamilyLevel("truehd", 0, ["audio.format.truehd"]),
+                        new PreferenceFamilyLevel("dts", 1, ["audio.format.dts"])
+                    ],
+                    TargetLevelId: "truehd")
+            ],
+            DimensionOrder: ["quality", "audio"]);
+
+    private static ReleaseProfileItem Profile(
+        string preferredProtocol = "any",
+        int usenetDelayMinutes = 0,
+        string mustContain = "",
+        string mustNotContain = "",
+        IReadOnlyList<ReleaseTermScore>? preferredTerms = null)
+        => new(
+            Id: Guid.NewGuid().ToString("N"),
+            Name: "Test profile",
+            TagName: "",
+            PreferredProtocol: preferredProtocol,
+            UsenetDelayMinutes: usenetDelayMinutes,
+            TorrentDelayMinutes: 0,
+            MustContain: mustContain,
+            MustNotContain: mustNotContain,
+            PreferredTerms: preferredTerms ?? [],
+            CreatedUtc: DateTimeOffset.UnixEpoch,
+            UpdatedUtc: DateTimeOffset.UnixEpoch);
 }

@@ -273,7 +273,10 @@ public sealed class ExistingLibraryImportServiceTests
 
         var vagueShow = Path.Combine(rootPath, "Quiet Archive (2021)");
         Directory.CreateDirectory(vagueShow);
-        await File.WriteAllTextAsync(Path.Combine(vagueShow, "part one.mkv"), string.Empty);
+        // A season label is still not an episode manifest. The old season-pack
+        // expansion treated this one file as proof that every S01 episode was
+        // present instead of leaving the uncertain mapping for review.
+        await File.WriteAllTextAsync(Path.Combine(vagueShow, "Quiet.Archive.S01.1080p.WEB-DL.mkv"), string.Empty);
 
         var libraries = new SqliteLibrariesRepository(storage.Factory, timeProvider);
         var libraryId = await CreateLibraryAsync(libraries, rootPath, "tv");

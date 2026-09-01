@@ -7,4 +7,5 @@ public sealed record SeriesInventoryDetail(
     int SeasonCount,
     int EpisodeCount,
     int ImportedEpisodeCount,
-    IReadOnlyList<SeriesEpisodeInventoryItem> Episodes);
+    IReadOnlyList<SeriesEpisodeInventoryItem> Episodes,
+    SeriesNumberingDetail? Numbering = null);

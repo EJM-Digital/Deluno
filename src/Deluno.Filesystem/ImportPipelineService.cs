@@ -1,10 +1,12 @@
 using System.ComponentModel;
 using System.Runtime.InteropServices;
+using System.Security.Cryptography;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using Deluno.Contracts;
 using Deluno.Connections.Data;
 using Deluno.Infrastructure.Observability;
+using Deluno.Jobs.Contracts;
 using Deluno.Jobs.Data;
 using Deluno.Jobs.Decisions;
 using Deluno.Libraries.Contracts;
@@ -13,8 +15,13 @@ using Deluno.Movies.Contracts;
 using Deluno.Movies.Data;
 using Deluno.Platform.Contracts;
 using Deluno.Platform.Data;
+using Deluno.Platform;
 using Deluno.Notifications;
 using Deluno.Quality;
+using Deluno.Quality.Contracts;
+using Deluno.Quality.Data;
+using Deluno.Quality.Guides;
+using Deluno.Quality.ReleasePreferences;
 using Deluno.Series.Contracts;
 using Deluno.Series.Data;
 using Microsoft.AspNetCore.Http;
@@ -35,7 +42,11 @@ public sealed partial class ImportPipelineService(
     IDownloadDispatchesRepository? downloadDispatchesRepository,
     IConnectionsRepository? connectionsRepository,
     ILogger<ImportPipelineService> logger,
-    IRealtimeEventPublisher? realtimeEventPublisher)
+    IRealtimeEventPublisher? realtimeEventPublisher,
+    IRecycleBinService? recycleBinService = null,
+    IQualityRepository? qualityRepository = null,
+    IGuidePackageStore? guidePackageStore = null,
+    IReleasePreferencePlanRepository? releasePreferencePlanRepository = null)
     : IImportPipelineService
 {
     private static readonly HashSet<string> SupportedVideoExtensions = new(StringComparer.OrdinalIgnoreCase)
@@ -45,10 +56,25 @@ public sealed partial class ImportPipelineService(
 
     public async Task<ImportPreviewResponse> PreviewAsync(ImportPreviewRequest request, CancellationToken cancellationToken)
     {
+        var tvDirectoryFiles = NormalizeMediaType(request.MediaType) == "tv"
+            ? TryListImportableVideoFiles(request.SourcePath)
+            : null;
         var settings = await platformRepository.GetAsync(cancellationToken);
         var rules = await librariesRepository.ListDestinationRulesAsync(cancellationToken);
         var libraries = await librariesRepository.ListLibrariesAsync(cancellationToken);
-        var preview = ResolveImportPreview(request, settings, rules, libraries);
+        if (tvDirectoryFiles is { Count: > 1 })
+        {
+            var pack = await BuildTvPackPlanAsync(
+                request,
+                tvDirectoryFiles,
+                settings,
+                rules,
+                libraries,
+                cancellationToken);
+            return pack.Summary;
+        }
+
+        var preview = await ResolveImportPreviewAsync(request, settings, rules, libraries, cancellationToken);
         if (preview.SourceExists && !ImportFileReadiness.IsReady(preview.SourcePath))
         {
             return AddReadinessWarning(preview);
@@ -59,11 +85,19 @@ public sealed partial class ImportPipelineService(
 
     public async Task<ImportPipelineResult> ExecuteAsync(ImportExecuteRequest request, CancellationToken cancellationToken)
     {
+        var mediaType = NormalizeMediaType(request.Preview.MediaType);
+        var tvDirectoryFiles = mediaType == "tv"
+            ? TryListImportableVideoFiles(request.Preview.SourcePath)
+            : null;
+        if (tvDirectoryFiles is { Count: > 1 })
+        {
+            return await ExecuteTvPackAsync(request, tvDirectoryFiles, cancellationToken);
+        }
+
         var settings = await platformRepository.GetAsync(cancellationToken);
         var rules = await librariesRepository.ListDestinationRulesAsync(cancellationToken);
         var libraries = await librariesRepository.ListLibrariesAsync(cancellationToken);
-        var resolvedPreview = ResolveImportPreview(request.Preview, settings, rules, libraries);
-        var mediaType = NormalizeMediaType(request.Preview.MediaType);
+        var resolvedPreview = await ResolveImportPreviewAsync(request.Preview, settings, rules, libraries, cancellationToken);
 
         if (resolvedPreview.SourceExists && !ImportFileReadiness.IsReady(resolvedPreview.SourcePath))
         {
@@ -166,6 +200,23 @@ public sealed partial class ImportPipelineService(
             return Failed(StatusCodes.Status409Conflict, message);
         }
 
+        if (File.Exists(preview.DestinationPath) &&
+            request.Overwrite &&
+            !string.IsNullOrWhiteSpace(request.DispatchId) &&
+            (string.IsNullOrWhiteSpace(request.ExpectedExistingPath) ||
+             !IsSamePath(request.ExpectedExistingPath, preview.DestinationPath)))
+        {
+            const string message = "Replacement blocked: the resolved destination is not the file this title owned when the release was dispatched.";
+            await RecordImportFailureAsync(
+                request,
+                request.Preview,
+                "replacementOwnershipMismatch",
+                message,
+                "Review the destination naming rule and the title's tracked file. Deluno did not overwrite the unrelated path.",
+                cancellationToken);
+            return Failed(StatusCodes.Status409Conflict, message);
+        }
+
         if (preview.MediaProbe is { Status: "failed" })
         {
             var message = preview.MediaProbe.Message ?? "Media probing failed. Deluno cannot confirm this file is playable.";
@@ -203,6 +254,36 @@ public sealed partial class ImportPipelineService(
                 "Import the full release file instead of a sample or trailer.",
                 cancellationToken);
             return Failed(StatusCodes.Status400BadRequest, message);
+        }
+
+        if (mediaType == "tv" && !string.IsNullOrWhiteSpace(request.Preview.SeriesId))
+        {
+            var numbering = await ResolveSeriesNumberingAsync(request.Preview, cancellationToken);
+            var resolution = ParseTvImportNumbers(
+                preview.SourcePath,
+                preview.DestinationPath,
+                preview.SourceSizeBytes,
+                SeriesNumberingSchemes.Resolve(
+                    request.Preview.SeriesType ?? numbering?.SeriesType,
+                    request.Preview.NumberingScheme ?? numbering?.NumberingScheme),
+                numbering);
+            if (resolution.Episodes.Count == 0)
+            {
+                var seasonPackLabel = resolution.SeasonPacks.Count > 0;
+                var message = seasonPackLabel
+                    ? "The filename identifies a TV season pack but does not prove which catalogued episode files are present. Deluno left it unmatched instead of marking the whole season covered."
+                    : "The TV filename could not be matched to a catalogued episode. Deluno left it unmatched instead of inventing an episode identity.";
+                await RecordImportFailureAsync(
+                    request,
+                    request.Preview,
+                    "unmatched",
+                    message,
+                    seasonPackLabel
+                        ? "Review the pack contents and map the actual episode files before retrying the import."
+                        : "Review the series numbering and map this file to one catalogued episode before retrying the import.",
+                    cancellationToken);
+                return Failed(StatusCodes.Status409Conflict, message);
+            }
         }
 
         var replacementRisk = await ValidateReplacementAsync(request, preview, cancellationToken);
@@ -412,7 +493,30 @@ public sealed partial class ImportPipelineService(
             restoreSourceOnFailure = false;
             if (backupPath is not null)
             {
-                TryDelete(backupPath);
+                if (recycleBinService is null)
+                {
+                    // Keep hand-constructed test/utility instances backwards
+                    // compatible; the host always supplies the recoverable
+                    // service through DI.
+                    TryDelete(backupPath);
+                }
+                else if (matchedLibrary is null)
+                {
+                    logger.LogWarning(
+                        "The replaced file was left at {BackupPath} because no library matched {DestinationPath}.",
+                        backupPath,
+                        preview.DestinationPath);
+                }
+                else if (await recycleBinService.StoreReplacementAsync(
+                    matchedLibrary,
+                    preview.DestinationPath,
+                    backupPath,
+                    cancellationToken) is null && File.Exists(backupPath))
+                {
+                    logger.LogWarning(
+                        "The replaced file was left at {BackupPath} because it could not be moved into the recycle bin.",
+                        backupPath);
+                }
             }
 
             DelunoObservability.ImportCompleted.Add(1, new("media.type", mediaType), new("transfer.mode", mode));
@@ -474,6 +578,818 @@ public sealed partial class ImportPipelineService(
             Warnings = [.. preview.Warnings, "The source file is still being written or locked. Deluno will wait before probing or importing it."],
             DecisionSteps = [.. preview.DecisionSteps, "Source: the file is visible, but it is not stable enough to read safely yet."]
         };
+
+    private static ImportPreviewResponse AddWarning(ImportPreviewResponse preview, string warning)
+        => preview with
+        {
+            Warnings = [.. preview.Warnings, warning],
+            DecisionSteps = [.. preview.DecisionSteps, $"Attention: {warning}"]
+        };
+
+    private async Task<TvPackPlan> BuildTvPackPlanAsync(
+        ImportPreviewRequest request,
+        IReadOnlyList<string> sourceFiles,
+        PlatformSettingsSnapshot settings,
+        IReadOnlyList<DestinationRuleItem> rules,
+        IReadOnlyList<LibraryItem> libraries,
+        CancellationToken cancellationToken,
+        IReadOnlyList<DispatchReplacementTarget>? replacementTargets = null,
+        bool replacementAuthorized = false)
+    {
+        var blockReasons = new List<string>();
+        var normalizedReplacementTargets = (replacementTargets ?? [])
+            .Where(target => !string.IsNullOrWhiteSpace(target.EntityId) &&
+                             !string.IsNullOrWhiteSpace(target.ExpectedPath))
+            .Select(target => new DispatchReplacementTarget(
+                target.EntityId.Trim(),
+                target.ExpectedPath.Trim()))
+            .ToArray();
+        var duplicateReplacementTargets = normalizedReplacementTargets
+            .GroupBy(target => target.EntityId, StringComparer.OrdinalIgnoreCase)
+            .Where(group => group.Select(target => Path.GetFullPath(target.ExpectedPath))
+                .Distinct(GetPathComparer()).Count() > 1)
+            .Select(group => group.Key)
+            .ToArray();
+        if (duplicateReplacementTargets.Length > 0)
+        {
+            blockReasons.Add($"Replacement ownership names conflicting paths for episode(s): {string.Join(", ", duplicateReplacementTargets)}.");
+        }
+        var replacementTargetsByEpisode = normalizedReplacementTargets
+            .GroupBy(target => target.EntityId, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(group => group.Key, group => group.First(), StringComparer.OrdinalIgnoreCase);
+        var replacements = new List<TvPackReplacement>();
+        var numbering = await ResolveSeriesNumberingAsync(request, cancellationToken);
+        if (string.IsNullOrWhiteSpace(request.SeriesId) || numbering is null)
+        {
+            blockReasons.Add("Choose the existing TV show before importing a season pack so every file can be matched to its canonical episode.");
+        }
+
+        var declaredSeasons = SeriesNumberingResolver.ParseSeasonPackNumbers(request.SourcePath)
+            .Distinct()
+            .OrderBy(value => value)
+            .ToArray();
+        if (declaredSeasons.Length != 1)
+        {
+            blockReasons.Add("The download folder must identify exactly one season before Deluno can treat it as a season-pack operation.");
+        }
+
+        var files = new List<TvPackFilePlan>();
+        foreach (var sourcePath in sourceFiles)
+        {
+            var fileRequest = request with
+            {
+                SourcePath = sourcePath,
+                FileName = Path.GetFileName(sourcePath)
+            };
+            var preview = await ResolveImportPreviewAsync(fileRequest, settings, rules, libraries, cancellationToken);
+            if (preview.SourceExists && ImportFileReadiness.IsReady(preview.SourcePath))
+            {
+                preview = await EnrichPreviewWithMediaProbeAsync(preview, cancellationToken);
+            }
+
+            var warnings = new List<string>();
+            if (!preview.SourceExists)
+            {
+                warnings.Add("Source file is no longer present.");
+            }
+            else if (!ImportFileReadiness.IsReady(preview.SourcePath))
+            {
+                warnings.Add("Source file is still being written or locked.");
+            }
+            if (!Path.IsPathRooted(preview.DestinationPath))
+            {
+                warnings.Add("No rooted TV library destination is configured.");
+            }
+            if (!preview.IsSupportedMediaFile)
+            {
+                warnings.Add("The destination extension is not an importable video type.");
+            }
+            if (IsSamePath(preview.SourcePath, preview.DestinationPath))
+            {
+                warnings.Add("Source and destination resolve to the same file.");
+            }
+            if (preview.MediaProbe is { Status: "failed" })
+            {
+                warnings.Add(preview.MediaProbe.Message ?? "Media probing failed.");
+            }
+            if (preview.MediaProbe is { Status: "succeeded", VideoStreams.Count: 0 })
+            {
+                warnings.Add("No video stream was detected.");
+            }
+            if (preview.MediaProbe?.DurationSeconds is > 0 and < 120)
+            {
+                warnings.Add("The runtime is under two minutes and looks like a sample.");
+            }
+
+            var fileNumbers = ParseTvImportNumbers(
+                preview.SourcePath,
+                preview.DestinationPath,
+                preview.SourceSizeBytes,
+                SeriesNumberingSchemes.Resolve(
+                    request.SeriesType ?? numbering?.SeriesType,
+                    request.NumberingScheme ?? numbering?.NumberingScheme),
+                numbering);
+            if (fileNumbers.Episodes.Count == 0)
+            {
+                warnings.Add("The filename does not resolve to one or more canonical episodes in this show.");
+            }
+            else if (declaredSeasons.Length == 1 && fileNumbers.Episodes.Any(episode => episode.SeasonNumber != declaredSeasons[0]))
+            {
+                warnings.Add($"The file resolves outside season {declaredSeasons[0]:00} named by the download folder.");
+            }
+
+            if (warnings.Count > 0)
+            {
+                blockReasons.Add($"{Path.GetFileName(sourcePath)}: {string.Join(" ", warnings)}");
+            }
+            files.Add(new TvPackFilePlan(fileRequest, preview, fileNumbers, warnings));
+        }
+
+        foreach (var duplicate in files
+                     .SelectMany(file => file.Numbers.Episodes.Select(episode => new
+                     {
+                         Key = EpisodeKey(episode.SeasonNumber, episode.EpisodeNumber),
+                         file.Preview.SourcePath
+                     }))
+                     .GroupBy(item => item.Key, StringComparer.Ordinal)
+                     .Where(group => group.Select(item => item.SourcePath).Distinct(StringComparer.OrdinalIgnoreCase).Count() > 1))
+        {
+            blockReasons.Add($"Episode {duplicate.Key} is claimed by more than one file in the pack.");
+        }
+
+        foreach (var duplicate in files
+                     .GroupBy(file => Path.GetFullPath(file.Preview.DestinationPath), GetPathComparer())
+                     .Where(group => group.Count() > 1))
+        {
+            blockReasons.Add($"More than one source resolves to destination '{duplicate.Key}'.");
+        }
+
+        var alreadyPlacedAndOwned = numbering is not null &&
+                                    await IsTvPackAlreadyCommittedAsync(request, files, numbering, cancellationToken);
+        if (numbering is not null && !alreadyPlacedAndOwned)
+        {
+            var episodeIds = numbering.Episodes.ToDictionary(
+                episode => (episode.SeasonNumber, episode.EpisodeNumber),
+                episode => episode.EpisodeId);
+            var packEpisodeIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var file in files)
+            {
+                foreach (var episode in file.Numbers.Episodes)
+                {
+                    if (!episodeIds.TryGetValue((episode.SeasonNumber, episode.EpisodeNumber), out var episodeId))
+                    {
+                        continue;
+                    }
+                    packEpisodeIds.Add(episodeId);
+                    var trackedPath = await seriesCatalogRepository.GetEpisodeFilePathAsync(episodeId, cancellationToken);
+                    replacementTargetsByEpisode.TryGetValue(episodeId, out var replacementTarget);
+                    if (string.IsNullOrWhiteSpace(trackedPath))
+                    {
+                        if (replacementTarget is not null)
+                        {
+                            blockReasons.Add($"Episode {EpisodeKey(episode.SeasonNumber, episode.EpisodeNumber)} no longer owns the file named by the replacement dispatch.");
+                        }
+                        continue;
+                    }
+
+                    if (!replacementAuthorized)
+                    {
+                        if (!IsSamePath(trackedPath, file.Preview.DestinationPath))
+                        {
+                            blockReasons.Add($"Episode {EpisodeKey(episode.SeasonNumber, episode.EpisodeNumber)} already owns a different file. Replace it through an episode-scoped review instead of a season-pack import.");
+                        }
+                        continue;
+                    }
+
+                    if (replacementTarget is null)
+                    {
+                        blockReasons.Add($"Episode {EpisodeKey(episode.SeasonNumber, episode.EpisodeNumber)} has an installed file but no dispatch-time replacement target.");
+                        continue;
+                    }
+                    if (!IsSamePath(replacementTarget.ExpectedPath, trackedPath))
+                    {
+                        blockReasons.Add($"Episode {EpisodeKey(episode.SeasonNumber, episode.EpisodeNumber)} no longer owns the exact file authorized when the pack was dispatched.");
+                        continue;
+                    }
+
+                    replacements.Add(new TvPackReplacement(
+                        episodeId,
+                        trackedPath,
+                        file.Preview.DestinationPath));
+                }
+            }
+
+            foreach (var target in normalizedReplacementTargets.Where(target => !packEpisodeIds.Contains(target.EntityId)))
+            {
+                blockReasons.Add($"Replacement target '{target.EntityId}' is not one of the episodes resolved from this season pack.");
+            }
+        }
+
+        if (replacementAuthorized && !alreadyPlacedAndOwned && normalizedReplacementTargets.Length == 0)
+        {
+            blockReasons.Add("Season-pack replacement authority has no episode-scoped ownership manifest.");
+        }
+        if (!replacementAuthorized && normalizedReplacementTargets.Length > 0)
+        {
+            blockReasons.Add("An episode replacement manifest was supplied without replacement authority.");
+        }
+
+        var episodes = files
+            .SelectMany(file => file.Numbers.Episodes)
+            .GroupBy(episode => (episode.SeasonNumber, episode.EpisodeNumber))
+            .Select(group => group.First())
+            .OrderBy(episode => episode.SeasonNumber)
+            .ThenBy(episode => episode.EpisodeNumber)
+            .ToArray();
+        var alternateEpisodes = files
+            .SelectMany(file => file.Numbers.AlternateEpisodes)
+            .Distinct()
+            .ToArray();
+        var seasonPacks = episodes
+            .GroupBy(episode => episode.SeasonNumber)
+            .Select(group => new ImportedSeasonPackItem(
+                group.Key,
+                Episodes: group.OrderBy(episode => episode.EpisodeNumber).ToArray()))
+            .ToArray();
+        var numbers = new TvImportNumbers(episodes, alternateEpisodes, seasonPacks);
+
+        var alreadyCommitted = blockReasons.Count == 0 && alreadyPlacedAndOwned;
+        if (!alreadyCommitted)
+        {
+            var ownedExistingPaths = replacements
+                .Select(replacement => replacement.ExistingPath)
+                .Distinct(GetPathComparer())
+                .ToArray();
+            foreach (var file in files.Where(file => file.Preview.DestinationExists))
+            {
+                if (!replacementAuthorized || !ownedExistingPaths.Any(path => IsSamePath(path, file.Preview.DestinationPath)))
+                {
+                    blockReasons.Add($"{Path.GetFileName(file.Preview.DestinationPath)} already exists but is not the fully committed pack owned by these episodes.");
+                }
+            }
+        }
+
+        var distinctReasons = blockReasons.Distinct(StringComparer.Ordinal).ToArray();
+        var commonFolders = files.Select(file => file.Preview.DestinationFolder)
+            .Distinct(GetPathComparer())
+            .ToArray();
+        var commonFolder = commonFolders.Length == 1 ? commonFolders[0] : string.Empty;
+        var publicFiles = files.Select(file => new ImportPackFilePreview(
+            file.Preview.SourcePath,
+            file.Preview.DestinationPath,
+            file.Preview.SourceSizeBytes,
+            file.Numbers.Episodes
+                .Select(episode => EpisodeKey(episode.SeasonNumber, episode.EpisodeNumber))
+                .Distinct(StringComparer.Ordinal)
+                .OrderBy(key => key, StringComparer.Ordinal)
+                .ToArray(),
+            file.Warnings)).ToArray();
+        var pack = new ImportPackPreview(
+            CanExecute: distinctReasons.Length == 0,
+            AlreadyCommitted: alreadyCommitted,
+            SourceFileCount: files.Count,
+            EpisodeCount: episodes.Length,
+            Files: publicFiles,
+            BlockReasons: distinctReasons);
+        var first = files[0].Preview;
+        var summary = first with
+        {
+            SourcePath = request.SourcePath,
+            DestinationFolder = commonFolder,
+            DestinationPath = commonFolder,
+            HardlinkAvailable = files.All(file => file.Preview.HardlinkAvailable),
+            SourceExists = files.All(file => file.Preview.SourceExists),
+            DestinationExists = files.Any(file => file.Preview.DestinationExists),
+            SourceSizeBytes = files.Sum(file => file.Preview.SourceSizeBytes),
+            DestinationSizeBytes = files.Sum(file => file.Preview.DestinationSizeBytes),
+            IsSupportedMediaFile = files.All(file => file.Preview.IsSupportedMediaFile),
+            MediaProbe = null,
+            TransferExplanation = files.All(file => file.Preview.PreferredTransferMode == "hardlink")
+                ? "Every pack file can use a hardlink. Deluno stages all links before committing the episode catalogue."
+                : "Deluno will stage every pack file before committing the episode catalogue; copy fallback is used where hardlinks are unavailable.",
+            Warnings = distinctReasons.Length == 0
+                ? [alreadyCommitted
+                    ? "This exact season pack is already placed and catalogued. Retrying is safe and will not duplicate it."
+                    : $"All {files.Count} files resolve to {episodes.Length} canonical episodes and can be committed together."]
+                : distinctReasons,
+            Explanation = distinctReasons.Length == 0
+                ? "Every file has a unique destination and canonical episode identity. Placement and catalogue updates will be committed as one pack operation."
+                : "Deluno will not import any part of this pack until every file has one safe destination and canonical episode mapping.",
+            DecisionSteps =
+            [
+                $"Pack: found {files.Count} importable video files.",
+                $"Identity: resolved {episodes.Length} unique canonical episodes.",
+                distinctReasons.Length == 0
+                    ? "Safety: no duplicate episode claims, destination collisions, or unmatched files were found."
+                    : $"Safety: blocked by {distinctReasons.Length} issue(s); no file will be placed."
+            ],
+            Pack = pack
+        };
+        return new TvPackPlan(
+            summary,
+            files,
+            numbers,
+            numbering,
+            distinctReasons,
+            alreadyCommitted,
+            replacements.Distinct().ToArray());
+    }
+
+    private async Task<ImportPipelineResult> ExecuteTvPackAsync(
+        ImportExecuteRequest request,
+        IReadOnlyList<string> sourceFiles,
+        CancellationToken cancellationToken)
+    {
+        var settings = await platformRepository.GetAsync(cancellationToken);
+        var rules = await librariesRepository.ListDestinationRulesAsync(cancellationToken);
+        var libraries = await librariesRepository.ListLibrariesAsync(cancellationToken);
+        var plan = await BuildTvPackPlanAsync(
+            request.Preview,
+            sourceFiles,
+            settings,
+            rules,
+            libraries,
+            cancellationToken,
+            request.ReplacementTargets,
+            request.Overwrite);
+
+        if (plan.AlreadyCommitted)
+        {
+            var response = BuildTvPackResponse(
+                plan,
+                "already-committed",
+                usedFallback: false,
+                "This exact season pack is already placed and catalogued. Nothing was duplicated.");
+            return new ImportPipelineResult(true, StatusCodes.Status200OK, response, response.Message);
+        }
+
+        if (plan.BlockReasons.Count > 0)
+        {
+            var message = $"Season-pack import is blocked: {string.Join(" ", plan.BlockReasons)}";
+            await TryRecordPackFailureAsync(
+                request,
+                "unmatched",
+                message,
+                "Review the file-to-episode plan. Deluno did not place any part of the pack.",
+                cancellationToken);
+            return Failed(StatusCodes.Status409Conflict, message);
+        }
+
+        if ((request.Overwrite || request.ForceReplacement) && plan.Replacements.Count == 0)
+        {
+            const string message = "Season-pack replacement requires an exact episode-to-file ownership manifest from the dispatch decision.";
+            await TryRecordPackFailureAsync(
+                request,
+                "replacementRejected",
+                message,
+                "Search the installed episodes through a reviewed season-pack decision so Deluno can bind every replacement to its current file.",
+                cancellationToken);
+            return Failed(StatusCodes.Status409Conflict, message);
+        }
+
+        var placements = new List<TvPackPlacement>();
+        var backups = new List<TvPackBackup>();
+        var catalogCommitted = false;
+        try
+        {
+            await RecordImportStartedAsync(request, plan.Summary, "tv", cancellationToken);
+
+            foreach (var file in plan.Files)
+            {
+                Directory.CreateDirectory(file.Preview.DestinationFolder);
+                var requestedMode = NormalizeTransferMode(request.TransferMode);
+                var mode = requestedMode == "auto" ? file.Preview.PreferredTransferMode : requestedMode;
+                var stagingPath = BuildTemporaryPath(file.Preview.DestinationPath, ".deluno-pack-stage");
+                var placement = new TvPackPlacement(
+                    file,
+                    stagingPath,
+                    mode,
+                    UsedFallback: false,
+                    SourceMoved: false,
+                    Finalized: false);
+                var placementIndex = placements.Count;
+                placements.Add(placement);
+
+                if (mode == "hardlink")
+                {
+                    var hardlinkError = "Hardlink creation failed for this season-pack file.";
+                    if (!file.Preview.HardlinkAvailable || !TryCreateHardlink(file.Preview.SourcePath, stagingPath, out hardlinkError))
+                    {
+                        TryDelete(stagingPath);
+                        if (!request.AllowCopyFallback)
+                        {
+                            throw new IOException(file.Preview.HardlinkAvailable
+                                ? hardlinkError
+                                : "Hardlinking is not available for every file in this season pack.");
+                        }
+                        AtomicCopy(file.Preview.SourcePath, stagingPath, overwrite: false);
+                        placement = placement with { Mode = "copy", UsedFallback = true };
+                    }
+                }
+                else if (mode == "move")
+                {
+                    File.Move(file.Preview.SourcePath, stagingPath, overwrite: false);
+                    placement = placement with { SourceMoved = true };
+                }
+                else
+                {
+                    AtomicCopy(file.Preview.SourcePath, stagingPath, overwrite: false);
+                    placement = placement with { Mode = "copy" };
+                }
+
+                placements[placementIndex] = placement;
+                VerifyStagedImport(stagingPath);
+            }
+
+            foreach (var existingPath in plan.Replacements
+                         .Select(replacement => replacement.ExistingPath)
+                         .Distinct(GetPathComparer()))
+            {
+                if (!File.Exists(existingPath))
+                {
+                    throw new IOException($"The replacement target '{existingPath}' changed or disappeared after validation.");
+                }
+                var backupPath = BuildTemporaryPath(existingPath, ".deluno-pack-backup");
+                File.Move(existingPath, backupPath, overwrite: false);
+                backups.Add(new TvPackBackup(existingPath, backupPath));
+            }
+
+            for (var index = 0; index < placements.Count; index++)
+            {
+                var placement = placements[index];
+                var stagedSize = VerifyStagedImport(placement.StagingPath);
+                File.Move(placement.StagingPath, placement.File.Preview.DestinationPath, overwrite: false);
+                VerifyFinalImport(placement.File.Preview.DestinationPath, stagedSize);
+                placements[index] = placement with { Finalized = true };
+            }
+
+            var catalog = await MarkCatalogImportedAsync(
+                request.Preview,
+                plan.Files[0].Preview,
+                "tv",
+                libraries,
+                settings.UnmonitorWhenCutoffMet,
+                cancellationToken,
+                plan.Numbers,
+                plan.Files.Select(file => file.Preview).ToArray());
+            if (!catalog.CatalogUpdated)
+            {
+                throw new InvalidOperationException("Every pack file was staged, but the TV catalogue did not accept the atomic episode manifest.");
+            }
+            catalogCommitted = true;
+            foreach (var backup in backups)
+            {
+                TryDelete(backup.BackupPath);
+            }
+
+            var usedFallback = placements.Any(placement => placement.UsedFallback);
+            var modes = placements.Select(placement => placement.Mode).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+            var modeUsed = modes.Length == 1 ? modes[0] : "mixed";
+            var message = $"Imported {placements.Count} season-pack files covering {plan.Numbers.Episodes.Count} episodes as one catalogue transaction.";
+            var response = BuildTvPackResponse(plan, modeUsed, usedFallback, message, placements);
+            await RecordTvPackCompletionBestEffortAsync(
+                request,
+                plan,
+                placements,
+                catalog,
+                libraries,
+                modeUsed,
+                usedFallback,
+                cancellationToken);
+
+            DelunoObservability.ImportCompleted.Add(placements.Count, new("media.type", "tv"), new("transfer.mode", modeUsed));
+            logger.LogInformation(
+                "Season-pack import completed for {Title}. Files={FileCount} Episodes={EpisodeCount} TransferMode={TransferMode}",
+                TitleForActivity(request.Preview),
+                placements.Count,
+                plan.Numbers.Episodes.Count,
+                modeUsed);
+            return new ImportPipelineResult(true, StatusCodes.Status200OK, response, response.Message);
+        }
+        catch (OperationCanceledException) when (!catalogCommitted)
+        {
+            RollBackTvPackPlacements(placements);
+            RestoreTvPackBackups(backups);
+            throw;
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException || catalogCommitted)
+        {
+            IReadOnlyList<string> rollbackFailures = [];
+            if (!catalogCommitted)
+            {
+                rollbackFailures = RollBackTvPackPlacements(placements);
+                rollbackFailures = [.. rollbackFailures, .. RestoreTvPackBackups(backups)];
+            }
+            var message = catalogCommitted
+                ? $"The season pack was imported, but a follow-up record failed: {exception.Message}"
+                : rollbackFailures.Count == 0
+                    ? $"Season-pack import was rolled back: {exception.Message}"
+                    : $"Season-pack import failed and needs manual recovery: {exception.Message} Rollback could not complete: {string.Join(" ", rollbackFailures)}";
+            if (!catalogCommitted)
+            {
+                await TryRecordPackFailureAsync(
+                    request,
+                    exception is UnauthorizedAccessException ? "permission" : exception is IOException ? "io" : "importFailed",
+                    message,
+                    rollbackFailures.Count == 0
+                        ? "The source files were retained. Review the recovery case and retry the complete pack."
+                        : "Do not retry yet. Restore the named files from their staging or destination paths, then review the complete pack.",
+                    CancellationToken.None);
+                return Failed(exception is UnauthorizedAccessException
+                    ? StatusCodes.Status403Forbidden
+                    : exception is IOException
+                        ? StatusCodes.Status400BadRequest
+                        : StatusCodes.Status500InternalServerError, message);
+            }
+
+            logger.LogWarning(exception, "Season-pack follow-up recording failed after the catalogue transaction committed.");
+            var response = BuildTvPackResponse(plan, "committed", usedFallback: false, message);
+            return new ImportPipelineResult(true, StatusCodes.Status200OK, response, response.Message);
+        }
+    }
+
+    private static ImportExecuteResponse BuildTvPackResponse(
+        TvPackPlan plan,
+        string transferMode,
+        bool usedFallback,
+        string message,
+        IReadOnlyList<TvPackPlacement>? placements = null)
+        => new(
+            Preview: plan.Summary,
+            Executed: true,
+            TransferModeUsed: transferMode,
+            UsedFallback: usedFallback,
+            CatalogUpdated: true,
+            Message: message,
+            PackFiles: plan.Files.Select(file =>
+            {
+                var placement = placements?.FirstOrDefault(item => IsSamePath(
+                    item.File.Preview.SourcePath,
+                    file.Preview.SourcePath));
+                return new ImportPackFileResult(
+                    file.Preview.SourcePath,
+                    file.Preview.DestinationPath,
+                    file.Numbers.Episodes
+                    .Select(episode => EpisodeKey(episode.SeasonNumber, episode.EpisodeNumber))
+                    .Distinct(StringComparer.Ordinal)
+                    .OrderBy(key => key, StringComparer.Ordinal)
+                    .ToArray(),
+                    placement?.Mode ?? transferMode);
+            }).ToArray());
+
+    private async Task TryRecordPackFailureAsync(
+        ImportExecuteRequest request,
+        string kind,
+        string summary,
+        string action,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            await RecordImportFailureAsync(request, request.Preview, kind, summary, action, cancellationToken);
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            logger.LogWarning(exception, "Could not record the season-pack recovery case after {FailureKind}.", kind);
+        }
+    }
+
+    private async Task RecordTvPackCompletionBestEffortAsync(
+        ImportExecuteRequest request,
+        TvPackPlan plan,
+        IReadOnlyList<TvPackPlacement> placements,
+        CatalogImportResult catalog,
+        IReadOnlyList<LibraryItem> libraries,
+        string modeUsed,
+        bool usedFallback,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            if (!string.IsNullOrWhiteSpace(request.DispatchId))
+            {
+                await platformRepository.MarkWorkflowVerifiedAsync(cancellationToken);
+                if (importResolutionsRepository is not null && catalog.CatalogId is not null)
+                {
+                    await importResolutionsRepository.RecordSuccessAsync(
+                        request.DispatchId,
+                        "tv",
+                        catalog.CatalogId,
+                        "series",
+                        cancellationToken);
+                }
+                if (downloadDispatchesRepository is not null)
+                {
+                    await downloadDispatchesRepository.RecordImportOutcomeAsync(
+                        request.DispatchId,
+                        "imported",
+                        plan.Summary.DestinationFolder,
+                        null,
+                        null,
+                        cancellationToken);
+                }
+                if (realtimeEventPublisher is not null)
+                {
+                    await realtimeEventPublisher.PublishDispatchImportCompletedAsync(
+                        request.DispatchId,
+                        TitleForActivity(request.Preview),
+                        succeeded: true,
+                        importedPath: plan.Summary.DestinationFolder,
+                        failureReason: null,
+                        cancellationToken);
+                }
+            }
+
+            var sharedByClient = await IsStillSharedByClientAsync(request.DispatchId, cancellationToken);
+            var cleanup = placements.Select(placement => ApplyWorkflowCleanup(
+                placement.File.Preview.SourcePath,
+                ResolveLibraryForImport(placement.File.Preview.DestinationPath, "tv", libraries),
+                sharedByClient)).ToArray();
+            await activityFeedRepository.RecordActivityAsync(
+                "filesystem.import.season-pack.completed",
+                $"{TitleForActivity(request.Preview)} season pack imported {placements.Count} files covering {plan.Numbers.Episodes.Count} episodes.",
+                JsonSerializer.Serialize(new
+                {
+                    Files = placements.Select(placement => new
+                    {
+                        placement.File.Preview.SourcePath,
+                        placement.File.Preview.DestinationPath,
+                        placement.Mode,
+                        placement.UsedFallback,
+                        Episodes = placement.File.Numbers.Episodes.Select(episode => EpisodeKey(episode.SeasonNumber, episode.EpisodeNumber))
+                    }),
+                    Cleanup = cleanup.Select(item => item.Summary)
+                }),
+                null,
+                "series",
+                request.Preview.SeriesId,
+                cancellationToken);
+            await activityFeedRepository.RecordDecisionAsync(
+                new DecisionExplanationPayload(
+                    Scope: "filesystem.import.season-pack",
+                    Status: "completed",
+                    Reason: "Every file had a unique canonical episode mapping and destination before Deluno placed any part of the pack.",
+                    Inputs: new Dictionary<string, string?>
+                    {
+                        ["sourcePath"] = request.Preview.SourcePath,
+                        ["fileCount"] = placements.Count.ToString(),
+                        ["episodeCount"] = plan.Numbers.Episodes.Count.ToString(),
+                        ["transferModeUsed"] = modeUsed,
+                        ["usedFallback"] = usedFallback.ToString()
+                    },
+                    Outcome: $"All {placements.Count} files were placed before one transaction marked {plan.Numbers.Episodes.Count} episodes imported.",
+                    Alternatives:
+                    [
+                        new DecisionAlternativeExplanation(
+                            "Recovery review",
+                            "not-needed",
+                            "If any file or episode is ambiguous, Deluno leaves the whole download in recovery review.")
+                    ]),
+                null,
+                "series",
+                request.Preview.SeriesId,
+                cancellationToken);
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            logger.LogWarning(exception, "Season-pack completion side effects failed after files and catalogue committed.");
+        }
+    }
+
+    private IReadOnlyList<string> RollBackTvPackPlacements(IReadOnlyList<TvPackPlacement> placements)
+    {
+        var failures = new List<string>();
+        foreach (var placement in placements.Reverse())
+        {
+            try
+            {
+                if (placement.SourceMoved && !File.Exists(placement.File.Preview.SourcePath))
+                {
+                    if (File.Exists(placement.File.Preview.DestinationPath))
+                    {
+                        File.Move(placement.File.Preview.DestinationPath, placement.File.Preview.SourcePath, overwrite: false);
+                    }
+                    else if (File.Exists(placement.StagingPath))
+                    {
+                        File.Move(placement.StagingPath, placement.File.Preview.SourcePath, overwrite: false);
+                    }
+                }
+                else
+                {
+                    if (File.Exists(placement.File.Preview.DestinationPath))
+                    {
+                        File.Delete(placement.File.Preview.DestinationPath);
+                    }
+                    if (File.Exists(placement.StagingPath))
+                    {
+                        File.Delete(placement.StagingPath);
+                    }
+                }
+
+                if (placement.SourceMoved && !File.Exists(placement.File.Preview.SourcePath))
+                {
+                    throw new IOException("The moved source could not be restored.");
+                }
+                if (!placement.SourceMoved &&
+                    (File.Exists(placement.File.Preview.DestinationPath) || File.Exists(placement.StagingPath)))
+                {
+                    throw new IOException("A staged or destination file could not be removed.");
+                }
+            }
+            catch (Exception exception)
+            {
+                var failure = $"{Path.GetFileName(placement.File.Preview.SourcePath)}: {exception.Message}";
+                failures.Add(failure);
+                logger.LogError(
+                    exception,
+                    "Season-pack rollback could not restore {SourcePath} from {DestinationPath} or {StagingPath}.",
+                    placement.File.Preview.SourcePath,
+                    placement.File.Preview.DestinationPath,
+                    placement.StagingPath);
+            }
+        }
+        return failures;
+    }
+
+    private IReadOnlyList<string> RestoreTvPackBackups(IReadOnlyList<TvPackBackup> backups)
+    {
+        var failures = new List<string>();
+        foreach (var backup in backups.AsEnumerable().Reverse())
+        {
+            try
+            {
+                if (File.Exists(backup.ExistingPath))
+                {
+                    File.Delete(backup.ExistingPath);
+                }
+                if (File.Exists(backup.BackupPath))
+                {
+                    File.Move(backup.BackupPath, backup.ExistingPath, overwrite: false);
+                }
+                if (!File.Exists(backup.ExistingPath))
+                {
+                    throw new IOException("The original replacement target could not be restored.");
+                }
+            }
+            catch (Exception exception)
+            {
+                failures.Add($"{Path.GetFileName(backup.ExistingPath)}: {exception.Message}");
+                logger.LogError(exception, "Season-pack rollback could not restore replacement target {ExistingPath}.", backup.ExistingPath);
+            }
+        }
+        return failures;
+    }
+
+    private async Task<bool> IsTvPackAlreadyCommittedAsync(
+        ImportPreviewRequest request,
+        IReadOnlyList<TvPackFilePlan> files,
+        SeriesNumberingDetail? numbering,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(request.SeriesId) || numbering is null ||
+            files.Any(file => !File.Exists(file.Preview.DestinationPath) ||
+                              new FileInfo(file.Preview.DestinationPath).Length != file.Preview.SourceSizeBytes))
+        {
+            return false;
+        }
+
+        var episodeIds = numbering.Episodes.ToDictionary(
+            episode => (episode.SeasonNumber, episode.EpisodeNumber),
+            episode => episode.EpisodeId);
+        foreach (var file in files)
+        {
+            await using (var source = File.OpenRead(file.Preview.SourcePath))
+            await using (var destination = File.OpenRead(file.Preview.DestinationPath))
+            {
+                var sourceHash = await SHA256.HashDataAsync(source, cancellationToken);
+                var destinationHash = await SHA256.HashDataAsync(destination, cancellationToken);
+                if (!sourceHash.AsSpan().SequenceEqual(destinationHash))
+                {
+                    return false;
+                }
+            }
+
+            foreach (var episode in file.Numbers.Episodes)
+            {
+                if (!episodeIds.TryGetValue((episode.SeasonNumber, episode.EpisodeNumber), out var episodeId))
+                {
+                    return false;
+                }
+                var trackedPath = await seriesCatalogRepository.GetEpisodeFilePathAsync(episodeId, cancellationToken);
+                if (string.IsNullOrWhiteSpace(trackedPath) || !IsSamePath(trackedPath, file.Preview.DestinationPath))
+                {
+                    return false;
+                }
+            }
+        }
+        return true;
+    }
+
+    private static string EpisodeKey(int seasonNumber, int episodeNumber)
+        => $"S{seasonNumber:D2}E{episodeNumber:D2}";
+
+    private static StringComparer GetPathComparer()
+        => OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal;
 
     private async Task<ImportPreviewResponse> EnrichPreviewWithMediaProbeAsync(
         ImportPreviewResponse preview,
@@ -623,25 +1539,53 @@ public sealed partial class ImportPipelineService(
         return request with { SourcePath = resolved, FileName = fileName };
     }
 
+    private static IReadOnlyList<string>? TryListImportableVideoFiles(string? sourcePath)
+    {
+        if (string.IsNullOrWhiteSpace(sourcePath) || !Directory.Exists(sourcePath))
+        {
+            return null;
+        }
+
+        try
+        {
+            return Directory
+                .EnumerateFiles(sourcePath, "*.*", SearchOption.AllDirectories)
+                .Where(path => SupportedVideoExtensions.Contains(Path.GetExtension(path)))
+                .Where(path => !SampleTokenPattern().IsMatch(Path.GetFileNameWithoutExtension(path)))
+                .OrderBy(path => path, StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return null;
+        }
+    }
+
     /// <summary>
     /// The root of the library that owns this media type, or null when no
     /// library of that type has one. First match wins; a library without a root
     /// is skipped rather than treated as an empty answer.
     /// </summary>
-    private static string? ResolveLibraryRoot(IReadOnlyList<LibraryItem> libraries, string mediaType)
+    private static LibraryItem? ResolveLibrary(IReadOnlyList<LibraryItem> libraries, string mediaType)
         => libraries
             .Where(library => NormalizeMediaType(library.MediaType) == mediaType)
-            .Select(library => library.RootPath)
-            .FirstOrDefault(root => !string.IsNullOrWhiteSpace(root));
+            .FirstOrDefault(library => !string.IsNullOrWhiteSpace(library.RootPath));
 
-    private static ImportPreviewResponse ResolveImportPreview(
+    private static string? ResolveLibraryRoot(IReadOnlyList<LibraryItem> libraries, string mediaType)
+        => ResolveLibrary(libraries, mediaType)?.RootPath;
+
+    private async Task<ImportPreviewResponse> ResolveImportPreviewAsync(
         ImportPreviewRequest request,
         PlatformSettingsSnapshot settings,
         IReadOnlyList<DestinationRuleItem> rules,
-        IReadOnlyList<LibraryItem> libraries)
+        IReadOnlyList<LibraryItem> libraries,
+        CancellationToken cancellationToken)
     {
         request = ResolveDirectorySource(request);
         var mediaType = NormalizeMediaType(request.MediaType);
+        var seriesNumbering = mediaType == "tv"
+            ? await ResolveSeriesNumberingAsync(request, cancellationToken)
+            : null;
         var title = TitleForActivity(request);
         var rule = rules
             .Where(item => item.IsEnabled && NormalizeMediaType(item.MediaType) == mediaType)
@@ -665,9 +1609,19 @@ public sealed partial class ImportPipelineService(
                        string.Empty;
         var template = rule?.FolderTemplate ??
                        (mediaType == "tv" ? settings.SeriesFolderFormat : settings.MovieFolderFormat);
-        var folder = ApplyTemplate(template, title, request.Year);
+        var library = ResolveLibrary(libraries, mediaType);
+        var folder = ApplyTemplate(
+            template,
+            title,
+            request.Year,
+            request.ImdbId,
+            request.TvDbId,
+            request.QualityProfile ?? library?.QualityProfileName,
+            request.Genres?.FirstOrDefault(),
+            request.Tags?.FirstOrDefault(),
+            request.Network);
         var destinationFolder = string.IsNullOrWhiteSpace(rootPath) ? folder : Path.Combine(rootPath, folder);
-        var resolvedName = ResolveDestinationFileName(request, settings, mediaType, title);
+        var resolvedName = ResolveDestinationFileName(request, settings, mediaType, title, seriesNumbering);
         var fileName = resolvedName.FileName;
         var destinationPath = Path.Combine(destinationFolder, SanitizeFileName(fileName));
         var canHardlink = CanLikelyHardlink(request.SourcePath, destinationPath);
@@ -966,7 +1920,9 @@ public sealed partial class ImportPipelineService(
         string mediaType,
         IReadOnlyList<LibraryItem> libraries,
         bool unmonitorWhenCutoffMet,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        TvImportNumbers? tvNumbersOverride = null,
+        IReadOnlyList<ImportPreviewResponse>? tvFilePreviews = null)
     {
         var library = ResolveLibraryForImport(preview.DestinationPath, mediaType, libraries);
         if (library is null)
@@ -975,6 +1931,7 @@ public sealed partial class ImportPipelineService(
         }
 
         var quality = mediaDecisionService.DetectQuality($"{preview.SourcePath} {preview.DestinationPath}");
+        var fileSizeBytes = GetFileSize(preview.DestinationPath);
         var decision = mediaDecisionService.DecideWantedState(new MediaWantedDecisionInput(
             MediaType: mediaType,
             HasFile: true,
@@ -984,9 +1941,64 @@ public sealed partial class ImportPipelineService(
             UpgradeUnknownItems: library.UpgradeUnknownItems));
         var title = TitleForActivity(request);
         var catalogId = $"{title.ToLowerInvariant().Replace(" ", "-")}-{request.Year ?? 0}".Substring(0, Math.Min(64, $"{title.ToLowerInvariant().Replace(" ", "-")}-{request.Year ?? 0}".Length));
+        var preferenceProfile = await ResolvePreferenceProfileAsync(library, mediaType, cancellationToken);
+        var customFormats = preferenceProfile is null || qualityRepository is null
+            ? null
+            : await qualityRepository.ListCustomFormatsAsync(cancellationToken);
+        var preferencePlan = preferenceProfile is null || qualityRepository is null
+            ? null
+            : await QualityProfileResolver.ResolveReleasePreferencePlanAsync(
+                qualityRepository,
+                releasePreferencePlanRepository,
+                preferenceProfile.Id,
+                cancellationToken,
+                customFormats);
+        var guidePackage = preferenceProfile is null || preferencePlan is not null || guidePackageStore is null
+            ? null
+            : (await guidePackageStore.GetCurrentAsync(cancellationToken)).Package;
+        var evidencePreviews = (tvFilePreviews is { Count: > 0 } ? tvFilePreviews : [preview])
+            .GroupBy(item => item.DestinationPath, GetPathComparer())
+            .Select(group => group.First())
+            .ToArray();
+        var evaluatedUtc = DateTimeOffset.UtcNow;
+        var preferenceEvaluations = preferenceProfile is null
+            ? []
+            : evidencePreviews
+                .Select(item => InstalledPreferenceEvaluationFactory.Create(
+                    preferenceProfile,
+                    mediaId: string.Empty,
+                    libraryId: library.Id,
+                    filePath: item.DestinationPath,
+                    fileSizeBytes: GetFileSize(item.DestinationPath),
+                    currentQuality: mediaDecisionService.DetectQuality($"{item.SourcePath} {item.DestinationPath}"),
+                    evaluatedUtc: evaluatedUtc,
+                    source: "filesystem.import",
+                    customFormats: customFormats,
+                    guidePackage: guidePackage,
+                    preferencePlan: preferencePlan))
+                .OfType<PreferenceEvaluationSnapshot>()
+                .ToArray();
+        var preferenceEvaluation = preferenceEvaluations.FirstOrDefault();
 
         if (mediaType == "tv")
         {
+            // Parse the source name, not the renamed destination. A Daily or
+            // Absolute release may have been renamed to canonical SxxEyy
+            // tokens already; parsing that output would lose the source
+            // numbering model and could attach the file to the wrong episode.
+            var episodeNumbers = tvNumbersOverride;
+            if (episodeNumbers is null)
+            {
+                var seriesNumbering = await ResolveSeriesNumberingAsync(request, cancellationToken);
+                episodeNumbers = ParseTvImportNumbers(
+                    preview.SourcePath,
+                    preview.DestinationPath,
+                    fileSizeBytes,
+                    SeriesNumberingSchemes.Resolve(
+                        request.SeriesType ?? seriesNumbering?.SeriesType,
+                        request.NumberingScheme ?? seriesNumbering?.NumberingScheme),
+                    seriesNumbering);
+            }
             var result = await seriesCatalogRepository.ImportExistingAsync(
                 library.Id,
                 title,
@@ -998,10 +2010,22 @@ public sealed partial class ImportPipelineService(
                 decision.QualityCutoffMet,
                 unmonitorWhenCutoffMet,
                 preview.DestinationPath,
-                GetFileSize(preview.DestinationPath),
-                null,
-                cancellationToken);
-            return new CatalogImportResult { CatalogUpdated = result, CatalogId = result ? catalogId : null };
+                fileSizeBytes,
+                episodeNumbers.Episodes,
+                cancellationToken,
+                preferenceEvaluation,
+                episodeNumbers.AlternateEpisodes,
+                episodeNumbers.SeasonPacks,
+                preferenceEvaluations.Skip(1).ToArray());
+            // The repository's legacy single-item boolean means "a new series
+            // row was created", not "the import was recorded". A download
+            // tied to an existing series therefore used to report a successful
+            // file import with CatalogUpdated=false and skipped workflow
+            // verification. An explicit series id is proof that this was an
+            // existing, addressable catalogue item; the write above still
+            // updates its wanted state and episode file.
+            var catalogUpdated = result || !string.IsNullOrWhiteSpace(request.SeriesId);
+            return new CatalogImportResult { CatalogUpdated = catalogUpdated, CatalogId = catalogUpdated ? catalogId : null };
         }
 
         var movieResult = await movieCatalogRepository.ImportExistingAsync(
@@ -1015,9 +2039,52 @@ public sealed partial class ImportPipelineService(
             decision.QualityCutoffMet,
             unmonitorWhenCutoffMet,
             preview.DestinationPath,
-            GetFileSize(preview.DestinationPath),
-            cancellationToken);
+            fileSizeBytes,
+            cancellationToken,
+            preferenceEvaluation);
         return new CatalogImportResult { CatalogUpdated = movieResult, CatalogId = movieResult ? catalogId : null };
+    }
+
+    private async Task<QualityProfileItem?> ResolvePreferenceProfileAsync(
+        LibraryItem library,
+        string mediaType,
+        CancellationToken cancellationToken)
+    {
+        if (qualityRepository is not null && !string.IsNullOrWhiteSpace(library.QualityProfileId))
+        {
+            var profile = (await qualityRepository.ListQualityProfilesAsync(cancellationToken))
+                .FirstOrDefault(item => string.Equals(item.Id, library.QualityProfileId, StringComparison.OrdinalIgnoreCase));
+            if (profile is not null)
+            {
+                return profile;
+            }
+        }
+
+        // Older libraries can predate a persisted quality-profile id. Keep the
+        // import evidence useful by compiling the library's effective cutoff
+        // into the same typed contract, while clearly leaving custom formats
+        // out of the legacy translation.
+        if (string.IsNullOrWhiteSpace(library.CutoffQuality))
+        {
+            return null;
+        }
+
+        var now = DateTimeOffset.UtcNow;
+        return new QualityProfileItem(
+            Id: $"library/{library.Id}",
+            Name: library.QualityProfileName ?? library.Name,
+            MediaType: mediaType,
+            CutoffQuality: library.CutoffQuality,
+            AllowedQualities: library.CutoffQuality,
+            CustomFormatIds: string.Empty,
+            UpgradeUntilCutoff: library.UpgradeUntilCutoff,
+            UpgradeUnknownItems: library.UpgradeUnknownItems,
+            AllowLowerQualityReplacements: false,
+            PresetId: null,
+            PresetVersion: null,
+            PresetDrifted: false,
+            CreatedUtc: library.CreatedUtc == default ? now : library.CreatedUtc,
+            UpdatedUtc: library.UpdatedUtc == default ? now : library.UpdatedUtc);
     }
 
     private static long? GetFileSize(string path)
@@ -1031,6 +2098,154 @@ public sealed partial class ImportPipelineService(
             return null;
         }
     }
+
+    private async Task<SeriesNumberingDetail?> ResolveSeriesNumberingAsync(
+        ImportPreviewRequest request,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(request.SeriesId))
+        {
+            return null;
+        }
+
+        return await seriesCatalogRepository.GetNumberingAsync(
+            request.SeriesId.Trim(),
+            cancellationToken);
+    }
+
+    private static TvImportNumbers ParseTvImportNumbers(
+        string sourcePath,
+        string destinationPath,
+        long? fileSizeBytes,
+        string? requestedScheme = null,
+        SeriesNumberingDetail? numbering = null)
+    {
+        var selectedScheme = SeriesNumberingSchemes.Normalize(requestedScheme);
+        // Numbering belongs to the release name, while file ownership belongs
+        // to the placed library file. Keeping those paths separate is
+        // essential: download-client cleanup may remove sourcePath after a
+        // successful import, and episode rows must not then point at a file
+        // Deluno deliberately stopped owning.
+        var selected = SeriesNumberingResolver.ParseFileName(sourcePath, selectedScheme).Matches;
+        var episodes = new List<ImportedEpisodeItem>();
+        foreach (var item in selected)
+        {
+            if (item.SeasonNumber is int seasonNumber && item.EpisodeNumber is int episodeNumber)
+            {
+                if (numbering is not null)
+                {
+                    var catalogued = numbering.Episodes.Count(episode =>
+                        episode.SeasonNumber == seasonNumber && episode.EpisodeNumber == episodeNumber);
+                    if (catalogued != 1)
+                    {
+                        // A syntactically valid S99E99 token is not permission
+                        // to manufacture that episode in a known series. Zero
+                        // and duplicate catalogue matches both require review.
+                        continue;
+                    }
+                }
+
+                episodes.Add(new ImportedEpisodeItem(
+                    seasonNumber,
+                    episodeNumber,
+                    HasFile: true,
+                    FilePath: destinationPath,
+                    FileSizeBytes: fileSizeBytes));
+                continue;
+            }
+
+            // Alternate numbering is only safe when the persisted catalogue
+            // maps the token to exactly one canonical episode. If the series
+            // is not known yet, retain the alternate fact for the repository's
+            // later resolution path instead of guessing a season/episode.
+            if (numbering is null ||
+                !SeriesNumberingResolver.TryResolve(item, numbering.Episodes, out var match, out _))
+            {
+                continue;
+            }
+
+            episodes.Add(new ImportedEpisodeItem(
+                match!.SeasonNumber,
+                match.EpisodeNumber,
+                HasFile: true,
+                FilePath: destinationPath,
+                FileSizeBytes: fileSizeBytes,
+                AbsoluteNumber: item.AbsoluteNumber,
+                AirDate: item.AirDate,
+                SceneSeasonNumber: item.SceneSeasonNumber,
+                SceneEpisodeNumber: item.SceneEpisodeNumber,
+                NumberingSource: match.NumberingSource));
+        }
+
+        var alternateEpisodes = new List<ImportedEpisodeNumberingItem>();
+        foreach (var scheme in new[]
+        {
+            SeriesNumberingSchemes.AirDate,
+            SeriesNumberingSchemes.Absolute,
+            SeriesNumberingSchemes.Scene
+        })
+        {
+            var parsed = SeriesNumberingResolver.ParseFileName(sourcePath, scheme);
+            alternateEpisodes.AddRange(parsed.Matches.Select(item => new ImportedEpisodeNumberingItem(
+                item.NumberingScheme,
+                item.SeasonNumber,
+                item.EpisodeNumber,
+                item.AbsoluteNumber,
+                item.SceneSeasonNumber,
+                item.SceneEpisodeNumber,
+                item.AirDate,
+                HasFile: true,
+                FilePath: destinationPath,
+                FileSizeBytes: fileSizeBytes)));
+        }
+
+        var seasonPacks = SeriesNumberingResolver
+            .ParseSeasonPackNumbers(sourcePath)
+            .Select(seasonNumber => new ImportedSeasonPackItem(
+                seasonNumber,
+                destinationPath,
+                fileSizeBytes))
+            .ToArray();
+
+        return new TvImportNumbers(episodes.Distinct().ToArray(), alternateEpisodes.Distinct().ToArray(), seasonPacks);
+    }
+
+    private sealed record TvImportNumbers(
+        IReadOnlyList<ImportedEpisodeItem> Episodes,
+        IReadOnlyList<ImportedEpisodeNumberingItem> AlternateEpisodes,
+        IReadOnlyList<ImportedSeasonPackItem> SeasonPacks);
+
+    private sealed record TvPackFilePlan(
+        ImportPreviewRequest Request,
+        ImportPreviewResponse Preview,
+        TvImportNumbers Numbers,
+        IReadOnlyList<string> Warnings);
+
+    private sealed record TvPackPlan(
+        ImportPreviewResponse Summary,
+        IReadOnlyList<TvPackFilePlan> Files,
+        TvImportNumbers Numbers,
+        SeriesNumberingDetail? Numbering,
+        IReadOnlyList<string> BlockReasons,
+        bool AlreadyCommitted,
+        IReadOnlyList<TvPackReplacement> Replacements);
+
+    private sealed record TvPackReplacement(
+        string EpisodeId,
+        string ExistingPath,
+        string DestinationPath);
+
+    private sealed record TvPackBackup(
+        string ExistingPath,
+        string BackupPath);
+
+    private sealed record TvPackPlacement(
+        TvPackFilePlan File,
+        string StagingPath,
+        string Mode,
+        bool UsedFallback,
+        bool SourceMoved,
+        bool Finalized);
 
     private static IReadOnlyList<string> BuildImportWarnings(
         string sourcePath,
@@ -1359,24 +2574,33 @@ public sealed partial class ImportPipelineService(
         };
     }
 
-    private static string ApplyTemplate(string? template, string title, int? year)
-    {
-        var safeTitle = SanitizeFileName(title);
-        var safeYear = year?.ToString() ?? "Unknown Year";
-        return SanitizeFileName((string.IsNullOrWhiteSpace(template) ? "{Title} ({Year})" : template)
-            .Replace("{Movie Title}", safeTitle, StringComparison.OrdinalIgnoreCase)
-            .Replace("{Series Title}", safeTitle, StringComparison.OrdinalIgnoreCase)
-            .Replace("{Title}", safeTitle, StringComparison.OrdinalIgnoreCase)
-            .Replace("{Release Year}", safeYear, StringComparison.OrdinalIgnoreCase)
-            .Replace("{Series Year}", safeYear, StringComparison.OrdinalIgnoreCase)
-            .Replace("{Year}", safeYear, StringComparison.OrdinalIgnoreCase));
-    }
+    private static string ApplyTemplate(
+        string? template,
+        string title,
+        int? year,
+        string? imdbId = null,
+        string? tvDbId = null,
+        string? qualityProfile = null,
+        string? genre = null,
+        string? tag = null,
+        string? network = null)
+        => NamingTemplateRenderer.RenderFolder(
+            template,
+            title,
+            year,
+            imdbId,
+            tvDbId,
+            qualityProfile,
+            genre,
+            tag,
+            network);
 
     private static ResolvedDestinationFileName ResolveDestinationFileName(
         ImportPreviewRequest request,
         PlatformSettingsSnapshot settings,
         string mediaType,
-        string title)
+        string title,
+        SeriesNumberingDetail? numbering = null)
     {
         var incomingName = string.IsNullOrWhiteSpace(request.FileName)
             ? Path.GetFileName(request.SourcePath)
@@ -1398,16 +2622,46 @@ public sealed partial class ImportPipelineService(
             return new ResolvedDestinationFileName($"{movieName}{extension}", null);
         }
 
-        var episode = EpisodeNumberPattern().Match(incomingName);
-        if (!episode.Success ||
-            !int.TryParse(episode.Groups["season"].Value, out var seasonNumber) ||
-            !int.TryParse(episode.Groups["episode"].Value, out var episodeNumber))
+        var scheme = SeriesNumberingSchemes.Resolve(
+            request.SeriesType ?? numbering?.SeriesType,
+            request.NumberingScheme ?? numbering?.NumberingScheme);
+        var parsedEpisodes = SeriesNumberingResolver.ParseFileName(incomingName, scheme);
+        if (parsedEpisodes.Matches.Count != 1)
         {
             return new ResolvedDestinationFileName(
                 incomingName,
                 "Rename on import preserved this TV filename because Deluno could not safely determine its season and episode number.");
         }
 
+        var parsed = parsedEpisodes.Matches[0];
+        int seasonNumber;
+        int episodeNumber;
+        SeriesEpisodeNumbering? cataloguedEpisode;
+        if (parsed.SeasonNumber is int parsedSeason && parsed.EpisodeNumber is int parsedEpisode)
+        {
+            seasonNumber = parsedSeason;
+            episodeNumber = parsedEpisode;
+            cataloguedEpisode = numbering?.Episodes.SingleOrDefault(item =>
+                item.SeasonNumber == seasonNumber && item.EpisodeNumber == episodeNumber);
+        }
+        else if (numbering is not null &&
+                 SeriesNumberingResolver.TryResolve(parsed, numbering.Episodes, out var match, out _))
+        {
+            seasonNumber = match!.SeasonNumber;
+            episodeNumber = match.EpisodeNumber;
+            cataloguedEpisode = match;
+        }
+        else
+        {
+            return new ResolvedDestinationFileName(
+                incomingName,
+                $"Rename on import preserved this TV filename because its {scheme} number could not be matched to one catalogued episode.");
+        }
+
+        var episodeTitle = string.IsNullOrWhiteSpace(cataloguedEpisode?.Title)
+            ? $"Episode {episodeNumber:D2}"
+            : cataloguedEpisode.Title.Trim();
+        var quality = LibraryQualityDecider.DetectQuality($"{incomingName} {request.SourcePath}") ?? string.Empty;
         var formatted = settings.EpisodeFileFormat
             .Replace("{Series Title}", SanitizeFileName(title), StringComparison.OrdinalIgnoreCase)
             .Replace("{Title}", SanitizeFileName(title), StringComparison.OrdinalIgnoreCase)
@@ -1415,13 +2669,12 @@ public sealed partial class ImportPipelineService(
             .Replace("{season}", seasonNumber.ToString(), StringComparison.OrdinalIgnoreCase)
             .Replace("{episode:00}", episodeNumber.ToString("D2"), StringComparison.OrdinalIgnoreCase)
             .Replace("{episode}", episodeNumber.ToString(), StringComparison.OrdinalIgnoreCase)
-            .Replace("{Episode Title}", $"Episode {episodeNumber:D2}", StringComparison.OrdinalIgnoreCase)
-            .Replace("{Quality}", "", StringComparison.OrdinalIgnoreCase);
-        return new ResolvedDestinationFileName($"{SanitizeFileName(formatted)}{extension}", null);
+            .Replace("{Episode Title}", episodeTitle, StringComparison.OrdinalIgnoreCase)
+            .Replace("{Quality}", quality, StringComparison.OrdinalIgnoreCase);
+        return new ResolvedDestinationFileName(
+            $"{NamingTemplateRenderer.RenderSegment(formatted, title: null, year: null)}{extension}",
+            null);
     }
-
-    [GeneratedRegex(@"\bS(?<season>\d{1,2})E(?<episode>\d{1,3})\b", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
-    private static partial Regex EpisodeNumberPattern();
 
     [GeneratedRegex(@"(^|[.\-_\s])sample([.\-_\s]|$)", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
     private static partial Regex SampleTokenPattern();

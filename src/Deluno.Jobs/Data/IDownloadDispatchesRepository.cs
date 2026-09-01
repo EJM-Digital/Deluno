@@ -1,3 +1,4 @@
+using Deluno.Contracts;
 using Deluno.Jobs.Contracts;
 
 namespace Deluno.Jobs.Data;
@@ -21,7 +22,9 @@ public interface IDownloadDispatchesRepository
         string? grabMessage,
         string? grabFailureCode,
         string? grabResponseJson,
-        CancellationToken cancellationToken);
+        CancellationToken cancellationToken,
+        IntegrationFailure? failure = null,
+        string? externalId = null);
 
     /// <summary>
     /// Record detection of a download in the client queue (from polling).
@@ -41,7 +44,8 @@ public interface IDownloadDispatchesRepository
         string? importedFilePath,
         string? importFailureCode,
         string? importFailureMessage,
-        CancellationToken cancellationToken);
+        CancellationToken cancellationToken,
+        IntegrationFailure? failure = null);
 
     /// <summary>
     /// Query dispatches with filtering and pagination.
@@ -147,11 +151,14 @@ public class DispatchQueryFilter
     public string? GrabStatus { get; set; }
     public string? ImportStatus { get; set; }
     public string? ClientId { get; set; }
+    public string? MediaType { get; set; }
     public string? EntityType { get; set; }
     public string? EntityId { get; set; }
     public string? LibraryId { get; set; }
     public DateTimeOffset? MinGrabTime { get; set; }
     public DateTimeOffset? MaxGrabTime { get; set; }
+    public DateTimeOffset? MinImportTime { get; set; }
+    public DateTimeOffset? MaxImportTime { get; set; }
 }
 
 public class DispatchPaginationOptions

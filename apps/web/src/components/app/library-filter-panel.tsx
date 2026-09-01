@@ -64,6 +64,7 @@ export function LibraryFilterPanel({
 }) {
   const [qualityTiers, setQualityTiers] = useState<string[]>([]);
   const [genres, setGenres] = useState<string[]>([]);
+  const [tags, setTags] = useState<string[]>([]);
   const [fieldSearch, setFieldSearch] = useState("");
   const [picking, setPicking] = useState(false);
 
@@ -73,13 +74,15 @@ export function LibraryFilterPanel({
 
     void Promise.all([
       fetchJson<QualityModelSnapshot>("/api/quality-model").catch(() => null),
-      fetchJson<string[]>(genresUrl).catch(() => [])
-    ]).then(([model, catalogueGenres]) => {
+      fetchJson<string[]>(genresUrl).catch(() => []),
+      fetchJson<Array<{ name: string }>>("/api/tags").catch(() => [])
+    ]).then(([model, catalogueGenres, tagItems]) => {
       if (cancelled) return;
       // Highest first: a person filtering by quality is nearly always reaching
       // for the top of the ladder.
       setQualityTiers([...(model?.tiers ?? [])].sort((a, b) => b.rank - a.rank).map((tier) => tier.name));
       setGenres(catalogueGenres);
+      setTags(tagItems.map((tag) => tag.name).filter(Boolean).sort((a, b) => a.localeCompare(b)));
     });
 
     return () => { cancelled = true; };
@@ -144,6 +147,7 @@ export function LibraryFilterPanel({
                 field={byId.get(condition.field)}
                 qualityTiers={qualityTiers}
                 genres={genres}
+                tags={tags}
                 onChange={(next) => update(index, next)}
                 onRemove={() => remove(index)}
               />
@@ -238,6 +242,7 @@ function ConditionRow({
   field,
   qualityTiers,
   genres,
+  tags,
   onChange,
   onRemove
 }: {
@@ -245,6 +250,7 @@ function ConditionRow({
   field: FilterFieldSpec | undefined;
   qualityTiers: string[];
   genres: string[];
+  tags: string[];
   onChange: (next: FilterCondition) => void;
   onRemove: () => void;
 }) {
@@ -263,6 +269,7 @@ function ConditionRow({
 
   const options = field.valueKind === "quality" ? qualityTiers
     : field.valueKind === "genre" ? genres
+    : field.valueKind === "tag" ? tags
     : field.options ?? [];
 
   return (

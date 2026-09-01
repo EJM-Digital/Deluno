@@ -4,6 +4,8 @@ import {
   buildCacheKey,
   enforceRateLimit,
   lookupMovieReleaseDates,
+  lookupMovieCollection,
+  lookupPersonImdbId,
   lookupSeriesCatalogue,
   lookupTmdb,
   mapTmdbResult,
@@ -11,8 +13,10 @@ import {
   pickContentRating,
   pickTrailerUrl,
   matchRoute,
+  buildPersonImdbResolverUrl,
   parseLookup
 } from "../src/index.js";
+import metadataGateway from "../src/index.js";
 
 /** Minimal TMDb stand-in: answers by URL path, counts the calls it received. */
 function stubTmdb(routes) {
@@ -68,7 +72,13 @@ test("maps a TMDb detail response into Deluno's broker contract with gateway-cac
   assert.deepEqual(result.genres, ["Action", "Science Fiction"]);
   assert.equal(result.posterUrl, "https://metadata.deluno.example/artwork/w780/poster.jpg");
   assert.equal(result.backdropUrl, "https://metadata.deluno.example/artwork/original/backdrop.jpg");
-  assert.deepEqual(result.cast, [{ personId: "6384", name: "Keanu Reeves", character: "Neo", profileUrl: "https://metadata.deluno.example/artwork/w185/neo.jpg" }]);
+  assert.deepEqual(result.cast, [{
+    personId: "6384",
+    name: "Keanu Reeves",
+    character: "Neo",
+    profileUrl: "https://metadata.deluno.example/artwork/w185/neo.jpg",
+    imdbUrl: "https://metadata.deluno.example/person/6384/imdb"
+  }]);
 
   // The key Deluno's MetadataRatingItem actually deserialises. It was "votes"
   // and was therefore dropped in transit, leaving every broker-mode library
@@ -119,7 +129,7 @@ test("carries the fields Deluno's catalogue has declared and never been sent", (
     homepage: "https://www.warnerbros.com/inception",
     original_language: "en",
     status: "Released",
-    belongs_to_collection: { name: "The Nolan Collection" },
+    belongs_to_collection: { id: 645, name: "The Nolan Collection" },
     production_companies: [{ name: "Legendary Pictures" }, { name: "Syncopy" }],
     credits: { crew: [{ job: "Editor", name: "Lee Smith" }, { job: "Director", name: "Christopher Nolan" }] },
     release_dates: { results: [
@@ -133,6 +143,7 @@ test("carries the fields Deluno's catalogue has declared and never been sent", (
   // out of the stored metadata blob. Nothing had ever put them there.
   assert.equal(detail.certification, "PG-13");
   assert.equal(detail.collection, "The Nolan Collection");
+  assert.equal(detail.collectionProviderId, "645");
   assert.equal(detail.originalLanguage, "en");
   assert.equal(detail.studio, "Legendary Pictures");
   assert.equal(detail.director, "Christopher Nolan");
@@ -230,10 +241,58 @@ test("searches TMDb once and returns card-ready results without a detail fan-out
   assert.equal(calls.length, 1);
 });
 
+test("preserves a confirmed 404 for an exact provider identity", async () => {
+  const previousFetch = globalThis.fetch;
+  const values = new Map();
+  const cache = {
+    async get(key, format) {
+      const value = values.get(key) ?? null;
+      return format === "json" && typeof value === "string" ? JSON.parse(value) : value;
+    },
+    async put(key, value) { values.set(key, value); }
+  };
+  globalThis.fetch = async () => ({ ok: false, status: 404, json: async () => ({}) });
+
+  try {
+    const response = await metadataGateway.fetch(
+      new Request("https://metadata.deluno.test/metadata/search?mediaType=movies&query=Removed&providerId=1603343", {
+        headers: { "CF-Connecting-IP": "192.0.2.1" }
+      }),
+      { TMDB_API_KEY: "test-key", METADATA_CACHE: cache });
+
+    assert.equal(response.status, 404);
+    assert.deepEqual(await response.json(), {
+      error: "provider_record_missing",
+      provider: "tmdb",
+      providerId: "1603343"
+    });
+  } finally {
+    globalThis.fetch = previousFetch;
+  }
+});
+
+test("resolves a TMDb person to IMDb without putting the provider id in the browser", async () => {
+  const tmdb = stubTmdb({
+    "/3/person/6384/external_ids": { imdb_id: "nm0000206" }
+  });
+
+  assert.equal(await lookupPersonImdbId("6384", "secret", tmdb.fetch), "nm0000206");
+  assert.deepEqual(tmdb.calls, ["/3/person/6384/external_ids"]);
+  assert.equal(buildPersonImdbResolverUrl("6384", "https://metadata.deluno.example"), "https://metadata.deluno.example/person/6384/imdb");
+  assert.equal(buildPersonImdbResolverUrl("6384", null), null);
+});
+
+test("does not invent an IMDb person id when TMDb has none", async () => {
+  const tmdb = stubTmdb({ "/3/person/6384/external_ids": { imdb_id: null } });
+  assert.equal(await lookupPersonImdbId("6384", "secret", tmdb.fetch), null);
+});
+
 test("routes the catalogue and release-date endpoints, and nothing else", () => {
   assert.deepEqual(matchRoute("/metadata/search"), { kind: "search" });
   assert.deepEqual(matchRoute("/metadata/tv/1396/catalogue"), { kind: "catalogue", id: "1396" });
   assert.deepEqual(matchRoute("/metadata/movie/78/release-dates"), { kind: "release-dates", id: "78" });
+  assert.deepEqual(matchRoute("/metadata/movie/645/collection"), { kind: "collection", id: "645" });
+  assert.deepEqual(matchRoute("/person/6384/imdb"), { kind: "person-imdb", id: "6384" });
   assert.equal(matchRoute("/metadata/tv/abc/catalogue"), null);
   assert.equal(matchRoute("/metadata/tv/1396/catalogue/extra"), null);
   assert.equal(matchRoute("/metadata/anything"), null);
@@ -312,6 +371,31 @@ test("reports no dates rather than guessing when TMDb has none", async () => {
   assert.deepEqual([result.inCinemas, result.digital, result.physical], [null, null, null]);
 });
 
+test("returns the complete movie membership for a TMDb collection", async () => {
+  const tmdb = stubTmdb({
+    "/3/collection/645": {
+      id: 645,
+      name: "The Nolan Collection",
+      overview: "Christopher Nolan films.",
+      poster_path: "/collection.jpg",
+      parts: [
+        { id: 27205, title: "Inception", release_date: "2010-07-15", poster_path: "/inception.jpg" },
+        { id: 157336, title: "Interstellar", release_date: "2014-11-07", poster_path: null }
+      ]
+    }
+  });
+
+  const result = await lookupMovieCollection("645", "key", tmdb.fetch);
+
+  assert.equal(result.providerId, "645");
+  assert.equal(result.name, "The Nolan Collection");
+  assert.equal(result.movies.length, 2);
+  assert.equal(result.movies[0].year, 2010);
+  assert.equal(result.movies[0].posterUrl, "https://image.tmdb.org/t/p/w780/inception.jpg");
+  assert.equal(result.movies[1].posterUrl, null);
+  assert.deepEqual(tmdb.calls, ["/3/collection/645"]);
+});
+
 test("bills the whole cast, and folds each crew member into one credit", () => {
   // Twelve billed players and a crew credited the way TMDb actually credits
   // one: the director also produces, the writer is credited twice, and most of
@@ -347,9 +431,9 @@ test("bills the whole cast, and folds each crew member into one credit", () => {
   // Title-card order, not TMDb's; one row per person; the unrecognised job is
   // gone; and a person credited twice reads as one entry with both jobs.
   assert.deepEqual(detail.crew, [
-    { personId: "4", name: "Denis Villeneuve", job: "Director, Producer", profileUrl: "https://metadata.deluno.example/artwork/w185/dv.jpg" },
-    { personId: "3", name: "Ted Chiang", job: "Screenplay, Novel", profileUrl: null },
-    { personId: "1", name: "Shawn Levy", job: "Producer", profileUrl: null }
+    { personId: "4", name: "Denis Villeneuve", job: "Director, Producer", profileUrl: "https://metadata.deluno.example/artwork/w185/dv.jpg", imdbUrl: "https://metadata.deluno.example/person/4/imdb" },
+    { personId: "3", name: "Ted Chiang", job: "Screenplay, Novel", profileUrl: null, imdbUrl: "https://metadata.deluno.example/person/3/imdb" },
+    { personId: "1", name: "Shawn Levy", job: "Producer", profileUrl: null, imdbUrl: "https://metadata.deluno.example/person/1/imdb" }
   ]);
 
   // The person id is what a credit links to and what following a filmography

@@ -12,6 +12,7 @@ import { Field } from "../components/ui/field";
 import { PresetField } from "../components/ui/preset-field";
 import { authedFetch } from "../lib/use-auth";
 import { fetchJson, type ApiKeyItem, type CreatedApiKeyResponse } from "../lib/api";
+import { formatDateTime, type DisplayPreferences, useDisplayPreferences } from "../lib/display-preferences";
 
 interface SystemApiLoaderData {
   apiKeys: ApiKeyItem[];
@@ -27,8 +28,9 @@ export function SystemApiPage() {
   const apiKeys = loaderData.apiKeys;
   const revalidator = useRevalidator();
   const save = useSaveStatus();
+  const { preferences } = useDisplayPreferences();
   const [name, setName] = useState("External automation");
-  const [scopes, setScopes] = useState("all");
+  const [scopes, setScopes] = useState("read, write, queue");
   const [createdKey, setCreatedKey] = useState<CreatedApiKeyResponse | null>(null);
   const [busy, setBusy] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
@@ -148,9 +150,10 @@ export function SystemApiPage() {
                   value={scopes}
                   onChange={setScopes}
                   options={[
-                    { label: "Full local API access", value: "all" },
                     { label: "Read-only telemetry", value: "read" },
-                    { label: "Media automation", value: "read, queue, imports, health" }
+                    { label: "Home Assistant / automation", value: "read, write, queue" },
+                    { label: "Mobile app", value: "read, write, queue, imports" },
+                    { label: "Full local API access", value: "all" }
                   ]}
                   customLabel="Custom scopes"
                   customPlaceholder="read, queue, imports"
@@ -261,8 +264,8 @@ curl -H "Authorization: Bearer deluno_..." http://127.0.0.1:5099/api/integration
               <ListRow key={item.id}>
                 <ListNameCell name={item.name} sub={item.prefix} />
                 <ListCell primary={item.scopes} />
-                <ListCell numeric primary={formatWhen(item.createdUtc)} />
-                <ListCell numeric primary={item.lastUsedUtc ? formatWhen(item.lastUsedUtc) : "Never"} secondary={item.lastUsedUtc ? undefined : "unused"} />
+                <ListCell numeric primary={formatWhen(item.createdUtc, preferences)} />
+                <ListCell numeric primary={item.lastUsedUtc ? formatWhen(item.lastUsedUtc, preferences) : "Never"} secondary={item.lastUsedUtc ? undefined : "unused"} />
                 <ListCell mobile align="end">
                   <Button type="button" size="sm" variant="outline" disabled={deletingId === item.id} onClick={() => void handleDelete(item)}>
                     {deletingId === item.id ? <LoaderCircle className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
@@ -310,11 +313,6 @@ function ApiGuideCard({ body, title }: { body: string; title: string }) {
   );
 }
 
-function formatWhen(value: string) {
-  return new Intl.DateTimeFormat(undefined, {
-    month: "short",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit"
-  }).format(new Date(value));
+function formatWhen(value: string, preferences: DisplayPreferences) {
+  return formatDateTime(value, preferences);
 }

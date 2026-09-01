@@ -1,4 +1,7 @@
 using MetadataSearchResult = Deluno.Integrations.Metadata.MetadataSearchResult;
+using ArtworkCacheKeys = Deluno.Integrations.Metadata.ArtworkCacheKeys;
+using MetadataProviderIssue = Deluno.Integrations.Metadata.MetadataProviderIssue;
+using MetadataIdentityConflict = Deluno.Integrations.Metadata.MetadataIdentityConflict;
 using Deluno.Contracts;
 using Deluno.Platform.Contracts;
 using Deluno.Platform.Data;
@@ -8,6 +11,7 @@ using System.Text.Json;
 using Deluno.Infrastructure.Storage;
 using Deluno.Media;
 using Deluno.Quality;
+using Deluno.Quality.ReleasePreferences;
 using Deluno.Series.Contracts;
 using Deluno.Series.Migrations;
 using Microsoft.Data.Sqlite;
@@ -39,6 +43,10 @@ public sealed class SqliteSeriesCatalogRepository(
 
     public async Task<SeriesListItem> AddAsync(CreateSeriesRequest request, CancellationToken cancellationToken)
     {
+        var seriesType = SeriesTypes.Normalize(request.SeriesType);
+        var numberingScheme = SeriesNumberingSchemes.Resolve(seriesType, request.NumberingScheme);
+        var numberingSource = SeriesNumberingSources.Normalize(request.NumberingSource);
+
         if (sharedMediaStateRepository is not null)
         {
             var id = await sharedMediaStateRepository.AddAsync(
@@ -59,6 +67,20 @@ public sealed class SqliteSeriesCatalogRepository(
                     request.ExternalUrl,
                     request.MetadataJson),
                 cancellationToken);
+
+            // The shared media store owns the common row, while TV-specific
+            // numbering remains in this catalogue. Do not reset an existing
+            // series when a legacy caller omitted the new optional fields.
+            if (seriesType != SeriesTypes.Standard ||
+                numberingScheme != SeriesNumberingSchemes.Standard ||
+                numberingSource != SeriesNumberingSources.Provider)
+            {
+                await UpdateNumberingAsync(
+                    id,
+                    new UpdateSeriesNumberingRequest(seriesType, numberingScheme, numberingSource),
+                    cancellationToken);
+            }
+
             return (await GetByIdAsync(id, cancellationToken))!;
         }
 
@@ -83,7 +105,10 @@ public sealed class SqliteSeriesCatalogRepository(
             MetadataJson: NormalizeText(request.MetadataJson),
             MetadataUpdatedUtc: string.IsNullOrWhiteSpace(request.MetadataProviderId) ? null : now,
             CreatedUtc: now,
-            UpdatedUtc: now);
+            UpdatedUtc: now,
+            SeriesType: seriesType,
+            NumberingScheme: numberingScheme,
+            NumberingSource: numberingSource);
 
         await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
             DelunoDatabaseNames.Series,
@@ -129,7 +154,11 @@ public sealed class SqliteSeriesCatalogRepository(
                 metadata_json,
                 metadata_updated_utc,
                 created_utc,
-                updated_utc
+                updated_utc,
+                series_type,
+                numbering_scheme,
+                numbering_source,
+                numbering_updated_utc
             )
             VALUES (
                 @id,
@@ -149,7 +178,11 @@ public sealed class SqliteSeriesCatalogRepository(
                 @metadataJson,
                 @metadataUpdatedUtc,
                 @createdUtc,
-                @updatedUtc
+                @updatedUtc,
+                @seriesType,
+                @numberingScheme,
+                @numberingSource,
+                @numberingUpdatedUtc
             );
             """;
 
@@ -171,6 +204,10 @@ public sealed class SqliteSeriesCatalogRepository(
         AddParameter(command, "@metadataUpdatedUtc", series.MetadataUpdatedUtc?.ToString("O"));
         AddParameter(command, "@createdUtc", series.CreatedUtc.ToString("O"));
         AddParameter(command, "@updatedUtc", series.UpdatedUtc.ToString("O"));
+        AddParameter(command, "@seriesType", series.SeriesType);
+        AddParameter(command, "@numberingScheme", series.NumberingScheme);
+        AddParameter(command, "@numberingSource", series.NumberingSource);
+        AddParameter(command, "@numberingUpdatedUtc", series.NumberingSource == SeriesNumberingSources.Owner ? series.UpdatedUtc.ToString("O") : null);
 
         try
         {
@@ -198,6 +235,9 @@ public sealed class SqliteSeriesCatalogRepository(
                 MediaKind.Series,
                 id,
                 cancellationToken);
+            var sharedNumbering = entry is null
+                ? DefaultNumberingHeader
+                : await GetNumberingHeaderAsync(id, cancellationToken);
             return entry is null
                 ? null
                 : new SeriesListItem(
@@ -238,7 +278,10 @@ public sealed class SqliteSeriesCatalogRepository(
                     AudioCodec: entry.AudioCodec,
                     AudioChannels: entry.AudioChannels,
                     ReleaseGroup: entry.ReleaseGroup,
-                    RuntimeMinutes: entry.RuntimeMinutes);
+                    RuntimeMinutes: entry.RuntimeMinutes,
+                    SeriesType: sharedNumbering.SeriesType,
+                    NumberingScheme: sharedNumbering.NumberingScheme,
+                    NumberingSource: sharedNumbering.NumberingSource);
         }
 
         await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
@@ -280,7 +323,11 @@ public sealed class SqliteSeriesCatalogRepository(
                 s.runtime_minutes,
                 s.popularity,
                 s.vote_count,
-            {CatalogueWantedState.PageColumns}
+            {CatalogueWantedState.PageColumns},
+                s.series_type,
+                s.numbering_scheme,
+                s.numbering_source,
+                s.numbering_updated_utc
             FROM series_entries s
             {CatalogueWantedState.Join("s", "series_wanted_state", "series_id", scopedToLibrary: false)}
             WHERE s.id = @id
@@ -298,6 +345,7 @@ public sealed class SqliteSeriesCatalogRepository(
         // Ordinal 19 is the current quality, 20..28 are the file facts and the
         // metadata numbers, and the search state follows.
         var singleWanted = CatalogueWantedState.Read(reader, 29);
+        var numbering = ReadNumberingHeader(reader, 29 + CatalogueWantedState.PageColumnCount);
 
         return ReadSeries(reader) with
         {
@@ -321,8 +369,237 @@ public sealed class SqliteSeriesCatalogRepository(
             // Derived, not stored — see the movie repository's note.
             ApproximateBitrateMbps = MediaFileFacts.ApproximateBitrateMbps(
                 reader.IsDBNull(21) ? null : reader.GetInt64(21),
-                reader.IsDBNull(26) ? null : (int)reader.GetInt64(26))
+                reader.IsDBNull(26) ? null : (int)reader.GetInt64(26)),
+            SeriesType = numbering.SeriesType,
+            NumberingScheme = numbering.NumberingScheme,
+            NumberingSource = numbering.NumberingSource
         };
+    }
+
+    public async Task<SeriesNumberingDetail?> GetNumberingAsync(
+        string seriesId,
+        CancellationToken cancellationToken)
+    {
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Series,
+            cancellationToken);
+
+        string seriesType;
+        string numberingScheme;
+        string numberingSource;
+        DateTimeOffset? updatedUtc;
+
+        using (var series = connection.CreateCommand())
+        {
+            series.CommandText =
+                """
+                SELECT
+                    COALESCE(series_type, 'standard'),
+                    COALESCE(numbering_scheme, 'standard'),
+                    COALESCE(numbering_source, 'provider'),
+                    numbering_updated_utc
+                FROM series_entries
+                WHERE id = @seriesId
+                LIMIT 1;
+                """;
+            AddParameter(series, "@seriesId", seriesId);
+
+            using var reader = await series.ExecuteReaderAsync(cancellationToken);
+            if (!await reader.ReadAsync(cancellationToken))
+            {
+                return null;
+            }
+
+            seriesType = SeriesTypes.Normalize(reader.IsDBNull(0) ? null : reader.GetString(0));
+            numberingScheme = SeriesNumberingSchemes.Normalize(reader.IsDBNull(1) ? null : reader.GetString(1));
+            numberingSource = SeriesNumberingSources.Normalize(reader.IsDBNull(2) ? null : reader.GetString(2));
+            updatedUtc = reader.IsDBNull(3) ? null : ParseTimestamp(reader.GetString(3));
+        }
+
+        var episodes = new List<SeriesEpisodeNumbering>();
+        using (var episodeCommand = connection.CreateCommand())
+        {
+            episodeCommand.CommandText =
+                """
+                SELECT
+                    id,
+                    season_number,
+                    episode_number,
+                    absolute_number,
+                    scene_season_number,
+                    scene_episode_number,
+                    airdate_key,
+                    numbering_source,
+                    title
+                FROM episode_entries
+                WHERE series_id = @seriesId
+                ORDER BY season_number ASC, episode_number ASC, id ASC;
+                """;
+            AddParameter(episodeCommand, "@seriesId", seriesId);
+
+            using var reader = await episodeCommand.ExecuteReaderAsync(cancellationToken);
+            while (await reader.ReadAsync(cancellationToken))
+            {
+                episodes.Add(new SeriesEpisodeNumbering(
+                    EpisodeId: reader.GetString(0),
+                    SeasonNumber: reader.GetInt32(1),
+                    EpisodeNumber: reader.GetInt32(2),
+                    AbsoluteNumber: reader.IsDBNull(3) ? null : reader.GetInt32(3),
+                    SceneSeasonNumber: reader.IsDBNull(4) ? null : reader.GetInt32(4),
+                    SceneEpisodeNumber: reader.IsDBNull(5) ? null : reader.GetInt32(5),
+                    AirDate: ParseAirDateKey(reader.IsDBNull(6) ? null : reader.GetString(6)),
+                    NumberingSource: reader.IsDBNull(7) ? null : reader.GetString(7),
+                    Title: reader.IsDBNull(8) ? null : reader.GetString(8)));
+            }
+        }
+
+        return new SeriesNumberingDetail(
+            seriesId,
+            seriesType,
+            numberingScheme,
+            numberingSource,
+            updatedUtc,
+            episodes);
+    }
+
+    public async Task<SeriesNumberingDetail?> UpdateNumberingAsync(
+        string seriesId,
+        UpdateSeriesNumberingRequest request,
+        CancellationToken cancellationToken)
+    {
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Series,
+            cancellationToken);
+        await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+
+        string currentType;
+        string currentScheme;
+        string currentSource;
+        using (var current = connection.CreateCommand())
+        {
+            current.Transaction = transaction;
+            current.CommandText =
+                """
+                SELECT
+                    COALESCE(series_type, 'standard'),
+                    COALESCE(numbering_scheme, 'standard'),
+                    COALESCE(numbering_source, 'provider')
+                FROM series_entries
+                WHERE id = @seriesId
+                LIMIT 1;
+                """;
+            AddParameter(current, "@seriesId", seriesId);
+
+            using var reader = await current.ExecuteReaderAsync(cancellationToken);
+            if (!await reader.ReadAsync(cancellationToken))
+            {
+                return null;
+            }
+
+            currentType = SeriesTypes.Normalize(reader.GetString(0));
+            currentScheme = SeriesNumberingSchemes.Normalize(reader.GetString(1));
+            currentSource = SeriesNumberingSources.Normalize(reader.GetString(2));
+        }
+
+        var seriesType = request.SeriesType is null ? currentType : SeriesTypes.Normalize(request.SeriesType);
+        var numberingScheme = request.NumberingScheme is null
+            ? currentScheme
+            : SeriesNumberingSchemes.Normalize(request.NumberingScheme);
+        var numberingSource = request.NumberingSource is null
+            ? request.Mappings is not null ? SeriesNumberingSources.Owner : currentSource
+            : SeriesNumberingSources.Normalize(request.NumberingSource);
+        var now = timeProvider.GetUtcNow();
+
+        using (var update = connection.CreateCommand())
+        {
+            update.Transaction = transaction;
+            update.CommandText =
+                """
+                UPDATE series_entries
+                SET series_type = @seriesType,
+                    numbering_scheme = @numberingScheme,
+                    numbering_source = @numberingSource,
+                    numbering_updated_utc = @numberingUpdatedUtc,
+                    updated_utc = @updatedUtc
+                WHERE id = @seriesId;
+                """;
+            AddParameter(update, "@seriesId", seriesId);
+            AddParameter(update, "@seriesType", seriesType);
+            AddParameter(update, "@numberingScheme", numberingScheme);
+            AddParameter(update, "@numberingSource", numberingSource);
+            AddParameter(update, "@numberingUpdatedUtc", now.ToString("O"));
+            AddParameter(update, "@updatedUtc", now.ToString("O"));
+            await update.ExecuteNonQueryAsync(cancellationToken);
+        }
+
+        if (request.Mappings is not null)
+        {
+            var duplicateIds = request.Mappings
+                .GroupBy(mapping => mapping.EpisodeId, StringComparer.OrdinalIgnoreCase)
+                .Where(group => group.Count() > 1)
+                .Select(group => group.Key)
+                .ToArray();
+            if (duplicateIds.Length > 0)
+            {
+                throw new ArgumentException("Each episode may appear only once in a numbering mapping.", nameof(request));
+            }
+
+            if (request.Mappings.Count == 0)
+            {
+                using var clear = connection.CreateCommand();
+                clear.Transaction = transaction;
+                clear.CommandText =
+                    """
+                    UPDATE episode_entries
+                    SET absolute_number = NULL,
+                        scene_season_number = NULL,
+                        scene_episode_number = NULL,
+                        airdate_key = NULL,
+                        numbering_source = @numberingSource
+                    WHERE series_id = @seriesId;
+                    """;
+                AddParameter(clear, "@seriesId", seriesId);
+                AddParameter(clear, "@numberingSource", numberingSource);
+                await clear.ExecuteNonQueryAsync(cancellationToken);
+            }
+            else
+            {
+                foreach (var mapping in request.Mappings)
+                {
+                    ValidateMapping(mapping);
+
+                    using var updateEpisode = connection.CreateCommand();
+                    updateEpisode.Transaction = transaction;
+                    updateEpisode.CommandText =
+                        """
+                        UPDATE episode_entries
+                        SET absolute_number = @absoluteNumber,
+                            scene_season_number = @sceneSeasonNumber,
+                            scene_episode_number = @sceneEpisodeNumber,
+                            airdate_key = @airDate,
+                            numbering_source = @numberingSource
+                        WHERE id = @episodeId
+                          AND series_id = @seriesId;
+                        """;
+                    AddParameter(updateEpisode, "@seriesId", seriesId);
+                    AddParameter(updateEpisode, "@episodeId", mapping.EpisodeId);
+                    AddParameter(updateEpisode, "@absoluteNumber", mapping.AbsoluteNumber);
+                    AddParameter(updateEpisode, "@sceneSeasonNumber", mapping.SceneSeasonNumber);
+                    AddParameter(updateEpisode, "@sceneEpisodeNumber", mapping.SceneEpisodeNumber);
+                    AddParameter(updateEpisode, "@airDate", mapping.AirDate?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture));
+                    AddParameter(updateEpisode, "@numberingSource", numberingSource);
+                    if (await updateEpisode.ExecuteNonQueryAsync(cancellationToken) != 1)
+                    {
+                        throw new ArgumentException(
+                            $"Episode '{mapping.EpisodeId}' does not belong to series '{seriesId}'.",
+                            nameof(request));
+                    }
+                }
+            }
+        }
+
+        await transaction.CommitAsync(cancellationToken);
+        return await GetNumberingAsync(seriesId, cancellationToken);
     }
 
     private static async Task<SeriesListItem?> FindExistingSeriesAsync(
@@ -352,7 +629,11 @@ public sealed class SqliteSeriesCatalogRepository(
                 s.metadata_json,
                 s.metadata_updated_utc,
                 s.created_utc,
-                s.updated_utc
+                s.updated_utc,
+                s.series_type,
+                s.numbering_scheme,
+                s.numbering_source,
+                s.numbering_updated_utc
             FROM series_entries s
             LEFT JOIN series_wanted_state w ON w.series_id = s.id
             WHERE
@@ -378,7 +659,18 @@ public sealed class SqliteSeriesCatalogRepository(
         AddParameter(command, "@startYear", series.StartYear);
 
         using var reader = await command.ExecuteReaderAsync(cancellationToken);
-        return await reader.ReadAsync(cancellationToken) ? ReadSeries(reader) : null;
+        if (!await reader.ReadAsync(cancellationToken))
+        {
+            return null;
+        }
+
+        var numbering = ReadNumberingHeader(reader, 19);
+        return ReadSeries(reader) with
+        {
+            SeriesType = numbering.SeriesType,
+            NumberingScheme = numbering.NumberingScheme,
+            NumberingSource = numbering.NumberingSource
+        };
     }
 
     public async Task RecordMetadataAttemptAsync(string id, CancellationToken cancellationToken)
@@ -396,6 +688,106 @@ public sealed class SqliteSeriesCatalogRepository(
             """;
 
         AddParameter(command, "@attemptedUtc", timeProvider.GetUtcNow().ToString("O"));
+        AddParameter(command, "@id", id);
+        await command.ExecuteNonQueryAsync(cancellationToken);
+    }
+
+    public async Task<MetadataProviderIssue?> GetMetadataProviderIssueAsync(
+        string id,
+        CancellationToken cancellationToken)
+    {
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Series,
+            cancellationToken);
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            """
+            SELECT kind, provider, provider_id, evidence_key, detected_utc, acknowledged_utc
+            FROM series_metadata_provider_issue
+            WHERE series_id = @id
+            LIMIT 1;
+            """;
+        AddParameter(command, "@id", id);
+        using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        if (!await reader.ReadAsync(cancellationToken))
+        {
+            return null;
+        }
+
+        return new MetadataProviderIssue(
+            reader.GetString(0),
+            reader.GetString(1),
+            reader.GetString(2),
+            reader.GetString(3),
+            DateTimeOffset.Parse(reader.GetString(4), CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind),
+            reader.IsDBNull(5)
+                ? null
+                : DateTimeOffset.Parse(reader.GetString(5), CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind));
+    }
+
+    public async Task<bool> RecordMetadataProviderIssueAsync(
+        string id,
+        MetadataProviderIssue issue,
+        CancellationToken cancellationToken)
+    {
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Series,
+            cancellationToken);
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            """
+            INSERT INTO series_metadata_provider_issue (
+                series_id, kind, provider, provider_id, evidence_key, detected_utc, acknowledged_utc
+            ) VALUES (
+                @id, @kind, @provider, @providerId, @evidenceKey, @detectedUtc, @acknowledgedUtc
+            )
+            ON CONFLICT(series_id) DO UPDATE SET
+                kind = excluded.kind,
+                provider = excluded.provider,
+                provider_id = excluded.provider_id,
+                evidence_key = excluded.evidence_key,
+                detected_utc = excluded.detected_utc,
+                acknowledged_utc = NULL
+            WHERE series_metadata_provider_issue.evidence_key <> excluded.evidence_key
+            RETURNING 1;
+            """;
+        AddParameter(command, "@id", id);
+        AddParameter(command, "@kind", issue.Kind);
+        AddParameter(command, "@provider", issue.Provider);
+        AddParameter(command, "@providerId", issue.ProviderId);
+        AddParameter(command, "@evidenceKey", issue.EvidenceKey);
+        AddParameter(command, "@detectedUtc", issue.DetectedUtc.ToString("O"));
+        AddParameter(command, "@acknowledgedUtc", issue.AcknowledgedUtc?.ToString("O"));
+        return await command.ExecuteScalarAsync(cancellationToken) is not null;
+    }
+
+    public async Task<MetadataProviderIssue?> AcknowledgeMetadataProviderIssueAsync(
+        string id,
+        CancellationToken cancellationToken)
+    {
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Series,
+            cancellationToken);
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            """
+            UPDATE series_metadata_provider_issue
+            SET acknowledged_utc = COALESCE(acknowledged_utc, @now)
+            WHERE series_id = @id;
+            """;
+        AddParameter(command, "@now", timeProvider.GetUtcNow().ToString("O"));
+        AddParameter(command, "@id", id);
+        await command.ExecuteNonQueryAsync(cancellationToken);
+        return await GetMetadataProviderIssueAsync(id, cancellationToken);
+    }
+
+    public async Task ClearMetadataProviderIssueAsync(string id, CancellationToken cancellationToken)
+    {
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Series,
+            cancellationToken);
+        using var command = connection.CreateCommand();
+        command.CommandText = "DELETE FROM series_metadata_provider_issue WHERE series_id = @id;";
         AddParameter(command, "@id", id);
         await command.ExecuteNonQueryAsync(cancellationToken);
     }
@@ -571,6 +963,55 @@ public sealed class SqliteSeriesCatalogRepository(
         return await command.ExecuteScalarAsync(cancellationToken) as string;
     }
 
+    public async Task<MetadataIdentityConflict?> FindMetadataIdentityConflictAsync(
+        string excludeId,
+        string title,
+        int? startYear,
+        string? imdbId,
+        string metadataProvider,
+        string metadataProviderId,
+        CancellationToken cancellationToken)
+    {
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Series,
+            cancellationToken);
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            """
+            SELECT id, title,
+                CASE
+                    WHEN metadata_provider = @metadataProvider AND metadata_provider_id = @metadataProviderId THEN 'provider-id'
+                    WHEN @imdbId IS NOT NULL AND imdb_id = @imdbId THEN 'imdb-id'
+                    ELSE 'title-year'
+                END AS reason
+            FROM series_entries
+            WHERE id <> @excludeId
+              AND (
+                    (metadata_provider = @metadataProvider AND metadata_provider_id = @metadataProviderId)
+                 OR (@imdbId IS NOT NULL AND imdb_id = @imdbId)
+                 OR (lower(title) = lower(@title) AND COALESCE(start_year, -1) = COALESCE(@startYear, -1))
+              )
+            ORDER BY
+                CASE
+                    WHEN metadata_provider = @metadataProvider AND metadata_provider_id = @metadataProviderId THEN 0
+                    WHEN @imdbId IS NOT NULL AND imdb_id = @imdbId THEN 1
+                    ELSE 2
+                END,
+                created_utc ASC
+            LIMIT 1;
+            """;
+        AddParameter(command, "@excludeId", excludeId);
+        AddParameter(command, "@title", title.Trim());
+        AddParameter(command, "@startYear", startYear);
+        AddParameter(command, "@imdbId", NormalizeExternalId(imdbId));
+        AddParameter(command, "@metadataProvider", NormalizeExternalId(metadataProvider));
+        AddParameter(command, "@metadataProviderId", NormalizeExternalId(metadataProviderId));
+        using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        return await reader.ReadAsync(cancellationToken)
+            ? new MetadataIdentityConflict(reader.GetString(0), reader.GetString(1), reader.GetString(2))
+            : null;
+    }
+
     /// <summary>
     private static string CatalogueStateScope(string? libraryId)
         => string.IsNullOrWhiteSpace(libraryId) ? string.Empty : " AND w.library_id = @libraryId";
@@ -629,6 +1070,14 @@ public sealed class SqliteSeriesCatalogRepository(
     private const int RatingOrdinal = 29;
 
     private static readonly int WantedStateOrdinal = RatingOrdinal + RatingColumns.Length;
+    private const int SeriesNumberingColumnCount = 4;
+    private static int NumberingPageOrdinal => WantedStateOrdinal + CatalogueWantedState.PageColumnCount;
+
+    private static string SeriesNumberingColumns =>
+        "s.series_type, s.numbering_scheme, s.numbering_source, s.numbering_updated_utc";
+
+    private static readonly (string SeriesType, string NumberingScheme, string NumberingSource) DefaultNumberingHeader =
+        (SeriesTypes.Standard, SeriesNumberingSchemes.Standard, SeriesNumberingSources.Provider);
 
     /// <summary>
     /// The projection a catalogue page returns. Matches <see cref="ReadSeries"/>
@@ -673,7 +1122,8 @@ public sealed class SqliteSeriesCatalogRepository(
             s.popularity,
             s.vote_count,
             {string.Join(", ", RatingColumns.Select(column => "s." + column))},
-        {CatalogueWantedState.PageColumns}
+        {CatalogueWantedState.PageColumns},
+        {SeriesNumberingColumns}
         """;
 
     /// <summary>
@@ -903,6 +1353,7 @@ public sealed class SqliteSeriesCatalogRepository(
                 var runtimeMinutes = reader.IsDBNull(26) ? (int?)null : reader.GetInt32(26);
 
                 var wanted = CatalogueWantedState.Read(reader, WantedStateOrdinal);
+                var numbering = ReadNumberingHeader(reader, NumberingPageOrdinal);
 
                 items.Add(ReadSeries(reader) with
                 {
@@ -929,10 +1380,13 @@ public sealed class SqliteSeriesCatalogRepository(
                     TargetQuality = wanted.TargetQuality,
                     QualityCutoffMet = wanted.QualityCutoffMet,
                     LastSearchUtc = wanted.LastSearchUtc,
-                    NextEligibleSearchUtc = wanted.NextEligibleSearchUtc
+                    NextEligibleSearchUtc = wanted.NextEligibleSearchUtc,
+                    SeriesType = numbering.SeriesType,
+                    NumberingScheme = numbering.NumberingScheme,
+                    NumberingSource = numbering.NumberingSource
                 });
 
-                sortValues.Add(CatalogueKeyset.ReadSortValue(reader, WantedStateOrdinal + CatalogueWantedState.PageColumnCount));
+                sortValues.Add(CatalogueKeyset.ReadSortValue(reader, NumberingPageOrdinal + SeriesNumberingColumnCount));
             }
         }
 
@@ -1265,7 +1719,11 @@ public sealed class SqliteSeriesCatalogRepository(
                 NULL AS metadata_json,
                 s.metadata_updated_utc,
                 s.created_utc,
-                s.updated_utc
+                s.updated_utc,
+                s.series_type,
+                s.numbering_scheme,
+                s.numbering_source,
+                s.numbering_updated_utc
             FROM series_entries s
             ORDER BY s.created_utc DESC, s.title ASC;
             """;
@@ -1273,10 +1731,49 @@ public sealed class SqliteSeriesCatalogRepository(
         using var reader = await command.ExecuteReaderAsync(cancellationToken);
         while (await reader.ReadAsync(cancellationToken))
         {
-            items.Add(ReadSeries(reader));
+            var numbering = ReadNumberingHeader(reader, 19);
+            items.Add(ReadSeries(reader) with
+            {
+                SeriesType = numbering.SeriesType,
+                NumberingScheme = numbering.NumberingScheme,
+                NumberingSource = numbering.NumberingSource
+            });
         }
 
         return items;
+    }
+
+    public async Task<IReadOnlySet<string>> ListReferencedArtworkCacheKeysAsync(
+        CancellationToken cancellationToken)
+    {
+        var keys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Series,
+            cancellationToken);
+
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            """
+            SELECT poster_url
+            FROM series_entries
+            WHERE poster_url LIKE '/api/metadata/artwork/%'
+            UNION ALL
+            SELECT backdrop_url
+            FROM series_entries
+            WHERE backdrop_url LIKE '/api/metadata/artwork/%';
+            """;
+
+        using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            if (!reader.IsDBNull(0) && ArtworkCacheKeys.TryGet(reader.GetString(0), out var key))
+            {
+                keys.Add(key);
+            }
+        }
+
+        return keys;
     }
 
     public async Task<int> UpdateMonitoredAsync(
@@ -1332,8 +1829,24 @@ public sealed class SqliteSeriesCatalogRepository(
 
     public async Task<SeriesListItem?> UpdateMetadataAsync(MediaMetadataUpdate update, CancellationToken cancellationToken)
     {
-        var updated = await SharedMediaState.UpdateMetadataAsync(MediaKind.Series, update, cancellationToken);
-        return updated ? await GetByIdAsync(update.Id, cancellationToken) : null;
+        bool updated;
+        try
+        {
+            updated = await SharedMediaState.UpdateMetadataAsync(MediaKind.Series, update, cancellationToken);
+        }
+        catch (SqliteException exception) when (exception.SqliteErrorCode == 19)
+        {
+            throw new Deluno.Integrations.Metadata.MetadataIdentityConflictException(
+                "Another show already owns the proposed metadata identity.",
+                exception);
+        }
+        if (!updated)
+        {
+            return null;
+        }
+
+        await ClearMetadataProviderIssueAsync(update.Id, cancellationToken);
+        return await GetByIdAsync(update.Id, cancellationToken);
     }
 
     public async Task<int> UpdateEpisodeMonitoredAsync(
@@ -1476,7 +1989,8 @@ public sealed class SqliteSeriesCatalogRepository(
                 s.id, s.title, s.start_year, s.imdb_id,
                 w.library_id, w.wanted_status, w.wanted_reason, w.has_file, w.current_quality, w.target_quality, w.quality_cutoff_met,
                 w.prevent_lower_quality_replacements, w.quality_delta_last_decision,
-                w.missing_since_utc, w.last_search_utc, w.next_eligible_search_utc, w.last_search_result, w.updated_utc
+                w.missing_since_utc, w.last_search_utc, w.next_eligible_search_utc, w.last_search_result, w.updated_utc,
+                NULL AS available_utc, w.file_path, w.file_size_bytes
             FROM series_wanted_state w
             INNER JOIN series_entries s ON s.id = w.series_id
             ORDER BY w.updated_utc DESC, s.title ASC
@@ -1532,11 +2046,21 @@ public sealed class SqliteSeriesCatalogRepository(
 
         string? title = null;
         int? startYear = null;
+        var seriesType = SeriesTypes.Standard;
+        var numberingScheme = SeriesNumberingSchemes.Standard;
+        var numberingSource = SeriesNumberingSources.Provider;
+        DateTimeOffset? numberingUpdatedUtc = null;
         using (var seriesCommand = connection.CreateCommand())
         {
             seriesCommand.CommandText =
                 """
-                SELECT title, start_year
+                SELECT
+                    title,
+                    start_year,
+                    series_type,
+                    numbering_scheme,
+                    numbering_source,
+                    numbering_updated_utc
                 FROM series_entries
                 WHERE id = @seriesId
                 LIMIT 1;
@@ -1551,6 +2075,10 @@ public sealed class SqliteSeriesCatalogRepository(
 
             title = seriesReader.GetString(0);
             startYear = seriesReader.IsDBNull(1) ? null : seriesReader.GetInt32(1);
+            seriesType = SeriesTypes.Normalize(seriesReader.IsDBNull(2) ? null : seriesReader.GetString(2));
+            numberingScheme = SeriesNumberingSchemes.Normalize(seriesReader.IsDBNull(3) ? null : seriesReader.GetString(3));
+            numberingSource = SeriesNumberingSources.Normalize(seriesReader.IsDBNull(4) ? null : seriesReader.GetString(4));
+            numberingUpdatedUtc = seriesReader.IsDBNull(5) ? null : ParseTimestamp(seriesReader.GetString(5));
         }
 
         var episodes = new List<SeriesEpisodeInventoryItem>();
@@ -1576,7 +2104,12 @@ public sealed class SqliteSeriesCatalogRepository(
                     w.quality_delta_last_decision,
                     w.last_search_utc,
                     w.next_eligible_search_utc,
-                    e.updated_utc
+                    e.updated_utc,
+                    e.absolute_number,
+                    e.scene_season_number,
+                    e.scene_episode_number,
+                    e.airdate_key,
+                    e.numbering_source
                 FROM episode_entries e
                 LEFT JOIN episode_wanted_state w ON w.episode_id = e.id
                 WHERE e.series_id = @seriesId
@@ -1605,7 +2138,12 @@ public sealed class SqliteSeriesCatalogRepository(
                     LastQualityDeltaDecision: episodeReader.IsDBNull(14) ? null : episodeReader.GetInt32(14),
                     LastSearchUtc: episodeReader.IsDBNull(15) ? null : ParseTimestamp(episodeReader.GetString(15)),
                     NextEligibleSearchUtc: episodeReader.IsDBNull(16) ? null : ParseTimestamp(episodeReader.GetString(16)),
-                    UpdatedUtc: ParseTimestamp(episodeReader.GetString(17))));
+                    UpdatedUtc: ParseTimestamp(episodeReader.GetString(17)),
+                    AbsoluteNumber: episodeReader.IsDBNull(18) ? null : episodeReader.GetInt32(18),
+                    SceneSeasonNumber: episodeReader.IsDBNull(19) ? null : episodeReader.GetInt32(19),
+                    SceneEpisodeNumber: episodeReader.IsDBNull(20) ? null : episodeReader.GetInt32(20),
+                    AirDate: ParseAirDateKey(episodeReader.IsDBNull(21) ? null : episodeReader.GetString(21)),
+                    NumberingSource: episodeReader.IsDBNull(22) ? null : episodeReader.GetString(22)));
             }
         }
 
@@ -1616,7 +2154,23 @@ public sealed class SqliteSeriesCatalogRepository(
             SeasonCount: episodes.Select(item => item.SeasonNumber).Distinct().Count(),
             EpisodeCount: episodes.Count,
             ImportedEpisodeCount: episodes.Count(item => item.HasFile),
-            Episodes: episodes);
+            Episodes: episodes,
+            Numbering: new SeriesNumberingDetail(
+                seriesId,
+                seriesType,
+                numberingScheme,
+                numberingSource,
+                numberingUpdatedUtc,
+                episodes.Select(item => new SeriesEpisodeNumbering(
+                    item.EpisodeId,
+                    item.SeasonNumber,
+                    item.EpisodeNumber,
+                    item.AbsoluteNumber,
+                    item.SceneSeasonNumber,
+                    item.SceneEpisodeNumber,
+                    item.AirDate,
+                    item.NumberingSource,
+                    item.Title)).ToArray()));
     }
 
     public async Task<IReadOnlyList<SeriesUpcomingEpisodeItem>> ListUpcomingEpisodesAsync(
@@ -1743,7 +2297,8 @@ public sealed class SqliteSeriesCatalogRepository(
         DateTimeOffset now,
         bool ignoreRetryWindow,
         CancellationToken cancellationToken,
-        string? wantedStatus = null)
+        string? wantedStatus = null,
+        CatalogueFilters? filters = null)
     {
         if (sharedMediaStateRepository is not null)
         {
@@ -1754,7 +2309,8 @@ public sealed class SqliteSeriesCatalogRepository(
                 now,
                 ignoreRetryWindow,
                 cancellationToken,
-                wantedStatus);
+                wantedStatus,
+                filters);
             return sharedItems.Select(MapWanted).ToArray();
         }
 
@@ -1762,6 +2318,8 @@ public sealed class SqliteSeriesCatalogRepository(
         var statusFilter = string.IsNullOrWhiteSpace(wantedStatus)
             ? "w.wanted_status IN ('missing', 'upgrade')"
             : "w.wanted_status = @wantedStatus";
+        var customFilterSql = CatalogueKeyset.CustomFilters(filters, MediaKind.Series, "s", "start_year");
+        var customFilter = string.IsNullOrWhiteSpace(customFilterSql) ? string.Empty : $"AND {customFilterSql}";
 
         await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
             DelunoDatabaseNames.Series,
@@ -1775,11 +2333,13 @@ public sealed class SqliteSeriesCatalogRepository(
                       s.id, s.title, s.start_year, s.imdb_id,
                       w.library_id, w.wanted_status, w.wanted_reason, w.has_file, w.current_quality, w.target_quality, w.quality_cutoff_met,
                       w.prevent_lower_quality_replacements, w.quality_delta_last_decision,
-                      w.missing_since_utc, w.last_search_utc, w.next_eligible_search_utc, w.last_search_result, w.updated_utc
+                      w.missing_since_utc, w.last_search_utc, w.next_eligible_search_utc, w.last_search_result, w.updated_utc,
+                      NULL AS available_utc, w.file_path, w.file_size_bytes
                   FROM series_wanted_state w
                   INNER JOIN series_entries s ON s.id = w.series_id
                   WHERE w.library_id = @libraryId
                     AND {statusFilter}
+                    {customFilter}
                   ORDER BY
                       CASE w.wanted_status WHEN 'missing' THEN 0 ELSE 1 END,
                       COALESCE(w.last_search_utc, w.missing_since_utc, w.updated_utc) ASC,
@@ -1791,11 +2351,13 @@ public sealed class SqliteSeriesCatalogRepository(
                       s.id, s.title, s.start_year, s.imdb_id,
                       w.library_id, w.wanted_status, w.wanted_reason, w.has_file, w.current_quality, w.target_quality, w.quality_cutoff_met,
                       w.prevent_lower_quality_replacements, w.quality_delta_last_decision,
-                      w.missing_since_utc, w.last_search_utc, w.next_eligible_search_utc, w.last_search_result, w.updated_utc
+                      w.missing_since_utc, w.last_search_utc, w.next_eligible_search_utc, w.last_search_result, w.updated_utc,
+                      NULL AS available_utc, w.file_path, w.file_size_bytes
                   FROM series_wanted_state w
                   INNER JOIN series_entries s ON s.id = w.series_id
                   WHERE w.library_id = @libraryId
                     AND {statusFilter}
+                    {customFilter}
                     AND s.monitored = 1
                     AND (w.next_eligible_search_utc IS NULL OR w.next_eligible_search_utc <= @now)
                   ORDER BY
@@ -1812,6 +2374,7 @@ public sealed class SqliteSeriesCatalogRepository(
         {
             AddParameter(command, "@wantedStatus", WantedStatuses.Normalize(wantedStatus));
         }
+        CatalogueKeyset.BindCustomFilters(command, filters, MediaKind.Series, now);
 
         using var reader = await command.ExecuteReaderAsync(cancellationToken);
         while (await reader.ReadAsync(cancellationToken))
@@ -1942,7 +2505,11 @@ public sealed class SqliteSeriesCatalogRepository(
         string? filePath,
         long? fileSizeBytes,
         IReadOnlyList<ImportedEpisodeItem>? episodes,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        PreferenceEvaluationSnapshot? preferenceEvaluation = null,
+        IReadOnlyList<ImportedEpisodeNumberingItem>? alternateEpisodes = null,
+        IReadOnlyList<ImportedSeasonPackItem>? seasonPacks = null,
+        IReadOnlyList<PreferenceEvaluationSnapshot>? preferenceEvaluations = null)
     {
         var created = await ImportExistingBatchAsync(
             libraryId,
@@ -1958,7 +2525,11 @@ public sealed class SqliteSeriesCatalogRepository(
                     UnmonitorWhenCutoffMet: unmonitorWhenCutoffMet,
                     FilePath: filePath,
                     FileSizeBytes: fileSizeBytes,
-                    Episodes: episodes)
+                    Episodes: episodes,
+                    PreferenceEvaluation: preferenceEvaluation,
+                    AlternateEpisodes: alternateEpisodes,
+                    SeasonPacks: seasonPacks,
+                    PreferenceEvaluations: preferenceEvaluations)
             ],
             cancellationToken);
 
@@ -2016,7 +2587,8 @@ public sealed class SqliteSeriesCatalogRepository(
         CancellationToken cancellationToken)
     {
         var (title, startYear, wantedStatus, wantedReason, currentQuality, targetQuality,
-            qualityCutoffMet, unmonitorWhenCutoffMet, filePath, fileSizeBytes, episodes) = request;
+            qualityCutoffMet, unmonitorWhenCutoffMet, filePath, fileSizeBytes, episodes,
+            preferenceEvaluation, alternateEpisodes, seasonPacks, preferenceEvaluations) = request;
 
         var normalizedTitle = title.Trim();
         var normalizedFilePath = NormalizeText(filePath);
@@ -2090,7 +2662,9 @@ public sealed class SqliteSeriesCatalogRepository(
                     qualityCutoffMet,
                     unmonitorWhenCutoffMet,
                     filePath,
-                    fileSizeBytes),
+                    fileSizeBytes,
+                    preferenceEvaluation,
+                    preferenceEvaluations),
                 connection,
                 transaction,
                 cancellationToken);
@@ -2159,6 +2733,76 @@ public sealed class SqliteSeriesCatalogRepository(
             AddParameter(wanted, "@lastVerifiedUtc", normalizedFilePath is null ? null : now.ToString("O"));
             AddParameter(wanted, "@updatedUtc", now.ToString("O"));
             await wanted.ExecuteNonQueryAsync(cancellationToken);
+        }
+
+        if (alternateEpisodes is { Count: > 0 })
+        {
+            var resolved = await ResolveAlternateEpisodesAsync(
+                connection,
+                transaction,
+                seriesId!,
+                alternateEpisodes,
+                cancellationToken);
+            if (resolved.Count > 0)
+            {
+                var merged = (episodes ?? [])
+                    .GroupBy(item => (item.SeasonNumber, item.EpisodeNumber))
+                    .ToDictionary(group => group.Key, group => group.First());
+                foreach (var item in resolved)
+                {
+                    if (merged.TryGetValue((item.SeasonNumber, item.EpisodeNumber), out var existing))
+                    {
+                        merged[(item.SeasonNumber, item.EpisodeNumber)] = existing with
+                        {
+                            AbsoluteNumber = existing.AbsoluteNumber ?? item.AbsoluteNumber,
+                            AirDate = existing.AirDate ?? item.AirDate,
+                            SceneSeasonNumber = existing.SceneSeasonNumber ?? item.SceneSeasonNumber,
+                            SceneEpisodeNumber = existing.SceneEpisodeNumber ?? item.SceneEpisodeNumber
+                        };
+                    }
+                    else
+                    {
+                        merged[(item.SeasonNumber, item.EpisodeNumber)] = item;
+                    }
+                }
+
+                episodes = merged.Values
+                    .OrderBy(item => item.SeasonNumber)
+                    .ThenBy(item => item.EpisodeNumber)
+                    .ToArray();
+            }
+        }
+
+        if (seasonPacks is { Count: > 0 })
+        {
+            var expanded = await ExpandSeasonPacksAsync(
+                connection,
+                transaction,
+                seriesId!,
+                seasonPacks,
+                cancellationToken);
+            if (expanded.Count > 0)
+            {
+                var merged = (episodes ?? [])
+                    .GroupBy(item => (item.SeasonNumber, item.EpisodeNumber))
+                    .ToDictionary(group => group.Key, group => group.First());
+
+                foreach (var item in expanded)
+                {
+                    // A specifically numbered file is more precise than a
+                    // season pack. Keep it when both describe the same
+                    // episode, while allowing the pack to fill gaps.
+                    if (!merged.ContainsKey((item.SeasonNumber, item.EpisodeNumber)))
+                    {
+                        merged[(item.SeasonNumber, item.EpisodeNumber)] = item;
+                    }
+                }
+
+                episodes = merged.Values
+                    .OrderBy(item => item.SeasonNumber)
+                    .ThenBy(item => item.EpisodeNumber)
+                    .ToArray();
+            }
         }
 
         if (episodes is { Count: > 0 })
@@ -2242,12 +2886,14 @@ public sealed class SqliteSeriesCatalogRepository(
                             INSERT INTO episode_entries (
                                 id, series_id, season_id, season_number, episode_number, title, air_date_utc,
                                 monitored, has_file, quality_cutoff_met, file_path, file_size_bytes, imported_utc, last_verified_utc,
-                                created_utc, updated_utc
+                                created_utc, updated_utc, absolute_number, scene_season_number,
+                                scene_episode_number, airdate_key, numbering_source
                             )
                             VALUES (
                                 @id, @seriesId, @seasonId, @seasonNumber, @episodeNumber, NULL, NULL,
                                 1, @hasFile, 0, @filePath, @fileSizeBytes, @importedUtc, @lastVerifiedUtc,
-                                @createdUtc, @updatedUtc
+                                @createdUtc, @updatedUtc, @absoluteNumber, @sceneSeasonNumber,
+                                @sceneEpisodeNumber, @airdateKey, @numberingSource
                             );
                             """;
                         AddParameter(insertEpisode, "@id", episodeId);
@@ -2262,6 +2908,11 @@ public sealed class SqliteSeriesCatalogRepository(
                         AddParameter(insertEpisode, "@lastVerifiedUtc", NormalizeText(episode.FilePath) is null ? null : now.ToString("O"));
                         AddParameter(insertEpisode, "@createdUtc", now.ToString("O"));
                         AddParameter(insertEpisode, "@updatedUtc", now.ToString("O"));
+                        AddParameter(insertEpisode, "@absoluteNumber", episode.AbsoluteNumber);
+                        AddParameter(insertEpisode, "@sceneSeasonNumber", episode.SceneSeasonNumber);
+                        AddParameter(insertEpisode, "@sceneEpisodeNumber", episode.SceneEpisodeNumber);
+                        AddParameter(insertEpisode, "@airdateKey", episode.AirDate?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture));
+                        AddParameter(insertEpisode, "@numberingSource", episode.NumberingSource);
                         await insertEpisode.ExecuteNonQueryAsync(cancellationToken);
                     }
                     else
@@ -2279,6 +2930,21 @@ public sealed class SqliteSeriesCatalogRepository(
                                 imported_utc = COALESCE(imported_utc, @importedUtc),
                                 last_verified_utc = @lastVerifiedUtc,
                                 missing_detected_utc = NULL,
+                                absolute_number = CASE
+                                    WHEN numbering_source = 'owner' OR @absoluteNumber IS NULL THEN absolute_number
+                                    ELSE @absoluteNumber END,
+                                scene_season_number = CASE
+                                    WHEN numbering_source = 'owner' OR @sceneSeasonNumber IS NULL THEN scene_season_number
+                                    ELSE @sceneSeasonNumber END,
+                                scene_episode_number = CASE
+                                    WHEN numbering_source = 'owner' OR @sceneEpisodeNumber IS NULL THEN scene_episode_number
+                                    ELSE @sceneEpisodeNumber END,
+                                airdate_key = CASE
+                                    WHEN numbering_source = 'owner' OR @airdateKey IS NULL THEN airdate_key
+                                    ELSE @airdateKey END,
+                                numbering_source = CASE
+                                    WHEN numbering_source = 'owner' OR @numberingSource IS NULL THEN numbering_source
+                                    ELSE @numberingSource END,
                                 updated_utc = @updatedUtc
                             WHERE id = @id;
                             """;
@@ -2290,6 +2956,11 @@ public sealed class SqliteSeriesCatalogRepository(
                         AddParameter(updateEpisode, "@importedUtc", NormalizeText(episode.FilePath) is null ? null : now.ToString("O"));
                         AddParameter(updateEpisode, "@lastVerifiedUtc", NormalizeText(episode.FilePath) is null ? null : now.ToString("O"));
                         AddParameter(updateEpisode, "@updatedUtc", now.ToString("O"));
+                        AddParameter(updateEpisode, "@absoluteNumber", episode.AbsoluteNumber);
+                        AddParameter(updateEpisode, "@sceneSeasonNumber", episode.SceneSeasonNumber);
+                        AddParameter(updateEpisode, "@sceneEpisodeNumber", episode.SceneEpisodeNumber);
+                        AddParameter(updateEpisode, "@airdateKey", episode.AirDate?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture));
+                        AddParameter(updateEpisode, "@numberingSource", episode.NumberingSource);
                         await updateEpisode.ExecuteNonQueryAsync(cancellationToken);
                     }
 
@@ -2342,6 +3013,146 @@ public sealed class SqliteSeriesCatalogRepository(
         }
 
         return created;
+    }
+
+    private static async Task<IReadOnlyList<ImportedEpisodeItem>> ExpandSeasonPacksAsync(
+        System.Data.Common.DbConnection connection,
+        System.Data.Common.DbTransaction transaction,
+        string seriesId,
+        IReadOnlyList<ImportedSeasonPackItem> seasonPacks,
+        CancellationToken cancellationToken)
+    {
+        var expanded = new List<ImportedEpisodeItem>();
+
+        foreach (var pack in seasonPacks
+                     .Where(item => item.SeasonNumber >= 0)
+                     .OrderBy(item => item.SeasonNumber))
+        {
+            var declared = (pack.Episodes ?? [])
+                .Where(item => item.SeasonNumber == pack.SeasonNumber && item.EpisodeNumber >= 0)
+                .GroupBy(item => (item.SeasonNumber, item.EpisodeNumber))
+                .Select(group => group.First())
+                .OrderBy(item => item.EpisodeNumber)
+                .ToArray();
+            if (declared.Length == 0)
+            {
+                // "Show.S01" names a season but proves nothing about which
+                // files the pack actually contains. Expanding that label to
+                // the whole provider catalogue invented coverage whenever a
+                // pack was incomplete or the client exposed only one file.
+                continue;
+            }
+
+            using var command = connection.CreateCommand();
+            command.Transaction = transaction;
+            command.CommandText =
+                """
+                SELECT season_number, episode_number
+                FROM episode_entries
+                WHERE series_id = @seriesId
+                  AND season_number = @seasonNumber
+                ORDER BY episode_number;
+                """;
+            AddParameter(command, "@seriesId", seriesId);
+            AddParameter(command, "@seasonNumber", pack.SeasonNumber);
+
+            var cataloguedEpisodes = new HashSet<int>();
+            using var reader = await command.ExecuteReaderAsync(cancellationToken);
+            while (await reader.ReadAsync(cancellationToken))
+            {
+                cataloguedEpisodes.Add(reader.GetInt32(1));
+            }
+
+            foreach (var episode in declared.Where(item => cataloguedEpisodes.Contains(item.EpisodeNumber)))
+            {
+                expanded.Add(episode with
+                {
+                    HasFile = true,
+                    FilePath = NormalizeText(episode.FilePath) ?? NormalizeText(pack.FilePath),
+                    FileSizeBytes = episode.FileSizeBytes ?? pack.FileSizeBytes
+                });
+            }
+        }
+
+        return expanded;
+    }
+
+    private static async Task<IReadOnlyList<ImportedEpisodeItem>> ResolveAlternateEpisodesAsync(
+        System.Data.Common.DbConnection connection,
+        System.Data.Common.DbTransaction transaction,
+        string seriesId,
+        IReadOnlyList<ImportedEpisodeNumberingItem> alternateEpisodes,
+        CancellationToken cancellationToken)
+    {
+        var resolved = new List<ImportedEpisodeItem>();
+        foreach (var alternate in alternateEpisodes)
+        {
+            var scheme = SeriesNumberingSchemes.Normalize(alternate.NumberingScheme);
+            var column = scheme switch
+            {
+                SeriesNumberingSchemes.Absolute when alternate.AbsoluteNumber is not null => "absolute_number",
+                SeriesNumberingSchemes.AirDate when alternate.AirDate is not null => "airdate_key",
+                SeriesNumberingSchemes.Scene when alternate.SceneSeasonNumber is not null && alternate.SceneEpisodeNumber is not null => "scene_key",
+                _ => null
+            };
+            if (column is null)
+            {
+                continue;
+            }
+
+            using var command = connection.CreateCommand();
+            command.Transaction = transaction;
+            command.CommandText = column == "scene_key"
+                ? "SELECT id, season_number, episode_number FROM episode_entries WHERE series_id = @seriesId AND scene_season_number = @sceneSeasonNumber AND scene_episode_number = @sceneEpisodeNumber;"
+                : $"SELECT id, season_number, episode_number FROM episode_entries WHERE series_id = @seriesId AND {column} = @numberingKey;";
+            AddParameter(command, "@seriesId", seriesId);
+            if (column == "scene_key")
+            {
+                AddParameter(command, "@sceneSeasonNumber", alternate.SceneSeasonNumber);
+                AddParameter(command, "@sceneEpisodeNumber", alternate.SceneEpisodeNumber);
+            }
+            else
+            {
+                AddParameter(
+                    command,
+                    "@numberingKey",
+                    column == "airdate_key"
+                        ? alternate.AirDate!.Value.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)
+                        : alternate.AbsoluteNumber);
+            }
+
+            var matches = new List<(string Id, int SeasonNumber, int EpisodeNumber)>();
+            using var reader = await command.ExecuteReaderAsync(cancellationToken);
+            while (await reader.ReadAsync(cancellationToken))
+            {
+                matches.Add((reader.GetString(0), reader.GetInt32(1), reader.GetInt32(2)));
+                if (matches.Count > 1)
+                {
+                    break;
+                }
+            }
+
+            // No guesswork: an unknown or duplicate alternate key is left
+            // unmatched and remains visible in the import issue/review path.
+            if (matches.Count != 1)
+            {
+                continue;
+            }
+
+            var match = matches[0];
+            resolved.Add(new ImportedEpisodeItem(
+                match.SeasonNumber,
+                match.EpisodeNumber,
+                alternate.HasFile,
+                alternate.FilePath,
+                alternate.FileSizeBytes,
+                alternate.AbsoluteNumber,
+                alternate.AirDate,
+                alternate.SceneSeasonNumber,
+                alternate.SceneEpisodeNumber));
+        }
+
+        return resolved;
     }
 
     /// <summary>
@@ -3210,9 +4021,12 @@ public sealed class SqliteSeriesCatalogRepository(
         DateTimeOffset now,
         bool ignoreRetryWindow,
         CancellationToken cancellationToken,
-        string? wantedStatus = null)
+        string? wantedStatus = null,
+        CatalogueFilters? filters = null)
     {
         var items = new List<EpisodeSearchEligibilityItem>();
+        var customFilterSql = CatalogueKeyset.CustomFilters(filters, MediaKind.Series, "s", "start_year");
+        var customFilter = string.IsNullOrWhiteSpace(customFilterSql) ? string.Empty : $"AND {customFilterSql}";
 
         await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
             DelunoDatabaseNames.Series,
@@ -3220,12 +4034,13 @@ public sealed class SqliteSeriesCatalogRepository(
 
         using var command = connection.CreateCommand();
         command.CommandText =
-            """
+            $"""
             SELECT
                 e.id, e.series_id, e.season_number, e.episode_number, e.title,
                 ews.last_search_utc, ews.next_eligible_search_utc
             FROM episode_wanted_state ews
             INNER JOIN episode_entries e ON e.id = ews.episode_id
+            INNER JOIN series_entries s ON s.id = e.series_id
             WHERE ews.library_id = @libraryId
               -- 'missing', not 'wanted'. This read a word nothing has ever
               -- written, so the query matched no row in production and its test
@@ -3234,6 +4049,7 @@ public sealed class SqliteSeriesCatalogRepository(
               AND (@wantedStatus IS NULL OR ews.wanted_status = @wantedStatus)
               AND (@ignoreRetryWindow = 1 OR ews.next_eligible_search_utc IS NULL OR ews.next_eligible_search_utc <= @now)
               AND e.monitored = 1
+              {customFilter}
             ORDER BY
                 CASE ews.wanted_status WHEN 'missing' THEN 0 ELSE 1 END,
                 COALESCE(ews.last_search_utc, ews.updated_utc) ASC,
@@ -3247,6 +4063,7 @@ public sealed class SqliteSeriesCatalogRepository(
         AddParameter(command, "@take", take);
         AddParameter(command, "@ignoreRetryWindow", ignoreRetryWindow ? 1 : 0);
         AddParameter(command, "@wantedStatus", wantedStatus);
+        CatalogueKeyset.BindCustomFilters(command, filters, MediaKind.Series, now);
 
         using var reader = await command.ExecuteReaderAsync(cancellationToken);
         while (await reader.ReadAsync(cancellationToken))
@@ -3315,6 +4132,40 @@ public sealed class SqliteSeriesCatalogRepository(
         return value is DBNull or null ? null : value.ToString();
     }
 
+    public async Task<string?> GetEpisodeFilePathAsync(
+        string episodeId,
+        CancellationToken cancellationToken)
+    {
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Series,
+            cancellationToken);
+
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            "SELECT file_path FROM episode_entries WHERE id = @episodeId AND has_file = 1 LIMIT 1;";
+        AddParameter(command, "@episodeId", episodeId);
+
+        var value = await command.ExecuteScalarAsync(cancellationToken);
+        return value is DBNull or null ? null : value.ToString();
+    }
+
+    public async Task<long?> GetEpisodeFileSizeBytesAsync(
+        string episodeId,
+        CancellationToken cancellationToken)
+    {
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Series,
+            cancellationToken);
+
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            "SELECT file_size_bytes FROM episode_entries WHERE id = @episodeId AND has_file = 1 LIMIT 1;";
+        AddParameter(command, "@episodeId", episodeId);
+
+        var value = await command.ExecuteScalarAsync(cancellationToken);
+        return value is DBNull or null ? null : Convert.ToInt64(value, CultureInfo.InvariantCulture);
+    }
+
     /// <summary>The scores a page row carries, read straight from their columns.</summary>
     private static IReadOnlyList<MetadataRatingItem> ReadRatingColumns(System.Data.Common.DbDataReader reader)
     {
@@ -3374,6 +4225,71 @@ public sealed class SqliteSeriesCatalogRepository(
             UpdatedUtc: ParseTimestamp(reader.GetString(18)));
     }
 
+    private static (string SeriesType, string NumberingScheme, string NumberingSource) ReadNumberingHeader(
+        System.Data.Common.DbDataReader reader,
+        int firstOrdinal)
+        => (
+            SeriesTypes.Normalize(reader.IsDBNull(firstOrdinal) ? null : reader.GetString(firstOrdinal)),
+            SeriesNumberingSchemes.Normalize(reader.IsDBNull(firstOrdinal + 1) ? null : reader.GetString(firstOrdinal + 1)),
+            SeriesNumberingSources.Normalize(reader.IsDBNull(firstOrdinal + 2) ? null : reader.GetString(firstOrdinal + 2)));
+
+    private async Task<(string SeriesType, string NumberingScheme, string NumberingSource)> GetNumberingHeaderAsync(
+        string seriesId,
+        CancellationToken cancellationToken)
+    {
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Series,
+            cancellationToken);
+
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            """
+            SELECT series_type, numbering_scheme, numbering_source
+            FROM series_entries
+            WHERE id = @seriesId
+            LIMIT 1;
+            """;
+        AddParameter(command, "@seriesId", seriesId);
+
+        using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        return await reader.ReadAsync(cancellationToken)
+            ? ReadNumberingHeader(reader, 0)
+            : DefaultNumberingHeader;
+    }
+
+    private static DateOnly? ParseAirDateKey(string? value)
+        => DateOnly.TryParseExact(
+            value,
+            "yyyy-MM-dd",
+            CultureInfo.InvariantCulture,
+            DateTimeStyles.None,
+            out var date)
+            ? date
+            : null;
+
+    private static void ValidateMapping(SeriesNumberingMapping mapping)
+    {
+        if (string.IsNullOrWhiteSpace(mapping.EpisodeId))
+        {
+            throw new ArgumentException("A numbering mapping must identify an episode.", nameof(mapping));
+        }
+
+        if (mapping.AbsoluteNumber is <= 0 or > 9999)
+        {
+            throw new ArgumentException("Absolute episode numbers must be between 1 and 9999.", nameof(mapping));
+        }
+
+        if ((mapping.SceneSeasonNumber is null) != (mapping.SceneEpisodeNumber is null))
+        {
+            throw new ArgumentException("Scene season and episode numbers must be supplied together.", nameof(mapping));
+        }
+
+        if (mapping.SceneSeasonNumber is < 0 or > 999 || mapping.SceneEpisodeNumber is <= 0 or > 9999)
+        {
+            throw new ArgumentException("Scene season and episode numbers are outside the supported range.", nameof(mapping));
+        }
+    }
+
     private static SeriesWantedItem ReadWantedSeries(System.Data.Common.DbDataReader reader)
     {
         return new SeriesWantedItem(
@@ -3394,8 +4310,18 @@ public sealed class SqliteSeriesCatalogRepository(
             LastSearchUtc: reader.IsDBNull(14) ? null : ParseTimestamp(reader.GetString(14)),
             NextEligibleSearchUtc: reader.IsDBNull(15) ? null : ParseTimestamp(reader.GetString(15)),
             LastSearchResult: reader.IsDBNull(16) ? null : reader.GetString(16),
-            UpdatedUtc: ParseTimestamp(reader.GetString(17)));
+            UpdatedUtc: ParseTimestamp(reader.GetString(17)),
+            AvailableUtc: ReadOptionalAvailableUtc(reader),
+            FilePath: reader.FieldCount > 19 ? (reader.IsDBNull(19) ? null : reader.GetString(19)) : null,
+            FileSizeBytes: reader.FieldCount > 20 && !reader.IsDBNull(20) ? reader.GetInt64(20) : null);
     }
+
+    private static DateTimeOffset? ReadOptionalAvailableUtc(System.Data.Common.DbDataReader reader)
+        => reader.FieldCount <= 18 || reader.IsDBNull(18)
+            ? null
+            : DateTimeOffset.TryParse(reader.GetString(18), CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal, out var value)
+                ? value
+                : null;
 
     /// <summary>
     /// Apply the provider's catalogue to this series.
@@ -3443,18 +4369,30 @@ public sealed class SqliteSeriesCatalogRepository(
                     INSERT INTO episode_entries (
                         id, series_id, season_id, season_number, episode_number, title, overview, air_date_utc,
                         monitored, has_file, quality_cutoff_met, catalogue_source, catalogue_synced_utc,
-                        created_utc, updated_utc
+                        created_utc, updated_utc, absolute_number, scene_season_number,
+                        scene_episode_number, airdate_key, numbering_source
                     )
                     VALUES (
                         @id, @seriesId, @seasonId, @seasonNumber, @episodeNumber, @title, @overview, @airDateUtc,
                         @monitored, 0, 0, @source, @syncedUtc,
-                        @createdUtc, @updatedUtc
+                        @createdUtc, @updatedUtc, @absoluteNumber, @sceneSeasonNumber,
+                        @sceneEpisodeNumber, @airDateKey, @numberingSource
                     )
                     ON CONFLICT(series_id, season_number, episode_number) DO UPDATE SET
                         season_id = COALESCE(episode_entries.season_id, excluded.season_id),
                         title = excluded.title,
                         overview = excluded.overview,
                         air_date_utc = excluded.air_date_utc,
+                        absolute_number = CASE WHEN episode_entries.numbering_source = 'owner'
+                            THEN episode_entries.absolute_number ELSE excluded.absolute_number END,
+                        scene_season_number = CASE WHEN episode_entries.numbering_source = 'owner'
+                            THEN episode_entries.scene_season_number ELSE excluded.scene_season_number END,
+                        scene_episode_number = CASE WHEN episode_entries.numbering_source = 'owner'
+                            THEN episode_entries.scene_episode_number ELSE excluded.scene_episode_number END,
+                        airdate_key = CASE WHEN episode_entries.numbering_source = 'owner'
+                            THEN episode_entries.airdate_key ELSE excluded.airdate_key END,
+                        numbering_source = CASE WHEN episode_entries.numbering_source = 'owner'
+                            THEN episode_entries.numbering_source ELSE excluded.numbering_source END,
                         catalogue_source = excluded.catalogue_source,
                         catalogue_synced_utc = excluded.catalogue_synced_utc,
                         updated_utc = excluded.updated_utc;
@@ -3477,6 +4415,11 @@ public sealed class SqliteSeriesCatalogRepository(
                 AddParameter(upsert, "@syncedUtc", stamp);
                 AddParameter(upsert, "@createdUtc", stamp);
                 AddParameter(upsert, "@updatedUtc", stamp);
+                AddParameter(upsert, "@absoluteNumber", episode.AbsoluteNumber);
+                AddParameter(upsert, "@sceneSeasonNumber", episode.SceneSeasonNumber);
+                AddParameter(upsert, "@sceneEpisodeNumber", episode.SceneEpisodeNumber);
+                AddParameter(upsert, "@airDateKey", episode.AirDateUtc?.UtcDateTime.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture));
+                AddParameter(upsert, "@numberingSource", SeriesNumberingSources.Normalize(episode.NumberingSource));
 
                 // SQLite reports 1 for both an insert and an ON CONFLICT update, so
                 // ask which happened rather than inferring it from the row count.
@@ -4180,7 +5123,10 @@ public sealed class SqliteSeriesCatalogRepository(
             LastSearchUtc: item.LastSearchUtc,
             NextEligibleSearchUtc: item.NextEligibleSearchUtc,
             LastSearchResult: item.LastSearchResult,
-            UpdatedUtc: item.UpdatedUtc);
+            UpdatedUtc: item.UpdatedUtc,
+            AvailableUtc: item.AvailableUtc,
+            FilePath: item.FilePath,
+            FileSizeBytes: item.FileSizeBytes);
 
     private static SeriesSearchHistoryItem MapSearchHistory(MediaSearchHistoryItem item)
         => new(

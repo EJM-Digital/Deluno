@@ -18,4 +18,7 @@ public sealed record SeriesWantedItem(
     DateTimeOffset? LastSearchUtc,
     DateTimeOffset? NextEligibleSearchUtc,
     string? LastSearchResult,
-    DateTimeOffset UpdatedUtc);
+    DateTimeOffset UpdatedUtc,
+    DateTimeOffset? AvailableUtc = null,
+    string? FilePath = null,
+    long? FileSizeBytes = null);

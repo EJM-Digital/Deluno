@@ -74,6 +74,45 @@ public sealed class EndpointAuthorizationCoverageTests
             publicRoutes);
     }
 
+    [Fact]
+    public void Automation_routes_carry_their_least_privilege_scope()
+    {
+        using var app = BuildApplication();
+
+        var automationRoutes = ApplicationEndpoints(app)
+            .Where(endpoint => endpoint.RoutePattern.RawText?.StartsWith(
+                "/api/automation",
+                StringComparison.Ordinal) == true)
+            .ToArray();
+
+        var writeRoutes = automationRoutes
+            .Where(endpoint => endpoint.RoutePattern.RawText != "/api/automation/summary")
+            .ToArray();
+        Assert.Equal(2, writeRoutes.Length);
+        Assert.All(writeRoutes, endpoint =>
+        {
+            var policies = endpoint.Metadata
+                .GetOrderedMetadata<IAuthorizeData>()
+                .Select(metadata => metadata.Policy)
+                .Where(policy => policy is not null)
+                .ToArray();
+
+            Assert.Contains(DelunoAuthorizationPolicies.Write, policies);
+            Assert.DoesNotContain(DelunoAuthorizationPolicies.Queue, policies);
+            Assert.DoesNotContain(DelunoAuthorizationPolicies.Imports, policies);
+            Assert.DoesNotContain(DelunoAuthorizationPolicies.System, policies);
+        });
+
+        var summary = Assert.Single(
+            automationRoutes,
+            endpoint => endpoint.RoutePattern.RawText == "/api/automation/summary");
+        Assert.Contains(
+            DelunoAuthorizationPolicies.Read,
+            summary.Metadata
+                .GetOrderedMetadata<IAuthorizeData>()
+                .Select(metadata => metadata.Policy));
+    }
+
     private static RouteEndpoint[] ApplicationEndpoints(WebApplication app)
         => ((IEndpointRouteBuilder)app).DataSources
             .SelectMany(source => source.Endpoints)

@@ -23,7 +23,7 @@ export type FilterFieldGroup = "title" | "file" | "time" | "decision";
 
 export type FilterValueKind =
   | "text" | "integer" | "decimal" | "year" | "minutes" | "gigabytes"
-  | "rating" | "date" | "boolean" | "quality" | "genre" | "enum";
+  | "rating" | "date" | "boolean" | "quality" | "genre" | "tag" | "enum";
 
 /**
  * The operator tokens, spelled exactly as they travel on the query string.
@@ -143,7 +143,7 @@ export function operatorTakesValues(operator: FilterOperator): boolean {
 /** Whether the value is a list you pick several of rather than one you type. */
 export function isMultiValue(field: FilterFieldSpec, operator: FilterOperator): boolean {
   return (
-    (field.valueKind === "quality" || field.valueKind === "genre" || field.valueKind === "enum") &&
+    (field.valueKind === "quality" || field.valueKind === "genre" || field.valueKind === "tag" || field.valueKind === "enum") &&
     (operator === "in" || operator === "notin" || operator === "all")
   );
 }

@@ -21,6 +21,7 @@ import { cn } from "../../lib/utils";
 import type { ActivityEventItem } from "../../lib/api";
 import { useVisibleInterval } from "../../hooks/use-visible-interval";
 import { RealtimeGroups, useSignalREvent, useSignalRStatus } from "../../lib/use-signalr";
+import { formatDateTime, formatShortDate, type DisplayPreferences, useDisplayPreferences } from "../../lib/display-preferences";
 
 type Severity = "info" | "success" | "warning" | "error";
 
@@ -44,6 +45,7 @@ const SEVERITY_LED: Record<Severity, LedTone> = {
 
 export function ActivityTicker({ seed, limit = 10 }: { seed: ActivityEventItem[]; limit?: number }) {
   const status = useSignalRStatus();
+  const { preferences } = useDisplayPreferences();
   const [live, setLive] = useState<TickerEvent[]>([]);
 
   // "2m ago" has to keep counting. Without this the ages freeze at whatever
@@ -125,7 +127,7 @@ export function ActivityTicker({ seed, limit = 10 }: { seed: ActivityEventItem[]
                   ) : null}
                 </span>
                 <span className="mt-0.5 block truncate text-[length:var(--type-micro)] text-muted-foreground">
-                  {categoryLabel(event.category)} · {formatAgo(event.createdUtc)}
+                  {categoryLabel(event.category)} · {formatAgo(event.createdUtc, preferences)}
                 </span>
               </span>
             </div>
@@ -174,9 +176,11 @@ function categoryLabel(category: string) {
   return spaced ? spaced.charAt(0).toUpperCase() + spaced.slice(1) : "General";
 }
 
-function formatAgo(value: string) {
+function formatAgo(value: string, preferences: DisplayPreferences) {
   const then = new Date(value).getTime();
   if (Number.isNaN(then)) return "—";
+
+  if (!preferences.showRelativeDates) return formatDateTime(value, preferences);
 
   const seconds = Math.max(0, Math.round((Date.now() - then) / 1000));
   if (seconds < 10) return "just now";
@@ -185,5 +189,5 @@ function formatAgo(value: string) {
   if (minutes < 60) return `${minutes}m ago`;
   const hours = Math.round(minutes / 60);
   if (hours < 24) return `${hours}h ago`;
-  return new Intl.DateTimeFormat(undefined, { day: "numeric", month: "short" }).format(then);
+  return formatShortDate(value, { ...preferences, showRelativeDates: false });
 }

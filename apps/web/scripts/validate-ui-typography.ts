@@ -24,7 +24,6 @@ const paletteColour = /(?<![\w-])(?:bg|text|border|ring|from|via|to|decoration|o
 
 const ALLOWED_PALETTE_FILES = new Map([
   ["routes/settings-tags-page.tsx", "tag swatch colours are user data, not theme styling"],
-  ["lib/trash-guide-data.ts", "custom-format category colours are catalogue data"],
   ["components/app/rating-strip.tsx", "TMDB and IMDb brand colours"]
 ]);
 

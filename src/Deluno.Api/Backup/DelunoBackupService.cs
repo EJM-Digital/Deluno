@@ -2,7 +2,10 @@ using System.Globalization;
 using System.IO.Compression;
 using System.Reflection;
 using System.Text.Json;
+using Deluno.Contracts;
 using Deluno.Infrastructure.Storage;
+using Deluno.Jobs.Data;
+using Deluno.Platform.Migration;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -24,8 +27,9 @@ public interface IDelunoBackupService
 public sealed class DelunoBackupService(
     IOptions<StoragePathOptions> storageOptions,
     TimeProvider timeProvider,
-    ILogger<DelunoBackupService> logger)
-    : BackgroundService, IDelunoBackupService
+    ILogger<DelunoBackupService> logger,
+    IJobQueueRepository? jobQueueRepository = null)
+    : BackgroundService, IDelunoBackupService, IMigrationBackupService
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
     {
@@ -229,7 +233,32 @@ public sealed class DelunoBackupService(
                 var state = await ReadSettingsStateAsync(stoppingToken);
                 if (state.Enabled && state.NextRunUtc is { } nextRun && nextRun <= timeProvider.GetUtcNow())
                 {
-                    await CreateBackupAsync("scheduled", stoppingToken);
+                    if (jobQueueRepository is null || await jobQueueRepository.TryClaimScheduledPassAsync(
+                            SystemTasks.Backup,
+                            SystemTasks.IntervalFor(SystemTasks.Backup),
+                            stoppingToken))
+                    {
+                        var startedUtc = timeProvider.GetUtcNow();
+                        try
+                        {
+                            await CreateBackupAsync("scheduled", stoppingToken);
+                            var next = (await GetSettingsAsync(stoppingToken)).NextRunUtc;
+                            await RecordScheduledPassOutcomeAsync(
+                                startedUtc,
+                                "completed",
+                                next,
+                                stoppingToken);
+                        }
+                        catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+                        {
+                            await RecordScheduledPassOutcomeAsync(startedUtc, "cancelled", null, CancellationToken.None);
+                        }
+                        catch (Exception exception)
+                        {
+                            await RecordScheduledPassOutcomeAsync(startedUtc, "failed", null, CancellationToken.None);
+                            logger.LogWarning(exception, "Scheduled backup creation failed.");
+                        }
+                    }
                 }
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
@@ -445,6 +474,57 @@ public sealed class DelunoBackupService(
 
     private static string GetVersion()
         => Assembly.GetEntryAssembly()?.GetName().Version?.ToString() ?? "0.0.0";
+
+    private async Task RecordScheduledPassOutcomeAsync(
+        DateTimeOffset startedUtc,
+        string result,
+        DateTimeOffset? nextRunUtc,
+        CancellationToken cancellationToken)
+    {
+        if (jobQueueRepository is null)
+        {
+            return;
+        }
+
+        var completedUtc = timeProvider.GetUtcNow();
+        await jobQueueRepository.RecordScheduledPassOutcomeAsync(
+            SystemTasks.Backup,
+            completedUtc,
+            result,
+            Math.Max(0, (long)(completedUtc - startedUtc).TotalMilliseconds),
+            nextRunUtc,
+            cancellationToken);
+    }
+
+    public async Task<MigrationBackupReceipt> CreateVerifiedBackupAsync(
+        string reason,
+        CancellationToken cancellationToken)
+    {
+        var backup = await CreateBackupAsync(reason, cancellationToken);
+        var opened = await OpenBackupAsync(backup.Id, cancellationToken)
+            ?? throw new InvalidOperationException("The migration backup was created but could not be reopened for verification.");
+
+        await using var stream = opened.Stream;
+        var preview = await PreviewRestoreAsync(stream, cancellationToken);
+        if (!preview.Valid || preview.Manifest is null)
+        {
+            throw new InvalidOperationException(
+                $"The migration backup failed verification: {preview.Message}");
+        }
+
+        if (!string.Equals(preview.Manifest.App, "Deluno", StringComparison.OrdinalIgnoreCase))
+        {
+            throw new InvalidOperationException("The migration backup manifest belongs to a different application.");
+        }
+
+        return new MigrationBackupReceipt(
+            backup.Id,
+            backup.FileName,
+            backup.SizeBytes,
+            backup.CreatedUtc,
+            backup.Reason,
+            "manifest-and-restore-preview-verified");
+    }
 
     private sealed class BackupSettingsState
     {

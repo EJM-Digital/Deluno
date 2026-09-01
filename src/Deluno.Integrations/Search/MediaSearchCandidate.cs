@@ -1,3 +1,5 @@
+using Deluno.Quality.ReleasePreferences;
+
 namespace Deluno.Integrations.Search;
 
 public sealed record MediaSearchCandidate(
@@ -21,4 +23,6 @@ public sealed record MediaSearchCandidate(
     string? ReleaseGroup = null,
     double? EstimatedBitrateMbps = null,
     string PolicyVersion = Deluno.Quality.MediaPolicyCatalog.CurrentVersion,
-    IReadOnlyList<CustomFormatMatchResult>? MatchedCustomFormats = null);
+    IReadOnlyList<CustomFormatMatchResult>? MatchedCustomFormats = null,
+    PreferenceEvaluation? PreferenceEvaluation = null,
+    PreferenceComparison? PreferenceComparison = null);

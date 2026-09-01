@@ -48,6 +48,10 @@ public static class CatalogueFilterFields
             CatalogueFilterGroup.Title, CatalogueFilterValueKind.Genre,
             CatalogueFilterSource.Entry, "{alias}.genres"),
 
+        new("tag", "Tag", "A label you chose for this title — independent of provider metadata.",
+            CatalogueFilterGroup.Title, CatalogueFilterValueKind.Tag,
+            CatalogueFilterSource.Entry, "{alias}.id"),
+
         new("year",
             kind == MediaKind.Movie ? "Year" : "Started",
             kind == MediaKind.Movie ? "The year it was released." : "The year the show started.",

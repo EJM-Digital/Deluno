@@ -33,7 +33,7 @@ Its second level changes only with the selected family:
 | --- | --- |
 | Library | Parent opens Files, processing & import; children: Processing & import; Final destinations; Metadata & sidecars; Tags |
 | Connections | Indexers; Download clients; File locations; Library routing |
-| Media plans & quality | Media Plan, Quality profiles, Quality & size limits, Release scoring |
+| Media plans & quality | Media Plan, Quality profiles, Quality & size limits, Release preferences |
 | Discover media | Import lists |
 | Automation & recovery | Search, retries & failed downloads |
 | Maintain Deluno | System health, System activity, Backups, Updates, API access, Help & guides, General, Notifications, Interface, Migration, Guided setup |

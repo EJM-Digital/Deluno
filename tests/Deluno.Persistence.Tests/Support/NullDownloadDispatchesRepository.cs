@@ -1,3 +1,4 @@
+using Deluno.Contracts;
 using Deluno.Jobs.Contracts;
 using Deluno.Jobs.Data;
 
@@ -28,7 +29,9 @@ public sealed class NullDownloadDispatchesRepository : IDownloadDispatchesReposi
         string? grabMessage,
         string? grabFailureCode,
         string? grabResponseJson,
-        CancellationToken cancellationToken) =>
+        CancellationToken cancellationToken,
+        IntegrationFailure? failure = null,
+        string? externalId = null) =>
         Task.FromResult(new DownloadDispatchItem(
             Id: dispatchId,
             LibraryId: null!,
@@ -49,7 +52,7 @@ public sealed class NullDownloadDispatchesRepository : IDownloadDispatchesReposi
             GrabFailureCode: grabFailureCode,
             GrabResponseJson: grabResponseJson,
             DetectedUtc: null,
-            TorrentHashOrItemId: null,
+            TorrentHashOrItemId: externalId,
             DownloadedBytes: null,
             ImportStatus: null,
             ImportDetectedUtc: null,
@@ -57,7 +60,8 @@ public sealed class NullDownloadDispatchesRepository : IDownloadDispatchesReposi
             ImportedFilePath: null,
             ImportFailureCode: null,
             ImportFailureMessage: null,
-            CircuitOpenUntilUtc: null));
+            CircuitOpenUntilUtc: null,
+            Failure: failure));
 
     public Task<DownloadDispatchItem> RecordDetectionAsync(
         string dispatchId,
@@ -72,7 +76,8 @@ public sealed class NullDownloadDispatchesRepository : IDownloadDispatchesReposi
         string? importedFilePath,
         string? importFailureCode,
         string? importFailureMessage,
-        CancellationToken cancellationToken) =>
+        CancellationToken cancellationToken,
+        IntegrationFailure? failure = null) =>
         throw new NotImplementedException("Test only - should not be called");
 
     public Task<IReadOnlyList<DispatchTimelineEvent>> GetDispatchTimelineAsync(

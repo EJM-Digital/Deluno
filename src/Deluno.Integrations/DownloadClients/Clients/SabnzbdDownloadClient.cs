@@ -26,16 +26,50 @@ public sealed class SabnzbdDownloadClient(IHttpClientFactory httpClientFactory) 
             ["cat"] = DownloadClientHelpers.ResolveCategory(client, request), ["output"] = "json"
         })}");
         using var response = await httpClientFactory.CreateClient("download-clients").GetAsync(uri, cancellationToken);
+        var responseJson = await response.Content.ReadAsStringAsync(cancellationToken);
         response.EnsureSuccessStatusCode();
-        return DownloadClientHelpers.GrabSuccess(client, request, "Release URL sent to SABnzbd.");
+        string? externalId = null;
+        var accepted = false;
+        try
+        {
+            using var document = JsonDocument.Parse(responseJson);
+            accepted = document.RootElement.TryGetProperty("status", out var status) && status.ValueKind == JsonValueKind.True;
+            if (document.RootElement.TryGetProperty("nzo_ids", out var ids) && ids.ValueKind == JsonValueKind.Array)
+            {
+                externalId = ids.EnumerateArray()
+                    .Where(item => item.ValueKind == JsonValueKind.String)
+                    .Select(item => item.GetString())
+                    .FirstOrDefault(item => !string.IsNullOrWhiteSpace(item));
+            }
+        }
+        catch (JsonException)
+        {
+            // The grab service retains the raw payload for the typed failure.
+        }
+
+        if (!accepted)
+        {
+            return DownloadClientHelpers.GrabFailure(client, request, "SABnzbd did not accept the release URL.") with
+            {
+                ResponseCode = (int)response.StatusCode,
+                ResponseJson = responseJson
+            };
+        }
+
+        return DownloadClientHelpers.GrabSuccess(client, request, "Release URL sent to SABnzbd.") with
+        {
+            ResponseCode = (int)response.StatusCode,
+            ResponseJson = responseJson,
+            ExternalId = externalId
+        };
     }
 
     public override async Task<DownloadClientTelemetrySnapshot?> GetSnapshotAsync(DownloadClientItem client, DateTimeOffset capturedUtc, CancellationToken cancellationToken)
     {
         var baseUri = DownloadClientHelpers.ResolveEndpoint(client);
-        if (baseUri is null) return null;
+        if (baseUri is null) return CreateConfigurationSnapshot(client, capturedUtc, "Download client address is missing.");
         var apiKey = client.Secret;
-        if (string.IsNullOrWhiteSpace(apiKey)) return CreateSnapshot(client, [], capturedUtc, "degraded", "SABnzbd API key is missing.");
+        if (string.IsNullOrWhiteSpace(apiKey)) return CreateConfigurationSnapshot(client, capturedUtc, "SABnzbd API key is missing.");
         var http = httpClientFactory.CreateClient("download-clients");
         http.Timeout = TimeSpan.FromSeconds(8);
         using var response = await http.GetAsync(new Uri(baseUri, $"api?mode=queue&output=json&apikey={Uri.EscapeDataString(apiKey)}"), cancellationToken);
@@ -124,13 +158,32 @@ public sealed class SabnzbdDownloadClient(IHttpClientFactory httpClientFactory) 
     {
         var baseUri = DownloadClientHelpers.ResolveEndpoint(client);
         if (baseUri is null) return DownloadClientHelpers.MissingAddress(client, queueItemId, action);
-        if (string.IsNullOrWhiteSpace(client.Secret)) return new(client.Id, queueItemId, action, false, "SABnzbd API key is missing.");
+        if (string.IsNullOrWhiteSpace(client.Secret))
+        {
+            return DownloadClientHelpers.ActionFailure(
+                client,
+                queueItemId,
+                action,
+                "SABnzbd API key is missing.",
+                upstreamDetail: "The client configuration has no API key.",
+                category: "configuration");
+        }
         var mode = action switch { "pause" => "queue&name=pause", "resume" => "queue&name=resume", "delete" => "queue&name=delete", _ => null };
         if (mode is null) return DownloadClientHelpers.Unsupported(client, queueItemId, action, "SABnzbd");
         var http = httpClientFactory.CreateClient("download-clients");
         http.Timeout = TimeSpan.FromSeconds(8);
         using var response = await http.GetAsync(new Uri(baseUri, $"api?mode={mode}&value={Uri.EscapeDataString(queueItemId)}&apikey={Uri.EscapeDataString(client.Secret)}&output=json"), cancellationToken);
-        return new(client.Id, queueItemId, action, response.IsSuccessStatusCode, response.IsSuccessStatusCode ? "SABnzbd action sent." : $"SABnzbd returned {(int)response.StatusCode}.");
+        if (response.IsSuccessStatusCode)
+        {
+            return DownloadClientHelpers.ActionSuccess(client, queueItemId, action, "SABnzbd action sent.");
+        }
+
+        return DownloadClientHelpers.ActionFailure(
+            client,
+            queueItemId,
+            action,
+            $"SABnzbd returned {(int)response.StatusCode}.",
+            response.StatusCode);
     }
 
     public override string NormalizeStatus(string? nativeStatus, double? progress, int? errorCode = null, string? errorMessage = null)
@@ -144,19 +197,17 @@ public sealed class SabnzbdDownloadClient(IHttpClientFactory httpClientFactory) 
 
     private static async Task<IReadOnlyList<DownloadClientHistoryItem>> GetHistoryCoreAsync(HttpClient http, DownloadClientItem client, Uri baseUri, string apiKey, DateTimeOffset capturedUtc, CancellationToken cancellationToken)
     {
-        try
-        {
-            using var response = await http.GetAsync(new Uri(baseUri, $"api?mode=history&output=json&apikey={Uri.EscapeDataString(apiKey)}"), cancellationToken);
-            response.EnsureSuccessStatusCode();
-            var payload = await response.Content.ReadFromJsonAsync<SabHistoryResponse>(cancellationToken);
-            return (payload?.History?.Slots ?? []).Select(item => new DownloadClientHistoryItem(
-                item.NzoId ?? item.Name ?? Guid.CreateVersion7().ToString("N"), client.Id, client.Name, client.Protocol,
-                DownloadClientHelpers.InferMediaType(client, item.Category), DownloadClientHelpers.CleanReleaseTitle(item.Name ?? "Unknown SABnzbd history item"),
-                item.Name ?? "Unknown SABnzbd history item", item.Category ?? string.Empty, NormalizeHistoryOutcome(item.Status ?? string.Empty), "SABnzbd",
-                ParseHistorySize(item.Bytes), item.Completed is > 0 ? DateTimeOffset.FromUnixTimeSeconds(item.Completed.Value) : capturedUtc,
-                string.IsNullOrWhiteSpace(item.FailMessage) ? QueueError(item.Status) : item.FailMessage, item.Storage)).ToArray();
-        }
-        catch { return []; }
+        using var response = await http.GetAsync(new Uri(baseUri, $"api?mode=history&output=json&apikey={Uri.EscapeDataString(apiKey)}"), cancellationToken);
+        response.EnsureSuccessStatusCode();
+        var payload = await response.Content.ReadFromJsonAsync<SabHistoryResponse>(cancellationToken);
+        return (payload?.History?.Slots ?? []).Select(item => new DownloadClientHistoryItem(
+            item.NzoId ?? item.Name ?? Guid.CreateVersion7().ToString("N"), client.Id, client.Name, client.Protocol,
+            DownloadClientHelpers.InferMediaType(client, item.Category), DownloadClientHelpers.CleanReleaseTitle(item.Name ?? "Unknown SABnzbd history item"),
+            item.Name ?? "Unknown SABnzbd history item", item.Category ?? string.Empty, NormalizeHistoryOutcome(item.Status ?? string.Empty), "SABnzbd",
+            ParseHistorySize(item.Bytes), item.Completed is > 0 ? DateTimeOffset.FromUnixTimeSeconds(item.Completed.Value) : capturedUtc,
+            string.IsNullOrWhiteSpace(item.FailMessage) ? QueueError(item.Status) : item.FailMessage, item.Storage,
+            HistorySource: "native",
+            ExternalId: item.NzoId)).ToArray();
     }
 
     private static long ParseSize(string? value)

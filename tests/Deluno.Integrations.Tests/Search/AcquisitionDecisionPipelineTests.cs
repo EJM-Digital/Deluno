@@ -2,6 +2,7 @@ using Deluno.Integrations.Search;
 using Moq;
 using Deluno.Platform.Contracts;
 using Deluno.Quality.Contracts;
+using Deluno.Quality.ReleasePreferences;
 
 namespace Deluno.Integrations.Tests.Search;
 
@@ -108,7 +109,7 @@ public class AcquisitionDecisionPipelineTests
     }
 
     [Fact]
-    public void EvaluateSelectedRelease_ProtectionEnabled_AllowsSameQualityGrab()
+    public void EvaluateSelectedRelease_ProtectionEnabled_BlocksEquivalentSameQualityGrab()
     {
         // Candidate quality matches current quality → QualityDelta = 0 → not a downgrade → allowed.
         var request = BuildRequest(
@@ -119,9 +120,10 @@ public class AcquisitionDecisionPipelineTests
 
         var result = _pipeline.EvaluateSelectedRelease(request);
 
-        // QualityDelta == 0 so replacementBlocked is false.
-        // The release is safe (preferred + meetsCutoff + delta >= 0) so CanDispatch = true.
-        Assert.True(result.CanDispatch);
+        // A typed plan does not treat a same-quality candidate as an upgrade when
+        // the installed quality already meets the cutoff.
+        Assert.False(result.CanDispatch);
+        Assert.Contains("equivalent", result.Reason, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("Replacement protection", result.Reason, StringComparison.OrdinalIgnoreCase);
     }
 
@@ -227,7 +229,7 @@ public class AcquisitionDecisionPipelineTests
     }
 
     [Fact]
-    public void EvaluateSelectedRelease_uses_source_priority_and_custom_formats_from_manual_context()
+    public void EvaluateSelectedRelease_preserves_custom_format_provenance_without_numeric_scoring()
     {
         var customFormats = new[]
         {
@@ -253,8 +255,30 @@ public class AcquisitionDecisionPipelineTests
             CustomFormats = customFormats
         });
 
-        Assert.True(enriched.Candidate.Score > baseline.Candidate.Score);
-        Assert.Equal(125, enriched.Candidate.CustomFormatScore);
+        Assert.Equal(0, baseline.Candidate.Score);
+        Assert.Equal(0, enriched.Candidate.Score);
+        Assert.Equal(0, enriched.Candidate.CustomFormatScore);
         Assert.NotEmpty(enriched.Candidate.MatchedCustomFormats ?? []);
+        Assert.NotNull(enriched.Candidate.PreferenceEvaluation);
+    }
+
+    [Fact]
+    public void EvaluateSelectedRelease_uses_supplied_immutable_plan_instead_of_recompiling()
+    {
+        var suppliedPlan = new ReleasePreferencePlan(
+            "profile-plan",
+            "7",
+            "movies",
+            Families: [],
+            Provenance: "persisted-profile-plan");
+
+        var result = _pipeline.EvaluateSelectedRelease(BuildRequest() with
+        {
+            PreferencePlan = suppliedPlan
+        });
+
+        Assert.Equal("profile-plan", result.Candidate.PreferenceEvaluation?.PlanId);
+        Assert.Equal("7", result.Candidate.PreferenceEvaluation?.PlanVersion);
+        Assert.Equal(suppliedPlan.PlanHash, result.Candidate.PreferenceEvaluation?.PlanHash);
     }
 }

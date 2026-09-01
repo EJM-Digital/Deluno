@@ -419,6 +419,11 @@ public sealed class SeriesCatalogueSyncPersistenceTests
         Assert.Single(wanted);
         var episodeIds = await GetEpisodeIdsAsync(storage, seriesId);
         Assert.Equal(episodeIds[(1, 2)], wanted[0].EpisodeId);
+        Assert.Equal(
+            123456L,
+            await repository.GetEpisodeFileSizeBytesAsync(
+                episodeIds[(1, 1)],
+                CancellationToken.None));
     }
 
     [Fact]

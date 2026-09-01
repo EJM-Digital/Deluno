@@ -1,3 +1,5 @@
+using Deluno.Contracts;
+
 namespace Deluno.Jobs.Contracts;
 
 public sealed record DownloadDispatchItem(
@@ -40,4 +42,9 @@ public sealed record DownloadDispatchItem(
 
     // Retry tracking
     DateTimeOffset? NextRetryEligibleUtc = null,
-    int? AttemptCount = null);
+    int? AttemptCount = null,
+
+    // Normalised failure surfaced by the dispatch read model. This is derived
+    // from the typed grab response when present, with a legacy-column fallback
+    // for older rows.
+    IntegrationFailure? Failure = null);

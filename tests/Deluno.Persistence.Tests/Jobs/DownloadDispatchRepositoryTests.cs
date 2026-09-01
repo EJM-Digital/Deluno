@@ -1,10 +1,13 @@
 using Deluno.Jobs.Contracts;
 using Deluno.Jobs.Data;
 using Deluno.Persistence.Tests.Support;
+using Deluno.Contracts;
 using Deluno.Infrastructure.Storage.Migrations;
 using Deluno.Infrastructure.Storage;
+using Deluno.Integrations.DownloadClients;
 using Microsoft.Extensions.Logging.Abstractions;
 using System.Data.Common;
+using System.Text.Json;
 
 namespace Deluno.Persistence.Tests.Jobs;
 
@@ -16,7 +19,10 @@ public sealed class DownloadDispatchRepositoryTests
         string libraryId,
         string entityId,
         string releaseName,
-        DateTimeOffset? createdUtc = null)
+        DateTimeOffset? createdUtc = null,
+        bool replacementAuthorized = false,
+        bool forceReplacementAuthorized = false,
+        string? replacementExpectedPath = null)
     {
         await using var connection = await connectionFactory.OpenConnectionAsync(
             DelunoDatabaseNames.Jobs,
@@ -27,10 +33,12 @@ public sealed class DownloadDispatchRepositoryTests
             """
             INSERT INTO download_dispatches (
                 id, library_id, media_type, entity_type, entity_id, release_name,
-                indexer_name, download_client_id, download_client_name, status, created_utc
+                indexer_name, download_client_id, download_client_name, status,
+                replacement_authorized, force_replacement_authorized, replacement_expected_path, created_utc
             ) VALUES (
                 @id, @libraryId, 'movie', 'movie', @entityId, @releaseName,
-                'test-indexer', 'qbittorrent-main', 'qBittorrent', 'initial', @createdUtc
+                'test-indexer', 'qbittorrent-main', 'qBittorrent', 'initial',
+                @replacementAuthorized, @forceReplacementAuthorized, @replacementExpectedPath, @createdUtc
             )
             """;
 
@@ -53,6 +61,21 @@ public sealed class DownloadDispatchRepositoryTests
         nameParam.ParameterName = "@releaseName";
         nameParam.Value = releaseName;
         command.Parameters.Add(nameParam);
+
+        var replacementAuthorizedParam = command.CreateParameter();
+        replacementAuthorizedParam.ParameterName = "@replacementAuthorized";
+        replacementAuthorizedParam.Value = replacementAuthorized ? 1 : 0;
+        command.Parameters.Add(replacementAuthorizedParam);
+
+        var forceReplacementAuthorizedParam = command.CreateParameter();
+        forceReplacementAuthorizedParam.ParameterName = "@forceReplacementAuthorized";
+        forceReplacementAuthorizedParam.Value = forceReplacementAuthorized ? 1 : 0;
+        command.Parameters.Add(forceReplacementAuthorizedParam);
+
+        var replacementExpectedPathParam = command.CreateParameter();
+        replacementExpectedPathParam.ParameterName = "@replacementExpectedPath";
+        replacementExpectedPathParam.Value = replacementExpectedPath is null ? DBNull.Value : replacementExpectedPath;
+        command.Parameters.Add(replacementExpectedPathParam);
 
         var createdUtcParam = command.CreateParameter();
         createdUtcParam.ParameterName = "@createdUtc";
@@ -80,7 +103,15 @@ public sealed class DownloadDispatchRepositoryTests
             new SqliteDatabaseMigrator(storage.Factory, timeProvider),
             NullLogger<JobsSchemaInitializer>.Instance).StartAsync(CancellationToken.None);
 
-        await InsertDispatchAsync(storage.Factory, "dispatch-a", "movies-main", "movie-1", "Sintel.2010.1080p");
+        await InsertDispatchAsync(
+            storage.Factory,
+            "dispatch-a",
+            "movies-main",
+            "movie-1",
+            "Sintel.2010.1080p",
+            replacementAuthorized: true,
+            forceReplacementAuthorized: true,
+            replacementExpectedPath: @"C:\Library\Movies\Sintel (2010)\Sintel.mkv");
 
         var store = new SqliteJobStore(storage.Factory, timeProvider, new NullRealtimeEventPublisher(), new NullDownloadDispatchesRepository());
         var link = await store.FindRecentDispatchLinkAsync("qbittorrent-main", "Sintel.2010.1080p", CancellationToken.None);
@@ -91,6 +122,107 @@ public sealed class DownloadDispatchRepositoryTests
         Assert.Equal("movie-1", link.EntityId);
         Assert.Equal("test-indexer", link.IndexerName);
         Assert.Equal("movies-main", link.LibraryId);
+        Assert.True(link.ReplacementAuthorized);
+        Assert.True(link.ForceReplacementAuthorized);
+        Assert.Equal(@"C:\Library\Movies\Sintel (2010)\Sintel.mkv", link.ReplacementExpectedPath);
+    }
+
+    [Fact]
+    public async Task Ordinary_and_legacy_dispatches_cannot_authorize_an_overwrite()
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-04-29T04:00:00Z"));
+
+        await new JobsSchemaInitializer(
+            storage.Factory,
+            new SqliteDatabaseMigrator(storage.Factory, timeProvider),
+            NullLogger<JobsSchemaInitializer>.Instance).StartAsync(CancellationToken.None);
+
+        await InsertDispatchAsync(storage.Factory, "dispatch-first", "movies-main", "movie-1", "Sintel.2010.1080p");
+
+        var store = new SqliteJobStore(storage.Factory, timeProvider, new NullRealtimeEventPublisher(), new NullDownloadDispatchesRepository());
+        var link = await store.FindRecentDispatchLinkAsync("qbittorrent-main", "Sintel.2010.1080p", CancellationToken.None);
+
+        Assert.NotNull(link);
+        Assert.False(link.ReplacementAuthorized);
+        Assert.False(link.ForceReplacementAuthorized);
+        Assert.Null(link.ReplacementExpectedPath);
+    }
+
+    [Fact]
+    public async Task Force_authority_is_discarded_without_same_title_replacement_authority()
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.UtcNow);
+
+        await new JobsSchemaInitializer(
+            storage.Factory,
+            new SqliteDatabaseMigrator(storage.Factory, timeProvider),
+            NullLogger<JobsSchemaInitializer>.Instance).StartAsync(CancellationToken.None);
+
+        var store = new SqliteJobStore(storage.Factory, timeProvider, new NullRealtimeEventPublisher(), new NullDownloadDispatchesRepository());
+        await store.RecordDownloadDispatchAsync(
+            "movies-main",
+            "movies",
+            "movie",
+            "movie-1",
+            "Sintel.2010.1080p",
+            "test-indexer",
+            "qbittorrent-main",
+            "qBittorrent",
+            "sent",
+            null,
+            replacementAuthorized: false,
+            forceReplacementAuthorized: true);
+
+        var link = await store.FindRecentDispatchLinkAsync("qbittorrent-main", "Sintel.2010.1080p", CancellationToken.None);
+
+        Assert.NotNull(link);
+        Assert.False(link.ReplacementAuthorized);
+        Assert.False(link.ForceReplacementAuthorized);
+        Assert.Null(link.ReplacementExpectedPath);
+    }
+
+    [Fact]
+    public async Task Episode_scoped_replacement_manifest_survives_dispatch_persistence_in_canonical_order()
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.UtcNow);
+
+        await new JobsSchemaInitializer(
+            storage.Factory,
+            new SqliteDatabaseMigrator(storage.Factory, timeProvider),
+            NullLogger<JobsSchemaInitializer>.Instance).StartAsync(CancellationToken.None);
+
+        var store = new SqliteJobStore(storage.Factory, timeProvider, new NullRealtimeEventPublisher(), new NullDownloadDispatchesRepository());
+        await store.RecordDownloadDispatchAsync(
+            "series-main",
+            "tv",
+            "season",
+            "series-1:season:1",
+            "Example.Show.S01.2160p",
+            "test-indexer",
+            "sab-main",
+            "SABnzbd",
+            "sent",
+            null,
+            replacementAuthorized: true,
+            replacementTargets:
+            [
+                new DispatchReplacementTarget("episode-2", @"D:\TV\Example\S01E02.mkv"),
+                new DispatchReplacementTarget("episode-1", @"D:\TV\Example\S01E01.mkv")
+            ]);
+
+        var link = await store.FindRecentDispatchLinkAsync("sab-main", "Example.Show.S01.2160p", CancellationToken.None);
+
+        Assert.NotNull(link);
+        Assert.True(link.ReplacementAuthorized);
+        Assert.Null(link.ReplacementExpectedPath);
+        var persistedTargets = Assert.IsAssignableFrom<IReadOnlyList<DispatchReplacementTarget>>(link.ReplacementTargets);
+        Assert.Equal(
+            ["episode-1", "episode-2"],
+            persistedTargets.Select(target => target.EntityId).ToArray());
+        Assert.Equal(@"D:\TV\Example\S01E01.mkv", persistedTargets[0].ExpectedPath);
     }
 
     /// <summary>
@@ -252,6 +384,239 @@ public sealed class DownloadDispatchRepositoryTests
         var timeline = await repository.GetDispatchTimelineAsync(dispatchId, CancellationToken.None);
         // Timeline should have a grab event (could be grab_succeeded or grab_failed based on status)
         Assert.NotEmpty(timeline);
+    }
+
+    [Fact]
+    public async Task RecordGrab_persists_the_client_external_id_before_polling()
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-04-29T04:00:00Z"));
+
+        await new JobsSchemaInitializer(
+            storage.Factory,
+            new SqliteDatabaseMigrator(storage.Factory, timeProvider),
+            NullLogger<JobsSchemaInitializer>.Instance).StartAsync(CancellationToken.None);
+
+        var repository = new SqliteDownloadDispatchesRepository(storage.Factory, timeProvider);
+        var dispatchId = Guid.CreateVersion7().ToString("N");
+        await InsertDispatchAsync(storage.Factory, dispatchId, "tv-main", "series-1", "Example.Show.S01E01");
+
+        var recorded = await repository.RecordGrabAsync(
+            dispatchId,
+            "succeeded",
+            200,
+            "Release URL sent to SABnzbd.",
+            null,
+            "{\"status\":true,\"nzo_ids\":[\"native-sab-id-42\"]}",
+            CancellationToken.None,
+            externalId: "native-sab-id-42");
+
+        Assert.Equal("native-sab-id-42", recorded.TorrentHashOrItemId);
+
+        var nativeHistory = new DownloadClientHistoryItem(
+            "native-sab-id-42",
+            "sab-client",
+            "SABnzbd",
+            "sabnzbd",
+            "tv",
+            "Example Show S01E01",
+            "Example.Show.S01E01",
+            "tv",
+            DownloadQueueStatuses.Completed,
+            "SABnzbd",
+            123,
+            timeProvider.GetUtcNow(),
+            null,
+            HistorySource: "native",
+            ExternalId: "native-sab-id-42");
+        var snapshot = new DownloadClientTelemetrySnapshot(
+            "sab-client",
+            "SABnzbd",
+            "sabnzbd",
+            "http://sabnzbd.test",
+            "healthy",
+            null,
+            new(true, true, true, true, false, true, "api-key"),
+            new(0, 0, 1, 0, 0, 0, 0),
+            [],
+            [nativeHistory],
+            timeProvider.GetUtcNow());
+
+        var merged = DownloadClientTelemetryService.EnrichWithDispatchHistory(
+            snapshot,
+            [recorded with { DownloadClientId = "sab-client", DownloadClientName = "SABnzbd" }],
+            timeProvider.GetUtcNow());
+
+        Assert.Single(merged.History);
+        Assert.Equal("native", merged.History[0].HistorySource);
+        Assert.Equal("native-sab-id-42", merged.History[0].ExternalId);
+    }
+
+    [Fact]
+    public async Task ReadDispatch_exposes_typed_grab_failure_and_keeps_legacy_rows_explainable()
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-04-29T04:00:00Z"));
+
+        await new JobsSchemaInitializer(
+            storage.Factory,
+            new SqliteDatabaseMigrator(storage.Factory, timeProvider),
+            NullLogger<JobsSchemaInitializer>.Instance).StartAsync(CancellationToken.None);
+
+        var repository = new SqliteDownloadDispatchesRepository(storage.Factory, timeProvider);
+        var dispatchId = Guid.CreateVersion7().ToString("N");
+        await InsertDispatchAsync(storage.Factory, dispatchId, "movies-main", "123", "Test.Movie.2024.1080p");
+
+        var failure = IntegrationFailureFactory.FromLegacy(
+            "download-client",
+            "qbittorrent-main",
+            "qBittorrent",
+            "grab",
+            "auth",
+            "The API key was rejected.",
+            httpStatus: 401,
+            code: "unauthorized");
+
+        await repository.RecordGrabAsync(
+            dispatchId,
+            "failed",
+            401,
+            failure.Message,
+            failure.Code,
+            grabResponseJson: null,
+            cancellationToken: CancellationToken.None,
+            failure: failure);
+
+        var retrieved = await repository.GetDispatchAsync(dispatchId, CancellationToken.None);
+
+        Assert.NotNull(retrieved?.Failure);
+        Assert.Equal(IntegrationFailureKind.Authentication, retrieved!.Failure!.Kind);
+        Assert.Equal("qBittorrent", retrieved.Failure.ServiceName);
+        Assert.Equal("unauthorized", retrieved.Failure.Code);
+        Assert.Equal(401, retrieved.Failure.HttpStatus);
+    }
+
+    [Fact]
+    public async Task ReadDispatch_derives_a_typed_failure_from_legacy_grab_columns()
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-04-29T04:00:00Z"));
+
+        await new JobsSchemaInitializer(
+            storage.Factory,
+            new SqliteDatabaseMigrator(storage.Factory, timeProvider),
+            NullLogger<JobsSchemaInitializer>.Instance).StartAsync(CancellationToken.None);
+
+        var repository = new SqliteDownloadDispatchesRepository(storage.Factory, timeProvider);
+        var dispatchId = Guid.CreateVersion7().ToString("N");
+        await InsertDispatchAsync(storage.Factory, dispatchId, "movies-main", "123", "Test.Movie.2024.1080p");
+
+        await repository.RecordGrabAsync(
+            dispatchId,
+            "failed",
+            503,
+            "The service is unavailable.",
+            "unavailable",
+            null,
+            CancellationToken.None);
+
+        var retrieved = await repository.GetDispatchAsync(dispatchId, CancellationToken.None);
+
+        Assert.NotNull(retrieved?.Failure);
+        Assert.Equal(IntegrationFailureKind.Unavailable, retrieved!.Failure!.Kind);
+        Assert.Equal("unavailable", retrieved.Failure.Code);
+        Assert.Equal(503, retrieved.Failure.HttpStatus);
+    }
+
+    [Fact]
+    public async Task ReadDispatch_prefers_terminal_import_failure_over_stale_grab_failure_json()
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-04-29T04:00:00Z"));
+
+        await new JobsSchemaInitializer(
+            storage.Factory,
+            new SqliteDatabaseMigrator(storage.Factory, timeProvider),
+            NullLogger<JobsSchemaInitializer>.Instance).StartAsync(CancellationToken.None);
+
+        var repository = new SqliteDownloadDispatchesRepository(storage.Factory, timeProvider);
+        var dispatchId = Guid.CreateVersion7().ToString("N");
+        await InsertDispatchAsync(storage.Factory, dispatchId, "movies-main", "123", "Test.Movie.2024.1080p");
+
+        var grabFailure = IntegrationFailureFactory.FromLegacy(
+            "download-client",
+            "qbittorrent-main",
+            "qBittorrent",
+            "grab",
+            "auth",
+            "The API key was rejected.",
+            httpStatus: 401,
+            code: "unauthorized");
+        await repository.RecordGrabAsync(
+            dispatchId,
+            "failed",
+            401,
+            grabFailure.Message,
+            grabFailure.Code,
+            JsonSerializer.Serialize(new { failure = grabFailure }),
+            CancellationToken.None);
+
+        await repository.RecordImportOutcomeAsync(
+            dispatchId,
+            "failed",
+            null,
+            "import-no-match",
+            "The cleaned file did not match a catalogue item.",
+            CancellationToken.None);
+
+        var retrieved = await repository.GetDispatchAsync(dispatchId, CancellationToken.None);
+
+        Assert.NotNull(retrieved?.Failure);
+        Assert.Equal("Deluno import", retrieved!.Failure!.ServiceName);
+        Assert.Equal("import-no-match", retrieved.Failure.Code);
+        Assert.Equal(IntegrationFailureKind.RejectedAction, retrieved.Failure.Kind);
+    }
+
+    [Fact]
+    public async Task RecordImportOutcome_persists_the_typed_client_failure_for_restart_safe_history()
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-04-29T04:00:00Z"));
+
+        await new JobsSchemaInitializer(
+            storage.Factory,
+            new SqliteDatabaseMigrator(storage.Factory, timeProvider),
+            NullLogger<JobsSchemaInitializer>.Instance).StartAsync(CancellationToken.None);
+
+        var repository = new SqliteDownloadDispatchesRepository(storage.Factory, timeProvider);
+        var dispatchId = Guid.CreateVersion7().ToString("N");
+        await InsertDispatchAsync(storage.Factory, dispatchId, "movies-main", "123", "Test.Movie.2024.1080p");
+
+        var failure = IntegrationFailureFactory.FromLegacy(
+            "download-client",
+            "sabnzbd-main",
+            "SABnzbd",
+            "download",
+            "failed",
+            "The download client rejected the job.",
+            code: "client-reported-failure",
+            externalId: "sab-job-42");
+
+        await repository.RecordImportOutcomeAsync(
+            dispatchId,
+            "failed",
+            null,
+            failure.Code,
+            failure.Message,
+            CancellationToken.None,
+            failure);
+
+        var retrieved = await repository.GetDispatchAsync(dispatchId, CancellationToken.None);
+
+        Assert.NotNull(retrieved?.Failure);
+        Assert.Equal(failure, retrieved!.Failure);
+        Assert.Equal("sab-job-42", retrieved.Failure.ExternalId);
+        Assert.Equal(IntegrationFailureKind.RejectedAction, retrieved.Failure.Kind);
     }
 
     [Fact]

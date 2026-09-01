@@ -62,7 +62,17 @@ public sealed class UTorrentDownloadClient : DownloadClientBase
         using var http = CreateHttp(client, baseUri, TimeSpan.FromSeconds(8));
         var token = await DownloadClientHelpers.GetUTorrentTokenAsync(http, cancellationToken);
         using var response = await http.GetAsync($"gui/?token={Uri.EscapeDataString(token)}&action={verb}&hash={Uri.EscapeDataString(queueItemId)}", cancellationToken);
-        return new(client.Id, queueItemId, action, response.IsSuccessStatusCode, response.IsSuccessStatusCode ? "uTorrent action sent." : $"uTorrent returned {(int)response.StatusCode}.");
+        if (response.IsSuccessStatusCode)
+        {
+            return DownloadClientHelpers.ActionSuccess(client, queueItemId, action, "uTorrent action sent.");
+        }
+
+        return DownloadClientHelpers.ActionFailure(
+            client,
+            queueItemId,
+            action,
+            $"uTorrent returned {(int)response.StatusCode}.",
+            response.StatusCode);
     }
 
     public override string NormalizeStatus(string? nativeStatus, double? progress, int? errorCode = null, string? errorMessage = null) => DownloadClientHelpers.NormalizeTextStatus(nativeStatus, progress);

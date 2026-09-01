@@ -4,6 +4,7 @@ import { Play, ShieldCheck, ShieldOff, Star } from "lucide-react";
 
 import type { MediaItem } from "../../lib/media-types";
 import { cn } from "../../lib/utils";
+import { formatRuntime, useDisplayPreferences } from "../../lib/display-preferences";
 import { Badge } from "../ui/badge";
 import { PosterArtwork } from "./library-grid";
 import { TitleMarkChip } from "../ui/title-mark";
@@ -67,7 +68,6 @@ export function LibraryOverview({
     </div>
   );
 }
-
 function OverviewRow({
   item,
   selected,
@@ -80,6 +80,7 @@ function OverviewRow({
   onToggle: (id: string) => void;
 }) {
   const href = item.type === "movie" ? `/movies/${item.id}` : `/tv/${item.id}`;
+  const { preferences } = useDisplayPreferences();
 
   return (
     <div
@@ -142,7 +143,7 @@ function OverviewRow({
               {item.runtimeMinutes ? (
                 <>
                   <span className="text-foreground/20">·</span>
-                  <span>{runtimeLabel(item.runtimeMinutes)}</span>
+                  <span>{formatRuntime(item.runtimeMinutes, preferences)}</span>
                 </>
               ) : null}
               {item.rating !== null && item.rating !== undefined ? (
@@ -201,10 +202,4 @@ function OverviewRow({
       </Link>
     </div>
   );
-}
-
-/** Hours and minutes, the way a person says them. */
-function runtimeLabel(minutes: number) {
-  const hours = Math.floor(minutes / 60);
-  return hours > 0 ? `${hours}h ${minutes % 60}m` : `${minutes}m`;
 }

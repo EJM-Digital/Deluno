@@ -72,7 +72,10 @@ services:
       - "5099:8080"
     environment:
       ASPNETCORE_URLS: http://+:8080
+      Server__Port: 8080
+      Server__AllowLan: "true"
       Storage__DataRoot: /data
+      DELUNO_IMAGE_REF: ghcr.io/jampat000/deluno:latest
     volumes:
       - ./data:/data
       - /your/media:/media
@@ -93,7 +96,10 @@ TMDB_API_KEY=…
 MDBLIST_API_KEY=…
 ```
 
-To update, pull the new image and recreate the container. No in-place updater runs inside a container.
+To update, set `DELUNO_IMAGE` to a versioned tag or immutable digest, run
+`docker compose pull deluno`, then `docker compose up -d --no-build` and wait
+for `/api/health/ready`. No in-place updater runs inside a container. Keep the
+same `/data` mount for upgrades and digest-based rollback.
 
 ## First run
 

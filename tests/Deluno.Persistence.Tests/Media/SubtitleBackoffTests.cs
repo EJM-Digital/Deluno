@@ -153,6 +153,39 @@ public sealed class SubtitleBackoffTests
         Assert.Equal(["ja"], item.LanguagesToFetch);
     }
 
+    [Fact]
+    public async Task A_due_attempt_exposes_the_typed_provider_failure()
+    {
+        using var storage = TestStorage.Create();
+        var clock = new MutableTimeProvider(Start);
+        var (movies, subtitles) = await CreateAsync(storage, clock);
+        var id = await ImportAsync(movies, "Dune");
+        var failure = IntegrationFailureFactory.FromLegacy(
+            "subtitle",
+            "podnapisi",
+            "Podnapisi",
+            "search",
+            "unreachable",
+            "The subtitle host could not be reached.");
+
+        await subtitles.RecordAttemptAsync(
+            MediaKind.Movie,
+            id,
+            "en",
+            failure.Message,
+            TimeSpan.FromHours(6),
+            CancellationToken.None,
+            failure);
+
+        clock.Advance(TimeSpan.FromHours(6, 1));
+        var item = Assert.Single(await WantedAsync(subtitles));
+
+        Assert.Equal(IntegrationFailureKind.Unavailable, item.LastFailure!.Kind);
+        Assert.Equal("podnapisi", item.LastFailure.ServiceId);
+        Assert.Equal("search", item.LastFailure.Operation);
+        Assert.Equal("The subtitle host could not be reached.", item.LastFailure.Message);
+    }
+
     /* ------------------------------------------------------------ helpers */
 
     private static Task<IReadOnlyList<MediaSubtitleWantedItem>> WantedAsync(

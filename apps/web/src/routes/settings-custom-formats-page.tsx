@@ -6,8 +6,8 @@
  *   ListCard  advanced rules      (row → drawer: setup · Advanced matching · Remove)
  *   ListCard  safeguards   (page form, saved by PageFooter)
  *
- * Rules score a release by its traits: Radarr and Sonarr call these Custom
- * Formats. A rule is either written here or started from the bundled TRaSH
+ * Rules describe a release's traits: Radarr and Sonarr call these Custom
+ * Formats. Deluno turns reviewed rules into typed preferences. A rule is either written here or started from the bundled TRaSH
  * guide catalogue, which is offered as "Start from" inside the rule drawer
  * rather than as a separate browsable tab.
  *
@@ -35,22 +35,19 @@ import { configurationNavAreas } from "../components/app/settings-shell";
 import { toast } from "../components/shell/toaster";
 import { useUnsavedChanges } from "../hooks/use-unsaved-changes";
 import {
-  BUNDLED_CUSTOM_FORMATS,
-  CF_CATEGORY_META,
-  CF_CATEGORY_ORDER,
-  CUSTOM_FORMAT_BUNDLES,
-  findBundledCF,
-  type BundledCF,
-  type CFCategory,
-  type CustomFormatBundle
-} from "../lib/trash-guide-data";
-import {
+  compileQualityProfilePreferences,
+  fetchTrashGuidePackage,
   fetchJson,
+  previewReleasePreference,
   type CustomFormatItem,
+  type GuideCustomFormat,
+  type GuideFormatBundle,
+  type GuidePackage,
   type LibraryItem,
   type PolicySetItem,
   type PlatformSettingsSnapshot,
-  type QualityProfileItem
+  type QualityProfileItem,
+  type ReleasePreferencePreviewResponse
 } from "../lib/api";
 import { settingsOverviewLoader } from "./settings-overview-page";
 import type { PlatformSettingsPatch } from "../lib/api/settings";
@@ -59,14 +56,56 @@ import { authedFetch } from "../lib/use-auth";
 
 const TABS = configurationNavAreas.find((area) => area.label === "Quality & Release")?.items ?? [];
 
-/** Scores users actually reach for. Anything at or under -10000 blocks a release outright. */
+// Presentation metadata only. The guide package (including the category values
+// and all catalogue entries) is served by the backend; these labels keep the
+// picker readable without reintroducing a frontend catalogue copy.
+const GUIDE_CATEGORY_ORDER = [
+  "hdr",
+  "codec",
+  "audio",
+  "channels",
+  "source",
+  "streaming",
+  "edition",
+  "groups",
+  "anime",
+  "language",
+  "unwanted",
+  "misc"
+] as const;
+
+const GUIDE_CATEGORY_LABELS: Record<string, string> = {
+  hdr: "HDR & Color",
+  codec: "Video Codec",
+  audio: "Audio Format",
+  channels: "Audio Channels",
+  source: "Source / Edition",
+  streaming: "Streaming Service",
+  edition: "Edition",
+  groups: "Release Groups",
+  anime: "Anime",
+  language: "Language",
+  unwanted: "Block / Unwanted",
+  misc: "Misc"
+};
+
+/** Legacy compatibility inputs. Anything at or under -10000 blocks a release outright. */
 const SCORE_OPTIONS = [
-  { value: "-10000", label: "Block this release" },
-  { value: "-100", label: "Strongly avoid (−100)" },
-  { value: "-25", label: "Avoid (−25)" },
-  { value: "25", label: "Mild preference (+25)" },
-  { value: "100", label: "Prefer (+100)" },
-  { value: "500", label: "Strongly prefer (+500)" }
+  { value: "-10000", label: "Block this release (legacy input)" },
+  { value: "-100", label: "Strongly avoid (legacy input)" },
+  { value: "-25", label: "Avoid (legacy input)" },
+  { value: "25", label: "Mild preference (legacy input)" },
+  { value: "100", label: "Prefer (legacy input)" },
+  { value: "500", label: "Strongly prefer (legacy input)" }
+];
+
+const INTENT_OPTIONS = [
+  { value: "blocked", label: "Must not have" },
+  { value: "avoid", label: "Avoid" },
+  { value: "neutral", label: "I do not care" },
+  { value: "prefer", label: "Prefer" },
+  { value: "strong-prefer", label: "Strongly prefer" },
+  { value: "custom", label: "Custom intent (advanced)" }
 ];
 
 const CONDITION_TYPES = [
@@ -95,14 +134,16 @@ interface LoaderData {
   qualityProfiles: QualityProfileItem[];
   customFormats: CustomFormatItem[];
   settings: PlatformSettingsSnapshot;
+  guide: GuidePackage;
 }
 
 export async function settingsCustomFormatsLoader(): Promise<LoaderData> {
-  const [overview, customFormats] = await Promise.all([
+  const [overview, customFormats, guide] = await Promise.all([
     settingsOverviewLoader(),
-    fetchJson<CustomFormatItem[]>("/api/custom-formats")
+    fetchJson<CustomFormatItem[]>("/api/custom-formats"),
+    fetchTrashGuidePackage()
   ]);
-  return { ...overview, customFormats };
+  return { ...overview, customFormats, guide };
 }
 
 interface RuleForm {
@@ -125,7 +166,7 @@ type DrawerMode =
   | null;
 
 export function SettingsCustomFormatsPage() {
-  const { customFormats, settings, libraries, policySets, qualityProfiles } = useLoaderData() as LoaderData;
+  const { customFormats, settings, libraries, policySets, qualityProfiles, guide } = useLoaderData() as LoaderData;
   const revalidator = useRevalidator();
   const settingsMutation = useApiMutation<PlatformSettingsPatch, PlatformSettingsSnapshot>("/api/settings", "PATCH");
   const [busy, setBusy] = useState<string | null>(null);
@@ -149,6 +190,7 @@ export function SettingsCustomFormatsPage() {
   const [ruleState, setRuleState] = useState<Exclude<DrawerSaveState, "clean" | "dirty">>();
   const [ruleMessage, setRuleMessage] = useState<string | null>(null);
   const [advancedOpen, setAdvancedOpen] = useState(false);
+  const [legacyScoreOpen, setLegacyScoreOpen] = useState(false);
 
   const editing = drawer?.kind === "rule" && drawer.id ? customFormats.find((format) => format.id === drawer.id) ?? null : null;
   const ruleDirty = drawer?.kind === "rule" && !same(form, initialForm);
@@ -164,12 +206,13 @@ export function SettingsCustomFormatsPage() {
     setRuleState(undefined);
     setRuleMessage(null);
     setAdvancedOpen(!format);
+    setLegacyScoreOpen(false);
     setDrawer({ kind: "rule", id: format?.id ?? null });
   }
 
   /** Choosing a guide format fills the whole rule in — name, score and conditions. */
   function startFrom(trashId: string) {
-    const bundled = findBundledCF(trashId);
+    const bundled = guide.customFormats.find((format) => format.trashId === trashId);
     if (!bundled) {
       setForm((current) => ({ ...current, trashId: null }));
       setAdvancedOpen(true);
@@ -179,7 +222,7 @@ export function SettingsCustomFormatsPage() {
       ...current,
       trashId,
       name: bundled.name,
-      score: String(bundled.defaultScore),
+      score: String(bundled.originalScore),
       conditions: bundled.patterns.map((pattern) => ({ type: "releaseTitle" as ConditionType, value: pattern, negate: false, required: true }))
     }));
     setAdvancedOpen(false);
@@ -239,18 +282,18 @@ export function SettingsCustomFormatsPage() {
     () => new Set(customFormats.filter((format) => format.trashId).map((format) => `${format.mediaType}:${format.trashId}`)),
     [customFormats]
   );
-  const presetDetail = drawer?.kind === "preset" ? CUSTOM_FORMAT_BUNDLES.find((bundle) => bundle.id === drawer.id) ?? null : null;
+  const presetDetail = drawer?.kind === "preset" ? guide.bundles.find((bundle) => bundle.id === drawer.id) ?? null : null;
   const [presetMessage, setPresetMessage] = useState<string | null>(null);
   const [presetState, setPresetState] = useState<Exclude<DrawerSaveState, "clean" | "dirty">>();
 
-  function presetProgress(bundle: CustomFormatBundle) {
+  function presetProgress(bundle: GuideFormatBundle) {
     const target = bundle.mediaType === "tv" ? "tv" : "movies";
-    const resolved = bundle.includes.map((entry) => findBundledCF(entry.trashId)).filter((cf): cf is BundledCF => Boolean(cf));
+    const resolved = bundle.includes.map((entry) => guide.customFormats.find((format) => format.trashId === entry.trashId)).filter((cf): cf is GuideCustomFormat => Boolean(cf));
     const applied = resolved.filter((cf) => appliedTrashIds.has(`${target}:${cf.trashId}`));
     return { target, resolved, applied: applied.length, total: resolved.length };
   }
 
-  async function applyPreset(bundle: CustomFormatBundle) {
+  async function applyPreset(bundle: GuideFormatBundle) {
     const { target, resolved, applied } = presetProgress(bundle);
     const missing = resolved.filter((cf) => !appliedTrashIds.has(`${target}:${cf.trashId}`));
     if (missing.length === 0) {
@@ -263,7 +306,7 @@ export function SettingsCustomFormatsPage() {
     setPresetMessage(null);
     try {
       for (const cf of missing) {
-        const score = bundle.includes.find((entry) => entry.trashId === cf.trashId)?.score ?? cf.defaultScore;
+        const score = bundle.includes.find((entry) => entry.trashId === cf.trashId)?.score ?? cf.originalScore;
         const response = await authedFetch("/api/custom-formats", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -291,23 +334,54 @@ export function SettingsCustomFormatsPage() {
 
   /* -------------------------------------------------- test a release */
   const [releaseName, setReleaseName] = useState("");
+  const [currentReleaseName, setCurrentReleaseName] = useState("");
   const [testScope, setTestScope] = useState<"all" | "movies" | "tv">("all");
+  const [testProfileId, setTestProfileId] = useState("");
   const [results, setResults] = useState<DryRunResult[] | null>(null);
+  const [typedPreview, setTypedPreview] = useState<ReleasePreferencePreviewResponse | null>(null);
+  const [typedPreviewError, setTypedPreviewError] = useState<string | null>(null);
+
+  const testProfiles = useMemo(
+    () => qualityProfiles.filter((profile) => testScope === "all" || profile.mediaType === testScope),
+    [qualityProfiles, testScope]
+  );
+
+  function openTestDrawer() {
+    setResults(null);
+    setTypedPreview(null);
+    setTypedPreviewError(null);
+    setTestProfileId((current) => current && testProfiles.some((profile) => profile.id === current) ? current : testProfiles[0]?.id ?? "");
+    setDrawer({ kind: "test" });
+  }
 
   async function runTest() {
     if (!releaseName.trim()) return;
     setBusy("test");
     setResults(null);
+    setTypedPreview(null);
+    setTypedPreviewError(null);
     try {
-      setResults(
-        await fetchJson<DryRunResult[]>("/api/custom-formats/dry-run", {
+      const legacyRequest = fetchJson<DryRunResult[]>("/api/custom-formats/dry-run", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ releaseName: releaseName.trim(), mediaType: testScope === "all" ? null : testScope })
-        })
-      );
-    } catch {
+        });
+      const profile = qualityProfiles.find((candidate) => candidate.id === testProfileId);
+      const typedRequest = profile
+        ? compileQualityProfilePreferences(profile.id)
+            .then((compilation) => previewReleasePreference({
+              planId: compilation.plan.id,
+              planVersion: compilation.plan.version,
+              releaseName: releaseName.trim(),
+              currentReleaseName: currentReleaseName.trim() || undefined
+            }))
+        : Promise.resolve(null);
+      const [legacy, typed] = await Promise.all([legacyRequest, typedRequest]);
+      setResults(legacy);
+      setTypedPreview(typed);
+    } catch (error) {
       setResults([]);
+      setTypedPreviewError(error instanceof Error ? error.message : "The typed release preview could not be run.");
     } finally {
       setBusy(null);
     }
@@ -360,7 +434,7 @@ export function SettingsCustomFormatsPage() {
   }
 
   /* ------------------------------------------------------------ render */
-  const selectedGuide = form.trashId ? findBundledCF(form.trashId) : null;
+  const selectedGuide = form.trashId ? guide.customFormats.find((format) => format.trashId === form.trashId) ?? null : null;
   return (
     <form onSubmit={submitSafeguards} className="flex flex-col gap-[var(--page-gap)]" noValidate>
       <PageToolbar
@@ -368,7 +442,7 @@ export function SettingsCustomFormatsPage() {
         actions={
           <>
             <MediaTypeFilter value={split.scope} onValueChange={split.setScope} counts={split.counts} />
-            <Button type="button" variant="outline" onClick={() => setDrawer({ kind: "test" })}>
+            <Button type="button" variant="outline" onClick={openTestDrawer}>
               <FlaskConical className="h-4 w-4" />
               Test a release
             </Button>
@@ -379,7 +453,7 @@ export function SettingsCustomFormatsPage() {
 
       <ListCard title="Guide presets" count="Start with a goal instead of building rules yourself">
         <ListTable columns={[{ label: "Preset" }, { label: "Best for", width: "minmax(0,1.6fr)" }, { label: "Rules" }, { label: "Status", width: LIST_TRACK.status, mobile: true }]}>
-          {CUSTOM_FORMAT_BUNDLES.map((bundle) => {
+          {guide.bundles.map((bundle) => {
             const progress = presetProgress(bundle);
             const complete = progress.total > 0 && progress.applied === progress.total;
             return (
@@ -400,26 +474,26 @@ export function SettingsCustomFormatsPage() {
         {customFormats.length === 0 ? (
           <ListEmpty
             title="No advanced release rules yet"
-            description="Most people can choose release preferences from a Library Profile. Use this area when you want the full guide catalogue, custom scores, or your own matching rule."
+            description="Most people can choose release preferences from a Library Profile. Use this area when you want the full guide catalogue, advanced matching, or your own rule."
             actions={<Button type="button" variant="outline" onClick={() => openRule(null)}><Plus className="h-4 w-4" />New custom rule</Button>}
           />
         ) : (
-          <ListTable columns={[{ label: "Rule" }, { label: "Matches on", width: "minmax(0,1.4fr)" }, { label: "Score" }, { label: "Used by" }, { label: "Status", width: LIST_TRACK.status, mobile: true }]}>
+          <ListTable columns={[{ label: "Rule" }, { label: "Matches on", width: "minmax(0,1.4fr)" }, { label: "Intent" }, { label: "Used by" }, { label: "Status", width: LIST_TRACK.status, mobile: true }]}>
             {split.groups.flatMap((group) => [
               split.showGroups && split.scope === "all" ? <ListGroupHeader key={group.key} label={group.label} count={group.items.length} /> : null,
               ...group.items.map((format) => {
                 const conditions = parseConditions(format.conditions);
-                const guide = format.trashId ? findBundledCF(format.trashId) : undefined;
+                const guideFormat = format.trashId ? guide.customFormats.find((candidate) => candidate.trashId === format.trashId) : undefined;
                 const usedBy = librariesByFormat.get(format.id) ?? [];
                 return (
                   <ListRow key={format.id} onClick={() => openRule(format)} selected={drawer?.kind === "rule" && drawer.id === format.id}>
-                    <ListNameCell name={format.name} sub={guide ? "From the guide catalogue" : "Written here"} />
+                    <ListNameCell name={format.name} sub={guideFormat ? "From the guide catalogue" : "Written here"} />
                     {/* Guide rules are raw regex — lead with what they mean, not the pattern. */}
                     <ListCell
-                      primary={guide?.description ?? (conditions.length ? conditionSummary(conditions) : "No conditions")}
+                      primary={guideFormat?.description ?? (conditions.length ? conditionSummary(conditions) : "No conditions")}
                       secondary={conditions.length ? `${conditions.length} ${conditions.length === 1 ? "condition" : "conditions"}` : "never matches anything"}
                     />
-                    <ListCell numeric primary={scoreLabel(format.score)} secondary={format.score <= -10000 ? "never grabbed" : "points"} />
+                    <ListCell primary={ruleIntent(format.score)} secondary={format.score <= -10000 ? "never grabbed" : "legacy input"} />
                     {/*
                       A library reaches these rules through its quality profile,
                       whether that came from a Library Profile or was attached
@@ -429,12 +503,12 @@ export function SettingsCustomFormatsPage() {
                     <ListCell primary={<LibraryImpactLinks libraries={usedBy} />} secondary={usedBy.length ? "Applied through the library's quality profile" : "Not applied to any library yet"} />
                     <ListCell mobile>
                       {/*
-                        Score 0 is neutral, not avoided: a 1080p tag rule
+                        A legacy input of 0 is neutral, not avoided: a 1080p tag rule
                         scoring 0 inside a 1080p profile looked banned (#257).
                         Only a negative score is an active penalty.
                       */}
                       <Chip tone={format.score <= -10000 ? "bad" : format.score > 0 ? "ok" : format.score < 0 ? "warn" : "idle"}>
-                        {format.score <= -10000 ? "Blocked" : format.score > 0 ? "Preferred" : format.score < 0 ? "Avoided" : "Neutral"}
+                        {ruleIntent(format.score)}
                       </Chip>
                     </ListCell>
                   </ListRow>
@@ -445,7 +519,7 @@ export function SettingsCustomFormatsPage() {
         )}
       </ListCard>
 
-      <ListCard title="Safeguards" count="The final guardrails applied after quality and score are worked out">
+      <ListCard title="Safeguards" count="The final guardrails applied after quality and legacy inputs are worked out">
         <div className="grid gap-[var(--grid-gap)] p-[var(--card-pad-x)]">
           <Field
             label="How Deluno picks a release"
@@ -536,11 +610,11 @@ export function SettingsCustomFormatsPage() {
           {!editing ? (
             <Field label="Guide choice" optional help="Choose a guide-backed rule and Deluno fills in the technical matching for you. Choose Custom rule when you want to define your own.">
               <Select value={form.trashId ?? ""} onChange={(event) => startFrom(event.target.value)} placeholder="Custom rule">
-                {CF_CATEGORY_ORDER.map((category) => {
-                  const entries = BUNDLED_CUSTOM_FORMATS.filter((cf) => cf.category === category && !cf.bundleOnly);
+                {GUIDE_CATEGORY_ORDER.map((category) => {
+                  const entries = guide.customFormats.filter((cf) => cf.category === category && !cf.bundleOnly);
                   if (!entries.length) return null;
                   return (
-                    <optgroup key={category} label={CF_CATEGORY_META[category as CFCategory]?.label ?? category}>
+                    <optgroup key={category} label={GUIDE_CATEGORY_LABELS[category] ?? category}>
                       {entries.map((cf) => (
                         <option key={cf.trashId} value={cf.trashId}>
                           {friendlyGuideName(cf)}
@@ -574,18 +648,36 @@ export function SettingsCustomFormatsPage() {
                 ]}
               />
             </Field>
-            <Field label="Score" help="Positive prefers, negative avoids, −10000 never grabs.">
-              <PresetField
-                inputType="number"
-                value={form.score}
-                onChange={(value) => setForm((current) => ({ ...current, score: value }))}
-                options={SCORE_OPTIONS}
-                customLabel="Custom score"
-                customPlaceholder="Points"
+            <Field label="Intent" help="Tell Deluno whether this trait is required, avoided, or preferred.">
+              <Select
+                value={scoreIntent(form.score)}
+                onChange={(event) => {
+                  const option = INTENT_OPTIONS.find((candidate) => candidate.value === event.target.value);
+                  if (option?.value !== "custom") setForm((current) => ({ ...current, score: scoreForIntent(option?.value) }));
+                }}
+                options={INTENT_OPTIONS}
               />
             </Field>
           </FieldRow>
         </DrawerSection>
+
+        <Disclosure
+          title="Advanced legacy input"
+          summary="Only needed for an imported guide score or a custom compatibility value"
+          open={legacyScoreOpen}
+          onOpenChange={setLegacyScoreOpen}
+        >
+          <Field label="Legacy guide input" help="Stored for compatibility and provenance. It is not Deluno's typed decision value.">
+            <PresetField
+              inputType="number"
+              value={form.score}
+              onChange={(value) => setForm((current) => ({ ...current, score: value }))}
+              options={SCORE_OPTIONS}
+              customLabel="Custom legacy input"
+              customPlaceholder="Legacy value"
+            />
+          </Field>
+        </Disclosure>
 
         <DrawerSection title="Matching" aside={selectedGuide ? "Guide-backed" : form.conditions.length ? `${form.conditions.length} criteria` : "Set up below"}>
           <p className="text-[length:var(--type-caption)] text-muted-foreground">
@@ -727,7 +819,7 @@ export function SettingsCustomFormatsPage() {
                 {presetProgress(presetDetail).resolved.map((cf) => {
                   const target = presetDetail.mediaType === "tv" ? "tv" : "movies";
                   const already = appliedTrashIds.has(`${target}:${cf.trashId}`);
-                  const score = presetDetail.includes.find((entry) => entry.trashId === cf.trashId)?.score ?? cf.defaultScore;
+                  const score = presetDetail.includes.find((entry) => entry.trashId === cf.trashId)?.score ?? cf.originalScore;
                   return (
                     <div key={cf.trashId} className="flex items-center justify-between gap-3 border-b border-hairline py-1.5 last:border-b-0">
                       <span className="min-w-0">
@@ -735,7 +827,7 @@ export function SettingsCustomFormatsPage() {
                         <span className="block truncate text-[length:var(--type-caption)] text-muted-foreground">{cf.description}</span>
                       </span>
                       <span className="flex shrink-0 items-center gap-2">
-                        <span className="text-[length:var(--type-caption)] tabular-nums text-muted-foreground">{scoreLabel(score)}</span>
+                        <span className="text-[length:var(--type-caption)] text-muted-foreground">{ruleIntent(score)}</span>
                         {already ? <Chip tone="ok">Added</Chip> : null}
                       </span>
                     </div>
@@ -793,6 +885,24 @@ export function SettingsCustomFormatsPage() {
               </Button>
             </Field>
           </FieldRow>
+          <Field label="Current release" optional help="Add the installed release name to see whether the candidate is an upgrade, equivalent, rejected, or held for review.">
+            <Input
+              value={currentReleaseName}
+              onChange={(event) => setCurrentReleaseName(event.target.value)}
+              placeholder="Optional installed release name"
+              aria-label="Current installed release name"
+              className="font-mono"
+            />
+          </Field>
+          <Field label="Typed plan" optional help="This uses the same persisted release-preference plan as search and import. Leave it blank to run only the legacy matcher check.">
+            <Select
+              value={testProfileId}
+              onChange={(event) => setTestProfileId(event.target.value)}
+              placeholder={testProfiles.length ? "Choose a Quality Profile" : "No Quality Profiles available"}
+              options={testProfiles.map((profile) => ({ value: profile.id, label: `${profile.name} · ${profile.mediaType === "tv" ? "TV" : "Movies"}` }))}
+              disabled={!testProfiles.length}
+            />
+          </Field>
           {customFormats.length === 0 ? (
             <p className="text-[length:var(--type-caption)] text-warning">You have no rules yet, so nothing can match. Apply a preset first.</p>
           ) : null}
@@ -801,7 +911,7 @@ export function SettingsCustomFormatsPage() {
         {results ? (
           <DrawerSection
             title="Result"
-            aside={`${results.filter((result) => result.isMatch).length} of ${results.length} matched · ${scoreLabel(results.filter((result) => result.isMatch).reduce((total, result) => total + result.score, 0))}`}
+            aside={`${results.filter((result) => result.isMatch).length} of ${results.length} matched`}
           >
             {results.length === 0 ? (
               <p className="text-[length:var(--type-caption)] text-muted-foreground">Nothing to report — the test could not be run.</p>
@@ -814,7 +924,7 @@ export function SettingsCustomFormatsPage() {
                         {result.formatName}
                       </span>
                       <span className="flex shrink-0 items-center gap-2">
-                        <span className="text-[length:var(--type-caption)] tabular-nums text-muted-foreground">{scoreLabel(result.score)}</span>
+                        <span className="text-[length:var(--type-caption)] text-muted-foreground">{result.isMatch ? ruleIntent(result.score) : "No intent"}</span>
                         <Chip tone={result.isMatch ? "ok" : "idle"}>{result.isMatch ? "Matched" : "No match"}</Chip>
                       </span>
                     </div>
@@ -827,6 +937,44 @@ export function SettingsCustomFormatsPage() {
                 ))}
               </div>
             )}
+          </DrawerSection>
+        ) : null}
+
+        {typedPreviewError ? (
+          <DrawerSection title="Typed plan preview">
+            <p role="alert" className="text-[length:var(--type-caption)] text-destructive">{typedPreviewError}</p>
+          </DrawerSection>
+        ) : null}
+
+        {typedPreview ? (
+          <DrawerSection title="Typed plan preview" aside={typedPreview.comparison ? typedComparisonLabel(typedPreview.comparison.status) : typedStatusLabel(typedPreview.candidateEvaluation.status)}>
+            <div className="grid gap-3">
+              <div className="flex flex-wrap items-center gap-2">
+                <Chip tone={typedPreview.comparison?.status === "rejected" ? "bad" : typedPreview.comparison?.status === "needsReview" ? "warn" : typedPreview.candidateEvaluation.status === "meetsPlan" ? "ok" : "info"}>
+                  {typedPreview.comparison ? typedComparisonLabel(typedPreview.comparison.status) : typedStatusLabel(typedPreview.candidateEvaluation.status)}
+                </Chip>
+                <span className="text-[length:var(--type-caption)] text-muted-foreground">Plan {typedPreview.planVersion}</span>
+              </div>
+              {typedPreview.comparison?.reasons.length ? (
+                <ul className="grid gap-1 text-[length:var(--type-body-sm)] text-muted-foreground" aria-label="Typed comparison reasons">
+                  {typedPreview.comparison.reasons.map((reason) => <li key={reason}>{reason}</li>)}
+                </ul>
+              ) : null}
+              {typedPreview.candidateEvaluation.reasons.length ? (
+                <ul className="grid gap-1 text-[length:var(--type-caption)] text-muted-foreground" aria-label="Typed evaluation reasons">
+                  {typedPreview.candidateEvaluation.reasons.map((reason) => <li key={reason}>{reason}</li>)}
+                </ul>
+              ) : null}
+              <div className="grid gap-1.5" aria-label="Typed family outcomes">
+                {typedPreview.candidateEvaluation.families.map((family) => (
+                  <div key={family.familyId} className="flex flex-wrap items-start justify-between gap-2 rounded-[10px] border border-hairline px-3 py-2">
+                    <span className="min-w-0 text-[length:var(--type-body-sm)] text-foreground">{humanizeTypedName(family.familyId)}</span>
+                    <span className="max-w-full text-right text-[length:var(--type-caption)] text-muted-foreground">{family.explanation}</span>
+                  </div>
+                ))}
+              </div>
+              <p className="text-[length:var(--type-caption)] text-muted-foreground">Detected {typedPreview.candidateFacts.length} typed evidence item{typedPreview.candidateFacts.length === 1 ? "" : "s"}. The plan hash is {typedPreview.planHash.slice(0, 12)}…</p>
+            </div>
           </DrawerSection>
         ) : null}
       </Drawer>
@@ -848,6 +996,22 @@ interface DryRunResult {
 
 function same<T>(a: T, b: T) {
   return JSON.stringify(a) === JSON.stringify(b);
+}
+
+function typedStatusLabel(value: string) {
+  return value === "meetsPlan" ? "Meets plan" : value === "belowGoal" ? "Below goal" : value === "needsReview" ? "Needs review" : "Missing evidence";
+}
+
+function typedComparisonLabel(value: string) {
+  return value === "upgrade" ? "Upgrade" : value === "rejected" ? "Rejected" : value === "needsReview" ? "Needs review" : value === "equivalent" ? "Equivalent" : value === "bestMatchNow" ? "Best match now" : "Acceptable";
+}
+
+function humanizeTypedName(value: string) {
+  return value
+    .split(/[._-]+/)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
 }
 
 function splitCsv(value: string | null | undefined) {
@@ -918,7 +1082,7 @@ function conditionSummary(conditions: Condition[]) {
   return `${label} ${first.negate ? "without" : "with"} “${value}”`;
 }
 
-function friendlyGuideName(format: BundledCF) {
+function friendlyGuideName(format: GuideCustomFormat) {
   const names: Record<string, string> = {
     "HD Bluray Tier 01": "Top-tier Blu-ray groups",
     "HD Bluray Tier 02": "Trusted Blu-ray groups",
@@ -930,7 +1094,32 @@ function friendlyGuideName(format: BundledCF) {
   return names[format.name] ?? format.name;
 }
 
-function scoreLabel(score: number) {
-  if (score <= -10000) return "Blocked";
-  return `${score > 0 ? "+" : ""}${score.toLocaleString()}`;
+function ruleIntent(score: number) {
+  if (score <= -10000) return "Must not have";
+  if (score < 0) return "Avoid";
+  if (score === 0) return "I do not care";
+  if (score >= 500) return "Strongly prefer";
+  return "Prefer";
+}
+
+function scoreIntent(score: string) {
+  const value = Number(score);
+  if (!Number.isFinite(value)) return "custom";
+  if (value <= -10000) return "blocked";
+  if (value < 0) return "avoid";
+  if (value === 0) return "neutral";
+  if (value >= 500) return "strong-prefer";
+  if (value > 0) return "prefer";
+  return "custom";
+}
+
+function scoreForIntent(intent: string | undefined) {
+  switch (intent) {
+    case "blocked": return "-10000";
+    case "avoid": return "-100";
+    case "neutral": return "0";
+    case "strong-prefer": return "500";
+    case "prefer": return "100";
+    default: return "0";
+  }
 }

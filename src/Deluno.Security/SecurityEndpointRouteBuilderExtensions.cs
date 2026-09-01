@@ -28,6 +28,11 @@ public static class SecurityEndpointRouteBuilderExtensions
             .RequireRateLimiting(DelunoRateLimitPolicies.Login);
         var apiKeys = endpoints.MapGroup("/api/api-keys")
             .RequireAuthorization(DelunoAuthorizationPolicies.System);
+        // The template catalogue contains no credentials or key material. A
+        // read-scoped automation client may inspect it while the actual key
+        // list/create/delete operations remain system-scoped.
+        var apiKeyTemplates = endpoints.MapGroup("/api/api-keys")
+            .RequireAuthorization(DelunoAuthorizationPolicies.Read);
 
         login.MapPost("/login", async (
             [FromBody] LoginRequest request,
@@ -170,6 +175,19 @@ public static class SecurityEndpointRouteBuilderExtensions
             return Results.Ok(items);
         });
 
+        apiKeyTemplates.MapGet("/scope-templates", async (
+            HttpContext httpContext,
+            CancellationToken cancellationToken) =>
+        {
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
+            if (denied is not null)
+            {
+                return denied;
+            }
+
+            return Results.Ok(ApiKeyScopeTemplates.All);
+        });
+
         apiKeys.MapPost(string.Empty, async (
             HttpContext httpContext,
             [FromBody] CreateApiKeyRequest request,
@@ -188,6 +206,12 @@ public static class SecurityEndpointRouteBuilderExtensions
                 {
                     ["name"] = ["Give this API key a clear name."]
                 });
+            }
+
+            var scopeErrors = ApiKeyScopeTemplates.Validate(request.Scopes);
+            if (scopeErrors.Count > 0)
+            {
+                return Results.ValidationProblem(scopeErrors);
             }
 
             var created = await repository.CreateApiKeyAsync(request, cancellationToken);

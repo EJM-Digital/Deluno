@@ -1,3 +1,5 @@
+using Deluno.Contracts;
+
 namespace Deluno.Libraries.Contracts;
 
 /// <summary>
@@ -19,4 +21,8 @@ public sealed record UpdateLibrarySubtitlesRequest(
     /// </summary>
     string? UnknownLanguage = null,
     /// <summary>Whether a track inside the container counts as held.</summary>
-    bool EmbeddedCounts = true);
+    bool EmbeddedCounts = true,
+    /// <summary>Named post-download subtitle cleanups for this library.</summary>
+    SubtitleContentModificationPolicy? ContentPolicy = null,
+    /// <summary>Automatic timing-repair policy for fetched subtitles.</summary>
+    SubtitleTimingPolicy? TimingPolicy = null);

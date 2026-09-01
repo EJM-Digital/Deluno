@@ -6,4 +6,5 @@ public sealed record UpdateQualityProfileRequest(
     string? AllowedQualities,
     string? CustomFormatIds,
     bool UpgradeUntilCutoff,
-    bool UpgradeUnknownItems);
+    bool UpgradeUnknownItems,
+    ReleasePreferencePlanReference? ReleasePreferencePlan = null);

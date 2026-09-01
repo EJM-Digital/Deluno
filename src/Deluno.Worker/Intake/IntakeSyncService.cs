@@ -8,6 +8,7 @@ using Deluno.Jobs.Contracts;
 using Deluno.Jobs.Data;
 using Deluno.Movies.Contracts;
 using Deluno.Movies.Data;
+using Deluno.Intake;
 using Deluno.Intake.Contracts;
 using Deluno.Intake.Data;
 using Deluno.Libraries.Contracts;
@@ -91,32 +92,40 @@ public sealed class IntakeSyncService(
         var items = new List<IntakeListPreviewItem>();
         foreach (var entry in entries.Take(PreviewLimit))
         {
+            var entryMediaType = entry.MediaType == "tv" ? "tv" : "movies";
             if (!TryResolveTitle(entry, out var title))
             {
-                items.Add(new IntakeListPreviewItem("Untitled entry", entry.Year, mediaType, entry.ImdbId,
+                items.Add(new IntakeListPreviewItem("Untitled entry", entry.Year, entryMediaType, entry.ImdbId,
                     "not eligible", "This list entry has no usable title.", "none"));
                 continue;
             }
 
             if (excludedKeys.TryGetValue(BuildKey(title, entry.Year, entry.ImdbId), out var exclusion))
             {
-                items.Add(new IntakeListPreviewItem(title, entry.Year, mediaType, entry.ImdbId,
+                items.Add(new IntakeListPreviewItem(title, entry.Year, entryMediaType, entry.ImdbId,
                     "excluded", "You previously chose not to add this entry from this list.", GetMatchConfidence(entry), exclusion.Id));
                 continue;
             }
 
             if (!PassEntryFilters(source, entry, timeProvider.GetUtcNow(), out var filterReason))
             {
-                items.Add(new IntakeListPreviewItem(title, entry.Year, mediaType, entry.ImdbId,
+                items.Add(new IntakeListPreviewItem(title, entry.Year, entryMediaType, entry.ImdbId,
                     "not eligible", filterReason, GetMatchConfidence(entry)));
                 continue;
             }
 
-            var existing = await FindExistingIdAsync(mediaType, title, entry.Year, entry.ImdbId, null, null, cancellationToken);
+            var existing = await FindExistingIdAsync(
+                entryMediaType,
+                title,
+                entry.Year,
+                entry.ImdbId,
+                string.IsNullOrWhiteSpace(entry.ProviderId) ? null : "tmdb",
+                entry.ProviderId,
+                cancellationToken);
             items.Add(existing is not null
-                ? new IntakeListPreviewItem(title, entry.Year, mediaType, entry.ImdbId,
+                ? new IntakeListPreviewItem(title, entry.Year, entryMediaType, entry.ImdbId,
                     "already in library", "A matching title is already in this Deluno library.", GetMatchConfidence(entry))
-                : new IntakeListPreviewItem(title, entry.Year, mediaType, entry.ImdbId,
+                : new IntakeListPreviewItem(title, entry.Year, entryMediaType, entry.ImdbId,
                     "would add", "This title passes the list's available filters and would be added on sync.", GetMatchConfidence(entry)));
         }
 
@@ -324,7 +333,7 @@ public sealed class IntakeSyncService(
 
                 var resolvedYear = metadata?.Year ?? entry.Year;
                 var resolvedImdb = metadata?.ImdbId ?? entry.ImdbId;
-                var mediaType = source.MediaType == "tv" ? "tv" : "movies";
+                var mediaType = entry.MediaType == "tv" ? "tv" : "movies";
 
                 // One indexed lookup per list entry, asked with everything the
                 // metadata lookup resolved. This used to be a dictionary built
@@ -541,11 +550,107 @@ public sealed class IntakeSyncService(
         return provider switch
         {
             "tmdb" => await FetchTmdbListAsync(source, mediaType, cancellationToken),
+            "tmdb-person" => await FetchTmdbPersonCreditsAsync(source, mediaType, cancellationToken),
             "mdblist" => await FetchMdbListAsync(source, mediaType, cancellationToken),
             "imdb" => await FetchImdbListAsync(source, mediaType, cancellationToken),
             "trakt" => await FetchTraktListAsync(source, mediaType, cancellationToken),
             "rss" or "letterboxd" or "url-list" => await FetchGenericListAsync(source, mediaType, cancellationToken),
             _ => await FetchGenericListAsync(source, mediaType, cancellationToken)
+        };
+    }
+
+    private async Task<IReadOnlyList<IntakeEntry>> FetchTmdbPersonCreditsAsync(
+        IntakeSourceItem source,
+        string mediaType,
+        CancellationToken cancellationToken)
+    {
+        var apiKey = await GetManagedSecretAsync(
+            "Deluno:Metadata:TMDbApiKey",
+            "TMDB_API_KEY",
+            "tmdb",
+            cancellationToken);
+        if (string.IsNullOrWhiteSpace(apiKey))
+        {
+            throw new InvalidOperationException("The Deluno metadata service is not configured for TMDb person import lists.");
+        }
+
+        if (!TmdbPersonSource.TryParse(source.FeedUrl, out var personId, out var creditTypes))
+        {
+            throw new InvalidOperationException("TMDb person source requires a person URL or numeric person ID.");
+        }
+
+        var url = $"https://api.themoviedb.org/3/person/{Uri.EscapeDataString(personId)}/combined_credits?api_key={Uri.EscapeDataString(apiKey)}&language=en-US";
+        using var client = httpClientFactory.CreateClient(IntakeHttpClientName);
+        var json = await client.GetStringAsync(url, cancellationToken);
+        using var document = JsonDocument.Parse(json);
+        var results = new List<IntakeEntry>();
+
+        if (creditTypes.Contains("cast", StringComparer.OrdinalIgnoreCase) &&
+            document.RootElement.TryGetProperty("cast", out var cast) &&
+            cast.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var item in cast.EnumerateArray())
+            {
+                AddTmdbPersonEntry(results, item, mediaType);
+            }
+        }
+
+        if (document.RootElement.TryGetProperty("crew", out var crew) && crew.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var item in crew.EnumerateArray())
+            {
+                if (creditTypes.Any(type => MatchesTmdbPersonCrewRole(item, type)))
+                {
+                    AddTmdbPersonEntry(results, item, mediaType);
+                }
+            }
+        }
+
+        return results
+            .GroupBy(entry => $"{entry.ProviderId ?? entry.Title}|{entry.Year}|{entry.MediaType}", StringComparer.OrdinalIgnoreCase)
+            .Select(group => group.First())
+            .ToArray();
+    }
+
+    private static void AddTmdbPersonEntry(List<IntakeEntry> results, JsonElement item, string fallbackMediaType)
+    {
+        var title = ReadString(item, "title") ?? ReadString(item, "name");
+        var itemMediaType = NormalizeMediaType(ReadString(item, "media_type"), fallbackMediaType);
+        var providerId = item.TryGetProperty("id", out var id) && id.ValueKind == JsonValueKind.Number && id.TryGetInt64(out var numericId)
+            ? numericId.ToString(CultureInfo.InvariantCulture)
+            : ReadString(item, "id");
+
+        if (string.IsNullOrWhiteSpace(title) || itemMediaType != fallbackMediaType)
+        {
+            return;
+        }
+
+        results.Add(new IntakeEntry(
+            Title: title,
+            Year: ParseYear(ReadString(item, "release_date") ?? ReadString(item, "first_air_date")),
+            MediaType: itemMediaType,
+            ImdbId: null,
+            GenresCsv: string.Empty,
+            Rating: ReadNumber(item, "vote_average"),
+            ReleaseDateUtc: ParseDate(ReadString(item, "release_date") ?? ReadString(item, "first_air_date")),
+            Certification: null,
+            Audience: ReadBoolean(item, "adult") ? "adult" : "any",
+            ProviderId: providerId));
+    }
+
+    private static bool MatchesTmdbPersonCrewRole(JsonElement item, string creditType)
+    {
+        var department = ReadString(item, "department");
+        var job = ReadString(item, "job");
+        return creditType switch
+        {
+            "director" => string.Equals(department, "Directing", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(job, "Director", StringComparison.OrdinalIgnoreCase),
+            "producer" => string.Equals(department, "Production", StringComparison.OrdinalIgnoreCase) ||
+                job?.Contains("producer", StringComparison.OrdinalIgnoreCase) == true,
+            "sound" => string.Equals(department, "Sound", StringComparison.OrdinalIgnoreCase),
+            "writing" => string.Equals(department, "Writing", StringComparison.OrdinalIgnoreCase),
+            _ => false
         };
     }
 
@@ -853,7 +958,7 @@ public sealed class IntakeSyncService(
         if (!string.IsNullOrWhiteSpace(entry.ImdbId))
         {
             var byImdb = await metadataProvider.SearchAsync(
-                new MetadataLookupRequest(entry.ImdbId, source.MediaType, entry.Year, entry.ImdbId),
+                new MetadataLookupRequest(entry.ImdbId, entry.MediaType, entry.Year, entry.ImdbId),
                 cancellationToken);
             if (byImdb.Count > 0)
             {
@@ -862,7 +967,7 @@ public sealed class IntakeSyncService(
         }
 
         var matches = await metadataProvider.SearchAsync(
-            new MetadataLookupRequest(title, source.MediaType, entry.Year, null),
+            new MetadataLookupRequest(title, entry.MediaType, entry.Year, entry.ProviderId),
             cancellationToken);
         return matches.FirstOrDefault();
     }
@@ -1394,5 +1499,6 @@ public sealed class IntakeSyncService(
         double? Rating,
         DateTimeOffset? ReleaseDateUtc,
         string? Certification,
-        string? Audience);
+        string? Audience,
+        string? ProviderId = null);
 }

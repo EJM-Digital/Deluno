@@ -1036,19 +1036,84 @@ public sealed class SqliteJobStore(
         using var command = connection.CreateCommand();
         command.CommandText =
             """
-            INSERT INTO worker_schedule_state (schedule_key, last_run_utc)
-            VALUES (@scheduleKey, @now)
+            INSERT INTO worker_schedule_state (schedule_key, last_run_utc, last_completed_utc, last_result, last_duration_ms, next_run_utc)
+            VALUES (@scheduleKey, @now, NULL, 'running', NULL, @nextRun)
             ON CONFLICT(schedule_key) DO UPDATE SET
-                last_run_utc = excluded.last_run_utc
+                last_run_utc = excluded.last_run_utc,
+                last_completed_utc = NULL,
+                last_result = 'running',
+                last_duration_ms = NULL,
+                next_run_utc = excluded.next_run_utc
             WHERE worker_schedule_state.last_run_utc <= @cutoff;
             """;
 
         AddParameter(command, "@scheduleKey", scheduleKey);
         AddParameter(command, "@now", now.ToString("O"));
         AddParameter(command, "@cutoff", cutoff.ToString("O"));
+        AddParameter(command, "@nextRun", now.Add(interval).ToString("O"));
 
         var rowsAffected = await command.ExecuteNonQueryAsync(cancellationToken);
         return rowsAffected > 0;
+    }
+
+    public async Task RecordScheduledPassOutcomeAsync(
+        string scheduleKey,
+        DateTimeOffset completedUtc,
+        string result,
+        long durationMs,
+        DateTimeOffset? nextRunUtc,
+        CancellationToken cancellationToken)
+    {
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Jobs,
+            cancellationToken);
+
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            """
+            UPDATE worker_schedule_state
+            SET last_completed_utc = @completedUtc,
+                last_result = @result,
+                last_duration_ms = @durationMs,
+                next_run_utc = COALESCE(@nextRunUtc, next_run_utc)
+            WHERE schedule_key = @scheduleKey;
+            """;
+        AddParameter(command, "@scheduleKey", scheduleKey);
+        AddParameter(command, "@completedUtc", completedUtc.ToString("O"));
+        AddParameter(command, "@result", string.IsNullOrWhiteSpace(result) ? "completed" : result.Trim().ToLowerInvariant());
+        AddParameter(command, "@durationMs", Math.Max(0, durationMs));
+        AddParameter(command, "@nextRunUtc", nextRunUtc?.ToString("O"));
+        await command.ExecuteNonQueryAsync(cancellationToken);
+    }
+
+    public async Task<IReadOnlyList<SystemTaskState>> ListSystemTaskStatesAsync(CancellationToken cancellationToken)
+    {
+        var states = new List<SystemTaskState>();
+
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Jobs,
+            cancellationToken);
+
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            """
+            SELECT schedule_key, last_run_utc, last_completed_utc, last_result, last_duration_ms, next_run_utc
+            FROM worker_schedule_state;
+            """;
+
+        using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            states.Add(new SystemTaskState(
+                ScheduleKey: reader.GetString(0),
+                LastStartedUtc: DateTimeOffset.Parse(reader.GetString(1)),
+                LastCompletedUtc: reader.IsDBNull(2) ? null : DateTimeOffset.Parse(reader.GetString(2)),
+                LastResult: reader.IsDBNull(3) ? null : reader.GetString(3),
+                LastDurationMs: reader.IsDBNull(4) ? null : reader.GetInt64(4),
+                NextRunUtc: reader.IsDBNull(5) ? null : DateTimeOffset.Parse(reader.GetString(5))));
+        }
+
+        return states;
     }
 
     public async Task<IReadOnlyDictionary<string, LibraryAutomationStateItem>> ListLibraryAutomationStatesAsync(CancellationToken cancellationToken)
@@ -1352,32 +1417,13 @@ public sealed class SqliteJobStore(
         string? mediaType,
         CancellationToken cancellationToken)
     {
-        var items = new List<DownloadDispatchItem>();
-
-        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
-            DelunoDatabaseNames.Jobs,
+        var (items, _) = await downloadDispatchesRepository.QueryDispatchesAsync(
+            new DispatchQueryFilter
+            {
+                MediaType = string.IsNullOrWhiteSpace(mediaType) ? null : mediaType.Trim().ToLowerInvariant()
+            },
+            new DispatchPaginationOptions { PageSize = take },
             cancellationToken);
-
-        using var command = connection.CreateCommand();
-        command.CommandText =
-            """
-            SELECT
-                id, library_id, media_type, entity_type, entity_id, release_name,
-                indexer_name, download_client_id, download_client_name, status, notes_json, created_utc
-            FROM download_dispatches
-            WHERE (@mediaType IS NULL OR media_type = @mediaType)
-            ORDER BY created_utc DESC
-            LIMIT @take;
-            """;
-
-        AddParameter(command, "@mediaType", string.IsNullOrWhiteSpace(mediaType) ? null : mediaType.Trim().ToLowerInvariant());
-        AddParameter(command, "@take", take);
-
-        using var reader = await command.ExecuteReaderAsync(cancellationToken);
-        while (await reader.ReadAsync(cancellationToken))
-        {
-            items.Add(ReadDownloadDispatch(reader));
-        }
 
         return items;
     }
@@ -1387,47 +1433,18 @@ public sealed class SqliteJobStore(
         string? mediaType,
         CancellationToken cancellationToken)
     {
-        var pageSize = request.BoundedPageSize;
-        var token = DelunoPageToken.Decode(request.PageToken, 2);
-        var items = new List<DownloadDispatchItem>(pageSize + 1);
-
-        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
-            DelunoDatabaseNames.Jobs,
+        var (items, nextPageToken) = await downloadDispatchesRepository.QueryDispatchesAsync(
+            new DispatchQueryFilter
+            {
+                MediaType = string.IsNullOrWhiteSpace(mediaType) ? null : mediaType.Trim().ToLowerInvariant()
+            },
+            new DispatchPaginationOptions
+            {
+                PageSize = request.BoundedPageSize,
+                PageToken = request.PageToken
+            },
             cancellationToken);
 
-        using var command = connection.CreateCommand();
-        command.CommandText =
-            """
-            SELECT
-                id, library_id, media_type, entity_type, entity_id, release_name,
-                indexer_name, download_client_id, download_client_name, status, notes_json, created_utc
-            FROM download_dispatches
-            WHERE (@mediaType IS NULL OR media_type = @mediaType)
-              AND (@createdUtc IS NULL OR created_utc < @createdUtc OR (created_utc = @createdUtc AND id < @id))
-            ORDER BY created_utc DESC, id DESC
-            LIMIT @take;
-            """;
-
-        AddParameter(command, "@mediaType", string.IsNullOrWhiteSpace(mediaType) ? null : mediaType.Trim().ToLowerInvariant());
-        AddParameter(command, "@createdUtc", token?[0]);
-        AddParameter(command, "@id", token?[1]);
-        AddParameter(command, "@take", pageSize + 1);
-
-        using var reader = await command.ExecuteReaderAsync(cancellationToken);
-        while (await reader.ReadAsync(cancellationToken))
-        {
-            items.Add(ReadDownloadDispatch(reader));
-        }
-
-        var hasMore = items.Count > pageSize;
-        if (hasMore)
-        {
-            items.RemoveAt(items.Count - 1);
-        }
-
-        var nextPageToken = hasMore
-            ? DelunoPageToken.Encode(items[^1].CreatedUtc.ToString("O"), items[^1].Id)
-            : null;
         return Page<DownloadDispatchItem>.Of(items, nextPageToken);
     }
 
@@ -1453,7 +1470,10 @@ public sealed class SqliteJobStore(
         using var command = connection.CreateCommand();
         command.CommandText =
             """
-            SELECT id, entity_type, entity_id, indexer_name, library_id FROM download_dispatches
+            SELECT id, entity_type, entity_id, indexer_name, library_id,
+                   replacement_authorized, force_replacement_authorized, replacement_expected_path,
+                   replacement_targets_json
+            FROM download_dispatches
             WHERE download_client_id = @downloadClientId
               AND release_name = @releaseName
               AND created_utc > datetime('now', '-90 days')
@@ -1472,7 +1492,13 @@ public sealed class SqliteJobStore(
                 reader.IsDBNull(1) ? string.Empty : reader.GetString(1),
                 reader.IsDBNull(2) ? string.Empty : reader.GetString(2),
                 reader.IsDBNull(3) ? string.Empty : reader.GetString(3),
-                reader.IsDBNull(4) ? string.Empty : reader.GetString(4));
+                reader.IsDBNull(4) ? string.Empty : reader.GetString(4),
+                !reader.IsDBNull(5) && reader.GetInt32(5) != 0,
+                !reader.IsDBNull(6) && reader.GetInt32(6) != 0,
+                reader.IsDBNull(7) ? null : reader.GetString(7),
+                reader.IsDBNull(8)
+                    ? []
+                    : DeserializeReplacementTargets(reader.GetString(8)));
         }
 
         return null;
@@ -1652,6 +1678,7 @@ public sealed class SqliteJobStore(
         var pendingJobKeys = await ReadPendingLibraryJobsAsync(connection, transaction, cancellationToken);
 
         var queuedAny = false;
+        var queuedJobTypes = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
         var orderedLibraries = libraries
             .Select(library =>
@@ -1919,109 +1946,135 @@ public sealed class SqliteJobStore(
             var hasPendingForLibrary = false;
             var attemptedKinds = 0;
 
-            foreach (var (kind, enabled, due) in new[]
+            // A saved view is an alternate scope for the existing cycle, not a
+            // second scheduler. Manual requests deliberately bypass it: the
+            // explicit "search now" action means the whole library, while a
+            // scheduled pass is the one the saved view is attached to.
+            var scopesToPlan = manualRequest || library.SearchScopes is not { Count: > 0 }
+                ? new LibraryAutomationScope?[] { null }
+                : library.SearchScopes!.Select(scope => (LibraryAutomationScope?)scope).ToArray();
+
+            foreach (var scope in scopesToPlan)
             {
-                (Kind: "missing", Enabled: library.MissingSearchEnabled, Due: missingDue),
-                (Kind: "upgrade", Enabled: library.UpgradeSearchEnabled, Due: upgradeDue)
-            })
-            {
-                if (!enabled || (!manualRequest && !due))
+                string? requestedKind = null;
+                if (scope is not null &&
+                    (!scope.IsValid || string.Equals(scope.Monitoring, "unmonitored", StringComparison.OrdinalIgnoreCase) ||
+                     !TryResolveScopeSearchKind(scope.QuickFilter, out requestedKind)))
                 {
                     continue;
                 }
 
-                attemptedKinds++;
-                var dedupeKey = $"library.search:{library.LibraryId}:{kind}";
-                var legacyDedupeKey = $"library.search:{library.LibraryId}";
-                if (pendingJobKeys.Contains(dedupeKey) || pendingJobKeys.Contains(legacyDedupeKey))
+                foreach (var (kind, enabled, due) in new[]
                 {
-                    hasPendingForLibrary = true;
-                    continue;
-                }
+                    (Kind: "missing", Enabled: library.MissingSearchEnabled, Due: missingDue),
+                    (Kind: "upgrade", Enabled: library.UpgradeSearchEnabled, Due: upgradeDue)
+                })
+                {
+                    if (!enabled || (!manualRequest && !due) ||
+                        (requestedKind is not null && !string.Equals(requestedKind, kind, StringComparison.OrdinalIgnoreCase)))
+                    {
+                        continue;
+                    }
 
-                var payload = JsonSerializer.Serialize(new
-                {
-                    libraryId = library.LibraryId,
-                    libraryName = library.LibraryName,
-                    mediaType = library.MediaType,
-                    checkMissing = kind == "missing",
-                    checkUpgrades = kind == "upgrade",
-                    searchKind = kind,
-                    maxItems = library.MaxItemsPerRun,
-                    retryDelayHours = library.RetryDelayHours,
-                    triggeredBy = manualRequest ? "manual" : "schedule"
-                });
-                var idempotencyKey = $"library.search:{library.LibraryId}:{kind}:{(manualRequest ? "manual" : "schedule")}";
-                var job = new JobQueueItem(
-                    Id: Guid.CreateVersion7().ToString("N"),
-                    JobType: LibrarySearchJobTypes.For(library.MediaType),
-                    Source: library.MediaType,
-                    Status: "queued",
-                    PayloadJson: payload,
-                    Attempts: 0,
-                    CreatedUtc: now,
-                    ScheduledUtc: now,
-                    StartedUtc: null,
-                    CompletedUtc: null,
-                    LeasedUntilUtc: null,
-                    WorkerId: null,
-                    LastError: null,
-                    RelatedEntityType: "library",
-                    RelatedEntityId: library.LibraryId,
-                    IdempotencyKey: idempotencyKey,
-                    DedupeKey: dedupeKey,
-                    MaxAttempts: DefaultMaxAttempts,
-                    LastAttemptUtc: null,
-                    NextAttemptUtc: now);
+                    attemptedKinds++;
+                    var scopeSuffix = scope is null ? string.Empty : $":scope:{scope.Id}";
+                    var dedupeKey = $"library.search:{library.LibraryId}:{kind}{scopeSuffix}";
+                    var legacyDedupeKey = scope is null ? $"library.search:{library.LibraryId}" : null;
+                    if (pendingJobKeys.Contains(dedupeKey) ||
+                        (legacyDedupeKey is not null && pendingJobKeys.Contains(legacyDedupeKey)))
+                    {
+                        hasPendingForLibrary = true;
+                        continue;
+                    }
 
-                var duplicate = await FindDuplicateActiveJobAsync(connection, transaction, idempotencyKey, dedupeKey, cancellationToken);
-                if (duplicate is not null)
-                {
-                    hasPendingForLibrary = true;
+                    var payload = JsonSerializer.Serialize(new
+                    {
+                        libraryId = library.LibraryId,
+                        libraryName = library.LibraryName,
+                        mediaType = library.MediaType,
+                        checkMissing = kind == "missing",
+                        checkUpgrades = kind == "upgrade",
+                        searchKind = kind,
+                        maxItems = library.MaxItemsPerRun,
+                        retryDelayHours = library.RetryDelayHours,
+                        triggeredBy = manualRequest ? "manual" : "schedule",
+                        scopeId = scope?.Id,
+                        scopeName = scope?.Name,
+                        scopeConditions = scope?.Filters.Conditions
+                    });
+                    var idempotencyKey = $"library.search:{library.LibraryId}:{kind}{scopeSuffix}:{(manualRequest ? "manual" : "schedule")}";
+                    var job = new JobQueueItem(
+                        Id: Guid.CreateVersion7().ToString("N"),
+                        JobType: LibrarySearchJobTypes.For(library.MediaType),
+                        Source: library.MediaType,
+                        Status: "queued",
+                        PayloadJson: payload,
+                        Attempts: 0,
+                        CreatedUtc: now,
+                        ScheduledUtc: now,
+                        StartedUtc: null,
+                        CompletedUtc: null,
+                        LeasedUntilUtc: null,
+                        WorkerId: null,
+                        LastError: null,
+                        RelatedEntityType: "library",
+                        RelatedEntityId: library.LibraryId,
+                        IdempotencyKey: idempotencyKey,
+                        DedupeKey: dedupeKey,
+                        MaxAttempts: DefaultMaxAttempts,
+                        LastAttemptUtc: null,
+                        NextAttemptUtc: now);
+
+                    var duplicate = await FindDuplicateActiveJobAsync(connection, transaction, idempotencyKey, dedupeKey, cancellationToken);
+                    if (duplicate is not null)
+                    {
+                        hasPendingForLibrary = true;
+                        if (kind == "missing") missingNextSearchUtc = NextSearchAfterQueue(now, library);
+                        else upgradeNextSearchUtc = NextSearchAfterQueue(now, library);
+                        continue;
+                    }
+
+                    await InsertJobAsync(connection, transaction, job, cancellationToken);
+                    queuedAny = true;
+                    queuedForLibrary = true;
                     if (kind == "missing") missingNextSearchUtc = NextSearchAfterQueue(now, library);
                     else upgradeNextSearchUtc = NextSearchAfterQueue(now, library);
-                    continue;
+
+                    using var update = connection.CreateCommand();
+                    update.Transaction = transaction;
+                    update.CommandText =
+                        """
+                        UPDATE library_automation_state
+                        SET library_name = @libraryName,
+                            media_type = @mediaType,
+                            status = 'queued',
+                            search_requested = 0,
+                            last_planned_utc = @lastPlannedUtc,
+                            next_search_utc = @nextSearchUtc,
+                            next_missing_search_utc = @nextMissingSearchUtc,
+                            next_upgrade_search_utc = @nextUpgradeSearchUtc,
+                            last_job_id = @lastJobId,
+                            last_error = NULL,
+                            updated_utc = @updatedUtc
+                        WHERE library_id = @libraryId;
+                        """;
+                    AddParameter(update, "@libraryId", library.LibraryId);
+                    AddParameter(update, "@libraryName", library.LibraryName);
+                    AddParameter(update, "@mediaType", library.MediaType);
+                    AddParameter(update, "@lastPlannedUtc", now.ToString("O"));
+                    AddParameter(update, "@nextSearchUtc", Earliest(missingNextSearchUtc, upgradeNextSearchUtc)?.ToString("O"));
+                    AddParameter(update, "@nextMissingSearchUtc", missingNextSearchUtc?.ToString("O"));
+                    AddParameter(update, "@nextUpgradeSearchUtc", upgradeNextSearchUtc?.ToString("O"));
+                    AddParameter(update, "@lastJobId", job.Id);
+                    AddParameter(update, "@updatedUtc", now.ToString("O"));
+                    await update.ExecuteNonQueryAsync(cancellationToken);
+                    // Queueing a search always moves the state — status, last job and
+                    // next search all change — so this one is unconditional.
+                    changedLibraryIds.Add(library.LibraryId);
+
+                    await InsertActivityAsync(connection, transaction, "job.queued", FormatQueuedMessage(job.JobType, job.Source, job.PayloadJson), job.PayloadJson, job.Id, job.RelatedEntityType, job.RelatedEntityId, now, cancellationToken);
+                    queuedJobTypes.Add(job.JobType);
                 }
-
-                await InsertJobAsync(connection, transaction, job, cancellationToken);
-                queuedAny = true;
-                queuedForLibrary = true;
-                if (kind == "missing") missingNextSearchUtc = NextSearchAfterQueue(now, library);
-                else upgradeNextSearchUtc = NextSearchAfterQueue(now, library);
-
-                using var update = connection.CreateCommand();
-                update.Transaction = transaction;
-                update.CommandText =
-                    """
-                    UPDATE library_automation_state
-                    SET library_name = @libraryName,
-                        media_type = @mediaType,
-                        status = 'queued',
-                        search_requested = 0,
-                        last_planned_utc = @lastPlannedUtc,
-                        next_search_utc = @nextSearchUtc,
-                        next_missing_search_utc = @nextMissingSearchUtc,
-                        next_upgrade_search_utc = @nextUpgradeSearchUtc,
-                        last_job_id = @lastJobId,
-                        last_error = NULL,
-                        updated_utc = @updatedUtc
-                    WHERE library_id = @libraryId;
-                    """;
-                AddParameter(update, "@libraryId", library.LibraryId);
-                AddParameter(update, "@libraryName", library.LibraryName);
-                AddParameter(update, "@mediaType", library.MediaType);
-                AddParameter(update, "@lastPlannedUtc", now.ToString("O"));
-                AddParameter(update, "@nextSearchUtc", Earliest(missingNextSearchUtc, upgradeNextSearchUtc)?.ToString("O"));
-                AddParameter(update, "@nextMissingSearchUtc", missingNextSearchUtc?.ToString("O"));
-                AddParameter(update, "@nextUpgradeSearchUtc", upgradeNextSearchUtc?.ToString("O"));
-                AddParameter(update, "@lastJobId", job.Id);
-                AddParameter(update, "@updatedUtc", now.ToString("O"));
-                await update.ExecuteNonQueryAsync(cancellationToken);
-                // Queueing a search always moves the state — status, last job and
-                // next search all change — so this one is unconditional.
-                changedLibraryIds.Add(library.LibraryId);
-
-                await InsertActivityAsync(connection, transaction, "job.queued", FormatQueuedMessage(job.JobType, job.Source, job.PayloadJson), job.PayloadJson, job.Id, job.RelatedEntityType, job.RelatedEntityId, now, cancellationToken);
             }
 
             // A manual request against a library with both search types off has
@@ -2060,7 +2113,10 @@ public sealed class SqliteJobStore(
         }
         if (queuedAny)
         {
-            laneSignal?.Notify("library.search");
+            foreach (var jobType in queuedJobTypes)
+            {
+                laneSignal?.Notify(jobType);
+            }
         }
     }
 
@@ -2190,11 +2246,20 @@ public sealed class SqliteJobStore(
         string? notesJson,
         int? grabResponseCode = null,
         string? grabFailureCode = null,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        IntegrationFailure? failure = null,
+        bool replacementAuthorized = false,
+        bool forceReplacementAuthorized = false,
+        string? replacementExpectedPath = null,
+        IReadOnlyList<DispatchReplacementTarget>? replacementTargets = null,
+        string? clientExternalId = null)
     {
         var now = timeProvider.GetUtcNow();
         var dispatchId = Guid.CreateVersion7().ToString("N");
         var decisionTelemetry = TryParseDispatchDecisionTelemetry(notesJson);
+        var normalizedReplacementTargets = NormalizeReplacementTargets(replacementTargets);
+        var ownedReplacementAuthorized = replacementAuthorized &&
+            (!string.IsNullOrWhiteSpace(replacementExpectedPath) || normalizedReplacementTargets.Count > 0);
 
         await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
             DelunoDatabaseNames.Jobs,
@@ -2214,7 +2279,9 @@ public sealed class SqliteJobStore(
                     decision_custom_format_score, decision_seeder_score, decision_size_score, decision_release_group,
                     decision_estimated_bitrate_mbps, decision_size_bytes, decision_seeders, decision_policy_version,
                     decision_matched_custom_formats_json, decision_reasons_json, decision_risk_flags_json,
-                    decision_override_used, decision_override_reason, created_utc
+                    decision_override_used, decision_override_reason,
+                    replacement_authorized, force_replacement_authorized, replacement_expected_path,
+                    replacement_targets_json, torrent_hash_or_item_id, created_utc
                 )
                 VALUES (
                     @id, @libraryId, @mediaType, @entityType, @entityId, @releaseName,
@@ -2223,7 +2290,9 @@ public sealed class SqliteJobStore(
                     @decisionCustomFormatScore, @decisionSeederScore, @decisionSizeScore, @decisionReleaseGroup,
                     @decisionEstimatedBitrateMbps, @decisionSizeBytes, @decisionSeeders, @decisionPolicyVersion,
                     @decisionMatchedCustomFormatsJson, @decisionReasonsJson, @decisionRiskFlagsJson,
-                    @decisionOverrideUsed, @decisionOverrideReason, @createdUtc
+                    @decisionOverrideUsed, @decisionOverrideReason,
+                    @replacementAuthorized, @forceReplacementAuthorized, @replacementExpectedPath,
+                    @replacementTargetsJson, @clientExternalId, @createdUtc
                 );
                 """;
 
@@ -2259,6 +2328,23 @@ public sealed class SqliteJobStore(
             AddParameter(command, "@decisionRiskFlagsJson", decisionTelemetry?.RiskFlagsJson);
             AddParameter(command, "@decisionOverrideUsed", decisionTelemetry is null ? 0 : decisionTelemetry.OverrideUsed ? 1 : 0);
             AddParameter(command, "@decisionOverrideReason", decisionTelemetry?.OverrideReason);
+            AddParameter(command, "@replacementAuthorized", ownedReplacementAuthorized ? 1 : 0);
+            // Force is a stricter form of replacement authority, never an
+            // independent way to turn an ordinary import into an overwrite.
+            AddParameter(command, "@forceReplacementAuthorized", ownedReplacementAuthorized && forceReplacementAuthorized ? 1 : 0);
+            AddParameter(
+                command,
+                "@replacementExpectedPath",
+                ownedReplacementAuthorized && !string.IsNullOrWhiteSpace(replacementExpectedPath)
+                    ? replacementExpectedPath!.Trim()
+                    : null);
+            AddParameter(
+                command,
+                "@replacementTargetsJson",
+                ownedReplacementAuthorized && normalizedReplacementTargets.Count > 0
+                    ? JsonSerializer.Serialize(normalizedReplacementTargets)
+                    : null);
+            AddParameter(command, "@clientExternalId", string.IsNullOrWhiteSpace(clientExternalId) ? null : clientExternalId.Trim());
             AddParameter(command, "@createdUtc", now.ToString("O"));
             await command.ExecuteNonQueryAsync(cancellationToken);
         }
@@ -2293,7 +2379,9 @@ public sealed class SqliteJobStore(
             grabMessage: status,
             grabFailureCode: grabFailureCode,
             grabResponseJson: notesJson,
-            cancellationToken: cancellationToken);
+            cancellationToken: cancellationToken,
+            failure: failure,
+            externalId: clientExternalId);
 
         // No DownloadProgress here any more (#273). This fired once per grab with
         // progress and speed both zero, under the *dispatch* id while the
@@ -2311,6 +2399,32 @@ public sealed class SqliteJobStore(
             cancellationToken);
 
         return dispatchId;
+    }
+
+    private static IReadOnlyList<DispatchReplacementTarget> NormalizeReplacementTargets(
+        IReadOnlyList<DispatchReplacementTarget>? targets)
+        => (targets ?? [])
+            .Where(target => !string.IsNullOrWhiteSpace(target.EntityId) &&
+                             !string.IsNullOrWhiteSpace(target.ExpectedPath))
+            .Select(target => new DispatchReplacementTarget(
+                target.EntityId.Trim(),
+                target.ExpectedPath.Trim()))
+            .Distinct()
+            .OrderBy(target => target.EntityId, StringComparer.Ordinal)
+            .ThenBy(target => target.ExpectedPath, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+
+    private static IReadOnlyList<DispatchReplacementTarget> DeserializeReplacementTargets(string json)
+    {
+        try
+        {
+            return NormalizeReplacementTargets(
+                JsonSerializer.Deserialize<IReadOnlyList<DispatchReplacementTarget>>(json));
+        }
+        catch (JsonException)
+        {
+            return [];
+        }
     }
 
     public async Task RecordSearchCycleRunAsync(
@@ -2936,6 +3050,19 @@ public sealed class SqliteJobStore(
         LibraryAutomationPlanItem library)
         => now.AddHours(Math.Max(1, library.SearchIntervalHours));
 
+    private static bool TryResolveScopeSearchKind(string? quickFilter, out string? searchKind)
+    {
+        searchKind = quickFilter?.Trim().ToLowerInvariant() switch
+        {
+            null or "" or "all" => null,
+            "missing" => "missing",
+            "upgrades" => "upgrade",
+            _ => null
+        };
+
+        return quickFilter?.Trim().ToLowerInvariant() is null or "" or "all" or "missing" or "upgrades";
+    }
+
     /// <summary>
     /// How often a library's subtitles are looked at, when nothing has just
     /// arrived to make them due sooner.
@@ -3559,7 +3686,9 @@ public sealed class SqliteJobStore(
             ["movies.quality.recalculate"] = new(
                 "a movie quality refresh", "Started refreshing movie quality decisions.", "Movie quality refresh"),
             ["series.quality.recalculate"] = new(
-                "a TV quality refresh", "Started refreshing TV quality decisions.", "TV quality refresh")
+                "a TV quality refresh", "Started refreshing TV quality decisions.", "TV quality refresh"),
+            ["movies.collection.sync"] = new(
+                "a movie collection refresh", "Started refreshing a movie collection.", "Movie collection refresh")
         };
 
     private static string? NormalizeJobKey(string? value)

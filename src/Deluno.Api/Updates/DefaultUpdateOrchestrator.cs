@@ -1,16 +1,32 @@
 using System.Reflection;
+using System.Text.Json;
+using Deluno.Infrastructure.Storage;
+using Microsoft.Extensions.Options;
 
 namespace Deluno.Api.Updates;
 
 public sealed class DefaultUpdateOrchestrator : IUpdateOrchestrator
 {
+    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
+    {
+        WriteIndented = true
+    };
+
     private readonly string _installKind;
     private readonly string _currentVersion;
+    private readonly string _preferencesPath;
+    private readonly string? _currentImageRef;
+    private readonly string? _currentImageDigest;
+    private readonly SemaphoreSlim _preferencesGate = new(1, 1);
 
-    public DefaultUpdateOrchestrator()
+    public DefaultUpdateOrchestrator(IOptions<StoragePathOptions> storageOptions)
     {
         _currentVersion = Assembly.GetEntryAssembly()?.GetName().Version?.ToString(3) ?? "0.0.0";
         _installKind = IsRunningInDocker() ? UpdateInstallKinds.Docker : UpdateInstallKinds.Manual;
+        _preferencesPath = Path.Combine(Path.GetFullPath(storageOptions.Value.DataRoot), "update-preferences.json");
+        _currentImageRef = Environment.GetEnvironmentVariable("DELUNO_IMAGE_REF");
+        _currentImageDigest = Environment.GetEnvironmentVariable("DELUNO_IMAGE_DIGEST")
+            ?? ExtractImageDigest(_currentImageRef);
     }
 
     public Task<UpdateStatusResponse> GetStatusAsync(CancellationToken cancellationToken)
@@ -38,18 +54,92 @@ public sealed class DefaultUpdateOrchestrator : IUpdateOrchestrator
         return Task.FromResult(BuildStatus());
     }
 
-    public Task<UpdatePreferencesResponse> GetPreferencesAsync(CancellationToken cancellationToken)
+    public async Task<UpdatePreferencesResponse> GetPreferencesAsync(CancellationToken cancellationToken)
     {
-        return Task.FromResult(new UpdatePreferencesResponse(
-            Mode: UpdateModes.NotifyOnly,
-            Channel: "stable",
-            AutoCheck: false));
+        await _preferencesGate.WaitAsync(cancellationToken);
+        try
+        {
+            return ToResponse(await ReadPreferencesAsync(cancellationToken));
+        }
+        finally
+        {
+            _preferencesGate.Release();
+        }
     }
 
-    public Task<UpdatePreferencesResponse> SavePreferencesAsync(UpdatePreferencesRequest request, CancellationToken cancellationToken)
+    public async Task<UpdatePreferencesResponse> SavePreferencesAsync(UpdatePreferencesRequest request, CancellationToken cancellationToken)
     {
-        return GetPreferencesAsync(cancellationToken);
+        await _preferencesGate.WaitAsync(cancellationToken);
+        try
+        {
+            var current = await ReadPreferencesAsync(cancellationToken);
+            var next = new UpdatePreferencesState
+            {
+                Mode = NormalizeMode(request.Mode ?? current.Mode),
+                Channel = NormalizeChannel(request.Channel ?? current.Channel),
+                AutoCheck = request.AutoCheck ?? current.AutoCheck
+            };
+            await WritePreferencesAsync(next, cancellationToken);
+            return ToResponse(next);
+        }
+        finally
+        {
+            _preferencesGate.Release();
+        }
     }
+
+    private async Task<UpdatePreferencesState> ReadPreferencesAsync(CancellationToken cancellationToken)
+    {
+        if (!File.Exists(_preferencesPath))
+        {
+            return UpdatePreferencesState.Default();
+        }
+
+        try
+        {
+            await using var stream = File.OpenRead(_preferencesPath);
+            var state = await JsonSerializer.DeserializeAsync<UpdatePreferencesState>(stream, JsonOptions, cancellationToken);
+            return state is null
+                ? UpdatePreferencesState.Default()
+                : new UpdatePreferencesState
+                {
+                    Mode = NormalizeMode(state.Mode),
+                    Channel = NormalizeChannel(state.Channel),
+                    AutoCheck = state.AutoCheck
+                };
+        }
+        catch (JsonException)
+        {
+            return UpdatePreferencesState.Default();
+        }
+    }
+
+    private async Task WritePreferencesAsync(UpdatePreferencesState state, CancellationToken cancellationToken)
+    {
+        var directory = Path.GetDirectoryName(_preferencesPath);
+        if (!string.IsNullOrWhiteSpace(directory))
+        {
+            Directory.CreateDirectory(directory);
+        }
+
+        var temporaryPath = _preferencesPath + ".tmp";
+        await using (var stream = File.Create(temporaryPath))
+        {
+            await JsonSerializer.SerializeAsync(stream, state, JsonOptions, cancellationToken);
+            await stream.FlushAsync(cancellationToken);
+        }
+
+        File.Move(temporaryPath, _preferencesPath, overwrite: true);
+    }
+
+    private static UpdatePreferencesResponse ToResponse(UpdatePreferencesState state)
+        => new(state.Mode, state.Channel, state.AutoCheck);
+
+    private static string NormalizeMode(string? value)
+        => UpdateModes.IsValid(value) ? value! : UpdateModes.NotifyOnly;
+
+    private static string NormalizeChannel(string? value)
+        => string.IsNullOrWhiteSpace(value) ? "stable" : value.Trim().ToLowerInvariant();
 
     private UpdateStatusResponse BuildStatus()
     {
@@ -60,9 +150,10 @@ public sealed class DefaultUpdateOrchestrator : IUpdateOrchestrator
         var notes = _installKind == UpdateInstallKinds.Docker
             ? new[]
             {
-                "Use docker pull with the desired tag.",
-                "Recreate the container after the pull.",
-                "Keep your persistent data volume mounted so upgrades are seamless."
+                "Update: set DELUNO_IMAGE to the chosen version or digest, then run `docker compose pull deluno`.",
+                "Recreate: run `docker compose up -d --no-build` and wait for `/api/health/ready` to return HTTP 200 while migrations finish.",
+                "Verify: use `docker image inspect` to record the resolved image digest before declaring the rollout complete.",
+                "Rollback: pin DELUNO_IMAGE to the previous digest and recreate with the same `/data` volume; restore a pre-upgrade backup if the schema is not backward-compatible."
             }
             : new[]
             {
@@ -88,7 +179,9 @@ public sealed class DefaultUpdateOrchestrator : IUpdateOrchestrator
             LastDownloadedUtc: null,
             Message: message,
             LastError: null,
-            Notes: notes);
+            Notes: notes,
+            CurrentImageRef: _currentImageRef,
+            CurrentImageDigest: _currentImageDigest);
     }
 
     private static bool IsRunningInDocker()
@@ -106,5 +199,29 @@ public sealed class DefaultUpdateOrchestrator : IUpdateOrchestrator
         }
 
         return false;
+    }
+
+    private static string? ExtractImageDigest(string? imageRef)
+    {
+        if (string.IsNullOrWhiteSpace(imageRef))
+        {
+            return null;
+        }
+
+        var separator = imageRef.LastIndexOf("@sha256:", StringComparison.OrdinalIgnoreCase);
+        return separator >= 0
+            ? imageRef[(separator + 1)..]
+            : null;
+    }
+
+    private sealed class UpdatePreferencesState
+    {
+        public string Mode { get; set; } = UpdateModes.NotifyOnly;
+
+        public string Channel { get; set; } = "stable";
+
+        public bool AutoCheck { get; set; }
+
+        public static UpdatePreferencesState Default() => new();
     }
 }

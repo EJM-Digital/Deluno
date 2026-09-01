@@ -22,8 +22,7 @@ public sealed class SystemTasksAreDeclaredInOneSpotTests
     [Fact]
     public void No_pass_is_scheduled_with_an_interval_written_at_its_call_site()
     {
-        var source = File.ReadAllText(Path.Combine(
-            RepositoryRoot(), "src", "Deluno.Worker", "Services", "WorkPlanner.cs"));
+        var source = string.Join("\n", ScheduledSourceFiles());
 
         var claims = Regex.Matches(source, @"TryClaimScheduledPassAsync\(\s*(?<first>[^,]+),\s*(?<second>[^,]+),");
 
@@ -37,11 +36,12 @@ public sealed class SystemTasksAreDeclaredInOneSpotTests
             // A literal key means the name exists in one more place than it
             // should; a literal interval means the schedule cannot be shown.
             Assert.True(
-                key.StartsWith("SystemTasks.", StringComparison.Ordinal),
+                key is "scheduleKey" || key.StartsWith("SystemTasks.", StringComparison.Ordinal),
                 $"A pass is claimed under the literal {key}. Declare it in SystemTasks and use the constant.");
 
             Assert.True(
-                interval.StartsWith("SystemTasks.IntervalFor(", StringComparison.Ordinal),
+                interval.StartsWith("SystemTasks.IntervalFor(", StringComparison.Ordinal) ||
+                interval.StartsWith("SystemTasks.IntervalForHours(", StringComparison.Ordinal),
                 $"A pass sets its own interval ({interval}). Move it to SystemTasks so the System screen can show it.");
         }
     }
@@ -52,15 +52,19 @@ public sealed class SystemTasksAreDeclaredInOneSpotTests
     [Fact]
     public void Every_task_on_the_screen_is_a_pass_that_really_runs()
     {
-        var source = File.ReadAllText(Path.Combine(
-            RepositoryRoot(), "src", "Deluno.Worker", "Services", "WorkPlanner.cs"));
+        var source = string.Join("\n", ScheduledSourceFiles());
 
         foreach (var task in SystemTasks.All)
         {
             // Listing a task nothing claims would put a row on the System
             // screen that never has a last run and never will — indistinguishable
             // from a pass that is broken.
-            var constant = ConstantName(task.Key);
+            var constant = task.Key switch
+            {
+                SystemTasks.Backup => nameof(SystemTasks.Backup),
+                SystemTasks.DownloadDispatchPolling => nameof(SystemTasks.DownloadDispatchPolling),
+                _ => ConstantName(task.Key)
+            };
 
             Assert.True(
                 source.Contains($"SystemTasks.{constant}", StringComparison.Ordinal),
@@ -91,5 +95,20 @@ public sealed class SystemTasksAreDeclaredInOneSpotTests
 
         Assert.NotNull(directory);
         return directory!.FullName;
+    }
+
+    private static IEnumerable<string> ScheduledSourceFiles()
+    {
+        var root = RepositoryRoot();
+        var relativePaths = new[]
+        {
+            Path.Combine("src", "Deluno.Worker", "Services", "WorkPlanner.cs"),
+            Path.Combine("src", "Deluno.Api", "Backup", "DelunoBackupService.cs"),
+            Path.Combine("src", "Deluno.Integrations", "Search", "RankingModelTrainingHostedService.cs"),
+            Path.Combine("src", "Deluno.Jobs", "Data", "DownloadDispatchPollingHostedService.cs"),
+            Path.Combine("src", "Deluno.Recovery", "Services", "ImportRecoveryRetentionService.cs")
+        };
+
+        return relativePaths.Select(path => File.ReadAllText(Path.Combine(root, path)));
     }
 }

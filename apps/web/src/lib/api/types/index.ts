@@ -4,3 +4,6 @@ export * from "./settings";
 export * from "./resources";
 export * from "./metadata";
 export * from "./operations";
+export * from "./release-preferences";
+export * from "./guide-package";
+export * from "./media-plan-scenarios";

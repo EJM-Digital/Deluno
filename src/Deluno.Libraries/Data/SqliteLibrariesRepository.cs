@@ -34,7 +34,9 @@ public sealed class SqliteLibrariesRepository(
                 l.retry_delay_hours, l.max_items_per_run, l.search_window_start_hour, l.search_window_end_hour,
                 l.created_utc, l.updated_utc, l.default_policy_set_id, p.name,
                 l.cleanup_mode, l.remove_empty_source_folders,
-                l.subtitle_languages, l.subtitle_language_mode
+                l.subtitle_languages, l.subtitle_language_mode,
+                l.subtitle_unknown_language, l.subtitle_embedded_counts,
+                l.subtitle_content_policy_json, l.subtitle_timing_policy_json
             FROM libraries l
             LEFT JOIN quality_profiles q ON q.id = l.quality_profile_id
             LEFT JOIN policy_sets p ON p.id = l.default_policy_set_id
@@ -95,13 +97,43 @@ public sealed class SqliteLibrariesRepository(
             """
             SELECT
                 id, user_id, variant, library_id, name, quick_filter, monitoring, sort_field, sort_direction,
-                view_mode, card_size, display_options_json, rules_json, created_utc, updated_utc
+                view_mode, card_size, display_options_json, rules_json, automation_action, created_utc, updated_utc
             FROM library_views
             WHERE user_id = @userId AND variant = @variant
             ORDER BY name COLLATE NOCASE ASC;
             """;
         AddParameter(command, "@userId", userId);
         AddParameter(command, "@variant", NormalizeLibraryViewVariant(variant));
+
+        using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            items.Add(ReadLibraryView(reader));
+        }
+
+        return items;
+    }
+
+
+    public async Task<IReadOnlyList<LibraryViewItem>> ListAutomatedLibraryViewsAsync(
+        CancellationToken cancellationToken)
+    {
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Platform,
+            cancellationToken);
+
+        var items = new List<LibraryViewItem>();
+
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            """
+            SELECT
+                id, user_id, variant, library_id, name, quick_filter, monitoring, sort_field, sort_direction,
+                view_mode, card_size, display_options_json, rules_json, automation_action, created_utc, updated_utc
+            FROM library_views
+            WHERE automation_action = 'search'
+            ORDER BY updated_utc DESC, name COLLATE NOCASE ASC;
+            """;
 
         using var reader = await command.ExecuteReaderAsync(cancellationToken);
         while (await reader.ReadAsync(cancellationToken))
@@ -186,7 +218,8 @@ public sealed class SqliteLibrariesRepository(
             DisplayOptionsJson: NormalizeJson(request.DisplayOptionsJson, "{}"),
             RulesJson: NormalizeJson(request.RulesJson, "[]"),
             CreatedUtc: now,
-            UpdatedUtc: now);
+            UpdatedUtc: now,
+            AutomationAction: NormalizeAutomationAction(request.AutomationAction));
 
         await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
             DelunoDatabaseNames.Platform,
@@ -197,11 +230,11 @@ public sealed class SqliteLibrariesRepository(
             """
             INSERT INTO library_views (
                 id, user_id, variant, library_id, name, quick_filter, monitoring, sort_field, sort_direction,
-                view_mode, card_size, display_options_json, rules_json, created_utc, updated_utc
+                view_mode, card_size, display_options_json, rules_json, automation_action, created_utc, updated_utc
             )
             VALUES (
                 @id, @userId, @variant, @libraryId, @name, @quickFilter, @monitoring, @sortField, @sortDirection,
-                @viewMode, @cardSize, @displayOptionsJson, @rulesJson, @createdUtc, @updatedUtc
+                @viewMode, @cardSize, @displayOptionsJson, @rulesJson, @automationAction, @createdUtc, @updatedUtc
             );
             """;
         AddParameter(command, "@id", item.Id);
@@ -217,6 +250,7 @@ public sealed class SqliteLibrariesRepository(
         AddParameter(command, "@cardSize", item.CardSize);
         AddParameter(command, "@displayOptionsJson", item.DisplayOptionsJson);
         AddParameter(command, "@rulesJson", item.RulesJson);
+        AddParameter(command, "@automationAction", item.AutomationAction);
         AddParameter(command, "@createdUtc", item.CreatedUtc.ToString("O"));
         AddParameter(command, "@updatedUtc", item.UpdatedUtc.ToString("O"));
         await command.ExecuteNonQueryAsync(cancellationToken);
@@ -301,6 +335,7 @@ public sealed class SqliteLibrariesRepository(
                 card_size = @cardSize,
                 display_options_json = @displayOptionsJson,
                 rules_json = @rulesJson,
+                automation_action = @automationAction,
                 updated_utc = @updatedUtc
             WHERE id = @id AND user_id = @userId;
             """;
@@ -316,6 +351,7 @@ public sealed class SqliteLibrariesRepository(
         AddParameter(command, "@cardSize", NormalizeCardSize(request.CardSize));
         AddParameter(command, "@displayOptionsJson", NormalizeJson(request.DisplayOptionsJson, "{}"));
         AddParameter(command, "@rulesJson", NormalizeJson(request.RulesJson, "[]"));
+        AddParameter(command, "@automationAction", NormalizeAutomationAction(request.AutomationAction));
         AddParameter(command, "@updatedUtc", now.ToString("O"));
 
         var updated = await command.ExecuteNonQueryAsync(cancellationToken);
@@ -616,6 +652,8 @@ public sealed class SqliteLibrariesRepository(
                 subtitle_language_mode = @mode,
                 subtitle_unknown_language = @unknownLanguage,
                 subtitle_embedded_counts = @embeddedCounts,
+                subtitle_content_policy_json = @contentPolicy,
+                subtitle_timing_policy_json = @timingPolicy,
                 updated_utc = @updatedUtc
             WHERE id = @id;
             """;
@@ -633,6 +671,14 @@ public sealed class SqliteLibrariesRepository(
                 ? string.Empty
                 : SubtitleLanguages.Normalize(request.UnknownLanguage) ?? string.Empty);
         AddParameter(command, "@embeddedCounts", request.EmbeddedCounts ? 1 : 0);
+        AddParameter(
+            command,
+            "@contentPolicy",
+            SubtitleContentModificationPolicyCodec.Serialize(request.ContentPolicy) ?? string.Empty);
+        AddParameter(
+            command,
+            "@timingPolicy",
+            SubtitleTimingPolicyCodec.Serialize(request.TimingPolicy) ?? string.Empty);
         AddParameter(command, "@updatedUtc", now.ToString("O"));
         await command.ExecuteNonQueryAsync(cancellationToken);
 
@@ -984,7 +1030,9 @@ public sealed class SqliteLibrariesRepository(
                 l.retry_delay_hours, l.max_items_per_run, l.search_window_start_hour, l.search_window_end_hour,
                 l.created_utc, l.updated_utc, l.default_policy_set_id, p.name,
                 l.cleanup_mode, l.remove_empty_source_folders,
-                l.subtitle_languages, l.subtitle_language_mode
+                l.subtitle_languages, l.subtitle_language_mode,
+                l.subtitle_unknown_language, l.subtitle_embedded_counts,
+                l.subtitle_content_policy_json, l.subtitle_timing_policy_json
             FROM libraries l
             LEFT JOIN quality_profiles q ON q.id = l.quality_profile_id
             LEFT JOIN policy_sets p ON p.id = l.default_policy_set_id
@@ -1090,7 +1138,7 @@ public sealed class SqliteLibrariesRepository(
             """
             SELECT
                 id, user_id, variant, library_id, name, quick_filter, monitoring, sort_field, sort_direction,
-                view_mode, card_size, display_options_json, rules_json, created_utc, updated_utc
+                view_mode, card_size, display_options_json, rules_json, automation_action, created_utc, updated_utc
             FROM library_views
             WHERE user_id = @userId AND id = @id
             LIMIT 1;
@@ -1292,7 +1340,11 @@ public sealed class SqliteLibrariesRepository(
             CleanupMode: reader.IsDBNull(28) ? "keep-source" : NormalizeCleanupMode(reader.GetString(28)),
             RemoveEmptySourceFolders: !reader.IsDBNull(29) && reader.GetInt64(29) == 1,
             SubtitleLanguages: ParseSubtitleLanguages(reader.IsDBNull(30) ? null : reader.GetString(30)),
-            SubtitleLanguageMode: NormalizeSubtitleLanguageMode(reader.IsDBNull(31) ? null : reader.GetString(31)));
+            SubtitleLanguageMode: NormalizeSubtitleLanguageMode(reader.IsDBNull(31) ? null : reader.GetString(31)),
+            SubtitleUnknownLanguage: reader.IsDBNull(32) ? string.Empty : reader.GetString(32),
+            SubtitleEmbeddedCounts: reader.IsDBNull(33) || reader.GetInt64(33) == 1,
+            SubtitleContentPolicy: SubtitleContentModificationPolicyCodec.Deserialize(reader.IsDBNull(34) ? null : reader.GetString(34)),
+            SubtitleTimingPolicy: SubtitleTimingPolicyCodec.Deserialize(reader.IsDBNull(35) ? null : reader.GetString(35)));
     }
 
 
@@ -1342,6 +1394,9 @@ public sealed class SqliteLibrariesRepository(
             _ => "any"
         };
 
+    private static string? NormalizeAutomationAction(string? value)
+        => value?.Trim().ToLowerInvariant() == "search" ? "search" : null;
+
     private static LibraryViewItem ReadLibraryView(System.Data.Common.DbDataReader reader)
     {
         return new LibraryViewItem(
@@ -1360,8 +1415,9 @@ public sealed class SqliteLibrariesRepository(
             CardSize: reader.GetString(10),
             DisplayOptionsJson: reader.GetString(11),
             RulesJson: reader.GetString(12),
-            CreatedUtc: ParseTimestamp(reader.GetString(13)),
-            UpdatedUtc: ParseTimestamp(reader.GetString(14)));
+            AutomationAction: reader.IsDBNull(13) ? null : NormalizeAutomationAction(reader.GetString(13)),
+            CreatedUtc: ParseTimestamp(reader.GetString(14)),
+            UpdatedUtc: ParseTimestamp(reader.GetString(15)));
     }
 
 

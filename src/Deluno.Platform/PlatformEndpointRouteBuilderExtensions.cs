@@ -42,6 +42,50 @@ public static class PlatformEndpointRouteBuilderExtensions
             .RequireAuthorization(DelunoAuthorizationPolicies.Write);
         var settings = write.MapGroup("/api/settings");
 
+        var recycleBin = write.MapGroup("/api/recycle-bin");
+        recycleBin.MapGet(string.Empty, async (
+            IRecycleBinService service,
+            CancellationToken cancellationToken) =>
+            Results.Ok(await service.ListAsync(cancellationToken)));
+
+        recycleBin.MapGet("/settings", async (
+            IRecycleBinService service,
+            CancellationToken cancellationToken) =>
+            Results.Ok(await service.GetSettingsAsync(cancellationToken)));
+
+        recycleBin.MapPut("/settings", async (
+            [FromBody] RecycleBinSettings request,
+            IRecycleBinService service,
+            CancellationToken cancellationToken) =>
+            Results.Ok(await service.SaveSettingsAsync(request, cancellationToken)));
+
+        recycleBin.MapPost("/cleanup", async (
+            IRecycleBinService service,
+            CancellationToken cancellationToken) =>
+            Results.Ok(new { removed = await service.CleanupAsync(cancellationToken) }));
+
+        recycleBin.MapPost("/{id}/restore", async (
+            string id,
+            IRecycleBinService service,
+            CancellationToken cancellationToken) =>
+        {
+            var result = await service.RestoreAsync(id, cancellationToken);
+            return result.Success
+                ? Results.Ok(result)
+                : Results.Conflict(result);
+        });
+
+        recycleBin.MapDelete("/{id}", async (
+            string id,
+            IRecycleBinService service,
+            CancellationToken cancellationToken) =>
+        {
+            var result = await service.PermanentlyDeleteAsync(id, cancellationToken);
+            return result.Success
+                ? Results.Ok(result)
+                : Results.NotFound(result);
+        });
+
         settings.MapGet(string.Empty, async (IPlatformSettingsRepository repository, CancellationToken cancellationToken) =>
         {
             var snapshot = await repository.GetAsync(cancellationToken);
@@ -218,6 +262,35 @@ public static class PlatformEndpointRouteBuilderExtensions
             return Results.Ok(items);
         });
 
+        tags.MapGet("/usage", async (
+            IPlatformSettingsRepository repository,
+            IMediaTagStore tagStore,
+            CancellationToken cancellationToken) =>
+        {
+            var definitions = await repository.ListTagsAsync(cancellationToken);
+            var usage = new Dictionary<string, (int Movies, int Series)>(StringComparer.OrdinalIgnoreCase);
+
+            foreach (var item in await tagStore.ListUsageAsync(MediaKind.Movie, cancellationToken))
+            {
+                usage[item.Name] = usage.TryGetValue(item.Name, out var current)
+                    ? (current.Movies + item.TitleCount, current.Series)
+                    : (item.TitleCount, 0);
+            }
+
+            foreach (var item in await tagStore.ListUsageAsync(MediaKind.Series, cancellationToken))
+            {
+                usage[item.Name] = usage.TryGetValue(item.Name, out var current)
+                    ? (current.Movies, current.Series + item.TitleCount)
+                    : (0, item.TitleCount);
+            }
+
+            return Results.Ok(definitions.Select(tag =>
+            {
+                usage.TryGetValue(tag.Name, out var counts);
+                return new TagUsageItem(tag.Id, tag.Name, counts.Movies, counts.Series);
+            }));
+        });
+
         tags.MapPost(string.Empty, async (
             HttpContext httpContext,
             [FromBody] CreateTagRequest request,
@@ -245,6 +318,7 @@ public static class PlatformEndpointRouteBuilderExtensions
             HttpContext httpContext,
             [FromBody] UpdateTagRequest request,
             IPlatformSettingsRepository repository,
+            IMediaTagStore tagStore,
             CancellationToken cancellationToken) =>
         {
             var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
@@ -259,14 +333,28 @@ public static class PlatformEndpointRouteBuilderExtensions
                 return Results.ValidationProblem(errors);
             }
 
+            var previous = (await repository.ListTagsAsync(cancellationToken))
+                .FirstOrDefault(tag => string.Equals(tag.Id, id, StringComparison.Ordinal));
             var item = await repository.UpdateTagAsync(id, request, cancellationToken);
-            return item is null ? Results.NotFound() : Results.Ok(item);
+            if (item is null)
+            {
+                return Results.NotFound();
+            }
+
+            if (previous is not null && !string.Equals(previous.Name, item.Name, StringComparison.Ordinal))
+            {
+                await tagStore.RenameAsync(MediaKind.Movie, item.Id, previous.Name, item.Name, cancellationToken);
+                await tagStore.RenameAsync(MediaKind.Series, item.Id, previous.Name, item.Name, cancellationToken);
+            }
+
+            return Results.Ok(item);
         });
 
         tags.MapDelete("{id}", async (
             string id,
             HttpContext httpContext,
             IPlatformSettingsRepository repository,
+            IMediaTagStore tagStore,
             CancellationToken cancellationToken) =>
         {
             var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
@@ -275,8 +363,22 @@ public static class PlatformEndpointRouteBuilderExtensions
                 return denied;
             }
 
+            var tag = (await repository.ListTagsAsync(cancellationToken))
+                .FirstOrDefault(item => string.Equals(item.Id, id, StringComparison.Ordinal));
+            if (tag is null)
+            {
+                return Results.NotFound();
+            }
+
             var removed = await repository.DeleteTagAsync(id, cancellationToken);
-            return removed ? Results.NoContent() : Results.NotFound();
+            if (!removed)
+            {
+                return Results.NotFound();
+            }
+
+            await tagStore.RemoveAsync(MediaKind.Movie, tag.Id, tag.Name, cancellationToken);
+            await tagStore.RemoveAsync(MediaKind.Series, tag.Id, tag.Name, cancellationToken);
+            return Results.NoContent();
         });
 
         return endpoints;

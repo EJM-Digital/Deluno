@@ -148,6 +148,32 @@ public sealed class SchemaValidationTests
         Assert.Contains("detected_utc", cols);
     }
 
+    [Fact]
+    public async Task Movies_schema_has_versioned_preference_evaluation_evidence()
+    {
+        using var storage = CreateStorage();
+        var migrator = new SqliteDatabaseMigrator(storage.Factory, new FixedTimeProvider(DateTimeOffset.UnixEpoch));
+        await new MoviesSchemaInitializer(storage.Factory, migrator,
+            NullLogger<MoviesSchemaInitializer>.Instance).StartAsync(CancellationToken.None);
+
+        await using var conn = await storage.Factory.OpenConnectionAsync(DelunoDatabaseNames.Movies);
+        var tables = await GetTablesAsync(conn);
+        var cols = await GetColumnsAsync(conn, "media_preference_evaluations");
+
+        Assert.Contains("media_preference_evaluations", tables);
+        Assert.Contains("media_id", cols);
+        Assert.Contains("library_id", cols);
+        Assert.Contains("file_identity", cols);
+        Assert.Contains("file_path", cols);
+        Assert.Contains("plan_version", cols);
+        Assert.Contains("plan_hash", cols);
+        Assert.Contains("facts_json", cols);
+        Assert.Contains("evaluation_json", cols);
+        Assert.Contains("source", cols);
+        var attemptCols = await GetColumnsAsync(conn, "movie_subtitle_attempt");
+        Assert.Contains("failure_json", attemptCols);
+    }
+
     // ── Series database ───────────────────────────────────────────────────
 
     [Fact]
@@ -182,6 +208,33 @@ public sealed class SchemaValidationTests
         Assert.Contains("quality_cutoff_met", cols);
     }
 
+    [Fact]
+    public async Task Series_schema_has_explicit_numbering_and_preference_evidence_columns()
+    {
+        using var storage = CreateStorage();
+        var migrator = new SqliteDatabaseMigrator(storage.Factory, new FixedTimeProvider(DateTimeOffset.UnixEpoch));
+        await new SeriesSchemaInitializer(storage.Factory, migrator,
+            NullLogger<SeriesSchemaInitializer>.Instance).StartAsync(CancellationToken.None);
+
+        await using var conn = await storage.Factory.OpenConnectionAsync(DelunoDatabaseNames.Series);
+        var seriesCols = await GetColumnsAsync(conn, "series_entries");
+        var episodeCols = await GetColumnsAsync(conn, "episode_entries");
+        var evidenceCols = await GetColumnsAsync(conn, "media_preference_evaluations");
+
+        Assert.Contains("series_type", seriesCols);
+        Assert.Contains("numbering_scheme", seriesCols);
+        Assert.Contains("numbering_source", seriesCols);
+        Assert.Contains("absolute_number", episodeCols);
+        Assert.Contains("scene_season_number", episodeCols);
+        Assert.Contains("scene_episode_number", episodeCols);
+        Assert.Contains("airdate_key", episodeCols);
+        Assert.Contains("numbering_source", episodeCols);
+        Assert.Contains("plan_hash", evidenceCols);
+        Assert.Contains("file_path", evidenceCols);
+        var attemptCols = await GetColumnsAsync(conn, "episode_subtitle_attempt");
+        Assert.Contains("failure_json", attemptCols);
+    }
+
     // ── Platform database ─────────────────────────────────────────────────
 
     [Fact]
@@ -198,6 +251,7 @@ public sealed class SchemaValidationTests
         Assert.Contains("id", cols);
         Assert.Contains("name", cols);
         Assert.Contains("cutoff_quality", cols);
+        Assert.Contains("release_preference_plan_json", cols);
     }
 
     [Fact]
@@ -218,6 +272,56 @@ public sealed class SchemaValidationTests
         Assert.Contains("rate_limited_until_utc", cols);
         Assert.Contains("consecutive_failures", cols);
         Assert.Contains("disabled_reason", cols);
+        Assert.Contains("minimum_age_minutes", cols);
+        Assert.Contains("retention_days", cols);
+        Assert.Contains("maximum_size_mb", cols);
+        Assert.Contains("prefer_indexer_flags", cols);
+        Assert.Contains("availability_delay_days", cols);
+        Assert.Contains("rss_enabled", cols);
+        Assert.Contains("automatic_search_enabled", cols);
+        Assert.Contains("interactive_search_enabled", cols);
+    }
+
+    [Fact]
+    public async Task Platform_schema_has_durable_automation_idempotency_columns()
+    {
+        using var storage = CreateStorage();
+        var migrator = new SqliteDatabaseMigrator(storage.Factory, new FixedTimeProvider(DateTimeOffset.UnixEpoch));
+        await new PlatformSchemaInitializer(
+            storage.Factory,
+            migrator,
+            NullLogger<PlatformSchemaInitializer>.Instance).StartAsync(CancellationToken.None);
+
+        await using var connection = await storage.Factory.OpenConnectionAsync(DelunoDatabaseNames.Platform);
+        var columns = await GetColumnsAsync(connection, "automation_idempotency");
+
+        Assert.Contains("idempotency_key", columns);
+        Assert.Contains("operation", columns);
+        Assert.Contains("request_hash", columns);
+        Assert.Contains("response_json", columns);
+        Assert.Contains("created_utc", columns);
+    }
+
+    [Fact]
+    public async Task Platform_schema_has_release_profiles_for_tag_aware_acquisition_rules()
+    {
+        using var storage = CreateStorage();
+        var migrator = new SqliteDatabaseMigrator(storage.Factory, new FixedTimeProvider(DateTimeOffset.UnixEpoch));
+        await new PlatformSchemaInitializer(storage.Factory, migrator,
+            NullLogger<PlatformSchemaInitializer>.Instance).StartAsync(CancellationToken.None);
+
+        await using var conn = await storage.Factory.OpenConnectionAsync(DelunoDatabaseNames.Platform);
+        var tables = await GetTablesAsync(conn);
+        var cols = await GetColumnsAsync(conn, "release_profiles");
+
+        Assert.Contains("release_profiles", tables);
+        Assert.Contains("tag_name", cols);
+        Assert.Contains("preferred_protocol", cols);
+        Assert.Contains("usenet_delay_minutes", cols);
+        Assert.Contains("torrent_delay_minutes", cols);
+        Assert.Contains("must_contain", cols);
+        Assert.Contains("must_not_contain", cols);
+        Assert.Contains("preferred_terms_json", cols);
     }
 
     [Fact]
@@ -253,6 +357,67 @@ public sealed class SchemaValidationTests
     }
 
     [Fact]
+    public async Task Platform_schema_has_typed_subtitle_provider_failure_details()
+    {
+        using var storage = CreateStorage();
+        var migrator = new SqliteDatabaseMigrator(storage.Factory, new FixedTimeProvider(DateTimeOffset.UnixEpoch));
+        await new PlatformSchemaInitializer(
+            storage.Factory,
+            migrator,
+            NullLogger<PlatformSchemaInitializer>.Instance).StartAsync(CancellationToken.None);
+
+        await using var conn = await storage.Factory.OpenConnectionAsync(DelunoDatabaseNames.Platform);
+        var cols = await GetColumnsAsync(conn, "subtitle_providers");
+
+        Assert.Contains("last_health_message", cols);
+        Assert.Contains("last_health_failure_json", cols);
+    }
+
+    [Fact]
+    public async Task Platform_schema_has_replayable_notification_webhook_deliveries()
+    {
+        using var storage = CreateStorage();
+        var migrator = new SqliteDatabaseMigrator(storage.Factory, new FixedTimeProvider(DateTimeOffset.UnixEpoch));
+        await new PlatformSchemaInitializer(storage.Factory, migrator,
+            NullLogger<PlatformSchemaInitializer>.Instance).StartAsync(CancellationToken.None);
+
+        await using var conn = await storage.Factory.OpenConnectionAsync(DelunoDatabaseNames.Platform);
+        var cols = await GetColumnsAsync(conn, "notification_webhook_deliveries");
+
+        Assert.Contains("notification_webhook_deliveries", await GetTablesAsync(conn));
+        Assert.Contains("webhook_id", cols);
+        Assert.Contains("event_category", cols);
+        Assert.Contains("details_json", cols);
+        Assert.Contains("status", cols);
+        Assert.Contains("attempt_count", cols);
+        Assert.Contains("next_attempt_utc", cols);
+        Assert.Contains("last_status_code", cols);
+        Assert.Contains("last_error", cols);
+        Assert.Contains("failure_json", cols);
+    }
+
+    [Fact]
+    public async Task Platform_schema_has_immutable_release_preference_plans_table()
+    {
+        using var storage = CreateStorage();
+        var migrator = new SqliteDatabaseMigrator(storage.Factory, new FixedTimeProvider(DateTimeOffset.UnixEpoch));
+        await new PlatformSchemaInitializer(storage.Factory, migrator,
+            NullLogger<PlatformSchemaInitializer>.Instance).StartAsync(CancellationToken.None);
+
+        await using var conn = await storage.Factory.OpenConnectionAsync(DelunoDatabaseNames.Platform);
+        var tables = await GetTablesAsync(conn);
+        var cols = await GetColumnsAsync(conn, "release_preference_plans");
+
+        Assert.Contains("release_preference_plans", tables);
+        Assert.Contains("plan_id", cols);
+        Assert.Contains("version", cols);
+        Assert.Contains("media_type", cols);
+        Assert.Contains("plan_hash", cols);
+        Assert.Contains("plan_json", cols);
+        Assert.Contains("created_utc", cols);
+    }
+
+    [Fact]
     public async Task Platform_schema_has_immutable_migration_audit_reports_table()
     {
         using var storage = CreateStorage();
@@ -270,6 +435,50 @@ public sealed class SchemaValidationTests
         Assert.Contains("preflight_report_json", cols);
         Assert.Contains("result_report_json", cols);
         Assert.Contains("applied_items_json", cols);
+    }
+
+    [Fact]
+    public async Task Platform_schema_has_current_backlog_contract_tables_and_migration_evidence()
+    {
+        using var storage = CreateStorage();
+        var migrator = new SqliteDatabaseMigrator(storage.Factory, new FixedTimeProvider(DateTimeOffset.UnixEpoch));
+        await new PlatformSchemaInitializer(storage.Factory, migrator,
+            NullLogger<PlatformSchemaInitializer>.Instance).StartAsync(CancellationToken.None);
+
+        await using var conn = await storage.Factory.OpenConnectionAsync(DelunoDatabaseNames.Platform);
+        var tables = await GetTablesAsync(conn);
+        var migrationCols = await GetColumnsAsync(conn, "migration_audit_reports");
+        var mediaPlanCols = await GetColumnsAsync(conn, "media_plan_versions");
+        var deviceProfileCols = await GetColumnsAsync(conn, "playback_device_profiles");
+        var deviceGroupCols = await GetColumnsAsync(conn, "playback_device_groups");
+        var playbackGoalCols = await GetColumnsAsync(conn, "playback_goals");
+        var guideCols = await GetColumnsAsync(conn, "guide_package_versions");
+        var policySetCols = await GetColumnsAsync(conn, "policy_sets");
+
+        Assert.Contains("media_plan_versions", tables);
+        Assert.Contains("plan_id", mediaPlanCols);
+        Assert.Contains("version", mediaPlanCols);
+        Assert.Contains("plan_hash", mediaPlanCols);
+        Assert.Contains("snapshot_json", mediaPlanCols);
+        Assert.Contains("change_kind", mediaPlanCols);
+
+        Assert.Contains("playback_device_profiles", tables);
+        Assert.Contains("capabilities_json", deviceProfileCols);
+        Assert.Contains("playback_device_groups", tables);
+        Assert.Contains("device_profile_ids_json", deviceGroupCols);
+        Assert.Contains("playback_goals", tables);
+        Assert.Contains("required_any_trait_groups_json", playbackGoalCols);
+        Assert.Contains("stop_when_trait_id", playbackGoalCols);
+        Assert.Contains("forbidden_trait_ids_json", playbackGoalCols);
+        Assert.Contains("automation_intent_json", policySetCols);
+
+        Assert.Contains("guide_package_versions", tables);
+        Assert.Contains("package_id", guideCols);
+        Assert.Contains("package_version", guideCols);
+        Assert.Contains("integrity_sha256", guideCols);
+        Assert.Contains("source_revision", guideCols);
+        Assert.Contains("is_active", guideCols);
+        Assert.Contains("backup_receipt_json", migrationCols);
     }
 
     [Fact]
@@ -339,6 +548,31 @@ public sealed class SchemaValidationTests
         // V0002: job integrity columns
         Assert.Contains("idempotency_key", cols);
         Assert.Contains("max_attempts", cols);
+    }
+
+    [Fact]
+    public async Task Jobs_schema_has_indexer_query_telemetry()
+    {
+        using var storage = CreateStorage();
+        var migrator = new SqliteDatabaseMigrator(storage.Factory, new FixedTimeProvider(DateTimeOffset.UnixEpoch));
+        await new JobsSchemaInitializer(storage.Factory, migrator,
+            NullLogger<JobsSchemaInitializer>.Instance).StartAsync(CancellationToken.None);
+
+        await using var conn = await storage.Factory.OpenConnectionAsync(DelunoDatabaseNames.Jobs);
+        var cols = await GetColumnsAsync(conn, "indexer_query_events");
+
+        Assert.Contains("indexer_id", cols);
+        Assert.Contains("query_text", cols);
+        Assert.Contains("query_kind", cols);
+        Assert.Contains("outcome", cols);
+        Assert.Contains("elapsed_ms", cols);
+        Assert.Contains("candidate_count", cols);
+        Assert.Contains("failure_json", cols);
+        Assert.Contains("created_utc", cols);
+
+        var dispatchCols = await GetColumnsAsync(conn, "download_dispatches");
+        Assert.Contains("grab_failure_json", dispatchCols);
+        Assert.Contains("import_failure_json", dispatchCols);
     }
 
     // ── Cache database ────────────────────────────────────────────────────

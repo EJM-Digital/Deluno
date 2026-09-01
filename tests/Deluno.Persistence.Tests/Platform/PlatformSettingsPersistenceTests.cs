@@ -121,6 +121,41 @@ public sealed class PlatformSettingsPersistenceTests
     }
 
     [Fact]
+    public async Task Calendar_week_header_formats_round_trip_with_canonical_values()
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-04-29T01:02:03Z"));
+
+        await new PlatformSchemaInitializer(
+            storage.Factory,
+            new SqliteDatabaseMigrator(storage.Factory, timeProvider),
+            NullLogger<PlatformSchemaInitializer>.Instance).StartAsync(CancellationToken.None);
+
+        var repository = new SqlitePlatformSettingsRepository(
+            storage.Factory,
+            timeProvider,
+            TestSecretProtection.Create(storage));
+
+        var initial = await repository.GetAsync(CancellationToken.None);
+        Assert.Equal("ddd d/M", initial.CalendarWeekHeaderFormat);
+
+        var savedMonthFirst = await repository.SaveAsync(
+            PlatformSettingsPatchMerger.Apply(
+                initial,
+                new PatchPlatformSettingsRequest(CalendarWeekHeaderFormat: "ddd m/d")),
+            CancellationToken.None);
+        Assert.Equal("ddd m/d", savedMonthFirst.CalendarWeekHeaderFormat);
+
+        var savedDayMonth = await repository.SaveAsync(
+            PlatformSettingsPatchMerger.Apply(
+                savedMonthFirst,
+                new PatchPlatformSettingsRequest(CalendarWeekHeaderFormat: "ddd d/M")),
+            CancellationToken.None);
+        Assert.Equal("ddd d/M", savedDayMonth.CalendarWeekHeaderFormat);
+        Assert.Equal("ddd d/M", (await repository.GetAsync(CancellationToken.None)).CalendarWeekHeaderFormat);
+    }
+
+    [Fact]
     public async Task Fresh_install_does_not_invent_libraries_or_quality_profiles()
     {
         using var storage = TestStorage.Create();
@@ -308,6 +343,7 @@ public sealed class PlatformSettingsPersistenceTests
         Assert.NotNull(permanent);
         Assert.NotNull(temporary);
         Assert.Null(permanent!.ExpiresUtc);
+        Assert.Equal("Excluded from import list by user", permanent.Reason);
         Assert.Equal(timeProvider.GetUtcNow().AddDays(7), temporary!.ExpiresUtc);
 
         var reloaded = new SqliteIntakeRepository(storage.Factory, timeProvider);

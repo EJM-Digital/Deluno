@@ -99,7 +99,12 @@ Deluno stores databases and protection keys under the configured data root.
 Expected behavior:
 
 - Docker installs do not offer in-place binary apply controls.
-- Update by pulling a newer image tag and recreating the container.
+- Set `DELUNO_IMAGE` to the desired version or digest, run `docker compose pull
+  deluno`, then `docker compose up -d --no-build`.
+- Wait for `http://127.0.0.1:5099/api/health/ready` to return HTTP 200 before
+  treating the upgrade as complete.
+- Keep the same `/data` mount. If an older image cannot read a forward-only
+  migrated schema, restore the pre-upgrade backup before rollback.
 
 ### Issue: Download Client Webhooks Never Arrive
 

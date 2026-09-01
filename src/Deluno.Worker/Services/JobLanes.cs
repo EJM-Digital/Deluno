@@ -169,6 +169,12 @@ public static class JobLanes
         // the shape that starved subtitles behind intake in the first place.
         new("subtitles.sync", ["subtitle.sync"], BatchSize: LocalWidth, MaxConcurrency: LocalWidth / 2),
 
+        // Collection membership refreshes are remote metadata work, but they
+        // get their own lane so a large collection can never starve a movie
+        // library search (or be starved by one). The heartbeat still plans
+        // both through the existing automation cycle.
+        new("collections.movies", [MovieCollectionJobTypes.Sync], BatchSize: RemoteWidth, MaxConcurrency: RemoteWidth),
+
         // Indexers, one lane per catalogue so neither can starve the other.
         //
         // Outbound request pacing is handled a layer down: `FeedMediaSearchPlanner`

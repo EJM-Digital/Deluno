@@ -23,6 +23,9 @@ public static partial class IntakeSourceAddressValidator
             "tmdb" when TmdbListIdRegex().IsMatch(value) || IsHostedBy(value, "themoviedb.org") || IsHostedBy(value, "tmdb.org")
                 => null,
             "tmdb" => "Use a TMDb list URL or its numeric list ID.",
+            "tmdb-person" when TmdbPersonIdRegex().IsMatch(value) || TmdbPersonUrlRegex().IsMatch(value)
+                => null,
+            "tmdb-person" => "Use a TMDb person URL or numeric person ID.",
             "imdb" when ImdbListIdRegex().IsMatch(value) || IsHostedBy(value, "imdb.com")
                 => null,
             "imdb" => "Use an IMDb list URL, an IMDb CSV export URL, or an ls… list ID.",
@@ -53,6 +56,12 @@ public static partial class IntakeSourceAddressValidator
 
     [GeneratedRegex(@"^\d{3,}$")]
     private static partial Regex TmdbListIdRegex();
+
+    [GeneratedRegex(@"^\d{1,12}$")]
+    private static partial Regex TmdbPersonIdRegex();
+
+    [GeneratedRegex(@"^https?://(?:[^./]+\.)?(?:themoviedb\.org|tmdb\.org)/person/\d{1,12}(?:[/?#].*)?$", RegexOptions.IgnoreCase)]
+    private static partial Regex TmdbPersonUrlRegex();
 
     [GeneratedRegex(@"^ls\d{4,}$", RegexOptions.IgnoreCase)]
     private static partial Regex ImdbListIdRegex();

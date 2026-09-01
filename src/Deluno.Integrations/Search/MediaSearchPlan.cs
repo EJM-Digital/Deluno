@@ -1,3 +1,5 @@
+using Deluno.Contracts;
+
 namespace Deluno.Integrations.Search;
 
 public static class MediaSearchReasons
@@ -10,6 +12,9 @@ public static class MediaSearchReasons
     public const string NoUsableRelease = "no_usable_release";
     public const string NotSearchable = "not_searchable";
     public const string LibraryMissing = "library_missing";
+    public const string SeasonPackReplacementRequiresEpisodeScope = "season_pack_replacement_requires_episode_scope";
+    public const string SeasonPackInstalledEvidenceMissing = "season_pack_installed_evidence_missing";
+    public const string SeasonPackCandidateNotUpgradeForEveryEpisode = "season_pack_candidate_not_upgrade_for_every_episode";
 }
 
 public sealed record MediaSearchPlan(
@@ -17,4 +22,5 @@ public sealed record MediaSearchPlan(
     IReadOnlyList<MediaSearchCandidate> Candidates,
     string Summary,
     string Reason = MediaSearchReasons.Ok,
-    bool CandidatesTruncatedByIndexer = false);
+    bool CandidatesTruncatedByIndexer = false,
+    IReadOnlyList<IntegrationFailure>? Failures = null);

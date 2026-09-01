@@ -21,9 +21,28 @@ export function sharingRuleFrom(item: IndexerItem): SharingRule {
     : "inherit";
 }
 
-export interface IndexerForm { name: string; protocol: IndexerProtocol; scope: MediaScope; baseUrl: string; apiKey: string; priority: string; requestIntervalSeconds: string; categories: string; isEnabled: boolean; sharingRule: SharingRule; }
-export function emptyIndexerForm(): IndexerForm { return { name: "", protocol: "newznab", scope: "both", baseUrl: "", apiKey: "", priority: "10", requestIntervalSeconds: "", categories: INDEXER_PRESETS[1]!.defaultCategories("both"), isEnabled: true, sharingRule: "inherit" }; }
-export function indexerFormFrom(item: IndexerItem): IndexerForm { return { name: item.name, protocol: (["torznab", "newznab", "rss", "custom"].includes(item.protocol) ? item.protocol : "custom") as IndexerProtocol, scope: item.mediaScope ?? "both", baseUrl: item.baseUrl, apiKey: "", priority: String(item.priority), requestIntervalSeconds: item.requestIntervalSeconds == null ? "" : String(item.requestIntervalSeconds), categories: item.categories, isEnabled: item.isEnabled, sharingRule: sharingRuleFrom(item) }; }
+export interface IndexerForm {
+  name: string;
+  protocol: IndexerProtocol;
+  scope: MediaScope;
+  baseUrl: string;
+  apiKey: string;
+  priority: string;
+  requestIntervalSeconds: string;
+  categories: string;
+  isEnabled: boolean;
+  sharingRule: SharingRule;
+  minimumAgeMinutes: string;
+  retentionDays: string;
+  maximumSizeMb: string;
+  preferIndexerFlags: string;
+  availabilityDelayDays: string;
+  rssEnabled: boolean;
+  automaticSearchEnabled: boolean;
+  interactiveSearchEnabled: boolean;
+}
+export function emptyIndexerForm(): IndexerForm { return { name: "", protocol: "newznab", scope: "both", baseUrl: "", apiKey: "", priority: "10", requestIntervalSeconds: "", categories: INDEXER_PRESETS[1]!.defaultCategories("both"), isEnabled: true, sharingRule: "inherit", minimumAgeMinutes: "", retentionDays: "", maximumSizeMb: "", preferIndexerFlags: "", availabilityDelayDays: "", rssEnabled: true, automaticSearchEnabled: true, interactiveSearchEnabled: true }; }
+export function indexerFormFrom(item: IndexerItem): IndexerForm { return { name: item.name, protocol: (["torznab", "newznab", "rss", "custom"].includes(item.protocol) ? item.protocol : "custom") as IndexerProtocol, scope: item.mediaScope ?? "both", baseUrl: item.baseUrl, apiKey: "", priority: String(item.priority), requestIntervalSeconds: item.requestIntervalSeconds == null ? "" : String(item.requestIntervalSeconds), categories: item.categories, isEnabled: item.isEnabled, sharingRule: sharingRuleFrom(item), minimumAgeMinutes: item.minimumAgeMinutes == null ? "" : String(item.minimumAgeMinutes), retentionDays: item.retentionDays == null ? "" : String(item.retentionDays), maximumSizeMb: item.maximumSizeMb == null ? "" : String(item.maximumSizeMb), preferIndexerFlags: item.preferIndexerFlags ?? "", availabilityDelayDays: item.availabilityDelayDays == null ? "" : String(item.availabilityDelayDays), rssEnabled: item.rssEnabled !== false, automaticSearchEnabled: item.automaticSearchEnabled !== false, interactiveSearchEnabled: item.interactiveSearchEnabled !== false }; }
 export function sameIndexer(a: IndexerForm, b: IndexerForm) { return (Object.keys(a) as (keyof IndexerForm)[]).every((key) => a[key] === b[key]); }
 
 export interface ClientForm { name: string; protocol: string; host: string; port: string; username: string; password: string; moviesCategory: string; tvCategory: string; priority: string; isEnabled: boolean; }
@@ -56,9 +75,14 @@ export function indexerFormErrors(form: IndexerForm, creating: boolean): Record<
   if (!form.baseUrl.trim()) errors.baseUrl = "Enter the indexer URL.";
   const preset = INDEXER_PRESETS.find((item) => item.protocol === form.protocol);
   if (creating && preset?.requiresApiKey && !form.apiKey.trim()) errors.apiKey = "This indexer needs an API key.";
+  for (const [key, label] of [["minimumAgeMinutes", "Minimum age"], ["retentionDays", "Retention"], ["maximumSizeMb", "Maximum size"], ["availabilityDelayDays", "Availability delay"]] as const) {
+    const value = form[key];
+    if (value.trim() && (!/^\\d+$/.test(value.trim()) || Number(value) < 0)) errors[key] = `${label} must be a non-negative whole number.`;
+  }
+  if (form.preferIndexerFlags.length > 500) errors.preferIndexerFlags = "Preferred flags must be 500 characters or fewer.";
   return errors;
 }
 
-export type Section = "indexers" | "clients" | "routing";
+export type Section = "indexers" | "scoreboard" | "clients" | "routing";
 export type DrawerState = { kind: "closed" } | { kind: "indexer"; id: string | null } | { kind: "client"; id: string | null } | { kind: "routing"; libraryId: string };
 export function sameSet(a: string[], b: string[]) { return a.length === b.length && b.every((item) => new Set(a).has(item)); }

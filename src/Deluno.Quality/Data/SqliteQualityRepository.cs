@@ -39,7 +39,7 @@ public sealed class SqliteQualityRepository(
             SELECT
                 id, name, media_type, cutoff_quality, allowed_qualities, custom_format_ids,
                 upgrade_until_cutoff, upgrade_unknown_items, allow_lower_quality_replacements,
-                preset_id, preset_version, created_utc, updated_utc
+                preset_id, preset_version, release_preference_plan_json, created_utc, updated_utc
             FROM quality_profiles
             ORDER BY sort_order ASC, media_type ASC, name ASC;
             """;
@@ -118,10 +118,10 @@ public sealed class SqliteQualityRepository(
             """
             SELECT
                 p.id, p.name, p.media_type,
-                p.quality_profile_id, q.name,
+                p.quality_profile_id, q.name, q.release_preference_plan_json,
                 p.destination_rule_id, d.name,
                 p.custom_format_ids, p.search_interval_override_hours, p.retry_delay_override_hours,
-                p.upgrade_until_cutoff, p.is_enabled, p.notes, p.created_utc, p.updated_utc
+                p.upgrade_until_cutoff, p.is_enabled, p.notes, p.automation_intent_json, p.created_utc, p.updated_utc
             FROM policy_sets p
             LEFT JOIN quality_profiles q ON q.id = p.quality_profile_id
             LEFT JOIN destination_rules d ON d.id = p.destination_rule_id
@@ -135,6 +135,73 @@ public sealed class SqliteQualityRepository(
         }
 
         return items;
+    }
+
+    public async Task<IReadOnlyList<MediaPlanVersionItem>> ListMediaPlanVersionsAsync(
+        string planId,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(planId))
+        {
+            return [];
+        }
+
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Platform,
+            cancellationToken);
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            "SELECT plan_id, version, plan_hash, change_kind, snapshot_json, created_utc FROM media_plan_versions WHERE plan_id = @planId ORDER BY version DESC;";
+        AddParameter(command, "@planId", planId.Trim());
+
+        var items = new List<MediaPlanVersionItem>();
+        using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            items.Add(ReadMediaPlanVersion(reader));
+        }
+
+        return items;
+    }
+
+    public async Task<MediaPlanVersionItem?> GetMediaPlanVersionAsync(
+        string planId,
+        int version,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(planId) || version <= 0)
+        {
+            return null;
+        }
+
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Platform,
+            cancellationToken);
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            "SELECT plan_id, version, plan_hash, change_kind, snapshot_json, created_utc FROM media_plan_versions WHERE plan_id = @planId AND version = @version LIMIT 1;";
+        AddParameter(command, "@planId", planId.Trim());
+        AddParameter(command, "@version", version);
+
+        using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        return await reader.ReadAsync(cancellationToken)
+            ? ReadMediaPlanVersion(reader)
+            : null;
+    }
+
+    public async Task<MediaPlanVersionItem?> GetLatestMediaPlanVersionAsync(
+        string planId,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(planId))
+        {
+            return null;
+        }
+
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Platform,
+            cancellationToken);
+        return await GetLatestMediaPlanVersionAsync(connection, planId, cancellationToken);
     }
 
     public async Task<QualityProfileItem> CreateQualityProfileAsync(
@@ -158,7 +225,8 @@ public sealed class SqliteQualityRepository(
             PresetVersion: null,
             PresetDrifted: false,
             CreatedUtc: now,
-            UpdatedUtc: now);
+            UpdatedUtc: now,
+            ReleasePreferencePlan: ReleasePreferencePlanReference.Normalize(request.ReleasePreferencePlan));
 
         await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
             DelunoDatabaseNames.Platform,
@@ -214,12 +282,12 @@ public sealed class SqliteQualityRepository(
             INSERT INTO quality_profiles (
                 id, name, media_type, sort_order, cutoff_quality, allowed_qualities, custom_format_ids,
                 upgrade_until_cutoff, upgrade_unknown_items, allow_lower_quality_replacements,
-                preset_id, preset_version, created_utc, updated_utc
+                preset_id, preset_version, release_preference_plan_json, created_utc, updated_utc
             )
             VALUES (
                 @id, @name, @mediaType, @sortOrder, @cutoffQuality, @allowedQualities, @customFormatIds,
                 @upgradeUntilCutoff, @upgradeUnknownItems, @allowLowerQualityReplacements,
-                @presetId, @presetVersion, @createdUtc, @updatedUtc
+                @presetId, @presetVersion, @releasePreferencePlan, @createdUtc, @updatedUtc
             );
             """;
 
@@ -235,6 +303,7 @@ public sealed class SqliteQualityRepository(
         AddParameter(command, "@allowLowerQualityReplacements", item.AllowLowerQualityReplacements ? 1 : 0);
         AddParameter(command, "@presetId", item.PresetId);
         AddParameter(command, "@presetVersion", (object?)item.PresetVersion ?? DBNull.Value);
+        AddParameter(command, "@releasePreferencePlan", ReleasePreferencePlanReferenceCodec.Serialize(item.ReleasePreferencePlan));
         AddParameter(command, "@createdUtc", item.CreatedUtc.ToString("O"));
         AddParameter(command, "@updatedUtc", item.UpdatedUtc.ToString("O"));
         await command.ExecuteNonQueryAsync(cancellationToken);
@@ -242,11 +311,12 @@ public sealed class SqliteQualityRepository(
 
     public async Task<CustomFormatItem> CreateCustomFormatAsync(
         CreateCustomFormatRequest request,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        string? preferredId = null)
     {
         var now = timeProvider.GetUtcNow();
         var item = new CustomFormatItem(
-            Id: Guid.CreateVersion7().ToString("N"),
+            Id: NormalizeName(preferredId) ?? Guid.CreateVersion7().ToString("N"),
             Name: NormalizeName(request.Name) ?? "New custom format",
             MediaType: NormalizeMediaType(request.MediaType),
             Score: request.Score,
@@ -304,25 +374,28 @@ public sealed class SqliteQualityRepository(
             UpgradeUntilCutoff: request.UpgradeUntilCutoff,
             IsEnabled: request.IsEnabled,
             Notes: NormalizeName(request.Notes),
+            AutomationIntent: MediaPlanAutomationIntentCodec.Normalize(request.AutomationIntent),
             CreatedUtc: now,
             UpdatedUtc: now);
 
         await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
             DelunoDatabaseNames.Platform,
             cancellationToken);
+        await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
 
         using var command = connection.CreateCommand();
+        command.Transaction = transaction;
         command.CommandText =
             """
             INSERT INTO policy_sets (
                 id, name, media_type, quality_profile_id, destination_rule_id, custom_format_ids,
                 search_interval_override_hours, retry_delay_override_hours,
-                upgrade_until_cutoff, is_enabled, notes, created_utc, updated_utc
+                upgrade_until_cutoff, is_enabled, notes, automation_intent_json, created_utc, updated_utc
             )
             VALUES (
                 @id, @name, @mediaType, @qualityProfileId, @destinationRuleId, @customFormatIds,
                 @searchIntervalOverrideHours, @retryDelayOverrideHours,
-                @upgradeUntilCutoff, @isEnabled, @notes, @createdUtc, @updatedUtc
+                @upgradeUntilCutoff, @isEnabled, @notes, @automationIntent, @createdUtc, @updatedUtc
             );
             """;
 
@@ -337,11 +410,19 @@ public sealed class SqliteQualityRepository(
         AddParameter(command, "@upgradeUntilCutoff", item.UpgradeUntilCutoff ? 1 : 0);
         AddParameter(command, "@isEnabled", item.IsEnabled ? 1 : 0);
         AddParameter(command, "@notes", item.Notes);
+        AddParameter(command, "@automationIntent", MediaPlanAutomationIntentCodec.Serialize(item.AutomationIntent));
         AddParameter(command, "@createdUtc", item.CreatedUtc.ToString("O"));
         AddParameter(command, "@updatedUtc", item.UpdatedUtc.ToString("O"));
         await command.ExecuteNonQueryAsync(cancellationToken);
 
-        return (await GetPolicySetAsync(connection, item.Id, cancellationToken))!;
+        // Read the joined policy-set projection before capturing its first
+        // version. The effective release-preference reference belongs to the
+        // selected quality profile, so the constructor value above cannot
+        // carry it into immutable Media Plan history.
+        var created = await GetPolicySetAsync(connection, item.Id, cancellationToken, transaction);
+        await AppendMediaPlanVersionAsync(connection, created ?? item, "create", cancellationToken, transaction);
+        await transaction.CommitAsync(cancellationToken);
+        return created!;
     }
 
     public async Task<QualityProfileItem?> UpdateQualityProfileAsync(
@@ -361,6 +442,25 @@ public sealed class SqliteQualityRepository(
             return null;
         }
 
+        var nextName = NormalizeName(request.Name) ?? current.Name;
+        var nextCutoffQuality = NormalizeName(request.CutoffQuality) ?? current.CutoffQuality;
+        var nextAllowedQualities = string.IsNullOrWhiteSpace(request.AllowedQualities)
+            ? current.AllowedQualities
+            : NormalizeCsv(request.AllowedQualities);
+        var nextCustomFormatIds = string.IsNullOrWhiteSpace(request.CustomFormatIds)
+            ? string.Empty
+            : NormalizeCsv(request.CustomFormatIds);
+        var semanticProfileChanged = !string.Equals(nextCutoffQuality, current.CutoffQuality, StringComparison.OrdinalIgnoreCase)
+            || !string.Equals(nextAllowedQualities, current.AllowedQualities, StringComparison.OrdinalIgnoreCase)
+            || !string.Equals(nextCustomFormatIds, current.CustomFormatIds, StringComparison.OrdinalIgnoreCase)
+            || request.UpgradeUntilCutoff != current.UpgradeUntilCutoff
+            || request.UpgradeUnknownItems != current.UpgradeUnknownItems;
+        var nextReleasePreferencePlan = request.ReleasePreferencePlan is not null
+            ? ReleasePreferencePlanReference.Normalize(request.ReleasePreferencePlan)
+            : semanticProfileChanged
+                ? null
+                : current.ReleasePreferencePlan;
+
         using var command = connection.CreateCommand();
         command.CommandText =
             """
@@ -372,27 +472,19 @@ public sealed class SqliteQualityRepository(
                 custom_format_ids = @customFormatIds,
                 upgrade_until_cutoff = @upgradeUntilCutoff,
                 upgrade_unknown_items = @upgradeUnknownItems,
+                release_preference_plan_json = @releasePreferencePlan,
                 updated_utc = @updatedUtc
             WHERE id = @id;
             """;
 
         AddParameter(command, "@id", id);
-        AddParameter(command, "@name", NormalizeName(request.Name) ?? current.Name);
-        AddParameter(command, "@cutoffQuality", NormalizeName(request.CutoffQuality) ?? current.CutoffQuality);
-        AddParameter(
-            command,
-            "@allowedQualities",
-            string.IsNullOrWhiteSpace(request.AllowedQualities)
-                ? current.AllowedQualities
-                : NormalizeCsv(request.AllowedQualities));
-        AddParameter(
-            command,
-            "@customFormatIds",
-            string.IsNullOrWhiteSpace(request.CustomFormatIds)
-                ? string.Empty
-                : NormalizeCsv(request.CustomFormatIds));
+        AddParameter(command, "@name", nextName);
+        AddParameter(command, "@cutoffQuality", nextCutoffQuality);
+        AddParameter(command, "@allowedQualities", nextAllowedQualities);
+        AddParameter(command, "@customFormatIds", nextCustomFormatIds);
         AddParameter(command, "@upgradeUntilCutoff", request.UpgradeUntilCutoff ? 1 : 0);
         AddParameter(command, "@upgradeUnknownItems", request.UpgradeUnknownItems ? 1 : 0);
+        AddParameter(command, "@releasePreferencePlan", ReleasePreferencePlanReferenceCodec.Serialize(nextReleasePreferencePlan));
         AddParameter(command, "@updatedUtc", now.ToString("O"));
         await command.ExecuteNonQueryAsync(cancellationToken);
 
@@ -447,21 +539,66 @@ public sealed class SqliteQualityRepository(
     public async Task<PolicySetItem?> UpdatePolicySetAsync(
         string id,
         UpdatePolicySetRequest request,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        string changeKind = "update")
     {
         var now = timeProvider.GetUtcNow();
 
         await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
             DelunoDatabaseNames.Platform,
             cancellationToken);
+        await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
 
-        var current = await GetPolicySetAsync(connection, id, cancellationToken);
+        var current = await GetPolicySetAsync(connection, id, cancellationToken, transaction);
         if (current is null)
         {
             return null;
         }
 
+        // Plans created before version history was introduced still receive a
+        // baseline before their first edit, so the first update is reversible.
+        if (await GetLatestMediaPlanVersionAsync(connection, id, cancellationToken, transaction) is null)
+        {
+            await AppendMediaPlanVersionAsync(connection, current, "baseline", cancellationToken, transaction);
+        }
+
+        // A full PUT is allowed to repeat after a caller retries a timed-out
+        // request. Do not manufacture a new Media Plan version when the
+        // normalized effective snapshot is unchanged: version history is an
+        // audit trail of behavior changes, not a log of HTTP retries.
+        var requestedQualityProfileId = NormalizeName(request.QualityProfileId);
+        var requestedQualityProfile = string.IsNullOrWhiteSpace(requestedQualityProfileId)
+            ? null
+            : await GetQualityProfileAsync(connection, requestedQualityProfileId, cancellationToken, transaction);
+        var proposed = current with
+        {
+            Name = NormalizeName(request.Name) ?? current.Name,
+            MediaType = NormalizeMediaType(request.MediaType ?? current.MediaType),
+            QualityProfileId = requestedQualityProfileId,
+            QualityProfileName = requestedQualityProfile?.Name,
+            DestinationRuleId = NormalizeName(request.DestinationRuleId),
+            DestinationRuleName = null,
+            CustomFormatIds = NormalizeCsv(request.CustomFormatIds),
+            SearchIntervalOverrideHours = NormalizeNullablePositiveValue(request.SearchIntervalOverrideHours),
+            RetryDelayOverrideHours = NormalizeNullablePositiveValue(request.RetryDelayOverrideHours),
+            UpgradeUntilCutoff = request.UpgradeUntilCutoff,
+            IsEnabled = request.IsEnabled,
+            Notes = NormalizeName(request.Notes),
+            AutomationIntent = MediaPlanAutomationIntentCodec.Normalize(
+                request.AutomationIntent ?? current.AutomationIntent),
+            ReleasePreferencePlan = requestedQualityProfile?.ReleasePreferencePlan
+        };
+        if (string.Equals(
+                MediaPlanVersionCodec.ComputeHash(MediaPlanSnapshot.From(current)),
+                MediaPlanVersionCodec.ComputeHash(MediaPlanSnapshot.From(proposed)),
+                StringComparison.OrdinalIgnoreCase))
+        {
+            await transaction.CommitAsync(cancellationToken);
+            return current;
+        }
+
         using var command = connection.CreateCommand();
+        command.Transaction = transaction;
         command.CommandText =
             """
             UPDATE policy_sets
@@ -476,6 +613,7 @@ public sealed class SqliteQualityRepository(
                 upgrade_until_cutoff = @upgradeUntilCutoff,
                 is_enabled = @isEnabled,
                 notes = @notes,
+                automation_intent_json = @automationIntent,
                 updated_utc = @updatedUtc
             WHERE id = @id;
             """;
@@ -491,10 +629,24 @@ public sealed class SqliteQualityRepository(
         AddParameter(command, "@upgradeUntilCutoff", request.UpgradeUntilCutoff ? 1 : 0);
         AddParameter(command, "@isEnabled", request.IsEnabled ? 1 : 0);
         AddParameter(command, "@notes", NormalizeName(request.Notes));
+        AddParameter(command, "@automationIntent", MediaPlanAutomationIntentCodec.Serialize(
+            request.AutomationIntent ?? current.AutomationIntent));
         AddParameter(command, "@updatedUtc", now.ToString("O"));
         await command.ExecuteNonQueryAsync(cancellationToken);
 
-        return await GetPolicySetAsync(connection, id, cancellationToken);
+        var updated = await GetPolicySetAsync(connection, id, cancellationToken, transaction);
+        if (updated is not null)
+        {
+            await AppendMediaPlanVersionAsync(
+                connection,
+                updated,
+                string.IsNullOrWhiteSpace(changeKind) ? "update" : changeKind.Trim().ToLowerInvariant(),
+                cancellationToken,
+                transaction);
+        }
+
+        await transaction.CommitAsync(cancellationToken);
+        return updated;
     }
 
     public async Task<bool> DeleteQualityProfileAsync(string id, CancellationToken cancellationToken)
@@ -664,15 +816,17 @@ public sealed class SqliteQualityRepository(
     public static async Task<QualityProfileItem?> GetQualityProfileAsync(
         System.Data.Common.DbConnection connection,
         string id,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        System.Data.Common.DbTransaction? transaction = null)
     {
         using var command = connection.CreateCommand();
+        command.Transaction = transaction;
         command.CommandText =
             """
             SELECT
                 id, name, media_type, cutoff_quality, allowed_qualities, custom_format_ids,
                 upgrade_until_cutoff, upgrade_unknown_items, allow_lower_quality_replacements,
-                preset_id, preset_version, created_utc, updated_utc
+                preset_id, preset_version, release_preference_plan_json, created_utc, updated_utc
             FROM quality_profiles
             WHERE id = @id
             LIMIT 1;
@@ -711,17 +865,19 @@ public sealed class SqliteQualityRepository(
     public static async Task<PolicySetItem?> GetPolicySetAsync(
         System.Data.Common.DbConnection connection,
         string id,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        System.Data.Common.DbTransaction? transaction = null)
     {
         using var command = connection.CreateCommand();
+        command.Transaction = transaction;
         command.CommandText =
             """
             SELECT
                 p.id, p.name, p.media_type,
-                p.quality_profile_id, q.name,
+                p.quality_profile_id, q.name, q.release_preference_plan_json,
                 p.destination_rule_id, d.name,
                 p.custom_format_ids, p.search_interval_override_hours, p.retry_delay_override_hours,
-                p.upgrade_until_cutoff, p.is_enabled, p.notes, p.created_utc, p.updated_utc
+                p.upgrade_until_cutoff, p.is_enabled, p.notes, p.automation_intent_json, p.created_utc, p.updated_utc
             FROM policy_sets p
             LEFT JOIN quality_profiles q ON q.id = p.quality_profile_id
             LEFT JOIN destination_rules d ON d.id = p.destination_rule_id
@@ -732,6 +888,48 @@ public sealed class SqliteQualityRepository(
 
         using var reader = await command.ExecuteReaderAsync(cancellationToken);
         return await reader.ReadAsync(cancellationToken) ? ReadPolicySet(reader) : null;
+    }
+
+    private static async Task<MediaPlanVersionItem?> GetLatestMediaPlanVersionAsync(
+        System.Data.Common.DbConnection connection,
+        string planId,
+        CancellationToken cancellationToken,
+        System.Data.Common.DbTransaction? transaction = null)
+    {
+        using var command = connection.CreateCommand();
+        command.Transaction = transaction;
+        command.CommandText =
+            "SELECT plan_id, version, plan_hash, change_kind, snapshot_json, created_utc FROM media_plan_versions WHERE plan_id = @planId ORDER BY version DESC LIMIT 1;";
+        AddParameter(command, "@planId", planId.Trim());
+
+        using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        return await reader.ReadAsync(cancellationToken)
+            ? ReadMediaPlanVersion(reader)
+            : null;
+    }
+
+    private async Task AppendMediaPlanVersionAsync(
+        System.Data.Common.DbConnection connection,
+        PolicySetItem item,
+        string changeKind,
+        CancellationToken cancellationToken,
+        System.Data.Common.DbTransaction? transaction = null)
+    {
+        var snapshot = MediaPlanSnapshot.From(item);
+        var json = MediaPlanVersionCodec.Serialize(snapshot);
+        var hash = MediaPlanVersionCodec.ComputeHash(snapshot);
+
+        using var command = connection.CreateCommand();
+        command.Transaction = transaction;
+        command.CommandText =
+            "INSERT INTO media_plan_versions (plan_id, version, plan_hash, change_kind, snapshot_json, created_utc) "
+            + "VALUES (@planId, COALESCE((SELECT MAX(version) + 1 FROM media_plan_versions WHERE plan_id = @planId), 1), @planHash, @changeKind, @snapshotJson, @createdUtc);";
+        AddParameter(command, "@planId", item.Id);
+        AddParameter(command, "@planHash", hash);
+        AddParameter(command, "@changeKind", string.IsNullOrWhiteSpace(changeKind) ? "update" : changeKind.Trim().ToLowerInvariant());
+        AddParameter(command, "@snapshotJson", json);
+        AddParameter(command, "@createdUtc", item.UpdatedUtc.ToString("O"));
+        await command.ExecuteNonQueryAsync(cancellationToken);
     }
 
     private static string DefaultCutoffForMediaType(string? mediaType)
@@ -746,6 +944,9 @@ public sealed class SqliteQualityRepository(
     {
         var presetId = reader.IsDBNull(9) ? null : reader.GetString(9);
         var presetVersion = reader.IsDBNull(10) ? (int?)null : reader.GetInt32(10);
+        var releasePreferencePlan = reader.IsDBNull(11)
+            ? null
+            : ReleasePreferencePlanReferenceCodec.Deserialize(reader.GetString(11));
 
         var presetDrifted = false;
         if (presetId is not null && presetVersion.HasValue)
@@ -767,8 +968,9 @@ public sealed class SqliteQualityRepository(
             PresetId: presetId,
             PresetVersion: presetVersion,
             PresetDrifted: presetDrifted,
-            CreatedUtc: ParseTimestamp(reader.GetString(11)),
-            UpdatedUtc: ParseTimestamp(reader.GetString(12)));
+            CreatedUtc: ParseTimestamp(reader.GetString(12)),
+            UpdatedUtc: ParseTimestamp(reader.GetString(13)),
+            ReleasePreferencePlan: releasePreferencePlan);
     }
 
     private static CustomFormatItem ReadCustomFormat(System.Data.Common.DbDataReader reader)
@@ -787,21 +989,49 @@ public sealed class SqliteQualityRepository(
 
     private static PolicySetItem ReadPolicySet(System.Data.Common.DbDataReader reader)
     {
+        var releasePreferencePlan = reader.IsDBNull(5)
+            ? null
+            : ReleasePreferencePlanReferenceCodec.Deserialize(reader.GetString(5));
+
         return new PolicySetItem(
             Id: reader.GetString(0),
             Name: reader.GetString(1),
             MediaType: reader.GetString(2),
             QualityProfileId: reader.IsDBNull(3) ? null : reader.GetString(3),
             QualityProfileName: reader.IsDBNull(4) ? null : reader.GetString(4),
-            DestinationRuleId: reader.IsDBNull(5) ? null : reader.GetString(5),
-            DestinationRuleName: reader.IsDBNull(6) ? null : reader.GetString(6),
-            CustomFormatIds: reader.IsDBNull(7) ? string.Empty : reader.GetString(7),
-            SearchIntervalOverrideHours: reader.IsDBNull(8) ? null : reader.GetInt32(8),
-            RetryDelayOverrideHours: reader.IsDBNull(9) ? null : reader.GetInt32(9),
-            UpgradeUntilCutoff: reader.GetInt64(10) == 1,
-            IsEnabled: reader.GetInt64(11) == 1,
-            Notes: reader.IsDBNull(12) ? null : reader.GetString(12),
-            CreatedUtc: ParseTimestamp(reader.GetString(13)),
-            UpdatedUtc: ParseTimestamp(reader.GetString(14)));
+            DestinationRuleId: reader.IsDBNull(6) ? null : reader.GetString(6),
+            DestinationRuleName: reader.IsDBNull(7) ? null : reader.GetString(7),
+            CustomFormatIds: reader.IsDBNull(8) ? string.Empty : reader.GetString(8),
+            SearchIntervalOverrideHours: reader.IsDBNull(9) ? null : reader.GetInt32(9),
+            RetryDelayOverrideHours: reader.IsDBNull(10) ? null : reader.GetInt32(10),
+            UpgradeUntilCutoff: reader.GetInt64(11) == 1,
+            IsEnabled: reader.GetInt64(12) == 1,
+            Notes: reader.IsDBNull(13) ? null : reader.GetString(13),
+            AutomationIntent: MediaPlanAutomationIntentCodec.Deserialize(reader.IsDBNull(14) ? null : reader.GetString(14)),
+            CreatedUtc: ParseTimestamp(reader.GetString(15)),
+            UpdatedUtc: ParseTimestamp(reader.GetString(16)),
+            ReleasePreferencePlan: releasePreferencePlan);
+    }
+
+    private static MediaPlanVersionItem ReadMediaPlanVersion(System.Data.Common.DbDataReader reader)
+    {
+        var planId = reader.GetString(0);
+        var version = reader.GetInt32(1);
+        var hash = reader.GetString(2);
+        var snapshot = MediaPlanVersionCodec.Deserialize(reader.GetString(4));
+        var computedHash = MediaPlanVersionCodec.ComputeHash(snapshot);
+        if (!string.Equals(hash, computedHash, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new InvalidDataException(
+                $"Media plan '{planId}' version {version.ToString(CultureInfo.InvariantCulture)} has an invalid content hash.");
+        }
+
+        return new MediaPlanVersionItem(
+            planId,
+            version,
+            hash,
+            reader.GetString(3),
+            snapshot,
+            ParseTimestamp(reader.GetString(5)));
     }
 }

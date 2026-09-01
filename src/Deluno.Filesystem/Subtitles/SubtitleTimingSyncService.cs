@@ -23,18 +23,6 @@ public sealed class SubtitleTimingSyncService(
     : ISubtitleTimingSync
 {
     /// <summary>
-    /// The furthest a subtitle is assumed to be out.
-    ///
-    /// <para>Sixty seconds covers everything that happens in practice — a
-    /// different distributor's logo, a missing recap, a PAL master starting on a
-    /// different frame — and stops well short of the offsets where a correlation
-    /// starts finding convincing peaks in the wrong place. The search is cheap
-    /// enough that this is a correctness bound rather than a performance
-    /// one.</para>
-    /// </summary>
-    private static readonly TimeSpan MaxOffset = TimeSpan.FromSeconds(60);
-
-    /// <summary>
     /// Below this, moving the subtitle is not worth the risk of being wrong.
     ///
     /// <para>A tenth of a second is roughly where a person begins to notice a
@@ -55,45 +43,20 @@ public sealed class SubtitleTimingSyncService(
     /// </summary>
     private const double RequiredImprovement = 0.20;
 
-    /// <summary>
-    /// How far the best shift has to stand above the noise before the answer is
-    /// believed at all, in standard deviations.
-    ///
-    /// <para>Guards the case the improvement ratio cannot see: a subtitle for a
-    /// completely different film still has a best shift, and it can still be
-    /// twenty per cent better than sitting at rest. Two earlier guards were
-    /// wrong here and both were caught by measuring rather than by
-    /// reasoning.</para>
-    ///
-    /// <para><b>Coverage was the first, and it does not work at all.</b> It asked
-    /// how much of the subtitle landed on speech, on the reasoning that an
-    /// unrelated subtitle would land on very little. It lands on a great deal:
-    /// two films with talking in them are both talking most of the time, so an
-    /// unrelated pair overlapped 41%, past the third it was about to require.
-    /// </para>
-    ///
-    /// <para><b>The ratio to the mean was the second, and it works but not with
-    /// any room.</b> Run against the lab episode it gave 1.64 for a subtitle
-    /// that genuinely matched and 1.13 for one that did not — either side of a
-    /// threshold of 1.5, a margin of 0.14. A ratio to the average says nothing
-    /// about how much the overlap moves from shift to shift, which is precisely
-    /// what makes a peak a peak.</para>
-    ///
-    /// <para><b>Measured, on the lab episode's real audio through the real
-    /// FFmpeg.</b> A matching subtitle displaced by anything from 300&#160;ms to
-    /// 30&#160;s, in both directions, peaked at <b>4.7–4.8&#160;σ</b> and its
-    /// offset came back exact every time. The unrelated Severance subtitle over
-    /// the same audio reached <b>1.3–2.0&#160;σ</b>. Three sits between them with
-    /// about half again in hand on each side.</para>
-    /// </summary>
-    private const double RequiredPeakSigma = 3.0;
-
     public async Task<SubtitleTimingResult> SyncAsync(
         string videoPath,
         string subtitlePath,
         string? originalLanguage,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        SubtitleTimingPolicy? policy = null)
     {
+        var effectivePolicy = SubtitleTimingPolicyCodec.Normalize(policy) ?? new SubtitleTimingPolicy();
+        if (!effectivePolicy.Enabled)
+        {
+            return new SubtitleTimingResult(false, TimeSpan.Zero,
+                "Automatic subtitle timing repair is disabled for this library.");
+        }
+
         if (!File.Exists(videoPath) || !File.Exists(subtitlePath))
         {
             return new SubtitleTimingResult(false, TimeSpan.Zero, "The video or its subtitle is no longer on disk.");
@@ -141,13 +104,14 @@ public sealed class SubtitleTimingSyncService(
             return new SubtitleTimingResult(false, TimeSpan.Zero, "Either the subtitle or the audio has nothing in it to line up.");
         }
 
-        var best = audio.Correlate(subtitle, SpeechMask.ToFrames(MaxOffset));
+        var maxOffset = TimeSpan.FromSeconds(effectivePolicy.MaxOffsetSeconds);
+        var best = audio.Correlate(subtitle, SpeechMask.ToFrames(maxOffset));
 
         logger.LogDebug(
             "Timing {Subtitle}: best shift {Shift}, overlap {Score} against {Zero} at rest and {Mean:F0} +/- {Deviation:F1} across the search, {Sigma:F1} sigma.",
             subtitlePath, best.Shift, best.Score, best.ScoreAtZero, best.MeanScore, best.ScoreDeviation, best.PeakSigma);
 
-        if (best.PeakSigma < RequiredPeakSigma)
+        if (best.PeakSigma < effectivePolicy.RequiredPeakSigma)
         {
             return new SubtitleTimingResult(false, TimeSpan.Zero,
                 "This subtitle does not line up with the video's dialogue at any one point, so it has been left exactly as it was.");

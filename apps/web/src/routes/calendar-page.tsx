@@ -31,6 +31,16 @@ import { SegmentedControl } from "../components/ui/segmented-control";
 import { SummaryStrip } from "../components/ui/summary-strip";
 import { TitleMarkDot, TitleMarkLabel } from "../components/ui/title-mark";
 import type { TitleMarkInput } from "../components/ui/title-mark";
+import {
+  formatCalendarWeekHeader,
+  formatLongDate,
+  formatMonth,
+  formatRangeDate,
+  formatTime as formatPreferenceTime,
+  type CalendarFirstDay,
+  type DisplayPreferences,
+  useDisplayPreferences
+} from "../lib/display-preferences";
 import type { MediaType } from "../lib/media-types";
 
 interface SeriesCalendarEpisode {
@@ -123,9 +133,10 @@ export function CalendarPage() {
   const [view, setView] = useState<View>("grid");
   const [offset, setOffset] = useState(0);
   const [subscribeOpen, setSubscribeOpen] = useState(false);
+  const { preferences } = useDisplayPreferences();
 
   const entries = useMemo(() => buildEntries(loaderData), [loaderData]);
-  const range = useMemo(() => buildRange(scope, offset), [scope, offset]);
+  const range = useMemo(() => buildRange(scope, offset, preferences), [offset, preferences, scope]);
 
   const visible = useMemo(
     () => entries.filter((entry) => entry.date >= range.start && entry.date < range.end),
@@ -143,7 +154,8 @@ export function CalendarPage() {
 
   // A calendar wants whole weeks, so the grid runs Monday-to-Sunday across the
   // range's edges and dims the days that belong to the neighbouring month.
-  const weeks = useMemo(() => buildWeeks(range, byDay), [range, byDay]);
+  const weeks = useMemo(() => buildWeeks(range, byDay, preferences.calendarFirstDayOfWeek), [byDay, preferences.calendarFirstDayOfWeek, range]);
+  const weekHeaders = weeks[0]?.map((cell) => formatCalendarWeekHeader(cell.date, preferences)) ?? [];
 
   const now = new Date();
   const stillToCome = visible.filter((entry) => entry.date >= now).length;
@@ -234,9 +246,9 @@ export function CalendarPage() {
           </header>
 
           <div className="grid grid-cols-7 border-b border-hairline bg-surface-2/40">
-            {WEEKDAYS.map((day) => (
+            {weekHeaders.map((day, index) => (
               <span
-                key={day}
+                key={`${day}-${index}`}
                 className="px-2 py-2 text-center text-[length:var(--type-micro)] font-semibold uppercase tracking-[0.1em] text-muted-foreground"
               >
                 {day}
@@ -331,14 +343,14 @@ export function CalendarPage() {
             {byDay.map(([day, dayEntries]) => (
               <div key={day}>
                 <ListGroupHeader
-                  label={formatDayLabel(new Date(`${day}T00:00:00`))}
+                  label={formatDayLabel(new Date(`${day}T00:00:00`), preferences)}
                   detail={`${dayEntries.length} ${dayEntries.length === 1 ? "thing" : "things"}`}
                 />
                 {dayEntries.map((entry) => (
                   <ListRow key={entry.id} onClick={() => navigate(entry.href)}>
                     <ListNameCell name={entry.name} sub={entry.sub} />
                     <ListCell primary={entry.kindLabel} mobile />
-                    <ListCell primary={formatTime(entry.date)} />
+                    <ListCell primary={formatCalendarTime(entry.date, preferences)} />
                     <ListCell primary={entry.detail} />
                     <ListCell>
                       <TitleMarkLabel item={entry.mark} type={entry.mediaType} />
@@ -359,8 +371,6 @@ export function CalendarPage() {
 
 /* -------------------------------------------------------------- helpers */
 
-const WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
-
 interface GridCell {
   key: string;
   date: Date;
@@ -376,18 +386,19 @@ interface GridCell {
  */
 function buildWeeks(
   range: { start: Date; end: Date },
-  byDay: Array<[string, CalendarEntry[]]>
+  byDay: Array<[string, CalendarEntry[]]>,
+  firstDay: CalendarFirstDay = "monday"
 ): GridCell[][] {
   const lookup = new Map(byDay);
   const today = new Date();
   today.setHours(0, 0, 0, 0);
 
   const first = new Date(range.start);
-  first.setDate(first.getDate() - ((first.getDay() + 6) % 7));
+  first.setDate(first.getDate() - dayIndex(first, firstDay));
 
   const last = new Date(range.end);
   last.setDate(last.getDate() - 1);
-  last.setDate(last.getDate() + (7 - ((last.getDay() + 6) % 7)) - 1);
+  last.setDate(last.getDate() + (6 - dayIndex(last, firstDay)));
 
   const weeks: GridCell[][] = [];
   const cursor = new Date(first);
@@ -462,18 +473,17 @@ function movieKindDetail(kind: MovieCalendarEntry["kind"]) {
   }
 }
 
-function buildRange(scope: Scope, offset: number) {
+function buildRange(scope: Scope, offset: number, preferences: DisplayPreferences) {
   const anchor = new Date();
   anchor.setHours(0, 0, 0, 0);
 
   if (scope === "week") {
-    // Monday-first, which is how a week reads for scheduling.
-    const weekday = (anchor.getDay() + 6) % 7;
+    const weekday = dayIndex(anchor, preferences.calendarFirstDayOfWeek);
     const start = new Date(anchor);
     start.setDate(anchor.getDate() - weekday + offset * 7);
     const end = new Date(start);
     end.setDate(start.getDate() + 7);
-    return { start, end, label: formatWeekLabel(start, end) };
+    return { start, end, label: formatWeekLabel(start, end, preferences) };
   }
 
   const start = new Date(anchor.getFullYear(), anchor.getMonth() + offset, 1);
@@ -481,35 +491,32 @@ function buildRange(scope: Scope, offset: number) {
   return {
     start,
     end,
-    label: new Intl.DateTimeFormat(undefined, { month: "long", year: "numeric" }).format(start)
+    label: formatMonth(start, preferences)
   };
 }
 
-function formatWeekLabel(start: Date, end: Date) {
+function formatWeekLabel(start: Date, end: Date, preferences: DisplayPreferences) {
   const last = new Date(end);
   last.setDate(end.getDate() - 1);
-  const sameMonth = start.getMonth() === last.getMonth();
-  const startPart = new Intl.DateTimeFormat(undefined, { day: "numeric", month: sameMonth ? undefined : "short" }).format(start);
-  const endPart = new Intl.DateTimeFormat(undefined, { day: "numeric", month: "short" }).format(last);
+  const startPart = formatRangeDate(start, preferences);
+  const endPart = formatRangeDate(last, preferences);
   return `${startPart} – ${endPart}`;
 }
 
-function formatDayLabel(date: Date) {
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const diff = Math.round((date.getTime() - today.getTime()) / 86_400_000);
-  if (diff === 0) return "Today";
-  if (diff === 1) return "Tomorrow";
-  if (diff === -1) return "Yesterday";
-  return new Intl.DateTimeFormat(undefined, { weekday: "long", day: "numeric", month: "long" }).format(date);
+function formatDayLabel(date: Date, preferences: DisplayPreferences) {
+  return formatLongDate(date, preferences);
 }
 
-function formatTime(date: Date) {
+function formatCalendarTime(date: Date, preferences: DisplayPreferences) {
   // Air dates are date-only, stored at midnight UTC. Read the UTC components:
   // reading local ones turns "no time known" into a confident "10:00" outside UTC.
   return date.getUTCHours() === 0 && date.getUTCMinutes() === 0
     ? "All day"
-    : new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit" }).format(date);
+    : formatPreferenceTime(date, preferences);
+}
+
+function dayIndex(date: Date, firstDay: CalendarFirstDay) {
+  return firstDay === "sunday" ? date.getDay() : (date.getDay() + 6) % 7;
 }
 
 function isoDate(date: Date) {

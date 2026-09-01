@@ -3,6 +3,7 @@ using System.Net;
 using System.Net.Http.Json;
 using System.Text;
 using Deluno.Connections.Contracts;
+using Deluno.Contracts;
 
 namespace Deluno.Integrations.DownloadClients;
 
@@ -83,16 +84,150 @@ internal static class DownloadClientHelpers
         => new(client.Id, request.ReleaseName, true, "sent", message);
 
     internal static DownloadClientGrabResult GrabFailure(DownloadClientItem client, DownloadClientGrabRequest request, string message)
-        => new(client.Id, request.ReleaseName, false, "failed", message);
+        => new(client.Id, request.ReleaseName, false, "failed", message)
+        {
+            Failure = IntegrationFailureFactory.FromLegacy(
+                "download-client",
+                client.Id,
+                client.Name,
+                "grab",
+                "configuration",
+                message)
+        };
 
     internal static DownloadClientActionResult MissingAddress(DownloadClientItem client, string queueItemId, string action)
-        => new(client.Id, queueItemId, action, false, "Client address is missing.");
+        => new(client.Id, queueItemId, action, false, "Client address is missing.")
+        {
+            Failure = IntegrationFailureFactory.FromLegacy(
+                "download-client",
+                client.Id,
+                client.Name,
+                $"action:{action}",
+                "configuration",
+                "Client address is missing.")
+        };
 
     internal static DownloadClientActionResult Unsupported(DownloadClientItem client, string queueItemId, string action, string label)
-        => new(client.Id, queueItemId, action, false, $"{label} does not support this action.");
+        => new(client.Id, queueItemId, action, false, $"{label} does not support this action.")
+        {
+            Failure = IntegrationFailureFactory.FromLegacy(
+                "download-client",
+                client.Id,
+                client.Name,
+                $"action:{action}",
+                "rejected",
+                $"{label} does not support this action.")
+        };
+
+    internal static DownloadClientActionResult ActionFailure(
+        DownloadClientItem client,
+        string queueItemId,
+        string action,
+        string message,
+        HttpStatusCode? statusCode = null,
+        string? upstreamDetail = null,
+        string category = "rejected")
+        => new(client.Id, queueItemId, action, false, message)
+        {
+            Failure = statusCode is { } status
+                ? IntegrationFailureFactory.FromHttpStatus(
+                    "download-client",
+                    client.Id,
+                    client.Name,
+                    $"action:{action}",
+                    status,
+                    message,
+                    upstreamDetail)
+                : IntegrationFailureFactory.FromLegacy(
+                    "download-client",
+                    client.Id,
+                    client.Name,
+                    $"action:{action}",
+                    category,
+                    message,
+                    upstreamDetail: upstreamDetail)
+        };
 
     internal static DownloadClientActionResult ActionSuccess(DownloadClientItem client, string queueItemId, string action, string message)
         => new(client.Id, queueItemId, action, true, message);
+
+    /// <summary>
+    /// Adapters historically returned a failed queue row with only a native
+    /// status or error string. Normalize that boundary once so every caller
+    /// receives an attributable failure instead of having to infer it again.
+    /// </summary>
+    internal static DownloadQueueItem NormalizeQueueFailure(DownloadQueueItem item)
+    {
+        if (item.Failure is not null || (!IsFailureStatus(item.Status) && string.IsNullOrWhiteSpace(item.ErrorMessage)))
+        {
+            return item;
+        }
+
+        var message = string.IsNullOrWhiteSpace(item.ErrorMessage)
+            ? $"The download client reported queue status '{item.Status}'."
+            : item.ErrorMessage.Trim();
+        return item with
+        {
+            Failure = IntegrationFailureFactory.FromLegacy(
+                "download-client",
+                item.ClientId,
+                item.ClientName,
+                "queue",
+                "failed",
+                message,
+                code: item.Status,
+                externalId: item.Id)
+        };
+    }
+
+    /// <summary>Backfills the same typed contract for native client history.</summary>
+    internal static DownloadClientHistoryItem NormalizeHistoryFailure(
+        DownloadClientHistoryItem item)
+    {
+        if (item.Failure is not null || (!IsFailureStatus(item.Outcome) && string.IsNullOrWhiteSpace(item.ErrorMessage)))
+        {
+            return item;
+        }
+
+        var message = string.IsNullOrWhiteSpace(item.ErrorMessage)
+            ? $"The download client reported history outcome '{item.Outcome}'."
+            : item.ErrorMessage.Trim();
+        return item with
+        {
+            Failure = IntegrationFailureFactory.FromLegacy(
+                "download-client",
+                item.ClientId,
+                item.ClientName,
+                "history",
+                "failed",
+                message,
+                code: item.Outcome,
+                externalId: item.ExternalId ?? item.Id)
+        };
+    }
+
+    internal static DownloadClientTelemetrySnapshot NormalizeSnapshotFailures(
+        DownloadClientTelemetrySnapshot snapshot)
+    {
+        var queue = snapshot.Queue
+            .Select(NormalizeQueueFailure)
+            .ToArray();
+        return snapshot with
+        {
+            Queue = queue,
+            Summary = DownloadQueueSummary.Of(queue),
+            History = snapshot.History
+                .Select(NormalizeHistoryFailure)
+                .ToArray()
+        };
+    }
+
+    internal static bool IsFailureStatus(string? status)
+    {
+        var normalized = status?.Trim().ToLowerInvariant() ?? string.Empty;
+        return normalized.Contains("fail", StringComparison.Ordinal)
+            || normalized.Contains("error", StringComparison.Ordinal);
+    }
 
     internal static string CleanReleaseTitle(string value) => value.Replace('.', ' ').Replace('_', ' ').Replace('-', ' ').Trim();
 

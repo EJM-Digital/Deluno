@@ -108,13 +108,30 @@ When moving from a manual Windows run to the packaged Velopack installer:
 
 Docker installs do not perform in-app binary replacement.
 
-Use image/tag updates instead:
+Use versioned image or digest updates instead:
 
 ```bash
-docker pull ghcr.io/<owner>/deluno:<tag>
+export DELUNO_IMAGE=ghcr.io/jampat000/deluno:<tag>
+docker compose pull deluno
+docker compose up -d --no-build
+curl --fail http://127.0.0.1:5099/api/health/ready
 ```
 
-Then recreate containers using your compose or runtime flow.
+For a repeatable deployment, use an immutable reference:
+
+```text
+DELUNO_IMAGE=ghcr.io/jampat000/deluno@sha256:<digest>
+```
+
+Record the resolved digest with `docker image inspect` before and after the
+rollout. The System > Updates screen shows the image reference/digest supplied
+by the container environment and the exact pull, readiness, and rollback
+guidance.
+
+Before upgrading, back up `/data`. Rollback is a pull and recreate against the
+previous digest with the same volume. Because Deluno migrations are
+forward-only, restore the pre-upgrade backup if the older image is not
+compatible with the migrated schema.
 
 The Updates screen in Deluno shows Docker guidance and does not expose apply/restart controls for container installs.
 

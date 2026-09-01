@@ -107,6 +107,8 @@ Configured via:
 
 - `GET|POST|PUT|DELETE /api/notification-webhooks`
 - `POST /api/notification-webhooks/{id}/test`
+- `GET /api/notification-webhooks/deliveries?status=dead-letter&take=100`
+- `POST /api/notification-webhooks/deliveries/{deliveryId}/replay`
 
 Delivery behavior:
 
@@ -120,6 +122,11 @@ Delivery behavior:
 - final outcome is recorded on the webhook row:
   - success updates `last_fired_utc`
   - failure stores `last_error`
+- every attempted delivery is also stored before the outbound request, with its
+  event payload, status (`pending`, `retrying`, `delivered`, or `dead-letter`),
+  attempt count, next retry time, HTTP status and last error. A dead-letter
+  response can be replayed explicitly by an authenticated caller; replay uses
+  the original payload and a fresh bounded retry budget.
 
 ## Manifest
 
@@ -166,6 +173,34 @@ Response shape:
 ## Operational Endpoints
 
 These endpoints are intentionally generic so processors, automation scripts, dashboards, and future tools can all use the same contract.
+
+### Guide package
+
+`GET /api/v1/guides/trash/package` returns the backend-owned, versioned
+TRaSH-derived quality package used by Deluno's setup and acquisition surfaces.
+Callers should retain the returned `version`, `source.upstreamRevision`, and
+`integritySha256` with any generated configuration or preview. Items marked
+`advanced` are intentionally not safe to reinterpret as typed preference
+traits.
+
+### Typed integration failures
+
+Integration responses and operational history carry a typed `failure` (or
+`lastFailure`) when a provider or client boundary did not complete. The object
+identifies the stable `kind` (`authentication`, `rate-limit`, `timeout`,
+`unavailable`, `malformed-response`, `rejected-action`, or `unknown`), the
+`state` (`active`, `retry-scheduled`, `circuit-open`, `resolved`, or
+`permanent`), `service`, `operation`, provider/client detail, an optional HTTP
+status, `retryAfterUtc`, and a plain-English `nextAction`. Secrets and request
+credentials are never included.
+
+A failure is not the same thing as an empty result. Callers should retain the
+typed failure alongside the final outcome and use `retryAfterUtc` or the
+service health endpoint before retrying. Successful fallback results may still
+include earlier provider failures for diagnosis, but their top-level `failure`
+is null when the requested operation completed successfully. Subtitle and
+metadata status/test endpoints expose the most recent typed provider failure;
+queue, activity, and history records preserve the failure through restart.
 
 - `GET /api/integrations/external/health` returns instance health, configured library counts, enabled provider counts, active jobs, and problem count.
 - `GET /api/integrations/external/queue` returns current jobs plus recent download dispatches.

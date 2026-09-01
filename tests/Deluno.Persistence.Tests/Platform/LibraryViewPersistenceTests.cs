@@ -50,7 +50,8 @@ public sealed class LibraryViewPersistenceTests
                 ViewMode: "grid",
                 CardSize: "md",
                 DisplayOptionsJson: "{}",
-                RulesJson: "[]"),
+                RulesJson: "[]",
+                AutomationAction: "SEARCH"),
             CancellationToken.None);
 
         Assert.Equal("anime-library", created.LibraryId);
@@ -59,11 +60,16 @@ public sealed class LibraryViewPersistenceTests
         // shared one value, "missing and unmonitored" could not be saved at all.
         Assert.Equal("missing", created.QuickFilter);
         Assert.Equal("unmonitored", created.Monitoring);
+        Assert.Equal("search", created.AutomationAction);
 
         var listed = Assert.Single(await repository.ListLibraryViewsAsync("view-user", "movies", CancellationToken.None));
         Assert.Equal("anime-library", listed.LibraryId);
         Assert.Equal("missing", listed.QuickFilter);
         Assert.Equal("unmonitored", listed.Monitoring);
+        Assert.Equal("search", listed.AutomationAction);
+
+        var automated = Assert.Single(await repository.ListAutomatedLibraryViewsAsync(CancellationToken.None));
+        Assert.Equal(created.Id, automated.Id);
 
         var updated = await repository.UpdateLibraryViewAsync(
             "view-user",
@@ -78,12 +84,15 @@ public sealed class LibraryViewPersistenceTests
                 ViewMode: "grid",
                 CardSize: "md",
                 DisplayOptionsJson: "{}",
-                RulesJson: "[]"),
+                RulesJson: "[]",
+                AutomationAction: null),
             CancellationToken.None);
 
         Assert.NotNull(updated);
         Assert.Null(updated!.LibraryId);
         // Unset normalises to "any" rather than being left null-and-ambiguous.
         Assert.Equal("any", updated.Monitoring);
+        Assert.Null(updated.AutomationAction);
+        Assert.Empty(await repository.ListAutomatedLibraryViewsAsync(CancellationToken.None));
     }
 }

@@ -6,7 +6,8 @@ public static class CacheDatabaseMigrations
 {
     public static readonly IReadOnlyList<IDelunoDatabaseMigration> All =
     [
-        new V0001InitialSchema()
+        new V0001InitialSchema(),
+        new V0002ArtworkCacheIndex()
     ];
 
     private sealed class V0001InitialSchema : SqliteSqlMigration
@@ -59,5 +60,15 @@ public static class CacheDatabaseMigrations
             );
             
             """;
+    }
+
+    private sealed class V0002ArtworkCacheIndex : SqliteSqlMigration
+    {
+        public override int Version => 2;
+
+        public override string Name => "artwork_cache_index";
+
+        protected override string Sql =>
+            "CREATE INDEX IF NOT EXISTS ix_artwork_cache_fetched_utc ON artwork_cache (fetched_utc);";
     }
 }

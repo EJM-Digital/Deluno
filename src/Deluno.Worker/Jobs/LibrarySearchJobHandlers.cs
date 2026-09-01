@@ -6,6 +6,7 @@ using Deluno.Libraries.Data;
 using Deluno.Movies.Data;
 using Deluno.Quality.Data;
 using Deluno.Series.Data;
+using Deluno.Media;
 
 namespace Deluno.Worker.Jobs;
 
@@ -32,7 +33,10 @@ public sealed class MoviesLibrarySearchJobHandler(
     IAcquisitionDecisionPipeline acquisitionPipeline,
     IDownloadClientGrabService downloadClientGrabService,
     IActivityFeedRepository activityFeedRepository,
-    TimeProvider timeProvider) : LibrarySearchJobHandler(
+    TimeProvider timeProvider,
+    IMediaTagStore? mediaTagStore = null,
+    IMediaStateRepository? mediaStateRepository = null,
+    IReleasePreferencePlanRepository? releasePreferencePlanRepository = null) : LibrarySearchJobHandler(
         librariesRepository,
         qualityRepository,
         jobQueueRepository,
@@ -41,7 +45,10 @@ public sealed class MoviesLibrarySearchJobHandler(
         acquisitionPipeline,
         downloadClientGrabService,
         activityFeedRepository,
-        timeProvider)
+        timeProvider,
+        mediaTagStore,
+        mediaStateRepository,
+        releasePreferencePlanRepository)
 {
     public override string JobType => LibrarySearchJobTypes.Movies;
 }
@@ -56,7 +63,10 @@ public sealed class TvLibrarySearchJobHandler(
     IAcquisitionDecisionPipeline acquisitionPipeline,
     IDownloadClientGrabService downloadClientGrabService,
     IActivityFeedRepository activityFeedRepository,
-    TimeProvider timeProvider) : LibrarySearchJobHandler(
+    TimeProvider timeProvider,
+    IMediaTagStore? mediaTagStore = null,
+    IMediaStateRepository? mediaStateRepository = null,
+    IReleasePreferencePlanRepository? releasePreferencePlanRepository = null) : LibrarySearchJobHandler(
         librariesRepository,
         qualityRepository,
         jobQueueRepository,
@@ -65,7 +75,10 @@ public sealed class TvLibrarySearchJobHandler(
         acquisitionPipeline,
         downloadClientGrabService,
         activityFeedRepository,
-        timeProvider)
+        timeProvider,
+        mediaTagStore,
+        mediaStateRepository,
+        releasePreferencePlanRepository)
 {
     public override string JobType => LibrarySearchJobTypes.Tv;
 }

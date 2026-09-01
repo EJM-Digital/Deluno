@@ -49,6 +49,26 @@ export interface LibraryItem {
   subtitleUnknownLanguage?: string;
   /** Whether a subtitle track inside the video counts as held. On by default. */
   subtitleEmbeddedCounts?: boolean;
+  /** Named post-download subtitle cleanups. */
+  subtitleContentPolicy?: SubtitleContentModificationPolicy | null;
+  /** Automatic timing repair policy for fetched subtitles. */
+  subtitleTimingPolicy?: SubtitleTimingPolicy | null;
+}
+
+export interface SubtitleContentModificationPolicy {
+  stripHearingImpairedAnnotations: boolean;
+  removeStyleTags: boolean;
+  removeEmoji: boolean;
+  normalizeWhitespace: boolean;
+  fixAllUppercase: boolean;
+}
+
+export interface SubtitleTimingPolicy {
+  enabled: boolean;
+  syncOnlyBelow: "same-source" | "made-for-this-file" | string;
+  maxOffsetSeconds: number;
+  requiredPeakSigma: number;
+  excludedProviders: string[] | null;
 }
 
 /** One language Deluno can name, from GET /api/subtitle-languages. */
@@ -96,8 +116,19 @@ export interface QualityProfileItem {
   customFormatIds: string;
   upgradeUntilCutoff: boolean;
   upgradeUnknownItems: boolean;
+  allowLowerQualityReplacements: boolean;
+  presetId: string | null;
+  presetVersion: number | null;
+  presetDrifted: boolean;
+  releasePreferencePlan: ReleasePreferencePlanReference | null;
   createdUtc: string;
   updatedUtc: string;
+}
+
+export interface ReleasePreferencePlanReference {
+  planId: string;
+  version: string;
+  planHash: string;
 }
 
 export interface TagItem {
@@ -107,6 +138,14 @@ export interface TagItem {
   description: string;
   createdUtc: string;
   updatedUtc: string;
+}
+
+export interface TagUsageItem {
+  id: string;
+  name: string;
+  movieCount: number;
+  seriesCount: number;
+  totalCount: number;
 }
 
 export interface IntakeSourceItem {
@@ -131,6 +170,36 @@ export interface IntakeSourceItem {
   lastSyncSummary: string | null;
   searchOnAdd: boolean;
   isEnabled: boolean;
+  createdUtc: string;
+  updatedUtc: string;
+}
+
+export interface IntakeListExclusionItem {
+  id: string;
+  sourceId: string;
+  entryKey: string;
+  title: string;
+  year: number | null;
+  imdbId: string | null;
+  reason: string;
+  expiresUtc: string | null;
+  createdUtc: string;
+  updatedUtc: string;
+}
+
+export interface MediaExclusionItem {
+  id: string;
+  mediaType: string;
+  sourceKind: string;
+  sourceId: string;
+  sourceName: string;
+  provider: string;
+  entryKey: string;
+  title: string;
+  year: number | null;
+  imdbId: string | null;
+  reason: string;
+  expiresUtc: string | null;
   createdUtc: string;
   updatedUtc: string;
 }
@@ -172,6 +241,13 @@ export interface ImportPreviewRequest {
   tags?: string[] | null;
   studio?: string | null;
   originalLanguage?: string | null;
+  imdbId?: string | null;
+  tvDbId?: string | null;
+  network?: string | null;
+  qualityProfile?: string | null;
+  seriesId?: string | null;
+  seriesType?: string | null;
+  numberingScheme?: string | null;
 }
 
 export interface ImportPreviewResponse {
@@ -192,6 +268,24 @@ export interface ImportPreviewResponse {
   warnings: string[];
   explanation: string;
   decisionSteps: string[];
+  pack?: ImportPackPreview | null;
+}
+
+export interface ImportPackPreview {
+  canExecute: boolean;
+  alreadyCommitted: boolean;
+  sourceFileCount: number;
+  episodeCount: number;
+  files: ImportPackFilePreview[];
+  blockReasons: string[];
+}
+
+export interface ImportPackFilePreview {
+  sourcePath: string;
+  destinationPath: string;
+  sourceSizeBytes: number;
+  episodeKeys: string[];
+  warnings: string[];
 }
 
 export interface MediaProbeInfo {
@@ -244,6 +338,8 @@ export interface ImportExecuteRequest {
   overwrite: boolean;
   allowCopyFallback: boolean;
   forceReplacement?: boolean;
+  dispatchId?: string | null;
+  expectedExistingPath?: string | null;
 }
 
 export interface ImportExecuteResponse {
@@ -253,12 +349,34 @@ export interface ImportExecuteResponse {
   usedFallback: boolean;
   catalogUpdated: boolean;
   message: string;
+  packFiles?: ImportPackFileResult[] | null;
+}
+
+export interface ImportPackFileResult {
+  sourcePath: string;
+  destinationPath: string;
+  episodeKeys: string[];
+  transferModeUsed: string;
 }
 
 export interface ImportJobResponse {
   jobId: string;
   preview: ImportPreviewResponse;
   job: JobQueueItem;
+}
+
+export interface MediaPlanAutomationIntent {
+  scenarioId: string | null;
+  scenarioVersion: number | null;
+  sizeTierId: string | null;
+  sizeTierName: string | null;
+  sizeDescription: string | null;
+  subtitleIntent: string | null;
+  routingIntent: string | null;
+  sharingIntent: string | null;
+  cleanupIntent: string | null;
+  notificationIntent: string | null;
+  namingIntent: string | null;
 }
 
 export interface PolicySetItem {
@@ -277,6 +395,132 @@ export interface PolicySetItem {
   notes: string | null;
   createdUtc: string;
   updatedUtc: string;
+  automationIntent: MediaPlanAutomationIntent | null;
+  releasePreferencePlan: ReleasePreferencePlanReference | null;
+}
+
+export interface MediaPlanSnapshot {
+  name: string;
+  mediaType: string;
+  qualityProfileId: string | null;
+  destinationRuleId: string | null;
+  customFormatIds: string;
+  searchIntervalOverrideHours: number | null;
+  retryDelayOverrideHours: number | null;
+  upgradeUntilCutoff: boolean;
+  isEnabled: boolean;
+  notes: string | null;
+  automationIntent: MediaPlanAutomationIntent | null;
+  releasePreferencePlan: ReleasePreferencePlanReference | null;
+}
+
+export interface MediaPlanVersionItem {
+  planId: string;
+  version: number;
+  planHash: string;
+  changeKind: string;
+  snapshot: MediaPlanSnapshot;
+  createdUtc: string;
+}
+
+export interface MediaPlanDiffItem {
+  field: string;
+  currentValue: string | null;
+  proposedValue: string | null;
+}
+
+export interface MediaPlanPreview {
+  planId: string;
+  currentVersion: number | null;
+  current: MediaPlanSnapshot;
+  proposed: MediaPlanSnapshot;
+  changes: MediaPlanDiffItem[];
+  hasChanges: boolean;
+  basePlanHash: string | null;
+}
+
+export interface MediaPlanLayerOverride {
+  qualityProfileId?: string | null;
+  destinationRuleId?: string | null;
+  customFormatIds?: string | null;
+  searchIntervalOverrideHours?: number | null;
+  retryDelayOverrideHours?: number | null;
+  upgradeUntilCutoff?: boolean | null;
+  isEnabled?: boolean | null;
+  notes?: string | null;
+  automationIntent?: MediaPlanAutomationIntent | null;
+  releasePreferencePlan?: ReleasePreferencePlanReference | null;
+}
+
+export interface MediaPlanFieldResolution {
+  field: string;
+  value: string | null;
+  sourceKind: string;
+  sourceId: string | null;
+  isSafetyLocked: boolean;
+}
+
+export interface MediaPlanEffectiveResolution {
+  basePlan: MediaPlanSnapshot;
+  effectivePlan: MediaPlanSnapshot;
+  fields: MediaPlanFieldResolution[];
+  warnings: string[];
+}
+
+export type PlaybackCapabilityState = "present" | "absent" | "unknown" | "conflicting" | string;
+
+export interface PlaybackCapability {
+  traitId: string;
+  state: PlaybackCapabilityState;
+  source: string;
+  confidence: number | null;
+  detail: string | null;
+  lastConfirmedUtc: string | null;
+}
+
+export interface PlaybackDeviceProfile {
+  id: string;
+  name: string;
+  capabilities: PlaybackCapability[];
+  isEnabled: boolean;
+  createdUtc: string;
+  updatedUtc: string;
+}
+
+export interface PlaybackDeviceGroup {
+  id: string;
+  name: string;
+  mode: "every-device" | "primary-device" | "fallback" | string;
+  deviceProfileIds: string[];
+  primaryDeviceProfileId: string | null;
+  createdUtc: string;
+  updatedUtc: string;
+}
+
+export interface PlaybackGoalItem {
+  id: string;
+  name: string;
+  mediaType: "movies" | "tv" | string;
+  deviceGroupId: string;
+  mustPlay: boolean;
+  requiredTraitIds: string[];
+  requiredAnyTraitGroups: string[][];
+  forbiddenTraitIds?: string[];
+  preferredTraitIds: string[];
+  stopWhenTraitId: string | null;
+  createdUtc: string;
+  updatedUtc: string;
+}
+
+export interface PlaybackGoalCompilation {
+  goal: PlaybackGoalItem;
+  group: PlaybackDeviceGroup | null;
+  selectedDevices: PlaybackDeviceProfile[];
+  plan: import("./release-preferences").ReleasePreferencePlan;
+  planHash: string;
+  unknownCapabilities: string[];
+  warnings: string[];
+  requiresReview: boolean;
 }
 
 export interface ConnectionItem {
@@ -288,6 +532,26 @@ export interface ConnectionItem {
   isEnabled: boolean;
   createdUtc: string;
   updatedUtc: string;
+}
+
+export interface IntegrationFailure {
+  serviceType: string;
+  serviceId: string;
+  serviceName: string;
+  operation: string;
+  kind: "Authentication" | "RateLimit" | "Timeout" | "Protocol" | "Unavailable" | "MalformedResponse" | "RejectedAction" | "Configuration" | "CircuitOpen" | "Unknown" | string;
+  retryState: "NotRetryable" | "Retrying" | "RetryScheduled" | "CircuitOpen" | "ManualAction" | string;
+  message: string;
+  code: string | null;
+  httpStatus: number | null;
+  upstreamDetail: string | null;
+  externalId: string | null;
+  retryAfterUtc: string | null;
+  attempts: number;
+  isTransient: boolean;
+  legacyCategory: string;
+  summary: string;
+  nextAction: string;
 }
 
 export interface IndexerItem {
@@ -316,6 +580,7 @@ export interface IndexerItem {
   healthStatus: string;
   lastHealthMessage: string | null;
   lastHealthFailureCategory?: string | null;
+  lastHealthFailure?: IntegrationFailure | null;
   lastHealthLatencyMs?: number | null;
   lastHealthTestUtc?: string | null;
   consecutiveFailures: number;
@@ -333,6 +598,66 @@ export interface IndexerItem {
   sharingUntilRatio?: number | null;
   sharingStuckAction?: string | null;
   sharingStuckAfterDays?: number | null;
+  minimumAgeMinutes?: number | null;
+  retentionDays?: number | null;
+  maximumSizeMb?: number | null;
+  preferIndexerFlags?: string | null;
+  availabilityDelayDays?: number | null;
+  rssEnabled?: boolean;
+  automaticSearchEnabled?: boolean;
+  interactiveSearchEnabled?: boolean;
+}
+
+export interface ReleaseTermScore {
+  term: string;
+  score: number;
+}
+
+export interface ReleaseProfileItem {
+  id: string;
+  name: string;
+  tagName: string;
+  preferredProtocol: "any" | "usenet" | "torrent" | string;
+  usenetDelayMinutes: number;
+  torrentDelayMinutes: number;
+  mustContain: string;
+  mustNotContain: string;
+  preferredTerms: ReleaseTermScore[];
+  createdUtc: string;
+  updatedUtc: string;
+}
+
+export interface IndexerScoreboardRow {
+  id: string;
+  name: string;
+  isEnabled: boolean;
+  healthStatus: string;
+  totalQueries: number;
+  searchQueries: number;
+  rssQueries: number;
+  authQueries: number;
+  failedQueries: number;
+  failureRate: number;
+  averageResponseMilliseconds: number | null;
+  candidatesReturned: number;
+  totalGrabs: number;
+  successfulGrabs: number;
+  queryToGrabConversion: number | null;
+  recommendation: string;
+}
+
+export interface IndexerScoreboardSnapshot {
+  windowDays: number;
+  fromUtc: string;
+  toUtc: string;
+  activeIndexers: number;
+  totalIndexers: number;
+  totalQueries: number;
+  totalGrabs: number;
+  successfulGrabs: number;
+  conversionRate: number | null;
+  insight: string;
+  indexers: IndexerScoreboardRow[];
 }
 
 export interface OutboundThrottleHostState {
@@ -360,6 +685,22 @@ export interface NotificationWebhookItem {
   updatedUtc: string;
 }
 
+export interface NotificationWebhookDeliveryItem {
+  id: string;
+  webhookId: string;
+  eventCategory: string;
+  title: string;
+  status: "pending" | "retrying" | "delivered" | "dead-letter" | string;
+  attemptCount: number;
+  maxAttempts: number;
+  nextAttemptUtc: string | null;
+  lastAttemptUtc: string | null;
+  lastStatusCode: number | null;
+  lastError: string | null;
+  createdUtc: string;
+  updatedUtc: string;
+}
+
 export interface DownloadClientItem {
   id: string;
   name: string;
@@ -380,6 +721,7 @@ export interface DownloadClientItem {
   healthStatus: string;
   lastHealthMessage: string | null;
   lastHealthFailureCategory?: string | null;
+  lastHealthFailure?: IntegrationFailure | null;
   lastHealthLatencyMs?: number | null;
   lastHealthTestUtc?: string | null;
   createdUtc: string;
@@ -467,6 +809,7 @@ export interface DownloadQueueItem {
   sourcePath: string | null;
   libraryId: string | null;
   healthFindings: DownloadHealthFinding[] | null;
+  failure?: IntegrationFailure | null;
 }
 
 /** A client-specific translation from the path it reports to the path Deluno can access. */
@@ -613,6 +956,9 @@ export interface DownloadClientHistoryItem {
   completedUtc: string;
   errorMessage: string | null;
   sourcePath: string | null;
+  historySource?: "native" | "queue-derived" | "dispatch-derived" | "inferred" | string;
+  externalId?: string | null;
+  failure?: IntegrationFailure | null;
 }
 
 export interface DownloadClientTelemetryCapabilities {
@@ -638,6 +984,7 @@ export interface DownloadClientTelemetrySnapshot {
   history: DownloadClientHistoryItem[];
   capturedUtc: string;
   historyTruncated: boolean;
+  lastFailure?: IntegrationFailure | null;
 }
 
 /** One stored reading of combined throughput, both directions. */

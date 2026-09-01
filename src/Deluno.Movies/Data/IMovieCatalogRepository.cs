@@ -1,7 +1,10 @@
 using Deluno.Media;
 using MetadataSearchResult = Deluno.Integrations.Metadata.MetadataSearchResult;
+using MetadataProviderIssue = Deluno.Integrations.Metadata.MetadataProviderIssue;
+using MetadataIdentityConflict = Deluno.Integrations.Metadata.MetadataIdentityConflict;
 using Deluno.Contracts;
 using Deluno.Movies.Contracts;
+using Deluno.Quality.ReleasePreferences;
 using Deluno.Recovery.Contracts;
 
 namespace Deluno.Movies.Data;
@@ -46,6 +49,15 @@ public interface IMovieCatalogRepository : IMovieImportRecoveryRetentionReposito
         string? metadataProviderId,
         CancellationToken cancellationToken);
 
+    Task<MetadataIdentityConflict?> FindMetadataIdentityConflictAsync(
+        string excludeId,
+        string title,
+        int? releaseYear,
+        string? imdbId,
+        string metadataProvider,
+        string metadataProviderId,
+        CancellationToken cancellationToken);
+
     /// <summary>
     /// One page of the catalogue — searched, filtered, sorted and counted in
     /// SQL. This is what a list surface should use; <see cref="ListAsync"/>
@@ -56,6 +68,13 @@ public interface IMovieCatalogRepository : IMovieImportRecoveryRetentionReposito
         CancellationToken cancellationToken);
 
     Task<IReadOnlyList<MovieListItem>> ListAsync(CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Returns the cache keys used by poster and backdrop URLs still stored in
+    /// this catalogue. Artwork maintenance uses this set as its safety fence
+    /// before removing old files.
+    /// </summary>
+    Task<IReadOnlySet<string>> ListReferencedArtworkCacheKeysAsync(CancellationToken cancellationToken);
 
     /// <summary>
     /// The stalest movies still wanting metadata, filtered, ordered and
@@ -95,6 +114,19 @@ public interface IMovieCatalogRepository : IMovieImportRecoveryRetentionReposito
     /// unmatchable entry is not re-selected by every backfill pass.
     /// </summary>
     Task RecordMetadataAttemptAsync(string id, CancellationToken cancellationToken);
+
+    Task<MetadataProviderIssue?> GetMetadataProviderIssueAsync(string id, CancellationToken cancellationToken);
+
+    Task<bool> RecordMetadataProviderIssueAsync(
+        string id,
+        MetadataProviderIssue issue,
+        CancellationToken cancellationToken);
+
+    Task<MetadataProviderIssue?> AcknowledgeMetadataProviderIssueAsync(
+        string id,
+        CancellationToken cancellationToken);
+
+    Task ClearMetadataProviderIssueAsync(string id, CancellationToken cancellationToken);
 
     Task<int> UpdateMonitoredAsync(IReadOnlyList<string> movieIds, bool monitored, CancellationToken cancellationToken);
 
@@ -137,7 +169,8 @@ public interface IMovieCatalogRepository : IMovieImportRecoveryRetentionReposito
         DateTimeOffset now,
         bool ignoreRetryWindow,
         CancellationToken cancellationToken,
-        string? wantedStatus = null);
+        string? wantedStatus = null,
+        CatalogueFilters? filters = null);
 
     Task<int> CountRetryDelayedWantedAsync(
         string libraryId,
@@ -168,7 +201,8 @@ public interface IMovieCatalogRepository : IMovieImportRecoveryRetentionReposito
         bool unmonitorWhenCutoffMet,
         string? filePath,
         long? fileSizeBytes,
-        CancellationToken cancellationToken);
+        CancellationToken cancellationToken,
+        PreferenceEvaluationSnapshot? preferenceEvaluation = null);
 
     /// <summary>
     /// Imports a slice of already-on-disk titles in one transaction, and

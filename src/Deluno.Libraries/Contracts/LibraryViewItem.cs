@@ -23,4 +23,5 @@ public sealed record LibraryViewItem(
     string DisplayOptionsJson,
     string RulesJson,
     DateTimeOffset CreatedUtc,
-    DateTimeOffset UpdatedUtc);
+    DateTimeOffset UpdatedUtc,
+    string? AutomationAction = null);

@@ -1,4 +1,5 @@
 using System.Text.Json.Serialization;
+using Deluno.Contracts;
 
 namespace Deluno.Connections.Contracts;
 
@@ -47,4 +48,28 @@ public sealed record IndexerItem(
     public string? SharingStuckAction { get; init; }
 
     public int? SharingStuckAfterDays { get; init; }
+
+    /// <summary>
+    /// Acquisition controls are nullable where an empty value means
+    /// "unlimited" or "use the release profile". The three search-kind flags
+    /// are true by default so existing indexers keep their current behaviour.
+    /// </summary>
+    public int? MinimumAgeMinutes { get; init; }
+
+    public int? RetentionDays { get; init; }
+
+    public int? MaximumSizeMb { get; init; }
+
+    public string? PreferIndexerFlags { get; init; }
+
+    public int? AvailabilityDelayDays { get; init; }
+
+    public bool RssEnabled { get; init; } = true;
+
+    public bool AutomaticSearchEnabled { get; init; } = true;
+
+    public bool InteractiveSearchEnabled { get; init; } = true;
+
+    /// <summary>Last typed health failure, when the source did not pass its most recent test.</summary>
+    public IntegrationFailure? LastHealthFailure { get; init; }
 }

@@ -97,6 +97,35 @@ public sealed class CatalogueCustomFilterTests
     }
 
     [Fact]
+    public async Task Tags_match_as_exact_user_labels_and_support_any_all_and_none()
+    {
+        using var storage = TestStorage.Create();
+        var movies = await CreateAsync(storage);
+        var tags = new SqliteMediaTagStore(storage.Factory, new FixedTimeProvider(Now));
+
+        var tagged = await movies.AddAsync(new CreateMovieRequest("Tagged", 2024, null), CancellationToken.None);
+        await tags.ReplaceAsync(
+            MediaKind.Movie,
+            tagged.Id,
+            [
+                new MediaTagAssignment("tag-4k", "4K rewatch"),
+                new MediaTagAssignment("tag-kids", "kids")
+            ],
+            CancellationToken.None);
+
+        await movies.AddAsync(new CreateMovieRequest("Untagged", 2023, null), CancellationToken.None);
+
+        Assert.Equal(["Tagged"], await ListAsync(movies, Filter("tag", CatalogueFilterOperator.Includes, "4K rewatch")));
+        Assert.Equal(["Tagged"], await ListAsync(movies, Filter("tag", CatalogueFilterOperator.Includes, "4K rewatch", "kids")));
+        Assert.Equal(["Tagged"], await ListAsync(movies, Filter("tag", CatalogueFilterOperator.IncludesAll, "4K rewatch", "kids")));
+        Assert.Equal(["Untagged"], await ListAsync(movies, Filter("tag", CatalogueFilterOperator.Excludes, "kids")));
+
+        // Exact membership is important: the label "4K" must not match the
+        // distinct user label "4K rewatch".
+        Assert.Empty(await ListAsync(movies, Filter("tag", CatalogueFilterOperator.Includes, "4K")));
+    }
+
+    [Fact]
     public async Task Year_runtime_and_rating_narrow_on_the_title_itself()
     {
         using var storage = TestStorage.Create();

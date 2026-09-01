@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 import {
   emptyPlatformSettingsSnapshot,
+  fetchTrashGuidePackage,
   fetchJson,
   type ConnectionTestResponse,
   type DownloadClientItem,
@@ -30,14 +31,11 @@ import {
   type SetupProgressItem,
   type SetupDraftItem,
   type QualityProfileItem,
-  type CustomFormatItem
+  type CustomFormatItem,
+  type GuideCustomFormat,
+  type GuideFormatBundle,
+  type GuidePackage
 } from "../lib/api";
-import {
-  CUSTOM_FORMAT_BUNDLES,
-  findBundledCF,
-  type BundledCF,
-  type CustomFormatBundle
-} from "../lib/trash-guide-data";
 import { authedFetch } from "../lib/use-auth";
 import { cn } from "../lib/utils";
 import { Button } from "../components/ui/button";
@@ -64,6 +62,7 @@ interface SetupGuideLoaderData {
   metadataStatus: MetadataProviderStatus | null;
   progress: SetupProgressItem;
   draft: SetupDraftItem;
+  guide: GuidePackage;
 }
 
 interface GuideForm {
@@ -210,7 +209,7 @@ const CLIENT_SETUP_PRESETS = [
 ] as const;
 
 export async function setupGuideLoader(): Promise<SetupGuideLoaderData> {
-  const [settings, libraries, qualityProfiles, customFormats, indexers, clients, metadataStatus, progress, draft] = await Promise.all([
+  const [settings, libraries, qualityProfiles, customFormats, indexers, clients, metadataStatus, progress, draft, guide] = await Promise.all([
     fetchJson<PlatformSettingsSnapshot>("/api/settings"),
     fetchJson<LibraryItem[]>("/api/libraries"),
     fetchJson<QualityProfileItem[]>("/api/quality-profiles"),
@@ -219,10 +218,11 @@ export async function setupGuideLoader(): Promise<SetupGuideLoaderData> {
     fetchJson<DownloadClientItem[]>("/api/download-clients"),
     fetchJson<MetadataProviderStatus>("/api/metadata/status").catch(() => null),
     fetchJson<SetupProgressItem>("/api/setup/progress"),
-    fetchJson<SetupDraftItem>("/api/setup/draft")
+    fetchJson<SetupDraftItem>("/api/setup/draft"),
+    fetchTrashGuidePackage()
   ]);
 
-  return { clients, customFormats, draft, indexers, libraries, metadataStatus, progress, qualityProfiles, settings };
+  return { clients, customFormats, draft, guide, indexers, libraries, metadataStatus, progress, qualityProfiles, settings };
 }
 
 export function SetupGuidePage() {
@@ -309,7 +309,7 @@ export function SetupGuidePage() {
       { label: "Account created", done: true },
       { label: "Media root chosen", done: canCreateMovies || canCreateTv },
       { label: "Library Profile chosen", done: hasQualityChoice },
-      { label: "Release scoring chosen", done: hasReleaseRuleChoice },
+      { label: "Release preferences chosen", done: hasReleaseRuleChoice },
       { label: "Search source ready", done: hasReadyIndexer },
       { label: "Downloads ready", done: hasReadyClient }
     ];
@@ -379,8 +379,8 @@ export function SetupGuidePage() {
       await saveSettings(data.settings, form);
       const qualityProfileCache = [...data.qualityProfiles];
       const customFormatCache = [...data.customFormats];
-      const movieCustomFormatIds = hasMovies ? await ensureCustomFormats(customFormatCache, "movies", form, createdEntities) : [];
-      const tvCustomFormatIds = hasTv ? await ensureCustomFormats(customFormatCache, "tv", form, createdEntities) : [];
+      const movieCustomFormatIds = hasMovies ? await ensureCustomFormats(customFormatCache, "movies", form, data.guide, createdEntities) : [];
+      const tvCustomFormatIds = hasTv ? await ensureCustomFormats(customFormatCache, "tv", form, data.guide, createdEntities) : [];
       const movieProfile = hasMovies ? await ensureQualityProfile(qualityProfileCache, "movies", form, movieCustomFormatIds, createdEntities) : null;
       const tvProfile = hasTv ? await ensureQualityProfile(qualityProfileCache, "tv", form, tvCustomFormatIds, createdEntities) : null;
       const indexer = await ensureIndexer(data.indexers, form, serviceTest.indexer === "passed", createdEntities);
@@ -522,7 +522,7 @@ export function SetupGuidePage() {
               cells={[
                 { label: "Folders", value: "Movies, TV, downloads" },
                 { label: "Quality", value: "Simple profile choice" },
-                { label: "Release scoring", value: "Plain-English rules" },
+                { label: "Release preferences", value: "Plain-English rules" },
                 { label: "Routing", value: "Optional source + client" }
               ]}
             />
@@ -596,7 +596,7 @@ export function SetupGuidePage() {
           <div className="min-h-[180px] p-[var(--tile-pad)]">
             {current.id === "mode" ? <ModeStep form={form} patch={patch} onSkip={skipWizard} /> : null}
             {current.id === "folders" ? <FoldersStep form={form} patch={patch} /> : null}
-            {current.id === "quality" ? <QualityStep form={form} patch={patch} /> : null}
+            {current.id === "quality" ? <QualityStep form={form} guide={data.guide} patch={patch} /> : null}
             {current.id === "services" ? (
               <ServicesStep
                 form={form}
@@ -798,9 +798,9 @@ function FoldersStep({ form, patch }: { form: GuideForm; patch: (patchValue: Par
   );
 }
 
-function QualityStep({ form, patch }: { form: GuideForm; patch: (patchValue: Partial<GuideForm>) => void }) {
+function QualityStep({ form, guide, patch }: { form: GuideForm; guide: GuidePackage; patch: (patchValue: Partial<GuideForm>) => void }) {
   const selectedGoal = form.formatGoal ? FORMAT_GOALS[form.formatGoal] : null;
-  const selectedBundle = form.formatGoal ? getFormatBundle(form.formatGoal) : null;
+  const selectedBundle = form.formatGoal ? getFormatBundle(guide, form.formatGoal) : null;
 
   return (
     <div className="space-y-[var(--page-gap)]">
@@ -863,7 +863,7 @@ function QualityStep({ form, patch }: { form: GuideForm; patch: (patchValue: Par
           <Badge variant="default">{selectedBundle?.includes.length ?? 0} rules</Badge>
         </div>
         <div className="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
-          {(form.formatGoal ? previewFormats(form.formatGoal) : []).map((format) => (
+          {(form.formatGoal ? previewFormats(guide, form.formatGoal) : []).map((format) => (
             <div key={format.trashId} className="rounded-xl border border-hairline bg-background/35 px-3 py-2">
               <p className="text-sm font-semibold text-foreground">{format.name}</p>
               <p className="mt-1 line-clamp-2 text-xs leading-relaxed text-muted-foreground">{format.description}</p>
@@ -1030,7 +1030,7 @@ function FinishStep({
         cells={[
           { label: "Libraries", value: form.mediaIntent === "both" ? "Movies + TV" : form.mediaIntent === "tv" ? "TV" : "Movies" },
           { label: "Quality", value: form.qualityPreset ? QUALITY_PRESETS[form.qualityPreset].label : "Not chosen", tone: form.qualityPreset ? undefined : "warning" },
-          { label: "Release scoring", value: form.formatGoal ? FORMAT_GOALS[form.formatGoal].label : "Not chosen", tone: form.formatGoal ? undefined : "warning" },
+          { label: "Release preferences", value: form.formatGoal ? FORMAT_GOALS[form.formatGoal].label : "Not chosen", tone: form.formatGoal ? undefined : "warning" },
           // The connection's name, not its protocol id: this read "torznab"
           // and "qbittorrent" where the user had just named them (#259).
           { label: "Search source", value: form.indexerUrl.trim() ? form.indexerName || form.indexerProtocol : "Later" },
@@ -1190,7 +1190,7 @@ function FinishStep({
         />
       </div>
       <p className="text-sm leading-relaxed text-muted-foreground">
-        Nothing here is permanent. After setup, open Media Management to refine final destinations, release scoring, quality profiles,
+        Nothing here is permanent. After setup, open Media Management to refine final destinations, release preferences, quality profiles,
         metadata preferences, tags, multi-library routing, and automation.
       </p>
     </div>
@@ -1455,8 +1455,8 @@ async function saveSettings(settings: PlatformSettingsSnapshot, form: GuideForm)
 type SelectedFormatGoal = Exclude<GuideForm["formatGoal"], "">;
 type SelectedQualityPreset = Exclude<GuideForm["qualityPreset"], "">;
 
-function getFormatBundle(goal: SelectedFormatGoal): CustomFormatBundle | undefined {
-  return CUSTOM_FORMAT_BUNDLES.find((bundle) => bundle.id === FORMAT_GOALS[goal].bundleId);
+function getFormatBundle(guide: GuidePackage, goal: SelectedFormatGoal): GuideFormatBundle | undefined {
+  return guide.bundles.find((bundle) => bundle.id === FORMAT_GOALS[goal].bundleId);
 }
 
 function getEffectiveFormatGoal(_mediaType: "movies" | "tv", form: GuideForm): SelectedFormatGoal | null {
@@ -1464,27 +1464,27 @@ function getEffectiveFormatGoal(_mediaType: "movies" | "tv", form: GuideForm): S
   return form.formatGoal;
 }
 
-function getEffectiveFormatBundle(mediaType: "movies" | "tv", form: GuideForm): CustomFormatBundle | undefined {
-  const goal = getEffectiveFormatGoal(mediaType, form);
-  return goal ? getFormatBundle(goal) : undefined;
+function getEffectiveFormatBundle(guide: GuidePackage, _mediaType: "movies" | "tv", form: GuideForm): GuideFormatBundle | undefined {
+  const goal = getEffectiveFormatGoal(_mediaType, form);
+  return goal ? getFormatBundle(guide, goal) : undefined;
 }
 
-function previewFormats(goal: SelectedFormatGoal): BundledCF[] {
-  const bundle = getFormatBundle(goal);
+function previewFormats(guide: GuidePackage, goal: SelectedFormatGoal): GuideCustomFormat[] {
+  const bundle = getFormatBundle(guide, goal);
   if (!bundle) return [];
   return bundle.includes
     .slice(0, 6)
-    .map((entry) => findBundledCF(entry.trashId))
-    .filter((format): format is BundledCF => Boolean(format));
+    .map((entry) => guide.customFormats.find((format) => format.trashId === entry.trashId))
+    .filter((format): format is GuideCustomFormat => Boolean(format));
 }
 
-async function ensureCustomFormats(existing: CustomFormatItem[], mediaType: "movies" | "tv", form: GuideForm, createdEntities: CreatedEntity[]): Promise<string[]> {
-  const bundle = getEffectiveFormatBundle(mediaType, form);
+async function ensureCustomFormats(existing: CustomFormatItem[], mediaType: "movies" | "tv", form: GuideForm, guide: GuidePackage, createdEntities: CreatedEntity[]): Promise<string[]> {
+  const bundle = getEffectiveFormatBundle(guide, mediaType, form);
   if (!bundle) return [];
 
   const ids: string[] = [];
   for (const entry of bundle.includes) {
-    const format = findBundledCF(entry.trashId);
+    const format = guide.customFormats.find((item) => item.trashId === entry.trashId);
     if (!format) continue;
 
     const existingFormat = existing.find(
@@ -1501,7 +1501,7 @@ async function ensureCustomFormats(existing: CustomFormatItem[], mediaType: "mov
       body: JSON.stringify({
         name: format.name,
         mediaType,
-        score: entry.score ?? format.defaultScore,
+        score: entry.score ?? format.originalScore,
         trashId: format.trashId,
         conditions: format.patterns.map((pattern) => `regex: ${pattern}`).join("\n"),
         upgradeAllowed: true

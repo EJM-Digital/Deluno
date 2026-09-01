@@ -1,5 +1,7 @@
 using System.Data.Common;
+using System.Text.Json;
 using Deluno.Connections.Contracts;
+using Deluno.Contracts;
 using Deluno.Infrastructure.Storage;
 using Deluno.Security;
 using static Deluno.Infrastructure.Storage.SqliteRecordHelpers;
@@ -32,7 +34,8 @@ public sealed class SqliteSubtitleProviderRepository(
         """
             id, provider_key, name, username, secret, api_key, priority, is_enabled,
             health_status, last_health_message, last_health_latency_ms, last_health_test_utc,
-            consecutive_failures, rate_limited_until_utc, disabled_reason, created_utc, updated_utc
+            consecutive_failures, rate_limited_until_utc, disabled_reason, created_utc, updated_utc,
+            last_health_failure_json
         """;
 
     public async Task<IReadOnlyList<SubtitleProviderConnection>> ListAsync(CancellationToken cancellationToken)
@@ -148,7 +151,8 @@ public sealed class SqliteSubtitleProviderRepository(
         int? latencyMs,
         bool success,
         DateTimeOffset? rateLimitedUntilUtc,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        IntegrationFailure? failure = null)
     {
         var now = timeProvider.GetUtcNow();
 
@@ -166,6 +170,7 @@ public sealed class SqliteSubtitleProviderRepository(
                 last_health_test_utc = @testedUtc,
                 consecutive_failures = CASE WHEN @success = 1 THEN 0 ELSE consecutive_failures + 1 END,
                 rate_limited_until_utc = COALESCE(@rateLimitedUntil, rate_limited_until_utc),
+                last_health_failure_json = @failureJson,
                 updated_utc = @updatedUtc
             WHERE provider_key = @providerKey COLLATE NOCASE;
             """;
@@ -176,6 +181,7 @@ public sealed class SqliteSubtitleProviderRepository(
         AddParameter(command, "@testedUtc", now.ToString("O"));
         AddParameter(command, "@success", success ? 1 : 0);
         AddParameter(command, "@rateLimitedUntil", rateLimitedUntilUtc?.ToString("O"));
+        AddParameter(command, "@failureJson", failure is null ? null : JsonSerializer.Serialize(failure));
         AddParameter(command, "@updatedUtc", now.ToString("O"));
         AddParameter(command, "@providerKey", providerKey);
 
@@ -213,5 +219,20 @@ public sealed class SqliteSubtitleProviderRepository(
             RateLimitedUntilUtc: reader.IsDBNull(13) ? null : DateTimeOffset.Parse(reader.GetString(13)),
             DisabledReason: reader.IsDBNull(14) ? null : reader.GetString(14),
             CreatedUtc: DateTimeOffset.Parse(reader.GetString(15)),
-            UpdatedUtc: DateTimeOffset.Parse(reader.GetString(16)));
+            UpdatedUtc: DateTimeOffset.Parse(reader.GetString(16)))
+        {
+            LastHealthFailure = reader.IsDBNull(17) ? null : DeserializeFailure(reader.GetString(17))
+        };
+
+    private static IntegrationFailure? DeserializeFailure(string json)
+    {
+        try
+        {
+            return JsonSerializer.Deserialize<IntegrationFailure>(json);
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+    }
 }

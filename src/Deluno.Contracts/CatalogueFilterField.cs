@@ -78,6 +78,14 @@ public enum CatalogueFilterValueKind
     /// </summary>
     Genre,
 
+    /// <summary>
+    /// A user-owned label stored in the catalogue-local tag join.
+    /// It has the same list operators as a genre, but uses row membership rather
+    /// than delimited text so labels such as "4K rewatch" remain one value and
+    /// a renamed platform tag cannot drift away from its titles.
+    /// </summary>
+    Tag,
+
     /// <summary>A closed list declared on the field itself.</summary>
     Enum
 }
@@ -232,6 +240,12 @@ public sealed record CatalogueFilterField(
                 // Every genre picked must be present, first, because that is
                 // what a reader means by picking two — and it is what the
                 // control did before this registry existed.
+                CatalogueFilterOperator.IncludesAll,
+                CatalogueFilterOperator.Includes,
+                CatalogueFilterOperator.Excludes
+            ],
+            CatalogueFilterValueKind.Tag =>
+            [
                 CatalogueFilterOperator.IncludesAll,
                 CatalogueFilterOperator.Includes,
                 CatalogueFilterOperator.Excludes

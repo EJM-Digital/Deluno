@@ -132,6 +132,51 @@ export function IndexerDrawerBody({
         </Disclosure>
       </DrawerSection>
 
+      <DrawerSection title="Acquisition policy">
+        <p className="text-[length:var(--type-caption)] text-muted-foreground">
+          These rules decide which feed results Deluno can use. An empty limit keeps the indexer unrestricted.
+        </p>
+        <Disclosure title="Timing, limits, and flags" summary="Applied before a release can be sent to a download client." open={fineTuneOpen} onOpenChange={setFineTuneOpen}>
+          <FieldRow>
+            <Field label="Minimum age" error={errors.minimumAgeMinutes} help="Wait for a Usenet or torrent post to propagate before grabbing it.">
+              <div className="flex items-center gap-2">
+                <Input type="number" min="0" step="1" value={form.minimumAgeMinutes} onChange={(event) => { clearError("minimumAgeMinutes"); setForm((current) => ({ ...current, minimumAgeMinutes: event.target.value })); }} placeholder="No minimum" />
+                <span className="shrink-0 text-[length:var(--type-body-sm)] text-muted-foreground">min</span>
+              </div>
+            </Field>
+            <Field label="Retention" error={errors.retentionDays} help="Reject releases older than the number of days your provider keeps.">
+              <div className="flex items-center gap-2">
+                <Input type="number" min="0" step="1" value={form.retentionDays} onChange={(event) => { clearError("retentionDays"); setForm((current) => ({ ...current, retentionDays: event.target.value })); }} placeholder="No limit" />
+                <span className="shrink-0 text-[length:var(--type-body-sm)] text-muted-foreground">days</span>
+              </div>
+            </Field>
+          </FieldRow>
+          <FieldRow>
+            <Field label="Maximum size" error={errors.maximumSizeMb} help="Reject releases larger than this, in megabytes.">
+              <div className="flex items-center gap-2">
+                <Input type="number" min="0" step="1" value={form.maximumSizeMb} onChange={(event) => { clearError("maximumSizeMb"); setForm((current) => ({ ...current, maximumSizeMb: event.target.value })); }} placeholder="No limit" />
+                <span className="shrink-0 text-[length:var(--type-body-sm)] text-muted-foreground">MB</span>
+              </div>
+            </Field>
+            <Field label="Availability delay" error={errors.availabilityDelayDays} help="Hold a title for this many days after its known availability date.">
+              <div className="flex items-center gap-2">
+                <Input type="number" min="0" step="1" value={form.availabilityDelayDays} onChange={(event) => { clearError("availabilityDelayDays"); setForm((current) => ({ ...current, availabilityDelayDays: event.target.value })); }} placeholder="No delay" />
+                <span className="shrink-0 text-[length:var(--type-body-sm)] text-muted-foreground">days</span>
+              </div>
+            </Field>
+          </FieldRow>
+          <Field label="Preferred indexer flags" error={errors.preferIndexerFlags} help="Comma-separated flags from the indexer's feed, such as freeleech or double upload; matching releases receive a ranking boost.">
+            <Input value={form.preferIndexerFlags} onChange={(event) => { clearError("preferIndexerFlags"); setForm((current) => ({ ...current, preferIndexerFlags: event.target.value })); }} placeholder="freeleech, double-upload" />
+          </Field>
+          <p className="text-[length:var(--type-caption)] text-muted-foreground">The timing rules hold or reject a candidate; they do not alter the indexer's results.</p>
+        </Disclosure>
+        <div className="flex flex-col gap-2">
+          <SwitchRow label="RSS feed" description="Include this indexer's RSS results when RSS is the source." checked={form.rssEnabled} onCheckedChange={(checked) => setForm((current) => ({ ...current, rssEnabled: checked }))} />
+          <SwitchRow label="Automatic search" description="Allow scheduled library searches to query this indexer." checked={form.automaticSearchEnabled} onCheckedChange={(checked) => setForm((current) => ({ ...current, automaticSearchEnabled: checked }))} />
+          <SwitchRow label="Interactive search" description="Allow searches started from a title or episode page to query this indexer." checked={form.interactiveSearchEnabled} onCheckedChange={(checked) => setForm((current) => ({ ...current, interactiveSearchEnabled: checked }))} />
+        </div>
+      </DrawerSection>
+
       {editing && chip ? (
         <DrawerSection title="Health">
           <dl className="grid grid-cols-[120px_1fr] items-center gap-x-[var(--grid-gap)] gap-y-2 text-[length:var(--type-body-sm)]">
@@ -140,6 +185,16 @@ export function IndexerDrawerBody({
             <dt className="text-muted-foreground">Pacing</dt>
             <dd aria-live="polite" className="text-foreground">{throttle?.waiting ? `Deluno is waiting on ${throttle.host} before sending ${throttle.waiting} request${throttle.waiting === 1 ? "" : "s"}.` : throttle?.nextPermitInSeconds ? `Deluno will send the next request to ${throttle.host} in about ${formatSeconds(throttle.nextPermitInSeconds)}.` : "No request is waiting. Deluno will still follow this indexer's safe request interval."}</dd>
             {editing.lastHealthMessage ? (<><dt className="text-muted-foreground">Message</dt><dd className="text-foreground">{editing.lastHealthMessage}</dd></>) : null}
+            {editing.lastHealthFailure ? (
+              <>
+                <dt className="text-muted-foreground">Cause</dt>
+                <dd className="text-foreground">
+                  <span>{editing.lastHealthFailure.summary}</span>
+                  <span className="mt-1 block text-muted-foreground">{editing.lastHealthFailure.nextAction}</span>
+                  {editing.lastHealthFailure.retryAfterUtc ? <span className="mt-1 block text-muted-foreground">Next eligible attempt: {relative(editing.lastHealthFailure.retryAfterUtc)}</span> : null}
+                </dd>
+              </>
+            ) : null}
             {editing.consecutiveFailures > 0 ? (<><dt className="text-muted-foreground">Failures</dt><dd className="text-warning">{editing.consecutiveFailures} in a row{editing.disabledReason ? ` — ${editing.disabledReason}` : ""}</dd></>) : null}
           </dl>
           <div className="flex flex-wrap gap-2">

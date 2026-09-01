@@ -1,4 +1,6 @@
 using Deluno.Quality.Data;
+using Deluno.Quality.Contracts;
+using Deluno.Quality.ReleasePreferences;
 
 namespace Deluno.Quality;
 
@@ -14,6 +16,64 @@ namespace Deluno.Quality;
 /// </summary>
 public static class QualityProfileResolver
 {
+    /// <summary>
+    /// Resolves the immutable plan attached to a profile. A referenced plan
+    /// must be present and hash-valid; silently recompiling a migrated profile
+    /// from a newer guide would change its meaning without a plan version.
+    /// Profiles without a reference use the normal runtime compiler.
+    /// </summary>
+    public static async Task<ReleasePreferencePlan?> ResolveReleasePreferencePlanAsync(
+        IQualityRepository repository,
+        IReleasePreferencePlanRepository? planRepository,
+        string? qualityProfileId,
+        CancellationToken cancellationToken,
+        IReadOnlyList<CustomFormatItem>? customFormats = null)
+    {
+        if (string.IsNullOrWhiteSpace(qualityProfileId))
+        {
+            return null;
+        }
+
+        var profile = (await repository.ListQualityProfilesAsync(cancellationToken))
+            .FirstOrDefault(item => string.Equals(item.Id, qualityProfileId, StringComparison.OrdinalIgnoreCase));
+        if (profile is null)
+        {
+            return null;
+        }
+
+        if (profile.ReleasePreferencePlan is not { } reference)
+        {
+            // Do not return null and let each downstream consumer invent its
+            // own fallback identity. The probe/import path and acquisition
+            // path must compile the same profile-scoped plan or a valid
+            // installed snapshot is rejected as stale forever.
+            customFormats ??= await repository.ListCustomFormatsAsync(cancellationToken);
+            return ReleasePreferencePlanFactory.CreateQualityPlan(profile, customFormats);
+        }
+
+        if (planRepository is null)
+        {
+            throw new InvalidOperationException(
+                $"Quality profile '{profile.Name}' references immutable release-preference plan '{reference.PlanId}' version '{reference.Version}', but the plan store is unavailable.");
+        }
+
+        var stored = await planRepository.GetAsync(reference.PlanId, reference.Version, cancellationToken);
+        if (stored is null)
+        {
+            throw new InvalidDataException(
+                $"Quality profile '{profile.Name}' references release-preference plan '{reference.PlanId}' version '{reference.Version}', but that immutable plan is missing.");
+        }
+
+        if (!string.Equals(reference.PlanHash, stored.PlanHash, StringComparison.OrdinalIgnoreCase)
+            || !string.Equals(reference.PlanHash, stored.Plan.PlanHash, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new InvalidDataException(
+                $"Quality profile '{profile.Name}' has a release-preference plan reference whose hash does not match the immutable stored plan.");
+        }
+
+        return stored.Plan;
+    }
+
     /// <summary>
     /// The permitted tiers for a profile, or an empty list when the profile is
     /// absent or does not constrain tiers. Empty means "the cutoff decides",
@@ -32,6 +92,25 @@ public static class QualityProfileResolver
         var profiles = await repository.ListQualityProfilesAsync(cancellationToken);
         var profile = profiles.FirstOrDefault(item => item.Id == qualityProfileId);
         return ParseAllowedQualities(profile?.AllowedQualities);
+    }
+
+    /// <summary>
+    /// Reads the profile's stop-when-target behaviour for acquisition. A missing
+    /// profile uses the safe historical default: keep upgrading until the
+    /// requested cutoff is met.
+    /// </summary>
+    public static async Task<bool> ResolveUpgradeUntilCutoffAsync(
+        IQualityRepository repository,
+        string? qualityProfileId,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(qualityProfileId))
+        {
+            return true;
+        }
+
+        var profiles = await repository.ListQualityProfilesAsync(cancellationToken);
+        return profiles.FirstOrDefault(item => item.Id == qualityProfileId)?.UpgradeUntilCutoff ?? true;
     }
 
     /// <summary>Splits the stored comma-separated tier list.</summary>

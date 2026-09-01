@@ -9,6 +9,18 @@ public interface IQualityRepository
 
     Task<IReadOnlyList<CustomFormatItem>> ListCustomFormatsAsync(CancellationToken cancellationToken);
     Task<IReadOnlyList<PolicySetItem>> ListPolicySetsAsync(CancellationToken cancellationToken);
+    Task<IReadOnlyList<MediaPlanVersionItem>> ListMediaPlanVersionsAsync(
+        string planId,
+        CancellationToken cancellationToken);
+
+    Task<MediaPlanVersionItem?> GetMediaPlanVersionAsync(
+        string planId,
+        int version,
+        CancellationToken cancellationToken);
+
+    Task<MediaPlanVersionItem?> GetLatestMediaPlanVersionAsync(
+        string planId,
+        CancellationToken cancellationToken);
 
     Task<QualityProfileItem> CreateQualityProfileAsync(
         CreateQualityProfileRequest request,
@@ -21,7 +33,8 @@ public interface IQualityRepository
 
     Task<CustomFormatItem> CreateCustomFormatAsync(
         CreateCustomFormatRequest request,
-        CancellationToken cancellationToken);
+        CancellationToken cancellationToken,
+        string? preferredId = null);
 
     Task<PolicySetItem> CreatePolicySetAsync(
         CreatePolicySetRequest request,
@@ -40,7 +53,8 @@ public interface IQualityRepository
     Task<PolicySetItem?> UpdatePolicySetAsync(
         string id,
         UpdatePolicySetRequest request,
-        CancellationToken cancellationToken);
+        CancellationToken cancellationToken,
+        string changeKind = "update");
 
     Task<bool> DeleteQualityProfileAsync(string id, CancellationToken cancellationToken);
     Task<bool> DeleteCustomFormatAsync(string id, CancellationToken cancellationToken);

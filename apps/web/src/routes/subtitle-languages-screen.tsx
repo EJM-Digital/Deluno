@@ -10,11 +10,12 @@ import { Button } from "../components/ui/button";
 import { Chip } from "../components/ui/chip";
 import { Drawer, DrawerSection } from "../components/ui/drawer";
 import { Field } from "../components/ui/field";
+import { Input } from "../components/ui/input";
 import { LIST_TRACK, ListCard, ListCell, ListEmpty, ListNameCell, ListRow, ListTable } from "../components/ui/list-card";
 import { MenuSelect } from "../components/ui/menu-select";
 import { PageToolbar } from "../components/ui/page-toolbar";
 import { Switch } from "../components/ui/switch";
-import type { LibraryItem, SubtitleLanguageOption } from "../lib/api/types/resources";
+import type { LibraryItem, SubtitleContentModificationPolicy, SubtitleLanguageOption, SubtitleTimingPolicy } from "../lib/api/types/resources";
 
 const TABS = configurationNavAreas.find((area) => area.to === "/settings/libraries")?.items ?? [];
 
@@ -31,7 +32,25 @@ interface Form {
   mode: "all" | "first";
   unknownLanguage: string;
   embeddedCounts: boolean;
+  contentPolicy: SubtitleContentModificationPolicy;
+  timingPolicy: SubtitleTimingPolicy;
 }
+
+const EMPTY_CONTENT_POLICY: SubtitleContentModificationPolicy = {
+  stripHearingImpairedAnnotations: false,
+  removeStyleTags: false,
+  removeEmoji: false,
+  normalizeWhitespace: false,
+  fixAllUppercase: false
+};
+
+const EMPTY_TIMING_POLICY: SubtitleTimingPolicy = {
+  enabled: true,
+  syncOnlyBelow: "made-for-this-file",
+  maxOffsetSeconds: 60,
+  requiredPeakSigma: 3,
+  excludedProviders: null
+};
 
 /**
  * Which subtitles each library wants.
@@ -53,7 +72,14 @@ export function SubtitleLanguagesPage() {
   const revalidator = useRevalidator();
 
   const [editing, setEditing] = useState<LibraryItem | null>(null);
-  const [form, setForm] = useState<Form>({ languages: [], mode: "all", unknownLanguage: "", embeddedCounts: true });
+  const [form, setForm] = useState<Form>({
+    languages: [],
+    mode: "all",
+    unknownLanguage: "",
+    embeddedCounts: true,
+    contentPolicy: EMPTY_CONTENT_POLICY,
+    timingPolicy: EMPTY_TIMING_POLICY
+  });
   const [busy, setBusy] = useState(false);
 
   const asking = libraries.filter((library) => (library.subtitleLanguages ?? []).length > 0);
@@ -64,7 +90,9 @@ export function SubtitleLanguagesPage() {
       languages: library.subtitleLanguages ?? [],
       mode: library.subtitleLanguageMode === "first" ? "first" : "all",
       unknownLanguage: library.subtitleUnknownLanguage ?? "",
-      embeddedCounts: library.subtitleEmbeddedCounts ?? true
+      embeddedCounts: library.subtitleEmbeddedCounts ?? true,
+      contentPolicy: { ...EMPTY_CONTENT_POLICY, ...(library.subtitleContentPolicy ?? {}) },
+      timingPolicy: { ...EMPTY_TIMING_POLICY, ...(library.subtitleTimingPolicy ?? {}) }
     });
   }
 
@@ -178,7 +206,8 @@ export function SubtitleLanguagesPage() {
               switch whatever the state is how a panel becomes a wall.
             */}
             {form.languages.length > 0 ? (
-              <DrawerSection title="What counts as having one">
+              <>
+                <DrawerSection title="What counts as having one">
                 <Field
                   label="A subtitle with no language in its name"
                   help="Deluno does not guess. A bare Movie.srt counts for nothing unless you say what it is — reading it as your first language would be right most of the time, and silently wrong the rest."
@@ -209,12 +238,155 @@ export function SubtitleLanguagesPage() {
                     onCheckedChange={(embeddedCounts) => setForm({ ...form, embeddedCounts })}
                   />
                 </Field>
-              </DrawerSection>
+                </DrawerSection>
+
+                <DrawerSection title="Timing repair">
+                  <p className="text-[length:var(--type-caption)] text-muted-foreground">
+                    Deluno only moves a subtitle when the audio has a clear match. The default repairs subtitles below “made for this file”; narrow that to “same source” or turn it off when this shelf should never rewrite timing.
+                  </p>
+                  <PolicySwitch
+                    label="Repair subtitle timing automatically"
+                    help="Runs in the separate local timing lane after a fetched subtitle is written. A confident zero-offset result is left alone."
+                    checked={form.timingPolicy.enabled}
+                    disabled={busy}
+                    onCheckedChange={(value) => setForm({ ...form, timingPolicy: { ...form.timingPolicy, enabled: value } })}
+                  />
+                  <Field
+                    label="Repair subtitles below"
+                    help="Same source is the safer choice. Made for this file includes same-source subtitles and is the default because those are the files most likely to need a cross-release timing correction."
+                  >
+                    <MenuSelect
+                      label="Timing threshold"
+                      value={form.timingPolicy.syncOnlyBelow}
+                      onChange={(value: string) => setForm({ ...form, timingPolicy: { ...form.timingPolicy, syncOnlyBelow: value } })}
+                      options={[
+                        { value: "same-source", label: "Same source", hint: "Only repair subtitles with no source match." },
+                        { value: "made-for-this-file", label: "Made for this file", hint: "Repair any subtitle below the exact-file match." }
+                      ]}
+                      className="max-w-sm"
+                    />
+                  </Field>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <Field
+                      label="Maximum offset"
+                      help="Search window in seconds, from 1 to 300."
+                    >
+                      <Input
+                        type="number"
+                        min={1}
+                        max={300}
+                        step={1}
+                        value={form.timingPolicy.maxOffsetSeconds}
+                        disabled={busy}
+                        onChange={(event) => {
+                          const value = Number(event.target.value);
+                          if (Number.isFinite(value)) setForm({ ...form, timingPolicy: { ...form.timingPolicy, maxOffsetSeconds: value } });
+                        }}
+                      />
+                    </Field>
+                    <Field
+                      label="Confidence required"
+                      help="Peak strength in sigma, from 1 to 10. The default is 3."
+                    >
+                      <Input
+                        type="number"
+                        min={1}
+                        max={10}
+                        step={0.1}
+                        value={form.timingPolicy.requiredPeakSigma}
+                        disabled={busy}
+                        onChange={(event) => {
+                          const value = Number(event.target.value);
+                          if (Number.isFinite(value)) setForm({ ...form, timingPolicy: { ...form.timingPolicy, requiredPeakSigma: value } });
+                        }}
+                      />
+                    </Field>
+                  </div>
+                  <Field
+                    label="Exclude providers from timing repair"
+                    help="Comma-separated provider keys. The subtitle is still saved and counted; only the automatic timing pass is skipped. Provider keys are shown under Find & Download → Subtitle providers."
+                  >
+                    <Input
+                      value={(form.timingPolicy.excludedProviders ?? []).join(", ")}
+                      disabled={busy}
+                      onChange={(event) => setForm({
+                        ...form,
+                        timingPolicy: {
+                          ...form.timingPolicy,
+                          excludedProviders: event.target.value.split(",").map((provider) => provider.trim()).filter(Boolean)
+                        }
+                      })}
+                      placeholder="For example: opensubtitles, subdl"
+                    />
+                  </Field>
+                </DrawerSection>
+
+                <DrawerSection title="After download">
+                  <p className="text-[length:var(--type-caption)] text-muted-foreground">
+                    These named cleanups change subtitle text only. Timing and provider matching stay untouched.
+                  </p>
+                  <PolicySwitch
+                    label="Remove hearing-impaired annotations"
+                    help="Removes recognised sound and music annotations such as [MUSIC] or (door closes)."
+                    checked={form.contentPolicy.stripHearingImpairedAnnotations}
+                    disabled={busy}
+                    onCheckedChange={(value) => setForm({ ...form, contentPolicy: { ...form.contentPolicy, stripHearingImpairedAnnotations: value } })}
+                  />
+                  <PolicySwitch
+                    label="Remove style tags"
+                    help="Removes common italic, bold, font, ruby, and WebVTT cue tags."
+                    checked={form.contentPolicy.removeStyleTags}
+                    disabled={busy}
+                    onCheckedChange={(value) => setForm({ ...form, contentPolicy: { ...form.contentPolicy, removeStyleTags: value } })}
+                  />
+                  <PolicySwitch
+                    label="Remove emoji"
+                    help="Removes emoji and their presentation marks from cue text."
+                    checked={form.contentPolicy.removeEmoji}
+                    disabled={busy}
+                    onCheckedChange={(value) => setForm({ ...form, contentPolicy: { ...form.contentPolicy, removeEmoji: value } })}
+                  />
+                  <PolicySwitch
+                    label="Normalize whitespace"
+                    help="Trims cue lines and collapses repeated spaces without changing timing."
+                    checked={form.contentPolicy.normalizeWhitespace}
+                    disabled={busy}
+                    onCheckedChange={(value) => setForm({ ...form, contentPolicy: { ...form.contentPolicy, normalizeWhitespace: value } })}
+                  />
+                  <PolicySwitch
+                    label="Fix all-uppercase text"
+                    help="Converts long all-uppercase cue lines to sentence case. Short acronyms are left alone."
+                    checked={form.contentPolicy.fixAllUppercase}
+                    disabled={busy}
+                    onCheckedChange={(value) => setForm({ ...form, contentPolicy: { ...form.contentPolicy, fixAllUppercase: value } })}
+                  />
+                </DrawerSection>
+              </>
             ) : null}
           </>
         ) : null}
       </Drawer>
     </div>
+  );
+}
+
+function PolicySwitch({
+  label,
+  help,
+  checked,
+  disabled,
+  onCheckedChange
+}: {
+  label: string;
+  help: string;
+  checked: boolean;
+  disabled: boolean;
+  onCheckedChange: (value: boolean) => void;
+}) {
+  return (
+    <Field label={label} help={help}>
+      <Switch checked={checked} disabled={disabled} onCheckedChange={onCheckedChange} />
+    </Field>
   );
 }
 

@@ -9,15 +9,25 @@ namespace Deluno.Integrations;
 public sealed class CacheSchemaInitializer(
     IDelunoDatabaseConnectionFactory databaseConnectionFactory,
     IDelunoDatabaseMigrator migrator,
-    ILogger<CacheSchemaInitializer> logger)
+    ILogger<CacheSchemaInitializer> logger,
+    IDelunoStartupGate? startupGate = null)
     : IHostedService
 {
     public async Task StartAsync(CancellationToken cancellationToken)
     {
-        await migrator.ApplyAsync(
-            DelunoDatabaseNames.Cache,
-            CacheDatabaseMigrations.All,
-            cancellationToken);
+        try
+        {
+            await migrator.ApplyAsync(
+                DelunoDatabaseNames.Cache,
+                CacheDatabaseMigrations.All,
+                cancellationToken);
+            startupGate?.MarkReady(DelunoDatabaseNames.Cache);
+        }
+        catch (Exception exception)
+        {
+            startupGate?.MarkFailed(DelunoDatabaseNames.Cache, exception);
+            throw;
+        }
 
         logger.LogInformation(
             "Cache database migrations are current at {DatabasePath}.",

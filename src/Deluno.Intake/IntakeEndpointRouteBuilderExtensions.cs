@@ -23,6 +23,35 @@ public static class IntakeEndpointRouteBuilderExtensions
     {
         var intakeSources = endpoints.MapGroup("/api/intake-sources");
 
+        endpoints.MapGet("/api/exclusions", async (
+            HttpContext httpContext,
+            string? mediaType,
+            string? sourceKind,
+            string? sourceId,
+            IUnifiedExclusionRepository repository,
+            CancellationToken cancellationToken) =>
+        {
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
+            return denied ?? Results.Ok(await repository.ListActiveAsync(mediaType, sourceKind, sourceId, cancellationToken));
+        });
+
+        endpoints.MapDelete("/api/exclusions/{id}", async (
+            string id,
+            HttpContext httpContext,
+            IUnifiedExclusionRepository repository,
+            CancellationToken cancellationToken) =>
+        {
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
+            if (denied is not null)
+            {
+                return denied;
+            }
+
+            return await repository.DeleteAsync(id, cancellationToken)
+                ? Results.NoContent()
+                : Results.NotFound();
+        });
+
         intakeSources.MapGet(string.Empty, async ([FromServices] IIntakeRepository repository, CancellationToken cancellationToken) =>
         {
             var items = await repository.ListIntakeSourcesAsync(cancellationToken);
@@ -270,7 +299,7 @@ public static class IntakeEndpointRouteBuilderExtensions
             await activityFeedRepository.RecordActivityAsync(
                 "intake.entry.excluded",
                 $"{source.Name}: excluded {exclusion.Title}{(exclusion.Year is null ? string.Empty : $" ({exclusion.Year})")}.",
-                JsonSerializer.Serialize(new { SourceId = source.Id, ExclusionId = exclusion.Id, exclusion.EntryKey, exclusion.ExpiresUtc }),
+                JsonSerializer.Serialize(new { SourceId = source.Id, ExclusionId = exclusion.Id, exclusion.EntryKey, exclusion.ExpiresUtc, exclusion.Reason }),
                 null,
                 "intake-source",
                 source.Id,

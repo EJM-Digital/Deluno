@@ -220,6 +220,13 @@ export const router = createBrowserRouter([
       { path: "shows/library", element: <Navigate to="/tv" replace /> },
       { path: "shows/:id", element: <LegacyShowDetailRedirect /> },
       {
+        path: "collections",
+        lazy: withSkeleton(async () => {
+          const module = await import("./routes/collections-page");
+          return { loader: module.collectionsLoader, Component: module.CollectionsPage };
+        })
+      },
+      {
         path: "calendar",
         lazy: withSkeleton(async () => {
           const module = await import("./routes/calendar-page");
@@ -249,6 +256,13 @@ export const router = createBrowserRouter([
       },
       {
         path: "indexers/indexers",
+        lazy: withSkeleton(async () => {
+          const module = await import("./routes/connections-screen");
+          return { loader: module.indexersLoader, Component: module.IndexersPage };
+        })
+      },
+      {
+        path: "indexers/scoreboard",
         lazy: withSkeleton(async () => {
           const module = await import("./routes/connections-screen");
           return { loader: module.indexersLoader, Component: module.IndexersPage };
@@ -410,6 +424,26 @@ export const router = createBrowserRouter([
               };
             })
           },
+          {
+            path: "release-rules",
+            lazy: withSkeleton(async () => {
+              const module = await import("./routes/settings-release-rules-page");
+              return {
+                loader: module.settingsReleaseRulesLoader,
+                Component: module.SettingsReleaseRulesPage
+              };
+            })
+          },
+          {
+            path: "playback",
+            lazy: withSkeleton(async () => {
+              const module = await import("./routes/settings-playback-page");
+              return {
+                loader: module.settingsPlaybackLoader,
+                Component: module.SettingsPlaybackPage
+              };
+            })
+          },
           { path: "indexers", element: <Navigate to="/indexers/indexers" replace /> },
           { path: "download-clients", element: <Navigate to="/indexers/download-clients" replace /> },
           { path: "import-lists", element: <Navigate to="/settings/lists" replace /> },
@@ -504,6 +538,13 @@ export const router = createBrowserRouter([
           },
           {
             path: "backups",
+            lazy: withSkeleton(async () => {
+              const module = await import("./routes/system-page");
+              return { loader: module.systemLoader, Component: module.SystemPage };
+            })
+          },
+          {
+            path: "recycle-bin",
             lazy: withSkeleton(async () => {
               const module = await import("./routes/system-page");
               return { loader: module.systemLoader, Component: module.SystemPage };

@@ -1,5 +1,6 @@
 using System.Net;
 using System.Text;
+using Deluno.Contracts;
 using Deluno.Infrastructure.Resilience;
 using Deluno.Infrastructure.Storage;
 using Deluno.Infrastructure.Storage.Migrations;
@@ -153,6 +154,106 @@ public sealed class TmdbMetadataProviderTests : IDisposable
     }
 
     [Fact]
+    public async Task CleanupArtworkCacheAsync_removes_only_old_unreferenced_artwork()
+    {
+        var now = DateTimeOffset.Parse("2026-05-14T00:00:00Z");
+        var storageOptions = Options.Create(new StoragePathOptions { DataRoot = _dataRoot });
+        var factory = new SqliteDatabaseConnectionFactory(storageOptions);
+        var timeProvider = new FakeTimeProvider(now);
+        await new CacheSchemaInitializer(
+            factory,
+            new SqliteDatabaseMigrator(factory, timeProvider),
+            NullLogger<CacheSchemaInitializer>.Instance)
+            .StartAsync(CancellationToken.None);
+
+        var artworkRoot = Path.Combine(_dataRoot, "artwork-cache");
+        Directory.CreateDirectory(artworkRoot);
+        var referencedKey = new string('a', 64);
+        var orphanKey = new string('b', 64);
+        var missingKey = new string('c', 64);
+        var referencedPath = Path.Combine(artworkRoot, $"{referencedKey}.jpg");
+        var orphanPath = Path.Combine(artworkRoot, $"{orphanKey}.jpg");
+        var missingPath = Path.Combine(artworkRoot, $"{missingKey}.jpg");
+        await File.WriteAllBytesAsync(referencedPath, [1, 2, 3], CancellationToken.None);
+        await File.WriteAllBytesAsync(orphanPath, [4, 5, 6, 7, 8], CancellationToken.None);
+        File.SetLastWriteTimeUtc(referencedPath, now.AddDays(-3).UtcDateTime);
+        File.SetLastWriteTimeUtc(orphanPath, now.AddDays(-3).UtcDateTime);
+
+        await using (var connection = await factory.OpenConnectionAsync(DelunoDatabaseNames.Cache))
+        {
+            async Task InsertAsync(string key, string? localPath)
+            {
+                using var command = connection.CreateCommand();
+                command.CommandText =
+                    """
+                    INSERT INTO artwork_cache (
+                        cache_key, media_type, remote_url, local_path, fetched_utc, expires_utc)
+                    VALUES (@cacheKey, 'movies', 'https://images.deluno.test/art.jpg', @localPath, @fetchedUtc, NULL);
+                    """;
+
+                var cacheKeyParameter = command.CreateParameter();
+                cacheKeyParameter.ParameterName = "@cacheKey";
+                cacheKeyParameter.Value = key;
+                command.Parameters.Add(cacheKeyParameter);
+                var localPathParameter = command.CreateParameter();
+                localPathParameter.ParameterName = "@localPath";
+                localPathParameter.Value = localPath is null ? DBNull.Value : localPath;
+                command.Parameters.Add(localPathParameter);
+                var fetchedParameter = command.CreateParameter();
+                fetchedParameter.ParameterName = "@fetchedUtc";
+                fetchedParameter.Value = now.AddDays(-3).ToString("O");
+                command.Parameters.Add(fetchedParameter);
+                await command.ExecuteNonQueryAsync(CancellationToken.None);
+            }
+
+            await InsertAsync(referencedKey, referencedPath);
+            await InsertAsync(orphanKey, orphanPath);
+            await InsertAsync(missingKey, missingPath);
+        }
+
+        var provider = new TmdbMetadataProvider(
+            new HttpClient(new StubHttpMessageHandler(_ => new HttpResponseMessage(HttpStatusCode.NotFound))),
+            new ConfigurationBuilder().Build(),
+            new Mock<IPlatformSettingsRepository>().Object,
+            factory,
+            storageOptions,
+            timeProvider,
+            new PassthroughResiliencePolicy(),
+            new OutboundRequestThrottle(timeProvider, NullLogger<OutboundRequestThrottle>.Instance),
+            NullLogger<TmdbMetadataProvider>.Instance);
+
+        var result = await provider.CleanupArtworkCacheAsync(
+            new HashSet<string>([referencedKey], StringComparer.OrdinalIgnoreCase),
+            now.AddHours(-24),
+            CancellationToken.None);
+
+        Assert.Equal(3, result.ScannedCount);
+        Assert.Equal(2, result.DeletedCount);
+        Assert.Equal(5, result.ReclaimedBytes);
+        Assert.Equal(1, result.SkippedReferencedCount);
+        Assert.Equal(0, result.FailedCount);
+        Assert.True(File.Exists(referencedPath));
+        Assert.False(File.Exists(orphanPath));
+
+        await using var verifyConnection = await factory.OpenConnectionAsync(DelunoDatabaseNames.Cache);
+        using var verifyCommand = verifyConnection.CreateCommand();
+        verifyCommand.CommandText = "SELECT COUNT(*) FROM artwork_cache WHERE cache_key IN (@referenced, @orphan, @missing);";
+        var referencedParameter = verifyCommand.CreateParameter();
+        referencedParameter.ParameterName = "@referenced";
+        referencedParameter.Value = referencedKey;
+        verifyCommand.Parameters.Add(referencedParameter);
+        var orphanParameter = verifyCommand.CreateParameter();
+        orphanParameter.ParameterName = "@orphan";
+        orphanParameter.Value = orphanKey;
+        verifyCommand.Parameters.Add(orphanParameter);
+        var missingParameter = verifyCommand.CreateParameter();
+        missingParameter.ParameterName = "@missing";
+        missingParameter.Value = missingKey;
+        verifyCommand.Parameters.Add(missingParameter);
+        Assert.Equal(1L, (long)(await verifyCommand.ExecuteScalarAsync(CancellationToken.None))!);
+    }
+
+    [Fact]
     public async Task GetDirectStatusAsync_prefers_host_configuration_before_legacy_install_secret()
     {
         var settings = new Mock<IPlatformSettingsRepository>();
@@ -251,6 +352,97 @@ public sealed class TmdbMetadataProviderTests : IDisposable
         Assert.Equal("Interstellar", result.Title);
         Assert.Equal("tmdb", result.Provider);
         settings.Verify(repo => repo.GetMetadataProviderSecretAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task SearchAsync_retains_a_typed_provider_failure_in_status()
+    {
+        var settings = new Mock<IPlatformSettingsRepository>();
+        settings.Setup(repo => repo.GetAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(CreateSettingsSnapshot("direct", string.Empty));
+        settings.Setup(repo => repo.GetMetadataProviderSecretAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((string?)null);
+
+        var storageOptions = Options.Create(new StoragePathOptions { DataRoot = _dataRoot });
+        var factory = new SqliteDatabaseConnectionFactory(storageOptions);
+        await new CacheSchemaInitializer(
+            factory,
+            new SqliteDatabaseMigrator(factory, TimeProvider.System),
+            NullLogger<CacheSchemaInitializer>.Instance)
+            .StartAsync(CancellationToken.None);
+
+        var provider = new TmdbMetadataProvider(
+            new HttpClient(new StubHttpMessageHandler(_ => new HttpResponseMessage(HttpStatusCode.Unauthorized))),
+            new ConfigurationBuilder()
+                .AddInMemoryCollection(new Dictionary<string, string?>
+                {
+                    ["Deluno:Metadata:TMDbApiKey"] = "test-key"
+                })
+                .Build(),
+            settings.Object,
+            factory,
+            storageOptions,
+            TimeProvider.System,
+            new PassthroughResiliencePolicy(),
+            new OutboundRequestThrottle(TimeProvider.System, NullLogger<OutboundRequestThrottle>.Instance),
+            NullLogger<TmdbMetadataProvider>.Instance);
+
+        Assert.Empty(await provider.SearchAsync(
+            new MetadataLookupRequest("The Matrix", "movies", 1999, null),
+            CancellationToken.None));
+
+        var status = await provider.GetStatusAsync(CancellationToken.None);
+        Assert.Equal(IntegrationFailureKind.Authentication, status.LastFailure!.Kind);
+        Assert.Equal("metadata.tmdb.search", status.LastFailure.Operation);
+        Assert.Equal(401, status.LastFailure.HttpStatus);
+        Assert.Equal(IntegrationRetryState.ManualAction, status.LastFailure.RetryState);
+    }
+
+    [Fact]
+    public async Task ResolveProviderRecordAsync_reports_confirmed_404_without_fuzzy_search()
+    {
+        var settings = new Mock<IPlatformSettingsRepository>();
+        settings.Setup(repo => repo.GetAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(CreateSettingsSnapshot("direct", string.Empty));
+
+        var requestedUrls = new List<string>();
+        var storageOptions = Options.Create(new StoragePathOptions { DataRoot = _dataRoot });
+        var factory = new SqliteDatabaseConnectionFactory(storageOptions);
+        var timeProvider = new FakeTimeProvider(DateTimeOffset.Parse("2026-05-14T00:00:00Z"));
+        await new CacheSchemaInitializer(
+            factory,
+            new SqliteDatabaseMigrator(factory, timeProvider),
+            NullLogger<CacheSchemaInitializer>.Instance).StartAsync(CancellationToken.None);
+
+        var provider = new TmdbMetadataProvider(
+            new HttpClient(new StubHttpMessageHandler(request =>
+            {
+                requestedUrls.Add(request.RequestUri!.ToString());
+                return new HttpResponseMessage(HttpStatusCode.NotFound);
+            })),
+            new ConfigurationBuilder()
+                .AddInMemoryCollection(new Dictionary<string, string?>
+                {
+                    ["Deluno:Metadata:TMDbApiKey"] = "test-key"
+                })
+                .Build(),
+            settings.Object,
+            factory,
+            storageOptions,
+            timeProvider,
+            new PassthroughResiliencePolicy(),
+            new OutboundRequestThrottle(timeProvider, NullLogger<OutboundRequestThrottle>.Instance),
+            NullLogger<TmdbMetadataProvider>.Instance);
+
+        var lookup = await provider.ResolveProviderRecordAsync(
+            new MetadataLookupRequest("State of Siege: Temple Attack", "movies", 2021, "1603343"),
+            CancellationToken.None);
+
+        Assert.Equal(MetadataProviderRecordStatus.Missing, lookup.Status);
+        Assert.Equal(404, lookup.Failure?.HttpStatus);
+        Assert.Single(requestedUrls);
+        Assert.Contains("/movie/1603343", requestedUrls[0], StringComparison.Ordinal);
+        Assert.DoesNotContain("/search/", requestedUrls[0], StringComparison.Ordinal);
     }
 
     private static PlatformSettingsSnapshot CreateSettingsSnapshot(string providerMode, string brokerUrl)

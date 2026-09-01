@@ -52,4 +52,13 @@ public sealed record PatchPlatformSettingsRequest(
     double? SharingUntilRatio = null,
     int? SharingForHours = null,
     string? SharingStuckAction = null,
-    int? SharingStuckAfterDays = null);
+    int? SharingStuckAfterDays = null,
+    string? UiColorMode = null,
+    string? UiLanguage = null,
+    string? CalendarFirstDayOfWeek = null,
+    string? CalendarWeekHeaderFormat = null,
+    string? RuntimeFormat = null,
+    string? ShortDateFormat = null,
+    string? LongDateFormat = null,
+    string? TimeFormat = null,
+    bool? ShowRelativeDates = null);

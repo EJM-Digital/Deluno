@@ -11,6 +11,7 @@ using Deluno.Connections.Data;
 using Deluno.Infrastructure.Observability;
 using Deluno.Infrastructure.Resilience;
 using Deluno.Notifications;
+using Deluno.Jobs.Contracts;
 using Deluno.Security;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
@@ -71,6 +72,7 @@ public static class ConnectionsEndpointRouteBuilderExtensions
             HttpContext httpContext,
             [FromBody] CreateIndexerRequest request,
             [FromServices] IIntegrationResiliencePolicy resiliencePolicy,
+            [FromServices] IIndexerQueryStatsRepository statsRepository,
             CancellationToken cancellationToken) =>
         {
             var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
@@ -109,16 +111,26 @@ public static class ConnectionsEndpointRouteBuilderExtensions
                 now,
                 now)
             {
-                RequestIntervalSeconds = request.RequestIntervalSeconds
+                RequestIntervalSeconds = request.RequestIntervalSeconds,
+                MinimumAgeMinutes = request.MinimumAgeMinutes,
+                RetentionDays = request.RetentionDays,
+                MaximumSizeMb = request.MaximumSizeMb,
+                PreferIndexerFlags = request.PreferIndexerFlags,
+                AvailabilityDelayDays = request.AvailabilityDelayDays,
+                RssEnabled = request.RssEnabled,
+                AutomaticSearchEnabled = request.AutomaticSearchEnabled,
+                InteractiveSearchEnabled = request.InteractiveSearchEnabled
             };
 
             var started = Stopwatch.GetTimestamp();
             var health = await TestIndexerWithResilienceAsync(draft, resiliencePolicy, cancellationToken);
+            await RecordAuthTelemetryAsync(statsRepository, draft, health, ElapsedMilliseconds(started), cancellationToken);
             return Results.Ok(new
             {
                 healthStatus = health.HealthStatus,
                 message = health.Message,
                 failureCategory = health.FailureCategory,
+                failure = health.Failure,
                 latencyMs = ElapsedMilliseconds(started)
             });
         });
@@ -179,6 +191,7 @@ public static class ConnectionsEndpointRouteBuilderExtensions
             [FromServices] IConnectionsRepository repository,
             [FromServices] IRealtimeEventPublisher realtimeEventPublisher,
             [FromServices] IIntegrationResiliencePolicy resiliencePolicy,
+            [FromServices] IIndexerQueryStatsRepository statsRepository,
             [FromServices] IOutboundNotificationService notificationService,
             CancellationToken cancellationToken) =>
         {
@@ -198,7 +211,15 @@ public static class ConnectionsEndpointRouteBuilderExtensions
 
             var started = Stopwatch.GetTimestamp();
             var health = await TestIndexerWithResilienceAsync(item, resiliencePolicy, cancellationToken);
-            var result = await repository.UpdateIndexerHealthAsync(id, health.HealthStatus, health.Message, health.FailureCategory, ElapsedMilliseconds(started), cancellationToken);
+            await RecordAuthTelemetryAsync(statsRepository, item, health, ElapsedMilliseconds(started), cancellationToken);
+            var result = await repository.UpdateIndexerHealthAsync(
+                id,
+                health.HealthStatus,
+                health.Message,
+                health.FailureCategory,
+                ElapsedMilliseconds(started),
+                cancellationToken,
+                health.Failure);
             RecordIntegrationHealthMetric("indexer", health.HealthStatus);
             if (result is not null)
             {
@@ -391,6 +412,7 @@ public static class ConnectionsEndpointRouteBuilderExtensions
                 healthStatus = health.HealthStatus,
                 message = health.Message,
                 failureCategory = health.FailureCategory,
+                failure = health.Failure,
                 latencyMs = ElapsedMilliseconds(started)
             });
         });
@@ -470,7 +492,14 @@ public static class ConnectionsEndpointRouteBuilderExtensions
 
             var started = Stopwatch.GetTimestamp();
             var health = await TestDownloadClientWithResilienceAsync(item, resiliencePolicy, cancellationToken);
-            var result = await repository.UpdateDownloadClientHealthAsync(id, health.HealthStatus, health.Message, health.FailureCategory, ElapsedMilliseconds(started), cancellationToken);
+            var result = await repository.UpdateDownloadClientHealthAsync(
+                id,
+                health.HealthStatus,
+                health.Message,
+                health.FailureCategory,
+                ElapsedMilliseconds(started),
+                cancellationToken,
+                health.Failure);
             RecordIntegrationHealthMetric("download-client", health.HealthStatus);
             if (result is not null)
             {
@@ -581,6 +610,13 @@ public static class ConnectionsEndpointRouteBuilderExtensions
         }
 
         AddRequestIntervalError(errors, request.RequestIntervalSeconds, clearRequested: false);
+        AddAcquisitionSettingsErrors(
+            errors,
+            request.MinimumAgeMinutes,
+            request.RetentionDays,
+            request.MaximumSizeMb,
+            request.PreferIndexerFlags,
+            request.AvailabilityDelayDays);
 
         return errors;
     }
@@ -589,7 +625,61 @@ public static class ConnectionsEndpointRouteBuilderExtensions
     {
         var errors = new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase);
         AddRequestIntervalError(errors, request.RequestIntervalSeconds, request.ClearRequestInterval == true);
+        if (request.ClearMinimumAge != true && request.MinimumAgeMinutes is not null)
+        {
+            AddNonNegativeError(errors, "minimumAgeMinutes", request.MinimumAgeMinutes, "Minimum age cannot be negative.");
+        }
+
+        if (request.ClearRetention != true && request.RetentionDays is not null)
+        {
+            AddNonNegativeError(errors, "retentionDays", request.RetentionDays, "Retention cannot be negative.");
+        }
+
+        if (request.ClearMaximumSize != true && request.MaximumSizeMb is not null)
+        {
+            AddNonNegativeError(errors, "maximumSizeMb", request.MaximumSizeMb, "Maximum size cannot be negative.");
+        }
+
+        if (request.ClearAvailabilityDelay != true && request.AvailabilityDelayDays is not null)
+        {
+            AddNonNegativeError(errors, "availabilityDelayDays", request.AvailabilityDelayDays, "Availability delay cannot be negative.");
+        }
+
+        if (request.ClearPreferIndexerFlags != true && request.PreferIndexerFlags is { Length: > 500 })
+        {
+            errors["preferIndexerFlags"] = ["Indexer flags must be 500 characters or fewer."];
+        }
         return errors;
+    }
+
+    private static void AddAcquisitionSettingsErrors(
+        Dictionary<string, string[]> errors,
+        int? minimumAgeMinutes,
+        int? retentionDays,
+        int? maximumSizeMb,
+        string? preferIndexerFlags,
+        int? availabilityDelayDays)
+    {
+        AddNonNegativeError(errors, "minimumAgeMinutes", minimumAgeMinutes, "Minimum age cannot be negative.");
+        AddNonNegativeError(errors, "retentionDays", retentionDays, "Retention cannot be negative.");
+        AddNonNegativeError(errors, "maximumSizeMb", maximumSizeMb, "Maximum size cannot be negative.");
+        AddNonNegativeError(errors, "availabilityDelayDays", availabilityDelayDays, "Availability delay cannot be negative.");
+        if (preferIndexerFlags is { Length: > 500 })
+        {
+            errors["preferIndexerFlags"] = ["Indexer flags must be 500 characters or fewer."];
+        }
+    }
+
+    private static void AddNonNegativeError(
+        Dictionary<string, string[]> errors,
+        string key,
+        int? value,
+        string message)
+    {
+        if (value is < 0)
+        {
+            errors[key] = [message];
+        }
     }
 
     private static void AddRequestIntervalError(Dictionary<string, string[]> errors, int? requestIntervalSeconds, bool clearRequested)
@@ -643,14 +733,26 @@ public static class ConnectionsEndpointRouteBuilderExtensions
             async token =>
             {
                 var (healthStatus, message, failureCategory) = await TestIndexerAsync(item, token);
-                return new IntegrationHealthCheckResult(healthStatus, message, failureCategory);
+                return HealthResult("indexer", item.Id, item.Name, "health-test", healthStatus, message, failureCategory);
             },
             ClassifyIntegrationHealth,
             cancellationToken);
 
         return result.CircuitOpen
-            ? IntegrationHealthCheckResult.CircuitOpen(result.RetryAfterUtc)
-            : result.Value ?? new IntegrationHealthCheckResult("unreachable", result.FailureMessage ?? "Indexer test failed.", "connectivity");
+            ? IntegrationHealthCheckResult.CircuitOpen(
+                "indexer",
+                item.Id,
+                item.Name,
+                result.RetryAfterUtc)
+            : result.Value ?? HealthResult(
+                "indexer",
+                item.Id,
+                item.Name,
+                "health-test",
+                "unreachable",
+                result.FailureMessage ?? "Indexer test failed.",
+                "connectivity",
+                result.Attempts);
     }
 
     private static async Task<IntegrationHealthCheckResult> TestDownloadClientWithResilienceAsync(
@@ -666,14 +768,26 @@ public static class ConnectionsEndpointRouteBuilderExtensions
             async token =>
             {
                 var (healthStatus, message, failureCategory) = await TestDownloadClientAsync(item, token);
-                return new IntegrationHealthCheckResult(healthStatus, message, failureCategory);
+                return HealthResult("download-client", item.Id, item.Name, "health-test", healthStatus, message, failureCategory);
             },
             ClassifyIntegrationHealth,
             cancellationToken);
 
         return result.CircuitOpen
-            ? IntegrationHealthCheckResult.CircuitOpen(result.RetryAfterUtc)
-            : result.Value ?? new IntegrationHealthCheckResult("unreachable", result.FailureMessage ?? "Download client test failed.", "connectivity");
+            ? IntegrationHealthCheckResult.CircuitOpen(
+                "download-client",
+                item.Id,
+                item.Name,
+                result.RetryAfterUtc)
+            : result.Value ?? HealthResult(
+                "download-client",
+                item.Id,
+                item.Name,
+                "health-test",
+                "unreachable",
+                result.FailureMessage ?? "Download client test failed.",
+                "connectivity",
+                result.Attempts);
     }
 
     private static IntegrationResilienceOutcome ClassifyIntegrationHealth(IntegrationHealthCheckResult result)
@@ -792,6 +906,37 @@ public static class ConnectionsEndpointRouteBuilderExtensions
             body.Contains("<rss", StringComparison.OrdinalIgnoreCase) ||
             body.Contains("newznab", StringComparison.OrdinalIgnoreCase) ||
             body.Contains("torznab", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static async Task RecordAuthTelemetryAsync(
+        IIndexerQueryStatsRepository statsRepository,
+        IndexerItem indexer,
+        IntegrationHealthCheckResult health,
+        int elapsedMilliseconds,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            await statsRepository.RecordBatchAsync(
+                [new IndexerQueryLogEntry(
+                    IndexerId: indexer.Id,
+                    IndexerName: indexer.Name,
+                    QueryText: "caps",
+                    Categories: indexer.Categories,
+                    MediaType: indexer.MediaScope,
+                    QueryKind: "auth",
+                    Outcome: health.HealthStatus == "healthy" ? "matched" : "failed",
+                    ElapsedMilliseconds: elapsedMilliseconds,
+                    CandidateCount: 0,
+                    CreatedUtc: DateTimeOffset.UtcNow,
+                    ErrorMessage: health.HealthStatus == "healthy" ? null : health.Message)],
+                cancellationToken);
+        }
+        catch (Exception) when (!cancellationToken.IsCancellationRequested)
+        {
+            // Health testing must remain useful when the optional diagnostics
+            // write is temporarily unavailable.
+        }
     }
 
     private static string FormatIndexerProtocol(string protocol)
@@ -1022,17 +1167,56 @@ public static class ConnectionsEndpointRouteBuilderExtensions
         [property: JsonPropertyName("method")] string Method,
         [property: JsonPropertyName("params")] object[] Params);
 
+    private static IntegrationHealthCheckResult HealthResult(
+        string serviceType,
+        string serviceId,
+        string serviceName,
+        string operation,
+        string healthStatus,
+        string message,
+        string? failureCategory,
+        int attempts = 1)
+        => new(
+            healthStatus,
+            message,
+            failureCategory,
+            failureCategory is null
+                ? null
+                : IntegrationFailureFactory.FromLegacy(
+                    serviceType,
+                    serviceId,
+                    serviceName,
+                    operation,
+                    failureCategory,
+                    message,
+                    attempts: attempts));
+
     private sealed record IntegrationHealthCheckResult(
         string HealthStatus,
         string Message,
-        string? FailureCategory)
+        string? FailureCategory,
+        IntegrationFailure? Failure = null)
     {
-        public static IntegrationHealthCheckResult CircuitOpen(DateTimeOffset? retryAfterUtc)
+        public static IntegrationHealthCheckResult CircuitOpen(
+            string serviceType,
+            string serviceId,
+            string serviceName,
+            DateTimeOffset? retryAfterUtc)
         {
             var message = retryAfterUtc is null
                 ? "Deluno paused this integration test after repeated failures."
                 : $"Deluno paused this integration test after repeated failures. It will retry after {retryAfterUtc.Value:O}.";
-            return new IntegrationHealthCheckResult("unreachable", message, "circuit-open");
+            return new IntegrationHealthCheckResult(
+                "unreachable",
+                message,
+                "circuit-open",
+                IntegrationFailureFactory.CircuitOpen(
+                    serviceType,
+                    serviceId,
+                    serviceName,
+                    "health-test",
+                    retryAfterUtc,
+                    message));
         }
     }
 

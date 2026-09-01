@@ -6,6 +6,7 @@ using Deluno.Platform.Contracts;
 using Deluno.Platform.Data;
 using Microsoft.Extensions.Logging.Abstractions;
 using Deluno.Quality.Contracts;
+using Deluno.Quality.ReleasePreferences;
 using Deluno.Connections.Contracts;
 using Deluno.Connections.Data;
 
@@ -63,6 +64,35 @@ public sealed class AcquisitionDecisionPipelineTests
     }
 
     [Fact]
+    public async Task PlanAsync_passes_a_profile_scoped_immutable_preference_plan_to_the_planner()
+    {
+        var candidate = Candidate(
+            status: "preferred",
+            meetsCutoff: true,
+            qualityDelta: 1);
+        var planner = new StubPlanner(new MediaSearchPlan(candidate, [candidate], "best candidate"));
+        var suppliedPlan = new ReleasePreferencePlan(
+            "quality-profile/pinned",
+            "legacy-import/v1",
+            "movies",
+            []);
+        var pipeline = new AcquisitionDecisionPipeline(planner);
+
+        var result = await pipeline.PlanAsync(new AcquisitionDecisionRequest(
+            "Dune Part Two",
+            2024,
+            "movies",
+            "WEB 720p",
+            "WEB 1080p",
+            Sources: [Source()],
+            DownloadClients: [DownloadClient()],
+            PreferencePlan: suppliedPlan));
+
+        Assert.Equal("matched", result.Outcome);
+        Assert.Same(suppliedPlan, planner.ObservedPreferencePlan);
+    }
+
+    [Fact]
     public async Task PlanAsync_holds_candidate_that_is_not_safe_for_automatic_dispatch()
     {
         var candidate = Candidate(
@@ -84,6 +114,40 @@ public sealed class AcquisitionDecisionPipelineTests
         Assert.False(plan.ShouldDispatch);
         Assert.Contains("manual review", plan.SearchResult, StringComparison.OrdinalIgnoreCase);
         Assert.Single(plan.Alternatives);
+    }
+
+    [Fact]
+    public async Task Repeated_automatic_cycles_never_dispatch_an_equivalent_installed_file()
+    {
+        var equivalent = Candidate(
+            status: "equivalent",
+            meetsCutoff: true,
+            qualityDelta: 0);
+        var pipeline = new AcquisitionDecisionPipeline(
+            new StubPlanner(new MediaSearchPlan(
+                equivalent,
+                [equivalent],
+                "Equivalent to the installed file under the typed release plan.")));
+        var request = new AcquisitionDecisionRequest(
+            "Dune Part Two",
+            2024,
+            "movies",
+            "WEB 1080p",
+            "WEB 1080p",
+            Sources: [Source()],
+            DownloadClients: [DownloadClient()],
+            SearchKind: AcquisitionSearchKinds.Automatic,
+            CurrentFilePresent: true);
+
+        var first = await pipeline.PlanAsync(request);
+        var second = await pipeline.PlanAsync(request);
+
+        Assert.Equal("held", first.Outcome);
+        Assert.Equal(first.Outcome, second.Outcome);
+        Assert.False(first.ShouldDispatch);
+        Assert.False(second.ShouldDispatch);
+        Assert.Equal("equivalent", Assert.Single(first.Alternatives).Status);
+        Assert.Equal(first.SearchResult, second.SearchResult);
     }
 
     [Fact]
@@ -134,7 +198,7 @@ public sealed class AcquisitionDecisionPipelineTests
 
         Assert.False(blocked.CanDispatch);
         Assert.True(blocked.RequiresOverride);
-        Assert.Equal(Deluno.Quality.MediaPolicyCatalog.CurrentVersion, blocked.PolicyVersion);
+        Assert.Contains("/typed-quality/", blocked.PolicyVersion, StringComparison.Ordinal);
         Assert.True(forced.CanDispatch);
         Assert.True(forced.RequiresOverride);
     }
@@ -246,6 +310,8 @@ public sealed class AcquisitionDecisionPipelineTests
 
     private sealed class StubPlanner(MediaSearchPlan plan) : IMediaSearchPlanner
     {
+        public ReleasePreferencePlan? ObservedPreferencePlan { get; private set; }
+
         public Task<MediaSearchPlan> BuildPlanAsync(
             string title,
             int? year,
@@ -257,8 +323,25 @@ public sealed class AcquisitionDecisionPipelineTests
             int? seasonNumber = null,
             int? episodeNumber = null,
             IReadOnlyList<string>? allowedQualities = null,
-            CancellationToken cancellationToken = default)
-            => Task.FromResult(plan);
+            CancellationToken cancellationToken = default,
+            IReadOnlyList<string>? tagNames = null,
+            string searchKind = AcquisitionSearchKinds.Automatic,
+            DateTimeOffset? availableUtc = null,
+            int? currentCustomFormatScore = null,
+            string? currentReleaseName = null,
+            bool upgradeUntilCutoff = true,
+            string? numberingScheme = null,
+            int? absoluteNumber = null,
+            DateOnly? airDate = null,
+            int? sceneSeasonNumber = null,
+            int? sceneEpisodeNumber = null,
+            PreferenceEvaluationSnapshot? currentPreferenceEvaluation = null,
+            ReleasePreferencePlan? preferencePlan = null,
+            bool currentFilePresent = false)
+        {
+            ObservedPreferencePlan = preferencePlan;
+            return Task.FromResult(plan);
+        }
     }
 
     private sealed class ThrowingPlanner : IMediaSearchPlanner
@@ -274,7 +357,21 @@ public sealed class AcquisitionDecisionPipelineTests
             int? seasonNumber = null,
             int? episodeNumber = null,
             IReadOnlyList<string>? allowedQualities = null,
-            CancellationToken cancellationToken = default)
+            CancellationToken cancellationToken = default,
+            IReadOnlyList<string>? tagNames = null,
+            string searchKind = AcquisitionSearchKinds.Automatic,
+            DateTimeOffset? availableUtc = null,
+            int? currentCustomFormatScore = null,
+            string? currentReleaseName = null,
+            bool upgradeUntilCutoff = true,
+            string? numberingScheme = null,
+            int? absoluteNumber = null,
+            DateOnly? airDate = null,
+            int? sceneSeasonNumber = null,
+            int? sceneEpisodeNumber = null,
+            PreferenceEvaluationSnapshot? currentPreferenceEvaluation = null,
+            ReleasePreferencePlan? preferencePlan = null,
+            bool currentFilePresent = false)
             => throw new InvalidOperationException("An unready connection must not reach the search planner.");
     }
 

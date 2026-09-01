@@ -4,6 +4,7 @@
  *   PageToolbar (System settings tabs · Load example · Preview import)
  *   ListCard     import source (source, name, JSON; safety notes behind a Disclosure)
  *   SummaryStrip preview result (create · skip · unsupported · titles)
+ *   ListCard     inventory (row reconciliation · actions · classifications · download)
  *   ListCard     change report  (row → drawer: what it is · fields · warnings)
  *   ListCard     imported connections (test each one, result lands in its row)
  *   ListCard     applied history (row reopens that record)
@@ -15,7 +16,7 @@
  * GET /api/migration/reports, POST /api/{indexers|download-clients}/{id}/test.
  */
 import { useEffect, useMemo, useState, type FormEvent } from "react";
-import { ArrowRight, Loader2, ShieldCheck } from "lucide-react";
+import { ArrowRight, Download, Loader2, ShieldCheck } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { Chip, type ChipProps } from "../components/ui/chip";
 import { Disclosure } from "../components/ui/disclosure";
@@ -36,6 +37,7 @@ import {
   type MigrationReport,
   type MigrationReportOperation
 } from "../lib/api";
+import { formatDateTime, formatShortDate, formatTime, useDisplayPreferences } from "../lib/display-preferences";
 
 const SOURCE_OPTIONS = [
   { label: "Radarr", value: "radarr" },
@@ -82,9 +84,11 @@ interface ConnectionValidationResult {
 }
 
 export function SettingsMigrationPage() {
+  const { preferences } = useDisplayPreferences();
   const [sourceKind, setSourceKind] = useState("radarr");
   const [sourceName, setSourceName] = useState("Radarr");
   const [payloadJson, setPayloadJson] = useState("");
+  const [allowAdvancedLegacyRules, setAllowAdvancedLegacyRules] = useState(false);
   const [safetyOpen, setSafetyOpen] = useState(false);
 
   const [report, setReport] = useState<MigrationReport | null>(null);
@@ -113,7 +117,7 @@ export function SettingsMigrationPage() {
       const next = await fetchJson<MigrationReport>("/api/migration/preview", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sourceKind, sourceName, payloadJson })
+        body: JSON.stringify({ sourceKind, sourceName, payloadJson, allowAdvancedLegacyRules })
       });
       setReport(next);
       setSelectedIds(new Set(next.operations.filter(isSelectable).map((operation) => operation.id)));
@@ -132,7 +136,7 @@ export function SettingsMigrationPage() {
       const result = await fetchJson<MigrationApplyResponse>("/api/migration/apply", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sourceKind, sourceName, payloadJson, selectedOperationIds: [...selectedIds] })
+        body: JSON.stringify({ sourceKind, sourceName, payloadJson, selectedOperationIds: [...selectedIds], allowAdvancedLegacyRules })
       });
       setApplied(result);
       setReport(result.report);
@@ -238,6 +242,17 @@ export function SettingsMigrationPage() {
               ))}
             </ul>
           </Disclosure>
+          <div className="flex items-center justify-between gap-[var(--grid-gap)] rounded-[var(--radius-control)] border border-hairline bg-surface-muted px-3 py-2.5">
+            <div className="min-w-0">
+              <p className="text-[length:var(--type-body-sm)] font-medium text-foreground">Keep opaque rules as Advanced legacy input</p>
+              <p className="text-[length:var(--type-caption)] text-muted-foreground">Stores their exact matcher for review/export; it does not add legacy numbers to typed decisions.</p>
+            </div>
+            <Switch
+              aria-label="Keep opaque rules as Advanced legacy input"
+              checked={allowAdvancedLegacyRules}
+              onCheckedChange={setAllowAdvancedLegacyRules}
+            />
+          </div>
         </div>
       </ListCard>
 
@@ -253,15 +268,44 @@ export function SettingsMigrationPage() {
         />
       ) : null}
 
+      {report?.inventory && report.inventory.entries.length ? (
+        <ListCard
+          title="Import inventory"
+          count={`${report.inventory.accountedRowCount} of ${report.inventory.inputRowCount} legacy rows accounted for`}
+          actions={
+            <Chip tone={report.inventory.unaccountedRowCount ? "warn" : "ok"}>
+              {report.inventory.unaccountedRowCount ? `${report.inventory.unaccountedRowCount} need review` : "Complete"}
+            </Chip>
+          }
+        >
+          <ListTable columns={[{ label: "Source" }, { label: "Rows", width: "120px" }, { label: "Actions", width: "minmax(0,1.6fr)" }, { label: "Classification", width: "minmax(0,1.6fr)" }]}>
+            {report.inventory.entries.map((entry) => (
+              <ListRow key={`${entry.sourceKind}-${entry.category}-${entry.mediaType}`}>
+                <ListNameCell name={entry.category} sub={`${entry.sourceKind} · ${entry.mediaType}`} />
+                <ListCell numeric primary={`${entry.accountedRowCount}/${entry.inputRowCount}`} secondary={entry.unaccountedRowCount ? `${entry.unaccountedRowCount} unaccounted` : "All rows mapped"} />
+                <ListCell primary={formatCounts(entry.actionCounts, "No mapped actions")} />
+                <ListCell primary={formatCounts(entry.classificationCounts, "No special classification")} secondary={entry.warnings.length ? entry.warnings.join(" ") : undefined} />
+              </ListRow>
+            ))}
+          </ListTable>
+        </ListCard>
+      ) : null}
+
       {report ? (
         <ListCard
           title="Change report"
           count={`${report.sourceName} · ${report.sourceKind}`}
           actions={
-            <Button type="button" onClick={() => void handleApply()} disabled={!canApply || busy !== null}>
-              {busy === "apply" ? <Loader2 className="h-4 w-4 animate-spin" /> : <ArrowRight className="h-4 w-4" />}
-              Apply {selectedIds.size} selected
-            </Button>
+            <div className="flex flex-wrap items-center gap-2">
+              <Button type="button" variant="outline" onClick={() => downloadMigrationReport(report)}>
+                <Download className="h-4 w-4" />
+                Download report
+              </Button>
+              <Button type="button" onClick={() => void handleApply()} disabled={!canApply || busy !== null}>
+                {busy === "apply" ? <Loader2 className="h-4 w-4 animate-spin" /> : <ArrowRight className="h-4 w-4" />}
+                Apply {selectedIds.size} selected
+              </Button>
+            </div>
           }
         >
           {report.operations.length === 0 ? (
@@ -342,12 +386,12 @@ export function SettingsMigrationPage() {
                     setReport(audit.preflightReport);
                     setApplied({ report: audit.resultReport, applied: audit.applied, auditReportId: audit.id });
                     setSelectedIds(new Set());
-                    setMessage(`Showing the record from ${new Date(audit.appliedUtc).toLocaleString()}.`);
+                    setMessage(`Showing the record from ${formatDateTime(audit.appliedUtc, preferences)}.`);
                   }}
                 >
                   <ListNameCell name={audit.sourceName} sub={audit.preflightReport.sourceKind} />
                   <ListCell primary={`${created} created`} secondary={failed ? `${failed} failed` : "no failures"} />
-                  <ListCell numeric mobile primary={new Date(audit.appliedUtc).toLocaleDateString()} secondary={new Date(audit.appliedUtc).toLocaleTimeString()} />
+                  <ListCell numeric mobile primary={formatShortDate(audit.appliedUtc, { ...preferences, showRelativeDates: false })} secondary={formatTime(audit.appliedUtc, preferences)} />
                 </ListRow>
               );
             })}
@@ -429,4 +473,20 @@ function actionTone(action: string): NonNullable<ChipProps["tone"]> {
   if (action === "unsupported" || action === "conflict") return "warn";
   if (action === "report") return "info";
   return "idle";
+}
+
+function formatCounts(counts: Record<string, number>, emptyLabel: string) {
+  const values = Object.entries(counts);
+  return values.length ? values.map(([label, count]) => `${label} ${count}`).join(" · ") : emptyLabel;
+}
+
+function downloadMigrationReport(report: MigrationReport) {
+  const safeName = report.sourceName.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "import";
+  const blob = new Blob([JSON.stringify(report, null, 2)], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = `deluno-migration-${safeName}.json`;
+  anchor.click();
+  URL.revokeObjectURL(url);
 }

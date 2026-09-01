@@ -100,6 +100,9 @@ const config: Config = {
         // Missing, Downloading and Upgradable already are destructive, info and
         // success at exactly these values.
         mark: {
+          missing: "hsl(var(--mark-missing))",
+          downloading: "hsl(var(--mark-downloading))",
+          upgrade: "hsl(var(--mark-upgrade))",
           "quality-met": "hsl(var(--mark-quality-met))",
           upcoming: "hsl(var(--mark-upcoming))",
           airing: "hsl(var(--mark-airing))",

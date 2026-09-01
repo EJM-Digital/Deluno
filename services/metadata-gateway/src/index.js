@@ -11,6 +11,7 @@ const MAX_RESULTS = 6;
 // cached answer, and TMDb sees a single origin it can rate-limit sensibly.
 const MAX_SEASONS = 50;
 const ARTWORK_CACHE_TTL_SECONDS = 60 * 60 * 24 * 30;
+const PERSON_EXTERNAL_IDS_TTL_SECONDS = 60 * 60 * 24 * 365;
 const ARTWORK_SIZES = new Set(["w92", "w185", "w342", "w500", "w780", "w1280", "original"]);
 
 // The sizes Deluno actually caches. These must stay in step with
@@ -64,6 +65,10 @@ export default {
         { "Retry-After": String(rate.retryAfterSeconds) });
     }
 
+    if (route.kind === "person-imdb") {
+      return servePersonImdbRoute(route, env);
+    }
+
     if (route.kind !== "search") {
       return serveCatalogueRoute(route, env);
     }
@@ -86,6 +91,15 @@ export default {
       return json(response, 200, { "Cache-Control": "public, max-age=300" });
     } catch (error) {
       const providerStatus = error instanceof TmdbRequestError ? error.status : 502;
+      // A 404 is meaningful only when Deluno asked for one exact identity.
+      // Preserve it so the app can keep the title and offer a calm remap or
+      // acknowledgement. Fuzzy searches still treat an upstream error as an
+      // unavailable provider, never as evidence that a title was deleted.
+      if (providerStatus === 404 && lookup.value.providerId) {
+        return json(
+          { error: "provider_record_missing", provider: "tmdb", providerId: lookup.value.providerId },
+          404);
+      }
       if (providerStatus === 429) {
         return json(
           { error: "provider_busy", message: "Title matching is busy. Please try again shortly." },
@@ -101,9 +115,9 @@ export default {
 };
 
 /**
- * The gateway serves three things: title search, a series' season/episode
- * catalogue, and a movie's release dates. The last two are what let Deluno know
- * an episode exists before a file for it does, and when a film is obtainable.
+ * The gateway serves title search, a series' season/episode catalogue, a movie's
+ * release dates and collection membership, and lazy person-to-IMDb resolution.
+ * These provider-specific operations stay behind one small broker boundary.
  */
 export function matchRoute(pathname) {
   if (pathname === "/metadata/search") {
@@ -120,11 +134,83 @@ export function matchRoute(pathname) {
     return { kind: "release-dates", id: releaseDates[1] };
   }
 
+  const collection = /^\/metadata\/movie\/(\d{1,12})\/collection$/.exec(pathname);
+  if (collection) {
+    return { kind: "collection", id: collection[1] };
+  }
+
+  const personImdb = /^\/person\/(\d{1,12})\/imdb$/.exec(pathname);
+  if (personImdb) {
+    return { kind: "person-imdb", id: personImdb[1] };
+  }
+
   return null;
 }
 
+async function servePersonImdbRoute(route, env) {
+  const key = `person-external-ids:v1:${route.id}`;
+  const cached = await env.METADATA_CACHE.get(key, "json");
+  if (cached && typeof cached.imdbId === "string") {
+    return redirectToImdb(cached.imdbId);
+  }
+  if (cached && cached.imdbId === null) {
+    return json({ error: "not_found" }, 404);
+  }
+
+  try {
+    const imdbId = await lookupPersonImdbId(route.id, env.TMDB_API_KEY);
+    await env.METADATA_CACHE.put(key, JSON.stringify({ imdbId }), {
+      expirationTtl: PERSON_EXTERNAL_IDS_TTL_SECONDS
+    });
+    return imdbId ? redirectToImdb(imdbId) : json({ error: "not_found" }, 404);
+  } catch (error) {
+    const providerStatus = error instanceof TmdbRequestError ? error.status : 502;
+    if (providerStatus === 404) {
+      await env.METADATA_CACHE.put(key, JSON.stringify({ imdbId: null }), {
+        expirationTtl: PERSON_EXTERNAL_IDS_TTL_SECONDS
+      });
+      return json({ error: "not_found" }, 404);
+    }
+    if (providerStatus === 429) {
+      return json(
+        { error: "provider_busy", message: "IMDb person matching is busy. Please try again shortly." },
+        503,
+        { "Retry-After": "60" });
+    }
+
+    return json({ error: "provider_unavailable", message: "IMDb person matching is temporarily unavailable." }, 503);
+  }
+}
+
+export async function lookupPersonImdbId(personId, apiKey, request = fetch) {
+  if (!/^\d{1,12}$/.test(String(personId ?? ""))) {
+    return null;
+  }
+
+  const endpoint = new URL(`https://api.themoviedb.org/3/person/${personId}/external_ids`);
+  endpoint.searchParams.set("api_key", apiKey);
+  const result = await getJson(endpoint, request);
+  return typeof result?.imdb_id === "string" && /^nm\d+$/i.test(result.imdb_id.trim())
+    ? result.imdb_id.trim()
+    : null;
+}
+
+function redirectToImdb(imdbId) {
+  return new Response(null, {
+    status: 302,
+    headers: {
+      Location: `https://www.imdb.com/name/${imdbId}/`,
+      "Cache-Control": "public, max-age=86400"
+    }
+  });
+}
+
 async function serveCatalogueRoute(route, env) {
-  const key = route.kind === "catalogue" ? `catalogue:v1:${route.id}` : `release-dates:v1:${route.id}`;
+  const key = route.kind === "catalogue"
+    ? `catalogue:v1:${route.id}`
+    : route.kind === "release-dates"
+      ? `release-dates:v1:${route.id}`
+      : `collection:v1:${route.id}`;
   const cached = await env.METADATA_CACHE.get(key, "json");
   if (cached) {
     return json(cached, 200, { "Cache-Control": "public, max-age=600" });
@@ -133,7 +219,9 @@ async function serveCatalogueRoute(route, env) {
   try {
     const payload = route.kind === "catalogue"
       ? await lookupSeriesCatalogue(route.id, env.TMDB_API_KEY)
-      : await lookupMovieReleaseDates(route.id, env.TMDB_API_KEY);
+      : route.kind === "release-dates"
+        ? await lookupMovieReleaseDates(route.id, env.TMDB_API_KEY)
+        : await lookupMovieCollection(route.id, env.TMDB_API_KEY);
 
     await env.METADATA_CACHE.put(key, JSON.stringify(payload), { expirationTtl: CATALOGUE_TTL_SECONDS });
     return json(payload, 200, { "Cache-Control": "public, max-age=600" });
@@ -424,6 +512,9 @@ export function mapTmdbResult(item, mediaType, artworkOrigin = null) {
     ? item.networks.map((entry) => entry?.name).find(Boolean) ?? null
     : null;
   const collection = item.belongs_to_collection?.name ?? null;
+  const collectionProviderId = item.belongs_to_collection?.id != null
+    ? String(item.belongs_to_collection.id)
+    : null;
   const crew = Array.isArray(item.credits?.crew) ? item.credits.crew : [];
   const director = crew.find((person) => person?.job === "Director")?.name ?? null;
   const trailerUrl = pickTrailerUrl(item.videos?.results);
@@ -474,6 +565,7 @@ export function mapTmdbResult(item, mediaType, artworkOrigin = null) {
     studio,
     network,
     collection,
+    collectionProviderId,
     director,
     trailerUrl,
     tagline: item.tagline?.trim() || null,
@@ -484,6 +576,45 @@ export function mapTmdbResult(item, mediaType, artworkOrigin = null) {
     // different problem from one that is still airing them.
     status: item.status ?? null
   };
+}
+
+/** Return every movie TMDb currently associates with a collection. */
+export async function lookupMovieCollection(providerId, apiKey, request = fetch) {
+  const url = new URL(`https://api.themoviedb.org/3/collection/${providerId}`);
+  url.searchParams.set("api_key", apiKey);
+  const payload = await getJson(url, request);
+  const parts = Array.isArray(payload?.parts) ? payload.parts : [];
+
+  return {
+    provider: "deluno-broker",
+    mode: "broker",
+    providerId: String(payload?.id ?? providerId),
+    name: typeof payload?.name === "string" ? payload.name.trim() || null : null,
+    overview: typeof payload?.overview === "string" ? payload.overview.trim() || null : null,
+    posterUrl: imageUrl(payload?.poster_path, POSTER_SIZE, null),
+    backdropUrl: imageUrl(payload?.backdrop_path, BACKDROP_SIZE, null),
+    movies: parts
+      .filter((movie) => Number.isInteger(movie?.id) && movie.id > 0 && typeof movie?.title === "string" && movie.title.trim())
+      .map((movie) => ({
+        providerId: String(movie.id),
+        title: movie.title.trim(),
+        year: /^\d{4}/.test(movie.release_date ?? "") ? Number.parseInt(movie.release_date.slice(0, 4), 10) : null,
+        overview: typeof movie.overview === "string" ? movie.overview.trim() || null : null,
+        posterUrl: imageUrl(movie.poster_path, POSTER_SIZE, null),
+        backdropUrl: imageUrl(movie.backdrop_path, BACKDROP_SIZE, null),
+        externalUrl: `https://www.themoviedb.org/movie/${movie.id}`,
+        imdbId: null
+      }))
+  };
+}
+
+/** Build a gateway URL without spending one TMDb call per person in a title. */
+export function buildPersonImdbResolverUrl(personId, artworkOrigin) {
+  if (!artworkOrigin || !/^\d{1,12}$/.test(String(personId ?? ""))) {
+    return null;
+  }
+
+  return new URL(`/person/${personId}/imdb`, artworkOrigin).toString();
 }
 
 /**
@@ -566,7 +697,8 @@ function readCast(item, artworkOrigin) {
       personId: typeof person.id === "number" ? String(person.id) : null,
       name: person.name.trim(),
       character: typeof person.character === "string" ? person.character.trim() || null : null,
-      profileUrl: imageUrl(person.profile_path, PORTRAIT_SIZE, artworkOrigin)
+      profileUrl: imageUrl(person.profile_path, PORTRAIT_SIZE, artworkOrigin),
+      imdbUrl: buildPersonImdbResolverUrl(person.id, artworkOrigin)
     }));
 }
 
@@ -608,7 +740,8 @@ function readCrew(crew, artworkOrigin) {
         personId: typeof person.id === "number" ? String(person.id) : null,
         name,
         jobs: [job],
-        profileUrl: imageUrl(person.profile_path, PORTRAIT_SIZE, artworkOrigin)
+        profileUrl: imageUrl(person.profile_path, PORTRAIT_SIZE, artworkOrigin),
+        imdbUrl: buildPersonImdbResolverUrl(person.id, artworkOrigin)
       });
     }
   }
@@ -619,7 +752,8 @@ function readCrew(crew, artworkOrigin) {
       personId: person.personId,
       name: person.name,
       job: person.jobs.join(", "),
-      profileUrl: person.profileUrl
+      profileUrl: person.profileUrl,
+      imdbUrl: person.imdbUrl
     }));
 }
 

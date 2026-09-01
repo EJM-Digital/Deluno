@@ -104,10 +104,44 @@ public sealed class DownloadClientGrabService(
                 client.Id,
                 request,
                 "circuitOpen",
-                "Deluno paused grabs for this client after repeated failures. Test the client connection before sending another release.");
+                "Deluno paused grabs for this client after repeated failures. Test the client connection before sending another release.",
+                result.Failure);
         }
 
         var grabResult = result.Value ?? Failed(client.Id, request, "failed", result.FailureMessage ?? "Download client grab failed.");
+        if (!grabResult.Succeeded && grabResult.Failure is null)
+        {
+            grabResult = grabResult with
+            {
+                Failure = result.Failure ?? IntegrationFailureFactory.FromLegacy(
+                    "download-client",
+                    client.Id,
+                    client.Name,
+                    "grab",
+                    grabResult.Status,
+                    grabResult.Message,
+                    grabResult.ResponseCode,
+                    attempts: result.Attempts,
+                    code: grabResult.FailureCode,
+                    upstreamDetail: grabResult.ResponseJson)
+            };
+        }
+
+        if (!grabResult.Succeeded && !string.IsNullOrWhiteSpace(request.DispatchId))
+        {
+            var retryAfterUtc = await ScheduleGrabRetryAsync(request.DispatchId, client.Id, request, cancellationToken);
+            if (retryAfterUtc is not null && grabResult.Failure is not null)
+            {
+                grabResult = grabResult with
+                {
+                    Failure = grabResult.Failure with
+                    {
+                        RetryState = IntegrationRetryState.RetryScheduled,
+                        RetryAfterUtc = retryAfterUtc
+                    }
+                };
+            }
+        }
 
         if (!string.IsNullOrWhiteSpace(request.DispatchId))
         {
@@ -116,9 +150,11 @@ public sealed class DownloadClientGrabService(
                 grabResult.Status,
                 grabResult.ResponseCode,
                 grabResult.Message,
-                grabResult.FailureCode,
+                grabResult.Failure?.Code ?? grabResult.FailureCode,
                 grabResult.ResponseJson,
-                cancellationToken);
+                cancellationToken,
+                failure: grabResult.Failure,
+                externalId: grabResult.ExternalId);
 
             await realtimeEventPublisher.PublishDispatchGrabCompletedAsync(
                 request.DispatchId,
@@ -129,15 +165,10 @@ public sealed class DownloadClientGrabService(
                 cancellationToken);
         }
 
-        if (!grabResult.Succeeded && !string.IsNullOrWhiteSpace(request.DispatchId))
-        {
-            await ScheduleGrabRetryAsync(request.DispatchId, client.Id, request, cancellationToken);
-        }
-
         return grabResult;
     }
 
-    private async Task ScheduleGrabRetryAsync(
+    private async Task<DateTimeOffset?> ScheduleGrabRetryAsync(
         string dispatchId,
         string clientId,
         DownloadClientGrabRequest request,
@@ -150,7 +181,7 @@ public sealed class DownloadClientGrabService(
         if (delay == TimeSpan.Zero)
         {
             await dispatchRepository.MarkDispatchFailedAsync(dispatchId, cancellationToken);
-            return;
+            return null;
         }
 
         var scheduledAt = timeProvider.GetUtcNow().Add(delay);
@@ -176,6 +207,7 @@ public sealed class DownloadClientGrabService(
                 ScheduledUtc: scheduledAt,
                 DedupeKey: $"download.grab.retry:{dispatchId}"),
             cancellationToken);
+        return scheduledAt;
     }
 
     private async Task<DownloadClientGrabResult> GrabCoreAsync(
@@ -191,17 +223,44 @@ public sealed class DownloadClientGrabService(
                     client.Id,
                     request,
                     "failed",
-                    $"'{client.Protocol}' is not a supported download client protocol. Supported protocols: {string.Join(", ", downloadClientRegistry.KnownProtocols)}.");
+                    $"'{client.Protocol}' is not a supported download client protocol. Supported protocols: {string.Join(", ", downloadClientRegistry.KnownProtocols)}.",
+                    category: "configuration");
             }
 
             return await implementation.GrabAsync(client, request, cancellationToken);
         }
         catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException or InvalidOperationException or IOException)
         {
-            return Failed(client.Id, request, "failed", exception.Message);
+            return Failed(
+                client.Id,
+                request,
+                "failed",
+                exception.Message,
+                IntegrationFailureFactory.FromException(
+                    "download-client",
+                    client.Id,
+                    client.Name,
+                    "grab",
+                    exception,
+                    retryScheduled: true));
         }
     }
 
-    private static DownloadClientGrabResult Failed(string clientId, DownloadClientGrabRequest request, string status, string message)
-        => new(clientId, request.ReleaseName, false, status, message);
+    private static DownloadClientGrabResult Failed(
+        string clientId,
+        DownloadClientGrabRequest request,
+        string status,
+        string message,
+        IntegrationFailure? failure = null,
+        string? category = null)
+        => new(clientId, request.ReleaseName, false, status, message, FailureCode: failure?.Code)
+        {
+            Failure = failure ?? IntegrationFailureFactory.FromLegacy(
+                "download-client",
+                clientId,
+                clientId,
+                "grab",
+                category ?? status,
+                message)
+        };
 }

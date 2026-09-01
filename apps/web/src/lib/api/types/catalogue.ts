@@ -1,5 +1,14 @@
 import type { MetadataRatingItem } from "./metadata";
 
+export interface MetadataProviderIssue {
+  kind: string;
+  provider: string;
+  providerId: string;
+  evidenceKey: string;
+  detectedUtc: string;
+  acknowledgedUtc: string | null;
+}
+
 export interface MovieListItem {
   id: string;
   title: string;
@@ -128,6 +137,48 @@ export interface MovieSearchHistoryItem {
   createdUtc: string;
 }
 
+export interface MovieCollectionItem {
+  id: string;
+  provider: string;
+  providerId: string;
+  name: string;
+  overview: string | null;
+  posterUrl: string | null;
+  backdropUrl: string | null;
+  libraryId: string;
+  libraryName: string;
+  rootPath: string;
+  monitored: boolean;
+  monitorMovies: boolean;
+  qualityProfileId: string | null;
+  qualityProfileName: string | null;
+  minimumAvailability: string;
+  searchOnAdd: boolean;
+  memberCount: number;
+  heldCount: number;
+  missingCount: number;
+  lastSyncedUtc: string | null;
+  nextSyncUtc: string | null;
+  lastSyncError: string | null;
+  createdUtc: string;
+  updatedUtc: string;
+}
+
+export interface MovieCollectionMemberItem {
+  collectionId: string;
+  providerId: string;
+  title: string;
+  releaseYear: number | null;
+  overview: string | null;
+  posterUrl: string | null;
+  backdropUrl: string | null;
+  externalUrl: string | null;
+  imdbId: string | null;
+  localMovieId: string | null;
+  isExcluded: boolean;
+  updatedUtc: string;
+}
+
 export interface SeriesListItem {
   id: string;
   title: string;
@@ -209,6 +260,9 @@ export interface SeriesListItem {
   subtitleLanguagesWanted?: number;
   subtitleLanguagesHeld?: number;
   subtitleLanguagesSettled?: number;
+  seriesType?: "standard" | "daily" | "anime" | string;
+  numberingScheme?: "standard" | "airdate" | "absolute" | "scene" | string;
+  numberingSource?: "provider" | "owner" | string | null;
 }
 
 export interface CatalogueFacets {
@@ -319,6 +373,35 @@ export interface SeriesEpisodeInventoryItem {
   lastSearchUtc: string | null;
   nextEligibleSearchUtc: string | null;
   updatedUtc: string;
+  currentQuality?: string | null;
+  targetQuality?: string | null;
+  preventLowerQualityReplacements?: boolean;
+  lastQualityDeltaDecision?: number | null;
+  absoluteNumber?: number | null;
+  sceneSeasonNumber?: number | null;
+  sceneEpisodeNumber?: number | null;
+  airDate?: string | null;
+  numberingSource?: string | null;
+}
+
+export interface SeriesEpisodeNumbering {
+  episodeId: string;
+  seasonNumber: number;
+  episodeNumber: number;
+  absoluteNumber: number | null;
+  sceneSeasonNumber: number | null;
+  sceneEpisodeNumber: number | null;
+  airDate: string | null;
+  numberingSource: string | null;
+}
+
+export interface SeriesNumberingDetail {
+  seriesId: string;
+  seriesType: string;
+  numberingScheme: string;
+  numberingSource: string;
+  updatedUtc: string | null;
+  episodes: SeriesEpisodeNumbering[];
 }
 
 export interface SeriesInventoryDetail {
@@ -329,6 +412,7 @@ export interface SeriesInventoryDetail {
   episodeCount: number;
   importedEpisodeCount: number;
   episodes: SeriesEpisodeInventoryItem[];
+  numbering?: SeriesNumberingDetail | null;
 }
 
 export interface SeriesUpcomingEpisodeItem {

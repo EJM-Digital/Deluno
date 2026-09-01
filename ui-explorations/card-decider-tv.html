@@ -1,7 +1,8 @@
 <!doctype html>
 <meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <title>The TV card — DESIGN-006</title>
-<link rel="stylesheet" href="card-decider.css">
+<link rel="stylesheet" href="card-decider.css?v=20260830-tv-composition">
 
 <div class="rail" id="rail"></div>
 
@@ -31,24 +32,31 @@
         would be the same fact twice.</td></tr>
       <tr><td>Only here</td><td><b>Continuing</b> &mdash; you have every episode that
         has aired, and more are still to come. The one rung the movie shelf does not
-        have, and the only reason its colour is a question.</td></tr>
+        have, and the only colour choice left open for review.</td></tr>
       <tr><td>Also gone</td><td>The corner pill, and any bar under the poster rather
         than on it.</td></tr>
     </tbody>
   </table>
 
-  <p class="lede"><b>Continuing is the open question, and only on this page.</b> Five
-    rungs are fixed &mdash; Missing red, Downloading blue (also the app's primary),
-    Upgradable green, Quality met gold, Upcoming violet &mdash; and amber is reserved
-    for &ldquo;a person is needed&rdquo;. Swept against those six, the roomiest arc left
-    is <b>magenta and pink</b>, which nothing uses. Teal was never the last free colour;
-    it is a crowded one, wedged 28&deg; from green and 36&deg; from blue. Each candidate
-    below reports its own clearance, computed on this page rather than written down.</p>
+  <p class="lede"><b>Implemented recommendation:</b> reuse the movie colours
+    wherever the state matches. The held portion is <b>green</b>, a fully held
+    title at the requested quality is <b>gold</b>, and the remainder is
+    <b>Missing red</b>. <b>Unmonitored always overrides the composition with one
+    flat grey</b>. Continuing remains a TV-only state in the legend, while its
+    coverage still follows the held/quality rule. The candidate control below
+    keeps the Sonarr neutral-remainder grammar available for comparison.</p>
+
+  <p class="lede"><b>This is the TV shelf-card decision render, not the TV detail page.</b>
+    The artwork strip and the cards below use the real lab poster cache, so the
+    decision is made against the pictures the shelf actually carries.</p>
+
+  <section class="comparison" id="comparison" aria-labelledby="comparison-title"></section>
 
   <div class="presets" id="presets"></div>
   <div id="banner"></div>
+  <section class="artwork-source" id="artwork-source" aria-live="polite"></section>
   <div id="shelf"></div>
 </main>
 
-<script src="card-decider-core.js"></script>
+<script src="card-decider-core.js?v=20260830-tv-composition"></script>
 <script>mountDecider({ medium: "tv" });</script>

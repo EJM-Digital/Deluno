@@ -22,6 +22,32 @@ Expects source media at `C:\Deluno\e2e\data\bbb.mp4` and writes torrents to `C:\
 
 Add it to Deluno as a Torznab indexer at `http://192.168.1.102:9117/api`. Any API key is accepted.
 
+### Isolated multi-file season pack
+
+For a whole-season replacement acceptance run, start a second, temporary
+listener rather than changing the stable `9117` catalogue. Set
+`DELUNO_E2E_SEASON_PACK_RELEASE` to a release name that contains an `Snn`
+token, and `DELUNO_E2E_SEASON_PACK_EPISODES` to the exact episode numbers the
+pack should carry. The fixture creates one separately hashed video entry per
+episode plus its `.nfo`; qBittorrent still transfers and checks every byte.
+
+```powershell
+$env:TORZNAB_PORT = '9120'
+$env:TORZNAB_BIND = '0.0.0.0'
+$env:TORZNAB_ADVERTISE = '192.168.1.102'
+$env:TORZNAB_OUT = 'C:\Deluno\e2e\torrents-season-replacement'
+$env:DELUNO_E2E_SEASON_PACK_RELEASE = 'Show.Name.S01.2160p.BluRay.x265-DELUNO'
+$env:DELUNO_E2E_SEASON_PACK_EPISODES = '1,2,3,4,5'
+python -u scripts\lab\torznab_seed.py
+```
+
+Point a temporary TV-only indexer at `http://192.168.1.102:9120/api`, route only
+the bounded manual acceptance step to it, then restore the original routing.
+The separate `TORZNAB_OUT` directory keeps the main listener's torrent metadata
+untouched. With the pack variables set, a whole-season query intentionally
+returns only that pack: ordinary single-episode fixture releases cannot become
+the accidental first candidate in a replacement decision.
+
 ## `seed-library.py`
 
 Fills a movies catalogue with N synthetic titles, because a shelf built for

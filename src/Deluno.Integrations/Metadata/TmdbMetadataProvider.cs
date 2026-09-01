@@ -1,8 +1,10 @@
 using System.Globalization;
+using System.Data.Common;
 using System.Net.Http.Json;
 using System.Security.Cryptography;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Deluno.Contracts;
 using Deluno.Infrastructure.Observability;
 using Deluno.Infrastructure.Resilience;
 using Deluno.Infrastructure.Storage;
@@ -41,6 +43,15 @@ public sealed class TmdbMetadataProvider(
     private readonly string _artworkRootPath = Path.Combine(
         Path.GetFullPath(storageOptions.Value.DataRoot),
         "artwork-cache");
+    private readonly SemaphoreSlim _artworkCacheMaintenanceGate = new(1, 1);
+    private IntegrationFailure? _lastFailure;
+
+    /// <summary>
+    /// The last boundary failure from a live metadata operation. Empty search
+    /// results remain valid data; this property distinguishes them from an
+    /// unavailable, unauthorized, or malformed provider response.
+    /// </summary>
+    public IntegrationFailure? LastFailure => Volatile.Read(ref _lastFailure);
 
     public async Task<MetadataProviderStatus> GetStatusAsync(CancellationToken cancellationToken)
     {
@@ -48,6 +59,7 @@ public sealed class TmdbMetadataProvider(
         var directConfigured = !string.IsNullOrWhiteSpace(config.TmdbApiKey);
         var brokerConfigured = !string.IsNullOrWhiteSpace(config.BrokerUrl);
         var sources = BuildSourceStatuses(config, directConfigured, brokerConfigured);
+        var lastFailure = LastFailure;
 
         return config.ProviderMode switch
         {
@@ -58,7 +70,8 @@ public sealed class TmdbMetadataProvider(
                 brokerConfigured
                     ? "Deluno's managed metadata service is ready for title matching."
                     : "Title matching has not been configured for this Deluno installation yet.",
-                sources),
+                sources,
+                lastFailure),
             "hybrid" => new MetadataProviderStatus(
                 BrokerProviderName,
                 brokerConfigured || directConfigured,
@@ -68,7 +81,8 @@ public sealed class TmdbMetadataProvider(
                     : directConfigured
                         ? "Deluno's metadata service is ready using this installation's configured fallback."
                         : "Title matching has not been configured for this Deluno installation yet.",
-                sources),
+                sources,
+                lastFailure),
             _ => new MetadataProviderStatus(
                 ProviderName,
                 directConfigured,
@@ -78,7 +92,8 @@ public sealed class TmdbMetadataProvider(
                         ? "Deluno's title-matching service is ready."
                         : "Deluno's title-matching and ratings service is ready."
                     : "Title matching has not been configured for this Deluno installation yet.",
-                sources)
+                sources,
+                lastFailure)
         };
     }
 
@@ -99,7 +114,8 @@ public sealed class TmdbMetadataProvider(
             BuildSourceStatuses(
                 new MetadataProviderConfiguration("direct", null, apiKey, omdbApiKey),
                 configured,
-                false));
+                false),
+            LastFailure);
     }
 
     public async Task<IReadOnlyList<MetadataSearchResult>> SearchAsync(
@@ -173,6 +189,82 @@ public sealed class TmdbMetadataProvider(
         return staleFallback is null ? [] : await LocalizeArtworkAsync(staleFallback, cancellationToken);
     }
 
+    public async Task<MetadataProviderRecordLookup> ResolveProviderRecordAsync(
+        MetadataLookupRequest request,
+        CancellationToken cancellationToken)
+    {
+        var providerIdText = request.ProviderId?.Trim();
+        if (string.IsNullOrWhiteSpace(providerIdText) ||
+            !int.TryParse(providerIdText, NumberStyles.Integer, CultureInfo.InvariantCulture, out var providerId))
+        {
+            return new MetadataProviderRecordLookup(
+                MetadataProviderRecordStatus.Unavailable,
+                ProviderName,
+                providerIdText ?? string.Empty,
+                Failure: IntegrationFailureFactory.FromLegacy(
+                    "metadata",
+                    ProviderName,
+                    ProviderName,
+                    "metadata.provider.resolve",
+                    "configuration",
+                    "The stored TMDb id is not a valid numeric identifier."));
+        }
+
+        var mediaType = NormalizeMediaType(request.MediaType);
+        var config = await GetMetadataConfigurationAsync(cancellationToken);
+
+        if (config.ProviderMode is "broker" or "hybrid" && !string.IsNullOrWhiteSpace(config.BrokerUrl))
+        {
+            var brokerLookup = await ResolveBrokerProviderRecordAsync(
+                config.BrokerUrl,
+                mediaType,
+                request,
+                providerIdText,
+                cancellationToken);
+            if (brokerLookup.Status is MetadataProviderRecordStatus.Found or MetadataProviderRecordStatus.Missing ||
+                config.ProviderMode == "broker")
+            {
+                return brokerLookup;
+            }
+        }
+
+        var apiKey = config.TmdbApiKey ?? await GetApiKeyAsync(cancellationToken);
+        if (string.IsNullOrWhiteSpace(apiKey))
+        {
+            return new MetadataProviderRecordLookup(
+                MetadataProviderRecordStatus.Unavailable,
+                ProviderName,
+                providerIdText,
+                Failure: IntegrationFailureFactory.FromLegacy(
+                    "metadata",
+                    ProviderName,
+                    ProviderName,
+                    "metadata.provider.resolve",
+                    "configuration",
+                    "TMDb is not configured for exact provider-id lookup."));
+        }
+
+        var result = await GetDetailsByIdAsync(providerId, mediaType, apiKey, cancellationToken);
+        if (result is not null)
+        {
+            var localized = await LocalizeArtworkAsync([result], cancellationToken);
+            return new MetadataProviderRecordLookup(
+                MetadataProviderRecordStatus.Found,
+                ProviderName,
+                providerIdText,
+                localized[0]);
+        }
+
+        var failure = LastFailure;
+        return new MetadataProviderRecordLookup(
+            failure?.HttpStatus == 404
+                ? MetadataProviderRecordStatus.Missing
+                : MetadataProviderRecordStatus.Unavailable,
+            ProviderName,
+            providerIdText,
+            Failure: failure);
+    }
+
     public async Task<IReadOnlyList<MetadataSearchResult>> SearchDirectAsync(
         MetadataLookupRequest request,
         CancellationToken cancellationToken)
@@ -219,6 +311,11 @@ public sealed class TmdbMetadataProvider(
                 await WriteSearchCacheAsync(cacheKey, mediaType, query, result, cancellationToken);
                 return result;
             }
+
+            // A supplied id is an identity assertion, not a search hint. If it
+            // no longer exists, fuzzy matching here can silently relink the
+            // title to an unrelated result with a similar name.
+            return [];
         }
 
         var endpoint = mediaType == "tv" ? "search/tv" : "search/movie";
@@ -398,14 +495,21 @@ public sealed class TmdbMetadataProvider(
         }
 
         var cacheKey = ComputeSha256(remoteUri.ToString());
-        var cachedPath = await ReadArtworkLocalPathAsync(cacheKey, cancellationToken);
-        if (!string.IsNullOrWhiteSpace(cachedPath) && File.Exists(cachedPath))
+        await _artworkCacheMaintenanceGate.WaitAsync(cancellationToken);
+        try
         {
-            return $"/api/metadata/artwork/{cacheKey}";
+            var cachedPath = await ReadArtworkLocalPathAsync(cacheKey, cancellationToken);
+            if (!string.IsNullOrWhiteSpace(cachedPath) && File.Exists(cachedPath))
+            {
+                return $"/api/metadata/artwork/{cacheKey}";
+            }
+        }
+        finally
+        {
+            _artworkCacheMaintenanceGate.Release();
         }
 
         var extension = ResolveArtworkExtension(remoteUri);
-        Directory.CreateDirectory(_artworkRootPath);
         var destinationPath = Path.Combine(_artworkRootPath, $"{cacheKey}{extension}");
 
         // Artwork comes from the same provider and counts against the same
@@ -425,23 +529,271 @@ public sealed class TmdbMetadataProvider(
             using var response = await httpClient.GetAsync(remoteUri, cancellationToken);
             if (!response.IsSuccessStatusCode)
             {
-                await UpsertArtworkCacheAsync(cacheKey, mediaType, remoteUri.ToString(), null, cancellationToken);
+                await _artworkCacheMaintenanceGate.WaitAsync(cancellationToken);
+                try
+                {
+                    await UpsertArtworkCacheAsync(cacheKey, mediaType, remoteUri.ToString(), null, cancellationToken);
+                }
+                finally
+                {
+                    _artworkCacheMaintenanceGate.Release();
+                }
+
                 return remoteUrl;
             }
 
-            await using (var stream = await response.Content.ReadAsStreamAsync(cancellationToken))
-            await using (var output = File.Open(destinationPath, FileMode.Create, FileAccess.Write, FileShare.Read))
+            await _artworkCacheMaintenanceGate.WaitAsync(cancellationToken);
+            try
             {
-                await stream.CopyToAsync(output, cancellationToken);
+                // Another metadata request may have completed while this one
+                // was waiting on the provider. Reuse its file rather than
+                // replacing it or resetting its cache age.
+                var refreshedPath = await ReadArtworkLocalPathAsync(cacheKey, cancellationToken);
+                if (!string.IsNullOrWhiteSpace(refreshedPath) && File.Exists(refreshedPath))
+                {
+                    return $"/api/metadata/artwork/{cacheKey}";
+                }
+
+                Directory.CreateDirectory(_artworkRootPath);
+                await using (var stream = await response.Content.ReadAsStreamAsync(cancellationToken))
+                await using (var output = File.Open(destinationPath, FileMode.Create, FileAccess.Write, FileShare.Read))
+                {
+                    await stream.CopyToAsync(output, cancellationToken);
+                }
+
+                await UpsertArtworkCacheAsync(cacheKey, mediaType, remoteUri.ToString(), destinationPath, cancellationToken);
+            }
+            finally
+            {
+                _artworkCacheMaintenanceGate.Release();
             }
 
-            await UpsertArtworkCacheAsync(cacheKey, mediaType, remoteUri.ToString(), destinationPath, cancellationToken);
             return $"/api/metadata/artwork/{cacheKey}";
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
         }
         catch
         {
-            await UpsertArtworkCacheAsync(cacheKey, mediaType, remoteUri.ToString(), null, cancellationToken);
+            // A failed fetch should be remembered so a broken remote URL is
+            // not treated as a fresh download on every request. Do not let a
+            // best-effort cache write hide the original provider failure.
+            try
+            {
+                await _artworkCacheMaintenanceGate.WaitAsync(CancellationToken.None);
+                try
+                {
+                    await UpsertArtworkCacheAsync(
+                        cacheKey,
+                        mediaType,
+                        remoteUri.ToString(),
+                        null,
+                        CancellationToken.None);
+                }
+                finally
+                {
+                    _artworkCacheMaintenanceGate.Release();
+                }
+            }
+            catch
+            {
+                // The remote URL is still the useful fallback when the cache
+                // database is unavailable.
+            }
+
             return remoteUrl;
+        }
+    }
+
+    /// <summary>
+    /// Removes localized artwork that is no longer referenced by a movie or
+    /// show. The caller supplies references from both catalogues because the
+    /// cache is shared by them.
+    ///
+    /// <para>The safety window is intentionally supplied by the scheduler. A
+    /// refresh can replace a title's artwork while a browser still has the old
+    /// URL, so deleting immediately would turn a normal refresh into a broken
+    /// image. Files are also required to be inside the managed cache directory
+    /// and to have the cache key as their filename before they are touched.</para>
+    /// </summary>
+    public async Task<ArtworkCacheCleanupResult> CleanupArtworkCacheAsync(
+        IReadOnlySet<string> referencedKeys,
+        DateTimeOffset deleteBeforeUtc,
+        CancellationToken cancellationToken)
+    {
+        var referenced = new HashSet<string>(referencedKeys, StringComparer.OrdinalIgnoreCase);
+        var scanned = 0;
+        var deleted = 0;
+        var reclaimedBytes = 0L;
+        var skippedReferenced = 0;
+        var failed = 0;
+
+        await _artworkCacheMaintenanceGate.WaitAsync(cancellationToken);
+        try
+        {
+            await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+                DelunoDatabaseNames.Cache,
+                cancellationToken);
+
+            var candidates = new List<ArtworkCacheEntry>();
+            using (var command = connection.CreateCommand())
+            {
+                command.CommandText =
+                    """
+                    SELECT cache_key, local_path, fetched_utc
+                    FROM artwork_cache
+                    WHERE fetched_utc < @deleteBeforeUtc
+                    ORDER BY fetched_utc ASC;
+                    """;
+                AddParameter(command, "@deleteBeforeUtc", deleteBeforeUtc.ToString("O"));
+
+                using var reader = await command.ExecuteReaderAsync(cancellationToken);
+                while (await reader.ReadAsync(cancellationToken))
+                {
+                    var fetchedText = reader.IsDBNull(2) ? string.Empty : reader.GetString(2);
+                    if (!DateTimeOffset.TryParse(
+                            fetchedText,
+                            CultureInfo.InvariantCulture,
+                            DateTimeStyles.RoundtripKind,
+                            out var fetchedUtc) || fetchedUtc >= deleteBeforeUtc)
+                    {
+                        // An unknown timestamp is not safe to age out.
+                        continue;
+                    }
+
+                    candidates.Add(new ArtworkCacheEntry(
+                        reader.GetString(0),
+                        reader.IsDBNull(1) ? null : reader.GetString(1),
+                        fetchedText,
+                        fetchedUtc));
+                }
+            }
+
+            foreach (var candidate in candidates)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                scanned++;
+
+                if (referenced.Contains(candidate.CacheKey))
+                {
+                    skippedReferenced++;
+                    continue;
+                }
+
+                var filePath = candidate.LocalPath;
+                if (string.IsNullOrWhiteSpace(filePath))
+                {
+                    if (await DeleteArtworkCacheRowAsync(connection, candidate, cancellationToken))
+                    {
+                        deleted++;
+                    }
+
+                    continue;
+                }
+
+                if (!TryGetManagedArtworkPath(candidate.CacheKey, filePath, out var managedPath))
+                {
+                    failed++;
+                    continue;
+                }
+
+                long fileSize = 0;
+                if (File.Exists(managedPath))
+                {
+                    try
+                    {
+                        // A file touched after the database row was fetched is
+                        // potentially in use by a concurrent refresh. Leave it
+                        // for the next pass rather than racing the writer.
+                        if (File.GetLastWriteTimeUtc(managedPath) > deleteBeforeUtc.UtcDateTime)
+                        {
+                            continue;
+                        }
+
+                        fileSize = new FileInfo(managedPath).Length;
+                        File.Delete(managedPath);
+                        reclaimedBytes += fileSize;
+                    }
+                    catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                    {
+                        failed++;
+                        continue;
+                    }
+                }
+
+                try
+                {
+                    if (await DeleteArtworkCacheRowAsync(connection, candidate, cancellationToken))
+                    {
+                        deleted++;
+                    }
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    failed++;
+                }
+            }
+        }
+        finally
+        {
+            _artworkCacheMaintenanceGate.Release();
+        }
+
+        return new ArtworkCacheCleanupResult(
+            scanned,
+            deleted,
+            reclaimedBytes,
+            skippedReferenced,
+            failed);
+    }
+
+    private async Task<bool> DeleteArtworkCacheRowAsync(
+        DbConnection connection,
+        ArtworkCacheEntry candidate,
+        CancellationToken cancellationToken)
+    {
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            """
+            DELETE FROM artwork_cache
+            WHERE cache_key = @cacheKey
+              AND fetched_utc = @fetchedUtc
+              AND local_path IS @localPath;
+            """;
+        AddParameter(command, "@cacheKey", candidate.CacheKey);
+        AddParameter(command, "@fetchedUtc", candidate.FetchedText);
+        AddParameter(command, "@localPath", candidate.LocalPath);
+        return await command.ExecuteNonQueryAsync(cancellationToken) == 1;
+    }
+
+    private bool TryGetManagedArtworkPath(
+        string cacheKey,
+        string localPath,
+        out string managedPath)
+    {
+        managedPath = string.Empty;
+        try
+        {
+            var root = Path.GetFullPath(_artworkRootPath)
+                .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+            var fullPath = Path.GetFullPath(localPath);
+            var rootPrefix = root + Path.DirectorySeparatorChar;
+            if (!fullPath.StartsWith(rootPrefix, StringComparison.OrdinalIgnoreCase) ||
+                !string.Equals(
+                    Path.GetFileNameWithoutExtension(fullPath),
+                    cacheKey,
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                return false;
+            }
+
+            managedPath = fullPath;
+            return true;
+        }
+        catch (Exception ex) when (ex is ArgumentException or IOException or NotSupportedException)
+        {
+            return false;
         }
     }
 
@@ -827,6 +1179,60 @@ public sealed class TmdbMetadataProvider(
         return brokerResponse.Results?.Take(12).ToArray();
     }
 
+    private async Task<MetadataProviderRecordLookup> ResolveBrokerProviderRecordAsync(
+        string brokerUrl,
+        string mediaType,
+        MetadataLookupRequest request,
+        string providerId,
+        CancellationToken cancellationToken)
+    {
+        var query = request.Query?.Trim() ?? providerId;
+        var url =
+            $"{BuildBrokerSearchBaseUrl(brokerUrl)}?mediaType={Uri.EscapeDataString(mediaType)}&query={Uri.EscapeDataString(query)}&providerId={Uri.EscapeDataString(providerId)}";
+        if (request.Year is > 0)
+        {
+            url += $"&year={request.Year.Value.ToString(CultureInfo.InvariantCulture)}";
+        }
+
+        var brokerKey = BuildHostKey(brokerUrl);
+        var response = await GetJsonWithResilienceAsync<MetadataBrokerSearchResponse>(
+            url,
+            $"metadata:broker:{brokerKey}",
+            "metadata.broker.resolve",
+            cancellationToken);
+        if (response is null)
+        {
+            var failure = LastFailure;
+            return new MetadataProviderRecordLookup(
+                failure?.HttpStatus == 404
+                    ? MetadataProviderRecordStatus.Missing
+                    : MetadataProviderRecordStatus.Unavailable,
+                ProviderName,
+                providerId,
+                Failure: failure);
+        }
+
+        var exact = response.Results?.FirstOrDefault(item =>
+            string.Equals(item.ProviderId, providerId, StringComparison.OrdinalIgnoreCase));
+        if (exact is not null)
+        {
+            var localized = await LocalizeArtworkAsync([exact], cancellationToken);
+            return new MetadataProviderRecordLookup(
+                MetadataProviderRecordStatus.Found,
+                ProviderName,
+                providerId,
+                localized[0]);
+        }
+
+        return new MetadataProviderRecordLookup(
+            response.Failure?.HttpStatus == 404
+                ? MetadataProviderRecordStatus.Missing
+                : MetadataProviderRecordStatus.Unavailable,
+            ProviderName,
+            providerId,
+            Failure: response.Failure);
+    }
+
     private static string BuildBrokerSearchBaseUrl(string brokerUrl)
     {
         var trimmed = brokerUrl.TrimEnd('/');
@@ -879,7 +1285,8 @@ public sealed class TmdbMetadataProvider(
             ExternalUrl: BuildTmdbUrl(mediaType, item.Id),
             // A search result carries no runtime; the detail lookup does.
             Popularity: item.Popularity,
-            VoteCount: item.VoteCount);
+            VoteCount: item.VoteCount,
+            TvDbId: externalIds.TvDbId);
     }
 
     private async Task<MetadataSearchResult?> GetDetailsByIdAsync(
@@ -942,6 +1349,7 @@ public sealed class TmdbMetadataProvider(
             Studio: detail.ProductionCompanies?.Select(company => company?.Name).FirstOrDefault(name => !string.IsNullOrWhiteSpace(name)),
             Network: detail.Networks?.Select(network => network?.Name).FirstOrDefault(name => !string.IsNullOrWhiteSpace(name)),
             Collection: string.IsNullOrWhiteSpace(detail.BelongsToCollection?.Name) ? null : detail.BelongsToCollection.Name,
+            CollectionProviderId: detail.BelongsToCollection?.Id?.ToString(CultureInfo.InvariantCulture),
             // Never set here at all, though the crew list it comes out of has
             // been fetched all along. The catalogue has a Director column and
             // sorts on it, so a direct-TMDb library sorted every title as blank
@@ -951,6 +1359,7 @@ public sealed class TmdbMetadataProvider(
             Tagline: string.IsNullOrWhiteSpace(detail.Tagline) ? null : detail.Tagline,
             Homepage: string.IsNullOrWhiteSpace(detail.Homepage) ? null : detail.Homepage,
             OriginalLanguage: string.IsNullOrWhiteSpace(detail.OriginalLanguage) ? null : detail.OriginalLanguage,
+            TvDbId: detail.ExternalIds?.TvDbId,
             Status: string.IsNullOrWhiteSpace(detail.Status) ? null : detail.Status,
             Keywords: detail.Keywords?.Names ?? []);
     }
@@ -1032,6 +1441,42 @@ public sealed class TmdbMetadataProvider(
         return await GetTmdbReleaseDatesAsync(id, apiKey, cancellationToken);
     }
 
+    /// <summary>
+    /// Fetches a movie collection as one provider operation. Broker mode keeps
+    /// the provider call behind the same metadata boundary as title search;
+    /// hybrid mode falls back to TMDb when the broker is unavailable.
+    /// </summary>
+    public async Task<MetadataCollection?> GetMovieCollectionAsync(
+        string providerId,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(providerId)
+            || !int.TryParse(providerId, NumberStyles.Integer, CultureInfo.InvariantCulture, out var id))
+        {
+            return null;
+        }
+
+        var config = await GetMetadataConfigurationAsync(cancellationToken);
+        if (!string.IsNullOrWhiteSpace(config.BrokerUrl))
+        {
+            var fromBroker = await TryBrokerCollectionAsync(config.BrokerUrl, id, cancellationToken);
+            if (fromBroker is not null)
+            {
+                return fromBroker;
+            }
+
+            if (config.ProviderMode == "broker")
+            {
+                return null;
+            }
+        }
+
+        var apiKey = config.TmdbApiKey ?? await GetApiKeyAsync(cancellationToken);
+        return string.IsNullOrWhiteSpace(apiKey)
+            ? null
+            : await GetTmdbCollectionAsync(id, apiKey, cancellationToken);
+    }
+
     private string BuildGatewayBaseUrl(string brokerUrl)
     {
         var trimmed = brokerUrl.TrimEnd('/');
@@ -1097,6 +1542,85 @@ public sealed class TmdbMetadataProvider(
             ParseDateOnly(response.Digital),
             ParseDateOnly(response.Physical));
     }
+
+    private async Task<MetadataCollection?> TryBrokerCollectionAsync(
+        string brokerUrl,
+        int id,
+        CancellationToken cancellationToken)
+    {
+        var url = $"{BuildGatewayBaseUrl(brokerUrl)}/movie/{id.ToString(CultureInfo.InvariantCulture)}/collection";
+        var response = await GetJsonWithResilienceAsync<BrokerCollectionResponse>(
+            url,
+            $"metadata:broker:collection:{BuildHostKey(brokerUrl)}",
+            "metadata.broker.collection",
+            cancellationToken);
+
+        if (response is null || string.IsNullOrWhiteSpace(response.Name))
+        {
+            return null;
+        }
+
+        return new MetadataCollection(
+            Provider: ProviderName,
+            ProviderId: response.ProviderId?.Trim() ?? id.ToString(CultureInfo.InvariantCulture),
+            Name: response.Name.Trim(),
+            Overview: NullIfBlank(response.Overview),
+            PosterUrl: NullIfBlank(response.PosterUrl),
+            BackdropUrl: NullIfBlank(response.BackdropUrl),
+            Movies: (response.Movies ?? [])
+                .Where(movie => !string.IsNullOrWhiteSpace(movie.ProviderId) && !string.IsNullOrWhiteSpace(movie.Title))
+                .Select(movie => new MetadataCollectionMovie(
+                    movie.ProviderId!.Trim(),
+                    movie.Title!.Trim(),
+                    movie.Year,
+                    NullIfBlank(movie.Overview),
+                    NullIfBlank(movie.PosterUrl),
+                    NullIfBlank(movie.BackdropUrl),
+                    NullIfBlank(movie.ExternalUrl),
+                    NullIfBlank(movie.ImdbId)))
+                .ToArray());
+    }
+
+    private async Task<MetadataCollection?> GetTmdbCollectionAsync(
+        int id,
+        string apiKey,
+        CancellationToken cancellationToken)
+    {
+        var response = await GetJsonWithResilienceAsync<TmdbCollectionResponse>(
+            $"https://api.themoviedb.org/3/collection/{id.ToString(CultureInfo.InvariantCulture)}?api_key={Uri.EscapeDataString(apiKey)}",
+            "metadata:tmdb:collection",
+            "metadata.tmdb.collection",
+            cancellationToken);
+
+        if (response is null || string.IsNullOrWhiteSpace(response.Name))
+        {
+            return null;
+        }
+
+        return new MetadataCollection(
+            Provider: ProviderName,
+            ProviderId: response.Id.ToString(CultureInfo.InvariantCulture),
+            Name: response.Name.Trim(),
+            Overview: NullIfBlank(response.Overview),
+            PosterUrl: BuildTmdbArtworkUrl(response.PosterPath, ArtworkSizes.Poster),
+            BackdropUrl: BuildTmdbArtworkUrl(response.BackdropPath, ArtworkSizes.Backdrop),
+            Movies: (response.Parts ?? [])
+                .Where(movie => movie.Id > 0 && !string.IsNullOrWhiteSpace(movie.Title))
+                .Select(movie => new MetadataCollectionMovie(
+                    movie.Id.ToString(CultureInfo.InvariantCulture),
+                    movie.Title!.Trim(),
+                    TryParseYear(movie.ReleaseDate),
+                    NullIfBlank(movie.Overview),
+                    BuildTmdbArtworkUrl(movie.PosterPath, ArtworkSizes.Poster),
+                    BuildTmdbArtworkUrl(movie.BackdropPath, ArtworkSizes.Backdrop),
+                    BuildTmdbUrl("movie", movie.Id)))
+                .ToArray());
+    }
+
+    private static string? BuildTmdbArtworkUrl(string? path, string size)
+        => string.IsNullOrWhiteSpace(path)
+            ? null
+            : $"https://image.tmdb.org/t/p/{size}{path}";
 
     private async Task<IReadOnlyList<MetadataSeason>> GetTmdbCatalogueAsync(
         int id,
@@ -1239,6 +1763,40 @@ public sealed class TmdbMetadataProvider(
         [property: JsonPropertyName("digital")] string? Digital,
         [property: JsonPropertyName("physical")] string? Physical);
 
+    private sealed record BrokerCollectionResponse(
+        [property: JsonPropertyName("providerId")] string? ProviderId,
+        [property: JsonPropertyName("name")] string? Name,
+        [property: JsonPropertyName("overview")] string? Overview,
+        [property: JsonPropertyName("posterUrl")] string? PosterUrl,
+        [property: JsonPropertyName("backdropUrl")] string? BackdropUrl,
+        [property: JsonPropertyName("movies")] IReadOnlyList<BrokerCollectionMovie>? Movies);
+
+    private sealed record BrokerCollectionMovie(
+        [property: JsonPropertyName("providerId")] string? ProviderId,
+        [property: JsonPropertyName("title")] string? Title,
+        [property: JsonPropertyName("year")] int? Year,
+        [property: JsonPropertyName("overview")] string? Overview,
+        [property: JsonPropertyName("posterUrl")] string? PosterUrl,
+        [property: JsonPropertyName("backdropUrl")] string? BackdropUrl,
+        [property: JsonPropertyName("externalUrl")] string? ExternalUrl,
+        [property: JsonPropertyName("imdbId")] string? ImdbId);
+
+    private sealed record TmdbCollectionResponse(
+        [property: JsonPropertyName("id")] int Id,
+        [property: JsonPropertyName("name")] string? Name,
+        [property: JsonPropertyName("overview")] string? Overview,
+        [property: JsonPropertyName("poster_path")] string? PosterPath,
+        [property: JsonPropertyName("backdrop_path")] string? BackdropPath,
+        [property: JsonPropertyName("parts")] IReadOnlyList<TmdbCollectionPart>? Parts);
+
+    private sealed record TmdbCollectionPart(
+        [property: JsonPropertyName("id")] int Id,
+        [property: JsonPropertyName("title")] string? Title,
+        [property: JsonPropertyName("release_date")] string? ReleaseDate,
+        [property: JsonPropertyName("overview")] string? Overview,
+        [property: JsonPropertyName("poster_path")] string? PosterPath,
+        [property: JsonPropertyName("backdrop_path")] string? BackdropPath);
+
     private sealed record TmdbSeriesSeasons(
         [property: JsonPropertyName("seasons")] IReadOnlyList<TmdbSeasonSummary>? Seasons);
 
@@ -1319,9 +1877,21 @@ public sealed class TmdbMetadataProvider(
                 operation,
                 MaxMetadataThrottleWait);
 
+            Interlocked.Exchange(
+                ref _lastFailure,
+                IntegrationFailureFactory.FromLegacy(
+                    "metadata",
+                    key,
+                    operation,
+                    operation,
+                    "rate-limited",
+                    "The metadata request was deferred because the provider budget was exhausted.",
+                    retryAfterUtc: timeProvider.GetUtcNow().Add(MaxMetadataThrottleWait)));
+
             return default;
         }
 
+        IntegrationFailure? boundaryFailure = null;
         var result = await resiliencePolicy.ExecuteAsync(
             new IntegrationResilienceRequest(key, operation, FailureThreshold: 2),
             async token =>
@@ -1339,6 +1909,13 @@ public sealed class TmdbMetadataProvider(
                                 response.StatusCode);
                         }
 
+                        boundaryFailure = IntegrationFailureFactory.FromHttpStatus(
+                            "metadata",
+                            key,
+                            operation,
+                            operation,
+                            response.StatusCode,
+                            $"{operation} returned HTTP {(int)response.StatusCode}.");
                         return default;
                     }
 
@@ -1346,6 +1923,12 @@ public sealed class TmdbMetadataProvider(
                 }
                 catch (Exception exception) when (exception is not HttpRequestException and not TaskCanceledException and not IOException)
                 {
+                    boundaryFailure = IntegrationFailureFactory.FromException(
+                        "metadata",
+                        key,
+                        operation,
+                        operation,
+                        exception);
                     return default;
                 }
             },
@@ -1353,6 +1936,25 @@ public sealed class TmdbMetadataProvider(
                 ? IntegrationResilienceOutcome.NonRetryableFailure
                 : IntegrationResilienceOutcome.Success,
             cancellationToken);
+
+        if (result.Value is null)
+        {
+            Interlocked.Exchange(
+                ref _lastFailure,
+                result.Failure
+                ?? boundaryFailure
+                ?? IntegrationFailureFactory.FromLegacy(
+                    "metadata",
+                    key,
+                    operation,
+                    operation,
+                    "unknown",
+                    "The metadata provider returned no usable response."));
+        }
+        else
+        {
+            Interlocked.Exchange(ref _lastFailure, null);
+        }
 
         return result.Value;
     }
@@ -1686,6 +2288,12 @@ public sealed class TmdbMetadataProvider(
         return Convert.ToHexString(bytes).ToLowerInvariant();
     }
 
+    private sealed record ArtworkCacheEntry(
+        string CacheKey,
+        string? LocalPath,
+        string FetchedText,
+        DateTimeOffset FetchedUtc);
+
     private sealed record MetadataProviderConfiguration(
         string ProviderMode,
         string? BrokerUrl,
@@ -1696,7 +2304,8 @@ public sealed class TmdbMetadataProvider(
         string Provider,
         string Mode,
         int ResultCount,
-        IReadOnlyList<MetadataSearchResult> Results);
+        IReadOnlyList<MetadataSearchResult> Results,
+        IntegrationFailure? Failure = null);
 
     private sealed record TmdbSearchResponse(
         [property: JsonPropertyName("results")] IReadOnlyList<TmdbSearchItem>? Results);
@@ -1718,7 +2327,8 @@ public sealed class TmdbMetadataProvider(
         [property: JsonPropertyName("genre_ids")] IReadOnlyList<int>? GenreIds);
 
     private sealed record TmdbExternalIds(
-        [property: JsonPropertyName("imdb_id")] string? ImdbId);
+        [property: JsonPropertyName("imdb_id")] string? ImdbId,
+        [property: JsonPropertyName("tvdb_id")] string? TvDbId = null);
 
     private sealed record TmdbDetailItem(
         [property: JsonPropertyName("id")] int Id,
@@ -1775,6 +2385,7 @@ public sealed class TmdbMetadataProvider(
 
     /// <summary>Anything TMDb returns as an object with a name.</summary>
     private sealed record TmdbNamed(
+        [property: JsonPropertyName("id")] int? Id,
         [property: JsonPropertyName("name")] string? Name);
 
     private sealed record TmdbCredits(

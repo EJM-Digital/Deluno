@@ -8,7 +8,8 @@ namespace Deluno.Api.Health;
 public sealed class DelunoReadinessService(
     IDelunoDatabaseConnectionFactory databaseConnectionFactory,
     IOptions<StoragePathOptions> storageOptions,
-    TimeProvider timeProvider)
+    TimeProvider timeProvider,
+    IDelunoStartupGate? startupGate = null)
     : IDelunoReadinessService
 {
     private static readonly string[] RequiredDatabases =
@@ -33,6 +34,11 @@ public sealed class DelunoReadinessService(
             checks.Add(await CheckDatabaseAsync(databaseName, cancellationToken));
         }
 
+        if (startupGate is not null)
+        {
+            checks.Add(CheckSchemaReadiness(startupGate));
+        }
+
         checks.Add(await CheckStorageWritableAsync(cancellationToken));
         checks.Add(await CheckWorkerHeartbeatAsync(checkedUtc, cancellationToken));
         checks.Add(await CheckQueuePressureAsync(checkedUtc, cancellationToken));
@@ -43,6 +49,28 @@ public sealed class DelunoReadinessService(
             Status: ready ? "ready" : "not_ready",
             CheckedUtc: checkedUtc,
             Checks: checks);
+    }
+
+    private static ReadinessCheckResult CheckSchemaReadiness(IDelunoStartupGate startupGate)
+    {
+        if (startupGate.IsReady)
+        {
+            return Ready(
+                "schema:migrations",
+                "All Deluno database migrations are complete.",
+                new Dictionary<string, object?>());
+        }
+
+        return NotReady(
+            "schema:migrations",
+            startupGate.FailedDatabases.Count > 0
+                ? "One or more Deluno database migrations failed."
+                : "Deluno database migrations are still running.",
+            new Dictionary<string, object?>
+            {
+                ["pendingDatabases"] = startupGate.PendingDatabases,
+                ["failedDatabases"] = startupGate.FailedDatabases
+            });
     }
 
     private async Task<ReadinessCheckResult> CheckDatabaseAsync(

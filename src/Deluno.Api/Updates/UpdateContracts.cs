@@ -49,7 +49,9 @@ public sealed record UpdateStatusResponse(
     DateTimeOffset? LastDownloadedUtc,
     string Message,
     string? LastError,
-    IReadOnlyList<string> Notes);
+    IReadOnlyList<string> Notes,
+    string? CurrentImageRef = null,
+    string? CurrentImageDigest = null);
 
 public sealed record UpdatePreferencesResponse(
     string Mode,

@@ -5,6 +5,7 @@ using Deluno.Jobs.Data;
 using Deluno.Libraries.Data;
 using Deluno.Quality.Data;
 using Deluno.Jobs.Contracts;
+using Deluno.Libraries.Contracts;
 using Deluno.Series.Contracts;
 using Deluno.Series.Data;
 using Deluno.Worker.Jobs;
@@ -39,6 +40,143 @@ public sealed class SearchJobHandlerTests
         var message = await handler.HandleAsync(TestJobs.Create("episode.search", payloadJson: "not json"), CancellationToken.None);
 
         Assert.Equal("Finished searching for episode.", message);
+    }
+
+    [Fact]
+    public async Task EpisodeSearchJobHandler_resolves_current_series_numbering_for_automatic_search()
+    {
+        var librariesRepository = new Mock<ILibrariesRepository>();
+        var qualityRepository = new Mock<IQualityRepository>();
+        var seriesCatalogRepository = new Mock<ISeriesCatalogRepository>();
+        var jobQueueRepository = new Mock<IJobQueueRepository>();
+        var acquisitionPipeline = new Mock<IAcquisitionDecisionPipeline>();
+        var downloadClientGrabService = new Mock<IDownloadClientGrabService>();
+        var activityFeedRepository = new Mock<IActivityFeedRepository>();
+
+        librariesRepository
+            .Setup(repository => repository.GetLibraryRoutingAsync("library-tv", It.IsAny<CancellationToken>()))
+            .ReturnsAsync((LibraryRoutingSnapshot?)null);
+        librariesRepository
+            .Setup(repository => repository.ListLibrariesAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync([]);
+        seriesCatalogRepository
+            .Setup(repository => repository.GetEpisodeTargetQualityAsync("episode-1", "library-tv", It.IsAny<CancellationToken>()))
+            .ReturnsAsync((string?)null);
+        seriesCatalogRepository
+            .Setup(repository => repository.GetEpisodeCurrentQualityAsync("episode-1", It.IsAny<CancellationToken>()))
+            .ReturnsAsync((string?)null);
+        seriesCatalogRepository
+            .Setup(repository => repository.GetEpisodeFilePathAsync("episode-1", It.IsAny<CancellationToken>()))
+            .ReturnsAsync((string?)null);
+
+        var episode = new SeriesEpisodeInventoryItem(
+            "episode-1",
+            1,
+            1,
+            "Pilot",
+            null,
+            null,
+            Monitored: true,
+            HasFile: false,
+            WantedStatus: "missing",
+            WantedReason: "missing",
+            QualityCutoffMet: false,
+            CurrentQuality: null,
+            TargetQuality: "WEB 1080p",
+            PreventLowerQualityReplacements: false,
+            LastQualityDeltaDecision: null,
+            LastSearchUtc: null,
+            NextEligibleSearchUtc: null,
+            UpdatedUtc: DateTimeOffset.UtcNow,
+            AbsoluteNumber: 101,
+            NumberingSource: SeriesNumberingSources.Provider);
+        seriesCatalogRepository
+            .Setup(repository => repository.GetInventoryDetailAsync("series-1", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new SeriesInventoryDetail(
+                "series-1",
+                "Anime Example",
+                2024,
+                1,
+                1,
+                0,
+                [episode],
+                new SeriesNumberingDetail(
+                    "series-1",
+                    SeriesTypes.Anime,
+                    SeriesNumberingSchemes.Absolute,
+                    SeriesNumberingSources.Provider,
+                    DateTimeOffset.UtcNow,
+                    [])));
+
+        AcquisitionDecisionRequest? capturedRequest = null;
+        acquisitionPipeline
+            .Setup(pipeline => pipeline.PlanAsync(It.IsAny<AcquisitionDecisionRequest>(), It.IsAny<CancellationToken>()))
+            .Callback<AcquisitionDecisionRequest, CancellationToken>((request, _) => capturedRequest = request)
+            .ReturnsAsync(new AcquisitionDecisionPlan(
+                new MediaSearchPlan(null, [], "no sources"),
+                Deluno.Quality.MediaPolicyCatalog.CurrentVersion,
+                "checked",
+                "No sources.",
+                0,
+                0,
+                null,
+                false,
+                null,
+                []));
+        seriesCatalogRepository
+            .Setup(repository => repository.RecordSearchAttemptAsync(
+                "series-1",
+                "episode-1",
+                "library-tv",
+                "automatic",
+                "checked",
+                It.IsAny<DateTimeOffset>(),
+                It.IsAny<DateTimeOffset>(),
+                It.IsAny<string>(),
+                null,
+                null,
+                It.IsAny<string?>(),
+                It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+        activityFeedRepository
+            .Setup(repository => repository.RecordActivityAsync(
+                "episode.search.executed",
+                It.IsAny<string>(),
+                null,
+                It.IsAny<string>(),
+                "episode",
+                "episode-1",
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync((ActivityEventItem)null!);
+
+        var handler = new EpisodeSearchJobHandler(
+            librariesRepository.Object,
+            qualityRepository.Object,
+            seriesCatalogRepository.Object,
+            jobQueueRepository.Object,
+            acquisitionPipeline.Object,
+            downloadClientGrabService.Object,
+            activityFeedRepository.Object,
+            TimeProvider.System);
+
+        var payload = JsonSerializer.Serialize(new
+        {
+            episodeId = "episode-1",
+            seriesId = "series-1",
+            libraryId = "library-tv",
+            seasonNumber = 1,
+            episodeNumber = 1,
+            title = "Pilot"
+        });
+
+        await handler.HandleAsync(TestJobs.Create("episode.search", payloadJson: payload), CancellationToken.None);
+
+        Assert.NotNull(capturedRequest);
+        Assert.Equal(SeriesNumberingSchemes.Absolute, capturedRequest!.NumberingScheme);
+        Assert.Equal(101, capturedRequest.AbsoluteNumber);
+        Assert.Null(capturedRequest.AirDate);
+        Assert.Null(capturedRequest.SceneSeasonNumber);
+        Assert.Null(capturedRequest.SceneEpisodeNumber);
     }
 
     [Fact]

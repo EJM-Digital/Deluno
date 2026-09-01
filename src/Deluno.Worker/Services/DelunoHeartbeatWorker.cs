@@ -2,11 +2,14 @@ using Deluno.Contracts;
 using Deluno.Jobs.Data;
 using Deluno.Media;
 using Deluno.Integrations.DownloadClients;
+using Deluno.Integrations.Metadata;
 using Deluno.Jobs.Contracts;
+using Deluno.Libraries.Contracts;
 using Deluno.Libraries.Data;
 using Deluno.Movies.Data;
 using Deluno.Platform.Contracts;
 using Deluno.Platform.Data;
+using Deluno.Platform;
 using Deluno.Recovery.Contracts;
 using Deluno.Series.Data;
 using Deluno.Worker.Intake;
@@ -182,237 +185,227 @@ public sealed class DelunoHeartbeatWorker(
             lane.Name,
             string.Join(", ", lane.JobTypes));
 
-        // Drained a full batch last time round — more work is likely still
-        // queued, so skip the wait and go straight back to leasing instead of
-        // pacing a backlog by the interval.
-        //
-        // <b>True to begin with, and that is not a detail.</b> Nothing signals a
-        // job that was already queued when the process started, so a lane that
-        // waited first would sit through its whole backstop before looking — and
-        // once the backstop became five minutes, a restart stranded the queue
-        // for that long. Caught on the rig: an import enqueued before a deploy
-        // was still queued five minutes after the host came back. A lane's first
-        // act is to look.
-        var drainImmediately = true;
+        var runner = new LaneRunner();
+        await runner.RunAsync(
+            lane,
+            gate,
+            (availableSlots, cancellationToken) => RunLaneTickAsync(lane, availableSlots, cancellationToken),
+            (job, cancellationToken) => RunJobAsync(lane, job, cancellationToken),
+            stoppingToken);
+    }
 
-        // How long to wait before looking again, when nothing wakes this lane
-        // first. Set from the lane's own next scheduled job at the end of each
-        // idle tick, so a lane sleeps exactly as long as it should rather than
-        // asking every thirty seconds whether anything has changed.
-        var sleepFor = lane.Interval;
+    private async Task<LaneTickResult> RunLaneTickAsync(
+        JobLane lane,
+        int availableSlots,
+        CancellationToken stoppingToken)
+    {
+        using var scope = scopeFactory.CreateScope();
+        var services = scope.ServiceProvider;
 
-        // What this lane is running right now. Kept across ticks, so a tick can
-        // top the lane up rather than waiting for the previous batch to drain.
-        var inFlight = new List<Task>();
+        // Resolve only what the gate needs. The rest of the graph is resolved
+        // further down, once there is actually work to do.
+        var jobQueueRepository = services.GetRequiredService<IJobQueueRepository>();
+        var platformSettingsRepository = services.GetRequiredService<IPlatformSettingsRepository>();
+        var processorRepository = services.GetRequiredService<IProcessorRepository>();
+        var librariesRepository = services.GetRequiredService<ILibrariesRepository>();
 
-        while (!stoppingToken.IsCancellationRequested)
+        // Liveness is independent of whether background automation is enabled.
+        await HeartbeatIfDueAsync(jobQueueRepository, stoppingToken);
+
+        var settings = await ReadSettingsAsync(platformSettingsRepository, stoppingToken);
+        if (!settings.AutoStartJobs)
         {
-            if (!drainImmediately)
-            {
-                // Signal first, then this lane's own next due time, and the
-                // backstop only if there is no such time. Nothing here is shared
-                // with another kind of work — which is the point: a lane wakes
-                // when its own work is ready and not when somebody else's tick
-                // came round.
-                await gate.WaitAsync(sleepFor, stoppingToken);
-            }
+            logger.LogDebug("Worker {WorkerId} lane {LaneName} tick with auto-start disabled.", _workerId, lane.Name);
+            return LaneTickResult.Empty(lane.Interval);
+        }
 
-            drainImmediately = false;
-            sleepFor = lane.Interval;
+        var jobScheduler = services.GetRequiredService<IJobScheduler>();
+        var workPlanner = services.GetRequiredService<WorkPlanner>();
+        var downloadClientTelemetryService = services.GetRequiredService<IDownloadClientTelemetryService>();
+        var processorConnectionService = services.GetRequiredService<IProcessorConnectionService>();
+        var movieCatalogRepository = services.GetRequiredService<IMovieCatalogRepository>();
+        var movieCollectionsRepository = services.GetRequiredService<IMovieCollectionsRepository>();
+        var seriesCatalogRepository = services.GetRequiredService<ISeriesCatalogRepository>();
+        var activityFeedRepository = services.GetRequiredService<IActivityFeedRepository>();
+        var intakeSyncService = services.GetRequiredService<IIntakeSyncService>();
 
-            using var scope = scopeFactory.CreateScope();
-            var services = scope.ServiceProvider;
+        if (lane.PlanAutomation)
+        {
+            var libraries = await librariesRepository.ListLibrariesAsync(stoppingToken);
+            var automatedViews = await librariesRepository.ListAutomatedLibraryViewsAsync(stoppingToken);
+            var automationPlans = libraries
+                .Select(library => new LibraryAutomationPlanItem(
+                    LibraryId: library.Id,
+                    LibraryName: library.Name,
+                    MediaType: library.MediaType,
+                    AutoSearchEnabled: library.AutoSearchEnabled,
+                    MissingSearchEnabled: library.MissingSearchEnabled,
+                    UpgradeSearchEnabled: library.UpgradeSearchEnabled,
+                    SearchIntervalHours: library.SearchIntervalHours,
+                    RetryDelayHours: library.RetryDelayHours,
+                    MaxItemsPerRun: library.MaxItemsPerRun,
+                    SearchWindowStartHour: library.SearchWindowStartHour,
+                    SearchWindowEndHour: library.SearchWindowEndHour,
+                    WantsSubtitles: library.SubtitleLanguages is { Count: > 0 },
+                    SearchScopes: SearchScopesFor(library, automatedViews)))
+                .ToArray();
 
-            // Resolve only what the gate needs. The rest of the graph is
-            // resolved further down, once there is actually work to do — most
-            // ticks on an idle install get no further than the next few lines.
-            var jobQueueRepository = services.GetRequiredService<IJobQueueRepository>();
-            var platformSettingsRepository = services.GetRequiredService<IPlatformSettingsRepository>();
-            var processorRepository = services.GetRequiredService<IProcessorRepository>();
-            var librariesRepository = services.GetRequiredService<ILibrariesRepository>();
+            await jobQueueRepository.PlanLibrarySearchesAsync(automationPlans, stoppingToken);
+            await workPlanner.PlanMovieCollectionSyncAsync(
+                jobScheduler,
+                movieCollectionsRepository,
+                timeProvider,
+                stoppingToken);
+            await workPlanner.PlanIntakeAutomationAsync(intakeSyncService, stoppingToken);
+            await workPlanner.PlanMediaProbeAsync(jobScheduler, stoppingToken);
+        }
 
-            // Liveness is independent of whether background automation is
-            // enabled. A paused installation is still running and must not
-            // look unavailable to the readiness endpoint.
-            await HeartbeatIfDueAsync(jobQueueRepository, stoppingToken);
-
-            var settings = await ReadSettingsAsync(platformSettingsRepository, stoppingToken);
-            if (!settings.AutoStartJobs)
-            {
-                logger.LogDebug("Worker {WorkerId} lane {LaneName} tick with auto-start disabled.", _workerId, lane.Name);
-                continue;
-            }
-
-            var jobScheduler = services.GetRequiredService<IJobScheduler>();
-            var workPlanner = services.GetRequiredService<WorkPlanner>();
-            var downloadClientTelemetryService = services.GetRequiredService<IDownloadClientTelemetryService>();
-            var processorConnectionService = services.GetRequiredService<IProcessorConnectionService>();
-            var movieCatalogRepository = services.GetRequiredService<IMovieCatalogRepository>();
-            var seriesCatalogRepository = services.GetRequiredService<ISeriesCatalogRepository>();
-            var activityFeedRepository = services.GetRequiredService<IActivityFeedRepository>();
-            var intakeSyncService = services.GetRequiredService<IIntakeSyncService>();
-
-            if (lane.PlanAutomation)
-            {
-                var libraries = await librariesRepository.ListLibrariesAsync(stoppingToken);
-                var automationPlans = libraries
-                    .Select(library => new LibraryAutomationPlanItem(
-                        LibraryId: library.Id,
-                        LibraryName: library.Name,
-                        MediaType: library.MediaType,
-                        AutoSearchEnabled: library.AutoSearchEnabled,
-                        MissingSearchEnabled: library.MissingSearchEnabled,
-                        UpgradeSearchEnabled: library.UpgradeSearchEnabled,
-                        SearchIntervalHours: library.SearchIntervalHours,
-                        RetryDelayHours: library.RetryDelayHours,
-                        MaxItemsPerRun: library.MaxItemsPerRun,
-                        SearchWindowStartHour: library.SearchWindowStartHour,
-                        SearchWindowEndHour: library.SearchWindowEndHour,
-                        WantsSubtitles: library.SubtitleLanguages is { Count: > 0 }))
-                    .ToArray();
-
-                await jobQueueRepository.PlanLibrarySearchesAsync(automationPlans, stoppingToken);
-                await workPlanner.PlanIntakeAutomationAsync(intakeSyncService, stoppingToken);
-
-                // Reads the files themselves. Claimed separately and queued
-                // separately, so it neither waits on nor blocks anything above
-                // it.
-                await workPlanner.PlanMediaProbeAsync(jobScheduler, stoppingToken);
-            }
-
-            if (lane.PlanImports)
-            {
-                await workPlanner.PlanLibraryImportResumeAsync(
-                    jobScheduler,
-                    services.GetRequiredService<IExistingLibraryImportService>(),
-                    timeProvider,
-                    stoppingToken);
-
-                await workPlanner.PlanImportAutomationAsync(
-                    jobScheduler,
-                    processorRepository,
-                    librariesRepository,
-                    downloadClientTelemetryService,
-                    processorConnectionService,
-                    activityFeedRepository,
-                    movieCatalogRepository,
-                    seriesCatalogRepository,
-                    timeProvider,
-                    stoppingToken);
-
-                // After importing, let go of anything that has finished sharing.
-                await workPlanner.PlanSharingReclaimAsync(
-                    downloadClientTelemetryService,
-                    scope.ServiceProvider.GetRequiredService<IPlatformSettingsRepository>(),
-                    scope.ServiceProvider.GetRequiredService<IConnectionsRepository>(),
-                    librariesRepository,
-                    activityFeedRepository,
-                    scope.ServiceProvider.GetRequiredService<IDownloadSharingRepository>(),
-                    movieCatalogRepository,
-                    seriesCatalogRepository,
-                    scope.ServiceProvider.GetRequiredService<SharingReclaimService>(),
-                    stoppingToken);
-            }
-
-            if (lane.PlanMaintenance)
-            {
-                var cleanupService = scope.ServiceProvider.GetRequiredService<IDispatchCleanupService>();
-                var downloadRetryService = scope.ServiceProvider.GetRequiredService<IDownloadRetryService>();
-                await workPlanner.RunDispatchCleanupAsync(cleanupService, stoppingToken);
-                await workPlanner.RunDispatchRetryPassAsync(downloadRetryService, stoppingToken);
-                await workPlanner.RunDownloadStateReconcileAsync(
-                    scope.ServiceProvider.GetRequiredService<IDownloadStateReconciler>(),
-                    stoppingToken);
-                await workPlanner.PlanMetadataRefreshAutomationAsync(
-                    jobScheduler,
-                    movieCatalogRepository,
-                    seriesCatalogRepository,
-                    timeProvider,
-                    stoppingToken);
-            }
-
-            // A planning-only lane has nothing to execute.
-            if (lane.JobTypes.Count == 0)
-            {
-                continue;
-            }
-
-            // Lease only what there is room to start.
-            //
-            // This used to lease a whole batch and then `await` all of it before
-            // going round again, which made the batch a **barrier**: a lane with
-            // one slow job sat with its other slots empty and leased nothing new
-            // until that job finished. A single search stuck behind an
-            // unresponsive indexer held up every search behind it, and a large
-            // import held up fifteen small ones — not because anything was
-            // contended, but because they were in the same batch.
-            //
-            // Now each lane keeps up to MaxConcurrency jobs in flight and tops
-            // up as each one finishes. Nothing waits on anything except a real
-            // shortage of slots.
-            inFlight.RemoveAll(task => task.IsCompleted);
-            var freeSlots = lane.MaxConcurrency - inFlight.Count;
-            if (freeSlots <= 0)
-            {
-                // Every slot busy. Come back when one frees rather than leasing
-                // work this lane has nowhere to run.
-                continue;
-            }
-
-            var jobs = await jobQueueRepository.LeaseBatchAsync(
-                $"{_workerId}-{lane.Name}",
-                TimeSpan.FromMinutes(2),
-                lane.JobTypes,
-                Math.Min(lane.BatchSize, freeSlots),
+        if (lane.PlanImports)
+        {
+            await workPlanner.PlanLibraryImportResumeAsync(
+                jobScheduler,
+                services.GetRequiredService<IExistingLibraryImportService>(),
+                timeProvider,
                 stoppingToken);
 
-            if (jobs.Count == 0)
-            {
-                // Nothing to run. Rather than come back on a tick and ask again,
-                // find out when there could be something and sleep until then —
-                // a signal still wakes it sooner. On an idle install this is one
-                // indexed lookup and then silence, where the fixed tick was a
-                // lease query per lane per thirty seconds for ever.
-                var nextDue = await jobQueueRepository.NextDueUtcAsync(lane.JobTypes, stoppingToken);
-                if (nextDue is not null)
-                {
-                    var until = nextDue.Value - timeProvider.GetUtcNow();
-                    // Never longer than the backstop, and never a negative or
-                    // zero wait — a due time in the past means something is
-                    // holding it back, and spinning on that would be worse than
-                    // the polling this replaced.
-                    sleepFor = until <= TimeSpan.Zero
-                        ? TimeSpan.FromSeconds(1)
-                        : until < lane.Interval ? until : lane.Interval;
-                }
+            await workPlanner.PlanImportAutomationAsync(
+                jobScheduler,
+                processorRepository,
+                librariesRepository,
+                downloadClientTelemetryService,
+                processorConnectionService,
+                activityFeedRepository,
+                movieCatalogRepository,
+                seriesCatalogRepository,
+                timeProvider,
+                stoppingToken);
 
-                logger.LogDebug(
-                    "Worker {WorkerId} lane {LaneName} has nothing to run; sleeping {SleepSeconds}s.",
-                    _workerId,
-                    lane.Name,
-                    (int)sleepFor.TotalSeconds);
-                continue;
-            }
-
-            // Took everything offered, so there may well be more queued. Go
-            // straight round rather than pacing a backlog by the interval.
-            if (jobs.Count == Math.Min(lane.BatchSize, freeSlots))
-            {
-                drainImmediately = true;
-            }
-
-            foreach (var job in jobs)
-            {
-                inFlight.Add(RunJobAsync(lane, job, stoppingToken));
-            }
+            await workPlanner.PlanSharingReclaimAsync(
+                downloadClientTelemetryService,
+                services.GetRequiredService<IPlatformSettingsRepository>(),
+                services.GetRequiredService<IConnectionsRepository>(),
+                librariesRepository,
+                activityFeedRepository,
+                services.GetRequiredService<IDownloadSharingRepository>(),
+                movieCatalogRepository,
+                seriesCatalogRepository,
+                services.GetRequiredService<SharingReclaimService>(),
+                stoppingToken);
         }
 
-        // Shutdown: let what is running finish rather than abandoning leases
-        // that would then have to be recovered on the next start.
-        if (inFlight.Count > 0)
+        if (lane.PlanMaintenance)
         {
-            await Task.WhenAll(inFlight);
+            var cleanupService = services.GetRequiredService<IDispatchCleanupService>();
+            var downloadRetryService = services.GetRequiredService<IDownloadRetryService>();
+            await workPlanner.RunDispatchCleanupAsync(cleanupService, stoppingToken);
+            await workPlanner.RunDispatchRetryPassAsync(downloadRetryService, stoppingToken);
+            await workPlanner.RunDownloadStateReconcileAsync(
+                services.GetRequiredService<IDownloadStateReconciler>(),
+                stoppingToken);
+            await workPlanner.PlanMetadataRefreshAutomationAsync(
+                jobScheduler,
+                movieCatalogRepository,
+                seriesCatalogRepository,
+                timeProvider,
+                stoppingToken);
+            await workPlanner.RunArtworkCacheCleanupAsync(
+                services.GetRequiredService<TmdbMetadataProvider>(),
+                movieCatalogRepository,
+                seriesCatalogRepository,
+                timeProvider,
+                activityFeedRepository,
+                stoppingToken);
+            await workPlanner.RunRecycleBinCleanupAsync(
+                services.GetRequiredService<IRecycleBinService>(),
+                stoppingToken);
         }
+
+        if (lane.JobTypes.Count == 0)
+        {
+            return LaneTickResult.Empty(lane.Interval);
+        }
+
+        var jobs = await jobQueueRepository.LeaseBatchAsync(
+            $"{_workerId}-{lane.Name}",
+            TimeSpan.FromMinutes(2),
+            lane.JobTypes,
+            availableSlots,
+            stoppingToken);
+
+        if (jobs.Count == 0)
+        {
+            var sleepFor = lane.Interval;
+            var nextDue = await jobQueueRepository.NextDueUtcAsync(lane.JobTypes, stoppingToken);
+            if (nextDue is not null)
+            {
+                var until = nextDue.Value - timeProvider.GetUtcNow();
+                sleepFor = until <= TimeSpan.Zero
+                    ? TimeSpan.FromSeconds(1)
+                    : until < lane.Interval ? until : lane.Interval;
+            }
+
+            logger.LogDebug(
+                "Worker {WorkerId} lane {LaneName} has nothing to run; sleeping {SleepSeconds}s.",
+                _workerId,
+                lane.Name,
+                (int)sleepFor.TotalSeconds);
+            return LaneTickResult.Empty(sleepFor);
+        }
+
+        return new LaneTickResult(jobs, lane.Interval, jobs.Count == availableSlots);
+    }
+
+    /// <summary>
+    /// Turns the saved-view rows into the typed scope the existing search cycle
+    /// carries. A scope is matched to a library here, where both the media kind
+    /// and the optional library attachment are known; the queue store then only
+    /// has to decide when and which half of that cycle is due.
+    /// </summary>
+    private IReadOnlyList<LibraryAutomationScope> SearchScopesFor(
+        LibraryItem library,
+        IReadOnlyList<LibraryViewItem> automatedViews)
+    {
+        var kind = string.Equals(library.MediaType, "tv", StringComparison.OrdinalIgnoreCase)
+            ? MediaKind.Series
+            : MediaKind.Movie;
+        var variant = kind == MediaKind.Movie ? "movies" : "shows";
+
+        return automatedViews
+            .Where(view => string.Equals(view.Variant, variant, StringComparison.OrdinalIgnoreCase))
+            .Where(view => view.LibraryId is null || string.Equals(view.LibraryId, library.Id, StringComparison.OrdinalIgnoreCase))
+            .Select(view => BuildSearchScope(kind, library, view))
+            .ToArray();
+    }
+
+    private LibraryAutomationScope BuildSearchScope(
+        MediaKind kind,
+        LibraryItem library,
+        LibraryViewItem view)
+    {
+        var quickFilter = view.QuickFilter.Trim().ToLowerInvariant();
+        var monitoring = (view.Monitoring ?? "any").Trim().ToLowerInvariant();
+        var isSearchableQuickFilter = quickFilter is "" or "all" or "missing" or "upgrades";
+        var isSearchableMonitoring = monitoring is "any" or "monitored";
+        var isValid = CatalogueFilters.TryParseJson(kind, view.RulesJson, out var filters)
+                      && isSearchableQuickFilter
+                      && isSearchableMonitoring;
+
+        if (!isValid)
+        {
+            logger.LogWarning(
+                "Saved library view {ViewId} ({ViewName}) is attached to automation for {LibraryName} but cannot be used safely as a search scope. Its cycle will remain unfiltered only when the attachment is removed.",
+                view.Id,
+                view.Name,
+                library.Name);
+        }
+
+        return new LibraryAutomationScope(
+            Id: view.Id,
+            Name: view.Name,
+            QuickFilter: quickFilter,
+            Monitoring: monitoring,
+            Filters: filters,
+            IsValid: isValid);
     }
 
     /// <summary>

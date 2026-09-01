@@ -21,7 +21,7 @@ public sealed class TransmissionDownloadClient(IHttpClientFactory httpClientFact
     public override async Task<DownloadClientTelemetrySnapshot?> GetSnapshotAsync(DownloadClientItem client, DateTimeOffset capturedUtc, CancellationToken cancellationToken)
     {
         var baseUri = DownloadClientHelpers.ResolveEndpoint(client);
-        if (baseUri is null) return null;
+        if (baseUri is null) return CreateConfigurationSnapshot(client, capturedUtc, "Download client address is missing.");
         var response = await SendAsync(client, baseUri, new TransmissionRequest("torrent-get", new()
         {
             ["fields"] = new[] { "id", "name", "status", "percentDone", "rateDownload", "rateUpload", "eta", "totalSize", "downloadedEver", "peersConnected", "addedDate", "doneDate", "downloadDir", "labels", "error", "errorString" }

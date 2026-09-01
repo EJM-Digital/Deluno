@@ -1,6 +1,8 @@
 using System.Globalization;
 using System.Text.RegularExpressions;
+using Deluno.Platform.Contracts;
 using Deluno.Quality;
+using Deluno.Quality.ReleasePreferences;
 
 namespace Deluno.Integrations.Search;
 
@@ -19,6 +21,10 @@ public static partial class ReleaseDecisionEngine
         var reasons = new List<string>();
         var risks = new List<string>();
         var hardReject = false;
+        var delayed = false;
+        var profileRules = ReleaseProfileRuleEvaluator.Combine(
+            input.ReleaseProfiles,
+            input.IndexerProtocol ?? "torznab");
 
         if (string.IsNullOrWhiteSpace(input.DownloadUrl))
         {
@@ -36,6 +42,117 @@ public static partial class ReleaseDecisionEngine
             hardReject = true;
             risks.Add("Release name contains a blocked token such as CAM, Telesync, workprint, or screener.");
         }
+
+        foreach (var term in profileRules.MustContain)
+        {
+            if (!ReleaseProfileRuleEvaluator.ContainsTerm(input.ReleaseName, term))
+            {
+                hardReject = true;
+                risks.Add($"Release name is missing required term '{term}'.");
+            }
+        }
+
+        foreach (var term in profileRules.MustNotContain)
+        {
+            if (ReleaseProfileRuleEvaluator.ContainsTerm(input.ReleaseName, term))
+            {
+                hardReject = true;
+                risks.Add($"Release name contains excluded term '{term}'.");
+            }
+        }
+
+        // Release profiles predate the typed plan and retain numeric term and
+        // protocol weights for legacy callers. They must not leak into a typed
+        // explanation (or appear to influence a typed decision); hard
+        // contain/not-contain rules above remain valid safety gates.
+        var preferredTermScore = 0;
+        if (input.PreferencePlan is null)
+        {
+            foreach (var term in profileRules.PreferredTerms)
+            {
+                if (!ReleaseProfileRuleEvaluator.ContainsTerm(input.ReleaseName, term.Term))
+                {
+                    continue;
+                }
+
+                preferredTermScore += term.Score;
+                reasons.Add(term.Score >= 0
+                    ? $"Preferred term '{term.Term}' adds {term.Score} points."
+                    : $"Avoided term '{term.Term}' subtracts {Math.Abs(term.Score)} points.");
+            }
+        }
+
+        if (input.PreferencePlan is null && profileRules.PreferredProtocolScore > 0)
+        {
+            reasons.Add($"Preferred {profileRules.PreferredProtocol} protocol matched (+{profileRules.PreferredProtocolScore}).");
+        }
+
+        var effectiveMinimumAgeMinutes = Math.Max(input.MinimumAgeMinutes ?? 0, profileRules.DelayMinutes);
+        if (effectiveMinimumAgeMinutes > 0)
+        {
+            if (input.ReleaseAgeHours is null)
+            {
+                delayed = true;
+                risks.Add($"Release age is unavailable, so the {effectiveMinimumAgeMinutes}-minute acquisition delay cannot be verified.");
+            }
+            else if (input.ReleaseAgeHours.Value * 60d < effectiveMinimumAgeMinutes)
+            {
+                delayed = true;
+                var remainingMinutes = Math.Ceiling(effectiveMinimumAgeMinutes - input.ReleaseAgeHours.Value * 60d);
+                risks.Add($"Acquisition delay is active; wait about {remainingMinutes:0} more minute(s) before grabbing this release.");
+            }
+            else
+            {
+                reasons.Add($"Release has cleared the {effectiveMinimumAgeMinutes}-minute acquisition delay.");
+            }
+        }
+
+        if (input.RetentionDays is > 0)
+        {
+            if (input.ReleaseAgeHours is null)
+            {
+                hardReject = true;
+                risks.Add($"Release age is unavailable, so the {input.RetentionDays}-day retention limit cannot be verified.");
+            }
+            else if (input.ReleaseAgeHours.Value > input.RetentionDays.Value * 24d)
+            {
+                hardReject = true;
+                risks.Add($"Release is older than this indexer's {input.RetentionDays}-day retention window.");
+            }
+        }
+
+        if (input.AvailabilityDelayDays is > 0)
+        {
+            if (input.AvailableUtc is null)
+            {
+                delayed = true;
+                risks.Add($"Availability date is unavailable, so the {input.AvailabilityDelayDays}-day availability delay cannot be verified.");
+            }
+            else
+            {
+                var availableAfter = input.AvailableUtc.Value.AddDays(input.AvailabilityDelayDays.Value);
+                if (DateTimeOffset.UtcNow < availableAfter)
+                {
+                    delayed = true;
+                    risks.Add($"Availability delay holds this release until {availableAfter:yyyy-MM-dd}.");
+                }
+                else
+                {
+                    reasons.Add($"Availability delay of {input.AvailabilityDelayDays} day(s) has cleared.");
+                }
+            }
+        }
+
+        if (input.MaximumSizeMb is > 0 && input.SizeBytes is > 0 &&
+            input.SizeBytes.Value > input.MaximumSizeMb.Value * 1_000_000L)
+        {
+            hardReject = true;
+            risks.Add($"Release size exceeds this indexer's {input.MaximumSizeMb} MB maximum.");
+        }
+
+        var preferredFlagScore = input.PreferencePlan is null
+            ? ScorePreferredIndexerFlags(input.IndexerFlags, input.PreferIndexerFlags, reasons)
+            : 0;
 
         var matchedNeverGrab = MatchNeverGrabPattern(input.ReleaseName, input.NeverGrabPatterns);
         if (!string.IsNullOrWhiteSpace(matchedNeverGrab))
@@ -91,23 +208,45 @@ public static partial class ReleaseDecisionEngine
             }
         }
 
-        if (!hardReject &&
+        if (input.PreferencePlan is null &&
+            !hardReject &&
             qualityModel?.UpgradeStop.StopWhenCutoffMet == true &&
             currentRank >= targetRank &&
             qualityDelta <= 0)
         {
-            var currentScore = input.CurrentCustomFormatScore ?? 0;
             var requiresGain = qualityModel.UpgradeStop.RequireCustomFormatGainForSameQuality;
-            if (!requiresGain || input.CustomFormatScore <= currentScore)
+            var hasCurrentFormatEvaluation = input.CurrentCustomFormatScore is not null;
+            var currentScore = input.CurrentCustomFormatScore.GetValueOrDefault();
+            if (!requiresGain || (hasCurrentFormatEvaluation && input.CustomFormatScore <= currentScore))
             {
                 hardReject = true;
-                risks.Add("Upgrade stop policy blocked this release because the current file already meets cutoff and the candidate does not improve the custom-format score.");
+                risks.Add(hasCurrentFormatEvaluation
+                    ? "Upgrade stop policy blocked this release because the current file already meets cutoff and the candidate does not improve the custom-format score."
+                    : "Upgrade stop policy could not compare custom formats because the installed file evaluation is unknown.");
             }
         }
 
-        if (input.CurrentCustomFormatScore is > 0 && input.CustomFormatScore < input.CurrentCustomFormatScore)
+        if (input.PreferencePlan is null &&
+            input.CurrentCustomFormatScore is not null &&
+            input.CustomFormatScore < input.CurrentCustomFormatScore.Value)
         {
             risks.Add($"Custom format score ({input.CustomFormatScore}) is lower than the current file's score ({input.CurrentCustomFormatScore.Value}).");
+        }
+
+        // A same-quality replacement is not an upgrade merely because the
+        // candidate arrived later or scored well on transient availability
+        // signals. When the installed evaluation is present, equal or lower
+        // upgrade-driving format value is an equivalent/non-improving
+        // candidate and must not be dispatched automatically.
+        if (input.PreferencePlan is null &&
+            !hardReject &&
+            input.CurrentCustomFormatScore is not null &&
+            currentRank >= targetRank &&
+            qualityDelta <= 0 &&
+            input.CustomFormatScore <= input.CurrentCustomFormatScore.Value)
+        {
+            hardReject = true;
+            risks.Add("Equivalent replacement blocked: the installed file already meets cutoff and this candidate does not improve its upgrade-driving custom formats.");
         }
 
         var seederScore = ScoreSeeders(input.Seeders, risks, reasons);
@@ -125,6 +264,9 @@ public static partial class ReleaseDecisionEngine
         var codecScore = ScoreCodecAndHdr(input.ReleaseName, reasons, risks);
         var score = 1000
             + input.SourcePriorityScore
+            + profileRules.PreferredProtocolScore
+            + preferredTermScore
+            + preferredFlagScore
             + candidateRank * 90
             + Math.Max(-300, qualityDelta * 80)
             + input.CustomFormatScore
@@ -144,6 +286,8 @@ public static partial class ReleaseDecisionEngine
 
         var status = hardReject
             ? "rejected"
+            : delayed
+                ? "delayed"
             : risks.Count >= 3
                 ? "risky"
                 : meetsCutoff
@@ -155,9 +299,123 @@ public static partial class ReleaseDecisionEngine
             score = Math.Min(score, -10000);
         }
 
-        var summary = BuildSummary(status, normalizedCandidate, normalizedTarget, input.CustomFormatScore, input.Seeders, risks.Count, risks);
+        PreferenceEvaluation? preferenceEvaluation = null;
+        PreferenceComparison? preferenceComparison = null;
+        var requiresInstalledBaselineReview = false;
+        var effectivePolicyVersion = input.PreferencePlan?.Version ?? MediaPolicyCatalog.CurrentVersion;
+        var effectiveCustomFormatScore = input.PreferencePlan is null ? input.CustomFormatScore : 0;
+        if (input.PreferencePlan is { } preferencePlan)
+        {
+            var candidateFacts = ReleasePreferenceFactFactory.WithTransientSignals(
+                preferencePlan,
+                ReleasePreferenceFactFactory.FromReleaseName(
+                    preferencePlan,
+                    input.ReleaseName,
+                    normalizedCandidate),
+                input.Seeders);
+            preferenceEvaluation = ReleasePreferenceEvaluator.Evaluate(
+                preferencePlan,
+                candidateFacts);
+
+            // A persisted snapshot is the authoritative installed-file
+            // baseline only for the exact plan that produced it. Reusing
+            // facts from an older plan would make an old preference vector
+            // look comparable to the new one. When a real installed file is
+            // present, a stale or missing snapshot is not repaired by parsing
+            // its path: the path is not proof of the container's contents.
+            var currentFacts = input.CurrentPreferenceEvaluation is { } snapshot
+                && string.Equals(snapshot.PlanId, preferencePlan.Id, StringComparison.OrdinalIgnoreCase)
+                && string.Equals(snapshot.PlanVersion, preferencePlan.Version, StringComparison.Ordinal)
+                && string.Equals(snapshot.PlanHash, preferencePlan.PlanHash, StringComparison.OrdinalIgnoreCase)
+                && string.Equals(snapshot.Evaluation.PlanHash, snapshot.PlanHash, StringComparison.OrdinalIgnoreCase)
+                ? snapshot.Facts
+                : input.CurrentPreferenceEvaluation is not null || input.CurrentFilePresent
+                    ? null
+                    : string.IsNullOrWhiteSpace(input.CurrentReleaseName) && string.IsNullOrWhiteSpace(input.CurrentQuality)
+                    ? null
+                    : ReleasePreferenceFactFactory.FromReleaseName(
+                        preferencePlan,
+                        input.CurrentReleaseName,
+                        input.CurrentQuality,
+                        "installed-file-re-evaluation");
+            if (currentFacts is not null)
+            {
+                preferenceComparison = ReleasePreferenceEvaluator.Compare(
+                    preferencePlan,
+                    currentFacts,
+                    candidateFacts);
+            }
+
+            var installedFilePresent = input.CurrentFilePresent
+                || input.CurrentPreferenceEvaluation is not null
+                || !string.IsNullOrWhiteSpace(input.CurrentReleaseName)
+                || !string.IsNullOrWhiteSpace(input.CurrentQuality);
+            if (installedFilePresent && currentFacts is null)
+            {
+                // A title that already has a file must not be treated like a
+                // missing title just because its old snapshot disappeared or
+                // the caller could not provide a release name. Without a
+                // same-plan baseline Deluno cannot prove a persistent
+                // improvement, so automatic replacement waits for a probe or
+                // an explicit re-evaluation. Manual force can still override
+                // this held result at the caller's discretion.
+                requiresInstalledBaselineReview = true;
+                risks.Add("Installed-file preference evidence is missing, so Deluno cannot prove that this candidate is a persistent improvement.");
+                reasons.Add("Installed-file preference evidence is missing; re-evaluate the held file before automatic replacement.");
+                // Keep a typed comparison in the response so callers can
+                // render a normal NeedsReview result and its candidate
+                // evaluation, while the empty current fact set remains
+                // explicitly unknown and can never authorize a replacement.
+                preferenceComparison = ReleasePreferenceEvaluator.Compare(
+                    preferencePlan,
+                    [],
+                    candidateFacts);
+            }
+
+            if (hardReject)
+            {
+                status = "rejected";
+                reasons.Add("Typed preference evaluation was not allowed to override an earlier hard safety or acquisition gate.");
+            }
+            else if (requiresInstalledBaselineReview)
+            {
+                status = "held";
+            }
+            else if (preferenceComparison is { } comparison)
+            {
+                status = comparison.Status switch
+                {
+                    PreferenceCandidateStatus.Upgrade => "preferred",
+                    PreferenceCandidateStatus.Rejected => "rejected",
+                    PreferenceCandidateStatus.NeedsReview => "held",
+                    PreferenceCandidateStatus.Equivalent => "equivalent",
+                    _ => meetsCutoff ? "acceptable" : "eligible"
+                };
+                reasons.AddRange(comparison.Reasons);
+            }
+            else
+            {
+                status = preferenceEvaluation.Status switch
+                {
+                    PreferenceEvaluationStatus.MeetsPlan => "preferred",
+                    PreferenceEvaluationStatus.BelowGoal => "eligible",
+                    PreferenceEvaluationStatus.NeedsReview => "held",
+                    _ => "rejected"
+                };
+                reasons.AddRange(preferenceEvaluation.Reasons);
+            }
+
+            // The legacy total is retained only for compatibility with old
+            // persisted history. Typed candidates are ordered by their
+            // evaluation/comparison, never by this value.
+            score = 0;
+        }
+
+        var summary = input.PreferencePlan is null
+            ? BuildSummary(status, normalizedCandidate, normalizedTarget, input.CustomFormatScore, input.Seeders, risks.Count, risks)
+            : BuildTypedSummary(status, preferenceComparison, preferenceEvaluation);
         return new ReleaseDecision(
-            MediaPolicyCatalog.CurrentVersion,
+            effectivePolicyVersion,
             status,
             score,
             meetsCutoff,
@@ -165,11 +423,31 @@ public static partial class ReleaseDecisionEngine
             reasons,
             risks,
             qualityDelta,
-            input.CustomFormatScore,
+            effectiveCustomFormatScore,
             seederScore,
             sizeScore,
             releaseGroup,
-            estimatedBitrate);
+            estimatedBitrate,
+            preferenceEvaluation,
+            preferenceComparison);
+    }
+
+    private static string BuildTypedSummary(
+        string status,
+        PreferenceComparison? comparison,
+        PreferenceEvaluation? evaluation)
+    {
+        var reasons = comparison?.Reasons ?? evaluation?.Reasons ?? [];
+        var explanation = reasons.FirstOrDefault(reason => !string.IsNullOrWhiteSpace(reason))
+            ?? "Typed preference evaluation completed.";
+        return $"{status switch
+        {
+            "preferred" => "Preferred by the typed release plan.",
+            "held" => "Held for review by the typed release plan.",
+            "equivalent" => "Equivalent to the installed file under the typed release plan.",
+            "rejected" => "Rejected by the typed release plan.",
+            _ => "Eligible under the typed release plan."
+        }} {explanation}";
     }
 
     public static int QualityRank(string? quality)
@@ -197,6 +475,29 @@ public static partial class ReleaseDecisionEngine
 
         var score = Math.Min(220, seeders.Value * 6);
         reasons.Add($"{seeders.Value.ToString(CultureInfo.InvariantCulture)} seeders reported.");
+        return score;
+    }
+
+    private static int ScorePreferredIndexerFlags(
+        string? indexerFlags,
+        string? preferredFlags,
+        ICollection<string> reasons)
+    {
+        if (string.IsNullOrWhiteSpace(indexerFlags) || string.IsNullOrWhiteSpace(preferredFlags))
+        {
+            return 0;
+        }
+
+        var matched = ReleaseProfileRuleEvaluator.SplitTerms(preferredFlags)
+            .Where(flag => ReleaseProfileRuleEvaluator.ContainsTerm(indexerFlags, flag))
+            .ToArray();
+        if (matched.Length == 0)
+        {
+            return 0;
+        }
+
+        var score = matched.Length * 50;
+        reasons.Add($"Indexer flags matched: {string.Join(", ", matched)} (+{score}).");
         return score;
     }
 
@@ -344,6 +645,7 @@ public static partial class ReleaseDecisionEngine
                 : status switch
                 {
                     "rejected" => "Rejected by hard safety rules.",
+                    "delayed" => "Held until the acquisition timing rule clears.",
                     "risky" => "Usable only with caution.",
                     "preferred" => "Preferred candidate.",
                     _ => "Eligible candidate."
@@ -384,4 +686,28 @@ public sealed record ReleaseDecisionInput(
     /// profile does not constrain tiers; a non-empty list rejects anything
     /// outside it, whatever the cutoff says.
     /// </summary>
-    IReadOnlyList<string>? AllowedQualities = null);
+    IReadOnlyList<string>? AllowedQualities = null,
+    IReadOnlyList<ReleaseProfileItem>? ReleaseProfiles = null,
+    string? IndexerProtocol = null,
+    double? ReleaseAgeHours = null,
+    int? MinimumAgeMinutes = null,
+    int? RetentionDays = null,
+    int? MaximumSizeMb = null,
+    string? IndexerFlags = null,
+    string? PreferIndexerFlags = null,
+    DateTimeOffset? AvailableUtc = null,
+    int? AvailabilityDelayDays = null,
+    ReleasePreferencePlan? PreferencePlan = null,
+    string? CurrentReleaseName = null,
+    /// <summary>
+    /// Durable facts for the installed file. They are trusted only when the
+    /// persisted plan hash is the exact plan being used for this comparison.
+    /// </summary>
+    PreferenceEvaluationSnapshot? CurrentPreferenceEvaluation = null,
+    /// <summary>
+    /// True when the title/episode is known to have an installed file even if
+    /// its path, quality, and previous preference snapshot are unavailable.
+    /// This prevents an upgrade sweep from treating an unbaselined file as a
+    /// missing title.
+    /// </summary>
+    bool CurrentFilePresent = false);

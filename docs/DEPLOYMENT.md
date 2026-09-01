@@ -24,6 +24,8 @@ docker run --name deluno `
   --rm `
   -p 5099:8080 `
   -e Storage__DataRoot=/data `
+  -e Server__Port=8080 `
+  -e Server__AllowLan=true `
   -v ${PWD}/artifacts/docker/data:/data `
   deluno:local
 ```
@@ -137,7 +139,11 @@ services:
       - "5099:8080"
     environment:
       ASPNETCORE_URLS: http://+:8080
+      Server__Port: 8080
+      Server__AllowLan: "true"
       Storage__DataRoot: /data
+      DELUNO_IMAGE_REF: ${DELUNO_IMAGE:-deluno:dev}
+      DELUNO_IMAGE_DIGEST: ${DELUNO_IMAGE_DIGEST:-}
     volumes:
       - ./artifacts/docker/data:/data
       - /srv/media/movies:/media/movies
@@ -152,14 +158,36 @@ Important:
 
 ### Docker Upgrade Flow
 
-After code changes:
+For a source build after code changes:
 
 ```powershell
-docker compose down
 docker compose up --build -d
 ```
 
-Persistent state remains in the mounted data directory.
+For a released image, choose a versioned tag or immutable digest in the
+untracked `.env` file, then pull and recreate without rebuilding from source:
+
+```powershell
+docker compose pull deluno
+docker compose up -d --no-build
+curl.exe --fail http://127.0.0.1:5099/api/health/ready
+docker image inspect ${env:DELUNO_IMAGE} --format '{{json .RepoDigests}}'
+```
+
+The readiness endpoint may return `503` briefly while Deluno applies pending
+migrations. Wait for HTTP `200`; the `/data` mount must remain unchanged.
+
+Pinning example:
+
+```text
+DELUNO_IMAGE=ghcr.io/jampat000/deluno@sha256:<verified-digest>
+```
+
+Before an upgrade, take a backup of the mounted data directory. To roll back,
+set `DELUNO_IMAGE` to the previous digest, run the same pull/recreate flow, and
+keep the same data mount. Deluno migrations are forward-only; if the previous
+binary cannot read the upgraded schema, restore the pre-upgrade backup before
+starting the older image.
 
 ## Windows Deployment
 

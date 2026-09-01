@@ -1,3 +1,5 @@
+using Deluno.Quality.ReleasePreferences;
+
 namespace Deluno.Movies.Contracts;
 
 /// <summary>
@@ -17,4 +19,5 @@ public sealed record ExistingMovieImportRequest(
     bool QualityCutoffMet,
     bool UnmonitorWhenCutoffMet,
     string? FilePath,
-    long? FileSizeBytes);
+    long? FileSizeBytes,
+    PreferenceEvaluationSnapshot? PreferenceEvaluation = null);

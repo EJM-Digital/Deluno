@@ -20,6 +20,7 @@ using Deluno.Platform.Contracts;
 using Deluno.Platform;
 using Deluno.Quality;
 using Deluno.Quality.Data;
+using Deluno.Quality.Guides;
 using Deluno.Security;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
@@ -33,6 +34,143 @@ public static class MoviesEndpointRouteBuilderExtensions
     public static IEndpointRouteBuilder MapDelunoMoviesEndpoints(this IEndpointRouteBuilder endpoints)
     {
         var movies = endpoints.MapGroup("/api/movies");
+        var collections = endpoints.MapGroup("/api/movie-collections");
+
+        collections.MapGet("/", async (
+            IMovieCollectionsRepository repository,
+            CancellationToken cancellationToken) =>
+            Results.Ok(await repository.ListAsync(cancellationToken)));
+
+        collections.MapGet("/{id}", async (
+            string id,
+            IMovieCollectionsRepository repository,
+            CancellationToken cancellationToken) =>
+        {
+            var collection = await repository.GetAsync(id, cancellationToken);
+            return collection is null ? Results.NotFound() : Results.Ok(collection);
+        });
+
+        collections.MapGet("/{id}/members", async (
+            string id,
+            IMovieCollectionsRepository repository,
+            CancellationToken cancellationToken) =>
+        {
+            if (await repository.GetAsync(id, cancellationToken) is null)
+            {
+                return Results.NotFound();
+            }
+
+            return Results.Ok(await repository.ListMembersAsync(id, cancellationToken));
+        });
+
+        collections.MapPost("/", async (
+            HttpContext httpContext,
+            [FromBody] CreateMovieCollectionRequest request,
+            IMovieCollectionService service,
+            CancellationToken cancellationToken) =>
+        {
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
+            if (denied is not null)
+            {
+                return denied;
+            }
+
+            if (string.IsNullOrWhiteSpace(request.ProviderId) || !int.TryParse(request.ProviderId, out _))
+            {
+                return Results.ValidationProblem(new Dictionary<string, string[]>
+                {
+                    ["providerId"] = ["Enter a numeric TMDb collection id."]
+                });
+            }
+
+            if (string.IsNullOrWhiteSpace(request.LibraryId))
+            {
+                return Results.ValidationProblem(new Dictionary<string, string[]>
+                {
+                    ["libraryId"] = ["Choose a movie library for the collection."]
+                });
+            }
+
+            try
+            {
+                var collection = await service.CreateOrUpdateAsync(request, cancellationToken);
+                return collection is null
+                    ? Results.NotFound(new { message = "TMDb did not return that collection." })
+                    : Results.Created($"/api/movie-collections/{collection.Id}", collection);
+            }
+            catch (ArgumentException ex)
+            {
+                return Results.ValidationProblem(new Dictionary<string, string[]>
+                {
+                    ["collection"] = [ex.Message]
+                });
+            }
+        });
+
+        collections.MapPut("/{id}", async (
+            string id,
+            HttpContext httpContext,
+            [FromBody] UpdateMovieCollectionRequest request,
+            IMovieCollectionsRepository repository,
+            CancellationToken cancellationToken) =>
+        {
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
+            if (denied is not null)
+            {
+                return denied;
+            }
+
+            if (request.MinimumAvailability is not null
+                && !MovieAvailability.All.Contains(request.MinimumAvailability.Trim(), StringComparer.OrdinalIgnoreCase))
+            {
+                return Results.ValidationProblem(new Dictionary<string, string[]>
+                {
+                    ["minimumAvailability"] = [$"Choose one of: {string.Join(", ", MovieAvailability.All)}."]
+                });
+            }
+
+            var updated = await repository.UpdateAsync(id, request, cancellationToken);
+            return updated is null ? Results.NotFound() : Results.Ok(updated);
+        });
+
+        collections.MapPost("/{id}/refresh", async (
+            string id,
+            HttpContext httpContext,
+            IMovieCollectionService service,
+            IMovieCollectionsRepository repository,
+            CancellationToken cancellationToken) =>
+        {
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
+            if (denied is not null)
+            {
+                return denied;
+            }
+
+            if (await repository.GetAsync(id, cancellationToken) is null)
+            {
+                return Results.NotFound();
+            }
+
+            return Results.Ok(await service.SyncAsync(id, cancellationToken));
+        });
+
+        collections.MapPut("/{id}/members/{providerId}/exclusion", async (
+            string id,
+            string providerId,
+            HttpContext httpContext,
+            [FromBody] MovieCollectionExclusionRequest request,
+            IMovieCollectionsRepository repository,
+            CancellationToken cancellationToken) =>
+        {
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
+            if (denied is not null)
+            {
+                return denied;
+            }
+
+            var updated = await repository.SetMemberExcludedAsync(id, providerId, request.Excluded, cancellationToken);
+            return updated ? Results.Ok(new { excluded = request.Excluded }) : Results.NotFound();
+        });
 
         // The list surface for a library that keeps growing. Search, filter,
         // sort and the counts all happen in SQL; the response says how many rows
@@ -55,6 +193,12 @@ public static class MoviesEndpointRouteBuilderExtensions
         movies.MapGet("/genres", async (
             [FromServices] IMovieCatalogRepository repository,
             CancellationToken cancellationToken) => Results.Ok(await repository.ListGenresAsync(cancellationToken)));
+
+        movies.MapGet("/{id}/tags", async (
+            string id,
+            [FromServices] IMediaTagStore tagStore,
+            CancellationToken cancellationToken) =>
+            Results.Ok(await tagStore.ListAsync(MediaKind.Movie, id, cancellationToken)));
 
         movies.MapGet("/page", async (
             string? search,
@@ -275,6 +419,22 @@ public static class MoviesEndpointRouteBuilderExtensions
             return removed ? Results.NoContent() : Results.NotFound();
         });
 
+        movies.MapGet("/{id}/preference-evaluation", async (
+            string id,
+            string? libraryId,
+            string? fileIdentity,
+            IMediaStateRepository mediaStateRepository,
+            CancellationToken cancellationToken) =>
+        {
+            var snapshot = await mediaStateRepository.GetLatestPreferenceEvaluationSnapshotAsync(
+                MediaKind.Movie,
+                id,
+                libraryId,
+                fileIdentity,
+                cancellationToken);
+            return snapshot is null ? Results.NotFound() : Results.Ok(snapshot);
+        });
+
         movies.MapGet("/{id}", async (string id, IMovieCatalogRepository repository, CancellationToken cancellationToken) =>
         {
             var movie = await repository.GetByIdAsync(id, cancellationToken);
@@ -370,6 +530,8 @@ public static class MoviesEndpointRouteBuilderExtensions
             IDownloadClientGrabService downloadClientGrabService,
             IActivityFeedRepository activityFeedRepository,
             TimeProvider timeProvider,
+            IMediaTagStore tagStore,
+            IReleasePreferencePlanRepository releasePreferencePlanRepository,
             CancellationToken cancellationToken) =>
         {
             var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
@@ -403,7 +565,9 @@ public static class MoviesEndpointRouteBuilderExtensions
                         indexerName,
                         detailsJson,
                         cancellationToken),
-                cancellationToken);
+                cancellationToken,
+                tagStore,
+                releasePreferencePlanRepository);
 
             if (result.NotFound)
             {
@@ -419,12 +583,13 @@ public static class MoviesEndpointRouteBuilderExtensions
                 result.IndexerName,
                 result.DispatchStatus,
                 result.DispatchMessage,
+                failures = result.Failures ?? [],
                 candidates = result.Candidates.Select(candidate => new
                 {
                     candidate.ReleaseName,
                     candidate.IndexerName,
                     candidate.Quality,
-                    candidate.Score,
+                    Score = candidate.PreferenceEvaluation is null ? (int?)candidate.Score : null,
                     candidate.MeetsCutoff,
                     candidate.Summary,
                     candidate.DownloadUrl,
@@ -434,13 +599,15 @@ public static class MoviesEndpointRouteBuilderExtensions
                     candidate.DecisionReasons,
                     candidate.RiskFlags,
                     candidate.QualityDelta,
-                    candidate.CustomFormatScore,
-                    candidate.SeederScore,
-                    candidate.SizeScore,
+                    CustomFormatScore = candidate.PreferenceEvaluation is null ? (int?)candidate.CustomFormatScore : null,
+                    SeederScore = candidate.PreferenceEvaluation is null ? (int?)candidate.SeederScore : null,
+                    SizeScore = candidate.PreferenceEvaluation is null ? (int?)candidate.SizeScore : null,
                     candidate.ReleaseGroup,
                     candidate.EstimatedBitrateMbps,
                     candidate.PolicyVersion,
-                    candidate.MatchedCustomFormats
+                    MatchedCustomFormats = candidate.PreferenceEvaluation is null ? candidate.MatchedCustomFormats : null,
+                    candidate.PreferenceEvaluation,
+                    candidate.PreferenceComparison
                 }).ToArray()
             });
         });
@@ -455,6 +622,7 @@ public static class MoviesEndpointRouteBuilderExtensions
             IJobQueueRepository jobQueueRepository,
             IActivityFeedRepository activityFeedRepository,
             IRealtimeEventPublisher realtimeEventPublisher,
+            IRecycleBinService recycleBinService,
             CancellationToken cancellationToken) =>
         {
             var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
@@ -507,6 +675,7 @@ public static class MoviesEndpointRouteBuilderExtensions
                                 intakeRepository,
                                 jobQueueRepository,
                                 activityFeedRepository,
+                                recycleBinService,
                                 cancellationToken);
                             successCount++;
                             results.Add(new BulkMovieItemResult(movie.Id, movie.Title, true, null, removalMetadata));
@@ -592,6 +761,8 @@ public static class MoviesEndpointRouteBuilderExtensions
             IDownloadClientGrabService downloadClientGrabService,
             IActivityFeedRepository activityFeedRepository,
             TimeProvider timeProvider,
+            IGuidePackageStore guidePackageStore,
+            IReleasePreferencePlanRepository releasePreferencePlanRepository,
             CancellationToken cancellationToken) =>
         {
             var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
@@ -635,7 +806,9 @@ public static class MoviesEndpointRouteBuilderExtensions
                         indexerName,
                         detailsJson,
                         cancellationToken),
-                cancellationToken);
+                cancellationToken,
+                guidePackageStore,
+                releasePreferencePlanRepository);
 
             if (result.NotFound)
             {
@@ -660,14 +833,19 @@ public static class MoviesEndpointRouteBuilderExtensions
 
         movies.MapGet("/{id}/workflow-status", async (
             string id,
-            IMovieCatalogRepository repository,
+            IMediaStateRepository mediaStateRepository,
             ILibrariesRepository platformSettingsRepository,
             IQualityRepository qualityRepository,
             IMovieWorkflowService workflowService,
             CancellationToken cancellationToken) =>
         {
-            var wanted = await repository.GetWantedSummaryAsync(cancellationToken);
-            var wantedItem = wanted.RecentItems.FirstOrDefault(item => item.MovieId == id);
+            var wantedItem = (await mediaStateRepository.ListWantedByIdsAsync(
+                    MediaKind.Movie,
+                    [id],
+                    cancellationToken))
+                .OrderByDescending(item => item.UpdatedUtc)
+                .ThenBy(item => item.LibraryId, StringComparer.Ordinal)
+                .FirstOrDefault();
             if (wantedItem is null)
             {
                 return Results.NotFound();
@@ -692,9 +870,9 @@ public static class MoviesEndpointRouteBuilderExtensions
 
             return Results.Ok(new
             {
-                movieId = wantedItem.MovieId,
+                movieId = wantedItem.Id,
                 title = wantedItem.Title,
-                releaseYear = wantedItem.ReleaseYear,
+                releaseYear = wantedItem.Year,
                 libraryId = wantedItem.LibraryId,
                 wantedStatus = decision.WantedStatus,
                 reason = decision.Reason,
@@ -710,6 +888,7 @@ public static class MoviesEndpointRouteBuilderExtensions
             [FromBody] UpdateReplacementProtectionRequest request,
             HttpContext httpContext,
             IMovieCatalogRepository repository,
+            IMediaStateRepository mediaStateRepository,
             IRealtimeEventPublisher realtimeEventPublisher,
             CancellationToken cancellationToken) =>
         {
@@ -719,8 +898,13 @@ public static class MoviesEndpointRouteBuilderExtensions
                 return denied;
             }
 
-            var wanted = await repository.GetWantedSummaryAsync(cancellationToken);
-            var wantedItem = wanted.RecentItems.FirstOrDefault(item => item.MovieId == id);
+            var wantedItem = (await mediaStateRepository.ListWantedByIdsAsync(
+                    MediaKind.Movie,
+                    [id],
+                    cancellationToken))
+                .OrderByDescending(item => item.UpdatedUtc)
+                .ThenBy(item => item.LibraryId, StringComparer.Ordinal)
+                .FirstOrDefault();
             if (wantedItem is null)
             {
                 return Results.NotFound();
@@ -744,7 +928,7 @@ public static class MoviesEndpointRouteBuilderExtensions
         movies.MapPost("/{id}/evaluate-candidate", async (
             string id,
             [FromBody] EvaluateCandidateRequest request,
-            IMovieCatalogRepository repository,
+            IMediaStateRepository mediaStateRepository,
             ILibrariesRepository platformSettingsRepository,
             IQualityRepository qualityRepository,
             IMovieWorkflowService workflowService,
@@ -758,8 +942,13 @@ public static class MoviesEndpointRouteBuilderExtensions
                 });
             }
 
-            var wanted = await repository.GetWantedSummaryAsync(cancellationToken);
-            var wantedItem = wanted.RecentItems.FirstOrDefault(item => item.MovieId == id);
+            var wantedItem = (await mediaStateRepository.ListWantedByIdsAsync(
+                    MediaKind.Movie,
+                    [id],
+                    cancellationToken))
+                .OrderByDescending(item => item.UpdatedUtc)
+                .ThenBy(item => item.LibraryId, StringComparer.Ordinal)
+                .FirstOrDefault();
             if (wantedItem is null)
             {
                 return Results.NotFound();
@@ -817,16 +1006,68 @@ public static class MoviesEndpointRouteBuilderExtensions
                 return Results.NotFound();
             }
 
-            var matches = await metadataProvider.SearchAsync(
-                new MetadataLookupRequest(movie.Title, "movies", movie.ReleaseYear, movie.MetadataProviderId),
-                cancellationToken);
-            var match = matches.FirstOrDefault();
+            MetadataSearchResult? match;
+            if (!string.IsNullOrWhiteSpace(movie.MetadataProviderId))
+            {
+                var lookup = await metadataProvider.ResolveProviderRecordAsync(
+                    new MetadataLookupRequest(movie.Title, "movies", movie.ReleaseYear, movie.MetadataProviderId),
+                    cancellationToken);
+                if (lookup.Status == MetadataProviderRecordStatus.Missing)
+                {
+                    var issue = MissingProviderIssue("movie", lookup);
+                    var isNewEvidence = await repository.RecordMetadataProviderIssueAsync(movie.Id, issue, cancellationToken);
+                    if (isNewEvidence)
+                    {
+                        await activityFeedRepository.RecordActivityAsync(
+                            "metadata.movie.provider-record-missing",
+                            $"{movie.Title} was kept in Deluno because its linked {lookup.Provider.ToUpperInvariant()} record is no longer available.",
+                            JsonSerializer.Serialize(issue),
+                            null,
+                            "movie",
+                            movie.Id,
+                            cancellationToken);
+                    }
+
+                    return Results.Conflict(new
+                    {
+                        code = "metadata-provider-record-missing",
+                        message = $"{movie.Title} was kept. Its linked {lookup.Provider.ToUpperInvariant()} record is no longer available."
+                    });
+                }
+
+                if (lookup.Status == MetadataProviderRecordStatus.Unavailable)
+                {
+                    return Results.StatusCode(StatusCodes.Status503ServiceUnavailable);
+                }
+
+                match = lookup.Result;
+            }
+            else
+            {
+                var matches = await metadataProvider.SearchAsync(
+                    new MetadataLookupRequest(movie.Title, "movies", movie.ReleaseYear, null),
+                    cancellationToken);
+                match = matches.FirstOrDefault();
+            }
+
             if (match is null)
             {
                 return Results.NotFound(new { message = "No metadata match was found for this movie." });
             }
 
-            var updated = await ApplyMetadataAsync(repository, movie.Id, match, cancellationToken);
+            MovieListItem? updated;
+            try
+            {
+                updated = await ApplyMetadataAsync(repository, movie.Id, match, cancellationToken);
+            }
+            catch (MetadataIdentityConflictException)
+            {
+                return Results.Conflict(new
+                {
+                    code = "metadata-link-identity-claimed",
+                    message = "Another held movie claimed this metadata identity after the preview. Review the remap again."
+                });
+            }
             await SyncReleaseDatesAsync(repository, metadataProvider, movie.Id, match.ProviderId, cancellationToken);
             await activityFeedRepository.RecordActivityAsync(
                 "metadata.movie.refreshed",
@@ -840,6 +1081,83 @@ public static class MoviesEndpointRouteBuilderExtensions
             if (updated is null) return Results.NotFound();
             await realtimeEventPublisher.PublishEntityChangedAsync("Movie", updated.Id, cancellationToken);
             return Results.Ok(updated);
+        });
+
+        movies.MapGet("/{id}/metadata/issue", async (
+            string id,
+            IMovieCatalogRepository repository,
+            CancellationToken cancellationToken) =>
+        {
+            if (await repository.GetByIdAsync(id, cancellationToken) is null)
+            {
+                return Results.NotFound();
+            }
+
+            return Results.Ok(await repository.GetMetadataProviderIssueAsync(id, cancellationToken));
+        });
+
+        movies.MapPost("/{id}/metadata/issue/acknowledge", async (
+            string id,
+            HttpContext httpContext,
+            IMovieCatalogRepository repository,
+            IActivityFeedRepository activityFeedRepository,
+            CancellationToken cancellationToken) =>
+        {
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
+            if (denied is not null) return denied;
+
+            var movie = await repository.GetByIdAsync(id, cancellationToken);
+            if (movie is null) return Results.NotFound();
+
+            var before = await repository.GetMetadataProviderIssueAsync(id, cancellationToken);
+            if (before is null) return Results.NoContent();
+
+            var issue = await repository.AcknowledgeMetadataProviderIssueAsync(id, cancellationToken);
+            if (before.AcknowledgedUtc is null)
+            {
+                await activityFeedRepository.RecordActivityAsync(
+                    "metadata.movie.provider-record-missing.acknowledged",
+                    $"The metadata notice for {movie.Title} was acknowledged. The movie and its files were kept.",
+                    JsonSerializer.Serialize(issue),
+                    null,
+                    "movie",
+                    movie.Id,
+                    cancellationToken);
+            }
+
+            return Results.Ok(issue);
+        });
+
+        movies.MapPost("/{id}/metadata/link/preview", async (
+            string id,
+            [FromBody] MetadataLinkRequest request,
+            HttpContext httpContext,
+            IMovieCatalogRepository repository,
+            IMetadataProvider metadataProvider,
+            CancellationToken cancellationToken) =>
+        {
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
+            if (denied is not null) return denied;
+
+            var movie = await repository.GetByIdAsync(id, cancellationToken);
+            if (movie is null) return Results.NotFound();
+            if (string.IsNullOrWhiteSpace(request.ProviderId))
+            {
+                return Results.ValidationProblem(new Dictionary<string, string[]>
+                {
+                    ["providerId"] = ["Choose the metadata match Deluno should preview for this movie."]
+                });
+            }
+
+            var plan = await BuildMetadataLinkPlanAsync(movie, request.ProviderId, repository, metadataProvider, cancellationToken);
+            return plan.Status switch
+            {
+                MetadataProviderRecordStatus.Missing => Results.NotFound(new { message = "The selected metadata record no longer exists." }),
+                MetadataProviderRecordStatus.Unavailable => Results.Json(
+                    new { message = "The metadata provider is temporarily unavailable. Nothing was changed." },
+                    statusCode: StatusCodes.Status503ServiceUnavailable),
+                _ => Results.Ok(plan.Preview)
+            };
         });
 
         movies.MapPost("/{id}/metadata/link", async (
@@ -872,16 +1190,63 @@ public static class MoviesEndpointRouteBuilderExtensions
                 });
             }
 
-            var matches = await metadataProvider.SearchAsync(
-                new MetadataLookupRequest(movie.Title, "movies", movie.ReleaseYear, request.ProviderId.Trim()),
-                cancellationToken);
-            var match = matches.FirstOrDefault(item => string.Equals(item.ProviderId, request.ProviderId.Trim(), StringComparison.OrdinalIgnoreCase));
-            if (match is null)
+            if (string.IsNullOrWhiteSpace(request.ConfirmationToken))
             {
-                return Results.NotFound(new { message = "The selected metadata match could not be refreshed from the provider." });
+                return Results.ValidationProblem(new Dictionary<string, string[]>
+                {
+                    ["confirmationToken"] = ["Preview this metadata remap before applying it."]
+                });
             }
 
-            var updated = await ApplyMetadataAsync(repository, movie.Id, match, cancellationToken);
+            var plan = await BuildMetadataLinkPlanAsync(movie, request.ProviderId, repository, metadataProvider, cancellationToken);
+            if (plan.Status == MetadataProviderRecordStatus.Missing)
+            {
+                return Results.NotFound(new { message = "The selected metadata record no longer exists. Nothing was changed." });
+            }
+            if (plan.Status == MetadataProviderRecordStatus.Unavailable)
+            {
+                return Results.Json(
+                    new { message = "The metadata provider is temporarily unavailable. Nothing was changed." },
+                    statusCode: StatusCodes.Status503ServiceUnavailable);
+            }
+            if (plan.Preview is null || plan.Match is null)
+            {
+                return Results.NotFound(new { message = "The selected metadata match could not be resolved." });
+            }
+            if (!plan.Preview.CanApply)
+            {
+                return Results.Conflict(new
+                {
+                    code = "metadata-link-blocked",
+                    message = plan.Preview.BlockReason,
+                    preview = plan.Preview
+                });
+            }
+            if (!string.Equals(request.ConfirmationToken, plan.Preview.ConfirmationToken, StringComparison.Ordinal))
+            {
+                return Results.Conflict(new
+                {
+                    code = "metadata-link-preview-stale",
+                    message = "The title or provider record changed after the preview. Review the remap again.",
+                    preview = plan.Preview
+                });
+            }
+
+            var match = plan.Match;
+
+            MovieListItem? updated;
+            try
+            {
+                updated = await ApplyMetadataAsync(repository, movie.Id, match, cancellationToken, replaceIdentity: true);
+            }
+            catch (MetadataIdentityConflictException)
+            {
+                return Results.Conflict(new
+                {
+                    code = "metadata-link-identity-claimed",
+                    message = "Another held movie claimed this metadata identity after the preview. Review the remap again."
+                });
+            }
             await SyncReleaseDatesAsync(repository, metadataProvider, movie.Id, match.ProviderId, cancellationToken);
             await activityFeedRepository.RecordActivityAsync(
                 "metadata.movie.linked",
@@ -1346,6 +1711,8 @@ public static class MoviesEndpointRouteBuilderExtensions
             HttpContext httpContext,
             [FromBody] BulkTagsRequest request,
             IMovieCatalogRepository repository,
+            IMediaTagStore tagStore,
+            IPlatformSettingsRepository platformSettingsRepository,
             IRealtimeEventPublisher realtimeEventPublisher,
             CancellationToken cancellationToken) =>
         {
@@ -1364,6 +1731,15 @@ public static class MoviesEndpointRouteBuilderExtensions
             }
 
             var normalizedTags = NormalizeTags(request.Tags);
+            var managedTags = await platformSettingsRepository.ListTagsAsync(cancellationToken);
+            var assignments = normalizedTags
+                .Select(name =>
+                {
+                    var managed = managedTags.FirstOrDefault(tag =>
+                        string.Equals(tag.Name, name, StringComparison.OrdinalIgnoreCase));
+                    return new MediaTagAssignment(managed?.Id ?? MediaTagIds.ForLegacyName(name), name);
+                })
+                .ToArray();
             var updated = 0;
             foreach (var id in request.MovieIds)
             {
@@ -1373,26 +1749,7 @@ public static class MoviesEndpointRouteBuilderExtensions
                     continue;
                 }
 
-                var metadata = ParseMetadataDictionary(movie.MetadataJson);
-                metadata["tags"] = normalizedTags;
-                await repository.UpdateMetadataAsync(
-                    new MediaMetadataUpdate(
-                        movie.Id,
-                        movie.MetadataProvider,
-                        movie.MetadataProviderId,
-                        movie.OriginalTitle,
-                        movie.Overview,
-                        movie.PosterUrl,
-                        movie.BackdropUrl,
-                        movie.Rating,
-                        movie.Genres,
-                        movie.ExternalUrl,
-                        movie.ImdbId,
-                        JsonSerializer.Serialize(metadata),
-                        RuntimeMinutes: null,
-                        Popularity: null,
-                        VoteCount: null),
-                    cancellationToken);
+                await tagStore.ReplaceAsync(MediaKind.Movie, movie.Id, assignments, cancellationToken);
                 updated++;
                 await realtimeEventPublisher.PublishEntityChangedAsync("Movie", movie.Id, cancellationToken);
             }
@@ -1441,7 +1798,12 @@ public static class MoviesEndpointRouteBuilderExtensions
                     movie.Title,
                     movie.ReleaseYear,
                     template,
-                    proposedName = ApplyMovieRenameTemplate(template, movie.Title, movie.ReleaseYear)
+                    proposedName = NamingTemplateRenderer.RenderSegment(
+                        template,
+                        movie.Title,
+                        movie.ReleaseYear,
+                        movie.ImdbId,
+                        genre: movie.Genres?.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries).FirstOrDefault())
                 });
             }
 
@@ -1537,36 +1899,6 @@ public static class MoviesEndpointRouteBuilderExtensions
         }
     }
 
-    private static string ApplyMovieRenameTemplate(string template, string title, int? releaseYear)
-    {
-        var resolved = (template ?? "{Movie Title} ({Release Year})")
-            .Replace("{Movie Title}", title ?? string.Empty, StringComparison.OrdinalIgnoreCase)
-            .Replace("{Title}", title ?? string.Empty, StringComparison.OrdinalIgnoreCase)
-            .Replace("{Release Year}", releaseYear?.ToString() ?? string.Empty, StringComparison.OrdinalIgnoreCase)
-            .Replace("{Year}", releaseYear?.ToString() ?? string.Empty, StringComparison.OrdinalIgnoreCase);
-
-        var cleaned = SanitizePathSegment(resolved).Trim();
-        return string.IsNullOrWhiteSpace(cleaned)
-            ? SanitizePathSegment(title ?? "Untitled")
-            : cleaned;
-    }
-
-    private static string SanitizePathSegment(string value)
-    {
-        if (string.IsNullOrWhiteSpace(value))
-        {
-            return "Untitled";
-        }
-
-        var invalid = Path.GetInvalidFileNameChars();
-        var chars = value
-            .Select(ch => invalid.Contains(ch) ? ' ' : ch)
-            .ToArray();
-
-        return string.Join(' ', new string(chars)
-            .Split(' ', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries));
-    }
-
     private static Dictionary<string, string[]> ValidateImportRecovery(string? title, string? summary)
     {
         var errors = new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase);
@@ -1592,6 +1924,7 @@ public static class MoviesEndpointRouteBuilderExtensions
         IIntakeRepository intakeRepository,
         IJobQueueRepository jobQueueRepository,
         IActivityFeedRepository activityFeedRepository,
+        IRecycleBinService recycleBinService,
         CancellationToken cancellationToken)
     {
         var metadata = new Dictionary<string, string?>();
@@ -1613,9 +1946,10 @@ public static class MoviesEndpointRouteBuilderExtensions
                 }
             }
 
-            var deletion = LibraryMediaDeletion.Delete(trackedFiles, libraries, cancellationToken);
-            metadata["deletedFileCount"] = deletion.DeletedFileCount.ToString();
-            metadata["deletedFolderCount"] = deletion.DeletedFolderCount.ToString();
+            var deletion = await recycleBinService.MoveAsync(trackedFiles, libraries, cancellationToken);
+            metadata["deletedFileCount"] = deletion.MovedFileCount.ToString();
+            metadata["deletedFolderCount"] = deletion.MovedFolderCount.ToString();
+            metadata["recycleBinItemCount"] = deletion.Items.Count.ToString();
             if (deletion.Warnings.Count > 0)
             {
                 metadata["fileDeletionWarnings"] = string.Join(" ", deletion.Warnings);
@@ -1633,7 +1967,7 @@ public static class MoviesEndpointRouteBuilderExtensions
                 {
                     var exclusion = await intakeRepository.CreateIntakeListExclusionAsync(
                         origin.SourceId,
-                        new CreateIntakeListExclusionRequest(movie.Title, movie.ReleaseYear, movie.ImdbId, null),
+                        new CreateIntakeListExclusionRequest(movie.Title, movie.ReleaseYear, movie.ImdbId, null, "Removed from library by user"),
                         cancellationToken);
                     if (exclusion is not null) exclusionsAdded++;
                 }
@@ -1708,8 +2042,26 @@ public static class MoviesEndpointRouteBuilderExtensions
         IMovieCatalogRepository repository,
         string movieId,
         MetadataSearchResult result,
-        CancellationToken cancellationToken)
-        => repository.UpdateMetadataAsync(movieId, result, cancellationToken);
+        CancellationToken cancellationToken,
+        bool replaceIdentity = false)
+        => repository.UpdateMetadataAsync(
+            CatalogueMetadata.ToUpdate(movieId, result, result.Studio) with
+            {
+                Title = replaceIdentity ? result.Title : null,
+                Year = replaceIdentity ? result.Year : null
+            },
+            cancellationToken);
+
+    private static MetadataProviderIssue MissingProviderIssue(
+        string mediaType,
+        MetadataProviderRecordLookup lookup)
+        => new(
+            "provider-record-missing",
+            lookup.Provider,
+            lookup.ProviderId,
+            $"{lookup.Provider}:{mediaType}:{lookup.ProviderId}:missing".ToLowerInvariant(),
+            DateTimeOffset.UtcNow,
+            null);
 
     private sealed record ReleaseGrabRequest(
         string ReleaseName,
@@ -1726,7 +2078,129 @@ public static class MoviesEndpointRouteBuilderExtensions
         bool ForceAll,
         int? Take);
 
-    private sealed record MetadataLinkRequest(string? ProviderId);
+    private static async Task<MovieMetadataLinkPlan> BuildMetadataLinkPlanAsync(
+        MovieListItem movie,
+        string providerId,
+        IMovieCatalogRepository repository,
+        IMetadataProvider metadataProvider,
+        CancellationToken cancellationToken)
+    {
+        var lookup = await metadataProvider.ResolveProviderRecordAsync(
+            new MetadataLookupRequest(movie.Title, "movies", movie.ReleaseYear, providerId.Trim()),
+            cancellationToken);
+        if (lookup.Status != MetadataProviderRecordStatus.Found || lookup.Result is null)
+        {
+            return new MovieMetadataLinkPlan(lookup.Status, null, null);
+        }
+
+        var match = lookup.Result;
+        var current = new MetadataLinkIdentity(
+            movie.MetadataProvider,
+            movie.MetadataProviderId,
+            movie.Title,
+            movie.ReleaseYear,
+            movie.ImdbId,
+            ReadMetadataText(movie.MetadataJson, "Collection", "collection"));
+        var proposed = new MetadataLinkIdentity(
+            match.Provider,
+            match.ProviderId,
+            match.Title,
+            match.Year,
+            match.ImdbId,
+            match.Collection);
+        var changes = DescribeMetadataIdentityChanges(current, proposed);
+        var conflict = await repository.FindMetadataIdentityConflictAsync(
+            movie.Id,
+            match.Title,
+            match.Year,
+            match.ImdbId,
+            match.Provider,
+            match.ProviderId,
+            cancellationToken);
+        var consequences = new List<string>
+        {
+            "Imported files, edition and release facts, monitoring, history, tags, and plan assignments will be kept.",
+            "Provider artwork, overview, ratings, genres, IDs, collection, and release dates will be refreshed from the selected record."
+        };
+        if (!string.Equals(current.Context, proposed.Context, StringComparison.OrdinalIgnoreCase))
+        {
+            consequences.Add($"Collection will change from {DisplayMetadataValue(current.Context)} to {DisplayMetadataValue(proposed.Context)}.");
+        }
+
+        var blockReason = conflict is null
+            ? null
+            : $"{conflict.Title} already owns the proposed {DescribeConflictReason(conflict.Reason)}. Deluno will not merge or duplicate the two movies.";
+        var token = MetadataLinkPreviewTokens.Create(movie.Id, movie.UpdatedUtc, proposed);
+        var preview = new MetadataLinkPreview(
+            "movies",
+            movie.Id,
+            current,
+            proposed,
+            changes,
+            consequences,
+            conflict,
+            null,
+            conflict is null,
+            blockReason,
+            token);
+        return new MovieMetadataLinkPlan(lookup.Status, match, preview);
+    }
+
+    private static IReadOnlyList<string> DescribeMetadataIdentityChanges(
+        MetadataLinkIdentity current,
+        MetadataLinkIdentity proposed)
+    {
+        var changes = new List<string>();
+        AddMetadataChange(changes, "Provider record", current.ProviderId, proposed.ProviderId);
+        AddMetadataChange(changes, "Title", current.Title, proposed.Title);
+        AddMetadataChange(changes, "Year", current.Year?.ToString(), proposed.Year?.ToString());
+        AddMetadataChange(changes, "IMDb ID", current.ImdbId, proposed.ImdbId);
+        return changes.Count == 0 ? ["The core identity is unchanged; provider metadata will be refreshed."] : changes;
+    }
+
+    private static void AddMetadataChange(List<string> changes, string label, string? before, string? after)
+    {
+        if (string.Equals(before, after, StringComparison.OrdinalIgnoreCase)) return;
+        changes.Add($"{label}: {DisplayMetadataValue(before)} → {DisplayMetadataValue(after)}");
+    }
+
+    private static string DisplayMetadataValue(string? value) => string.IsNullOrWhiteSpace(value) ? "not set" : value;
+
+    private static string DescribeConflictReason(string reason) => reason switch
+    {
+        "provider-id" => "provider record",
+        "imdb-id" => "IMDb identity",
+        _ => "title and year"
+    };
+
+    private static string? ReadMetadataText(string? metadataJson, params string[] names)
+    {
+        if (string.IsNullOrWhiteSpace(metadataJson)) return null;
+        try
+        {
+            using var document = JsonDocument.Parse(metadataJson);
+            foreach (var property in document.RootElement.EnumerateObject())
+            {
+                if (names.Any(name => string.Equals(property.Name, name, StringComparison.OrdinalIgnoreCase)) &&
+                    property.Value.ValueKind == JsonValueKind.String)
+                {
+                    return property.Value.GetString();
+                }
+            }
+        }
+        catch (JsonException)
+        {
+            // A malformed stored metadata blob cannot make an identity preview destructive.
+        }
+        return null;
+    }
+
+    private sealed record MovieMetadataLinkPlan(
+        MetadataProviderRecordStatus Status,
+        MetadataSearchResult? Match,
+        MetadataLinkPreview? Preview);
+
+    private sealed record MetadataLinkRequest(string? ProviderId, string? ConfirmationToken = null);
 
     private sealed record MetadataOverrideRequest(
         string? OriginalTitle,
@@ -1798,5 +2272,7 @@ public static class MoviesEndpointRouteBuilderExtensions
         string? Template);
 
     private sealed record BulkSearchRequest(IReadOnlyList<string>? MovieIds);
+
+    private sealed record MovieCollectionExclusionRequest(bool Excluded);
 
 }

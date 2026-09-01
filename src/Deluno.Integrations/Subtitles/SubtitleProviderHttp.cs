@@ -31,9 +31,11 @@ public sealed class SubtitleProviderRateLimitedException(string providerKey, Tim
 /// the right shape — it is the same here.</para>
 ///
 /// <para><b>Three outcomes, and they are not the same.</b> A provider that
-/// answered unhelpfully — a 404, a 500, a body that is not the JSON it promised
-/// — returns nothing, because seven sources are asked in turn and one being
-/// unhelpful must cost the next one nothing. A provider that could not be
+/// has no matching resource — a 404, or a body that is not the JSON it
+/// promised — returns nothing, because seven sources are asked in turn and
+/// one having no result must cost the next one nothing. HTTP errors such as
+/// authentication failures and server outages throw with their status so the
+/// caller can retain a typed failure. A provider that could not be
 /// <i>reached</i> throws, and so does a 429.</para>
 ///
 /// <para>That distinction was learnt on the rig rather than reasoned out.
@@ -86,8 +88,9 @@ public static class SubtitleProviderHttp
     }
 
     /// <summary>
-    /// A GET. Null when the provider answered unhelpfully; throws when it could
-    /// not be reached — see the type summary for why those are different.
+    /// A GET. Null when the provider has no matching resource or answered with
+    /// malformed JSON; throws for typed HTTP errors and when it could not be
+    /// reached — see the type summary for why those are different.
     /// </summary>
     public static Task<T?> GetJsonAsync<T>(
         HttpClient client,
@@ -109,10 +112,12 @@ public static class SubtitleProviderHttp
             using var response = await client.SendAsync(request, cancellationToken);
             ThrowIfRateLimited(response, providerKey);
 
-            if (!response.IsSuccessStatusCode)
+            if (response.StatusCode == HttpStatusCode.NotFound)
             {
                 return null;
             }
+
+            ThrowIfHttpFailure(response, providerKey);
 
             return await response.Content.ReadFromJsonAsync<T>(cancellationToken);
         }
@@ -139,9 +144,13 @@ public static class SubtitleProviderHttp
         {
             using var response = await client.GetAsync(url, cancellationToken);
             ThrowIfRateLimited(response, providerKey);
-            return response.IsSuccessStatusCode
-                ? await response.Content.ReadAsStringAsync(cancellationToken)
-                : string.Empty;
+            if (response.StatusCode == HttpStatusCode.NotFound)
+            {
+                return string.Empty;
+            }
+
+            ThrowIfHttpFailure(response, providerKey);
+            return await response.Content.ReadAsStringAsync(cancellationToken);
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
@@ -185,5 +194,18 @@ public static class SubtitleProviderHttp
                 : null);
 
         throw new SubtitleProviderRateLimitedException(providerKey, retryAfter);
+    }
+
+    private static void ThrowIfHttpFailure(HttpResponseMessage response, string providerKey)
+    {
+        if (response.IsSuccessStatusCode)
+        {
+            return;
+        }
+
+        throw new HttpRequestException(
+            $"{providerKey} returned HTTP {(int)response.StatusCode} ({response.StatusCode}).",
+            inner: null,
+            statusCode: response.StatusCode);
     }
 }

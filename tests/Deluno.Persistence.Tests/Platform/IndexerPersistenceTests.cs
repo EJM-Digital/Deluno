@@ -86,6 +86,91 @@ public sealed class IndexerPersistenceTests
     }
 
     [Fact]
+    public async Task CreateIndexerAsync_persists_acquisition_controls_and_search_kinds()
+    {
+        using var storage = TestStorage.Create();
+        var repo = await CreateRepositoryAsync(storage);
+
+        var created = await repo.CreateIndexerAsync(
+            BaseCreateRequest() with
+            {
+                MinimumAgeMinutes = 30,
+                RetentionDays = 14,
+                MaximumSizeMb = 20_000,
+                PreferIndexerFlags = "freeleech",
+                AvailabilityDelayDays = 2,
+                RssEnabled = false,
+                AutomaticSearchEnabled = false,
+                InteractiveSearchEnabled = true
+            },
+            CancellationToken.None);
+
+        var persisted = Assert.Single(await repo.ListIndexersAsync(CancellationToken.None));
+        Assert.Equal(30, persisted.MinimumAgeMinutes);
+        Assert.Equal(14, persisted.RetentionDays);
+        Assert.Equal(20_000, persisted.MaximumSizeMb);
+        Assert.Equal("freeleech", persisted.PreferIndexerFlags);
+        Assert.Equal(2, persisted.AvailabilityDelayDays);
+        Assert.False(persisted.RssEnabled);
+        Assert.False(persisted.AutomaticSearchEnabled);
+        Assert.True(persisted.InteractiveSearchEnabled);
+        Assert.Equal(created.Id, persisted.Id);
+    }
+
+    [Fact]
+    public async Task UpdateIndexerAsync_can_change_and_clear_acquisition_controls()
+    {
+        using var storage = TestStorage.Create();
+        var repo = await CreateRepositoryAsync(storage);
+        var created = await repo.CreateIndexerAsync(
+            BaseCreateRequest() with { MinimumAgeMinutes = 30, PreferIndexerFlags = "freeleech" },
+            CancellationToken.None);
+
+        var updated = await repo.UpdateIndexerAsync(
+            created.Id,
+            new UpdateIndexerRequest(
+                null, null, null, null, null, null, null, null, null, null,
+                MinimumAgeMinutes: 60,
+                RetentionDays: 14,
+                MaximumSizeMb: 20_000,
+                PreferIndexerFlags: "double-upload",
+                AvailabilityDelayDays: 3,
+                RssEnabled: false,
+                AutomaticSearchEnabled: false,
+                InteractiveSearchEnabled: true),
+            CancellationToken.None);
+
+        Assert.NotNull(updated);
+        Assert.Equal(60, updated.MinimumAgeMinutes);
+        Assert.Equal(14, updated.RetentionDays);
+        Assert.Equal(20_000, updated.MaximumSizeMb);
+        Assert.Equal("double-upload", updated.PreferIndexerFlags);
+        Assert.Equal(3, updated.AvailabilityDelayDays);
+        Assert.False(updated.RssEnabled);
+        Assert.False(updated.AutomaticSearchEnabled);
+
+        var cleared = await repo.UpdateIndexerAsync(
+            created.Id,
+            new UpdateIndexerRequest(
+                null, null, null, null, null, null, null, null, null, null,
+                ClearMinimumAge: true,
+                ClearRetention: true,
+                ClearMaximumSize: true,
+                ClearPreferIndexerFlags: true,
+                ClearAvailabilityDelay: true),
+            CancellationToken.None);
+
+        Assert.NotNull(cleared);
+        Assert.Null(cleared.MinimumAgeMinutes);
+        Assert.Null(cleared.RetentionDays);
+        Assert.Null(cleared.MaximumSizeMb);
+        Assert.Null(cleared.PreferIndexerFlags);
+        Assert.Null(cleared.AvailabilityDelayDays);
+        Assert.False(cleared.RssEnabled);
+        Assert.False(cleared.AutomaticSearchEnabled);
+    }
+
+    [Fact]
     public async Task CreateIndexerAsync_multiple_indexers_are_all_listed()
     {
         using var storage = TestStorage.Create();

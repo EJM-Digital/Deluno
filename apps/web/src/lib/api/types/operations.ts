@@ -1,3 +1,5 @@
+import type { IntegrationFailure } from "./resources";
+
 export interface JobQueueItem {
   id: string;
   jobType: string;
@@ -14,6 +16,37 @@ export interface JobQueueItem {
   lastError: string | null;
   relatedEntityType: string | null;
   relatedEntityId: string | null;
+}
+
+export interface SystemTaskItem {
+  key: string;
+  name: string;
+  description: string;
+  intervalSeconds: number;
+  isConfigurable: boolean;
+  lastStartedUtc: string | null;
+  lastCompletedUtc: string | null;
+  lastResult: string;
+  lastDurationMs: number | null;
+  nextRunUtc: string | null;
+}
+
+export interface RecycleBinSettings {
+  retentionDays: number;
+  maxSizeMb: number;
+}
+
+export interface RecycleBinItem {
+  id: string;
+  libraryId: string;
+  libraryName: string;
+  mediaType: string;
+  originalPath: string;
+  recyclePath: string;
+  isDirectory: boolean;
+  sizeBytes: number;
+  createdUtc: string;
+  expiresUtc: string;
 }
 
 export interface LibraryAutomationStateItem {
@@ -147,6 +180,8 @@ export interface UpdateStatusResponse {
   message: string;
   lastError: string | null;
   notes: string[];
+  currentImageRef?: string | null;
+  currentImageDigest?: string | null;
 }
 
 export interface QualityTierDefinition {
@@ -305,6 +340,7 @@ export interface DownloadDispatchItem {
   circuitOpenUntilUtc?: string | null;
   nextRetryEligibleUtc?: string | null;
   attemptCount?: number | null;
+  failure?: IntegrationFailure | null;
 }
 
 export interface DispatchTimelineEvent {
@@ -372,6 +408,7 @@ export interface LibraryViewItem {
   rulesJson: string;
   createdUtc: string;
   updatedUtc: string;
+  automationAction?: "search" | null;
 }
 
 export interface MigrationImportRequest {
@@ -379,6 +416,7 @@ export interface MigrationImportRequest {
   sourceName: string;
   payloadJson: string;
   selectedOperationIds?: string[];
+  allowAdvancedLegacyRules?: boolean;
 }
 
 export interface MigrationReportSummary {
@@ -404,6 +442,26 @@ export interface MigrationReportOperation {
   warnings: string[];
 }
 
+export interface MigrationInventoryEntry {
+  sourceKind: string;
+  mediaType: string;
+  category: string;
+  inputRowCount: number;
+  accountedRowCount: number;
+  unaccountedRowCount: number;
+  actionCounts: Record<string, number>;
+  classificationCounts: Record<string, number>;
+  warnings: string[];
+  complete: boolean;
+}
+
+export interface MigrationReportInventory {
+  inputRowCount: number;
+  accountedRowCount: number;
+  unaccountedRowCount: number;
+  entries: MigrationInventoryEntry[];
+}
+
 export interface MigrationReport {
   sourceKind: string;
   sourceName: string;
@@ -412,6 +470,7 @@ export interface MigrationReport {
   operations: MigrationReportOperation[];
   warnings: string[];
   errors: string[];
+  inventory?: MigrationReportInventory | null;
 }
 
 export interface MigrationAppliedItem {
@@ -426,6 +485,16 @@ export interface MigrationApplyResponse {
   report: MigrationReport;
   applied: MigrationAppliedItem[];
   auditReportId?: string | null;
+  backup?: MigrationBackupReceipt | null;
+}
+
+export interface MigrationBackupReceipt {
+  backupId: string;
+  fileName: string;
+  sizeBytes: number;
+  createdUtc: string;
+  reason: string;
+  verification: string;
 }
 
 export interface MigrationAuditReport {
@@ -436,6 +505,7 @@ export interface MigrationAuditReport {
   preflightReport: MigrationReport;
   resultReport: MigrationReport;
   applied: MigrationAppliedItem[];
+  backup?: MigrationBackupReceipt | null;
 }
 
 export interface CreateLibraryViewRequest {
@@ -451,6 +521,7 @@ export interface CreateLibraryViewRequest {
   cardSize: "sm" | "md" | "lg";
   displayOptionsJson: string;
   rulesJson: string;
+  automationAction?: "search" | null;
 }
 
 export interface UpdateLibraryViewRequest {
@@ -465,4 +536,5 @@ export interface UpdateLibraryViewRequest {
   cardSize: "sm" | "md" | "lg";
   displayOptionsJson: string;
   rulesJson: string;
+  automationAction?: "search" | null;
 }

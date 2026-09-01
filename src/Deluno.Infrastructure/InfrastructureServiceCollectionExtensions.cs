@@ -27,6 +27,7 @@ public static class InfrastructureServiceCollectionExtensions
 
         services.AddSingleton<IDelunoDatabaseConnectionFactory, SqliteDatabaseConnectionFactory>();
         services.AddSingleton<IDelunoDatabaseMigrator, SqliteDatabaseMigrator>();
+        services.AddSingleton<IDelunoStartupGate, DelunoStartupGate>();
         services.AddHostedService<DelunoStorageBootstrapService>();
         services.AddSingleton(TimeProvider.System);
         services.AddSingleton<IIntegrationResiliencePolicy, IntegrationResiliencePolicy>();

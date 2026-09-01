@@ -1,4 +1,5 @@
 using Deluno.Notifications.Contracts;
+using Deluno.Contracts;
 
 namespace Deluno.Notifications.Data;
 
@@ -17,6 +18,34 @@ public interface INotificationRepository
     Task<bool> DeleteNotificationWebhookAsync(string id, CancellationToken cancellationToken);
 
     Task RecordNotificationWebhookFiredAsync(string id, string? error, CancellationToken cancellationToken);
+
+    Task<Contracts.NotificationWebhookDeliveryRecord> CreateNotificationWebhookDeliveryAsync(
+        string webhookId,
+        string eventCategory,
+        string title,
+        string message,
+        string? detailsJson,
+        CancellationToken cancellationToken);
+
+    Task<Contracts.NotificationWebhookDeliveryRecord?> GetNotificationWebhookDeliveryAsync(
+        string deliveryId,
+        CancellationToken cancellationToken);
+
+    Task<IReadOnlyList<Contracts.NotificationWebhookDeliveryItem>> ListNotificationWebhookDeliveriesAsync(
+        string? status,
+        string? webhookId,
+        int take,
+        CancellationToken cancellationToken);
+
+    Task RecordNotificationWebhookDeliveryAttemptAsync(
+        string deliveryId,
+        string status,
+        int attemptCount,
+        int? statusCode,
+        string? error,
+        DateTimeOffset? nextAttemptUtc,
+        CancellationToken cancellationToken,
+        IntegrationFailure? failure = null);
 
     /// <summary>
     /// The user's master delivery switch ("Send notifications"). When false,

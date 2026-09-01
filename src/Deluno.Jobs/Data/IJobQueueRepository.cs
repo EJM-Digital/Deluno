@@ -90,6 +90,16 @@ public interface IJobQueueRepository
     /// </summary>
     Task<bool> TryClaimScheduledPassAsync(string scheduleKey, TimeSpan interval, CancellationToken cancellationToken);
 
+    Task RecordScheduledPassOutcomeAsync(
+        string scheduleKey,
+        DateTimeOffset completedUtc,
+        string result,
+        long durationMs,
+        DateTimeOffset? nextRunUtc,
+        CancellationToken cancellationToken);
+
+    Task<IReadOnlyList<SystemTaskState>> ListSystemTaskStatesAsync(CancellationToken cancellationToken);
+
     Task<IReadOnlyDictionary<string, LibraryAutomationStateItem>> ListLibraryAutomationStatesAsync(CancellationToken cancellationToken);
 
     Task<Page<LibraryAutomationStateItem>> ListLibraryAutomationStatesPageAsync(
@@ -169,7 +179,13 @@ public interface IJobQueueRepository
         string? notesJson,
         int? grabResponseCode = null,
         string? grabFailureCode = null,
-        CancellationToken cancellationToken = default);
+        CancellationToken cancellationToken = default,
+        IntegrationFailure? failure = null,
+        bool replacementAuthorized = false,
+        bool forceReplacementAuthorized = false,
+        string? replacementExpectedPath = null,
+        IReadOnlyList<DispatchReplacementTarget>? replacementTargets = null,
+        string? clientExternalId = null);
 
     Task RecordSearchCycleRunAsync(
         RecordSearchCycleRunRequest request,

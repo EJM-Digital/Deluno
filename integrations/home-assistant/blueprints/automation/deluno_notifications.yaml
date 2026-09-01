@@ -1,0 +1,33 @@
+blueprint:
+  name: Deluno notifications
+  description: Turn Deluno outbound webhook events into a Home Assistant notification.
+  domain: automation
+  input:
+    webhook_id:
+      name: Deluno webhook ID
+      description: The webhook ID configured in Deluno and exposed by Home Assistant.
+      selector:
+        text:
+    notification_service:
+      name: Notification service
+      description: Optional notify service, for example notify.mobile_app_phone.
+      default: persistent_notification.create
+      selector:
+        text:
+
+trigger:
+  - platform: webhook
+    webhook_id: !input webhook_id
+    allowed_methods:
+      - POST
+    local_only: false
+
+action:
+  - service: !input notification_service
+    data:
+      title: "{{ trigger.json.title | default('Deluno notification') }}"
+      message: >-
+        {{ trigger.json.message | default(trigger.json.eventCategory | default('Deluno event')) }}
+
+mode: queued
+max: 10

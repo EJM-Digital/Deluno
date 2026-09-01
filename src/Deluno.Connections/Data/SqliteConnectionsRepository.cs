@@ -1,4 +1,6 @@
+using System.Text.Json;
 using Deluno.Connections.Contracts;
+using Deluno.Contracts;
 using Deluno.Infrastructure.Storage;
 using Deluno.Security;
 using static Deluno.Infrastructure.Storage.SqliteRecordHelpers;
@@ -70,7 +72,10 @@ public sealed class SqliteConnectionsRepository(
                 last_health_failure_category, last_health_latency_ms, last_health_test_utc,
                 consecutive_failures, rate_limited_until_utc, disabled_reason, request_interval_seconds,
                 created_utc, updated_utc,
-                sharing_mode, sharing_for_hours, sharing_until_ratio, sharing_stuck_action, sharing_stuck_after_days
+                sharing_mode, sharing_for_hours, sharing_until_ratio, sharing_stuck_action, sharing_stuck_after_days,
+                minimum_age_minutes, retention_days, maximum_size_mb, prefer_indexer_flags, availability_delay_days,
+                rss_enabled, automatic_search_enabled, interactive_search_enabled,
+                last_health_failure_json
             FROM indexer_sources
             ORDER BY priority ASC, name ASC;
             """;
@@ -108,7 +113,16 @@ public sealed class SqliteConnectionsRepository(
                 SharingForHours = reader.IsDBNull(23) ? null : reader.GetInt32(23),
                 SharingUntilRatio = reader.IsDBNull(24) ? null : reader.GetDouble(24),
                 SharingStuckAction = reader.IsDBNull(25) ? null : reader.GetString(25),
-                SharingStuckAfterDays = reader.IsDBNull(26) ? null : reader.GetInt32(26)
+                SharingStuckAfterDays = reader.IsDBNull(26) ? null : reader.GetInt32(26),
+                MinimumAgeMinutes = reader.IsDBNull(27) ? null : reader.GetInt32(27),
+                RetentionDays = reader.IsDBNull(28) ? null : reader.GetInt32(28),
+                MaximumSizeMb = reader.IsDBNull(29) ? null : reader.GetInt32(29),
+                PreferIndexerFlags = reader.IsDBNull(30) ? null : reader.GetString(30),
+                AvailabilityDelayDays = reader.IsDBNull(31) ? null : reader.GetInt32(31),
+                RssEnabled = reader.IsDBNull(32) || reader.GetInt64(32) == 1,
+                AutomaticSearchEnabled = reader.IsDBNull(33) || reader.GetInt64(33) == 1,
+                InteractiveSearchEnabled = reader.IsDBNull(34) || reader.GetInt64(34) == 1,
+                LastHealthFailure = reader.IsDBNull(35) ? null : DeserializeFailure(reader.GetString(35))
             });
         }
 
@@ -131,7 +145,8 @@ public sealed class SqliteConnectionsRepository(
                 movies_category, tv_category, category_template, priority,
                 is_enabled, health_status, last_health_message,
                 last_health_failure_category, last_health_latency_ms, last_health_test_utc,
-                created_utc, updated_utc
+                created_utc, updated_utc,
+                last_health_failure_json
             FROM download_clients
             ORDER BY priority ASC, name ASC;
             """;
@@ -159,7 +174,10 @@ public sealed class SqliteConnectionsRepository(
                 LastHealthLatencyMs: reader.IsDBNull(16) ? null : reader.GetInt32(16),
                 LastHealthTestUtc: reader.IsDBNull(17) ? null : ParseTimestamp(reader.GetString(17)),
                 CreatedUtc: ParseTimestamp(reader.GetString(18)),
-                UpdatedUtc: ParseTimestamp(reader.GetString(19))));
+                UpdatedUtc: ParseTimestamp(reader.GetString(19)))
+            {
+                LastHealthFailure = reader.IsDBNull(20) ? null : DeserializeFailure(reader.GetString(20))
+            });
         }
 
         return items;
@@ -241,7 +259,15 @@ public sealed class SqliteConnectionsRepository(
             SharingForHours = request.SharingForHours,
             SharingUntilRatio = request.SharingUntilRatio,
             SharingStuckAction = request.SharingStuckAction,
-            SharingStuckAfterDays = request.SharingStuckAfterDays
+            SharingStuckAfterDays = request.SharingStuckAfterDays,
+            MinimumAgeMinutes = request.MinimumAgeMinutes,
+            RetentionDays = request.RetentionDays,
+            MaximumSizeMb = request.MaximumSizeMb,
+            PreferIndexerFlags = request.PreferIndexerFlags,
+            AvailabilityDelayDays = request.AvailabilityDelayDays,
+            RssEnabled = request.RssEnabled,
+            AutomaticSearchEnabled = request.AutomaticSearchEnabled,
+            InteractiveSearchEnabled = request.InteractiveSearchEnabled
         };
 
         await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
@@ -254,12 +280,16 @@ public sealed class SqliteConnectionsRepository(
             INSERT INTO indexer_sources (
                 id, name, protocol, privacy, base_url, api_key, priority, categories, tags,
                 media_scope, is_enabled, health_status, last_health_message, request_interval_seconds, created_utc, updated_utc,
-                sharing_mode, sharing_for_hours, sharing_until_ratio, sharing_stuck_action, sharing_stuck_after_days
+                sharing_mode, sharing_for_hours, sharing_until_ratio, sharing_stuck_action, sharing_stuck_after_days,
+                minimum_age_minutes, retention_days, maximum_size_mb, prefer_indexer_flags, availability_delay_days,
+                rss_enabled, automatic_search_enabled, interactive_search_enabled
             )
             VALUES (
                 @id, @name, @protocol, @privacy, @baseUrl, @apiKey, @priority, @categories, @tags,
                 @mediaScope, @isEnabled, @healthStatus, @lastHealthMessage, @requestIntervalSeconds, @createdUtc, @updatedUtc,
-                @sharingMode, @sharingForHours, @sharingUntilRatio, @sharingStuckAction, @sharingStuckAfterDays
+                @sharingMode, @sharingForHours, @sharingUntilRatio, @sharingStuckAction, @sharingStuckAfterDays,
+                @minimumAgeMinutes, @retentionDays, @maximumSizeMb, @preferIndexerFlags, @availabilityDelayDays,
+                @rssEnabled, @automaticSearchEnabled, @interactiveSearchEnabled
             );
             """;
 
@@ -269,6 +299,14 @@ public sealed class SqliteConnectionsRepository(
         AddParameter(command, "@sharingUntilRatio", item.SharingUntilRatio);
         AddParameter(command, "@sharingStuckAction", item.SharingStuckAction);
         AddParameter(command, "@sharingStuckAfterDays", item.SharingStuckAfterDays);
+        AddParameter(command, "@minimumAgeMinutes", item.MinimumAgeMinutes);
+        AddParameter(command, "@retentionDays", item.RetentionDays);
+        AddParameter(command, "@maximumSizeMb", item.MaximumSizeMb);
+        AddParameter(command, "@preferIndexerFlags", item.PreferIndexerFlags);
+        AddParameter(command, "@availabilityDelayDays", item.AvailabilityDelayDays);
+        AddParameter(command, "@rssEnabled", item.RssEnabled ? 1 : 0);
+        AddParameter(command, "@automaticSearchEnabled", item.AutomaticSearchEnabled ? 1 : 0);
+        AddParameter(command, "@interactiveSearchEnabled", item.InteractiveSearchEnabled ? 1 : 0);
         AddParameter(command, "@name", item.Name);
         AddParameter(command, "@protocol", item.Protocol);
         AddParameter(command, "@privacy", item.Privacy);
@@ -333,6 +371,18 @@ public sealed class SqliteConnectionsRepository(
         var newSharingUntilRatio  = clearSharing ? null : request.SharingUntilRatio ?? existing.SharingUntilRatio;
         var newSharingStuckAction = clearSharing ? null : request.SharingStuckAction ?? existing.SharingStuckAction;
         var newSharingStuckDays   = clearSharing ? null : request.SharingStuckAfterDays ?? existing.SharingStuckAfterDays;
+        var newMinimumAge = request.ClearMinimumAge == true ? null : request.MinimumAgeMinutes ?? existing.MinimumAgeMinutes;
+        var newRetention = request.ClearRetention == true ? null : request.RetentionDays ?? existing.RetentionDays;
+        var newMaximumSize = request.ClearMaximumSize == true ? null : request.MaximumSizeMb ?? existing.MaximumSizeMb;
+        var newPreferIndexerFlags = request.ClearPreferIndexerFlags == true
+            ? null
+            : request.PreferIndexerFlags ?? existing.PreferIndexerFlags;
+        var newAvailabilityDelay = request.ClearAvailabilityDelay == true
+            ? null
+            : request.AvailabilityDelayDays ?? existing.AvailabilityDelayDays;
+        var newRssEnabled = request.RssEnabled ?? existing.RssEnabled;
+        var newAutomaticSearchEnabled = request.AutomaticSearchEnabled ?? existing.AutomaticSearchEnabled;
+        var newInteractiveSearchEnabled = request.InteractiveSearchEnabled ?? existing.InteractiveSearchEnabled;
 
         // If enabling a previously-disabled indexer, reset health status so the UI prompts a test
         var newHealth = newEnabled && !existing.IsEnabled ? "untested" : existing.HealthStatus;
@@ -358,6 +408,14 @@ public sealed class SqliteConnectionsRepository(
                 sharing_until_ratio = @sharingUntilRatio,
                 sharing_stuck_action = @sharingStuckAction,
                 sharing_stuck_after_days = @sharingStuckAfterDays,
+                minimum_age_minutes = @minimumAgeMinutes,
+                retention_days = @retentionDays,
+                maximum_size_mb = @maximumSizeMb,
+                prefer_indexer_flags = @preferIndexerFlags,
+                availability_delay_days = @availabilityDelayDays,
+                rss_enabled = @rssEnabled,
+                automatic_search_enabled = @automaticSearchEnabled,
+                interactive_search_enabled = @interactiveSearchEnabled,
                 is_enabled = @isEnabled,
                 health_status = @healthStatus,
                 last_health_message = @lastHealthMessage,
@@ -386,6 +444,14 @@ public sealed class SqliteConnectionsRepository(
         AddParameter(command, "@sharingUntilRatio", newSharingUntilRatio);
         AddParameter(command, "@sharingStuckAction", newSharingStuckAction);
         AddParameter(command, "@sharingStuckAfterDays", newSharingStuckDays);
+        AddParameter(command, "@minimumAgeMinutes", newMinimumAge);
+        AddParameter(command, "@retentionDays", newRetention);
+        AddParameter(command, "@maximumSizeMb", newMaximumSize);
+        AddParameter(command, "@preferIndexerFlags", newPreferIndexerFlags);
+        AddParameter(command, "@availabilityDelayDays", newAvailabilityDelay);
+        AddParameter(command, "@rssEnabled", newRssEnabled ? 1 : 0);
+        AddParameter(command, "@automaticSearchEnabled", newAutomaticSearchEnabled ? 1 : 0);
+        AddParameter(command, "@interactiveSearchEnabled", newInteractiveSearchEnabled ? 1 : 0);
         AddParameter(command, "@isEnabled", newEnabled ? 1 : 0);
         AddParameter(command, "@healthStatus", newHealth);
         AddParameter(command, "@lastHealthMessage", newMsg);
@@ -410,6 +476,14 @@ public sealed class SqliteConnectionsRepository(
             SharingUntilRatio = newSharingUntilRatio,
             SharingStuckAction = newSharingStuckAction,
             SharingStuckAfterDays = newSharingStuckDays,
+            MinimumAgeMinutes = newMinimumAge,
+            RetentionDays = newRetention,
+            MaximumSizeMb = newMaximumSize,
+            PreferIndexerFlags = newPreferIndexerFlags,
+            AvailabilityDelayDays = newAvailabilityDelay,
+            RssEnabled = newRssEnabled,
+            AutomaticSearchEnabled = newAutomaticSearchEnabled,
+            InteractiveSearchEnabled = newInteractiveSearchEnabled,
             IsEnabled  = newEnabled,
             HealthStatus = newHealth,
             LastHealthMessage = newMsg,
@@ -692,7 +766,8 @@ public sealed class SqliteConnectionsRepository(
         string message,
         string? failureCategory,
         int? latencyMs,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        IntegrationFailure? failure = null)
     {
         var now = timeProvider.GetUtcNow();
         var isFailure = healthStatus is "degraded" or "failing" or "timeout" or "unreachable";
@@ -732,6 +807,7 @@ public sealed class SqliteConnectionsRepository(
                 health_status = @healthStatus,
                 last_health_message = @lastHealthMessage,
                 last_health_failure_category = @lastHealthFailureCategory,
+                last_health_failure_json = @lastHealthFailureJson,
                 last_health_latency_ms = @lastHealthLatencyMs,
                 last_health_test_utc = @lastHealthTestUtc,
                 consecutive_failures = @consecutiveFailures,
@@ -744,6 +820,7 @@ public sealed class SqliteConnectionsRepository(
         AddParameter(command, "@healthStatus", healthStatus);
         AddParameter(command, "@lastHealthMessage", message);
         AddParameter(command, "@lastHealthFailureCategory", failureCategory);
+        AddParameter(command, "@lastHealthFailureJson", failure is null ? null : JsonSerializer.Serialize(failure));
         AddParameter(command, "@lastHealthLatencyMs", latencyMs);
         AddParameter(command, "@lastHealthTestUtc", now.ToString("O"));
         AddParameter(command, "@consecutiveFailures", newFailures);
@@ -761,7 +838,10 @@ public sealed class SqliteConnectionsRepository(
             Message: message,
             FailureCategory: failureCategory,
             LatencyMs: latencyMs,
-            TestedUtc: now);
+            TestedUtc: now)
+        {
+            Failure = failure
+        };
     }
 
     public async Task<IndexerItem?> ResetIndexerCircuitAsync(string id, CancellationToken cancellationToken)
@@ -781,6 +861,8 @@ public sealed class SqliteConnectionsRepository(
                 rate_limited_until_utc = NULL,
                 health_status = CASE WHEN is_enabled = 1 THEN 'untested' ELSE 'disabled' END,
                 last_health_message = 'Circuit reset manually.',
+                last_health_failure_category = NULL,
+                last_health_failure_json = NULL,
                 updated_utc = @updatedUtc
             WHERE id = @id;
             """;
@@ -802,7 +884,8 @@ public sealed class SqliteConnectionsRepository(
         string message,
         string? failureCategory,
         int? latencyMs,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        IntegrationFailure? failure = null)
     {
         var now = timeProvider.GetUtcNow();
 
@@ -818,6 +901,7 @@ public sealed class SqliteConnectionsRepository(
                 health_status = @healthStatus,
                 last_health_message = @lastHealthMessage,
                 last_health_failure_category = @lastHealthFailureCategory,
+                last_health_failure_json = @lastHealthFailureJson,
                 last_health_latency_ms = @lastHealthLatencyMs,
                 last_health_test_utc = @lastHealthTestUtc,
                 updated_utc = @updatedUtc
@@ -828,6 +912,7 @@ public sealed class SqliteConnectionsRepository(
         AddParameter(command, "@healthStatus", healthStatus);
         AddParameter(command, "@lastHealthMessage", message);
         AddParameter(command, "@lastHealthFailureCategory", failureCategory);
+        AddParameter(command, "@lastHealthFailureJson", failure is null ? null : JsonSerializer.Serialize(failure));
         AddParameter(command, "@lastHealthLatencyMs", latencyMs);
         AddParameter(command, "@lastHealthTestUtc", now.ToString("O"));
         AddParameter(command, "@updatedUtc", now.ToString("O"));
@@ -843,7 +928,22 @@ public sealed class SqliteConnectionsRepository(
             Message: message,
             FailureCategory: failureCategory,
             LatencyMs: latencyMs,
-            TestedUtc: now);
+            TestedUtc: now)
+        {
+            Failure = failure
+        };
+    }
+
+    private static IntegrationFailure? DeserializeFailure(string json)
+    {
+        try
+        {
+            return JsonSerializer.Deserialize<IntegrationFailure>(json);
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
     }
 
     public async Task<bool> DeleteConnectionAsync(string id, CancellationToken cancellationToken)

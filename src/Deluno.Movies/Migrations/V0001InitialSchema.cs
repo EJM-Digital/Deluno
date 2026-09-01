@@ -1,4 +1,7 @@
+using Deluno.Contracts;
 using Deluno.Infrastructure.Storage.Migrations;
+using Deluno.Media;
+using Deluno.Media.Migrations;
 
 namespace Deluno.Movies.Migrations;
 
@@ -35,7 +38,12 @@ public static class MoviesDatabaseMigrations
         new V0027MovieConformance(),
         new V0028MovieDecisionFacts(),
         new V0029MovieSearchEffort(),
-        new V0030MovieFileProbe()
+        new V0030MovieFileProbe(),
+        new MediaTagsMigration(MediaKind.Movie, 31),
+        new V0032MovieCollections(),
+        new V0033MoviePreferenceEvaluations(),
+        new V0034MovieSubtitleFailureDetails(),
+        new V0035MovieMetadataProviderIssues()
     ];
 
     private sealed class V0001InitialSchema : SqliteSqlMigration
