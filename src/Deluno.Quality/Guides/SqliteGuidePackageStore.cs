@@ -214,6 +214,10 @@ public sealed class SqliteGuidePackageStore(
 
         var proposed = request.Package with { IntegritySha256 = null };
         errors.AddRange(GuidePackageCatalog.Validate(proposed));
+        if (proposed.Version > current.Package.Version && proposed.SourceInventory is null)
+        {
+            errors.Add("A newly applied guide package must carry the pinned upstream source inventory. Historical schema-v1 packages remain readable but cannot be copied forward without it.");
+        }
         var proposedHash = GuidePackageCatalog.ComputeIntegritySha256(proposed);
         proposed = proposed with { IntegritySha256 = proposedHash };
 

@@ -22,16 +22,24 @@ It contains:
 - a package version, upstream revision, review date, adaptation note, and
   deterministic SHA-256 integrity value.
 
+The package also carries a pinned source inventory for the exact upstream
+revision: 478 custom formats, 78 format groups, and 62 quality profiles at the
+current revision. It keeps native matcher clauses, per-score-set provenance,
+media applicability, and stable group/profile membership. This inventory is
+loaded from the backend assembly; it is never fetched while deciding whether to
+acquire or replace a release.
+
 The package is deliberately a Deluno adaptation of TRaSH Guides, not a
 Recyclarr input or a verbatim Radarr/Sonarr export. Deluno uses the guide as
 reviewed policy input and keeps its typed release-preference contract as the
 decision authority.
 
 `GET /api/v1/guides/trash/inventory` returns a deterministic, hashed capability
-inventory. Every shipped tier, custom format, matcher clause, profile, and
-bundle is classified as a typed representation or an explicit Advanced legacy
-representation. `Unaccounted` must remain empty; the persistence test treats a
-new unexplained guide item as a CI failure rather than silently dropping it.
+inventory. Every shipped tier, custom format, matcher clause, profile, bundle,
+and pinned upstream group/profile is classified as a typed representation or an
+explicit Advanced representation. `Unaccounted` must remain empty; the
+persistence test treats a new unexplained guide item as a CI failure rather
+than silently dropping it.
 
 ## Mapping safety
 
@@ -41,6 +49,11 @@ Every custom format declares a mapping status:
   typed preference traits;
 - `advanced` means the matching rule remains available to the custom-format
   surface but must not be silently treated as a typed release preference.
+
+An Advanced source rule exposes its original stable ID, score set and native
+matcher clauses for inspection. It cannot contribute an additive score to a
+typed plan. A later reviewed mapping is a deliberate package change, not a
+silent reinterpretation of an older plan.
 
 The backend validates the package at startup. It rejects duplicate IDs,
 unknown tier/profile/bundle references, invalid regular expressions, and
@@ -74,3 +87,13 @@ Upstream references:
 - [TRaSH Guides repository](https://github.com/TRaSH-Guides/Guides)
 - [TRaSH custom-format collection](https://trash-guides.info/Radarr/Radarr-collection-of-custom-formats/)
 - [TRaSH quality-profile guidance](https://trash-guides.info/Radarr/radarr-setup-quality-profiles/)
+
+To refresh the pinned source inventory after reviewing a new upstream commit:
+
+```powershell
+.\scripts\generate-trash-guide-source-inventory.ps1 -SourceRoot <checked-out-TRaSH-Guides-revision>
+```
+
+The script refuses an unexpected revision. Update its expected revision and the
+package provenance together, then run the package and inventory tests before
+proposing the package update.

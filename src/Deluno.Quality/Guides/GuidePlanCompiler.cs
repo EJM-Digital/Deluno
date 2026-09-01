@@ -198,6 +198,10 @@ public static class GuidePlanCompiler
                 MappingId: $"{package.Id}:{format.TrashId}",
                 MappingVersion: MappingVersion,
                 Layer: "guide-default",
+                // Typed mappings use Deluno's reviewed matcher snapshot. The
+                // native upstream clause list is retained separately for
+                // traceability and Advanced inspection; it is never treated
+                // as an equivalent matcher without a semantic review.
                 MatcherDefinition: JsonSerializer.Serialize(format.Patterns ?? []),
                 MappedTraitIds: PreferenceTraitRegistry.Current.CanonicalizeIds(format.MappedTraitIds),
                 MatcherAny: true));
@@ -328,7 +332,11 @@ public static class GuidePlanCompiler
             MediaType: NormalizeMediaType(profile.MediaType),
             OriginalScore: format?.OriginalScore ?? originalScore,
             UpgradeAllowed: profile.UpgradeAllowed,
-            Conditions: format is null ? string.Empty : string.Join(Environment.NewLine, format.Patterns.Select(pattern => $"regex: {pattern}")),
+            Conditions: format is null
+                ? string.Empty
+                : format.SourceMatcherClauses is { Count: > 0 }
+                    ? JsonSerializer.Serialize(format.SourceMatcherClauses)
+                    : string.Join(Environment.NewLine, format.Patterns.Select(pattern => $"regex: {pattern}")),
             Kind: format is null ? LegacyPreferenceRuleKind.Invalid : LegacyPreferenceRuleKind.UnmappedAdvanced,
             ProposedIntent: null,
             RequiresReview: true,

@@ -17,13 +17,30 @@ public sealed class GuidePackageTests
     }
 
     [Fact]
+    public void Schema_v1_package_remains_readable_without_a_source_inventory()
+    {
+        var current = GuidePackageCatalog.Current;
+        var legacy = current with
+        {
+            Version = 1,
+            SchemaVersion = 1,
+            SourceInventory = null,
+            IntegritySha256 = null
+        };
+
+        Assert.Empty(GuidePackageCatalog.Validate(legacy));
+        Assert.Empty(GuideCapabilityInventoryBuilder.Build(legacy).Unaccounted);
+    }
+
+    [Fact]
     public void Shipped_package_contains_reviewed_typed_mappings_and_explicit_advanced_fallbacks()
     {
         var package = GuidePackageCatalog.Current;
 
-        Assert.True(package.CustomFormats.Count >= 80);
+        Assert.True(package.CustomFormats.Count >= 478);
         Assert.True(package.QualityProfiles.Count >= 6);
         Assert.True(package.Bundles.Count >= 6);
+        Assert.NotNull(package.SourceInventory);
         Assert.Contains(package.CustomFormats, format => format.MappingStatus == GuideMappingStatus.Reviewed);
         Assert.Contains(package.CustomFormats, format => format.MappingStatus == GuideMappingStatus.Advanced);
         Assert.All(package.CustomFormats.Where(format => format.MappingStatus == GuideMappingStatus.Advanced),
