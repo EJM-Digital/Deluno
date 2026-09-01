@@ -839,6 +839,98 @@ public sealed class ImportPipelineServiceTests
     }
 
     [Fact]
+    public async Task Tv_import_uses_persisted_absolute_numbering_for_rename_and_catalogue_identity()
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-04-29T08:00:00Z"));
+        await InitializeAllAsync(storage, timeProvider);
+
+        var downloadsPath = Path.Combine(storage.DataRoot, "downloads");
+        var movieRootPath = Path.Combine(storage.DataRoot, "movies");
+        var seriesRootPath = Path.Combine(storage.DataRoot, "series");
+        Directory.CreateDirectory(downloadsPath);
+        Directory.CreateDirectory(movieRootPath);
+        Directory.CreateDirectory(seriesRootPath);
+        var sourcePath = Path.Combine(downloadsPath, "Anime.Show.101.1080p.WEB-DL.mkv");
+        await File.WriteAllBytesAsync(sourcePath, Enumerable.Range(0, 4096).Select(value => (byte)(value % 251)).ToArray());
+        File.SetLastWriteTimeUtc(sourcePath, DateTime.UtcNow.AddMinutes(-1));
+
+        var platform = CreatePlatformRepository(storage, timeProvider);
+        var libraries = CreateLibrariesRepository(storage, timeProvider);
+        await SaveSettingsAsync(
+            platform,
+            movieRootPath,
+            downloadsPath,
+            seriesRootPath,
+            "{Series Title} - S{season:00}E{episode:00} - {Episode Title} [{Quality}]");
+        await CreateTvLibraryAsync(libraries, seriesRootPath, downloadsPath);
+
+        var seriesRepository = new SqliteSeriesCatalogRepository(storage.Factory, timeProvider);
+        var series = await seriesRepository.AddAsync(
+            new CreateSeriesRequest(
+                "Anime Show",
+                2026,
+                "tt1234567",
+                SeriesType: SeriesTypes.Anime,
+                NumberingScheme: SeriesNumberingSchemes.Absolute),
+            CancellationToken.None);
+        await seriesRepository.SyncEpisodeCatalogueAsync(
+            series.Id,
+            [new CatalogueEpisodeItem(1, 3, "The Beginning", null, timeProvider.GetUtcNow(), AbsoluteNumber: 101)],
+            "provider",
+            CancellationToken.None);
+
+        var movies = new SqliteMovieCatalogRepository(storage.Factory, timeProvider);
+        var service = CreateService(storage, timeProvider, platform, libraries, movies);
+        var request = new ImportExecuteRequest(
+            Preview: new ImportPreviewRequest(
+                SourcePath: sourcePath,
+                FileName: Path.GetFileName(sourcePath),
+                MediaType: "tv",
+                Title: "Anime Show",
+                Year: 2026,
+                Genres: [],
+                Tags: [],
+                Studio: null,
+                OriginalLanguage: null,
+                SeriesId: series.Id,
+                SeriesType: SeriesTypes.Anime,
+                NumberingScheme: SeriesNumberingSchemes.Absolute),
+            TransferMode: "copy",
+            Overwrite: false,
+            AllowCopyFallback: true);
+
+        var preview = await service.PreviewAsync(request.Preview, CancellationToken.None);
+        Assert.EndsWith(
+            Path.Combine("Anime Show (2026)", "Anime Show - S01E03 - The Beginning [WEB 1080p].mkv"),
+            preview.DestinationPath,
+            StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain(preview.Warnings, warning => warning.Contains("could not safely determine", StringComparison.OrdinalIgnoreCase));
+
+        var result = await service.ExecuteAsync(request, CancellationToken.None);
+        Assert.True(result.Succeeded, result.Message);
+        Assert.True(result.Response?.CatalogUpdated);
+        Assert.True(File.Exists(preview.DestinationPath));
+
+        var detail = await seriesRepository.GetInventoryDetailAsync(series.Id, CancellationToken.None);
+        var episode = Assert.Single(detail!.Episodes);
+        Assert.True(episode.HasFile);
+        Assert.Equal(3, episode.EpisodeNumber);
+        Assert.Equal(101, episode.AbsoluteNumber);
+
+        await using var connection = await storage.Factory.OpenConnectionAsync(
+            DelunoDatabaseNames.Series,
+            CancellationToken.None);
+        await using var command = connection.CreateCommand();
+        command.CommandText = "SELECT file_path FROM episode_entries WHERE id = @episodeId;";
+        var episodeId = command.CreateParameter();
+        episodeId.ParameterName = "@episodeId";
+        episodeId.Value = episode.EpisodeId;
+        command.Parameters.Add(episodeId);
+        Assert.Equal(preview.DestinationPath, await command.ExecuteScalarAsync(CancellationToken.None));
+    }
+
+    [Fact]
     public async Task Tv_multi_episode_import_persists_one_library_destination_for_every_episode()
     {
         using var storage = TestStorage.Create();
