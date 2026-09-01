@@ -4,7 +4,8 @@
 # keeps its /data volume and rolls back to its previously selected image.
 set -euo pipefail
 
-image_tag="${1:?Usage: test-docker-recovery.sh <image-tag>}"
+baseline_image="${1:?Usage: test-docker-recovery.sh <baseline-image> <candidate-image>}"
+candidate_image="${2:?Usage: test-docker-recovery.sh <baseline-image> <candidate-image>}"
 suffix="${GITHUB_RUN_ID:-local}-$$"
 primary_container="deluno-docker-recovery-${suffix}"
 failed_container="deluno-docker-failed-${suffix}"
@@ -46,6 +47,7 @@ wait_for_ready() {
 
 run_deluno() {
   local container="$1"
+  local image="$2"
   docker run --detach \
     --name "$container" \
     --publish "${port}:8080" \
@@ -53,11 +55,11 @@ run_deluno() {
     --env Server__Port=8080 \
     --env Server__AllowLan=true \
     --env Storage__DataRoot=/data \
-    "$image_tag" >/dev/null
+    "$image" >/dev/null
 }
 
 docker volume create "$data_volume" >/dev/null
-run_deluno "$primary_container"
+run_deluno "$primary_container" "$baseline_image"
 wait_for_ready
 
 bootstrap="$(curl --fail --silent --show-error \
@@ -89,7 +91,9 @@ if wait_for_ready 3; then
 fi
 docker rm --force "$failed_container" >/dev/null
 
-run_deluno "$recovered_container"
+# The candidate image must migrate the baseline volume itself; the test never
+# copies databases between images or accepts a clean replacement volume.
+run_deluno "$recovered_container" "$candidate_image"
 wait_for_ready
 
 recovered_login="$(curl --fail --silent --show-error \
@@ -104,4 +108,4 @@ recovered_movie="$(curl --fail --silent --show-error \
 jq --exit-status --arg id "$movie_id" --arg title "$fixture_title" \
   '.id == $id and .title == $title' <<<"$recovered_movie" >/dev/null
 
-echo 'Docker recovery smoke passed: persistent Deluno data survived failed replacement readiness.'
+echo 'Docker recovery smoke passed: a populated baseline volume survived failed replacement readiness and migrated under the candidate image.'
