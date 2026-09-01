@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "upstreamRevision": "a63c1d05510d73887be1b0198f95a363c4f7bef6",
   "customFormats": [
     {
@@ -8,6 +8,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/10-mono.json",
+      "sourceBlobSha": "3d26a74073fbfc866cbd73a42e0f65014e0a89e3",
       "scores": {
         "sqp-4-ma-hybrid": 0
       },
@@ -49,6 +50,7 @@
       "description": null,
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf/french-anime-tier-03.json",
+      "sourceBlobSha": "2360142925067845e4f3559b41c78a5a88bc6667",
       "scores": {
         "default": 1550,
         "french-anime-multi": 1550,
@@ -155,6 +157,7 @@
       "description": null,
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf/french-anime-tier-02.json",
+      "sourceBlobSha": "2e28d759ed85d1909630c067ecd720c0973f67ce",
       "scores": {
         "default": 1600,
         "french-anime-multi": 1600,
@@ -233,6 +236,7 @@
       "description": null,
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf/french-anime-tier-01.json",
+      "sourceBlobSha": "36f0d1e950ada8abe49373416125d88e9963480c",
       "scores": {
         "default": 1650,
         "french-anime-multi": 1650,
@@ -311,6 +315,7 @@
       "description": null,
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf/french-anime-fansub.json",
+      "sourceBlobSha": "8ab5797d7a5a5e66a8bc6339be64d35aa539bda0",
       "scores": {
         "default": 1450,
         "french-anime-multi": 1450,
@@ -410,6 +415,7 @@
       "description": null,
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf/french-adn.json",
+      "sourceBlobSha": "9544bf48c110d0d880e5562efeb0748d2e3b52a3",
       "scores": {
         "anime-sonarr": 1,
         "default": 7,
@@ -455,6 +461,7 @@
       "description": null,
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf/freeleech.json",
+      "sourceBlobSha": "30a67af38010108791f628bfa8117be9ec29992c",
       "scores": {
         "default": 1
       },
@@ -475,6 +482,7 @@
       "description": null,
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf/fod.json",
+      "sourceBlobSha": "a9706f29f75104be10ca1da9a7483e8dad67ae0c",
       "scores": {
         "default": 75
       },
@@ -509,6 +517,7 @@
       "description": null,
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf/flux.json",
+      "sourceBlobSha": "2bbf44185474703b4e3330c67c21e1d02df3424d",
       "scores": {
         "default": 51
       },
@@ -529,6 +538,7 @@
       "description": null,
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf/flac.json",
+      "sourceBlobSha": "c902d23562977d999a5c8388f20349a4394cf959",
       "scores": {
         "default": 2250
       },
@@ -591,6 +601,7 @@
       "description": null,
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf/fastsub.json",
+      "sourceBlobSha": "b33fea4e34c166300d808fb6ec342322d30f37ba",
       "scores": {
         "default": -10000
       },
@@ -611,6 +622,7 @@
       "description": null,
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf/fansub.json",
+      "sourceBlobSha": "f0ca42ebf0b765bb1b9eaead77d3b27f8569499f",
       "scores": {},
       "includeWhenRenaming": false,
       "matcherClauses": [
@@ -629,6 +641,7 @@
       "description": null,
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf/fand.json",
+      "sourceBlobSha": "f42c0d2d02aee87e59ccbf6f378ee1153028976e",
       "scores": {
         "default": 75
       },
@@ -663,6 +676,7 @@
       "description": null,
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf/extras.json",
+      "sourceBlobSha": "605555a523baa6627dfbb45e4779ef0b0f5f6619",
       "scores": {
         "default": -10000,
         "german": -35000,
@@ -685,6 +699,7 @@
       "description": null,
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf/dv-wo-hdr-fallback.json",
+      "sourceBlobSha": "2d3c2d535e543eb7d363cda360db8bf8c2b369b6",
       "scores": {
         "default": -10000
       },
@@ -740,6 +755,7 @@
       "description": null,
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf/dv-disk.json",
+      "sourceBlobSha": "a95a177192c2667985eb621335dedd6eef136bc9",
       "scores": {
         "default": 101
       },
@@ -788,6 +804,7 @@
       "description": null,
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf/dv-boost.json",
+      "sourceBlobSha": "3d6b12c32d7f46d4f65b13bcbb1d882e13f3f52a",
       "scores": {
         "default": 1000
       },
@@ -808,6 +825,7 @@
       "description": null,
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf/dubs-only.json",
+      "sourceBlobSha": "969fa9011edeee3b87ee41ea549fe8e32ad7bec6",
       "scores": {
         "default": -10000
       },
@@ -870,6 +888,7 @@
       "description": null,
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf/dual-audio-asian.json",
+      "sourceBlobSha": "5b26662d2a262d68bd398b6fdca86f9debb1bedd",
       "scores": {
         "default": 10
       },
@@ -918,6 +937,7 @@
       "description": null,
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf/dts.json",
+      "sourceBlobSha": "59da255a9f89cda254fd3a237c8c5228915a4822",
       "scores": {
         "default": 1250
       },
@@ -1001,6 +1021,7 @@
       "description": null,
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf/dts-x.json",
+      "sourceBlobSha": "b90c303eb6171971922f0cce6f8732e94198e87c",
       "scores": {
         "default": 4500
       },
@@ -1070,6 +1091,7 @@
       "description": null,
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf/dts-hd-ma.json",
+      "sourceBlobSha": "54a9af2ded1bbd2e0d75b89d159797fd39a80a24",
       "scores": {
         "default": 2500
       },
@@ -1146,6 +1168,7 @@
       "description": null,
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf/dts-hd-hra.json",
+      "sourceBlobSha": "d9789c54f5883dfff6662522e591a24605e7dd8a",
       "scores": {
         "default": 2000
       },
@@ -1236,6 +1259,7 @@
       "description": null,
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf/dts-es.json",
+      "sourceBlobSha": "b93b618b3e4e5d5ee636b68e91abe67fe7fa1e01",
       "scores": {
         "default": 1500
       },
@@ -1312,6 +1336,7 @@
       "description": null,
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf/dsnp.json",
+      "sourceBlobSha": "228ca7a0c6c6f8af55c84e391c5b3887b5e23f85",
       "scores": {
         "anime-sonarr": 5,
         "default": 75,
@@ -1350,6 +1375,7 @@
       "description": null,
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf/dscp.json",
+      "sourceBlobSha": "db173f7ecb540999c6215bfc2f8fd63297dc6982",
       "scores": {
         "default": 75
       },
@@ -1391,6 +1417,7 @@
       "description": null,
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf/french-auvio.json",
+      "sourceBlobSha": "b2072cc1b0488b977f81271b0d291f36c4382905",
       "scores": {},
       "includeWhenRenaming": true,
       "matcherClauses": [
@@ -1430,6 +1457,7 @@
       "description": null,
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf/french-hd-bluray-tier-01.json",
+      "sourceBlobSha": "daf921db98900f8f72243551b70d9a4095a0f9c5",
       "scores": {
         "default": 1800,
         "french-anime-multi": 1250,
@@ -1511,6 +1539,7 @@
       "description": null,
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf/french-lq.json",
+      "sourceBlobSha": "10d3ba53c9f046c732cbd6aeaac05afb7bb94106",
       "scores": {
         "default": -10000
       },
@@ -1552,6 +1581,7 @@
       "description": null,
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf/french-mycanal.json",
+      "sourceBlobSha": "9356606512fb7fcccc98981af4e5e1111e7ae942",
       "scores": {},
       "includeWhenRenaming": true,
       "matcherClauses": [
@@ -1598,6 +1628,7 @@
       "description": null,
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf/german-anime-web-tier-02.json",
+      "sourceBlobSha": "0f830cff6879e78ca7da626787e3a254f070943d",
       "scores": {
         "default": 1900
       },
@@ -1681,6 +1712,7 @@
       "description": null,
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf/german-anime-web-tier-01.json",
+      "sourceBlobSha": "f23ada0e07b28871e0ba11988b0142474b1c0297",
       "scores": {
         "default": 2100
       },
@@ -1778,6 +1810,7 @@
       "description": null,
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf/german-anime-scene.json",
+      "sourceBlobSha": "85e59e52f3c361bb3bfdb564ff314f3ed3ea5c26",
       "scores": {
         "default": 1700
       },
@@ -1854,6 +1887,7 @@
       "description": null,
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf/german-anime-bluray-tier-03.json",
+      "sourceBlobSha": "a0b7debd0b1d05eb5e74498df49ae9b578687dcf",
       "scores": {
         "default": 2300
       },
@@ -1930,6 +1964,7 @@
       "description": null,
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf/german-anime-bluray-tier-02.json",
+      "sourceBlobSha": "a75ca377b37eb328290784ae2b4c915837f261ed",
       "scores": {
         "default": 2650
       },
@@ -2006,6 +2041,7 @@
       "description": null,
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf/german-anime-bluray-tier-01.json",
+      "sourceBlobSha": "1e778f2ef97ced1f12a0b4bc113392f681935039",
       "scores": {
         "default": 2900
       },
@@ -2117,6 +2153,7 @@
       "description": null,
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf/german-2160p-booster.json",
+      "sourceBlobSha": "ccfe46104791437d425dab17b0d2905300b338d8",
       "scores": {
         "default": 9000
       },
@@ -2151,6 +2188,7 @@
       "description": null,
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf/german-1080p-booster.json",
+      "sourceBlobSha": "2447e8edb03174e52f41dd0d9417512c8d0adcb8",
       "scores": {
         "default": 650
       },
@@ -2185,6 +2223,7 @@
       "description": null,
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf/funi.json",
+      "sourceBlobSha": "b54d2c4f85c554292bc5dfc47fff06b514920f27",
       "scores": {
         "default": 2,
         "german-anime": 0
@@ -2227,6 +2266,7 @@
       "description": null,
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf/friday.json",
+      "sourceBlobSha": "83916889ce2cb6140b6d42be75d6d2ab7946909f",
       "scores": {
         "default": 10
       },
@@ -2261,6 +2301,7 @@
       "description": null,
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf/french-wkn.json",
+      "sourceBlobSha": "106b6d8d17629a8836ed830bd8304925ff1dd3e1",
       "scores": {},
       "includeWhenRenaming": true,
       "matcherClauses": [
@@ -2300,6 +2341,7 @@
       "description": null,
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf/french-web-tier-03.json",
+      "sourceBlobSha": "57549819fad3b368aed9c149db9b684d3255978b",
       "scores": {
         "default": 1600,
         "french-anime-multi": 1100,
@@ -2395,6 +2437,7 @@
       "description": null,
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf/dmm-tv.json",
+      "sourceBlobSha": "7a8dbece1bae38794140850f8723bfcbb91ff100",
       "scores": {
         "default": 10
       },
@@ -2429,6 +2472,7 @@
       "description": null,
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf/french-web-tier-02.json",
+      "sourceBlobSha": "addc70ab9674c67b9627b730ab9ad39979e7c7eb",
       "scores": {
         "default": 1650,
         "french-anime-multi": 1150,
@@ -2531,6 +2575,7 @@
       "description": null,
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf/french-vq.json",
+      "sourceBlobSha": "79ed322f9b5a3d659fb6e5940dc1bf867d78661c",
       "scores": {},
       "includeWhenRenaming": true,
       "matcherClauses": [
@@ -2549,6 +2594,7 @@
       "description": null,
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf/french-vostfr.json",
+      "sourceBlobSha": "35b2ef02defc9a3642230be4454b2a47f667d981",
       "scores": {
         "anime-sonarr": -10000,
         "default": -10000,
@@ -2583,6 +2629,7 @@
       "description": null,
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf/french-voq.json",
+      "sourceBlobSha": "754092f3945a3d183e8c37c5b89ddb2d8cbafe6d",
       "scores": {},
       "includeWhenRenaming": true,
       "matcherClauses": [
@@ -2601,6 +2648,7 @@
       "description": null,
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf/french-vof.json",
+      "sourceBlobSha": "1e03b40988f23794f6cb8994a6c7d8b58c7e2b00",
       "scores": {},
       "includeWhenRenaming": true,
       "matcherClauses": [
@@ -2619,6 +2667,7 @@
       "description": null,
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf/french-vfq.json",
+      "sourceBlobSha": "40d237fb5225c9d2558487f87681ca6aea287a10",
       "scores": {},
       "includeWhenRenaming": true,
       "matcherClauses": [
@@ -2644,6 +2693,7 @@
       "description": null,
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf/french-vfi.json",
+      "sourceBlobSha": "4ac73ff76887f3409515427f206df139f772fe66",
       "scores": {},
       "includeWhenRenaming": true,
       "matcherClauses": [
@@ -2662,6 +2712,7 @@
       "description": null,
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf/french-vff.json",
+      "sourceBlobSha": "5b02481aad0da036bb2dde561684014c21de4174",
       "scores": {},
       "includeWhenRenaming": true,
       "matcherClauses": [
@@ -2687,6 +2738,7 @@
       "description": null,
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf/french-vfb.json",
+      "sourceBlobSha": "6d0008292ddfd3bf726223d9a244e07c59823b63",
       "scores": {},
       "includeWhenRenaming": true,
       "matcherClauses": [
@@ -2705,6 +2757,7 @@
       "description": null,
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf/french-vf2.json",
+      "sourceBlobSha": "80a104626f6ab6c61aabe05a85f68633c457878f",
       "scores": {},
       "includeWhenRenaming": true,
       "matcherClauses": [
@@ -2730,6 +2783,7 @@
       "description": null,
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf/french-scene.json",
+      "sourceBlobSha": "09caefbb2c9ff63374cc9b5e4dd2e4810cdc4228",
       "scores": {
         "default": 1500,
         "french-anime-multi": 1500,
@@ -2909,6 +2963,7 @@
       "description": null,
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf/french-salto.json",
+      "sourceBlobSha": "8c4e9e53929c5a510ab997bd3cc38aa7ae5eb691",
       "scores": {},
       "includeWhenRenaming": true,
       "matcherClauses": [
@@ -2941,6 +2996,7 @@
       "description": null,
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf/french-remux-tier-01.json",
+      "sourceBlobSha": "0ff78837442deec1557189ecde4853cb8e0e8ea0",
       "scores": {
         "default": 1900,
         "french-anime-multi": 1300,
@@ -3015,6 +3071,7 @@
       "description": null,
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf/french-web-tier-01.json",
+      "sourceBlobSha": "e9270ae707626df81e37dc15f2cbcbb35d424b02",
       "scores": {
         "default": 1700,
         "french-anime-multi": 1200,
@@ -3124,6 +3181,7 @@
       "description": null,
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf/ddplus.json",
+      "sourceBlobSha": "0f443017c0d004f17523719b49e3a63348b73cf5",
       "scores": {
         "default": 1750
       },
@@ -3179,6 +3237,7 @@
       "description": null,
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf/ddplus-atmos.json",
+      "sourceBlobSha": "e0ff53a2291707121973bca8141b856cadf3eb82",
       "scores": {
         "default": 3000
       },
@@ -3248,6 +3307,7 @@
       "description": null,
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf/dd.json",
+      "sourceBlobSha": "b93dfc3e55b52926975c302283c7d9889a225230",
       "scores": {
         "default": 750
       },
@@ -3310,6 +3370,7 @@
       "description": null,
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf/anime-dual-audio.json",
+      "sourceBlobSha": "45c2745dcd6ae35797db3d7cb67c048b7f3b8e8b",
       "scores": {},
       "includeWhenRenaming": false,
       "matcherClauses": [
@@ -3356,6 +3417,7 @@
       "description": null,
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf/anime-bd-tier-08.json",
+      "sourceBlobSha": "48296767b1fc8582e24ac507287e6f469d9b53a3",
       "scores": {
         "default": 700
       },
@@ -3460,6 +3522,7 @@
       "description": null,
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf/anime-bd-tier-07.json",
+      "sourceBlobSha": "6fb6879005f96b97fbd1638fcf8e4b8edc148c1e",
       "scores": {
         "default": 800
       },
@@ -3732,6 +3795,7 @@
       "description": null,
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf/anime-bd-tier-06.json",
+      "sourceBlobSha": "6da6d5db99fd7746cb9651ac77b0bac9811ee8cc",
       "scores": {
         "default": 900
       },
@@ -3871,6 +3935,7 @@
       "description": null,
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf/anime-bd-tier-05.json",
+      "sourceBlobSha": "ec2ed42911bc396214fe3ba4e699657e3ca866d5",
       "scores": {
         "default": 1000
       },
@@ -4115,6 +4180,7 @@
       "description": null,
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf/anime-bd-tier-04.json",
+      "sourceBlobSha": "0e51be328f46d41f856f9d46bf22fd907d7cd8da",
       "scores": {
         "default": 1100
       },
@@ -4401,6 +4467,7 @@
       "description": null,
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf/anime-bd-tier-03.json",
+      "sourceBlobSha": "2e0632fcb0fb64d9530759fa1669e6f16cf443ec",
       "scores": {
         "default": 1200
       },
@@ -4680,6 +4747,7 @@
       "description": null,
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf/anime-bd-tier-02.json",
+      "sourceBlobSha": "7030fcc0aa94f81ba20a668bfeef4216107acc0f",
       "scores": {
         "default": 1300
       },
@@ -4847,6 +4915,7 @@
       "description": null,
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf/anime-bd-tier-01.json",
+      "sourceBlobSha": "6376bbffae1f20e35a63b6f37e790f97d83af680",
       "scores": {
         "default": 1400
       },
@@ -4937,6 +5006,7 @@
       "description": null,
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf/amzn.json",
+      "sourceBlobSha": "23a642b0a69636f892f1adb09315b7167dff6d41",
       "scores": {
         "anime-sonarr": 3,
         "default": 75,
@@ -4975,6 +5045,7 @@
       "description": null,
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf/all4.json",
+      "sourceBlobSha": "7f81c2169b5176a77f2ec4080da3c33d02a921ea",
       "scores": {
         "default": 75
       },
@@ -5009,6 +5080,7 @@
       "description": null,
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf/abema.json",
+      "sourceBlobSha": "c84d3eb3b94e08a8cd11481c0fe478f9a4b6d63e",
       "scores": {
         "default": 1,
         "german-anime": 0
@@ -5051,6 +5123,7 @@
       "description": null,
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf/anime-lq-groups.json",
+      "sourceBlobSha": "26b77d5a9e7087787744fffe99603f77c2f802fb",
       "scores": {
         "default": -10000,
         "german-anime": -35000
@@ -6024,6 +6097,7 @@
       "description": null,
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf/aac.json",
+      "sourceBlobSha": "921c734b779f7be23e86c0e040a7d28855cddf39",
       "scores": {
         "default": 1000
       },
@@ -6086,6 +6160,7 @@
       "description": null,
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf/71-surround.json",
+      "sourceBlobSha": "c9e1119d0fb93864e4af26115eaff8ec75d7dfb9",
       "scores": {},
       "includeWhenRenaming": false,
       "matcherClauses": [
@@ -6111,6 +6186,7 @@
       "description": null,
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf/61-surround.json",
+      "sourceBlobSha": "d71bc153d5a8336ce6a5c7c2d89ba76618386bc0",
       "scores": {},
       "includeWhenRenaming": false,
       "matcherClauses": [
@@ -6136,6 +6212,7 @@
       "description": null,
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf/51-surround.json",
+      "sourceBlobSha": "fc62781238741fe65473402d5cae480c573be592",
       "scores": {},
       "includeWhenRenaming": false,
       "matcherClauses": [
@@ -6168,6 +6245,7 @@
       "description": null,
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf/4od.json",
+      "sourceBlobSha": "7db28a54bd2e9ce60be4c627e81315049c103750",
       "scores": {
         "default": 75
       },
@@ -6202,6 +6280,7 @@
       "description": null,
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf/40-sound.json",
+      "sourceBlobSha": "501e7211fe5e6b50a81b7bce96d7fbe2c0b5c653",
       "scores": {},
       "includeWhenRenaming": false,
       "matcherClauses": [
@@ -6248,6 +6327,7 @@
       "description": null,
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf/30-sound.json",
+      "sourceBlobSha": "c3da129ac8ef4e230560b5fd9db202665789554d",
       "scores": {},
       "includeWhenRenaming": false,
       "matcherClauses": [
@@ -6294,6 +6374,7 @@
       "description": null,
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf/2160p.json",
+      "sourceBlobSha": "8933c4b1ffa9fba5fec98ddabb9b62bfcc77616b",
       "scores": {
         "default": 100
       },
@@ -6314,6 +6395,7 @@
       "description": null,
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf/20-stereo.json",
+      "sourceBlobSha": "c81e620a573d07c57366c91c0ad616d79dd10c27",
       "scores": {},
       "includeWhenRenaming": false,
       "matcherClauses": [
@@ -6360,6 +6442,7 @@
       "description": null,
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf/10bit.json",
+      "sourceBlobSha": "4a4a28b4f7b094b74c98b13baa03d70c324c0192",
       "scores": {},
       "includeWhenRenaming": false,
       "matcherClauses": [
@@ -6385,6 +6468,7 @@
       "description": null,
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf/1080p.json",
+      "sourceBlobSha": "5275cae3102dab09c92ee304ceec6260600afc0b",
       "scores": {
         "default": 50
       },
@@ -6405,6 +6489,7 @@
       "description": null,
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf/10-mono.json",
+      "sourceBlobSha": "ca8deddc2d66e06f0da4d3a0241ad8bb1fe4c9c9",
       "scores": {},
       "includeWhenRenaming": false,
       "matcherClauses": [
@@ -6444,6 +6529,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/youku.json",
+      "sourceBlobSha": "f488ce7ee83dd6caacc466127d54be672174e024",
       "scores": {
         "default": 30
       },
@@ -6478,6 +6564,7 @@
       "description": null,
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf/720p.json",
+      "sourceBlobSha": "6693a49231e407cbe7dc62b3d023e1c4de7a63de",
       "scores": {
         "default": 5
       },
@@ -6498,6 +6585,7 @@
       "description": null,
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf/german-anime-web-tier-03.json",
+      "sourceBlobSha": "d9fe035ba7e20cabdae3a414db2110d9f71ea2a7",
       "scores": {
         "default": 1800
       },
@@ -6588,6 +6676,7 @@
       "description": null,
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf/anime-raws.json",
+      "sourceBlobSha": "1d5e4126385af7f1a0256f25747483dc0c9c1297",
       "scores": {
         "default": -10000,
         "german-anime": -35000
@@ -6756,6 +6845,7 @@
       "description": null,
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf/anime-web-tier-02.json",
+      "sourceBlobSha": "179e78547205b90abba472980004e4ed605b7f7d",
       "scores": {
         "default": 500
       },
@@ -6930,6 +7020,7 @@
       "description": null,
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf/dcu.json",
+      "sourceBlobSha": "ea9990755ffaadb0b33526c0a5825a01d7c2e5d5",
       "scores": {
         "default": 75
       },
@@ -6964,6 +7055,7 @@
       "description": null,
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf/crav.json",
+      "sourceBlobSha": "24f10d4f04fc8dca51630332c34367b802bb9fba",
       "scores": {
         "default": 75
       },
@@ -7005,6 +7097,7 @@
       "description": null,
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf/cr.json",
+      "sourceBlobSha": "d7011ad41e29d7cd6bb6e14f99f1d0731f310d9c",
       "scores": {
         "default": 6,
         "german-anime": 0
@@ -7047,6 +7140,7 @@
       "description": null,
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf/cpng.json",
+      "sourceBlobSha": "7ad0ff748ab01f83f61c3d40fee2fc3b53fbe0f9",
       "scores": {
         "default": 50
       },
@@ -7081,6 +7175,7 @@
       "description": null,
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf/cnlp.json",
+      "sourceBlobSha": "66eaa6935e7b8063105be6138ed22868f41e6dae",
       "scores": {
         "default": 75
       },
@@ -7115,6 +7210,7 @@
       "description": null,
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf/cc.json",
+      "sourceBlobSha": "fc8176a15ff60e1d1a4181c9935793223a002e9b",
       "scores": {
         "default": 75
       },
@@ -7156,6 +7252,7 @@
       "description": null,
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf/cbc.json",
+      "sourceBlobSha": "44ff2bee5f4f536c00c44b792e07fd8446203f54",
       "scores": {
         "default": 75
       },
@@ -7190,6 +7287,7 @@
       "description": null,
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf/bw.json",
+      "sourceBlobSha": "ded4c6cd4dff2a0c55c8e20bcf35a54ba86bafb6",
       "scores": {
         "default": -10000,
         "german": -35000,
@@ -7212,6 +7310,7 @@
       "description": null,
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf/br-disk.json",
+      "sourceBlobSha": "5bf95adb2ff04317b9db19bbfdb357afbaf638eb",
       "scores": {
         "default": -10000,
         "german": -35000,
@@ -7234,6 +7333,7 @@
       "description": null,
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf/br-disk-btn.json",
+      "sourceBlobSha": "fd232abe4db6596def0ffbce72875fd3add4a7e1",
       "scores": {
         "default": -10000
       },
@@ -7254,6 +7354,7 @@
       "description": null,
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf/bilibili.json",
+      "sourceBlobSha": "83f0cb725689a5404c2c580659514ef64925efd0",
       "scores": {},
       "includeWhenRenaming": true,
       "matcherClauses": [
@@ -7293,6 +7394,7 @@
       "description": null,
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf/bglobal.json",
+      "sourceBlobSha": "3254f6a45565ce3a7c95f0791e728f3fad9ff966",
       "scores": {},
       "includeWhenRenaming": true,
       "matcherClauses": [
@@ -7332,6 +7434,7 @@
       "description": null,
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf/anime-web-tier-01.json",
+      "sourceBlobSha": "729d9b5487051df41363e345a89af05435798f5e",
       "scores": {
         "default": 600
       },
@@ -7471,6 +7574,7 @@
       "description": null,
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf/bad-dual-groups.json",
+      "sourceBlobSha": "e6c412bc87582a4f1dd59396da9746e7c198b84f",
       "scores": {
         "default": -10000,
         "french-multi-vf": 0,
@@ -7726,6 +7830,7 @@
       "description": null,
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf/aubc.json",
+      "sourceBlobSha": "4df56376611a66aca98e484166d687b15cbd5f1c",
       "scores": {
         "default": 75
       },
@@ -7760,6 +7865,7 @@
       "description": null,
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf/atvp.json",
+      "sourceBlobSha": "d22e4b962dfe3d492921e6820f802552f4489f1c",
       "scores": {
         "default": 75,
         "german-anime": 0
@@ -7795,6 +7901,7 @@
       "description": null,
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf/atv.json",
+      "sourceBlobSha": "2638f968711ce88481ea2700095c5b067c1ffa3b",
       "scores": {
         "default": 75,
         "german-anime": 0
@@ -7830,6 +7937,7 @@
       "description": null,
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf/atmos-undefined.json",
+      "sourceBlobSha": "a625f03c8bbf48612e3f1c88e6a954d32bedca6c",
       "scores": {
         "default": 3000
       },
@@ -7899,6 +8007,7 @@
       "description": null,
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf/asian-tier-03.json",
+      "sourceBlobSha": "8c0cc728db005741f1e7fb9d1c6db2ab3039e414",
       "scores": {
         "default": 100
       },
@@ -7968,6 +8077,7 @@
       "description": null,
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf/asian-tier-02.json",
+      "sourceBlobSha": "0e51c207cd7b22c12c6556d1eb5f4132b3d170af",
       "scores": {
         "default": 1600
       },
@@ -8002,6 +8112,7 @@
       "description": null,
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf/asian-tier-01.json",
+      "sourceBlobSha": "02968ff68991d58727a37f44386dd903bf2adecf",
       "scores": {
         "default": 1650
       },
@@ -8134,6 +8245,7 @@
       "description": null,
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf/asian-lq.json",
+      "sourceBlobSha": "84006e340b4744cdb6a4aed8dfd50afba22a2d43",
       "scores": {
         "default": -10000
       },
@@ -8196,6 +8308,7 @@
       "description": null,
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf/anime-web-tier-06.json",
+      "sourceBlobSha": "b62af9d8437dd372748d97d3af31f4ad7757ddbc",
       "scores": {
         "default": 100
       },
@@ -8307,6 +8420,7 @@
       "description": null,
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf/anime-web-tier-05.json",
+      "sourceBlobSha": "f08f8f3cf8db71d85ba1aa4cf00c0a7d3f129ee4",
       "scores": {
         "default": 200
       },
@@ -8439,6 +8553,7 @@
       "description": null,
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf/anime-web-tier-04.json",
+      "sourceBlobSha": "801cea8e6a74f414a796ba9eb12e30bfdd35ac62",
       "scores": {
         "default": 300
       },
@@ -8494,6 +8609,7 @@
       "description": null,
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf/anime-web-tier-03.json",
+      "sourceBlobSha": "0ba0b0bf8994c30eb3c9c3f28416a5b7b601da03",
       "scores": {
         "default": 400
       },
@@ -8563,6 +8679,7 @@
       "description": null,
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf/av1.json",
+      "sourceBlobSha": "6a6e823e99a65066ad24070aa35372dd00988948",
       "scores": {
         "anime-sonarr": -10000,
         "default": -10000,
@@ -8586,6 +8703,7 @@
       "description": null,
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf/german-bluray-tier-01.json",
+      "sourceBlobSha": "aee9fd2f45ddde0471ea3f6bf4223dcdda1793a2",
       "scores": {
         "default": 2900
       },
@@ -8683,6 +8801,7 @@
       "description": null,
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf/german-bluray-tier-02.json",
+      "sourceBlobSha": "4df38eb41a87db37e527403aef4488c5ec82c8e4",
       "scores": {
         "default": 2650
       },
@@ -8745,6 +8864,7 @@
       "description": null,
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf/german-bluray-tier-03.json",
+      "sourceBlobSha": "db1532a75df0c19b75e66c0bef96d0fdfbf6c0df",
       "scores": {
         "default": 2300
       },
@@ -8800,6 +8920,7 @@
       "description": null,
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf/tving.json",
+      "sourceBlobSha": "3ae87871177e792a1e474c7021892eca8c4eaff2",
       "scores": {
         "default": 75
       },
@@ -8841,6 +8962,7 @@
       "description": null,
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf/tver.json",
+      "sourceBlobSha": "28b2af7482606b96c85ba1999cba0908bc059ac9",
       "scores": {
         "default": 75
       },
@@ -8875,6 +8997,7 @@
       "description": null,
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf/truehd.json",
+      "sourceBlobSha": "32a94f293faf9c4e7683ac3a2825d9f2ecf7d4b9",
       "scores": {
         "default": 2750
       },
@@ -8937,6 +9060,7 @@
       "description": null,
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf/truehd-atmos.json",
+      "sourceBlobSha": "3806008b969aabf2b4e45b4772762dbfda33971f",
       "scores": {
         "default": 5000
       },
@@ -9006,6 +9130,7 @@
       "description": null,
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf/syfy.json",
+      "sourceBlobSha": "7706974ffd7d5d251735d023562b5d367fc609a3",
       "scores": {
         "default": 75
       },
@@ -9040,6 +9165,7 @@
       "description": null,
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf/strp.json",
+      "sourceBlobSha": "448868cd147ce3b1f1e43c29bd0daccb8138972b",
       "scores": {
         "default": 75
       },
@@ -9074,6 +9200,7 @@
       "description": null,
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf/stan.json",
+      "sourceBlobSha": "07c5dd29e6736aa3705704786c25468cd2271b7c",
       "scores": {
         "default": 75
       },
@@ -9115,6 +9242,7 @@
       "description": null,
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf/single-episode.json",
+      "sourceBlobSha": "775a4cc781845c2fd0dc37eb70e6837ff565b781",
       "scores": {},
       "includeWhenRenaming": false,
       "matcherClauses": [
@@ -9133,6 +9261,7 @@
       "description": null,
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf/sho.json",
+      "sourceBlobSha": "5f470d3fc6231eb2ea8867e5cf5d867aa1d738af",
       "scores": {
         "default": 75
       },
@@ -9174,6 +9303,7 @@
       "description": null,
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf/season-pack.json",
+      "sourceBlobSha": "55c99eec698c1553093bfe650d441fed0f53c73a",
       "scores": {
         "default": 10
       },
@@ -9194,6 +9324,7 @@
       "description": null,
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf/sdr.json",
+      "sourceBlobSha": "19d1a9b5ff442692400418147c1009fbed6cffac",
       "scores": {
         "default": -10000,
         "german": -35000
@@ -9229,6 +9360,7 @@
       "description": null,
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf/sdr-no-webdl.json",
+      "sourceBlobSha": "d465ef68263da8daa66359adea702765d549b14a",
       "scores": {
         "default": -10000,
         "german": -35000
@@ -9278,6 +9410,7 @@
       "description": null,
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf/u-next.json",
+      "sourceBlobSha": "01a4a02f4fb4cc308c3423d85d7efa8149f8d2a9",
       "scores": {
         "default": 75
       },
@@ -9312,6 +9445,7 @@
       "description": null,
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf/scene.json",
+      "sourceBlobSha": "9f0ce3c2e4bfd5cc7271ca9bf99baff745db870d",
       "scores": {
         "default": -10000,
         "french-multi-vf": 0,
@@ -9350,6 +9484,7 @@
       "description": null,
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf/retags.json",
+      "sourceBlobSha": "9a66b16e74a6f82f894569e3f332b09ec72d8cab",
       "scores": {
         "default": -10000,
         "german": -35000
@@ -9399,6 +9534,7 @@
       "description": null,
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf/repack3.json",
+      "sourceBlobSha": "8732ca2a5db5be627de734bad5085230c241dc3b",
       "scores": {
         "anime-sonarr": 3,
         "default": 7,
@@ -9422,6 +9558,7 @@
       "description": null,
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf/repack2.json",
+      "sourceBlobSha": "95494bc5a7d66be421d141ac04470853b669feaa",
       "scores": {
         "anime-sonarr": 2,
         "default": 6,
@@ -9452,6 +9589,7 @@
       "description": null,
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf/repack-proper.json",
+      "sourceBlobSha": "263aea4bdbfb93e073af494be99ea05fd269c7a9",
       "scores": {
         "anime-sonarr": 1,
         "default": 5,
@@ -9482,6 +9620,7 @@
       "description": null,
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf/remux-tier-02.json",
+      "sourceBlobSha": "dede2eee78c5ed2663a6d6da2c34c3f2f2d99df0",
       "scores": {
         "anime-sonarr": 950,
         "default": 1850,
@@ -9567,6 +9706,7 @@
       "description": null,
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf/remux-tier-01.json",
+      "sourceBlobSha": "6881f6f45d9c4bfcc625781e67a77148cdf92af3",
       "scores": {
         "anime-sonarr": 975,
         "default": 1900,
@@ -9617,6 +9757,7 @@
       "description": null,
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf/remaster.json",
+      "sourceBlobSha": "807c108515f8a79ba17391a0d29c202f099f8c44",
       "scores": {
         "default": 25
       },
@@ -9644,6 +9785,7 @@
       "description": null,
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf/red.json",
+      "sourceBlobSha": "84cb4fff2876a4734241c979062dfc00a1c2b082",
       "scores": {
         "default": 75
       },
@@ -9685,6 +9827,7 @@
       "description": null,
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf/qibi.json",
+      "sourceBlobSha": "deaceecc3ebf155e1c5693c2ca76248409b25be6",
       "scores": {
         "default": 75
       },
@@ -9719,6 +9862,7 @@
       "description": null,
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf/pmtp.json",
+      "sourceBlobSha": "600b8f2dcc95f7baa92b8667d4d7fc9228b5cfef",
       "scores": {
         "default": 75
       },
@@ -9753,6 +9897,7 @@
       "description": null,
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf/play.json",
+      "sourceBlobSha": "9608a5c057fefb42762de7109483a49bf0878673",
       "scores": {
         "default": 75
       },
@@ -9794,6 +9939,7 @@
       "description": null,
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf/pcok.json",
+      "sourceBlobSha": "a00502141ef35f45cabe0869cfd8b3cae4b4f737",
       "scores": {
         "default": 75
       },
@@ -9828,6 +9974,7 @@
       "description": null,
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf/roku.json",
+      "sourceBlobSha": "54c7d235683b47f3205fc0b5cb0b0a029a3b95bb",
       "scores": {
         "default": 75
       },
@@ -9862,6 +10009,7 @@
       "description": null,
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf/pcm.json",
+      "sourceBlobSha": "cdc40bb770601bd303ebde5ab3559abcb4a86066",
       "scores": {
         "default": 2250
       },
@@ -9924,6 +10072,7 @@
       "description": null,
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf/uhd-streaming-boost.json",
+      "sourceBlobSha": "249d62d1c6c07769a01812265f037a3d5d8daebc",
       "scores": {
         "default": 75
       },
@@ -9986,6 +10135,7 @@
       "description": null,
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf/upscaled.json",
+      "sourceBlobSha": "78503f12365ab4440f970ecafc58504a747e4bb6",
       "scores": {
         "default": -10000,
         "german": -35000,
@@ -10043,6 +10193,7 @@
       "description": null,
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf/x265.json",
+      "sourceBlobSha": "0769cc1947fb7688d249c970b0e05e1f2f956382",
       "scores": {},
       "includeWhenRenaming": false,
       "matcherClauses": [
@@ -10068,6 +10219,7 @@
       "description": null,
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf/x265-no-hdrdv.json",
+      "sourceBlobSha": "daee8d09428944963ab3ee5e9f38e77e92318af6",
       "scores": {
         "default": -10000,
         "german": -35000,
@@ -10104,6 +10256,7 @@
       "description": null,
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf/x265-hd.json",
+      "sourceBlobSha": "f8766062f8db893d5089bb4b0235e0452babc7b3",
       "scores": {
         "default": -10000,
         "german": 0,
@@ -10133,6 +10286,7 @@
       "description": null,
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf/x264.json",
+      "sourceBlobSha": "1ff26e64e12a869cc519d36caa8b7d2040c40572",
       "scores": {},
       "includeWhenRenaming": false,
       "matcherClauses": [
@@ -10158,6 +10312,7 @@
       "description": null,
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf/wrong-language.json",
+      "sourceBlobSha": "e183bb38cb21e6a96e24d4943f7b8f57d6eccc07",
       "scores": {
         "default": -10000
       },
@@ -10178,6 +10333,7 @@
       "description": null,
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf/with-bsl.json",
+      "sourceBlobSha": "dfe986f5c4990199d150b48e8bf8193fe7f49eb8",
       "scores": {
         "default": -10000,
         "german": -35000,
@@ -10200,6 +10356,7 @@
       "description": null,
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf/with-basl.json",
+      "sourceBlobSha": "e0de849d96ac9b1d631fc72e1ad9d1ac34b7b726",
       "scores": {
         "default": -10000,
         "german": -35000,
@@ -10222,6 +10379,7 @@
       "description": null,
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf/with-asl.json",
+      "sourceBlobSha": "a9ab1da929b6bdd4dc9486e91fc127ec590372bc",
       "scores": {
         "default": -10000,
         "german": -35000,
@@ -10244,6 +10402,7 @@
       "description": null,
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf/with-ad.json",
+      "sourceBlobSha": "cc12c1e86d7900633547edece82949f1da51a85a",
       "scores": {
         "default": -10000,
         "german": -35000,
@@ -10266,6 +10425,7 @@
       "description": null,
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf/wetv.json",
+      "sourceBlobSha": "48f582e2c2854d49aa0f1c91e43469c15d39a211",
       "scores": {
         "default": 30
       },
@@ -10300,6 +10460,7 @@
       "description": null,
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf/web-tier-03.json",
+      "sourceBlobSha": "3424ce49338c8498811f41bdf232fe1ec0f902c4",
       "scores": {
         "default": 1600,
         "french-multi-vf": 0,
@@ -10392,6 +10553,7 @@
       "description": null,
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf/web-tier-02.json",
+      "sourceBlobSha": "661ec30f018e828d68f59cf52845876a1bfbd5a3",
       "scores": {
         "default": 1650,
         "french-multi-vf": 0,
@@ -10722,6 +10884,7 @@
       "description": null,
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf/uncensored.json",
+      "sourceBlobSha": "9f4db3ebb6fadb21f4e5105d58f04947ab53c1e6",
       "scores": {},
       "includeWhenRenaming": true,
       "matcherClauses": [
@@ -10740,6 +10903,7 @@
       "description": null,
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf/web-tier-01.json",
+      "sourceBlobSha": "d828b099244aeed904e0a67035a32da660ec9a3d",
       "scores": {
         "default": 1700,
         "french-multi-vf": 0,
@@ -10923,6 +11087,7 @@
       "description": null,
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf/wavve.json",
+      "sourceBlobSha": "707c957d94329d2bf5db2be388c3bb0fb703b317",
       "scores": {
         "default": 20
       },
@@ -10957,6 +11122,7 @@
       "description": null,
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf/vrv.json",
+      "sourceBlobSha": "c55ce6fe51a43b58a312df302654b428158f8c9e",
       "scores": {
         "default": 3,
         "german-anime": 0
@@ -10999,6 +11165,7 @@
       "description": null,
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf/vp9.json",
+      "sourceBlobSha": "9af88840808d2f8c18f643fd8788af135ae4efc7",
       "scores": {},
       "includeWhenRenaming": false,
       "matcherClauses": [
@@ -11017,6 +11184,7 @@
       "description": null,
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf/viu.json",
+      "sourceBlobSha": "8c487d6367baabaf68a26bac32ffade558806a9a",
       "scores": {
         "default": 75
       },
@@ -11058,6 +11226,7 @@
       "description": null,
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf/viki.json",
+      "sourceBlobSha": "7539cb2286dfc9beb4191d05fd902f45add489a7",
       "scores": {
         "default": 49
       },
@@ -11092,6 +11261,7 @@
       "description": null,
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf/vdl.json",
+      "sourceBlobSha": "e31d000c8fa332480cfd8e7e6c47b92963fecdfe",
       "scores": {
         "default": 75
       },
@@ -11126,6 +11296,7 @@
       "description": null,
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf/vc-1.json",
+      "sourceBlobSha": "e941165af90bb1219d71b450929a8ee521c8c068",
       "scores": {},
       "includeWhenRenaming": false,
       "matcherClauses": [
@@ -11144,6 +11315,7 @@
       "description": null,
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf/v4.json",
+      "sourceBlobSha": "93b45bf1e4a6c543e6192fc051f9ce827d1ce322",
       "scores": {
         "default": 4
       },
@@ -11164,6 +11336,7 @@
       "description": null,
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf/v3.json",
+      "sourceBlobSha": "51d86786bc72a927c580980ff5349db83c7eff42",
       "scores": {
         "default": 3
       },
@@ -11191,6 +11364,7 @@
       "description": null,
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf/v2.json",
+      "sourceBlobSha": "e035d039c5682386839b058e4b1d0245704f0e04",
       "scores": {
         "default": 2
       },
@@ -11218,6 +11392,7 @@
       "description": null,
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf/v1.json",
+      "sourceBlobSha": "98a7b9d81c434df4b76831550776ceeb9bc70582",
       "scores": {
         "default": 1
       },
@@ -11238,6 +11413,7 @@
       "description": null,
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf/v0.json",
+      "sourceBlobSha": "a53e147f9a3ec830ead7a52b98d5fee381dde4e4",
       "scores": {
         "default": -51
       },
@@ -11258,6 +11434,7 @@
       "description": null,
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf/web-scene.json",
+      "sourceBlobSha": "e953f8bc5194940e55ad81381fb2a0d67735d90b",
       "scores": {
         "default": 1600,
         "french-multi-vf": 0
@@ -11286,6 +11463,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/x266.json",
+      "sourceBlobSha": "59dbef83c6178dbf71db61e1d5a3dec6f6410ecc",
       "scores": {
         "default": -10000
       },
@@ -11313,6 +11491,7 @@
       "description": null,
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf/p2p-internal.json",
+      "sourceBlobSha": "54b905d1ae60a760e7c764c73ef7d1f950aba010",
       "scores": {
         "default": 1
       },
@@ -11333,6 +11512,7 @@
       "description": null,
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf/opus.json",
+      "sourceBlobSha": "7b99ee3f438bf46d6e90f54f4e04c6d87f3f34b5",
       "scores": {
         "default": 250
       },
@@ -11360,6 +11540,7 @@
       "description": null,
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf/hulu.json",
+      "sourceBlobSha": "0805cc7478219d198a910ad25bd31bc8d0703996",
       "scores": {
         "default": 75
       },
@@ -11394,6 +11575,7 @@
       "description": null,
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf/htsr.json",
+      "sourceBlobSha": "214aa173960abc63212c17614331e9e5eab46cd1",
       "scores": {
         "default": 75
       },
@@ -11428,6 +11610,7 @@
       "description": null,
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf/hmax.json",
+      "sourceBlobSha": "4ef64d3a7362ab75e694adc32b9954e445b457e2",
       "scores": {
         "default": 75,
         "german-anime": 0
@@ -11470,6 +11653,7 @@
       "description": "This Custom Format matches HLG releases. The default score can be used to prevent downloading HLG releases on devices that can't play them properly.",
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf/hlg.json",
+      "sourceBlobSha": "c3c921e195467958bc9e1849a98a5f72920745be",
       "scores": {
         "default": -10000
       },
@@ -11511,6 +11695,7 @@
       "description": null,
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf/hidive.json",
+      "sourceBlobSha": "f1814f58610016e955b13074c54c6d73ead3a78d",
       "scores": {},
       "includeWhenRenaming": true,
       "matcherClauses": [
@@ -11550,6 +11735,7 @@
       "description": null,
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf/hfr.json",
+      "sourceBlobSha": "08ce14bbe4ac2c5d6ad93affe66dc26c3d0dec1a",
       "scores": {},
       "includeWhenRenaming": true,
       "matcherClauses": [
@@ -11568,6 +11754,7 @@
       "description": null,
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf/hdr10plus-boost.json",
+      "sourceBlobSha": "eef02f4b958bb32e000fd074cc4027bb81d7bdff",
       "scores": {
         "default": 100
       },
@@ -11588,6 +11775,7 @@
       "description": null,
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf/hdr.json",
+      "sourceBlobSha": "66f3cb132154135959e394c6111003e9ebe68327",
       "scores": {
         "default": 500
       },
@@ -11650,6 +11838,7 @@
       "description": null,
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf/hd-streaming-boost.json",
+      "sourceBlobSha": "7a853fb92d84496493949e191bbedb479050dfeb",
       "scores": {
         "default": 75
       },
@@ -11691,6 +11880,7 @@
       "description": null,
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf/hd-bluray-tier-02.json",
+      "sourceBlobSha": "fb643b9833e3f548da3e5fea4ec498ec9b7caf20",
       "scores": {
         "default": 1750,
         "french-multi-vf": 0,
@@ -11741,6 +11931,7 @@
       "description": null,
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf/hd-bluray-tier-01.json",
+      "sourceBlobSha": "c07a59ff7024939148eb9c3d9a931998dfb48b76",
       "scores": {
         "default": 1800,
         "french-multi-vf": 0,
@@ -11819,6 +12010,7 @@
       "description": null,
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf/hbo.json",
+      "sourceBlobSha": "94405840698fc9ee3d2a2a9a27585820c8e22c71",
       "scores": {
         "default": 75,
         "german-anime": 0
@@ -11861,6 +12053,7 @@
       "description": null,
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf/hybrid.json",
+      "sourceBlobSha": "e7c168732e1cad3d00a3afe7dcb595bc397384c4",
       "scores": {
         "default": 100
       },
@@ -11902,6 +12095,7 @@
       "description": null,
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf/hami.json",
+      "sourceBlobSha": "b97bfdb9309f88b2d8e94e31d1c2cad36e141f14",
       "scores": {
         "default": 50
       },
@@ -11936,6 +12130,7 @@
       "description": null,
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf/german-web-tier-03.json",
+      "sourceBlobSha": "f819369e8be4bd0253a889bef2ca873554ac38ce",
       "scores": {
         "default": 1800
       },
@@ -12005,6 +12200,7 @@
       "description": null,
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf/german-web-tier-02.json",
+      "sourceBlobSha": "105c5e682e47ba13cb12a1232b96a52da0ca8f7b",
       "scores": {
         "default": 1900
       },
@@ -12088,6 +12284,7 @@
       "description": null,
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf/german-web-tier-01.json",
+      "sourceBlobSha": "31038de9d88c8f62141d6f68fda3d4e079ab0e01",
       "scores": {
         "default": 2100
       },
@@ -12227,6 +12424,7 @@
       "description": null,
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf/german-subbed.json",
+      "sourceBlobSha": "0137985b613382082232e2247f73b86a3cfa52c5",
       "scores": {
         "default": 9000
       },
@@ -12261,6 +12459,7 @@
       "description": null,
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf/german-scene.json",
+      "sourceBlobSha": "95af376c1b0edee24dbb8d6589e225ecbf9c52ce",
       "scores": {
         "default": 1700
       },
@@ -12561,6 +12760,7 @@
       "description": null,
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf/german-remux-tier-02.json",
+      "sourceBlobSha": "cd565bc1bc069b321a11c0950b693ade59deaa4c",
       "scores": {
         "default": 3900
       },
@@ -12602,6 +12802,7 @@
       "description": null,
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf/german-remux-tier-01.json",
+      "sourceBlobSha": "5777d7703448eae84b4ce8a95e47577a2f2cc604",
       "scores": {
         "default": 4000
       },
@@ -12657,6 +12858,7 @@
       "description": null,
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf/german-microsized.json",
+      "sourceBlobSha": "ca2098d71c7fca83c572ed900718d7f63447e384",
       "scores": {
         "default": -35000
       },
@@ -12719,6 +12921,7 @@
       "description": null,
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf/german-lq.json",
+      "sourceBlobSha": "3951a3524d7b0f05dc7e062a9354ba6552da17d7",
       "scores": {
         "default": -35000
       },
@@ -13033,6 +13236,7 @@
       "description": null,
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf/german-lq-release-title.json",
+      "sourceBlobSha": "a77758df0252f097de6050c7b3e57daf316a105a",
       "scores": {
         "default": -35000
       },
@@ -13067,6 +13271,7 @@
       "description": null,
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf/german-dl.json",
+      "sourceBlobSha": "9e082ad96e1edf82eb47404e9f22011c50fea74a",
       "scores": {
         "default": -10000,
         "german": 11000,
@@ -13096,6 +13301,7 @@
       "description": null,
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf/german-dl-undefined.json",
+      "sourceBlobSha": "0bbcca22f85ba489ea59c3ace22c84a4a6749bb6",
       "scores": {
         "default": 11000
       },
@@ -13137,6 +13343,7 @@
       "description": null,
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf/german.json",
+      "sourceBlobSha": "f01f96b4590164c6601227ee0cd9c3041f175008",
       "scores": {
         "default": 10000
       },
@@ -13185,6 +13392,7 @@
       "description": null,
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf/ovid.json",
+      "sourceBlobSha": "a66e3afb12120d71c1970f56f30ec81f8b20620d",
       "scores": {
         "default": 75
       },
@@ -13219,6 +13427,7 @@
       "description": null,
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf/internal.json",
+      "sourceBlobSha": "ba5759394a388d67b37e61cc3af02745b12e15bd",
       "scores": {
         "default": 10
       },
@@ -13239,6 +13448,7 @@
       "description": null,
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf/iqiy.json",
+      "sourceBlobSha": "7e73b115e3fb09fd825ba01c423a0c790ce50665",
       "scores": {
         "default": 50
       },
@@ -13273,6 +13483,7 @@
       "description": null,
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf/obfuscated.json",
+      "sourceBlobSha": "910c2af5686a4a05351383c123a1f357295d2607",
       "scores": {
         "default": -10000,
         "german": -35000
@@ -13406,6 +13617,7 @@
       "description": null,
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf/now.json",
+      "sourceBlobSha": "f93f7ca1367416a6c82498d38d85bf6142017815",
       "scores": {
         "default": 75
       },
@@ -13447,6 +13659,7 @@
       "description": null,
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf/not-german-or-english.json",
+      "sourceBlobSha": "c8b355fe80e2ebb90e872d60701cbf0e3718b8d1",
       "scores": {
         "default": -35000
       },
@@ -13481,6 +13694,7 @@
       "description": null,
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf/not-german-japanese-or-english.json",
+      "sourceBlobSha": "749c4eee5bd7f1ceadca6fa397b1ff5bede206e9",
       "scores": {
         "default": -35000
       },
@@ -13522,6 +13736,7 @@
       "description": null,
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf/not-german-japanese-korean-chinese-or-english.json",
+      "sourceBlobSha": "23d787c5c9d2f749fa13397d56aa2c488d19037f",
       "scores": {
         "default": -35000
       },
@@ -13577,6 +13792,7 @@
       "description": null,
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf/no-rlsgroup.json",
+      "sourceBlobSha": "319800c47edc9e82f6bc8a84a7a6018b9186389f",
       "scores": {
         "default": -10000,
         "german": -35000
@@ -13598,6 +13814,7 @@
       "description": null,
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf/nlz.json",
+      "sourceBlobSha": "4d61cf002ada16f98564cf09e0b745e250bd0361",
       "scores": {
         "default": 75
       },
@@ -13632,6 +13849,7 @@
       "description": null,
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf/nf.json",
+      "sourceBlobSha": "248ecf829dc897bf1a0b8dbd6195a163d24f9958",
       "scores": {
         "anime-sonarr": 4,
         "default": 75,
@@ -13670,6 +13888,7 @@
       "description": null,
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf/mytvsuper.json",
+      "sourceBlobSha": "59b680639b62e71537e1e1c1b56c689dbb0f7843",
       "scores": {
         "default": 40
       },
@@ -13704,6 +13923,7 @@
       "description": null,
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf/my5.json",
+      "sourceBlobSha": "a4411cd104e3e0e8dd0f4c5e0ec8aa27d3e29d1f",
       "scores": {
         "default": 75
       },
@@ -13738,6 +13958,7 @@
       "description": null,
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf/multi.json",
+      "sourceBlobSha": "8473f53f9feac40451f653b35612a4d2a3accdc1",
       "scores": {},
       "includeWhenRenaming": true,
       "matcherClauses": [
@@ -13756,6 +13977,7 @@
       "description": null,
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf/multi-episode.json",
+      "sourceBlobSha": "1b5e2e8cb77decec71974d5ea3f13dcd04ac0dee",
       "scores": {},
       "includeWhenRenaming": false,
       "matcherClauses": [
@@ -13774,6 +13996,7 @@
       "description": null,
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf/ip.json",
+      "sourceBlobSha": "30bff8c72b6988ac218e56b8d21c8f6003c76769",
       "scores": {
         "default": 75
       },
@@ -13808,6 +14031,7 @@
       "description": null,
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf/mpeg2.json",
+      "sourceBlobSha": "4ea5d4cef0ca6e8a1f39134a490c437fe53824d5",
       "scores": {},
       "includeWhenRenaming": false,
       "matcherClauses": [
@@ -13826,6 +14050,7 @@
       "description": null,
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf/max.json",
+      "sourceBlobSha": "be059b99f46a14b6d8f3b2998498886e3397e91f",
       "scores": {
         "default": 75,
         "german-anime": 0
@@ -13868,6 +14093,7 @@
       "description": null,
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf/lq.json",
+      "sourceBlobSha": "e3a3aaf4318bd6951425e21efdc302d24d88504d",
       "scores": {
         "default": -10000,
         "german": -35000,
@@ -14093,6 +14319,7 @@
       "description": null,
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf/lq-release-title.json",
+      "sourceBlobSha": "2593ce338aa7a5dd69e11ed0a5beedf5c7315a00",
       "scores": {
         "default": -10000,
         "german": -35000,
@@ -14150,6 +14377,7 @@
       "description": null,
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf/linetv.json",
+      "sourceBlobSha": "0c4694e84ea924917b9c8fdbba01d06c3601cf23",
       "scores": {
         "default": 20
       },
@@ -14184,6 +14412,7 @@
       "description": null,
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf/language-original-plus-french.json",
+      "sourceBlobSha": "9c561e6a1c636a00a009ddcf9b0d9380a1fd290f",
       "scores": {
         "french-anime-multi": 500,
         "french-anime-vostfr": -10000,
@@ -14222,6 +14451,7 @@
       "description": "Language: Original Only: Because it uses reverse scoring, and if you use the default scores, it will assign all releases without the original audio a score of -10000.",
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf/language-not-original.json",
+      "sourceBlobSha": "d63aefc74e2bbfba3565314e39155ef29e61b3c3",
       "scores": {
         "default": -10000,
         "french-anime-multi": -10000,
@@ -14247,6 +14477,7 @@
       "description": "Language: French Only: Because it uses reverse scoring, and if you use the default scores, it will assign all releases without the French audio a score of -10000.",
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf/language-not-french.json",
+      "sourceBlobSha": "6a1212cdfd189d500245a9bc1366d569c027fb7b",
       "scores": {
         "french-anime-multi": 0,
         "french-anime-vostfr": 0,
@@ -14271,6 +14502,7 @@
       "description": "Language: English Only: Because it uses reverse scoring, and if you use the default scores, it will assign all releases without the English audio a score of -10000.",
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf/language-not-english.json",
+      "sourceBlobSha": "1b2591c4b66177d618caeb05b15e83ae2ec7c0fa",
       "scores": {
         "default": -10000
       },
@@ -14291,6 +14523,7 @@
       "description": null,
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf/kktv.json",
+      "sourceBlobSha": "ff200a7141795e26873b7bad50dacb006a0bfa39",
       "scores": {
         "default": 10
       },
@@ -14325,6 +14558,7 @@
       "description": null,
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf/kcw.json",
+      "sourceBlobSha": "5041f26a21b74d7cda6cc1e2d4edcc6871cede29",
       "scores": {
         "default": 30
       },
@@ -14359,6 +14593,7 @@
       "description": null,
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf/itvx.json",
+      "sourceBlobSha": "06883e77973cd44b280050589c71c18da0828032",
       "scores": {
         "default": 75
       },
@@ -14400,6 +14635,7 @@
       "description": null,
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf/it.json",
+      "sourceBlobSha": "d4b7266f05b18ae25d6cf7a6f70f9f259a8ebaf1",
       "scores": {
         "default": 75
       },
@@ -14441,6 +14677,7 @@
       "description": null,
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf/mp3.json",
+      "sourceBlobSha": "fe23b9c455c1a74b8d739b3fcc0859288311755f",
       "scores": {
         "default": 500
       },
@@ -14461,6 +14698,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/x265.json",
+      "sourceBlobSha": "b74031b612a9d844a8c5fa61235aaf732c66c6d1",
       "scores": {},
       "includeWhenRenaming": false,
       "matcherClauses": [
@@ -14486,6 +14724,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/x265-no-hdrdv.json",
+      "sourceBlobSha": "309897e0f1baa78df0511afbfae66828b3693c25",
       "scores": {
         "default": -10000,
         "german": -35000,
@@ -14522,6 +14761,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/x265-hd.json",
+      "sourceBlobSha": "ab3a59fe2c186b31c5fa0c0d4142b51ec0ae08fa",
       "scores": {
         "default": -10000,
         "german": 0,
@@ -14551,6 +14791,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/french-uhd-bluray-tier-01.json",
+      "sourceBlobSha": "e652677e4ce1372e9ed5fe9445bf73b038aa759e",
       "scores": {
         "default": 1800,
         "french-multi-vf": 1800,
@@ -14630,6 +14871,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/french-scene.json",
+      "sourceBlobSha": "634b5265142f8cd699da74236275017e130684a8",
       "scores": {
         "default": 1500,
         "french-anime-multi": 1500,
@@ -14809,6 +15051,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/french-remux-tier-02.json",
+      "sourceBlobSha": "d6da4bb7b1e256e03e3d10004183216704fd1280",
       "scores": {
         "default": 1900,
         "french-multi-vf": 1900,
@@ -14909,6 +15152,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/french-remux-tier-01.json",
+      "sourceBlobSha": "776dfcf575b3a8dd81901c4a271b143f258fd3a6",
       "scores": {
         "default": 1950,
         "french-multi-vf": 1950,
@@ -15002,6 +15246,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/french-lq.json",
+      "sourceBlobSha": "b8d0bdaa60431996d4b5f397ac341e5185547685",
       "scores": {
         "default": -10000
       },
@@ -15043,6 +15288,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/french-hd-bluray-tier-02.json",
+      "sourceBlobSha": "0bcb4d3e03fee848caf0746aad76adef5d375294",
       "scores": {
         "default": 1750,
         "french-anime-multi": 1200,
@@ -15145,6 +15391,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/french-hd-bluray-tier-01.json",
+      "sourceBlobSha": "23dd2e33a10cbe0c18f1059a3ba73d66f643b112",
       "scores": {
         "default": 1800,
         "french-anime-multi": 1250,
@@ -15233,6 +15480,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/french-anime-tier-03.json",
+      "sourceBlobSha": "6a6cbf911d448790e35731cd9b48d2914a5990f9",
       "scores": {
         "default": 1550,
         "french-anime-multi": 1550,
@@ -15339,6 +15587,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/french-anime-tier-02.json",
+      "sourceBlobSha": "f16133bb59b6f7c7f0b812784c077dcc7afa4621",
       "scores": {
         "default": 1600,
         "french-anime-multi": 1600,
@@ -15417,6 +15666,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/french-anime-tier-01.json",
+      "sourceBlobSha": "7e808aafa40f232d1a11339ba9a0faef7ce8c2fc",
       "scores": {
         "default": 1650,
         "french-anime-multi": 1650,
@@ -15495,6 +15745,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/french-anime-fansub.json",
+      "sourceBlobSha": "032b69a6a59a51a488f01d6a0233105fe7491e93",
       "scores": {
         "default": 1450,
         "french-anime-multi": 1450,
@@ -15587,6 +15838,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/freeleech.json",
+      "sourceBlobSha": "0979dd88fac55c17a6686627d452dc3207b91dbd",
       "scores": {
         "default": 1
       },
@@ -15607,6 +15859,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/french-uhd-bluray-tier-02.json",
+      "sourceBlobSha": "4371481187779a8e2aa84ab351604751b35395d5",
       "scores": {
         "default": 1750,
         "french-multi-vf": 1750,
@@ -15686,6 +15939,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/framestor.json",
+      "sourceBlobSha": "23aed589185b1b260b48a67ac1f725b42f7d7c9d",
       "scores": {
         "default": 101
       },
@@ -15706,6 +15960,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/flux.json",
+      "sourceBlobSha": "3b02b831c6ef1c8965d7051851d86f4defa746b6",
       "scores": {
         "default": 51,
         "sqp-4-ma-hybrid": 10
@@ -15727,6 +15982,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/flac.json",
+      "sourceBlobSha": "4b7242e82c20034b87c3362fe321112949fa1963",
       "scores": {
         "default": 2250,
         "sqp-1-1080p": 0,
@@ -15794,6 +16050,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/fastsub.json",
+      "sourceBlobSha": "91533a30cb9b8d6c5d278c3aecf1c281fe083c24",
       "scores": {
         "default": -10000
       },
@@ -15814,6 +16071,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/fansub.json",
+      "sourceBlobSha": "20a366fce714a08d017d4dd74214f1ede6e840e8",
       "scores": {},
       "includeWhenRenaming": false,
       "matcherClauses": [
@@ -15832,6 +16090,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/fand.json",
+      "sourceBlobSha": "3cd2b1c92d024f684d5df0888f5ca726e1ab291f",
       "scores": {},
       "includeWhenRenaming": true,
       "matcherClauses": [
@@ -15864,6 +16123,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/extras.json",
+      "sourceBlobSha": "f4e30bc19721b3f7728fef0a17f679cb7f19a963",
       "scores": {
         "default": -10000,
         "german": -35000,
@@ -15886,6 +16146,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/dv-wo-hdr-fallback.json",
+      "sourceBlobSha": "3c241b6770bff6df4032ac1c729156d206381086",
       "scores": {
         "default": -10000
       },
@@ -15941,6 +16202,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/dv-disk.json",
+      "sourceBlobSha": "114b9bedf67742a4b17dd691e13c9ed93cb995c9",
       "scores": {
         "default": 101
       },
@@ -15989,6 +16251,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/dv-boost.json",
+      "sourceBlobSha": "c69f350c63db2b7a985bca0ff2f826e416e3f65e",
       "scores": {
         "default": 1000,
         "sqp-4-ma-hybrid": 100
@@ -16010,6 +16273,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/dubs-only.json",
+      "sourceBlobSha": "cfd4f7feae405d3d195ff7366cc4f5b7944a22d6",
       "scores": {
         "default": -10000
       },
@@ -16072,6 +16336,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/dual-audio-asian.json",
+      "sourceBlobSha": "794f21f08e8dbfa13cb99fa86853503755e4e088",
       "scores": {
         "default": 10
       },
@@ -16120,6 +16385,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/dts.json",
+      "sourceBlobSha": "29abcf48d7f832fe2fe699740df876444678b540",
       "scores": {
         "default": 1250,
         "sqp-1-1080p": 0,
@@ -16208,6 +16474,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/fod.json",
+      "sourceBlobSha": "98e7d271a53760a9a0bfb42f70561022e5b3a380",
       "scores": {},
       "includeWhenRenaming": true,
       "matcherClauses": [
@@ -16240,6 +16507,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/dts-x.json",
+      "sourceBlobSha": "55e590f10a2b75e968c3ca82a9602f951e941c56",
       "scores": {
         "default": 4500,
         "sqp-1-1080p": -10000,
@@ -16314,6 +16582,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/french-vf2.json",
+      "sourceBlobSha": "7d148dbfd206d5209887f52e14f6516cd99a7a64",
       "scores": {},
       "includeWhenRenaming": true,
       "matcherClauses": [
@@ -16339,6 +16608,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/french-vff.json",
+      "sourceBlobSha": "be96300ba1a234c0cfb02292d9dbf8ec51b618ed",
       "scores": {},
       "includeWhenRenaming": true,
       "matcherClauses": [
@@ -16364,6 +16634,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/german-lq-release-title.json",
+      "sourceBlobSha": "03c7f8505c57c9d82b7109bf9072ae9284985c07",
       "scores": {
         "default": -35000
       },
@@ -16398,6 +16669,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/german-dl.json",
+      "sourceBlobSha": "0e118a49ec8f9f22e25aee149862c6ea56470972",
       "scores": {
         "default": -10000,
         "german": 11000,
@@ -16427,6 +16699,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/german-dl-undefined.json",
+      "sourceBlobSha": "5c05196291f8f551a4b4d31142be37ae6c37e97c",
       "scores": {
         "default": 11000
       },
@@ -16468,6 +16741,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/german-bluray-tier-03.json",
+      "sourceBlobSha": "fc30889d4e782f616bf144d28cb47d659c7945e8",
       "scores": {
         "default": 2300
       },
@@ -16551,6 +16825,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/german-bluray-tier-02.json",
+      "sourceBlobSha": "09ae649c22ed5a053ccf351bd1af21e609c170e5",
       "scores": {
         "default": 2650
       },
@@ -16627,6 +16902,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/german-bluray-tier-01.json",
+      "sourceBlobSha": "02d6423a208c1eafa051894cc92fbcdb05998fb0",
       "scores": {
         "default": 2900
       },
@@ -16731,6 +17007,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/german-anime-web-tier-03.json",
+      "sourceBlobSha": "d95c00a5a6aca8daf41807528af065c9cc806b2f",
       "scores": {
         "default": 1800
       },
@@ -16821,6 +17098,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/german-anime-web-tier-02.json",
+      "sourceBlobSha": "2d9a02202853001b32431e1679d0e1ef240e670f",
       "scores": {
         "default": 1900
       },
@@ -16897,6 +17175,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/german-anime-web-tier-01.json",
+      "sourceBlobSha": "0ce4b6e7872fe2cfe57f61ab9b9d54ecdb70a16c",
       "scores": {
         "default": 2100
       },
@@ -17001,6 +17280,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/german-anime-scene.json",
+      "sourceBlobSha": "f6d71d50014d0a5a094713bc504b2b00ef26dc50",
       "scores": {
         "default": 1700
       },
@@ -17091,6 +17371,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/german-anime-bluray-tier-03.json",
+      "sourceBlobSha": "5b2143fa9e8f8cf063c74378000565265d2cfdbc",
       "scores": {
         "default": 2300
       },
@@ -17167,6 +17448,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/german-anime-bluray-tier-02.json",
+      "sourceBlobSha": "7d0dd58e27718dc5776621e484b6603c97bfa5a4",
       "scores": {
         "default": 2650
       },
@@ -17236,6 +17518,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/french-vfb.json",
+      "sourceBlobSha": "1b84a2e884d996148c5177523e2d1ad4f07adbd5",
       "scores": {},
       "includeWhenRenaming": true,
       "matcherClauses": [
@@ -17254,6 +17537,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/german-anime-bluray-tier-01.json",
+      "sourceBlobSha": "520adcc20ba5a44a9921b8c12738d99c5573c76e",
       "scores": {
         "default": 2900
       },
@@ -17372,6 +17656,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/german-1080p-booster.json",
+      "sourceBlobSha": "d77294b2005f53c04340edb71c33271460678121",
       "scores": {
         "default": 650
       },
@@ -17406,6 +17691,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/generated-dynamic-hdr.json",
+      "sourceBlobSha": "7676c572997e126d90a82c4434e5e4dd0fb7b3f5",
       "scores": {
         "default": -10000,
         "german": 0,
@@ -17498,6 +17784,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/funi.json",
+      "sourceBlobSha": "18d654489cb37f765a6b871d8c7e3e4f0407e3bb",
       "scores": {},
       "includeWhenRenaming": true,
       "matcherClauses": [
@@ -17530,6 +17817,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/friday.json",
+      "sourceBlobSha": "1d752e14c6202cde02304fdff379a91c863e8b1a",
       "scores": {
         "default": 10
       },
@@ -17564,6 +17852,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/french-web-tier-02.json",
+      "sourceBlobSha": "06efc3c9a4b7d581d803e16bfbabc22d1baa2f68",
       "scores": {
         "default": 1650,
         "french-anime-multi": 1100,
@@ -17666,6 +17955,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/french-web-tier-01.json",
+      "sourceBlobSha": "608a33ad6ab1c8b75a97d7002bbe5c34846abcb5",
       "scores": {
         "default": 1700,
         "french-anime-multi": 1150,
@@ -17796,6 +18086,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/french-vq.json",
+      "sourceBlobSha": "69578c1f5828bb47bbe20074acd6f32420d06632",
       "scores": {},
       "includeWhenRenaming": true,
       "matcherClauses": [
@@ -17814,6 +18105,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/french-vostfr.json",
+      "sourceBlobSha": "c0fac5d52a0a25ba30e494204f4e0b2a9de66bdc",
       "scores": {
         "anime-radarr": -10000,
         "default": -10000,
@@ -17848,6 +18140,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/french-voq.json",
+      "sourceBlobSha": "79e8faf61165fd72d5456768937410d9a8510d35",
       "scores": {},
       "includeWhenRenaming": true,
       "matcherClauses": [
@@ -17866,6 +18159,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/french-vof.json",
+      "sourceBlobSha": "0382715cfd89969a7755da131d9983a9866605ff",
       "scores": {},
       "includeWhenRenaming": true,
       "matcherClauses": [
@@ -17884,6 +18178,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/french-vfq.json",
+      "sourceBlobSha": "0aad1aee766720fbf237ba764ff27efb993dbf5c",
       "scores": {},
       "includeWhenRenaming": true,
       "matcherClauses": [
@@ -17909,6 +18204,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/french-vfi.json",
+      "sourceBlobSha": "ea7223ca2f8cb657ea943acd285d8fb27680cf8b",
       "scores": {},
       "includeWhenRenaming": true,
       "matcherClauses": [
@@ -17927,6 +18223,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/german-2160p-booster.json",
+      "sourceBlobSha": "cbce673fce08e7484907ac265eac8ebe9d364ba2",
       "scores": {
         "default": 9000
       },
@@ -17961,6 +18258,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/german-lq.json",
+      "sourceBlobSha": "3a0afbfdb4c32614c61d2cbe065f36a627585543",
       "scores": {
         "default": -35000
       },
@@ -18296,6 +18594,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/dts-hd-ma.json",
+      "sourceBlobSha": "57b4075342b90d6c05b34e8a575eb67033a2e369",
       "scores": {
         "default": 2500,
         "sqp-1-1080p": -10000,
@@ -18377,6 +18676,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/dts-es.json",
+      "sourceBlobSha": "15035f8a6b1b410c0118938fcafaf6b778926f28",
       "scores": {
         "default": 1500,
         "sqp-1-1080p": 0,
@@ -18458,6 +18758,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/anime-raws.json",
+      "sourceBlobSha": "5e18e8bd82f76cf1fcbf54d7801cd8e84c35eb7c",
       "scores": {
         "default": -10000,
         "german-anime": -35000
@@ -18626,6 +18927,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/anime-lq-groups.json",
+      "sourceBlobSha": "15c8956eb3209a6339dbc9843270f7bbf65e5521",
       "scores": {
         "default": -10000,
         "german-anime": -35000
@@ -19599,6 +19901,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/anime-dual-audio.json",
+      "sourceBlobSha": "5506718ab56ae64fdf60ffc5be3882700b538bb2",
       "scores": {},
       "includeWhenRenaming": false,
       "matcherClauses": [
@@ -19645,6 +19948,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/anime-bd-tier-08.json",
+      "sourceBlobSha": "6be0d4abd5a1cc4c804e5ff686fdc8b68fcfa767",
       "scores": {
         "default": 700
       },
@@ -19742,6 +20046,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/anime-bd-tier-07.json",
+      "sourceBlobSha": "00a5af5ef285c9798a4f2b91693e295f42c118af",
       "scores": {
         "default": 800
       },
@@ -20007,6 +20312,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/anime-bd-tier-06.json",
+      "sourceBlobSha": "fddb857d73a196b82e448bc92c7b669abcb8c0d3",
       "scores": {
         "default": 900
       },
@@ -20139,6 +20445,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/anime-bd-tier-05.json",
+      "sourceBlobSha": "c79a96cdb2fff4c349a96f706e6e56d73163d916",
       "scores": {
         "default": 1000
       },
@@ -20376,6 +20683,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/anime-bd-tier-04.json",
+      "sourceBlobSha": "7ed6e6289e57e46c9c80480d109a5b4880cebb7f",
       "scores": {
         "default": 1100
       },
@@ -20655,6 +20963,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/anime-bd-tier-03.json",
+      "sourceBlobSha": "5bb345e8039577a0b04a4f3338fb2c61747fbfb7",
       "scores": {
         "default": 1200
       },
@@ -20927,6 +21236,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/anime-bd-tier-02.json",
+      "sourceBlobSha": "7a960427ad62a19d9610b05d1928688a7ea4501f",
       "scores": {
         "default": 1300
       },
@@ -21087,6 +21397,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/anime-bd-tier-01.json",
+      "sourceBlobSha": "fd593e8dbab5d405a6aba6e8414318bdc8938882",
       "scores": {
         "default": 1400
       },
@@ -21170,6 +21481,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/amzn.json",
+      "sourceBlobSha": "a7381eacb46220d45cf4e9024b1d185bf55171a4",
       "scores": {},
       "includeWhenRenaming": true,
       "matcherClauses": [
@@ -21202,6 +21514,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/anime-web-tier-01.json",
+      "sourceBlobSha": "70f11bf78718dc7c18346eb7ef869759cbad2756",
       "scores": {
         "default": 600
       },
@@ -21334,6 +21647,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/aac.json",
+      "sourceBlobSha": "a5396a4ec3148b7c4a8c16e36d670b8ae6ef59dc",
       "scores": {
         "default": 1000,
         "sqp-1-1080p": 0,
@@ -21401,6 +21715,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/71-surround.json",
+      "sourceBlobSha": "6647982da068f60f76a3641ebfd5fd543facc92a",
       "scores": {
         "sqp-4-ma-hybrid": 830
       },
@@ -21428,6 +21743,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/61-surround.json",
+      "sourceBlobSha": "8cb686397022bbed886a18783b4d733c9ca0a594",
       "scores": {
         "sqp-4-ma-hybrid": 780
       },
@@ -21455,6 +21771,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/51-surround.json",
+      "sourceBlobSha": "733b19af45253cc8db886cc2f3ea155a7253a324",
       "scores": {
         "sqp-4-ma-hybrid": 780
       },
@@ -21489,6 +21806,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/4k-remaster.json",
+      "sourceBlobSha": "4429ba0bb2a4778780ddd95fc0adffa0726e5be4",
       "scores": {
         "default": 25
       },
@@ -21523,6 +21841,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/40-sound.json",
+      "sourceBlobSha": "26b715c0c31978c7b662647e2d54dbc6e2c6fa2c",
       "scores": {},
       "includeWhenRenaming": false,
       "matcherClauses": [
@@ -21569,6 +21888,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/3d.json",
+      "sourceBlobSha": "14e5db96e2b54ab98dbdf1de8e1fdc78ed06ad7a",
       "scores": {
         "default": -10000,
         "german": -35000,
@@ -21605,6 +21925,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/30-sound.json",
+      "sourceBlobSha": "c6fa1009735c5a18e3c69acce49d05e07df06436",
       "scores": {},
       "includeWhenRenaming": false,
       "matcherClauses": [
@@ -21651,6 +21972,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/2160p.json",
+      "sourceBlobSha": "353f041beb7cacfb7f6141ac4ab3426a22894fcd",
       "scores": {
         "default": 100,
         "sqp-2": 151,
@@ -21675,6 +21997,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/20-stereo.json",
+      "sourceBlobSha": "4d48c88e3fd28fa15168439fa464b768e0b8a40e",
       "scores": {
         "sqp-1-web-1080p": -175,
         "sqp-1-web-2160p": -175,
@@ -21725,6 +22048,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/126811.json",
+      "sourceBlobSha": "901ec0d65798aa43cc24d976a245fadac24d19c5",
       "scores": {
         "default": 51,
         "sqp-4-ma-hybrid": 2
@@ -21746,6 +22070,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/10bit.json",
+      "sourceBlobSha": "68f2e91f852ed802b07687a2808ed6d7c16210cc",
       "scores": {
         "sqp-1-1080p": -10000,
         "sqp-1-2160p": -10000,
@@ -21777,6 +22102,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/1080p.json",
+      "sourceBlobSha": "a1b206051a2aaf0ff8dedb8b2ad75e8d015d73ab",
       "scores": {
         "default": 50
       },
@@ -21797,6 +22123,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/720p.json",
+      "sourceBlobSha": "1c7b4fe5c3b58bfe1a9e9cb487a60758d4676120",
       "scores": {
         "default": 5
       },
@@ -21817,6 +22144,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/dts-hd-hra.json",
+      "sourceBlobSha": "83a177bb0bbb0da53254b55af97f5edad73b0076",
       "scores": {
         "default": 2000,
         "sqp-1-1080p": -10000,
@@ -21912,6 +22240,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/anime-web-tier-02.json",
+      "sourceBlobSha": "417be332d990bfb90c6e6475dfc7d7a350877a5a",
       "scores": {
         "default": 500
       },
@@ -22079,6 +22408,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/anime-web-tier-04.json",
+      "sourceBlobSha": "3c41eb4d25cc9b5504457a22145f9b8557ae34f1",
       "scores": {
         "default": 300
       },
@@ -22127,6 +22457,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/dsnp.json",
+      "sourceBlobSha": "d0d0a6f02e5bcf66a7ca09ef6c8a4e60cb5f18b9",
       "scores": {},
       "includeWhenRenaming": true,
       "matcherClauses": [
@@ -22159,6 +22490,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/ddplus.json",
+      "sourceBlobSha": "d03291bb60b3811be31644145d6b88cf4df12b55",
       "scores": {
         "default": 1750,
         "sqp-1-1080p": 125,
@@ -22219,6 +22551,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/ddplus-atmos.json",
+      "sourceBlobSha": "db3da28fde80dc51175ee29fee2901034d49f37e",
       "scores": {
         "default": 3000,
         "sqp-1-1080p": 135,
@@ -22293,6 +22626,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/dd.json",
+      "sourceBlobSha": "83e9fead0c09a88568a92f0488fd5bbc1c7d34bf",
       "scores": {
         "default": 750,
         "sqp-1-1080p": 115,
@@ -22360,6 +22694,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/criterion-collection.json",
+      "sourceBlobSha": "e7aa8d878f02c4f99e8ef7192b3516ebc7824713",
       "scores": {
         "default": 25
       },
@@ -22408,6 +22743,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/crit.json",
+      "sourceBlobSha": "b22c30645a029fb913e4b0e72d72826c6ccceca2",
       "scores": {
         "default": 20
       },
@@ -22449,6 +22785,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/crav.json",
+      "sourceBlobSha": "6b61c7dcf9944f2fecc53e64c681a0501f8f399d",
       "scores": {},
       "includeWhenRenaming": true,
       "matcherClauses": [
@@ -22488,6 +22825,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/cpng.json",
+      "sourceBlobSha": "98f2b815f66dae9b3ac7c5ea9cb5c2f8b2beb8bf",
       "scores": {
         "default": 50
       },
@@ -22522,6 +22860,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/cnlp.json",
+      "sourceBlobSha": "1c560a56ce15f1d7f825f3a819934eed0c4d9601",
       "scores": {},
       "includeWhenRenaming": true,
       "matcherClauses": [
@@ -22554,6 +22893,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/cbc.json",
+      "sourceBlobSha": "1bf0a6f761979bfd61d93a1fc59e6e6144c00059",
       "scores": {},
       "includeWhenRenaming": true,
       "matcherClauses": [
@@ -22586,6 +22926,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/br-disk.json",
+      "sourceBlobSha": "29f2032990f9e54d69ce69bb78723eaa27a15b00",
       "scores": {
         "default": -10000,
         "german": -35000,
@@ -22608,6 +22949,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/black-and-white-editions.json",
+      "sourceBlobSha": "a0021d0a3f2954a55ff8f86f68a7b36d43c67c60",
       "scores": {
         "default": -10000,
         "german": -35000,
@@ -22672,6 +23014,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/anime-web-tier-03.json",
+      "sourceBlobSha": "bc95b80cb30387e1f534aa01a40a7eeefc53c056",
       "scores": {
         "default": 400
       },
@@ -22734,6 +23077,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/bhdstudio.json",
+      "sourceBlobSha": "94a04b112b7d34e4aedbb36cc0b2066ff341c20c",
       "scores": {
         "default": 1000,
         "sqp-1-web-1080p": 550,
@@ -22757,6 +23101,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/bad-dual-groups.json",
+      "sourceBlobSha": "c8ef5338e3c08e281a01c29df842f7ae5b916bd2",
       "scores": {
         "default": -10000,
         "french-multi-vf": 0,
@@ -23034,6 +23379,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/av1.json",
+      "sourceBlobSha": "e5cb047c3534685317079870e38d92094ece0de0",
       "scores": {
         "anime-radarr": -10000,
         "default": -10000,
@@ -23058,6 +23404,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/aubc.json",
+      "sourceBlobSha": "e23573458c70752d867ebf8d3f9dd9dc42c175a0",
       "scores": {},
       "includeWhenRenaming": true,
       "matcherClauses": [
@@ -23090,6 +23437,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/atvp.json",
+      "sourceBlobSha": "4153b26e09824ed3649beded5601ff630c62733b",
       "scores": {},
       "includeWhenRenaming": true,
       "matcherClauses": [
@@ -23122,6 +23470,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/atv.json",
+      "sourceBlobSha": "ed25ddb63b5fdfdd1c0314d0d9d3512b47d4ba2a",
       "scores": {},
       "includeWhenRenaming": true,
       "matcherClauses": [
@@ -23154,6 +23503,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/atmos-undefined.json",
+      "sourceBlobSha": "a92dee9952a6c84e44d8c9266759f0017e619cdd",
       "scores": {
         "default": 3000,
         "sqp-1-1080p": 0,
@@ -23235,6 +23585,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/asian-tier-03.json",
+      "sourceBlobSha": "2939b80a3aeb4d6ea9bcc2a7e0051a85484a6b63",
       "scores": {
         "default": 100
       },
@@ -23304,6 +23655,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/asian-tier-02.json",
+      "sourceBlobSha": "958a7df4a33663e7346f3894290506471f60eaaf",
       "scores": {
         "default": 1600
       },
@@ -23338,6 +23690,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/asian-tier-01.json",
+      "sourceBlobSha": "2945e13ee9e0d1062c9240e80893266f6ad3fb86",
       "scores": {
         "default": 1650
       },
@@ -23470,6 +23823,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/asian-lq.json",
+      "sourceBlobSha": "dc55badca2bf4fee9c535962cec78e2355ac6895",
       "scores": {
         "default": -10000
       },
@@ -23532,6 +23886,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/anime-web-tier-06.json",
+      "sourceBlobSha": "0e48b2cf18aea06ae68304d803a8b8b096f02027",
       "scores": {
         "default": 100
       },
@@ -23636,6 +23991,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/anime-web-tier-05.json",
+      "sourceBlobSha": "010ce033b31d3465d402c335820a1c28fc626913",
       "scores": {
         "default": 200
       },
@@ -23761,6 +24117,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/bcore.json",
+      "sourceBlobSha": "16dbbc1c210c7027e94ed146d29625eef093a05c",
       "scores": {
         "default": 15,
         "sqp-1-1080p": -10000,
@@ -23799,6 +24156,7 @@
       "description": null,
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf/x266.json",
+      "sourceBlobSha": "34c020c162934755c194d86a4d8462342cb40b95",
       "scores": {
         "default": -10000
       },
@@ -23826,6 +24184,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/german-microsized.json",
+      "sourceBlobSha": "55b3db03cb618e2c8e1ea5e1051cc69a9cb1b51b",
       "scores": {
         "default": -35000
       },
@@ -23881,6 +24240,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/german-remux-tier-02.json",
+      "sourceBlobSha": "399d2b2c2326edec4dc179ad2efcb7344eb0ee7d",
       "scores": {
         "default": 3900
       },
@@ -23943,6 +24303,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/u-next.json",
+      "sourceBlobSha": "4e33cb7323aa47d557e5264fa8d89b6fbbe1b972",
       "scores": {},
       "includeWhenRenaming": true,
       "matcherClauses": [
@@ -23975,6 +24336,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/tving.json",
+      "sourceBlobSha": "d14901805425b98b954295782505ca1d42e050cc",
       "scores": {},
       "includeWhenRenaming": true,
       "matcherClauses": [
@@ -24014,6 +24376,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/tver.json",
+      "sourceBlobSha": "a878581637f6494620c16fc043b5c6d80da87609",
       "scores": {},
       "includeWhenRenaming": true,
       "matcherClauses": [
@@ -24046,6 +24409,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/truehd.json",
+      "sourceBlobSha": "879b8d9b9de4405acbe6c6cff7c0c84559e68a4c",
       "scores": {
         "default": 2750,
         "sqp-1-1080p": -10000,
@@ -24113,6 +24477,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/truehd-atmos.json",
+      "sourceBlobSha": "cc4cb46edae4ae855c09703f2e4f138f69a88fe5",
       "scores": {
         "default": 5000,
         "sqp-1-1080p": -10000,
@@ -24187,6 +24552,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/thefarm.json",
+      "sourceBlobSha": "5485035bbc15f0c50fbe668ca5cbe9dde3ab7d17",
       "scores": {
         "default": 231,
         "sqp-4-ma-hybrid": 10
@@ -24208,6 +24574,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/theatrical-cut.json",
+      "sourceBlobSha": "cc3a410d94c7dd41a50651211a8f1441cee4a093",
       "scores": {},
       "includeWhenRenaming": false,
       "matcherClauses": [
@@ -24226,6 +24593,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/strp.json",
+      "sourceBlobSha": "5f992737f62e3c26cf40bd8a3e762e1d7afb13b5",
       "scores": {},
       "includeWhenRenaming": true,
       "matcherClauses": [
@@ -24258,6 +24626,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/stan.json",
+      "sourceBlobSha": "021b3c2830243a8ea43ada390f814e79b5c3727c",
       "scores": {},
       "includeWhenRenaming": true,
       "matcherClauses": [
@@ -24297,6 +24666,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/special-edition.json",
+      "sourceBlobSha": "49b5349a8c75eb998ed59665c0b5b8681f1f3d21",
       "scores": {
         "default": 125
       },
@@ -24345,6 +24715,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/sing-along-versions.json",
+      "sourceBlobSha": "7a0a7c9ba596e5c1a19e6d96b3d4a36e82585898",
       "scores": {
         "default": -10000,
         "german": -35000,
@@ -24367,6 +24738,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/sic.json",
+      "sourceBlobSha": "4b239927c8c62b59376e7a194745537e66dea870",
       "scores": {
         "default": 51,
         "sqp-4-ma-hybrid": 2
@@ -24416,6 +24788,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/uhd-bluray-rlsgrp-sqp-4-ma.json",
+      "sourceBlobSha": "9031c02f910a86615b4f939e9e5e57bafee1b7c3",
       "scores": {
         "sqp-4-ma-hybrid": 3960
       },
@@ -24506,6 +24879,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/sdr.json",
+      "sourceBlobSha": "6ba34e2a6b1d2e8e5958c1ea7ce72e60a05c5582",
       "scores": {
         "default": -10000,
         "german": -35000,
@@ -24542,6 +24916,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/scene.json",
+      "sourceBlobSha": "25449946ca02258068d2a232849a0f05eede7aab",
       "scores": {
         "default": -10000,
         "french-multi-vf": 0,
@@ -24581,6 +24956,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/roku.json",
+      "sourceBlobSha": "46f8b43bfb33cae919e8496b9c58fc4f547801a3",
       "scores": {},
       "includeWhenRenaming": true,
       "matcherClauses": [
@@ -24613,6 +24989,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/retags.json",
+      "sourceBlobSha": "f181624e71ef24fa660c6fa80205a2a2f8b87923",
       "scores": {
         "default": -10000,
         "german": -35000
@@ -24676,6 +25053,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/repack3.json",
+      "sourceBlobSha": "782914587f92c0eb7166e52b34b8785619c271a2",
       "scores": {
         "anime-radarr": 3,
         "default": 7,
@@ -24700,6 +25078,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/repack2.json",
+      "sourceBlobSha": "08e00c615c491a53b2bfd3d5af4da87d4f2dc206",
       "scores": {
         "anime-radarr": 2,
         "default": 6,
@@ -24731,6 +25110,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/repack-proper.json",
+      "sourceBlobSha": "d7a696596e4f43cc43b9ed7239ba2a317a9d5970",
       "scores": {
         "anime-radarr": 1,
         "default": 5,
@@ -24762,6 +25142,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/remux-tier-03.json",
+      "sourceBlobSha": "8561bfe1fd19371bfc96490def657b16704f53c8",
       "scores": {
         "anime-radarr": 925,
         "default": 1850,
@@ -24861,6 +25242,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/remux-tier-02.json",
+      "sourceBlobSha": "664c40d53823f00d0cae6b2a78ed1a48ab2b537e",
       "scores": {
         "anime-radarr": 950,
         "default": 1900,
@@ -24918,6 +25300,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/remux-tier-01.json",
+      "sourceBlobSha": "650629c9d055a03333694fbce467935045822313",
       "scores": {
         "anime-radarr": 975,
         "default": 1950,
@@ -25017,6 +25400,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/remaster.json",
+      "sourceBlobSha": "758d34f723a0f64dc57d125c9599306d7aaa2014",
       "scores": {
         "default": 25
       },
@@ -25044,6 +25428,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/pmtp.json",
+      "sourceBlobSha": "33a069fca9e96294c3c41f29f70b5a04dd8e7b97",
       "scores": {},
       "includeWhenRenaming": true,
       "matcherClauses": [
@@ -25076,6 +25461,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/play.json",
+      "sourceBlobSha": "586fd36f448acd1a2728c02951f99753e41cc380",
       "scores": {
         "sqp-4-ma-hybrid": 1040
       },
@@ -25117,6 +25503,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/sdr-no-webdl.json",
+      "sourceBlobSha": "0ee4c11976c7f3419a9c4d36a7350f94bc4a0528",
       "scores": {
         "default": -10000,
         "german": -35000,
@@ -25167,6 +25554,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/pcok.json",
+      "sourceBlobSha": "1f01eeb608377a16fbe3fb31587fc084b2da8bb0",
       "scores": {},
       "includeWhenRenaming": true,
       "matcherClauses": [
@@ -25199,6 +25587,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/uhd-bluray-tier-01.json",
+      "sourceBlobSha": "b14aa62746a98b5f8c35f3ff9c2f4980c193d06d",
       "scores": {
         "default": 1800,
         "french-multi-vf": 0,
@@ -25273,6 +25662,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/uhd-bluray-tier-03.json",
+      "sourceBlobSha": "fdf26f8202e0d8cb3fc8f2143538b9579d027c23",
       "scores": {
         "default": 1700,
         "french-multi-vf": 0,
@@ -25361,6 +25751,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/x264.json",
+      "sourceBlobSha": "4bd6d3fb04101ee94ee639a611f63d5cf7c715dd",
       "scores": {
         "sqp-2": -10000,
         "sqp-3": -10000,
@@ -25391,6 +25782,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/wrong-language.json",
+      "sourceBlobSha": "8d6751dfbab47fe15a2cd6d0e81398747dd798cc",
       "scores": {
         "default": -10000
       },
@@ -25411,6 +25803,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/with-bsl.json",
+      "sourceBlobSha": "c20a29b7a34acc6a815078e48d93374dc87de134",
       "scores": {
         "default": -10000,
         "german": -35000,
@@ -25433,6 +25826,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/with-basl.json",
+      "sourceBlobSha": "74595779642bbd798d97a9e3617042203d1a7f5b",
       "scores": {
         "default": -10000,
         "german": -35000,
@@ -25455,6 +25849,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/with-asl.json",
+      "sourceBlobSha": "6fa549cb7ce22c40af818992703de162d9b0d0e4",
       "scores": {
         "default": -10000,
         "german": -35000,
@@ -25477,6 +25872,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/with-ad.json",
+      "sourceBlobSha": "d2a77dcdbc85788f6a1d4b4ce6b3d9c7a3c4b9ca",
       "scores": {
         "default": -10000,
         "german": -35000,
@@ -25499,6 +25895,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/wetv.json",
+      "sourceBlobSha": "a8ef9890f650b227cec153feed34ab79d4a234f5",
       "scores": {
         "default": 30
       },
@@ -25533,6 +25930,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/webdl-boost.json",
+      "sourceBlobSha": "997039379e03227c602d98cce7eb8fc4073b100c",
       "scores": {
         "sqp-4-ma-hybrid": 3970
       },
@@ -25560,6 +25958,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/web-tier-03.json",
+      "sourceBlobSha": "bc131bdd3aa90035a51cca35e36d4e47311b9f5c",
       "scores": {
         "default": 1600,
         "french-multi-vf": 0,
@@ -25660,6 +26059,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/web-tier-02.json",
+      "sourceBlobSha": "53e3b7ae63238b0bbf84070005ee856ff67d3fa9",
       "scores": {
         "default": 1650,
         "french-multi-vf": 0,
@@ -25767,6 +26167,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/web-tier-01.json",
+      "sourceBlobSha": "92ff7afd0fb499e51fa92b2e53fc500595780598",
       "scores": {
         "default": 1700,
         "french-multi-vf": 0,
@@ -25951,6 +26352,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/wavve.json",
+      "sourceBlobSha": "4c6acd4e9c3c1b05e66fc3fdecafaef1a6bd1e93",
       "scores": {
         "default": 20
       },
@@ -25985,6 +26387,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/uhd-bluray-tier-02.json",
+      "sourceBlobSha": "c62c862bb20be656e4762b8f22d478f4cc56423b",
       "scores": {
         "default": 1750,
         "french-multi-vf": 0,
@@ -26052,6 +26455,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/vrv.json",
+      "sourceBlobSha": "0514d2494575f686b9ae9e6a8c6392f3fbad2a17",
       "scores": {
         "default": 10,
         "german-anime": 0
@@ -26087,6 +26491,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/viu.json",
+      "sourceBlobSha": "68bd1b7c2523d0014a87d4247707e9a52d6f3a9c",
       "scores": {},
       "includeWhenRenaming": true,
       "matcherClauses": [
@@ -26126,6 +26531,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/vinegar-syndrome.json",
+      "sourceBlobSha": "a81b69183afa484a363f8f4fb8239f5cbe5b97d7",
       "scores": {
         "default": 25
       },
@@ -26160,6 +26566,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/viki.json",
+      "sourceBlobSha": "e35ff353adafa6f64ff78702f3d3393162c8baae",
       "scores": {
         "default": 49
       },
@@ -26194,6 +26601,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/vdl.json",
+      "sourceBlobSha": "c6fd9fc33f8bac4c5b3829281e25278e80213644",
       "scores": {},
       "includeWhenRenaming": true,
       "matcherClauses": [
@@ -26226,6 +26634,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/vc-1.json",
+      "sourceBlobSha": "d6c72208903698bc49aea391905d850982f85515",
       "scores": {},
       "includeWhenRenaming": false,
       "matcherClauses": [
@@ -26244,6 +26653,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/v4.json",
+      "sourceBlobSha": "b70d240b8edc12271071cce3fe444a1fe950f0f9",
       "scores": {
         "default": 4
       },
@@ -26264,6 +26674,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/v3.json",
+      "sourceBlobSha": "56ad0e66499798c7f87056dae338d2fee7b6e65c",
       "scores": {
         "default": 3
       },
@@ -26291,6 +26702,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/v2.json",
+      "sourceBlobSha": "ad776fcd91deb750cf21daee2d60eb6d98469a90",
       "scores": {
         "default": 2
       },
@@ -26318,6 +26730,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/v1.json",
+      "sourceBlobSha": "18826982075a11bddfe8446bce15d204e4d4a19d",
       "scores": {
         "default": 1
       },
@@ -26338,6 +26751,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/v0.json",
+      "sourceBlobSha": "6c3d34ceacacb9514ab85c040b12cc974299216f",
       "scores": {
         "default": -51
       },
@@ -26358,6 +26772,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/upscaled.json",
+      "sourceBlobSha": "af08d81e895c20015be56d1081cdb98021aa6db1",
       "scores": {
         "default": -10000,
         "german": -35000,
@@ -26422,6 +26837,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/uncensored.json",
+      "sourceBlobSha": "83502414ecd2b727d57b8af971524cc83976b8df",
       "scores": {},
       "includeWhenRenaming": true,
       "matcherClauses": [
@@ -26440,6 +26856,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/vp9.json",
+      "sourceBlobSha": "cb16f2fd13639bdae466b982887790dad8d7b6c0",
       "scores": {},
       "includeWhenRenaming": false,
       "matcherClauses": [
@@ -26458,6 +26875,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/german-remux-tier-01.json",
+      "sourceBlobSha": "aacde66b554772e6c0bfa6e60fca1893757db152",
       "scores": {
         "default": 4000
       },
@@ -26520,6 +26938,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/pcm.json",
+      "sourceBlobSha": "98f3f9aeb1f47c5ec06a7fa62dbae81618f0ed27",
       "scores": {
         "default": 2250,
         "sqp-1-1080p": 0,
@@ -26587,6 +27006,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/p2p-internal.json",
+      "sourceBlobSha": "deece0633e11bd279a6cdefc80669d10f02cf27f",
       "scores": {
         "default": 1
       },
@@ -26607,6 +27027,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/it.json",
+      "sourceBlobSha": "b39f5785dcf401b881ef2295cf9fc75888613d1b",
       "scores": {},
       "includeWhenRenaming": true,
       "matcherClauses": [
@@ -26646,6 +27067,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/iqiy.json",
+      "sourceBlobSha": "d49490cc39c3bfd162453b66c24e67a2986dfb9f",
       "scores": {
         "default": 50
       },
@@ -26680,6 +27102,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/ip.json",
+      "sourceBlobSha": "910c7ba6c048f4a4e44b9f123b3186a6178900e8",
       "scores": {},
       "includeWhenRenaming": true,
       "matcherClauses": [
@@ -26712,6 +27135,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/internal.json",
+      "sourceBlobSha": "0982294c9dd69f434472630a25340cb8da702d29",
       "scores": {
         "default": 10
       },
@@ -26732,6 +27156,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/imax.json",
+      "sourceBlobSha": "14b98ae1e68b1f4eef2c85c53b6b645c58b95ce2",
       "scores": {
         "default": 800,
         "sqp-4-ma-hybrid": 0
@@ -26760,6 +27185,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/imax-enhanced.json",
+      "sourceBlobSha": "05d36b735a00ab936449835dec0e29d34561a71c",
       "scores": {
         "default": 800,
         "sqp-4-ma-hybrid": 1035
@@ -26781,6 +27207,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/hybrid.json",
+      "sourceBlobSha": "3be57353b7d3be1a53a0f18a806738863d3a1a78",
       "scores": {
         "default": 100
       },
@@ -26815,6 +27242,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/hulu.json",
+      "sourceBlobSha": "f465443ac0898a0ab2c82630f39d550aa9ac169b",
       "scores": {},
       "includeWhenRenaming": true,
       "matcherClauses": [
@@ -26847,6 +27275,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/htsr.json",
+      "sourceBlobSha": "d95ca307ee87df49934b4428f36f8f4bf56827c2",
       "scores": {},
       "includeWhenRenaming": true,
       "matcherClauses": [
@@ -26879,6 +27308,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/hmax.json",
+      "sourceBlobSha": "2d12d560ac4c9bcee1200888bf2774dc7bb6320c",
       "scores": {},
       "includeWhenRenaming": true,
       "matcherClauses": [
@@ -26918,6 +27348,7 @@
       "description": "This Custom Format matches HLG releases. The default score can be used to prevent downloading HLG releases on devices that can't play them properly.",
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/hlg.json",
+      "sourceBlobSha": "bed8b73e6c37163a78ae968bbc978e1b55110fc5",
       "scores": {
         "default": -10000
       },
@@ -26959,6 +27390,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/hfr.json",
+      "sourceBlobSha": "5b0bdaf005cf70e92e8626ede6f1ea07af32f8d4",
       "scores": {},
       "includeWhenRenaming": true,
       "matcherClauses": [
@@ -26977,6 +27409,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/itvx.json",
+      "sourceBlobSha": "ed1643550a90d6bf6a73b50b9e627f0118c61d81",
       "scores": {},
       "includeWhenRenaming": true,
       "matcherClauses": [
@@ -27016,6 +27449,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/hdr10plus-boost.json",
+      "sourceBlobSha": "0965106535a6ae6881cdab4d828a9dbcb565740a",
       "scores": {
         "default": 100,
         "sqp-4-ma-hybrid": 1
@@ -27037,6 +27471,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/hd-bluray-tier-03.json",
+      "sourceBlobSha": "34df1fa3083844041c3f71b78eb4bbbbd87dabbf",
       "scores": {
         "default": 1700,
         "french-multi-vf": 0,
@@ -27133,6 +27568,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/hd-bluray-tier-02.json",
+      "sourceBlobSha": "58c0f4d49e970b6a1ca81c533ee866628328992d",
       "scores": {
         "default": 1750,
         "french-multi-vf": 0,
@@ -27229,6 +27665,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/hd-bluray-tier-01.json",
+      "sourceBlobSha": "237b4d7a08c1d13bd67b04d71e1849a14e0ddf07",
       "scores": {
         "default": 1800,
         "french-multi-vf": 0,
@@ -27430,6 +27867,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/hbo.json",
+      "sourceBlobSha": "773f9b01b6ab2f6863547b9525c8baf00a2f758c",
       "scores": {},
       "includeWhenRenaming": true,
       "matcherClauses": [
@@ -27469,6 +27907,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/hami.json",
+      "sourceBlobSha": "2feb1d14d1505eeb47a4a2453534c0096a8f1b31",
       "scores": {
         "default": 50
       },
@@ -27503,6 +27942,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/hallowed.json",
+      "sourceBlobSha": "b39698665b4c5eab1d9be34df599bc83e4bd9f4b",
       "scores": {
         "default": 600,
         "sqp-4-ma-hybrid": 3910
@@ -27524,6 +27964,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/german.json",
+      "sourceBlobSha": "9249430976a1bb6d0f9c0280d01fbe28f231ef11",
       "scores": {
         "default": 10000
       },
@@ -27572,6 +28013,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/german-web-tier-03.json",
+      "sourceBlobSha": "8c8cb6669c63d44cc81880ade40a18120e05c69b",
       "scores": {
         "default": 1800
       },
@@ -27634,6 +28076,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/german-web-tier-02.json",
+      "sourceBlobSha": "e7ba21ec5c515e6fd611a56a16b3486998d71c1d",
       "scores": {
         "default": 1900
       },
@@ -27717,6 +28160,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/german-web-tier-01.json",
+      "sourceBlobSha": "78225496bfd690b27d4dc8ee75205a7b4598efdd",
       "scores": {
         "default": 2100
       },
@@ -27870,6 +28314,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/german-subbed.json",
+      "sourceBlobSha": "8ab7c4fad602266cbdfe1d6bec32ef3f366bb306",
       "scores": {
         "default": 9000
       },
@@ -27904,6 +28349,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/german-scene.json",
+      "sourceBlobSha": "40abe49e3399bcc5e82e4a3ad1ddceaced31959f",
       "scores": {
         "default": 1700
       },
@@ -28183,6 +28629,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/hdr.json",
+      "sourceBlobSha": "1907f5fc68a5911aeddd29c61c40bfe51dfdc85e",
       "scores": {
         "default": 500,
         "sqp-4-ma-hybrid": 510
@@ -28246,6 +28693,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/pathe.json",
+      "sourceBlobSha": "2b4734403e8a213b6c23f82107cd30c01a615cf2",
       "scores": {},
       "includeWhenRenaming": true,
       "matcherClauses": [
@@ -28278,6 +28726,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/kcw.json",
+      "sourceBlobSha": "ae97c08039e9dd16e754a43738e667ce384750e6",
       "scores": {
         "default": 30
       },
@@ -28312,6 +28761,7 @@
       "description": "Language: English Only: Because it uses reverse scoring, and if you use the default scores, it will assign all releases without the English audio a score of -10000.",
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/language-not-english.json",
+      "sourceBlobSha": "153b0b51aff744089e0ab5dc02312bf3458915d1",
       "scores": {
         "default": -10000
       },
@@ -28332,6 +28782,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/ovid.json",
+      "sourceBlobSha": "dd296fa3e9d54954fd49326343cad2bf3998184a",
       "scores": {},
       "includeWhenRenaming": true,
       "matcherClauses": [
@@ -28364,6 +28815,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/opus.json",
+      "sourceBlobSha": "3b92e1233c706d72e42d3ead3d6ea9e9107470a1",
       "scores": {
         "default": 250,
         "sqp-4-ma-hybrid": 0
@@ -28392,6 +28844,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/open-matte.json",
+      "sourceBlobSha": "40ceef81126d02cad01df0e4ca91b3a653a5de31",
       "scores": {
         "default": 25
       },
@@ -28412,6 +28865,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/obfuscated.json",
+      "sourceBlobSha": "2688938b16b20586996c324d9bde12b2c5e544d8",
       "scores": {
         "default": -10000,
         "german": -35000
@@ -28545,6 +28999,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/now.json",
+      "sourceBlobSha": "5ad620f7c14d2b022606e86bb18e36c9a471b2ad",
       "scores": {},
       "includeWhenRenaming": true,
       "matcherClauses": [
@@ -28584,6 +29039,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/not-german-or-english.json",
+      "sourceBlobSha": "875248909f25f2781a8013d166b897d35466dea5",
       "scores": {
         "default": -35000
       },
@@ -28618,6 +29074,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/not-german-japanese-or-english.json",
+      "sourceBlobSha": "394b294a5fcb7f0b1f6133d4409732d96844f183",
       "scores": {
         "default": -35000
       },
@@ -28659,6 +29116,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/not-german-japanese-korean-chinese-or-english.json",
+      "sourceBlobSha": "7a7de44ea0df289ad2f705bfb89ec9d1e21f0600",
       "scores": {
         "default": -35000
       },
@@ -28714,6 +29172,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/no-rlsgroup.json",
+      "sourceBlobSha": "c0258eecaa3e458fc6c6fff90ed5660fdf1916da",
       "scores": {
         "default": -10000,
         "german": -35000
@@ -28735,6 +29194,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/nf.json",
+      "sourceBlobSha": "3f8a36c84f78dede9bf4056430fb60f3eea6bf9b",
       "scores": {},
       "includeWhenRenaming": true,
       "matcherClauses": [
@@ -28767,6 +29227,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/mytvsuper.json",
+      "sourceBlobSha": "1a773d15c6f69e9d736cca3d339dfa49e98ec8d3",
       "scores": {
         "default": 40
       },
@@ -28801,6 +29262,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/my5.json",
+      "sourceBlobSha": "a64b95ec06909c700e748801ce31d4c9964909b7",
       "scores": {},
       "includeWhenRenaming": true,
       "matcherClauses": [
@@ -28833,6 +29295,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/kktv.json",
+      "sourceBlobSha": "9c966e4bf19f15fd25c48c7aa5ad440e527d1e3d",
       "scores": {
         "default": 10
       },
@@ -28867,6 +29330,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/multi.json",
+      "sourceBlobSha": "43d9f2048d502ec8993612580af6e7af6999472a",
       "scores": {},
       "includeWhenRenaming": true,
       "matcherClauses": [
@@ -28885,6 +29349,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/mp3.json",
+      "sourceBlobSha": "0aaa355950ff2e6877b07fe6f57f41e4534a5752",
       "scores": {
         "default": 500,
         "sqp-4-ma-hybrid": 0
@@ -28906,6 +29371,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/max.json",
+      "sourceBlobSha": "3cccd0098d102510e48bf57fd2d6e876a1cb7347",
       "scores": {},
       "includeWhenRenaming": true,
       "matcherClauses": [
@@ -28945,6 +29411,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/masters-of-cinema.json",
+      "sourceBlobSha": "24b0811a34f751c6a8405fd8dc9d45b64e441dc5",
       "scores": {
         "default": 25
       },
@@ -28972,6 +29439,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/mainframe.json",
+      "sourceBlobSha": "df943873e3cea00094b5a48170decd18923c5d7a",
       "scores": {
         "sqp-4-ma-hybrid": 2
       },
@@ -28999,6 +29467,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/ma.json",
+      "sourceBlobSha": "3dca7a3801896d71ce52a7b25aa9e7f17ffed36f",
       "scores": {
         "default": 20,
         "sqp-4-ma-hybrid": 1040
@@ -29020,6 +29489,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/lq.json",
+      "sourceBlobSha": "2df9525bf73ca8c338a9a25038c39a03f3f16486",
       "scores": {
         "default": -10000,
         "german": -35000,
@@ -29735,6 +30205,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/lq-release-title.json",
+      "sourceBlobSha": "3f4a489dd34dc2973b7eab2b0497fd82cc12cf2e",
       "scores": {
         "default": -10000,
         "german": -35000,
@@ -29862,6 +30333,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/linetv.json",
+      "sourceBlobSha": "77c8ff1baafaad6a107c3357739c70f7fdd0e843",
       "scores": {
         "default": 20
       },
@@ -29896,6 +30368,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/line-mic-dubbed.json",
+      "sourceBlobSha": "2947aecd3c37d398c7d165bcdee4e27c0d4b6aeb",
       "scores": {
         "default": -10000,
         "german": -35000,
@@ -29925,6 +30398,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/language-original-plus-french.json",
+      "sourceBlobSha": "62c34d67fdc8f01c4eb411bfd7b78a3ec0ea9923",
       "scores": {
         "french-anime-multi": 500,
         "french-anime-vostfr": -10000,
@@ -29963,6 +30437,7 @@
       "description": "Language: Original Only: Because it uses reverse scoring, and if you use the default scores, it will assign all releases without the original audio a score of -10000.",
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/language-not-original.json",
+      "sourceBlobSha": "0f5721b4c5a12fc5bb907f6c3737b26a7ccd29db",
       "scores": {
         "default": -10000,
         "french-anime-multi": -10000,
@@ -29989,6 +30464,7 @@
       "description": "Language: French Only: Because it uses reverse scoring, and if you use the default scores, it will assign all releases without the French audio a score of -10000.",
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/language-not-french.json",
+      "sourceBlobSha": "40cae7bba344fab6a445ef1689254a6d03549f5e",
       "scores": {
         "french-anime-multi": 0,
         "french-anime-vostfr": 0,
@@ -30013,6 +30489,7 @@
       "description": null,
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf/mpeg2.json",
+      "sourceBlobSha": "c627b756e14300ee90bcc12c40a414d425914ec5",
       "scores": {},
       "includeWhenRenaming": false,
       "matcherClauses": [
@@ -30031,6 +30508,7 @@
       "description": null,
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf/youku.json",
+      "sourceBlobSha": "d4f7e29ee64cff2c486ef320a835aeb94b83b2fb",
       "scores": {
         "default": 30
       },
@@ -30067,6 +30545,7 @@
       "description": "Audio Channels, use Audio Formats determine the quality — not Audio Channels.",
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf-groups/audio-channels.json",
+      "sourceBlobSha": "47aea93e13dbc635c7c81734466dba29676366e0",
       "customFormats": [
         {
           "trashId": "b124be9b146540f8e62f98fe32e49a2a",
@@ -30114,6 +30593,7 @@
       "description": "Optional Custom Formats that cover different resolutions.",
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf-groups/optional-resolutions.json",
+      "sourceBlobSha": "d01d41bdd1805ae3780a9a03246c59856f4863bb",
       "customFormats": [
         {
           "trashId": "c99279ee27a154c2f20d1d505cc99e25",
@@ -30141,6 +30621,7 @@
       "description": "Optional Custom Formats: be sure to read the individual descriptions in the guide before adding all of them.",
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf-groups/optional-miscellaneous.json",
+      "sourceBlobSha": "1dd24544b84f8ab4926151cc14ae8cb4d016c1de",
       "customFormats": [
         {
           "trashId": "ef4963043b0987f8485bc9106f16db38",
@@ -30245,6 +30726,7 @@
       "description": "Language Profiles that are included in one of the guides.",
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf-groups/optional-language-profiles.json",
+      "sourceBlobSha": "2fae3ff36df5b42dba277792d648a9454c1ef6c7",
       "customFormats": [
         {
           "trashId": "8a9fcdbb445f2add0505926df3bb7b8a",
@@ -30321,6 +30803,7 @@
       "description": "- x265 (HD): This blocks 720/1080p (HD) releases that are encoded in x265<br>- x265 (no HDR/DV): This blocks 720/1080p (HD) releases that are encoded in x265, But it will allow 720/1080p x265 releases if they have HDR and/or DV.<br><br><b>Please ensure you only score or enable one of them in your Quality Profile!!!</b>",
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf-groups/optional-golden-rule-uhd.json",
+      "sourceBlobSha": "5943fac89a1f5357b27e30a702e91cc6adf0aa7f",
       "customFormats": [
         {
           "trashId": "47435ece6b99a0b477caf360e79ba0bb",
@@ -30355,6 +30838,7 @@
       "description": "- x265 (HD): This blocks 720/1080p (HD) releases that are encoded in x265<br>- x265 (no HDR/DV): This blocks 720/1080p (HD) releases that are encoded in x265, But it will allow 720/1080p x265 releases if they have HDR and/or DV.<br><br><b>Please ensure you only score or enable one of them in your Quality Profile!!!</b>",
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf-groups/optional-golden-rule-hd.json",
+      "sourceBlobSha": "c581f3c88ea027589a4e9e7344feace52a8661fc",
       "customFormats": [
         {
           "trashId": "47435ece6b99a0b477caf360e79ba0bb",
@@ -30385,6 +30869,7 @@
       "description": "Optional Custom Formats: be sure to read the individual descriptions in the guide before adding all of them.",
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf-groups/optional-german-miscellaneous.json",
+      "sourceBlobSha": "afe28257728870d2b1114c093c703bbadea5d089",
       "customFormats": [
         {
           "trashId": "9aa0ca0d2d66b6f6ee51fc630f46cf6f",
@@ -30412,6 +30897,7 @@
       "description": "French Audio Version",
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf-groups/optional-french-audio-version.json",
+      "sourceBlobSha": "eacf1b22a5ca71996fe92fd8b2cd027d5e1b673a",
       "customFormats": [
         {
           "trashId": "84f0acbda9c0c9de783894fb66df25aa",
@@ -30479,6 +30965,7 @@
       "description": "Optional Custom Formats: be sure to read the individual descriptions in the guide before adding all of them.",
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf-groups/optional-anime-optional.json",
+      "sourceBlobSha": "7b3d3af1cf6a2542f03af6de239267664117edd0",
       "customFormats": [
         {
           "trashId": "b2550eb333d27b75833e25b8c2557b38",
@@ -30511,6 +30998,7 @@
       "description": "Optional Custom Formats: be sure to read the individual descriptions in the guide before adding all of them.",
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf-groups/optional-accessibility.json",
+      "sourceBlobSha": "b810fa73f49e19cb4b7d6c9f3077dcc061124563",
       "customFormats": [
         {
           "trashId": "44ccbcbc74506f208973e1463b11705f",
@@ -30565,6 +31053,7 @@
       "description": "A group of custom formats that affect which SDR releases, if any, are grabbed in UHD-enabled profiles. Please read the descriptions on the Collection of Custom Formats page for more details.<br><br>- SDR: This will prevent grabbing UHD/4k releases without HDR Formats.<br>- SDR (no WEBDL): This will prevent grabbing UHD/4k Remux and Bluray encode releases without HDR Formats. - i.e., SDR WEB releases will still be allowed since 4K SDR WEB releases can often look better than the 1080p version due to the improved bitrate.<br><br><b>Please ensure you only score or enable one of them in your Quality Profile!!!</b>",
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf-groups/hdr-formats-sdr.json",
+      "sourceBlobSha": "2f51e2ce6e1487bed2fa618a438f07a99ad5a956",
       "customFormats": [
         {
           "trashId": "2016d1676f5ee13a5b7257ff86ac9a93",
@@ -30599,6 +31088,7 @@
       "description": "If you prefer HDR10+ releases and have compatible equipment, add the HDR10+ Boost custom format. This custom format prioritizes releases containing HDR10+ over standard HDR releases.",
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf-groups/hdr-formats-hdr10-boost.json",
+      "sourceBlobSha": "b2e11c43bb1be9eac87ab098276647b958e34c41",
       "customFormats": [
         {
           "trashId": "0c4b99df9206d2cfac3c05ab897dd62a",
@@ -30628,6 +31118,7 @@
       "description": "All users with HDR-capable equipment should add the HDR custom format.",
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf-groups/hdr-formats-hdr.json",
+      "sourceBlobSha": "314fe26940a4632d6ba81a75e9afc5e519035257",
       "customFormats": [
         {
           "trashId": "505d871304820ba7106b693be6fe4a9e",
@@ -30657,6 +31148,7 @@
       "description": "If NOT every device accessing your media server supports Dolby Vision, add the DV (w/o HDR fallback) custom format to ensure maximum compatibility with your setup. This prevents playback issues on devices that don't fully support Dolby Vision.",
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf-groups/hdr-formats-dv-webdl.json",
+      "sourceBlobSha": "364797cc8d1efa879db2e932bf75a21ceec17759",
       "customFormats": [
         {
           "trashId": "9b27ab6498ec0f31a3353992e19434ca",
@@ -30683,6 +31175,7 @@
       "description": "If you prefer Dolby Vision and have compatible equipment, add the DV Boost custom format. This custom format prioritizes releases containing Dolby Vision over standard HDR releases.",
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf-groups/hdr-formats-dv-boost.json",
+      "sourceBlobSha": "2f48bea5dfa01edf22f2173677d5c8dada5334af",
       "customFormats": [
         {
           "trashId": "7c3a61a9c6cb04f52f1544be6d44a026",
@@ -30712,6 +31205,7 @@
       "description": "Audio Formats, something you see mainly with Remuxes and UHD HQ Encodes. Add this only if you choose a Quality Profile that covers Remuxes and HQ UHD Encodes.",
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf-groups/audio-formats.json",
+      "sourceBlobSha": "185c5b902adaf66c698aa97a2c9ba92aaa6e9f08",
       "customFormats": [
         {
           "trashId": "0d7824bb924701997f874e7ff7d4844a",
@@ -30810,6 +31304,7 @@
       "description": "Add this Custom Format if you prefer season packs, this will upgrade your already downloaded single episodes.",
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf-groups/optional-season-packs.json",
+      "sourceBlobSha": "45ade46c87528a62a390a7a49a6666765d182217",
       "customFormats": [
         {
           "trashId": "3bc5f395426614e155e585a2f056cdf1",
@@ -30848,6 +31343,7 @@
       "description": "Optional Series Versions, make sure to read the individual descriptions that you can find in the guide.",
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf-groups/optional-series-versions.json",
+      "sourceBlobSha": "42860936d25a1ba0283601d1bc8c261362c116d7",
       "customFormats": [
         {
           "trashId": "3a4127d8aa781b44120d907f2cd62627",
@@ -30870,6 +31366,7 @@
       "description": "A collection of Anime release groups.",
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf-groups/release-groups-anime.json",
+      "sourceBlobSha": "e0d6b955fb3bb1da75dbb50ed5caabf0f4ab81d9",
       "customFormats": [
         {
           "trashId": "949c16fe0a8147f50ba82cc2df9411c9",
@@ -30962,6 +31459,7 @@
       "description": "A collection of Asian release groups.<br>Tiers are organized based on whether they include internal English subtitles.<br>LQ Groups either do not provide subtitles or are groups that cause issues during importing.",
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf-groups/release-groups-asian.json",
+      "sourceBlobSha": "48ecf1fad519b9e3570de6e514b07b198d6e62f7",
       "customFormats": [
         {
           "trashId": "a69163b534969846c60b6b294e8ed7b3",
@@ -30994,6 +31492,7 @@
       "description": "A list of unwanted versions, or sources: make sure to read the individual descriptions in the guide before adding any of them.",
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf-groups/unwanted-formats-french.json",
+      "sourceBlobSha": "9c1211b41ab5f1cfcccb3cd533e435d6d0dfd471",
       "customFormats": [
         {
           "trashId": "15a05bc7c1a36e2b57fd628f8977e2fc",
@@ -31072,6 +31571,7 @@
       "description": "Collection of UK Streaming Services for Sonarr",
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf-groups/streaming-services-uk.json",
+      "sourceBlobSha": "c50fb16a528e2aedd998c002ee16cf4e5f1ac120",
       "customFormats": [
         {
           "trashId": "bbcaf03147de0f73be2be4a9078dfa03",
@@ -31132,6 +31632,7 @@
       "description": "Collection of Miscellaneous Streaming Services for Sonarr",
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf-groups/streaming-services-miscellaneous.json",
+      "sourceBlobSha": "87f96da9d38fbd89cf3fae4cc41e51b657f61885",
       "customFormats": [
         {
           "trashId": "e6e299075e22ac8f541f722254c8350a",
@@ -31216,6 +31717,7 @@
       "description": "The UHD Streaming Boost and HD Streaming Boost custom formats increase the scores of streaming services' UHD or HD releases (or both), when those services are known to have better quality compared to other streaming services.\n\nThese two custom formats must be included in your profile for streaming service releases to be scored correctly.",
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf-groups/streaming-services-hd-uhd-boost.json",
+      "sourceBlobSha": "11b30b9a9d34e1a75942c9e497ba81a535e7d070",
       "customFormats": [
         {
           "trashId": "218e93e5702f44a68ad9e3c6ba87d2f0",
@@ -31247,6 +31749,7 @@
       "description": "Collection of General Streaming Services for Sonarr",
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf-groups/streaming-services-general.json",
+      "sourceBlobSha": "971385944b65b8617f84e50582f97c3ba3efebec",
       "customFormats": [
         {
           "trashId": "d660701077794679fd59e8bdf4ce3a29",
@@ -31376,6 +31879,7 @@
       "description": "Collection of French Streaming Services for Sonarr",
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf-groups/streaming-services-french.json",
+      "sourceBlobSha": "b888308dbb1eea0e661a56acdf293893861b068f",
       "customFormats": [
         {
           "trashId": "b0d6195c23ae254932da00512db7e8a8",
@@ -31425,6 +31929,7 @@
       "description": "Collection of Dutch Streaming Services for Sonarr",
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf-groups/streaming-services-dutch.json",
+      "sourceBlobSha": "40402d062affd285c4a05eada8369c4680533250",
       "customFormats": [
         {
           "trashId": "b2b980877494b560443631eb1f473867",
@@ -31469,6 +31974,7 @@
       "description": "Audio Channels, use Audio Formats determine the quality — not Audio Channels.",
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf-groups/audio-channels.json",
+      "sourceBlobSha": "4f5746a6203ae7036f240501aaa7f717043d32e5",
       "customFormats": [
         {
           "trashId": "bd6dd5e043aa27ff4696a08d011c7d96",
@@ -31516,6 +32022,7 @@
       "description": "Collection of Asian Streaming Services for Sonarr",
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf-groups/streaming-services-asian.json",
+      "sourceBlobSha": "15f6d797d1643f5770647ca6541b0d543d48ce32",
       "customFormats": [
         {
           "trashId": "d17ea3d84c15299474b76fe85aa02a26",
@@ -31645,6 +32152,7 @@
       "description": "Repacks/Proper (Required)",
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf-groups/required-repack-proper.json",
+      "sourceBlobSha": "d91b589299d5a8caf602c000a3e95e50d0a6aa61",
       "customFormats": [
         {
           "trashId": "ec8fa7296b64e8cd390a1600981f3923",
@@ -31672,6 +32180,7 @@
       "description": "Anime Versions/Repacks (Required)",
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf-groups/required-anime-versions.json",
+      "sourceBlobSha": "303f26ec52a62c1b06a78b192141f43b6ffa47c2",
       "customFormats": [
         {
           "trashId": "d2d7b8a9d39413da5f44054080e028a3",
@@ -31709,6 +32218,7 @@
       "description": "A collection of English/International release groups.",
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf-groups/release-groups-hq.json",
+      "sourceBlobSha": "45c68be4f185a0f838f6e186590e4e3947edffd8",
       "customFormats": [
         {
           "trashId": "9965a052eb87b0d10313b1cea89eb451",
@@ -31761,6 +32271,7 @@
       "description": "A collection of German release groups.",
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf-groups/release-groups-german.json",
+      "sourceBlobSha": "071de129b4d99d60a0c887ad632435fbb2e8bc56",
       "customFormats": [
         {
           "trashId": "da0f005f9c3edf34fc26e18dce8c6573",
@@ -31818,6 +32329,7 @@
       "description": "A collection of German anime release groups.",
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf-groups/release-groups-german-anime.json",
+      "sourceBlobSha": "bd7d63ed60e6a0966718ace428e8095ed52c7103",
       "customFormats": [
         {
           "trashId": "955cbe14c274da55564e50234ca555ff",
@@ -31865,6 +32377,7 @@
       "description": "A collection of French release groups.",
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf-groups/release-groups-french.json",
+      "sourceBlobSha": "409b8598a55779c037fba7cb15ee8a8edd298491",
       "customFormats": [
         {
           "trashId": "b8e91cc8fb2bd96468fab74730c30d18",
@@ -31912,6 +32425,7 @@
       "description": "A collection of French anime release groups.",
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf-groups/release-groups-french-anime.json",
+      "sourceBlobSha": "9ce14c5b8c418a40f26ff7487b58155e15488632",
       "customFormats": [
         {
           "trashId": "44b6c964dad997577d793fd004a39224",
@@ -31944,6 +32458,7 @@
       "description": "Collection of Anime Streaming Services for Sonarr",
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf-groups/streaming-services-anime.json",
+      "sourceBlobSha": "03bb48d1d69e8356679314e54d1c0d13a635a9fc",
       "customFormats": [
         {
           "trashId": "a370d974bc7b80374de1d9ba7519760b",
@@ -32023,6 +32538,7 @@
       "description": "A list of unwanted release groups, versions, or sources: make sure to read the individual descriptions in the guide before adding any of them.",
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf-groups/unwanted-formats.json",
+      "sourceBlobSha": "345b3de6dd0af42cda5b3224cccc843e0404cca1",
       "customFormats": [
         {
           "trashId": "b8cd450cbfa689c0259a01d9e29ba3d6",
@@ -32124,6 +32640,7 @@
       "description": "A list of unwanted versions, or sources: make sure to read the individual descriptions in the guide before adding any of them.",
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf-groups/unwanted-formats-sqp.json",
+      "sourceBlobSha": "15c567a4d5ad12a7a4224fd5a5b88f1c5e763b6f",
       "customFormats": [
         {
           "trashId": "a5d148168c4506b55cf53984107c396e",
@@ -32206,6 +32723,7 @@
       "description": "A list of unwanted versions, or sources: make sure to read the individual descriptions in the guide before adding any of them.",
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf-groups/unwanted-formats-german.json",
+      "sourceBlobSha": "90f08f604f4ff1f8302a5f350060b5c9db5ad72b",
       "customFormats": [
         {
           "trashId": "b8cd450cbfa689c0259a01d9e29ba3d6",
@@ -32304,6 +32822,7 @@
       "description": "Optional Movie Versions, make sure to read the individual descriptions that you can find in the guide.",
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf-groups/optional-movie-versions.json",
+      "sourceBlobSha": "053cef858523707fa4b9dc275e49f1137fffdc85",
       "customFormats": [
         {
           "trashId": "eca37840c13c6ef2dd0262b141a5482f",
@@ -32408,6 +32927,7 @@
       "description": "Optional Custom Formats: be sure to read the individual descriptions in the guide before adding all of them.",
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf-groups/optional-miscellaneous.json",
+      "sourceBlobSha": "394fa1637893ff998d9af1d7fab921bf85b74406",
       "customFormats": [
         {
           "trashId": "f700d29429c023a5734505e77daeaea7",
@@ -32512,6 +33032,7 @@
       "description": "Optional Custom Formats: be sure to read the individual descriptions in the guide before adding all of them.",
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf-groups/optional-miscellaneous-sqp.json",
+      "sourceBlobSha": "9c81d5d4bd7690bebc217b6b9d5690a2e8722c4d",
       "customFormats": [
         {
           "trashId": "f700d29429c023a5734505e77daeaea7",
@@ -32584,6 +33105,7 @@
       "description": "Language Profiles included in one of the guides.",
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf-groups/optional-language-profiles.json",
+      "sourceBlobSha": "4c5e59ce823ec444750593582c1ec308f88e04f7",
       "customFormats": [
         {
           "trashId": "86bc3115eb4e9873ac96904a4a68e19e",
@@ -32661,6 +33183,7 @@
       "description": "- x265 (HD): This blocks 720/1080p (HD) releases that are encoded in x265<br>- x265 (no HDR/DV): This blocks 720/1080p (HD) releases that are encoded in x265, But it will allow 720/1080p x265 releases if they have HDR and/or DV.<br><br><b>Please ensure you only score or enable one of them in your Quality Profile!!!</b>",
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf-groups/optional-golden-rule-uhd.json",
+      "sourceBlobSha": "862cde41a03bf529b182874e363d30673300dd9f",
       "customFormats": [
         {
           "trashId": "dc98083864ea246d05a42df0d05f81cc",
@@ -32704,6 +33227,7 @@
       "description": "- x265 (HD): This blocks 720/1080p (HD) releases that are encoded in x265<br>- x265 (no HDR/DV): This blocks 720/1080p (HD) releases that are encoded in x265, But it will allow 720/1080p x265 releases if they have HDR and/or DV.<br><br><b>Please ensure you only score or enable one of them in your Quality Profile!!!</b>",
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf-groups/optional-golden-rule-hd.json",
+      "sourceBlobSha": "3153f204728fd6236ddecd167b80dd0b80e344de",
       "customFormats": [
         {
           "trashId": "dc98083864ea246d05a42df0d05f81cc",
@@ -32736,6 +33260,7 @@
       "description": "Optional Custom Formats: be sure to read the individual descriptions in the guide before adding all of them.",
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf-groups/optional-german-miscellaneous.json",
+      "sourceBlobSha": "42dbbf0139eb337157ac07e461dbc73d1c0aadab",
       "customFormats": [
         {
           "trashId": "3bc8df3a71baaac60a31ef696ea72d36",
@@ -32763,6 +33288,7 @@
       "description": "Optional Custom Formats that cover different resolutions.",
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf-groups/optional-resolutions.json",
+      "sourceBlobSha": "0f664c9bd1af19fc001b488df1f95b58e6f5b3e3",
       "customFormats": [
         {
           "trashId": "b2be17d608fc88818940cd1833b0b24c",
@@ -32790,6 +33316,7 @@
       "description": "French Audio Version",
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf-groups/optional-french-audio-version.json",
+      "sourceBlobSha": "f7dafaa986f38e464a5367d10d5f2795239769b0",
       "customFormats": [
         {
           "trashId": "02e48d30a176c91baf9e15de05e5dc6a",
@@ -32857,6 +33384,7 @@
       "description": "Optional Custom Formats: be sure to read the individual descriptions in the guide before adding all of them.",
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf-groups/optional-accessibility.json",
+      "sourceBlobSha": "a4aa2f5b0172de54d93a1e2f8e9a0c2b952d1cc8",
       "customFormats": [
         {
           "trashId": "127bdbadcf3e4463a8c707759fbaad75",
@@ -32926,6 +33454,7 @@
       "description": "A group of custom formats that affect which SDR releases, if any, are grabbed in UHD-enabled profiles. Please read the descriptions on the Collection of Custom Formats page for more details.<br><br>- SDR: This will prevent grabbing UHD/4k releases without HDR Formats.<br>- SDR (no WEBDL): This will prevent grabbing UHD/4k Remux and Bluray encode releases without HDR Formats. - i.e., SDR WEB releases will still be allowed since 4K SDR WEB releases can often look better than the 1080p version due to the improved bitrate.<br><br><b>Please ensure you only score or enable one of them in your Quality Profile!!!</b>",
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf-groups/hdr-formats-sdr.json",
+      "sourceBlobSha": "a6bf7e707342f7d6eccf2bf1ef1d435f1ac7901e",
       "customFormats": [
         {
           "trashId": "9c38ebb7384dada637be8899efa68e6f",
@@ -32970,6 +33499,7 @@
       "description": "If you prefer HDR10+ releases and have compatible equipment, add the HDR10+ Boost custom format. This custom format prioritizes releases containing HDR10+ over standard HDR releases.",
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf-groups/hdr-formats-hdr10-boost.json",
+      "sourceBlobSha": "55b878008418ff0d753edf6a42ac34a4e9b177a8",
       "customFormats": [
         {
           "trashId": "caa37d0df9c348912df1fb1d88f9273a",
@@ -33010,6 +33540,7 @@
       "description": "All users with HDR-capable equipment should add the HDR custom format.",
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf-groups/hdr-formats-hdr.json",
+      "sourceBlobSha": "ef81008b356bb661f0235d50870bc2022e262f51",
       "customFormats": [
         {
           "trashId": "493b6d1dbec3c3364c59d7607f7e3405",
@@ -33050,6 +33581,7 @@
       "description": "If NOT every device accessing your media server supports Dolby Vision, add the DV (w/o HDR fallback) custom format to ensure maximum compatibility with your setup. This prevents playback issues on devices that don't fully support Dolby Vision.",
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf-groups/hdr-formats-dv-webdl.json",
+      "sourceBlobSha": "38e30c6a223260d400a9b65e91e6c841f26ec35c",
       "customFormats": [
         {
           "trashId": "923b6abef9b17f937fab56cfcf89e1f1",
@@ -33088,6 +33620,7 @@
       "description": "If you prefer Dolby Vision and have compatible equipment, add the DV Boost custom format. This custom format prioritizes releases containing Dolby Vision over standard HDR releases.",
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf-groups/hdr-formats-dv-boost.json",
+      "sourceBlobSha": "61695bcf652059fd5480ef2a2ef2f710ed9239bf",
       "customFormats": [
         {
           "trashId": "b337d6812e06c200ec9a2d3cfa9d20a7",
@@ -33128,6 +33661,7 @@
       "description": "Audio Formats, something you see mainly with Remuxes and UHD HQ Encodes. Add this only if you choose a Quality Profile that covers Remuxes and HQ UHD Encodes.",
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf-groups/audio-formats.json",
+      "sourceBlobSha": "af7fa5dc4e699f4c24b2c77572ae742f7f9d4b5a",
       "customFormats": [
         {
           "trashId": "496f355514737f7d83bf7aa4d24f8169",
@@ -33242,6 +33776,7 @@
       "description": "Optional Custom Formats: be sure to read the individual descriptions in the guide before adding all of them.",
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf-groups/optional-anime-optional.json",
+      "sourceBlobSha": "53ff5400ec7be0ecf0ca54904f0bcbde4d18aefc",
       "customFormats": [
         {
           "trashId": "a5d148168c4506b55cf53984107c396e",
@@ -33274,6 +33809,7 @@
       "description": "A list of unwanted versions, or sources: make sure to read the individual descriptions in the guide before adding any of them.",
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf-groups/unwanted-formats-german.json",
+      "sourceBlobSha": "f263b1d5a1cf77146123acdc9e433f1af23725b1",
       "customFormats": [
         {
           "trashId": "15a05bc7c1a36e2b57fd628f8977e2fc",
@@ -33362,6 +33898,7 @@
       "description": "A collection of Anime release groups.",
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf-groups/release-groups-anime.json",
+      "sourceBlobSha": "1b99dbdd9c46c00145535b464c6eff72adfbef8c",
       "customFormats": [
         {
           "trashId": "fb3ccc5d5cc8f77c9055d4cb4561dded",
@@ -33459,6 +33996,7 @@
       "description": "A collection of French anime release groups.",
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf-groups/release-groups-french-anime.json",
+      "sourceBlobSha": "e7750ee35e054585ca8356e1e1da7cc59663e4ad",
       "customFormats": [
         {
           "trashId": "eb1e434d8e46cb3f728c79f8e4400bfd",
@@ -33491,6 +34029,7 @@
       "description": "A list of unwanted versions, or sources: make sure to read the individual descriptions in the guide before adding any of them.",
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf-groups/unwanted-formats-french.json",
+      "sourceBlobSha": "226f502251b0cc9c6e2a9eb934a6cd3331c5be8d",
       "customFormats": [
         {
           "trashId": "b8cd450cbfa689c0259a01d9e29ba3d6",
@@ -33590,6 +34129,7 @@
       "description": "Collection of UK Streaming Services for Radarr",
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf-groups/streaming-services-uk.json",
+      "sourceBlobSha": "b53a40ea72ba0e65600a712c06bdeb04c49dc974",
       "customFormats": [
         {
           "trashId": "6185878161f1e2eef9cd0641a0d09eae",
@@ -33659,6 +34199,7 @@
       "description": "Collection of Miscellaneous Streaming Services for Radarr",
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf-groups/streaming-services-miscellaneous.json",
+      "sourceBlobSha": "2c941a0d1b5f81d019ea082c7ce03cb2a112d118",
       "customFormats": [
         {
           "trashId": "3bf143ecd06f66ed88da4c704350af1d",
@@ -33743,6 +34284,7 @@
       "description": "Collection of General Streaming Services for Radarr",
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf-groups/streaming-services-general.json",
+      "sourceBlobSha": "a99e9e0cc7e1a122bffe156b15a747168efd569c",
       "customFormats": [
         {
           "trashId": "b3b3a6ac74ecbd56bcdbefa4799fb9df",
@@ -33881,6 +34423,7 @@
       "description": "Collection of Dutch Streaming Services for Radarr",
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf-groups/streaming-services-dutch.json",
+      "sourceBlobSha": "14ca645733774a8fb066c3811dfc626a2d6e7b4a",
       "customFormats": [
         {
           "trashId": "bf7e73dd1d85b12cc527dc619761c840",
@@ -33940,6 +34483,7 @@
       "description": "Collection of Asian Streaming Services for Radarr",
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf-groups/streaming-services-asian.json",
+      "sourceBlobSha": "cab1e6e1afde2fd9dd736b09895e70f419fa51e7",
       "customFormats": [
         {
           "trashId": "017fadff92b872622448dae34a4de0c0",
@@ -34080,6 +34624,7 @@
       "description": "Collection of Anime Streaming Services for Radarr",
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf-groups/streaming-services-anime.json",
+      "sourceBlobSha": "f5717078d464e3c5097b5c93a9f7ea030d7b0f6d",
       "customFormats": [
         {
           "trashId": "88c93b568b6079fa087077a788b1b7a3",
@@ -34128,6 +34673,7 @@
       "description": "A collection of Asian release groups.<br>Tiers are organized based on whether they include internal English subtitles.<br>LQ Groups either do not provide subtitles or are groups that cause issues during importing.",
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf-groups/release-groups-asian.json",
+      "sourceBlobSha": "9f80cb57f37aedc256f1c571077b06f639c3d311",
       "customFormats": [
         {
           "trashId": "6eb46ee61aa3c40c7657a85d781c5c29",
@@ -34160,6 +34706,7 @@
       "description": "Disable this option if you plan to run only one Radarr instance.<br>Please don't forget to check the guide for extra instructions!",
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf-groups/sqp-single-radarr.json",
+      "sourceBlobSha": "11e95c4578c8bdc025a30a0019d89f145d9aff11",
       "customFormats": [
         {
           "trashId": "2899d84dc9372de3408e6d8cc18e9666",
@@ -34181,6 +34728,7 @@
       "description": "Collection of optional Release Groups for SQP-4 (MA Hybrid), check written guide for extra information",
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf-groups/sqp-4-ma-hybrid-optional-release-groups.json",
+      "sourceBlobSha": "e1c562d7de724a6a26e61bbaed8544fb8bb38163",
       "customFormats": [
         {
           "trashId": "e098247bc6652dd88c76644b275260ed",
@@ -34218,6 +34766,7 @@
       "description": "Repacks/Proper (Required)",
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf-groups/required-repack-proper.json",
+      "sourceBlobSha": "bcbe25cd2826f4f75a389c8116f2311ec0e11592",
       "customFormats": [
         {
           "trashId": "e7718d7a3ce595f289bfee26adc178f5",
@@ -34245,6 +34794,7 @@
       "description": "Anime Versions/Repacks (Required)",
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf-groups/required-anime-versions.json",
+      "sourceBlobSha": "fa5dd50a0d340ea228cc455fff195380b5e197a4",
       "customFormats": [
         {
           "trashId": "c259005cbaeb5ab44c06eddb4751e70c",
@@ -34282,6 +34832,7 @@
       "description": "A collection of English/International release groups.",
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf-groups/release-groups-hq.json",
+      "sourceBlobSha": "8e30d568bdb90f1c9f81febb4ce2a24fa0fafb57",
       "customFormats": [
         {
           "trashId": "3a3ff47579026e76d6504ebea39390de",
@@ -34354,6 +34905,7 @@
       "description": "A collection of German release groups.",
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf-groups/release-groups-german.json",
+      "sourceBlobSha": "ee2125ea1a3615176b17b5a99da27499c1446de9",
       "customFormats": [
         {
           "trashId": "8608a2ed20c636b8a62de108e9147713",
@@ -34411,6 +34963,7 @@
       "description": "A collection of German anime release groups.",
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf-groups/release-groups-german-anime.json",
+      "sourceBlobSha": "3cd9d87ced57d862b7d965aa9299a0701e45944f",
       "customFormats": [
         {
           "trashId": "b2ff1353b447d4ca6acc3a83a52cda59",
@@ -34458,6 +35011,7 @@
       "description": "A collection of French release groups.",
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf-groups/release-groups-french.json",
+      "sourceBlobSha": "2f4cda0fdfc8c0f00eb23d927edb1c929337c3ae",
       "customFormats": [
         {
           "trashId": "5583260016e0b9f683f53af41fb42e4a",
@@ -34520,6 +35074,7 @@
       "description": "You have two options for this custom format. Please read the instructions in the written guide on Discord.",
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/cf-groups/sqp-4-ma-hybrid-optional-sdr.json",
+      "sourceBlobSha": "a31dc746d8adc02f3b354d3cc91b45ac4e00fdd8",
       "customFormats": [
         {
           "trashId": "9c38ebb7384dada637be8899efa68e6f",
@@ -34537,6 +35092,7 @@
       "description": "A list of unwanted release groups, versions, or sources: make sure to read the individual descriptions in the guide before adding any of them.",
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/cf-groups/unwanted-formats.json",
+      "sourceBlobSha": "38182367657d082252a20f88f9d19f02b5805d3a",
       "customFormats": [
         {
           "trashId": "15a05bc7c1a36e2b57fd628f8977e2fc",
@@ -34625,6 +35181,7 @@
       "description": "Anime Quality Profile that covers:<br>- SDTV, DVD<br>- HDTV 720p, 1080p<br>- WEBDL: 480p, 720, 1080p<br>- Bluray 480p, 576p, 720p, 1080p<br>- Remux 1080p",
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/quality-profiles/anime-remux-1080p.json",
+      "sourceBlobSha": "19a469512c85796070fabece66465d5f49ef419a",
       "formatAssignments": [
         {
           "name": "10bit",
@@ -34759,6 +35316,7 @@
       "description": "This Special Quality Profile is an advanced Quality Profile designed for a specific use case. Before using this Quality Profile please join the <a href=\"https://trash-guides.info/discord\" target=\"_blank\">TRaSH-Guide Discord</a> for more information. Open the #access-to-sqp channel and accept the three simple rules. Any questions related to the SQP should only be asked in the dedicated SQP support channels.",
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/quality-profiles/sqp-4.json",
+      "sourceBlobSha": "a42ffc528ae6fd1856fee21aaac6da2678eaa5cd",
       "formatAssignments": [
         {
           "name": "1080p",
@@ -34833,6 +35391,7 @@
       "description": "This Special Quality Profile is an advanced Quality Profile designed for a specific use case. Before using this Quality Profile please join the <a href=\"https://trash-guides.info/discord\" target=\"_blank\">TRaSH-Guide Discord</a> for more information. Open the #access-to-sqp channel and accept the three simple rules. Any questions related to the SQP should only be asked in the dedicated SQP support channels.",
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/quality-profiles/sqp-5.json",
+      "sourceBlobSha": "55c1025f9e0422429f011d9c0e81d22f0d18796b",
       "formatAssignments": [
         {
           "name": "1080p",
@@ -34919,6 +35478,7 @@
       "description": "Quality Profile that covers:<br>- WEBDL: 2160p<br>- Bluray: 2160p",
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/quality-profiles/uhd-bluray-web.json",
+      "sourceBlobSha": "22a780711a3b3da331143942f34f314e019e018e",
       "formatAssignments": [
         {
           "name": "Repack/Proper",
@@ -34965,6 +35525,7 @@
       "description": "Quality Profile that covers:<br>- WEBDL: 1080p",
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/quality-profiles/web-1080p.json",
+      "sourceBlobSha": "3ba2a2647446a2d692552046688363a6c0ede31d",
       "formatAssignments": [
         {
           "name": "Repack/Proper",
@@ -34999,6 +35560,7 @@
       "description": "Quality Profile that covers:<br>- WEBDL: 1080p, 2160p",
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/quality-profiles/web-2160p-combined.json",
+      "sourceBlobSha": "8d8dd8b8122d3d13fbc1534236b4c9d03dc4a4cb",
       "formatAssignments": [
         {
           "name": "Repack/Proper",
@@ -35033,6 +35595,7 @@
       "description": "Quality Profile that covers:<br>- WEBDL: 2160p",
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/quality-profiles/web-2160p.json",
+      "sourceBlobSha": "3a98c39cb750b2f2bd609ab0dae245d0b68ff1fa",
       "formatAssignments": [
         {
           "name": "Repack/Proper",
@@ -35067,6 +35630,7 @@
       "description": "Anime Quality Profile that covers:<br>- SDTV, DVD<br>- HDTV 720p, 1080p<br>- WEBDL: 480p, 720, 1080p<br>- Bluray 480p, 576p, 720p, 1080p<br>- Remux 1080p",
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/quality-profiles/anime-remux-1080p.json",
+      "sourceBlobSha": "320fea2cbaa3e720e68e0f35839319850b9bc362",
       "formatAssignments": [
         {
           "name": "10bit",
@@ -35241,6 +35805,7 @@
       "description": "This is a base profile that we use for testing",
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/quality-profiles/base-profile.json",
+      "sourceBlobSha": "e166fdea42840f8c646f7a2ce9101c642f9cc30b",
       "formatAssignments": [
         {
           "name": "Extras",
@@ -35255,6 +35820,7 @@
       "description": "French Quality Profile that covers:<br>- WEBDL: 720p, 1080p<br>- Bluray 720p, 1080p",
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/quality-profiles/french-multi-vf-bluray-web-1080p.json",
+      "sourceBlobSha": "bc0a539aa424440a60f360a79ed7be9b4afc1627",
       "formatAssignments": [
         {
           "name": "AUViO",
@@ -35385,6 +35951,7 @@
       "description": "French Quality Profile that covers:<br>- WEBDL: 1080p, 2160p<br>- Bluray 1080p, 2160p",
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/quality-profiles/french-multi-vf-bluray-web-2160p.json",
+      "sourceBlobSha": "b5c7e3192ea856c7c53b741d5eb859fe05919517",
       "formatAssignments": [
         {
           "name": "AUViO",
@@ -35523,6 +36090,7 @@
       "description": "French Quality Profile that covers:<br>- WEBDL: 720p, 1080p<br>- Bluray 720p, 1080p",
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/quality-profiles/french-multi-vo-bluray-web-1080p.json",
+      "sourceBlobSha": "b8963b213987a4410993978f844661e399799b74",
       "formatAssignments": [
         {
           "name": "AUViO",
@@ -35653,6 +36221,7 @@
       "description": "French Quality Profile that covers:<br>- WEBDL: 1080p, 2160p<br>- Bluray 1080p, 2160p",
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/quality-profiles/french-multi-vo-bluray-web-2160p.json",
+      "sourceBlobSha": "a2c275b57b16efc20207971c4a440395c8515663",
       "formatAssignments": [
         {
           "name": "AUViO",
@@ -35791,6 +36360,7 @@
       "description": "French Quality Profile that covers:<br>- WEBDL: 720p, 1080p<br>- Bluray 720p, 1080p",
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/quality-profiles/french-vostfr-bluray-web-1080p.json",
+      "sourceBlobSha": "b5f89ab50ed6baec3644d2083db29c243685c78a",
       "formatAssignments": [
         {
           "name": "AUViO",
@@ -35925,6 +36495,7 @@
       "description": "French Quality Profile that covers:<br>- WEBDL: 1080p, 2160p<br>- Bluray 1080p, 2160p",
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/quality-profiles/french-vostfr-bluray-web-2160p.json",
+      "sourceBlobSha": "c9fae92510af0ae6406867ed2269f6ff624baf80",
       "formatAssignments": [
         {
           "name": "AUViO",
@@ -36067,6 +36638,7 @@
       "description": "German Anime Quality Profile that covers:<br>- WEBDL: 720p, 1080p<br>- Bluray: 720p, 1080p",
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/quality-profiles/german-anime-hd-bluray-web.json",
+      "sourceBlobSha": "0eeff5d1452f67eafc5d00c9978036547b97db61",
       "formatAssignments": [
         {
           "name": "1080p",
@@ -36329,6 +36901,7 @@
       "description": "German Quality Profile that covers:<br>- WEBDL: 720p, 1080p<br>- Bluray: 720p, 1080p",
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/quality-profiles/german-hd-bluray-web.json",
+      "sourceBlobSha": "c3c8f3c41016cf2d7105461f3bf768ff1e952f5e",
       "formatAssignments": [
         {
           "name": "1080p",
@@ -36427,6 +37000,7 @@
       "description": "German Quality Profile that covers:<br>- WEBDL: 1080p<br>- Remux: 1080p",
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/quality-profiles/german-hd-remux-web.json",
+      "sourceBlobSha": "b43e870656fe35f16cdc76bdde84141223899b55",
       "formatAssignments": [
         {
           "name": "1080p",
@@ -36513,6 +37087,7 @@
       "description": "German Quality Profile that covers:<br>- WEBDL: 720p, 1080p, 2160p<br>- Bluray: 720p, 1080p, 2160p",
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/quality-profiles/german-uhd-bluray-web-alternative.json",
+      "sourceBlobSha": "215679b83ef1ff3bcd25f3ba43c844b9b690e7d8",
       "formatAssignments": [
         {
           "name": "1080p",
@@ -36619,6 +37194,7 @@
       "description": "German Quality Profile that covers:<br>- WEBDL: 2160p<br>- Bluray: 2160p",
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/quality-profiles/german-uhd-bluray-web.json",
+      "sourceBlobSha": "ef1d8f4f6b393d56eddc62214c02fe3b89630856",
       "formatAssignments": [
         {
           "name": "1080p",
@@ -36717,6 +37293,7 @@
       "description": "German Quality Profile that covers:<br>- WEBDL: 2160p<br>- Remux: 2160p",
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/quality-profiles/german-uhd-remux-web.json",
+      "sourceBlobSha": "0e3b800bc777c6bbbc3cc319433c6fefc7a622e0",
       "formatAssignments": [
         {
           "name": "1080p",
@@ -36811,6 +37388,7 @@
       "description": "Quality Profile that covers:<br>- HDTV: 720p, 1080p<br>- WEBDL: 720, 1080p, 2160p<br>- Bluray: 720p, 1080p, 2160p<br>- Remux: 1080p, 2160p",
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/quality-profiles/remux-2160p-alternative.json",
+      "sourceBlobSha": "2fd524eb97bddb80d05a2d2dfcb9357cfde3c0be",
       "formatAssignments": [
         {
           "name": "Remux Tier 01",
@@ -36857,6 +37435,7 @@
       "description": "Quality Profile that covers:<br>- WEBDL: 1080p, 2160p<br>- Remux: 1080p, 2160p",
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/quality-profiles/remux-2160p-combined.json",
+      "sourceBlobSha": "e9c85656ce55ee44d814c0e1a51cc74e6ccad584",
       "formatAssignments": [
         {
           "name": "Remux Tier 01",
@@ -36903,6 +37482,7 @@
       "description": "Quality Profile that covers:<br>- WEBDL: 1080p<br>- Remux: 1080p",
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/quality-profiles/remux-web-1080p.json",
+      "sourceBlobSha": "d95537c7693d56d819a5a28e4182860a9eaab9b3",
       "formatAssignments": [
         {
           "name": "Remux Tier 01",
@@ -36949,6 +37529,7 @@
       "description": "Quality Profile that covers:<br>- WEBDL: 2160p<br>- Remux: 2160p",
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/quality-profiles/remux-web-2160p.json",
+      "sourceBlobSha": "d1d8248b30f0d589bed78e56f5d89aa14a07f7dd",
       "formatAssignments": [
         {
           "name": "Remux Tier 01",
@@ -36995,6 +37576,7 @@
       "description": "Quality Profile that covers:<br>- HDTV: 720p, 1080p<br>- WEBDL: 720, 1080p<br>- Bluray: 720p, 1080p",
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/quality-profiles/web-1080p-alternative.json",
+      "sourceBlobSha": "7cc954fe2ba3cafbd5a20de1ca4d93006fdc362c",
       "formatAssignments": [
         {
           "name": "Repack/Proper",
@@ -37033,6 +37615,7 @@
       "description": "Quality Profile that covers:<br>- WEBDL: 1080p",
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/quality-profiles/web-1080p.json",
+      "sourceBlobSha": "a5ec74e29a122ff0cbabef4226bb48cb17eb4e57",
       "formatAssignments": [
         {
           "name": "Repack/Proper",
@@ -37071,6 +37654,7 @@
       "description": "Quality Profile that covers:<br>- HDTV: 720p, 1080p<br>- WEBDL: 720, 1080p, 2160p<br>- Bluray: 720p, 1080p, 2160p",
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/quality-profiles/web-2160p-alternative.json",
+      "sourceBlobSha": "582bd02cc5e88b4d9114de4f360306eeb8667f77",
       "formatAssignments": [
         {
           "name": "Repack/Proper",
@@ -37109,6 +37693,7 @@
       "description": "This Special Quality Profile is an advanced Quality Profile designed for a specific use case. Before using this Quality Profile please join the <a href=\"https://trash-guides.info/discord\" target=\"_blank\">TRaSH-Guide Discord</a> for more information. Open the #access-to-sqp channel and accept the three simple rules. Any questions related to the SQP should only be asked in the dedicated SQP support channels.",
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/quality-profiles/sqp-4-ma-hybrid.json",
+      "sourceBlobSha": "d8188cc89188a5fb646b3daddff6853036beaab2",
       "formatAssignments": [
         {
           "name": "2.0 Stereo",
@@ -37255,6 +37840,7 @@
       "description": "This Special Quality Profile is an advanced Quality Profile designed for a specific use case. Before using this Quality Profile please join the <a href=\"https://trash-guides.info/discord\" target=\"_blank\">TRaSH-Guide Discord</a> for more information. Open the #access-to-sqp channel and accept the three simple rules. Any questions related to the SQP should only be asked in the dedicated SQP support channels.",
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/quality-profiles/sqp-3.json",
+      "sourceBlobSha": "4a83461ab6c8b21f4cf0b218c77df50cb9ebb7ec",
       "formatAssignments": [
         {
           "name": "1080p",
@@ -37329,6 +37915,7 @@
       "description": "This Special Quality Profile is an advanced Quality Profile designed for a specific use case. Before using this Quality Profile please join the <a href=\"https://trash-guides.info/discord\" target=\"_blank\">TRaSH-Guide Discord</a> for more information. Open the #access-to-sqp channel and accept the three simple rules. Any questions related to the SQP should only be asked in the dedicated SQP support channels.",
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/quality-profiles/sqp-3-audio.json",
+      "sourceBlobSha": "4b551657f07ee2bdb2b4a4301a7f55ec58626f7d",
       "formatAssignments": [
         {
           "name": "1080p",
@@ -37459,6 +38046,7 @@
       "description": "This Special Quality Profile is an advanced Quality Profile designed for a specific use case. Before using this Quality Profile please join the <a href=\"https://trash-guides.info/discord\" target=\"_blank\">TRaSH-Guide Discord</a> for more information. Open the #access-to-sqp channel and accept the three simple rules. Any questions related to the SQP should only be asked in the dedicated SQP support channels.",
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/quality-profiles/sqp-2.json",
+      "sourceBlobSha": "bc9b22a6043eab928bd1dd798ec3a6342ef9421f",
       "formatAssignments": [
         {
           "name": "1080p",
@@ -37545,6 +38133,7 @@
       "description": "This is a base profile that we use for testing",
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/quality-profiles/base-profile.json",
+      "sourceBlobSha": "ff9c76126171ea489a7192ecaa2d1c7a0737d178",
       "formatAssignments": [],
       "definitionJson": "{\r\n  \"trash_id\": \"92e9a65a52ae48478fb8e9f34238d823\",\r\n  \"name\": \"Base Profile\",\r\n  \"trash_description\": \"This is a base profile that we use for testing\",\r\n  \"group\": 99,\r\n  \"upgradeAllowed\": true,\r\n  \"cutoff\": \"Remux-2160p\",\r\n  \"minFormatScore\": 0,\r\n  \"cutoffFormatScore\": 10000,\r\n  \"minUpgradeFormatScore\": 1,\r\n  \"language\": \"Original\",\r\n  \"items\": [\r\n    { \"name\": \"Raw-HD\", \"allowed\": false },\r\n    { \"name\": \"BR-DISK\", \"allowed\": false },\r\n    { \"name\": \"Remux-2160p\", \"allowed\": true },\r\n    { \"name\": \"Bluray-2160p\", \"allowed\": true },\r\n    {\r\n      \"name\": \"WEBDL-2160p | WEBRip-2160p\",\r\n      \"allowed\": true,\r\n      \"items\": [\"WEBDL-2160p\", \"WEBRip-2160p\"]\r\n    },\r\n    { \"name\": \"HDTV-2160p\", \"allowed\": true },\r\n    { \"name\": \"Remux-1080p\", \"allowed\": true },\r\n    { \"name\": \"Bluray-1080p\", \"allowed\": true },\r\n    {\r\n      \"name\": \"WEBDL-1080p | WEBRip-1080p\",\r\n      \"allowed\": true,\r\n      \"items\": [\"WEBDL-1080p\", \"WEBRip-1080p\"]\r\n    },\r\n    { \"name\": \"HDTV-1080p\", \"allowed\": true },\r\n    { \"name\": \"Bluray-720p\", \"allowed\": true },\r\n    {\r\n      \"name\": \"WEBDL-720p | WEBRip-720p\",\r\n      \"allowed\": true,\r\n      \"items\": [\"WEBDL-720p\", \"WEBRip-720p\"]\r\n    },\r\n    { \"name\": \"HDTV-720p\", \"allowed\": true },\r\n    { \"name\": \"Bluray-576p\", \"allowed\": true },\r\n    { \"name\": \"Bluray-480p\", \"allowed\": true },\r\n    {\r\n      \"name\": \"WEBDL-480p | WEBRip-480p\",\r\n      \"allowed\": true,\r\n      \"items\": [\"WEBDL-480p\", \"WEBRip-480p\"]\r\n    },\r\n    { \"name\": \"DVD-R\", \"allowed\": false },\r\n    { \"name\": \"DVD\", \"allowed\": false },\r\n    { \"name\": \"SDTV\", \"allowed\": false },\r\n    { \"name\": \"DVDSCR\", \"allowed\": false },\r\n    { \"name\": \"REGIONAL\", \"allowed\": false },\r\n    { \"name\": \"TELECINE\", \"allowed\": false },\r\n    { \"name\": \"TELESYNC\", \"allowed\": false },\r\n    { \"name\": \"CAM\", \"allowed\": false },\r\n    { \"name\": \"WORKPRINT\", \"allowed\": false },\r\n    { \"name\": \"Unknown\", \"allowed\": false }\r\n  ],\r\n  \"formatItems\": {\r\n  }\r\n}"
     },
@@ -37554,6 +38143,7 @@
       "description": "French Quality Profile that covers:<br>- WEBDL: 1080p<br>- Bluray 720p, 1080p",
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/quality-profiles/french-multi-vf-hd-bluray-web.json",
+      "sourceBlobSha": "2de5033e3545c963f88d341db2dd3ee53f81a4b5",
       "formatAssignments": [
         {
           "name": "FR HD Bluray Tier 01",
@@ -37668,6 +38258,7 @@
       "description": "French Quality Profile that covers:<br>- WEBDL: 1080p<br>- Bluray 1080p<br>- Remux: 1080p",
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/quality-profiles/french-multi-vf-hd-remux-web.json",
+      "sourceBlobSha": "be83f16b87203cf251182765788f553ab9dcbc33",
       "formatAssignments": [
         {
           "name": "FR Remux Tier 01",
@@ -37782,6 +38373,7 @@
       "description": "French Quality Profile that covers:<br>- WEBDL: 1080p, 2160p<br>- Bluray: 2160p<br>- Remux: 1080p",
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/quality-profiles/french-multi-vf-uhd-bluray-web.json",
+      "sourceBlobSha": "4352fdee8b6a600a146c0ac4f139a2f97a31fda4",
       "formatAssignments": [
         {
           "name": "FR Remux Tier 01",
@@ -37916,6 +38508,7 @@
       "description": "French Quality Profile that covers:<br>- WEBDL: 1080p, 2160p<br>- Bluray: 2160p<br>- Remux: 2160p",
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/quality-profiles/french-multi-vf-uhd-remux-web.json",
+      "sourceBlobSha": "b7c04b75f361c35f029f8c2be3859792f56ae88b",
       "formatAssignments": [
         {
           "name": "FR Remux Tier 01",
@@ -38050,6 +38643,7 @@
       "description": "French Quality Profile that covers:<br>- WEBDL: 1080p<br>- Bluray 720p, 1080p",
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/quality-profiles/french-multi-vo-hd-bluray-web.json",
+      "sourceBlobSha": "4dc22869a4d09241f78ad0ab2e5a4971ad73ed43",
       "formatAssignments": [
         {
           "name": "FR HD Bluray Tier 01",
@@ -38164,6 +38758,7 @@
       "description": "French Quality Profile that covers:<br>- WEBDL: 1080p<br>- Bluray 1080p<br>- Remux: 1080p",
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/quality-profiles/french-multi-vo-hd-remux-web.json",
+      "sourceBlobSha": "6e8ca46a4cd7c1936c3b0ddac230fe91cf1c9e21",
       "formatAssignments": [
         {
           "name": "FR Remux Tier 01",
@@ -38278,6 +38873,7 @@
       "description": "French Quality Profile that covers:<br>- WEBDL: 1080p, 2160p<br>- Bluray: 2160p<br>- Remux: 1080p",
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/quality-profiles/french-multi-vo-uhd-bluray-web.json",
+      "sourceBlobSha": "2d9459de058b5b7516682321c7741b67067f6ac3",
       "formatAssignments": [
         {
           "name": "FR Remux Tier 01",
@@ -38412,6 +39008,7 @@
       "description": "French Quality Profile that covers:<br>- WEBDL: 1080p, 2160p<br>- Bluray: 2160p<br>- Remux: 2160p",
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/quality-profiles/french-multi-vo-uhd-remux-web.json",
+      "sourceBlobSha": "775833f5fdc2d73facec795c9581753d8e959351",
       "formatAssignments": [
         {
           "name": "FR Remux Tier 01",
@@ -38546,6 +39143,7 @@
       "description": "French Quality Profile that covers:<br>- WEBDL: 1080p<br>- Bluray 720p, 1080p",
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/quality-profiles/french-vostfr-hd-bluray-web.json",
+      "sourceBlobSha": "c9f8450a512e6d605ed171d10c8453121103dbcd",
       "formatAssignments": [
         {
           "name": "FR HD Bluray Tier 01",
@@ -38664,6 +39262,7 @@
       "description": "French Quality Profile that covers:<br>- WEBDL: 1080p<br>- Bluray 1080p<br>- Remux: 1080p",
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/quality-profiles/french-vostfr-hd-remux-web.json",
+      "sourceBlobSha": "21b778b081f659b885203eaf207a00d607ef577f",
       "formatAssignments": [
         {
           "name": "FR Remux Tier 01",
@@ -38782,6 +39381,7 @@
       "description": "French Quality Profile that covers:<br>- WEBDL: 1080p, 2160p<br>- Bluray: 2160p<br>- Remux: 1080p",
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/quality-profiles/french-vostfr-uhd-bluray-web.json",
+      "sourceBlobSha": "2ddc7c27782d7edaec3f32cbc8aec2ef3f7808f7",
       "formatAssignments": [
         {
           "name": "FR Remux Tier 01",
@@ -38920,6 +39520,7 @@
       "description": "French Quality Profile that covers:<br>- WEBDL: 1080p, 2160p<br>- Bluray: 2160p<br>- Remux: 2160p",
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/quality-profiles/french-vostfr-uhd-remux-web.json",
+      "sourceBlobSha": "212e6ce77d00dbf164b9e432b078ef6661fab0ed",
       "formatAssignments": [
         {
           "name": "FR Remux Tier 01",
@@ -39058,6 +39659,7 @@
       "description": "Quality Profile that covers:<br>- WEBDL: 1080p, 2160p",
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/quality-profiles/web-2160p-combined.json",
+      "sourceBlobSha": "fac9efa03a69e7bc4ac5870568c780bcb54f180e",
       "formatAssignments": [
         {
           "name": "Repack/Proper",
@@ -39096,6 +39698,7 @@
       "description": "German Anime Quality Profile that covers:<br>- WEBDL: 720p, 1080p<br>- Bluray: 720p, 1080p",
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/quality-profiles/german-anime-hd-bluray-web.json",
+      "sourceBlobSha": "3ccddc1bb92f0ae78bc13eb728e23cad2ac953e4",
       "formatAssignments": [
         {
           "name": "1080p",
@@ -39338,6 +39941,7 @@
       "description": "German Quality Profile that covers:<br>- WEBDL: 1080p<br>- Remux: 1080p",
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/quality-profiles/german-hd-remux-web.json",
+      "sourceBlobSha": "fb3616b7707fee4dde17b36c6703eb2d391e9d5a",
       "formatAssignments": [
         {
           "name": "1080p",
@@ -39436,6 +40040,7 @@
       "description": "German Quality Profile that covers:<br>- WEBDL: 720p, 1080p, 2160p<br>- Bluray: 720p, 1080p, 2160p",
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/quality-profiles/german-uhd-bluray-web-alternative.json",
+      "sourceBlobSha": "184d330163f02a24805e45c7dcc79ff503188d1f",
       "formatAssignments": [
         {
           "name": "1080p",
@@ -39558,6 +40163,7 @@
       "description": "German Quality Profile that covers:<br>- WEBDL: 2160p<br>- Bluray: 2160p",
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/quality-profiles/german-uhd-bluray-web.json",
+      "sourceBlobSha": "d67cd28e90d8a562609a9649cb2cf2f9b0a39dd2",
       "formatAssignments": [
         {
           "name": "1080p",
@@ -39668,6 +40274,7 @@
       "description": "German Quality Profile that covers:<br>- WEBDL: 2160p<br>- Remux: 2160p",
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/quality-profiles/german-uhd-remux-web.json",
+      "sourceBlobSha": "991ea61a2b9ad001158e1aa1268c14546e336b62",
       "formatAssignments": [
         {
           "name": "1080p",
@@ -39774,6 +40381,7 @@
       "description": "Quality Profile that covers:<br>- WEBDL: 1080p<br>- Bluray: 720p, 1080p",
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/quality-profiles/hd-bluray-web.json",
+      "sourceBlobSha": "409f22fd8ec4f217113d1b40e15a9b427ed21fb5",
       "formatAssignments": [
         {
           "name": "HD Bluray Tier 01",
@@ -39820,6 +40428,7 @@
       "description": "Quality Profile that covers:<br>- SDTV, DVD<br>- HDTV: 720p, 1080p<br>- WEBDL: 480p, 720, 1080p, 2160p<br>- Bluray: 480p, 576p, 720p, 1080p, 2160p<br>- Remux: 1080p, 2160p",
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/quality-profiles/remux-2160p-alternative.json",
+      "sourceBlobSha": "c59e9fd708fe5976cbefe9e47d8aacbcab2c1650",
       "formatAssignments": [
         {
           "name": "HD Bluray Tier 01",
@@ -39890,6 +40499,7 @@
       "description": "Quality Profile that covers:<br>- WEBDL: 1080p, 2160p<br>- Bluray: 1080p, 2160p<br>- Remux: 1080p, 2160p",
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/quality-profiles/remux-2160p-combined.json",
+      "sourceBlobSha": "1cb0709a06808499c2b411774b5e3fd13aab712c",
       "formatAssignments": [
         {
           "name": "HD Bluray Tier 01",
@@ -39960,6 +40570,7 @@
       "description": "Quality Profile that covers:<br>- WEBDL: 1080p<br>- Remux: 1080p",
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/quality-profiles/remux-web-1080p.json",
+      "sourceBlobSha": "5d2ed15ed024c52bad0578a441af86a86c091da5",
       "formatAssignments": [
         {
           "name": "Remux Tier 01",
@@ -40006,6 +40617,7 @@
       "description": "Quality Profile that covers:<br>- WEBDL: 2160p<br>- Remux: 2160p",
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/quality-profiles/remux-web-2160p.json",
+      "sourceBlobSha": "aa9b7676f462735e1a8fed28dfb6ecd1a92c6073",
       "formatAssignments": [
         {
           "name": "Remux Tier 01",
@@ -40052,6 +40664,7 @@
       "description": "This Special Quality Profile is an advanced Quality Profile designed for a specific use case. Before using this Quality Profile please join the <a href=\"https://trash-guides.info/discord\" target=\"_blank\">TRaSH-Guide Discord</a> for more information. Open the #access-to-sqp channel and accept the three simple rules. Any questions related to the SQP should only be asked in the dedicated SQP support channels.",
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/quality-profiles/sqp-1-1080p.json",
+      "sourceBlobSha": "cd14a3656a2e634f193924fec8564ea808f62521",
       "formatAssignments": [
         {
           "name": "1080p",
@@ -40194,6 +40807,7 @@
       "description": "This Special Quality Profile is an advanced Quality Profile designed for a specific use case. Before using this Quality Profile please join the <a href=\"https://trash-guides.info/discord\" target=\"_blank\">TRaSH-Guide Discord</a> for more information. Open the #access-to-sqp channel and accept the three simple rules. Any questions related to the SQP should only be asked in the dedicated SQP support channels.",
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/quality-profiles/sqp-1-2160p.json",
+      "sourceBlobSha": "309b2e923b3ac95771c550e712ef105af2c09535",
       "formatAssignments": [
         {
           "name": "1080p",
@@ -40352,6 +40966,7 @@
       "description": "This Special Quality Profile is an advanced Quality Profile designed for a specific use case. Before using this Quality Profile please join the <a href=\"https://trash-guides.info/discord\" target=\"_blank\">TRaSH-Guide Discord</a> for more information. Open the #access-to-sqp channel and accept the three simple rules. Any questions related to the SQP should only be asked in the dedicated SQP support channels.",
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/quality-profiles/sqp-1-web-1080p.json",
+      "sourceBlobSha": "00f6a57b8e94dcab3bf11668a660eb9ae58cb6c3",
       "formatAssignments": [
         {
           "name": "1080p",
@@ -40502,6 +41117,7 @@
       "description": "This Special Quality Profile is an advanced Quality Profile designed for a specific use case. Before using this Quality Profile please join the <a href=\"https://trash-guides.info/discord\" target=\"_blank\">TRaSH-Guide Discord</a> for more information. Open the #access-to-sqp channel and accept the three simple rules. Any questions related to the SQP should only be asked in the dedicated SQP support channels.",
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/quality-profiles/sqp-1-web-2160p.json",
+      "sourceBlobSha": "212baf6b3edbdcc3bfe564f18a68645baee65760",
       "formatAssignments": [
         {
           "name": "1080p",
@@ -40664,6 +41280,7 @@
       "description": "German Quality Profile that covers:<br>- WEBDL: 720p, 1080p<br>- Bluray: 720p, 1080p",
       "mediaType": "movies",
       "sourcePath": "docs/json/radarr/quality-profiles/german-hd-bluray-web.json",
+      "sourceBlobSha": "b6e9b6018985d35f7081eb7a37d3163505fe7a1e",
       "formatAssignments": [
         {
           "name": "1080p",
@@ -40766,6 +41383,7 @@
       "description": "Quality Profile that covers:<br>- WEBDL: 2160p",
       "mediaType": "tv",
       "sourcePath": "docs/json/sonarr/quality-profiles/web-2160p.json",
+      "sourceBlobSha": "00ca650e5f8b43628ee5285451e37e4e06f41a01",
       "formatAssignments": [
         {
           "name": "Repack/Proper",

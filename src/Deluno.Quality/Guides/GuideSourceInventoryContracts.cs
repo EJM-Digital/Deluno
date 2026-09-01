@@ -18,6 +18,7 @@ public sealed record GuideSourceCustomFormat(
     string? Description,
     string MediaType,
     string SourcePath,
+    string SourceBlobSha,
     IReadOnlyDictionary<string, int> Scores,
     bool IncludeWhenRenaming,
     IReadOnlyList<GuideSourceMatcherClause> MatcherClauses);
@@ -40,6 +41,7 @@ public sealed record GuideSourceFormatGroup(
     string? Description,
     string MediaType,
     string SourcePath,
+    string SourceBlobSha,
     IReadOnlyList<GuideSourceFormatGroupEntry> CustomFormats,
     IReadOnlyList<string> QualityProfileIds);
 
@@ -59,6 +61,7 @@ public sealed record GuideSourceQualityProfile(
     string? Description,
     string MediaType,
     string SourcePath,
+    string SourceBlobSha,
     IReadOnlyList<GuideSourceProfileFormatAssignment> FormatAssignments,
     string DefinitionJson);
 

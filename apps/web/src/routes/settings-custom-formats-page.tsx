@@ -31,18 +31,23 @@ import { PageToolbar, PageToolbarAction } from "../components/ui/page-toolbar";
 import { PresetField } from "../components/ui/preset-field";
 import { SegmentedControl } from "../components/ui/segmented-control";
 import { Select } from "../components/ui/select";
+import { SwitchRow } from "../components/ui/switch";
 import { configurationNavAreas } from "../components/app/settings-shell";
 import { toast } from "../components/shell/toaster";
 import { useUnsavedChanges } from "../hooks/use-unsaved-changes";
 import {
   compileQualityProfilePreferences,
   fetchTrashGuidePackage,
+  fetchTrashGuideUpdateCheck,
   fetchJson,
   previewReleasePreference,
+  runTrashGuideUpdateCheck,
+  setTrashGuideUpdateCheckEnabled,
   type CustomFormatItem,
   type GuideCustomFormat,
   type GuideFormatBundle,
   type GuidePackage,
+  type GuideUpdateCheckState,
   type LibraryItem,
   type PolicySetItem,
   type PlatformSettingsSnapshot,
@@ -135,15 +140,17 @@ interface LoaderData {
   customFormats: CustomFormatItem[];
   settings: PlatformSettingsSnapshot;
   guide: GuidePackage;
+  guideUpdateCheck: GuideUpdateCheckState;
 }
 
 export async function settingsCustomFormatsLoader(): Promise<LoaderData> {
-  const [overview, customFormats, guide] = await Promise.all([
+  const [overview, customFormats, guide, guideUpdateCheck] = await Promise.all([
     settingsOverviewLoader(),
     fetchJson<CustomFormatItem[]>("/api/custom-formats"),
-    fetchTrashGuidePackage()
+    fetchTrashGuidePackage(),
+    fetchTrashGuideUpdateCheck()
   ]);
-  return { ...overview, customFormats, guide };
+  return { ...overview, customFormats, guide, guideUpdateCheck };
 }
 
 interface RuleForm {
@@ -166,10 +173,13 @@ type DrawerMode =
   | null;
 
 export function SettingsCustomFormatsPage() {
-  const { customFormats, settings, libraries, policySets, qualityProfiles, guide } = useLoaderData() as LoaderData;
+  const { customFormats, settings, libraries, policySets, qualityProfiles, guide, guideUpdateCheck } = useLoaderData() as LoaderData;
   const revalidator = useRevalidator();
   const settingsMutation = useApiMutation<PlatformSettingsPatch, PlatformSettingsSnapshot>("/api/settings", "PATCH");
   const [busy, setBusy] = useState<string | null>(null);
+  const [updateCheck, setUpdateCheck] = useState(guideUpdateCheck);
+  const [updateCheckBusy, setUpdateCheckBusy] = useState<"settings" | "run" | null>(null);
+  const [guideUpdateDetailsOpen, setGuideUpdateDetailsOpen] = useState(false);
 
   const split = useMediaTypeSplit(customFormats, (format) => format.mediaType);
   const librariesByFormat = useMemo(() => {
@@ -208,6 +218,34 @@ export function SettingsCustomFormatsPage() {
     setAdvancedOpen(!format);
     setLegacyScoreOpen(false);
     setDrawer({ kind: "rule", id: format?.id ?? null });
+  }
+
+  async function setGuideUpdateCheckEnabled(isEnabled: boolean) {
+    setUpdateCheckBusy("settings");
+    try {
+      const next = await setTrashGuideUpdateCheckEnabled(isEnabled);
+      setUpdateCheck(next);
+      toast.success(isEnabled ? "Weekly guide-change checks enabled" : "Guide-change checks disabled");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not update guide-check preference.");
+    } finally {
+      setUpdateCheckBusy(null);
+    }
+  }
+
+  async function runGuideUpdateCheck() {
+    if (!updateCheck.isEnabled) return;
+    setUpdateCheckBusy("run");
+    try {
+      const next = await runTrashGuideUpdateCheck();
+      setUpdateCheck(next);
+      setGuideUpdateDetailsOpen((next.report?.changes.length ?? 0) > 0 || (next.report?.addedSources.length ?? 0) > 0);
+      toast.success(next.status === "up-to-date" ? "Guide sources are up to date" : "Guide change report ready");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not check TRaSH Guides.");
+    } finally {
+      setUpdateCheckBusy(null);
+    }
   }
 
   /** Choosing a guide format fills the whole rule in — name, score and conditions. */
@@ -468,6 +506,58 @@ export function SettingsCustomFormatsPage() {
             );
           })}
         </ListTable>
+      </ListCard>
+
+      <ListCard title="TRaSH guide updates" count="Optional awareness only — Deluno never syncs or changes a plan automatically">
+        <div className="grid gap-3 p-[var(--card-pad-x)]">
+          <SwitchRow
+            label="Check upstream guide changes weekly"
+            description="Off by default. When enabled, Deluno compares the public TRaSH Git tree with the exact guide files behind your saved rules. It only creates a report; package updates still need a separate preview and apply."
+            checked={updateCheck.isEnabled}
+            onCheckedChange={(checked) => void setGuideUpdateCheckEnabled(checked)}
+            disabled={updateCheckBusy !== null}
+          />
+          <div className="flex flex-wrap items-center justify-between gap-2 rounded-[10px] border border-hairline bg-surface-2 px-3 py-2">
+            <div className="min-w-0">
+              <p className="text-[length:var(--type-body-sm)] font-medium text-foreground">{guideUpdateCheckLabel(updateCheck.status)}</p>
+              <p className="mt-0.5 text-[length:var(--type-caption)] text-muted-foreground">
+                {updateCheck.error ?? updateCheck.report?.summary ?? (updateCheck.isEnabled ? "No guide check has run yet." : "Enable checks to allow an outbound TRaSH Guides comparison.")}
+              </p>
+            </div>
+            <Button type="button" variant="outline" size="sm" onClick={() => void runGuideUpdateCheck()} disabled={!updateCheck.isEnabled || updateCheckBusy !== null}>
+              {updateCheckBusy === "run" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
+              Check now
+            </Button>
+          </div>
+          {updateCheck.report && (updateCheck.report.changes.length || updateCheck.report.addedSources.length) ? (
+            <Disclosure
+              title="Review detected guide changes"
+              summary={`${updateCheck.report.changes.length} tracked change(s) · ${updateCheck.report.addedSources.length} new source file(s)`}
+              open={guideUpdateDetailsOpen}
+              onOpenChange={setGuideUpdateDetailsOpen}
+            >
+              <p className="text-[length:var(--type-caption)] text-muted-foreground">
+                {updateCheck.report.changes.filter((change) => change.isInUse).length} changed source item(s) affect saved custom formats. Review these before changing any guide package.
+              </p>
+              {updateCheck.report.changes.map((change) => (
+                <div key={`${change.kind}:${change.id}`} className="rounded-[10px] border border-hairline px-3 py-2">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <span className="text-[length:var(--type-body-sm)] font-medium text-foreground">{change.name}</span>
+                    <Chip tone={change.changeType === "removed" || change.isInUse ? "warn" : "info"}>{change.changeType === "removed" ? "Removed upstream" : "Changed upstream"}</Chip>
+                  </div>
+                  <p className="mt-1 text-[length:var(--type-caption)] text-muted-foreground">
+                    {change.mediaType === "tv" ? "TV" : "Movies"} · {change.kind} · {change.isInUse ? `used by ${change.inUseCustomFormatIds.length} saved custom format${change.inUseCustomFormatIds.length === 1 ? "" : "s"}` : "not used by a saved custom format"}
+                  </p>
+                </div>
+              ))}
+              {updateCheck.report.addedSources.map((source) => (
+                <p key={source.sourcePath} className="text-[length:var(--type-caption)] text-muted-foreground">
+                  New upstream {source.mediaType === "tv" ? "TV" : "movie"} {source.kind}: <span className="font-mono">{source.sourcePath}</span>
+                </p>
+              ))}
+            </Disclosure>
+          ) : null}
+        </div>
       </ListCard>
 
       <ListCard title="Advanced release rules" count={customFormats.length ? `${customFormats.length} ${customFormats.length === 1 ? "rule" : "rules"} · full TRaSH and custom controls` : undefined}>
@@ -1016,6 +1106,10 @@ function humanizeTypedName(value: string) {
 
 function splitCsv(value: string | null | undefined) {
   return (value ?? "").split(",").map((item) => item.trim()).filter(Boolean);
+}
+
+function guideUpdateCheckLabel(status: GuideUpdateCheckState["status"]) {
+  return status === "up-to-date" ? "No tracked guide changes" : status === "update-available" ? "Guide changes need review" : status === "failed" ? "Guide check could not finish" : status === "never-checked" ? "Ready for the first guide check" : "Guide checks are off";
 }
 
 function updateCondition(setForm: React.Dispatch<React.SetStateAction<RuleForm>>, index: number, patch: Partial<Condition>) {
