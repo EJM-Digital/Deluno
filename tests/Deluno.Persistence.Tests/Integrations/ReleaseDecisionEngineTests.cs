@@ -748,6 +748,75 @@ public sealed class ReleaseDecisionEngineTests
             risk => risk.Contains("cannot prove", StringComparison.OrdinalIgnoreCase));
     }
 
+    [Fact]
+    public void Decide_holds_a_claimed_current_release_until_a_file_probe_records_exact_evidence()
+    {
+        var decision = ReleaseDecisionEngine.Decide(new ReleaseDecisionInput(
+            ReleaseName: "Movie.2024.1080p.WEB-DL.TrueHD-GRP",
+            Quality: "WEB 1080p",
+            CurrentQuality: "WEB 1080p",
+            TargetQuality: "WEB 1080p",
+            SizeBytes: 2_000_000_000,
+            Seeders: 10,
+            DownloadUrl: "https://example.test/release",
+            SourcePriorityScore: 100,
+            CustomFormatScore: 0,
+            PreferencePlan: SnapshotPlan(),
+            // A release name is historical/search metadata, not installed
+            // media evidence.  Deluno must not turn it into a baseline.
+            CurrentReleaseName: "/library/Movie.2024.1080p.WEB-DL.DTS-GRP.mkv"));
+
+        Assert.Equal("held", decision.Status);
+        Assert.Equal(PreferenceCandidateStatus.NeedsReview, decision.PreferenceComparison?.Status);
+        Assert.Contains(
+            decision.Reasons,
+            reason => reason.Contains("re-evaluate", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void Decide_holds_a_snapshot_when_its_embedded_evaluation_has_a_different_plan_version()
+    {
+        var plan = SnapshotPlan();
+        var facts = new[]
+        {
+            new PreferenceFact("quality.web-1080p", PreferenceFactState.Present),
+            new PreferenceFact("audio.format.truehd", PreferenceFactState.Absent),
+            new PreferenceFact("audio.format.dts", PreferenceFactState.Present)
+        };
+        var evaluation = ReleasePreferenceEvaluator.Evaluate(plan, facts) with { PlanVersion = "unexpected" };
+        var malformed = new PreferenceEvaluationSnapshot(
+            "movie-1",
+            "library-1",
+            "file-1",
+            "/library/Movie.2024.1080p.WEB-DL.DTS-GRP.mkv",
+            100,
+            plan.Id,
+            plan.Version,
+            plan.PlanHash,
+            facts,
+            evaluation,
+            [],
+            DateTimeOffset.UnixEpoch,
+            "test");
+
+        var decision = ReleaseDecisionEngine.Decide(new ReleaseDecisionInput(
+            ReleaseName: "Movie.2024.1080p.WEB-DL.TrueHD-GRP",
+            Quality: "WEB 1080p",
+            CurrentQuality: "WEB 1080p",
+            TargetQuality: "WEB 1080p",
+            SizeBytes: 2_000_000_000,
+            Seeders: 10,
+            DownloadUrl: "https://example.test/release",
+            SourcePriorityScore: 100,
+            CustomFormatScore: 0,
+            PreferencePlan: plan,
+            CurrentPreferenceEvaluation: malformed,
+            CurrentFilePresent: true));
+
+        Assert.Equal("held", decision.Status);
+        Assert.Equal(PreferenceCandidateStatus.NeedsReview, decision.PreferenceComparison?.Status);
+    }
+
     private static ReleasePreferencePlan SnapshotPlan()
         => new(
             Id: "snapshot-test",

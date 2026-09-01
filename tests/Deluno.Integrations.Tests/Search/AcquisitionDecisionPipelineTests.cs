@@ -112,11 +112,20 @@ public class AcquisitionDecisionPipelineTests
     public void EvaluateSelectedRelease_ProtectionEnabled_BlocksEquivalentSameQualityGrab()
     {
         // Candidate quality matches current quality → QualityDelta = 0 → not a downgrade → allowed.
+        var (plan, snapshot) = CurrentFileSnapshot(
+            "Movie.2023.WEB.1080p-GROUP",
+            "WEB 1080p");
         var request = BuildRequest(
             releaseName: "Movie.2023.WEB.1080p-GROUP",
             currentQuality: "WEB 1080p",
             preventLowerQualityReplacements: true,
-            forceOverride: false);
+            forceOverride: false) with
+        {
+            PreferencePlan = plan,
+            CurrentPreferenceEvaluation = snapshot,
+            CurrentFilePresent = true,
+            CurrentReleaseName = snapshot.FilePath
+        };
 
         var result = _pipeline.EvaluateSelectedRelease(request);
 
@@ -280,5 +289,27 @@ public class AcquisitionDecisionPipelineTests
         Assert.Equal("profile-plan", result.Candidate.PreferenceEvaluation?.PlanId);
         Assert.Equal("7", result.Candidate.PreferenceEvaluation?.PlanVersion);
         Assert.Equal(suppliedPlan.PlanHash, result.Candidate.PreferenceEvaluation?.PlanHash);
+    }
+
+    private static (ReleasePreferencePlan Plan, PreferenceEvaluationSnapshot Snapshot) CurrentFileSnapshot(
+        string releaseName,
+        string quality)
+    {
+        var plan = ReleasePreferencePlanFactory.CreateQualityPlan("movies", quality);
+        var facts = ReleasePreferenceFactFactory.FromReleaseName(plan, releaseName, quality);
+        return (plan, new PreferenceEvaluationSnapshot(
+            MediaId: "movie-1",
+            LibraryId: "library-1",
+            FileIdentity: "preference-file/v1:movie-1",
+            FilePath: "/library/Movie.2023.WEB.1080p-GROUP.mkv",
+            FileSizeBytes: 8_000_000_000L,
+            PlanId: plan.Id,
+            PlanVersion: plan.Version,
+            PlanHash: plan.PlanHash,
+            Facts: facts,
+            Evaluation: ReleasePreferenceEvaluator.Evaluate(plan, facts),
+            MatchedRuleIds: [],
+            EvaluatedUtc: DateTimeOffset.UnixEpoch,
+            Source: "test"));
     }
 }
