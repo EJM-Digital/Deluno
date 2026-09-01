@@ -1,5 +1,6 @@
 using System.Net;
 using System.Text;
+using System.Text.Json;
 using Deluno.Connections.Contracts;
 using Deluno.Connections.Data;
 using Deluno.Infrastructure.Resilience;
@@ -271,6 +272,68 @@ public sealed class FeedMediaSearchPlannerReasonTests
         Assert.Equal(PreferenceFactState.Present, seederFamily.State);
         Assert.Equal("available", seederFamily.SelectedLevelId);
         Assert.DoesNotContain("score", seederFamily.Explanation, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task Automatic_and_interactive_typed_searches_return_the_same_installed_file_comparison()
+    {
+        var indexer = CreateIndexer("comparison-indexer", "Comparison indexer");
+        var plan = ReleasePreferencePlanFactory.CreateQualityPlan("movies", "WEB 2160p");
+        var currentFacts = ReleasePreferenceFactFactory.FromReleaseName(
+            plan,
+            "Example.Release.2026.1080p.WEB-DL-GRP",
+            "WEB 1080p");
+        var snapshot = new PreferenceEvaluationSnapshot(
+            MediaId: "movie-1",
+            LibraryId: "library",
+            FileIdentity: "preference-file/v1:movie-1",
+            FilePath: "/library/Example.Release.2026.1080p.WEB-DL-GRP.mkv",
+            FileSizeBytes: 2_000_000_000,
+            PlanId: plan.Id,
+            PlanVersion: plan.Version,
+            PlanHash: plan.PlanHash,
+            Facts: currentFacts,
+            Evaluation: ReleasePreferenceEvaluator.Evaluate(plan, currentFacts),
+            MatchedRuleIds: [],
+            EvaluatedUtc: DateTimeOffset.UnixEpoch,
+            Source: "test");
+        var feed = new FixedFeedHandler(
+            "<rss><channel><item><title>Example.Release.2026.2160p.WEB-DL-GRP</title><link>https://fixture.invalid/upgrade</link></item></channel></rss>");
+        var planner = CreatePlanner(CreateConnections(indexer).Object, feed);
+
+        var automatic = await planner.BuildPlanAsync(
+            "Example Release",
+            2026,
+            "movies",
+            "WEB 1080p",
+            "WEB 2160p",
+            [CreateSource(indexer)],
+            cancellationToken: CancellationToken.None,
+            searchKind: AcquisitionSearchKinds.Automatic,
+            currentPreferenceEvaluation: snapshot,
+            preferencePlan: plan,
+            currentFilePresent: true);
+        var interactive = await planner.BuildPlanAsync(
+            "Example Release",
+            2026,
+            "movies",
+            "WEB 1080p",
+            "WEB 2160p",
+            [CreateSource(indexer)],
+            cancellationToken: CancellationToken.None,
+            searchKind: AcquisitionSearchKinds.Interactive,
+            currentPreferenceEvaluation: snapshot,
+            preferencePlan: plan,
+            currentFilePresent: true);
+
+        var automaticCandidate = Assert.IsType<MediaSearchCandidate>(automatic.BestCandidate);
+        var interactiveCandidate = Assert.IsType<MediaSearchCandidate>(interactive.BestCandidate);
+        Assert.Equal(PreferenceCandidateStatus.Upgrade, automaticCandidate.PreferenceComparison?.Status);
+        Assert.Equal(automaticCandidate.DecisionStatus, interactiveCandidate.DecisionStatus);
+        Assert.Equal(
+            JsonSerializer.Serialize(automaticCandidate.PreferenceComparison),
+            JsonSerializer.Serialize(interactiveCandidate.PreferenceComparison));
+        Assert.Equal(automaticCandidate.Summary, interactiveCandidate.Summary);
     }
 
     [Fact]
