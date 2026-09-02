@@ -251,9 +251,22 @@ internal static class DownloadClientHelpers
     internal static string NormalizeTextStatus(string? status, double? progress)
     {
         var normalized = status?.ToLowerInvariant() ?? string.Empty;
+
+        // A client that says "error" is telling you something about the data
+        // on disk, and it outranks the progress figure. This used to test
+        // completion first, so a torrent sitting at 100% in Deluge's Error
+        // state - a failed recheck, a move that could not finish - was
+        // reported ImportReady and handed to the import pipeline as though
+        // the client were happy with it. Deluge and uTorrent both normalise
+        // through here, and neither passes an error code, so this text is the
+        // only signal there is.
+        if (normalized.Contains("error") || normalized.Contains("fail") || normalized.Contains("stalled"))
+        {
+            return DownloadQueueStatuses.Stalled;
+        }
+
         if ((progress ?? 0) >= 99.9 || normalized.Contains("complete") || normalized.Contains("seeding")) return DownloadQueueStatuses.ImportReady;
         if (normalized.Contains("pause") || normalized.Contains("queue")) return DownloadQueueStatuses.Queued;
-        if (normalized.Contains("error") || normalized.Contains("fail") || normalized.Contains("stalled")) return DownloadQueueStatuses.Stalled;
         return DownloadQueueStatuses.Downloading;
     }
 }
