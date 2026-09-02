@@ -63,11 +63,14 @@ git config core.hooksPath .githooks
 
 - **Never write `close`, `fixes` or `resolves` next to an issue reference in a
   PR body or commit message unless you mean it.** GitHub's parser does not read
-  negation: "This does not close #354" closes #354, and a linked or full-URL
-  reference counts too. Write "Refs #354" and say the scope in a separate
-  sentence — "#354 stays open for X". Two issues were closed this way in one
-  session, both in PRs that said in the same paragraph they were not finishing
-  the issue.
+  negation, and does not care that you are quoting: `does not close #NNN` closes
+  issue NNN, and a markdown-linked or full-URL reference counts the same. Write
+  `Refs #NNN`, and state the scope in a sentence that keeps the number away from
+  any of those verbs — `#NNN stays open for X`. Never spell the bad pattern with
+  a real issue number, not even as an example. This rule cost three accidental
+  closures in one session: two from PRs that said in the same paragraph they were
+  not finishing the issue, and one from the commit message that first wrote this
+  guardrail down using a live number.
 - Keep docs discoverable from this map or `docs/README.md`.
 - Add or update tests when changing normalized contracts, status strings, routing, import behavior, or persisted schemas.
 - Prefer shared helpers for status, capability, and routing invariants over duplicated string checks.
