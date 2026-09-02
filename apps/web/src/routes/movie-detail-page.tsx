@@ -33,7 +33,7 @@ import { DownloadDispatchDrawer } from "../components/app/download-dispatch-draw
 import { TitleTagsEditor } from "../components/app/title-tags-editor";
 import { authedFetch } from "../lib/use-auth";
 import { cn } from "../lib/utils";
-import { describeSearchReason, describeSearchRequestFailure, formatSearchFailureNotice } from "../lib/search-reasons";
+import { describeSearchReason, describeRequestFailure, formatSearchFailureNotice } from "../lib/search-reasons";
 import { candidateLabel, candidateTone, canWinSearch, isTypedCandidate, likesCandidate } from "../lib/release-candidate-status";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
@@ -402,7 +402,10 @@ export function MovieDetailPage() {
       }
       revalidator.revalidate();
     } catch (searchError) {
-      const explained = await describeSearchRequestFailure(searchResponse, searchError);
+      const explained = await describeRequestFailure(searchResponse, searchError, {
+        action: "search for this title",
+        check: { label: "Check indexers", href: "/indexers/indexers" },
+      });
       toast.error(explained.title, {
         description: explained.description,
         action: explained.action
@@ -416,6 +419,7 @@ export function MovieDetailPage() {
 
   async function handleGrabCandidate(candidate: SearchPlanCandidate, force = false, overrideReason?: string) {
     setBusyAction(force ? "force-grab" : "grab");
+    let grabResponse: Response | null = null;
 
     try {
       const response = await authedFetch(`/api/movies/${movie.id}/grab`, {
@@ -433,6 +437,7 @@ export function MovieDetailPage() {
           overrideReason: force ? overrideReason || `User forced this release despite Deluno's decision: ${candidate.summary}` : null
         })
       });
+      grabResponse = response;
       if (!response.ok) throw new Error("movie-grab-failed");
 
       const payload = (await response.json()) as {
@@ -449,8 +454,17 @@ export function MovieDetailPage() {
       setOpenCandidate(null);
       setReleaseCandidates([]);
       revalidator.revalidate();
-    } catch {
-      toast.error("That release could not be sent to the download client.");
+    } catch (grabError) {
+      const explained = await describeRequestFailure(grabResponse, grabError, {
+        action: "send that release to the download client",
+        check: { label: "Check download clients", href: "/indexers/download-clients" },
+      });
+      toast.error(explained.title, {
+        description: explained.description,
+        action: explained.action
+          ? { label: explained.action.label, onClick: () => navigate(explained.action!.href) }
+          : undefined,
+      });
     } finally {
       setBusyAction(null);
     }
