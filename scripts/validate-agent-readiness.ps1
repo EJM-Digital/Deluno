@@ -166,22 +166,41 @@ foreach ($trayPath in @("apps\windows-tray\DelunoServer.cs", "apps\windows-tray\
     }
 }
 
-# Stable 1.x releases must never silently fall back to unsigned Windows
-# artifacts. Early 0.x prereleases are deliberately exempt, but the release
-# workflow must fail before packaging when certificate material is absent and
-# verify signatures for every 1.x executable.
+# Deluno ships unsigned by decision. What must stay true is that signing is
+# automatic the moment a certificate exists, that verification only runs
+# against something actually signed, and that the SmartScreen consequence is
+# documented wherever a user meets the installer.
 $releaseWorkflowPath = Join-Path $Root ".github\workflows\release.yml"
 if (-not (Test-Path -LiteralPath $releaseWorkflowPath -PathType Leaf)) {
     Add-Failure "Missing release workflow: .github/workflows/release.yml"
 } else {
     $releaseWorkflow = Get-Content -LiteralPath $releaseWorkflowPath -Raw
+
+    # Deluno ships unsigned by decision (2026-09-02), so the old assertion --
+    # that a 1.x build hard-fails without a certificate -- would now block
+    # every release. What still has to hold is the pair that keeps the
+    # decision honest: signing happens automatically the moment a certificate
+    # exists, and signature verification only runs against something that was
+    # actually signed. Verifying an unsigned build against a signature
+    # requirement is how a release nobody intended to sign fails at the end.
     foreach ($requiredReleaseGate in @(
-        "Enforce certificate material for 1.x",
-        "CERT_PATH was not prepared for a 1.x release.",
-        "!startsWith(steps.version.outputs.version, '0.') || env.CERT_PATH != ''"
+        "if: `${{ env.CERT_PATH != '' }}",
+        "if: `${{ env.CERT_PATH != '' && steps.skipcheck.outputs.skip != 'true' }}"
     )) {
         if (-not $releaseWorkflow.Contains($requiredReleaseGate)) {
-            Add-Failure "Release signing gate is missing '$requiredReleaseGate'. 1.x releases must fail without certificate material and verify signatures."
+            Add-Failure "Release workflow is missing '$requiredReleaseGate'. Signing must stay opt-in on certificate presence, and verification must only run when something was signed."
+        }
+    }
+
+    # And the consequence must never become undocumented. Somebody meeting
+    # SmartScreen with no warning assumes the download is broken.
+    $smartScreenDocs = @("README.md", "docs/ga-release-checklist.md", "docs/release-notes-1.0.0-draft.md")
+    foreach ($docPath in $smartScreenDocs) {
+        $full = Join-Path $Root $docPath
+        if (-not (Test-Path -LiteralPath $full -PathType Leaf)) {
+            Add-Failure "Missing release document: $docPath"
+        } elseif ((Get-Content -LiteralPath $full -Raw) -notmatch 'SmartScreen') {
+            Add-Failure "$docPath does not warn that Deluno is unsigned and Windows SmartScreen will prompt on first install."
         }
     }
 }

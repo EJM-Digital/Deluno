@@ -43,7 +43,14 @@ Detailed guide:
 
 ### Windows signing note
 
-Windows signing status must be stated from the final candidate evidence. If artifacts are unsigned, stricter Windows security configurations can block them; use the portable zip fallback only when it is supplied for that release and verify `SHA256SUMS.txt`.
+**Deluno is not code-signed.** Windows SmartScreen shows *"Windows protected
+your PC"* on first install; choose **More info** then **Run anyway**. The
+warning says the publisher is unverified, not that the download is damaged —
+verify it against `SHA256SUMS.txt` if you want certainty.
+
+Stricter configurations (Smart App Control, some managed devices) will refuse
+an unsigned installer outright. Use the portable zip fallback where one is
+supplied for the release.
 
 ## Notable Changes Since 0.1.0
 
