@@ -22,24 +22,40 @@ export function formatSearchFailureNotice(failures?: IntegrationFailure[] | null
   return `${summary}${nextAction}${remainder}`;
 }
 
+export interface RequestFailureContext {
+  /**
+   * What the person was trying to do, as a verb phrase that completes
+   * "Deluno could not ...": "send that release to the download client".
+   */
+  action: string;
+  /** Where to send them when their own configuration is the likely cause. */
+  check?: { label: string; href: string };
+}
+
 /**
- * What to say when the search request itself did not come back.
+ * What to say when a request to Deluno's own API did not come back.
  *
- * Both detail pages used to `catch` and say "The search request failed." and
- * nothing else - not the status, not the body, not which title. That sentence
- * is true of every possible cause and useful for none of them, and it threw
- * away a response body that often says exactly what went wrong.
+ * Every one of these call sites used to `catch` and say a single fixed
+ * sentence - "The search request failed.", "That release could not be sent to
+ * the download client." - and nothing else. Not the status, not the body, not
+ * which service. Those sentences are true of every possible cause and useful
+ * for none of them, and each threw away a response body that usually says
+ * exactly what went wrong.
+ *
+ * #338 asks that no external-service failure is reduced to a generic "request
+ * failed". This is the one place that decides what is said instead.
  */
-export async function describeSearchRequestFailure(
+export async function describeRequestFailure(
   response: Response | null,
   error: unknown,
+  context: RequestFailureContext,
 ): Promise<SearchReasonExplanation> {
   if (!response) {
     const detail = error instanceof Error ? error.message : undefined;
     return {
       title: "Deluno could not reach its own API",
       description: [
-        "The search request never completed.",
+        `The request to ${context.action} never completed.`,
         detail,
         "Check that Deluno is still running, then try again.",
       ].filter(Boolean).join(" "),
@@ -49,7 +65,7 @@ export async function describeSearchRequestFailure(
   if (response.status === 401 || response.status === 403) {
     return {
       title: "Your session is no longer signed in",
-      description: "Sign in again, then run the search.",
+      description: `Sign in again, then ${context.action}.`,
     };
   }
 
@@ -57,23 +73,28 @@ export async function describeSearchRequestFailure(
   // not the first answer.
   let detail: string | undefined;
   try {
-    const body = await response.clone().json() as { error?: string; detail?: string; title?: string };
-    detail = body.error ?? body.detail ?? body.title;
+    const body = await response.clone().json() as {
+      error?: string;
+      detail?: string;
+      title?: string;
+      message?: string;
+    };
+    detail = body.error ?? body.detail ?? body.message ?? body.title;
   } catch {
     detail = undefined;
   }
 
+  const isDelunoFault = response.status >= 500;
+
   return {
-    title: `The search failed (HTTP ${response.status})`,
+    title: `Deluno could not ${context.action} (HTTP ${response.status})`,
     description: [
       detail,
-      response.status >= 500
-        ? "This is a fault inside Deluno rather than a problem with your indexers. Check System health, and the host log for the request."
-        : "Check the title's library, sources and download client, then try again.",
+      isDelunoFault
+        ? "This is a fault inside Deluno rather than a problem with the service it was talking to. Check System health, and the host log for this request."
+        : "Check the settings for this action, then try again.",
     ].filter(Boolean).join(" "),
-    action: response.status >= 500
-      ? { label: "Open System health", href: "/system" }
-      : { label: "Check indexers", href: "/indexers/indexers" },
+    action: isDelunoFault ? { label: "Open System health", href: "/system" } : context.check,
   };
 }
 
