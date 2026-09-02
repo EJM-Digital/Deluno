@@ -244,15 +244,28 @@ public static class IntegrationFailureFactory
             _ => IntegrationFailureKind.Unknown
         };
 
+        // A cancelled HttpClient call carries its own configuration in the
+        // message - "the configured HttpClient.Timeout of 12 seconds elapsing"
+        // - which describes Deluno's plumbing rather than what happened to the
+        // owner's service. Say the fact; keep the original text as upstream
+        // detail for anyone diagnosing it.
+        var message = kind == IntegrationFailureKind.Timeout
+            ? "The service did not answer in time."
+            : exception.Message;
+        var upstreamDetail = kind == IntegrationFailureKind.Timeout
+            ? exception.Message
+            : null;
+
         return Create(
             serviceType,
             serviceId,
             serviceName,
             operation,
             kind,
-            exception.Message,
+            message,
             retryAfterUtc: retryAfterUtc,
             attempts: attempts,
+            upstreamDetail: upstreamDetail,
             externalId: externalId,
             retryScheduled: retryScheduled);
     }

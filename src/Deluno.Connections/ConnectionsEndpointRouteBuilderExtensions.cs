@@ -728,8 +728,11 @@ public static class ConnectionsEndpointRouteBuilderExtensions
         var result = await resiliencePolicy.ExecuteAsync(
             new IntegrationResilienceRequest(
                 BuildIndexerResilienceKey(item),
-                "indexer.health-test",
-                FailureThreshold: 2),
+                "health-test",
+                FailureThreshold: 2,
+                ServiceType: "indexer",
+                ServiceId: item.Id,
+                ServiceName: item.Name),
             async token =>
             {
                 var (healthStatus, message, failureCategory) = await TestIndexerAsync(item, token);
@@ -763,8 +766,11 @@ public static class ConnectionsEndpointRouteBuilderExtensions
         var result = await resiliencePolicy.ExecuteAsync(
             new IntegrationResilienceRequest(
                 BuildDownloadClientResilienceKey(item),
-                "download-client.health-test",
-                FailureThreshold: 2),
+                "health-test",
+                FailureThreshold: 2,
+                ServiceType: "download-client",
+                ServiceId: item.Id,
+                ServiceName: item.Name),
             async token =>
             {
                 var (healthStatus, message, failureCategory) = await TestDownloadClientAsync(item, token);

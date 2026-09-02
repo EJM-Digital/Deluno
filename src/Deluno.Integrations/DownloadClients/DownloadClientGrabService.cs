@@ -79,9 +79,12 @@ public sealed class DownloadClientGrabService(
         var result = await resiliencePolicy.ExecuteAsync(
             new IntegrationResilienceRequest(
                 DownloadClientHelpers.BuildResilienceKey(client, "grab"),
-                "download-client.grab",
+                "grab",
                 MaxAttempts: 1,
-                FailureThreshold: 3),
+                FailureThreshold: 3,
+                ServiceType: "download-client",
+                ServiceId: client.Id,
+                ServiceName: client.Name),
             token => GrabCoreAsync(client, request, token),
             value => value.Succeeded
                 ? IntegrationResilienceOutcome.Success

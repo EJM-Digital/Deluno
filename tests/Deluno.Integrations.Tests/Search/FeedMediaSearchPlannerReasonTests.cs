@@ -43,6 +43,69 @@ public sealed class FeedMediaSearchPlannerReasonTests
     }
 
     /// <summary>
+    /// A failure that cannot name the indexer it came from is not attributable,
+    /// which is half of what #338 asks for. The resilience policy only knew the
+    /// operation, so a person was told "indexer.search indexer.search failed"
+    /// and left to guess which of their indexers to look at.
+    /// </summary>
+    [Fact]
+    public async Task An_indexer_failure_names_the_indexer_and_not_the_operation_key()
+    {
+        var indexer = CreateIndexer("unreachable-indexer", "Primary indexer");
+        var connections = CreateConnections(indexer);
+
+        var plan = await CreatePlanner(
+            connections.Object,
+            resiliencePolicy: new TimingOutResiliencePolicy()).BuildPlanAsync(
+                "Example",
+                2026,
+                "movies",
+                null,
+                "WEB 1080p",
+                [CreateSource(indexer)],
+                cancellationToken: CancellationToken.None);
+
+        var failure = Assert.Single(plan.Failures ?? []);
+
+        Assert.Equal("indexer", failure.ServiceType);
+        Assert.Equal("unreachable-indexer", failure.ServiceId);
+        Assert.Equal("Primary indexer", failure.ServiceName);
+        Assert.Equal("search", failure.Operation);
+
+        // The sentence a person actually reads.
+        Assert.Equal("Primary indexer search failed: The service did not answer in time.", failure.Summary);
+        Assert.DoesNotContain("indexer.search", failure.Summary, StringComparison.Ordinal);
+        Assert.DoesNotContain("HttpClient", failure.Summary, StringComparison.Ordinal);
+
+        // The plumbing detail is kept, just not presented as the explanation.
+        Assert.Contains("HttpClient", failure.UpstreamDetail ?? string.Empty, StringComparison.Ordinal);
+        Assert.Equal(IntegrationFailureKind.Timeout, failure.Kind);
+    }
+
+    /// <summary>
+    /// The paused-integration wording travels through the same Summary
+    /// template, so it must not name the service a second time.
+    /// </summary>
+    [Fact]
+    public void A_paused_integration_names_the_service_once()
+    {
+        var failure = IntegrationFailureFactory.CircuitOpen(
+            "indexer",
+            "primary",
+            "Primary indexer",
+            "search",
+            DateTimeOffset.UtcNow.AddMinutes(5),
+            "Deluno paused it after repeated failures.");
+
+        Assert.Equal(
+            "Primary indexer search failed: Deluno paused it after repeated failures.",
+            failure.Summary);
+
+        var occurrences = failure.Summary.Split("Primary indexer").Length - 1;
+        Assert.Equal(1, occurrences);
+    }
+
+    /// <summary>
     /// An indexer that does not answer is an ordinary, expected condition, and
     /// this planner already carries a typed failure for it. It used to throw a
     /// NullReferenceException out of the telemetry builder instead, so the API
@@ -563,6 +626,41 @@ public sealed class FeedMediaSearchPlannerReasonTests
             {
                 Content = new StringContent(payload, Encoding.UTF8, "application/xml")
             });
+        }
+    }
+
+    /// <summary>
+    /// The real policy's behaviour for a request that timed out: no value, and
+    /// a failure built from the caller's own service identity.
+    /// </summary>
+    private sealed class TimingOutResiliencePolicy : IIntegrationResiliencePolicy
+    {
+        public Task<IntegrationResilienceResult<T>> ExecuteAsync<T>(
+            IntegrationResilienceRequest request,
+            Func<CancellationToken, Task<T>> operation,
+            Func<T, IntegrationResilienceOutcome> classifyResult,
+            CancellationToken cancellationToken)
+            => Task.FromResult(new IntegrationResilienceResult<T>(
+                default!,
+                CircuitOpen: false,
+                CircuitOpened: true,
+                Attempts: 3,
+                FailureMessage: "timed out",
+                RetryAfterUtc: null,
+                Failure: IntegrationFailureFactory.FromException(
+                    request.ServiceType ?? "integration",
+                    request.ServiceId ?? request.Key,
+                    request.ServiceName ?? request.Operation,
+                    request.Operation,
+                    new TaskCanceledException(
+                        "The request was canceled due to the configured HttpClient.Timeout of 12 seconds elapsing."),
+                    retryScheduled: true,
+                    attempts: 3)));
+
+        public bool IsCircuitOpen(string key, out DateTimeOffset retryAfterUtc)
+        {
+            retryAfterUtc = DateTimeOffset.MinValue;
+            return false;
         }
     }
 

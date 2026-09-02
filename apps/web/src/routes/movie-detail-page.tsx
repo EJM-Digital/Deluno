@@ -33,7 +33,7 @@ import { DownloadDispatchDrawer } from "../components/app/download-dispatch-draw
 import { TitleTagsEditor } from "../components/app/title-tags-editor";
 import { authedFetch } from "../lib/use-auth";
 import { cn } from "../lib/utils";
-import { describeSearchReason, formatSearchFailureNotice } from "../lib/search-reasons";
+import { describeSearchReason, describeSearchRequestFailure, formatSearchFailureNotice } from "../lib/search-reasons";
 import { candidateLabel, candidateTone, canWinSearch, isTypedCandidate, likesCandidate } from "../lib/release-candidate-status";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
@@ -354,10 +354,12 @@ export function MovieDetailPage() {
 
   async function handleSearchNow(mode: "automatic" | "interactive") {
     setBusyAction(`${mode}-search`);
+    let searchResponse: Response | null = null;
 
     try {
-      const response = await authedFetch(`/api/movies/${movie.id}/search${mode === "interactive" ? "?mode=preview" : ""}`, { method: "POST" });
-      if (!response.ok) throw new Error("movie-search-failed");
+      searchResponse = await authedFetch(`/api/movies/${movie.id}/search${mode === "interactive" ? "?mode=preview" : ""}`, { method: "POST" });
+      if (!searchResponse.ok) throw new Error("movie-search-failed");
+      const response = searchResponse;
 
       const payload = (await response.json()) as {
         outcome?: string;
@@ -399,8 +401,14 @@ export function MovieDetailPage() {
         }
       }
       revalidator.revalidate();
-    } catch {
-      toast.error("The search request failed.");
+    } catch (searchError) {
+      const explained = await describeSearchRequestFailure(searchResponse, searchError);
+      toast.error(explained.title, {
+        description: explained.description,
+        action: explained.action
+          ? { label: explained.action.label, onClick: () => navigate(explained.action!.href) }
+          : undefined,
+      });
     } finally {
       setBusyAction(null);
     }

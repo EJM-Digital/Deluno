@@ -1,6 +1,14 @@
 param(
     [string]$RuntimeIdentifier = "win-x64",
-    [string]$Configuration = "Release"
+    [string]$Configuration = "Release",
+
+    # Lab iteration builds. Skips single-file bundling and ReadyToRun, so the
+    # output is ordinary assemblies: a one-line change produces a few hundred
+    # kilobytes of altered DLLs instead of a fresh 163 MB bundle, and
+    # deploy-lab.ps1 can copy only what actually differs.
+    #
+    # Releases must not use this. The shipped artifact is the single file.
+    [switch]$Fast
 )
 
 $ErrorActionPreference = "Stop"
@@ -10,6 +18,16 @@ $artifacts = Join-Path $root "artifacts\publish\$RuntimeIdentifier"
 
 Push-Location $root
 try {
+    # dotnet publish never removes what it no longer produces, and the web
+    # assets are content-hashed, so every build left its chunks behind for
+    # ever. This folder had reached 3,096 asset files where a build makes 83 -
+    # 130 MB of dead weight, zipped and shipped to the lab on every deploy,
+    # and thousands of orphaned files accumulating on the host.
+    if (Test-Path $artifacts) {
+        Write-Host "Clearing previous publish output at $artifacts"
+        Remove-Item -Path $artifacts -Recurse -Force
+    }
+
     npm.cmd run build:web
 
     # A repo-local SDK if one has been pinned here, otherwise whatever `dotnet`
@@ -19,12 +37,18 @@ try {
     $localDotnet = Join-Path $root ".dotnet\dotnet.exe"
     $dotnet = if (Test-Path $localDotnet) { $localDotnet } else { "dotnet" }
 
+    $singleFile = if ($Fast) { "false" } else { "true" }
+    $readyToRun = if ($Fast) { "false" } else { "true" }
+    if ($Fast) {
+        Write-Host "Fast lab build: no single-file bundle, no ReadyToRun."
+    }
+
     & $dotnet publish .\src\Deluno.Host\Deluno.Host.csproj `
         -c $Configuration `
         -r $RuntimeIdentifier `
         --self-contained true `
-        -p:PublishSingleFile=true `
-        -p:PublishReadyToRun=true `
+        -p:PublishSingleFile=$singleFile `
+        -p:PublishReadyToRun=$readyToRun `
         -p:IncludeNativeLibrariesForSelfExtract=true `
         -o $artifacts
 
