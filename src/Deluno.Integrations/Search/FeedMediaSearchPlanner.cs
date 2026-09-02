@@ -200,10 +200,12 @@ public sealed class FeedMediaSearchPlanner(
 
         var normalizedTarget = LibraryQualityDecider.NormalizeQuality(targetQuality) ?? "WEB 1080p";
         var ordered = liveCandidates
-            // Rejected candidates remain visible for explanation, but cannot
-            // become the automatic winner. Needs-review/held candidates are
-            // likewise visible after safe candidates. Once that stage is
-            // selected, the typed comparator alone owns the plan order.
+            // Candidates that cannot become the automatic winner remain
+            // visible for explanation, but sort after the ones that can:
+            // a release the installed file beats, or one that is equivalent
+            // to it, is a legitimate release and is not a rejection. Once
+            // that stage is selected, the typed comparator alone owns the
+            // plan order. ReleaseDecisionStatuses holds the single table.
             .OrderBy(item => preferencePlan is null
                 ? LegacyCandidateStatusRank(item)
                 : TypedCandidateStageRank(item))
@@ -798,23 +800,10 @@ public sealed class FeedMediaSearchPlanner(
         bool CandidatesTruncatedByIndexer);
 
     private static int TypedCandidateStageRank(MediaSearchCandidate candidate)
-        => candidate.DecisionStatus switch
-        {
-            "rejected" => 2,
-            "delayed" or "held" or "risky" => 1,
-            _ => 0
-        };
+        => ReleaseDecisionStatuses.TypedStageRank(candidate.DecisionStatus);
 
     private static int LegacyCandidateStatusRank(MediaSearchCandidate candidate)
-        => candidate.DecisionStatus switch
-        {
-            "preferred" => 0,
-            "acceptable" or "eligible" => 1,
-            "equivalent" => 2,
-            "delayed" or "held" or "risky" => 3,
-            "rejected" => 4,
-            _ => 3
-        };
+        => ReleaseDecisionStatuses.LegacyStageRank(candidate.DecisionStatus);
 
     private static string BuildSearchUrl(
         IndexerItem indexer,

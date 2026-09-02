@@ -236,7 +236,8 @@ public sealed class ReleasePreferenceEvaluatorTests
                 new PreferenceFact("audio.format.truehd", PreferenceFactState.Present)
             });
 
-        Assert.Equal(PreferenceCandidateStatus.Rejected, comparison.Status);
+        // Gates all pass; the installed file simply wins the quality family.
+        Assert.Equal(PreferenceCandidateStatus.CurrentBetter, comparison.Status);
         Assert.True(comparison.Regressed);
     }
 
@@ -269,7 +270,7 @@ public sealed class ReleasePreferenceEvaluatorTests
         Assert.Equal(PreferenceCandidateStatus.Upgrade, ReleasePreferenceEvaluator.Compare(plan, webDts, blurayDts).Status);
         Assert.Equal(PreferenceCandidateStatus.Upgrade, ReleasePreferenceEvaluator.Compare(plan, blurayDts, blurayTruehd).Status);
         Assert.Equal(PreferenceCandidateStatus.Upgrade, ReleasePreferenceEvaluator.Compare(plan, webDts, blurayTruehd).Status);
-        Assert.Equal(PreferenceCandidateStatus.Rejected, ReleasePreferenceEvaluator.Compare(plan, blurayTruehd, webDts).Status);
+        Assert.Equal(PreferenceCandidateStatus.CurrentBetter, ReleasePreferenceEvaluator.Compare(plan, blurayTruehd, webDts).Status);
     }
 
     [Fact]

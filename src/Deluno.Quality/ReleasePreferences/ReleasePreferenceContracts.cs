@@ -35,6 +35,14 @@ public enum PreferenceEvaluationStatus
     MeetsPlan
 }
 
+/// <summary>
+/// The typed comparison results named by the normative release-preference
+/// contract (#354 section 1). <see cref="Rejected"/> means a hard gate
+/// failed, and is the only value that may be presented to the owner as a
+/// rule violation. <see cref="CurrentBetter"/> is deliberately separate: a
+/// release that passes every gate but is simply worse than the installed
+/// file was not rejected by anything, so saying that it was is untrue.
+/// </summary>
 public enum PreferenceCandidateStatus
 {
     Rejected,
@@ -42,6 +50,7 @@ public enum PreferenceCandidateStatus
     Acceptable,
     BestMatchNow,
     Equivalent,
+    CurrentBetter,
     Upgrade
 }
 

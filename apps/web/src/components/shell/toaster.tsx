@@ -10,15 +10,51 @@
  * so screen readers announce them automatically.
  */
 
-import { Toaster as SonnerToaster, toast as sonnerToast } from "sonner";
+import { Toaster as SonnerToaster, toast as sonnerToast, useSonner } from "sonner";
 import { useTheme } from "next-themes";
-import { CheckCircle2, CircleAlert, Info, Loader2, XCircle } from "lucide-react";
+import { CheckCircle2, CircleAlert, Info, Loader2, X, XCircle } from "lucide-react";
 import { cn } from "../../lib/utils";
+
+/**
+ * The height reserved below the toast stack for the clear-all control, so the
+ * two can never overlap however many toasts are showing or however far the
+ * stack expands on hover.
+ */
+const CLEAR_ALL_LANE_PX = 44;
+
+/**
+ * One control that clears the whole stack.
+ *
+ * Every toast already has its own close button, which is fine for one and
+ * tedious for six: a burst of per-item results - a bulk action, a sync that
+ * fails item by item - buries the corner of the screen, and the only ways out
+ * are to click them off one at a time or wait them out. This appears once
+ * there is more than one toast to clear and gets out of the way again when
+ * there isn't.
+ */
+function DismissAllToasts() {
+  const { toasts } = useSonner();
+  if (toasts.length < 2) return null;
+
+  return (
+    <button
+      type="button"
+      onClick={() => sonnerToast.dismiss()}
+      className="fixed bottom-3 right-4 z-[9999] inline-flex items-center gap-1.5 rounded-full border border-hairline bg-card/95 px-3 py-1 text-[length:var(--type-caption)] font-medium text-muted-foreground shadow-lg backdrop-blur transition hover:text-foreground dark:border-white/[0.06]"
+    >
+      <X className="h-3.5 w-3.5" aria-hidden="true" />
+      Clear all {toasts.length}
+    </button>
+  );
+}
 
 export function Toaster() {
   const { resolvedTheme } = useTheme();
   return (
+    <>
+    <DismissAllToasts />
     <SonnerToaster
+      offset={{ bottom: CLEAR_ALL_LANE_PX }}
       position="bottom-right"
       theme={resolvedTheme === "dark" ? "dark" : "light"}
       closeButton
@@ -50,6 +86,7 @@ export function Toaster() {
         }
       }}
     />
+    </>
   );
 }
 

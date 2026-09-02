@@ -1,7 +1,7 @@
 export type PreferenceIntent = "required" | "forbidden" | "ranked" | "tieBreak" | "neutral";
 export type PreferenceFactState = "present" | "absent" | "unknown" | "conflicting";
 export type PreferenceEvaluationStatus = "missing" | "needsReview" | "belowGoal" | "meetsPlan";
-export type PreferenceCandidateStatus = "rejected" | "needsReview" | "acceptable" | "bestMatchNow" | "equivalent" | "upgrade";
+export type PreferenceCandidateStatus = "rejected" | "needsReview" | "acceptable" | "bestMatchNow" | "equivalent" | "currentBetter" | "upgrade";
 export type PreferenceRelationshipKind = "implies" | "requires" | "subsumes" | "coreOf" | "carriedBy" | "incompatible";
 export type PreferenceEvidenceModel = "openWorld" | "closedWorld";
 
@@ -168,7 +168,7 @@ export interface PreferenceComparison {
   planId: string;
   planVersion: string;
   planHash: string;
-  status: "rejected" | "needsReview" | "acceptable" | "bestMatchNow" | "equivalent" | "upgrade";
+  status: PreferenceCandidateStatus;
   persistentImprovement: boolean;
   regressed: boolean;
   equivalent: boolean;
