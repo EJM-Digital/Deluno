@@ -1,6 +1,6 @@
 # Deluno 1.x GA Release Checklist
 
-Updated: 2026-05-14
+Updated: 2026-09-02
 
 This checklist is the source of truth for promoting Deluno from `0.x` prerelease to `1.x` GA.
 
@@ -18,17 +18,40 @@ Execution artifacts:
 2. `RC2`: hardening candidate after RC1 feedback
 3. `GA`: final `1.0.0` promotion
 
+## Code signing: Deluno ships unsigned
+
+**Decided 2026-09-02.** Deluno does not buy a code-signing certificate, and
+releases are published unsigned.
+
+The consequence is real and is not hidden from users: **Windows SmartScreen
+warns on first install**, and the person has to choose "More info" then "Run
+anyway". Say so in the release notes and the install guidance every time,
+rather than letting people meet it unprepared and assume the download is
+broken.
+
+This is a reversal. `release.yml` used to hard-fail any 1.x build without a
+certificate, which meant that once the decision was made no 1.x release could
+be produced at all. The workflow now reports signing status as a warning and
+signs only if the secrets are present, so adding a certificate later needs no
+code change - just `WINDOWS_SIGN_CERT_BASE64` and `WINDOWS_SIGN_CERT_PASSWORD`.
+
+Smart App Control is a separate matter and stays out of scope for the same
+reason: it cannot be satisfied without a signer reputation, which cannot exist
+without a signature.
+
 ## Hard Gates (Must Pass)
 
 - Windows release artifacts are complete and installable.
-- 1.x Windows release artifacts are signed and their signatures verify as valid.
-- The Smart App Control enforcement scenario passes on a clean Windows 11 24H2+ VM, with the signer trust path recorded.
 - Install/upgrade/rollback matrix passes on clean Windows environments.
 - No open `P0` or `P1` release-blocking issues.
 - Full regression gates pass on candidate commit:
   - `npm run ci:check`
-  - `dotnet test Deluno.slnx --configuration Release` (or `scripts/test-dotnet-serial.ps1` in CI when the solution-level runner exhibits the known cross-project hang)
+  - `dotnet test Deluno.slnx --configuration Release`
   - `npm run test:web`
+
+  Run these one at a time. A second `dotnet` process against the same solution
+  takes file locks on the built assemblies and fails the first with
+  `MSB3027`/`MSB3021`, which reads like a broken build and is not one.
 
 ## RC1 Checklist
 

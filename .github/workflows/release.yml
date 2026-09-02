@@ -121,19 +121,22 @@ jobs:
           [IO.File]::WriteAllBytes($path, $bytes)
           "CERT_PATH=$path" >> $env:GITHUB_ENV
 
-      # Early 0.x prereleases may be unsigned. 1.x is GA-quality only: do
-      # not build, upload, or publish an unsigned stable artifact by mistake.
-      - name: Enforce certificate material for 1.x
-        if: ${{ !startsWith(steps.version.outputs.version, '0.') }}
+      # Deluno ships unsigned, by decision: a code-signing certificate is a
+      # recurring cost this project is not paying, and the consequence -
+      # SmartScreen warning on first install - is accepted and documented for
+      # users rather than hidden.
+      #
+      # This step used to hard-fail any 1.x build without a certificate, which
+      # meant no 1.x release could be produced at all once that decision was
+      # made. Signing still happens automatically if the secrets are ever
+      # added; it is simply no longer a gate.
+      - name: Report signing status
         shell: pwsh
         run: |
           if ([string]::IsNullOrWhiteSpace($env:CERT_PATH)) {
-            Write-Error "CERT_PATH was not prepared for a 1.x release."
-            exit 1
-          }
-          if (-not (Test-Path -LiteralPath $env:CERT_PATH -PathType Leaf)) {
-            Write-Error "Prepared code-signing certificate does not exist: $env:CERT_PATH"
-            exit 1
+            Write-Host "::warning::Publishing UNSIGNED. Windows SmartScreen will warn on first install. See docs/ga-release-checklist.md."
+          } else {
+            Write-Host "Code-signing certificate is present; artifacts will be signed."
           }
 
       - name: Sign payload executables
@@ -260,8 +263,11 @@ jobs:
             if (-not $releaseIndex) { Write-Error "Missing RELEASES channel index output."; exit 1 }
           }
 
+      # Only meaningful when something was actually signed. Verifying an
+      # unsigned build against a signature requirement is how a release that
+      # was never going to be signed fails at the last step.
       - name: Verify signatures
-        if: ${{ (!startsWith(steps.version.outputs.version, '0.') || env.CERT_PATH != '') && steps.skipcheck.outputs.skip != 'true' }}
+        if: ${{ env.CERT_PATH != '' && steps.skipcheck.outputs.skip != 'true' }}
         shell: pwsh
         run: |
           $files = @()

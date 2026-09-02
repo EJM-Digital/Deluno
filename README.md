@@ -50,6 +50,12 @@ Movies and TV run on separate engines internally, so they never fight over the s
 
 Download the installer from [Releases](https://github.com/jampat000/Deluno/releases). Velopack handles installation and in-app updates.
 
+> **Windows will warn you the first time.** Deluno is not code-signed, so
+> SmartScreen shows *"Windows protected your PC"*. Choose **More info** →
+> **Run anyway**. The warning means the publisher is unverified, not that
+> anything is wrong with the download — verify it against `SHA256SUMS.txt` on
+> the release if you want to be certain.
+
 | | |
 |--|--|
 | Application | `%LocalAppData%\Deluno` |
