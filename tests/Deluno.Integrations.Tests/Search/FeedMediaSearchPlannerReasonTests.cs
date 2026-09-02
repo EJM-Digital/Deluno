@@ -3,6 +3,7 @@ using System.Text;
 using System.Text.Json;
 using Deluno.Connections.Contracts;
 using Deluno.Connections.Data;
+using Deluno.Contracts;
 using Deluno.Infrastructure.Resilience;
 using Deluno.Integrations.Search;
 using Deluno.Libraries.Contracts;
@@ -39,6 +40,39 @@ public sealed class FeedMediaSearchPlannerReasonTests
 
         Assert.Equal(MediaSearchReasons.NoIndexers, plan.Reason);
         Assert.Empty(plan.Candidates);
+    }
+
+    /// <summary>
+    /// An indexer that does not answer is an ordinary, expected condition, and
+    /// this planner already carries a typed failure for it. It used to throw a
+    /// NullReferenceException out of the telemetry builder instead, so the API
+    /// returned HTTP 500 and the UI could only say "The search request failed."
+    /// Found on the deployed lab in Chrome, not by any test.
+    /// </summary>
+    [Fact]
+    public async Task An_unreachable_indexer_is_reported_as_a_failure_rather_than_crashing_the_search()
+    {
+        var indexer = CreateIndexer("unreachable-indexer", "Unreachable indexer");
+        var connections = CreateConnections(indexer);
+
+        var plan = await CreatePlanner(
+            connections.Object,
+            resiliencePolicy: new ExhaustedResiliencePolicy()).BuildPlanAsync(
+                "Example",
+                2026,
+                "movies",
+                null,
+                "WEB 1080p",
+                [CreateSource(indexer)],
+                cancellationToken: CancellationToken.None);
+
+        Assert.Equal(MediaSearchReasons.AllIndexersFailed, plan.Reason);
+        Assert.Empty(plan.Candidates);
+        Assert.Null(plan.BestCandidate);
+
+        // The failure is attributable, which is the whole point of carrying it.
+        var failure = Assert.Single(plan.Failures ?? []);
+        Assert.Equal("Unreachable indexer", failure.ServiceName);
     }
 
     [Fact]
@@ -387,7 +421,8 @@ public sealed class FeedMediaSearchPlannerReasonTests
         IConnectionsRepository connections,
         HttpMessageHandler? handler = null,
         ILogger<FeedMediaSearchPlanner>? logger = null,
-        IGuidePackageStore? guidePackageStore = null)
+        IGuidePackageStore? guidePackageStore = null,
+        IIntegrationResiliencePolicy? resiliencePolicy = null)
     {
         var platform = new Mock<IPlatformSettingsRepository>();
         platform
@@ -416,7 +451,7 @@ public sealed class FeedMediaSearchPlannerReasonTests
             platform.Object,
             connections,
             new FixedClientFactory(handler ?? new FixedFeedHandler("<rss><channel /></rss>")),
-            new PassthroughResiliencePolicy(),
+            resiliencePolicy ?? new PassthroughResiliencePolicy(),
             quality.Object,
             new DisabledRankingModelService(),
             throttle.Object,
@@ -528,6 +563,41 @@ public sealed class FeedMediaSearchPlannerReasonTests
             {
                 Content = new StringContent(payload, Encoding.UTF8, "application/xml")
             });
+        }
+    }
+
+    /// <summary>
+    /// Behaves the way the real policy does once its retries are exhausted:
+    /// no value, a failure message, and a typed failure. Every other test here
+    /// uses a passthrough policy that always succeeds, which is exactly why an
+    /// unreachable indexer could crash the whole search unnoticed.
+    /// </summary>
+    private sealed class ExhaustedResiliencePolicy : IIntegrationResiliencePolicy
+    {
+        public Task<IntegrationResilienceResult<T>> ExecuteAsync<T>(
+            IntegrationResilienceRequest request,
+            Func<CancellationToken, Task<T>> operation,
+            Func<T, IntegrationResilienceOutcome> classifyResult,
+            CancellationToken cancellationToken)
+            => Task.FromResult(new IntegrationResilienceResult<T>(
+                default!,
+                CircuitOpen: false,
+                CircuitOpened: true,
+                Attempts: 3,
+                FailureMessage: "The request was canceled due to the configured HttpClient.Timeout of 12 seconds elapsing.",
+                RetryAfterUtc: null,
+                Failure: IntegrationFailureFactory.FromLegacy(
+                    "indexer",
+                    "unreachable-indexer",
+                    "Unreachable indexer",
+                    "search",
+                    "unreachable",
+                    "The indexer did not answer.")));
+
+        public bool IsCircuitOpen(string key, out DateTimeOffset retryAfterUtc)
+        {
+            retryAfterUtc = DateTimeOffset.MinValue;
+            return false;
         }
     }
 

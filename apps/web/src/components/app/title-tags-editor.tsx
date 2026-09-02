@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import { fetchJson } from "../../lib/api";
 import type { TagItem } from "../../lib/api";
 import { authedFetch } from "../../lib/use-auth";
+import { cn } from "../../lib/utils";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 
@@ -94,7 +95,15 @@ export function TitleTagsEditor({
   }
 
   return (
-    <div className="mt-3 flex flex-wrap items-center gap-2 rounded-xl border border-white/10 bg-card/55 px-3 py-2 backdrop-blur-sm">
+    <div
+      className={cn(
+        "mt-3 flex flex-wrap items-center gap-2 rounded-xl border border-white/10 bg-card/55 px-3 py-2 backdrop-blur-sm",
+        // Only the editor needs the full row: it holds a text field that wants
+        // room. Reading a title's tags - most often none at all - was drawing a
+        // full-width bar to hold three short words and a button.
+        editing ? "w-full" : "w-fit max-w-full",
+      )}
+    >
       <span className="flex items-center gap-1.5 text-[length:var(--type-micro)] font-bold uppercase tracking-[0.14em] text-muted-foreground">
         <Tag className="h-3.5 w-3.5" aria-hidden="true" />
         Tags
