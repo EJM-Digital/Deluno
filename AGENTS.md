@@ -61,6 +61,13 @@ git config core.hooksPath .githooks
 
 ## Mechanical Guardrails
 
+- **Never write `close`, `fixes` or `resolves` next to an issue reference in a
+  PR body or commit message unless you mean it.** GitHub's parser does not read
+  negation: "This does not close #354" closes #354, and a linked or full-URL
+  reference counts too. Write "Refs #354" and say the scope in a separate
+  sentence — "#354 stays open for X". Two issues were closed this way in one
+  session, both in PRs that said in the same paragraph they were not finishing
+  the issue.
 - Keep docs discoverable from this map or `docs/README.md`.
 - Add or update tests when changing normalized contracts, status strings, routing, import behavior, or persisted schemas.
 - Prefer shared helpers for status, capability, and routing invariants over duplicated string checks.
