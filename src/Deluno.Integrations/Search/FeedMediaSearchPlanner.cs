@@ -504,7 +504,16 @@ public sealed class FeedMediaSearchPlanner(
                 result.RetryAfterUtc);
         }
 
-        var resolved = result.Value is { } value
+        // IntegrationResilienceResult<T>.Value is declared `T?`, and
+        // IndexerSearchOutcome is a struct, so `is { }` is a null test that a
+        // value type can never fail: on an exhausted retry, an open circuit or
+        // a refused connection the policy hands back default(T), whose
+        // Candidates list is null. Every indexer failure therefore threw a
+        // NullReferenceException out of WithTelemetry and returned HTTP 500,
+        // instead of being reported as the typed failure this method has
+        // already built. Ask whether the operation succeeded, which is a
+        // question a value type can answer.
+        var resolved = result.Succeeded && result.Value is { Candidates: not null } value
             ? value
             : new IndexerSearchOutcome(
                 [],

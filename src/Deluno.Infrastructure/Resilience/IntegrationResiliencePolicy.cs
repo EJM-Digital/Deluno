@@ -33,7 +33,19 @@ public sealed record IntegrationResilienceResult<T>(
     int Attempts,
     string? FailureMessage,
     DateTimeOffset? RetryAfterUtc,
-    IntegrationFailure? Failure = null);
+    IntegrationFailure? Failure = null)
+{
+    /// <summary>
+    /// Whether the operation actually produced <see cref="Value"/>.
+    ///
+    /// Callers used to decide this by null-testing <see cref="Value"/>, which
+    /// is correct for a reference type and silently wrong for a value type:
+    /// `T?` on an unconstrained generic is plain `T` for a struct, so the test
+    /// always passes and the caller reads a `default(T)` as if it were a real
+    /// answer. Ask this instead - it means the same thing for both.
+    /// </summary>
+    public bool Succeeded => FailureMessage is null && !CircuitOpen && !CircuitOpened;
+}
 
 public enum IntegrationResilienceOutcome
 {
