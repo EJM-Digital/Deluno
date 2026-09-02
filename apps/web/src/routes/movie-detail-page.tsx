@@ -34,6 +34,7 @@ import { TitleTagsEditor } from "../components/app/title-tags-editor";
 import { authedFetch } from "../lib/use-auth";
 import { cn } from "../lib/utils";
 import { describeSearchReason, formatSearchFailureNotice } from "../lib/search-reasons";
+import { candidateLabel, candidateTone, canWinSearch, isTypedCandidate, likesCandidate } from "../lib/release-candidate-status";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { Card, CardContent } from "../components/ui/card";
@@ -827,7 +828,7 @@ export function MovieDetailPage() {
                   >
                     <ListNameCell
                       name={candidate.releaseName}
-                      sub={`${index === 0 && candidate.decisionStatus !== "rejected" ? "Best match · " : ""}${candidate.indexerName}`}
+                      sub={`${index === 0 && canWinSearch(candidate) ? "Best match · " : ""}${candidate.indexerName}`}
                     />
                     <ListCell primary={candidate.quality} mobile />
                     <ListCell primary={candidate.sizeBytes ? formatBytes(candidate.sizeBytes) : "—"} />
@@ -1097,7 +1098,7 @@ export function MovieDetailPage() {
             </DrawerSection>
 
             {openCandidate.decisionReasons?.length ? (
-              <DrawerSection title="Why Deluno likes it">
+              <DrawerSection title={likesCandidate(openCandidate) ? "Why Deluno likes it" : "How Deluno reached this"}>
                 <ul className="grid gap-1">
                   {openCandidate.decisionReasons.slice(0, 6).map((reason) => (
                     <li key={reason} className="text-[length:var(--type-body-sm)] text-muted-foreground">
@@ -1272,38 +1273,6 @@ interface SearchPlanCandidate {
   estimatedBitrateMbps?: number | null;
   preferenceEvaluation?: unknown;
   preferenceComparison?: unknown;
-}
-
-function candidateLabel(candidate: SearchPlanCandidate) {
-  if (isTypedCandidate(candidate)) {
-    switch (candidate.decisionStatus?.toLowerCase()) {
-      case "rejected": return "Rejected";
-      case "held": return "Needs review";
-      case "equivalent": return "Equivalent";
-      case "preferred": return "Best match";
-      case "acceptable": return "Acceptable";
-      case "eligible": return "Eligible";
-      default: return "Needs review";
-    }
-  }
-  if (candidate.decisionStatus === "rejected") return "Rejected";
-  if (["preferred", "eligible"].includes(candidate.decisionStatus || "") && candidate.meetsCutoff) return "Recommended";
-  return "Needs review";
-}
-
-function candidateTone(candidate: SearchPlanCandidate): "ok" | "warn" | "bad" {
-  if (isTypedCandidate(candidate)) {
-    if (candidate.decisionStatus?.toLowerCase() === "rejected") return "bad";
-    return ["preferred", "acceptable"].includes(candidate.decisionStatus?.toLowerCase() ?? "") ? "ok" : "warn";
-  }
-  if (candidate.decisionStatus === "rejected") return "bad";
-  if (["preferred", "eligible"].includes(candidate.decisionStatus || "") && candidate.meetsCutoff) return "ok";
-  return "warn";
-}
-
-function isTypedCandidate(candidate: SearchPlanCandidate) {
-  return (candidate.preferenceEvaluation !== null && candidate.preferenceEvaluation !== undefined)
-    || (candidate.preferenceComparison !== null && candidate.preferenceComparison !== undefined);
 }
 
 function parseSearchCandidates(detailsJson: string | null): SearchPlanCandidate[] {

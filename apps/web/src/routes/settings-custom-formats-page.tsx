@@ -1129,7 +1129,7 @@ export function SettingsCustomFormatsPage() {
           <DrawerSection title="Typed plan preview" aside={typedPreview.comparison ? typedComparisonLabel(typedPreview.comparison.status) : typedStatusLabel(typedPreview.candidateEvaluation.status)}>
             <div className="grid gap-3">
               <div className="flex flex-wrap items-center gap-2">
-                <Chip tone={typedPreview.comparison?.status === "rejected" ? "bad" : typedPreview.comparison?.status === "needsReview" ? "warn" : typedPreview.candidateEvaluation.status === "meetsPlan" ? "ok" : "info"}>
+                <Chip tone={typedPreview.comparison?.status === "rejected" ? "bad" : typedPreview.comparison?.status === "needsReview" ? "warn" : typedPreview.comparison?.status === "currentBetter" || typedPreview.comparison?.status === "equivalent" ? "info" : typedPreview.candidateEvaluation.status === "meetsPlan" ? "ok" : "info"}>
                   {typedPreview.comparison ? typedComparisonLabel(typedPreview.comparison.status) : typedStatusLabel(typedPreview.candidateEvaluation.status)}
                 </Chip>
                 <span className="text-[length:var(--type-caption)] text-muted-foreground">Plan {typedPreview.planVersion}</span>
@@ -1182,7 +1182,9 @@ function typedStatusLabel(value: string) {
 }
 
 function typedComparisonLabel(value: string) {
-  return value === "upgrade" ? "Upgrade" : value === "rejected" ? "Rejected" : value === "needsReview" ? "Needs review" : value === "equivalent" ? "Equivalent" : value === "bestMatchNow" ? "Best match now" : "Acceptable";
+  // "currentBetter" is not a rejection: the release passed every hard gate
+  // and the installed file simply wins, so it must not read as a violation.
+  return value === "upgrade" ? "Upgrade" : value === "rejected" ? "Rejected" : value === "needsReview" ? "Needs review" : value === "equivalent" ? "Equivalent" : value === "currentBetter" ? "Your file is better" : value === "bestMatchNow" ? "Best match now" : "Acceptable";
 }
 
 function humanizeTypedName(value: string) {

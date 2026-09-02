@@ -183,6 +183,8 @@ export type PreferenceCandidateStatus =
   | "acceptable"
   | "bestMatchNow"
   | "equivalent"
+  /** Passed every hard gate, but the installed file wins. Not a rejection. */
+  | "currentBetter"
   | "upgrade";
 export type PreferenceEvidenceModel = "openWorld" | "closedWorld";
 

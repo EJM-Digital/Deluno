@@ -48,9 +48,12 @@ npm run test:web
 ```
 
 Changes reach `main` through a pull request. Wait for every required GitHub
-check to pass, then manually squash-merge; `main` is not branch-protected on
-the current private free-plan repository, so never use auto-merge. A local
-pre-push hook is available; enable it once with:
+check to pass, then manually squash-merge; never use auto-merge. `main` **is**
+branch-protected and asks for one approving review, so a solo squash-merge
+needs `gh pr merge --squash --admin` (admin enforcement is off for exactly
+this). This paragraph used to say the branch was unprotected, which was true
+once and stopped being true without anyone noticing. A local pre-push hook is
+available; enable it once with:
 
 ```powershell
 git config core.hooksPath .githooks

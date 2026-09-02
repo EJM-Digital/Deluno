@@ -291,9 +291,55 @@ public class AcquisitionDecisionPipelineTests
         Assert.Equal(suppliedPlan.PlanHash, result.Candidate.PreferenceEvaluation?.PlanHash);
     }
 
+    /// <summary>
+    /// A release that loses to the installed file is not a rejected release.
+    /// Deluno used to report both outcomes as "rejected", which told the owner
+    /// a rule had blocked a release that no rule had touched.
+    /// </summary>
+    [Fact]
+    public void EvaluateSelectedRelease_reports_a_worse_release_as_current_better_not_rejected()
+    {
+        var (plan, snapshot) = CurrentFileSnapshot(
+            "Movie.2023.WEB.2160p-GROUP",
+            "WEB 2160p",
+            filePath: "/library/Movie.2023.WEB.2160p-GROUP.mkv");
+        var request = BuildRequest(
+            releaseName: "Movie.2023.WEB.1080p-GROUP",
+            currentQuality: "WEB 2160p",
+            targetQuality: "WEB 2160p") with
+        {
+            PreferencePlan = plan,
+            CurrentPreferenceEvaluation = snapshot,
+            CurrentFilePresent = true,
+            CurrentReleaseName = snapshot.FilePath
+        };
+
+        var result = _pipeline.EvaluateSelectedRelease(request);
+
+        Assert.Equal(
+            PreferenceCandidateStatus.CurrentBetter,
+            result.Candidate.PreferenceComparison?.Status);
+        Assert.Equal(ReleaseDecisionStatuses.CurrentBetter, result.Candidate.DecisionStatus);
+        Assert.False(result.CanDispatch);
+        Assert.True(result.RequiresOverride);
+        Assert.Contains("installed file is better", result.Candidate.Summary, StringComparison.OrdinalIgnoreCase);
+
+        // The useful half of the old behaviour survives: the owner is still
+        // told plainly that this would be a downgrade and how to take it.
+        Assert.Contains(
+            result.Candidate.RiskFlags ?? [],
+            risk => risk.Contains("Downgrade blocked", StringComparison.OrdinalIgnoreCase));
+
+        // The word that used to appear here, and the sentence it produced,
+        // both named a rule that never fired.
+        Assert.DoesNotContain("rejected", result.Candidate.Summary, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("current-better", result.Reason, StringComparison.Ordinal);
+    }
+
     private static (ReleasePreferencePlan Plan, PreferenceEvaluationSnapshot Snapshot) CurrentFileSnapshot(
         string releaseName,
-        string quality)
+        string quality,
+        string filePath = "/library/Movie.2023.WEB.1080p-GROUP.mkv")
     {
         var plan = ReleasePreferencePlanFactory.CreateQualityPlan("movies", quality);
         var facts = ReleasePreferenceFactFactory.FromReleaseName(plan, releaseName, quality);
@@ -301,7 +347,7 @@ public class AcquisitionDecisionPipelineTests
             MediaId: "movie-1",
             LibraryId: "library-1",
             FileIdentity: "preference-file/v1:movie-1",
-            FilePath: "/library/Movie.2023.WEB.1080p-GROUP.mkv",
+            FilePath: filePath,
             FileSizeBytes: 8_000_000_000L,
             PlanId: plan.Id,
             PlanVersion: plan.Version,

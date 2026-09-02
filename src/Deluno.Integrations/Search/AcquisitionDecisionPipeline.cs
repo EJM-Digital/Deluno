@@ -219,7 +219,7 @@ public sealed class AcquisitionDecisionPipeline : IAcquisitionDecisionPipeline
                 ? candidate.Summary
                 : request.ForceOverride
                     ? $"User override accepted {candidate.ReleaseName}: {request.OverrideReason ?? "No override reason supplied."}"
-                    : $"Release requires force override because Deluno classified it as {candidate.DecisionStatus}.";
+                    : $"Release requires force override because Deluno classified it as {ReleaseDecisionStatuses.Describe(candidate.DecisionStatus)}.";
 
         return new AcquisitionSelectedReleaseDecision(
             Candidate: candidate,
@@ -231,7 +231,7 @@ public sealed class AcquisitionDecisionPipeline : IAcquisitionDecisionPipeline
     }
 
     public static bool IsSafeForAutomaticDispatch(MediaSearchCandidate candidate)
-        => string.Equals(candidate.DecisionStatus, "preferred", StringComparison.OrdinalIgnoreCase) &&
+        => string.Equals(candidate.DecisionStatus, ReleaseDecisionStatuses.Preferred, StringComparison.OrdinalIgnoreCase) &&
            candidate.MeetsCutoff &&
            candidate.QualityDelta >= 0;
 
@@ -244,7 +244,7 @@ public sealed class AcquisitionDecisionPipeline : IAcquisitionDecisionPipeline
 
         if (!IsSafeForAutomaticDispatch(plan.BestCandidate))
         {
-            return $"{plan.Summary} Held for manual review because the best candidate is {plan.BestCandidate.DecisionStatus}.";
+            return $"{plan.Summary} Held for manual review because the best candidate is {ReleaseDecisionStatuses.Describe(plan.BestCandidate.DecisionStatus)}.";
         }
 
         return $"{plan.Summary} Ready to send to {configuredClients} download client{(configuredClients == 1 ? "" : "s")}.";

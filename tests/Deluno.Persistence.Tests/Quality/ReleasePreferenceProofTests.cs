@@ -90,7 +90,8 @@ public sealed class ReleasePreferenceProofTests
 
         Assert.Equal(PreferenceCandidateStatus.Equivalent, ReleasePreferenceEvaluator.Compare(plan, atmos, atmos).Status);
         Assert.Equal(PreferenceCandidateStatus.Upgrade, ReleasePreferenceEvaluator.Compare(plan, dts, truehd).Status);
-        Assert.Equal(PreferenceCandidateStatus.Rejected, ReleasePreferenceEvaluator.Compare(plan, truehd, dts).Status);
+        // Worse than the installed file, but nothing rejected it.
+        Assert.Equal(PreferenceCandidateStatus.CurrentBetter, ReleasePreferenceEvaluator.Compare(plan, truehd, dts).Status);
         Assert.Equal(PreferenceCandidateStatus.Upgrade, ReleasePreferenceEvaluator.Compare(plan, dts, atmos).Status);
     }
 
@@ -165,6 +166,14 @@ public sealed class ReleasePreferenceProofTests
             plan,
             MatrixFacts("audio.format.truehd", "video.dynamic-range.hdr10"),
             MatrixFacts("audio.format.truehd-atmos", "video.dynamic-range.hdr10"));
+        var dtsX = ReleasePreferenceEvaluator.Compare(
+            plan,
+            current,
+            MatrixFacts("audio.format.dtsx", "video.dynamic-range.hdr10"));
+        var trueHdAtmos = ReleasePreferenceEvaluator.Compare(
+            plan,
+            current,
+            MatrixFacts("audio.format.truehd-atmos", "video.dynamic-range.hdr10"));
         var unknownAudio = ReleasePreferenceEvaluator.Compare(
             plan,
             current,
@@ -177,11 +186,162 @@ public sealed class ReleasePreferenceProofTests
         Assert.Equal(PreferenceCandidateStatus.Equivalent, same.Status);
         Assert.Equal(PreferenceCandidateStatus.Upgrade, trueHd.Status);
         Assert.Equal("audio", trueHd.PersistentImprovementFamilyId);
-        Assert.Equal(PreferenceCandidateStatus.Rejected, dts.Status);
+
+        // Section 11 requires "current is better", which is not the same
+        // outcome as "rejected". DTS passes every hard gate in this plan;
+        // only the installed file being better stops it. Reporting a gate
+        // failure here would name a rule that never fired.
+        Assert.Equal(PreferenceCandidateStatus.CurrentBetter, dts.Status);
+        Assert.True(dts.Regressed);
+        Assert.Equal("audio", dts.DecisiveFamilyId);
+        // Names the family that decided it, without claiming a gate failed
+        // and without repeating the headline the summary already carries.
+        Assert.Contains(dts.Reasons, reason =>
+            reason.Contains("Audio format", StringComparison.OrdinalIgnoreCase)
+            && reason.Contains("ranks lower", StringComparison.OrdinalIgnoreCase));
+        Assert.DoesNotContain(dts.Reasons, reason =>
+            reason.Contains("hard safety", StringComparison.OrdinalIgnoreCase));
+
+        // Both rows that improve audio past the explicit target are upgrades
+        // from a below-target installed file, and both name the audio family.
+        Assert.Equal(PreferenceCandidateStatus.Upgrade, dtsX.Status);
+        Assert.Equal("audio", dtsX.PersistentImprovementFamilyId);
+        Assert.Equal(PreferenceCandidateStatus.Upgrade, trueHdAtmos.Status);
+        Assert.Equal("audio", trueHdAtmos.PersistentImprovementFamilyId);
+
         Assert.Equal(PreferenceCandidateStatus.Equivalent, aboveTarget.Status);
         Assert.False(aboveTarget.PersistentImprovement);
         Assert.Equal(PreferenceCandidateStatus.NeedsReview, unknownAudio.Status);
         Assert.Equal(PreferenceCandidateStatus.Rejected, dolbyVisionWithoutFallback.Status);
+    }
+
+    /// <summary>
+    /// Section 6: the first differing dimension decides. A lower-priority
+    /// family whose evidence is missing therefore cannot reopen a question a
+    /// higher-priority family has already answered, in either direction.
+    ///
+    /// This is the ordinary case on a real indexer, not an edge case:
+    /// release.revision is open-world, so almost every ordinary release name
+    /// leaves it unknown. Without this rule, every worse-quality release comes
+    /// back as "needs review" and sends the owner to look at a repack token
+    /// that could not have changed the answer.
+    /// </summary>
+    [Theory]
+    [InlineData("movies")]
+    [InlineData("tv")]
+    public void An_unknown_lower_priority_family_cannot_reopen_a_decided_comparison(string mediaType)
+    {
+        var plan = AudioAndHdrPlan(mediaType);
+
+        // Audio is the higher-priority family and already decides against the
+        // candidate; HDR is unknown for the candidate and cannot rescue it.
+        var worseWithUnknownTail = ReleasePreferenceEvaluator.Compare(
+            plan,
+            MatrixFacts("audio.format.truehd", "video.dynamic-range.hdr10"),
+            [
+                new PreferenceFact("audio.format.dts", PreferenceFactState.Present),
+                new PreferenceFact("audio.format.truehd-atmos", PreferenceFactState.Absent),
+                new PreferenceFact("audio.format.dtsx", PreferenceFactState.Absent),
+                new PreferenceFact("audio.format.truehd", PreferenceFactState.Absent),
+                new PreferenceFact("audio.format.dts-hd-ma", PreferenceFactState.Absent),
+                new PreferenceFact("video.dynamic-range.hdr10", PreferenceFactState.Present),
+                new PreferenceFact("video.dynamic-range.dolby-vision-fallback", PreferenceFactState.Unknown),
+                new PreferenceFact("video.dynamic-range.sdr", PreferenceFactState.Absent)
+            ]);
+
+        Assert.Equal(PreferenceCandidateStatus.CurrentBetter, worseWithUnknownTail.Status);
+        Assert.Equal("audio", worseWithUnknownTail.DecisiveFamilyId);
+
+        // The boundary is unchanged where the unknown really could decide:
+        // with no higher-priority difference, incomplete evidence is a review.
+        var undecidedWithUnknownTail = ReleasePreferenceEvaluator.Compare(
+            plan,
+            MatrixFacts("audio.format.truehd", "video.dynamic-range.hdr10"),
+            [
+                new PreferenceFact("audio.format.truehd", PreferenceFactState.Present),
+                new PreferenceFact("audio.format.truehd-atmos", PreferenceFactState.Absent),
+                new PreferenceFact("audio.format.dtsx", PreferenceFactState.Absent),
+                new PreferenceFact("audio.format.dts-hd-ma", PreferenceFactState.Absent),
+                new PreferenceFact("audio.format.dts", PreferenceFactState.Absent),
+                new PreferenceFact("video.dynamic-range.hdr10", PreferenceFactState.Unknown),
+                new PreferenceFact("video.dynamic-range.dolby-vision-fallback", PreferenceFactState.Unknown),
+                new PreferenceFact("video.dynamic-range.sdr", PreferenceFactState.Unknown)
+            ]);
+
+        Assert.Equal(PreferenceCandidateStatus.NeedsReview, undecidedWithUnknownTail.Status);
+    }
+
+    /// <summary>
+    /// Section 11 closing rule: when the owner says either TrueHD or DTS:X is
+    /// fine, those alternatives share one level. Moving between them is
+    /// lateral, so it must never become replacement work in either direction.
+    /// </summary>
+    [Theory]
+    [InlineData("movies")]
+    [InlineData("tv")]
+    public void Equal_target_alternatives_are_lateral_and_never_replace_each_other(string mediaType)
+    {
+        var plan = EqualTopLevelAudioPlan(mediaType);
+        var trueHd = MatrixFacts("audio.format.truehd", "video.dynamic-range.hdr10");
+        var dtsX = MatrixFacts("audio.format.dtsx", "video.dynamic-range.hdr10");
+
+        var forward = ReleasePreferenceEvaluator.Compare(plan, trueHd, dtsX);
+        var reverse = ReleasePreferenceEvaluator.Compare(plan, dtsX, trueHd);
+
+        Assert.Equal(PreferenceCandidateStatus.Equivalent, forward.Status);
+        Assert.Equal(PreferenceCandidateStatus.Equivalent, reverse.Status);
+        Assert.False(forward.PersistentImprovement);
+        Assert.False(reverse.PersistentImprovement);
+        Assert.Equal(
+            0,
+            ReleasePreferenceEvaluator.CompareForSelection(
+                plan,
+                ReleasePreferenceEvaluator.Evaluate(plan, trueHd),
+                ReleasePreferenceEvaluator.Evaluate(plan, dtsX)));
+    }
+
+    /// <summary>
+    /// Section 12 canonical "best compatible everywhere" device group. The two
+    /// rows that were never fixtures are the ones that decide whether Dolby
+    /// Vision is safe: a proven HDR10 fallback plays on both televisions and
+    /// is preferred, and an unproven fallback is never automatic.
+    /// </summary>
+    [Theory]
+    [InlineData("movies")]
+    [InlineData("tv")]
+    public void Compatible_everywhere_prefers_proven_fallback_and_reviews_an_unproven_one(string mediaType)
+    {
+        var plan = AudioAndHdrPlan(mediaType);
+        var hdr10 = MatrixFacts("audio.format.truehd", "video.dynamic-range.hdr10");
+        var dolbyVisionWithFallback = MatrixFacts(
+            "audio.format.truehd",
+            "video.dynamic-range.dolby-vision-fallback");
+
+        var hdr10Evaluation = ReleasePreferenceEvaluator.Evaluate(plan, hdr10);
+        var fallbackEvaluation = ReleasePreferenceEvaluator.Evaluate(plan, dolbyVisionWithFallback);
+
+        Assert.True(hdr10Evaluation.HardGatesPassed);
+        Assert.True(fallbackEvaluation.HardGatesPassed);
+
+        // Compatible on both televisions, and the HDR family order puts a
+        // proven Dolby Vision fallback above plain HDR10.
+        Assert.True(ReleasePreferenceEvaluator.CompareForSelection(
+            plan,
+            fallbackEvaluation,
+            hdr10Evaluation) < 0);
+
+        PreferenceFact[] unprovenFallbackFacts = [
+            new PreferenceFact("audio.format.truehd", PreferenceFactState.Present),
+            new PreferenceFact("video.dynamic-range.dolby-vision-fallback", PreferenceFactState.Unknown),
+            new PreferenceFact("video.dynamic-range.hdr10", PreferenceFactState.Unknown)
+        ];
+        var unprovenFallback = ReleasePreferenceEvaluator.Evaluate(plan, unprovenFallbackFacts);
+
+        Assert.Equal(PreferenceEvaluationStatus.NeedsReview, unprovenFallback.Status);
+        Assert.False(unprovenFallback.HardGatesPassed);
+        Assert.Equal(
+            PreferenceCandidateStatus.NeedsReview,
+            ReleasePreferenceEvaluator.Compare(plan, hdr10, unprovenFallbackFacts).Status);
     }
 
     [Theory]
@@ -593,6 +753,35 @@ public sealed class ReleasePreferenceProofTests
                 new PreferenceRelationship("audio.format.dtsx", "audio.format.dts-hd-ma", PreferenceRelationshipKind.CoreOf),
                 new PreferenceRelationship("video.dynamic-range.dolby-vision-fallback", "video.dynamic-range.hdr10", PreferenceRelationshipKind.CarriedBy)]);
 
+    /// <summary>
+    /// The same canonical plan, but with TrueHD and DTS:X occupying one equal
+    /// top level, which is how "either is fine" is represented.
+    /// </summary>
+    private static ReleasePreferencePlan EqualTopLevelAudioPlan(string mediaType)
+    {
+        var plan = AudioAndHdrPlan(mediaType);
+        return plan with
+        {
+            Id = $"proof/{mediaType}/audio-hdr-equal",
+            Families = [
+                plan.Families[0] with
+                {
+                    Levels = [
+                        new PreferenceFamilyLevel("truehd-atmos", 0, ["audio.format.truehd-atmos"]),
+                        new PreferenceFamilyLevel(
+                            "truehd-or-dtsx",
+                            1,
+                            ["audio.format.truehd", "audio.format.dtsx"]),
+                        new PreferenceFamilyLevel("dts-hd-ma", 2, ["audio.format.dts-hd-ma"]),
+                        new PreferenceFamilyLevel("dts", 3, ["audio.format.dts"])
+                    ],
+                    TargetLevelId = "truehd-or-dtsx"
+                },
+                plan.Families[1]
+            ]
+        };
+    }
+
     private static IReadOnlyList<PreferenceFact> MatrixFacts(string? audio, string? hdr)
     {
         var facts = new List<PreferenceFact>();
@@ -630,8 +819,14 @@ public sealed class ReleasePreferenceProofTests
             {
                 facts.Add(new PreferenceFact(trait, PreferenceFactState.Present));
             }
-            else if (hdr is not null)
+            else if (hdr is not null
+                && !(string.Equals(hdr, "video.dynamic-range.dolby-vision-fallback", StringComparison.OrdinalIgnoreCase)
+                    && string.Equals(trait, "video.dynamic-range.hdr10", StringComparison.OrdinalIgnoreCase)))
             {
+                // A proven Dolby Vision fallback carries HDR10. Asserting
+                // HDR10 absent alongside it is contradictory evidence, not a
+                // stricter fixture; let the relationship normalizer establish
+                // the carried trait exactly as it does for audio.
                 facts.Add(new PreferenceFact(trait, PreferenceFactState.Absent));
             }
         }
