@@ -234,6 +234,19 @@ if ($agents.ExitCode -eq 0) {
     Write-Fail "agent readiness"
 }
 
+# The HEAD commit message is what gets squashed onto main, and GitHub reads a
+# closing verb next to an issue reference as an instruction - without reading
+# negation, and without caring that you are quoting. Three issues were closed
+# by accident in one day here, twice after the rule was written into AGENTS.md.
+# A note in a document did not stop it; this does.
+$closingKeywords = Invoke-LoggedCommand -FilePath $powerShellPath -Arguments @("-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "scripts/check-issue-closing-keywords.ps1")
+if ($closingKeywords.ExitCode -eq 0) {
+    Write-Ok "commit message closes no issue by accident"
+} else {
+    if ($closingKeywords.Output) { Write-Host $closingKeywords.Output }
+    Write-Fail "commit message closes no issue by accident"
+}
+
 Write-Host ""
 Write-Host "--------------------------------------"
 Write-Host "  Passed: $passCount  Warned: $warnCount  Failed: $failCount"
