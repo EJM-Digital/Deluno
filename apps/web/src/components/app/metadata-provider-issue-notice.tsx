@@ -59,16 +59,29 @@ export function MetadataProviderIssueNotice({
         </div>
         <div className="flex shrink-0 flex-wrap gap-2">
           <Button type="button" variant="ghost" onClick={onRetry}>
-            <RefreshCw className="h-4 w-4" />
+            <RefreshCw className="h-4 w-4" aria-hidden="true" />
             Try again
           </Button>
           <Button type="button" variant="outline" onClick={onFindAnother}>Find another match</Button>
-          <Button type="button" onClick={() => void acknowledge()} disabled={isAcknowledging}>
-            {isAcknowledging ? <LoaderCircle className="h-4 w-4 animate-spin" /> : null}
+          <Button
+            type="button"
+            onClick={() => void acknowledge()}
+            disabled={isAcknowledging}
+            aria-busy={isAcknowledging}
+          >
+            {isAcknowledging ? <LoaderCircle className="h-4 w-4 animate-spin" aria-hidden="true" /> : null}
             Keep this {subjectLabel}
           </Button>
         </div>
       </CardContent>
+      {/*
+        The spinner is the only feedback this action gives, and a spinner is
+        nothing at all to a screen reader: the button simply went quiet and
+        stopped responding. Say what is happening.
+      */}
+      <p role="status" aria-live="polite" className="sr-only">
+        {isAcknowledging ? `Keeping this ${subjectLabel}.` : ""}
+      </p>
     </Card>
   );
 }
