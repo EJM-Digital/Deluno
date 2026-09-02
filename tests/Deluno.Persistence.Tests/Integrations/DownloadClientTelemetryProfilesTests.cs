@@ -263,6 +263,55 @@ public sealed class DownloadClientTelemetryProfilesTests
         Assert.Equal(expected, status);
     }
 
+    /// <summary>
+    /// A client that reports an error is describing the data on disk, and that
+    /// outranks the progress figure. Completion used to be tested first, so a
+    /// torrent sitting at 100% in an error state was called ImportReady and
+    /// handed to the import pipeline as though the client were happy with it.
+    ///
+    /// Deluge and uTorrent both normalise through the shared text path and
+    /// neither supplies an error code, so this text is the only signal there
+    /// is - which is exactly why the thin coverage on those two mattered.
+    /// </summary>
+    [Theory]
+    [InlineData("deluge", "Error")]
+    [InlineData("deluge", "error")]
+    [InlineData("utorrent", "Error")]
+    [InlineData("utorrent", "Stalled")]
+    [InlineData("deluge", "Checking failed")]
+    public void A_completed_download_the_client_calls_errored_is_not_import_ready(
+        string protocol,
+        string nativeStatus)
+    {
+        Assert.True(Registry().TryGet(protocol, out var client));
+
+        Assert.Equal(
+            DownloadQueueStatuses.Stalled,
+            client.NormalizeStatus(nativeStatus, 100, null, null));
+
+        // And the same at part-progress, so the fix is about the error winning
+        // rather than about the number.
+        Assert.Equal(
+            DownloadQueueStatuses.Stalled,
+            client.NormalizeStatus(nativeStatus, 42, null, null));
+    }
+
+    /// <summary>
+    /// The states that legitimately mean "ready" must keep meaning it.
+    /// </summary>
+    [Theory]
+    [InlineData("deluge", "Seeding")]
+    [InlineData("deluge", "Downloading")]
+    [InlineData("utorrent", "Seeding")]
+    public void A_healthy_completed_download_is_still_import_ready(string protocol, string nativeStatus)
+    {
+        Assert.True(Registry().TryGet(protocol, out var client));
+
+        Assert.Equal(
+            DownloadQueueStatuses.ImportReady,
+            client.NormalizeStatus(nativeStatus, 100, null, null));
+    }
+
     private static IDownloadClientRegistry Registry()
         => new DownloadClientRegistry(
         [
