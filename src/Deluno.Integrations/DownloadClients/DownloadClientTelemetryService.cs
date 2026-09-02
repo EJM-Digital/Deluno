@@ -170,9 +170,12 @@ public sealed class DownloadClientTelemetryService(
         var result = await resiliencePolicy.ExecuteAsync(
             new IntegrationResilienceRequest(
                 DownloadClientHelpers.BuildResilienceKey(client, "action"),
-                "download-client.action",
+                "action",
                 MaxAttempts: 1,
-                FailureThreshold: 3),
+                FailureThreshold: 3,
+                ServiceType: "download-client",
+                ServiceId: client.Id,
+                ServiceName: client.Name),
             token => ExecuteActionCoreAsync(client, action, request.QueueItemId, token),
             value => value.Succeeded
                 ? IntegrationResilienceOutcome.Success
@@ -229,8 +232,11 @@ public sealed class DownloadClientTelemetryService(
         var result = await resiliencePolicy.ExecuteAsync(
             new IntegrationResilienceRequest(
                 DownloadClientHelpers.BuildResilienceKey(client, "telemetry"),
-                "download-client.telemetry",
-                FailureThreshold: 2),
+                "telemetry",
+                FailureThreshold: 2,
+                ServiceType: "download-client",
+                ServiceId: client.Id,
+                ServiceName: client.Name),
             token => GetLiveSnapshotCoreAsync(client, capturedUtc, token),
             value => value is null
                 ? IntegrationResilienceOutcome.NonRetryableFailure

@@ -401,8 +401,11 @@ public sealed class FeedMediaSearchPlanner(
         var result = await resiliencePolicy.ExecuteAsync(
             new IntegrationResilienceRequest(
                 $"indexer:{indexer.Id}:{SanitizeAddress(indexer.BaseUrl)}",
-                "indexer.search",
-                FailureThreshold: 2),
+                "search",
+                FailureThreshold: 2,
+                ServiceType: "indexer",
+                ServiceId: indexer.Id,
+                ServiceName: indexer.Name),
             async token =>
             {
                 try

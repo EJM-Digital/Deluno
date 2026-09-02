@@ -24,7 +24,19 @@ public sealed record IntegrationResilienceRequest(
     int FailureThreshold = 3,
     TimeSpan? InitialDelay = null,
     TimeSpan? MaxDelay = null,
-    TimeSpan? BreakDuration = null);
+    TimeSpan? BreakDuration = null,
+    /// <summary>
+    /// What kind of thing this is - "indexer", "download-client", "metadata".
+    /// </summary>
+    string? ServiceType = null,
+    /// <summary>The id of the exact service, so a failure can link back to it.</summary>
+    string? ServiceId = null,
+    /// <summary>
+    /// The name the owner gave this service. Without it a failure can only
+    /// name the operation, and a person reading "indexer.search failed" is
+    /// not told which of their indexers to go and look at.
+    /// </summary>
+    string? ServiceName = null);
 
 public sealed record IntegrationResilienceResult<T>(
     T? Value,
@@ -82,12 +94,14 @@ public sealed class IntegrationResiliencePolicy(
         if (TryGetOpenCircuit(normalized.Key, out var retryAfterUtc))
         {
             var circuitFailure = IntegrationFailureFactory.CircuitOpen(
-                "integration",
-                normalized.Key,
-                normalized.Operation,
+                normalized.ServiceType ?? "integration",
+                normalized.ServiceId ?? normalized.Key,
+                normalized.ServiceName ?? normalized.Operation,
                 normalized.Operation,
                 retryAfterUtc,
-                $"{normalized.Operation} is temporarily disabled after repeated failures.");
+                // Summary is "{ServiceName} {Operation} failed: {Message}",
+                // so naming the service here says it twice.
+                "Deluno paused it after repeated failures.");
             return new IntegrationResilienceResult<T>(
                 Value: default,
                 CircuitOpen: true,
@@ -157,21 +171,29 @@ public sealed class IntegrationResiliencePolicy(
                 new KeyValuePair<string, object?>("operation", normalized.Operation));
         }
 
+        // A failure that cannot say which service it came from is not
+        // attributable, and the policy is the one place that knows a failure
+        // happened but not what it was talking to. Callers that name
+        // themselves get named back; the rest keep the old wording.
+        var serviceType = normalized.ServiceType ?? "integration";
+        var serviceId = normalized.ServiceId ?? normalized.Key;
+        var serviceName = normalized.ServiceName ?? normalized.Operation;
+
         var failureMessage = lastException?.Message;
         var failure = lastException is null
             ? IntegrationFailureFactory.FromLegacy(
-                "integration",
-                normalized.Key,
-                normalized.Operation,
+                serviceType,
+                serviceId,
+                serviceName,
                 normalized.Operation,
                 "connectivity",
                 "The integration operation did not complete successfully after the configured attempts.",
                 retryAfterUtc: openedUntil,
                 attempts: attemptsMade)
             : IntegrationFailureFactory.FromException(
-                "integration",
-                normalized.Key,
-                normalized.Operation,
+                serviceType,
+                serviceId,
+                serviceName,
                 normalized.Operation,
                 lastException,
                 retryScheduled: retryableFailure,
