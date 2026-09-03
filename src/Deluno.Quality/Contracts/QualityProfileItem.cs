@@ -15,4 +15,10 @@ public sealed record QualityProfileItem(
     bool PresetDrifted,
     DateTimeOffset CreatedUtc,
     DateTimeOffset UpdatedUtc,
-    ReleasePreferencePlanReference? ReleasePreferencePlan = null);
+    ReleasePreferencePlanReference? ReleasePreferencePlan = null,
+    /// <summary>
+    /// How big a file of each allowed tier should be, for this profile alone.
+    /// Empty means this profile has no size opinion - not that everything is
+    /// refused. See <c>ProfileSizeRule</c>.
+    /// </summary>
+    IReadOnlyList<ProfileSizeRule>? SizeRules = null);

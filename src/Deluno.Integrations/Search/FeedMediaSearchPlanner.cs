@@ -81,7 +81,8 @@ public sealed class FeedMediaSearchPlanner(
         int? sceneEpisodeNumber = null,
         PreferenceEvaluationSnapshot? currentPreferenceEvaluation = null,
         ReleasePreferencePlan? preferencePlan = null,
-        bool currentFilePresent = false)
+        bool currentFilePresent = false,
+        IReadOnlyList<ProfileSizeRule>? sizeRules = null)
     {
         var indexers = await connectionsRepository.ListIndexersAsync(cancellationToken);
         var normalizedSearchKind = AcquisitionSearchKinds.Normalize(searchKind);
@@ -161,7 +162,7 @@ public sealed class FeedMediaSearchPlanner(
                     customFormats, neverGrabPatterns, scoringMode, seasonNumber, episodeNumber, allowedQualities,
                      applicableProfiles, normalizedSearchKind, availableUtc, currentCustomFormatScore, currentReleaseName, upgradeUntilCutoff,
                      numberingScheme, absoluteNumber, airDate, sceneSeasonNumber, sceneEpisodeNumber,
-                     currentPreferenceEvaluation, preferencePlan, currentFilePresent, token);
+                     currentPreferenceEvaluation, preferencePlan, currentFilePresent, sizeRules, token);
             });
 
         await RecordQueryTelemetryAsync(searchResults, cancellationToken);
@@ -325,6 +326,7 @@ public sealed class FeedMediaSearchPlanner(
         PreferenceEvaluationSnapshot? currentPreferenceEvaluation,
         ReleasePreferencePlan preferencePlan,
         bool currentFilePresent,
+        IReadOnlyList<ProfileSizeRule>? sizeRules,
         CancellationToken cancellationToken)
     {
         var startedTimestamp = Stopwatch.GetTimestamp();
@@ -467,7 +469,8 @@ public sealed class FeedMediaSearchPlanner(
                         upgradeUntilCutoff,
                      currentPreferenceEvaluation,
                         preferencePlan,
-                        currentFilePresent);
+                        currentFilePresent,
+                        sizeRules: sizeRules);
                     return new IndexerSearchOutcome(
                         parsed.Candidates,
                         parsed.CandidatesTruncatedByIndexer,
@@ -675,7 +678,8 @@ public sealed class FeedMediaSearchPlanner(
         PreferenceEvaluationSnapshot? currentPreferenceEvaluation = null,
         ReleasePreferencePlan? preferencePlan = null,
         bool currentFilePresent = false,
-        int requestedLimit = IndexerResultLimit)
+        int requestedLimit = IndexerResultLimit,
+        IReadOnlyList<ProfileSizeRule>? sizeRules = null)
     {
         XNamespace torznab = "http://torznab.com/schemas/2015/feed";
         XNamespace newznab = "http://www.newznab.com/DTD/2010/feeds/attributes/";
@@ -735,6 +739,7 @@ public sealed class FeedMediaSearchPlanner(
                 neverGrabPatterns,
                 CurrentCustomFormatScore: currentCustomFormatScore,
                 AllowedQualities: allowedQualities,
+                SizeRules: sizeRules,
                 ReleaseProfiles: releaseProfiles,
                 IndexerProtocol: indexer.Protocol,
                 ReleaseAgeHours: releaseAgeHours,

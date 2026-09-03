@@ -57,7 +57,7 @@ export const QUALITY_STEPS: readonly QualityStep[] = [
     id: "size",
     number: 2,
     question: "How big should a file of that quality be?",
-    purpose: "The size range Deluno treats as sensible for each tier.",
+    purpose: "Your own size for each tier you accept. The band behind each slider is where files of that tier normally land.",
     categories: []
   },
   {

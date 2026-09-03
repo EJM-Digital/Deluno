@@ -271,7 +271,7 @@ public static partial class ReleaseDecisionEngine
         }
 
         var seederScore = ScoreSeeders(input.Seeders, risks, reasons);
-        var sizeScore = ScoreSize(input.SizeBytes, normalizedCandidate, qualityModel, risks, reasons, out var estimatedBitrate, out var sizeOutOfRange);
+        var sizeScore = ScoreSize(input.SizeBytes, normalizedCandidate, input.SizeRules, risks, reasons, out var estimatedBitrate, out var sizeOutOfRange);
         if (sizeOutOfRange)
         {
             hardReject = true;
@@ -543,7 +543,7 @@ public static partial class ReleaseDecisionEngine
     private static int ScoreSize(
         long? sizeBytes,
         string quality,
-        QualityModelSnapshot? qualityModel,
+        IReadOnlyList<ProfileSizeRule>? sizeRules,
         ICollection<string> risks,
         ICollection<string> reasons,
         out double? estimatedBitrate,
@@ -561,7 +561,7 @@ public static partial class ReleaseDecisionEngine
 
         var sizeGb = sizeBytes.Value / 1_073_741_824d;
         estimatedBitrate = Math.Round(sizeBytes.Value * 8d / (2.0 * 60 * 60) / 1_000_000, 1);
-        var (min, max) = ExpectedSizeRangeGb(quality, qualityModel);
+        var (min, max) = ExpectedSizeRangeGb(quality, sizeRules);
 
         // Size Rules is described in the UI as "the final check that rejects a
         // release as implausibly small or large", and a minimum in GB reads to a
@@ -591,21 +591,33 @@ public static partial class ReleaseDecisionEngine
         return 80;
     }
 
-    private static (double Min, double Max) ExpectedSizeRangeGb(string quality, QualityModelSnapshot? model)
+    /// <summary>
+    /// The size band this decision judges against.
+    ///
+    /// <para><b>The profile's own answer first, and nothing else if it has
+    /// one.</b> #394: size belongs to the profile, because anime at 1080p and a
+    /// film at 1080p are not the same number of gigabytes. A profile that has
+    /// said nothing about this tier has no size opinion, and
+    /// <see cref="QualityTypicalSizes"/> is what a release is judged against
+    /// then - the physical fact about the encode, which is also the band drawn
+    /// behind the slider where the answer is given.</para>
+    ///
+    /// <para>What used to be here was a ladder of substring guesses - "2160 and
+    /// remux" meant 35-130, "1080" meant 1.5-25 - a second copy of the same
+    /// physical fact the quality model already held. Two copies drift, and the
+    /// one nobody looks at is the one that decides whether a release is
+    /// refused.</para>
+    /// </summary>
+    private static (double Min, double Max) ExpectedSizeRangeGb(
+        string quality,
+        IReadOnlyList<ProfileSizeRule>? sizeRules)
     {
-        var tier = model?.Tiers.FirstOrDefault(item => string.Equals(item.Name, quality, StringComparison.OrdinalIgnoreCase));
-        if (tier is not null)
+        if (ProfileSizeRulesCodec.For(sizeRules, quality) is { } rule)
         {
-            return (tier.MovieMinGb, tier.MovieMaxGb);
+            return (rule.MinGb, rule.MaxGb);
         }
 
-        var normalized = quality.ToLowerInvariant();
-        if (normalized.Contains("2160") && normalized.Contains("remux")) return (35, 130);
-        if (normalized.Contains("2160")) return (7, 60);
-        if (normalized.Contains("1080") && normalized.Contains("remux")) return (15, 60);
-        if (normalized.Contains("1080")) return (1.5, 25);
-        if (normalized.Contains("720")) return (0.5, 8);
-        return (0.5, 80);
+        return QualityTypicalSizes.FilmSizeGb(quality);
     }
 
     private static int ScoreCodecAndHdr(string releaseName, ICollection<string> reasons, ICollection<string> risks)
@@ -726,6 +738,12 @@ public sealed record ReleaseDecisionInput(
     /// outside it, whatever the cutoff says.
     /// </summary>
     IReadOnlyList<string>? AllowedQualities = null,
+    /// <summary>
+    /// How big a file of each tier should be, according to the profile making
+    /// this decision. Null or empty means the profile has no size opinion, and
+    /// size is not used to reject anything.
+    /// </summary>
+    IReadOnlyList<ProfileSizeRule>? SizeRules = null,
     IReadOnlyList<ReleaseProfileItem>? ReleaseProfiles = null,
     string? IndexerProtocol = null,
     double? ReleaseAgeHours = null,

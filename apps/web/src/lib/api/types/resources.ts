@@ -137,8 +137,23 @@ export interface QualityProfileItem {
   presetVersion: number | null;
   presetDrifted: boolean;
   releasePreferencePlan: ReleasePreferencePlanReference | null;
+  /** This profile's own size answers. Empty means it has no size opinion. */
+  sizeRules?: ProfileSizeRule[] | null;
   createdUtc: string;
   updatedUtc: string;
+}
+
+/**
+ * How big a file of one tier should be, for one profile. #394: nothing in
+ * Quality & Release is shared, because anime at 1080p and a film at 1080p are
+ * not the same number of gigabytes.
+ */
+export interface ProfileSizeRule {
+  quality: string;
+  minGb: number;
+  maxGb: number;
+  minMb: number;
+  maxMb: number;
 }
 
 export interface ReleasePreferencePlanReference {

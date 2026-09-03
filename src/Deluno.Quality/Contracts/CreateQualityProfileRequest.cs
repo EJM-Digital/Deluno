@@ -8,4 +8,9 @@ public sealed record CreateQualityProfileRequest(
     string? CustomFormatIds,
     bool UpgradeUntilCutoff,
     bool UpgradeUnknownItems,
-    ReleasePreferencePlanReference? ReleasePreferencePlan = null);
+    ReleasePreferencePlanReference? ReleasePreferencePlan = null,
+    /// <summary>
+    /// This profile's own size answers. Omitted means the typical band for
+    /// each allowed tier, written into the profile rather than inherited.
+    /// </summary>
+    IReadOnlyList<ProfileSizeRule>? SizeRules = null);

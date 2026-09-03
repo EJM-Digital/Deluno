@@ -67,6 +67,18 @@ interface RangeSliderProps {
   scale?: RangeScale;
   /** Treat a max of 0 as "no upper limit": the band runs to the end of the track. */
   zeroMaxIsUnlimited?: boolean;
+  /**
+   * Where files of this kind actually land, drawn as a faint band behind the
+   * track.
+   *
+   * <p>This is the difference between a ruler and an answer. Two handles on a
+   * bare track ask "how big should a 1080p file be?" and give you nothing to
+   * answer with; the same handles over a band showing where 1080p files really
+   * sit let you see whether you are being sensible while you drag. It is
+   * context, not a value — nothing reads it, nothing inherits it, and moving
+   * your handles outside it is allowed.</p>
+   */
+  typical?: { min: number; max: number };
   minLabel: string;
   maxLabel: string;
   /** Spoken value, so a screen reader reads "2.5 GB" and not a track position. */
@@ -86,7 +98,8 @@ export function RangeSlider({
   formatValue,
   onChange,
   className,
-  zeroMaxIsUnlimited = false
+  zeroMaxIsUnlimited = false,
+  typical
 }: RangeSliderProps) {
   const clamp = (value: number) => Math.min(Math.max(value, 0), scaleMax);
   const snap = (value: number) => Number(clamp(value).toFixed(step < 1 ? 1 : 0));
@@ -135,6 +148,19 @@ export function RangeSlider({
   return (
     <div className={cn("deluno-range", className)}>
       <div aria-hidden className="deluno-range-track">
+        {typical ? (
+          <span
+            className="deluno-range-typical"
+            style={{
+              left: `${scalePercent(Math.max(0, typical.min), scaleMax, scale)}%`,
+              width: `${Math.max(
+                scalePercent(Math.min(typical.max, scaleMax), scaleMax, scale)
+                  - scalePercent(Math.max(0, typical.min), scaleMax, scale),
+                0.75
+              )}%`
+            }}
+          />
+        ) : null}
         <span className="deluno-range-fill" style={{ left: `${leftPercent}%`, width: `${widthPercent}%` }} />
       </div>
       <input

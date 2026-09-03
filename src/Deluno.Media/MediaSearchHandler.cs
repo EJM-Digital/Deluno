@@ -88,6 +88,13 @@ public static class MediaSearchHandler
             qualityRepository,
             library.QualityProfileId,
             cancellationToken);
+        // Read beside the allowed tiers, from the same profile, at the same
+        // moment. Two answers to one question read apart are two answers that
+        // eventually disagree.
+        var sizeRules = await QualityProfileResolver.ResolveSizeRulesAsync(
+            qualityRepository,
+            library.QualityProfileId,
+            cancellationToken);
         var upgradeUntilCutoff = await QualityProfileResolver.ResolveUpgradeUntilCutoffAsync(
             qualityRepository,
             library.QualityProfileId,
@@ -125,6 +132,7 @@ public static class MediaSearchHandler
                 customFormats,
                 PreviewOnly: string.Equals(mode, "preview", StringComparison.OrdinalIgnoreCase),
                 AllowedQualities: allowedQualities,
+                SizeRules: sizeRules,
                 TagNames: tagNames,
                 SearchKind: AcquisitionSearchKinds.Interactive,
                 AvailableUtc: item.AvailableUtc,
