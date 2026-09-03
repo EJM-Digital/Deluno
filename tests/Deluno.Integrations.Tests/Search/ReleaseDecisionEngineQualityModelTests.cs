@@ -116,17 +116,8 @@ public sealed class ReleaseDecisionEngineQualityModelTests
     }
 
     [Fact]
-    public void Decide_honors_upgrade_stop_policy_when_cutoff_met()
+    public void Decide_honors_the_profiles_own_answer_about_when_to_stop()
     {
-        var model = new QualityModelSnapshot(
-            Version: "test",
-            Tiers:
-            [
-                new QualityTierDefinition("WEB 1080p", 70, 1.0, 20.0, 350, 3000, 50)
-            ],
-            UpgradeStop: new QualityUpgradeStopPolicy(true, true),
-            UpdatedUtc: DateTimeOffset.UtcNow);
-
         var decision = ReleaseDecisionEngine.Decide(new ReleaseDecisionInput(
             ReleaseName: "Example.Release.1080p.WEB-DL-GROUP",
             Quality: "WEB 1080p",
@@ -138,7 +129,68 @@ public sealed class ReleaseDecisionEngineQualityModelTests
             SourcePriorityScore: 100,
             CustomFormatScore: 10,
             NeverGrabPatterns: null,
-            CurrentCustomFormatScore: 10), model);
+            CurrentCustomFormatScore: 10,
+            // #394: this profile's own answer, not one policy for every shelf.
+            UpgradeStop: new QualityUpgradeStopPolicy(true, true)));
+
+        Assert.Equal("rejected", decision.Status);
+        Assert.Contains(decision.RiskFlags, flag => flag.Contains("Upgrade stop policy", StringComparison.OrdinalIgnoreCase));
+    }
+
+    /// <summary>
+    /// The other half of the same answer, and the reason it belongs to the
+    /// profile: a shelf you want chased forever must be able to say so.
+    ///
+    /// <para>The candidate genuinely improves the upgrade-driving formats, so
+    /// the separate equivalent-replacement guard is not in play — that one
+    /// refuses a file no better than the one you hold, which is churn under any
+    /// policy. What is being tested here is only the profile's own answer about
+    /// whether meeting the cutoff ends the search.</para>
+    /// </summary>
+    [Fact]
+    public void A_profile_that_never_stops_keeps_looking_past_the_cutoff()
+    {
+        var decision = ReleaseDecisionEngine.Decide(new ReleaseDecisionInput(
+            ReleaseName: "Example.Release.1080p.WEB-DL-GROUP",
+            Quality: "WEB 1080p",
+            CurrentQuality: "WEB 1080p",
+            TargetQuality: "WEB 1080p",
+            SizeBytes: 4L * 1024 * 1024 * 1024,
+            Seeders: 12,
+            DownloadUrl: "https://example.com/release",
+            SourcePriorityScore: 100,
+            CustomFormatScore: 250,
+            NeverGrabPatterns: null,
+            CurrentCustomFormatScore: 10,
+            UpgradeStop: new QualityUpgradeStopPolicy(
+                StopWhenCutoffMet: false, RequireCustomFormatGainForSameQuality: false)));
+
+        Assert.NotEqual("rejected", decision.Status);
+        Assert.DoesNotContain(decision.RiskFlags, flag => flag.Contains("Upgrade stop policy", StringComparison.OrdinalIgnoreCase));
+    }
+
+    /// <summary>
+    /// The same release, the same library, the same held file — refused only
+    /// because this profile said meeting the cutoff ends the search. That
+    /// difference is the whole of #394's second item.
+    /// </summary>
+    [Fact]
+    public void The_same_improving_release_is_refused_by_a_profile_that_stops()
+    {
+        var decision = ReleaseDecisionEngine.Decide(new ReleaseDecisionInput(
+            ReleaseName: "Example.Release.1080p.WEB-DL-GROUP",
+            Quality: "WEB 1080p",
+            CurrentQuality: "WEB 1080p",
+            TargetQuality: "WEB 1080p",
+            SizeBytes: 4L * 1024 * 1024 * 1024,
+            Seeders: 12,
+            DownloadUrl: "https://example.com/release",
+            SourcePriorityScore: 100,
+            CustomFormatScore: 250,
+            NeverGrabPatterns: null,
+            CurrentCustomFormatScore: 10,
+            UpgradeStop: new QualityUpgradeStopPolicy(
+                StopWhenCutoffMet: true, RequireCustomFormatGainForSameQuality: false)));
 
         Assert.Equal("rejected", decision.Status);
         Assert.Contains(decision.RiskFlags, flag => flag.Contains("Upgrade stop policy", StringComparison.OrdinalIgnoreCase));

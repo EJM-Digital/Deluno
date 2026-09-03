@@ -8,7 +8,17 @@ namespace Deluno.Integrations.Search;
 
 public static partial class ReleaseDecisionEngine
 {
-    public static ReleaseDecision Decide(ReleaseDecisionInput input, QualityModelSnapshot? qualityModel = null)
+    /// <summary>
+    /// The shared quality model is no longer an input.
+    ///
+    /// <para>#394: the two things it was consulted for - how big a file of this
+    /// tier should be, and when to stop upgrading - are now the profile's own
+    /// answers and arrive on <see cref="ReleaseDecisionInput"/>. A parameter
+    /// that is still accepted and no longer read is worse than no parameter:
+    /// every caller keeps passing it, and the next person to change the model
+    /// has no way to know it stopped mattering.</para>
+    /// </summary>
+    public static ReleaseDecision Decide(ReleaseDecisionInput input)
     {
         var normalizedCurrent = LibraryQualityDecider.NormalizeQuality(input.CurrentQuality);
         var normalizedTarget = LibraryQualityDecider.NormalizeQuality(input.TargetQuality) ?? "WEB 1080p";
@@ -229,13 +239,18 @@ public static partial class ReleaseDecisionEngine
             }
         }
 
+        // #394: when to stop is this profile's answer, not one policy for every
+        // shelf. A library you want left alone once it is good enough and one
+        // you want chased forever are the same question answered two ways, and
+        // a single setting could only ever be right for one of them.
+        var upgradeStop = input.UpgradeStop;
         if (input.PreferencePlan is null &&
             !hardReject &&
-            qualityModel?.UpgradeStop.StopWhenCutoffMet == true &&
+            upgradeStop?.StopWhenCutoffMet == true &&
             currentRank >= targetRank &&
             qualityDelta <= 0)
         {
-            var requiresGain = qualityModel.UpgradeStop.RequireCustomFormatGainForSameQuality;
+            var requiresGain = upgradeStop.RequireCustomFormatGainForSameQuality;
             var hasCurrentFormatEvaluation = input.CurrentCustomFormatScore is not null;
             var currentScore = input.CurrentCustomFormatScore.GetValueOrDefault();
             if (!requiresGain || (hasCurrentFormatEvaluation && input.CustomFormatScore <= currentScore))
@@ -744,6 +759,11 @@ public sealed record ReleaseDecisionInput(
     /// size is not used to reject anything.
     /// </summary>
     IReadOnlyList<ProfileSizeRule>? SizeRules = null,
+    /// <summary>
+    /// When the profile making this decision stops looking for something
+    /// better. Null means it never stops on cutoff alone.
+    /// </summary>
+    QualityUpgradeStopPolicy? UpgradeStop = null,
     IReadOnlyList<ReleaseProfileItem>? ReleaseProfiles = null,
     string? IndexerProtocol = null,
     double? ReleaseAgeHours = null,

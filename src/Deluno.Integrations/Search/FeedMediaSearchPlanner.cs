@@ -82,7 +82,8 @@ public sealed class FeedMediaSearchPlanner(
         PreferenceEvaluationSnapshot? currentPreferenceEvaluation = null,
         ReleasePreferencePlan? preferencePlan = null,
         bool currentFilePresent = false,
-        IReadOnlyList<ProfileSizeRule>? sizeRules = null)
+        IReadOnlyList<ProfileSizeRule>? sizeRules = null,
+        QualityUpgradeStopPolicy? upgradeStop = null)
     {
         var indexers = await connectionsRepository.ListIndexersAsync(cancellationToken);
         var normalizedSearchKind = AcquisitionSearchKinds.Normalize(searchKind);
@@ -162,7 +163,7 @@ public sealed class FeedMediaSearchPlanner(
                     customFormats, neverGrabPatterns, scoringMode, seasonNumber, episodeNumber, allowedQualities,
                      applicableProfiles, normalizedSearchKind, availableUtc, currentCustomFormatScore, currentReleaseName, upgradeUntilCutoff,
                      numberingScheme, absoluteNumber, airDate, sceneSeasonNumber, sceneEpisodeNumber,
-                     currentPreferenceEvaluation, preferencePlan, currentFilePresent, sizeRules, token);
+                     currentPreferenceEvaluation, preferencePlan, currentFilePresent, sizeRules, upgradeStop, token);
             });
 
         await RecordQueryTelemetryAsync(searchResults, cancellationToken);
@@ -327,6 +328,7 @@ public sealed class FeedMediaSearchPlanner(
         ReleasePreferencePlan preferencePlan,
         bool currentFilePresent,
         IReadOnlyList<ProfileSizeRule>? sizeRules,
+        QualityUpgradeStopPolicy? upgradeStop,
         CancellationToken cancellationToken)
     {
         var startedTimestamp = Stopwatch.GetTimestamp();
@@ -470,7 +472,8 @@ public sealed class FeedMediaSearchPlanner(
                      currentPreferenceEvaluation,
                         preferencePlan,
                         currentFilePresent,
-                        sizeRules: sizeRules);
+                        sizeRules: sizeRules,
+                        upgradeStop: upgradeStop);
                     return new IndexerSearchOutcome(
                         parsed.Candidates,
                         parsed.CandidatesTruncatedByIndexer,
@@ -679,7 +682,8 @@ public sealed class FeedMediaSearchPlanner(
         ReleasePreferencePlan? preferencePlan = null,
         bool currentFilePresent = false,
         int requestedLimit = IndexerResultLimit,
-        IReadOnlyList<ProfileSizeRule>? sizeRules = null)
+        IReadOnlyList<ProfileSizeRule>? sizeRules = null,
+        QualityUpgradeStopPolicy? upgradeStop = null)
     {
         XNamespace torznab = "http://torznab.com/schemas/2015/feed";
         XNamespace newznab = "http://www.newznab.com/DTD/2010/feeds/attributes/";
@@ -740,6 +744,7 @@ public sealed class FeedMediaSearchPlanner(
                 CurrentCustomFormatScore: currentCustomFormatScore,
                 AllowedQualities: allowedQualities,
                 SizeRules: sizeRules,
+                UpgradeStop: upgradeStop,
                 ReleaseProfiles: releaseProfiles,
                 IndexerProtocol: indexer.Protocol,
                 ReleaseAgeHours: releaseAgeHours,
@@ -753,7 +758,7 @@ public sealed class FeedMediaSearchPlanner(
                  PreferencePlan: preferencePlan,
                  CurrentReleaseName: currentReleaseName,
                  CurrentPreferenceEvaluation: currentPreferenceEvaluation,
-                 CurrentFilePresent: currentFilePresent), qualityModel);
+                 CurrentFilePresent: currentFilePresent));
 
             var boost = rankingModelService.Score(new ReleaseRankingFeatures(
                 Seeders: seeders,

@@ -12,4 +12,6 @@ public sealed record UpdateQualityProfileRequest(
     /// This profile's own size answers. Null leaves the stored ones alone; an
     /// empty list clears them, which is how somebody says "no size opinion".
     /// </summary>
-    IReadOnlyList<ProfileSizeRule>? SizeRules = null);
+    IReadOnlyList<ProfileSizeRule>? SizeRules = null,
+    /// <summary>When this profile stops looking for something better.</summary>
+    QualityUpgradeStopPolicy? UpgradeStop = null);

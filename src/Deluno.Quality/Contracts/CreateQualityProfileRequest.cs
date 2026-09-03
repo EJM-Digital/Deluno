@@ -13,4 +13,6 @@ public sealed record CreateQualityProfileRequest(
     /// This profile's own size answers. Omitted means the typical band for
     /// each allowed tier, written into the profile rather than inherited.
     /// </summary>
-    IReadOnlyList<ProfileSizeRule>? SizeRules = null);
+    IReadOnlyList<ProfileSizeRule>? SizeRules = null,
+    /// <summary>When this profile stops looking for something better.</summary>
+    QualityUpgradeStopPolicy? UpgradeStop = null);

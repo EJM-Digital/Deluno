@@ -44,6 +44,7 @@ import {
   type QualityModelSnapshot,
   type QualityProfileItem,
   type QualityTierDefinition,
+  type QualityUpgradeStopPolicy,
   type ProfileSizeRule,
   type ReleasePreferencePlanCompilation
 } from "../lib/api";
@@ -73,6 +74,7 @@ interface ProfileForm {
   upgradeUntilCutoff: boolean;
   upgradeUnknownItems: boolean;
   sizeRules: ProfileSizeRule[];
+  requireFormatGain: boolean;
 }
 
 type DrawerMode = { kind: "closed" } | { kind: "create" } | { kind: "edit"; id: string };
@@ -293,7 +295,14 @@ export function SettingsProfilesPage() {
         // should take its size answer with it, rather than leaving a rule for a
         // tier the profile no longer accepts.
         sizeRules: form.sizeRules.filter((rule) =>
-          form.allowed.some((quality) => quality.toLowerCase() === rule.quality.toLowerCase()))
+          form.allowed.some((quality) => quality.toLowerCase() === rule.quality.toLowerCase())),
+        upgradeStop: {
+          // One answer, two stages. "Upgrade until cutoff" is the owner's
+          // words for it; stopping once the cutoff is met is the same
+          // sentence read from the other end.
+          stopWhenCutoffMet: form.upgradeUntilCutoff,
+          requireCustomFormatGainForSameQuality: form.requireFormatGain
+        }
       };
       const response = await authedFetch(mode.kind === "edit" ? `/api/quality-profiles/${mode.id}` : "/api/quality-profiles", { method: mode.kind === "edit" ? "PUT" : "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
       if (!response.ok) {
@@ -487,7 +496,7 @@ export function SettingsProfilesPage() {
               <Select value={form.cutoff} onChange={(event) => { setErrors((current) => ({ ...current, cutoff: undefined })); setForm((current) => ({ ...current, cutoff: event.target.value })); }} placeholder="Choose a tier" options={allowedForDisplay.map((name) => ({ value: name, label: name }))} disabled={!form.allowed.length} />
             </Field>
           </FieldRow>
-          <SwitchRow label="Upgrade until cutoff" description="Keep replacing files until the cutoff tier is reached." checked={form.upgradeUntilCutoff} onCheckedChange={(checked) => setForm((current) => ({ ...current, upgradeUntilCutoff: checked }))} />
+          <SwitchRow label="Upgrade until cutoff" description="On: Deluno chases better copies until the tier you stop at, then leaves the file alone. Off: it takes what it finds and never looks again." checked={form.upgradeUntilCutoff} onCheckedChange={(checked) => setForm((current) => ({ ...current, upgradeUntilCutoff: checked }))} />
               </div>
             )}
             renderSizeControls={() => (
@@ -512,6 +521,24 @@ export function SettingsProfilesPage() {
                     description="Replace files Deluno can't identify when a matching release appears."
                     checked={form.upgradeUnknownItems}
                     onCheckedChange={(checked) => setForm((current) => ({ ...current, upgradeUnknownItems: checked }))}
+                  />
+                  {/* "When to stop" is this step's own question, so its finer
+                      half belongs here rather than on a page of its own.
+
+                      There is deliberately no second switch for "stop once the
+                      cutoff is met": that is the same answer as "upgrade until
+                      cutoff" read from the other end, and asking it twice lets
+                      somebody say two incompatible things. The engine keeps two
+                      flags because they act at different stages - one decides
+                      whether a file below the cutoff is chased, the other
+                      whether a candidate is refused once it is met - but the
+                      person answers once, above. */}
+                  <SwitchRow
+                    label="Only replace a same-quality file that is genuinely better"
+                    description="Stops Deluno swapping a file for another of the same quality that offers nothing new."
+                    checked={form.requireFormatGain}
+                    disabled={!form.upgradeUntilCutoff}
+                    onCheckedChange={(checked) => setForm((current) => ({ ...current, requireFormatGain: checked }))}
                   />
                 </Disclosure>
               ) : null
@@ -750,7 +777,8 @@ function defaultForm(
     customFormatIds: [],
     upgradeUntilCutoff: true,
     upgradeUnknownItems: false,
-    sizeRules: []
+    sizeRules: [],
+    requireFormatGain: true
   };
 
   const balanced =
@@ -776,7 +804,7 @@ function defaultForm(
 }
 
 function emptyForm(): ProfileForm {
-  return { name: "", mediaType: "movies", allowed: [], cutoff: "", customFormatIds: [], upgradeUntilCutoff: true, upgradeUnknownItems: false, sizeRules: [] };
+  return { name: "", mediaType: "movies", allowed: [], cutoff: "", customFormatIds: [], upgradeUntilCutoff: true, upgradeUnknownItems: false, sizeRules: [], requireFormatGain: true };
 }
 function formFrom(profile: QualityProfileItem): ProfileForm {
   return {
@@ -787,11 +815,12 @@ function formFrom(profile: QualityProfileItem): ProfileForm {
     customFormatIds: splitCsv(profile.customFormatIds),
     upgradeUntilCutoff: profile.upgradeUntilCutoff,
     upgradeUnknownItems: profile.upgradeUnknownItems,
-    sizeRules: profile.sizeRules ?? []
+    sizeRules: profile.sizeRules ?? [],
+    requireFormatGain: profile.upgradeStop?.requireCustomFormatGainForSameQuality ?? true
   };
 }
 function sameForm(a: ProfileForm, b: ProfileForm) {
-  return a.name === b.name && a.mediaType === b.mediaType && a.cutoff === b.cutoff && a.upgradeUntilCutoff === b.upgradeUntilCutoff && a.upgradeUnknownItems === b.upgradeUnknownItems && a.allowed.join("|") === b.allowed.join("|") && sameIds(a.customFormatIds, b.customFormatIds) && sameSizeRules(a.sizeRules, b.sizeRules);
+  return a.name === b.name && a.mediaType === b.mediaType && a.cutoff === b.cutoff && a.upgradeUntilCutoff === b.upgradeUntilCutoff && a.upgradeUnknownItems === b.upgradeUnknownItems && a.allowed.join("|") === b.allowed.join("|") && sameIds(a.customFormatIds, b.customFormatIds) && sameSizeRules(a.sizeRules, b.sizeRules) && a.requireFormatGain === b.requireFormatGain;
 }
 
 /** Dragging a handle has to count as a change, or the save footer stays asleep. */

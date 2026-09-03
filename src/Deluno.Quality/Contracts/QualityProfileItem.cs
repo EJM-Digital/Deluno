@@ -21,4 +21,11 @@ public sealed record QualityProfileItem(
     /// Empty means this profile has no size opinion - not that everything is
     /// refused. See <c>ProfileSizeRule</c>.
     /// </summary>
-    IReadOnlyList<ProfileSizeRule>? SizeRules = null);
+    IReadOnlyList<ProfileSizeRule>? SizeRules = null,
+    /// <summary>
+    /// When this profile stops looking for something better. Null means the
+    /// behaviour every profile had before it could answer for itself: stop once
+    /// the cutoff is met, and require a preference gain to replace a file of
+    /// the same quality.
+    /// </summary>
+    QualityUpgradeStopPolicy? UpgradeStop = null);

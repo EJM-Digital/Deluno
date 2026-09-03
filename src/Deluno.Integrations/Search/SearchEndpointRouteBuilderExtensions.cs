@@ -245,7 +245,7 @@ public static class SearchEndpointRouteBuilderExtensions
                 IndexerFlags: request.IndexerFlags,
                 PreferIndexerFlags: request.PreferIndexerFlags,
                 AvailableUtc: request.AvailableUtc,
-                AvailabilityDelayDays: request.AvailabilityDelayDays), qualityModel);
+                AvailabilityDelayDays: request.AvailabilityDelayDays));
 
             var boost = rankingModelService.Score(new ReleaseRankingFeatures(
                 Seeders: request.Seeders,
