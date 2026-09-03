@@ -51,7 +51,7 @@ starting.
 | #321 Subber delta | 15 | **yes** | Closed 4 Sep — [audit](https://github.com/jampat000/Deluno/issues/321#issuecomment-5532406216). Eleven met; four recorded not planned with a reason each (Whisper, translation, post-process command, anti-captcha) plus the audio column, which needs a migration on both catalogues. |
 | #301 Subber outcome | 6 | **yes** | Closed 4 Sep — [audit](https://github.com/jampat000/Deluno/issues/301#issuecomment-5532427875). 6/6. Weir retired its own copy in `0010_drop_subber_tables` on 28 Aug; children #321/#329/#330 all closed. |
 | #329 Whisper | 2 | no | Build on the lab VM and **measure** before recommending. "Not worth shipping" is a welcome answer. |
-| #337 Docker | 5 | no | Needs a container runtime on the VM. Owner gave free rein on Hyper-V. |
+| #337 Docker | 5 | **yes** | Closed 4 Sep — [audit](https://github.com/jampat000/Deluno/issues/337#issuecomment-5532478355). 5/5 on clean-runner CI evidence plus the verified v1.0.0-rc.2 digest. Line 5 found the README pointing at an unverified `latest` (#391). |
 | #339 Request portal | 2 | no | Needs email; Cloudflare available. Park if it becomes a project. |
 | #341 Mobile web | 2 | no | |
 | #340 Native mobile | 2 | no | iOS needs macOS + Xcode, which do not exist here. |
