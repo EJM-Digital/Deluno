@@ -25,4 +25,21 @@ describe("release preference owner surfaces", () => {
     expect(customFormatSource).toContain("Typed plan preview");
     expect(customFormatSource).not.toContain("typed plan score");
   });
+
+  it("shows what a guide update would change, rather than how many things it would change", () => {
+    // #350 asks for a readable plan diff. The diff was computed and then
+    // reported as "N guide profile(s) have a compiled-package diff", which is
+    // the number of readable diffs that were not shown.
+    expect(customFormatSource).toContain("Guide profile plan diff");
+    expect(customFormatSource).toContain("diff.changes.map");
+    expect(customFormatSource).not.toContain("have a compiled-package diff");
+  });
+
+  it("offers the way back to a retained guide version", () => {
+    // Every guide version is immutable and kept, which is what makes an
+    // update a rollback point. A point with no way back is not one.
+    expect(customFormatSource).toContain("Guide version history");
+    expect(customFormatSource).toContain("Go back to this version");
+    expect(customFormatSource).toContain("activateTrashGuideVersion");
+  });
 });

@@ -37,8 +37,10 @@ import { toast } from "../components/shell/toaster";
 import { useUnsavedChanges } from "../hooks/use-unsaved-changes";
 import {
   compileQualityProfilePreferences,
+  activateTrashGuideVersion,
   fetchTrashGuidePackage,
   fetchTrashGuideUpdateCheck,
+  fetchTrashGuideVersions,
   fetchJson,
   previewTrashGuideSync,
   applyTrashGuideSync,
@@ -51,6 +53,7 @@ import {
   type GuidePackage,
   type GuidePackageUpdatePreview,
   type GuideUpdateCheckState,
+  type StoredGuidePackage,
   type LibraryItem,
   type PolicySetItem,
   type PlatformSettingsSnapshot,
@@ -144,16 +147,18 @@ interface LoaderData {
   settings: PlatformSettingsSnapshot;
   guide: GuidePackage;
   guideUpdateCheck: GuideUpdateCheckState;
+  guideVersions: StoredGuidePackage[];
 }
 
 export async function settingsCustomFormatsLoader(): Promise<LoaderData> {
-  const [overview, customFormats, guide, guideUpdateCheck] = await Promise.all([
+  const [overview, customFormats, guide, guideUpdateCheck, guideVersions] = await Promise.all([
     settingsOverviewLoader(),
     fetchJson<CustomFormatItem[]>("/api/custom-formats"),
     fetchTrashGuidePackage(),
-    fetchTrashGuideUpdateCheck()
+    fetchTrashGuideUpdateCheck(),
+    fetchTrashGuideVersions().catch(() => [] as StoredGuidePackage[])
   ]);
-  return { ...overview, customFormats, guide, guideUpdateCheck };
+  return { ...overview, customFormats, guide, guideUpdateCheck, guideVersions };
 }
 
 interface RuleForm {
@@ -176,13 +181,18 @@ type DrawerMode =
   | null;
 
 export function SettingsCustomFormatsPage() {
-  const { customFormats, settings, libraries, policySets, qualityProfiles, guide, guideUpdateCheck } = useLoaderData() as LoaderData;
+  const { customFormats, settings, libraries, policySets, qualityProfiles, guide, guideUpdateCheck, guideVersions } = useLoaderData() as LoaderData;
   const revalidator = useRevalidator();
   const settingsMutation = useApiMutation<PlatformSettingsPatch, PlatformSettingsSnapshot>("/api/settings", "PATCH");
   const [busy, setBusy] = useState<string | null>(null);
   const [updateCheck, setUpdateCheck] = useState(guideUpdateCheck);
-  const [updateCheckBusy, setUpdateCheckBusy] = useState<"settings" | "run" | "sync-preview" | "sync-apply" | null>(null);
+  const [updateCheckBusy, setUpdateCheckBusy] = useState<"settings" | "run" | "sync-preview" | "sync-apply" | "activate" | null>(null);
   const [guideUpdateDetailsOpen, setGuideUpdateDetailsOpen] = useState(false);
+  const [guideVersionsOpen, setGuideVersionsOpen] = useState(false);
+  const [versions, setVersions] = useState(guideVersions);
+  // The loader re-reads the history on every revalidate; without this the
+  // panel keeps showing the list from the first render after a sync.
+  useEffect(() => setVersions(guideVersions), [guideVersions]);
   const [guideSyncPreview, setGuideSyncPreview] = useState<GuidePackageUpdatePreview | null>(null);
 
   const split = useMediaTypeSplit(customFormats, (format) => format.mediaType);
@@ -270,6 +280,28 @@ export function SettingsCustomFormatsPage() {
       }
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Could not stage a TRaSH Guides sync.");
+    } finally {
+      setUpdateCheckBusy(null);
+    }
+  }
+
+  /**
+   * Return to a retained guide version.
+   *
+   * Deliberately not called "rollback": the owner is choosing which retained
+   * snapshot is in use, and every version stays retained afterwards, so this
+   * is reversible in both directions.
+   */
+  async function goBackToGuideVersion(stored: StoredGuidePackage) {
+    setUpdateCheckBusy("activate");
+    try {
+      await activateTrashGuideVersion(stored.package.version, stored.package.id);
+      setVersions(await fetchTrashGuideVersions());
+      setGuideSyncPreview(null);
+      revalidator.revalidate();
+      toast.success(`Guide package version ${stored.package.version} is in use again`);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not go back to that guide version.");
     } finally {
       setUpdateCheckBusy(null);
     }
@@ -639,11 +671,90 @@ export function SettingsCustomFormatsPage() {
                   </div>
                   {guideSyncPreview.errors.map((error) => <p key={error} className="mt-2 text-[length:var(--type-caption)] text-destructive">{error}</p>)}
                   {guideSyncPreview.warnings.map((warning) => <p key={warning} className="mt-2 text-[length:var(--type-caption)] text-warning">{warning}</p>)}
-                  <p className="mt-2 text-[length:var(--type-caption)] text-muted-foreground">
-                    {guideSyncPreview.profileDiffs.filter((diff) => diff.changes.length > 0).length} guide profile(s) have a compiled-package diff. Review and apply those plan changes separately; this snapshot sync does not mutate them.
-                  </p>
+                  {/*
+                    The diff was computed and then reported as a count. "Three
+                    profiles have a diff" is not a readable plan diff - it is
+                    the number of readable plan diffs Deluno declined to show
+                    (#350).
+                  */}
+                  {guideSyncPreview.profileDiffs.some((diff) => diff.changes.length > 0) ? (
+                    <div className="mt-2 grid gap-2" aria-label="Guide profile plan diff">
+                      <p className="text-[length:var(--type-caption)] text-muted-foreground">
+                        These guide profiles compile differently under the new snapshot. Syncing does not change them; apply each plan change yourself.
+                      </p>
+                      {guideSyncPreview.profileDiffs
+                        .filter((diff) => diff.changes.length > 0)
+                        .map((diff) => (
+                          <div key={diff.profileId} className="rounded-[10px] border border-hairline px-3 py-2">
+                            <div className="flex flex-wrap items-center justify-between gap-2">
+                              <span className="text-[length:var(--type-body-sm)] font-medium text-foreground">{diff.profileName}</span>
+                              <span className="text-[length:var(--type-caption)] text-muted-foreground">
+                                {diff.currentAdvancedRuleCount} → {diff.proposedAdvancedRuleCount} rule{diff.proposedAdvancedRuleCount === 1 ? "" : "s"} needing review
+                              </span>
+                            </div>
+                            <ul className="mt-1 grid gap-0.5 text-[length:var(--type-caption)] text-muted-foreground">
+                              {diff.changes.map((change) => <li key={change}>{change}</li>)}
+                            </ul>
+                            {diff.warnings.map((warning) => (
+                              <p key={warning} className="mt-1 text-[length:var(--type-caption)] text-warning">{warning}</p>
+                            ))}
+                            <p className="mt-1 font-mono text-[length:var(--type-caption)] text-muted-foreground">
+                              {(diff.currentPlanHash ?? "none").slice(0, 12)} → {(diff.proposedPlanHash ?? "none").slice(0, 12)}
+                            </p>
+                          </div>
+                        ))}
+                    </div>
+                  ) : (
+                    <p className="mt-2 text-[length:var(--type-caption)] text-muted-foreground">
+                      No guide profile compiles differently under this snapshot.
+                    </p>
+                  )}
                 </div>
               ) : null}
+            </Disclosure>
+          ) : null}
+
+          {/*
+            #350: an update produces a rollback point. Every guide version is
+            immutable and kept, but a point you cannot return to is not one, so
+            the history is here with the way back beside it.
+          */}
+          {versions.length > 1 ? (
+            <Disclosure
+              title="Guide version history"
+              summary={`${versions.length} retained version${versions.length === 1 ? "" : "s"} · go back to any of them`}
+              open={guideVersionsOpen}
+              onOpenChange={setGuideVersionsOpen}
+            >
+              <div className="grid gap-2" aria-label="Guide package versions">
+                {versions.map((stored) => (
+                  <div key={`${stored.package.id}:${stored.package.version}`} className="flex flex-wrap items-center justify-between gap-2 rounded-[10px] border border-hairline px-3 py-2">
+                    <div className="min-w-0">
+                      <p className="text-[length:var(--type-body-sm)] font-medium text-foreground">
+                        Version {stored.package.version}
+                        {stored.isActive ? " · in use" : ""}
+                      </p>
+                      <p className="mt-0.5 font-mono text-[length:var(--type-caption)] text-muted-foreground">
+                        {stored.package.source.upstreamRevision.slice(0, 12)} · {stored.integritySha256.slice(0, 12)}
+                      </p>
+                    </div>
+                    {stored.isActive ? (
+                      <Chip tone="ok">Current</Chip>
+                    ) : (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => void goBackToGuideVersion(stored)}
+                        disabled={updateCheckBusy !== null}
+                      >
+                        {updateCheckBusy === "activate" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
+                        Go back to this version
+                      </Button>
+                    )}
+                  </div>
+                ))}
+              </div>
             </Disclosure>
           ) : null}
         </div>

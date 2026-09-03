@@ -50,4 +50,18 @@ public interface IGuidePackageStore
     Task<StoredGuidePackage> ApplyAsync(
         GuidePackageUpdateRequest request,
         CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Makes a retained version current again.
+    ///
+    /// <para>Every version is immutable and kept, which makes each update a
+    /// rollback point — but a point you cannot return to is not one. This is
+    /// the way back, and it re-validates the stored definition rather than
+    /// trusting the row, so a package that has been tampered with in the
+    /// database is refused instead of being activated.</para>
+    /// </summary>
+    Task<StoredGuidePackage> ActivateAsync(
+        string packageId,
+        int version,
+        CancellationToken cancellationToken);
 }
