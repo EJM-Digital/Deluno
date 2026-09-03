@@ -11,7 +11,14 @@ const screens = [
   "/system/backups",
   "/system/updates",
   "/settings/general",
-  "/settings/metadata"
+  "/settings/metadata",
+  // #353 line 6: the release-preference surfaces are where the granularity
+  // lives, so they are exactly the screens where a label or a required-state
+  // that only exists visually stops somebody using the product.
+  "/settings/profiles",
+  "/settings/custom-formats",
+  "/settings/policy-sets",
+  "/settings/release-rules"
 ] as const;
 
 test.describe("accessibility semantics", () => {
