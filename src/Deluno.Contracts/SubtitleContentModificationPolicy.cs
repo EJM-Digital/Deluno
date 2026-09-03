@@ -17,7 +17,26 @@ public sealed record SubtitleContentModificationPolicy(
     bool RemoveStyleTags = false,
     bool RemoveEmoji = false,
     bool NormalizeWhitespace = false,
-    bool FixAllUppercase = false)
+    bool FixAllUppercase = false,
+    /// <summary>
+    /// Repairs the characters an OCR pass gets wrong when a subtitle was
+    /// ripped from a picture-based track: l for I, rn for m, 0 for O. Only
+    /// inside words, so a line reading "l am" is fixed and "l" alone is not
+    /// guessed at.
+    /// </summary>
+    bool FixOcrErrors = false,
+    /// <summary>
+    /// Wraps every cue in a colour tag. Some players show all subtitles in
+    /// white regardless of the track, and a person who wants yellow has
+    /// nowhere else to say so.
+    /// </summary>
+    string? CueColour = null,
+    /// <summary>
+    /// Moves trailing punctuation to the front of a right-to-left line, which
+    /// is where it belongs and where a left-to-right editor will not have put
+    /// it.
+    /// </summary>
+    bool ReverseRightToLeftPunctuation = false)
 {
     [JsonIgnore]
     public bool IsEnabled =>
@@ -25,7 +44,10 @@ public sealed record SubtitleContentModificationPolicy(
         || RemoveStyleTags
         || RemoveEmoji
         || NormalizeWhitespace
-        || FixAllUppercase;
+        || FixAllUppercase
+        || FixOcrErrors
+        || !string.IsNullOrWhiteSpace(CueColour)
+        || ReverseRightToLeftPunctuation;
 }
 
 /// <summary>Canonical persistence for a subtitle content policy.</summary>
@@ -33,8 +55,21 @@ public static class SubtitleContentModificationPolicyCodec
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
+    /// <summary>
+    /// A colour is stored the way it will be written into the file, so the
+    /// same policy cannot mean two things depending on who saved it.
+    /// </summary>
     public static SubtitleContentModificationPolicy? Normalize(SubtitleContentModificationPolicy? policy)
-        => policy is { IsEnabled: true } ? policy : null;
+    {
+        if (policy is null) return null;
+
+        var colour = policy.CueColour?.Trim().ToLowerInvariant();
+        var normalized = policy with
+        {
+            CueColour = string.IsNullOrWhiteSpace(colour) ? null : colour
+        };
+        return normalized.IsEnabled ? normalized : null;
+    }
 
     public static string? Serialize(SubtitleContentModificationPolicy? policy)
     {

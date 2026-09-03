@@ -29,6 +29,36 @@ public static partial class SubtitleContentModifier
 
     private static readonly Regex Whitespace = new(@"[ \t]+", RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
+    // The two OCR confusions that can be repaired without a dictionary.
+    //
+    // A lowercase "l" standing alone, or before an apostrophe, is a mis-read
+    // "I": lowercase l is not an English word. The tempting third rule —
+    // "l" before any lowercase letter — turns "let" into "Iet", and the
+    // fourth, "rn" to "m", turns "corner" into "comer". Both were written,
+    // both were caught by their own test, and both are gone: an OCR fix that
+    // corrupts correct subtitles is worse than no OCR fix.
+    private static readonly Regex OcrStandaloneLForI = new(
+        @"\bl\b(?!['’])|\bl(?=['’])",
+        RegexOptions.Compiled | RegexOptions.CultureInvariant);
+
+    // A digit wedged between letters is not a digit. The replacement takes
+    // its case from the letter in front of it, because "N0body" is "Nobody"
+    // and not "NObody".
+    private static readonly Regex OcrDigitInsideWord = new(
+        @"(?<=\p{L})(?<digit>[01])(?=\p{L})",
+        RegexOptions.Compiled | RegexOptions.CultureInvariant);
+
+    // Hebrew, Arabic, Syriac, Thaana and the Arabic presentation forms. A line
+    // containing one of these is right-to-left; a line without is not,
+    // whatever the policy says.
+    private static readonly Regex RightToLeftCharacter = new(
+        @"[֐-׿؀-ۿ܀-ݏހ-޿ࢠ-ࣿיִ-﷿ﹰ-﻿]",
+        RegexOptions.Compiled | RegexOptions.CultureInvariant);
+
+    private static readonly Regex TrailingRightToLeftPunctuation = new(
+        @"^(?<body>.*?)(?<punct>[.!?،؛؟]+)$",
+        RegexOptions.Compiled | RegexOptions.CultureInvariant);
+
     private static readonly Regex SoundAnnotation = new(
         @"(?:\b(?:music|singing|sings|song|laugh(?:s|ing)?|cry(?:ing|ing)?|sigh(?:s|ing)?|groan(?:s|ing)?|gasp(?:s|ing)?|breath(?:es|ing)?|pant(?:s|ing)?|cough(?:s|ing)?|sneeze(?:s|ing)?|sniff(?:s|ing)?|door|bell|phone|ring(?:s|ing)?|applause|clap(?:s|ping)?|cheer(?:s|ing)?|whisper(?:s|ing)?|shout(?:s|ing)?|yell(?:s|ing)?|inaudible|indistinct|speaking foreign language)\b|♪)",
         RegexOptions.Compiled | RegexOptions.CultureInvariant | RegexOptions.IgnoreCase);
@@ -145,7 +175,55 @@ public static partial class SubtitleContentModifier
             }
         }
 
+        if (policy.FixOcrErrors)
+        {
+            var withLetters = OcrStandaloneLForI.Replace(transformed, "I");
+            var repaired = OcrDigitInsideWord.Replace(
+                withLetters,
+                match => ReplaceDigitInsideWord(match, withLetters));
+            if (!string.Equals(repaired, transformed, StringComparison.Ordinal))
+            {
+                applied.Add("OCR errors");
+                transformed = repaired;
+            }
+        }
+
+        if (policy.ReverseRightToLeftPunctuation && RightToLeftCharacter.IsMatch(transformed))
+        {
+            var match = TrailingRightToLeftPunctuation.Match(transformed.TrimEnd());
+            if (match.Success && match.Groups["body"].Value.Length > 0)
+            {
+                transformed = match.Groups["punct"].Value + match.Groups["body"].Value;
+                applied.Add("right-to-left punctuation");
+            }
+        }
+
+        // Colour last, so the tag wraps the finished line instead of being
+        // stripped by a style-tag pass running after it.
+        if (!string.IsNullOrWhiteSpace(policy.CueColour) && transformed.Trim().Length > 0)
+        {
+            transformed = $"<font color=\"{policy.CueColour}\">{transformed}</font>";
+            applied.Add("cue colour");
+        }
+
         return transformed;
+    }
+
+    /// <summary>
+    /// Zero becomes O and one becomes l, cased to match the word around it.
+    ///
+    /// <para>Uppercase only when both neighbours are uppercase: "N0body" is
+    /// "Nobody" rather than "NObody", because the capital there belongs to the
+    /// start of the sentence and not to the letter being repaired.</para>
+    /// </summary>
+    private static string ReplaceDigitInsideWord(Match match, string line)
+    {
+        var letter = match.Groups["digit"].Value == "0" ? 'o' : 'l';
+        var previous = match.Index > 0 ? line[match.Index - 1] : ' ';
+        var next = match.Index + 1 < line.Length ? line[match.Index + 1] : ' ';
+        return char.IsUpper(previous) && char.IsUpper(next)
+            ? char.ToUpperInvariant(letter).ToString()
+            : letter.ToString();
     }
 
     private static string AddRuleAndRemove(Match match, string rule, ISet<string> applied)
