@@ -467,62 +467,6 @@ export interface MediaPlanEffectiveResolution {
   warnings: string[];
 }
 
-export type PlaybackCapabilityState = "present" | "absent" | "unknown" | "conflicting" | string;
-
-export interface PlaybackCapability {
-  traitId: string;
-  state: PlaybackCapabilityState;
-  source: string;
-  confidence: number | null;
-  detail: string | null;
-  lastConfirmedUtc: string | null;
-}
-
-export interface PlaybackDeviceProfile {
-  id: string;
-  name: string;
-  capabilities: PlaybackCapability[];
-  isEnabled: boolean;
-  createdUtc: string;
-  updatedUtc: string;
-}
-
-export interface PlaybackDeviceGroup {
-  id: string;
-  name: string;
-  mode: "every-device" | "primary-device" | "fallback" | string;
-  deviceProfileIds: string[];
-  primaryDeviceProfileId: string | null;
-  createdUtc: string;
-  updatedUtc: string;
-}
-
-export interface PlaybackGoalItem {
-  id: string;
-  name: string;
-  mediaType: "movies" | "tv" | string;
-  deviceGroupId: string;
-  mustPlay: boolean;
-  requiredTraitIds: string[];
-  requiredAnyTraitGroups: string[][];
-  forbiddenTraitIds?: string[];
-  preferredTraitIds: string[];
-  stopWhenTraitId: string | null;
-  createdUtc: string;
-  updatedUtc: string;
-}
-
-export interface PlaybackGoalCompilation {
-  goal: PlaybackGoalItem;
-  group: PlaybackDeviceGroup | null;
-  selectedDevices: PlaybackDeviceProfile[];
-  plan: import("./release-preferences").ReleasePreferencePlan;
-  planHash: string;
-  unknownCapabilities: string[];
-  warnings: string[];
-  requiresReview: boolean;
-}
-
 export interface ConnectionItem {
   id: string;
   name: string;

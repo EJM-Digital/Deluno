@@ -61,36 +61,6 @@ public static class ReleasePreferencePlanCodec
                 .Where(group => group.Count > 0)
                 .OrderBy(group => string.Join("|", group), StringComparer.Ordinal)
                 .ToArray(),
-            CompatibilityGroups = (plan.CompatibilityGroups ?? [])
-                .Where(group => group is not null && !string.IsNullOrWhiteSpace(group.Id))
-                .Select(group =>
-                {
-                    var alternatives = (group.Alternatives ?? [])
-                        .Select((alternative, index) => new
-                        {
-                            Alternative = (IReadOnlyList<string>)alternative
-                                .Where(trait => !string.IsNullOrWhiteSpace(trait))
-                                .Select(Normalize)
-                                .Distinct(StringComparer.Ordinal)
-                                .OrderBy(trait => trait, StringComparer.Ordinal)
-                                .ToArray(),
-                            Rank = group.AlternativeRanks is { Count: > 0 } ranks && index < ranks.Count
-                                ? (int?)ranks[index]
-                                : null
-                        })
-                        .Where(item => item.Alternative.Count > 0)
-                        .OrderBy(item => item.Rank ?? int.MaxValue)
-                        .ThenBy(item => string.Join("|", item.Alternative), StringComparer.Ordinal)
-                        .ToArray();
-                    return new PreferenceCompatibilityGroup(
-                        Normalize(group.Id),
-                        alternatives.Select(item => item.Alternative).ToArray(),
-                        group.AlternativeRanks is { Count: > 0 }
-                            ? alternatives.Select(item => item.Rank ?? 0).ToArray()
-                            : null);
-                })
-                .OrderBy(group => group.Id, StringComparer.Ordinal)
-                .ToArray(),
             Relationships = (plan.Relationships ?? [])
                 .Select(relationship => new PreferenceRelationship(
                     Normalize(relationship.FromTraitId),

@@ -55,29 +55,17 @@ public sealed class ReleasePreferenceProofTests
     }
 
     [Fact]
-    public void Plan_validation_rejects_impossible_required_and_compatibility_intent()
+    public void Plan_validation_rejects_requiring_a_trait_it_also_forbids()
     {
         var requiredSpecificButForbiddenBroad = AudioPlan() with
         {
             RequiredTraitIds = ["audio.format.truehd-atmos"],
             ForbiddenTraitIds = ["audio.format.truehd"]
         };
-        var requiredPathWith_incompatible_traits = AudioPlan() with
-        {
-            CompatibilityGroups = [new PreferenceCompatibilityGroup(
-                "device/main",
-                [["audio.format.truehd", "audio.format.dts"]])],
-            Relationships = [new PreferenceRelationship(
-                "audio.format.truehd",
-                "audio.format.dts",
-                PreferenceRelationshipKind.Incompatible)]
-        };
 
         var requiredErrors = ReleasePreferencePlanValidator.Validate(requiredSpecificButForbiddenBroad);
-        var pathErrors = ReleasePreferencePlanValidator.Validate(requiredPathWith_incompatible_traits);
 
         Assert.Contains(requiredErrors, error => error.Contains("forbidden", StringComparison.OrdinalIgnoreCase));
-        Assert.Contains(pathErrors, error => error.Contains("incompatible", StringComparison.OrdinalIgnoreCase));
     }
 
     [Fact]
@@ -212,7 +200,13 @@ public sealed class ReleasePreferenceProofTests
         Assert.Equal(PreferenceCandidateStatus.Equivalent, aboveTarget.Status);
         Assert.False(aboveTarget.PersistentImprovement);
         Assert.Equal(PreferenceCandidateStatus.NeedsReview, unknownAudio.Status);
-        Assert.Equal(PreferenceCandidateStatus.Rejected, dolbyVisionWithoutFallback.Status);
+        // Dolby Vision with no HDR10 fallback used to be *rejected*, by a
+        // device-compatibility gate saying it would not play everywhere.
+        // Playback goals were removed from the product, so Deluno no longer
+        // claims to know what your screens can decode — and the honest answer
+        // is now the one the dynamic-range family gives: the file you have is
+        // better, because plain Dolby Vision matches no level in this plan.
+        Assert.Equal(PreferenceCandidateStatus.CurrentBetter, dolbyVisionWithoutFallback.Status);
     }
 
     /// <summary>
@@ -301,15 +295,20 @@ public sealed class ReleasePreferenceProofTests
     }
 
     /// <summary>
-    /// Section 12 canonical "best compatible everywhere" device group. The two
-    /// rows that were never fixtures are the ones that decide whether Dolby
-    /// Vision is safe: a proven HDR10 fallback plays on both televisions and
-    /// is preferred, and an unproven fallback is never automatic.
+    /// A proven Dolby Vision fallback outranks plain HDR10, and an unproven
+    /// one is reviewed rather than taken.
+    ///
+    /// <para>This used to be framed as a "best compatible everywhere" device
+    /// group — whether a release would play on both televisions. Playback
+    /// goals were removed from the product, so Deluno no longer claims to know
+    /// what your screens decode. What survives is the part that was never
+    /// about devices: the dynamic-range family's own order, and the rule that
+    /// unknown evidence is a review and never an automatic acceptance.</para>
     /// </summary>
     [Theory]
     [InlineData("movies")]
     [InlineData("tv")]
-    public void Compatible_everywhere_prefers_proven_fallback_and_reviews_an_unproven_one(string mediaType)
+    public void A_proven_fallback_outranks_hdr10_and_an_unproven_one_is_reviewed(string mediaType)
     {
         var plan = AudioAndHdrPlan(mediaType);
         var hdr10 = MatrixFacts("audio.format.truehd", "video.dynamic-range.hdr10");
@@ -322,9 +321,6 @@ public sealed class ReleasePreferenceProofTests
 
         Assert.True(hdr10Evaluation.HardGatesPassed);
         Assert.True(fallbackEvaluation.HardGatesPassed);
-
-        // Compatible on both televisions, and the HDR family order puts a
-        // proven Dolby Vision fallback above plain HDR10.
         Assert.True(ReleasePreferenceEvaluator.CompareForSelection(
             plan,
             fallbackEvaluation,
@@ -338,7 +334,6 @@ public sealed class ReleasePreferenceProofTests
         var unprovenFallback = ReleasePreferenceEvaluator.Evaluate(plan, unprovenFallbackFacts);
 
         Assert.Equal(PreferenceEvaluationStatus.NeedsReview, unprovenFallback.Status);
-        Assert.False(unprovenFallback.HardGatesPassed);
         Assert.Equal(
             PreferenceCandidateStatus.NeedsReview,
             ReleasePreferenceEvaluator.Compare(plan, hdr10, unprovenFallbackFacts).Status);
@@ -420,73 +415,6 @@ public sealed class ReleasePreferenceProofTests
         Assert.True(accepted.HardGatesPassed);
         Assert.Equal(PreferenceEvaluationStatus.Missing, missing.Status);
         Assert.Equal(PreferenceEvaluationStatus.NeedsReview, review.Status);
-    }
-
-    [Fact]
-    public void Compatibility_groups_require_one_complete_path_without_cross_device_mixing()
-    {
-        var plan = AudioPlan() with
-        {
-            CompatibilityGroups = [new PreferenceCompatibilityGroup(
-                "device/main",
-                [
-                    ["audio.format.truehd", "audio.channels.5-1"],
-                    ["audio.format.dts", "audio.channels.2-0"]
-                ])]
-        };
-
-        var accepted = ReleasePreferenceEvaluator.Evaluate(plan, [
-            new PreferenceFact("audio.format.truehd", PreferenceFactState.Present),
-            new PreferenceFact("audio.channels.5-1", PreferenceFactState.Present)
-        ]);
-        Assert.True(accepted.HardGatesPassed);
-
-        var crossDeviceMix = ReleasePreferenceEvaluator.Evaluate(plan, [
-            new PreferenceFact("audio.format.truehd", PreferenceFactState.Present),
-            new PreferenceFact("audio.format.dts", PreferenceFactState.Absent),
-            new PreferenceFact("audio.channels.5-1", PreferenceFactState.Absent),
-            new PreferenceFact("audio.channels.2-0", PreferenceFactState.Present)
-        ]);
-        Assert.Equal(PreferenceEvaluationStatus.Missing, crossDeviceMix.Status);
-
-        var unknown = ReleasePreferenceEvaluator.Evaluate(plan, [
-            new PreferenceFact("audio.format.truehd", PreferenceFactState.Present),
-            new PreferenceFact("audio.format.dts", PreferenceFactState.Absent),
-            new PreferenceFact("audio.channels.2-0", PreferenceFactState.Absent)
-        ]);
-        Assert.Equal(PreferenceEvaluationStatus.NeedsReview, unknown.Status);
-        Assert.False(unknown.HardGatesPassed);
-    }
-
-    [Fact]
-    public void Compatibility_groups_are_canonical_and_hash_stable_after_restart()
-    {
-        var plan = AudioPlan() with
-        {
-            CompatibilityGroups = [new PreferenceCompatibilityGroup(
-                "device/main",
-                [
-                    ["audio.format.truehd", "audio.channels.5-1"],
-                    ["audio.format.dts", "audio.channels.2-0"]
-                ])]
-        };
-        var equivalent = plan with
-        {
-            CompatibilityGroups = [new PreferenceCompatibilityGroup(
-                " Device/Main ",
-                [
-                    ["audio.channels.2-0", "audio.format.dts"],
-                    ["audio.channels.5-1", "audio.format.truehd"]
-                ])]
-        };
-
-        Assert.Equal(plan.PlanHash, equivalent.PlanHash);
-        var serialized = ReleasePreferencePlanCodec.Serialize(plan);
-        Assert.Equal(serialized, ReleasePreferencePlanCodec.Serialize(equivalent));
-
-        var restored = ReleasePreferencePlanCodec.Deserialize(serialized);
-        Assert.Equal(plan.PlanHash, restored.PlanHash);
-        Assert.Equal(serialized, ReleasePreferencePlanCodec.Serialize(restored));
     }
 
     [Fact]
@@ -745,9 +673,6 @@ public sealed class ReleasePreferenceProofTests
                     ],
                     TargetLevelId: "hdr10")
             ],
-            CompatibilityGroups: [new PreferenceCompatibilityGroup(
-                "device/everywhere",
-                [["video.dynamic-range.hdr10"]])],
             Relationships: [
                 new PreferenceRelationship("audio.format.truehd-atmos", "audio.format.truehd", PreferenceRelationshipKind.Implies),
                 new PreferenceRelationship("audio.format.dtsx", "audio.format.dts-hd-ma", PreferenceRelationshipKind.CoreOf),

@@ -56,15 +56,18 @@ export const configurationNavAreas = [
     match: configurationAreaMatch("quality-and-release"),
     label: "Quality & Release",
     icon: "plans",
-    to: "/settings/profiles",
+    // Your libraries first. Every other tab here is named after something
+    // Deluno keeps; this one is named after something you have, and it was
+    // last — which put five screens of machinery in front of the only
+    // question a person arrives with.
+    to: "/settings/policy-sets",
     tabsInToolbar: true,
     items: [
+      { to: "/settings/policy-sets", label: "Your Libraries", end: false },
       { to: "/settings/profiles", label: "Quality Profiles", end: false },
       { to: "/settings/quality", label: "Size Rules", end: false },
       { to: "/settings/custom-formats", label: "Release Preferences", end: false },
-      { to: "/settings/playback", label: "Playback Goals", end: false },
-      { to: "/settings/release-rules", label: "Acquisition Rules", end: false },
-      { to: "/settings/policy-sets", label: "Library Profiles", end: false }
+      { to: "/settings/release-rules", label: "Acquisition Rules", end: false }
     ]
   },
   {
@@ -208,8 +211,8 @@ export const settingsPageMeta = [
   },
   {
     match: (path: string) => path.startsWith("/settings/policy-sets"),
-    title: "Library Profiles",
-    description: "Configure the reusable settings each library inherits for quality, searching, upgrades, and routing.",
+    title: "Your Libraries",
+    description: "What each library should want from a release, and what that means in practice.",
     // List → drawer pages carry their own toolbar; the topbar already names the page.
     chrome: "none"
   },
@@ -235,12 +238,6 @@ export const settingsPageMeta = [
     match: (path: string) => path.startsWith("/settings/release-rules"),
     title: "Acquisition Rules",
     description: "Hold, prefer, or reject releases by tag, protocol, timing, and release terms before they reach a download client.",
-    chrome: "none"
-  },
-  {
-    match: (path: string) => path.startsWith("/settings/playback"),
-    title: "Playback Goals",
-    description: "Describe the screens and players your library must work on, then inspect the typed compatibility plan.",
     chrome: "none"
   },
   {

@@ -89,13 +89,17 @@ public sealed class ReleasePreferenceEvaluatorTests
     [Fact]
     public void A_hard_gate_dominates_a_better_preference()
     {
-        var plan = Plan() with { RequiredTraitIds = ["compatibility.direct-play"] };
+        // The gate used to be a device-compatibility trait. Playback goals were
+        // removed from the product, so this uses an ordinary required trait —
+        // the rule being proven is that a gate outranks every preference, not
+        // which trait happens to be gating.
+        var plan = Plan() with { RequiredTraitIds = ["video.dynamic-range.hdr10"] };
         var comparison = ReleasePreferenceEvaluator.Compare(
             plan,
-            [new PreferenceFact("compatibility.direct-play", PreferenceFactState.Present)],
+            [new PreferenceFact("video.dynamic-range.hdr10", PreferenceFactState.Present)],
             new[]
             {
-                new PreferenceFact("compatibility.direct-play", PreferenceFactState.Absent),
+                new PreferenceFact("video.dynamic-range.hdr10", PreferenceFactState.Absent),
                 new PreferenceFact("quality.bluray-1080p", PreferenceFactState.Present),
                 new PreferenceFact("audio.format.truehd", PreferenceFactState.Present)
             });
@@ -559,8 +563,8 @@ public sealed class ReleasePreferenceEvaluatorTests
     [Fact]
     public void Plan_hash_ignores_duplicate_gate_values_because_they_are_set_semantics()
     {
-        var first = Plan() with { RequiredTraitIds = ["compatibility.direct-play"] };
-        var second = Plan() with { RequiredTraitIds = ["compatibility.direct-play", "compatibility.direct-play"] };
+        var first = Plan() with { RequiredTraitIds = ["video.dynamic-range.hdr10"] };
+        var second = Plan() with { RequiredTraitIds = ["video.dynamic-range.hdr10", "video.dynamic-range.hdr10"] };
 
         Assert.Equal(first.PlanHash, second.PlanHash);
     }
@@ -570,7 +574,6 @@ public sealed class ReleasePreferenceEvaluatorTests
     {
         var first = Plan() with
         {
-            CompatibilityScope = "all-devices",
             Scenario = "family-1080p",
             Provenance = "deluno-defaults-v1",
             DimensionOrder = ["quality", "audio"]
