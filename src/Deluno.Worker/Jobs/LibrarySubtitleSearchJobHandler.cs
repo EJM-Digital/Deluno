@@ -101,8 +101,7 @@ public sealed class LibrarySubtitleSearchJobHandler(
             return $"Every file in {library.Name} has the subtitles you asked for.";
         }
 
-        var found = 0;
-        var attempted = 0;
+        var tally = new SubtitleDecisionTally();
         var noProviders = false;
 
         foreach (var item in wanted)
@@ -122,7 +121,6 @@ public sealed class LibrarySubtitleSearchJobHandler(
 
             foreach (var language in item.LanguagesToFetch)
             {
-                attempted++;
 
                 var outcome = await subtitleFetchService.FetchAsync(
                     request,
@@ -149,6 +147,15 @@ public sealed class LibrarySubtitleSearchJobHandler(
 
                 if (!outcome.Found || outcome.WrittenPath is null)
                 {
+                    // Nobody said no when a provider answered with something
+                    // Deluno could not read: that is an open question rather
+                    // than a refusal, and the two are worth telling apart in
+                    // Activity because only one of them means "stop asking".
+                    var decision = outcome.Failure?.Kind == IntegrationFailureKind.MalformedResponse
+                        ? SubtitleDecision.NeedsReview
+                        : SubtitleDecision.Rejected;
+                    tally = tally.With(decision);
+
                     // Remembered, so the next slice asks something else, and the
                     // library keeps moving instead of asking the same ten titles
                     // for ever. The delay is subtitles' own — see
@@ -157,7 +164,7 @@ public sealed class LibrarySubtitleSearchJobHandler(
                         kind,
                         item.MediaId,
                         language,
-                        outcome.Reason,
+                        $"{decision.ToStoredName()}: {outcome.Reason}",
                         FirstRetryDelay,
                         cancellationToken,
                         outcome.Failure);
@@ -188,6 +195,7 @@ public sealed class LibrarySubtitleSearchJobHandler(
                     // At the cutoff: made for this file, so the timing is right
                     // and there is nothing better to find. Done, and the attempt
                     // row goes.
+                    tally = tally.With(SubtitleDecision.MeetsSubtitlePlan);
                     await mediaSubtitleRepository.ClearAttemptAsync(kind, item.MediaId, language, cancellationToken);
                 }
                 else
@@ -201,11 +209,19 @@ public sealed class LibrarySubtitleSearchJobHandler(
                     // The attempt row is what keeps it there, and it is the same
                     // row a failure writes: one mechanism, so an upgrade cannot
                     // acquire a second idea of when to look again.
+                    // Which of the two below-target states this is depends on
+                    // whether the timing repair is actually going to run, so it
+                    // is decided here rather than guessed from the rung.
+                    var syncing = timingPolicy.ShouldSync(outcome.Match)
+                        && !IsProviderExcluded(timingPolicy, outcome.ProviderKey);
+                    var decision = syncing ? SubtitleDecision.NeedsSync : SubtitleDecision.UsableFallback;
+                    tally = tally.With(decision);
+
                     await mediaSubtitleRepository.RecordAttemptAsync(
                         kind,
                         item.MediaId,
                         language,
-                        SubtitleMatchRanking.Describe(outcome.Match),
+                        $"{decision.ToStoredName()}: {SubtitleMatchRanking.Describe(outcome.Match)}",
                         FirstRetryDelay,
                         cancellationToken);
 
@@ -216,8 +232,7 @@ public sealed class LibrarySubtitleSearchJobHandler(
                     // library deliberately narrows that threshold or excludes
                     // this provider. Both choices are named in the policy and
                     // survive in the queued job payload.
-                    if (timingPolicy.ShouldSync(outcome.Match)
-                        && !IsProviderExcluded(timingPolicy, outcome.ProviderKey))
+                    if (syncing)
                     {
                         // Queued rather than done here: this lane is holding a
                         // subtitle provider's attention and timing is several
@@ -254,8 +269,6 @@ public sealed class LibrarySubtitleSearchJobHandler(
                             cancellationToken);
                     }
                 }
-
-                found++;
             }
 
             if (noProviders)
@@ -286,30 +299,9 @@ public sealed class LibrarySubtitleSearchJobHandler(
                 cancellationToken);
         }
 
-        return BuildSummary(library.Name, found, attempted, noProviders);
-    }
-
-    /// <summary>
-    /// Written for the person reading Activity, who wants to know what arrived —
-    /// and told plainly when nothing can arrive, because a library quietly
-    /// finding nothing every night with no providers configured is the failure
-    /// nobody would otherwise notice.
-    /// </summary>
-    private static string BuildSummary(string libraryName, int found, int attempted, bool noProviders)
-    {
-        if (noProviders)
-        {
-            return $"{libraryName} wants subtitles and no providers are set up yet, so nothing could be fetched. Add one under Find & Download.";
-        }
-
-        if (attempted == 0)
-        {
-            return $"Nothing in {libraryName} was short of a subtitle.";
-        }
-
-        return found == 0
-            ? $"Looked for {attempted} subtitle(s) in {libraryName} and none of the providers had them."
-            : $"Fetched {found} of {attempted} subtitle(s) looked for in {libraryName}.";
+        return noProviders
+            ? $"{library.Name} wants subtitles and no providers are set up yet, so nothing could be fetched. Add one under Find & Download."
+            : SubtitleDecisions.Describe(tally, library.Name);
     }
 
     private static LibrarySubtitleSearchPayload? ParsePayload(string? payloadJson)
