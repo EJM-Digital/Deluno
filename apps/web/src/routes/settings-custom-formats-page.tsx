@@ -29,6 +29,7 @@ import { ListGroupHeader, MediaTypeFilter, mediaTypeLabel, useMediaTypeSplit } f
 import { PageFooter } from "../components/ui/page-footer";
 import { PageToolbar, PageToolbarAction } from "../components/ui/page-toolbar";
 import { ChoiceRows } from "../components/ui/choice-rows";
+import { friendlyRuleName } from "../lib/guide-names";
 import { PresetField } from "../components/ui/preset-field";
 import { SegmentedControl } from "../components/ui/segmented-control";
 import { Select } from "../components/ui/select";
@@ -803,7 +804,7 @@ export function SettingsCustomFormatsPage() {
                 // "Repack2", "BR-DISK". The column your eye lands on first
                 // should be English, with the guide's name kept underneath
                 // because that is what you would search the guide for.
-                const shownName = guideFormat ? friendlyGuideName(guideFormat) : format.name;
+                const shownName = guideFormat ? friendlyRuleName(guideFormat.name) : format.name;
                 return (
                   <ListRow key={format.id} onClick={() => openRule(format)} selected={drawer?.kind === "rule" && drawer.id === format.id}>
                     <ListNameCell
@@ -917,7 +918,7 @@ export function SettingsCustomFormatsPage() {
         }}
         // The same name the list showed. Opening "Top-tier WEB groups" and
         // landing on a panel headed "WEB Tier 01" reads as the wrong rule.
-        title={editing ? (selectedGuide ? friendlyGuideName(selectedGuide) : editing.name) : "New custom release rule"}
+        title={editing ? (selectedGuide ? friendlyRuleName(selectedGuide.name) : editing.name) : "New custom release rule"}
         description={editing ? `${mediaTypeLabel(editing.mediaType)} · ${selectedGuide ? "Guide-backed" : "Custom rule"}` : "Choose a guide rule or build your own"}
         onSubmit={submitRule}
         footer={
@@ -942,7 +943,7 @@ export function SettingsCustomFormatsPage() {
                     <optgroup key={category} label={GUIDE_CATEGORY_LABELS[category] ?? category}>
                       {entries.map((cf) => (
                         <option key={cf.trashId} value={cf.trashId}>
-                          {friendlyGuideName(cf)}
+                          {friendlyRuleName(cf.name)}
                         </option>
                       ))}
                     </optgroup>
@@ -953,7 +954,7 @@ export function SettingsCustomFormatsPage() {
           ) : null}
           {selectedGuide ? (
             <div className="grid gap-1 rounded-[10px] border border-primary/25 bg-primary/5 px-3 py-2">
-              <p className="text-[length:var(--type-body-sm)] font-medium text-foreground">{friendlyGuideName(selectedGuide)}</p>
+              <p className="text-[length:var(--type-body-sm)] font-medium text-foreground">{friendlyRuleName(selectedGuide.name)}</p>
               <p className="text-[length:var(--type-caption)] text-muted-foreground">{selectedGuide.description}</p>
               <p className="text-[length:var(--type-caption)] text-muted-foreground">The guide definition stays attached; the technical match is available under Advanced matching.</p>
             </div>
@@ -1419,45 +1420,6 @@ function conditionSummary(conditions: Condition[]) {
   // Patterns can be long regex; the drawer shows them in full.
   const value = first.value.length > 32 ? `${first.value.slice(0, 32)}…` : first.value;
   return `${label} ${first.negate ? "without" : "with"} “${value}”`;
-}
-
-/**
- * The guide's names are its filenames.
- *
- * <p>"HDR10", "TrueHD" and "Netflix" are the real names of real things and are
- * left alone. "WEB Tier 01", "Repack2", "BR-DISK" and "Retags" are identifiers
- * from a wiki, and reading a list of them teaches you nothing — which is
- * exactly what James said looking at this screen. Only the ones that read as
- * an identifier are renamed; the guide's own name stays visible underneath,
- * because it is what you would search the guide for.</p>
- *
- * <p>This lives here rather than in the guide package because the package is
- * pinned to an upstream revision with an integrity hash: a display name is
- * Deluno's word for the thing, not the guide's, and adding one upstream would
- * mean re-pinning 85 entries to change a label.</p>
- */
-function friendlyGuideName(format: GuideCustomFormat) {
-  const names: Record<string, string> = {
-    "HD Bluray Tier 01": "Top-tier Blu-ray groups",
-    "HD Bluray Tier 02": "Trusted Blu-ray groups",
-    "UHD Bluray Tier 01": "Top-tier 4K Blu-ray groups",
-    "WEB Tier 01": "Top-tier WEB groups",
-    "WEB Tier 02": "Trusted WEB groups",
-    "WEB Tier 03": "Fallback WEB groups",
-    "Remux Tier 01": "Top-tier remux groups",
-    "Remux Tier 02": "Trusted remux groups",
-    "Anime BD Tier 01": "Top-tier anime Blu-ray groups",
-    "Anime WEB Tier 01": "Top-tier anime WEB groups",
-    "Repack2": "Second repack",
-    "Repack3": "Third repack",
-    "Repack / Proper": "Corrected re-release",
-    "BR-DISK": "Full disc image, not a video file",
-    "Retags": "Re-tagged re-uploads",
-    "Obfuscated": "Obfuscated file names",
-    "No Release Group": "Releases without a release group",
-    "LQ (Low Quality Groups)": "Known low-quality release groups"
-  };
-  return names[format.name] ?? format.name;
 }
 
 function ruleIntent(score: number) {

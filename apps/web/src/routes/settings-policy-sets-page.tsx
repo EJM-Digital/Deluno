@@ -8,7 +8,7 @@
  * API contracts are unchanged: POST/PUT/DELETE /api/policy-sets and
  * PUT /api/libraries/{id}/media-plan.
  */
-import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { useLocation, useLoaderData, useNavigate, useRevalidator } from "react-router-dom";
 import { Plus } from "lucide-react";
 import { Button } from "../components/ui/button";
@@ -26,6 +26,7 @@ import { Switch, SwitchRow } from "../components/ui/switch";
 import { Textarea } from "../components/ui/textarea";
 import { toast } from "../components/shell/toaster";
 import { configurationNavAreas } from "../components/app/settings-shell";
+import { friendlyRuleName } from "../lib/guide-names";
 import {
   fetchJson,
   type CustomFormatItem,
@@ -557,16 +558,7 @@ export function SettingsPolicySetsPage() {
             }
           />
         ) : (
-          <ListTable
-            columns={[
-              { label: "Name" },
-              { label: "Quality" },
-              { label: "Releases" },
-              { label: "Used by" },
-              { label: "Status", width: LIST_TRACK.status, mobile: true },
-              { label: "On", width: LIST_TRACK.toggle, mobile: true }
-            ]}
-          >
+          <ListTable columns={LIBRARY_COLUMNS}>
             {split.visibleCount === 0 ? (
               <ListEmpty title="No profiles match" description={filter ? `Nothing matches “${filter}”.` : "No library profile for this media type yet."} />
             ) : (
@@ -576,6 +568,7 @@ export function SettingsPolicySetsPage() {
                 const used = librariesByPlan.get(plan.id) ?? [];
                 const rules = splitCsv(plan.customFormatIds);
                 const profile = qualityProfiles.find((item) => item.id === plan.qualityProfileId);
+                const wants = describeWhatItWants(profile, rules, customFormats);
                 const tone = !plan.isEnabled ? "idle" : used.length ? "ok" : "idle";
                 const statusLabel = !plan.isEnabled ? "Off" : used.length ? "Active" : "Unused";
                 return (
@@ -585,20 +578,8 @@ export function SettingsPolicySetsPage() {
                       sub={[plan.mediaType === "tv" ? "TV" : "Movies", plan.notes?.trim() || null].filter(Boolean).join(" · ")}
                     />
                     <ListCell
-                      primary={plan.qualityProfileName ?? <span className="text-muted-foreground">Not chosen yet</span>}
-                      secondary={profile ? `Stops at ${profile.cutoffQuality}` : plan.destinationRuleName ? `Folder: ${plan.destinationRuleName}` : "Library default folder"}
-                    />
-                    <ListCell
-                      primary={rules.length ? `${rules.length} ${rules.length === 1 ? "rule" : "rules"}` : <span className="text-muted-foreground">None</span>}
-                      secondary={
-                        rules.length
-                          ? rules
-                              .map((id) => customFormats.find((format) => format.id === id)?.name)
-                              .filter(Boolean)
-                              .slice(0, 3)
-                              .join(", ")
-                          : "Quality profile decides"
-                      }
+                      primary={wants.headline}
+                      secondary={wants.detail}
                     />
                     <ListCell
                       numeric
@@ -1042,6 +1023,71 @@ function splitCsv(value: string | null | undefined) {
     .split(",")
     .map((item) => item.trim())
     .filter(Boolean);
+}
+
+/**
+ * One sentence, not four columns of fragments.
+ *
+ * "E2E 4K Streaming Movies · Stops at WEB 2160p · 1 rule · E2E WEB-DL bonus ·
+ * 1 library · Movies" was six facts you had to assemble yourself into the one
+ * thing you opened this screen to find out.
+ */
+const LIBRARY_COLUMNS = [
+  { label: "Library profile", width: "minmax(0,0.9fr)" },
+  { label: "What it wants", width: "minmax(0,2fr)" },
+  { label: "Used by" },
+  { label: "Status", width: LIST_TRACK.status, mobile: true },
+  { label: "On", width: LIST_TRACK.toggle, mobile: true }
+];
+
+/**
+ * What this library wants, as a sentence a person can read.
+ *
+ * The row used to carry the raw parts — a profile name, "Stops at WEB 2160p",
+ * "1 rule", the rule's own name — and leave you to assemble them. The parts
+ * are all still true; they are just not the answer to the question somebody
+ * opened this screen to ask.
+ */
+function describeWhatItWants(
+  profile: QualityProfileItem | undefined,
+  ruleIds: string[],
+  customFormats: CustomFormatItem[]
+): { headline: React.ReactNode; detail: string } {
+  if (!profile) {
+    return {
+      headline: <span className="text-muted-foreground">Nothing yet</span>,
+      detail: "Choose what this library should want."
+    };
+  }
+
+  const tiers = splitCsv(profile.allowedQualities);
+  const best = tiers[0] ?? profile.cutoffQuality;
+  const headline = profile.upgradeUntilCutoff
+    ? `Up to ${best}, and keeps looking until ${profile.cutoffQuality}`
+    : `Up to ${best}, and keeps whatever it already has`;
+
+  const selected = ruleIds
+    .map((id) => customFormats.find((format) => format.id === id))
+    .filter((format): format is CustomFormatItem => Boolean(format));
+  // A rule at the floor is a refusal; anything above zero is a preference.
+  // Zero is neither, so it says nothing here.
+  const refuses = selected.filter((format) => format.score <= -10000).map((format) => friendlyRuleName(format.name));
+  const prefers = selected.filter((format) => format.score > 0).map((format) => friendlyRuleName(format.name));
+
+  const clauses: string[] = [];
+  if (prefers.length) {
+    clauses.push(prefers.length <= 2
+      ? `Prefers ${prefers.join(" and ")}`
+      : `Prefers ${prefers.slice(0, 2).join(", ")} and ${prefers.length - 2} more`);
+  }
+  if (refuses.length) {
+    clauses.push(refuses.length === 1 ? `refuses ${refuses[0]}` : `refuses ${refuses.length} things`);
+  }
+
+  return {
+    headline,
+    detail: clauses.length ? `${clauses.join(", ")}.` : "No release preferences beyond the quality it accepts."
+  };
 }
 
 function describeUsage(count: number, singular = "library", plural = "libraries") {
