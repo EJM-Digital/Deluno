@@ -42,8 +42,8 @@ starting.
 |---|---|---|---|
 | #357 Metadata recovery | 7 | **yes** | **7/7 — closed 3 Sep.** Line 3 closed by [#376](https://github.com/jampat000/Deluno/pull/376) (real resilience policy, three paced attempts, `Unavailable` not `Missing`) and line 1 by the same PR's populated movie/series fixtures. Full evidence in the [audit comment](https://github.com/jampat000/Deluno/issues/357). |
 | #338 Telemetry truthful/attributable | 2 | **yes** | **2/2 — closed 3 Sep.** The last swallowed external-service failure was the metadata path, fixed in [#377](https://github.com/jampat000/Deluno/pull/377): a bare 503 with no body, and a failure that could not name its own service. Front end re-swept; every remaining fixed sentence is a Deluno-local operation. Full evidence in the [audit comment](https://github.com/jampat000/Deluno/issues/338). |
-| #351 Scoring migration | 8 | no | Next in the release-preference chain. |
-| #350 TRaSH translation | 9 | no | |
+| #351 Scoring migration | 8 | **yes** | **8/8 — closed 3 Sep.** Lines 3, 6, 7 and 8 closed by [#379](https://github.com/jampat000/Deluno/pull/379). Line 3's golden fixture found a shipped defect: a quality family built only from the allowed list could not place a held file better than it, so a profile allowing up to Bluray 1080p wanted to downgrade a Bluray 2160p file. Lines 1, 2, 4 and 5 were already met — 5 is per-title, through the stale-baseline hold. |
+| #350 TRaSH translation | 9 | **yes** | **5/5 — closed 3 Sep.** The script's 9 bullets are 5 `Done when` lines plus the 4-item `References` list. Line 4 closed by [#380](https://github.com/jampat000/Deluno/pull/380): the plan diff was computed and reported as a count, and a retained version had no way back to it. Line 5 came free with [#379](https://github.com/jampat000/Deluno/pull/379). |
 | #352 Release preference proof | 7 | no | |
 | #353 Release preference UX | 7 | no | |
 | #343 Media Plans | 2 | no | Own lifecycle track. |

@@ -3607,111 +3607,23 @@ public sealed class SqliteSeriesCatalogRepository(
         return await command.ExecuteNonQueryAsync(cancellationToken) > 0;
     }
 
-    public async Task<int> ReevaluateLibraryWantedStateAsync(
+    public Task<int> ReevaluateLibraryWantedStateAsync(
         string libraryId,
         string? cutoffQuality,
         bool upgradeUntilCutoff,
         bool upgradeUnknownItems,
         CancellationToken cancellationToken)
-    {
-        if (sharedMediaStateRepository is not null)
-        {
-            return await sharedMediaStateRepository.ReevaluateLibraryWantedStateAsync(
+        // See the note on the movie repository: the local copy of this routine
+        // had drifted from the shared rule and wrote a row at a time. One
+        // rule, one place.
+        => (sharedMediaStateRepository ?? new SqliteMediaStateRepository(databaseConnectionFactory, timeProvider))
+            .ReevaluateLibraryWantedStateAsync(
                 MediaKind.Series,
                 libraryId,
                 cutoffQuality,
                 upgradeUntilCutoff,
                 upgradeUnknownItems,
                 cancellationToken);
-        }
-
-        // The show, and what its *episodes* say about it.
-        //
-        // This used to read has_file and current_quality off the series row and
-        // ask MediaDecisionRules the film question — "is this file the quality
-        // you asked for". A show has no such file: the row describes whichever
-        // one the import happened to see first. That is why a three-of-twenty
-        // show was stored as "Quality met", and why the chips disagreed with
-        // every poster on the shelf.
-        var items = new List<(string SeriesId, int Aired, int AiredWithFile, int AiredUpgradable, bool HasFutureAirDate)>();
-
-        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
-            DelunoDatabaseNames.Series,
-            cancellationToken);
-
-        var nowText = timeProvider.GetUtcNow().ToString("O");
-
-        using (var command = connection.CreateCommand())
-        {
-            command.CommandText =
-                """
-                SELECT
-                    w.series_id,
-                    COALESCE(SUM(CASE WHEN e.air_date_utc IS NOT NULL AND e.air_date_utc <= @now THEN 1 ELSE 0 END), 0),
-                    COALESCE(SUM(CASE WHEN e.air_date_utc IS NOT NULL AND e.air_date_utc <= @now AND e.has_file = 1 THEN 1 ELSE 0 END), 0),
-                    COALESCE(SUM(CASE WHEN e.air_date_utc IS NOT NULL AND e.air_date_utc <= @now AND e.has_file = 1 AND e.quality_cutoff_met = 0 THEN 1 ELSE 0 END), 0),
-                    COALESCE(MAX(CASE WHEN e.air_date_utc > @now THEN 1 ELSE 0 END), 0)
-                FROM series_wanted_state w
-                LEFT JOIN episode_entries e ON e.series_id = w.series_id
-                WHERE w.library_id = @libraryId
-                GROUP BY w.series_id;
-                """;
-            AddParameter(command, "@libraryId", libraryId);
-            AddParameter(command, "@now", nowText);
-
-            using var reader = await command.ExecuteReaderAsync(cancellationToken);
-            while (await reader.ReadAsync(cancellationToken))
-            {
-                items.Add((
-                    reader.GetString(0),
-                    reader.GetInt32(1),
-                    reader.GetInt32(2),
-                    reader.GetInt32(3),
-                    reader.GetInt32(4) == 1));
-            }
-        }
-
-        var updated = 0;
-        foreach (var item in items)
-        {
-            var status = SeriesRung.From(item.Aired, item.AiredWithFile, item.AiredUpgradable, item.HasFutureAirDate);
-            var decision = new LibraryQualityDecision(
-                WantedStatus: status,
-                WantedReason: SeriesRungReason(status, item.Aired, item.AiredWithFile),
-                QualityCutoffMet: status == WantedStatuses.Covered,
-                // A show has no single file, so it has no single current
-                // quality. Leaving this null is the honest answer and stops the
-                // detail page printing one arbitrary episode's tier as if it
-                // described the whole show.
-                CurrentQuality: null,
-                TargetQuality: cutoffQuality,
-                PolicyVersion: SeriesRungPolicyVersion);
-
-            using var update = connection.CreateCommand();
-            update.CommandText =
-                """
-                UPDATE series_wanted_state
-                SET
-                    wanted_status = @wantedStatus,
-                    wanted_reason = @wantedReason,
-                    target_quality = @targetQuality,
-                    quality_cutoff_met = @qualityCutoffMet,
-                    updated_utc = @updatedUtc
-                WHERE series_id = @seriesId
-                  AND library_id = @libraryId;
-                """;
-            AddParameter(update, "@seriesId", item.SeriesId);
-            AddParameter(update, "@libraryId", libraryId);
-            AddParameter(update, "@wantedStatus", decision.WantedStatus);
-            AddParameter(update, "@wantedReason", decision.WantedReason);
-            AddParameter(update, "@targetQuality", decision.TargetQuality);
-            AddParameter(update, "@qualityCutoffMet", decision.QualityCutoffMet ? 1 : 0);
-            AddParameter(update, "@updatedUtc", timeProvider.GetUtcNow().ToString("O"));
-            updated += await update.ExecuteNonQueryAsync(cancellationToken);
-        }
-
-        return updated;
-    }
 
     public async Task<SeriesImportRecoverySummary> GetImportRecoverySummaryAsync(CancellationToken cancellationToken)
     {
