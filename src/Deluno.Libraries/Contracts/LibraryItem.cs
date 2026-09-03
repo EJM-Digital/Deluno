@@ -82,4 +82,9 @@ public sealed record LibraryItem(
     /// <summary>Automatic timing-repair policy for fetched subtitles.</summary>
     SubtitleTimingPolicy? SubtitleTimingPolicy = null,
     /// <summary>Words a subtitle's release name must or must not carry.</summary>
-    SubtitleNamePolicy? SubtitleNamePolicy = null);
+    SubtitleNamePolicy? SubtitleNamePolicy = null,
+    /// <summary>
+    /// Whether a subtitle Deluno writes leaves the language code out of its
+    /// name, for players that only load <c>Film.srt</c>.
+    /// </summary>
+    bool SubtitleOmitLanguageCode = false);

@@ -61,7 +61,8 @@ public interface ISubtitleFetchService
         bool excludeHearingImpaired,
         CancellationToken cancellationToken,
         SubtitleContentModificationPolicy? contentPolicy = null,
-        SubtitleNamePolicy? namePolicy = null);
+        SubtitleNamePolicy? namePolicy = null,
+        bool omitLanguageCode = false);
 }
 
 public sealed class SubtitleFetchService(
@@ -80,7 +81,8 @@ public sealed class SubtitleFetchService(
         bool excludeHearingImpaired,
         CancellationToken cancellationToken,
         SubtitleContentModificationPolicy? contentPolicy = null,
-        SubtitleNamePolicy? namePolicy = null)
+        SubtitleNamePolicy? namePolicy = null,
+        bool omitLanguageCode = false)
     {
         var now = timeProvider.GetUtcNow();
         var names = SubtitleNamePolicyCodec.Normalize(namePolicy);
@@ -162,7 +164,8 @@ public sealed class SubtitleFetchService(
                 operation = "write";
                 var modification = SubtitleContentModifier.Apply(subtitle, contentPolicy);
                 subtitle = modification.Content;
-                var written = await fileWriter.WriteAsync(videoPath, language, pick.HearingImpaired, subtitle, cancellationToken);
+                var written = await fileWriter.WriteAsync(
+                    videoPath, language, pick.HearingImpaired, subtitle, cancellationToken, omitLanguageCode);
 
                 await RecordAsync(connection, "healthy",
                     $"Fetched a {language} subtitle for {request.Title}.", true, null, cancellationToken);

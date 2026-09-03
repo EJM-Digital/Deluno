@@ -37,7 +37,8 @@ public sealed class SqliteLibrariesRepository(
                 l.subtitle_languages, l.subtitle_language_mode,
                 l.subtitle_unknown_language, l.subtitle_embedded_counts,
                 l.subtitle_content_policy_json, l.subtitle_timing_policy_json,
-                l.subtitle_name_policy_json
+                l.subtitle_name_policy_json,
+                   l.subtitle_omit_language_code
             FROM libraries l
             LEFT JOIN quality_profiles q ON q.id = l.quality_profile_id
             LEFT JOIN policy_sets p ON p.id = l.default_policy_set_id
@@ -656,6 +657,7 @@ public sealed class SqliteLibrariesRepository(
                 subtitle_content_policy_json = @contentPolicy,
                 subtitle_timing_policy_json = @timingPolicy,
                 subtitle_name_policy_json = @namePolicy,
+                subtitle_omit_language_code = @omitLanguageCode,
                 updated_utc = @updatedUtc
             WHERE id = @id;
             """;
@@ -685,6 +687,7 @@ public sealed class SqliteLibrariesRepository(
             command,
             "@namePolicy",
             SubtitleNamePolicyCodec.Serialize(request.NamePolicy) ?? string.Empty);
+        AddParameter(command, "@omitLanguageCode", request.OmitLanguageCode ? 1 : 0);
         AddParameter(command, "@updatedUtc", now.ToString("O"));
         await command.ExecuteNonQueryAsync(cancellationToken);
 
@@ -1039,7 +1042,8 @@ public sealed class SqliteLibrariesRepository(
                 l.subtitle_languages, l.subtitle_language_mode,
                 l.subtitle_unknown_language, l.subtitle_embedded_counts,
                 l.subtitle_content_policy_json, l.subtitle_timing_policy_json,
-                l.subtitle_name_policy_json
+                l.subtitle_name_policy_json,
+                   l.subtitle_omit_language_code
             FROM libraries l
             LEFT JOIN quality_profiles q ON q.id = l.quality_profile_id
             LEFT JOIN policy_sets p ON p.id = l.default_policy_set_id
@@ -1352,7 +1356,8 @@ public sealed class SqliteLibrariesRepository(
             SubtitleEmbeddedCounts: reader.IsDBNull(33) || reader.GetInt64(33) == 1,
             SubtitleContentPolicy: SubtitleContentModificationPolicyCodec.Deserialize(reader.IsDBNull(34) ? null : reader.GetString(34)),
             SubtitleTimingPolicy: SubtitleTimingPolicyCodec.Deserialize(reader.IsDBNull(35) ? null : reader.GetString(35)),
-            SubtitleNamePolicy: SubtitleNamePolicyCodec.Deserialize(reader.IsDBNull(36) ? null : reader.GetString(36)));
+            SubtitleNamePolicy: SubtitleNamePolicyCodec.Deserialize(reader.IsDBNull(36) ? null : reader.GetString(36)),
+            SubtitleOmitLanguageCode: !reader.IsDBNull(37) && reader.GetInt32(37) == 1);
     }
 
 

@@ -4,6 +4,7 @@ using System.Text;
 using Deluno.Connections.Contracts;
 using Deluno.Connections.Data;
 using Deluno.Contracts;
+using Deluno.Filesystem;
 using Deluno.Integrations.Subtitles;
 using Microsoft.Extensions.Logging.Abstractions;
 
@@ -290,6 +291,22 @@ public sealed class SubtitleFetchTests
         Assert.False(outcome.Found);
     }
 
+    [Theory]
+    [InlineData("en", false, false, "Dune (2021).en.srt")]
+    [InlineData("en", true, false, "Dune (2021).en.sdh.srt")]
+    [InlineData("en", false, true, "Dune (2021).srt")]
+    // The variant survives without the code: a plain and a hearing-impaired
+    // subtitle are two different files, and dropping the distinction would have
+    // the second silently overwrite the first.
+    [InlineData("en", true, true, "Dune (2021).sdh.srt")]
+    public void A_subtitle_is_named_after_the_video_it_belongs_to(
+        string language, bool hearingImpaired, bool omitLanguageCode, string expected)
+    {
+        Assert.Equal(
+            expected,
+            SubtitleFileNaming.For(@"D:\Media\Dune\Dune (2021).mkv", language, hearingImpaired, omitLanguageCode));
+    }
+
     private static SubtitleCandidate Candidate(string language)
         => new("first", "token", language, HearingImpaired: false, Forced: false);
 
@@ -366,11 +383,18 @@ public sealed class SubtitleFetchTests
         public List<(string Path, byte[] Payload)> Written { get; } = [];
 
         public Task<string> WriteAsync(
-            string videoPath, string language, bool hearingImpaired, byte[] subtitle, CancellationToken cancellationToken)
+            string videoPath,
+            string language,
+            bool hearingImpaired,
+            byte[] subtitle,
+            CancellationToken cancellationToken,
+            bool omitLanguageCode = false)
         {
+            // Through the real naming rule rather than a second copy of it, so
+            // this fake cannot quietly disagree with what lands on disk.
             var path = Path.Combine(
                 Path.GetDirectoryName(videoPath)!,
-                $"{Path.GetFileNameWithoutExtension(videoPath)}.{language}{(hearingImpaired ? ".sdh" : string.Empty)}.srt");
+                SubtitleFileNaming.For(videoPath, language, hearingImpaired, omitLanguageCode));
 
             Written.Add((path, subtitle));
             return Task.FromResult(path);

@@ -37,6 +37,7 @@ interface Form {
   /** Comma-separated while being typed; split into terms on save. */
   mustContain: string;
   mustNotContain: string;
+  omitLanguageCode: boolean;
 }
 
 const EMPTY_CONTENT_POLICY: SubtitleContentModificationPolicy = {
@@ -99,7 +100,8 @@ export function SubtitleLanguagesPage() {
     contentPolicy: EMPTY_CONTENT_POLICY,
     timingPolicy: EMPTY_TIMING_POLICY,
     mustContain: "",
-    mustNotContain: ""
+    mustNotContain: "",
+    omitLanguageCode: false
   });
   const [busy, setBusy] = useState(false);
 
@@ -115,7 +117,8 @@ export function SubtitleLanguagesPage() {
       contentPolicy: { ...EMPTY_CONTENT_POLICY, ...(library.subtitleContentPolicy ?? {}) },
       timingPolicy: { ...EMPTY_TIMING_POLICY, ...(library.subtitleTimingPolicy ?? {}) },
       mustContain: (library.subtitleNamePolicy?.mustContain ?? []).join(", "),
-      mustNotContain: (library.subtitleNamePolicy?.mustNotContain ?? []).join(", ")
+      mustNotContain: (library.subtitleNamePolicy?.mustNotContain ?? []).join(", "),
+      omitLanguageCode: library.subtitleOmitLanguageCode ?? false
     });
   }
 
@@ -248,6 +251,17 @@ export function SubtitleLanguagesPage() {
                       }))
                     ]}
                     className="max-w-sm"
+                  />
+                </Field>
+
+                <Field
+                  label="Name subtitles after the video only"
+                  help="Writes Film.srt instead of Film.en.srt, for players that only load a subtitle sharing the video's exact name. The file no longer says what language it is, so only turn this on where one language is wanted — Deluno reads it back as whatever this shelf treats an unnamed language as."
+                >
+                  <Switch
+                    checked={form.omitLanguageCode}
+                    disabled={busy}
+                    onCheckedChange={(omitLanguageCode) => setForm({ ...form, omitLanguageCode })}
                   />
                 </Field>
 

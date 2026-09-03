@@ -57,6 +57,38 @@ public sealed record SubtitleNamePolicy(
 
         return false;
     }
+
+    /// <summary>
+    /// By the terms, not by the arrays holding them.
+    ///
+    /// <para>A record's generated equality compares
+    /// <see cref="IReadOnlyList{T}"/> by reference, so two policies with
+    /// identical terms would report themselves different — which is exactly the
+    /// comparison a caller makes to decide whether a setting changed.</para>
+    /// </summary>
+    public bool Equals(SubtitleNamePolicy? other)
+        => other is not null
+            && Same(MustContain, other.MustContain)
+            && Same(MustNotContain, other.MustNotContain);
+
+    public override int GetHashCode()
+    {
+        var hash = new HashCode();
+        foreach (var term in MustContain ?? [])
+        {
+            hash.Add(term, StringComparer.Ordinal);
+        }
+
+        foreach (var term in MustNotContain ?? [])
+        {
+            hash.Add(term, StringComparer.Ordinal);
+        }
+
+        return hash.ToHashCode();
+    }
+
+    private static bool Same(IReadOnlyList<string>? left, IReadOnlyList<string>? right)
+        => (left ?? []).SequenceEqual(right ?? [], StringComparer.Ordinal);
 }
 
 /// <summary>Canonical persistence for a subtitle name policy.</summary>

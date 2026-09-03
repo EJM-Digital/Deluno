@@ -26,7 +26,8 @@ public sealed class SubtitleFileWriter(ILogger<SubtitleFileWriter> logger) : ISu
         string language,
         bool hearingImpaired,
         byte[] subtitle,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool omitLanguageCode = false)
     {
         var directory = Path.GetDirectoryName(videoPath);
         if (string.IsNullOrWhiteSpace(directory))
@@ -41,7 +42,8 @@ public sealed class SubtitleFileWriter(ILogger<SubtitleFileWriter> logger) : ISu
             throw new DirectoryNotFoundException($"“{directory}” is not there, so the video is not either.");
         }
 
-        var target = Path.Combine(directory, SubtitleFileNaming.For(videoPath, language, hearingImpaired));
+        var target = Path.Combine(
+            directory, SubtitleFileNaming.For(videoPath, language, hearingImpaired, omitLanguageCode));
         var temporary = target + ".partial";
 
         await File.WriteAllBytesAsync(temporary, subtitle, cancellationToken);
@@ -68,13 +70,26 @@ public static class SubtitleFileNaming
     /// <para><c>sdh</c> rather than <c>hi</c> or <c>cc</c>: the scanner reads all
     /// three, players and Bazarr both use <c>sdh</c>, and picking the one a
     /// person is most likely to recognise costs nothing.</para>
+    ///
+    /// <para><paramref name="omitLanguageCode"/> writes
+    /// <c>Big Buck Bunny (2008).srt</c> instead, for the players — mostly older
+    /// televisions — that only load a subtitle whose name is the video's name
+    /// and nothing else. It is a per-library choice rather than a default
+    /// because the file it produces no longer says what language it is, which
+    /// is a real loss: it is only safe on a shelf asking for one language, and
+    /// what the shelf then reads that file back as is the library's
+    /// unknown-language setting.</para>
     /// </summary>
-    public static string For(string videoPath, string language, bool hearingImpaired)
+    public static string For(
+        string videoPath, string language, bool hearingImpaired, bool omitLanguageCode = false)
     {
         var stem = Path.GetFileNameWithoutExtension(videoPath);
         var code = SubtitleLanguages.Normalize(language) ?? SubtitleLanguages.Unknown;
         var variant = hearingImpaired ? ".sdh" : string.Empty;
 
-        return $"{stem}.{code}{variant}.srt";
+        // The variant is kept even without the code: a plain and a hearing-
+        // impaired subtitle for the same film are two different files, and
+        // dropping the distinction would have the second overwrite the first.
+        return omitLanguageCode ? $"{stem}{variant}.srt" : $"{stem}.{code}{variant}.srt";
     }
 }
