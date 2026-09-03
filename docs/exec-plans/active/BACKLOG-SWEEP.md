@@ -49,7 +49,7 @@ starting.
 | #343 Media Plans | 2 | no | Own lifecycle track. |
 | ~~#354 Normative spec~~ | — | — | **Already closed** on 2 Sep. Left here so a later reader does not go looking for it. |
 | #321 Subber delta | 15 | **yes** | Closed 4 Sep — [audit](https://github.com/jampat000/Deluno/issues/321#issuecomment-5532406216). Eleven met; four recorded not planned with a reason each (Whisper, translation, post-process command, anti-captcha) plus the audio column, which needs a migration on both catalogues. |
-| #301 Subber outcome | 0 | no | Parent of #321/#329. |
+| #301 Subber outcome | 6 | **yes** | Closed 4 Sep — [audit](https://github.com/jampat000/Deluno/issues/301#issuecomment-5532427875). 6/6. Weir retired its own copy in `0010_drop_subber_tables` on 28 Aug; children #321/#329/#330 all closed. |
 | #329 Whisper | 2 | no | Build on the lab VM and **measure** before recommending. "Not worth shipping" is a welcome answer. |
 | #337 Docker | 5 | no | Needs a container runtime on the VM. Owner gave free rein on Hyper-V. |
 | #339 Request portal | 2 | no | Needs email; Cloudflare available. Park if it becomes a project. |
