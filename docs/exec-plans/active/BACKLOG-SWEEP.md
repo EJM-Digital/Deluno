@@ -55,7 +55,7 @@ starting.
 | #339 Request portal | 2 | no | Needs email; Cloudflare available. Park if it becomes a project. |
 | #341 Mobile web | 2 | no | |
 | #340 Native mobile | 2 | no | iOS needs macOS + Xcode, which do not exist here. |
-| #269 README / screenshots | 2 | no | Last. |
+| #269 README / screenshots | 2 | **yes** | Audited 4 Sep — [audit](https://github.com/jampat000/Deluno/issues/269#issuecomment-5532522033). Every clause met except current screenshots: `quality.png` predates #382/#383/#384. Needs one lab sign-in; I do not type passwords into forms. |
 | #322 Stack epic | 0 | no | Closes when its children do. |
 | #349 Playback goals | 6 | — | **PARKED** by the owner. Do not work it. Do not close it. |
 | #78 GA readiness epic | 12 | no | Last. Parent of #81/#82 — closes after them, never before. |
