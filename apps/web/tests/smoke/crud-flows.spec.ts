@@ -499,6 +499,93 @@ test.describe("indexer and download client CRUD", () => {
       await page.request.delete(`/api/quality-profiles/${profile.id}`, { headers: authHeaders() });
     }
   });
+
+  test("a profile traces every preference back to the legacy rule and value behind it", async ({ page }) => {
+    // #351: the owner can trace every new preference back to the exact legacy
+    // rule and value that produced it. The drawer used to name the retained
+    // rule and stop there, which is a claim about provenance rather than the
+    // provenance itself.
+    const stamp = Date.now();
+    const formatName = `Smoke-Trace-Format-${stamp}`;
+    const profileName = `Smoke-Trace-Profile-${stamp}`;
+    const trashId = `smoke-trace-${stamp}`;
+    const conditions = "audio=truehd-atmos";
+    const legacyScore = 4321;
+
+    const qualityModel = await page.request.get("/api/quality-model", { headers: authHeaders() });
+    expect(qualityModel.ok()).toBe(true);
+    const tier = (await qualityModel.json() as { tiers: Array<{ name: string }> }).tiers[0]?.name;
+    expect(tier).toBeTruthy();
+
+    const createFormat = await page.request.post("/api/custom-formats", {
+      data: { name: formatName, mediaType: "movies", score: legacyScore, trashId, conditions, upgradeAllowed: true },
+      headers: authHeaders()
+    });
+    expect(createFormat.ok()).toBe(true);
+    const format = await createFormat.json() as { id: string };
+
+    // A second format that the guide has actually reviewed, so the plan gains
+    // a typed preference with a source. Without one the only thing to trace is
+    // the retained rule, and the plan-provenance half is never exercised.
+    const mappedScore = 777;
+    const createMapped = await page.request.post("/api/custom-formats", {
+      data: {
+        name: `Smoke-Trace-HDR10-${stamp}`,
+        mediaType: "movies",
+        score: mappedScore,
+        trashId: "7878c33f1963fefb3d6c8657d46c2f0a",
+        conditions: "\bHDR10\b",
+        upgradeAllowed: true
+      },
+      headers: authHeaders()
+    });
+    expect(createMapped.ok()).toBe(true);
+    const mapped = await createMapped.json() as { id: string };
+
+    const createProfile = await page.request.post("/api/quality-profiles", {
+      data: {
+        name: profileName,
+        mediaType: "movies",
+        cutoffQuality: tier,
+        allowedQualities: tier,
+        customFormatIds: `${format.id},${mapped.id}`,
+        upgradeUntilCutoff: true,
+        upgradeUnknownItems: false
+      },
+      headers: authHeaders()
+    });
+    expect(createProfile.ok()).toBe(true);
+    const profile = await createProfile.json() as { id: string };
+
+    try {
+      await page.goto("/settings/profiles");
+      await page.getByRole("row").filter({ hasText: profileName }).click();
+      const drawer = page.getByRole("dialog", { name: profileName });
+
+      await drawer.getByRole("button", { name: /Advanced review/ }).click();
+      // The rule, the value it carried, its matcher, and what Deluno decided
+      // to do with it - each of which the owner would otherwise have to take
+      // on trust.
+      await expect(drawer.getByText(String(legacyScore))).toBeVisible();
+      await expect(drawer.getByText(trashId, { exact: false }).first()).toBeVisible();
+      await expect(drawer.getByText(conditions, { exact: false }).first()).toBeVisible();
+      await expect(drawer.getByText("Kept as-is; no safe typed translation yet")).toBeVisible();
+
+      // And the reviewed one became a typed preference, so the plan can say
+      // which rule and which value produced it.
+      await drawer.getByRole("button", { name: /Where these came from/ }).click();
+      const provenance = drawer.getByLabel("Preference provenance");
+      await expect(provenance).toBeVisible();
+      await expect(provenance.getByText("7878c33f1963fefb3d6c8657d46c2f0a")).toBeVisible();
+      await expect(provenance.getByText(`510 → ${mappedScore} in this profile`)).toBeVisible();
+      await expect(provenance.getByText(/Hdr10/i).first()).toBeVisible();
+      await expect(provenance.getByText("trash-semantic-map/v1")).toBeVisible();
+    } finally {
+      await page.request.delete(`/api/quality-profiles/${profile.id}`, { headers: authHeaders() });
+      await page.request.delete(`/api/custom-formats/${format.id}`, { headers: authHeaders() });
+      await page.request.delete(`/api/custom-formats/${mapped.id}`, { headers: authHeaders() });
+    }
+  });
 });
 
 test.describe("library editing", () => {

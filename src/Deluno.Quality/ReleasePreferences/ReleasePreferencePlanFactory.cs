@@ -111,6 +111,44 @@ public static class ReleasePreferencePlanFactory
             advanced.Count > 0);
     }
 
+    /// <summary>
+    /// The tiers a quality family has to be able to place, best first.
+    ///
+    /// <para>Not the same list as "which tiers may be grabbed". The allowed
+    /// list is a gate on candidates and <see cref="Deluno.Integrations"/>'s
+    /// decision engine enforces it directly; this list decides which installed
+    /// files the plan can recognise at all. Building it from the allowed list
+    /// alone meant a held file <em>better</em> than every allowed tier matched
+    /// no level, read as below goal, and asked to be replaced by something
+    /// worse - a profile allowing up to Bluray 1080p would have wanted to
+    /// downgrade your Bluray 2160p file. So every catalogue tier at or above
+    /// the cutoff is included, which is exactly the set the engine being
+    /// replaced calls "cutoff met".</para>
+    /// </summary>
+    public static IReadOnlyList<string> QualityFamilyTiers(
+        IReadOnlyList<string> normalizedAllowed,
+        string cutoff)
+    {
+        if (normalizedAllowed.Count == 0)
+        {
+            return MediaPolicyCatalog.Current.QualityRanks
+                .OrderByDescending(item => item.Value)
+                .Select(item => item.Key)
+                .ToArray();
+        }
+
+        var cutoffRank = MediaPolicyCatalog.Current.GetRank(cutoff);
+        return normalizedAllowed
+            .Concat([cutoff])
+            .Concat(MediaPolicyCatalog.Current.QualityRanks
+                .Where(item => item.Value >= cutoffRank)
+                .Select(item => item.Key))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderByDescending(MediaPolicyCatalog.Current.GetRank)
+            .ThenBy(item => item, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+    }
+
     public static ReleasePreferencePlan CreateQualityPlan(
         string? mediaType,
         string? targetQuality,
@@ -132,17 +170,7 @@ public static class ReleasePreferencePlanFactory
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToArray();
 
-        var qualityNames = normalizedAllowed.Length == 0
-            ? MediaPolicyCatalog.Current.QualityRanks
-                .OrderByDescending(item => item.Value)
-                .Select(item => item.Key)
-                .ToArray()
-            : normalizedAllowed
-                .Concat([cutoff])
-                .Distinct(StringComparer.OrdinalIgnoreCase)
-                .OrderByDescending(MediaPolicyCatalog.Current.GetRank)
-                .ThenBy(item => item, StringComparer.OrdinalIgnoreCase)
-                .ToArray();
+        var qualityNames = QualityFamilyTiers(normalizedAllowed, cutoff);
 
         var levels = qualityNames
             .Select((quality, index) => new PreferenceFamilyLevel(
