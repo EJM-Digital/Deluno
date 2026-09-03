@@ -20,7 +20,7 @@ Windows and Docker. Single user. Your data stays on your machine.
 
 <img src="screenshots/quality.png" width="49%"> <img src="screenshots/indexers.png" width="49%">
 
-*Quality profiles · Sources and clients*
+*Quality & Release · Search sources*
 
 <img src="screenshots/activity.png">
 
