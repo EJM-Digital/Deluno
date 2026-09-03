@@ -21,9 +21,6 @@ DELETE /api/movies/import-recovery/{id}
 DELETE /api/notification-webhooks/{id}
 DELETE /api/notifications/
 DELETE /api/notifications/{notificationId}
-DELETE /api/playback/device-groups/{id}
-DELETE /api/playback/device-profiles/{id}
-DELETE /api/playback/goals/{id}
 DELETE /api/policy-sets/{id}
 DELETE /api/quality-profiles/{id}
 DELETE /api/recycle-bin/{id}
@@ -125,10 +122,6 @@ GET /api/notification-webhooks/
 GET /api/notification-webhooks/deliveries
 GET /api/notifications/
 GET /api/notifications/unread-count
-GET /api/playback/device-groups
-GET /api/playback/device-profiles
-GET /api/playback/goals
-GET /api/playback/goals/{id}/compile
 GET /api/policy-sets/
 GET /api/policy-sets/{id}/diff
 GET /api/policy-sets/{id}/versions
@@ -282,9 +275,6 @@ POST /api/notification-webhooks/deliveries/{deliveryId}/replay
 POST /api/notification-webhooks/{id}/test
 POST /api/notifications/read-all
 POST /api/notifications/{notificationId}/read
-POST /api/playback/device-groups
-POST /api/playback/device-profiles
-POST /api/playback/goals
 POST /api/policy-sets/
 POST /api/policy-sets/{id}/effective-preview
 POST /api/policy-sets/{id}/preview
@@ -361,9 +351,6 @@ PUT /api/movies/{id}/metadata/override
 PUT /api/movies/{id}/replacement-protection
 PUT /api/notification-preferences/
 PUT /api/notification-webhooks/{id}
-PUT /api/playback/device-groups/{id}
-PUT /api/playback/device-profiles/{id}
-PUT /api/playback/goals/{id}
 PUT /api/policy-sets/{id}
 PUT /api/quality-model/
 PUT /api/quality-profiles/order

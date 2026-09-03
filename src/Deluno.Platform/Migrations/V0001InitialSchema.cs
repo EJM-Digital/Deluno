@@ -54,7 +54,8 @@ public static class PlatformDatabaseMigrations
         new V0046NotificationWebhookFailureDetails(),
         new V0047LibrarySubtitleContentPolicy(),
         new V0048LibrarySubtitleTimingPolicy(),
-        new V0049GuideUpdateCheckState()
+        new V0049GuideUpdateCheckState(),
+        new V0050RemovePlaybackGoals()
     ];
 
     private sealed class V0001InitialSchema : SqliteSqlMigration

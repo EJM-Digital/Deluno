@@ -15,7 +15,6 @@ public static class QualityServiceCollectionExtensions
         services.AddSingleton<IQualityModelService, QualityModelService>();
         services.AddSingleton<IMediaDecisionService, MediaDecisionService>();
         services.AddSingleton<IReleasePreferencePlanRepository, SqliteReleasePreferencePlanRepository>();
-        services.AddSingleton<IPlaybackGoalRepository, SqlitePlaybackGoalRepository>();
         services.AddSingleton<IGuidePackageStore, SqliteGuidePackageStore>();
         services.AddHttpClient(GuideUpstreamTreeClient.HttpClientName, client =>
         {

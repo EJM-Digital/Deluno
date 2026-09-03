@@ -449,9 +449,6 @@ public sealed class SchemaValidationTests
         var tables = await GetTablesAsync(conn);
         var migrationCols = await GetColumnsAsync(conn, "migration_audit_reports");
         var mediaPlanCols = await GetColumnsAsync(conn, "media_plan_versions");
-        var deviceProfileCols = await GetColumnsAsync(conn, "playback_device_profiles");
-        var deviceGroupCols = await GetColumnsAsync(conn, "playback_device_groups");
-        var playbackGoalCols = await GetColumnsAsync(conn, "playback_goals");
         var guideCols = await GetColumnsAsync(conn, "guide_package_versions");
         var policySetCols = await GetColumnsAsync(conn, "policy_sets");
 
@@ -462,15 +459,14 @@ public sealed class SchemaValidationTests
         Assert.Contains("snapshot_json", mediaPlanCols);
         Assert.Contains("change_kind", mediaPlanCols);
 
-        Assert.Contains("playback_device_profiles", tables);
-        Assert.Contains("capabilities_json", deviceProfileCols);
-        Assert.Contains("playback_device_groups", tables);
-        Assert.Contains("device_profile_ids_json", deviceGroupCols);
-        Assert.Contains("playback_goals", tables);
-        Assert.Contains("required_any_trait_groups_json", playbackGoalCols);
-        Assert.Contains("stop_when_trait_id", playbackGoalCols);
-        Assert.Contains("forbidden_trait_ids_json", playbackGoalCols);
         Assert.Contains("automation_intent_json", policySetCols);
+
+        // Playback goals were removed from the product. V0039 and V0043 stay
+        // in the chain because installed databases ran them; V0050 drops what
+        // they created, so a database migrated to head must not have them.
+        Assert.DoesNotContain("playback_device_profiles", tables);
+        Assert.DoesNotContain("playback_device_groups", tables);
+        Assert.DoesNotContain("playback_goals", tables);
 
         Assert.Contains("guide_package_versions", tables);
         Assert.Contains("package_id", guideCols);

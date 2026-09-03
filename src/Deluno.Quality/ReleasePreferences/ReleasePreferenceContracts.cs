@@ -201,24 +201,6 @@ public sealed record PreferenceRelationship(
     PreferenceRelationshipKind Kind);
 
 /// <summary>
-/// A compatibility group is an AND-of-OR-of-AND gate. Every group must be
-/// satisfied; one alternative must be selected within the group; and every
-/// trait in that alternative must be proven present. This preserves the fact
-/// that a device may support several equivalent values in one dimension while
-/// still requiring all dimensions of one device capability path to match.
-/// </summary>
-public sealed record PreferenceCompatibilityGroup(
-    string Id,
-    IReadOnlyList<IReadOnlyList<string>> Alternatives,
-    /// <summary>
-    /// Optional ordered preference for alternatives in this compatibility
-    /// group. A lower value is preferred. When omitted, alternatives are
-    /// unordered hard-gate paths. Playback primary/fallback goals use this to
-    /// prefer a primary-device path without weakening the compatibility gate.
-    /// </summary>
-    IReadOnlyList<int>? AlternativeRanks = null);
-
-/// <summary>
 /// Versioned, hashable policy input for release comparison. The old quality
 /// and custom-format scores can be adapted into this shape, but they are not
 /// the source of truth for a typed plan.
@@ -232,7 +214,6 @@ public sealed record ReleasePreferencePlan(
     IReadOnlyList<string>? ForbiddenTraitIds = null,
     IReadOnlyList<PreferenceRelationship>? Relationships = null,
     IReadOnlyList<string>? DimensionOrder = null,
-    string? CompatibilityScope = null,
     string? Scenario = null,
     string? Provenance = null,
     IReadOnlyDictionary<string, string>? Overrides = null,
@@ -242,15 +223,7 @@ public sealed record ReleasePreferencePlan(
     /// is the typed OR counterpart to <see cref="RequiredTraitIds"/>, which is
     /// deliberately AND-only.
     /// </summary>
-    IReadOnlyList<IReadOnlyList<string>>? RequiredAnyTraitGroups = null,
-    /// <summary>
-    /// Device or source compatibility paths. Every group must pass one of its
-    /// alternatives, and every trait in the selected alternative must pass.
-    /// This is deliberately separate from <see cref="RequiredAnyTraitGroups"/>
-    /// so a release cannot satisfy one device's video gate with another
-    /// device's audio gate.
-    /// </summary>
-    IReadOnlyList<PreferenceCompatibilityGroup>? CompatibilityGroups = null)
+    IReadOnlyList<IReadOnlyList<string>>? RequiredAnyTraitGroups = null)
 {
     [JsonIgnore]
     public string PlanHash => ReleasePreferencePlanHash.Compute(this);
@@ -315,17 +288,6 @@ public sealed record PreferenceFamilyEvaluation
     public string Explanation { get; init; }
 }
 
-/// <summary>
-/// The compatibility path selected by an evaluation. The rank is only
-/// populated for groups that explicitly order their alternatives; ordinary
-/// compatibility groups remain unordered hard gates.
-/// </summary>
-public sealed record PreferenceCompatibilityEvaluation(
-    string GroupId,
-    PreferenceFactState State,
-    int? SelectedAlternativeRank,
-    string Explanation);
-
 public sealed record PreferenceEvaluation
 {
     [JsonConstructor]
@@ -337,8 +299,7 @@ public sealed record PreferenceEvaluation
         bool hardGatesPassed,
         bool targetsMet,
         IReadOnlyList<PreferenceFamilyEvaluation>? families,
-        IReadOnlyList<string>? reasons,
-        IReadOnlyList<PreferenceCompatibilityEvaluation>? compatibility = null)
+        IReadOnlyList<string>? reasons)
     {
         PlanId = planId?.Trim() ?? string.Empty;
         PlanVersion = planVersion?.Trim() ?? string.Empty;
@@ -348,7 +309,6 @@ public sealed record PreferenceEvaluation
         TargetsMet = targetsMet;
         Families = families ?? [];
         Reasons = reasons ?? [];
-        Compatibility = compatibility ?? [];
     }
 
     public string PlanId { get; init; }
@@ -359,7 +319,6 @@ public sealed record PreferenceEvaluation
     public bool TargetsMet { get; init; }
     public IReadOnlyList<PreferenceFamilyEvaluation> Families { get; init; }
     public IReadOnlyList<string> Reasons { get; init; }
-    public IReadOnlyList<PreferenceCompatibilityEvaluation> Compatibility { get; init; }
 }
 
 /// <summary>
@@ -430,12 +389,6 @@ public static class ReleasePreferenceSnapshotCodec
                 .ToArray(),
             Families = (snapshot.Evaluation.Families ?? [])
                 .OrderBy(family => family.FamilyId, StringComparer.Ordinal)
-                .ToArray(),
-            Compatibility = (snapshot.Evaluation.Compatibility ?? [])
-                .OrderBy(item => item.GroupId, StringComparer.Ordinal)
-                .ThenBy(item => item.State)
-                .ThenBy(item => item.SelectedAlternativeRank)
-                .ThenBy(item => item.Explanation, StringComparer.Ordinal)
                 .ToArray()
         };
 
@@ -575,73 +528,18 @@ public static class ReleasePreferencePlanValidator
         {
             if (group is null || group.Count == 0 || group.All(string.IsNullOrWhiteSpace))
             {
-                errors.Add("Every required-any compatibility group must contain at least one trait.");
-            }
-        }
-
-        var compatibilityGroups = plan.CompatibilityGroups ?? [];
-        var compatibilityGroupIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        foreach (var group in compatibilityGroups)
-        {
-            if (group is null)
-            {
-                errors.Add("Every compatibility group needs a definition.");
-                continue;
-            }
-
-            if (string.IsNullOrWhiteSpace(group.Id))
-                errors.Add("Every compatibility group needs an id.");
-            else if (!compatibilityGroupIds.Add(group.Id))
-                errors.Add($"Compatibility group '{group.Id}' is declared more than once.");
-
-            if (group.Alternatives is null || group.Alternatives.Count == 0)
-            {
-                errors.Add($"Compatibility group '{group.Id}' must declare at least one alternative.");
-                continue;
-            }
-
-            if (group.AlternativeRanks is not null)
-            {
-                if (group.AlternativeRanks.Count != group.Alternatives.Count)
-                {
-                    errors.Add($"Compatibility group '{group.Id}' must declare one alternative rank per alternative.");
-                }
-                else if (group.AlternativeRanks.Any(rank => rank < 0))
-                {
-                    errors.Add($"Compatibility group '{group.Id}' cannot declare a negative alternative rank.");
-                }
-            }
-
-            foreach (var alternative in group.Alternatives)
-            {
-                if (alternative is null || alternative.Count == 0 || alternative.All(string.IsNullOrWhiteSpace))
-                {
-                    errors.Add($"Compatibility group '{group.Id}' contains an empty alternative.");
-                }
-                else
-                {
-                    AddIncompatibleTraitErrors(
-                        alternative,
-                        $"compatibility group '{group.Id}'",
-                        errors,
-                        plan.Relationships);
-                }
+                errors.Add("Every required-any group must contain at least one trait.");
             }
         }
 
         // Hard-gate traits intentionally do not have to be ranked families.
-        // Compatibility and safety facts often exist only as gates, and
-        // forcing them into an ordered family would make the same trait count
-        // as both a gate and a preference.
+        // Safety facts often exist only as gates, and forcing them into an
+        // ordered family would make the same trait count as both a gate and a
+        // preference.
         var traitIds = traitOwners.Keys
             .Concat(required)
             .Concat(forbidden)
             .Concat(requiredAnyGroups.Where(group => group is not null).SelectMany(group => group))
-            .Concat(compatibilityGroups
-                .Where(group => group is not null)
-                .SelectMany(group => group.Alternatives ?? [])
-                .Where(alternative => alternative is not null)
-                .SelectMany(alternative => alternative))
             .Where(trait => !string.IsNullOrWhiteSpace(trait))
             .Select(trait => trait.Trim().ToLowerInvariant())
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
@@ -816,7 +714,6 @@ internal static class ReleasePreferencePlanHash
         Append(builder, plan.Id);
         Append(builder, plan.Version);
         Append(builder, plan.MediaType);
-        Append(builder, plan.CompatibilityScope);
         Append(builder, plan.Scenario);
         Append(builder, plan.Provenance);
 
@@ -896,34 +793,6 @@ internal static class ReleasePreferencePlanHash
                      .OrderBy(group => string.Join("|", group), StringComparer.Ordinal))
         {
             Append(builder, "required-any:" + string.Join("|", group));
-        }
-        foreach (var group in (plan.CompatibilityGroups ?? [])
-                     .Where(group => group is not null && !string.IsNullOrWhiteSpace(group.Id))
-                     .OrderBy(group => Normalize(group.Id), StringComparer.Ordinal))
-        {
-            Append(builder, "compatibility-group:" + Normalize(group.Id));
-            var alternatives = (group.Alternatives ?? [])
-                .Select((alternative, index) => new
-                {
-                    Alternative = alternative
-                        .Where(trait => !string.IsNullOrWhiteSpace(trait))
-                        .Select(Normalize)
-                        .Distinct(StringComparer.Ordinal)
-                        .OrderBy(trait => trait, StringComparer.Ordinal)
-                        .ToArray(),
-                    Rank = group.AlternativeRanks is { Count: > 0 } ranks && index < ranks.Count
-                        ? (int?)ranks[index]
-                        : null
-                })
-                .Where(item => item.Alternative.Length > 0)
-                .OrderBy(item => item.Rank ?? int.MaxValue)
-                .ThenBy(item => string.Join("|", item.Alternative), StringComparer.Ordinal);
-            foreach (var item in alternatives)
-            {
-                if (item.Rank is { } rank)
-                    Append(builder, "compatibility-option-rank:" + rank.ToString(System.Globalization.CultureInfo.InvariantCulture));
-                Append(builder, "compatibility-option:" + string.Join("|", item.Alternative));
-            }
         }
         foreach (var traitId in (plan.ForbiddenTraitIds ?? [])
                      .Select(Normalize)

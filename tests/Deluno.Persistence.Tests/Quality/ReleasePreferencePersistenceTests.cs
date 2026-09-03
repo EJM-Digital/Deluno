@@ -34,7 +34,6 @@ public sealed class ReleasePreferencePersistenceTests
         var repository = new SqliteReleasePreferencePlanRepository(storage.Factory, clock);
         var plan = Plan("1") with
         {
-            CompatibilityScope = "all-devices",
             DimensionOrder = ["quality", "audio"]
         };
 

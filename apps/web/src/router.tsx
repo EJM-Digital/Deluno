@@ -434,16 +434,9 @@ export const router = createBrowserRouter([
               };
             })
           },
-          {
-            path: "playback",
-            lazy: withSkeleton(async () => {
-              const module = await import("./routes/settings-playback-page");
-              return {
-                loader: module.settingsPlaybackLoader,
-                Component: module.SettingsPlaybackPage
-              };
-            })
-          },
+          // Playback Goals is gone. A bookmark should land somewhere useful
+          // rather than on a 404 for a feature that no longer exists.
+          { path: "playback", element: <Navigate to="/settings/policy-sets" replace /> },
           { path: "indexers", element: <Navigate to="/indexers/indexers" replace /> },
           { path: "download-clients", element: <Navigate to="/indexers/download-clients" replace /> },
           { path: "import-lists", element: <Navigate to="/settings/lists" replace /> },

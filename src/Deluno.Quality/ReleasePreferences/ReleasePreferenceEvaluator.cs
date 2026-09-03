@@ -3,7 +3,7 @@ namespace Deluno.Quality.ReleasePreferences;
 /// <summary>
 /// Evaluates typed facts and compares two releases lexicographically. It never
 /// adds dimensions together: a candidate that improves audio cannot buy its
-/// way past a video compatibility regression.
+/// way past a video regression.
 /// </summary>
 public static class ReleasePreferenceEvaluator
 {
@@ -18,8 +18,7 @@ public static class ReleasePreferenceEvaluator
             .ToDictionary(group => group.Key, ResolveFact, StringComparer.OrdinalIgnoreCase));
 
         var reasons = new List<string>();
-        var compatibilityEvaluations = new List<PreferenceCompatibilityEvaluation>();
-        var hardGateStatus = EvaluateHardGates(plan, factMap, reasons, compatibilityEvaluations);
+        var hardGateStatus = EvaluateHardGates(plan, factMap, reasons);
         // Keep one typed result for every family, including transient
         // tie-break families. They are intentionally excluded from target
         // status and installed-file upgrade comparison below, but missing
@@ -59,8 +58,7 @@ public static class ReleasePreferenceEvaluator
             hardGateStatus is PreferenceEvaluationStatus.MeetsPlan or PreferenceEvaluationStatus.BelowGoal,
             targetsMet,
             familyEvaluations,
-            reasons.Distinct(StringComparer.Ordinal).ToArray(),
-            compatibilityEvaluations);
+            reasons.Distinct(StringComparer.Ordinal).ToArray());
     }
 
     /// <summary>
@@ -84,15 +82,6 @@ public static class ReleasePreferenceEvaluator
         var leftGate = left.HardGatesPassed ? 0 : 1;
         var rightGate = right.HardGatesPassed ? 0 : 1;
         if (leftGate != rightGate) return leftGate.CompareTo(rightGate);
-
-        // A primary-device goal is a persistent owner choice. Once both
-        // candidates pass the compatibility gate, prefer the candidate that
-        // satisfies the primary path over one that only satisfies fallback.
-        // Unordered compatibility groups do not participate here.
-        if (CompareCompatibilityRanks(plan, left, right) is { } compatibilityComparison)
-        {
-            return compatibilityComparison;
-        }
 
         var leftFamilies = left.Families.ToDictionary(item => item.FamilyId, StringComparer.OrdinalIgnoreCase);
         var rightFamilies = right.Families.ToDictionary(item => item.FamilyId, StringComparer.OrdinalIgnoreCase);
@@ -155,33 +144,7 @@ public static class ReleasePreferenceEvaluator
         return leftRank == rightRank ? null : leftRank.CompareTo(rightRank);
     }
 
-    private static int? CompareCompatibilityRanks(
-        ReleasePreferencePlan plan,
-        PreferenceEvaluation left,
-        PreferenceEvaluation right)
-    {
-        foreach (var group in (plan.CompatibilityGroups ?? [])
-                     .Where(group => group.AlternativeRanks is { Count: > 0 })
-                     .OrderBy(group => group.Id, StringComparer.Ordinal))
-        {
-            var leftEvaluation = left.Compatibility
-                .FirstOrDefault(item => string.Equals(item.GroupId, group.Id, StringComparison.OrdinalIgnoreCase));
-            var rightEvaluation = right.Compatibility
-                .FirstOrDefault(item => string.Equals(item.GroupId, group.Id, StringComparison.OrdinalIgnoreCase));
-            if (leftEvaluation?.SelectedAlternativeRank is not { } leftRank
-                || rightEvaluation?.SelectedAlternativeRank is not { } rightRank
-                || leftRank == rightRank)
-            {
-                continue;
-            }
-
-            return leftRank.CompareTo(rightRank);
-        }
-
-        return null;
-    }
-
-    private static int EffectiveRank(PreferenceFamilyEvaluation family)
+        private static int EffectiveRank(PreferenceFamilyEvaluation family)
         => family.State switch
         {
             PreferenceFactState.Present => family.SelectedRank < 0 ? int.MaxValue - 1 : family.SelectedRank,
@@ -233,7 +196,7 @@ public static class ReleasePreferenceEvaluator
                 return Result(PreferenceCandidateStatus.NeedsReview, false, false, false, null, reasons, current, candidate);
             }
 
-            reasons.Add("Candidate failed a hard safety or compatibility gate.");
+            reasons.Add("Candidate failed a hard safety gate.");
             return Result(PreferenceCandidateStatus.Rejected, false, false, false, null, reasons, current, candidate);
         }
 
@@ -462,24 +425,13 @@ public static class ReleasePreferenceEvaluator
             }
         }
 
-        var currentCompatibility = current.Compatibility
-            .OrderBy(item => item.GroupId, StringComparer.Ordinal)
-            .ThenBy(item => item.State)
-            .ThenBy(item => item.SelectedAlternativeRank)
-            .ToArray();
-        var candidateCompatibility = candidate.Compatibility
-            .OrderBy(item => item.GroupId, StringComparer.Ordinal)
-            .ThenBy(item => item.State)
-            .ThenBy(item => item.SelectedAlternativeRank)
-            .ToArray();
-        return currentCompatibility.SequenceEqual(candidateCompatibility);
+        return true;
     }
 
     private static PreferenceEvaluationStatus EvaluateHardGates(
         ReleasePreferencePlan plan,
         IReadOnlyDictionary<string, PreferenceFact> facts,
-        ICollection<string> reasons,
-        ICollection<PreferenceCompatibilityEvaluation> compatibilityEvaluations)
+        ICollection<string> reasons)
     {
         var needsReview = false;
         foreach (var traitId in plan.RequiredTraitIds ?? [])
@@ -514,29 +466,18 @@ public static class ReleasePreferenceEvaluator
             if (states.Contains(PreferenceFactState.Conflicting))
             {
                 needsReview = true;
-                reasons.Add($"At least one trait in required compatibility group '{string.Join(", ", traits)}' must be proven, but evidence conflicts.");
+                reasons.Add($"At least one trait in required-any group '{string.Join(", ", traits)}' must be proven, but evidence conflicts.");
             }
             else if (states.Contains(PreferenceFactState.Unknown))
             {
                 needsReview = true;
-                reasons.Add($"At least one trait in required compatibility group '{string.Join(", ", traits)}' must be proven, but evidence is incomplete.");
+                reasons.Add($"At least one trait in required-any group '{string.Join(", ", traits)}' must be proven, but evidence is incomplete.");
             }
             else
             {
-                reasons.Add($"No trait in required compatibility group '{string.Join(", ", traits)}' is present.");
+                reasons.Add($"No trait in required-any group '{string.Join(", ", traits)}' is present.");
                 return PreferenceEvaluationStatus.Missing;
             }
-        }
-
-        var compatibilityStatus = EvaluateCompatibilityGroups(plan, facts, reasons, compatibilityEvaluations);
-        if (compatibilityStatus == PreferenceEvaluationStatus.Missing)
-        {
-            return PreferenceEvaluationStatus.Missing;
-        }
-
-        if (compatibilityStatus == PreferenceEvaluationStatus.NeedsReview)
-        {
-            needsReview = true;
         }
 
         foreach (var traitId in plan.ForbiddenTraitIds ?? [])
@@ -551,89 +492,6 @@ public static class ReleasePreferenceEvaluator
 
             needsReview = true;
             reasons.Add($"Forbidden trait '{traitId}' is unknown.");
-        }
-
-        return needsReview ? PreferenceEvaluationStatus.NeedsReview : PreferenceEvaluationStatus.MeetsPlan;
-    }
-
-    /// <summary>
-    /// Evaluates the typed AND-of-OR-of-AND compatibility shape used by
-    /// playback groups. It is intentionally separate from RequiredAnyTraitGroups:
-    /// the latter can satisfy one independent gate at a time, while a
-    /// compatibility alternative represents one complete device path.
-    /// </summary>
-    private static PreferenceEvaluationStatus EvaluateCompatibilityGroups(
-        ReleasePreferencePlan plan,
-        IReadOnlyDictionary<string, PreferenceFact> facts,
-        ICollection<string> reasons,
-        ICollection<PreferenceCompatibilityEvaluation> evaluations)
-    {
-        var needsReview = false;
-        foreach (var group in plan.CompatibilityGroups ?? [])
-        {
-            var alternatives = (group.Alternatives ?? [])
-                .Select((alternative, index) => new
-                {
-                    Alternative = alternative
-                        .Where(trait => !string.IsNullOrWhiteSpace(trait))
-                        .Select(Normalize)
-                        .Distinct(StringComparer.OrdinalIgnoreCase)
-                        .ToArray(),
-                    Index = index,
-                    Rank = group.AlternativeRanks is { Count: > 0 } ranks && index < ranks.Count
-                        ? (int?)ranks[index]
-                        : null
-                })
-                .Where(item => item.Alternative.Length > 0)
-                .ToArray();
-
-            var selected = alternatives
-                .Where(item => item.Alternative.All(trait =>
-                    StateOf(facts, trait) == PreferenceFactState.Present))
-                .OrderBy(item => item.Rank ?? int.MaxValue)
-                .ThenBy(item => item.Index)
-                .FirstOrDefault();
-            if (selected is not null)
-            {
-                evaluations.Add(new PreferenceCompatibilityEvaluation(
-                    group.Id,
-                    PreferenceFactState.Present,
-                    selected.Rank,
-                    selected.Rank is { } rank
-                        ? $"Matched compatibility path {rank.ToString(System.Globalization.CultureInfo.InvariantCulture)} in '{group.Id}'."
-                        : $"Matched a compatibility path in '{group.Id}'."));
-                continue;
-            }
-
-            // An alternative containing no absent facts could still pass once
-            // a probe supplies the unknown/conflicting evidence. It must not be
-            // treated as a rejection or as an automatic approval.
-            var possible = alternatives.Any(item =>
-            {
-                var states = item.Alternative.Select(trait => StateOf(facts, trait)).ToArray();
-                return !states.Contains(PreferenceFactState.Absent);
-            });
-
-            if (possible)
-            {
-                needsReview = true;
-                evaluations.Add(new PreferenceCompatibilityEvaluation(
-                    group.Id,
-                    PreferenceFactState.Unknown,
-                    null,
-                    $"No proven compatibility path exists in '{group.Id}'; capability evidence needs review."));
-                reasons.Add($"Compatibility group '{group.Id}' has no proven device path; one or more capability facts need review.");
-            }
-            else
-            {
-                evaluations.Add(new PreferenceCompatibilityEvaluation(
-                    group.Id,
-                    PreferenceFactState.Absent,
-                    null,
-                    $"No supported compatibility path exists in '{group.Id}'."));
-                reasons.Add($"Compatibility group '{group.Id}' has no supported device path in this release.");
-                return PreferenceEvaluationStatus.Missing;
-            }
         }
 
         return needsReview ? PreferenceEvaluationStatus.NeedsReview : PreferenceEvaluationStatus.MeetsPlan;

@@ -279,15 +279,6 @@ public sealed class PreferenceTraitRegistry
             ValidatePlanTrait(traitId, family: null, plan.MediaType, errors);
         }
 
-        foreach (var traitId in (plan.CompatibilityGroups ?? [])
-                     .Where(group => group is not null)
-                     .SelectMany(group => group.Alternatives ?? [])
-                     .Where(alternative => alternative is not null)
-                     .SelectMany(alternative => alternative))
-        {
-            ValidatePlanTrait(traitId, family: null, plan.MediaType, errors);
-        }
-
         foreach (var relationship in (plan.Relationships ?? []).Where(relationship => relationship is not null))
         {
             ValidatePlanTrait(relationship.FromTraitId, family: null, plan.MediaType, errors);
@@ -414,18 +405,6 @@ public sealed class PreferenceTraitRegistry
         })
         {
             Add($"video.dynamic-range.{hdr.Item1}", "video.dynamic-range", hdr.Item2, [hdr.Item2]);
-        }
-
-        foreach (var compatibility in new[]
-        {
-            ("direct-play", "Direct play"),
-            ("hdr10", "HDR10 playback"),
-            ("hdr10-plus", "HDR10+ playback"),
-            ("dolby-vision", "Dolby Vision playback"),
-            ("dolby-vision-fallback", "Dolby Vision with HDR10 fallback playback")
-        })
-        {
-            Add($"compatibility.{compatibility.Item1}", "compatibility", compatibility.Item2);
         }
 
         foreach (var audio in new[]

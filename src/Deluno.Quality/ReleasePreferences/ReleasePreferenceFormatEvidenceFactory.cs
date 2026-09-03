@@ -41,11 +41,6 @@ public static class ReleasePreferenceFormatEvidenceFactory
                 .Where(group => group is not null)
                 .SelectMany(group => group))
             .Concat(plan.ForbiddenTraitIds ?? [])
-            .Concat((plan.CompatibilityGroups ?? [])
-                .Where(group => group is not null)
-                .SelectMany(group => group.Alternatives ?? [])
-                .Where(alternative => alternative is not null)
-                .SelectMany(alternative => alternative))
             .Where(traitId => !string.IsNullOrWhiteSpace(traitId))
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
         var formatsByTrashId = (package?.CustomFormats ?? [])
