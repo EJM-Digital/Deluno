@@ -40,14 +40,14 @@ starting.
 
 | Issue | Criteria | Audited | Verdict / unmet line |
 |---|---|---|---|
-| #357 Metadata recovery | 7 | no | Believed 6/7. Gap is line 3 — a test proving a 503 is **not** read as deletion. Code already treats only 404 as `Missing`; nothing tests it. |
-| #338 Telemetry truthful/attributable | 2 | no | Four slices merged 2–3 Sep. "History states its source" already done. Audit before assuming anything remains. |
+| #357 Metadata recovery | 7 | **yes** | **7/7 — closed 3 Sep.** Line 3 closed by [#376](https://github.com/jampat000/Deluno/pull/376) (real resilience policy, three paced attempts, `Unavailable` not `Missing`) and line 1 by the same PR's populated movie/series fixtures. Full evidence in the [audit comment](https://github.com/jampat000/Deluno/issues/357). |
+| #338 Telemetry truthful/attributable | 2 | **yes** | **2/2 — closed 3 Sep.** The last swallowed external-service failure was the metadata path, fixed in [#377](https://github.com/jampat000/Deluno/pull/377): a bare 503 with no body, and a failure that could not name its own service. Front end re-swept; every remaining fixed sentence is a Deluno-local operation. Full evidence in the [audit comment](https://github.com/jampat000/Deluno/issues/338). |
 | #351 Scoring migration | 8 | no | Next in the release-preference chain. |
 | #350 TRaSH translation | 9 | no | |
 | #352 Release preference proof | 7 | no | |
 | #353 Release preference UX | 7 | no | |
 | #343 Media Plans | 2 | no | Own lifecycle track. |
-| #354 Normative spec | — | no | Closes last of the chain; its done-when is downstream of #347–#353. Verify rather than assume. |
+| ~~#354 Normative spec~~ | — | — | **Already closed** on 2 Sep. Left here so a later reader does not go looking for it. |
 | #321 Subber delta | 0 | **partial** | Audited 2 Sep — see the [audit comment](https://github.com/jampat000/Deluno/issues/321#issuecomment-5508112058). Items 1, 2 and `.sdh.srt` naming already built. Unbuilt: Language Equals, must/must-not-contain profiles, custom post-process command, anti-captcha, audio column. |
 | #301 Subber outcome | 0 | no | Parent of #321/#329. |
 | #329 Whisper | 2 | no | Build on the lab VM and **measure** before recommending. "Not worth shipping" is a welcome answer. |
