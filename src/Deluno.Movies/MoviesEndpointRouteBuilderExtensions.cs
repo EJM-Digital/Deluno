@@ -1037,7 +1037,11 @@ public static class MoviesEndpointRouteBuilderExtensions
 
                 if (lookup.Status == MetadataProviderRecordStatus.Unavailable)
                 {
-                    return Results.StatusCode(StatusCodes.Status503ServiceUnavailable);
+                    return Results.Json(
+                        MetadataProviderResponses.Unavailable(
+                            lookup,
+                            $"{movie.Title} was left exactly as it is."),
+                        statusCode: StatusCodes.Status503ServiceUnavailable);
                 }
 
                 match = lookup.Result;
@@ -1154,7 +1158,7 @@ public static class MoviesEndpointRouteBuilderExtensions
             {
                 MetadataProviderRecordStatus.Missing => Results.NotFound(new { message = "The selected metadata record no longer exists." }),
                 MetadataProviderRecordStatus.Unavailable => Results.Json(
-                    new { message = "The metadata provider is temporarily unavailable. Nothing was changed." },
+                    MetadataProviderResponses.Unavailable(plan.Provider, plan.Failure, "Nothing was changed."),
                     statusCode: StatusCodes.Status503ServiceUnavailable),
                 _ => Results.Ok(plan.Preview)
             };
@@ -1206,7 +1210,7 @@ public static class MoviesEndpointRouteBuilderExtensions
             if (plan.Status == MetadataProviderRecordStatus.Unavailable)
             {
                 return Results.Json(
-                    new { message = "The metadata provider is temporarily unavailable. Nothing was changed." },
+                    MetadataProviderResponses.Unavailable(plan.Provider, plan.Failure, "Nothing was changed."),
                     statusCode: StatusCodes.Status503ServiceUnavailable);
             }
             if (plan.Preview is null || plan.Match is null)
@@ -2090,7 +2094,7 @@ public static class MoviesEndpointRouteBuilderExtensions
             cancellationToken);
         if (lookup.Status != MetadataProviderRecordStatus.Found || lookup.Result is null)
         {
-            return new MovieMetadataLinkPlan(lookup.Status, null, null);
+            return new MovieMetadataLinkPlan(lookup.Status, null, null, lookup.Provider, lookup.Failure);
         }
 
         var match = lookup.Result;
@@ -2143,7 +2147,7 @@ public static class MoviesEndpointRouteBuilderExtensions
             conflict is null,
             blockReason,
             token);
-        return new MovieMetadataLinkPlan(lookup.Status, match, preview);
+        return new MovieMetadataLinkPlan(lookup.Status, match, preview, lookup.Provider, lookup.Failure);
     }
 
     private static IReadOnlyList<string> DescribeMetadataIdentityChanges(
@@ -2198,7 +2202,11 @@ public static class MoviesEndpointRouteBuilderExtensions
     private sealed record MovieMetadataLinkPlan(
         MetadataProviderRecordStatus Status,
         MetadataSearchResult? Match,
-        MetadataLinkPreview? Preview);
+        MetadataLinkPreview? Preview,
+        // Carried so a provider that could not answer can say which one it was
+        // and why, instead of the caller inventing a sentence for it (#338).
+        string Provider = "",
+        Deluno.Contracts.IntegrationFailure? Failure = null);
 
     private sealed record MetadataLinkRequest(string? ProviderId, string? ConfirmationToken = null);
 

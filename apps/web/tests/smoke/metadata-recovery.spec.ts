@@ -216,11 +216,48 @@ test.describe("metadata recovery", () => {
         `An outage recorded a title-scoped provider issue: ${issueBody}`
       ).toBe(true);
 
+      // #338: the 503 carries the typed failure rather than an empty body.
+      // Deluno knows which provider it asked and what happened; throwing that
+      // away at the boundary is what left every surface saying "could not be
+      // refreshed" and nothing else.
+      const outage = await refreshAgain.json() as {
+        code?: string;
+        message?: string;
+        failure?: {
+          serviceType?: string;
+          serviceName?: string;
+          operation?: string;
+          kind?: string;
+          retryState?: string;
+          nextAction?: string;
+          summary?: string;
+        } | null;
+      };
+      expect(outage.code).toBe("metadata-provider-unavailable");
+      expect(outage.message ?? "").not.toHaveLength(0);
+      expect(outage.failure?.serviceType).toBe("metadata");
+      expect(outage.failure?.kind).toBe("Unavailable");
+      expect(outage.failure?.retryState).toBe("RetryScheduled");
+      expect(outage.failure?.nextAction ?? "").not.toHaveLength(0);
+
+      // The failure has to name a service, not the Deluno function that
+      // asked. "metadata.broker.resolve metadata.broker.resolve failed:
+      // metadata.broker.resolve returned transient HTTP 503." was the real
+      // summary until this line existed.
+      expect(outage.failure?.serviceName).not.toBe(outage.failure?.operation);
+      expect(outage.failure?.summary ?? "").not.toContain("metadata.broker.resolve returned");
+
       // And the title page stays ordinary: no calm notice, because there is
-      // nothing calm to say.
+      // nothing calm to say. Refreshing from the page says what happened
+      // instead of one fixed sentence that fits every possible cause.
       await page.goto(`/movies/${movie.id}`);
       await expect(page.getByRole("heading", { name: title })).toBeVisible();
       await expect(page.getByRole("region", { name: /no longer listed by/i })).toHaveCount(0);
+
+      await page.getByRole("button", { name: "Refresh metadata" }).click();
+      const toast = page.getByText(/could not answer|temporarily unavailable/i).first();
+      await expect(toast).toBeVisible();
+      await expect(page.getByText("This movie's metadata could not be refreshed.")).toHaveCount(0);
     } finally {
       if (movieId) {
         const removed = await page.request.post("/api/movies/bulk", {

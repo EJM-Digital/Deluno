@@ -207,6 +207,50 @@ public enum MetadataProviderRecordStatus
     Unavailable
 }
 
+/// <summary>
+/// What a caller is told when the metadata provider could not answer at all.
+///
+/// <para>A bare 503 with no body is an external-service failure that has been
+/// swallowed: Deluno knows which provider it asked, what the provider said and
+/// whether it will try again, and then throws all of it away at the boundary,
+/// leaving every surface with nothing to say but "could not be refreshed"
+/// (#338). The typed failure travels with the status instead.</para>
+/// </summary>
+public sealed record MetadataProviderUnavailable(
+    string Code,
+    string Message,
+    IntegrationFailure? Failure);
+
+public static class MetadataProviderResponses
+{
+    /// <summary>
+    /// The unavailable payload for a resolved-but-unanswered provider record.
+    /// <paramref name="consequence"/> says what happened to the owner's title,
+    /// which is the part they actually care about.
+    /// </summary>
+    public static MetadataProviderUnavailable Unavailable(
+        MetadataProviderRecordLookup lookup,
+        string consequence)
+        => Unavailable(lookup.Provider, lookup.Failure, consequence);
+
+    public static MetadataProviderUnavailable Unavailable(
+        string provider,
+        IntegrationFailure? failure,
+        string consequence)
+    {
+        var provider_ = string.IsNullOrWhiteSpace(provider) ? "The metadata provider" : provider.ToUpperInvariant();
+        // The failure's own message when there is one - it names the cause.
+        // The generic sentence is the fallback, not the first answer.
+        var cause = failure?.Message is { Length: > 0 } message
+            ? $"{provider_} could not answer: {message}"
+            : $"{provider_} is temporarily unavailable.";
+        return new MetadataProviderUnavailable(
+            "metadata-provider-unavailable",
+            $"{cause} {consequence}".Trim(),
+            failure);
+    }
+}
+
 /// <summary>A calm, title-scoped notice about a provider identity that no longer exists.</summary>
 public sealed record MetadataProviderIssue(
     string Kind,

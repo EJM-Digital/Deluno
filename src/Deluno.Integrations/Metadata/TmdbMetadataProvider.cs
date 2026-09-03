@@ -204,7 +204,7 @@ public sealed class TmdbMetadataProvider(
                 Failure: IntegrationFailureFactory.FromLegacy(
                     "metadata",
                     ProviderName,
-                    ProviderName,
+                    "TMDb",
                     "metadata.provider.resolve",
                     "configuration",
                     "The stored TMDb id is not a valid numeric identifier."));
@@ -238,7 +238,7 @@ public sealed class TmdbMetadataProvider(
                 Failure: IntegrationFailureFactory.FromLegacy(
                     "metadata",
                     ProviderName,
-                    ProviderName,
+                    "TMDb",
                     "metadata.provider.resolve",
                     "configuration",
                     "TMDb is not configured for exact provider-id lookup."));
@@ -1856,6 +1856,28 @@ public sealed class TmdbMetadataProvider(
             .ToArray();
     }
 
+    /// <summary>
+    /// The name to put in front of a metadata failure, taken from the
+    /// resilience key ("metadata:tmdb:...", "metadata:omdb:...",
+    /// "metadata:broker:...").
+    ///
+    /// <para>Derived rather than passed, because there are sixteen call sites
+    /// and a name each of them has to remember is a name fifteen of them will
+    /// eventually get wrong.</para>
+    /// </summary>
+    private static string MetadataServiceName(string key)
+    {
+        var parts = key.Split(':', StringSplitOptions.RemoveEmptyEntries);
+        var source = parts.Length > 1 ? parts[1] : parts.FirstOrDefault() ?? "metadata";
+        return source.ToLowerInvariant() switch
+        {
+            "tmdb" => "TMDb",
+            "omdb" => "OMDb",
+            "broker" => "the metadata service",
+            _ => source
+        };
+    }
+
     private async Task<T?> GetJsonWithResilienceAsync<T>(
         string url,
         string key,
@@ -1882,7 +1904,7 @@ public sealed class TmdbMetadataProvider(
                 IntegrationFailureFactory.FromLegacy(
                     "metadata",
                     key,
-                    operation,
+                    MetadataServiceName(key),
                     operation,
                     "rate-limited",
                     "The metadata request was deferred because the provider budget was exhausted.",
@@ -1892,8 +1914,20 @@ public sealed class TmdbMetadataProvider(
         }
 
         IntegrationFailure? boundaryFailure = null;
+        var serviceName = MetadataServiceName(key);
         var result = await resiliencePolicy.ExecuteAsync(
-            new IntegrationResilienceRequest(key, operation, FailureThreshold: 2),
+            new IntegrationResilienceRequest(
+                key,
+                operation,
+                FailureThreshold: 2,
+                // Without these the policy has no name to build a failure with,
+                // so it falls back to the operation string and the summary
+                // reads "metadata.broker.resolve metadata.broker.resolve
+                // failed: ..." - the same defect #369 fixed for indexers and
+                // download clients, still true of every metadata call (#338).
+                ServiceType: "metadata",
+                ServiceId: key,
+                ServiceName: serviceName),
             async token =>
             {
                 try
@@ -1903,8 +1937,11 @@ public sealed class TmdbMetadataProvider(
                     {
                         if (IntegrationResiliencePolicy.IsTransientHttpStatusCode(response.StatusCode))
                         {
+                            // "The service returned HTTP 503" - not the name of
+                            // the Deluno function that asked. The operation is
+                            // already a field on the failure.
                             throw new HttpRequestException(
-                                $"{operation} returned transient HTTP {(int)response.StatusCode}.",
+                                $"The service returned HTTP {(int)response.StatusCode}.",
                                 null,
                                 response.StatusCode);
                         }
@@ -1912,10 +1949,9 @@ public sealed class TmdbMetadataProvider(
                         boundaryFailure = IntegrationFailureFactory.FromHttpStatus(
                             "metadata",
                             key,
+                            serviceName,
                             operation,
-                            operation,
-                            response.StatusCode,
-                            $"{operation} returned HTTP {(int)response.StatusCode}.");
+                            response.StatusCode);
                         return default;
                     }
 
@@ -1926,7 +1962,7 @@ public sealed class TmdbMetadataProvider(
                     boundaryFailure = IntegrationFailureFactory.FromException(
                         "metadata",
                         key,
-                        operation,
+                        serviceName,
                         operation,
                         exception);
                     return default;
@@ -1946,7 +1982,7 @@ public sealed class TmdbMetadataProvider(
                 ?? IntegrationFailureFactory.FromLegacy(
                     "metadata",
                     key,
-                    operation,
+                    serviceName,
                     operation,
                     "unknown",
                     "The metadata provider returned no usable response."));

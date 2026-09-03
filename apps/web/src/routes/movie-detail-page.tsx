@@ -335,8 +335,11 @@ export function MovieDetailPage() {
 
   async function handleMetadataRefresh() {
     setBusyAction("metadata-refresh");
+    let refreshResponse: Response | null = null;
+
     try {
       const response = await authedFetch(`/api/movies/${movie.id}/metadata/refresh`, { method: "POST" });
+      refreshResponse = response;
       if (response.status === 409) {
         revalidator.revalidate();
         toast.info("The TMDb record is no longer available. Your movie and files were kept.");
@@ -345,8 +348,17 @@ export function MovieDetailPage() {
       if (!response.ok) throw new Error("movie-metadata-refresh-failed");
       toast.success(`${movie.title} metadata refreshed.`);
       revalidator.revalidate();
-    } catch {
-      toast.error("This movie's metadata could not be refreshed.");
+    } catch (refreshError) {
+      const explained = await describeRequestFailure(refreshResponse, refreshError, {
+        action: "refresh this movie's metadata",
+        check: { label: "Check metadata settings", href: "/settings/metadata" },
+      });
+      toast.error(explained.title, {
+        description: explained.description,
+        action: explained.action
+          ? { label: explained.action.label, onClick: () => navigate(explained.action!.href) }
+          : undefined,
+      });
     } finally {
       setBusyAction(null);
     }
