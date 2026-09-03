@@ -4,8 +4,8 @@ services:
       context: .
       dockerfile: Dockerfile
     # Override with a versioned tag or digest for a production deployment:
-    # DELUNO_IMAGE=ghcr.io/jampat000/deluno:1.0.0
-    # DELUNO_IMAGE=ghcr.io/jampat000/deluno@sha256:<digest>
+    # DELUNO_IMAGE=ghcr.io/jampat000/deluno:1.0.0-rc.2
+    # DELUNO_IMAGE=ghcr.io/jampat000/deluno@sha256:d61753713dddbb4235f944a7bff1a9ffdc5f1feb1dd42ca42b847db2dcb8185b
     image: ${DELUNO_IMAGE:-deluno:dev}
     container_name: deluno
     ports:
