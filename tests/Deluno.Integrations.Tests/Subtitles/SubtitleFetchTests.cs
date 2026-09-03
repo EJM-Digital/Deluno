@@ -219,6 +219,77 @@ public sealed class SubtitleFetchTests
     private static SubtitleSearchRequest Request()
         => new("Dune", 2021, null, null, null, null, null, ["en"], IsEpisode: false);
 
+    [Fact]
+    public async Task Refuses_a_release_the_library_said_never_to_take()
+    {
+        var provider = new FakeProvider(
+            "first",
+            [
+                Candidate("en") with { ReleaseName = "Dune.2021.1080p.HDTV.x264-GROUP" },
+                Candidate("en") with { DownloadToken = "keep", ReleaseName = "Dune.2021.1080p.BluRay-NTb" }
+            ],
+            Srt);
+        var writer = new FakeWriter();
+        var service = Build([provider], writer);
+
+        var outcome = await service.FetchAsync(
+            Request(),
+            "en",
+            false,
+            @"D:\Media\Dune\Dune.2021.1080p.HDTV.x264-GROUP.mkv",
+            false,
+            CancellationToken.None,
+            namePolicy: new SubtitleNamePolicy(MustNotContain: ["hdtv"]));
+
+        Assert.True(outcome.Found);
+        // The refused release is the one whose name matches the video file
+        // exactly, so it would win on ranking. Filtering has to happen before
+        // the ranking, not after it.
+        Assert.Equal("keep", provider.LastDownloadToken);
+    }
+
+    [Fact]
+    public async Task Takes_a_release_with_no_name_even_under_a_must_contain_list()
+    {
+        var provider = new FakeProvider("first", [Candidate("en")], Srt);
+        var writer = new FakeWriter();
+        var service = Build([provider], writer);
+
+        var outcome = await service.FetchAsync(
+            Request(),
+            "en",
+            false,
+            @"D:\Media\Dune\Dune.mkv",
+            false,
+            CancellationToken.None,
+            namePolicy: new SubtitleNamePolicy(MustContain: ["ntb"]));
+
+        // Several providers return no release name at all. Refusing those would
+        // silently empty the list for anybody who typed one term.
+        Assert.True(outcome.Found);
+    }
+
+    [Fact]
+    public async Task Reports_no_subtitle_rather_than_taking_a_refused_one()
+    {
+        var provider = new FakeProvider(
+            "first",
+            [Candidate("en") with { ReleaseName = "Dune.2021.CAM.x264" }],
+            Srt);
+        var service = Build([provider], new FakeWriter());
+
+        var outcome = await service.FetchAsync(
+            Request(),
+            "en",
+            false,
+            @"D:\Media\Dune\Dune.mkv",
+            false,
+            CancellationToken.None,
+            namePolicy: new SubtitleNamePolicy(MustNotContain: ["cam"]));
+
+        Assert.False(outcome.Found);
+    }
+
     private static SubtitleCandidate Candidate(string language)
         => new("first", "token", language, HearingImpaired: false, Forced: false);
 
@@ -260,6 +331,7 @@ public sealed class SubtitleFetchTests
         public bool RateLimited { get; set; }
         public bool Unreachable { get; set; }
         public int Searches { get; private set; }
+        public string? LastDownloadToken { get; private set; }
 
         public Task<IReadOnlyList<SubtitleCandidate>> SearchAsync(
             SubtitleSearchRequest request, SubtitleProviderCredentials credentials, CancellationToken cancellationToken)
@@ -272,7 +344,10 @@ public sealed class SubtitleFetchTests
 
         public Task<byte[]> DownloadAsync(
             SubtitleCandidate candidate, SubtitleProviderCredentials credentials, CancellationToken cancellationToken)
-            => Task.FromResult(payload);
+        {
+            LastDownloadToken = candidate.DownloadToken;
+            return Task.FromResult(payload);
+        }
     }
 
     private sealed class ResponseHandler(HttpStatusCode statusCode) : HttpMessageHandler

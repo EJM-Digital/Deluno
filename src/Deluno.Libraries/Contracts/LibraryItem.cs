@@ -80,4 +80,6 @@ public sealed record LibraryItem(
     /// </summary>
     SubtitleContentModificationPolicy? SubtitleContentPolicy = null,
     /// <summary>Automatic timing-repair policy for fetched subtitles.</summary>
-    SubtitleTimingPolicy? SubtitleTimingPolicy = null);
+    SubtitleTimingPolicy? SubtitleTimingPolicy = null,
+    /// <summary>Words a subtitle's release name must or must not carry.</summary>
+    SubtitleNamePolicy? SubtitleNamePolicy = null);

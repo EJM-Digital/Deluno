@@ -60,7 +60,8 @@ public interface ISubtitleFetchService
         string videoPath,
         bool excludeHearingImpaired,
         CancellationToken cancellationToken,
-        SubtitleContentModificationPolicy? contentPolicy = null);
+        SubtitleContentModificationPolicy? contentPolicy = null,
+        SubtitleNamePolicy? namePolicy = null);
 }
 
 public sealed class SubtitleFetchService(
@@ -78,9 +79,11 @@ public sealed class SubtitleFetchService(
         string videoPath,
         bool excludeHearingImpaired,
         CancellationToken cancellationToken,
-        SubtitleContentModificationPolicy? contentPolicy = null)
+        SubtitleContentModificationPolicy? contentPolicy = null,
+        SubtitleNamePolicy? namePolicy = null)
     {
         var now = timeProvider.GetUtcNow();
+        var names = SubtitleNamePolicyCodec.Normalize(namePolicy);
         var configured = await repository.ListAsync(cancellationToken);
 
         var askable = configured
@@ -129,7 +132,7 @@ public sealed class SubtitleFetchService(
                     Credentials(connection),
                     cancellationToken);
 
-                var pick = Choose(candidates, language, excludeHearingImpaired, videoPath);
+                var pick = Choose(candidates, language, excludeHearingImpaired, videoPath, names);
                 if (pick is null)
                 {
                     continue;
@@ -251,10 +254,15 @@ public sealed class SubtitleFetchService(
         IReadOnlyList<SubtitleCandidate> candidates,
         string language,
         bool excludeHearingImpaired,
-        string? videoPath)
+        string? videoPath,
+        SubtitleNamePolicy? namePolicy = null)
         => candidates
             .Where(candidate => !candidate.Forced)
             .Where(candidate => !excludeHearingImpaired || !candidate.HearingImpaired)
+            // The library's own words about release names. Applied before
+            // ranking rather than after, so a refused release cannot win on
+            // filename similarity and then be discarded.
+            .Where(candidate => namePolicy?.Accepts(candidate.ReleaseName) ?? true)
             .Where(candidate => candidate.Language.StartsWith(language[..Math.Min(2, language.Length)], StringComparison.OrdinalIgnoreCase))
             .OrderByDescending(candidate => SubtitleMatchRanking.Rank(candidate.ReleaseName, videoPath))
             .ThenBy(candidate => candidate.HearingImpaired ? 1 : 0)

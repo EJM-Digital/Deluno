@@ -43,6 +43,45 @@ public sealed class SubtitleTimingSyncService(
     /// </summary>
     private const double RequiredImprovement = 0.20;
 
+    /// <summary>
+    /// How much better a rescaled fit has to be than the unscaled one.
+    ///
+    /// <para>Higher than <see cref="RequiredImprovement"/> deliberately.
+    /// Stretching rewrites every timestamp in the file, and the ratios below are
+    /// close enough to one that a correctly timed subtitle still overlaps well
+    /// after being scaled by one of them. Five per cent is above that residual
+    /// and far below what a genuine framerate mismatch recovers.</para>
+    /// </summary>
+    private const double RequiredFramerateImprovement = 0.05;
+
+    /// <summary>
+    /// The speed changes a subtitle actually arrives with.
+    ///
+    /// <para>Every ordered pair of the framerates a film is distributed at, which
+    /// is where the mismatch comes from: a subtitle timed against the 25 fps PAL
+    /// cut runs 4% fast against the 23.976 fps master, and the reverse runs 4%
+    /// slow. A free search over factors would find a ratio for any file, which is
+    /// how a sync breaks a subtitle that was fine - these are the only speeds
+    /// anything was ever encoded at.</para>
+    /// </summary>
+    private static readonly double[] FramerateRatios = BuildFramerateRatios();
+
+    private static double[] BuildFramerateRatios()
+    {
+        double[] framerates = [24000d / 1001d, 24d, 25d, 30000d / 1001d, 30d];
+
+        return [.. framerates
+            .SelectMany(from => framerates.Select(to => to / from))
+            .Where(ratio => Math.Abs(ratio - 1.0) > 0.001)
+            .Distinct()
+            .OrderBy(ratio => ratio)];
+    }
+
+    private static string DescribeStretch(double factor)
+        => factor > 1
+            ? $"slowed by {(factor - 1) * 100:F1}%"
+            : $"sped up by {(1 - factor) * 100:F1}%";
+
     public async Task<SubtitleTimingResult> SyncAsync(
         string videoPath,
         string subtitlePath,
@@ -107,9 +146,35 @@ public sealed class SubtitleTimingSyncService(
         var maxOffset = TimeSpan.FromSeconds(effectivePolicy.MaxOffsetSeconds);
         var best = audio.Correlate(subtitle, SpeechMask.ToFrames(maxOffset));
 
+        // A subtitle authored against another framerate does not have an offset,
+        // it has a slope: right at the start and minutes out at the end. Sliding
+        // it lands one end and abandons the other, so the shift search alone
+        // cannot answer this file. Rescaling first turns the slope back into an
+        // offset the search above can then find.
+        var stretch = 1.0;
+        if (effectivePolicy.RepairFramerate)
+        {
+            foreach (var factor in FramerateRatios)
+            {
+                var candidate = audio.Correlate(
+                    BuildMask(SubtitleTimeline.Rescale(cues, factor), duration),
+                    SpeechMask.ToFrames(maxOffset));
+
+                // Clearly better, not merely better. Rescaling every cue in the
+                // file is the more invasive of the two repairs, and a file that
+                // is simply a bit late must not be stretched because one ratio
+                // scored a handful of frames higher by luck.
+                if (candidate.Score > best.Score * (1 + RequiredFramerateImprovement))
+                {
+                    best = candidate;
+                    stretch = factor;
+                }
+            }
+        }
+
         logger.LogDebug(
-            "Timing {Subtitle}: best shift {Shift}, overlap {Score} against {Zero} at rest and {Mean:F0} +/- {Deviation:F1} across the search, {Sigma:F1} sigma.",
-            subtitlePath, best.Shift, best.Score, best.ScoreAtZero, best.MeanScore, best.ScoreDeviation, best.PeakSigma);
+            "Timing {Subtitle}: best shift {Shift} at stretch {Stretch:F4}, overlap {Score} against {Zero} at rest and {Mean:F0} +/- {Deviation:F1} across the search, {Sigma:F1} sigma.",
+            subtitlePath, best.Shift, stretch, best.Score, best.ScoreAtZero, best.MeanScore, best.ScoreDeviation, best.PeakSigma);
 
         if (best.PeakSigma < effectivePolicy.RequiredPeakSigma)
         {
@@ -118,12 +183,17 @@ public sealed class SubtitleTimingSyncService(
         }
 
         var offset = best.Shift;
-        if (offset.Duration() < SmallestWorthMoving)
+        var stretched = Math.Abs(stretch - 1.0) > double.Epsilon;
+
+        // Both gates are about not moving a file that is already fine. A stretch
+        // is a different finding - the drift is real however small the offset at
+        // the start happens to be - so neither gate applies once one is owed.
+        if (!stretched && offset.Duration() < SmallestWorthMoving)
         {
             return new SubtitleTimingResult(false, TimeSpan.Zero, "This subtitle is already in time.");
         }
 
-        if (best.Improvement < RequiredImprovement)
+        if (!stretched && best.Improvement < RequiredImprovement)
         {
             return new SubtitleTimingResult(false, TimeSpan.Zero,
                 "Moving this subtitle would not clearly improve it, so it has been left alone.");
@@ -133,13 +203,25 @@ public sealed class SubtitleTimingSyncService(
         // does it: a half-written subtitle is a file a player opens and shows
         // nothing from, and the scan would count it as held.
         var temporary = subtitlePath + ".partial";
-        await File.WriteAllBytesAsync(temporary, SubtitleTimeline.Shift(cues, offset), cancellationToken);
+        var repaired = stretched ? SubtitleTimeline.Rescale(cues, stretch) : cues;
+        await File.WriteAllBytesAsync(temporary, SubtitleTimeline.Shift(repaired, offset), cancellationToken);
         File.Move(temporary, subtitlePath, overwrite: true);
 
         var described = Describe(offset);
-        logger.LogInformation("Moved {Subtitle} {Description} to match the audio.", subtitlePath, described);
+        if (!stretched)
+        {
+            logger.LogInformation("Moved {Subtitle} {Description} to match the audio.", subtitlePath, described);
+            return new SubtitleTimingResult(true, offset, $"Timed against the video's audio and moved {described}.");
+        }
 
-        return new SubtitleTimingResult(true, offset, $"Timed against the video's audio and moved {described}.");
+        var pace = DescribeStretch(stretch);
+        logger.LogInformation(
+            "Rewrote {Subtitle} {Pace} and moved it {Description} to match the audio.", subtitlePath, pace, described);
+
+        return new SubtitleTimingResult(
+            true,
+            offset,
+            $"This subtitle was written for a copy running at a different speed. It has been {pace} and moved {described}.");
     }
 
     /// <summary>
