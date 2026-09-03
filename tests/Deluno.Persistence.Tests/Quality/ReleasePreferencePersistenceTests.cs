@@ -210,9 +210,25 @@ public sealed class ReleasePreferencePersistenceTests
         var translation = LegacyReleasePreferenceTranslator.Translate(profile, [format]);
 
         Assert.True(translation.RequiresReview);
-        Assert.Equal(0, translation.Plan.OrderedFamilies[0].OrderedLevels[0].Rank);
-        Assert.Equal("bluray-1080p", translation.Plan.OrderedFamilies[0].OrderedLevels[0].Id);
-        Assert.Equal("web-1080p", translation.Plan.OrderedFamilies[0].TargetLevelId);
+        var qualityFamily = translation.Plan.OrderedFamilies[0];
+
+        // Best first, and every rank distinct: this is the property the family
+        // has to hold, rather than one hard-coded top tier. The family is
+        // deliberately wider than the profile's allowed list - it has to be
+        // able to place a held file better than anything the profile would
+        // grab, or migration would ask to downgrade it.
+        Assert.Equal(0, qualityFamily.OrderedLevels[0].Rank);
+        Assert.Equal(
+            qualityFamily.OrderedLevels.Select((level, index) => index).ToArray(),
+            qualityFamily.OrderedLevels.Select(level => level.Rank).ToArray());
+        Assert.Equal("web-1080p", qualityFamily.TargetLevelId);
+        Assert.Contains(qualityFamily.OrderedLevels, level => level.Id == "bluray-1080p");
+        Assert.Contains(qualityFamily.OrderedLevels, level => level.Id == "web-720p");
+        Assert.Contains(qualityFamily.OrderedLevels, level => level.Id == "bluray-2160p");
+        Assert.True(
+            qualityFamily.OrderedLevels.Single(level => level.Id == "bluray-2160p").Rank
+                < qualityFamily.OrderedLevels.Single(level => level.Id == "web-1080p").Rank,
+            "A tier above the cutoff must rank better than the cutoff itself.");
         var advanced = Assert.Single(translation.AdvancedRules);
         Assert.Equal(LegacyPreferenceRuleKind.UnmappedAdvanced, advanced.Kind);
         Assert.Equal(9999, advanced.OriginalScore);
@@ -220,6 +236,100 @@ public sealed class ReleasePreferencePersistenceTests
         var source = Assert.Single(translation.Plan.Sources!, item => item.SourceId == "trash-1");
         Assert.Equal("9999", source.OriginalScore);
         Assert.Equal("9999", source.AssignedScore);
+    }
+
+    /// <summary>
+    /// #351 line 3: exact mappings preserve golden-fixture decisions.
+    ///
+    /// <para>Quality tiers are the one part of a legacy score profile that
+    /// translates without judgement - allowed tiers become a ranked family,
+    /// the cutoff becomes the target, and <c>UpgradeUntilCutoff</c> decides
+    /// whether the family drives upgrades. Every custom format stays Advanced
+    /// and cannot affect this. So the migrated plan has to agree with the
+    /// engine it replaces on every square of the grid, not on one example:
+    /// if it disagreed anywhere, a library would silently change its mind
+    /// about which held files are finished the moment the plan activated.</para>
+    /// </summary>
+    [Theory]
+    [InlineData("WEB 720p, WEB 1080p, Bluray 1080p", "WEB 1080p", true)]
+    [InlineData("WEB 720p, WEB 1080p, Bluray 1080p", "WEB 1080p", false)]
+    [InlineData("WEB 720p, WEB 1080p, Bluray 1080p", "Bluray 1080p", true)]
+    [InlineData("WEB 1080p, Bluray 1080p, Bluray 2160p", "Bluray 2160p", true)]
+    [InlineData("WEB 720p, WEB 1080p", "WEB 720p", true)]
+    public void Exact_tier_translation_agrees_with_the_engine_it_replaces_on_every_installed_quality(
+        string allowedQualities,
+        string cutoffQuality,
+        bool upgradeUntilCutoff)
+    {
+        var timestamp = new DateTimeOffset(2026, 9, 3, 3, 0, 0, TimeSpan.Zero);
+        var profile = new QualityProfileItem(
+            "profile-golden",
+            "Golden",
+            "movies",
+            cutoffQuality,
+            allowedQualities,
+            string.Empty,
+            upgradeUntilCutoff,
+            true,
+            false,
+            null,
+            null,
+            false,
+            timestamp,
+            timestamp);
+
+        var translation = LegacyReleasePreferenceTranslator.Translate(profile);
+        var family = Assert.Single(translation.Plan.OrderedFamilies);
+
+        // Every tier the profile names, plus one it does not, so the grid
+        // includes the case a plan has no opinion about.
+        var installedTiers = allowedQualities
+            .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Append("Bluray 2160p")
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+
+        foreach (var installed in installedTiers)
+        {
+            var legacy = LibraryQualityDecider.Decide(
+                "movie",
+                hasFile: true,
+                currentQuality: installed,
+                cutoffQuality: cutoffQuality,
+                upgradeUntilCutoff: upgradeUntilCutoff,
+                upgradeUnknownItems: true);
+
+            // The facts Deluno actually records for an installed file, not a
+            // hand-built one: the quality classifier is closed-world, so it
+            // names the selected tier and marks every other tier absent.
+            var selectedTraitId = InstalledPreferenceEvaluationFactory.QualityTraitId(installed);
+            var facts = family.OrderedLevels
+                .SelectMany(level => level.TraitIds)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .Select(traitId => new PreferenceFact(
+                    traitId,
+                    string.Equals(traitId, selectedTraitId, StringComparison.OrdinalIgnoreCase)
+                        ? PreferenceFactState.Present
+                        : PreferenceFactState.Absent))
+                .Append(new PreferenceFact(selectedTraitId, PreferenceFactState.Present))
+                .ToArray();
+
+            var typed = ReleasePreferenceEvaluator.Evaluate(translation.Plan, facts);
+
+            // The decision that has to survive migration is "does this library
+            // want to replace this file". `QualityCutoffMet` is a different
+            // question - it reports the tier comparison even when the profile
+            // has upgrades switched off, where the answer to the decision is
+            // still no.
+            var legacyWantsAnUpgrade = legacy.WantedStatus == WantedStatuses.Upgrade;
+            var typedWantsAnUpgrade = typed.Status == PreferenceEvaluationStatus.BelowGoal;
+
+            Assert.True(
+                legacyWantsAnUpgrade == typedWantsAnUpgrade,
+                $"'{installed}' under cutoff '{cutoffQuality}' (upgradeUntilCutoff={upgradeUntilCutoff}): "
+                + $"the engine being replaced said {legacy.WantedStatus}, "
+                + $"the migrated plan said {typed.Status}.");
+        }
     }
 
     [Fact]

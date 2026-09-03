@@ -73,9 +73,12 @@ public static class LegacyReleasePreferenceTranslator
             warnings.Add($"The quality profile cutoff '{profile.CutoffQuality}' is not in Deluno's current tier vocabulary.");
         }
 
-        var allTiers = allowedNames
-            .Concat(cutoff is null ? [] : [cutoff])
-            .Distinct(StringComparer.OrdinalIgnoreCase)
+        // The same rule the runtime plan uses, not a second copy of it: a
+        // migrated plan that could place fewer installed files than the
+        // running one would change decisions the moment it activated.
+        var allTiers = (cutoff is null
+                ? allowedNames
+                : ReleasePreferencePlanFactory.QualityFamilyTiers(allowedNames, cutoff))
             .Select(name => new
             {
                 Name = name,

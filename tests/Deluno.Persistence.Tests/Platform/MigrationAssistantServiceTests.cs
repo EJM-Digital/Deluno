@@ -377,6 +377,65 @@ public sealed class MigrationAssistantServiceTests
         Assert.DoesNotContain(secondPreview.Operations, operation => operation.TargetType == "library" && operation.Action == "create");
     }
 
+    /// <summary>
+    /// #351 line 7: a second migration run makes zero changes.
+    ///
+    /// <para>A second <em>preview</em> that skips duplicates is not the same
+    /// claim. Apply is the run that writes, so apply is the run that has to be
+    /// idempotent — and the way this fails in practice is one target type
+    /// nobody checked quietly creating a duplicate on every retry.</para>
+    /// </summary>
+    [Fact]
+    public async Task A_second_apply_of_the_same_source_changes_nothing()
+    {
+        using var storage = TestStorage.Create();
+        var service = await CreateServiceAsync(storage);
+
+        var first = await service.ApplyAsync(CreateRadarrRequest(), CancellationToken.None);
+        Assert.NotEmpty(first.Applied);
+
+        var librariesRepository = CreateLibrariesRepository(storage);
+        var qualityRepository = CreateQualityRepository(storage);
+        var connectionsRepository = CreateConnectionsRepository(storage);
+
+        var librariesBefore = await librariesRepository.ListLibrariesAsync(CancellationToken.None);
+        var profilesBefore = await qualityRepository.ListQualityProfilesAsync(CancellationToken.None);
+        var formatsBefore = await qualityRepository.ListCustomFormatsAsync(CancellationToken.None);
+        var indexersBefore = await connectionsRepository.ListIndexersAsync(CancellationToken.None);
+        var clientsBefore = await connectionsRepository.ListDownloadClientsAsync(CancellationToken.None);
+
+        var second = await service.ApplyAsync(CreateRadarrRequest(), CancellationToken.None);
+
+        // Nothing was created or changed the second time. Every operation the
+        // report still lists must be a skip.
+        Assert.DoesNotContain(second.Applied, item => item.Result != "skipped" && item.Result != "skip");
+        Assert.DoesNotContain(
+            second.Report.Operations,
+            operation => operation.Action is "create" or "update" or "replace");
+
+        // And the database agrees, which is the part a report cannot promise.
+        Assert.Equal(
+            librariesBefore.Select(item => item.Id).OrderBy(id => id, StringComparer.Ordinal),
+            (await librariesRepository.ListLibrariesAsync(CancellationToken.None))
+                .Select(item => item.Id).OrderBy(id => id, StringComparer.Ordinal));
+        Assert.Equal(
+            profilesBefore.Select(item => $"{item.Id}|{item.UpdatedUtc:O}").OrderBy(key => key, StringComparer.Ordinal),
+            (await qualityRepository.ListQualityProfilesAsync(CancellationToken.None))
+                .Select(item => $"{item.Id}|{item.UpdatedUtc:O}").OrderBy(key => key, StringComparer.Ordinal));
+        Assert.Equal(
+            formatsBefore.Select(item => $"{item.Id}|{item.UpdatedUtc:O}").OrderBy(key => key, StringComparer.Ordinal),
+            (await qualityRepository.ListCustomFormatsAsync(CancellationToken.None))
+                .Select(item => $"{item.Id}|{item.UpdatedUtc:O}").OrderBy(key => key, StringComparer.Ordinal));
+        Assert.Equal(
+            indexersBefore.Select(item => item.Id).OrderBy(id => id, StringComparer.Ordinal),
+            (await connectionsRepository.ListIndexersAsync(CancellationToken.None))
+                .Select(item => item.Id).OrderBy(id => id, StringComparer.Ordinal));
+        Assert.Equal(
+            clientsBefore.Select(item => item.Id).OrderBy(id => id, StringComparer.Ordinal),
+            (await connectionsRepository.ListDownloadClientsAsync(CancellationToken.None))
+                .Select(item => item.Id).OrderBy(id => id, StringComparer.Ordinal));
+    }
+
     [Fact]
     public async Task ApplyAsync_records_verified_backup_evidence_when_host_backup_is_available()
     {

@@ -113,6 +113,7 @@ export function SettingsProfilesPage() {
   const [confirmDiscard, setConfirmDiscard] = useState(false);
   const [busy, setBusy] = useState(false);
   const [planCompilation, setPlanCompilation] = useState<ReleasePreferencePlanCompilation | null>(null);
+  const [planSourcesOpen, setPlanSourcesOpen] = useState(false);
   const [planLoading, setPlanLoading] = useState(false);
   const [planError, setPlanError] = useState<string | null>(null);
   const [advancedPlanOpen, setAdvancedPlanOpen] = useState(false);
@@ -525,7 +526,15 @@ export function SettingsProfilesPage() {
                           <span className="text-[length:var(--type-caption)] text-muted-foreground">{preferenceIntentLabel(family.intent)}{family.upgradeDriving ? " · upgrade-driving" : " · tie-break"}</span>
                         </div>
                         <p className="mt-1 text-[length:var(--type-caption)] text-muted-foreground">
-                          {family.levels.map((level) => level.traitIds.map(humanizeTrait).join(" or ")).join(" → ") || "No explicit levels"}
+                          {/*
+                            A quality family holds every tier at or above the
+                            cutoff so a file better than the profile's allowed
+                            list can still be placed, which can be twenty-six
+                            of them. Printing all of them turns one line into a
+                            paragraph nobody reads, so the best few are shown
+                            and the rest are counted.
+                          */}
+                          {describeFamilyLevels(family)}
                           {family.targetLevelId ? ` · stops at ${humanizeLevel(family, family.targetLevelId)}` : ""}
                         </p>
                       </div>
@@ -545,6 +554,74 @@ export function SettingsProfilesPage() {
                             <Chip tone={rule.requiresReview ? "warn" : "idle"}>{rule.requiresReview ? "Review" : "Mapped"}</Chip>
                           </div>
                           <p className="mt-1 text-[length:var(--type-caption)] text-muted-foreground">{rule.explanation}</p>
+                          {/*
+                            The rule and the value it carried, not just its
+                            name. "Retained with provenance" is only true if
+                            you can read the provenance.
+                          */}
+                          <dl className="mt-2 grid gap-x-3 gap-y-1 text-[length:var(--type-caption)] sm:grid-cols-[auto_minmax(0,1fr)]">
+                            <dt className="text-muted-foreground">Legacy value</dt>
+                            <dd className="font-mono text-foreground">{rule.originalScore}</dd>
+                            <dt className="text-muted-foreground">Rule</dt>
+                            <dd className="font-mono break-all text-foreground">{rule.trashId ?? rule.ruleId}</dd>
+                            {rule.conditions ? (
+                              <>
+                                <dt className="text-muted-foreground">Matcher</dt>
+                                <dd className="font-mono break-all text-foreground">{rule.conditions}</dd>
+                              </>
+                            ) : null}
+                            <dt className="text-muted-foreground">Classification</dt>
+                            <dd className="text-foreground">{legacyRuleKindLabel(rule.kind)}</dd>
+                          </dl>
+                        </div>
+                      ))}
+                    </div>
+                  </Disclosure>
+                ) : null}
+                {planCompilation.plan.sources?.length ? (
+                  <Disclosure
+                    title="Where these came from"
+                    summary={`${planCompilation.plan.sources.length} source${planCompilation.plan.sources.length === 1 ? "" : "s"} with the value each carried`}
+                    open={planSourcesOpen}
+                    onOpenChange={setPlanSourcesOpen}
+                  >
+                    <div className="grid gap-2" aria-label="Preference provenance">
+                      <p className="text-[length:var(--type-caption)] text-muted-foreground">Every typed preference above traces to one of these. The legacy value is what the rule carried before translation; it is not the value Deluno decides with.</p>
+                      {planCompilation.plan.sources.map((source) => (
+                        <div key={`${source.sourceKind}:${source.sourceId}:${source.layer ?? ""}`} className="rounded-[10px] border border-hairline px-3 py-2">
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <span className="font-mono text-[length:var(--type-caption)] break-all text-foreground">{source.sourceId}</span>
+                            <Chip tone="idle">{source.sourceKind}</Chip>
+                          </div>
+                          <dl className="mt-1 grid gap-x-3 gap-y-1 text-[length:var(--type-caption)] sm:grid-cols-[auto_minmax(0,1fr)]">
+                            {source.originalScore !== null ? (
+                              <>
+                                <dt className="text-muted-foreground">Legacy value</dt>
+                                <dd className="font-mono text-foreground">
+                                  {source.originalScore}
+                                  {source.assignedScore !== null && source.assignedScore !== source.originalScore
+                                    ? ` → ${source.assignedScore} in this profile`
+                                    : ""}
+                                </dd>
+                              </>
+                            ) : null}
+                            {source.mappedTraitIds?.length ? (
+                              <>
+                                <dt className="text-muted-foreground">Became</dt>
+                                <dd className="text-foreground">{source.mappedTraitIds.map(humanizeTrait).join(", ")}</dd>
+                              </>
+                            ) : null}
+                            {source.matcherDefinition ? (
+                              <>
+                                <dt className="text-muted-foreground">Matcher</dt>
+                                <dd className="font-mono break-all text-foreground">{source.matcherDefinition}{source.matcherAny ? " (any)" : ""}</dd>
+                              </>
+                            ) : null}
+                            <dt className="text-muted-foreground">Mapping</dt>
+                            <dd className="font-mono break-all text-foreground">{source.mappingVersion ?? "none"}</dd>
+                            <dt className="text-muted-foreground">Source version</dt>
+                            <dd className="font-mono break-all text-foreground">{source.sourceVersion}</dd>
+                          </dl>
                         </div>
                       ))}
                     </div>
@@ -729,6 +806,38 @@ function preferenceIntent(score: number) {
   if (score === 0) return "I do not care";
   if (score >= 500) return "Strongly prefer";
   return "Prefer";
+}
+
+/**
+ * The classification a legacy rule was given, in words.
+ *
+ * #351 asks that the owner can trace every new preference back to the exact
+ * legacy rule and value that produced it. "unmappedAdvanced" is the API's
+ * word for it, not a person's.
+ */
+const FAMILY_LEVELS_SHOWN = 6;
+
+function describeFamilyLevels(family: { levels: Array<{ traitIds: string[] }> }) {
+  if (!family.levels.length) return "No explicit levels";
+  const named = family.levels.map((level) => level.traitIds.map(humanizeTrait).join(" or "));
+  if (named.length <= FAMILY_LEVELS_SHOWN) return named.join(" → ");
+  const remaining = named.length - FAMILY_LEVELS_SHOWN;
+  return `${named.slice(0, FAMILY_LEVELS_SHOWN).join(" → ")} → ${remaining} more`;
+}
+
+function legacyRuleKindLabel(kind: string) {
+  switch (kind) {
+    case "exactTyped": return "Translated exactly";
+    case "guideMapped": return "Mapped from the guide";
+    case "orderedFamilyCandidate": return "Could become an ordered preference — needs your confirmation";
+    case "hardGateCandidate": return "Looks like a must-have or must-not-have — needs your confirmation";
+    case "tieBreakCandidate": return "Preference that should not drive upgrades — needs your confirmation";
+    case "ambiguousOverlap": return "Overlaps another rule and may count twice";
+    case "conflicting": return "Conflicts with another rule";
+    case "unmappedAdvanced": return "Kept as-is; no safe typed translation yet";
+    case "invalid": return "Cannot affect decisions — the rule or its reference is broken";
+    default: return kind;
+  }
 }
 
 function preferenceIntentLabel(intent: string) {

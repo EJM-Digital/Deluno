@@ -70,6 +70,14 @@ export interface PreferencePlanProvenance {
   mappingId: string | null;
   mappingVersion: string | null;
   layer: string | null;
+  /**
+   * The matcher this source was compiled from, and the traits it produced.
+   * Without them a plan can say a preference came from a rule but not what
+   * the rule was, which is not a trace anybody can follow.
+   */
+  matcherDefinition: string | null;
+  mappedTraitIds: string[] | null;
+  matcherAny: boolean;
 }
 
 export interface ReleasePreferencePlan {
