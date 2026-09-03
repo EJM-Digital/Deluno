@@ -2234,86 +2234,27 @@ public sealed class SqliteMovieCatalogRepository(
         return await command.ExecuteNonQueryAsync(cancellationToken) > 0;
     }
 
-    public async Task<int> ReevaluateLibraryWantedStateAsync(
+    public Task<int> ReevaluateLibraryWantedStateAsync(
         string libraryId,
         string? cutoffQuality,
         bool upgradeUntilCutoff,
         bool upgradeUnknownItems,
         CancellationToken cancellationToken)
-    {
-        if (sharedMediaStateRepository is not null)
-        {
-            return await sharedMediaStateRepository.ReevaluateLibraryWantedStateAsync(
+        // There used to be a second copy of this routine here for callers that
+        // construct the repository without the shared one. The two had already
+        // drifted: the local copy never passed IsReleased, so it called an
+        // unreleased film Missing where the shared rule calls it Upcoming, and
+        // it wrote every row in its own implicit transaction - 9 seconds for a
+        // 20,000-title plan change against 1.6 for the shared one. One rule,
+        // one place.
+        => (sharedMediaStateRepository ?? new SqliteMediaStateRepository(databaseConnectionFactory, timeProvider))
+            .ReevaluateLibraryWantedStateAsync(
                 MediaKind.Movie,
                 libraryId,
                 cutoffQuality,
                 upgradeUntilCutoff,
                 upgradeUnknownItems,
                 cancellationToken);
-        }
-
-        var items = new List<(string MovieId, bool HasFile, string? CurrentQuality)>();
-
-        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
-            DelunoDatabaseNames.Movies,
-            cancellationToken);
-
-        using (var command = connection.CreateCommand())
-        {
-            command.CommandText =
-                """
-                SELECT movie_id, has_file, current_quality
-                FROM movie_wanted_state
-                WHERE library_id = @libraryId;
-                """;
-            AddParameter(command, "@libraryId", libraryId);
-
-            using var reader = await command.ExecuteReaderAsync(cancellationToken);
-            while (await reader.ReadAsync(cancellationToken))
-            {
-                items.Add((
-                    reader.GetString(0),
-                    reader.GetInt64(1) == 1,
-                    reader.IsDBNull(2) ? null : reader.GetString(2)));
-            }
-        }
-
-        var updated = 0;
-        foreach (var item in items)
-        {
-            var decision = MediaDecisionRules.DecideWantedState(new MediaWantedDecisionInput(
-                MediaType: "movies",
-                HasFile: item.HasFile,
-                CurrentQuality: item.CurrentQuality,
-                CutoffQuality: cutoffQuality,
-                UpgradeUntilCutoff: upgradeUntilCutoff,
-                UpgradeUnknownItems: upgradeUnknownItems));
-
-            using var update = connection.CreateCommand();
-            update.CommandText =
-                """
-                UPDATE movie_wanted_state
-                SET
-                    wanted_status = @wantedStatus,
-                    wanted_reason = @wantedReason,
-                    target_quality = @targetQuality,
-                    quality_cutoff_met = @qualityCutoffMet,
-                    updated_utc = @updatedUtc
-                WHERE movie_id = @movieId
-                  AND library_id = @libraryId;
-                """;
-            AddParameter(update, "@movieId", item.MovieId);
-            AddParameter(update, "@libraryId", libraryId);
-            AddParameter(update, "@wantedStatus", decision.WantedStatus);
-            AddParameter(update, "@wantedReason", decision.WantedReason);
-            AddParameter(update, "@targetQuality", decision.TargetQuality);
-            AddParameter(update, "@qualityCutoffMet", decision.QualityCutoffMet ? 1 : 0);
-            AddParameter(update, "@updatedUtc", timeProvider.GetUtcNow().ToString("O"));
-            updated += await update.ExecuteNonQueryAsync(cancellationToken);
-        }
-
-        return updated;
-    }
 
     public async Task<MovieImportRecoverySummary> GetImportRecoverySummaryAsync(CancellationToken cancellationToken)
     {
