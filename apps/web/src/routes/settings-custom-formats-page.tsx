@@ -28,6 +28,7 @@ import { LibraryImpactLinks } from "../components/ui/library-impact";
 import { ListGroupHeader, MediaTypeFilter, mediaTypeLabel, useMediaTypeSplit } from "../components/ui/media-type-split";
 import { PageFooter } from "../components/ui/page-footer";
 import { PageToolbar, PageToolbarAction } from "../components/ui/page-toolbar";
+import { ChoiceRows } from "../components/ui/choice-rows";
 import { PresetField } from "../components/ui/preset-field";
 import { SegmentedControl } from "../components/ui/segmented-control";
 import { Select } from "../components/ui/select";
@@ -110,13 +111,36 @@ const SCORE_OPTIONS = [
   { value: "500", label: "Strongly prefer (legacy input)" }
 ];
 
+/**
+ * The five intents, each with what choosing it actually does.
+ *
+ * These were a dropdown, which meant four of the five were invisible until you
+ * opened it — on the one control where the whole question is "what would each
+ * of these do to my library?". James: "doesnt need a drop down it can just be
+ * a toggle with description".
+ */
 const INTENT_OPTIONS = [
-  { value: "blocked", label: "Must not have" },
-  { value: "avoid", label: "Avoid" },
-  { value: "neutral", label: "I do not care" },
-  { value: "prefer", label: "Prefer" },
-  { value: "strong-prefer", label: "Strongly prefer" },
-  { value: "custom", label: "Custom intent (advanced)" }
+  { value: "blocked", label: "Must not have", description: "Deluno will never take a release that matches this." },
+  { value: "avoid", label: "Avoid", description: "Taken only when nothing better is available." },
+  { value: "neutral", label: "I do not care", description: "Makes no difference to which release Deluno picks." },
+  { value: "prefer", label: "Prefer", description: "Tips a close call towards releases that match." },
+  { value: "strong-prefer", label: "Strongly prefer", description: "Weighs heavily in favour, and can justify replacing a file you already have." },
+  { value: "custom", label: "Custom intent (advanced)", description: "Keeps an imported value that does not land on one of the choices above." }
+];
+
+/**
+ * Four columns, not five.
+ *
+ * "Intent" and "Status" were the same words twice on every row — the text
+ * "Strongly prefer" beside a chip reading "Strongly prefer" — so the coloured
+ * chip keeps the job and the column it duplicated is gone. The width goes to
+ * what the rule means, which is the part you actually read.
+ */
+const RULE_COLUMNS = [
+  { label: "Rule", width: "minmax(0,1.1fr)" },
+  { label: "Matches on", width: "minmax(0,1.6fr)" },
+  { label: "Used by" },
+  { label: "Intent", width: LIST_TRACK.status, mobile: true }
 ];
 
 const CONDITION_TYPES = [
@@ -768,22 +792,31 @@ export function SettingsCustomFormatsPage() {
             actions={<Button type="button" variant="outline" onClick={() => openRule(null)}><Plus className="h-4 w-4" />New custom rule</Button>}
           />
         ) : (
-          <ListTable columns={[{ label: "Rule" }, { label: "Matches on", width: "minmax(0,1.4fr)" }, { label: "Intent" }, { label: "Used by" }, { label: "Status", width: LIST_TRACK.status, mobile: true }]}>
+          <ListTable columns={RULE_COLUMNS}>
             {split.groups.flatMap((group) => [
               split.showGroups && split.scope === "all" ? <ListGroupHeader key={group.key} label={group.label} count={group.items.length} /> : null,
               ...group.items.map((format) => {
                 const conditions = parseConditions(format.conditions);
                 const guideFormat = format.trashId ? guide.customFormats.find((candidate) => candidate.trashId === format.trashId) : undefined;
                 const usedBy = librariesByFormat.get(format.id) ?? [];
+                // The guide's own names are its filenames: "WEB Tier 01",
+                // "Repack2", "BR-DISK". The column your eye lands on first
+                // should be English, with the guide's name kept underneath
+                // because that is what you would search the guide for.
+                const shownName = guideFormat ? friendlyGuideName(guideFormat) : format.name;
                 return (
                   <ListRow key={format.id} onClick={() => openRule(format)} selected={drawer?.kind === "rule" && drawer.id === format.id}>
-                    <ListNameCell name={format.name} sub={guideFormat ? "From the guide catalogue" : "Written here"} />
+                    <ListNameCell
+                      name={shownName}
+                      sub={guideFormat
+                        ? (shownName === guideFormat.name ? "From the guide catalogue" : `${guideFormat.name} · from the guide catalogue`)
+                        : "Written here"}
+                    />
                     {/* Guide rules are raw regex — lead with what they mean, not the pattern. */}
                     <ListCell
                       primary={guideFormat?.description ?? (conditions.length ? conditionSummary(conditions) : "No conditions")}
                       secondary={conditions.length ? `${conditions.length} ${conditions.length === 1 ? "condition" : "conditions"}` : "never matches anything"}
                     />
-                    <ListCell primary={ruleIntent(format.score)} secondary={format.score <= -10000 ? "never grabbed" : "legacy input"} />
                     {/*
                       A library reaches these rules through its quality profile,
                       whether that came from a Library Profile or was attached
@@ -882,7 +915,9 @@ export function SettingsCustomFormatsPage() {
         onOpenChange={(open) => {
           if (!open) setDrawer(null);
         }}
-        title={editing ? editing.name : "New custom release rule"}
+        // The same name the list showed. Opening "Top-tier WEB groups" and
+        // landing on a panel headed "WEB Tier 01" reads as the wrong rule.
+        title={editing ? (selectedGuide ? friendlyGuideName(selectedGuide) : editing.name) : "New custom release rule"}
         description={editing ? `${mediaTypeLabel(editing.mediaType)} · ${selectedGuide ? "Guide-backed" : "Custom rule"}` : "Choose a guide rule or build your own"}
         onSubmit={submitRule}
         footer={
@@ -926,29 +961,37 @@ export function SettingsCustomFormatsPage() {
           <Field label="Name" help="What this rule is looking for, in your own words.">
             <Input value={form.name} onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))} placeholder="e.g. Dolby Vision" />
           </Field>
-          <FieldRow>
-            <Field label="Applies to">
-              <SegmentedControl<"movies" | "tv">
-                aria-label="Applies to"
-                value={form.mediaType}
-                onValueChange={(value) => setForm((current) => ({ ...current, mediaType: value }))}
-                options={[
-                  { value: "movies", label: "Movies" },
-                  { value: "tv", label: "TV" }
-                ]}
-              />
-            </Field>
-            <Field label="Intent" help="Tell Deluno whether this trait is required, avoided, or preferred.">
-              <Select
-                value={scoreIntent(form.score)}
-                onChange={(event) => {
-                  const option = INTENT_OPTIONS.find((candidate) => candidate.value === event.target.value);
-                  if (option?.value !== "custom") setForm((current) => ({ ...current, score: scoreForIntent(option?.value) }));
-                }}
-                options={INTENT_OPTIONS}
-              />
-            </Field>
-          </FieldRow>
+          <Field label="Applies to">
+            <SegmentedControl<"movies" | "tv">
+              aria-label="Applies to"
+              value={form.mediaType}
+              onValueChange={(value) => setForm((current) => ({ ...current, mediaType: value }))}
+              options={[
+                { value: "movies", label: "Movies" },
+                { value: "tv", label: "TV" }
+              ]}
+            />
+          </Field>
+          {/*
+            Full width and on its own row. It used to share a two-column row
+            with "Applies to", which is what pushed it into a dropdown in the
+            first place: five options with their consequences do not fit in
+            half a drawer.
+          */}
+          <Field label="Intent" help="What Deluno should do when a release matches this rule.">
+            <ChoiceRows
+              value={scoreIntent(form.score)}
+              onValueChange={(next) => {
+                if (next === "custom") return;
+                setForm((current) => ({ ...current, score: scoreForIntent(next) }));
+              }}
+              options={INTENT_OPTIONS.filter((option) =>
+                // "Custom" is not a thing you choose; it is what an imported
+                // value that fits none of the five is called. Offer it only
+                // when the rule is already in that state.
+                option.value !== "custom" || scoreIntent(form.score) === "custom")}
+            />
+          </Field>
         </DrawerSection>
 
         <Disclosure
@@ -1378,12 +1421,39 @@ function conditionSummary(conditions: Condition[]) {
   return `${label} ${first.negate ? "without" : "with"} “${value}”`;
 }
 
+/**
+ * The guide's names are its filenames.
+ *
+ * <p>"HDR10", "TrueHD" and "Netflix" are the real names of real things and are
+ * left alone. "WEB Tier 01", "Repack2", "BR-DISK" and "Retags" are identifiers
+ * from a wiki, and reading a list of them teaches you nothing — which is
+ * exactly what James said looking at this screen. Only the ones that read as
+ * an identifier are renamed; the guide's own name stays visible underneath,
+ * because it is what you would search the guide for.</p>
+ *
+ * <p>This lives here rather than in the guide package because the package is
+ * pinned to an upstream revision with an integrity hash: a display name is
+ * Deluno's word for the thing, not the guide's, and adding one upstream would
+ * mean re-pinning 85 entries to change a label.</p>
+ */
 function friendlyGuideName(format: GuideCustomFormat) {
   const names: Record<string, string> = {
     "HD Bluray Tier 01": "Top-tier Blu-ray groups",
     "HD Bluray Tier 02": "Trusted Blu-ray groups",
+    "UHD Bluray Tier 01": "Top-tier 4K Blu-ray groups",
     "WEB Tier 01": "Top-tier WEB groups",
     "WEB Tier 02": "Trusted WEB groups",
+    "WEB Tier 03": "Fallback WEB groups",
+    "Remux Tier 01": "Top-tier remux groups",
+    "Remux Tier 02": "Trusted remux groups",
+    "Anime BD Tier 01": "Top-tier anime Blu-ray groups",
+    "Anime WEB Tier 01": "Top-tier anime WEB groups",
+    "Repack2": "Second repack",
+    "Repack3": "Third repack",
+    "Repack / Proper": "Corrected re-release",
+    "BR-DISK": "Full disc image, not a video file",
+    "Retags": "Re-tagged re-uploads",
+    "Obfuscated": "Obfuscated file names",
     "No Release Group": "Releases without a release group",
     "LQ (Low Quality Groups)": "Known low-quality release groups"
   };

@@ -256,7 +256,7 @@ public sealed class ReleaseDecisionEngineTests
 
         Assert.True(decision.QualityDelta > 0,
             $"Expected positive delta, got {decision.QualityDelta}");
-        Assert.Contains(decision.Reasons, r => r.Contains("improves", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(decision.Reasons, r => r.Contains("better than the file you have", StringComparison.OrdinalIgnoreCase));
     }
 
     [Fact]
@@ -608,7 +608,7 @@ public sealed class ReleaseDecisionEngineTests
 
         Assert.Equal("preferred", decision.Status);
         Assert.Contains(decision.Reasons, reason => reason.Contains("WEB-DL", StringComparison.OrdinalIgnoreCase));
-        Assert.Contains(decision.Reasons, reason => reason.Contains("Preferred usenet protocol", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(decision.Reasons, reason => reason.Contains("came over usenet", StringComparison.OrdinalIgnoreCase));
     }
 
     [Fact]
@@ -815,6 +815,51 @@ public sealed class ReleaseDecisionEngineTests
 
         Assert.Equal("held", decision.Status);
         Assert.Equal(PreferenceCandidateStatus.NeedsReview, decision.PreferenceComparison?.Status);
+    }
+
+    /// <summary>
+    /// #353 line 5: every candidate/upgrade explanation completes "Deluno
+    /// chose this because…" in plain language — and line 7: no primary owner
+    /// surface shows an unbounded aggregate score.
+    ///
+    /// <para>The candidate drawer renders these reasons verbatim under "Why
+    /// Deluno likes it". Four of them used to be arithmetic — "adds 250
+    /// points", "(+50)", "(+100)" — which is a number on a scale nobody was
+    /// ever told, on the one screen where the product promises to explain
+    /// itself.</para>
+    /// </summary>
+    [Fact]
+    public void No_decision_reason_explains_itself_with_score_arithmetic()
+    {
+        // A spread wide enough to reach the reasons that used to quote points:
+        // preferred and avoided terms, protocol preference, indexer flags, and
+        // a quality improvement over a held file.
+        ReleaseDecision[] decisions =
+        [
+            ReleaseDecisionEngine.Decide(GoodInput()),
+            ReleaseDecisionEngine.Decide(GoodInput(
+                indexerFlags: "freeleech, double-upload",
+                preferIndexerFlags: "freeleech")),
+            ReleaseDecisionEngine.Decide(GoodInput(
+                quality: "Bluray 1080p",
+                currentQuality: "WEB 720p")),
+            ReleaseDecisionEngine.Decide(GoodInput(
+                quality: "WEB 1080p",
+                currentQuality: "WEB 1080p")),
+            ReleaseDecisionEngine.Decide(GoodInput(seeders: 40))
+        ];
+
+        foreach (var reason in decisions.SelectMany(decision => decision.Reasons))
+        {
+            Assert.DoesNotContain("points", reason, StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain("(+", reason, StringComparison.Ordinal);
+            Assert.DoesNotContain("score", reason, StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain("step(s)", reason, StringComparison.OrdinalIgnoreCase);
+
+            // Whole sentences, because these are read one after another in a
+            // list and a fragment reads as a truncation.
+            Assert.EndsWith(".", reason.Trim(), StringComparison.Ordinal);
+        }
     }
 
     private static ReleasePreferencePlan SnapshotPlan()

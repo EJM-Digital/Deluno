@@ -76,15 +76,20 @@ public static partial class ReleaseDecisionEngine
                 }
 
                 preferredTermScore += term.Score;
+                // Say what the rule did, not what it weighed. "adds 250
+                // points" is the arithmetic behind the decision, and #353
+                // asks that an explanation completes "Deluno chose this
+                // because..." in language that does not require knowing the
+                // scale those points are on.
                 reasons.Add(term.Score >= 0
-                    ? $"Preferred term '{term.Term}' adds {term.Score} points."
-                    : $"Avoided term '{term.Term}' subtracts {Math.Abs(term.Score)} points.");
+                    ? $"It has '{term.Term}', which you told Deluno to prefer."
+                    : $"It has '{term.Term}', which you told Deluno to avoid.");
             }
         }
 
         if (input.PreferencePlan is null && profileRules.PreferredProtocolScore > 0)
         {
-            reasons.Add($"Preferred {profileRules.PreferredProtocol} protocol matched (+{profileRules.PreferredProtocolScore}).");
+            reasons.Add($"It came over {profileRules.PreferredProtocol}, which is the protocol you prefer here.");
         }
 
         var effectiveMinimumAgeMinutes = Math.Max(input.MinimumAgeMinutes ?? 0, profileRules.DelayMinutes);
@@ -185,7 +190,9 @@ public static partial class ReleaseDecisionEngine
         {
             if (qualityDelta > 0)
             {
-                reasons.Add($"Quality rank improves current file by {qualityDelta} step(s).");
+                reasons.Add(qualityDelta == 1
+                    ? "It is one quality tier better than the file you have."
+                    : $"It is {qualityDelta} quality tiers better than the file you have.");
             }
 
             if (qualityDelta == 0)
@@ -530,7 +537,9 @@ public static partial class ReleaseDecisionEngine
         }
 
         var score = matched.Length * 50;
-        reasons.Add($"Indexer flags matched: {string.Join(", ", matched)} (+{score}).");
+        reasons.Add(matched.Length == 1
+            ? $"The indexer flagged it {matched[0]}, which you asked Deluno to prefer."
+            : $"The indexer flagged it {string.Join(" and ", matched)}, which you asked Deluno to prefer.");
         return score;
     }
 
