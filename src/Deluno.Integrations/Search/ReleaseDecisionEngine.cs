@@ -172,14 +172,11 @@ public static partial class ReleaseDecisionEngine
         // happily grab WEB 2160p, which is the exact outcome an allowed list
         // exists to prevent. An empty list means the profile does not constrain
         // tiers, so it is not treated as "nothing is allowed".
-        if (input.AllowedQualities is { Count: > 0 } allowed &&
-            !allowed.Any(entry => string.Equals(
-                LibraryQualityDecider.NormalizeQuality(entry) ?? entry,
-                normalizedCandidate,
-                StringComparison.OrdinalIgnoreCase)))
+        if (input.AllowedQualities is { Count: > 0 } allowed
+            && !AllowedQualityGate.Accepts(allowed, normalizedCandidate))
         {
             hardReject = true;
-            risks.Add($"{normalizedCandidate} is not one of the qualities this profile allows ({string.Join(", ", allowed)}).");
+            risks.Add(AllowedQualityGate.Refusal(allowed, normalizedCandidate));
         }
 
         reasons.Add(meetsCutoff

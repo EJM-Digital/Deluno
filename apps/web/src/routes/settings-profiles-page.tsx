@@ -12,7 +12,7 @@
  * POST /api/custom-formats (when a preset needs a format that doesn't exist yet).
  */
 import { useEffect, useMemo, useState, type FormEvent } from "react";
-import { useLoaderData, useRevalidator } from "react-router-dom";
+import { Link, useLoaderData, useRevalidator } from "react-router-dom";
 import { ArrowDown, ArrowUp, Plus, X } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { Chip } from "../components/ui/chip";
@@ -29,6 +29,8 @@ import { Select } from "../components/ui/select";
 import { SwitchRow } from "../components/ui/switch";
 import { toast } from "../components/shell/toaster";
 import { configurationNavAreas } from "../components/app/settings-shell";
+import { QualityBuildSteps } from "../components/app/quality-build-steps";
+import { QUALITY_STEPS, type QualityStep } from "../lib/quality-steps";
 import {
   compileQualityProfilePreferences,
   fetchTrashGuidePackage,
@@ -40,6 +42,7 @@ import {
   type PlatformSettingsSnapshot,
   type QualityModelSnapshot,
   type QualityProfileItem,
+  type QualityTierDefinition,
   type ReleasePreferencePlanCompilation
 } from "../lib/api";
 import { settingsOverviewLoader } from "./settings-overview-page";
@@ -163,7 +166,7 @@ export function SettingsProfilesPage() {
   const allowedForDisplay = useMemo(() => [...form.allowed].reverse(), [form.allowed]);
 
   function openCreate() {
-    const next = emptyForm();
+    const next = defaultForm(profileStarters);
     setMode({ kind: "create" });
     setForm(next);
     setInitialForm(next);
@@ -216,7 +219,17 @@ export function SettingsProfilesPage() {
 
   function setMediaType(mediaType: "movies" | "tv") {
     if (mediaType === form.mediaType) return;
-    setForm((current) => ({ ...current, mediaType, customFormatIds: [] }));
+    setForm((current) => {
+      // A movie ladder is not a TV ladder, and the formats belong to one type
+      // or the other. On a profile that has not been named yet, switching type
+      // re-answers step 1 for the new one rather than leaving it holding tiers
+      // from the wrong media - which would be the blank step this redesign
+      // exists to avoid, arrived at sideways.
+      const untouched = current.allowed.length === 0
+        || defaultForm(profileStarters, current.mediaType).allowed.join("|") === current.allowed.join("|");
+      const next = untouched ? defaultForm(profileStarters, mediaType) : current;
+      return { ...next, name: current.name, mediaType, customFormatIds: [] };
+    });
   }
 
   function addTier(name: string) {
@@ -413,7 +426,24 @@ export function SettingsProfilesPage() {
           </FieldRow>
         </DrawerSection>
 
-        <DrawerSection title="Quality tiers" aside={form.allowed.length ? `${form.allowed.length} allowed · best first` : undefined}>
+        <DrawerSection title="Build this profile">
+          <p className="text-[length:var(--type-caption)] text-muted-foreground">
+            Seven questions. Each one already has an answer, so straight through gives you a
+            good profile — open the ones you want to change.
+          </p>
+          <QualityBuildSteps
+            mediaType={form.mediaType}
+            name={form.name}
+            allowed={form.allowed}
+            cutoff={form.cutoff}
+            customFormatIds={form.customFormatIds}
+            upgradeUntilCutoff={form.upgradeUntilCutoff}
+            upgradeUnknownItems={form.upgradeUnknownItems}
+            customFormats={customFormats}
+            guide={guide}
+            onCustomFormatIdsChange={(customFormatIds) => setForm((current) => ({ ...current, customFormatIds }))}
+            renderQualityControls={() => (
+              <div className="grid gap-[var(--grid-gap)]">
           {allowedForDisplay.length ? (
             <ul className="grid gap-2">
               {allowedForDisplay.map((name, index) => {
@@ -449,37 +479,27 @@ export function SettingsProfilesPage() {
             </Field>
           </FieldRow>
           <SwitchRow label="Upgrade until cutoff" description="Keep replacing files until the cutoff tier is reached." checked={form.upgradeUntilCutoff} onCheckedChange={(checked) => setForm((current) => ({ ...current, upgradeUntilCutoff: checked }))} />
-        </DrawerSection>
-
-        <DrawerSection title="Formats" aside={form.customFormatIds.length ? `${form.customFormatIds.length} selected` : undefined}>
-          {availableFormats.length ? (
-            <div role="group" aria-label="Custom formats" className="flex flex-wrap gap-1.5">
-              {availableFormats.map((format) => {
-                const active = form.customFormatIds.includes(format.id);
-                return (
-                  <button
-                    key={format.id}
-                    type="button"
-                    aria-pressed={active}
-                    onClick={() => toggleFormat(format.id)}
-                    className={cn(
-                      "inline-flex h-7 items-center gap-1.5 rounded-full border px-2.5 text-[length:var(--type-caption)] font-medium transition-colors",
-                      "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                      active ? "border-primary/40 bg-primary/12 text-primary" : "border-hairline bg-surface-2 text-muted-foreground hover:border-primary/30 hover:text-foreground"
-                    )}
-                  >
-                    {format.name}
-                    <span className={cn(active ? "text-primary/80" : "text-muted-foreground/70")}>{preferenceIntent(format.score)}</span>
-                  </button>
-                );
-              })}
-            </div>
-          ) : (
-            <p className="text-[length:var(--type-caption)] text-muted-foreground">No {form.mediaType === "tv" ? "TV" : "movie"} formats yet — add them under Release Preferences.</p>
-          )}
-          <Disclosure title="Fine-tune" summary="Unknown-quality handling" open={fineTuneOpen} onOpenChange={setFineTuneOpen}>
-            <SwitchRow label="Upgrade files of unknown quality" description="Replace files Deluno can't identify when a matching release appears." checked={form.upgradeUnknownItems} onCheckedChange={(checked) => setForm((current) => ({ ...current, upgradeUnknownItems: checked }))} />
-          </Disclosure>
+              </div>
+            )}
+            renderSizeControls={() => <SizeRulesForAllowedTiers allowed={form.allowed} tiers={tiers} mediaType={form.mediaType} />}
+            renderAdvanced={(step: QualityStep) =>
+              step.id === "quality" ? (
+                <Disclosure
+                  title="Fine-tune"
+                  summary="Unknown-quality handling"
+                  open={fineTuneOpen}
+                  onOpenChange={setFineTuneOpen}
+                >
+                  <SwitchRow
+                    label="Upgrade files of unknown quality"
+                    description="Replace files Deluno can't identify when a matching release appears."
+                    checked={form.upgradeUnknownItems}
+                    onCheckedChange={(checked) => setForm((current) => ({ ...current, upgradeUnknownItems: checked }))}
+                  />
+                </Disclosure>
+              ) : null
+            }
+          />
         </DrawerSection>
 
         {editing ? (
@@ -684,6 +704,39 @@ export function SettingsProfilesPage() {
 
 /* --------------------------------------------------------------- utils */
 
+/**
+ * The answers a new profile opens with.
+ *
+ * <p>#386's second rule: <b>nothing ever starts empty</b>. Somebody who clicks
+ * straight through the seven steps must end up with a profile that works, not
+ * an inert one that accepts everything and prefers nothing — and an empty first
+ * step cannot even be saved, so the old blank form's real message was "answer
+ * this before I let you leave".</p>
+ *
+ * <p>The answer comes from the guide's own balanced profile rather than from a
+ * constant here, because that is the same material the scenario picker used to
+ * offer. A scenario was only ever a named set of answers to these questions, so
+ * the sensible default and the scenario are the same thing — which is what lets
+ * the picker go.</p>
+ */
+function defaultForm(starters: ProfileStarter[], mediaType: "movies" | "tv" = "movies"): ProfileForm {
+  const blank: ProfileForm = {
+    name: "",
+    mediaType,
+    allowed: [],
+    cutoff: "",
+    customFormatIds: [],
+    upgradeUntilCutoff: true,
+    upgradeUnknownItems: false
+  };
+
+  const balanced =
+    starters.find((starter) => starter.mediaType === mediaType && /balanced/i.test(starter.label))
+    ?? starters.find((starter) => starter.mediaType === mediaType);
+
+  return balanced ? { ...blank, allowed: balanced.allowed, cutoff: balanced.cutoff } : blank;
+}
+
 function emptyForm(): ProfileForm {
   return { name: "", mediaType: "movies", allowed: [], cutoff: "", customFormatIds: [], upgradeUntilCutoff: true, upgradeUnknownItems: false };
 }
@@ -867,6 +920,66 @@ function PlanSummary({ label, value, detail, tone = "idle" }: { label: string; v
       <p className="text-[length:var(--type-caption)] text-muted-foreground">{label}</p>
       <p className={cn("mt-0.5 text-[length:var(--type-body-sm)] font-semibold", tone === "warn" ? "text-warning" : tone === "ok" ? "text-success" : "text-foreground")}>
         {value} <span className="font-normal text-muted-foreground">{detail}</span>
+      </p>
+    </div>
+  );
+}
+
+/**
+ * Step 2's controls: the size range Deluno treats as sensible for each tier
+ * this profile allows.
+ *
+ * <p><b>Shared, and it says so.</b> Sizes live on the quality model rather than
+ * on a profile, so a change here reaches every profile using that tier. The
+ * alternative to saying that plainly was the thing #386 exists to remove —
+ * sending somebody to a Size Rules tab and hoping they work out the connection.</p>
+ */
+function SizeRulesForAllowedTiers({
+  allowed,
+  tiers,
+  mediaType
+}: {
+  allowed: string[];
+  tiers: QualityTierDefinition[];
+  mediaType: "movies" | "tv";
+}) {
+  const rows = allowed
+    .map((name) => tiers.find((tier) => tier.name === name))
+    .filter((tier): tier is QualityTierDefinition => Boolean(tier))
+    .sort((a, b) => b.rank - a.rank);
+
+  if (rows.length === 0) {
+    return (
+      <p className="text-[length:var(--type-caption)] text-muted-foreground">
+        Answer the first question and the sizes for those tiers appear here.
+      </p>
+    );
+  }
+
+  return (
+    <div className="grid gap-2">
+      <ul className="grid gap-1.5">
+        {rows.map((tier) => (
+          <li
+            key={tier.name}
+            className="flex min-h-9 items-center justify-between gap-2 rounded-[10px] border border-hairline px-[var(--field-pad-x)] text-[length:var(--type-body-sm)]"
+          >
+            <span className="min-w-0 truncate font-medium">{tier.name}</span>
+            <span className="shrink-0 tabular-nums text-muted-foreground">
+              {mediaType === "tv"
+                ? `${tier.episodeMinMb}–${tier.episodeMaxMb} MB per episode`
+                : `${tier.movieMinGb}–${tier.movieMaxGb} GB per film`}
+            </span>
+          </li>
+        ))}
+      </ul>
+      <p className="text-[length:var(--type-caption)] text-muted-foreground">
+        These sizes belong to the tier, not to this profile, so every profile allowing{" "}
+        {rows.length === 1 ? rows[0].name : "these tiers"} uses them. Change them under{" "}
+        <Link to="/settings/quality" className="underline underline-offset-2">
+          Size Rules
+        </Link>
+        .
       </p>
     </div>
   );
