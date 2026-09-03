@@ -1,4 +1,4 @@
-import type { JobQueueItem } from "./operations";
+import type { JobQueueItem, QualityUpgradeStopPolicy } from "./operations";
 
 export interface LibraryItem {
   id: string;
@@ -139,6 +139,8 @@ export interface QualityProfileItem {
   releasePreferencePlan: ReleasePreferencePlanReference | null;
   /** This profile's own size answers. Empty means it has no size opinion. */
   sizeRules?: ProfileSizeRule[] | null;
+  /** When this profile stops looking for something better. */
+  upgradeStop?: QualityUpgradeStopPolicy | null;
   createdUtc: string;
   updatedUtc: string;
 }

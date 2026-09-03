@@ -116,6 +116,26 @@ public static class QualityProfileResolver
     }
 
     /// <summary>
+    /// When this profile stops looking for something better.
+    ///
+    /// <para>Resolved beside the allowed tiers and the size answers, from the
+    /// same profile at the same moment, for the same reason.</para>
+    /// </summary>
+    public static async Task<QualityUpgradeStopPolicy?> ResolveUpgradeStopAsync(
+        IQualityRepository repository,
+        string? qualityProfileId,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(qualityProfileId))
+        {
+            return null;
+        }
+
+        var profiles = await repository.ListQualityProfilesAsync(cancellationToken);
+        return profiles.FirstOrDefault(item => item.Id == qualityProfileId)?.UpgradeStop;
+    }
+
+    /// <summary>
     /// Reads the profile's stop-when-target behaviour for acquisition. A missing
     /// profile uses the safe historical default: keep upgrading until the
     /// requested cutoff is met.

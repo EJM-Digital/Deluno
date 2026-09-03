@@ -95,7 +95,8 @@ public sealed class AcquisitionDecisionPipeline : IAcquisitionDecisionPipeline
                 request.CurrentPreferenceEvaluation,
                 request.PreferencePlan,
                 request.CurrentFilePresent,
-                request.SizeRules);
+                request.SizeRules,
+                request.UpgradeStop);
 
         var bestCandidate = searchPlan.BestCandidate;
         var outcome = sourceCount == 0 || clientCount == 0
@@ -155,6 +156,7 @@ public sealed class AcquisitionDecisionPipeline : IAcquisitionDecisionPipeline
             CustomFormatScore: 0,
             request.NeverGrabPatterns,
             SizeRules: request.SizeRules,
+            UpgradeStop: request.UpgradeStop,
             PreferencePlan: preferencePlan,
             CurrentReleaseName: request.CurrentReleaseName,
             CurrentPreferenceEvaluation: request.CurrentPreferenceEvaluation,
@@ -416,6 +418,8 @@ public sealed record AcquisitionDecisionRequest(
     IReadOnlyList<string>? AllowedQualities = null,
     /// <summary>This profile's own size answers. Empty means it has none.</summary>
     IReadOnlyList<ProfileSizeRule>? SizeRules = null,
+    /// <summary>When this profile stops looking for something better.</summary>
+    QualityUpgradeStopPolicy? UpgradeStop = null,
     IReadOnlyList<string>? TagNames = null,
     string SearchKind = AcquisitionSearchKinds.Automatic,
     DateTimeOffset? AvailableUtc = null,
@@ -477,7 +481,12 @@ public sealed record AcquisitionSelectedReleaseRequest(
     /// The profile's own size answers, so a release chosen by hand is judged
     /// against the same sizes an automatic search would have used.
     /// </summary>
-    IReadOnlyList<ProfileSizeRule>? SizeRules = null);
+    IReadOnlyList<ProfileSizeRule>? SizeRules = null,
+    /// <summary>
+    /// When this profile stops looking, so a release chosen by hand is judged
+    /// by the same answer an automatic search would have used.
+    /// </summary>
+    QualityUpgradeStopPolicy? UpgradeStop = null);
 
 public sealed record AcquisitionSelectedReleaseDecision(
     MediaSearchCandidate Candidate,

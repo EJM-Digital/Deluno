@@ -95,6 +95,10 @@ public static class MediaSearchHandler
             qualityRepository,
             library.QualityProfileId,
             cancellationToken);
+        var upgradeStop = await QualityProfileResolver.ResolveUpgradeStopAsync(
+            qualityRepository,
+            library.QualityProfileId,
+            cancellationToken);
         var upgradeUntilCutoff = await QualityProfileResolver.ResolveUpgradeUntilCutoffAsync(
             qualityRepository,
             library.QualityProfileId,
@@ -133,6 +137,7 @@ public static class MediaSearchHandler
                 PreviewOnly: string.Equals(mode, "preview", StringComparison.OrdinalIgnoreCase),
                 AllowedQualities: allowedQualities,
                 SizeRules: sizeRules,
+                UpgradeStop: upgradeStop,
                 TagNames: tagNames,
                 SearchKind: AcquisitionSearchKinds.Interactive,
                 AvailableUtc: item.AvailableUtc,
