@@ -180,8 +180,12 @@ migrations. Wait for HTTP `200`; the `/data` mount must remain unchanged.
 Pinning example:
 
 ```text
-DELUNO_IMAGE=ghcr.io/jampat000/deluno@sha256:<verified-digest>
+DELUNO_IMAGE=ghcr.io/jampat000/deluno@sha256:d61753713dddbb4235f944a7bff1a9ffdc5f1feb1dd42ca42b847db2dcb8185b
 ```
+
+That is the digest release CI published and then verified for `1.0.0-rc.2`. Use
+a tag or a digest, never `latest`: the verification step resolves the tags it
+pushed, and `latest` is not one of them.
 
 Before an upgrade, take a backup of the mounted data directory. To roll back,
 set `DELUNO_IMAGE` to the previous digest, run the same pull/recreate flow, and

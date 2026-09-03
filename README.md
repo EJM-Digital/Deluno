@@ -72,7 +72,7 @@ By default Deluno listens on loopback only, so nothing outside the machine can r
 ```yaml
 services:
   deluno:
-    image: ghcr.io/jampat000/deluno:latest
+    image: ghcr.io/jampat000/deluno:1.0.0-rc.2
     container_name: deluno
     ports:
       - "5099:8080"
@@ -81,7 +81,7 @@ services:
       Server__Port: 8080
       Server__AllowLan: "true"
       Storage__DataRoot: /data
-      DELUNO_IMAGE_REF: ghcr.io/jampat000/deluno:latest
+      DELUNO_IMAGE_REF: ghcr.io/jampat000/deluno:1.0.0-rc.2
     volumes:
       - ./data:/data
       - /your/media:/media
@@ -94,6 +94,13 @@ docker compose up -d
 ```
 
 Open [http://localhost:5099](http://localhost:5099).
+
+The version is written out rather than left as `latest`, deliberately. Release
+CI publishes each tagged image and then verifies that its digest is pullable, so
+a version tag is a build somebody proved works; `latest` is whichever tag sorted
+highest at the time and is not part of that check. Pin the version — or the
+digest under it — and you know exactly what you are running and exactly what to
+go back to.
 
 Provider credentials belong in an untracked `.env` file beside the compose file, never in the compose file itself and never in the image:
 
