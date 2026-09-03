@@ -166,7 +166,7 @@ export function SettingsProfilesPage() {
   const allowedForDisplay = useMemo(() => [...form.allowed].reverse(), [form.allowed]);
 
   function openCreate() {
-    const next = defaultForm(profileStarters);
+    const next = defaultForm(profileStarters, "movies", guide, customFormats);
     setMode({ kind: "create" });
     setForm(next);
     setInitialForm(next);
@@ -226,8 +226,9 @@ export function SettingsProfilesPage() {
       // from the wrong media - which would be the blank step this redesign
       // exists to avoid, arrived at sideways.
       const untouched = current.allowed.length === 0
-        || defaultForm(profileStarters, current.mediaType).allowed.join("|") === current.allowed.join("|");
-      const next = untouched ? defaultForm(profileStarters, mediaType) : current;
+        || defaultForm(profileStarters, current.mediaType, guide, customFormats).allowed.join("|")
+          === current.allowed.join("|");
+      const next = untouched ? defaultForm(profileStarters, mediaType, guide, customFormats) : current;
       return { ...next, name: current.name, mediaType, customFormatIds: [] };
     });
   }
@@ -719,7 +720,12 @@ export function SettingsProfilesPage() {
  * the sensible default and the scenario are the same thing — which is what lets
  * the picker go.</p>
  */
-function defaultForm(starters: ProfileStarter[], mediaType: "movies" | "tv" = "movies"): ProfileForm {
+function defaultForm(
+  starters: ProfileStarter[],
+  mediaType: "movies" | "tv" = "movies",
+  guide?: GuidePackage,
+  existingFormats: CustomFormatItem[] = []
+): ProfileForm {
   const blank: ProfileForm = {
     name: "",
     mediaType,
@@ -733,8 +739,23 @@ function defaultForm(starters: ProfileStarter[], mediaType: "movies" | "tv" = "m
   const balanced =
     starters.find((starter) => starter.mediaType === mediaType && /balanced/i.test(starter.label))
     ?? starters.find((starter) => starter.mediaType === mediaType);
+  if (!balanced) return blank;
 
-  return balanced ? { ...blank, allowed: balanced.allowed, cutoff: balanced.cutoff } : blank;
+  // Steps 3 to 7 open on the guide's recommendations too, not just step 1.
+  // Only the ones that already exist as formats here — the rest are created on
+  // save by ensureRecommendedFormats, and a checklist cannot show an answer
+  // pointing at a row that does not exist yet.
+  const recommended = guide ? recommendedFormatsFor(balanced.id, guide) : [];
+  const byTrashId = new Map(
+    existingFormats
+      .filter((format) => format.trashId && format.mediaType === mediaType)
+      .map((format) => [format.trashId!, format.id])
+  );
+  const customFormatIds = recommended
+    .map(({ trashId }) => byTrashId.get(trashId))
+    .filter((id): id is string => Boolean(id));
+
+  return { ...blank, allowed: balanced.allowed, cutoff: balanced.cutoff, customFormatIds };
 }
 
 function emptyForm(): ProfileForm {
