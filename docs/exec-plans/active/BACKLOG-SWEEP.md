@@ -48,7 +48,7 @@ starting.
 | #353 Release preference UX | 7 | no | |
 | #343 Media Plans | 2 | no | Own lifecycle track. |
 | ~~#354 Normative spec~~ | — | — | **Already closed** on 2 Sep. Left here so a later reader does not go looking for it. |
-| #321 Subber delta | 0 | **partial** | Audited 2 Sep — see the [audit comment](https://github.com/jampat000/Deluno/issues/321#issuecomment-5508112058). Items 1, 2 and `.sdh.srt` naming already built. Unbuilt: Language Equals, must/must-not-contain profiles, custom post-process command, anti-captcha, audio column. |
+| #321 Subber delta | 15 | **yes** | Closed 4 Sep — [audit](https://github.com/jampat000/Deluno/issues/321#issuecomment-5532406216). Eleven met; four recorded not planned with a reason each (Whisper, translation, post-process command, anti-captcha) plus the audio column, which needs a migration on both catalogues. |
 | #301 Subber outcome | 0 | no | Parent of #321/#329. |
 | #329 Whisper | 2 | no | Build on the lab VM and **measure** before recommending. "Not worth shipping" is a welcome answer. |
 | #337 Docker | 5 | no | Needs a container runtime on the VM. Owner gave free rein on Hyper-V. |
