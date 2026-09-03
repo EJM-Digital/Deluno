@@ -326,6 +326,7 @@ POST /api/v1/guides/trash/sync/apply
 POST /api/v1/guides/trash/sync/preview
 POST /api/v1/guides/trash/update-check/run
 POST /api/v1/guides/trash/versions/{version:int}/activate
+POST /api/v1/release-preferences/judge-draft
 POST /api/v1/release-preferences/plans
 POST /api/v1/release-preferences/preview
 PUT /api/auth/password

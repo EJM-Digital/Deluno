@@ -453,6 +453,55 @@ public static class QualityEndpointRouteBuilderExtensions
             }
         });
 
+        // #386: a step has to be able to show the judgement for answers nobody
+        // has saved yet. Nothing is written - the plan is compiled in memory,
+        // used once and dropped.
+        releasePreferences.MapPost("/judge-draft", async (
+            HttpContext httpContext,
+            [FromBody] DraftProfileJudgementRequest request,
+            [FromServices] IQualityRepository qualityRepository,
+            [FromServices] IGuidePackageStore guidePackageStore,
+            [FromServices] TimeProvider timeProvider,
+            CancellationToken cancellationToken) =>
+        {
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
+            if (denied is not null)
+            {
+                return denied;
+            }
+
+            var errors = new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase);
+            if (string.IsNullOrWhiteSpace(request.ReleaseName))
+            {
+                errors["releaseName"] = ["Type a release name to see how this profile would judge it."];
+            }
+            else if (request.ReleaseName.Trim().Length > 500)
+            {
+                errors["releaseName"] = ["Release name must be 500 characters or fewer."];
+            }
+
+            if (request.CurrentReleaseName?.Trim().Length > 500)
+            {
+                errors["currentReleaseName"] = ["Current release name must be 500 characters or fewer."];
+            }
+
+            if (request.Seeders is < 0)
+            {
+                errors["seeders"] = ["Seeders cannot be negative."];
+            }
+
+            if (errors.Count > 0)
+            {
+                return Results.ValidationProblem(errors);
+            }
+
+            var customFormats = await qualityRepository.ListCustomFormatsAsync(cancellationToken);
+            var guidePackage = await guidePackageStore.GetCurrentAsync(cancellationToken);
+            return Results.Json(
+                DraftProfileJudge.Judge(request, customFormats, guidePackage.Package, timeProvider),
+                ReleasePreferenceJson.Options);
+        });
+
         releasePreferences.MapGet("/plans/quality-profile/{profileId}", async (
             string profileId,
             [FromServices] IQualityRepository qualityRepository,
