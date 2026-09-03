@@ -34,6 +34,9 @@ interface Form {
   embeddedCounts: boolean;
   contentPolicy: SubtitleContentModificationPolicy;
   timingPolicy: SubtitleTimingPolicy;
+  /** Comma-separated while being typed; split into terms on save. */
+  mustContain: string;
+  mustNotContain: string;
 }
 
 const EMPTY_CONTENT_POLICY: SubtitleContentModificationPolicy = {
@@ -52,8 +55,21 @@ const EMPTY_TIMING_POLICY: SubtitleTimingPolicy = {
   syncOnlyBelow: "made-for-this-file",
   maxOffsetSeconds: 60,
   requiredPeakSigma: 3,
-  excludedProviders: null
+  excludedProviders: null,
+  repairFramerate: true
 };
+
+/**
+ * Splits a typed list into terms. Commas because a release name can carry a
+ * space and a group name often does — splitting on whitespace would turn
+ * "Blu-ray Remux" into two separate refusals that each match far more.
+ */
+function terms(typed: string): string[] {
+  return typed
+    .split(",")
+    .map((term) => term.trim())
+    .filter((term) => term.length > 0);
+}
 
 /**
  * Which subtitles each library wants.
@@ -81,7 +97,9 @@ export function SubtitleLanguagesPage() {
     unknownLanguage: "",
     embeddedCounts: true,
     contentPolicy: EMPTY_CONTENT_POLICY,
-    timingPolicy: EMPTY_TIMING_POLICY
+    timingPolicy: EMPTY_TIMING_POLICY,
+    mustContain: "",
+    mustNotContain: ""
   });
   const [busy, setBusy] = useState(false);
 
@@ -95,7 +113,9 @@ export function SubtitleLanguagesPage() {
       unknownLanguage: library.subtitleUnknownLanguage ?? "",
       embeddedCounts: library.subtitleEmbeddedCounts ?? true,
       contentPolicy: { ...EMPTY_CONTENT_POLICY, ...(library.subtitleContentPolicy ?? {}) },
-      timingPolicy: { ...EMPTY_TIMING_POLICY, ...(library.subtitleTimingPolicy ?? {}) }
+      timingPolicy: { ...EMPTY_TIMING_POLICY, ...(library.subtitleTimingPolicy ?? {}) },
+      mustContain: (library.subtitleNamePolicy?.mustContain ?? []).join(", "),
+      mustNotContain: (library.subtitleNamePolicy?.mustNotContain ?? []).join(", ")
     });
   }
 
@@ -106,7 +126,7 @@ export function SubtitleLanguagesPage() {
       const response = await authedFetch(`/api/libraries/${editing.id}/subtitles`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(form)
+        body: JSON.stringify({ ...form, namePolicy: { mustContain: terms(form.mustContain), mustNotContain: terms(form.mustNotContain) } })
       });
       if (!response.ok) throw new Error("Those subtitle settings could not be saved.");
 
@@ -254,6 +274,13 @@ export function SubtitleLanguagesPage() {
                     disabled={busy}
                     onCheckedChange={(value) => setForm({ ...form, timingPolicy: { ...form.timingPolicy, enabled: value } })}
                   />
+                  <PolicySwitch
+                    label="Repair a subtitle written for another framerate"
+                    help="A subtitle timed against a 25 fps copy drifts further out the longer the film runs, which moving it cannot fix. Deluno rewrites the whole timeline instead, and only when doing so clearly fits the audio better."
+                    checked={form.timingPolicy.repairFramerate}
+                    disabled={busy || !form.timingPolicy.enabled}
+                    onCheckedChange={(value) => setForm({ ...form, timingPolicy: { ...form.timingPolicy, repairFramerate: value } })}
+                  />
                   <Field
                     label="Repair subtitles below"
                     help="Same source is the safer choice. Made for this file includes same-source subtitles and is the default because those are the files most likely to need a cross-release timing correction."
@@ -324,6 +351,36 @@ export function SubtitleLanguagesPage() {
                   </Field>
                 </DrawerSection>
 
+                <DrawerSection title="Which releases to take">
+                  <p className="text-[length:var(--type-caption)] text-muted-foreground">
+                    Language and hearing-impaired are decided above. This is about the release
+                    itself — the words in its name. Separate terms with commas. Leave both empty
+                    and Deluno takes the best match it finds.
+                  </p>
+                  <Field
+                    label="Only take releases naming"
+                    help="Any one term is enough. A subtitle whose provider gives no release name is never refused by this."
+                  >
+                    <Input
+                      value={form.mustContain}
+                      placeholder="e.g. NTb, FLUX"
+                      disabled={busy}
+                      onChange={(event) => setForm({ ...form, mustContain: event.target.value })}
+                    />
+                  </Field>
+                  <Field
+                    label="Never take releases naming"
+                    help="Any one term refuses the release, and this is checked before the must-have list."
+                  >
+                    <Input
+                      value={form.mustNotContain}
+                      placeholder="e.g. HDTV, CAM"
+                      disabled={busy}
+                      onChange={(event) => setForm({ ...form, mustNotContain: event.target.value })}
+                    />
+                  </Field>
+                </DrawerSection>
+
                 <DrawerSection title="After download">
                   <p className="text-[length:var(--type-caption)] text-muted-foreground">
                     These named cleanups change subtitle text only. Timing and provider matching stay untouched.
@@ -365,7 +422,7 @@ export function SubtitleLanguagesPage() {
                   />
                   <PolicySwitch
                     label="Fix OCR mistakes"
-                    help="Repairs the characters a picture-to-text pass gets wrong — l for I, rn for m, 0 for O — only inside words, never on a letter standing alone."
+                    help="Repairs the characters a picture-to-text pass gets wrong — a lone l read as I, or 0 and 1 read inside a word as o and l."
                     checked={form.contentPolicy.fixOcrErrors}
                     disabled={busy}
                     onCheckedChange={(value) => setForm({ ...form, contentPolicy: { ...form.contentPolicy, fixOcrErrors: value } })}

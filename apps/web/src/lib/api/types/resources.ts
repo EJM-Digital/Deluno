@@ -53,6 +53,13 @@ export interface LibraryItem {
   subtitleContentPolicy?: SubtitleContentModificationPolicy | null;
   /** Automatic timing repair policy for fetched subtitles. */
   subtitleTimingPolicy?: SubtitleTimingPolicy | null;
+  /** Words a subtitle's release name must or must not carry. */
+  subtitleNamePolicy?: SubtitleNamePolicy | null;
+}
+
+export interface SubtitleNamePolicy {
+  mustContain: string[] | null;
+  mustNotContain: string[] | null;
 }
 
 export interface SubtitleContentModificationPolicy {
@@ -61,7 +68,7 @@ export interface SubtitleContentModificationPolicy {
   removeEmoji: boolean;
   normalizeWhitespace: boolean;
   fixAllUppercase: boolean;
-  /** Repairs l-for-I, rn-for-m and 0-for-O inside words. */
+  /** Repairs a lone l read as I, and 0 or 1 read inside a word. */
   fixOcrErrors: boolean;
   /** A CSS colour name or hex value, or null to leave cues uncoloured. */
   cueColour: string | null;
@@ -75,6 +82,7 @@ export interface SubtitleTimingPolicy {
   maxOffsetSeconds: number;
   requiredPeakSigma: number;
   excludedProviders: string[] | null;
+  repairFramerate: boolean;
 }
 
 /** One language Deluno can name, from GET /api/subtitle-languages. */

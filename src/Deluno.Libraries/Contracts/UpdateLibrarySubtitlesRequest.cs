@@ -25,4 +25,5 @@ public sealed record UpdateLibrarySubtitlesRequest(
     /// <summary>Named post-download subtitle cleanups for this library.</summary>
     SubtitleContentModificationPolicy? ContentPolicy = null,
     /// <summary>Automatic timing-repair policy for fetched subtitles.</summary>
-    SubtitleTimingPolicy? TimingPolicy = null);
+    SubtitleTimingPolicy? TimingPolicy = null,
+    SubtitleNamePolicy? NamePolicy = null);

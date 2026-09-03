@@ -130,6 +130,26 @@ public static class SubtitleTimeline
     public static byte[] Shift(IReadOnlyList<SubtitleCue> cues, TimeSpan offset)
         => Render([.. cues.Select(cue => Slide(cue, offset))]);
 
+    /// <summary>
+    /// Stretches or squeezes the whole timeline by a constant factor.
+    ///
+    /// <para>The repair for a subtitle authored against a different framerate.
+    /// A shift cannot fix one: the error is proportional to how far into the
+    /// film you are, so a shift that lands the opening line lands the closing
+    /// one two minutes out. Both ends of every cue are scaled by the same
+    /// factor, so a line stays on screen for the same fraction of the film it
+    /// always did.</para>
+    /// </summary>
+    public static IReadOnlyList<SubtitleCue> Rescale(IReadOnlyList<SubtitleCue> cues, double factor)
+        => [.. cues.Select(cue => cue with
+        {
+            Start = Scale(cue.Start, factor),
+            End = Scale(cue.End, factor)
+        })];
+
+    private static TimeSpan Scale(TimeSpan value, double factor)
+        => TimeSpan.FromTicks((long)Math.Round(value.Ticks * factor));
+
     private static SubtitleCue Slide(SubtitleCue cue, TimeSpan offset)
     {
         var start = cue.Start + offset;

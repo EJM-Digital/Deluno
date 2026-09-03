@@ -221,6 +221,99 @@ public sealed class SubtitleTimingSyncTests
     /// Something shaped like speech: bursts of a second or two with pauses
     /// between them, deterministic from a seed so a failure can be reproduced.
     /// </summary>
+    [Fact]
+    public void Rescaling_moves_both_ends_of_every_cue_by_the_same_factor()
+    {
+        var cues = SubtitleTimeline.Parse(Encoding.UTF8.GetBytes(
+            "1\r\n00:00:10,000 --> 00:00:12,000\r\nA\r\n\r\n" +
+            "2\r\n01:00:00,000 --> 01:00:02,000\r\nB\r\n\r\n"));
+
+        var rescaled = SubtitleTimeline.Rescale(cues, 25d / (24000d / 1001d));
+
+        // A cue ten seconds in moves by less than half a second; the same
+        // proportional error an hour in is over two and a half minutes. That
+        // spread is the whole reason a shift cannot fix this.
+        Assert.Equal(10.427, rescaled[0].Start.TotalSeconds, 3);
+        Assert.Equal(12.512, rescaled[0].End.TotalSeconds, 3);
+        Assert.Equal(3753.750, rescaled[1].Start.TotalSeconds, 3);
+
+        // The line is on screen for the same fraction of the film it always was.
+        Assert.Equal(
+            (cues[1].End - cues[1].Start).TotalSeconds,
+            (rescaled[1].End - rescaled[1].Start).TotalSeconds * ((24000d / 1001d) / 25d),
+            3);
+    }
+
+    /// <summary>
+    /// The failure the shift search on its own cannot answer.
+    ///
+    /// <para>A subtitle timed against the 25 fps cut, played against the 23.976
+    /// fps master, is not late — it is fast, by a proportion. The single best
+    /// shift lands one end of the film and abandons the other, and this is the
+    /// score that says so.</para>
+    ///
+    /// <para>The rescaled candidate is built exactly the way the service builds
+    /// it, so what is under test is the repair the service actually applies —
+    /// including that <c>Rescale</c> at one ratio undoes <c>Rescale</c> at its
+    /// inverse to within the mask's own hundredth of a second.</para>
+    /// </summary>
+    [Fact]
+    public void A_framerate_mismatch_only_lines_up_once_the_timeline_is_rescaled()
+    {
+        var ratio = 25d / (24000d / 1001d);
+        var duration = TimeSpan.FromMinutes(75);
+
+        var authored = DialogueCues(lines: 600, seed: 41);
+        // The subtitle as it actually arrives: the same words, timed against the
+        // faster cut, so every line is progressively early.
+        var arrived = SubtitleTimeline.Rescale(authored, ratio);
+
+        var audio = Speech(authored, duration);
+        var maxShift = SpeechMask.ToFrames(TimeSpan.FromSeconds(60));
+
+        var shifted = audio.Correlate(Speech(arrived, duration), maxShift);
+        var rescaled = audio.Correlate(Speech(SubtitleTimeline.Rescale(arrived, 1 / ratio), duration), maxShift);
+
+        // Undoing the speed change recovers nearly all the dialogue. The best
+        // single shift cannot: it lands one end of the film and leaves the
+        // other progressively out, and a good part of what it does recover is
+        // the coincidence of two dense masks overlapping at any offset.
+        var spoken = audio.Population;
+        Assert.True(
+            rescaled.Score > spoken * 0.9,
+            $"Rescaled overlap {rescaled.Score} should recover nearly all {spoken} spoken frames.");
+        Assert.True(
+            shifted.Score < spoken * 0.75,
+            $"The best shift recovered {shifted.Score} of {spoken}, which is not the mismatch this test means to build.");
+    }
+
+    private static IReadOnlyList<SubtitleCue> DialogueCues(int lines, int seed)
+    {
+        var random = new Random(seed);
+        var cues = new SubtitleCue[lines];
+        var at = 5.0;
+        for (var i = 0; i < lines; i++)
+        {
+            var length = 1.0 + (random.NextDouble() * 2);
+            cues[i] = new SubtitleCue(
+                TimeSpan.FromSeconds(at), TimeSpan.FromSeconds(at + length), $"Line {i}.");
+            at += length + 2 + (random.NextDouble() * 6);
+        }
+
+        return cues;
+    }
+
+    private static SpeechMask Speech(IReadOnlyList<SubtitleCue> cues, TimeSpan duration)
+    {
+        var mask = new SpeechMask(SpeechMask.ToFrames(duration));
+        foreach (var cue in cues)
+        {
+            mask.Mark(cue.Start, cue.End);
+        }
+
+        return mask;
+    }
+
     private static SpeechMask Dialogue(int frames, int seed)
     {
         var mask = new SpeechMask(frames);

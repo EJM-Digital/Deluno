@@ -101,7 +101,8 @@ public sealed record SubtitleTimingPolicy(
     string SyncOnlyBelow = SubtitleSyncThreshold.MadeForThisFile,
     int MaxOffsetSeconds = 60,
     double RequiredPeakSigma = 3.0,
-    IReadOnlyList<string>? ExcludedProviders = null)
+    IReadOnlyList<string>? ExcludedProviders = null,
+    bool RepairFramerate = true)
 {
     public bool ShouldSync(SubtitleMatch match)
         => Enabled && (int)match < SubtitleSyncThreshold.ExclusiveRung(SyncOnlyBelow);
