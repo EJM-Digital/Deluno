@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { describeRequestFailure } from "./search-reasons";
+import { describeRequestFailure, RequestFailedError } from "./search-reasons";
 
 const SEARCH = {
   action: "search for this title",
@@ -106,4 +106,53 @@ describe("describeRequestFailure", () => {
 
     expect(explained.description).toContain("That episode already has a file.");
   });
+  it("uses the typed failure the service supplied rather than restating its status code", async () => {
+    // The metadata provider path used to answer a bare 503 with no body, so
+    // every surface could only say "could not be refreshed". Deluno knew which
+    // provider it asked, what the provider said, and that it would try again.
+    const explained = await describeRequestFailure(
+      jsonResponse(503, {
+        code: "metadata-provider-unavailable",
+        message: "TMDB could not answer: The service did not answer in time. Sintel was left exactly as it is.",
+        failure: {
+          serviceType: "metadata",
+          serviceId: "tmdb",
+          serviceName: "tmdb",
+          operation: "metadata.provider.resolve",
+          kind: "Timeout",
+          retryState: "RetryScheduled",
+          message: "The service did not answer in time.",
+          code: null,
+          httpStatus: 504,
+          upstreamDetail: "The request was canceled due to the configured HttpClient.Timeout of 12 seconds elapsing",
+          externalId: null,
+          retryAfterUtc: null,
+          attempts: 3,
+          isTransient: true,
+          legacyCategory: "timeout",
+          summary: "tmdb metadata.provider.resolve failed: The service did not answer in time.",
+          nextAction: "Check the service and network. Deluno will retry when the retry window allows."
+        }
+      }),
+      new Error("movie-metadata-refresh-failed"),
+      { action: "refresh this movie's metadata" }
+    );
+
+    expect(explained.title).toContain("TMDB");
+    expect(explained.title).not.toContain("HTTP 503");
+    expect(explained.description).toContain("Deluno will retry");
+    expect(explained.description).toContain("HttpClient.Timeout");
+  });
+
+  it("reads the response out of a thrown RequestFailedError", async () => {
+    // Some call sites are several frames from the fetch. Throwing away the
+    // response on the way up is how the failure became generic again.
+    const error = new RequestFailedError(jsonResponse(502, { message: "The indexer proxy refused the connection." }));
+
+    const explained = await describeRequestFailure(null, error, { action: "start that search" });
+
+    expect(explained.description).toContain("The indexer proxy refused the connection.");
+    expect(explained.title).not.toContain("could not reach its own API");
+  });
+
 });

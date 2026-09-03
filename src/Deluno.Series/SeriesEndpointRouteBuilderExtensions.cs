@@ -648,7 +648,11 @@ public static class SeriesEndpointRouteBuilderExtensions
 
                 if (lookup.Status == MetadataProviderRecordStatus.Unavailable)
                 {
-                    return Results.StatusCode(StatusCodes.Status503ServiceUnavailable);
+                    return Results.Json(
+                        MetadataProviderResponses.Unavailable(
+                            lookup,
+                            $"{item.Title} was left exactly as it is."),
+                        statusCode: StatusCodes.Status503ServiceUnavailable);
                 }
 
                 match = lookup.Result;
@@ -772,7 +776,10 @@ public static class SeriesEndpointRouteBuilderExtensions
             {
                 MetadataProviderRecordStatus.Missing => Results.NotFound(new { message = "The selected metadata record no longer exists." }),
                 MetadataProviderRecordStatus.Unavailable => Results.Json(
-                    new { message = "The metadata provider or its episode catalogue is temporarily unavailable. Nothing was changed." },
+                    MetadataProviderResponses.Unavailable(
+                        plan.Provider,
+                        plan.Failure,
+                        "Its episode catalogue could not be read either way, so nothing was changed."),
                     statusCode: StatusCodes.Status503ServiceUnavailable),
                 _ => Results.Ok(plan.Preview)
             };
@@ -824,7 +831,10 @@ public static class SeriesEndpointRouteBuilderExtensions
             if (plan.Status == MetadataProviderRecordStatus.Unavailable)
             {
                 return Results.Json(
-                    new { message = "The metadata provider or its episode catalogue is temporarily unavailable. Nothing was changed." },
+                    MetadataProviderResponses.Unavailable(
+                        plan.Provider,
+                        plan.Failure,
+                        "Its episode catalogue could not be read either way, so nothing was changed."),
                     statusCode: StatusCodes.Status503ServiceUnavailable);
             }
             if (plan.Preview is null || plan.Match is null)
@@ -2987,7 +2997,7 @@ public static class SeriesEndpointRouteBuilderExtensions
             cancellationToken);
         if (lookup.Status != MetadataProviderRecordStatus.Found || lookup.Result is null)
         {
-            return new SeriesMetadataLinkPlan(lookup.Status, null, null);
+            return new SeriesMetadataLinkPlan(lookup.Status, null, null, lookup.Provider, lookup.Failure);
         }
 
         IReadOnlyList<MetadataSeason> seasons;
@@ -2997,7 +3007,21 @@ public static class SeriesEndpointRouteBuilderExtensions
         }
         catch (Exception) when (!cancellationToken.IsCancellationRequested)
         {
-            return new SeriesMetadataLinkPlan(MetadataProviderRecordStatus.Unavailable, null, null);
+            return new SeriesMetadataLinkPlan(
+                MetadataProviderRecordStatus.Unavailable,
+                null,
+                null,
+                lookup.Provider,
+                // The catalogue call threw rather than returning a typed
+                // failure, so name the operation that actually failed instead
+                // of implying the record lookup did.
+                IntegrationFailureFactory.FromLegacy(
+                    "metadata",
+                    lookup.Provider,
+                    lookup.Provider,
+                    "metadata.provider.catalogue",
+                    "connectivity",
+                    "The episode catalogue could not be read."));
         }
 
         var match = lookup.Result;
@@ -3077,7 +3101,7 @@ public static class SeriesEndpointRouteBuilderExtensions
             blockReason is null,
             blockReason,
             token);
-        return new SeriesMetadataLinkPlan(lookup.Status, match, preview);
+        return new SeriesMetadataLinkPlan(lookup.Status, match, preview, lookup.Provider, lookup.Failure);
     }
 
     private static IReadOnlyList<string> DescribeMetadataIdentityChanges(
@@ -3110,7 +3134,11 @@ public static class SeriesEndpointRouteBuilderExtensions
     private sealed record SeriesMetadataLinkPlan(
         MetadataProviderRecordStatus Status,
         MetadataSearchResult? Match,
-        MetadataLinkPreview? Preview);
+        MetadataLinkPreview? Preview,
+        // Carried so a provider that could not answer can say which one it was
+        // and why, instead of the caller inventing a sentence for it (#338).
+        string Provider = "",
+        Deluno.Contracts.IntegrationFailure? Failure = null);
 
     private sealed record MetadataLinkRequest(string? ProviderId, string? ConfirmationToken = null);
 

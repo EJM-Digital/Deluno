@@ -29,7 +29,7 @@ import { Select } from "../components/ui/select";
 import { SummaryStrip } from "../components/ui/summary-strip";
 import { toast } from "../components/shell/toaster";
 import { TitleMarkLabel } from "../components/ui/title-mark";
-import { describeSearchReason } from "../lib/search-reasons";
+import { describeRequestFailure, describeSearchReason } from "../lib/search-reasons";
 import { formatDateTime as formatPreferenceDateTime, formatShortDate, useDisplayPreferences } from "../lib/display-preferences";
 
 interface WantedEpisode {
@@ -102,12 +102,14 @@ export function EpisodeSearchPage() {
   async function searchEpisodes(seriesId: string, episodeIds: string[], key: string) {
     if (!episodeIds.length) return;
     setBusy(key);
+    let searchResponse: Response | null = null;
     try {
       const response = await authedFetch(`/api/series/${seriesId}/episodes/search`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ episodeIds })
       });
+      searchResponse = response;
       if (!response.ok) throw new Error("search-failed");
       const payload = (await response.json()) as { searchedEpisodes?: number; matchedCount?: number; reason?: string };
       const searched = payload.searchedEpisodes ?? episodeIds.length;
@@ -127,8 +129,17 @@ export function EpisodeSearchPage() {
         );
       }
       revalidator.revalidate();
-    } catch {
-      toast.error("That episode search failed.");
+    } catch (searchError) {
+      const explained = await describeRequestFailure(searchResponse, searchError, {
+        action: "search for those episodes",
+        check: { label: "Check indexers", href: "/indexers/indexers" },
+      });
+      toast.error(explained.title, {
+        description: explained.description,
+        action: explained.action
+          ? { label: explained.action.label, onClick: () => navigate(explained.action!.href) }
+          : undefined,
+      });
     } finally {
       setBusy(null);
     }

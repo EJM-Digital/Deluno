@@ -360,8 +360,11 @@ export function ShowDetailPage() {
 
   async function handleMetadataRefresh() {
     setBusyAction("metadata-refresh");
+    let refreshResponse: Response | null = null;
+
     try {
       const response = await authedFetch(`/api/series/${series.id}/metadata/refresh`, { method: "POST" });
+      refreshResponse = response;
       if (response.status === 409) {
         revalidator.revalidate();
         toast.info("The TMDb record is no longer available. Your show and files were kept.");
@@ -370,8 +373,17 @@ export function ShowDetailPage() {
       if (!response.ok) throw new Error("series-metadata-refresh-failed");
       toast.success(`${series.title} metadata refreshed.`);
       revalidator.revalidate();
-    } catch {
-      toast.error("This TV show's metadata could not be refreshed.");
+    } catch (refreshError) {
+      const explained = await describeRequestFailure(refreshResponse, refreshError, {
+        action: "refresh this show's metadata",
+        check: { label: "Check metadata settings", href: "/settings/metadata" },
+      });
+      toast.error(explained.title, {
+        description: explained.description,
+        action: explained.action
+          ? { label: explained.action.label, onClick: () => navigate(explained.action!.href) }
+          : undefined,
+      });
     } finally {
       setBusyAction(null);
     }
@@ -557,6 +569,7 @@ export function ShowDetailPage() {
   async function handleEpisodeSearch(episodeIds: string[]) {
     if (!episodeIds.length) return;
     setBusyAction("episode-search");
+    let searchResponse: Response | null = null;
 
     try {
       const response = await authedFetch(`/api/series/${series.id}/episodes/search`, {
@@ -564,6 +577,7 @@ export function ShowDetailPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ episodeIds })
       });
+      searchResponse = response;
       if (!response.ok) throw new Error("episode-search-failed");
 
       const payload = (await response.json()) as {
@@ -594,8 +608,17 @@ export function ShowDetailPage() {
         );
       }
       revalidator.revalidate();
-    } catch {
-      toast.error("The episode search failed.");
+    } catch (searchError) {
+      const explained = await describeRequestFailure(searchResponse, searchError, {
+        action: "search for those episodes",
+        check: { label: "Check indexers", href: "/indexers/indexers" },
+      });
+      toast.error(explained.title, {
+        description: explained.description,
+        action: explained.action
+          ? { label: explained.action.label, onClick: () => navigate(explained.action!.href) }
+          : undefined,
+      });
     } finally {
       setBusyAction(null);
     }
@@ -603,9 +626,11 @@ export function ShowDetailPage() {
 
   async function handleSeasonSearch(seasonNumber: number) {
     setBusyAction(`season-search-${seasonNumber}`);
+    let searchResponse: Response | null = null;
 
     try {
       const response = await authedFetch(`/api/series/${series.id}/seasons/${seasonNumber}/search`, { method: "POST" });
+      searchResponse = response;
       if (!response.ok) throw new Error("season-search-failed");
 
       const payload = (await response.json()) as {
@@ -635,8 +660,17 @@ export function ShowDetailPage() {
         );
       }
       revalidator.revalidate();
-    } catch {
-      toast.error("The season search failed.");
+    } catch (searchError) {
+      const explained = await describeRequestFailure(searchResponse, searchError, {
+        action: "search for that season",
+        check: { label: "Check indexers", href: "/indexers/indexers" },
+      });
+      toast.error(explained.title, {
+        description: explained.description,
+        action: explained.action
+          ? { label: explained.action.label, onClick: () => navigate(explained.action!.href) }
+          : undefined,
+      });
     } finally {
       setBusyAction(null);
     }

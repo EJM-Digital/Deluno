@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { fetchJson, readValidationProblem } from "../lib/api";
 import type { IntegrationFailure } from "../lib/api/types";
 import { authedFetch } from "../lib/use-auth";
+import { describeRequestFailure } from "../lib/search-reasons";
 import { configurationNavAreas } from "../components/app/settings-shell";
 import { Button } from "../components/ui/button";
 import { Chip } from "../components/ui/chip";
@@ -130,12 +131,14 @@ export function SubtitleProvidersPage() {
   async function test() {
     if (!editing) return;
     setBusy("test");
+    let testResponse: Response | null = null;
     try {
       const response = await authedFetch(`/api/subtitle-providers/${editing.key}/test`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ providerKey: editing.key, ...form })
       });
+      testResponse = response;
 
       const result = await response.json() as { ok: boolean; message: string; failure?: IntegrationFailure | null };
       // Both outcomes are said out loud. A provider answering 200 with an empty
@@ -144,8 +147,14 @@ export function SubtitleProvidersPage() {
       if (result.ok) toast.success(result.message);
       else toast.error(result.failure?.nextAction ? `${result.message} ${result.failure.nextAction}` : result.message);
       revalidator.revalidate();
-    } catch {
-      toast.error("The test could not be run.");
+    } catch (testError) {
+      // Reached when the provider test never produced a readable answer at
+      // all - a lapsed session, an HTML error page, a fault inside Deluno.
+      // "The test could not be run." was true of every one of those.
+      const explained = await describeRequestFailure(testResponse, testError, {
+        action: `test ${editing.displayName}`,
+      });
+      toast.error(explained.title, { description: explained.description });
     } finally {
       setBusy(null);
     }

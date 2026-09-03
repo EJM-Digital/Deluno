@@ -33,6 +33,7 @@ import { useLibraryFilters } from "../../hooks/use-library-filters";
 import { useBulkEdit } from "../../hooks/use-bulk-edit";
 import { createInitialLibraryForm, metadataCreatePayload, useLibraryCreate, type CreateFormDraft } from "../../hooks/use-library-create";
 import { authedFetch } from "../../lib/use-auth";
+import { describeRequestFailure } from "../../lib/search-reasons";
 import { toast } from "../shell/toaster";
 import { BulkRemoveDialog, type BulkRemoveOptions } from "./bulk-remove-dialog";
 import { LibraryBulkToolsDialog } from "./library-bulk-tools-dialog";
@@ -866,12 +867,14 @@ export function LibraryView({
 
     setIsSearchingShown(true);
     const loadingId = toast.loading(`Searching for ${ids.length} ${ids.length === 1 ? singular : label}…`);
+    let searchResponse: Response | null = null;
     try {
       const response = await authedFetch(variant === "movies" ? "/api/movies/bulk/search" : "/api/series/bulk/search", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(variant === "movies" ? { movieIds: ids } : { seriesIds: ids })
       });
+      searchResponse = response;
       if (!response.ok) throw new Error("search-shown-failed");
 
       const result = await response.json() as { searchesTriggered?: number; libraryCount?: number };
@@ -882,8 +885,18 @@ export function LibraryView({
           : "No library was ready to search. Check that automation and a search source are configured.",
         { id: loadingId }
       );
-    } catch {
-      toast.error("Could not start the search.", { id: loadingId });
+    } catch (searchError) {
+      const explained = await describeRequestFailure(searchResponse, searchError, {
+        action: "start that search",
+        check: { label: "Check indexers", href: "/indexers/indexers" },
+      });
+      toast.error(explained.title, {
+        id: loadingId,
+        description: explained.description,
+        action: explained.action
+          ? { label: explained.action.label, onClick: () => navigate(explained.action!.href) }
+          : undefined,
+      });
     } finally {
       setIsSearchingShown(false);
     }

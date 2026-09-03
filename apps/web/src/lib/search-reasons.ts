@@ -22,6 +22,21 @@ export function formatSearchFailureNotice(failures?: IntegrationFailure[] | null
   return `${summary}${nextAction}${remainder}`;
 }
 
+/**
+ * A failed request that kept its response.
+ *
+ * `throw new Error("search-failed")` is the shape every one of these call
+ * sites used, and it discards the only thing that could explain the failure.
+ * Carrying the response means a caller several frames away can still be told
+ * what the service actually said (#338).
+ */
+export class RequestFailedError extends Error {
+  constructor(readonly response: Response, message = "request-failed") {
+    super(message);
+    this.name = "RequestFailedError";
+  }
+}
+
 export interface RequestFailureContext {
   /**
    * What the person was trying to do, as a verb phrase that completes
@@ -50,6 +65,8 @@ export async function describeRequestFailure(
   error: unknown,
   context: RequestFailureContext,
 ): Promise<SearchReasonExplanation> {
+  response ??= error instanceof RequestFailedError ? error.response : null;
+
   if (!response) {
     const detail = error instanceof Error ? error.message : undefined;
     return {
@@ -72,16 +89,36 @@ export async function describeRequestFailure(
   // The server's own words, when it has any. A bare status is the fallback,
   // not the first answer.
   let detail: string | undefined;
+  let failure: IntegrationFailure | undefined;
   try {
     const body = await response.clone().json() as {
       error?: string;
       detail?: string;
       title?: string;
       message?: string;
+      failure?: IntegrationFailure | null;
     };
     detail = body.error ?? body.detail ?? body.message ?? body.title;
+    failure = body.failure ?? undefined;
   } catch {
     detail = undefined;
+  }
+
+  // A typed failure already knows which service failed, what it said, and
+  // whether Deluno will try again. Restating that as "HTTP 503" would be
+  // throwing the answer away at the last step.
+  if (failure) {
+    return {
+      title: detail ?? failure.summary,
+      description: [
+        detail ? undefined : failure.summary,
+        failure.upstreamDetail && failure.upstreamDetail !== failure.message
+          ? failure.upstreamDetail
+          : undefined,
+        failure.nextAction,
+      ].filter(Boolean).join(" "),
+      action: context.check,
+    };
   }
 
   const isDelunoFault = response.status >= 500;

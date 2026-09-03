@@ -3,6 +3,7 @@ import { fetchJson, type LibraryItem, type QualityProfileItem } from "../lib/api
 import type { MediaItem } from "../lib/media-types";
 import { authedFetch } from "../lib/use-auth";
 import { toast } from "../components/shell/toaster";
+import { describeRequestFailure, RequestFailedError } from "../lib/search-reasons";
 
 export type BulkWorkflowOperation = "monitoring" | "quality" | "reassignLibrary" | "tags" | "search" | "renamePreview";
 
@@ -164,7 +165,7 @@ export function useBulkEdit({
     });
 
     if (!response.ok) {
-      throw new Error("bulk-search-failed");
+      throw new RequestFailedError(response, "bulk-search-failed");
     }
   }
 
@@ -262,8 +263,11 @@ export function useBulkEdit({
         { id: loadingId }
       );
       setSelectedIds([]);
-    } catch {
-      toast.error("Bulk search could not be completed.", { id: loadingId });
+    } catch (searchError) {
+      const explained = await describeRequestFailure(null, searchError, {
+        action: "start that search",
+      });
+      toast.error(explained.title, { id: loadingId, description: explained.description });
     } finally {
       setIsBulkUpdating(false);
     }
