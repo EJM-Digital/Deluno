@@ -67,11 +67,11 @@ export const CONFIGURATION_AREAS: readonly ConfigurationArea[] = [
       path.startsWith("/settings/custom-formats") ||
       path.startsWith("/settings/release-rules"),
     explainer: {
-      lead: "Deluno compares every release it finds against the preferences you set and takes the best one that passes. Four things shape that decision: the qualities you accept, how big a file of that quality should be, the words you want or refuse in a release name, and — last — the Library Profile that points one of your libraries at a particular set of those choices.",
+      lead: "Deluno compares every release it finds against what you have said you want, and takes the best one that passes. What you want is seven questions — how good, how big, the picture, the sound, who from, which language, and what you never want — and you answer them once.",
       steps: [
-        { title: "Say which qualities you accept", body: "A Quality Profile lists the qualities you will take, best first, and the one good enough to stop upgrading at." },
-        { title: "Add the details that decide close calls", body: "Size Rules rule out files too small or too large to be what they claim. Release Preferences express what you require, prefer, or refuse — such as a preferred group or an unwanted codec." },
-        { title: "Point a library at it", body: "A Library Profile attaches those choices to Movies, TV Shows, or any library you have made — so different libraries can want different things." }
+        { title: "Answer the seven questions", body: "Each one already has an answer, so going straight through gives you something that works. Open the ones you want to change, and watch a real release be judged as you change them." },
+        { title: "Come back and change one", body: "The same seven questions are a checklist of your answers. Nothing has to be walked again to alter one of them." },
+        { title: "Point a library at it", body: "Movies, TV Shows, or any shelf you have made — so anime and films need not want the same things." }
       ]
     }
   },
