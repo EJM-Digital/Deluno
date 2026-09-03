@@ -95,6 +95,27 @@ public static class QualityProfileResolver
     }
 
     /// <summary>
+    /// How big a file of each tier should be, according to this profile.
+    ///
+    /// <para>Resolved the same way and at the same moment as the allowed tiers,
+    /// because they are two answers to the same question about the same profile
+    /// and reading them apart is how they come to disagree.</para>
+    /// </summary>
+    public static async Task<IReadOnlyList<ProfileSizeRule>> ResolveSizeRulesAsync(
+        IQualityRepository repository,
+        string? qualityProfileId,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(qualityProfileId))
+        {
+            return [];
+        }
+
+        var profiles = await repository.ListQualityProfilesAsync(cancellationToken);
+        return profiles.FirstOrDefault(item => item.Id == qualityProfileId)?.SizeRules ?? [];
+    }
+
+    /// <summary>
     /// Reads the profile's stop-when-target behaviour for acquisition. A missing
     /// profile uses the safe historical default: keep upgrading until the
     /// requested cutoff is met.

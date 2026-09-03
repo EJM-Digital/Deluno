@@ -96,7 +96,7 @@ function StepRow({
     step.id === "quality"
       ? describeQualityAnswer(props.allowed, props.cutoff)
       : step.id === "size"
-        ? "Sensible sizes for each tier"
+        ? describeSizeAnswer(props.allowed.length)
         : describeAnswer(step, chosen, offered);
 
   function toggle(id: string) {
@@ -331,6 +331,16 @@ export function verdictTone(status: string | undefined): "ok" | "warn" | "bad" |
     default:
       return "idle";
   }
+}
+
+/**
+ * Counted rather than listed. Three tiers each with a range is four numbers a
+ * row cannot hold, and the point of the checklist line is to say the step has
+ * been answered - the sliders below say what the answer is.
+ */
+function describeSizeAnswer(tierCount: number): string {
+  if (tierCount === 0) return "Nothing chosen yet";
+  return tierCount === 1 ? "Your own size for 1 tier" : `Your own size for each of ${tierCount} tiers`;
 }
 
 function describeQualityAnswer(allowed: string[], cutoff: string): string {

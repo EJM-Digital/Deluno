@@ -87,17 +87,8 @@ public sealed class ReleaseDecisionEngineQualityModelTests
     }
 
     [Fact]
-    public void Decide_uses_structured_quality_model_size_bounds()
+    public void Decide_uses_the_size_bounds_the_profile_itself_set()
     {
-        var model = new QualityModelSnapshot(
-            Version: "test",
-            Tiers:
-            [
-                new QualityTierDefinition("WEB 1080p", 70, 1.0, 2.0, 350, 1200, 50)
-            ],
-            UpgradeStop: new QualityUpgradeStopPolicy(true, true),
-            UpdatedUtc: DateTimeOffset.UtcNow);
-
         var decision = ReleaseDecisionEngine.Decide(new ReleaseDecisionInput(
             ReleaseName: "Example.Release.1080p.WEB-DL-GROUP",
             Quality: "WEB 1080p",
@@ -107,11 +98,16 @@ public sealed class ReleaseDecisionEngineQualityModelTests
             Seeders: 20,
             DownloadUrl: "https://example.com/release",
             SourcePriorityScore: 100,
-            CustomFormatScore: 0), model);
+            CustomFormatScore: 0,
+            // #394: the bound is this profile's own answer, not a shared table.
+            // 20 GB is comfortably inside where WEB 1080p films normally land,
+            // so only a profile that said otherwise can refuse it - which is
+            // the whole point of the size answer belonging to the profile.
+            SizeRules: [new ProfileSizeRule("WEB 1080p", 1.0, 2.0, 350, 1200)]));
 
-        // The bound comes from the model's tier (max 2.0 GB), and exceeding it is
-        // now a rejection rather than a score penalty (#284) — the Size Rules
-        // screen describes it as the final check that rejects a release.
+        // Exceeding the ceiling is a rejection rather than a score penalty
+        // (#284) - the size answer is described as the final check that
+        // rejects a release.
         Assert.Equal("rejected", decision.Status);
         Assert.Contains(decision.RiskFlags, flag =>
             flag.Contains("above", StringComparison.OrdinalIgnoreCase) &&

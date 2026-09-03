@@ -9,6 +9,7 @@ using Deluno.Quality.Contracts;
 using Deluno.Quality.ReleasePreferences;
 using Deluno.Connections.Contracts;
 using Deluno.Connections.Data;
+using Deluno.Quality;
 
 namespace Deluno.Persistence.Tests.Integrations;
 
@@ -337,7 +338,8 @@ public sealed class AcquisitionDecisionPipelineTests
             int? sceneEpisodeNumber = null,
             PreferenceEvaluationSnapshot? currentPreferenceEvaluation = null,
             ReleasePreferencePlan? preferencePlan = null,
-            bool currentFilePresent = false)
+            bool currentFilePresent = false,
+            IReadOnlyList<ProfileSizeRule>? sizeRules = null)
         {
             ObservedPreferencePlan = preferencePlan;
             return Task.FromResult(plan);
@@ -371,7 +373,8 @@ public sealed class AcquisitionDecisionPipelineTests
             int? sceneEpisodeNumber = null,
             PreferenceEvaluationSnapshot? currentPreferenceEvaluation = null,
             ReleasePreferencePlan? preferencePlan = null,
-            bool currentFilePresent = false)
+            bool currentFilePresent = false,
+            IReadOnlyList<ProfileSizeRule>? sizeRules = null)
             => throw new InvalidOperationException("An unready connection must not reach the search planner.");
     }
 

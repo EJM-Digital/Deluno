@@ -57,7 +57,8 @@ public static class PlatformDatabaseMigrations
         new V0049GuideUpdateCheckState(),
         new V0050RemovePlaybackGoals(),
         new V0051LibrarySubtitleNamePolicy(),
-        new V0052LibrarySubtitleSingleLanguageName()
+        new V0052LibrarySubtitleSingleLanguageName(),
+        new V0053ProfileSizeRules()
     ];
 
     private sealed class V0001InitialSchema : SqliteSqlMigration

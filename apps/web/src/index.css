@@ -1703,6 +1703,19 @@ html .text-\[64px\] {
   overflow: hidden;
 }
 
+/*
+  Where files of this tier actually land. Behind the fill, and quiet enough that
+  it reads as the ruler rather than as a second selection — it is context for
+  the choice, not part of it.
+*/
+.deluno-range-typical {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  border-radius: 999px;
+  background: hsl(var(--foreground) / 0.14);
+}
+
 .deluno-range-fill {
   position: absolute;
   top: 0;

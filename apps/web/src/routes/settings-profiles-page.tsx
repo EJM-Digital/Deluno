@@ -30,6 +30,7 @@ import { SwitchRow } from "../components/ui/switch";
 import { toast } from "../components/shell/toaster";
 import { configurationNavAreas } from "../components/app/settings-shell";
 import { QualityBuildSteps } from "../components/app/quality-build-steps";
+import { ProfileSizeSteps } from "../components/app/profile-size-steps";
 import { QUALITY_STEPS, type QualityStep } from "../lib/quality-steps";
 import {
   compileQualityProfilePreferences,
@@ -43,6 +44,7 @@ import {
   type QualityModelSnapshot,
   type QualityProfileItem,
   type QualityTierDefinition,
+  type ProfileSizeRule,
   type ReleasePreferencePlanCompilation
 } from "../lib/api";
 import { settingsOverviewLoader } from "./settings-overview-page";
@@ -70,6 +72,7 @@ interface ProfileForm {
   customFormatIds: string[];
   upgradeUntilCutoff: boolean;
   upgradeUnknownItems: boolean;
+  sizeRules: ProfileSizeRule[];
 }
 
 type DrawerMode = { kind: "closed" } | { kind: "create" } | { kind: "edit"; id: string };
@@ -285,7 +288,12 @@ export function SettingsProfilesPage() {
         allowedQualities: form.allowed.join(", "),
         customFormatIds: formatIds.join(", "),
         upgradeUntilCutoff: form.upgradeUntilCutoff,
-        upgradeUnknownItems: form.upgradeUnknownItems
+        upgradeUnknownItems: form.upgradeUnknownItems,
+        // Only the tiers this profile still allows. Removing a tier from step 1
+        // should take its size answer with it, rather than leaving a rule for a
+        // tier the profile no longer accepts.
+        sizeRules: form.sizeRules.filter((rule) =>
+          form.allowed.some((quality) => quality.toLowerCase() === rule.quality.toLowerCase()))
       };
       const response = await authedFetch(mode.kind === "edit" ? `/api/quality-profiles/${mode.id}` : "/api/quality-profiles", { method: mode.kind === "edit" ? "PUT" : "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
       if (!response.ok) {
@@ -482,7 +490,15 @@ export function SettingsProfilesPage() {
           <SwitchRow label="Upgrade until cutoff" description="Keep replacing files until the cutoff tier is reached." checked={form.upgradeUntilCutoff} onCheckedChange={(checked) => setForm((current) => ({ ...current, upgradeUntilCutoff: checked }))} />
               </div>
             )}
-            renderSizeControls={() => <SizeRulesForAllowedTiers allowed={form.allowed} tiers={tiers} mediaType={form.mediaType} />}
+            renderSizeControls={() => (
+              <ProfileSizeSteps
+                mediaType={form.mediaType}
+                allowed={form.allowed}
+                rules={form.sizeRules}
+                tiers={tiers}
+                onChange={(sizeRules) => setForm((current) => ({ ...current, sizeRules }))}
+              />
+            )}
             renderAdvanced={(step: QualityStep) =>
               step.id === "quality" ? (
                 <Disclosure
@@ -733,7 +749,8 @@ function defaultForm(
     cutoff: "",
     customFormatIds: [],
     upgradeUntilCutoff: true,
-    upgradeUnknownItems: false
+    upgradeUnknownItems: false,
+    sizeRules: []
   };
 
   const balanced =
@@ -759,7 +776,7 @@ function defaultForm(
 }
 
 function emptyForm(): ProfileForm {
-  return { name: "", mediaType: "movies", allowed: [], cutoff: "", customFormatIds: [], upgradeUntilCutoff: true, upgradeUnknownItems: false };
+  return { name: "", mediaType: "movies", allowed: [], cutoff: "", customFormatIds: [], upgradeUntilCutoff: true, upgradeUnknownItems: false, sizeRules: [] };
 }
 function formFrom(profile: QualityProfileItem): ProfileForm {
   return {
@@ -769,11 +786,22 @@ function formFrom(profile: QualityProfileItem): ProfileForm {
     cutoff: profile.cutoffQuality,
     customFormatIds: splitCsv(profile.customFormatIds),
     upgradeUntilCutoff: profile.upgradeUntilCutoff,
-    upgradeUnknownItems: profile.upgradeUnknownItems
+    upgradeUnknownItems: profile.upgradeUnknownItems,
+    sizeRules: profile.sizeRules ?? []
   };
 }
 function sameForm(a: ProfileForm, b: ProfileForm) {
-  return a.name === b.name && a.mediaType === b.mediaType && a.cutoff === b.cutoff && a.upgradeUntilCutoff === b.upgradeUntilCutoff && a.upgradeUnknownItems === b.upgradeUnknownItems && a.allowed.join("|") === b.allowed.join("|") && sameIds(a.customFormatIds, b.customFormatIds);
+  return a.name === b.name && a.mediaType === b.mediaType && a.cutoff === b.cutoff && a.upgradeUntilCutoff === b.upgradeUntilCutoff && a.upgradeUnknownItems === b.upgradeUnknownItems && a.allowed.join("|") === b.allowed.join("|") && sameIds(a.customFormatIds, b.customFormatIds) && sameSizeRules(a.sizeRules, b.sizeRules);
+}
+
+/** Dragging a handle has to count as a change, or the save footer stays asleep. */
+function sameSizeRules(a: ProfileSizeRule[], b: ProfileSizeRule[]) {
+  const key = (rules: ProfileSizeRule[]) =>
+    [...rules]
+      .sort((left, right) => left.quality.localeCompare(right.quality))
+      .map((rule) => `${rule.quality}:${rule.minGb}:${rule.maxGb}:${rule.minMb}:${rule.maxMb}`)
+      .join("|");
+  return key(a) === key(b);
 }
 function sameIds(a: string[], b: string[]) {
   if (a.length !== b.length) return false;
@@ -941,66 +969,6 @@ function PlanSummary({ label, value, detail, tone = "idle" }: { label: string; v
       <p className="text-[length:var(--type-caption)] text-muted-foreground">{label}</p>
       <p className={cn("mt-0.5 text-[length:var(--type-body-sm)] font-semibold", tone === "warn" ? "text-warning" : tone === "ok" ? "text-success" : "text-foreground")}>
         {value} <span className="font-normal text-muted-foreground">{detail}</span>
-      </p>
-    </div>
-  );
-}
-
-/**
- * Step 2's controls: the size range Deluno treats as sensible for each tier
- * this profile allows.
- *
- * <p><b>Shared, and it says so.</b> Sizes live on the quality model rather than
- * on a profile, so a change here reaches every profile using that tier. The
- * alternative to saying that plainly was the thing #386 exists to remove —
- * sending somebody to a Size Rules tab and hoping they work out the connection.</p>
- */
-function SizeRulesForAllowedTiers({
-  allowed,
-  tiers,
-  mediaType
-}: {
-  allowed: string[];
-  tiers: QualityTierDefinition[];
-  mediaType: "movies" | "tv";
-}) {
-  const rows = allowed
-    .map((name) => tiers.find((tier) => tier.name === name))
-    .filter((tier): tier is QualityTierDefinition => Boolean(tier))
-    .sort((a, b) => b.rank - a.rank);
-
-  if (rows.length === 0) {
-    return (
-      <p className="text-[length:var(--type-caption)] text-muted-foreground">
-        Answer the first question and the sizes for those tiers appear here.
-      </p>
-    );
-  }
-
-  return (
-    <div className="grid gap-2">
-      <ul className="grid gap-1.5">
-        {rows.map((tier) => (
-          <li
-            key={tier.name}
-            className="flex min-h-9 items-center justify-between gap-2 rounded-[10px] border border-hairline px-[var(--field-pad-x)] text-[length:var(--type-body-sm)]"
-          >
-            <span className="min-w-0 truncate font-medium">{tier.name}</span>
-            <span className="shrink-0 tabular-nums text-muted-foreground">
-              {mediaType === "tv"
-                ? `${tier.episodeMinMb}–${tier.episodeMaxMb} MB per episode`
-                : `${tier.movieMinGb}–${tier.movieMaxGb} GB per film`}
-            </span>
-          </li>
-        ))}
-      </ul>
-      <p className="text-[length:var(--type-caption)] text-muted-foreground">
-        These sizes belong to the tier, not to this profile, so every profile allowing{" "}
-        {rows.length === 1 ? rows[0].name : "these tiers"} uses them. Change them under{" "}
-        <Link to="/settings/quality" className="underline underline-offset-2">
-          Size Rules
-        </Link>
-        .
       </p>
     </div>
   );

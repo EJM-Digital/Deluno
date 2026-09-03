@@ -2,6 +2,7 @@ using Deluno.Libraries.Contracts;
 using Deluno.Platform.Contracts;
 using Deluno.Quality.Contracts;
 using Deluno.Quality.ReleasePreferences;
+using Deluno.Quality;
 
 namespace Deluno.Integrations.Search;
 
@@ -37,5 +38,6 @@ public interface IMediaSearchPlanner
         int? sceneEpisodeNumber = null,
         PreferenceEvaluationSnapshot? currentPreferenceEvaluation = null,
         ReleasePreferencePlan? preferencePlan = null,
-        bool currentFilePresent = false);
+        bool currentFilePresent = false,
+        IReadOnlyList<ProfileSizeRule>? sizeRules = null);
 }
