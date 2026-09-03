@@ -445,6 +445,73 @@ public sealed class TmdbMetadataProviderTests : IDisposable
         Assert.DoesNotContain("/search/", requestedUrls[0], StringComparison.Ordinal);
     }
 
+    [Fact]
+    public async Task ResolveProviderRecordAsync_retries_a_transient_503_and_never_calls_it_a_deletion()
+    {
+        // The dangerous confusion in #357 is the one that looks harmless: a
+        // provider that is merely down answers with a status code too, and if
+        // that were read the way a 404 is read, an outage would tell the owner
+        // their title had been removed from TMDb. Only 404 is a deletion.
+        var settings = new Mock<IPlatformSettingsRepository>();
+        settings.Setup(repo => repo.GetAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(CreateSettingsSnapshot("direct", string.Empty));
+
+        var requestedUrls = new List<string>();
+        var storageOptions = Options.Create(new StoragePathOptions { DataRoot = _dataRoot });
+        var factory = new SqliteDatabaseConnectionFactory(storageOptions);
+        var timeProvider = new FakeTimeProvider(DateTimeOffset.Parse("2026-05-14T00:00:00Z"));
+        await new CacheSchemaInitializer(
+            factory,
+            new SqliteDatabaseMigrator(factory, timeProvider),
+            NullLogger<CacheSchemaInitializer>.Instance).StartAsync(CancellationToken.None);
+
+        var provider = new TmdbMetadataProvider(
+            new HttpClient(new StubHttpMessageHandler(request =>
+            {
+                requestedUrls.Add(request.RequestUri!.ToString());
+                return new HttpResponseMessage(HttpStatusCode.ServiceUnavailable);
+            })),
+            new ConfigurationBuilder()
+                .AddInMemoryCollection(new Dictionary<string, string?>
+                {
+                    ["Deluno:Metadata:TMDbApiKey"] = "test-key"
+                })
+                .Build(),
+            settings.Object,
+            factory,
+            storageOptions,
+            timeProvider,
+            // The real policy, not the passthrough one: the retry and the
+            // backoff are half of what this line of the issue asks for, and a
+            // stub that runs the call once would prove neither.
+            new IntegrationResiliencePolicy(
+                timeProvider,
+                factory,
+                NullLogger<IntegrationResiliencePolicy>.Instance),
+            new OutboundRequestThrottle(timeProvider, NullLogger<OutboundRequestThrottle>.Instance),
+            NullLogger<TmdbMetadataProvider>.Instance);
+
+        var lookup = await provider.ResolveProviderRecordAsync(
+            new MetadataLookupRequest("State of Siege: Temple Attack", "movies", 2021, "1603343"),
+            CancellationToken.None);
+
+        Assert.Equal(MetadataProviderRecordStatus.Unavailable, lookup.Status);
+        Assert.NotEqual(MetadataProviderRecordStatus.Missing, lookup.Status);
+        Assert.Equal(503, lookup.Failure?.HttpStatus);
+
+        // Retried rather than believed the first time, and paced between the
+        // attempts instead of hammering a provider that is already struggling.
+        Assert.Equal(3, requestedUrls.Count);
+        Assert.All(requestedUrls, url => Assert.Contains("/movie/1603343", url, StringComparison.Ordinal));
+        Assert.Equal(3, lookup.Failure?.Attempts);
+        Assert.NotEqual(IntegrationRetryState.NotRetryable, lookup.Failure!.RetryState);
+
+        // And an outage still must not become a fuzzy re-match: guessing a new
+        // identity while the provider is down is how a library silently
+        // relinks itself to the wrong titles.
+        Assert.DoesNotContain(requestedUrls, url => url.Contains("/search/", StringComparison.Ordinal));
+    }
+
     private static PlatformSettingsSnapshot CreateSettingsSnapshot(string providerMode, string brokerUrl)
         => new(
             AppInstanceName: "Deluno Test",
@@ -486,6 +553,11 @@ public sealed class TmdbMetadataProviderTests : IDisposable
 
     public void Dispose()
     {
+        // Same reason as TestStorage: the connection pool holds the file open,
+        // so a plain delete fails and leaves the folder behind. 967 of these
+        // had accumulated by 3 September.
+        Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
+
         try
         {
             if (Directory.Exists(_dataRoot))

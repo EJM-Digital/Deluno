@@ -20,12 +20,22 @@ async function authHeaders(page: import("@playwright/test").Page) {
   return token ? { Authorization: `Bearer ${token}` } : {};
 }
 
-/** A broker that has never heard of anything. */
-function startMissingRecordBroker(): Promise<{ url: string; close: () => Promise<void> }> {
+/**
+ * A broker that answers every lookup with one status code.
+ *
+ * 404 is the provider saying the record is gone. 503 is the provider saying
+ * nothing at all - and the whole risk in this area is that the second gets
+ * read as the first, which would tell an owner their title had been removed
+ * from TMDb every time TMDb had a bad afternoon.
+ */
+function startBrokerAnswering(status: 404 | 503): Promise<{ url: string; close: () => Promise<void> }> {
+  const body = status === 404
+    ? { status_code: 34, status_message: "The resource you requested could not be found." }
+    : { status_code: 43, status_message: "The service is temporarily unavailable. Try again later." };
   return new Promise((resolve) => {
     const server: Server = createServer((_request, response) => {
-      response.writeHead(404, { "Content-Type": "application/json" });
-      response.end(JSON.stringify({ status_code: 34, status_message: "The resource you requested could not be found." }));
+      response.writeHead(status, { "Content-Type": "application/json" });
+      response.end(JSON.stringify(body));
     });
     server.listen(0, "127.0.0.1", () => {
       const { port } = server.address() as AddressInfo;
@@ -39,7 +49,7 @@ function startMissingRecordBroker(): Promise<{ url: string; close: () => Promise
 
 test.describe("metadata recovery", () => {
   test("resolves a title the provider dropped, by keyboard and on a phone", async ({ page }) => {
-    const broker = await startMissingRecordBroker();
+    const broker = await startBrokerAnswering(404);
     let headers: Record<string, string> = {};
     let movieId: string | undefined;
     let previousBrokerUrl: string | undefined;
@@ -123,6 +133,95 @@ test.describe("metadata recovery", () => {
       // behind is not this test's problem - it is the next test's failure, in
       // a file that never mentioned metadata. Clean up even when the
       // assertions above threw.
+      if (movieId) {
+        const removed = await page.request.post("/api/movies/bulk", {
+          headers,
+          data: { movieIds: [movieId], operation: "remove" }
+        });
+        expect(
+          removed.ok(),
+          "The fixture movie was not removed; the shared smoke database is now polluted."
+        ).toBe(true);
+        expect((await page.request.get(`/api/movies/${movieId}`, { headers })).status()).toBe(404);
+      }
+
+      if (previousBrokerUrl !== undefined) {
+        await page.request.patch("/api/settings/", {
+          headers,
+          data: { metadataBrokerUrl: previousBrokerUrl }
+        });
+      }
+
+      await broker.close();
+    }
+  });
+
+  test("reads a provider outage as an outage, not as a deletion", async ({ page }) => {
+    // The same fixture, one status code different. #357 asks that a transient
+    // provider failure follow retry/backoff rather than be misclassified as a
+    // deletion, and the failure mode is silent: nothing is thrown, nothing
+    // looks broken, the owner is simply told the wrong thing about their
+    // library. So this asserts on the absence - no issue, no notice, nothing
+    // to acknowledge.
+    const broker = await startBrokerAnswering(503);
+    let headers: Record<string, string> = {};
+    let movieId: string | undefined;
+    let previousBrokerUrl: string | undefined;
+
+    try {
+      await authenticateAndNavigate(page, "/movies");
+      headers = await authHeaders(page);
+
+      const settingsBefore = await (await page.request.get("/api/settings/", { headers })).json() as {
+        metadataBrokerUrl?: string;
+      };
+      previousBrokerUrl = settingsBefore.metadataBrokerUrl;
+
+      await page.request.patch("/api/settings/", {
+        headers,
+        data: { metadataBrokerUrl: broker.url }
+      });
+
+      const title = `Provider outage ${Date.now()}`;
+      const create = await page.request.post("/api/movies/", {
+        headers,
+        data: { title, releaseYear: 2024, monitored: true, metadataProviderId: "999999902" }
+      });
+      expect(create.ok()).toBe(true);
+      const movie = await create.json() as { id: string };
+      movieId = movie.id;
+
+      // 503 is "come back later", so the refresh reports the provider as
+      // unavailable. 409 here would mean Deluno had decided the record was
+      // deleted, which is the defect this test exists to catch.
+      const refresh = await page.request.post(`/api/movies/${movie.id}/metadata/refresh`, { headers });
+      expect(
+        refresh.status(),
+        "A provider outage was reported as something other than an outage."
+      ).toBe(503);
+
+      // Repeat it. Backoff is only worth anything if the classification is
+      // stable across attempts; a second call that finally called it a
+      // deletion would be the same defect arriving one refresh late.
+      const refreshAgain = await page.request.post(`/api/movies/${movie.id}/metadata/refresh`, { headers });
+      expect(refreshAgain.status()).toBe(503);
+
+      // No stored condition, so nothing for the owner to dismiss and nothing
+      // to un-dismiss when the provider comes back.
+      const issue = await page.request.get(`/api/movies/${movie.id}/metadata/issue`, { headers });
+      expect(issue.ok()).toBe(true);
+      const issueBody = (await issue.text()).trim();
+      expect(
+        issueBody === "" || issueBody === "null",
+        `An outage recorded a title-scoped provider issue: ${issueBody}`
+      ).toBe(true);
+
+      // And the title page stays ordinary: no calm notice, because there is
+      // nothing calm to say.
+      await page.goto(`/movies/${movie.id}`);
+      await expect(page.getByRole("heading", { name: title })).toBeVisible();
+      await expect(page.getByRole("region", { name: /no longer listed by/i })).toHaveCount(0);
+    } finally {
       if (movieId) {
         const removed = await page.request.post("/api/movies/bulk", {
           headers,

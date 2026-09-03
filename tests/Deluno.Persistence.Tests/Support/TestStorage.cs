@@ -22,19 +22,41 @@ internal sealed class TestStorage : IDisposable
 
     public void Dispose()
     {
-        try
+        // Microsoft.Data.Sqlite pools its connections, so closing one does not
+        // release the file. Without this the delete below fails on Windows and
+        // the folder is silently left behind - and it is not test-only: 139,891
+        // of them had accumulated under %TEMP%\deluno-tests by 3 September,
+        // and creating one more directory in there is slow enough that the
+        // persistence suite stopped finishing.
+        Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
+
+        for (var attempt = 1; attempt <= 3; attempt++)
         {
-            if (Directory.Exists(DataRoot))
+            try
             {
-                Directory.Delete(DataRoot, recursive: true);
+                if (Directory.Exists(DataRoot))
+                {
+                    Directory.Delete(DataRoot, recursive: true);
+                }
+
+                return;
             }
-        }
-        catch (IOException)
-        {
-            // SQLite WAL cleanup can briefly lag on Windows; leaked temp folders are test-only.
-        }
-        catch (UnauthorizedAccessException)
-        {
+            catch (IOException) when (attempt < 3)
+            {
+                Thread.Sleep(20 * attempt);
+            }
+            catch (UnauthorizedAccessException) when (attempt < 3)
+            {
+                Thread.Sleep(20 * attempt);
+            }
+            catch (IOException)
+            {
+                return;
+            }
+            catch (UnauthorizedAccessException)
+            {
+                return;
+            }
         }
     }
 }
