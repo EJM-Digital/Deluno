@@ -26,4 +26,5 @@ public sealed record UpdateLibrarySubtitlesRequest(
     SubtitleContentModificationPolicy? ContentPolicy = null,
     /// <summary>Automatic timing-repair policy for fetched subtitles.</summary>
     SubtitleTimingPolicy? TimingPolicy = null,
-    SubtitleNamePolicy? NamePolicy = null);
+    SubtitleNamePolicy? NamePolicy = null,
+    bool OmitLanguageCode = false);

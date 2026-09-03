@@ -31,5 +31,6 @@ public interface ISubtitleFileWriter
         string language,
         bool hearingImpaired,
         byte[] subtitle,
-        CancellationToken cancellationToken);
+        CancellationToken cancellationToken,
+        bool omitLanguageCode = false);
 }

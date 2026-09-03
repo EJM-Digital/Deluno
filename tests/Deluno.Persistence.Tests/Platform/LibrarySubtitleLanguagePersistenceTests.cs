@@ -163,6 +163,57 @@ public sealed class LibrarySubtitleLanguagePersistenceTests
     }
 
     [Fact]
+    public async Task Subtitle_name_policy_round_trips_and_an_empty_one_is_not_persisted()
+    {
+        using var storage = TestStorage.Create();
+        var repository = await CreateRepositoryAsync(storage);
+        var library = await repository.CreateLibraryAsync(NewLibrary("Movies", "movies"), CancellationToken.None);
+
+        var updated = await repository.UpdateLibrarySubtitlesAsync(
+            library.Id,
+            new UpdateLibrarySubtitlesRequest(
+                ["en"], "all",
+                NamePolicy: new SubtitleNamePolicy(MustContain: [" NTb ", "flux", "NTB"], MustNotContain: ["HDTV"])),
+            CancellationToken.None);
+
+        // Trimmed, lowercased, de-duplicated and ordered on the way in, so the
+        // same intent typed two ways is one stored policy.
+        Assert.Equal(["flux", "ntb"], updated!.SubtitleNamePolicy!.MustContain);
+        Assert.Equal(["hdtv"], updated.SubtitleNamePolicy.MustNotContain);
+
+        var listed = (await repository.ListLibrariesAsync(CancellationToken.None)).Single(item => item.Id == library.Id);
+        Assert.Equal(updated.SubtitleNamePolicy, listed.SubtitleNamePolicy);
+
+        var cleared = await repository.UpdateLibrarySubtitlesAsync(
+            library.Id,
+            new UpdateLibrarySubtitlesRequest(["en"], "all", NamePolicy: new SubtitleNamePolicy(MustContain: ["   "])),
+            CancellationToken.None);
+
+        // A policy with nothing in it is no policy, not an empty one that every
+        // release then has to be checked against.
+        Assert.Null(cleared!.SubtitleNamePolicy);
+    }
+
+    [Fact]
+    public async Task Writing_subtitles_without_a_language_code_is_off_until_a_library_asks_for_it()
+    {
+        using var storage = TestStorage.Create();
+        var repository = await CreateRepositoryAsync(storage);
+        var library = await repository.CreateLibraryAsync(NewLibrary("Movies", "movies"), CancellationToken.None);
+
+        Assert.False(library.SubtitleOmitLanguageCode);
+
+        var updated = await repository.UpdateLibrarySubtitlesAsync(
+            library.Id,
+            new UpdateLibrarySubtitlesRequest(["en"], "first", OmitLanguageCode: true),
+            CancellationToken.None);
+
+        Assert.True(updated!.SubtitleOmitLanguageCode);
+        var listed = (await repository.ListLibrariesAsync(CancellationToken.None)).Single(item => item.Id == library.Id);
+        Assert.True(listed.SubtitleOmitLanguageCode);
+    }
+
+    [Fact]
     public async Task Subtitle_timing_policy_round_trips_with_safe_bounds_and_provider_exclusions()
     {
         using var storage = TestStorage.Create();

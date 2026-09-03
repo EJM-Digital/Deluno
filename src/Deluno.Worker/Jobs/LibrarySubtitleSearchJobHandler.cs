@@ -136,7 +136,8 @@ public sealed class LibrarySubtitleSearchJobHandler(
                     excludeHearingImpaired: false,
                     cancellationToken,
                     library.SubtitleContentPolicy,
-                    library.SubtitleNamePolicy);
+                    library.SubtitleNamePolicy,
+                    library.SubtitleOmitLanguageCode);
 
                 if (outcome.Reason.StartsWith("No subtitle providers", StringComparison.Ordinal))
                 {

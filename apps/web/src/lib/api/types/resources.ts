@@ -55,6 +55,8 @@ export interface LibraryItem {
   subtitleTimingPolicy?: SubtitleTimingPolicy | null;
   /** Words a subtitle's release name must or must not carry. */
   subtitleNamePolicy?: SubtitleNamePolicy | null;
+  /** Whether a written subtitle leaves the language code out of its name. */
+  subtitleOmitLanguageCode?: boolean;
 }
 
 export interface SubtitleNamePolicy {
