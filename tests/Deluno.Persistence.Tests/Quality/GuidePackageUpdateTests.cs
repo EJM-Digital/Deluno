@@ -50,6 +50,58 @@ public sealed class GuidePackageUpdateTests
         Assert.Single(await store.ListAsync(CancellationToken.None));
     }
 
+    /// <summary>
+    /// #350 line 4: a guide update produces a rollback point.
+    ///
+    /// <para>Retaining the previous version is only half of it. A point you
+    /// cannot return to is not a rollback point, so this walks forward twice
+    /// and back, and checks the way back re-validates the stored definition
+    /// rather than trusting the row.</para>
+    /// </summary>
+    [Fact]
+    public async Task A_retained_guide_version_can_be_made_current_again()
+    {
+        using var storage = TestStorage.Create();
+        var time = new FixedTimeProvider(DateTimeOffset.Parse("2026-09-03T00:00:00Z"));
+        await new PlatformSchemaInitializer(
+            storage.Factory,
+            new SqliteDatabaseMigrator(storage.Factory, time),
+            NullLogger<PlatformSchemaInitializer>.Instance).StartAsync(CancellationToken.None);
+        var store = new SqliteGuidePackageStore(storage.Factory, time);
+
+        var bootstrap = await store.GetCurrentAsync(CancellationToken.None);
+        var second = bootstrap.Package with { Version = bootstrap.Package.Version + 1 };
+        var applied = await store.ApplyAsync(
+            new GuidePackageUpdateRequest(second, bootstrap.IntegritySha256),
+            CancellationToken.None);
+
+        var third = second with { Version = second.Version + 1 };
+        var latest = await store.ApplyAsync(
+            new GuidePackageUpdateRequest(third, applied.IntegritySha256),
+            CancellationToken.None);
+        Assert.Equal(third.Version, (await store.GetCurrentAsync(CancellationToken.None)).Package.Version);
+
+        var back = await store.ActivateAsync(second.Id, second.Version, CancellationToken.None);
+
+        Assert.True(back.IsActive);
+        Assert.Equal(second.Version, back.Package.Version);
+        var active = await store.GetCurrentAsync(CancellationToken.None);
+        Assert.Equal(second.Version, active.Package.Version);
+
+        // Exactly one active version, and the one it replaced is still there:
+        // going back must not throw away the version you came from, or the
+        // rollback is one-way.
+        var versions = await store.ListAsync(CancellationToken.None);
+        Assert.Equal(2, versions.Count);
+        Assert.Single(versions, item => item.IsActive);
+        Assert.Contains(versions, item => item.Package.Version == latest.Package.Version);
+
+        // Idempotent, and honest about a version that was never retained.
+        Assert.True((await store.ActivateAsync(second.Id, second.Version, CancellationToken.None)).IsActive);
+        await Assert.ThrowsAsync<KeyNotFoundException>(
+            () => store.ActivateAsync(second.Id, 9999, CancellationToken.None));
+    }
+
     [Fact]
     public async Task Preview_rejects_unaccounted_mappings_and_stale_activation_guards()
     {

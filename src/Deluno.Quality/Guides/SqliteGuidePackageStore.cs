@@ -166,6 +166,48 @@ public sealed class SqliteGuidePackageStore(
         return new StoredGuidePackage(proposed, true, timeProvider.GetUtcNow());
     }
 
+    public async Task<StoredGuidePackage> ActivateAsync(
+        string packageId,
+        int version,
+        CancellationToken cancellationToken)
+    {
+        // GetAsync re-validates the stored definition and its integrity hash,
+        // so a row edited outside Deluno throws here rather than becoming the
+        // active package.
+        var stored = await GetAsync(packageId, version, cancellationToken)
+            ?? throw new KeyNotFoundException(
+                $"Guide package '{packageId}' version {version} is not retained.");
+        if (stored.IsActive)
+        {
+            return stored;
+        }
+
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Platform,
+            cancellationToken);
+        await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+
+        using (var deactivate = connection.CreateCommand())
+        {
+            deactivate.Transaction = transaction;
+            deactivate.CommandText = "UPDATE guide_package_versions SET is_active = 0 WHERE is_active = 1;";
+            await deactivate.ExecuteNonQueryAsync(cancellationToken);
+        }
+
+        using (var activate = connection.CreateCommand())
+        {
+            activate.Transaction = transaction;
+            activate.CommandText =
+                "UPDATE guide_package_versions SET is_active = 1 WHERE package_id = @packageId AND package_version = @version;";
+            AddParameter(activate, "@packageId", stored.Package.Id);
+            AddParameter(activate, "@version", stored.Package.Version);
+            await activate.ExecuteNonQueryAsync(cancellationToken);
+        }
+
+        await transaction.CommitAsync(cancellationToken);
+        return stored with { IsActive = true };
+    }
+
     private static StoredGuidePackage Bootstrap()
         => new(GuidePackageCatalog.Current, true, DateTimeOffset.MinValue);
 

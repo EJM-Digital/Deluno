@@ -194,6 +194,39 @@ public static class QualityEndpointRouteBuilderExtensions
             }
         });
 
+        // Every guide version is immutable and retained, which makes each
+        // update a rollback point. This is the way back to one (#350).
+        guideWrites.MapPost("/trash/versions/{version:int}/activate", async (
+            int version,
+            string? packageId,
+            HttpContext httpContext,
+            IGuidePackageStore store,
+            CancellationToken cancellationToken) =>
+        {
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
+            if (denied is not null)
+            {
+                return denied;
+            }
+
+            try
+            {
+                var activated = await store.ActivateAsync(
+                    packageId ?? GuidePackageCatalog.Current.Id,
+                    version,
+                    cancellationToken);
+                return Results.Json(activated, ReleasePreferenceJson.Options);
+            }
+            catch (KeyNotFoundException exception)
+            {
+                return Results.NotFound(new { message = exception.Message });
+            }
+            catch (InvalidDataException exception)
+            {
+                return Results.Conflict(new { message = exception.Message });
+            }
+        });
+
         guideWrites.MapPost("/trash/sync/apply", async (
             HttpContext httpContext,
             [FromBody] GuidePackageSyncRequest request,

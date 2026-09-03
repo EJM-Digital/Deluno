@@ -18,6 +18,19 @@ export function fetchTrashGuideVersions(): Promise<StoredGuidePackage[]> {
   return fetchJson<StoredGuidePackage[]>("/api/v1/guides/trash/versions");
 }
 
+/**
+ * Makes a retained guide version current again.
+ *
+ * Every version is immutable and kept, which is what makes each update a
+ * rollback point — but a point with no way back to it is not one (#350).
+ */
+export function activateTrashGuideVersion(version: number, packageId?: string): Promise<StoredGuidePackage> {
+  const query = packageId ? `?packageId=${encodeURIComponent(packageId)}` : "";
+  return fetchJson<StoredGuidePackage>(`/api/v1/guides/trash/versions/${version}/activate${query}`, {
+    method: "POST"
+  });
+}
+
 export function fetchTrashGuideInventory(): Promise<GuideCapabilityInventory> {
   return fetchJson<GuideCapabilityInventory>("/api/v1/guides/trash/inventory");
 }
