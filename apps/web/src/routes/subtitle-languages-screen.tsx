@@ -41,7 +41,10 @@ const EMPTY_CONTENT_POLICY: SubtitleContentModificationPolicy = {
   removeStyleTags: false,
   removeEmoji: false,
   normalizeWhitespace: false,
-  fixAllUppercase: false
+  fixAllUppercase: false,
+  fixOcrErrors: false,
+  cueColour: null,
+  reverseRightToLeftPunctuation: false
 };
 
 const EMPTY_TIMING_POLICY: SubtitleTimingPolicy = {
@@ -360,6 +363,34 @@ export function SubtitleLanguagesPage() {
                     disabled={busy}
                     onCheckedChange={(value) => setForm({ ...form, contentPolicy: { ...form.contentPolicy, fixAllUppercase: value } })}
                   />
+                  <PolicySwitch
+                    label="Fix OCR mistakes"
+                    help="Repairs the characters a picture-to-text pass gets wrong — l for I, rn for m, 0 for O — only inside words, never on a letter standing alone."
+                    checked={form.contentPolicy.fixOcrErrors}
+                    disabled={busy}
+                    onCheckedChange={(value) => setForm({ ...form, contentPolicy: { ...form.contentPolicy, fixOcrErrors: value } })}
+                  />
+                  <PolicySwitch
+                    label="Move right-to-left punctuation"
+                    help="Puts trailing full stops and question marks at the front of Arabic and Hebrew lines, where they belong. Lines with no right-to-left text are untouched."
+                    checked={form.contentPolicy.reverseRightToLeftPunctuation}
+                    disabled={busy}
+                    onCheckedChange={(value) => setForm({ ...form, contentPolicy: { ...form.contentPolicy, reverseRightToLeftPunctuation: value } })}
+                  />
+                  <Field
+                    label="Subtitle colour"
+                    help="Some players show every subtitle in white whatever the track says. Leave empty for the player's own colour."
+                  >
+                    <Input
+                      value={form.contentPolicy.cueColour ?? ""}
+                      placeholder="e.g. yellow or #ffd400"
+                      disabled={busy}
+                      onChange={(event) => setForm({
+                        ...form,
+                        contentPolicy: { ...form.contentPolicy, cueColour: event.target.value.trim() || null }
+                      })}
+                    />
+                  </Field>
                 </DrawerSection>
               </>
             ) : null}

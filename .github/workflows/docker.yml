@@ -41,11 +41,20 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      # A container repository name must be lowercase, and this one is
+      # `jampat000/Deluno`. metadata-action lowercases what it is given, so the
+      # push always worked; the digest verification built its own reference by
+      # hand and never had a tag run to fail on until v1.0.0-rc.1. Compute it
+      # once, use it in both places.
+      - name: Resolve image name
+        id: image
+        run: echo "name=ghcr.io/${GITHUB_REPOSITORY,,}" >> "$GITHUB_OUTPUT"
+
       - name: Calculate image metadata
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ghcr.io/${{ github.repository }}
+          images: ${{ steps.image.outputs.name }}
           flavor: |
             latest=auto
           tags: |
@@ -103,6 +112,6 @@ jobs:
       - name: Verify pushed digest is addressable
         if: startsWith(github.ref, 'refs/tags/v')
         env:
-          IMAGE_NAME: ghcr.io/${{ github.repository }}
+          IMAGE_NAME: ${{ steps.image.outputs.name }}
           IMAGE_DIGEST: ${{ steps.build.outputs.digest }}
         run: docker buildx imagetools inspect "${IMAGE_NAME}@${IMAGE_DIGEST}"

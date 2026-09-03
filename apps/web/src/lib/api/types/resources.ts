@@ -61,6 +61,12 @@ export interface SubtitleContentModificationPolicy {
   removeEmoji: boolean;
   normalizeWhitespace: boolean;
   fixAllUppercase: boolean;
+  /** Repairs l-for-I, rn-for-m and 0-for-O inside words. */
+  fixOcrErrors: boolean;
+  /** A CSS colour name or hex value, or null to leave cues uncoloured. */
+  cueColour: string | null;
+  /** Moves trailing punctuation to the front of a right-to-left line. */
+  reverseRightToLeftPunctuation: boolean;
 }
 
 export interface SubtitleTimingPolicy {
