@@ -88,30 +88,67 @@ public sealed class DelunoBackupService(
             var id = $"deluno-backup-{now:yyyyMMdd-HHmmss}";
             var targetPath = Path.Combine(state.BackupFolder, $"{id}.zip");
             var dataFiles = EnumerateDataFiles().ToArray();
-            var manifest = new BackupManifest(
-                App: "Deluno",
-                Version: GetVersion(),
-                CreatedUtc: now,
-                Reason: safeReason,
-                Files: dataFiles.Select(file => Path.GetRelativePath(DataRoot, file)).Order(StringComparer.OrdinalIgnoreCase).ToArray());
+            var archived = new List<string>(dataFiles.Length);
 
             using (var fileStream = File.Create(targetPath))
             using (var archive = new ZipArchive(fileStream, ZipArchiveMode.Create))
             {
+                foreach (var file in dataFiles)
+                {
+                    // Opened first, because opening is the only honest test of
+                    // whether the file is still there. A `-wal` belongs to a
+                    // database that is still being served, and SQLite deletes it
+                    // the moment the last connection to that database closes —
+                    // which can happen between the listing above and this line.
+                    // Asking a file that is gone for its timestamp does not
+                    // throw: it answers 1601-01-01, which a zip cannot store,
+                    // and the whole backup then died on an unhandled exception.
+                    FileStream sourceStream;
+                    try
+                    {
+                        sourceStream = new FileStream(file, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+                    }
+                    catch (Exception exception) when (exception is FileNotFoundException
+                                                          or DirectoryNotFoundException
+                                                          or IOException
+                                                          or UnauthorizedAccessException)
+                    {
+                        // One file Deluno could not read is not a reason to have
+                        // no backup at all. A vanished `-wal` costs nothing in
+                        // particular: SQLite removed it because it had already
+                        // checkpointed what it held into the database file this
+                        // is copying anyway.
+                        logger.LogWarning(
+                            exception,
+                            "Left {File} out of the backup because it could not be read.",
+                            file);
+                        continue;
+                    }
+
+                    using (sourceStream)
+                    {
+                        var relativePath = Path.GetRelativePath(DataRoot, file).Replace('\\', '/');
+                        var entry = archive.CreateEntry($"data/{relativePath}", CompressionLevel.Optimal);
+                        entry.LastWriteTime = ZipSafeTimestamp(File.GetLastWriteTime(file));
+                        using var entryStream = entry.Open();
+                        sourceStream.CopyTo(entryStream);
+                        archived.Add(Path.GetRelativePath(DataRoot, file));
+                    }
+                }
+
+                // Written last, and from what actually went in, so the manifest
+                // is a record rather than an intention.
+                var manifest = new BackupManifest(
+                    App: "Deluno",
+                    Version: GetVersion(),
+                    CreatedUtc: now,
+                    Reason: safeReason,
+                    Files: archived.Order(StringComparer.OrdinalIgnoreCase).ToArray());
+
                 var manifestEntry = archive.CreateEntry("deluno-backup.json", CompressionLevel.Optimal);
                 await using (var manifestStream = manifestEntry.Open())
                 {
                     await JsonSerializer.SerializeAsync(manifestStream, manifest, JsonOptions, cancellationToken);
-                }
-
-                foreach (var file in dataFiles)
-                {
-                    var relativePath = Path.GetRelativePath(DataRoot, file).Replace('\\', '/');
-                    var entry = archive.CreateEntry($"data/{relativePath}", CompressionLevel.Optimal);
-                    entry.LastWriteTime = File.GetLastWriteTime(file);
-                    using var sourceStream = new FileStream(file, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
-                    using var entryStream = entry.Open();
-                    sourceStream.CopyTo(entryStream);
                 }
             }
 
@@ -332,6 +369,36 @@ public sealed class DelunoBackupService(
             return new RestorePreviewResponse(false, ex.Message, null, []);
         }
     }
+
+    /// <summary>
+    /// A moment a zip file can actually hold.
+    ///
+    /// <para>Zip stores timestamps in MS-DOS form, which begins in 1980 and ends
+    /// in 2107. Outside that <see cref="System.IO.Compression.ZipArchiveEntry.LastWriteTime"/>
+    /// throws, and it is the caller's whole operation that fails, not the one
+    /// entry.</para>
+    ///
+    /// <para>Two things land outside it. A file that has been deleted answers
+    /// 1601-01-01 rather than failing, which is how a vanished <c>-wal</c> took
+    /// a backup down. And a genuinely old timestamp — a file restored from an
+    /// archive, or written while the clock was wrong — is outside it for real.
+    /// Neither is a reason to refuse to back the data up, so the timestamp is
+    /// clamped and the contents are kept.</para>
+    /// </summary>
+    private static DateTimeOffset ZipSafeTimestamp(DateTime lastWriteTime)
+    {
+        if (lastWriteTime < ZipFirstMoment)
+        {
+            return new DateTimeOffset(ZipFirstMoment);
+        }
+
+        return lastWriteTime > ZipLastMoment
+            ? new DateTimeOffset(ZipLastMoment)
+            : new DateTimeOffset(lastWriteTime);
+    }
+
+    private static readonly DateTime ZipFirstMoment = new(1980, 1, 1, 0, 0, 0, DateTimeKind.Local);
+    private static readonly DateTime ZipLastMoment = new(2107, 12, 31, 23, 59, 58, DateTimeKind.Local);
 
     private IEnumerable<string> EnumerateDataFiles()
     {

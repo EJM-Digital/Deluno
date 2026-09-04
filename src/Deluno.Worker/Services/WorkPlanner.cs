@@ -1574,9 +1574,15 @@ public sealed class WorkPlanner(
 
     internal static string InferImportFileName(DownloadQueueItem item)
     {
+        // Both separators named outright, because Path.GetInvalidFileNameChars()
+        // answers for the host: on Linux it returns NUL and '/' only, so a
+        // release name carrying a backslash kept it and Deluno inferred a file
+        // name Windows would have cleaned. Release names come from indexers,
+        // which is not a place to take the host's word for what is safe. The
+        // sibling sanitizer in ImportPipelineService already spells them out.
         var invalid = Path.GetInvalidFileNameChars();
         var cleaned = new string(item.ReleaseName
-            .Select(character => invalid.Contains(character) ? '.' : character)
+            .Select(character => invalid.Contains(character) || character is '/' or '\\' ? '.' : character)
             .ToArray())
             .Replace(' ', '.')
             .Trim('.');

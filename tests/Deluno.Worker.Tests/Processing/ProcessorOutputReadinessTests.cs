@@ -4,10 +4,22 @@ namespace Deluno.Worker.Tests.Processing;
 
 public sealed class ProcessorOutputReadinessTests
 {
+    /// <summary>
+    /// A file still being written is not ready.
+    ///
+    /// <para>The write time is pinned rather than assumed. Readiness is "older
+    /// than two seconds", and this used to rely on the assertion arriving
+    /// within that window of creating the file — which is true until the
+    /// machine is busy, and then the file is genuinely old enough and the test
+    /// fails having found nothing wrong. It did exactly that under a full
+    /// parallel run. Stating the age makes the test about the rule instead of
+    /// about how fast the machine is.</para>
+    /// </summary>
     [Fact]
     public void Rejects_a_recently_written_file()
     {
         using var fixture = new TemporaryOutputFile();
+        File.SetLastWriteTimeUtc(fixture.FilePath, DateTime.UtcNow);
 
         Assert.False(ProcessorOutputReadiness.IsReady(fixture.FilePath));
     }

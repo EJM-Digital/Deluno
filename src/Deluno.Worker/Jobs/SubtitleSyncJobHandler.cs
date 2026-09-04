@@ -52,7 +52,10 @@ public sealed class SubtitleSyncJobHandler(ISubtitleTimingSync timingSync) : IJo
             cancellationToken,
             payload.Policy);
 
-        var name = Path.GetFileName(payload.SubtitlePath);
+        // The path came out of a stored job payload, not off this filesystem,
+        // so it is read by its shape. A job queued on Windows and run by the
+        // container otherwise reports "D:\Mediailm.en.srt" as the name.
+        var name = MediaPath.FileName(payload.SubtitlePath);
         return $"{name}: {result.Reason}";
     }
 

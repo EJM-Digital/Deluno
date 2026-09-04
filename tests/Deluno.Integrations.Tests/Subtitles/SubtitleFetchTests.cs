@@ -307,6 +307,30 @@ public sealed class SubtitleFetchTests
             SubtitleFileNaming.For(@"D:\Media\Dune\Dune (2021).mkv", language, hearingImpaired, omitLanguageCode));
     }
 
+    /// <summary>
+    /// The same video is given the same subtitle name wherever Deluno runs.
+    ///
+    /// <para><b>This is the test CI found and Windows never could.</b> Every
+    /// fixture here writes a Windows path, and on Windows <c>Path</c> treats
+    /// both separators, so the naming rule looked right for as long as nobody
+    /// ran it anywhere else. On Linux a backslash is an ordinary filename
+    /// character: the whole path came back as the "file name", and Deluno
+    /// would have written a subtitle called
+    /// <c>D:\Media\Dune\Dune (2021).en.srt</c> - in the container image,
+    /// which is the Linux one.</para>
+    ///
+    /// <para>Which host recorded the path is not knowable from the path, and
+    /// need not be: the paths a migration from Radarr carries are whatever that
+    /// install wrote. Both shapes, asserted together, so this cannot pass on
+    /// one platform by accident again.</para>
+    /// </summary>
+    [Theory]
+    [InlineData(@"D:\Media\Dune\Dune (2021).mkv")]
+    [InlineData("/media/Dune/Dune (2021).mkv")]
+    [InlineData("Dune (2021).mkv")]
+    public void A_subtitle_is_named_the_same_wherever_Deluno_is_running(string videoPath)
+        => Assert.Equal("Dune (2021).en.srt", SubtitleFileNaming.For(videoPath, "en", hearingImpaired: false));
+
     private static SubtitleCandidate Candidate(string language)
         => new("first", "token", language, HearingImpaired: false, Forced: false);
 

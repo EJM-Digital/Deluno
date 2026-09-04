@@ -48,6 +48,29 @@ public sealed class SharingFootprintTests
     }
 
     /// <summary>
+    /// Two drives are two drives on whichever machine reads the path.
+    ///
+    /// <para><b>CI found this the hour Actions came back on.</b> The volume was
+    /// taken from <c>Path.GetPathRoot(Path.GetFullPath(path))</c>, which answers
+    /// for the host: on Linux <c>C:\Deluno</c> is a relative path, so both of
+    /// these resolved under the working directory and came back with root
+    /// <c>/</c>. Equal roots, so the container told people a download on
+    /// <c>C:</c> and a library on <c>D:</c> were one set of file data — the
+    /// understating direction this file exists to avoid.</para>
+    /// </summary>
+    [Theory]
+    [InlineData(@"C:\Deluno\Movies", @"C:\")]
+    [InlineData(@"c:\deluno\movies", @"C:\")]
+    [InlineData(@"D:\Media", @"D:\")]
+    [InlineData(@"\\nas\media\Movies", @"\\nas\media")]
+    [InlineData("/media/Movies", null)]
+    [InlineData("relative/path", null)]
+    // POSIX allows a path to begin with "//", and it is not a share.
+    [InlineData("//media/Movies", null)]
+    public void A_windows_volume_is_recognised_by_the_shape_of_the_path(string path, string? expected)
+        => Assert.Equal(expected, SharingFootprint.WindowsRootOf(path));
+
+    /// <summary>
     /// A path Deluno cannot read is not the same answer as "different drives".
     /// It reports the space as used — the safe direction — but never invents a
     /// sentence claiming to know where the files are.

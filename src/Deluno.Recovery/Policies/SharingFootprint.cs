@@ -65,11 +65,41 @@ public static class SharingFootprint
         return string.Equals(firstRoot, secondRoot, StringComparison.OrdinalIgnoreCase);
     }
 
+    /// <summary>
+    /// Which volume a path is on — which is not what <see cref="Path.GetPathRoot(string?)"/>
+    /// answers, on either host.
+    ///
+    /// <para><b>A Windows path read by Linux.</b> <c>Path</c> answers for the
+    /// machine it runs on, so on Linux <c>C:\Deluno</c> is a relative path and
+    /// <c>GetFullPath</c> makes it <c>/somewhere/C:\Deluno</c> with root
+    /// <c>/</c>. Two different drives then compared equal, and this reported
+    /// that a download on <c>C:</c> and a library on <c>D:</c> were one set of
+    /// file data. Deluno stores these paths, and the machine reading one back
+    /// is not always the one that wrote it, so a drive letter is recognised by
+    /// its shape.</para>
+    ///
+    /// <para><b>A known gap, left open deliberately.</b> On a genuinely POSIX
+    /// install every path is rooted at <c>/</c>, so this still cannot tell two
+    /// volumes apart there — and in the container image <c>/downloads</c> and
+    /// <c>/media</c> being separate mounts is the normal arrangement, which a
+    /// hardlink cannot cross. Answering that needs the mount table, and reading
+    /// it here is what broke: <see cref="DriveInfo.GetDrives"/> stats every
+    /// mount, a CI runner has some that do not answer promptly, and a test run
+    /// that had passed sat for eight minutes without exiting. Caching the
+    /// reading fixed the cost and not the blocking. It is worth doing on a
+    /// machine where it can be measured, which is not here, so it is not being
+    /// guessed at here.</para>
+    /// </summary>
     private static string? RootOf(string? path)
     {
         if (string.IsNullOrWhiteSpace(path))
         {
             return null;
+        }
+
+        if (WindowsRootOf(path) is { } windowsRoot)
+        {
+            return windowsRoot;
         }
 
         try
@@ -83,6 +113,33 @@ public static class SharingFootprint
         }
     }
 
+    /// <summary>
+    /// <c>C:\</c> from <c>C:\Deluno\Movies</c>, or <c>\\server\share</c> from a
+    /// UNC path — read from the path's shape, so the answer does not change
+    /// with the host. Null when the path is not Windows-shaped.
+    /// </summary>
+    internal static string? WindowsRootOf(string path)
+    {
+        if (path.Length >= 2 && path[1] == ':' && char.IsLetter(path[0]))
+        {
+            return string.Concat(char.ToUpperInvariant(path[0]), ":\\");
+        }
+
+        // Backslashes only. A UNC path written by Windows uses them, and a
+        // POSIX path is allowed to begin with "//" — reading that as a share
+        // would invent a volume out of a leading slash.
+        if (path.Length > 2 && path[0] == '\\' && path[1] == '\\')
+        {
+            // A share is the volume: \\server\share. Anything deeper is a
+            // folder on it.
+            var parts = path[2..].Split(['\\', '/'], StringSplitOptions.RemoveEmptyEntries);
+            return parts.Length >= 2 ? $@"\\{parts[0]}\{parts[1]}" : null;
+        }
+
+        return null;
+    }
+
+
     /// <summary>"C:" rather than "C:\" — how a person says it.</summary>
     private static string DescribeDrive(string? path)
     {
@@ -92,7 +149,9 @@ public static class SharingFootprint
             return "another drive";
         }
 
-        var trimmed = root.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        // Both separators, not the host's: this root may be a Windows one that
+        // a Linux container is reading back.
+        var trimmed = root.TrimEnd('/', '\\');
         return string.IsNullOrWhiteSpace(trimmed) ? root : trimmed;
     }
 }

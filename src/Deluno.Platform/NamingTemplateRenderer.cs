@@ -96,9 +96,21 @@ public static partial class NamingTemplateRenderer
             return string.Empty;
         }
 
+        // Both separators, always, whoever is running.
+        //
+        // Path.GetInvalidFileNameChars() answers for the host: on Windows it
+        // returns the whole set, on Linux it returns exactly NUL and '/'. The
+        // characters after it were already spelled out to cover that gap - and
+        // the backslash was not among them. So on Linux a title containing one
+        // survived, and RenderFolder then split on it: "Title\with separators"
+        // became "Title/with separators", a nested folder built out of a title,
+        // which is the one thing this function exists to prevent. The container
+        // image is the Linux one, and a library it writes is read by Windows
+        // clients over a share.
         var invalid = Path.GetInvalidFileNameChars();
         var cleaned = new string(value
-            .Select(character => invalid.Contains(character) || character is '<' or '>' or ':' or '"' or '|' or '?' or '*'
+            .Select(character => invalid.Contains(character) ||
+                                 character is '/' or '\\' or '<' or '>' or ':' or '"' or '|' or '?' or '*'
                 ? '-'
                 : character)
             .ToArray())

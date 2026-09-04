@@ -55,6 +55,34 @@ public sealed class NativeHistoryImportCandidateTests
         Assert.Equal("Episode.Release.mp4", WorkPlanner.InferImportFileName(candidate));
     }
 
+    /// <summary>
+    /// A release name is indexer text, and a separator in it is not a
+    /// separator Deluno should keep.
+    ///
+    /// <para><c>Path.GetInvalidFileNameChars()</c> answers for the host — on
+    /// Linux it returns NUL and <c>/</c> only — so a backslash survived there
+    /// and the container inferred a file name Windows would have cleaned. Both
+    /// are asserted here so this cannot pass on one platform by accident.</para>
+    /// </summary>
+    [Theory]
+    [InlineData(@"Episode\Release", "Episode.Release.mp4")]
+    [InlineData("Episode/Release", "Episode.Release.mp4")]
+    [InlineData("Episode Release", "Episode.Release.mp4")]
+    public void A_separator_in_a_release_name_never_survives_into_a_file_name(
+        string releaseName,
+        string expected)
+    {
+        var queue = new DownloadQueueItem(
+            "queue-id", "client-1", "SABnzbd", "sabnzbd", "tv", "Episode", releaseName,
+            "tv", DownloadQueueStatuses.Completed, 1, 0, 0, 2413, 2413, 0, "Indexer", null,
+            DateTimeOffset.UnixEpoch, @"C:\completed\tv\Episode.mp4");
+
+        var candidate = Assert.Single(WorkPlanner.GetImportCandidates(
+            Overview([queue], [History("native", "completed", queue.SourcePath)])));
+
+        Assert.Equal(expected, WorkPlanner.InferImportFileName(candidate));
+    }
+
     private static DownloadTelemetryOverview Overview(
         IReadOnlyList<DownloadQueueItem> queue,
         IReadOnlyList<DownloadClientHistoryItem> history)
