@@ -1803,6 +1803,15 @@ public sealed class SqliteMediaStateRepository(
                     lower(title) = lower(@title)
                     AND COALESCE({map.YearColumn}, -1) = COALESCE(@year, -1)
                 )
+                -- A title arriving without a year still matches one that has
+                -- one. Without this, "Big Buck Bunny" and "Big Buck Bunny
+                -- (2008)" are two different films to Deluno, and the catalogue
+                -- grows a second row for something it already holds.
+                --
+                -- Only in that direction: two entries that both carry a year and
+                -- disagree are a remake, and collapsing those would be worse
+                -- than the duplicate.
+                OR (@year IS NULL AND lower(title) = lower(@title))
             ORDER BY created_utc ASC
             LIMIT 1;
             """;
