@@ -340,7 +340,8 @@ public sealed class AcquisitionDecisionPipelineTests
             ReleasePreferencePlan? preferencePlan = null,
             bool currentFilePresent = false,
             IReadOnlyList<ProfileSizeRule>? sizeRules = null,
-            QualityUpgradeStopPolicy? upgradeStop = null)
+            QualityUpgradeStopPolicy? upgradeStop = null,
+            ProfileAcquisitionRules? profileAcquisition = null)
         {
             ObservedPreferencePlan = preferencePlan;
             return Task.FromResult(plan);
@@ -376,7 +377,8 @@ public sealed class AcquisitionDecisionPipelineTests
             ReleasePreferencePlan? preferencePlan = null,
             bool currentFilePresent = false,
             IReadOnlyList<ProfileSizeRule>? sizeRules = null,
-            QualityUpgradeStopPolicy? upgradeStop = null)
+            QualityUpgradeStopPolicy? upgradeStop = null,
+            ProfileAcquisitionRules? profileAcquisition = null)
             => throw new InvalidOperationException("An unready connection must not reach the search planner.");
     }
 

@@ -52,6 +52,8 @@ export interface QualityBuildStepsProps {
   renderSizeControls: () => React.ReactNode;
   /** Advanced fields for the step that owns them, opened in place. */
   renderAdvanced?: (step: QualityStep) => React.ReactNode;
+  /** Extra controls a step owns, rendered above its live judgement. */
+  renderStepExtras?: (step: QualityStep) => React.ReactNode;
 }
 
 export function QualityBuildSteps(props: QualityBuildStepsProps) {
@@ -217,6 +219,7 @@ function StepRow({
             </ul>
           ) : null}
 
+          {props.renderStepExtras?.(step) ?? null}
           {props.renderAdvanced?.(step) ?? null}
 
           <StepJudgement step={step} {...props} />

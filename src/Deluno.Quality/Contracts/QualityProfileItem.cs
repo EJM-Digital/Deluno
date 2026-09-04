@@ -34,4 +34,10 @@ public sealed record QualityProfileItem(
     /// custom-format id. A preference with no answer here keeps the guide's own
     /// recommendation. See <c>ProfileFormatIntents</c>.
     /// </summary>
-    IReadOnlyDictionary<string, string>? FormatIntents = null);
+    IReadOnlyDictionary<string, string>? FormatIntents = null,
+    /// <summary>
+    /// How this profile wants a release fetched, and the words it insists on or
+    /// refuses. Null means it has no acquisition opinion; tag-keyed rules still
+    /// apply on top. See <c>ProfileAcquisitionRules</c>.
+    /// </summary>
+    ProfileAcquisitionRules? Acquisition = null);

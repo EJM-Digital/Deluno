@@ -16,4 +16,6 @@ public sealed record UpdateQualityProfileRequest(
     /// <summary>When this profile stops looking for something better.</summary>
     QualityUpgradeStopPolicy? UpgradeStop = null,
     /// <summary>How much this profile cares about each preference it selected.</summary>
-    IReadOnlyDictionary<string, string>? FormatIntents = null);
+    IReadOnlyDictionary<string, string>? FormatIntents = null,
+    /// <summary>How this profile wants a release fetched.</summary>
+    ProfileAcquisitionRules? Acquisition = null);

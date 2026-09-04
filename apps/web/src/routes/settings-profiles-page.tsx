@@ -46,6 +46,7 @@ import {
   type QualityTierDefinition,
   type QualityUpgradeStopPolicy,
   type ProfileSizeRule,
+  type ProfileAcquisitionRules,
   type ReleasePreferencePlanCompilation
 } from "../lib/api";
 import { settingsOverviewLoader } from "./settings-overview-page";
@@ -76,7 +77,16 @@ interface ProfileForm {
   sizeRules: ProfileSizeRule[];
   requireFormatGain: boolean;
   formatIntents: Record<string, string>;
+  acquisition: ProfileAcquisitionRules;
 }
+
+const EMPTY_ACQUISITION: ProfileAcquisitionRules = {
+  preferredProtocol: "any",
+  usenetDelayMinutes: 0,
+  torrentDelayMinutes: 0,
+  mustContain: "",
+  mustNotContain: ""
+};
 
 type DrawerMode = { kind: "closed" } | { kind: "create" } | { kind: "edit"; id: string };
 
@@ -223,6 +233,10 @@ export function SettingsProfilesPage() {
     }));
   }
 
+  function setAcquisition(patch: Partial<ProfileAcquisitionRules>) {
+    setForm((current) => ({ ...current, acquisition: { ...current.acquisition, ...patch } }));
+  }
+
   function setMediaType(mediaType: "movies" | "tv") {
     if (mediaType === form.mediaType) return;
     setForm((current) => {
@@ -307,7 +321,8 @@ export function SettingsProfilesPage() {
         // Only for preferences still selected, so deselecting one takes its
         // answer with it rather than leaving an orphan.
         formatIntents: Object.fromEntries(
-          Object.entries(form.formatIntents).filter(([id]) => formatIds.includes(id)))
+          Object.entries(form.formatIntents).filter(([id]) => formatIds.includes(id))),
+        acquisition: form.acquisition
       };
       const response = await authedFetch(mode.kind === "edit" ? `/api/quality-profiles/${mode.id}` : "/api/quality-profiles", { method: mode.kind === "edit" ? "PUT" : "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
       if (!response.ok) {
@@ -516,6 +531,65 @@ export function SettingsProfilesPage() {
                 onChange={(sizeRules) => setForm((current) => ({ ...current, sizeRules }))}
               />
             )}
+            renderStepExtras={(step: QualityStep) =>
+              step.id === "groups" ? (
+                <div className="grid gap-[var(--grid-gap)]">
+                  <Field
+                    label="Only take releases naming"
+                    help="Any one of these words must appear in the release name. Separate with commas."
+                  >
+                    <Input
+                      value={form.acquisition.mustContain}
+                      placeholder="e.g. NTb, FLUX"
+                      onChange={(event) => setAcquisition({ mustContain: event.target.value })}
+                    />
+                  </Field>
+                  <Field
+                    label="Prefer this way of fetching"
+                    help="Which protocol wins a close call. Deluno still takes the other when it is clearly better."
+                  >
+                    <SegmentedControl<string>
+                      value={form.acquisition.preferredProtocol}
+                      onValueChange={(preferredProtocol) => setAcquisition({ preferredProtocol })}
+                      options={[
+                        { value: "any", label: "No preference" },
+                        { value: "usenet", label: "Usenet" },
+                        { value: "torrent", label: "Torrent" }
+                      ]}
+                    />
+                  </Field>
+                  <FieldRow>
+                    <Field label="Wait before taking a usenet release" help="Minutes. Gives a bad release time to be replaced.">
+                      <Input
+                        type="number"
+                        min={0}
+                        value={form.acquisition.usenetDelayMinutes}
+                        onChange={(event) => setAcquisition({ usenetDelayMinutes: Number(event.target.value) || 0 })}
+                      />
+                    </Field>
+                    <Field label="Wait before taking a torrent" help="Minutes. Zero means take it as soon as it is found.">
+                      <Input
+                        type="number"
+                        min={0}
+                        value={form.acquisition.torrentDelayMinutes}
+                        onChange={(event) => setAcquisition({ torrentDelayMinutes: Number(event.target.value) || 0 })}
+                      />
+                    </Field>
+                  </FieldRow>
+                </div>
+              ) : step.id === "never" ? (
+                <Field
+                  label="Never take releases naming"
+                  help="Any one of these words refuses the release outright, whatever else it offers. Separate with commas."
+                >
+                  <Input
+                    value={form.acquisition.mustNotContain}
+                    placeholder="e.g. HDTV, CAM"
+                    onChange={(event) => setAcquisition({ mustNotContain: event.target.value })}
+                  />
+                </Field>
+              ) : null
+            }
             renderAdvanced={(step: QualityStep) =>
               step.id === "quality" ? (
                 <Disclosure
@@ -787,7 +861,8 @@ function defaultForm(
     upgradeUnknownItems: false,
     sizeRules: [],
     requireFormatGain: true,
-    formatIntents: {}
+    formatIntents: {},
+    acquisition: EMPTY_ACQUISITION
   };
 
   const balanced =
@@ -813,7 +888,7 @@ function defaultForm(
 }
 
 function emptyForm(): ProfileForm {
-  return { name: "", mediaType: "movies", allowed: [], cutoff: "", customFormatIds: [], upgradeUntilCutoff: true, upgradeUnknownItems: false, sizeRules: [], requireFormatGain: true, formatIntents: {} };
+  return { name: "", mediaType: "movies", allowed: [], cutoff: "", customFormatIds: [], upgradeUntilCutoff: true, upgradeUnknownItems: false, sizeRules: [], requireFormatGain: true, formatIntents: {}, acquisition: EMPTY_ACQUISITION };
 }
 function formFrom(profile: QualityProfileItem): ProfileForm {
   return {
@@ -826,11 +901,13 @@ function formFrom(profile: QualityProfileItem): ProfileForm {
     upgradeUnknownItems: profile.upgradeUnknownItems,
     sizeRules: profile.sizeRules ?? [],
     requireFormatGain: profile.upgradeStop?.requireCustomFormatGainForSameQuality ?? true,
-    formatIntents: { ...(profile.formatIntents ?? {}) }
+    formatIntents: { ...(profile.formatIntents ?? {}) },
+    acquisition: { ...EMPTY_ACQUISITION, ...(profile.acquisition ?? {}) }
   };
 }
 function sameForm(a: ProfileForm, b: ProfileForm) {
-  return a.name === b.name && a.mediaType === b.mediaType && a.cutoff === b.cutoff && a.upgradeUntilCutoff === b.upgradeUntilCutoff && a.upgradeUnknownItems === b.upgradeUnknownItems && a.allowed.join("|") === b.allowed.join("|") && sameIds(a.customFormatIds, b.customFormatIds) && sameSizeRules(a.sizeRules, b.sizeRules) && a.requireFormatGain === b.requireFormatGain && sameIntents(a.formatIntents, b.formatIntents);
+  return a.name === b.name && a.mediaType === b.mediaType && a.cutoff === b.cutoff && a.upgradeUntilCutoff === b.upgradeUntilCutoff && a.upgradeUnknownItems === b.upgradeUnknownItems && a.allowed.join("|") === b.allowed.join("|") && sameIds(a.customFormatIds, b.customFormatIds) && sameSizeRules(a.sizeRules, b.sizeRules) && a.requireFormatGain === b.requireFormatGain && sameIntents(a.formatIntents, b.formatIntents)
+    && JSON.stringify(a.acquisition) === JSON.stringify(b.acquisition);
 }
 
 /** Changing how much you care has to count as a change, like any other answer. */
