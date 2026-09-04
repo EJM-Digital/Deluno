@@ -116,6 +116,29 @@ public static class QualityProfileResolver
     }
 
     /// <summary>
+    /// This profile's own acquisition answers, or null when it has none.
+    ///
+    /// <para>Returned as the profile's own type. Shaping it into the rule the
+    /// search combines happens in <c>Deluno.Integrations</c>, which is the
+    /// layer that can see both — putting it here would mean this project
+    /// referencing the platform contracts to describe one of its own fields.</para>
+    /// </summary>
+    public static async Task<ProfileAcquisitionRules?> ResolveAcquisitionAsync(
+        IQualityRepository repository,
+        string? qualityProfileId,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(qualityProfileId))
+        {
+            return null;
+        }
+
+        var profiles = await repository.ListQualityProfilesAsync(cancellationToken);
+        var acquisition = profiles.FirstOrDefault(item => item.Id == qualityProfileId)?.Acquisition?.Normalize();
+        return acquisition is null || acquisition.IsEmpty ? null : acquisition;
+    }
+
+    /// <summary>
     /// When this profile stops looking for something better.
     ///
     /// <para>Resolved beside the allowed tiers and the size answers, from the

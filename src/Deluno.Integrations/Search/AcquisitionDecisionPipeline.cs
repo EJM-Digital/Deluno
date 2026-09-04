@@ -96,7 +96,8 @@ public sealed class AcquisitionDecisionPipeline : IAcquisitionDecisionPipeline
                 request.PreferencePlan,
                 request.CurrentFilePresent,
                 request.SizeRules,
-                request.UpgradeStop);
+                request.UpgradeStop,
+                request.ProfileAcquisition);
 
         var bestCandidate = searchPlan.BestCandidate;
         var outcome = sourceCount == 0 || clientCount == 0
@@ -420,6 +421,8 @@ public sealed record AcquisitionDecisionRequest(
     IReadOnlyList<ProfileSizeRule>? SizeRules = null,
     /// <summary>When this profile stops looking for something better.</summary>
     QualityUpgradeStopPolicy? UpgradeStop = null,
+    /// <summary>This profile's own acquisition answer, as a combinable rule.</summary>
+    ProfileAcquisitionRules? ProfileAcquisition = null,
     IReadOnlyList<string>? TagNames = null,
     string SearchKind = AcquisitionSearchKinds.Automatic,
     DateTimeOffset? AvailableUtc = null,

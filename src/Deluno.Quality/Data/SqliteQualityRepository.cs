@@ -39,7 +39,7 @@ public sealed class SqliteQualityRepository(
             SELECT
                 id, name, media_type, cutoff_quality, allowed_qualities, custom_format_ids,
                 upgrade_until_cutoff, upgrade_unknown_items, allow_lower_quality_replacements,
-                preset_id, preset_version, release_preference_plan_json, created_utc, updated_utc, size_rules_json, stop_when_cutoff_met, require_format_gain_for_same_quality, format_intents_json
+                preset_id, preset_version, release_preference_plan_json, created_utc, updated_utc, size_rules_json, stop_when_cutoff_met, require_format_gain_for_same_quality, format_intents_json, acquisition_json
             FROM quality_profiles
             ORDER BY sort_order ASC, media_type ASC, name ASC;
             """;
@@ -238,7 +238,8 @@ public sealed class SqliteQualityRepository(
                         : NormalizeCsv(request.AllowedQualities))
                     .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)),
             UpgradeStop: request.UpgradeStop,
-            FormatIntents: ProfileFormatIntents.NormalizeAll(request.FormatIntents));
+            FormatIntents: ProfileFormatIntents.NormalizeAll(request.FormatIntents),
+            Acquisition: request.Acquisition?.Normalize());
 
         await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
             DelunoDatabaseNames.Platform,
@@ -294,13 +295,13 @@ public sealed class SqliteQualityRepository(
             INSERT INTO quality_profiles (
                 id, name, media_type, sort_order, cutoff_quality, allowed_qualities, custom_format_ids,
                 upgrade_until_cutoff, upgrade_unknown_items, allow_lower_quality_replacements,
-                preset_id, preset_version, release_preference_plan_json, created_utc, updated_utc, size_rules_json, stop_when_cutoff_met, require_format_gain_for_same_quality, format_intents_json
+                preset_id, preset_version, release_preference_plan_json, created_utc, updated_utc, size_rules_json, stop_when_cutoff_met, require_format_gain_for_same_quality, format_intents_json, acquisition_json
             )
             VALUES (
                 @id, @name, @mediaType, @sortOrder, @cutoffQuality, @allowedQualities, @customFormatIds,
                 @upgradeUntilCutoff, @upgradeUnknownItems, @allowLowerQualityReplacements,
                 @presetId, @presetVersion, @releasePreferencePlan, @createdUtc, @updatedUtc, @sizeRules,
-                @stopWhenCutoffMet, @requireFormatGain, @formatIntents
+                @stopWhenCutoffMet, @requireFormatGain, @formatIntents, @acquisition
             );
             """;
 
@@ -320,6 +321,7 @@ public sealed class SqliteQualityRepository(
         AddParameter(command, "@stopWhenCutoffMet", (item.UpgradeStop?.StopWhenCutoffMet ?? true) ? 1 : 0);
         AddParameter(command, "@requireFormatGain", (item.UpgradeStop?.RequireCustomFormatGainForSameQuality ?? true) ? 1 : 0);
         AddParameter(command, "@formatIntents", ProfileFormatIntents.Serialize(item.FormatIntents));
+        AddParameter(command, "@acquisition", ProfileAcquisitionRulesCodec.Serialize(item.Acquisition));
         AddParameter(command, "@releasePreferencePlan", ReleasePreferencePlanReferenceCodec.Serialize(item.ReleasePreferencePlan));
         AddParameter(command, "@createdUtc", item.CreatedUtc.ToString("O"));
         AddParameter(command, "@updatedUtc", item.UpdatedUtc.ToString("O"));
@@ -477,6 +479,7 @@ public sealed class SqliteQualityRepository(
         // two must stay distinguishable - collapsing them would mean an
         // ordinary rename silently wiped the size answers.
         var nextUpgradeStop = request.UpgradeStop ?? current.UpgradeStop;
+        var nextAcquisition = request.Acquisition ?? current.Acquisition;
 
         // Null leaves the stored answers alone; an empty map clears them back
         // to the guide's recommendations.
@@ -510,6 +513,7 @@ public sealed class SqliteQualityRepository(
                 stop_when_cutoff_met = @stopWhenCutoffMet,
                 require_format_gain_for_same_quality = @requireFormatGain,
                 format_intents_json = @formatIntents,
+                acquisition_json = @acquisition,
                 updated_utc = @updatedUtc
             WHERE id = @id;
             """;
@@ -526,6 +530,7 @@ public sealed class SqliteQualityRepository(
         AddParameter(command, "@stopWhenCutoffMet", (nextUpgradeStop?.StopWhenCutoffMet ?? true) ? 1 : 0);
         AddParameter(command, "@requireFormatGain", (nextUpgradeStop?.RequireCustomFormatGainForSameQuality ?? true) ? 1 : 0);
         AddParameter(command, "@formatIntents", ProfileFormatIntents.Serialize(nextFormatIntents));
+        AddParameter(command, "@acquisition", ProfileAcquisitionRulesCodec.Serialize(nextAcquisition));
         AddParameter(command, "@updatedUtc", now.ToString("O"));
         await command.ExecuteNonQueryAsync(cancellationToken);
 
@@ -890,7 +895,7 @@ public sealed class SqliteQualityRepository(
             SELECT
                 id, name, media_type, cutoff_quality, allowed_qualities, custom_format_ids,
                 upgrade_until_cutoff, upgrade_unknown_items, allow_lower_quality_replacements,
-                preset_id, preset_version, release_preference_plan_json, created_utc, updated_utc, size_rules_json, stop_when_cutoff_met, require_format_gain_for_same_quality, format_intents_json
+                preset_id, preset_version, release_preference_plan_json, created_utc, updated_utc, size_rules_json, stop_when_cutoff_met, require_format_gain_for_same_quality, format_intents_json, acquisition_json
             FROM quality_profiles
             WHERE id = @id
             LIMIT 1;
@@ -1015,6 +1020,9 @@ public sealed class SqliteQualityRepository(
         var formatIntents = reader.FieldCount > 17 && !reader.IsDBNull(17)
             ? ProfileFormatIntents.Deserialize(reader.GetString(17))
             : null;
+        var acquisition = reader.FieldCount > 18 && !reader.IsDBNull(18)
+            ? ProfileAcquisitionRulesCodec.Deserialize(reader.GetString(18))
+            : null;
 
         var presetId = reader.IsDBNull(9) ? null : reader.GetString(9);
         var presetVersion = reader.IsDBNull(10) ? (int?)null : reader.GetInt32(10);
@@ -1047,7 +1055,8 @@ public sealed class SqliteQualityRepository(
             ReleasePreferencePlan: releasePreferencePlan,
             SizeRules: sizeRules,
             UpgradeStop: upgradeStop,
-            FormatIntents: formatIntents);
+            FormatIntents: formatIntents,
+            Acquisition: acquisition);
     }
 
     private static CustomFormatItem ReadCustomFormat(System.Data.Common.DbDataReader reader)

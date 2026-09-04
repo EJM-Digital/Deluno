@@ -143,6 +143,8 @@ export interface QualityProfileItem {
   upgradeStop?: QualityUpgradeStopPolicy | null;
   /** How much this profile cares about each preference it selected, by format id. */
   formatIntents?: Record<string, string> | null;
+  /** How this profile wants a release fetched, and the words it insists on or refuses. */
+  acquisition?: ProfileAcquisitionRules | null;
   createdUtc: string;
   updatedUtc: string;
 }
@@ -152,6 +154,21 @@ export interface QualityProfileItem {
  * Quality & Release is shared, because anime at 1080p and a film at 1080p are
  * not the same number of gigabytes.
  */
+/**
+ * How a profile wants a release fetched. #394: this used to be keyed by tag, so
+ * protocol preference and delays sat apart from the seven answers they belong
+ * beside.
+ */
+export interface ProfileAcquisitionRules {
+  preferredProtocol: "any" | "usenet" | "torrent" | string;
+  usenetDelayMinutes: number;
+  torrentDelayMinutes: number;
+  /** Comma-separated words a release name must carry. */
+  mustContain: string;
+  /** Comma-separated words a release name must not carry. */
+  mustNotContain: string;
+}
+
 export interface ProfileSizeRule {
   quality: string;
   minGb: number;

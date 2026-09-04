@@ -83,13 +83,21 @@ public sealed class FeedMediaSearchPlanner(
         ReleasePreferencePlan? preferencePlan = null,
         bool currentFilePresent = false,
         IReadOnlyList<ProfileSizeRule>? sizeRules = null,
-        QualityUpgradeStopPolicy? upgradeStop = null)
+        QualityUpgradeStopPolicy? upgradeStop = null,
+        ProfileAcquisitionRules? profileAcquisition = null)
     {
         var indexers = await connectionsRepository.ListIndexersAsync(cancellationToken);
         var normalizedSearchKind = AcquisitionSearchKinds.Normalize(searchKind);
-        var applicableProfiles = releaseProfileRepository is null
+        var taggedProfiles = releaseProfileRepository is null
             ? []
             : await releaseProfileRepository.ListApplicableAsync(tagNames, cancellationToken);
+        // #394: the profile's own acquisition answer joins the tag-keyed rules
+        // through the same combiner, rather than becoming a second mechanism
+        // beside them. Its own answer goes first so it is the one a reader sees
+        // named when the two agree.
+        var applicableProfiles = profileAcquisition is null
+            ? taggedProfiles
+            : new[] { AsReleaseProfile(profileAcquisition) }.Concat(taggedProfiles).ToArray();
         var sourceIndexers = sources
             .Join(
                 indexers.Where(item => item.IsEnabled
@@ -914,6 +922,27 @@ public sealed class FeedMediaSearchPlanner(
     private static bool CoversMediaType(IndexerItem indexer, string mediaType)
         => indexer.MediaScope == "both" ||
            string.Equals(indexer.MediaScope, mediaType == "tv" ? "tv" : "movies", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// The profile's own acquisition answer, shaped as the rule the combiner
+    /// already understands, so it joins the tag-keyed ones rather than becoming
+    /// a second mechanism beside them.
+    /// </summary>
+    private static ReleaseProfileItem AsReleaseProfile(ProfileAcquisitionRules rules)
+        => new(
+            Id: "quality-profile",
+            Name: "This profile",
+            // Deliberately no tag. The rule applies because the library uses
+            // this profile, not because anything was labelled.
+            TagName: string.Empty,
+            PreferredProtocol: rules.PreferredProtocol,
+            UsenetDelayMinutes: rules.UsenetDelayMinutes,
+            TorrentDelayMinutes: rules.TorrentDelayMinutes,
+            MustContain: rules.MustContain,
+            MustNotContain: rules.MustNotContain,
+            PreferredTerms: [],
+            CreatedUtc: DateTimeOffset.UnixEpoch,
+            UpdatedUtc: DateTimeOffset.UnixEpoch);
 
     private static bool SearchKindEnabled(IndexerItem indexer, string searchKind)
     {
