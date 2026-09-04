@@ -67,16 +67,36 @@ jobs:
             -p:DelunoUpdateChannel=${{ steps.version.outputs.channel }} `
             -o artifacts/windows/bin
 
-      - name: Bundle ffprobe.exe
+      # Through scripts/fetch-ffmpeg.ps1, which is the same call the lab publish
+      # makes. This step used to download its own copy, and the two had drifted
+      # in three ways that all reached the shipped installer:
+      #
+      #   * it took the GPL build. fetch-ffmpeg.ps1 takes LGPL shared, and says
+      #     why: the GPL builds cannot ship inside a product.
+      #   * it took master-latest, so two publishes of the same commit produced
+      #     different bytes. The script pins a release line.
+      #   * it copied only ffprobe.exe. Subtitle timing sync needs ffmpeg.exe
+      #     and cannot exist without it, so that feature was dark on every
+      #     installed copy while working on the lab - which is exactly the shape
+      #     of bug nobody finds, because the environment that could see it was
+      #     the one that did not have the problem.
+      - name: Bundle FFmpeg
         shell: pwsh
         run: |
-          $url = "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip"
-          $zip = "$env:RUNNER_TEMP\\ffmpeg.zip"
-          Invoke-WebRequest -Uri $url -OutFile $zip -UseBasicParsing
-          Expand-Archive $zip -DestinationPath "$env:RUNNER_TEMP\\ffmpeg-extract"
-          $probe = Get-ChildItem "$env:RUNNER_TEMP\\ffmpeg-extract" -Recurse -Filter "ffprobe.exe" | Select-Object -First 1
-          if (-not $probe) { Write-Error "ffprobe.exe not found in archive"; exit 1 }
-          Copy-Item $probe.FullName "artifacts/windows/bin/ffprobe.exe"
+          ./scripts/fetch-ffmpeg.ps1 -RuntimeIdentifier win-x64
+          $source = "tools/ffmpeg/win-x64"
+          $target = "artifacts/windows/bin/tools/ffmpeg"
+          New-Item -ItemType Directory -Force -Path $target | Out-Null
+          Copy-Item -Path "$source/*" -Destination $target -Recurse -Force
+
+          # The resolver looks in tools/ffmpeg before it looks loose beside the
+          # executable, so both are found. Assert it rather than trust it: a
+          # silently absent binary is how this went unnoticed the first time.
+          foreach ($required in @("ffmpeg.exe", "ffprobe.exe")) {
+            $path = Join-Path $target $required
+            if (-not (Test-Path $path)) { Write-Error "$required is missing from the package"; exit 1 }
+            Write-Host "bundled $required ($([math]::Round((Get-Item $path).Length / 1MB, 1)) MB)"
+          }
 
       - name: Bundle UnRAR.exe (rarlab; extraction-only is license-clean)
         shell: pwsh

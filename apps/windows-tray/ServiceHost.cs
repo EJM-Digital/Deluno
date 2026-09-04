@@ -42,17 +42,7 @@ public static class ServiceHost
 
         builder.Services.AddDelunoInfrastructure(builder.Configuration);
         builder.Services.AddDelunoApi();
-        builder.Services.AddDelunoSecurityModule();
-        builder.Services.AddDelunoNotificationsModule();
-        builder.Services.AddDelunoIntakeModule();
-builder.Services.AddDelunoPlatformModule();
-        builder.Services.AddDelunoMoviesModule();
-        builder.Services.AddDelunoSeriesModule();
-        builder.Services.AddDelunoJobsModule();
-        builder.Services.AddDelunoIntegrationsModule();
-        builder.Services.AddDelunoFilesystemModule();
-        builder.Services.AddDelunoRealtimeModule();
-        builder.Services.AddDelunoWorkerModule();
+        builder.Services.AddDelunoApplicationModules();
 
         builder.Services
             .AddDataProtection()
