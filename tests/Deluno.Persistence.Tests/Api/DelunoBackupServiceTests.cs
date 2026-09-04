@@ -64,6 +64,16 @@ public sealed class DelunoBackupServiceTests
         Assert.True(restored.Restored);
         Assert.True(Directory.Exists(restored.RestoreFolder));
         Assert.Contains("platform.db", restored.RestoredFiles, StringComparer.OrdinalIgnoreCase);
+
+        // Staged, not applied. Deluno holds every database open while it runs,
+        // so writing straight over them fails on the first file - which is what
+        // it used to do, and why a restore returned a 500 and changed nothing.
+        Assert.Equal("target-platform-before-restore", File.ReadAllText(targetPreexistingFile));
+        Assert.True(StagedRestore.IsPending(targetRoot.Path));
+
+        // What a restart does, and the only moment nothing is holding the files.
+        StagedRestore.ApplyPending(targetRoot.Path);
+
         Assert.Equal("source-platform", File.ReadAllText(targetPreexistingFile));
         Assert.Equal("target-platform-before-restore", File.ReadAllText(targetPreexistingFile + ".pre-restore"));
         Assert.Equal("source-movies", File.ReadAllText(Path.Combine(targetRoot.Path, "movies.db")));

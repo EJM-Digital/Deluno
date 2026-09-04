@@ -179,42 +179,69 @@ public sealed class DelunoBackupService(
             }
 
             buffered.Position = 0;
-            var restoreRoot = Path.Combine(DataRoot, "restore-staging", timeProvider.GetUtcNow().ToString("yyyyMMdd-HHmmss", CultureInfo.InvariantCulture));
+
+            // Staged, not written straight over the live files.
+            //
+            // Restoring used to extract each database directly onto the running
+            // application's open SQLite files. On Windows that throws on the
+            // very first one - confirmed on an installed build, where the only
+            // trace left behind was a single cache.db.pre-restore copy and a
+            // 500 - so the documented recovery path did not work at all.
+            //
+            // The staging folder was already being created here and never
+            // written to, which is the shape of an intention that was not
+            // finished. It is finished now: the archive lands in staging, and
+            // StagedRestore applies it on the next start before anything opens
+            // a database. Restarting is not "recommended" any more, it is how
+            // the restore completes.
+            var restoreRoot = Path.Combine(
+                DataRoot,
+                StagedRestore.StagingFolderName,
+                timeProvider.GetUtcNow().ToString("yyyyMMdd-HHmmss", CultureInfo.InvariantCulture));
             Directory.CreateDirectory(restoreRoot);
             var restored = new List<string>();
 
-            using var archive = new ZipArchive(buffered, ZipArchiveMode.Read, leaveOpen: true);
-            foreach (var entry in archive.Entries.Where(entry => entry.FullName.StartsWith("data/", StringComparison.OrdinalIgnoreCase)))
+            using (var archive = new ZipArchive(buffered, ZipArchiveMode.Read, leaveOpen: true))
             {
-                var relative = entry.FullName["data/".Length..].Replace('/', Path.DirectorySeparatorChar);
-                if (string.IsNullOrWhiteSpace(relative) || relative.Contains("..", StringComparison.Ordinal))
+                foreach (var entry in archive.Entries.Where(entry => entry.FullName.StartsWith("data/", StringComparison.OrdinalIgnoreCase)))
                 {
-                    continue;
-                }
+                    var relative = entry.FullName["data/".Length..].Replace('/', Path.DirectorySeparatorChar);
+                    if (string.IsNullOrWhiteSpace(relative) || relative.Contains("..", StringComparison.Ordinal))
+                    {
+                        continue;
+                    }
 
-                var target = Path.GetFullPath(Path.Combine(DataRoot, relative));
-                if (!target.StartsWith(DataRoot, StringComparison.OrdinalIgnoreCase))
-                {
-                    continue;
-                }
+                    // Checked against the live root rather than the staging
+                    // folder: what matters is where this file will eventually
+                    // land, and a traversal that escapes there escapes whether
+                    // it is staged first or not.
+                    var eventualTarget = Path.GetFullPath(Path.Combine(DataRoot, relative));
+                    if (!eventualTarget.StartsWith(DataRoot, StringComparison.OrdinalIgnoreCase))
+                    {
+                        continue;
+                    }
 
-                Directory.CreateDirectory(Path.GetDirectoryName(target)!);
-                var backupExisting = target + ".pre-restore";
-                if (File.Exists(target))
-                {
-                    File.Copy(target, backupExisting, overwrite: true);
+                    var staged = Path.Combine(restoreRoot, relative);
+                    Directory.CreateDirectory(Path.GetDirectoryName(staged)!);
+                    entry.ExtractToFile(staged, overwrite: true);
+                    restored.Add(Path.GetRelativePath(DataRoot, eventualTarget));
                 }
-
-                entry.ExtractToFile(target, overwrite: true);
-                restored.Add(Path.GetRelativePath(DataRoot, target));
             }
 
-            logger.LogWarning("Restored Deluno data files from uploaded backup. Restart is recommended.");
+            if (restored.Count == 0)
+            {
+                Directory.Delete(restoreRoot, recursive: true);
+                return new RestoreResultResponse(false, "No restorable data files were found.", string.Empty, []);
+            }
+
+            StagedRestore.Arm(DataRoot, restoreRoot);
+            logger.LogWarning(
+                "Staged {Count} file(s) from an uploaded backup. They are applied on the next start.",
+                restored.Count);
+
             return new RestoreResultResponse(
-                Restored: restored.Count > 0,
-                Message: restored.Count > 0
-                    ? "Backup restored. Restart Deluno before continuing so every database connection reloads cleanly."
-                    : "No restorable data files were found.",
+                Restored: true,
+                Message: "Backup staged. Restart Deluno to apply it — the files are written before any database is opened.",
                 RestoreFolder: restoreRoot,
                 RestoredFiles: restored);
         }

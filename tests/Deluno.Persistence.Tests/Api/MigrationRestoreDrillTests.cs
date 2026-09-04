@@ -98,6 +98,13 @@ public sealed class MigrationRestoreDrillTests
             restored = await backupService.RestoreAsync(stream, CancellationToken.None);
         }
 
+        // RestoreAsync stages; applying is what a restart does. This drill has
+        // already released every pooled connection above, which is the same
+        // condition a restart creates, so it applies here.
+        StagedRestore.ApplyPending(storage.DataRoot);
+        {
+        }
+
         Assert.True(restored.Restored);
         Assert.Contains(restored.RestoredFiles, file => file.EndsWith("platform.db", StringComparison.OrdinalIgnoreCase));
 
