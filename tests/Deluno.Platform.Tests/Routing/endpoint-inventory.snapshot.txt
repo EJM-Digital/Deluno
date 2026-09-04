@@ -18,6 +18,7 @@ DELETE /api/libraries/{id}
 DELETE /api/library-views/{id}
 DELETE /api/metadata/cache
 DELETE /api/movies/import-recovery/{id}
+DELETE /api/movies/{id}
 DELETE /api/notification-webhooks/{id}
 DELETE /api/notifications/
 DELETE /api/notifications/{notificationId}
@@ -26,6 +27,7 @@ DELETE /api/quality-profiles/{id}
 DELETE /api/recycle-bin/{id}
 DELETE /api/release-profiles/{id}
 DELETE /api/series/import-recovery/{id}
+DELETE /api/series/{id}
 DELETE /api/setup/draft
 DELETE /api/subtitle-providers/{key}
 DELETE /api/tags/{id}

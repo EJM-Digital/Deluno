@@ -3144,6 +3144,100 @@ public sealed class SqliteMovieCatalogRepository(
         };
     }
 
+    public async Task<IReadOnlyList<DuplicateTitleGroup>> FindDuplicateTitlesAsync(CancellationToken cancellationToken)
+    {
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Movies,
+            cancellationToken);
+
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            """
+            SELECT m.id, m.title, m.release_year, m.imdb_id, m.metadata_provider, m.created_utc,
+                   (SELECT w.file_path FROM movie_wanted_state w
+                    WHERE w.movie_id = m.id AND w.file_path IS NOT NULL LIMIT 1)
+            FROM movie_entries m
+            ORDER BY m.created_utc ASC, m.id ASC;
+            """;
+
+        var rows = new List<(string Id, string Title, int? Year, string? ImdbId, bool HasMetadata, string? FilePath, DateTimeOffset Created)>();
+        using (var reader = await command.ExecuteReaderAsync(cancellationToken))
+        {
+            while (await reader.ReadAsync(cancellationToken))
+            {
+                rows.Add((
+                    reader.GetString(0),
+                    reader.GetString(1),
+                    reader.IsDBNull(2) ? null : reader.GetInt32(2),
+                    reader.IsDBNull(3) ? null : reader.GetString(3),
+                    !reader.IsDBNull(4) && !string.IsNullOrWhiteSpace(reader.GetString(4)),
+                    reader.IsDBNull(6) ? null : reader.GetString(6),
+                    ParseTimestamp(reader.GetString(5))));
+            }
+        }
+
+        // Matched on title and year only, because the schema already rules out
+        // the other possibility: movie_entries.imdb_id is UNIQUE, so two rows
+        // cannot share one. A duplicate therefore always involves at least one
+        // row that has no id - which is exactly what a phantom entry is.
+        var groups = rows
+            .GroupBy(row => (Title: NormalizeTitleForComparison(row.Title), row.Year))
+            .Where(group => group.Count() > 1 && !string.IsNullOrWhiteSpace(group.Key.Title))
+            .Select(group => ToGroup("title-and-year", group))
+            .ToArray();
+
+        return groups;
+
+        static DuplicateTitleGroup ToGroup(
+            string matchedOn,
+            IEnumerable<(string Id, string Title, int? Year, string? ImdbId, bool HasMetadata, string? FilePath, DateTimeOffset Created)> rows)
+        {
+            var ordered = rows.OrderBy(row => row.Created).ToArray();
+            return new DuplicateTitleGroup(
+                Title: ordered[0].Title,
+                ReleaseYear: ordered[0].Year,
+                ImdbId: ordered.Select(row => row.ImdbId).FirstOrDefault(id => !string.IsNullOrWhiteSpace(id)),
+                MatchedOn: matchedOn,
+                Entries: ordered
+                    .Select(row => new DuplicateTitleEntry(row.Id, row.Title, row.Year, row.ImdbId, row.HasMetadata, row.FilePath, row.Created))
+                    .ToArray());
+        }
+    }
+
+    /// <summary>
+    /// Reduces a title to the words that identify the film.
+    ///
+    /// <para>Two rows for one film almost never share a title exactly — the
+    /// import path already refuses to create a second row for the same title and
+    /// year. They differ because one of them is a release name, so comparing raw
+    /// titles would find nothing at all. The scene tokens, the year and the
+    /// release group have to come off first, which is the same reduction
+    /// <c>ExistingLibraryImportService.ParseTitle</c> performs when reading a
+    /// folder name.</para>
+    ///
+    /// <para>"Big.Buck.Bunny.2008.2160p.WEB-DL.x265-DELUNO" and
+    /// "Big Buck Bunny" both become "big buck bunny".</para>
+    /// </summary>
+    private static string NormalizeTitleForComparison(string title)
+    {
+        var spaced = title.Replace('.', ' ').Replace('_', ' ').ToLowerInvariant();
+        var withoutTokens = SceneTokenPattern.Replace(spaced, " ");
+        var letters = new string(withoutTokens
+            .Where(character => char.IsLetterOrDigit(character) || character == ' ')
+            .ToArray());
+
+        return string.Join(' ', letters.Split(' ', StringSplitOptions.RemoveEmptyEntries));
+    }
+
+    /// <summary>
+    /// Release noise: resolution, source, codec, audio, year, and a trailing
+    /// release group. Kept deliberately close to the pattern the existing-library
+    /// scan uses, because they are answering the same question.
+    /// </summary>
+    private static readonly System.Text.RegularExpressions.Regex SceneTokenPattern = new(
+        @"(?<![a-z0-9])(?:remux|blu[-\s]?ray|bdrip|brrip|web[-\s]?dl|webrip|web|hdtv|sdtv|dvdrip|dvd|proper|repack|internal|hdr|sdr|uhd|4k|x264|x265|h[-\s]?264|h[-\s]?265|hevc|avc|av1|xvid|divx|vp9|truehd|atmos|dts(?:[-\s]?(?:hd(?:[-\s]?ma)?|x))?|e?[-\s]?ac[-\s]?3|ddp|dd\+|eac3|dd|flac|opus|aac|mp3|480p|720p|1080p|2160p|(?:19|20)\d{2})(?![a-z0-9])|-[a-z0-9]+$",
+        System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.Compiled);
+
     public async Task<IReadOnlyList<CrossLibraryDuplicateItem>> FindCrossLibraryDuplicatesAsync(CancellationToken cancellationToken)
     {
         await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
