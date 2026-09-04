@@ -149,21 +149,7 @@ builder.Services.AddRateLimiter(options =>
             cancellationToken);
     };
 });
-builder.Services.AddDelunoSecurityModule();
-builder.Services.AddDelunoNotificationsModule();
-builder.Services.AddDelunoIntakeModule();
-builder.Services.AddDelunoPlatformModule();
-builder.Services.AddDelunoQualityModule();
-builder.Services.AddDelunoConnectionsModule();
-builder.Services.AddDelunoLibrariesModule();
-builder.Services.AddDelunoMoviesModule();
-builder.Services.AddDelunoSeriesModule();
-builder.Services.AddDelunoJobsModule();
-builder.Services.AddDelunoRecoveryModule();
-builder.Services.AddDelunoIntegrationsModule();
-builder.Services.AddDelunoFilesystemModule();
-builder.Services.AddDelunoRealtimeModule();
-builder.Services.AddDelunoWorkerModule();
+builder.Services.AddDelunoApplicationModules();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(options =>
 {
