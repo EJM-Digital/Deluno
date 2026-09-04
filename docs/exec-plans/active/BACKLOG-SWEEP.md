@@ -61,7 +61,7 @@ starting.
 | #322 Stack epic | 0 | no | Closes when its children do. |
 | #349 Playback goals | 6 | — | **PARKED** by the owner. Do not work it. Do not close it. |
 | #78 GA readiness epic | 12 | no | Last. Parent of #81/#82 — closes after them, never before. |
-| #81 Clean-Windows matrix | 12 | — | **LAST.** Stop when you reach it. |
+| #81 Clean-Windows matrix | 12 | **yes** | Closed 4 Sep — [audit](https://github.com/jampat000/Deluno/issues/81#issuecomment-5535058449). 10/12; lines 1 and 6 are the unsigned decision. Found four defects that made the installer unusable (#400–#403). |
 | #82 14-day soak | 9 | — | **LAST**, runs in parallel with #81. Fourteen wall-clock days; cannot be compressed. |
 
 ## Closing an issue
