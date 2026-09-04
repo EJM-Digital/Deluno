@@ -354,6 +354,100 @@ public sealed class TmdbMetadataProviderTests : IDisposable
         settings.Verify(repo => repo.GetMetadataProviderSecretAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
+    /// <summary>
+    /// A provider id reaches the broker, and what comes back is the detail
+    /// record rather than a page of candidates.
+    ///
+    /// <para><b>This is the wire contract the "enrich" step depends on.</b> The
+    /// managed gateway answers a lookup carrying a <c>providerId</c> with one
+    /// record holding cast, crew, runtime and certification; without it, cards
+    /// with none of that. Deluno's own <c>/api/metadata/search</c> spent a long
+    /// time binding the parameter nowhere and passing <c>null</c>, so the two
+    /// calls were the same call and every chosen title was stored with card
+    /// metadata. The endpoint is held to this elsewhere; this holds the half
+    /// that has to travel over the wire.</para>
+    /// </summary>
+    [Theory]
+    [InlineData("movies", "329865")]
+    [InlineData("tv", "95396")]
+    public async Task SearchAsync_asks_the_broker_for_one_record_when_it_is_given_a_provider_id(
+        string mediaType,
+        string providerId)
+    {
+        var settings = new Mock<IPlatformSettingsRepository>(MockBehavior.Strict);
+        settings.Setup(repo => repo.GetAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(CreateSettingsSnapshot("broker", "https://metadata.deluno.test"));
+
+        var handler = new StubHttpMessageHandler(request =>
+        {
+            Assert.Equal(
+                $"https://metadata.deluno.test/metadata/search?mediaType={mediaType}&query=Anything&providerId={providerId}",
+                request.RequestUri?.ToString());
+            return new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent(
+                    $$"""
+                    {
+                      "provider": "deluno-broker",
+                      "mode": "broker",
+                      "resultCount": 1,
+                      "results": [{
+                        "provider": "tmdb",
+                        "providerId": "{{providerId}}",
+                        "mediaType": "{{mediaType}}",
+                        "title": "The detail record",
+                        "year": 2016,
+                        "overview": "Everything a search card does not carry.",
+                        "posterUrl": null,
+                        "backdropUrl": null,
+                        "rating": 7.6,
+                        "ratings": [],
+                        "genres": ["Drama"],
+                        "imdbId": "tt2543164",
+                        "externalUrl": "https://www.themoviedb.org/movie/329865",
+                        "runtimeMinutes": 116,
+                        "certification": "PG-13",
+                        "cast": [{ "name": "Amy Adams", "character": "Louise Banks" }],
+                        "crew": [{ "name": "Denis Villeneuve", "job": "Director" }]
+                      }]
+                    }
+                    """,
+                    Encoding.UTF8,
+                    "application/json")
+            };
+        });
+
+        var storageOptions = Options.Create(new StoragePathOptions { DataRoot = _dataRoot });
+        var factory = new SqliteDatabaseConnectionFactory(storageOptions);
+        await new CacheSchemaInitializer(
+            factory,
+            new SqliteDatabaseMigrator(factory, TimeProvider.System),
+            NullLogger<CacheSchemaInitializer>.Instance)
+            .StartAsync(CancellationToken.None);
+        var provider = new TmdbMetadataProvider(
+            new HttpClient(handler),
+            new ConfigurationBuilder().Build(),
+            settings.Object,
+            factory,
+            storageOptions,
+            TimeProvider.System,
+            new PassthroughResiliencePolicy(),
+            new OutboundRequestThrottle(TimeProvider.System, NullLogger<OutboundRequestThrottle>.Instance),
+            NullLogger<TmdbMetadataProvider>.Instance);
+
+        var result = Assert.Single(await provider.SearchAsync(
+            new MetadataLookupRequest("Anything", mediaType, null, providerId),
+            CancellationToken.None));
+
+        Assert.Equal(providerId, result.ProviderId);
+        Assert.Equal(116, result.RuntimeMinutes);
+        Assert.Equal("PG-13", result.Certification);
+        Assert.NotNull(result.Cast);
+        Assert.NotEmpty(result.Cast);
+        Assert.NotNull(result.Crew);
+        Assert.NotEmpty(result.Crew);
+    }
+
     [Fact]
     public async Task SearchAsync_retains_a_typed_provider_failure_in_status()
     {

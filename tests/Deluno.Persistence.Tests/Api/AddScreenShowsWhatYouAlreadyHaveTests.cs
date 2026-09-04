@@ -125,7 +125,7 @@ public sealed class AddScreenShowsWhatYouAlreadyHaveTests
         => ApplicationTestHost.StartAsync(replaceServices: services =>
         {
             services.RemoveAll<IMetadataProvider>();
-            services.AddSingleton<IMetadataProvider>(new StubMetadataProvider(results));
+            services.AddSingleton<IMetadataProvider>(new RecordingMetadataProvider(results));
         });
 
     private static async Task<JsonElement> SearchAsync(ApplicationTestHost app, string mediaType, string query)
@@ -190,45 +190,4 @@ public sealed class AddScreenShowsWhatYouAlreadyHaveTests
             [],
             imdbId,
             ExternalUrl: null);
-
-    /// <summary>
-    /// Answers with the results the test set, filtered to the media type asked
-    /// for. Everything else throws: if a route under test starts needing more of
-    /// the provider than this, the test should say so rather than quietly
-    /// exercising a stub nobody has looked at.
-    /// </summary>
-    private sealed class StubMetadataProvider(IReadOnlyList<MetadataSearchResult> results) : IMetadataProvider
-    {
-        public Task<IReadOnlyList<MetadataSearchResult>> SearchAsync(
-            MetadataLookupRequest request,
-            CancellationToken cancellationToken)
-        {
-            var mediaType = request.MediaType?.Trim().ToLowerInvariant() is "tv" or "shows" or "series" ? "tv" : "movies";
-            return Task.FromResult<IReadOnlyList<MetadataSearchResult>>(
-                results.Where(result => result.MediaType == mediaType).ToArray());
-        }
-
-        public Task<MetadataProviderStatus> GetStatusAsync(CancellationToken cancellationToken)
-            => throw new NotSupportedException();
-
-        public Task<MetadataProviderRecordLookup> ResolveProviderRecordAsync(
-            MetadataLookupRequest request,
-            CancellationToken cancellationToken)
-            => throw new NotSupportedException();
-
-        public Task<IReadOnlyList<MetadataSeason>> GetSeriesCatalogueAsync(
-            string providerId,
-            CancellationToken cancellationToken)
-            => throw new NotSupportedException();
-
-        public Task<MetadataReleaseDates> GetMovieReleaseDatesAsync(
-            string providerId,
-            CancellationToken cancellationToken)
-            => throw new NotSupportedException();
-
-        public Task<MetadataCollection?> GetMovieCollectionAsync(
-            string providerId,
-            CancellationToken cancellationToken)
-            => throw new NotSupportedException();
-    }
 }
