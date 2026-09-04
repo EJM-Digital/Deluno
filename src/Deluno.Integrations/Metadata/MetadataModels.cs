@@ -88,7 +88,30 @@ public sealed record MetadataSearchResult(
     /// its external-id response; keeping it beside IMDb lets the TV folder
     /// naming preset work without pretending a TMDb id is a TVDb id.
     /// </summary>
-    string? TvDbId = null);
+    string? TvDbId = null)
+{
+    /// <summary>
+    /// The catalogue entry Deluno would land on if this result were added, when
+    /// it already holds one.
+    ///
+    /// <para><b>The dedupe was never the missing part.</b> Adding a title the
+    /// catalogue already holds has always been a no-op that hands back the
+    /// existing row - three unique indexes and
+    /// <c>FindEntryIdAsync</c> see to that. What the Add screen never did was
+    /// <i>say so</i>, so the only way to learn you already owned something was
+    /// to add it and watch nothing happen.</para>
+    ///
+    /// <para>It is answered on the server because it cannot honestly be
+    /// answered anywhere else: the library screen holds one page of the
+    /// catalogue, so a title you own that is not on that page would read as
+    /// new.</para>
+    ///
+    /// <para>Null on everything the provider itself returns. It is set once,
+    /// by the search endpoint, after the provider - including its cache - has
+    /// finished. Nothing persists it.</para>
+    /// </summary>
+    public string? LibraryEntryId { get; init; }
+}
 
 /// <summary>
 /// When a movie can actually be obtained. A cinema date is not an availability

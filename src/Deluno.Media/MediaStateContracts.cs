@@ -483,6 +483,23 @@ public interface IMediaStateRepository
         MediaEntryCreate entry,
         CancellationToken cancellationToken);
 
+    /// <summary>
+    /// The entry each of these would land on, without adding anything.
+    ///
+    /// <para>One element per input, in the same order, null where the catalogue
+    /// holds nothing matching. It runs the identical match <see cref="AddAsync"/>
+    /// runs, so a screen that asks this and a person who then presses Add can
+    /// never be told two different things.</para>
+    ///
+    /// <para>A list rather than a single lookup because the caller is a search
+    /// result page: twenty separate calls would be twenty connections to answer
+    /// one question.</para>
+    /// </summary>
+    Task<IReadOnlyList<string?>> FindExistingEntryIdsAsync(
+        MediaKind kind,
+        IReadOnlyList<MediaEntryCreate> entries,
+        CancellationToken cancellationToken);
+
     Task<MediaEntryDetails?> GetByIdAsync(
         MediaKind kind,
         string id,

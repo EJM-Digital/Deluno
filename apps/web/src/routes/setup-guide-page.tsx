@@ -36,6 +36,7 @@ import {
   type GuideFormatBundle,
   type GuidePackage
 } from "../lib/api";
+import { metadataCreatePayload } from "../hooks/use-library-create";
 import { authedFetch } from "../lib/use-auth";
 import { cn } from "../lib/utils";
 import { Button } from "../components/ui/button";
@@ -1166,6 +1167,13 @@ function FinishStep({
                   <span className="block truncate text-sm font-semibold text-foreground">{item.title}</span>
                   <span className="mt-0.5 block text-xs text-muted-foreground">{item.year ?? "Unknown year"} · {item.provider.toUpperCase()}</span>
                   {item.rating ? <span className="mt-1 block text-[length:var(--type-caption)] tabular-nums text-primary">{item.rating.toFixed(1)} rating</span> : null}
+                  {/*
+                    The same silence the Add screen had (#424). Setup normally
+                    runs against an empty library, but this page is a route like
+                    any other - walk it again later and the first-title picker
+                    will happily offer something already on the shelf.
+                  */}
+                  {item.libraryEntryId ? <span className="mt-1 block text-[length:var(--type-caption)] font-semibold text-success">Already in your library</span> : null}
                 </span>
               </button>
             ))}
@@ -1708,22 +1716,6 @@ async function createFirstTitle(form: GuideForm, createdEntities: CreatedEntity[
   const created = await response.json() as { id: string; title: string };
   createdEntities.push({ kind: form.firstTitleType === "movies" ? "movie" : "series", id: created.id });
   return created;
-}
-
-function metadataCreatePayload(metadata: MetadataSearchResult | null) {
-  if (!metadata) return {};
-  return {
-    metadataProvider: metadata.provider,
-    metadataProviderId: metadata.providerId,
-    originalTitle: metadata.originalTitle,
-    overview: metadata.overview,
-    posterUrl: metadata.posterUrl,
-    backdropUrl: metadata.backdropUrl,
-    rating: metadata.rating,
-    genres: metadata.genres.join(", "),
-    externalUrl: metadata.externalUrl,
-    metadataJson: JSON.stringify(metadata)
-  };
 }
 
 async function rollbackCreatedEntities(createdEntities: CreatedEntity[]) {

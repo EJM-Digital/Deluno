@@ -64,7 +64,15 @@ internal sealed class ApplicationTestHost : IAsyncDisposable
 
     public string DataRoot => _storage.DataRoot;
 
-    public static async Task<ApplicationTestHost> StartAsync(CancellationToken cancellationToken = default)
+    /// <param name="replaceServices">
+    /// Runs after the real composition, for the one thing a test cannot supply
+    /// for real. Swapping the metadata provider is the motivating case: the
+    /// search endpoint reaches TMDb, which a test must not, and the endpoint's
+    /// own behaviour is worth testing regardless of who answered.
+    /// </param>
+    public static async Task<ApplicationTestHost> StartAsync(
+        CancellationToken cancellationToken = default,
+        Action<IServiceCollection>? replaceServices = null)
     {
         var storage = TestStorage.Create();
         var host = new HostBuilder()
@@ -78,6 +86,7 @@ internal sealed class ApplicationTestHost : IAsyncDisposable
                     services.AddDelunoPlatformSecrets(Path.Combine(storage.DataRoot, "secrets", "master.key"));
                     services.AddDelunoApplicationModules();
                     KeepOnlyTheServicesThatBuildTheSchema(services);
+                    replaceServices?.Invoke(services);
                 })
                 .Configure(app =>
                 {

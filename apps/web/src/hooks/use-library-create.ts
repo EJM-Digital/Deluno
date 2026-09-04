@@ -17,6 +17,11 @@ export function createInitialLibraryForm(): CreateFormDraft {
 
 export function metadataCreatePayload(metadata: MetadataSearchResult | null) {
   if (!metadata) return {};
+  // `libraryEntryId` is this install's answer right now, not a fact about the
+  // title, so it is stripped before the rest is stored as the entry's metadata.
+  // Keeping it would freeze "you already have this" into the row that is the
+  // having.
+  const { libraryEntryId: _libraryEntryId, ...storedMetadata } = metadata;
   return {
     metadataProvider: metadata.provider,
     metadataProviderId: metadata.providerId,
@@ -27,7 +32,7 @@ export function metadataCreatePayload(metadata: MetadataSearchResult | null) {
     rating: metadata.rating,
     genres: metadata.genres.join(", "),
     externalUrl: metadata.externalUrl,
-    metadataJson: JSON.stringify(metadata)
+    metadataJson: JSON.stringify(storedMetadata)
   };
 }
 
