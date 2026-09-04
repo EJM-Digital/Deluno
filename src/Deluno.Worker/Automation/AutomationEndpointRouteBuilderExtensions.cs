@@ -19,7 +19,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Routing;
 
-namespace Deluno.Host.Automation;
+namespace Deluno.Worker.Automation;
 
 public static class AutomationEndpointRouteBuilderExtensions
 {

@@ -110,22 +110,24 @@ public static class ServiceHost
             await next();
         });
 
-        app.MapDelunoApi();
-        app.MapDelunoBackupEndpoints();
-        app.MapDelunoPlatformEndpoints();
-        app.MapDelunoSecurityEndpoints();
-        app.MapDelunoNotificationEndpoints();
-        app.MapDelunoIntakeEndpoints();
-        app.MapDelunoMoviesEndpoints();
-        app.MapDelunoSeriesEndpoints();
-        app.MapDelunoJobsEndpoints();
-        app.MapDelunoDownloadClientIntegrationEndpoints();
-        app.MapDelunoSearchEndpoints();
-        app.MapDelunoMetadataEndpoints();
-        app.MapDelunoFilesystemEndpoints();
-        app.MapDelunoSecretsDiagnostics();
-        app.MapDelunoRealtime();
-        app.MapFallbackToFile("index.html");
+        // The same map every other host uses. See DelunoApplicationEndpointMapping.
+        app.MapDelunoApplicationEndpoints();
+
+        app.MapFallback(async context =>
+        {
+            // An unknown API path is a 404, not the app shell.
+            if (context.Request.Path.StartsWithSegments("/api", StringComparison.OrdinalIgnoreCase))
+            {
+                context.Response.StatusCode = StatusCodes.Status404NotFound;
+                return;
+            }
+
+            var indexPath = Path.Combine(
+                app.Environment.WebRootPath ?? app.Environment.ContentRootPath,
+                "index.html");
+            context.Response.ContentType = "text/html; charset=utf-8";
+            await context.Response.SendFileAsync(indexPath);
+        });
 
         await app.RunAsync();
     }

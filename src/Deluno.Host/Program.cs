@@ -27,7 +27,6 @@ using Deluno.Security.Hardening;
 using Deluno.Realtime;
 using Deluno.Series;
 using Deluno.Worker;
-using Deluno.Host;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.OpenApi.Models;
 using System.Diagnostics;

@@ -1,4 +1,4 @@
-namespace Deluno.Host.Automation;
+namespace Deluno.Worker.Automation;
 
 public static class AutomationBatchLimits
 {
