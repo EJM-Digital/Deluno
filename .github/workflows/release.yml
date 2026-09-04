@@ -111,7 +111,14 @@ jobs:
           # built-in /e silent option then locate UnRAR.exe.
           $extractDir = "$env:RUNNER_TEMP\\unrar-extract"
           New-Item -ItemType Directory -Force -Path $extractDir | Out-Null
-          & $self -y -d"$extractDir"
+          # -s is the silent switch. Without it this self-extractor opens a
+          # dialog and waits, which on a runner means the job hangs until it is
+          # cancelled rather than failing.
+          $unrar = Start-Process -FilePath $self -ArgumentList "-s", "-d$extractDir" -PassThru -WindowStyle Hidden
+          if (-not $unrar.WaitForExit(60000)) {
+            $unrar.Kill()
+            Write-Warning "UnRAR self-extractor did not finish in 60s; continuing without it."
+          }
           $unrar = Get-ChildItem $extractDir -Recurse -Filter "UnRAR.exe" | Select-Object -First 1
           if (-not $unrar) {
             # Fallback: some builds need a different extraction approach; skip

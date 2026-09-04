@@ -68,25 +68,48 @@ if ([string]::IsNullOrWhiteSpace($Channel)) {
     $Channel = if ($Version.StartsWith("0.") -or $Version -match "-(rc|beta|preview)([.-]|$)") { "rc" } else { "stable" }
 }
 
+<#
+  Runs a native command and judges it by its exit code.
+
+  PowerShell's "Stop" preference treats anything a native tool writes to stderr
+  as a terminating error, and plenty of them write ordinary information there -
+  an "npm notice" is not a failed build. Exit code is the only signal that
+  actually means success or failure.
+#>
+function Invoke-Native {
+    param([scriptblock]$Command, [string]$What)
+
+    $previous = $ErrorActionPreference
+    $ErrorActionPreference = "Continue"
+    try { & $Command }
+    finally { $ErrorActionPreference = $previous }
+
+    if ($LASTEXITCODE -ne 0) { throw "$What failed with exit code $LASTEXITCODE." }
+}
+
 Push-Location $root
 try {
     Write-Host "== Frontend"
-    npm.cmd run build:web
-    if ($LASTEXITCODE -ne 0) { throw "build:web failed." }
+    # $ErrorActionPreference = "Stop" turns anything a native command writes to
+    # stderr into a terminating error, and npm writes ordinary notices there -
+    # so a routine "npm notice" failed the whole build. The exit code is the
+    # only thing that says whether npm succeeded, so that is what is checked.
+    Invoke-Native { npm.cmd run build:web } "build:web"
 
     Write-Host "== Payload"
     # Never reuse a previous payload. Packaging must not pick up a component the
     # build no longer produces - a removed DLL left behind here ships.
     Remove-Item -LiteralPath $payload -Recurse -Force -ErrorAction SilentlyContinue
-    dotnet publish (Join-Path $root "apps\windows-tray\Deluno.Tray.csproj") `
-        -c Release `
-        -r $RuntimeIdentifier `
-        --self-contained true `
-        -p:PublishSingleFile=false `
-        -p:Version=$Version `
-        -p:DelunoUpdateChannel=$Channel `
-        -o $payload
-    if ($LASTEXITCODE -ne 0) { throw "Publishing the tray payload failed." }
+    Invoke-Native {
+        dotnet publish (Join-Path $root "apps\windows-tray\Deluno.Tray.csproj") `
+            -c Release `
+            -r $RuntimeIdentifier `
+            --self-contained true `
+            -p:PublishSingleFile=false `
+            -p:Version=$Version `
+            -p:DelunoUpdateChannel=$Channel `
+            -o $payload
+    } "publishing the tray payload"
 
     Write-Host "== FFmpeg"
     & (Join-Path $PSScriptRoot "fetch-ffmpeg.ps1") -RuntimeIdentifier $RuntimeIdentifier
@@ -115,7 +138,20 @@ try {
             try { Invoke-WebRequest -Uri "https://www.rarlab.com/rar/unrarw64.exe" -OutFile $self -UseBasicParsing }
             finally { $ProgressPreference = $previousProgress }
             New-Item -ItemType Directory -Force -Path $extract | Out-Null
-            & $self -y -d"$extract" | Out-Null
+
+            # -s is the silent switch. Without it this self-extractor opens a
+            # WinRAR dialog and waits - which it did, on the packaging machine's
+            # desktop, while the build sat there looking like a slow step. A
+            # packaging script must never be able to ask a person anything.
+            #
+            # The timeout is belt and braces: -s is documented, and a future
+            # build of this SFX deciding to prompt anyway must fail the step
+            # rather than hang it.
+            $unrarProcess = Start-Process -FilePath $self -ArgumentList "-s", "-d$extract" -PassThru -WindowStyle Hidden
+            if (-not $unrarProcess.WaitForExit(60000)) {
+                $unrarProcess.Kill()
+                throw "UnRAR self-extractor did not finish in 60s; it may be waiting for input."
+            }
             $unrar = Get-ChildItem $extract -Recurse -Filter "UnRAR.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
             if ($unrar) {
                 $unrarTarget = Join-Path $payload "tools\unrar"
@@ -165,17 +201,18 @@ try {
     # Deluno ships unsigned, by decision: a code-signing certificate is a
     # recurring cost this project is not paying. The consequence - SmartScreen
     # warning on first install - is documented for users rather than hidden.
-    vpk pack `
-        --packId Deluno `
-        --packVersion $Version `
-        --packDir $payload `
-        --mainExe Deluno.exe `
-        --packTitle Deluno `
-        --icon (Join-Path $root "installer\deluno.ico") `
-        --channel $Channel `
-        --runtime $RuntimeIdentifier `
-        --outputDir $output
-    if ($LASTEXITCODE -ne 0) { throw "vpk pack failed." }
+    Invoke-Native {
+        vpk pack `
+            --packId Deluno `
+            --packVersion $Version `
+            --packDir $payload `
+            --mainExe Deluno.exe `
+            --packTitle Deluno `
+            --icon (Join-Path $root "installer\deluno.ico") `
+            --channel $Channel `
+            --runtime $RuntimeIdentifier `
+            --outputDir $output
+    } "vpk pack"
 
     $setup = Get-ChildItem $output -Filter "*Setup*.exe" -File | Sort-Object LastWriteTime -Descending | Select-Object -First 1
     if (-not $setup) { throw "vpk produced no Setup executable." }
