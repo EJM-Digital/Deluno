@@ -14,6 +14,18 @@ public sealed class DelunoStorageBootstrapService(
     {
         Directory.CreateDirectory(storageOptions.Value.DataRoot);
 
+        // Before the first connection, and that is the whole point. A restore
+        // cannot write over databases the application is holding open, so the
+        // upload is staged and applied here - the one moment nothing has them.
+        var restored = StagedRestore.ApplyPending(storageOptions.Value.DataRoot);
+        if (restored.Count > 0)
+        {
+            logger.LogWarning(
+                "Applied a staged restore before opening any database: {Count} file(s) - {Files}.",
+                restored.Count,
+                string.Join(", ", restored));
+        }
+
         foreach (var database in DelunoStorageLayout.Databases)
         {
             await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
