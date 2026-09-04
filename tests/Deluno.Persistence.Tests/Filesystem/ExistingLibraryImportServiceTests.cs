@@ -408,6 +408,65 @@ public sealed class ExistingLibraryImportServiceTests
         Assert.Equal(["Arrival", "Conclave", "Old Film"], imported.Select(item => item.Title).OrderBy(title => title).ToArray());
     }
 
+    /// <summary>
+    /// A folder Deluno itself wrote reads back as the film, not as the release.
+    ///
+    /// <para><b>Seen on the lab, on the Import Existing screen.</b> Deluno names
+    /// its library folders <c>&lt;name&gt; (year)</c>, so a release it has
+    /// already imported comes back as
+    /// <c>Big.Buck.Bunny.2008.2160p.WEB-DL.x265-DELUNO (2008)</c>. That suffix
+    /// cost the title twice: the release-group pattern is anchored at the end of
+    /// the string, so with <c>(2008)</c> after it nothing matched and
+    /// <c>-DELUNO</c> stayed; and the release name carries the year again, while
+    /// only the last occurrence was being removed. The screen offered to import
+    /// "Big Buck Bunny 2008 -DELUNO".</para>
+    ///
+    /// <para>Blade Runner is here because the obvious fix is wrong: strip every
+    /// year and a film whose title contains one loses it. Only a repeat of the
+    /// year the folder already declared is noise.</para>
+    /// </summary>
+    [Fact]
+    public async Task A_folder_Deluno_named_itself_reads_back_as_the_film()
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-08-20T08:00:00Z"));
+        await InitializeAsync(storage, timeProvider);
+
+        var rootPath = Path.Combine(storage.DataRoot, "movies-round-trip");
+        Directory.CreateDirectory(rootPath);
+        foreach (var folder in new[]
+                 {
+                     "Big.Buck.Bunny.2008.2160p.WEB-DL.x265-DELUNO (2008)",
+                     "Sintel.2010.1080p.WEB-DL.x264-DELUNO (2010)",
+                     "Blade Runner 2049 (2017)"
+                 })
+        {
+            var directory = Path.Combine(rootPath, folder);
+            Directory.CreateDirectory(directory);
+            await File.WriteAllTextAsync(Path.Combine(directory, $"{folder}.mkv"), string.Empty);
+        }
+
+        var libraries = new SqliteLibrariesRepository(storage.Factory, timeProvider);
+        var libraryId = await CreateLibraryAsync(libraries, rootPath, "movies");
+        var movies = new SqliteMovieCatalogRepository(storage.Factory, timeProvider);
+        var service = CreateService(storage, timeProvider, libraries, movies);
+
+        var run = await service.StartAsync(libraryId, CancellationToken.None);
+        Assert.NotNull(run);
+        await DrainAsync(service, run.Run.Id);
+
+        var imported = await movies.ListAsync(CancellationToken.None);
+        Assert.Equal(
+            ["Big Buck Bunny", "Blade Runner 2049", "Sintel"],
+            imported.Select(item => item.Title).OrderBy(title => title, StringComparer.Ordinal).ToArray());
+
+        // The year is read from the folder, and the one inside the release name
+        // is the same year rather than a second film.
+        Assert.Equal(
+            [2008, 2010, 2017],
+            imported.Select(item => item.ReleaseYear).Where(year => year is not null).Select(year => year!.Value).Order().ToArray());
+    }
+
     private static async Task<int> DrainAsync(IExistingLibraryImportService service, string runId)
     {
         var slices = 0;
