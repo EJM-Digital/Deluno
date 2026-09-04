@@ -1457,10 +1457,25 @@ public static class MoviesEndpointRouteBuilderExtensions
             var libraries = await platformSettingsRepository.ListLibrariesAsync(cancellationToken);
             foreach (var library in libraries.Where(item => item.MediaType == "movies"))
             {
+                // The film's own state, not a fresh install's.
+                //
+                // AddAsync dedupes: adding a title the catalogue already holds
+                // returns the row it already has. Passing false here then went
+                // on to overwrite it — EnsureWantedStateAsync upserts with
+                // `has_file = excluded.has_file` — so re-adding a film you
+                // already had wiped the record that its file existed, while
+                // leaving the file and its path on the entry untouched.
+                //
+                // That is the hasFile=false-with-a-filePath state seen on the
+                // lab, and the reason reconciliation then called that same file
+                // an orphan: the tracked-file query selects on has_file = 1, so
+                // a file whose flag has been cleared is a file nothing owns.
+                // Worse than cosmetic — the title goes back on the wanted list
+                // and Deluno re-downloads what it is already holding.
                 var decision = mediaDecisionService.DecideWantedState(new MediaWantedDecisionInput(
                     MediaType: library.MediaType,
-                    HasFile: false,
-                    CurrentQuality: null,
+                    HasFile: movie.HasFile,
+                    CurrentQuality: movie.CurrentQuality,
                     CutoffQuality: library.CutoffQuality,
                     UpgradeUntilCutoff: library.UpgradeUntilCutoff,
                     UpgradeUnknownItems: library.UpgradeUnknownItems));
@@ -1470,7 +1485,7 @@ public static class MoviesEndpointRouteBuilderExtensions
                     library.Id,
                     decision.WantedStatus,
                     decision.WantedReason,
-                    false,
+                    movie.HasFile,
                     decision.CurrentQuality,
                     decision.TargetQuality,
                     decision.QualityCutoffMet,
