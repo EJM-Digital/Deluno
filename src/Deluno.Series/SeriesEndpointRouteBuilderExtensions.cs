@@ -1416,6 +1416,59 @@ public static class SeriesEndpointRouteBuilderExtensions
             });
         });
 
+        /*
+          Removing one show. The mirror of the movie route, deliberately - a
+          media manager should not answer the same question two different ways
+          depending on whether the thing has episodes in it.
+
+          This existed only as POST /bulk with an array of one, so a removal that
+          failed entirely came back 200 with successCount: 0 (#421).
+        */
+        series.MapDelete("/{id}", async (
+            string id,
+            HttpContext httpContext,
+            bool? deleteFiles,
+            bool? addImportListExclusion,
+            ISeriesCatalogRepository repository,
+            ILibrariesRepository platformSettingsRepository,
+            [FromServices] IIntakeRepository intakeRepository,
+            IJobQueueRepository jobQueueRepository,
+            IActivityFeedRepository activityFeedRepository,
+            IRealtimeEventPublisher realtimeEventPublisher,
+            IRecycleBinService recycleBinService,
+            CancellationToken cancellationToken) =>
+        {
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
+            if (denied is not null)
+            {
+                return denied;
+            }
+
+            var series = await repository.GetByIdAsync(id, cancellationToken);
+            if (series is null)
+            {
+                return Results.NotFound();
+            }
+
+            await RemoveSeriesAsync(
+                series,
+                new BulkSeriesRequest(
+                    [id],
+                    "remove",
+                    DeleteFiles: deleteFiles ?? false,
+                    AddImportListExclusion: addImportListExclusion ?? false),
+                repository,
+                platformSettingsRepository,
+                intakeRepository,
+                jobQueueRepository,
+                activityFeedRepository,
+                recycleBinService,
+                cancellationToken);
+
+            await realtimeEventPublisher.PublishEntityChangedAsync("Series", id, cancellationToken);
+            return Results.NoContent();
+        });
+
         series.MapPost("/bulk", async (
             HttpContext httpContext,
             BulkSeriesRequest request,

@@ -1494,12 +1494,81 @@ public static class MoviesEndpointRouteBuilderExtensions
             return Results.Created($"/api/movies/{movie.Id}", movie);
         });
 
+        /*
+          Removing one film.
+
+          This existed only as POST /bulk with an array of one, which is how the
+          UI still reaches it. Twenty-eight other entities have a single-item
+          DELETE - including a movie's own import-recovery case - and the cost of
+          the exception was not the awkwardness but the status code: a removal
+          that failed entirely came back 200 with successCount: 0, so a caller
+          checking the response status was told it had worked (#421).
+
+          The options are the same ones the removal dialog already sends, as
+          query parameters because a DELETE body is poorly supported by clients.
+        */
+        movies.MapDelete("/{id}", async (
+            string id,
+            HttpContext httpContext,
+            bool? deleteFiles,
+            bool? addImportListExclusion,
+            IMovieCatalogRepository repository,
+            ILibrariesRepository platformSettingsRepository,
+            [FromServices] IIntakeRepository intakeRepository,
+            IJobQueueRepository jobQueueRepository,
+            IActivityFeedRepository activityFeedRepository,
+            IRealtimeEventPublisher realtimeEventPublisher,
+            IRecycleBinService recycleBinService,
+            CancellationToken cancellationToken) =>
+        {
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
+            if (denied is not null)
+            {
+                return denied;
+            }
+
+            var movie = await repository.GetByIdAsync(id, cancellationToken);
+            if (movie is null)
+            {
+                return Results.NotFound();
+            }
+
+            await RemoveMovieAsync(
+                movie,
+                new BulkMovieRequest(
+                    [id],
+                    "remove",
+                    DeleteFiles: deleteFiles ?? false,
+                    AddImportListExclusion: addImportListExclusion ?? false),
+                repository,
+                platformSettingsRepository,
+                intakeRepository,
+                jobQueueRepository,
+                activityFeedRepository,
+                recycleBinService,
+                cancellationToken);
+
+            await realtimeEventPublisher.PublishEntityChangedAsync("Movie", id, cancellationToken);
+            return Results.NoContent();
+        });
+
+        /*
+          Both kinds of duplicate, because they are different problems.
+
+          This used to return only the cross-library kind - one catalogue row
+          appearing in two libraries - which is usually deliberate. The one
+          people actually get, two rows for the same film, could never appear
+          here: the query grouped by movie id, and two rows have two ids. So the
+          single feature named "duplicates" was structurally incapable of finding
+          duplicates (#419).
+        */
         movies.MapGet("/duplicates", async (
             IMovieCatalogRepository repository,
             CancellationToken cancellationToken) =>
         {
-            var duplicates = await repository.FindCrossLibraryDuplicatesAsync(cancellationToken);
-            return Results.Ok(duplicates);
+            var sameFilmTwice = await repository.FindDuplicateTitlesAsync(cancellationToken);
+            var acrossLibraries = await repository.FindCrossLibraryDuplicatesAsync(cancellationToken);
+            return Results.Ok(new MovieDuplicateReport(sameFilmTwice, acrossLibraries));
         });
 
         /*
