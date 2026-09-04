@@ -1,3 +1,4 @@
+using Deluno.Api;
 using Deluno.Connections;
 using Deluno.Filesystem;
 using Deluno.Intake;
@@ -49,6 +50,13 @@ public static class DelunoApplicationComposition
     {
         ArgumentNullException.ThrowIfNull(services);
 
+        // The services behind /api itself - readiness, backups, monitoring,
+        // the update orchestrator. MapDelunoApplicationEndpoints maps those
+        // routes unconditionally, so a host that composes without this maps
+        // handlers whose parameters nothing can supply and fails building its
+        // own route table. It used to be a separate line each host remembered
+        // for itself, which is the shape of drift this file exists to end.
+        services.AddDelunoApi();
         services.AddDelunoSecurityModule();
         services.AddDelunoNotificationsModule();
         services.AddDelunoIntakeModule();
