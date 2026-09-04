@@ -83,7 +83,7 @@ public static class SubtitleFileNaming
     public static string For(
         string videoPath, string language, bool hearingImpaired, bool omitLanguageCode = false)
     {
-        var stem = Path.GetFileNameWithoutExtension(videoPath);
+        var stem = MediaPath.FileNameWithoutExtension(videoPath);
         var code = SubtitleLanguages.Normalize(language) ?? SubtitleLanguages.Unknown;
         var variant = hearingImpaired ? ".sdh" : string.Empty;
 

@@ -301,7 +301,7 @@ public static class DownloadDispatchesEndpointRouteBuilderExtensions
                 FilePath: d.ImportedFilePath,
                 FileName: string.IsNullOrEmpty(d.ImportedFilePath)
                     ? null
-                    : Path.GetFileName(d.ImportedFilePath),
+                    : MediaPath.FileName(d.ImportedFilePath),
                 FileSize: d.DownloadedBytes,
                 ImportedUtc: d.ImportCompletedUtc,
                 FailureCode: d.ImportFailureCode,
