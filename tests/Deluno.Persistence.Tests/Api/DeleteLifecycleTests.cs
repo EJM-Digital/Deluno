@@ -67,13 +67,18 @@ public sealed class DeleteLifecycleTests
     {
         await using var app = await ApplicationTestHost.StartAsync();
 
+        // A real folder, because a destination rule pointing at one that does
+        // not exist is now refused (#407) - the same reason a library is.
+        var destination = Path.Combine(app.DataRoot, "kids-films");
+        Directory.CreateDirectory(destination);
+
         var id = await CreateAsync(app, "/api/destination-rules/", new
         {
             name = "Kids films",
             mediaType = "movie",
             matchKind = "tag",
             matchValue = "kids",
-            rootPath = Path.Combine(Path.GetTempPath(), "deluno-kids"),
+            rootPath = destination,
             folderTemplate = (string?)null,
             priority = 10,
             isEnabled = true

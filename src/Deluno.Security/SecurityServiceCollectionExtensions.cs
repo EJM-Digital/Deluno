@@ -2,6 +2,7 @@ using Deluno.Security.Data;
 using Deluno.Security.Hardening;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Authorization.Policy;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace Deluno.Security;
@@ -17,6 +18,8 @@ public static class SecurityServiceCollectionExtensions
                 DelunoAuthenticationHandler.SchemeName,
                 _ => { });
         services.AddSingleton<IAuthorizationHandler, DelunoScopeAuthorizationHandler>();
+        // So a 403 says which scope was wanted rather than arriving empty.
+        services.AddSingleton<IAuthorizationMiddlewareResultHandler, DelunoAuthorizationResultHandler>();
         services.AddAuthorizationBuilder()
             .AddPolicy(DelunoAuthorizationPolicies.Read, policy => policy.AddRequirements(new DelunoScopeRequirement("read")))
             .AddPolicy(DelunoAuthorizationPolicies.Write, policy => policy.AddRequirements(new DelunoScopeRequirement("write")))

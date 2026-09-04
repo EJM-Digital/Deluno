@@ -4,6 +4,7 @@ using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text;
+using System.Text.RegularExpressions;
 using System.Text.Json.Serialization;
 using Deluno.Contracts;
 using Deluno.Connections.Contracts;
@@ -729,6 +730,13 @@ public static class ConnectionsEndpointRouteBuilderExtensions
             new IntegrationResilienceRequest(
                 BuildIndexerResilienceKey(item),
                 "health-test",
+                // MaxAttempts: 1 because a person is waiting. The default is 3,
+                // which turned a failing Test into a 25-second silent spinner
+                // that then reported an 8-second timeout and one attempt - three
+                // numbers, none of which agreed. Retrying belongs to background
+                // work, where nobody is watching; DownloadClientGrabService and
+                // DownloadClientTelemetryService both say so explicitly.
+                MaxAttempts: 1,
                 FailureThreshold: 2,
                 ServiceType: "indexer",
                 ServiceId: item.Id,
@@ -747,7 +755,9 @@ public static class ConnectionsEndpointRouteBuilderExtensions
                 item.Id,
                 item.Name,
                 result.RetryAfterUtc)
-            : result.Value ?? HealthResult(
+            : result.Value is not null
+                ? WithActualAttempts(result.Value, result.Attempts)
+                : HealthResult(
                 "indexer",
                 item.Id,
                 item.Name,
@@ -767,6 +777,13 @@ public static class ConnectionsEndpointRouteBuilderExtensions
             new IntegrationResilienceRequest(
                 BuildDownloadClientResilienceKey(item),
                 "health-test",
+                // MaxAttempts: 1 because a person is waiting. The default is 3,
+                // which turned a failing Test into a 25-second silent spinner
+                // that then reported an 8-second timeout and one attempt - three
+                // numbers, none of which agreed. Retrying belongs to background
+                // work, where nobody is watching; DownloadClientGrabService and
+                // DownloadClientTelemetryService both say so explicitly.
+                MaxAttempts: 1,
                 FailureThreshold: 2,
                 ServiceType: "download-client",
                 ServiceId: item.Id,
@@ -785,7 +802,9 @@ public static class ConnectionsEndpointRouteBuilderExtensions
                 item.Id,
                 item.Name,
                 result.RetryAfterUtc)
-            : result.Value ?? HealthResult(
+            : result.Value is not null
+                ? WithActualAttempts(result.Value, result.Attempts)
+                : HealthResult(
                 "download-client",
                 item.Id,
                 item.Name,
@@ -858,6 +877,14 @@ public static class ConnectionsEndpointRouteBuilderExtensions
             if ((int)response.StatusCode >= 200 && (int)response.StatusCode < 400)
             {
                 var body = await response.Content.ReadAsStringAsync(cancellationToken);
+
+                // Torznab and Newznab report a rejected key as an <error> element
+                // with HTTP 200, so the status code alone cannot be trusted here.
+                if (TryReadIndexerError(body, out var indexerError))
+                {
+                    return ("degraded", $"Reached {uri.Host}, but it refused the request: {indexerError}", "auth");
+                }
+
                 if (LooksLikeIndexerResponse(item.Protocol, body))
                 {
                     return ("healthy", $"Reached {uri.Host} and received a valid {FormatIndexerProtocol(item.Protocol)} response.", null);
@@ -892,7 +919,41 @@ public static class ConnectionsEndpointRouteBuilderExtensions
 
         var separator = string.IsNullOrWhiteSpace(uri.Query) ? "?" : "&";
         var apiKey = string.IsNullOrWhiteSpace(item.ApiKey) ? string.Empty : $"&apikey={Uri.EscapeDataString(item.ApiKey)}";
-        return $"{uri}{separator}t=caps{apiKey}";
+
+        // t=search, not t=caps. Most Torznab and Newznab servers serve their
+        // capabilities to anybody, so testing t=caps asked a question the API
+        // key could not fail — the same hole SABnzbd's health probe had. A
+        // one-row search is the cheapest call that actually presents the
+        // credential, and it is what a real query does.
+        return $"{uri}{separator}t=search&limit=1{apiKey}";
+    }
+
+    /// <summary>
+    /// The description out of a Torznab/Newznab <c>&lt;error&gt;</c> element, if
+    /// the body is one.
+    ///
+    /// <para>These arrive with HTTP 200, which is why a rejected API key used to
+    /// read as a healthy indexer: the status said fine and nothing looked at
+    /// what was actually returned.</para>
+    /// </summary>
+    private static bool TryReadIndexerError(string body, out string description)
+    {
+        description = string.Empty;
+        if (string.IsNullOrWhiteSpace(body) || !body.Contains("<error", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        var match = Regex.Match(
+            body,
+            "<error[^>]*?description=\"(?<description>[^\"]*)\"",
+            RegexOptions.IgnoreCase,
+            TimeSpan.FromSeconds(1));
+
+        description = match.Success && !string.IsNullOrWhiteSpace(match.Groups["description"].Value)
+            ? match.Groups["description"].Value
+            : "the indexer returned an error rather than results.";
+        return true;
     }
 
     private static bool LooksLikeIndexerResponse(string protocol, string body)
@@ -1034,7 +1095,14 @@ public static class ConnectionsEndpointRouteBuilderExtensions
         }
 
         using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(8) };
-        var url = new Uri(uri, $"api?mode=version&output=json&apikey={Uri.EscapeDataString(item.Secret)}");
+
+        // mode=queue, not mode=version. SABnzbd answers mode=version to anybody
+        // — no key, wrong key, any key — so testing it asked a question that
+        // could not fail, and a client configured with a typo'd API key reported
+        // Healthy right up until the first grab returned 403. mode=queue is what
+        // SabnzbdDownloadClient itself calls, so the test now exercises the same
+        // credential on the same path as the real work.
+        var url = new Uri(uri, $"api?mode=queue&output=json&apikey={Uri.EscapeDataString(item.Secret)}");
         using var response = await client.GetAsync(url, cancellationToken);
         return response.IsSuccessStatusCode
             ? ("healthy", $"Connected to SABnzbd at {uri.Host}:{uri.Port}.", null)
@@ -1172,6 +1240,23 @@ public static class ConnectionsEndpointRouteBuilderExtensions
     private sealed record NzbGetRequest(
         [property: JsonPropertyName("method")] string Method,
         [property: JsonPropertyName("params")] object[] Params);
+
+    /// <summary>
+    /// Makes the reported attempt count match what the resilience policy
+    /// actually did.
+    ///
+    /// <para>The delegate builds its own result and defaults to one attempt.
+    /// When it <em>returns</em> a failure rather than throwing,
+    /// <c>result.Value</c> is non-null and that default was reported verbatim —
+    /// so a test that had tried three times still said <c>attempts: 1</c>. The
+    /// policy is the only thing that knows the real number, so it wins.</para>
+    /// </summary>
+    private static IntegrationHealthCheckResult WithActualAttempts(
+        IntegrationHealthCheckResult value,
+        int attempts)
+        => value.Failure is null || value.Failure.Attempts == attempts
+            ? value
+            : value with { Failure = value.Failure with { Attempts = attempts } };
 
     private static IntegrationHealthCheckResult HealthResult(
         string serviceType,

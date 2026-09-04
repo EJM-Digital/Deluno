@@ -124,8 +124,11 @@ public sealed class SabnzbdDownloadClient(IHttpClientFactory httpClientFactory) 
         {
             var http = httpClientFactory.CreateClient("download-clients");
             http.Timeout = TimeSpan.FromSeconds(8);
+            // get_config rather than get_cats: get_cats returns names only, and
+            // a name existing is not what makes a download land where Deluno is
+            // watching. This one carries each category's folder.
             using var response = await http.GetAsync(
-                new Uri(baseUri, $"api?mode=get_cats&output=json&apikey={Uri.EscapeDataString(apiKey)}"),
+                new Uri(baseUri, $"api?mode=get_config&section=categories&output=json&apikey={Uri.EscapeDataString(apiKey)}"),
                 cancellationToken);
             if (!response.IsSuccessStatusCode)
             {
@@ -134,8 +137,20 @@ public sealed class SabnzbdDownloadClient(IHttpClientFactory httpClientFactory) 
             }
 
             using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync(cancellationToken));
-            var found = ReadCategoryNames(document.RootElement)
-                .Any(item => string.Equals(item, normalizedCategory, StringComparison.OrdinalIgnoreCase));
+            var entry = ReadCategoryEntries(document.RootElement)
+                .FirstOrDefault(item => string.Equals(item.Name, normalizedCategory, StringComparison.OrdinalIgnoreCase));
+            var found = entry.Name is not null;
+
+            if (found)
+            {
+                return string.IsNullOrWhiteSpace(entry.Directory)
+                    ? new(client.Id, client.Name, normalizedCategory, DownloadClientCategoryStatuses.Configuration,
+                        $"SABnzbd has a category named {normalizedCategory}, but it has no folder, so downloads will go to SABnzbd's default completed folder rather than one Deluno watches. Set a folder on the category in SABnzbd.",
+                        Supported: true, Found: true, SavePath: null)
+                    : new(client.Id, client.Name, normalizedCategory, DownloadClientCategoryStatuses.Ready,
+                        $"SABnzbd has a category named {normalizedCategory}, saving to {entry.Directory}.",
+                        Supported: true, Found: true, SavePath: entry.Directory);
+            }
             return new(
                 client.Id,
                 client.Name,
@@ -231,6 +246,41 @@ public sealed class SabnzbdDownloadClient(IHttpClientFactory httpClientFactory) 
     private static long ParseHistorySize(JsonElement? value) => value is { ValueKind: JsonValueKind.Number } number && number.TryGetInt64(out var parsed) ? parsed : value is not null && long.TryParse(value.Value.ToString(), NumberStyles.Integer, CultureInfo.InvariantCulture, out parsed) ? parsed : 0;
     private static string? QueueError(string? status) => string.IsNullOrWhiteSpace(status) ? null : status.Contains("fail", StringComparison.OrdinalIgnoreCase) || status.Contains("error", StringComparison.OrdinalIgnoreCase) || status.Contains("stall", StringComparison.OrdinalIgnoreCase) ? status : null;
     private static string NormalizeHistoryOutcome(string value) => value.Equals("completed", StringComparison.OrdinalIgnoreCase) || value.Equals("succeeded", StringComparison.OrdinalIgnoreCase) || value.Equals("success", StringComparison.OrdinalIgnoreCase) ? DownloadQueueStatuses.Completed : value.Contains("fail", StringComparison.OrdinalIgnoreCase) || value.Contains("error", StringComparison.OrdinalIgnoreCase) ? "failed" : value.Contains("import", StringComparison.OrdinalIgnoreCase) ? DownloadQueueStatuses.ImportReady : value.Length == 0 ? "unknown" : value.Trim().ToLowerInvariant();
+
+    /// <summary>
+    /// Each configured category with the folder it writes to, from
+    /// <c>mode=get_config&amp;section=categories</c>.
+    /// </summary>
+    private static IEnumerable<(string? Name, string? Directory)> ReadCategoryEntries(JsonElement root)
+    {
+        if (root.ValueKind != JsonValueKind.Object ||
+            !root.TryGetProperty("config", out var config) ||
+            !config.TryGetProperty("categories", out var categories) ||
+            categories.ValueKind != JsonValueKind.Array)
+        {
+            yield break;
+        }
+
+        foreach (var category in categories.EnumerateArray())
+        {
+            if (category.ValueKind != JsonValueKind.Object)
+            {
+                continue;
+            }
+
+            var name = category.TryGetProperty("name", out var nameValue) && nameValue.ValueKind == JsonValueKind.String
+                ? nameValue.GetString()
+                : null;
+            var directory = category.TryGetProperty("dir", out var dirValue) && dirValue.ValueKind == JsonValueKind.String
+                ? dirValue.GetString()
+                : null;
+
+            if (!string.IsNullOrWhiteSpace(name))
+            {
+                yield return (name, directory);
+            }
+        }
+    }
 
     private static IReadOnlyList<string> ReadCategoryNames(JsonElement root)
     {

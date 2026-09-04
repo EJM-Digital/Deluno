@@ -456,7 +456,7 @@ export function SettingsProfilesPage() {
         <DrawerSection title="Basics">
           <FieldRow>
             <Field label="Profile name" error={errors.name}>
-              <Input value={form.name} onChange={(event) => { setErrors((current) => ({ ...current, name: undefined })); setForm((current) => ({ ...current, name: event.target.value })); }} placeholder="Movies / Standard" autoComplete="off" />
+              <Input value={form.name} onChange={(event) => { setErrors((current) => ({ ...current, name: undefined })); setForm((current) => ({ ...current, name: event.target.value })); }} placeholder="Name this quality profile" autoComplete="off" />
             </Field>
             <Field label="Media type">
               <SegmentedControl<"movies" | "tv"> value={form.mediaType} onValueChange={setMediaType} options={[{ value: "movies", label: "Movies" }, { value: "tv", label: "TV shows" }]} />

@@ -103,18 +103,38 @@ public sealed class QbittorrentDownloadClient : DownloadClientBase
             }
 
             using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync(cancellationToken));
-            var found = document.RootElement.ValueKind == JsonValueKind.Object && document.RootElement.EnumerateObject()
-                .Any(item => string.Equals(item.Name, normalizedCategory, StringComparison.OrdinalIgnoreCase));
-            return new(
-                client.Id,
-                client.Name,
-                normalizedCategory,
-                found ? DownloadClientCategoryStatuses.Ready : DownloadClientCategoryStatuses.Missing,
-                found
-                    ? $"qBittorrent has a category named {normalizedCategory}."
-                    : $"qBittorrent does not have a category named {normalizedCategory}. Create it there before using it in Deluno.",
-                Supported: true,
-                Found: found);
+            var match = document.RootElement.ValueKind == JsonValueKind.Object
+                ? document.RootElement.EnumerateObject()
+                    .Where(item => string.Equals(item.Name, normalizedCategory, StringComparison.OrdinalIgnoreCase))
+                    .Select(item => (JsonElement?)item.Value)
+                    .FirstOrDefault()
+                : null;
+
+            if (match is null)
+            {
+                return new(client.Id, client.Name, normalizedCategory, DownloadClientCategoryStatuses.Missing,
+                    $"qBittorrent does not have a category named {normalizedCategory}. Create it there before using it in Deluno.",
+                    Supported: true, Found: false);
+            }
+
+            // The name existing was never the interesting part. A category with
+            // no save path sends its downloads somewhere qBittorrent picks -
+            // with Automatic Torrent Management on that is
+            // <global save path>\<category name> - and Deluno used to call that
+            // "ready" while nothing ever arrived where it was watching.
+            var savePath = match.Value.ValueKind == JsonValueKind.Object &&
+                           match.Value.TryGetProperty("savePath", out var savePathValue) &&
+                           savePathValue.ValueKind == JsonValueKind.String
+                ? savePathValue.GetString()
+                : null;
+
+            return string.IsNullOrWhiteSpace(savePath)
+                ? new(client.Id, client.Name, normalizedCategory, DownloadClientCategoryStatuses.Configuration,
+                    $"qBittorrent has a category named {normalizedCategory}, but it has no save path, so downloads will go wherever qBittorrent defaults to rather than a folder Deluno watches. Set a save path on the category in qBittorrent.",
+                    Supported: true, Found: true, SavePath: null)
+                : new(client.Id, client.Name, normalizedCategory, DownloadClientCategoryStatuses.Ready,
+                    $"qBittorrent has a category named {normalizedCategory}, saving to {savePath}.",
+                    Supported: true, Found: true, SavePath: savePath);
         }
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or IOException)
         {

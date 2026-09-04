@@ -225,10 +225,21 @@ public sealed class SqliteJobStore(
         return Page<JobQueueItem>.Of(jobs, nextPageToken);
     }
 
+    /// <summary>Says what the retry did, including what it deliberately left alone.</summary>
+    private static string DescribeRetry(int requeued, int selected)
+    {
+        var jobs = requeued == 1 ? "job" : "jobs";
+        var duplicates = selected - requeued;
+        return duplicates <= 0
+            ? $"{requeued} failed {jobs} requeued."
+            : $"{requeued} failed {jobs} requeued, {duplicates} duplicate{(duplicates == 1 ? string.Empty : "s")} left alone.";
+    }
+
     public async Task<int> RetryFailedAsync(CancellationToken cancellationToken)
     {
         var now = timeProvider.GetUtcNow();
         var failedJobs = new List<JobQueueItem>();
+        var requeued = 0;
 
         await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
             DelunoDatabaseNames.Jobs,
@@ -279,18 +290,42 @@ public sealed class SqliteJobStore(
                     worker_id = NULL,
                     last_error = NULL,
                     next_attempt_utc = @scheduledUtc
-                WHERE status IN ('failed', 'dead-letter');
+                WHERE status IN ('failed', 'dead-letter')
+                  -- One row per dedupe key, or this violates
+                  -- ux_job_queue_active_dedupe the moment it commits.
+                  --
+                  -- 'dead-letter' is deliberately outside that index, so any
+                  -- number of dead-lettered rows may share a key - and they
+                  -- routinely do, because dead-lettering is what happens after
+                  -- repeated attempts at the same work. Promoting them all to
+                  -- 'queued' put them in the index together and the whole
+                  -- statement failed, which meant Retry returned a 500 exactly
+                  -- when there was a pile worth retrying. The newest row wins;
+                  -- the older ones are the same work and stay where they are.
+                  AND (
+                      dedupe_key IS NULL
+                      OR id = (
+                          SELECT inner_job.id
+                          FROM job_queue AS inner_job
+                          WHERE inner_job.dedupe_key = job_queue.dedupe_key
+                            AND inner_job.status IN ('failed', 'dead-letter')
+                          ORDER BY inner_job.completed_utc DESC, inner_job.created_utc DESC, inner_job.id DESC
+                          LIMIT 1
+                      )
+                  );
                 """;
 
             AddParameter(update, "@scheduledUtc", now.ToString("O"));
-            await update.ExecuteNonQueryAsync(cancellationToken);
+            // What the statement actually requeued, which is not the same as
+            // what was selected: duplicates sharing a dedupe key stay put.
+            requeued = await update.ExecuteNonQueryAsync(cancellationToken);
         }
 
         await InsertActivityAsync(
             connection,
             transaction,
             category: "job.retry",
-            message: $"{failedJobs.Count} failed job{(failedJobs.Count == 1 ? string.Empty : "s")} requeued.",
+            message: DescribeRetry(requeued, failedJobs.Count),
             detailsJson: null,
             relatedJobId: null,
             relatedEntityType: "job",
@@ -302,14 +337,15 @@ public sealed class SqliteJobStore(
             connection,
             transaction,
             category: DecisionExplanationActivity.Category,
-            message: $"job.retry: {failedJobs.Count} failed job{(failedJobs.Count == 1 ? string.Empty : "s")} were requeued by explicit retry.",
+            message: $"job.retry: {DescribeRetry(requeued, failedJobs.Count)}",
             detailsJson: JsonSerializer.Serialize(new DecisionExplanationPayload(
                 Scope: "job.retry",
                 Status: "requeued",
-                Reason: $"{failedJobs.Count} failed job{(failedJobs.Count == 1 ? string.Empty : "s")} were selected from failed/dead-letter states and scheduled for another attempt.",
+                Reason: $"{DescribeRetry(requeued, failedJobs.Count)} Duplicates sharing a dedupe key are left where they are, because they are the same work.",
                 Inputs: new Dictionary<string, string?>
                 {
                     ["failedJobCount"] = failedJobs.Count.ToString(CultureInfo.InvariantCulture),
+                    ["requeuedCount"] = requeued.ToString(CultureInfo.InvariantCulture),
                     ["scheduledUtc"] = now.ToString("O")
                 },
                 Outcome: "Jobs were moved back to queued with a fresh scheduled time.",
@@ -334,14 +370,14 @@ public sealed class SqliteJobStore(
 
         await realtimeEventPublisher.PublishActivityEventAddedAsync(
             Guid.CreateVersion7().ToString("N"),
-            $"{failedJobs.Count} failed job{(failedJobs.Count == 1 ? string.Empty : "s")} requeued.",
+            DescribeRetry(requeued, failedJobs.Count),
             "job.retry",
             SeverityForCategory("job.retry"),
             now.ToString("O"),
             cancellationToken);
 
-        DelunoObservability.JobRetries.Add(failedJobs.Count);
-        return failedJobs.Count;
+        DelunoObservability.JobRetries.Add(requeued);
+        return requeued;
     }
 
     public async Task<int> CancelPendingForRelatedEntityAsync(

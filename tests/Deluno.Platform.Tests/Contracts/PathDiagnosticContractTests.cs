@@ -72,7 +72,16 @@ public sealed class PathDiagnosticContractTests
         var payload = Diagnose(missing);
 
         Assert.False(payload.GetProperty("exists").GetBoolean());
-        Assert.Equal("That folder does not exist yet.", payload.GetProperty("message").GetString());
+
+        // The message now carries the second half of the answer: the folder is
+        // not there, and whether Deluno could make it. That used to be reported
+        // as a green "Writable" chip beside a red "does not exist", which read
+        // as nonsense (#408).
+        Assert.Equal(
+            "That folder does not exist yet, but Deluno could create it here.",
+            payload.GetProperty("message").GetString());
+        Assert.False(payload.GetProperty("writable").GetBoolean());
+        Assert.True(payload.GetProperty("parentWritable").GetBoolean());
         // The parent is there, so nothing exotic is in play and the reader must
         // not be sent to look at Docker volumes and mapped drives.
         Assert.Empty(payload.GetProperty("warnings").EnumerateArray());
