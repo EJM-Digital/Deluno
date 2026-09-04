@@ -201,6 +201,21 @@ public sealed class SqliteWriteThroughputBenchmarkTests
         long BusyCount);
 }
 
+/// <summary>
+/// A measurement, not a gate: it runs when asked for and is skipped otherwise.
+///
+/// <para><b>Why a benchmark must not be a CI assertion.</b> These compare
+/// elapsed wall-clock against a number, and a shared runner is not a stopwatch.
+/// A machine that is merely busy fails them, so left in the gate they go red
+/// for reasons no one can act on, and a test that fails for reasons no one can
+/// act on stops being read. Deluno.Persistence.Tests was already carrying three
+/// of these; two were behind this attribute and one was not, and the one that
+/// was not is a test that failed twice in four runs under load.</para>
+///
+/// <para>Nothing is lost by skipping them, because none of them is the only
+/// guard on its claim — the regressions they describe are asserted next door
+/// against a query plan, which has no clock in it and cannot flake.</para>
+/// </summary>
 [AttributeUsage(AttributeTargets.Method, AllowMultiple = false)]
 public sealed class SqliteBenchmarkFactAttribute : FactAttribute
 {
@@ -208,7 +223,10 @@ public sealed class SqliteBenchmarkFactAttribute : FactAttribute
     {
         if (!string.Equals(Environment.GetEnvironmentVariable("DELUNO_RUN_SQLITE_BENCHMARK"), "1", StringComparison.Ordinal))
         {
-            Skip = "Benchmark; set DELUNO_RUN_SQLITE_BENCHMARK=1 and run with --filter FullyQualifiedName~SqliteWriteThroughput.";
+            // Named the class rather than one particular benchmark: three
+            // classes wear this attribute now, and the message used to send
+            // everyone to SqliteWriteThroughput whichever one they had hit.
+            Skip = "Benchmark; set DELUNO_RUN_SQLITE_BENCHMARK=1 and filter to the benchmark class you want to read.";
         }
     }
 }

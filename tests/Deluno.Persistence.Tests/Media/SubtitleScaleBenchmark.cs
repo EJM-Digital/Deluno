@@ -21,13 +21,25 @@ namespace Deluno.Persistence.Tests.Media;
 /// invoking.
 ///
 /// Read the numbers with:
-/// <c>dotnet test --filter SubtitleScaleBenchmark -l "console;verbosity=detailed"</c>
+/// <c>DELUNO_RUN_SQLITE_BENCHMARK=1 dotnet test --filter SubtitleScaleBenchmark -l "console;verbosity=detailed"</c>
+///
+/// <para><b>Opt-in, like the two benchmarks next door.</b> Both of these
+/// compare elapsed milliseconds against a number, and a shared CI runner is not
+/// a stopwatch: under load this class failed twice in four runs, for no reason
+/// anyone could act on. Nothing is lost by that, because neither assertion is
+/// the only guard on its claim. "The rollup has become a scan" — the failure
+/// the 250 ms line names in its own message — is asserted deterministically for
+/// films and for shows by <c>SubtitleRollupQueryPlanTests</c>, against
+/// <c>EXPLAIN QUERY PLAN</c>, with no clock in it. The wanted-and-held counts
+/// asserted below are held in four cases by
+/// <c>SubtitleBarPersistenceTests</c>. What is left here that lives nowhere
+/// else is the measurement, and a measurement belongs behind a switch.</para>
 /// </summary>
 public sealed class SubtitleScaleBenchmark(ITestOutputHelper output)
 {
     private static readonly DateTimeOffset Now = DateTimeOffset.Parse("2026-08-27T00:00:00Z");
 
-    [Fact]
+    [SqliteBenchmarkFact]
     public async Task Twenty_thousand_films_page_the_same_whether_or_not_subtitles_are_wanted()
     {
         const int total = 20_000;
@@ -79,7 +91,7 @@ public sealed class SubtitleScaleBenchmark(ITestOutputHelper output)
     /// is nothing to do. Small, and a per-page round trip, so it is measured
     /// rather than assumed to be free.
     /// </summary>
-    [Fact]
+    [SqliteBenchmarkFact]
     public async Task Asking_the_libraries_what_they_want_costs_a_fraction_of_a_page()
     {
         using var storage = TestStorage.Create();

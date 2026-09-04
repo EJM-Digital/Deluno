@@ -177,18 +177,41 @@ public sealed class OutboundRequestThrottleTests
 
         // Four callers computing "my slot is now" from the same instant is
         // exactly the burst this prevents, so only one may be through.
-        await Task.WhenAny(Task.WhenAll(calls), Task.Delay(50));
+        //
+        // Waited for by state rather than by duration. The pacing itself runs
+        // on a fake clock and is exact; what is not exact is how soon this
+        // machine gets round to running the continuations, and a fixed 50 ms
+        // grace was quietly asserting that it would be prompt. On a loaded
+        // runner it is not, and this failed having found nothing wrong.
+        await SettledAsync(calls, expected: 1);
         Assert.Equal(1, calls.Count(call => call.IsCompletedSuccessfully));
 
         for (var index = 0; index < 4; index++)
         {
             time.Advance(TimeSpan.FromSeconds(2));
-            await Task.WhenAny(Task.WhenAll(calls), Task.Delay(50));
+            await SettledAsync(calls, expected: Math.Min(index + 2, calls.Length));
         }
 
         var waits = await Task.WhenAll(calls);
         Assert.All(waits, wait => Assert.NotNull(wait));
         Assert.Equal([0, 2, 4, 6], waits.Select(wait => (int)wait!.Value.TotalSeconds).Order().ToArray());
+    }
+
+    /// <summary>
+    /// Waits until the expected number of callers have come through, or gives
+    /// up after long enough that the machine is not the explanation.
+    ///
+    /// <para>The deadline is real time, but it is a ceiling rather than a
+    /// measurement: a slow machine takes longer and still passes, and a throttle
+    /// that never lets the caller through still fails.</para>
+    /// </summary>
+    private static async Task SettledAsync(Task<TimeSpan?>[] calls, int expected)
+    {
+        var deadline = DateTime.UtcNow.AddSeconds(10);
+        while (calls.Count(call => call.IsCompletedSuccessfully) < expected && DateTime.UtcNow < deadline)
+        {
+            await Task.Delay(5);
+        }
     }
 
     private static OutboundRequestThrottle Create(TimeProvider time)
