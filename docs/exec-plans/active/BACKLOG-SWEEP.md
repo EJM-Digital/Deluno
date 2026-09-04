@@ -56,6 +56,8 @@ starting.
 | #341 Mobile web | 2 | no | |
 | #340 Native mobile | 2 | no | iOS needs macOS + Xcode, which do not exist here. |
 | #269 README / screenshots | 2 | **yes** | Closed 4 Sep — [audit](https://github.com/jampat000/Deluno/issues/269#issuecomment-5532594658). 2/2. Screenshots retaken against current `main` (#392); install guidance had been pointing at an unverified image (#391). |
+| #386 Seven-step Quality & Release | 5 | **yes** | Closed 4 Sep — [audit](https://github.com/jampat000/Deluno/issues/386#issuecomment-5534228378). 5/5. Found the Remux acceptance defect on the deployed build. |
+| #394 Nothing global in Quality & Release | 6 | **yes** | Closed 4 Sep — [audit](https://github.com/jampat000/Deluno/issues/394#issuecomment-5534224388). 6/6. Size, when-to-stop, weighting and acquisition now per profile. |
 | #322 Stack epic | 0 | no | Closes when its children do. |
 | #349 Playback goals | 6 | — | **PARKED** by the owner. Do not work it. Do not close it. |
 | #78 GA readiness epic | 12 | no | Last. Parent of #81/#82 — closes after them, never before. |
