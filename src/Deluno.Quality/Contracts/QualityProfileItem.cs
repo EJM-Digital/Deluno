@@ -28,4 +28,10 @@ public sealed record QualityProfileItem(
     /// the cutoff is met, and require a preference gain to replace a file of
     /// the same quality.
     /// </summary>
-    QualityUpgradeStopPolicy? UpgradeStop = null);
+    QualityUpgradeStopPolicy? UpgradeStop = null,
+    /// <summary>
+    /// How much this profile cares about each preference it selected, keyed by
+    /// custom-format id. A preference with no answer here keeps the guide's own
+    /// recommendation. See <c>ProfileFormatIntents</c>.
+    /// </summary>
+    IReadOnlyDictionary<string, string>? FormatIntents = null);

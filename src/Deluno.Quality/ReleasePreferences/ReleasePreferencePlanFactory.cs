@@ -38,7 +38,8 @@ public static class ReleasePreferencePlanFactory
             id: $"quality-profile/{profile.Id}",
             version: version,
             customFormats: selected,
-            guidePackage: guidePackage);
+            guidePackage: guidePackage,
+            formatIntents: profile.FormatIntents);
     }
 
     /// <summary>
@@ -157,7 +158,8 @@ public static class ReleasePreferencePlanFactory
         string? id = null,
         string? version = null,
         IReadOnlyList<CustomFormatItem>? customFormats = null,
-        GuidePackage? guidePackage = null)
+        GuidePackage? guidePackage = null,
+        IReadOnlyDictionary<string, string>? formatIntents = null)
     {
         guidePackage ??= GuidePackageCatalog.Current;
         var normalizedMediaType = MediaPolicyCatalog.NormalizeMediaType(mediaType);
@@ -204,6 +206,13 @@ public static class ReleasePreferencePlanFactory
                 continue;
             }
 
+            // #394: how much this profile cares. A preference it has not
+            // answered for keeps the guide's own recommendation, which is what
+            // every profile had before it could answer at all.
+            var answer = formatIntents is not null && formatIntents.TryGetValue(format.Id, out var stated)
+                ? ProfileFormatIntents.Normalize(stated)
+                : ProfileFormatIntents.FromGuideScore(format.Score);
+
             sources.Add(new PreferencePlanProvenance(
                 SourceKind: guideFormat.SourceKind,
                 SourceId: guideFormat.TrashId,
@@ -222,14 +231,25 @@ public static class ReleasePreferencePlanFactory
                 if (PreferenceTraitRegistry.Current.TryResolve(traitId, out var trait)
                     && !trait.Transient)
                 {
-                    if (IsForbiddenCategory(guideFormat.Category))
+                    // The profile's own answer decides, and it can refuse a
+                    // trait the guide merely dislikes as well as tolerate one
+                    // the guide's category would have refused outright. Two
+                    // shelves that both want HDR must be able to disagree about
+                    // whether it is a nice-to-have or the whole point.
+                    if (ProfileFormatIntents.Refuses(answer) || IsForbiddenCategory(guideFormat.Category))
                     {
                         forbiddenTraits.Add(trait.Id);
                         continue;
                     }
 
+                    // "Don't mind" still puts the trait on the ladder. It has
+                    // to be there for the plan to *place* a file carrying it -
+                    // dropping it would leave a rung missing and a held file
+                    // unrankable, which is the same defect the quality family
+                    // had in #379. Not caring means it does not drive an
+                    // upgrade, not that Deluno cannot see it.
                     mappedTraits.Add(trait.Id);
-                    if (format.UpgradeAllowed)
+                    if (ProfileFormatIntents.DrivesUpgrade(answer))
                     {
                         upgradeDrivingTraits.Add(trait.Id);
                     }

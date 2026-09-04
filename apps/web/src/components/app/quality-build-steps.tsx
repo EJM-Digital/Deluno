@@ -39,11 +39,14 @@ export interface QualityBuildStepsProps {
   allowed: string[];
   cutoff: string;
   customFormatIds: string[];
+  /** How much this profile cares about each selected preference, by format id. */
+  formatIntents: Record<string, string>;
   upgradeUntilCutoff: boolean;
   upgradeUnknownItems: boolean;
   customFormats: CustomFormatItem[];
   guide: GuidePackage;
   onCustomFormatIdsChange: (ids: string[]) => void;
+  onFormatIntentChange: (formatId: string, intent: string) => void;
   /** Step 1 and step 2 own controls that live outside the format list. */
   renderQualityControls: () => React.ReactNode;
   renderSizeControls: () => React.ReactNode;
@@ -175,6 +178,45 @@ function StepRow({
             </div>
           ) : null}
 
+          {/* #394: how much, not only whether. Two shelves that both want HDR
+              must be able to disagree about whether it is a nice-to-have or the
+              whole point — and the answer is words, because an unbounded score
+              is exactly what #353 took off this surface. */}
+          {chosen.length ? (
+            <ul className="grid gap-1.5">
+              {chosen.map((formatId) => {
+                const format = offered.find((candidate) => candidate.id === formatId);
+                if (!format) return null;
+                const intent = props.formatIntents[formatId] ?? guideIntentFor(format.score);
+                return (
+                  <li key={formatId} className="flex flex-wrap items-center justify-between gap-2">
+                    <span className="text-[length:var(--type-caption)]">{format.name}</span>
+                    <div role="radiogroup" aria-label={`How much this profile wants ${format.name}`} className="flex gap-1">
+                      {INTENT_CHOICES.map((choice) => (
+                        <button
+                          key={choice.value}
+                          type="button"
+                          role="radio"
+                          aria-checked={intent === choice.value}
+                          title={choice.help}
+                          onClick={() => props.onFormatIntentChange(formatId, choice.value)}
+                          className={cn(
+                            "rounded-md border px-2 py-0.5 text-[length:var(--type-caption)] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                            intent === choice.value
+                              ? "border-ring bg-ring/15 text-foreground"
+                              : "border-hairline text-muted-foreground hover:text-foreground"
+                          )}
+                        >
+                          {choice.label}
+                        </button>
+                      ))}
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
+          ) : null}
+
           {props.renderAdvanced?.(step) ?? null}
 
           <StepJudgement step={step} {...props} />
@@ -204,6 +246,7 @@ function StepJudgement(props: QualityBuildStepsProps & { step: QualityStep }) {
       allowedQualities: props.allowed,
       cutoffQuality: props.cutoff,
       customFormatIds: props.customFormatIds,
+      formatIntents: props.formatIntents,
       upgradeUntilCutoff: props.upgradeUntilCutoff,
       upgradeUnknownItems: props.upgradeUnknownItems,
       allowLowerQualityReplacements: false,
@@ -215,6 +258,7 @@ function StepJudgement(props: QualityBuildStepsProps & { step: QualityStep }) {
       props.allowed,
       props.cutoff,
       props.customFormatIds,
+      props.formatIntents,
       props.upgradeUntilCutoff,
       props.upgradeUnknownItems,
       releaseName
@@ -338,6 +382,32 @@ export function verdictTone(status: string | undefined): "ok" | "warn" | "bad" |
  * row cannot hold, and the point of the checklist line is to say the step has
  * been answered - the sliders below say what the answer is.
  */
+/**
+ * The same five words the release-rules list uses, so somebody who has read one
+ * of these screens has read both.
+ */
+const INTENT_CHOICES = [
+  { value: "blocked", label: "Never", help: "Deluno will never take a release that matches this." },
+  { value: "avoid", label: "Avoid", help: "Taken only when nothing better is available." },
+  { value: "neutral", label: "Don't mind", help: "Makes no difference to which release Deluno picks." },
+  { value: "prefer", label: "Prefer", help: "Tips a close call towards releases that match." },
+  { value: "strong-prefer", label: "Must have", help: "Weighs heavily in favour, and can justify replacing a file you already have." }
+];
+
+/**
+ * What the guide recommends for a preference this profile has not answered for.
+ *
+ * <p>The same thresholds the backend reads, because a profile showing "Prefer"
+ * while the engine treats it as "Must have" is worse than showing nothing.</p>
+ */
+export function guideIntentFor(score: number): string {
+  if (score <= -10000) return "blocked";
+  if (score < 0) return "avoid";
+  if (score === 0) return "neutral";
+  if (score >= 500) return "strong-prefer";
+  return "prefer";
+}
+
 function describeSizeAnswer(tierCount: number): string {
   if (tierCount === 0) return "Nothing chosen yet";
   return tierCount === 1 ? "Your own size for 1 tier" : `Your own size for each of ${tierCount} tiers`;

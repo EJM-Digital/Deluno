@@ -69,6 +69,7 @@ export function judgeDraftProfile(request: {
   allowedQualities: string[];
   cutoffQuality: string;
   customFormatIds: string[];
+  formatIntents: Record<string, string>;
   upgradeUntilCutoff: boolean;
   upgradeUnknownItems: boolean;
   allowLowerQualityReplacements: boolean;

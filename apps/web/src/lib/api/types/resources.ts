@@ -141,6 +141,8 @@ export interface QualityProfileItem {
   sizeRules?: ProfileSizeRule[] | null;
   /** When this profile stops looking for something better. */
   upgradeStop?: QualityUpgradeStopPolicy | null;
+  /** How much this profile cares about each preference it selected, by format id. */
+  formatIntents?: Record<string, string> | null;
   createdUtc: string;
   updatedUtc: string;
 }
