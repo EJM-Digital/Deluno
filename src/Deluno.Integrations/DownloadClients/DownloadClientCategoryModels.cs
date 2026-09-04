@@ -18,4 +18,11 @@ public sealed record DownloadClientCategoryCheckResult(
     string Status,
     string Message,
     bool Supported,
-    bool Found);
+    bool Found,
+    /// <summary>
+    /// Where the client will actually put files for this category, when it will
+    /// say. Reported because a category's *name* existing is not the thing that
+    /// makes a download land where Deluno is looking - and checking only the
+    /// name is how a misrouted category came back "ready".
+    /// </summary>
+    string? SavePath = null);

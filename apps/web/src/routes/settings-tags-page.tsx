@@ -191,7 +191,7 @@ export function SettingsTagsPage() {
         <DrawerSection title="Tag details">
           <FieldRow>
             <Field label="Name" error={nameError} help="Use the same spelling wherever you apply this tag. Tags are case-insensitive.">
-              <Input value={form.name} onChange={(event) => { setNameError(null); setForm((current) => ({ ...current, name: event.target.value })); }} placeholder="Kids" autoComplete="off" />
+              <Input value={form.name} onChange={(event) => { setNameError(null); setForm((current) => ({ ...current, name: event.target.value })); }} placeholder="Name this tag, for example Kids" autoComplete="off" />
             </Field>
             <Field label="Colour">
               <Select value={form.color} onChange={(event) => setForm((current) => ({ ...current, color: event.target.value }))} options={COLORS.map((color) => ({ value: color, label: capitalise(color) }))} />

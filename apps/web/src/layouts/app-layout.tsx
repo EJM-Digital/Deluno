@@ -739,6 +739,7 @@ function ContentTopbar({
   onLogout: () => void;
   ownsHeading: boolean;
 }) {
+  const navigate = useNavigate();
   const searchRef = useRef<HTMLInputElement>(null);
   const commandShortcut = commandPaletteShortcut();
   const { density, setDensity } = useDensity();
@@ -794,7 +795,22 @@ function ContentTopbar({
           <Search className={TOPBAR_ICON} />
         </button>
 
-        <button type="button" className={cn(TOPBAR_ICON_BUTTON, "relative")} aria-label="Notifications">
+        {/*
+          The dot only appears when something has failed, so this button asks
+          for attention — and it used to have no onClick at all, which meant it
+          asked and then swallowed the answer. Activity is where the failures
+          are explained, so that is where it goes.
+        */}
+        <button
+          type="button"
+          className={cn(TOPBAR_ICON_BUTTON, "relative")}
+          onClick={() => navigate("/activity")}
+          aria-label={
+            attention.failedJobs > 0
+              ? `Notifications — ${attention.failedJobs} failed job${attention.failedJobs === 1 ? "" : "s"}`
+              : "Notifications"
+          }
+        >
           <Bell className={TOPBAR_ICON} strokeWidth={1.75} />
           {attention.failedJobs > 0 ? (
             <span className="absolute right-1.5 top-1.5 h-[5px] w-[5px] rounded-full bg-destructive shadow-[0_0_0_1.5px_hsl(var(--background)),0_0_6px_hsl(var(--destructive)/0.7)]" />

@@ -213,6 +213,7 @@ public static class FilesystemEndpointRouteBuilderExtensions
             var warnings = new List<string>();
             var canRead = false;
             var canWrite = false;
+        var canCreateHere = false;
 
             // Only reach for the exotic explanations when something exotic is
             // actually in play. A hand-typed local folder that is simply not
@@ -252,19 +253,21 @@ public static class FilesystemEndpointRouteBuilderExtensions
                 warnings.Add($"Read check failed: {exception.Message}");
             }
 
+            // Two different questions, which used to share one answer.
+            //
+            // `Writable` is about this path: can Deluno put a file in this
+            // folder. `ParentWritable` is about the folder above it: could
+            // Deluno create this one. The probe only ever ran against the
+            // parent, so a folder that did not exist came back writable - a
+            // green chip directly under "That folder does not exist yet".
+            if (isDirectory)
+            {
+                canWrite = TryProbeWrite(fullPath, "Write check failed", warnings);
+            }
+
             if (parentExists)
             {
-                var probePath = Path.Combine(parent!, $".deluno-write-test-{Guid.CreateVersion7():N}.tmp");
-                try
-                {
-                    File.WriteAllText(probePath, "deluno");
-                    File.Delete(probePath);
-                    canWrite = true;
-                }
-                catch (Exception exception) when (exception is UnauthorizedAccessException or IOException)
-                {
-                    warnings.Add($"Write check failed: {exception.Message}");
-                }
+                canCreateHere = TryProbeWrite(parent!, "Parent write check failed", warnings);
             }
 
             return new PathDiagnosticResponse(
@@ -277,25 +280,57 @@ public static class FilesystemEndpointRouteBuilderExtensions
                 ParentExists: parentExists,
                 Readable: canRead,
                 Writable: canWrite,
+                ParentWritable: canCreateHere,
                 IsUncPath: isUncPath,
                 IsLikelyDockerPath: isLikelyDockerPath,
-                Message: DescribePath(exists, isDirectory, isFile, parentExists, canRead, canWrite),
+                Message: DescribePath(exists, isDirectory, isFile, parentExists, canRead, canWrite, canCreateHere),
                 Warnings: warnings);
         }
         catch (Exception exception) when (exception is ArgumentException or NotSupportedException or PathTooLongException)
         {
-            return new PathDiagnosticResponse(path, path, null, false, false, false, false, false, false, false, false, "That path could not be read.", [exception.Message]);
+            return new PathDiagnosticResponse(path, path, null, false, false, false, false, false, false, false, false, false, "That path could not be read.", [exception.Message]);
+        }
+    }
+
+    /// <summary>
+    /// Whether Deluno can actually write into a directory, proven by writing.
+    /// </summary>
+    private static bool TryProbeWrite(string directory, string warningPrefix, List<string> warnings)
+    {
+        var probePath = Path.Combine(directory, $".deluno-write-test-{Guid.CreateVersion7():N}.tmp");
+        try
+        {
+            File.WriteAllText(probePath, "deluno");
+            File.Delete(probePath);
+            return true;
+        }
+        catch (Exception exception) when (exception is UnauthorizedAccessException or IOException)
+        {
+            warnings.Add($"{warningPrefix}: {exception.Message}");
+            return false;
         }
     }
 
     /// <summary>One sentence telling the reader where they stand.</summary>
-    private static string DescribePath(bool exists, bool isDirectory, bool isFile, bool parentExists, bool readable, bool writable)
+    private static string DescribePath(
+        bool exists,
+        bool isDirectory,
+        bool isFile,
+        bool parentExists,
+        bool readable,
+        bool writable,
+        bool parentWritable)
     {
         if (!exists)
         {
-            return parentExists
-                ? "That folder does not exist yet."
-                : "That path does not exist, and neither does the folder above it.";
+            if (!parentExists)
+            {
+                return "That path does not exist, and neither does the folder above it.";
+            }
+
+            return parentWritable
+                ? "That folder does not exist yet, but Deluno could create it here."
+                : "That folder does not exist yet, and Deluno cannot write to the folder above it.";
         }
 
         if (isFile)
@@ -489,6 +524,13 @@ public sealed record PathDiagnosticResponse(
     bool ParentExists,
     bool Readable,
     bool Writable,
+    /// <summary>
+    /// Whether Deluno could create this path, which is a question about the
+    /// folder above it rather than about this one. Kept separate from
+    /// <see cref="Writable"/> because reporting both under one name is what
+    /// made a missing folder look writable.
+    /// </summary>
+    bool ParentWritable,
     bool IsUncPath,
     bool IsLikelyDockerPath,
     string Message,

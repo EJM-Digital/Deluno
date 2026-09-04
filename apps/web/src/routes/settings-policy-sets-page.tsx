@@ -637,7 +637,7 @@ export function SettingsPolicySetsPage() {
                   setNameError(null);
                   setForm((current) => ({ ...current, name: event.target.value }));
                 }}
-                placeholder="Everyday movies"
+                placeholder="Name this library profile"
                 autoComplete="off"
               />
             </Field>

@@ -55,6 +55,13 @@ internal sealed class ApplicationTestHost : IAsyncDisposable
 
     public IServiceProvider Services => _host.Services;
 
+    /// <summary>
+    /// A second client against the same server, carrying no credentials of its
+    /// own. For tests that want to present an API key rather than the owner's
+    /// token — a plain <c>HttpClient</c> would try to reach the network.
+    /// </summary>
+    public HttpClient CreateAnonymousClient() => _host.GetTestClient();
+
     public string DataRoot => _storage.DataRoot;
 
     public static async Task<ApplicationTestHost> StartAsync(CancellationToken cancellationToken = default)

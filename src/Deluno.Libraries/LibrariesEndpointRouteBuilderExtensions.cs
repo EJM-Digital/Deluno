@@ -285,6 +285,9 @@ public static class LibrariesEndpointRouteBuilderExtensions
                 errors["rootPath"] = ["Choose a folder for this library."];
             }
 
+            RequireExistingFolder(errors, "rootPath", request.RootPath, "this library lives in");
+            RequireExistingFolder(errors, "downloadsPath", request.DownloadsPath, "downloads arrive in");
+
             if (errors.Count > 0)
             {
                 return Results.ValidationProblem(errors);
@@ -629,6 +632,35 @@ public static class LibrariesEndpointRouteBuilderExtensions
     }
 
 
+    /// <summary>
+    /// Refuses a folder that is not there.
+    ///
+    /// <para>A library used to save happily with a root folder that did not
+    /// exist. The form said so plainly — "That folder does not exist yet" — and
+    /// then Create saved it anyway, and nothing in Deluno.Libraries ever creates
+    /// a directory. So the library pointed at nothing, permanently, and the
+    /// owner found out at import time. Saying it twice and meaning it once is
+    /// worse than not checking at all.</para>
+    /// </summary>
+    private static void RequireExistingFolder(
+        Dictionary<string, string[]> errors,
+        string field,
+        string? path,
+        string whatItIsFor)
+    {
+        if (string.IsNullOrWhiteSpace(path) || errors.ContainsKey(field))
+        {
+            return;
+        }
+
+        if (!Directory.Exists(path.Trim()))
+        {
+            errors[field] = File.Exists(path.Trim())
+                ? [$"{path.Trim()} is a file, not a folder. Choose the folder {whatItIsFor}."]
+                : [$"{path.Trim()} does not exist. Create it first, or choose the folder {whatItIsFor}."];
+        }
+    }
+
     private static Dictionary<string, string[]> ValidateLibrary(CreateLibraryRequest request)
     {
         var errors = new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase);
@@ -648,6 +680,10 @@ public static class LibrariesEndpointRouteBuilderExtensions
         {
             errors["mediaType"] = ["Choose Movies or TV Shows."];
         }
+
+        RequireExistingFolder(errors, "rootPath", request.RootPath, "this library lives in");
+        RequireExistingFolder(errors, "downloadsPath", request.DownloadsPath, "downloads arrive in");
+        RequireExistingFolder(errors, "processorOutputPath", request.ProcessorOutputPath, "your processor writes to");
 
         return errors;
     }
@@ -671,6 +707,8 @@ public static class LibrariesEndpointRouteBuilderExtensions
         {
             errors["rootPath"] = ["Choose where matching titles should land."];
         }
+
+        RequireExistingFolder(errors, "rootPath", rootPath, "matching titles should land in");
 
         return errors;
     }

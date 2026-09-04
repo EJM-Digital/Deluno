@@ -32,13 +32,22 @@ public sealed class DownloadClientCategoryCheckTests
         Assert.Contains("native-sab-id-42", result.ResponseJson);
     }
 
+    /// <summary>
+    /// A category is only ready when it has somewhere to put files.
+    ///
+    /// <para>This used to ask <c>mode=get_cats</c>, which returns names and
+    /// nothing else, so a category that sent downloads to SABnzbd's default
+    /// folder reported ready and nothing ever arrived where Deluno was watching
+    /// (#410). <c>get_config</c> carries each category's folder.</para>
+    /// </summary>
     [Fact]
     public async Task Sabnzbd_category_check_reports_a_matching_category_as_ready()
     {
         var handler = new StubHandler(request =>
         {
-            Assert.Contains("mode=get_cats", request.RequestUri?.Query, StringComparison.OrdinalIgnoreCase);
-            return JsonResponse("{\"categories\":[\"movies\",\"anime\"]}");
+            Assert.Contains("mode=get_config", request.RequestUri?.Query, StringComparison.OrdinalIgnoreCase);
+            Assert.Contains("section=categories", request.RequestUri?.Query, StringComparison.OrdinalIgnoreCase);
+            return JsonResponse("{\"config\":{\"categories\":[{\"name\":\"movies\",\"dir\":\"films\"},{\"name\":\"anime\",\"dir\":\"anime-in\"}]}}");
         });
         var client = CreateClient("sabnzbd");
 
@@ -48,6 +57,27 @@ public sealed class DownloadClientCategoryCheckTests
         Assert.True(result.Supported);
         Assert.True(result.Found);
         Assert.Equal(DownloadClientCategoryStatuses.Ready, result.Status);
+        Assert.Equal("anime-in", result.SavePath);
+        Assert.Contains("anime-in", result.Message);
+    }
+
+    /// <summary>
+    /// The case that produced #410: the category is there, and it will not put
+    /// anything where Deluno is looking.
+    /// </summary>
+    [Fact]
+    public async Task Sabnzbd_category_check_refuses_to_call_a_category_with_no_folder_ready()
+    {
+        var handler = new StubHandler(_ =>
+            JsonResponse("{\"config\":{\"categories\":[{\"name\":\"anime\",\"dir\":\"\"}]}}"));
+
+        var result = await new SabnzbdDownloadClient(new StubHttpClientFactory(handler))
+            .CheckCategoryAsync(CreateClient("sabnzbd"), "anime", CancellationToken.None);
+
+        Assert.True(result.Found);
+        Assert.NotEqual(DownloadClientCategoryStatuses.Ready, result.Status);
+        Assert.Null(result.SavePath);
+        Assert.Contains("no folder", result.Message, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
