@@ -117,14 +117,28 @@ foreach ($entry in $invariantFiles) {
     }
 }
 
-# Host-wiring parity. Deluno has two ASP.NET host entry points:
+# Host-wiring parity. Deluno has three ASP.NET host entry points:
 #   - src/Deluno.Host/Program.cs (Docker / Linux container)
-#   - apps/windows-tray/DelunoServer.cs + ServiceHost.cs (Windows tray)
-# Both MUST register the same set of services and map the same set of
-# endpoints; if they diverge, the binary that ships in the Velopack
-# installer (built from the tray) silently lacks features the Docker image has.
+#   - apps/windows-tray/DelunoServer.cs (the Windows tray, which is what the
+#     Velopack installer runs)
+#   - apps/windows-tray/ServiceHost.cs (the same app as a Windows service)
+#
+# All three MUST register the same services and map the same endpoints. This
+# check has always said so. Until 2026-09-04 it enforced exactly one call, and
+# in the gap the hosts drifted badly enough that the installer shipped an
+# application that could not start: Deluno.Host composed sixteen modules and
+# mapped twenty-three endpoint groups where the tray composed twelve and mapped
+# fifteen. The packaged build threw on IDispatchRecoveryHandler and never opened
+# a listener, and every read route the tray had not mapped was answered by its
+# SPA fallback with the web page and a 200.
+#
+# The fix was one composition and one endpoint map, so what this now checks is
+# that all three use them rather than hand-listing anything. Naming the risk in
+# a comment and not checking it is how the drift lasted.
 $hostWiringRequiredCalls = @(
-    "AddDelunoPlatformSecrets"
+    "AddDelunoPlatformSecrets",
+    "AddDelunoApplicationModules",
+    "MapDelunoApplicationEndpoints"
 )
 $hostWiringFiles = @(
     @{ Path = "src\Deluno.Host\Program.cs"; Label = "src/Deluno.Host/Program.cs" },
@@ -140,29 +154,37 @@ foreach ($entry in $hostWiringFiles) {
             Add-Failure "Host-wiring parity: $($entry.Label) is missing required call '$call'."
         }
     }
-}
 
-$hostEndpointMapPath = Join-Path $Root "src\Deluno.Host\DelunoApplicationEndpointMapping.cs"
-$hostProgramPath = Join-Path $Root "src\Deluno.Host\Program.cs"
-if (-not (Test-Path -LiteralPath $hostEndpointMapPath -PathType Leaf)) {
-    Add-Failure "Host-wiring parity: missing shared endpoint map src/Deluno.Host/DelunoApplicationEndpointMapping.cs."
-} else {
-    $hostEndpointMap = Get-Content -LiteralPath $hostEndpointMapPath -Raw
-    if (-not $hostEndpointMap.Contains("MapDelunoSecretsDiagnostics")) {
-        Add-Failure "Host-wiring parity: shared endpoint map is missing required call 'MapDelunoSecretsDiagnostics'."
+    # A host that maps the shared endpoints must not then hand unknown /api
+    # paths to the SPA. MapFallbackToFile has no way to exclude them, so a
+    # missing route returns index.html with a 200 and a broken client call
+    # looks like a successful page load.
+    if ($content.Contains("MapFallbackToFile")) {
+        Add-Failure "Host-wiring parity: $($entry.Label) uses MapFallbackToFile, which answers unknown /api paths with the app shell. Use MapFallback with a /api guard."
     }
 }
 
-if ((Test-Path -LiteralPath $hostProgramPath -PathType Leaf) -and
-    -not (Get-Content -LiteralPath $hostProgramPath -Raw).Contains("MapDelunoApplicationEndpoints")) {
-    Add-Failure "Host-wiring parity: src/Deluno.Host/Program.cs must use the shared endpoint map."
+# The shared pieces both hosts depend on, in the library both reference.
+foreach ($shared in @(
+    @{ Path = "src\Deluno.Worker\DelunoApplicationComposition.cs"; Label = "shared composition" },
+    @{ Path = "src\Deluno.Worker\DelunoApplicationEndpointMapping.cs"; Label = "shared endpoint map" }
+)) {
+    if (-not (Test-Path -LiteralPath (Join-Path $Root $shared.Path) -PathType Leaf)) {
+        Add-Failure "Host-wiring parity: missing $($shared.Label) at $($shared.Path -replace '\\', '/')."
+    }
 }
 
-foreach ($trayPath in @("apps\windows-tray\DelunoServer.cs", "apps\windows-tray\ServiceHost.cs")) {
-    $path = Join-Path $Root $trayPath
-    if ((Test-Path -LiteralPath $path -PathType Leaf) -and
-        -not (Get-Content -LiteralPath $path -Raw).Contains("MapDelunoSecretsDiagnostics")) {
-        Add-Failure "Host-wiring parity: $trayPath is missing required call 'MapDelunoSecretsDiagnostics'."
+$sharedMapPath = Join-Path $Root "src\Deluno.Worker\DelunoApplicationEndpointMapping.cs"
+if (Test-Path -LiteralPath $sharedMapPath -PathType Leaf) {
+    $sharedMap = Get-Content -LiteralPath $sharedMapPath -Raw
+    # A spot-check that the map still carries the groups whose absence was
+    # invisible from the outside: reads answered by the fallback, writes 405.
+    foreach ($required in @(
+        "MapDelunoSecretsDiagnostics", "MapDelunoLibraries", "MapDelunoConnections",
+        "MapDelunoQuality", "MapDelunoAutomationEndpoints")) {
+        if (-not $sharedMap.Contains($required)) {
+            Add-Failure "Host-wiring parity: shared endpoint map is missing required call '$required'."
+        }
     }
 }
 

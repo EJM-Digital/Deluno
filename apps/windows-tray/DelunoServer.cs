@@ -128,22 +128,35 @@ public sealed class DelunoServer : IDisposable
             await next();
         });
 
-        _app.MapDelunoApi();
-        _app.MapDelunoBackupEndpoints();
-        _app.MapDelunoPlatformEndpoints();
-        _app.MapDelunoSecurityEndpoints();
-        _app.MapDelunoNotificationEndpoints();
-        _app.MapDelunoIntakeEndpoints();
-        _app.MapDelunoMoviesEndpoints();
-        _app.MapDelunoSeriesEndpoints();
-        _app.MapDelunoJobsEndpoints();
-        _app.MapDelunoDownloadClientIntegrationEndpoints();
-        _app.MapDelunoSearchEndpoints();
-        _app.MapDelunoMetadataEndpoints();
-        _app.MapDelunoFilesystemEndpoints();
-        _app.MapDelunoSecretsDiagnostics();
-        _app.MapDelunoRealtime();
-        _app.MapFallbackToFile("index.html");
+        // The same map Deluno.Host uses. This was fifteen hand-maintained
+        // calls where the host made twenty-three, so the installed app had no
+        // libraries, indexers, download clients, quality profiles, automation
+        // or release preferences at all - and the fallback below answered
+        // those paths with the web page and a 200.
+        _app.MapDelunoApplicationEndpoints();
+
+        _app.MapFallback(async context =>
+        {
+            // An unknown API path is a 404, not the app shell. Serving
+            // index.html here makes a broken client call look like a
+            // successful page load, and hides the real fault - which is
+            // exactly how the missing routes above went unnoticed.
+            if (context.Request.Path.StartsWithSegments("/api", StringComparison.OrdinalIgnoreCase))
+            {
+                context.Response.StatusCode = StatusCodes.Status404NotFound;
+                return;
+            }
+
+            var indexPath = Path.Combine(
+                _app.Environment.WebRootPath ?? _app.Environment.ContentRootPath,
+                "index.html");
+
+            // SendFileAsync does not infer a content type and Deluno sends
+            // nosniff, so without this the browser renders index.html as
+            // plain text.
+            context.Response.ContentType = "text/html; charset=utf-8";
+            await context.Response.SendFileAsync(indexPath);
+        });
 
         await _app.StartAsync(_cts.Token);
 
