@@ -15,6 +15,15 @@ export interface MetadataSearchResult {
   crew?: MetadataCrewMember[] | null;
   imdbId: string | null;
   externalUrl: string | null;
+  /**
+   * The catalogue entry this result would land on, when Deluno already holds
+   * it. Set by the server on `/api/metadata/search` and nowhere else.
+   *
+   * The library screen cannot work this out for itself: it holds one page of
+   * the catalogue, so a title you own that is not on that page would read as
+   * new.
+   */
+  libraryEntryId?: string | null;
 }
 
 export interface MetadataRatingItem {

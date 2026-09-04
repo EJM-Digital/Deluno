@@ -706,6 +706,19 @@ export function LibraryView({
     }
   }
 
+  /**
+   * A title the catalogue already holds is a destination, not an addition.
+   *
+   * The server decides which those are - the library screen holds one page of
+   * the catalogue, so it cannot tell "you do not have this" from "this is not
+   * on this page".
+   */
+  function openHeldMetadataResult(result: MetadataSearchResult) {
+    if (!result.libraryEntryId) return;
+    closeCreate();
+    navigate(variant === "movies" ? `/movies/${result.libraryEntryId}` : `/tv/${result.libraryEntryId}`);
+  }
+
   function applyMetadataResult(result: MetadataSearchResult) {
     setSelectedMetadataResults((currentSelection) => {
       const isSelected = currentSelection.some((item) => sameMetadataResult(item, result));
@@ -949,6 +962,7 @@ export function LibraryView({
           metadataSearchSequence={metadataSearchSequence}
           onSearch={() => void handleMetadataSearch()}
           onSelectResult={applyMetadataResult}
+          onOpenHeldResult={openHeldMetadataResult}
           onCreate={handleCreate}
         />
 

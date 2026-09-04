@@ -1,5 +1,6 @@
 using Deluno.Contracts;
 using Deluno.Jobs.Contracts;
+using Deluno.Integrations.Metadata;
 using Deluno.Media;
 using Deluno.Series.Data;
 using Deluno.Series.Services;
@@ -17,6 +18,10 @@ public static class SeriesServiceCollectionExtensions
     public static IServiceCollection AddDelunoSeriesModule(this IServiceCollection services)
     {
         services.TryAddSingleton<IMediaStateRepository, SqliteMediaStateRepository>();
+        // What lets the Add screen say "you already have this". Registered
+        // beside the repository it asks, and by both media modules, so the
+        // answer exists wherever a catalogue does.
+        services.TryAddSingleton<IMetadataLibraryPresence, MediaStateLibraryPresence>();
         services.TryAddSingleton<IMediaTagStore, SqliteMediaTagStore>();
         services.TryAddSingleton<IMediaSubtitleRepository, SqliteMediaSubtitleRepository>();
         services.AddSingleton<ISeriesCatalogRepository, SqliteSeriesCatalogRepository>();

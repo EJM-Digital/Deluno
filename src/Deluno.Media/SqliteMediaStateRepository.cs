@@ -1254,6 +1254,33 @@ public sealed class SqliteMediaStateRepository(
             ?? throw new InvalidOperationException("The media entry could not be read after insertion.");
     }
 
+    public async Task<IReadOnlyList<string?>> FindExistingEntryIdsAsync(
+        MediaKind kind,
+        IReadOnlyList<MediaEntryCreate> entries,
+        CancellationToken cancellationToken)
+    {
+        if (entries.Count == 0)
+        {
+            return [];
+        }
+
+        var map = MediaTableMap.For(kind);
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            map.DatabaseName,
+            cancellationToken);
+
+        var found = new string?[entries.Count];
+        for (var index = 0; index < entries.Count; index++)
+        {
+            var entry = entries[index];
+            found[index] = entry.Title.Trim().Length == 0
+                ? null
+                : await FindEntryIdAsync(connection, map, entry, cancellationToken);
+        }
+
+        return found;
+    }
+
     public async Task<MediaImportResult> ImportExistingAsync(
         MediaKind kind,
         string libraryId,

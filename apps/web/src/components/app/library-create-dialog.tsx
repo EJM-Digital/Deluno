@@ -1,5 +1,5 @@
 import type { Dispatch, FormEventHandler, MutableRefObject, SetStateAction } from "react";
-import { LoaderCircle, Plus, Search, X } from "lucide-react";
+import { ArrowUpRight, LoaderCircle, Plus, Search, X } from "lucide-react";
 import * as Dialog from "@radix-ui/react-dialog";
 import type { MetadataProviderStatus, MetadataSearchResult } from "../../lib/api";
 import type { CreateFormDraft, LibraryVariant } from "../../hooks/use-library-create";
@@ -27,6 +27,12 @@ type LibraryCreateDialogProps = {
   metadataSearchSequence: MutableRefObject<number>;
   onSearch: () => void;
   onSelectResult: (result: MetadataSearchResult) => void;
+  /**
+   * Opens a title Deluno already holds, instead of adding it a second time.
+   * Which results those are is decided by the server - see
+   * `MetadataSearchResult.libraryEntryId`.
+   */
+  onOpenHeldResult: (result: MetadataSearchResult) => void;
   onCreate: FormEventHandler<HTMLFormElement>;
 };
 
@@ -38,7 +44,7 @@ export function LibraryCreateDialog({
   open, onOpenChange, variant, label, singular, metadataStatus, isCreating, createForm,
   setCreateForm, metadataResults, setMetadataResults, selectedMetadataResults,
   setSelectedMetadataResults, isSearchingMetadata, metadataSearchSequence, onSearch,
-  onSelectResult, onCreate,
+  onSelectResult, onOpenHeldResult, onCreate,
 }: LibraryCreateDialogProps) {
   const selectedMetadataCount = selectedMetadataResults.length;
 
@@ -80,13 +86,22 @@ export function LibraryCreateDialog({
                 <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                   {metadataResults.slice(0, 6).map((result) => {
                     const isSelected = selectedMetadataResults.some((selected) => sameMetadataResult(selected, result));
-                    return <button key={`${result.provider}:${result.providerId}`} type="button" onClick={() => onSelectResult(result)} className={cn("flex min-w-0 gap-3 rounded-xl border bg-surface-1 p-3 text-left transition hover:border-primary/45 hover:bg-primary/5", isSelected ? "border-primary/70 bg-primary/10 ring-1 ring-primary/25" : "border-hairline")} title={`Select ${result.title}`}>
+                    // Held titles are not offered for selection at all. Adding
+                    // one is already a no-op that hands back the row Deluno
+                    // has - so a card that said "Selected" and then added
+                    // nothing would be the same silence in a different place.
+                    const isHeld = Boolean(result.libraryEntryId);
+                    return <button key={`${result.provider}:${result.providerId}`} type="button" onClick={() => (isHeld ? onOpenHeldResult(result) : onSelectResult(result))} className={cn("flex min-w-0 gap-3 rounded-xl border bg-surface-1 p-3 text-left transition", isHeld ? "border-success/45 bg-success/5 hover:border-success/70 hover:bg-success/10" : isSelected ? "border-primary/70 bg-primary/10 ring-1 ring-primary/25 hover:border-primary/45 hover:bg-primary/5" : "border-hairline hover:border-primary/45 hover:bg-primary/5")} title={isHeld ? `Open ${result.title} — already in your library` : `Select ${result.title}`}>
                       {result.posterUrl ? <img src={result.posterUrl} alt="" className="h-24 w-16 shrink-0 rounded-lg bg-muted object-cover" /> : <div className="flex h-24 w-16 shrink-0 items-center justify-center rounded-lg bg-muted text-[length:var(--type-caption)] text-muted-foreground">No art</div>}
                       <span className="min-w-0 self-center">
                         <span className="block truncate text-sm font-semibold text-foreground">{result.title}</span>
                         <span className="mt-1 block text-xs text-muted-foreground">{result.year ?? "Unknown year"} · TMDb</span>
                         {result.rating ? <span className="mt-2 block text-xs tabular-nums text-primary">{result.rating.toFixed(1)} rating</span> : null}
-                        {isSelected ? <span className="mt-1 inline-flex rounded-full bg-primary/15 px-2 py-0.5 text-[length:var(--type-micro)] font-semibold text-primary">Selected</span> : <span className="mt-1 block text-[length:var(--type-micro)] text-muted-foreground">Click to select</span>}
+                        {isHeld
+                          ? <span className="mt-1 inline-flex items-center gap-1 text-[length:var(--type-micro)] font-semibold text-success">Already in your library — open it<ArrowUpRight className="h-3 w-3" /></span>
+                          : isSelected
+                            ? <span className="mt-1 inline-flex rounded-full bg-primary/15 px-2 py-0.5 text-[length:var(--type-micro)] font-semibold text-primary">Selected</span>
+                            : <span className="mt-1 block text-[length:var(--type-micro)] text-muted-foreground">Click to select</span>}
                       </span>
                     </button>;
                   })}

@@ -36,6 +36,7 @@ public static class MetadataEndpointRouteBuilderExtensions
             string? mediaType,
             int? year,
             IMetadataProvider provider,
+            IMetadataLibraryPresence libraryPresence,
             CancellationToken cancellationToken) =>
         {
             var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
@@ -46,7 +47,11 @@ public static class MetadataEndpointRouteBuilderExtensions
 
             var request = new MetadataLookupRequest(query, mediaType, year, null);
             var results = await provider.SearchAsync(request, cancellationToken);
-            return Results.Ok(results);
+
+            // After the provider, never inside it. The provider caches what it
+            // returns, and whether Deluno holds a title is true of this install
+            // this second - not of the search.
+            return Results.Ok(await libraryPresence.MarkHeldTitlesAsync(results, cancellationToken));
         });
 
         metadata.MapPost("/test", async (

@@ -11,7 +11,7 @@ surface is definitely untested, a covered one is only probably tested.
 
 | Surface | Total | Touched by a test | Untouched |
 | --- | ---: | ---: | ---: |
-| API routes | 369 | 163 | **206** |
+| API routes | 371 | 167 | **204** |
 | Web screens | 66 | 60 | **6** |
 
 ## API routes no test mentions
@@ -48,7 +48,6 @@ surface is definitely untested, a covered one is only probably tested.
 | GET | `/api/media-plan-scenarios/{id}/compile` |
 | GET | `/api/metadata/broker/search` |
 | GET | `/api/metadata/broker/status` |
-| GET | `/api/metadata/search` |
 | GET | `/api/metadata/status` |
 | GET | `/api/migration/reports` |
 | GET | `/api/migration/reports/{id}` |
@@ -62,7 +61,6 @@ surface is definitely untested, a covered one is only probably tested.
 | GET | `/api/movie-collections/{id}` |
 | GET | `/api/movie-collections/{id}/members` |
 | GET | `/api/movies/calendar` |
-| GET | `/api/movies/duplicates` |
 | GET | `/api/movies/genres` |
 | GET | `/api/movies/search-history` |
 | GET | `/api/movies/{id}/preference-evaluation` |
