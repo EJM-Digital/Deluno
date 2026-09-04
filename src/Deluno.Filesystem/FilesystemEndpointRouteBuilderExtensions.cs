@@ -52,7 +52,7 @@ public static class FilesystemEndpointRouteBuilderExtensions
                     });
                 }
 
-                var parentPath = Directory.GetParent(normalizedPath)?.FullName;
+                var parentPath = DirectoryNavigation.ParentOf(normalizedPath);
                 var entries = Directory
                     .EnumerateDirectories(normalizedPath)
                     .Select(directory => new DirectoryBrowseEntry(
