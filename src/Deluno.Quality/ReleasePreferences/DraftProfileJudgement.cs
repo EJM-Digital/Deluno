@@ -23,6 +23,13 @@ public sealed record DraftProfileJudgementRequest(
     IReadOnlyList<string>? AllowedQualities,
     string? CutoffQuality,
     IReadOnlyList<string>? CustomFormatIds,
+    /// <summary>
+    /// How much the draft says it cares about each selected preference. Without
+    /// this the panel would judge by the guide's recommendation while the saved
+    /// profile judged by the owner's answer - the one screen whose whole job is
+    /// explaining itself, explaining something else.
+    /// </summary>
+    IReadOnlyDictionary<string, string>? FormatIntents,
     bool UpgradeUntilCutoff,
     bool UpgradeUnknownItems,
     bool AllowLowerQualityReplacements,
@@ -90,7 +97,8 @@ public static class DraftProfileJudge
             PresetVersion: null,
             PresetDrifted: false,
             CreatedUtc: now,
-            UpdatedUtc: now);
+            UpdatedUtc: now,
+            FormatIntents: ProfileFormatIntents.NormalizeAll(request.FormatIntents));
 
         var compilation = ReleasePreferencePlanFactory.CompileProfile(profile, customFormats, guidePackage);
         var plan = compilation.Plan;

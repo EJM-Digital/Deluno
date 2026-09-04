@@ -75,6 +75,7 @@ interface ProfileForm {
   upgradeUnknownItems: boolean;
   sizeRules: ProfileSizeRule[];
   requireFormatGain: boolean;
+  formatIntents: Record<string, string>;
 }
 
 type DrawerMode = { kind: "closed" } | { kind: "create" } | { kind: "edit"; id: string };
@@ -302,7 +303,11 @@ export function SettingsProfilesPage() {
           // sentence read from the other end.
           stopWhenCutoffMet: form.upgradeUntilCutoff,
           requireCustomFormatGainForSameQuality: form.requireFormatGain
-        }
+        },
+        // Only for preferences still selected, so deselecting one takes its
+        // answer with it rather than leaving an orphan.
+        formatIntents: Object.fromEntries(
+          Object.entries(form.formatIntents).filter(([id]) => formatIds.includes(id)))
       };
       const response = await authedFetch(mode.kind === "edit" ? `/api/quality-profiles/${mode.id}` : "/api/quality-profiles", { method: mode.kind === "edit" ? "PUT" : "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
       if (!response.ok) {
@@ -459,7 +464,10 @@ export function SettingsProfilesPage() {
             upgradeUnknownItems={form.upgradeUnknownItems}
             customFormats={customFormats}
             guide={guide}
+            formatIntents={form.formatIntents}
             onCustomFormatIdsChange={(customFormatIds) => setForm((current) => ({ ...current, customFormatIds }))}
+            onFormatIntentChange={(formatId, intent) =>
+              setForm((current) => ({ ...current, formatIntents: { ...current.formatIntents, [formatId]: intent } }))}
             renderQualityControls={() => (
               <div className="grid gap-[var(--grid-gap)]">
           {allowedForDisplay.length ? (
@@ -778,7 +786,8 @@ function defaultForm(
     upgradeUntilCutoff: true,
     upgradeUnknownItems: false,
     sizeRules: [],
-    requireFormatGain: true
+    requireFormatGain: true,
+    formatIntents: {}
   };
 
   const balanced =
@@ -804,7 +813,7 @@ function defaultForm(
 }
 
 function emptyForm(): ProfileForm {
-  return { name: "", mediaType: "movies", allowed: [], cutoff: "", customFormatIds: [], upgradeUntilCutoff: true, upgradeUnknownItems: false, sizeRules: [], requireFormatGain: true };
+  return { name: "", mediaType: "movies", allowed: [], cutoff: "", customFormatIds: [], upgradeUntilCutoff: true, upgradeUnknownItems: false, sizeRules: [], requireFormatGain: true, formatIntents: {} };
 }
 function formFrom(profile: QualityProfileItem): ProfileForm {
   return {
@@ -816,11 +825,22 @@ function formFrom(profile: QualityProfileItem): ProfileForm {
     upgradeUntilCutoff: profile.upgradeUntilCutoff,
     upgradeUnknownItems: profile.upgradeUnknownItems,
     sizeRules: profile.sizeRules ?? [],
-    requireFormatGain: profile.upgradeStop?.requireCustomFormatGainForSameQuality ?? true
+    requireFormatGain: profile.upgradeStop?.requireCustomFormatGainForSameQuality ?? true,
+    formatIntents: { ...(profile.formatIntents ?? {}) }
   };
 }
 function sameForm(a: ProfileForm, b: ProfileForm) {
-  return a.name === b.name && a.mediaType === b.mediaType && a.cutoff === b.cutoff && a.upgradeUntilCutoff === b.upgradeUntilCutoff && a.upgradeUnknownItems === b.upgradeUnknownItems && a.allowed.join("|") === b.allowed.join("|") && sameIds(a.customFormatIds, b.customFormatIds) && sameSizeRules(a.sizeRules, b.sizeRules) && a.requireFormatGain === b.requireFormatGain;
+  return a.name === b.name && a.mediaType === b.mediaType && a.cutoff === b.cutoff && a.upgradeUntilCutoff === b.upgradeUntilCutoff && a.upgradeUnknownItems === b.upgradeUnknownItems && a.allowed.join("|") === b.allowed.join("|") && sameIds(a.customFormatIds, b.customFormatIds) && sameSizeRules(a.sizeRules, b.sizeRules) && a.requireFormatGain === b.requireFormatGain && sameIntents(a.formatIntents, b.formatIntents);
+}
+
+/** Changing how much you care has to count as a change, like any other answer. */
+function sameIntents(a: Record<string, string>, b: Record<string, string>) {
+  const key = (intents: Record<string, string>) =>
+    Object.entries(intents)
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([id, intent]) => `${id}:${intent}`)
+      .join("|");
+  return key(a) === key(b);
 }
 
 /** Dragging a handle has to count as a change, or the save footer stays asleep. */

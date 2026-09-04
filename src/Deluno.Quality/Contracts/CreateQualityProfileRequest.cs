@@ -15,4 +15,6 @@ public sealed record CreateQualityProfileRequest(
     /// </summary>
     IReadOnlyList<ProfileSizeRule>? SizeRules = null,
     /// <summary>When this profile stops looking for something better.</summary>
-    QualityUpgradeStopPolicy? UpgradeStop = null);
+    QualityUpgradeStopPolicy? UpgradeStop = null,
+    /// <summary>How much this profile cares about each preference it selected.</summary>
+    IReadOnlyDictionary<string, string>? FormatIntents = null);
