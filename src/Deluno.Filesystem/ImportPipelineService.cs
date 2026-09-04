@@ -2028,6 +2028,32 @@ public sealed partial class ImportPipelineService(
             return new CatalogImportResult { CatalogUpdated = catalogUpdated, CatalogId = catalogUpdated ? catalogId : null };
         }
 
+        // A film Deluno cannot name is not a film Deluno should invent.
+        //
+        // TitleForActivity falls back to the source filename when the request
+        // carries no title, which is right for an activity line and wrong for a
+        // catalogue entry: an unmatched import used to create a movie called
+        // "Sintel.2010.2160p.WEB-DL.x265-DELUNO" with no metadata provider and
+        // no ids, marked as meeting its target quality - so nothing would ever
+        // search for it or correct it, and it sat in the library looking like a
+        // film for ever (#417).
+        //
+        // Import recovery is where an unidentified file belongs. It already
+        // exists, it already explains itself, and it can be resolved by hand.
+        if (string.IsNullOrWhiteSpace(request.Title) && string.IsNullOrWhiteSpace(request.ImdbId))
+        {
+            await movieCatalogRepository.AddImportRecoveryCaseAsync(
+                new CreateMovieImportRecoveryCaseRequest(
+                    title,
+                    "unmatched",
+                    $"Deluno imported the file but could not tell which film it is, so it has not been added to the library. The only name available was the file's own: {title}",
+                    "Open this case and choose the film, or add the film first and import again.",
+                    null),
+                cancellationToken);
+
+            return new CatalogImportResult { CatalogUpdated = false, CatalogId = null };
+        }
+
         var movieResult = await movieCatalogRepository.ImportExistingAsync(
             library.Id,
             title,

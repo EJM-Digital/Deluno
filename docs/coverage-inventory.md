@@ -11,7 +11,7 @@ surface is definitely untested, a covered one is only probably tested.
 
 | Surface | Total | Touched by a test | Untouched |
 | --- | ---: | ---: | ---: |
-| API routes | 369 | 161 | **208** |
+| API routes | 369 | 163 | **206** |
 | Web screens | 66 | 60 | **6** |
 
 ## API routes no test mentions
@@ -125,7 +125,6 @@ surface is definitely untested, a covered one is only probably tested.
 | POST | `/api/filesystem/import/execute` |
 | POST | `/api/filesystem/import/jobs` |
 | POST | `/api/filesystem/import/preview` |
-| POST | `/api/filesystem/path-diagnostics` |
 | POST | `/api/filesystem/reconciliation/repair` |
 | POST | `/api/indexers/test` |
 | POST | `/api/intake-sources/{id}/exclude-preview` |
@@ -136,7 +135,6 @@ surface is definitely untested, a covered one is only probably tested.
 | POST | `/api/integrations/processors/connections/{id}/test` |
 | POST | `/api/integrations/processors/handoffs/{id}/retry` |
 | POST | `/api/intelligent-routing/recommend-release` |
-| POST | `/api/jobs/retry-failed` |
 | POST | `/api/libraries/{id}/import-existing/selected` |
 | POST | `/api/libraries/{id}/skip-cycle` |
 | POST | `/api/media-plan-scenarios/{id}/apply` |

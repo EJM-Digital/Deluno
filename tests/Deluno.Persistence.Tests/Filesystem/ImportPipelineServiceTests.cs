@@ -101,6 +101,96 @@ public sealed class ImportPipelineServiceTests
         Assert.Equal("Arrival", movie.Title);
     }
 
+    /// <summary>
+    /// #417. An import Deluno cannot name must not invent a film from the
+    /// filename.
+    ///
+    /// <para>The lab ended up with three catalogue entries called things like
+    /// <c>Sintel.2010.2160p.WEB-DL.x265-DELUNO</c> — no metadata provider, no
+    /// ids, and marked as already meeting their target quality, so nothing would
+    /// ever search for them or correct them. They sat in the library looking
+    /// like films.</para>
+    ///
+    /// <para>Import recovery is where an unidentified file belongs: it exists,
+    /// it explains itself, and a person can resolve it.</para>
+    /// </summary>
+    [Fact]
+    public async Task ExecuteAsync_sends_an_unidentified_film_to_recovery_rather_than_inventing_one()
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-04-29T08:00:00Z"));
+        await InitializeAllAsync(storage, timeProvider);
+
+        var downloadsPath = Path.Combine(storage.DataRoot, "downloads");
+        var movieRootPath = Path.Combine(storage.DataRoot, "movies");
+        Directory.CreateDirectory(downloadsPath);
+        Directory.CreateDirectory(movieRootPath);
+
+        var sourcePath = Path.Combine(downloadsPath, "Sintel.2010.2160p.WEB-DL.x265-DELUNO.mkv");
+        await File.WriteAllBytesAsync(sourcePath, Enumerable.Range(0, 4096).Select(value => (byte)(value % 251)).ToArray());
+        File.SetLastWriteTimeUtc(sourcePath, DateTime.UtcNow.AddMinutes(-1));
+
+        var platform = CreatePlatformRepository(storage, timeProvider);
+        var libraries = CreateLibrariesRepository(storage, timeProvider);
+        await SaveSettingsAsync(platform, movieRootPath, downloadsPath);
+        await libraries.CreateLibraryAsync(
+            new CreateLibraryRequest(
+                Name: "Movies",
+                MediaType: "movies",
+                Purpose: "Main",
+                RootPath: movieRootPath,
+                DownloadsPath: downloadsPath,
+                QualityProfileId: null,
+                ImportWorkflow: "standard",
+                ProcessorName: null,
+                ProcessorOutputPath: null,
+                ProcessorTimeoutMinutes: null,
+                ProcessorFailureMode: null,
+                AutoSearchEnabled: true,
+                MissingSearchEnabled: true,
+                UpgradeSearchEnabled: true,
+                SearchIntervalHours: 6,
+                RetryDelayHours: 24,
+                MaxItemsPerRun: 25),
+            CancellationToken.None);
+
+        var movies = new SqliteMovieCatalogRepository(storage.Factory, timeProvider);
+        var service = CreateService(storage, timeProvider, platform, libraries, movies);
+
+        // No Title and no ImdbId: nothing here says which film this is.
+        var result = await service.ExecuteAsync(
+            new ImportExecuteRequest(
+                Preview: new ImportPreviewRequest(
+                    SourcePath: sourcePath,
+                    FileName: null,
+                    MediaType: "movies",
+                    Title: null,
+                    Year: null,
+                    Genres: [],
+                    Tags: [],
+                    Studio: null,
+                    OriginalLanguage: null),
+                TransferMode: "copy",
+                Overwrite: false,
+                AllowCopyFallback: true),
+            CancellationToken.None);
+
+        Assert.True(result.Succeeded);
+        Assert.NotNull(result.Response);
+
+        // No phantom film, under any name.
+        Assert.Empty(await movies.ListAsync(CancellationToken.None));
+        Assert.False(result.Response.CatalogUpdated);
+
+        // And it is not silently dropped either — it is waiting to be resolved.
+        var summary = await movies.GetImportRecoverySummaryAsync(CancellationToken.None);
+        Assert.Equal(1, summary.OpenCount);
+        var recovery = Assert.Single(summary.RecentCases);
+        Assert.Equal("unmatched", recovery.FailureKind);
+        Assert.Equal(1, summary.UnmatchedCount);
+        Assert.Contains("could not tell which film it is", recovery.Summary);
+    }
+
     [Fact]
     public async Task ExecuteAsync_resolves_the_video_inside_a_folder_shaped_source()
     {
