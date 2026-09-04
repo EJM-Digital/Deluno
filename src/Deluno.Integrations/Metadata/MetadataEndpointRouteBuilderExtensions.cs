@@ -35,6 +35,21 @@ public static class MetadataEndpointRouteBuilderExtensions
             string? query,
             string? mediaType,
             int? year,
+            // Bound, and passed on. It used to be hardcoded null here while two
+            // callers sent it - the Add screen and the setup guide, both asking
+            // to upgrade a chosen card into the provider's full detail record
+            // before storing it. Dropping it turned that request into the same
+            // title search they had already run, and the client's
+            // `details.find(...) ?? result` then fell back to the card it
+            // started with, so the call appeared to work and enriched nothing.
+            //
+            // A provider id is an identity assertion rather than a search hint,
+            // and every mode already treats it as one: the broker forwards it
+            // to the gateway's detail lookup, and a direct TMDb key takes
+            // SearchDirectAsync's GetDetailsByIdAsync branch. Only the OMDb
+            // last resort ignores it, correctly - there is no TMDb record to
+            // fetch when there is no TMDb.
+            string? providerId,
             IMetadataProvider provider,
             IMetadataLibraryPresence libraryPresence,
             CancellationToken cancellationToken) =>
@@ -45,7 +60,7 @@ public static class MetadataEndpointRouteBuilderExtensions
                 return denied;
             }
 
-            var request = new MetadataLookupRequest(query, mediaType, year, null);
+            var request = new MetadataLookupRequest(query, mediaType, year, providerId);
             var results = await provider.SearchAsync(request, cancellationToken);
 
             // After the provider, never inside it. The provider caches what it
