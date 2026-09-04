@@ -57,7 +57,6 @@ public sealed class DelunoServer : IDisposable
         builder.Services.AddSingleton<IUpdateOrchestrator, VelopackUpdateOrchestrator>();
         builder.Services.AddHostedService<TrayUpdateBackgroundService>();
         builder.Services.AddDelunoInfrastructure(builder.Configuration);
-        builder.Services.AddDelunoApi();
         builder.Services.AddDelunoApplicationModules();
         builder.Services.AddHostedService<ImportRecoveryCleanupService>();
 

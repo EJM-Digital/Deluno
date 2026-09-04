@@ -58,8 +58,6 @@ builder.WebHost.ConfigureKestrel(options =>
 });
 
 builder.Services.AddDelunoInfrastructure(builder.Configuration);
-builder.Services.AddDelunoApi();
-
 // Login is the one endpoint an unauthenticated caller can hit repeatedly, and
 // each attempt costs 100k PBKDF2 iterations — so it is both a credential
 // guessing surface and a cheap way to burn the CPU of a machine that is

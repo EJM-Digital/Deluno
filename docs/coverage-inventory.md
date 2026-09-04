@@ -11,41 +11,25 @@ surface is definitely untested, a covered one is only probably tested.
 
 | Surface | Total | Touched by a test | Untouched |
 | --- | ---: | ---: | ---: |
-| API routes | 369 | 167 | **202** |
-| Web screens | 66 | 55 | **11** |
+| API routes | 369 | 161 | **208** |
+| Web screens | 66 | 60 | **6** |
 
 ## API routes no test mentions
 
 | Method | Route |
 | --- | --- |
-| DELETE | `/api/connections/{id}` |
-| DELETE | `/api/destination-rules/{id}` |
-| DELETE | `/api/exclusions/{id}` |
-| DELETE | `/api/library-views/{id}` |
-| DELETE | `/api/metadata/cache` |
-| DELETE | `/api/movies/import-recovery/{id}` |
-| DELETE | `/api/notifications/` |
-| DELETE | `/api/notifications/{notificationId}` |
-| DELETE | `/api/policy-sets/{id}` |
-| DELETE | `/api/recycle-bin/{id}` |
-| DELETE | `/api/release-profiles/{id}` |
-| DELETE | `/api/series/import-recovery/{id}` |
-| DELETE | `/api/subtitle-providers/{key}` |
-| DELETE | `/api/tags/{id}` |
-| GET | `/api/` |
 | GET | `/api/backups/settings` |
-| GET | `/api/connections/` |
+| GET | `/api/backups/{id}/download` |
 | GET | `/api/dashboard/metrics` |
-| GET | `/api/destination-rules/` |
 | GET | `/api/diagnostics/secrets-backend` |
 | GET | `/api/download-clients/sharing` |
 | GET | `/api/download-clients/telemetry` |
 | GET | `/api/download-clients/throughput` |
 | GET | `/api/download-health` |
-| GET | `/api/exclusions` |
 | GET | `/api/filesystem/directories` |
 | GET | `/api/filesystem/reconciliation` |
 | GET | `/api/indexers/scoreboard` |
+| GET | `/api/intake-sources/{id}/diagnostics` |
 | GET | `/api/intake-title-origins` |
 | GET | `/api/integrations/external/activity` |
 | GET | `/api/integrations/external/health` |
@@ -56,8 +40,9 @@ surface is definitely untested, a covered one is only probably tested.
 | GET | `/api/intelligent-routing/anomalies` |
 | GET | `/api/intelligent-routing/snapshot` |
 | GET | `/api/libraries/export` |
+| GET | `/api/libraries/{id}/import-existing/preview` |
+| GET | `/api/libraries/{id}/routing` |
 | GET | `/api/library-automation` |
-| GET | `/api/library-views/` |
 | GET | `/api/manifest` |
 | GET | `/api/media-plan-scenarios/` |
 | GET | `/api/media-plan-scenarios/{id}/compile` |
@@ -79,38 +64,39 @@ surface is definitely untested, a covered one is only probably tested.
 | GET | `/api/movies/calendar` |
 | GET | `/api/movies/duplicates` |
 | GET | `/api/movies/genres` |
-| GET | `/api/movies/import-recovery` |
 | GET | `/api/movies/search-history` |
+| GET | `/api/movies/{id}/preference-evaluation` |
+| GET | `/api/movies/{id}/removal-preview` |
+| GET | `/api/movies/{id}/tags` |
+| GET | `/api/movies/{id}/workflow-status` |
 | GET | `/api/notification-preferences/` |
-| GET | `/api/notifications/` |
-| GET | `/api/notifications/unread-count` |
-| GET | `/api/policy-sets/` |
 | GET | `/api/policy-sets/{id}/diff` |
 | GET | `/api/policy-sets/{id}/versions` |
 | GET | `/api/policy-sets/{id}/versions/{version:int}` |
 | GET | `/api/quality-profile-presets/` |
 | GET | `/api/ranking-model/status` |
-| GET | `/api/recycle-bin/` |
 | GET | `/api/recycle-bin/settings` |
-| GET | `/api/release-profiles/` |
-| GET | `/api/release-profiles/{id}` |
 | GET | `/api/search-cycles` |
 | GET | `/api/search-retry-windows` |
 | GET | `/api/series/calendar` |
 | GET | `/api/series/controls` |
 | GET | `/api/series/episodes/wanted` |
 | GET | `/api/series/genres` |
-| GET | `/api/series/import-recovery` |
 | GET | `/api/series/inventory` |
 | GET | `/api/series/page` |
 | GET | `/api/series/search-history` |
 | GET | `/api/series/upcoming` |
 | GET | `/api/series/wanted` |
+| GET | `/api/series/{id}/inventory` |
+| GET | `/api/series/{id}/monitored-missing` |
+| GET | `/api/series/{id}/numbering` |
+| GET | `/api/series/{id}/preference-evaluation` |
+| GET | `/api/series/{id}/removal-preview` |
+| GET | `/api/series/{id}/tags` |
+| GET | `/api/series/{id}/workflow-status` |
 | GET | `/api/setup/progress` |
 | GET | `/api/subtitle-languages` |
-| GET | `/api/subtitle-providers/` |
 | GET | `/api/system/tasks` |
-| GET | `/api/tags/` |
 | GET | `/api/tags/usage` |
 | GET | `/api/updates/preferences` |
 | GET | `/api/updates/status` |
@@ -128,23 +114,31 @@ surface is definitely untested, a covered one is only probably tested.
 | POST | `/api/auth/logout` |
 | POST | `/api/backups/restore` |
 | POST | `/api/backups/restore/preview` |
-| POST | `/api/connections/` |
 | POST | `/api/custom-formats/dry-run` |
-| POST | `/api/destination-rules/` |
 | POST | `/api/destination-rules/resolve` |
 | POST | `/api/download-clients/test` |
+| POST | `/api/download-clients/{clientId}/categories/check` |
+| POST | `/api/download-clients/{clientId}/grab` |
+| POST | `/api/download-clients/{clientId}/webhook` |
+| POST | `/api/download-clients/{id}/path-mappings/{mappingId}/test` |
+| POST | `/api/download-clients/{id}/test` |
 | POST | `/api/filesystem/import/execute` |
 | POST | `/api/filesystem/import/jobs` |
 | POST | `/api/filesystem/import/preview` |
 | POST | `/api/filesystem/path-diagnostics` |
 | POST | `/api/filesystem/reconciliation/repair` |
 | POST | `/api/indexers/test` |
+| POST | `/api/intake-sources/{id}/exclude-preview` |
+| POST | `/api/intake-sources/{id}/preview` |
+| POST | `/api/intake-sources/{id}/sync` |
 | POST | `/api/integrations/external/import-preview` |
 | POST | `/api/integrations/external/trigger-refresh` |
+| POST | `/api/integrations/processors/connections/{id}/test` |
 | POST | `/api/integrations/processors/handoffs/{id}/retry` |
 | POST | `/api/intelligent-routing/recommend-release` |
 | POST | `/api/jobs/retry-failed` |
-| POST | `/api/library-views/` |
+| POST | `/api/libraries/{id}/import-existing/selected` |
+| POST | `/api/libraries/{id}/skip-cycle` |
 | POST | `/api/media-plan-scenarios/{id}/apply` |
 | POST | `/api/media-plan-scenarios/{id}/preview` |
 | POST | `/api/metadata/test` |
@@ -157,13 +151,15 @@ surface is definitely untested, a covered one is only probably tested.
 | POST | `/api/movies/bulk/search` |
 | POST | `/api/movies/bulk/subtitle-rescan` |
 | POST | `/api/movies/bulk/tags` |
-| POST | `/api/movies/import-recovery` |
-| POST | `/api/movies/import-recovery/{id}/dismiss` |
-| POST | `/api/movies/import-recovery/{id}/resolve` |
 | POST | `/api/movies/metadata/jobs` |
+| POST | `/api/movies/{id}/automation/defer` |
+| POST | `/api/movies/{id}/automation/skip-once` |
+| POST | `/api/movies/{id}/evaluate-candidate` |
+| POST | `/api/movies/{id}/grab` |
+| POST | `/api/movies/{id}/metadata/jobs` |
+| POST | `/api/notification-webhooks/{id}/test` |
 | POST | `/api/notifications/read-all` |
 | POST | `/api/notifications/{notificationId}/read` |
-| POST | `/api/policy-sets/` |
 | POST | `/api/policy-sets/{id}/effective-preview` |
 | POST | `/api/policy-sets/{id}/preview` |
 | POST | `/api/policy-sets/{id}/rollback` |
@@ -172,7 +168,6 @@ surface is definitely untested, a covered one is only probably tested.
 | POST | `/api/ranking-model/train` |
 | POST | `/api/recycle-bin/cleanup` |
 | POST | `/api/recycle-bin/{id}/restore` |
-| POST | `/api/release-profiles/` |
 | POST | `/api/releases/explain` |
 | POST | `/api/series/bulk/quality-profile` |
 | POST | `/api/series/bulk/reassign-library` |
@@ -180,13 +175,19 @@ surface is definitely untested, a covered one is only probably tested.
 | POST | `/api/series/bulk/search` |
 | POST | `/api/series/bulk/subtitle-rescan` |
 | POST | `/api/series/bulk/tags` |
-| POST | `/api/series/import-recovery` |
-| POST | `/api/series/import-recovery/{id}/dismiss` |
-| POST | `/api/series/import-recovery/{id}/resolve` |
 | POST | `/api/series/metadata/jobs` |
+| POST | `/api/series/{id}/automation/defer` |
+| POST | `/api/series/{id}/automation/skip-once` |
+| POST | `/api/series/{id}/episodes/search` |
+| POST | `/api/series/{id}/grab` |
+| POST | `/api/series/{id}/metadata/jobs` |
+| POST | `/api/series/{id}/metadata/link` |
+| POST | `/api/series/{id}/metadata/link/preview` |
+| POST | `/api/series/{id}/metadata/refresh` |
+| POST | `/api/series/{id}/search` |
+| POST | `/api/series/{id}/seasons/{seasonNumber:int}/search` |
 | POST | `/api/setup/completed` |
 | POST | `/api/subtitle-providers/{key}/test` |
-| POST | `/api/tags/` |
 | POST | `/api/updates/check` |
 | POST | `/api/updates/download` |
 | POST | `/api/updates/restart-now` |
@@ -203,34 +204,34 @@ surface is definitely untested, a covered one is only probably tested.
 | POST | `/api/v1/release-preferences/preview` |
 | PUT | `/api/auth/password` |
 | PUT | `/api/backups/settings` |
-| PUT | `/api/destination-rules/{id}` |
-| PUT | `/api/library-views/{id}` |
+| PUT | `/api/libraries/{id}/automation` |
+| PUT | `/api/libraries/{id}/media-plan` |
+| PUT | `/api/libraries/{id}/quality-profile` |
+| PUT | `/api/libraries/{id}/routing` |
+| PUT | `/api/libraries/{id}/subtitles` |
+| PUT | `/api/libraries/{id}/workflow` |
 | PUT | `/api/movie-collections/{id}` |
 | PUT | `/api/movie-collections/{id}/members/{providerId}/exclusion` |
 | PUT | `/api/movies/monitoring` |
+| PUT | `/api/movies/{id}/metadata/override` |
+| PUT | `/api/movies/{id}/replacement-protection` |
 | PUT | `/api/notification-preferences/` |
-| PUT | `/api/policy-sets/{id}` |
 | PUT | `/api/quality-profiles/order` |
 | PUT | `/api/recycle-bin/settings` |
-| PUT | `/api/release-profiles/{id}` |
 | PUT | `/api/series/episodes/monitoring` |
 | PUT | `/api/series/monitoring` |
+| PUT | `/api/series/{id}/metadata/override` |
+| PUT | `/api/series/{id}/numbering` |
+| PUT | `/api/series/{id}/replacement-protection` |
 | PUT | `/api/setup/progress` |
-| PUT | `/api/subtitle-providers/{key}` |
-| PUT | `/api/tags/{id}` |
 | PUT | `/api/updates/preferences` |
 | PUT | `/api/v1/guides/trash/update-check/settings` |
 
 ## Screens no test visits
 
-- `/`
-- `/api`
 - `/import-lists`
 - `/playback`
 - `/quality-sizes`
-- `/recycle-bin`
 - `/root-folders`
 - `/shows`
 - `/shows/library`
-- `/tv`
-- `/ui`

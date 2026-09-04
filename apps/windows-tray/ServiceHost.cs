@@ -41,7 +41,6 @@ public static class ServiceHost
         builder.Configuration["Storage:DataRoot"] = settings.DataRoot;
 
         builder.Services.AddDelunoInfrastructure(builder.Configuration);
-        builder.Services.AddDelunoApi();
         builder.Services.AddDelunoApplicationModules();
 
         builder.Services

@@ -75,13 +75,27 @@ const webUnitTests = readAll(path.join(root, "apps/web/src"), /\.test\.(ts|tsx)$
 const allTests = `${backendTests}\n${webTests}\n${webUnitTests}`;
 
 /**
- * A route counts as touched when its literal path appears in a test. Route
- * parameters are reduced to a prefix, because a test naming a concrete id is
- * exercising the same endpoint.
+ * A route counts as touched when the whole of it appears in a test, with route
+ * parameters allowed to match whatever a test puts in their place - a literal
+ * id, a C# `{id}` interpolation, a TypeScript `${id}` one.
+ *
+ * <b>This used to stop at the first parameter</b>, matching only the prefix
+ * before it. Every route under a parameterised path therefore inherited its
+ * prefix's coverage: `/api/download-clients/{clientId}/queue/actions` - the
+ * route that pauses, removes and rechecks a stalled or slow download - counted
+ * as covered because some test somewhere mentioned `/api/download-clients`.
+ * Nothing tested it. The product owner spotted the gap by asking what happens
+ * to stalled downloads, which is the question the number should have answered.
  */
 function touched(route) {
-  const literal = route.split("{")[0].replace(/\/$/, "");
-  return literal.length > 4 && allTests.includes(literal);
+  const pattern = route
+    .replace(/[.*+?^$()|[\]\\]/g, "\\$&")
+    // A parameter segment matches whatever stands in for it, but never a "/" -
+    // otherwise one parameter would swallow the rest of the path and put the
+    // prefix bug straight back.
+    .replace(/\{[^}]*\}/g, "[^/\"'`\\s)]+")
+    .replace(/\/$/, "/?");
+  return new RegExp(pattern).test(allTests);
 }
 
 const apiCovered = apiRoutes.filter((entry) => touched(entry.route));
