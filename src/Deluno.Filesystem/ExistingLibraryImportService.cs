@@ -68,6 +68,14 @@ public sealed class ExistingLibraryImportService(
     ];
 
     private static readonly Regex YearPattern = new(@"\b(19|20)\d{2}\b", RegexOptions.Compiled);
+
+    /// <summary>
+    /// The <c>(2008)</c> Deluno's own folder format puts on the end. It belongs
+    /// to the folder rather than to the release name inside it.
+    /// </summary>
+    private static readonly Regex TrailingYearSuffixPattern =
+        new(@"\s*[\(\[](?<year>(19|20)\d{2})[\)\]]\s*$", RegexOptions.Compiled);
+
     private static readonly Regex EpisodePattern = new(@"^(?<title>.+?)[\s._-]+S\d{1,2}E\d{1,2}", RegexOptions.IgnoreCase | RegexOptions.Compiled);
     private static readonly Regex SeasonPackTitlePattern = new(
         @"(?<![A-Za-z0-9])(?:Season[.\s_-]+|S)\d{1,3}(?!E\d{1,3})(?![A-Za-z0-9])",
@@ -1016,27 +1024,68 @@ public sealed class ExistingLibraryImportService(
 
     private static DetectedLibraryItem ParseTitle(string raw)
     {
+        // The folder's own "(year)" suffix comes off first.
+        //
+        // Deluno writes its library folders as "<name> (year)", so a release
+        // that was imported and is being read back looks like
+        // "Big.Buck.Bunny.2008.2160p.WEB-DL.x265-DELUNO (2008)". Leaving the
+        // suffix on cost the title twice: the release-group pattern is anchored
+        // at the end of the string, so it never matched and "-DELUNO" stayed in
+        // the name; and the release name carries the year a second time, which
+        // is the copy that has to go as well. What the Import Existing screen
+        // offered was "Big Buck Bunny 2008 -DELUNO".
+        var working = raw;
+        int? year = null;
+
+        var suffix = TrailingYearSuffixPattern.Match(working);
+        if (suffix.Success && int.TryParse(suffix.Groups["year"].Value, out var suffixYear))
+        {
+            year = suffixYear;
+            working = working[..suffix.Index].TrimEnd('.', '_', '-', ' ');
+        }
+
         // A hyphen in a movie title is meaningful, so only remove a release
         // group when the filename parser recognises the final token as one.
         // The same release name still reaches the catalogue repository through
         // FilePath, where these facts are persisted independently of the title.
-        var facts = MediaFileNameFacts.Parse(raw);
+        var facts = MediaFileNameFacts.Parse(working);
         var titleCandidate = string.IsNullOrWhiteSpace(facts.ReleaseGroup)
-            ? raw
-            : Regex.Replace(raw, $@"-{Regex.Escape(facts.ReleaseGroup)}$", string.Empty, RegexOptions.IgnoreCase);
+            ? working
+            : Regex.Replace(working, $@"-{Regex.Escape(facts.ReleaseGroup)}$", string.Empty, RegexOptions.IgnoreCase);
 
         var normalized = titleCandidate
             .Replace('.', ' ')
             .Replace('_', ' ')
             .Trim();
 
-        int? year = null;
         var yearMatches = YearPattern.Matches(normalized);
-        var yearMatch = yearMatches.Count > 0 ? yearMatches[^1] : Match.Empty;
-        if (yearMatch.Success && int.TryParse(yearMatch.Value, out var parsedYear))
+        if (year is null)
         {
-            year = parsedYear;
-            normalized = normalized.Remove(yearMatch.Index, yearMatch.Length).Trim();
+            var yearMatch = yearMatches.Count > 0 ? yearMatches[^1] : Match.Empty;
+            if (yearMatch.Success && int.TryParse(yearMatch.Value, out var parsedYear))
+            {
+                year = parsedYear;
+                normalized = normalized.Remove(yearMatch.Index, yearMatch.Length).Trim();
+            }
+        }
+        else
+        {
+            // Only a repeat of the year the folder already declared. A
+            // different number belongs to the title, which is how
+            // "Blade Runner 2049 (2017)" keeps its 2049.
+            Match? repeat = null;
+            foreach (Match candidate in yearMatches)
+            {
+                if (int.TryParse(candidate.Value, out var value) && value == year.Value)
+                {
+                    repeat = candidate;
+                }
+            }
+
+            if (repeat is not null)
+            {
+                normalized = normalized.Remove(repeat.Index, repeat.Length).Trim();
+            }
         }
 
         normalized = CleanupTokensPattern.Replace(normalized, " ").Trim();
