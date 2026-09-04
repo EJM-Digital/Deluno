@@ -95,6 +95,21 @@ public static class FilesystemEndpointRouteBuilderExtensions
             IImportPipelineService importPipeline,
             CancellationToken cancellationToken) =>
         {
+            // A body without a preview is a bad request, not a broken Deluno.
+            //
+            // `Preview` is non-nullable on the record and the JSON binder does
+            // not enforce that, so a caller that omits it — or sends the
+            // preview's fields flattened onto the top level, which is the
+            // natural mistake — bound null and the pipeline dereferenced it.
+            // What came back was 500 "An unexpected error occurred", which
+            // tells the person Deluno broke when in fact their request did.
+            if (request?.Preview is null)
+            {
+                return Results.Json(
+                    new { message = "An import needs a preview. Send the preview object returned by /api/filesystem/import/preview under a \"preview\" property." },
+                    statusCode: StatusCodes.Status400BadRequest);
+            }
+
             var result = await importPipeline.ExecuteAsync(request, cancellationToken);
             if (result.Succeeded && result.Response is not null)
             {
@@ -112,6 +127,21 @@ public static class FilesystemEndpointRouteBuilderExtensions
             IJobScheduler jobScheduler,
             CancellationToken cancellationToken) =>
         {
+            // A body without a preview is a bad request, not a broken Deluno.
+            //
+            // `Preview` is non-nullable on the record and the JSON binder does
+            // not enforce that, so a caller that omits it — or sends the
+            // preview's fields flattened onto the top level, which is the
+            // natural mistake — bound null and the pipeline dereferenced it.
+            // What came back was 500 "An unexpected error occurred", which
+            // tells the person Deluno broke when in fact their request did.
+            if (request?.Preview is null)
+            {
+                return Results.Json(
+                    new { message = "An import needs a preview. Send the preview object returned by /api/filesystem/import/preview under a \"preview\" property." },
+                    statusCode: StatusCodes.Status400BadRequest);
+            }
+
             var preview = await importPipeline.PreviewAsync(request.Preview, cancellationToken);
             if (preview.SourceExists && !ImportFileReadiness.IsPreviewReady(preview))
             {
