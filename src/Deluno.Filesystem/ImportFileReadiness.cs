@@ -28,12 +28,26 @@ public static class ImportFileReadiness
             : IsReady(preview.SourcePath);
     }
 
-    public static bool IsReady(string path)
+    /// <param name="timeProvider">
+    /// Supplied only by tests. The age rule reads the wall clock, which made
+    /// the test for it a race: pinning the file's write time to "now" leaves no
+    /// margin, so two seconds of real time between arranging the file and
+    /// checking it made the file legitimately old and failed a test that had
+    /// found nothing wrong. Pinning the write time to the *future* removes the
+    /// race and the test with it — a negative age is rejected by any positive
+    /// threshold, so the assertion would survive the rule being deleted. The
+    /// clock is the only thing that can be held still without also making the
+    /// test meaningless.
+    /// </param>
+    public static bool IsReady(string path) => IsReady(path, TimeProvider.System);
+
+    public static bool IsReady(string path, TimeProvider? timeProvider)
     {
         try
         {
+            var now = (timeProvider ?? TimeProvider.System).GetUtcNow().UtcDateTime;
             var before = new FileInfo(path);
-            if (!before.Exists || before.Length == 0 || DateTime.UtcNow - before.LastWriteTimeUtc < MinimumStableAge)
+            if (!before.Exists || before.Length == 0 || now - before.LastWriteTimeUtc < MinimumStableAge)
             {
                 return false;
             }

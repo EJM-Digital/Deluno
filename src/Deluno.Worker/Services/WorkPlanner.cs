@@ -194,6 +194,82 @@ public sealed class WorkPlanner(
             "Artwork cache cleanup pass failed.",
             cancellationToken);
 
+    /// <summary>
+    /// Checks the files Deluno believes it holds are still there, and corrects
+    /// itself where they are not.
+    ///
+    /// <para>The scan and the repair both already existed and nothing ever ran
+    /// them, so a file deleted outside Deluno left the library reporting
+    /// *Quality met* for ever — never searched for, and answering "you already
+    /// have this" when asked why it would not download. DESIGN-007 decision
+    /// 11.</para>
+    ///
+    /// <para><b>Only the missing-file repair is applied.</b> An orphan file or
+    /// a leftover staging artifact needs a judgement Deluno should not make on
+    /// its own; marking a tracked file missing needs none, because it only ever
+    /// corrects Deluno's own note and never touches disk. That asymmetry is why
+    /// this pass can run unattended at all.</para>
+    ///
+    /// <para>A library whose root is unreachable reports one issue and offers no
+    /// repair, so an unmounted drive cannot be mistaken for a library of
+    /// deleted files.</para>
+    /// </summary>
+    public Task RunLibraryFileCheckAsync(
+        IFilesystemReconciliationService reconciliation,
+        IActivityFeedRepository activityFeedRepository,
+        CancellationToken cancellationToken)
+        => RunScheduledPassAsync(
+            SystemTasks.LibraryFileCheck,
+            async () =>
+            {
+                var report = await reconciliation.ScanAsync(cancellationToken);
+                var missing = report.Issues
+                    .Where(issue => issue.Kind == "missingTrackedFile")
+                    .ToArray();
+                var unreachable = report.Issues.Count(issue => issue.Kind == "libraryRootUnreachable");
+
+                var corrected = 0;
+                foreach (var issue in missing)
+                {
+                    var repair = await reconciliation.RepairAsync(
+                        new FilesystemReconciliationRepairRequest(issue.Id, "mark-missing"),
+                        cancellationToken);
+                    if (repair.Repaired)
+                    {
+                        corrected++;
+                    }
+                }
+
+                if (corrected == 0 && unreachable == 0)
+                {
+                    return;
+                }
+
+                logger.LogInformation(
+                    "Library file check marked {CorrectedCount} tracked file(s) missing and found {UnreachableCount} unreachable library root(s).",
+                    corrected,
+                    unreachable);
+
+                // Worth telling somebody about: a title going from held to
+                // missing is a thing they will see on a shelf, and they should
+                // learn it from Deluno rather than from a gap.
+                if (corrected > 0)
+                {
+                    await activityFeedRepository.RecordActivityAsync(
+                        "library.file.missing",
+                        corrected == 1
+                            ? "A file Deluno was holding is no longer on disk. That title is now missing and will be searched for again."
+                            : $"{corrected} files Deluno was holding are no longer on disk. Those titles are now missing and will be searched for again.",
+                        JsonSerializer.Serialize(new { corrected, unreachable }, PayloadJsonOptions),
+                        null,
+                        "library",
+                        null,
+                        cancellationToken);
+                }
+            },
+            "Library file check failed.",
+            cancellationToken);
+
     public Task RunRecycleBinCleanupAsync(
         IRecycleBinService recycleBinService,
         CancellationToken cancellationToken)

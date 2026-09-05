@@ -57,6 +57,7 @@ public sealed class CatalogueScaleBenchmark(ITestOutputHelper output)
         var token = firstPage.NextPageToken;
         var pages = 1;
         long slowestContinuation = 0;
+        var continuationTimings = new List<double>();
         var walk = Stopwatch.StartNew();
         while (token is not null)
         {
@@ -65,6 +66,7 @@ public sealed class CatalogueScaleBenchmark(ITestOutputHelper output)
                 new CatalogueQuery(PageSize: 100, PageToken: token), CancellationToken.None);
             pageClock.Stop();
             slowestContinuation = Math.Max(slowestContinuation, pageClock.ElapsedMilliseconds);
+            continuationTimings.Add(pageClock.Elapsed.TotalMilliseconds);
 
             // A continuation page must never recompute the counts.
             Assert.Null(page.Facets);
@@ -91,12 +93,28 @@ public sealed class CatalogueScaleBenchmark(ITestOutputHelper output)
 
         Assert.Equal(total, pages * 100);
 
-        // Deliberately loose: a guard against something becoming an order of
-        // magnitude worse, not a target, and it runs on hardware of unknown
+        // The median page, not the worst one.
+        //
+        // This asserted on the slowest of two hundred pages and failed CI at
+        // 278 ms — in a run whose average was 6.9 ms. One page in two hundred
+        // hitting a garbage collection or losing its scheduling slice on a
+        // shared runner says nothing about the query, and the test was reading
+        // it as though it did.
+        //
+        // A keyset seek that has degenerated into a scan is slow on *every*
+        // page, by construction: the cost grows with the offset, so the median
+        // moves before the maximum does and moves further. Measuring the median
+        // therefore catches the regression this exists for, sooner, and is
+        // immune to a single outlier. The bound stays deliberately loose — it
+        // guards an order of magnitude, not a target, on hardware of unknown
         // speed.
+        continuationTimings.Sort();
+        var medianContinuation = continuationTimings[continuationTimings.Count / 2];
+        output.WriteLine($"median continuation   {medianContinuation,6:F1} ms  (worst {slowestContinuation} ms, ignored)");
+
         Assert.True(
-            slowestContinuation < 250,
-            $"A continuation page took {slowestContinuation} ms at {total:N0} titles, which suggests the keyset seek has become a scan.");
+            medianContinuation < 50,
+            $"The median continuation page took {medianContinuation:F1} ms at {total:N0} titles, which suggests the keyset seek has become a scan.");
     }
 
     /// <summary>

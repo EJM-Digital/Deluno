@@ -1,3 +1,4 @@
+using Deluno.Filesystem;
 using Deluno.Contracts;
 using Deluno.Jobs.Data;
 using Deluno.Media;
@@ -317,6 +318,10 @@ public sealed class DelunoHeartbeatWorker(
                 stoppingToken);
             await workPlanner.RunRecycleBinCleanupAsync(
                 services.GetRequiredService<IRecycleBinService>(),
+                stoppingToken);
+            await workPlanner.RunLibraryFileCheckAsync(
+                services.GetRequiredService<IFilesystemReconciliationService>(),
+                activityFeedRepository,
                 stoppingToken);
         }
 

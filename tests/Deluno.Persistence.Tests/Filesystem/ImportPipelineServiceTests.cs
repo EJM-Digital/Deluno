@@ -567,6 +567,76 @@ public sealed class ImportPipelineServiceTests
         Assert.Empty(remainingTrackedFiles);
     }
 
+    /// <summary>
+    /// A library that is not there is one fact, not ten thousand.
+    ///
+    /// <para>The scan asks <c>File.Exists</c> of every tracked path in turn, so
+    /// a drive that has not mounted answers false to all of them and every
+    /// title in the library came back as a critical missing-file issue. Its two
+    /// sibling scans already stopped at an unreachable root; this one did not,
+    /// and it is the one whose repair marks titles missing.</para>
+    ///
+    /// <para>That mattered the moment DESIGN-007 decision 11 had those
+    /// corrections applied on a schedule rather than by hand: an unmounted NAS
+    /// would mark a whole library missing and start downloading it again.</para>
+    /// </summary>
+    [Fact]
+    public async Task Reconciliation_reports_an_unreachable_library_rather_than_every_file_in_it()
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-04-29T08:00:00Z"));
+        await InitializeAllAsync(storage, timeProvider);
+
+        var downloadsPath = Path.Combine(storage.DataRoot, "downloads");
+        var movieRootPath = Path.Combine(storage.DataRoot, "movies");
+        Directory.CreateDirectory(downloadsPath);
+        Directory.CreateDirectory(movieRootPath);
+        var sourcePath = Path.Combine(downloadsPath, "Conclave.2024.WEB.1080p.mkv");
+        await File.WriteAllBytesAsync(sourcePath, Enumerable.Range(0, 3072).Select(value => (byte)(value % 211)).ToArray());
+        File.SetLastWriteTimeUtc(sourcePath, DateTime.UtcNow.AddMinutes(-1));
+
+        var platform = CreatePlatformRepository(storage, timeProvider);
+        var libraries = CreateLibrariesRepository(storage, timeProvider);
+        await SaveSettingsAsync(platform, movieRootPath, downloadsPath);
+        await CreateMovieLibraryAsync(libraries, movieRootPath, downloadsPath);
+
+        var movies = new SqliteMovieCatalogRepository(storage.Factory, timeProvider);
+        var service = CreateService(storage, timeProvider, platform, libraries, movies);
+        var import = await service.ExecuteAsync(
+            new ImportExecuteRequest(
+                Preview: new ImportPreviewRequest(
+                    SourcePath: sourcePath,
+                    FileName: null,
+                    MediaType: "movies",
+                    Title: "Conclave",
+                    Year: 2024,
+                    Genres: ["Drama"],
+                    Tags: [],
+                    Studio: "Focus",
+                    OriginalLanguage: "en"),
+                TransferMode: "copy",
+                Overwrite: false,
+                AllowCopyFallback: true),
+            CancellationToken.None);
+        Assert.True(import.Succeeded);
+
+        // The drive goes away, taking its tracked file with it. This is a
+        // mount failure, not a deletion.
+        Directory.Delete(movieRootPath, recursive: true);
+
+        var reconciliation = CreateReconciliationService(storage, timeProvider, libraries, movies);
+        var report = await reconciliation.ScanAsync(CancellationToken.None);
+
+        var issue = Assert.Single(report.Issues);
+        Assert.Equal("libraryRootUnreachable", issue.Kind);
+        Assert.Contains("not reachable", issue.Summary, StringComparison.OrdinalIgnoreCase);
+        Assert.Empty(issue.RepairActions);
+
+        // The point of the whole thing: nothing is offered as missing, so
+        // nothing can be marked missing and re-downloaded.
+        Assert.DoesNotContain(report.Issues, item => item.Kind == "missingTrackedFile");
+    }
+
     [Fact]
     public async Task Reconciliation_reports_orphans_and_cleans_only_deluno_artifacts_on_explicit_repair()
     {

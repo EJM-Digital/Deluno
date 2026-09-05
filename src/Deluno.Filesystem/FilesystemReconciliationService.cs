@@ -41,6 +41,26 @@ public sealed class FilesystemReconciliationService(
         {
             cancellationToken.ThrowIfCancellationRequested();
             var rootPath = Path.GetFullPath(library.RootPath);
+
+            // An unreachable library is not a library full of deleted files.
+            //
+            // The two scans below this one already stopped here; the scan that
+            // marks files *missing* did not, and it is the one that matters.
+            // It asks File.Exists of every tracked path in turn, so a drive
+            // that has not mounted answers false to all of them and every
+            // title in the library becomes a critical missing-file issue. Once
+            // those corrections are applied on a schedule rather than by hand,
+            // that is a whole library marked missing and re-downloaded because
+            // a NAS was asleep.
+            //
+            // So the root is checked once, and its absence is reported as the
+            // single fact it is. DESIGN-007 decision 12.
+            if (!Directory.Exists(rootPath))
+            {
+                issues.Add(CreateUnreachableLibraryIssue(library, rootPath));
+                continue;
+            }
+
             var knownTrackedPaths = new HashSet<string>(
                 OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal);
 
@@ -184,6 +204,28 @@ public sealed class FilesystemReconciliationService(
                 FileSizeBytes: item.FileSizeBytes);
         }
     }
+
+    /// <summary>
+    /// The library's root is not there at all.
+    ///
+    /// <para>Reported instead of, not alongside, everything inside it. One
+    /// sentence a person can act on beats ten thousand saying the same thing,
+    /// and the recommended action is deliberately not "mark them missing" —
+    /// the overwhelmingly likely cause is a drive that has not mounted.</para>
+    /// </summary>
+    private static FilesystemReconciliationIssue CreateUnreachableLibraryIssue(LibraryItem library, string rootPath)
+        => new(
+            Id: EncodeIssueToken("libraryRootUnreachable", NormalizeMediaType(library.MediaType), library.Id, string.Empty, null, rootPath),
+            Kind: "libraryRootUnreachable",
+            Severity: "critical",
+            MediaType: NormalizeMediaType(library.MediaType),
+            LibraryId: library.Id,
+            LibraryName: library.Name,
+            Path: rootPath,
+            Title: library.Name,
+            Summary: $"{library.Name} is not reachable at {rootPath}, so Deluno cannot tell you anything about the files in it.",
+            RecommendedAction: "Check the drive or share is mounted. Deluno has changed nothing and will resume on its own once the path is back.",
+            RepairActions: []);
 
     private static FilesystemReconciliationIssue CreateMissingTrackedFileIssue(
         LibraryItem library,

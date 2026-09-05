@@ -6,6 +6,7 @@ using Deluno.Infrastructure.Storage;
 using Deluno.Jobs.Contracts;
 using Deluno.Jobs.Data;
 using Deluno.Connections.Data;
+using Deluno.Libraries.Data;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -18,6 +19,7 @@ public sealed class MonitoringService(
     IJobQueueRepository jobQueueRepository,
     IMachineTelemetryRepository machineTelemetryRepository,
     IConnectionsRepository connectionsRepository,
+    ILibrariesRepository librariesRepository,
     IDelunoDatabaseConnectionFactory databaseConnectionFactory,
     IOptions<StoragePathOptions> storageOptions,
     IApiLatencyTracker latencyTracker,
@@ -308,6 +310,25 @@ public sealed class MonitoringService(
                 Severity: "critical",
                 Summary: "Storage is running low.",
                 Details: $"Only {storage.FreePercent.Value.ToString("0.##", CultureInfo.InvariantCulture)}% free remains under {storage.DataRoot}.",
+                DetectedUtc: now));
+        }
+
+        // A library Deluno cannot reach is not a library of deleted files, and
+        // it is not nothing either. Every title in it is unverifiable, every
+        // import into it will fail identically, and until this alert existed
+        // the only symptom was silence. DESIGN-007 decision 12.
+        foreach (var library in await librariesRepository.ListLibrariesAsync(cancellationToken))
+        {
+            if (string.IsNullOrWhiteSpace(library.RootPath) || Directory.Exists(library.RootPath))
+            {
+                continue;
+            }
+
+            alerts.Add(new MonitoringAlertItem(
+                Code: "library.unreachable",
+                Severity: "critical",
+                Summary: $"{library.Name} is not reachable.",
+                Details: $"Nothing is at {library.RootPath}. Deluno has changed nothing about the titles in it and will resume once the path is back — check the drive or share is mounted.",
                 DetectedUtc: now));
         }
 

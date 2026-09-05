@@ -74,6 +74,7 @@ public static class SystemTasks
     public const string ImportRecoveryRetention = "import.recovery.retention";
     public const string DownloadDispatchPolling = "dispatch.polling";
     public const string RecycleBinCleanup = "recycle.bin.cleanup";
+    public const string LibraryFileCheck = "library.file.check";
 
     /// <summary>
     /// Ordered as somebody reading the screen would want them: the things that
@@ -114,6 +115,15 @@ public static class SystemTasks
         new(ArtworkCacheCleanup, "Clean cached artwork",
             "Removes artwork no movie or show still references after a safety window.",
             TimeSpan.FromHours(6)),
+        // Deluno never looked at a file again after importing it, so a film you
+        // deleted yourself still showed as held, was never searched for, and
+        // answered "you already have this" when asked why it would not
+        // download. Three wrong answers, all sounding certain. DESIGN-007
+        // decisions 11 and 18.
+        new(LibraryFileCheck, "Check library files",
+            "Looks at whether the files Deluno thinks you have are still on disk, and marks anything that has gone as missing.",
+            TimeSpan.FromHours(6),
+            IsConfigurable: true),
         new(Backup, "Create scheduled backups",
             "Creates a backup when the backup schedule says one is due.",
             TimeSpan.FromDays(1),
