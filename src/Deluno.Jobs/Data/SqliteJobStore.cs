@@ -65,6 +65,57 @@ public sealed class SqliteJobStore(
             idempotencyKey,
             dedupeKey,
             cancellationToken);
+        if (duplicate is { Status: "dead-letter" })
+        {
+            // The same work has permanently failed before. Revive that row
+            // rather than inserting a second one.
+            //
+            // Dead-letter rows sit outside ux_job_queue_active_dedupe, so
+            // every re-enqueue of work that keeps failing used to add a row.
+            // On the lab rig that produced 459 rows for one vanished season
+            // pack in seventeen hours, and nothing bounded it. It also broke
+            // Retry: it promotes one row per dedupe key, so pressing the button
+            // the dashboard sends you to left 458 of them exactly where they
+            // were.
+            //
+            // Reviving keeps what that exclusion was for — the WorkPlanner
+            // deliberately does not let a dead-lettered import reserve its
+            // source, so that repairing the source lets the work run again.
+            // It still runs again. There is just one row for it.
+            await ReviveDeadLetteredJobAsync(connection, transaction, duplicate.Id, job, now, cancellationToken);
+
+            await InsertActivityAsync(
+                connection,
+                transaction,
+                category: "job.revived",
+                message: $"Retrying {duplicate.JobType}, which had previously given up.",
+                detailsJson: job.PayloadJson,
+                relatedJobId: duplicate.Id,
+                relatedEntityType: duplicate.RelatedEntityType,
+                relatedEntityId: duplicate.RelatedEntityId,
+                createdUtc: now,
+                cancellationToken: cancellationToken);
+
+            await transaction.CommitAsync(cancellationToken);
+
+            if (job.ScheduledUtc <= now)
+            {
+                laneSignal?.Notify(job.JobType);
+            }
+
+            return duplicate with
+            {
+                Status = "queued",
+                Attempts = 0,
+                PayloadJson = job.PayloadJson,
+                ScheduledUtc = job.ScheduledUtc,
+                NextAttemptUtc = job.ScheduledUtc,
+                StartedUtc = null,
+                CompletedUtc = null,
+                LastError = null
+            };
+        }
+
         if (duplicate is not null)
         {
             await InsertActivityAsync(
@@ -1032,6 +1083,28 @@ public sealed class SqliteJobStore(
         AddParameter(command, "@workerId", workerId);
         AddParameter(command, "@lastSeenUtc", now.ToString("O"));
         await command.ExecuteNonQueryAsync(cancellationToken);
+    }
+
+    public async Task<IReadOnlyDictionary<string, int>> CountJobsByStatusAsync(CancellationToken cancellationToken)
+    {
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Jobs,
+            cancellationToken);
+
+        using var command = connection.CreateCommand();
+        // Counted in SQL, over every row. A page cannot answer "how many" —
+        // it can only answer "how many of the ones I looked at", which is a
+        // different question that reads identically on a dashboard.
+        command.CommandText = "SELECT status, COUNT(*) FROM job_queue GROUP BY status;";
+
+        var counts = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            counts[reader.GetString(0)] = reader.GetInt32(1);
+        }
+
+        return counts;
     }
 
     public async Task<int> CountActiveJobsAsync(string jobType, CancellationToken cancellationToken)
@@ -2807,6 +2880,45 @@ public sealed class SqliteJobStore(
         await command.ExecuteNonQueryAsync(cancellationToken);
     }
 
+    /// <summary>
+    /// Puts a dead-lettered row back in the queue, carrying the newly requested
+    /// payload and schedule. One row per piece of work, however many times that
+    /// work is asked for.
+    /// </summary>
+    private static async Task ReviveDeadLetteredJobAsync(
+        System.Data.Common.DbConnection connection,
+        System.Data.Common.DbTransaction transaction,
+        string jobId,
+        JobQueueItem requested,
+        DateTimeOffset now,
+        CancellationToken cancellationToken)
+    {
+        using var command = connection.CreateCommand();
+        command.Transaction = transaction;
+        command.CommandText =
+            """
+            UPDATE job_queue
+            SET
+                status = 'queued',
+                attempts = 0,
+                payload_json = @payloadJson,
+                scheduled_utc = @scheduledUtc,
+                next_attempt_utc = @scheduledUtc,
+                started_utc = NULL,
+                completed_utc = NULL,
+                leased_until_utc = NULL,
+                worker_id = NULL,
+                last_error = NULL
+            WHERE id = @id;
+            """;
+
+        AddParameter(command, "@payloadJson", requested.PayloadJson);
+        AddParameter(command, "@scheduledUtc", requested.ScheduledUtc.ToString("O"));
+        AddParameter(command, "@id", jobId);
+
+        await command.ExecuteNonQueryAsync(cancellationToken);
+    }
+
     private static async Task<JobQueueItem?> FindDuplicateActiveJobAsync(
         System.Data.Common.DbConnection connection,
         System.Data.Common.DbTransaction transaction,
@@ -2828,12 +2940,14 @@ public sealed class SqliteJobStore(
                 started_utc, completed_utc, leased_until_utc, worker_id, last_error, related_entity_type, related_entity_id,
                 idempotency_key, dedupe_key, max_attempts, last_attempt_utc, next_attempt_utc
             FROM job_queue
-            WHERE status IN ('queued', 'running', 'failed')
+            WHERE status IN ('queued', 'running', 'failed', 'dead-letter')
               AND (
                 (@idempotencyKey IS NOT NULL AND idempotency_key = @idempotencyKey)
                 OR (@dedupeKey IS NOT NULL AND dedupe_key = @dedupeKey)
               )
-            ORDER BY created_utc ASC
+            -- An active row wins over a dead-lettered one: if the same work is
+            -- already runnable there is nothing to revive.
+            ORDER BY CASE WHEN status = 'dead-letter' THEN 1 ELSE 0 END, created_utc ASC
             LIMIT 1;
             """;
         AddParameter(command, "@idempotencyKey", idempotencyKey);

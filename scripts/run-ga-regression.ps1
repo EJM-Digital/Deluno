@@ -31,17 +31,27 @@ function Invoke-LoggedStep {
     $stderrPath = "$logPath.stderr"
 
     try {
-        $process = Start-Process `
-            -FilePath $FilePath `
-            -ArgumentList $Arguments `
-            -WorkingDirectory $Root `
-            -NoNewWindow `
-            -Wait `
-            -PassThru `
-            -RedirectStandardOutput $stdoutPath `
-            -RedirectStandardError $stderrPath
-
-        $exitCode = $process.ExitCode
+        # Invoke directly rather than through Start-Process -Wait.
+        #
+        # The first step is `npm run ci:check`, which builds the solution and
+        # leaves MSBuild's persistent node servers alive for their idle
+        # lifetime. Those servers inherit the redirected handles, so
+        # Start-Process -Wait sat on them long after npm itself had exited and
+        # the gate never reached step two. Observed 2026-09-05: step one
+        # finished at 18:50:17 and thirteen minutes later no `dotnet test`
+        # process existed; killing the MSBuild nodes started step two within
+        # seconds.
+        #
+        # This is the same defect and the same fix already carried by
+        # `ci-check.ps1`, which says so at its own Invoke-LoggedCommand. It was
+        # not carried next door.
+        Push-Location $Root
+        try {
+            & $FilePath @Arguments 1> $stdoutPath 2> $stderrPath
+            $exitCode = $LASTEXITCODE
+        } finally {
+            Pop-Location
+        }
     }
     catch {
         $_.Exception.Message | Out-File -FilePath $logPath -Encoding utf8
