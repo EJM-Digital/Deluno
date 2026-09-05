@@ -43,14 +43,18 @@ import { ListCard, ListNameCell, ListRow, ListTable } from "../ui/list-card";
  * that this card means breakage, and then the one that does mean breakage would
  * arrive in a colour they had learned to discount.</p>
  */
-const BLOCKER_TONE: Record<string, Tone> = {
+export const BLOCKER_TONE: Record<string, Tone> = {
   [ACQUISITION_BLOCKER_KINDS.alreadyHeld]: "ok",
   [ACQUISITION_BLOCKER_KINDS.downloadInFlight]: "info",
   [ACQUISITION_BLOCKER_KINDS.processorHoldingFile]: "info",
   [ACQUISITION_BLOCKER_KINDS.importExcluded]: "bad",
   [ACQUISITION_BLOCKER_KINDS.searchSkipped]: "warn",
   [ACQUISITION_BLOCKER_KINDS.searchDeferred]: "warn",
-  [ACQUISITION_BLOCKER_KINDS.notYetAvailable]: "idle"
+  [ACQUISITION_BLOCKER_KINDS.notYetAvailable]: "idle",
+  // Warn rather than bad. Deluno fetched this once and no longer has it —
+  // that is worth acting on, and it is nobody's fault. Red is reserved for
+  // the exclusion, which is a decision someone made.
+  [ACQUISITION_BLOCKER_KINDS.previouslyDownloaded]: "warn"
 };
 
 export interface AcquisitionBlockersCardProps {

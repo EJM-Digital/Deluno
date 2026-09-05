@@ -37,7 +37,9 @@ public sealed class AcquisitionBlockerGatherer(
         string? clientHoldingRelease,
         string? processorHoldingFile,
         bool isImportExcluded,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        string? previouslyFetchedFrom = null,
+        DateTimeOffset? previouslyFetchedUtc = null)
     {
         var wantedRows = await mediaState.ListWantedByIdsAsync(kind, [mediaId], cancellationToken);
 
@@ -57,6 +59,8 @@ public sealed class AcquisitionBlockerGatherer(
             processorHoldingFile,
             isImportExcluded,
             nextSearchSkipped: false,
-            timeProvider.GetUtcNow());
+            timeProvider.GetUtcNow(),
+            previouslyFetchedFrom,
+            previouslyFetchedUtc);
     }
 }

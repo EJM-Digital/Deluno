@@ -16,7 +16,8 @@ export const ACQUISITION_BLOCKER_KINDS = {
   importExcluded: "import-excluded",
   searchSkipped: "search-skipped",
   searchDeferred: "search-deferred",
-  notYetAvailable: "not-yet-available"
+  notYetAvailable: "not-yet-available",
+  previouslyDownloaded: "previously-downloaded"
 } as const;
 
 export interface AcquisitionBlocker {

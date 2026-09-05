@@ -23,6 +23,22 @@ public static class AcquisitionBlockerSources
         string? HandoffId,
         string? ProcessorName);
 
+    /// <summary>
+    /// A download Deluno completed for this title in the past.
+    ///
+    /// <para>Read from Deluno's own dispatch record rather than by asking a
+    /// download client. That is deliberate: the client may be unreachable, and
+    /// "I fetched this and no longer have it" is a fact Deluno owns and can
+    /// always answer, where "the client still refuses it" is a guess about
+    /// somebody else's state.</para>
+    /// </summary>
+    public sealed record FetchedBefore(
+        string? ClientId,
+        string? ClientName,
+        string? QueueItemId,
+        string ReleaseName,
+        DateTimeOffset WhenUtc);
+
     private static readonly HeldBy Nothing = new(null, null, null, null, null);
 
     /// <summary>
@@ -82,6 +98,41 @@ public static class AcquisitionBlockerSources
             string.Equals(handoff.ReleaseName, releaseName, StringComparison.OrdinalIgnoreCase) &&
             !string.Equals(handoff.Status, "completed", StringComparison.OrdinalIgnoreCase) &&
             !string.Equals(handoff.Status, "failed", StringComparison.OrdinalIgnoreCase));
+    }
+
+    /// <summary>
+    /// The most recent download Deluno actually finished for this title.
+    ///
+    /// <para><see cref="FindAsync"/> deliberately ignores completed dispatches,
+    /// because a download that imported is history rather than an obstacle.
+    /// That is right for everything it reports and wrong for exactly one case:
+    /// the file is no longer here, so the completed download is the reason the
+    /// client will refuse the next attempt.</para>
+    /// </summary>
+    public static async Task<FetchedBefore?> FindPreviousFetchAsync(
+        IDownloadDispatchesRepository dispatches,
+        string mediaType,
+        string entityId,
+        CancellationToken cancellationToken)
+    {
+        var recent = await dispatches.QueryDispatchesAsync(
+            new DispatchQueryFilter { MediaType = mediaType, EntityId = entityId },
+            new DispatchPaginationOptions { PageSize = 10 },
+            cancellationToken);
+
+        var completed = recent.Items
+            .Where(dispatch => string.Equals(dispatch.ImportStatus, "completed", StringComparison.OrdinalIgnoreCase))
+            .OrderByDescending(dispatch => dispatch.ImportCompletedUtc ?? dispatch.CreatedUtc)
+            .FirstOrDefault();
+
+        return completed is null
+            ? null
+            : new FetchedBefore(
+                completed.DownloadClientId,
+                completed.DownloadClientName,
+                completed.TorrentHashOrItemId,
+                completed.ReleaseName,
+                completed.ImportCompletedUtc ?? completed.CreatedUtc);
     }
 
     public static async Task<bool> IsExcludedAsync(

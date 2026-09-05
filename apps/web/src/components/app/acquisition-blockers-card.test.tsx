@@ -3,7 +3,8 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { AcquisitionBlocker, AcquisitionBlockersResponse } from "../../lib/api";
 import { authedFetch } from "../../lib/use-auth";
-import { AcquisitionBlockersCard } from "./acquisition-blockers-card";
+import { ACQUISITION_BLOCKER_KINDS } from "../../lib/api";
+import { AcquisitionBlockersCard, BLOCKER_TONE } from "./acquisition-blockers-card";
 
 vi.mock("../../lib/use-auth", () => ({ authedFetch: vi.fn() }));
 
@@ -66,6 +67,17 @@ function renderCard(blockers: AcquisitionBlockersResponse | null, onForced = vi.
 describe("the acquisition blockers card", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+  });
+
+  /// Every kind the server can send has a colour chosen for it.
+  it("has a tone for every kind the server can send", () => {
+    // The lookup falls back to grey for anything it does not recognise, which
+    // is right at runtime and a silent gap at build time: a kind added on the
+    // server renders as "nothing much" until somebody notices. This is the
+    // noticing, and it reads the real map rather than a copy of it.
+    const missing = Object.values(ACQUISITION_BLOCKER_KINDS).filter((kind) => !(kind in BLOCKER_TONE));
+
+    expect(missing, `these kinds have no tone: ${missing.join(", ")}`).toEqual([]);
   });
 
   it("says nothing at all when nothing is in the way", () => {
