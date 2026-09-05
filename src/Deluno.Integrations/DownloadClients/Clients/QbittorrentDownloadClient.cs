@@ -6,8 +6,22 @@ using Deluno.Connections.Contracts;
 
 namespace Deluno.Integrations.DownloadClients.Clients;
 
-public sealed class QbittorrentDownloadClient : DownloadClientBase
+/// <summary>
+/// qBittorrent's Web API.
+///
+/// <para><b>The handler is injectable so this can be tested.</b> It was not,
+/// and every other client here is: SABnzbd takes an
+/// <see cref="IHttpClientFactory"/> and has tests, this one built its own
+/// <see cref="HttpClientHandler"/> inline and had none. That is why a grab
+/// could report a release as sent while qBittorrent had quietly added nothing,
+/// and why no test could have caught it. The default is exactly what it built
+/// before, so a real deployment is unchanged.</para>
+/// </summary>
+public sealed class QbittorrentDownloadClient(Func<HttpMessageHandler>? handlerFactory = null) : DownloadClientBase
 {
+    private readonly Func<HttpMessageHandler> handlerFactory =
+        handlerFactory ?? (() => new HttpClientHandler { CookieContainer = new CookieContainer() });
+
     public override string Protocol => "qbittorrent";
 
     public override DownloadClientTelemetryCapabilities Capabilities { get; } = new(
@@ -24,7 +38,7 @@ public sealed class QbittorrentDownloadClient : DownloadClientBase
         var baseUri = DownloadClientHelpers.ResolveEndpoint(client);
         if (baseUri is null) return DownloadClientHelpers.GrabFailure(client, request, "Download client address is missing.");
 
-        using var handler = new HttpClientHandler { CookieContainer = new CookieContainer() };
+        using var handler = this.handlerFactory();
         using var http = new HttpClient(handler) { BaseAddress = baseUri, Timeout = TimeSpan.FromSeconds(10) };
         await LoginAsync(http, client, cancellationToken);
         using var body = new FormUrlEncodedContent(
@@ -32,8 +46,46 @@ public sealed class QbittorrentDownloadClient : DownloadClientBase
             new KeyValuePair<string, string>("urls", request.DownloadUrl),
             new KeyValuePair<string, string>("category", DownloadClientHelpers.ResolveCategory(client, request))
         ]);
+        // What was there before, so the answer below can be about what actually
+        // happened rather than about what was asked.
+        var before = await ListHashesAsync(http, cancellationToken);
+
         using var response = await http.PostAsync("api/v2/torrents/add", body, cancellationToken);
         response.EnsureSuccessStatusCode();
+        var payload = (await response.Content.ReadAsStringAsync(cancellationToken)).Trim();
+
+        // qBittorrent answers 200 with a body of "Ok." or "Fails.", so the
+        // status code on its own says nothing about whether it took the
+        // release.
+        if (payload.StartsWith("Fails", StringComparison.OrdinalIgnoreCase))
+        {
+            return DownloadClientHelpers.GrabFailure(client, request, "qBittorrent refused the release URL.") with
+            {
+                ResponseCode = (int)response.StatusCode,
+                ResponseJson = payload
+            };
+        }
+
+        // And 200 "Ok." does not mean it added anything. A torrent whose
+        // infohash it already holds is not an error to qBittorrent — it simply
+        // keeps the one it has and says Ok. Deluno used to report that as a
+        // clean send and then wait for a download that was never going to
+        // start, which is exactly what it did on the lab: "Release URL sent to
+        // qBittorrent" against a torrent stuck in missingFiles from a previous
+        // run.
+        var after = await ListHashesAsync(http, cancellationToken);
+        if (before is not null && after is not null && !after.Except(before).Any())
+        {
+            return DownloadClientHelpers.GrabFailure(
+                client,
+                request,
+                "qBittorrent accepted the request but added no torrent, which means it already holds this release. Remove it there, or force a re-download, before expecting this to start.") with
+            {
+                ResponseCode = (int)response.StatusCode,
+                ResponseJson = payload
+            };
+        }
+
         return DownloadClientHelpers.GrabSuccess(client, request, "Release URL sent to qBittorrent.");
     }
 
@@ -42,7 +94,7 @@ public sealed class QbittorrentDownloadClient : DownloadClientBase
         var baseUri = DownloadClientHelpers.ResolveEndpoint(client);
         if (baseUri is null) return CreateConfigurationSnapshot(client, capturedUtc, "Download client address is missing.");
 
-        using var handler = new HttpClientHandler { CookieContainer = new CookieContainer() };
+        using var handler = this.handlerFactory();
         using var http = new HttpClient(handler) { BaseAddress = baseUri, Timeout = TimeSpan.FromSeconds(8) };
         await LoginAsync(http, client, cancellationToken);
         var torrents = await http.GetFromJsonAsync<IReadOnlyList<QbitTorrentItem>>("api/v2/torrents/info", cancellationToken) ?? [];
@@ -147,7 +199,7 @@ public sealed class QbittorrentDownloadClient : DownloadClientBase
     {
         var baseUri = DownloadClientHelpers.ResolveEndpoint(client);
         if (baseUri is null) return DownloadClientHelpers.MissingAddress(client, queueItemId, action);
-        using var handler = new HttpClientHandler { CookieContainer = new CookieContainer() };
+        using var handler = this.handlerFactory();
         using var http = new HttpClient(handler) { BaseAddress = baseUri, Timeout = TimeSpan.FromSeconds(8) };
         await LoginAsync(http, client, cancellationToken);
         var endpoints = action switch
@@ -206,6 +258,33 @@ public sealed class QbittorrentDownloadClient : DownloadClientBase
         response.EnsureSuccessStatusCode();
         var text = await response.Content.ReadAsStringAsync(cancellationToken);
         if (!text.Contains("Ok.", StringComparison.OrdinalIgnoreCase)) throw new InvalidOperationException("qBittorrent rejected the configured username/password.");
+    }
+
+    /// <summary>
+    /// The infohashes qBittorrent is holding, or null when it will not say.
+    ///
+    /// <para>Null rather than empty on purpose: "I could not read the list" and
+    /// "the list is empty" lead to opposite conclusions about whether an add
+    /// worked, and a grab must not be failed on the strength of a question that
+    /// went unanswered.</para>
+    /// </summary>
+    private static async Task<HashSet<string>?> ListHashesAsync(HttpClient http, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var torrents = await http.GetFromJsonAsync<QbitTorrentItem[]>("api/v2/torrents/info", cancellationToken);
+            return torrents is null
+                ? null
+                : torrents
+                    .Select(torrent => torrent.Hash)
+                    .Where(hash => !string.IsNullOrWhiteSpace(hash))
+                    .Select(hash => hash!)
+                    .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        }
+        catch (Exception exception) when (exception is HttpRequestException or JsonException or TaskCanceledException)
+        {
+            return null;
+        }
     }
 
     private sealed record QbitTorrentItem(

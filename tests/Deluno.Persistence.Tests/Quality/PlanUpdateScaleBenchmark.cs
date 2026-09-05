@@ -28,6 +28,26 @@ namespace Deluno.Persistence.Tests.Quality;
 /// </summary>
 public sealed class PlanUpdateScaleBenchmark(ITestOutputHelper output)
 {
+    /// <summary>
+    /// How many times the floor re-deciding is allowed to cost.
+    ///
+    /// <para>This was 4 and failed CI on a change to a stylesheet: 837 µs per
+    /// title against a 175 µs floor, a ratio of 4.77, in a run where seeding
+    /// 20,000 rows took 100 seconds. Relative-to-a-floor was already the right
+    /// idea — an absolute millisecond budget here is a coin toss — but it only
+    /// cancels the machine out if load is steady across both measurements, and
+    /// they are taken minutes apart on a runner shared with three other
+    /// jobs. The two operations do not degrade alike under contention, so the
+    /// ratio itself moves with the load.</para>
+    ///
+    /// <para>6 rather than 4, because of what this is for. The regression it
+    /// exists to catch is a change of shape — a query per row, or a transaction
+    /// per row — and that is an order of magnitude, not a factor of five. A
+    /// threshold tight enough to fail on runner noise fails often enough that
+    /// people learn to re-run it, which is the same as not having it.</para>
+    /// </summary>
+    private const double MaxCostOverFloor = 6;
+
     [Theory]
     [InlineData(5_000)]
     [InlineData(20_000)]
@@ -98,12 +118,19 @@ public sealed class PlanUpdateScaleBenchmark(ITestOutputHelper output)
         // measures the thing that actually regressed: whether re-deciding a
         // library costs about one write per title, or several.
         var floorMicroseconds = await MeasureSingleTransactionWriteFloorAsync(storage, total);
+        var ratio = perTitleMicroseconds / floorMicroseconds;
         output.WriteLine($"floor: one indexed UPDATE per row in one transaction — {floorMicroseconds:F1} µs per row");
 
+        // Printed on every run, pass or fail. The number this test defends is a
+        // shape, and a shape drifts long before it breaks: a ratio creeping
+        // from 2 to 5 is visible here while it is still cheap to look into,
+        // where a bare pass tells nobody anything.
+        output.WriteLine($"re-deciding costs {ratio:F2}x the floor (budget {MaxCostOverFloor}x)");
+
         Assert.True(
-            perTitleMicroseconds < floorMicroseconds * 4,
+            ratio < MaxCostOverFloor,
             $"Re-deciding cost {perTitleMicroseconds:F1} µs per title against a {floorMicroseconds:F1} µs floor "
-            + $"at {total:N0} titles. It should be within a small multiple of one write per row; "
+            + $"at {total:N0} titles — {ratio:F2}x. It should be within a small multiple of one write per row; "
             + "a large multiple means it is writing a row at a time again, or asking a question per row.");
         Assert.True(
             compile.ElapsedMilliseconds < 2_000,

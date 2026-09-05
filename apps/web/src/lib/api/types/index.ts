@@ -7,3 +7,4 @@ export * from "./operations";
 export * from "./release-preferences";
 export * from "./guide-package";
 export * from "./media-plan-scenarios";
+export * from "./acquisition";

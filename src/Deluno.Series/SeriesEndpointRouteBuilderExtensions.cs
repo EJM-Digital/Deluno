@@ -501,6 +501,161 @@ public static class SeriesEndpointRouteBuilderExtensions
             return Results.Ok(new { updated });
         });
 
+        // Why a title will not download, and what could be done about it.
+        //
+        // The question a person asks of a title that never arrives is not "what
+        // is its wanted status" — it is "why is nothing happening". Every media
+        // manager accumulates records that quietly answer that and never say
+        // so: a client that already holds the release, a processor still
+        // holding the file, an exclusion added when it was removed. This says
+        // them out loud, and marks the ones a person is allowed to override.
+        series.MapGet("/{id}/acquisition-blockers", async (
+            string id,
+            HttpContext httpContext,
+            ISeriesCatalogRepository repository,
+            AcquisitionBlockerGatherer gatherer,
+            IUnifiedExclusionRepository exclusions,
+            IDownloadDispatchesRepository dispatches,
+            IProcessorRepository processors,
+            CancellationToken cancellationToken) =>
+        {
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
+            if (denied is not null)
+            {
+                return denied;
+            }
+
+            var item = await repository.GetByIdAsync(id, cancellationToken);
+            if (item is null)
+            {
+                return Results.NotFound();
+            }
+
+            var held = await AcquisitionBlockerSources.FindAsync(
+                dispatches, processors, "tv", id, cancellationToken);
+            var excluded = await AcquisitionBlockerSources.IsExcludedAsync(
+                exclusions, "tv", item.Title, item.ImdbId, cancellationToken);
+
+            return Results.Ok(await gatherer.GatherAsync(
+                MediaKind.Series,
+                id,
+                item.Title,
+                held.DownloadClientName,
+                held.ProcessorName,
+                excluded,
+                cancellationToken));
+        });
+
+        // Clear what is standing in the way, deliberately and on the record.
+        //
+        // Destructive across systems Deluno does not own — it removes a
+        // download and its files, and restarts a processor hand-off — so it is
+        // a POST that reports every step, rather than something that happens
+        // quietly on the way to a search.
+        series.MapPost("/{id}/force-redownload", async (
+            string id,
+            HttpContext httpContext,
+            ISeriesCatalogRepository repository,
+            AcquisitionOverrideService overrides,
+            IUnifiedExclusionRepository exclusions,
+            IDownloadDispatchesRepository dispatches,
+            IProcessorRepository processors,
+            IActivityFeedRepository activityFeed,
+            IMediaStateRepository mediaStateRepository,
+            ILibrariesRepository platformSettingsRepository,
+            IQualityRepository qualityRepository,
+            IJobQueueRepository jobQueueRepository,
+            IAcquisitionDecisionPipeline acquisitionPipeline,
+            IDownloadClientGrabService downloadClientGrabService,
+            TimeProvider timeProvider,
+            IMediaTagStore tagStore,
+            IReleasePreferencePlanRepository releasePreferencePlanRepository,
+            CancellationToken cancellationToken) =>
+        {
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
+            if (denied is not null)
+            {
+                return denied;
+            }
+
+            var item = await repository.GetByIdAsync(id, cancellationToken);
+            if (item is null)
+            {
+                return Results.NotFound();
+            }
+
+            var held = await AcquisitionBlockerSources.FindAsync(
+                dispatches, processors, "tv", id, cancellationToken);
+            var exclusionIds = await AcquisitionBlockerSources.ExclusionIdsAsync(
+                exclusions, "tv", item.Title, item.ImdbId, cancellationToken);
+
+            var result = await overrides.ForceAsync(
+                new AcquisitionOverrideRequest(
+                    id,
+                    item.Title,
+                    held.HandoffId,
+                    held.DownloadClientId,
+                    held.DownloadClientName,
+                    held.QueueItemId,
+                    exclusionIds),
+                cancellationToken);
+
+            // And then actually look for it. Clearing the obstacles and stopping
+            // there would leave the person exactly where they were, one button
+            // press poorer — "force a re-download" has to end in a download
+            // being looked for, or the word force is a lie.
+            //
+            // The search runs whether or not anything was cleared: someone who
+            // presses this has decided they want the title now, and "there was
+            // nothing in the way" is not a reason to refuse to go and find it.
+            var searchStarted = false;
+            var outcome = string.Empty;
+            try
+            {
+                var search = await RunSearchAsync(
+                    id,
+                    null,
+                    repository,
+                    mediaStateRepository,
+                    platformSettingsRepository,
+                    qualityRepository,
+                    jobQueueRepository,
+                    acquisitionPipeline,
+                    downloadClientGrabService,
+                    activityFeed,
+                    timeProvider,
+                    tagStore,
+                    releasePreferencePlanRepository,
+                    cancellationToken);
+
+                searchStarted = !search.NotFound;
+                outcome = search.Summary;
+            }
+            catch (Exception exception) when (exception is not OperationCanceledException)
+            {
+                // The clearing already happened and is not undone by this. Say
+                // so rather than returning a 500 that hides what did work.
+                outcome = "The search could not be started, so try it by hand.";
+            }
+
+            var answer = result with
+            {
+                SearchStarted = searchStarted,
+                Summary = outcome.Length > 0 ? $"{result.Summary} {outcome}" : result.Summary
+            };
+
+            await activityFeed.RecordActivityAsync(
+                "acquisition.override",
+                $"Someone forced a re-download of {item.Title}. {answer.Summary}",
+                JsonSerializer.Serialize(new { answer.Cleared, answer.CouldNotClear, answer.SearchStarted }),
+                null,
+                "tv",
+                id,
+                cancellationToken);
+
+            return Results.Ok(answer);
+        });
+
         series.MapPost("/{id}/search", async (
             string id,
             string? mode,
@@ -524,10 +679,10 @@ public static class SeriesEndpointRouteBuilderExtensions
                 return denied;
             }
 
-            var result = await MediaSearchHandler.ExecuteAsync(
-                MediaKind.Series,
+            var result = await RunSearchAsync(
                 id,
                 mode,
+                repository,
                 mediaStateRepository,
                 platformSettingsRepository,
                 qualityRepository,
@@ -536,23 +691,9 @@ public static class SeriesEndpointRouteBuilderExtensions
                 downloadClientGrabService,
                 activityFeedRepository,
                 timeProvider,
-                (seriesId, libraryId, triggerKind, outcome, now, nextEligibleUtc, lastSearchResult, releaseName, indexerName, detailsJson, cancellationToken) =>
-                    repository.RecordSearchAttemptAsync(
-                        seriesId,
-                        null,
-                        libraryId,
-                        triggerKind,
-                        outcome,
-                        now,
-                        nextEligibleUtc,
-                        lastSearchResult,
-                        releaseName,
-                        indexerName,
-                        detailsJson,
-                        cancellationToken),
-                cancellationToken,
                 tagStore,
-                releasePreferencePlanRepository);
+                releasePreferencePlanRepository,
+                cancellationToken);
 
             if (result.NotFound)
             {
@@ -2651,6 +2792,60 @@ public static class SeriesEndpointRouteBuilderExtensions
     }
 
     /// <summary>Blank means "no override", so it is stored as null rather than kept.</summary>
+    /// <summary>
+    /// One search, called from both places that start one.
+    ///
+    /// <para>The second place is a forced re-download, which would not be
+    /// forcing anything if it cleared every obstacle and then left the title
+    /// sitting exactly where it was. Extracted rather than copied because the
+    /// wiring is twenty-eight lines of service plumbing, and two copies of that
+    /// drift the moment one of them gains an argument.</para>
+    /// </summary>
+    private static Task<MediaSearchResult> RunSearchAsync(
+        string id,
+        string? mode,
+        ISeriesCatalogRepository repository,
+        IMediaStateRepository mediaStateRepository,
+        ILibrariesRepository platformSettingsRepository,
+        IQualityRepository qualityRepository,
+        IJobQueueRepository jobQueueRepository,
+        IAcquisitionDecisionPipeline acquisitionPipeline,
+        IDownloadClientGrabService downloadClientGrabService,
+        IActivityFeedRepository activityFeedRepository,
+        TimeProvider timeProvider,
+        IMediaTagStore tagStore,
+        IReleasePreferencePlanRepository releasePreferencePlanRepository,
+        CancellationToken cancellationToken)
+        => MediaSearchHandler.ExecuteAsync(
+            MediaKind.Series,
+            id,
+            mode,
+            mediaStateRepository,
+            platformSettingsRepository,
+            qualityRepository,
+            jobQueueRepository,
+            acquisitionPipeline,
+            downloadClientGrabService,
+            activityFeedRepository,
+            timeProvider,
+            (seriesId, libraryId, triggerKind, outcome, now, nextEligibleUtc, lastSearchResult, releaseName, indexerName, detailsJson, token) =>
+                repository.RecordSearchAttemptAsync(
+                    seriesId,
+                    null,
+                    libraryId,
+                    triggerKind,
+                    outcome,
+                    now,
+                    nextEligibleUtc,
+                    lastSearchResult,
+                    releaseName,
+                    indexerName,
+                    detailsJson,
+                    token),
+            cancellationToken,
+            tagStore,
+            releasePreferencePlanRepository);
+
     private static string? NormalizeOverride(string? value) =>
         string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 
