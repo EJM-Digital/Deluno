@@ -103,15 +103,116 @@ public sealed class AcquisitionOverrideService(
     /// there is not wanted, and leaving the files behind would have the client
     /// refuse the same release again for the same reason.</para>
     /// </summary>
+    /// <summary>
+    /// Asks the client what it is holding for this title, and returns the id of
+    /// the item to forget.
+    ///
+    /// <para>Matched on the release name first and the title second, because a
+    /// client's queue entry is named after the release it fetched. Nothing is
+    /// forgotten on a guess: if more than one entry matches, none is chosen,
+    /// because forgetting the wrong download is not recoverable from inside
+    /// Deluno.</para>
+    /// </summary>
+    private async Task<string?> FindQueueItemAtTheClientAsync(
+        string clientId,
+        AcquisitionOverrideRequest request,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(request.Title))
+        {
+            return null;
+        }
+
+        try
+        {
+            var overview = await downloadClients.GetOverviewAsync(cancellationToken);
+            var client = overview.Clients.FirstOrDefault(candidate =>
+                string.Equals(candidate.ClientId, clientId, StringComparison.OrdinalIgnoreCase));
+
+            var matches = client?.Queue
+                .Where(item =>
+                    Mentions(item.ReleaseName, request.Title) ||
+                    Mentions(item.Title, request.Title))
+                .Select(item => item.Id)
+                .Where(id => !string.IsNullOrWhiteSpace(id))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToArray() ?? [];
+
+            if (matches.Length == 1)
+            {
+                return matches[0];
+            }
+
+            if (matches.Length > 1)
+            {
+                logger.LogInformation(
+                    "{ClientId} holds {MatchCount} items matching {Title}; none was forgotten, because forgetting the wrong one cannot be undone.",
+                    clientId,
+                    matches.Length,
+                    request.Title);
+            }
+
+            return null;
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            logger.LogWarning(exception, "Could not ask {ClientId} what it is holding during an acquisition override.", clientId);
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Whether a client's own label for a download refers to this title.
+    /// Release names are punctuated however the indexer felt like it, so the
+    /// separators are flattened before comparing.
+    /// </summary>
+    private static bool Mentions(string? clientLabel, string title)
+    {
+        if (string.IsNullOrWhiteSpace(clientLabel))
+        {
+            return false;
+        }
+
+        return Flatten(clientLabel).Contains(Flatten(title), StringComparison.Ordinal);
+    }
+
+    private static string Flatten(string value)
+        => new(value.Where(char.IsLetterOrDigit).Select(char.ToLowerInvariant).ToArray());
+
     private async Task ClearDownloadAsync(
         AcquisitionOverrideRequest request,
         List<string> cleared,
         List<string> couldNotClear,
         CancellationToken cancellationToken)
     {
-        if (request.DownloadClientId is not { Length: > 0 } clientId ||
-            request.QueueItemId is not { Length: > 0 } queueItemId)
+        if (request.DownloadClientId is not { Length: > 0 } clientId)
         {
+            return;
+        }
+
+        var queueItemId = request.QueueItemId;
+
+        if (queueItemId is not { Length: > 0 })
+        {
+            // Deluno does not know which item to ask about, so it asks the
+            // client what it is holding.
+            //
+            // This is the case the force exists for and used to fall straight
+            // through: the client still refuses the release because it
+            // remembers it, and the grab that would have given Deluno an id
+            // failed *because* the client already had it. Nothing in Deluno's
+            // own records carries the id, so the only place to get it is the
+            // client.
+            queueItemId = await FindQueueItemAtTheClientAsync(clientId, request, cancellationToken);
+        }
+
+        if (queueItemId is not { Length: > 0 })
+        {
+            // Said out loud rather than passed over. Returning quietly here is
+            // what made the override report "there was nothing to clear" about
+            // the very obstacle it had just been offered for.
+            couldNotClear.Add(
+                $"{request.DownloadClientName ?? "The download client"} is holding this release, but Deluno could not work out which item to ask it to forget. Remove it there and try again.");
             return;
         }
 
