@@ -795,6 +795,24 @@ public sealed class DownloadClientTelemetryService(
             // reported processingCount 1 for ever (#280).
             var handoff = handoffsByQueueItem.GetValueOrDefault(item.Id)
                 ?? (string.IsNullOrWhiteSpace(item.SourcePath) ? null : handoffsBySource.GetValueOrDefault(NormalizeSourceKey(item.SourcePath)));
+
+            // A hand-off that predates the attempt in front of us describes a
+            // previous one.
+            //
+            // Both keys it is found by — the infohash and the download path —
+            // are the same every time the same release is fetched, so a
+            // re-download inherited the last outcome. On the lab rig a brand new
+            // download of Big Buck Bunny matched yesterday's completed hand-off
+            // and was reported `imported` while the library folder was empty and
+            // the film read Missing. That status is not in the set the import
+            // planner accepts, so no hand-off was created, no import was
+            // attempted, and nothing failed: the download simply stopped
+            // existing as far as Deluno was concerned.
+            if (handoff is not null && IsFromAnEarlierAttempt(handoff, item, dispatches))
+            {
+                handoff = null;
+            }
+
             if (handoff is not null)
             {
                 return resolvedItem with { Status = ProcessorHandoffQueueStatus.Resolve(handoff, jobsById, resolvedItem.Status) };
@@ -1103,6 +1121,30 @@ public sealed class DownloadClientTelemetryService(
                     code: failureCode ?? dispatch.Status,
                     externalId: dispatch.TorrentHashOrItemId ?? dispatch.Id)
                 : null));
+    }
+
+    /// <summary>
+    /// Whether this hand-off belongs to an earlier fetch of the same release.
+    ///
+    /// <para>The dispatch is what says "this is a new attempt", so a hand-off
+    /// created before the current dispatch cannot be about it. Where there is no
+    /// dispatch to compare against, the hand-off is kept — losing the Processing
+    /// stage for an item Deluno cannot place is worse than showing a stale
+    /// one.</para>
+    /// </summary>
+    internal static bool IsFromAnEarlierAttempt(
+        ProcessorHandoffItem handoff,
+        DownloadQueueItem item,
+        IReadOnlyList<DownloadDispatchItem> dispatches)
+    {
+        var latestDispatch = dispatches
+            .Where(dispatch =>
+                string.Equals(dispatch.DownloadClientId, item.ClientId, StringComparison.OrdinalIgnoreCase)
+                && string.Equals(dispatch.ReleaseName, item.ReleaseName, StringComparison.OrdinalIgnoreCase))
+            .OrderByDescending(dispatch => dispatch.CreatedUtc)
+            .FirstOrDefault();
+
+        return latestDispatch is not null && handoff.CreatedUtc < latestDispatch.CreatedUtc;
     }
 
     internal static bool ShouldApplyImportJobState(
