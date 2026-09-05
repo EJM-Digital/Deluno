@@ -157,6 +157,122 @@ public sealed class AcquisitionOverrideServiceTests
 
     // ------------------------------------------------------------------ helpers
 
+    /// <summary>
+    /// The case the force exists for, which used to fall straight through.
+    ///
+    /// <para>The client still refuses the release because it remembers it, and
+    /// the grab that would have given Deluno an id failed <em>because</em> the
+    /// client already had it. Nothing in Deluno's own records carries the id,
+    /// so the only place to get it is the client. Measured on the lab rig on
+    /// 2026-09-05: the override reported "there was nothing to clear" about the
+    /// very obstacle it had just been offered for, and the grab failed again
+    /// for the same reason.</para>
+    /// </summary>
+    [Fact]
+    public async Task A_force_with_no_id_asks_the_client_what_it_is_holding()
+    {
+        var service = Build(out _, out var clients);
+        clients.Queue.Add(QueueItem("held-1", "Big.Buck.Bunny.2008.1080p.WEB-DL.x264-DELUNO"));
+
+        var result = await service.ForceAsync(
+            new AcquisitionOverrideRequest(
+                "movie-1",
+                "Big Buck Bunny",
+                DownloadClientId: "client-1",
+                DownloadClientName: "qBittorrent"),
+            CancellationToken.None);
+
+        Assert.Equal(DownloadClientActions.Forget, clients.RequestedAction);
+        Assert.Equal("held-1", clients.RequestedQueueItemId);
+        Assert.Contains(result.Cleared, entry => entry.Contains("forget", StringComparison.OrdinalIgnoreCase));
+    }
+
+    /// <summary>
+    /// Forgetting the wrong download cannot be undone from inside Deluno, so an
+    /// ambiguous answer is not acted on.
+    /// </summary>
+    [Fact]
+    public async Task A_client_holding_two_matches_is_not_guessed_at()
+    {
+        var service = Build(out _, out var clients);
+        clients.Queue.Add(QueueItem("held-1", "Big.Buck.Bunny.2008.1080p.WEB-DL.x264-DELUNO"));
+        clients.Queue.Add(QueueItem("held-2", "Big.Buck.Bunny.2008.2160p.WEB-DL.x265-DELUNO"));
+
+        var result = await service.ForceAsync(
+            new AcquisitionOverrideRequest(
+                "movie-1",
+                "Big Buck Bunny",
+                DownloadClientId: "client-1",
+                DownloadClientName: "qBittorrent"),
+            CancellationToken.None);
+
+        Assert.Null(clients.RequestedAction);
+        Assert.Contains(result.CouldNotClear, entry => entry.Contains("could not work out", StringComparison.OrdinalIgnoreCase));
+    }
+
+    /// <summary>
+    /// And when the client holds nothing that matches, the force says it could
+    /// not work out what to clear — never that there was nothing to clear.
+    /// That distinction is the difference between "you are fine" and "I could
+    /// not tell", and only one of them is true.
+    /// </summary>
+    [Fact]
+    public async Task A_force_that_cannot_identify_the_item_says_so_rather_than_reporting_nothing_to_clear()
+    {
+        var service = Build(out _, out var clients);
+        clients.Queue.Add(QueueItem("held-1", "Something.Else.2020.1080p"));
+
+        var result = await service.ForceAsync(
+            new AcquisitionOverrideRequest(
+                "movie-1",
+                "Big Buck Bunny",
+                DownloadClientId: "client-1",
+                DownloadClientName: "qBittorrent"),
+            CancellationToken.None);
+
+        Assert.NotEmpty(result.CouldNotClear);
+        Assert.DoesNotContain("nothing to clear", result.Summary, StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>A client that cannot be reached is reported, not passed over.</summary>
+    [Fact]
+    public async Task A_client_that_will_not_answer_is_reported()
+    {
+        var service = Build(out _, out var clients);
+        clients.OverviewThrows = true;
+
+        var result = await service.ForceAsync(
+            new AcquisitionOverrideRequest(
+                "movie-1",
+                "Big Buck Bunny",
+                DownloadClientId: "client-1",
+                DownloadClientName: "qBittorrent"),
+            CancellationToken.None);
+
+        Assert.NotEmpty(result.CouldNotClear);
+    }
+
+    private static DownloadQueueItem QueueItem(string id, string releaseName)
+        => new(
+            id,
+            "client-1",
+            "qBittorrent",
+            "qbittorrent",
+            "movies",
+            releaseName,
+            releaseName,
+            "movies",
+            "downloading",
+            0.5,
+            1.0,
+            60,
+            1000,
+            500,
+            10,
+            "Lab Torznab",
+            null,
+            DateTimeOffset.UnixEpoch);
+
     private static AcquisitionOverrideService Build(out FakeProcessors processors, out FakeClients clients)
     {
         processors = new FakeProcessors();
@@ -245,8 +361,33 @@ public sealed class AcquisitionOverrideServiceTests
             return Task.FromResult(new DownloadClientActionResult(clientId, request.QueueItemId, request.Action, Succeed, Message));
         }
 
+        /// <summary>What the client says it is holding when Deluno asks.</summary>
+        public List<DownloadQueueItem> Queue { get; } = [];
+        public bool OverviewThrows { get; set; }
+
         public Task<DownloadTelemetryOverview> GetOverviewAsync(CancellationToken cancellationToken)
-            => throw new NotSupportedException();
+        {
+            if (OverviewThrows)
+            {
+                throw new HttpRequestException("The client is not answering.");
+            }
+
+            var summary = new DownloadTelemetrySummary(0, 0, 0, 0, 0, 0, 0);
+            var snapshot = new DownloadClientTelemetrySnapshot(
+                "client-1",
+                "qBittorrent",
+                "qbittorrent",
+                null,
+                "healthy",
+                null,
+                new DownloadClientTelemetryCapabilities(true, true, true, true, true, true, "lab"),
+                summary,
+                Queue,
+                [],
+                DateTimeOffset.UnixEpoch);
+
+            return Task.FromResult(new DownloadTelemetryOverview(summary, [snapshot], DateTimeOffset.UnixEpoch));
+        }
         public Task<DownloadCleanupPreview?> PreviewCleanupAsync(string clientId, string queueItemId, CancellationToken cancellationToken)
             => throw new NotSupportedException();
         public Task<DownloadHealthRemediationReport> RunConfiguredHealthRemediationAsync(DownloadTelemetryOverview overview, CancellationToken cancellationToken)
