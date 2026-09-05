@@ -1,6 +1,14 @@
+using System.Text.Json.Serialization;
+
 namespace Deluno.Contracts;
 
 /// <summary>What Deluno does with the release when an import fails.</summary>
+/// <remarks>
+/// Sent as its name rather than its number, matching
+/// <see cref="IntegrationFailureKind"/>. A settings screen whose stored values
+/// are ordinals breaks the day somebody inserts a member in the middle.
+/// </remarks>
+[JsonConverter(typeof(JsonStringEnumConverter))]
 public enum BlockDecision
 {
     /// <summary>Nothing about the release was at fault. Never refuse it.</summary>
@@ -20,7 +28,18 @@ public enum BlockDecision
     /// Deluno knows the file is not what was wanted. No second attempt is worth
     /// anybody's bandwidth.
     /// </summary>
-    Immediately
+    Immediately,
+
+    /// <summary>
+    /// Decide nothing; put it in front of a person and wait.
+    ///
+    /// <para>Only ever chosen by the user — nothing ships with it. It exists
+    /// because the right harshness depends on the library: somebody on a flaky
+    /// share would rather look at each one than have Deluno quietly narrow its
+    /// own options. The failure is recorded as a <b>proposed</b> refusal, which
+    /// searches ignore, and stays that way until somebody answers.</para>
+    /// </summary>
+    AskMe
 }
 
 /// <summary>
@@ -114,11 +133,41 @@ public static class ImportFailurePolicy
         _ => BlockDecision.Never
     };
 
-    public static bool ShouldBlock(string reasonCode, int priorFailuresOfSameRelease) => BlockFor(reasonCode) switch
+    /// <summary>
+    /// The same question, with the user's answers laid over the shipped ones.
+    ///
+    /// <para>The overrides are passed in rather than looked up, so this class
+    /// stays pure and the table stays assertable. A reason nobody has an opinion
+    /// about falls through to the default, which is why a new failure kind needs
+    /// no migration and no settings change — it arrives with an answer.</para>
+    /// </summary>
+    public static BlockDecision BlockFor(string reasonCode, IReadOnlyDictionary<string, BlockDecision> overrides)
+        => overrides.TryGetValue(reasonCode, out var chosen) ? chosen : BlockFor(reasonCode);
+
+    public static bool ShouldBlock(string reasonCode, int priorFailuresOfSameRelease)
+        => ShouldBlock(BlockFor(reasonCode), priorFailuresOfSameRelease);
+
+    public static bool ShouldBlock(BlockDecision decision, int priorFailuresOfSameRelease) => decision switch
     {
         BlockDecision.Immediately => true,
         BlockDecision.AfterOneRetry => priorFailuresOfSameRelease >= 1,
         _ => false
+    };
+
+    /// <summary>
+    /// Which heading this failure belongs under, and — more usefully — whose
+    /// fault the failure says it was.
+    ///
+    /// <para>Derived from the same shape as <see cref="BlockFor(string)"/>
+    /// rather than from a second list, so a reason cannot be refused
+    /// immediately while being filed under "your setup".</para>
+    /// </summary>
+    public static string CategoryFor(string reasonCode) => reasonCode switch
+    {
+        NoVideoStream or LikelySample or UnsupportedFile or MediaProbeRejected => FailureCategories.BadFile,
+        ReplacementRejected => FailureCategories.NotAFailure,
+        Unmatched or ImportFailed or MediaProbeUnreadable => FailureCategories.CannotSay,
+        _ => FailureCategories.YourSetup
     };
 
     /// <summary>

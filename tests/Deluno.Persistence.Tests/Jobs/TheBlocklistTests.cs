@@ -104,6 +104,70 @@ public sealed class TheBlocklistTests
         Assert.False(await blocklist.UnblockAsync("never-blocked", CancellationToken.None));
     }
 
+    /// <summary>
+    /// The one that makes "ask me" worth offering. A proposal is recorded with
+    /// its reason and changes nothing — a search that quietly skipped an
+    /// undecided release would be making the decision by omission, which is
+    /// the exact thing the option exists to prevent.
+    /// </summary>
+    [Fact]
+    public async Task A_proposed_refusal_is_listed_but_no_search_acts_on_it()
+    {
+        using var storage = await StorageAsync();
+        var blocklist = new SqliteBlockedReleaseRepository(storage.Factory, Clock);
+
+        await blocklist.BlockAsync(Proposal("Arrival.2016.2160p", "Nebula"), CancellationToken.None);
+
+        var listed = Assert.Single(await blocklist.ListAsync(CancellationToken.None));
+        Assert.Equal(BlockedReleaseStates.Proposed, listed.State);
+        Assert.Empty(await blocklist.ListKeysAsync(CancellationToken.None));
+    }
+
+    /// <summary>
+    /// And its copy is left where it is. Destroying the evidence before the
+    /// question is answered would make "allow it" a lie.
+    /// </summary>
+    [Fact]
+    public async Task A_proposed_refusal_does_not_have_its_download_cleared_up()
+    {
+        using var storage = await StorageAsync();
+        var blocklist = new SqliteBlockedReleaseRepository(storage.Factory, Clock);
+
+        await blocklist.BlockAsync(Proposal("Arrival.2016.2160p", "Nebula"), CancellationToken.None);
+
+        Assert.Empty(await blocklist.ListAwaitingCleanupAsync(CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task Answering_a_proposal_with_yes_makes_searches_skip_it()
+    {
+        using var storage = await StorageAsync();
+        var blocklist = new SqliteBlockedReleaseRepository(storage.Factory, Clock);
+        var proposed = await blocklist.BlockAsync(Proposal("Arrival.2016.2160p", "Nebula"), CancellationToken.None);
+
+        Assert.True(await blocklist.RefuseAsync(proposed.Id, CancellationToken.None));
+
+        Assert.Contains(BlockedReleaseKeys.For("Arrival.2016.2160p", "Nebula"), await blocklist.ListKeysAsync(CancellationToken.None));
+        Assert.Single(await blocklist.ListAwaitingCleanupAsync(CancellationToken.None));
+    }
+
+    /// <summary>
+    /// A second click on an entry that is already refused must not move the
+    /// date it happened, which is the only record of when Deluno stopped
+    /// trying.
+    /// </summary>
+    [Fact]
+    public async Task Refusing_something_already_refused_changes_nothing()
+    {
+        using var storage = await StorageAsync();
+        var blocklist = new SqliteBlockedReleaseRepository(storage.Factory, Clock);
+        var refused = await blocklist.BlockAsync(
+            Release("Arrival.2016.2160p", "Nebula", "likelySample"), CancellationToken.None);
+
+        Assert.False(await blocklist.RefuseAsync(refused.Id, CancellationToken.None));
+        Assert.Equal(BlockedReleaseStates.Refused, Assert.Single(await blocklist.ListAsync(CancellationToken.None)).State);
+    }
+
     // ------------------------------------------------------------------ helpers
 
     private static readonly FixedTimeProvider Clock = new(DateTimeOffset.Parse("2026-09-05T12:00:00Z"));
@@ -133,4 +197,10 @@ public sealed class TheBlocklistTests
             "qbittorrent-main",
             "qBittorrent",
             Clock.GetUtcNow());
+
+    private static BlockedRelease Proposal(string releaseName, string indexerName)
+        => Release(releaseName, indexerName, ImportFailurePolicy.LikelySample) with
+        {
+            State = BlockedReleaseStates.Proposed
+        };
 }

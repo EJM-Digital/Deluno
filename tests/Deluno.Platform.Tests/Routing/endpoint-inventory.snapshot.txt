@@ -11,6 +11,7 @@ DELETE /api/destination-rules/{id}
 DELETE /api/download-clients/{id}
 DELETE /api/download-clients/{id}/path-mappings/{mappingId}
 DELETE /api/exclusions/{id}
+DELETE /api/failure-rules/{reasonCode}
 DELETE /api/indexers/{id}
 DELETE /api/intake-sources/{id}
 DELETE /api/intake-sources/{id}/exclusions/{exclusionId}
@@ -59,6 +60,7 @@ GET /api/download-clients/{id}/path-mappings
 GET /api/download-dispatches
 GET /api/download-health
 GET /api/exclusions
+GET /api/failure-rules
 GET /api/filesystem/directories
 GET /api/filesystem/reconciliation
 GET /api/health/live
@@ -199,6 +201,7 @@ POST /api/automation/series/{seriesId}/episodes/bulk
 POST /api/backups/
 POST /api/backups/restore
 POST /api/backups/restore/preview
+POST /api/blocked-releases/{id}/refuse
 POST /api/connections/
 POST /api/custom-formats/
 POST /api/custom-formats/dry-run
@@ -342,6 +345,7 @@ PUT /api/backups/settings
 PUT /api/custom-formats/{id}
 PUT /api/destination-rules/{id}
 PUT /api/download-clients/{id}
+PUT /api/failure-rules/{reasonCode}
 PUT /api/indexers/{id}
 PUT /api/intake-sources/{id}
 PUT /api/integrations/processors/connections/{id}

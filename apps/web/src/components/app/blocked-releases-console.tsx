@@ -1,6 +1,6 @@
 /**
- * The blocklist — every release Deluno has refused, and the way to change its
- * mind.
+ * The failure and blocklist console — every release Deluno has refused, every
+ * one it is asking about, and the rules that decided both.
  *
  * <p>DESIGN-007 decisions 1 and 2 chose permanent refusals: a download that
  * turns out to be junk means that exact copy is refused, and the refusal lasts
@@ -14,114 +14,183 @@
  * that clearing in bulk must not become a storm, and that somebody clearing a
  * single title will search for it themselves.</p>
  *
- * Contract: GET /api/blocked-releases, DELETE /api/blocked-releases/{id}.
+ * Contract: GET /api/blocked-releases, DELETE /api/blocked-releases/{id},
+ * POST /api/blocked-releases/{id}/refuse.
  */
 import { useState } from "react";
-import { RotateCcw } from "lucide-react";
+import { Check, RotateCcw, X } from "lucide-react";
 import type { BlockedRelease } from "../../lib/api";
+import { reasonWords, type ImportFailureRule } from "../../lib/failure-reasons";
 import { authedFetch } from "../../lib/use-auth";
 import { toast } from "../shell/toaster";
 import { Button } from "../ui/button";
 import { Chip } from "../ui/chip";
+import { Disclosure } from "../ui/disclosure";
 import { LIST_TRACK, ListCard, ListEmpty, ListNameCell, ListRow, ListTable } from "../ui/list-card";
+import { FailureRulesConsole } from "./failure-rules-console";
 
 export interface BlockedReleasesConsoleProps {
   releases: BlockedRelease[];
+  rules: ImportFailureRule[];
   onChanged: () => void;
 }
 
-/**
- * The failure code, said the way a person would say it.
- *
- * <p>The import records `noVideoStream`; a screen that prints that is asking
- * the reader to learn Deluno's vocabulary to find out why their film never
- * arrived. Anything unrecognised falls back to the code itself rather than to
- * "unknown", because a code you can search for beats a word that tells you
- * nothing.</p>
- */
-const REASON_WORDS: Record<string, string> = {
-  noVideoStream: "No video in the file",
-  likelySample: "A sample, not the film",
-  unsupportedFile: "Not a media file Deluno accepts",
-  mediaProbeRejected: "Unreadable — corrupt or encrypted",
-  mediaProbeUnreadable: "Could not be read at the time",
-  importFailed: "Failed, with no reason recorded",
-  replacementRejected: "Worse than the copy you already had"
-};
-
-export function BlockedReleasesConsole({ releases, onChanged }: BlockedReleasesConsoleProps) {
+export function BlockedReleasesConsole({ releases, rules, onChanged }: BlockedReleasesConsoleProps) {
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [rulesOpen, setRulesOpen] = useState(false);
 
-  async function unblock(release: BlockedRelease) {
+  const proposed = releases.filter((release) => release.state === "proposed");
+  const refused = releases.filter((release) => release.state !== "proposed");
+  const changedRules = rules.filter((rule) => rule.isOverridden).length;
+
+  async function act(release: BlockedRelease, action: "allow" | "refuse") {
     setBusyId(release.id);
     try {
-      const response = await authedFetch(`/api/blocked-releases/${release.id}`, { method: "DELETE" });
-      if (!response.ok) throw new Error("unblock-failed");
+      const response = await authedFetch(
+        action === "refuse" ? `/api/blocked-releases/${release.id}/refuse` : `/api/blocked-releases/${release.id}`,
+        { method: action === "refuse" ? "POST" : "DELETE" }
+      );
+      if (!response.ok) throw new Error("blocklist-failed");
 
       // No search is started. Clearing several at once would otherwise fire one
       // search per row, and somebody clearing a single title searches for it
       // themselves.
-      toast.success(`${release.releaseName} can be used again. Search for the title when you want it.`);
+      toast.success(
+        action === "refuse"
+          ? `Deluno will not use ${release.releaseName} again. Searches skip it and say so.`
+          : `${release.releaseName} can be used again. Search for the title when you want it.`
+      );
       onChanged();
     } catch {
-      toast.error("That release could not be un-refused.");
+      toast.error(action === "refuse" ? "That release could not be refused." : "That release could not be un-refused.");
     } finally {
       setBusyId(null);
     }
   }
 
   return (
-    <ListCard
-      title="Blocklist"
-      count={releases.length === 1 ? "1 refused release" : `${releases.length} refused releases`}
-    >
-      <ListTable
-        chevron={false}
-        columns={[
-          { label: "Release" },
-          { label: "Why", mobile: true },
-          { label: "Refused", width: LIST_TRACK.status },
-          { label: "", width: "auto", align: "end", mobile: true }
-        ]}
+    <div className="grid gap-[var(--grid-gap)]">
+      {proposed.length ? (
+        <ListCard
+          title="Waiting for you"
+          count={proposed.length === 1 ? "1 release to decide" : `${proposed.length} releases to decide`}
+        >
+          <ListTable
+            chevron={false}
+            columns={[
+              { label: "Release" },
+              { label: "What happened", mobile: true },
+              { label: "", width: "auto", align: "end", mobile: true }
+            ]}
+          >
+            {proposed.map((release) => (
+              <ListRow key={release.id}>
+                <ListNameCell
+                  name={release.releaseName}
+                  sub={`${release.title ?? "Unknown title"} · ${release.indexerName}`}
+                />
+                <div role="cell">
+                  <Chip tone="warn">{reasonWords(release.reasonCode)}</Chip>
+                </div>
+                <div role="cell" className="flex justify-end gap-2">
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    disabled={busyId !== null}
+                    onClick={() => void act(release, "refuse")}
+                  >
+                    <X aria-hidden className="h-3.5 w-3.5" />
+                    Refuse it
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="ghost"
+                    disabled={busyId !== null}
+                    onClick={() => void act(release, "allow")}
+                  >
+                    <Check aria-hidden className="h-3.5 w-3.5" />
+                    Allow it
+                  </Button>
+                </div>
+              </ListRow>
+            ))}
+          </ListTable>
+        </ListCard>
+      ) : null}
+
+      <ListCard
+        title="Blocklist"
+        count={refused.length === 1 ? "1 refused release" : `${refused.length} refused releases`}
       >
-        {releases.length === 0 ? (
-          <ListEmpty
-            title="Nothing has been refused"
-            description="A download that turns out to be junk lands here, with the reason it was refused. Searches skip anything on this list and say so, until you un-refuse it."
-          />
-        ) : (
-          releases.map((release) => (
-            <ListRow key={release.id}>
-              <ListNameCell
-                name={release.releaseName}
-                sub={`${release.title ?? "Unknown title"} · ${release.indexerName}`}
-              />
-              <div role="cell">
-                <Chip tone="idle">{REASON_WORDS[release.reasonCode] ?? release.reasonCode}</Chip>
-              </div>
-              <div role="cell" className="text-[length:var(--type-caption)] text-muted-foreground">
-                {new Date(release.blockedUtc).toLocaleDateString(undefined, {
-                  day: "numeric",
-                  month: "short",
-                  year: "numeric"
-                })}
-              </div>
-              <div role="cell" className="flex justify-end">
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  disabled={busyId !== null}
-                  onClick={() => void unblock(release)}
-                >
-                  <RotateCcw aria-hidden className="h-3.5 w-3.5" />
-                  {busyId === release.id ? "Un-refusing…" : "Un-refuse"}
-                </Button>
-              </div>
-            </ListRow>
-          ))
-        )}
-      </ListTable>
-    </ListCard>
+        <ListTable
+          chevron={false}
+          columns={[
+            { label: "Release" },
+            { label: "Why", mobile: true },
+            { label: "Refused", width: LIST_TRACK.status },
+            { label: "", width: "auto", align: "end", mobile: true }
+          ]}
+        >
+          {refused.length === 0 ? (
+            <ListEmpty
+              title="Nothing has been refused"
+              description="A download that turns out to be junk lands here, with the reason it was refused. Searches skip anything on this list and say so, until you un-refuse it."
+            />
+          ) : (
+            refused.map((release) => (
+              <ListRow key={release.id}>
+                <ListNameCell
+                  name={release.releaseName}
+                  sub={`${release.title ?? "Unknown title"} · ${release.indexerName}`}
+                />
+                <div role="cell">
+                  <Chip tone="idle">{reasonWords(release.reasonCode)}</Chip>
+                </div>
+                <div role="cell" className="text-[length:var(--type-caption)] text-muted-foreground">
+                  {new Date(release.blockedUtc).toLocaleDateString(undefined, {
+                    day: "numeric",
+                    month: "short",
+                    year: "numeric"
+                  })}
+                </div>
+                <div role="cell" className="flex justify-end">
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    disabled={busyId !== null}
+                    onClick={() => void act(release, "allow")}
+                  >
+                    <RotateCcw aria-hidden className="h-3.5 w-3.5" />
+                    {busyId === release.id ? "Un-refusing…" : "Un-refuse"}
+                  </Button>
+                </div>
+              </ListRow>
+            ))
+          )}
+        </ListTable>
+      </ListCard>
+
+      {/*
+        Behind a disclosure because of what people come here for. The list
+        answers "why has my film not arrived"; the rules are set once and then
+        left alone, and putting seventeen of them above the list would bury the
+        question the screen exists to answer.
+      */}
+      <Disclosure
+        title="What Deluno does when an import fails"
+        summary={
+          changedRules
+            ? `${rules.length} kinds of failure · ${changedRules} answered your way`
+            : `${rules.length} kinds of failure · all on Deluno's own answers`
+        }
+        open={rulesOpen}
+        onOpenChange={setRulesOpen}
+      >
+        <FailureRulesConsole rules={rules} onChanged={onChanged} />
+      </Disclosure>
+    </div>
   );
 }

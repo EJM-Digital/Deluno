@@ -21,6 +21,7 @@ import { Field, FieldRow } from "../components/ui/field";
 import { ListCard, ListCell, ListEmpty, ListNameCell, ListRow, ListTable, LIST_TRACK } from "../components/ui/list-card";
 import { PageFooter } from "../components/ui/page-footer";
 import { BlockedReleasesConsole } from "../components/app/blocked-releases-console";
+import type { ImportFailureRule } from "../lib/failure-reasons";
 import { PageToolbar } from "../components/ui/page-toolbar";
 import { SummaryStrip } from "../components/ui/summary-strip";
 import { ListGroupHeader, MediaTypeFilter, useMediaTypeSplit } from "../components/ui/media-type-split";
@@ -74,18 +75,20 @@ interface LoaderData {
   settings: PlatformSettingsSnapshot;
   searchCycles: SearchCycleRunItem[];
   blockedReleases: BlockedRelease[];
+  failureRules: ImportFailureRule[];
 }
 
 export async function searchCyclesLoader(): Promise<LoaderData> {
-  const [automationStates, libraries, qualityModel, settings, searchCycles, blockedReleases] = await Promise.all([
+  const [automationStates, libraries, qualityModel, settings, searchCycles, blockedReleases, failureRules] = await Promise.all([
     fetchPageItems<LibraryAutomationStateItem>("/api/library-automation?pageSize=50"),
     fetchJson<LibraryItem[]>("/api/libraries"),
     fetchJson<QualityModelSnapshot>("/api/quality-model"),
     fetchJson<PlatformSettingsSnapshot>("/api/settings"),
     fetchPageItems<SearchCycleRunItem>("/api/search-cycles?pageSize=50"),
-    fetchJson<BlockedRelease[]>("/api/blocked-releases").catch(() => [])
+    fetchJson<BlockedRelease[]>("/api/blocked-releases").catch(() => []),
+    fetchJson<ImportFailureRule[]>("/api/failure-rules").catch(() => [])
   ]);
-  return { automationStates, libraries, qualityModel, settings, searchCycles, blockedReleases };
+  return { automationStates, libraries, qualityModel, settings, searchCycles, blockedReleases, failureRules };
 }
 
 interface AutomationForm {
@@ -123,7 +126,7 @@ interface CleanupForm {
 }
 
 export function SearchCyclesPage() {
-  const { automationStates, libraries, qualityModel: loadedQualityModel, settings, searchCycles, blockedReleases } = useLoaderData() as LoaderData;
+  const { automationStates, libraries, qualityModel: loadedQualityModel, settings, searchCycles, blockedReleases, failureRules } = useLoaderData() as LoaderData;
   const location = useLocation();
   const navigate = useNavigate();
   const revalidator = useRevalidator();
@@ -520,6 +523,7 @@ export function SearchCyclesPage() {
       {view === "blocklist" ? (
         <BlockedReleasesConsole
           releases={blockedReleases}
+          rules={failureRules}
           onChanged={() => revalidator.revalidate()}
         />
       ) : null}
