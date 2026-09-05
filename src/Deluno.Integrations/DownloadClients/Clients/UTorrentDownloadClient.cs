@@ -7,8 +7,25 @@ using Deluno.Connections.Contracts;
 
 namespace Deluno.Integrations.DownloadClients.Clients;
 
-public sealed class UTorrentDownloadClient : DownloadClientBase
+/// <param name="handlerFactory">
+/// Supplied only by tests. uTorrent needs a cookie container and a credential
+/// on its handler, so this class builds its own rather than taking an
+/// IHttpClientFactory — which left it unreachable from a test without a real
+/// server on localhost. The default is exactly what it built before.
+/// </param>
+public sealed class UTorrentDownloadClient(Func<HttpMessageHandler>? handlerFactory = null) : DownloadClientBase
 {
+    private readonly Func<DownloadClientItem, HttpMessageHandler> handler = BuildHandler(handlerFactory);
+
+    private static Func<DownloadClientItem, HttpMessageHandler> BuildHandler(Func<HttpMessageHandler>? factory)
+        => factory is null
+            ? client => new HttpClientHandler
+            {
+                CookieContainer = new CookieContainer(),
+                Credentials = DownloadClientHelpers.BuildCredential(client)
+            }
+            : _ => factory();
+
     public override string Protocol => "utorrent";
     public override DownloadClientTelemetryCapabilities Capabilities { get; } = new(true, false, true, true, true, false, "basic-token");
 
@@ -55,7 +72,20 @@ public sealed class UTorrentDownloadClient : DownloadClientBase
     {
         // "removedata" is uTorrent's remove-the-file-too verb; "remove" forgets
         // the torrent and leaves the payload where it is (#287).
-        var verb = action switch { "pause" => "pause", "resume" => "start", "delete" => "remove", "delete-with-data" => "removedata", "recheck" => "recheck", _ => null };
+        //
+        // `forget` takes the same verb as `delete-with-data`, stated rather than
+        // shared by accident: uTorrent holds no record of a torrent it has
+        // removed, so there is nothing left to clear afterwards.
+        var verb = action switch
+        {
+            DownloadClientActions.Pause => "pause",
+            DownloadClientActions.Resume => "start",
+            DownloadClientActions.Recheck => "recheck",
+            DownloadClientActions.Delete => "remove",
+            DownloadClientActions.DeleteWithData => "removedata",
+            DownloadClientActions.Forget => "removedata",
+            _ => null
+        };
         if (verb is null) return DownloadClientHelpers.Unsupported(client, queueItemId, action, "uTorrent");
         var baseUri = DownloadClientHelpers.ResolveEndpoint(client);
         if (baseUri is null) return DownloadClientHelpers.MissingAddress(client, queueItemId, action);
@@ -77,11 +107,8 @@ public sealed class UTorrentDownloadClient : DownloadClientBase
 
     public override string NormalizeStatus(string? nativeStatus, double? progress, int? errorCode = null, string? errorMessage = null) => DownloadClientHelpers.NormalizeTextStatus(nativeStatus, progress);
 
-    private static HttpClient CreateHttp(DownloadClientItem client, Uri baseUri, TimeSpan timeout)
-    {
-        var handler = new HttpClientHandler { CookieContainer = new CookieContainer(), Credentials = DownloadClientHelpers.BuildCredential(client) };
-        return new HttpClient(handler, disposeHandler: true) { BaseAddress = baseUri, Timeout = timeout };
-    }
+    private HttpClient CreateHttp(DownloadClientItem client, Uri baseUri, TimeSpan timeout)
+        => new(handler(client), disposeHandler: handlerFactory is null) { BaseAddress = baseUri, Timeout = timeout };
 
     private static string AsString(JsonElement value) => value.ValueKind == JsonValueKind.String ? value.GetString() ?? string.Empty : value.ToString();
     private static double AsDouble(JsonElement value) => value.ValueKind == JsonValueKind.Number && value.TryGetDouble(out var parsed) ? parsed : double.TryParse(value.ToString(), NumberStyles.Float, CultureInfo.InvariantCulture, out parsed) ? parsed : 0;

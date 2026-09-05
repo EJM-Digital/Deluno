@@ -202,20 +202,31 @@ public sealed class QbittorrentDownloadClient(Func<HttpMessageHandler>? handlerF
         using var handler = this.handlerFactory();
         using var http = new HttpClient(handler) { BaseAddress = baseUri, Timeout = TimeSpan.FromSeconds(8) };
         await LoginAsync(http, client, cancellationToken);
-        var endpoints = action switch
+        // One arm per verb, and `deleteFiles` set by the arm. The pause and
+        // resume pairs are qBittorrent's own rename across versions, tried in
+        // order; everything else is one endpoint.
+        //
+        // `forget` is the same request as `delete-with-data`, and saying so
+        // here is the point: qBittorrent refuses a release because it still
+        // holds the infohash, so once the torrent is gone it accepts the
+        // release again and there is nothing left to clear. SABnzbd and NZBGet
+        // keep a history that outlives the transfer, and there `forget` is a
+        // second request — the two are not the same verb by accident.
+        var (endpoints, deleteFiles) = action switch
         {
-            "pause" => new[] { "api/v2/torrents/stop", "api/v2/torrents/pause" },
-            "resume" => new[] { "api/v2/torrents/start", "api/v2/torrents/resume" },
-            "delete" => new[] { "api/v2/torrents/delete" },
-            "delete-with-data" => new[] { "api/v2/torrents/delete" },
-            "recheck" => new[] { "api/v2/torrents/recheck" },
-            _ => null
+            DownloadClientActions.Pause => (new[] { "api/v2/torrents/stop", "api/v2/torrents/pause" }, (bool?)null),
+            DownloadClientActions.Resume => (new[] { "api/v2/torrents/start", "api/v2/torrents/resume" }, null),
+            DownloadClientActions.Recheck => (new[] { "api/v2/torrents/recheck" }, null),
+            DownloadClientActions.Delete => (new[] { "api/v2/torrents/delete" }, false),
+            DownloadClientActions.DeleteWithData => (new[] { "api/v2/torrents/delete" }, true),
+            DownloadClientActions.Forget => (new[] { "api/v2/torrents/delete" }, true),
+            _ => (null, null)
         };
         if (endpoints is null) return DownloadClientHelpers.Unsupported(client, queueItemId, action, "qBittorrent");
         var pairs = new List<KeyValuePair<string, string>> { new("hashes", queueItemId) };
-        if (action is "delete" or "delete-with-data")
+        if (deleteFiles is { } wipe)
         {
-            pairs.Add(new("deleteFiles", action == "delete-with-data" ? "true" : "false"));
+            pairs.Add(new("deleteFiles", wipe ? "true" : "false"));
         }
         HttpResponseMessage? lastResponse = null;
         foreach (var endpoint in endpoints)

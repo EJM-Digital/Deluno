@@ -32,7 +32,7 @@ public sealed class ProcessorConnectionServiceTests
         Assert.NotNull(captured);
         Assert.Equal(HttpMethod.Post, captured!.Method);
         Assert.True(captured.Headers.TryGetValues("Idempotency-Key", out var idempotencyValues));
-        Assert.Equal("handoff-1", Assert.Single(idempotencyValues));
+        Assert.StartsWith("handoff-1:", Assert.Single(idempotencyValues), StringComparison.Ordinal);
         Assert.Equal("Bearer processor-token", captured.Headers.Authorization!.ToString());
         var payload = capturedPayload!;
         Assert.Contains("\"handoffId\":\"handoff-1\"", payload, StringComparison.Ordinal);
@@ -40,6 +40,80 @@ public sealed class ProcessorConnectionServiceTests
         Assert.Contains("\"callbackPath\":\"/api/integrations/processors/events\"", payload, StringComparison.Ordinal);
         Assert.DoesNotContain("processor-token", payload, StringComparison.Ordinal);
     }
+
+    /// <summary>
+    /// The same hand-off, unchanged, is the same request twice.
+    ///
+    /// <para>Which is what an idempotency key is for: a retry after a timeout
+    /// must not make the processor convert the file a second time.</para>
+    /// </summary>
+    [Fact]
+    public async Task Submitting_the_same_unchanged_handoff_twice_carries_the_same_key()
+    {
+        var keys = new List<string>();
+        var service = ServiceCapturing(keys);
+        var handoff = Handoff(DateTimeOffset.Parse("2026-09-05T10:00:00Z"));
+
+        await service.SubmitAsync(Connection(), handoff, CancellationToken.None);
+        await service.SubmitAsync(Connection(), handoff, CancellationToken.None);
+
+        Assert.Equal(2, keys.Count);
+        Assert.Equal(keys[0], keys[1]);
+    }
+
+    /// <summary>
+    /// A hand-off deliberately put back to waiting is a new request.
+    ///
+    /// <para>This is the half the key used to get wrong, and it took a forced
+    /// re-download to expose it. The override resets the row rather than
+    /// deleting it — deleting it would lose the record that stops one download
+    /// being submitted twice — so under a key of the id alone the processor
+    /// recognised a request it had already answered and declined to process a
+    /// file the person had just explicitly asked it to process again. The owner:
+    /// "Weir will also need to have that record cleared as well so it can
+    /// re-process the file again if a user forces it."</para>
+    /// </summary>
+    [Fact]
+    public async Task A_handoff_put_back_to_waiting_carries_a_new_key()
+    {
+        var keys = new List<string>();
+        var service = ServiceCapturing(keys);
+
+        await service.SubmitAsync(Connection(), Handoff(DateTimeOffset.Parse("2026-09-05T10:00:00Z")), CancellationToken.None);
+        // What AcquisitionOverrideService does: same row, same id, status back
+        // to waiting, and therefore a later updated_utc.
+        await service.SubmitAsync(Connection(), Handoff(DateTimeOffset.Parse("2026-09-05T11:30:00Z")), CancellationToken.None);
+
+        Assert.Equal(2, keys.Count);
+        Assert.NotEqual(keys[0], keys[1]);
+        Assert.All(keys, key => Assert.StartsWith("handoff-1:", key, StringComparison.Ordinal));
+    }
+
+    private static ProcessorConnectionService ServiceCapturing(List<string> keys)
+    {
+        var handler = new StubHandler(request =>
+        {
+            if (request.Headers.TryGetValues("Idempotency-Key", out var values))
+            {
+                keys.Add(values.Single());
+            }
+
+            return new HttpResponseMessage(HttpStatusCode.Accepted);
+        });
+
+        return new ProcessorConnectionService(new StubHttpClientFactory(new HttpClient(handler)));
+    }
+
+    private static ProcessorConnectionItem Connection()
+        => new(
+            "connection-1", "Weir", "generic-webhook", "https://processor.example.test/deluno",
+            "Authorization", "processor-token", true, "unknown", null, null, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow);
+
+    private static ProcessorHandoffItem Handoff(DateTimeOffset updatedUtc)
+        => new(
+            "handoff-1", "library-1", "movies", "client-1", "queue-1", "Dune Part Two",
+            "/downloads/dune.mkv", "Weir", "waiting", null, null, null,
+            DateTimeOffset.Parse("2026-09-05T09:00:00Z"), updatedUtc);
 
     [Fact]
     public async Task TestAsync_marks_reachable_endpoint_with_bad_credentials_as_degraded()
