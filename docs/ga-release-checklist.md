@@ -1,6 +1,6 @@
 # Deluno 1.x GA Release Checklist
 
-Updated: 2026-09-02
+Updated: 2026-09-05
 
 This checklist is the source of truth for promoting Deluno from `0.x` prerelease to `1.x` GA.
 
@@ -11,6 +11,7 @@ Execution artifacts:
 - `docs/windows-rc-validation-matrix.md`
 - `docs/release-evidence-template.md`
 - `scripts/run-ga-regression.ps1` (invokable via `npm run ga:regression`)
+- `docs/soak-plan.md` and `scripts/collect-soak-snapshot.ps1` (invokable via `npm run soak:snapshot`)
 
 ## Promotion Stages
 
@@ -55,11 +56,11 @@ without a signature.
 
 ## RC1 Checklist
 
-- [ ] RC1 tag is cut and published with required artifacts.
-- [ ] Clean-machine fresh install test passes.
-- [ ] Upgrade test from latest `0.1.x` to RC1 passes.
-- [ ] Rollback simulation result is documented.
-- [ ] RC1 validation summary is posted to issue #78.
+- [ ] RC1 tag is cut and published with required artifacts. — **not done deliberately.** The validated candidate (`rc.10`/`rc.11`, commit `b73a8ae`) was built with `scripts/pack-windows-installer.ps1` and walked on the lab VM without cutting a release, which is what that script exists for. Published `1.x` releases exist but are not the candidate that was validated.
+- [x] Clean-machine fresh install test passes. — `1.0.0-rc.10` on a clean profile, readiness 200 with 9/9 checks ([#81](https://github.com/jampat000/Deluno/issues/81)).
+- [x] Upgrade test from latest `0.1.x` to RC1 passes. — **run as `rc.10 → rc.11`** over a populated install, on the owner's instruction; libraries, connections, profiles, plans and the saved client key all survived ([#81](https://github.com/jampat000/Deluno/issues/81)).
+- [x] Rollback simulation result is documented. — 2 → 1 → 2 libraries across a restart, five `.pre-restore` copies kept ([#81](https://github.com/jampat000/Deluno/issues/81), `windows-rc-validation-matrix.md`).
+- [x] RC1 validation summary is posted to issue [#78](https://github.com/jampat000/Deluno/issues/78).
 
 Exit criteria:
 
@@ -68,11 +69,11 @@ Exit criteria:
 
 ## RC2 Checklist
 
-- [ ] RC1 defects are fixed and linked in issue #78.
-- [ ] Installer/upgrade/rollback matrix is rerun and passes (#81).
-- [ ] 14-day soak starts with daily checks recorded ([#82](https://github.com/jampat000/Deluno/issues/82)); follow [the soak plan](soak-plan.md).
-- [ ] Backup/restore drill succeeds on a second machine profile (#83).
-- [ ] RC2 release notes draft exists and matches shipped behavior.
+- [x] RC1 defects are fixed and linked in issue [#78](https://github.com/jampat000/Deluno/issues/78). — four found by running the installer, all fixed and re-verified (#400–#403), plus packaging (#404).
+- [x] Installer/upgrade/rollback matrix is rerun and passes ([#81](https://github.com/jampat000/Deluno/issues/81)). — ten of twelve lines met; the two outstanding both want a signed installer, which is the decision above.
+- [ ] 14-day soak starts with daily checks recorded ([#82](https://github.com/jampat000/Deluno/issues/82)); follow [the soak plan](soak-plan.md). — **not started.** The plan and `npm run soak:snapshot` are both ready; this is wall-clock time on a machine holding a real library.
+- [x] Backup/restore drill succeeds on a second machine profile ([#83](https://github.com/jampat000/Deluno/issues/83)). — Rollback C on the lab VM; the first attempt failed and the recovery path was repaired (#403).
+- [ ] RC2 release notes draft exists and matches shipped behavior. — the draft exists (`release-notes-1.0.0-draft.md`, last touched 2026-09-02); **whether it still matches is unverified**, and behaviour has moved since.
 
 Exit criteria:
 
@@ -81,12 +82,12 @@ Exit criteria:
 
 ## GA Checklist (`1.0.0`)
 
-- [ ] Soak completion summary is posted and approved (#82).
-- [ ] Backup/restore runbook is published and linked (#83).
-- [ ] Regression evidence is posted for GA candidate commit (#85).
-- [ ] User-facing upgrade notes are published (#86).
-- [ ] Final release decision log is filled and attached (template below).
-- [ ] Final sign-off is recorded in issue #78 and child issues are closed.
+- [ ] Soak completion summary is posted and approved ([#82](https://github.com/jampat000/Deluno/issues/82)). — follows the soak.
+- [x] Backup/restore runbook is published and linked ([#83](https://github.com/jampat000/Deluno/issues/83)). — `backup-restore-runbook.md`, linked from `docs/README.md` and the root README.
+- [x] Regression evidence is posted for GA candidate commit ([#85](https://github.com/jampat000/Deluno/issues/85)). — commit `b73a8ae`: 1,598 backend tests and 304 browser checks, posted on [#81](https://github.com/jampat000/Deluno/issues/81).
+- [x] User-facing upgrade notes are published ([#86](https://github.com/jampat000/Deluno/issues/86)). — `upgrade-guide-0x-to-1x.md`, linked from `docs/README.md` and the root README.
+- [ ] Final release decision log is filled and attached (template below). — nothing to decide on until the soak reports.
+- [ ] Final sign-off is recorded in issue [#78](https://github.com/jampat000/Deluno/issues/78) and child issues are closed. — [#82](https://github.com/jampat000/Deluno/issues/82) is the only child still open.
 
 Exit criteria:
 
