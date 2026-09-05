@@ -722,7 +722,7 @@ public sealed class WorkPlanner(
             movieCatalogRepository,
             seriesCatalogRepository,
             libraries,
-            knownImportSources,
+            existingJobs,
             cancellationToken);
         await RecordUnmatchedProcessorOutputsAsync(
             activityFeedRepository,
@@ -1064,7 +1064,7 @@ public sealed class WorkPlanner(
         IMovieCatalogRepository movieCatalogRepository,
         ISeriesCatalogRepository seriesCatalogRepository,
         IReadOnlyList<LibraryItem> libraries,
-        ISet<string> knownImportSources,
+        IReadOnlyList<JobQueueItem> existingJobs,
         CancellationToken cancellationToken)
     {
         var waitingStatuses = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
@@ -1072,6 +1072,11 @@ public sealed class WorkPlanner(
             "waiting", "submitted", "accepted", "started"
         };
         var handoffs = await processorRepository.ListProcessorHandoffsAsync(null, 250, cancellationToken);
+
+        // Outputs this pass has already queued. The reservation rule reads the
+        // jobs that existed when the pass started, so without this two hand-offs
+        // correlating to one file would both queue it.
+        var queuedThisPass = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
         foreach (var handoff in handoffs.Where(item => waitingStatuses.Contains(item.Status)))
         {
@@ -1084,8 +1089,31 @@ public sealed class WorkPlanner(
                 continue;
             }
 
+            // The same reservation rule the loop above uses, rather than a flat
+            // set of every path any import has ever touched.
+            //
+            // A processor writes its output to a folder named after the release,
+            // so the refined path is identical every time that release is
+            // fetched. Treating a *completed* import as a permanent reservation
+            // meant a release could be imported exactly once, ever: on the lab
+            // rig the hand-off for a fresh download sat at "waiting" for good,
+            // because yesterday's successful import still held the path.
+            //
+            // HasImportReservation already says why this is wrong, at its own
+            // definition, and scopes the reservation to the dispatch. The rule
+            // existed; this call site did not use it.
+            //
+            // Read once and used twice: which dispatch this hand-off belongs to
+            // decides both whether the output is already spoken for and what the
+            // import is named after.
+            var dispatch = await jobQueueRepository.FindRecentDispatchLinkAsync(
+                handoff.ClientId,
+                handoff.ReleaseName,
+                cancellationToken);
+
             var candidates = FindCorrelatedProcessorOutputs(library.ProcessorOutputPath!, handoff.SourcePath)
-                .Where(path => !knownImportSources.Contains(NormalizeSourceKey(path)))
+                .Where(path => !queuedThisPass.Contains(NormalizeSourceKey(path)))
+                .Where(path => !HasImportReservation(existingJobs, NormalizeSourceKey(path), dispatch))
                 .Where(ProcessorOutputReadiness.IsReady)
                 .ToArray();
             if (candidates.Length != 1)
@@ -1103,10 +1131,6 @@ public sealed class WorkPlanner(
             // — the movie stayed Missing and Deluno would grab it all over again.
             // #268 fixed precisely this for downloads that import directly; the
             // sibling path never got the same treatment.
-            var dispatch = await jobQueueRepository.FindRecentDispatchLinkAsync(
-                handoff.ClientId,
-                handoff.ReleaseName,
-                cancellationToken);
             var catalogue = await ResolveCatalogueNamingAsync(
                 dispatch,
                 movieCatalogRepository,
@@ -1155,7 +1179,7 @@ public sealed class WorkPlanner(
                 importJob.Id,
                 null,
                 cancellationToken);
-            knownImportSources.Add(NormalizeSourceKey(outputPath));
+            queuedThisPass.Add(NormalizeSourceKey(outputPath));
             await activityFeedRepository.RecordActivityAsync(
                 "processing.output.matched.import-queued",
                 $"Deluno matched processed output for {handoff.ReleaseName} and queued it for import.",
