@@ -26,7 +26,10 @@ public static class JobsEndpointRouteBuilderExtensions
                     key = task.Key,
                     name = task.Name,
                     description = task.Description,
-                    intervalSeconds = (long)task.Interval.TotalSeconds,
+                    // What it actually runs at, which for a configurable pass is
+                    // the user's answer rather than the declared default. Falls
+                    // back to the declaration until it has run once.
+                    intervalSeconds = state?.IntervalSeconds ?? (long)task.Interval.TotalSeconds,
                     isConfigurable = task.IsConfigurable,
                     lastStartedUtc = state?.LastStartedUtc,
                     lastCompletedUtc = state?.LastCompletedUtc,

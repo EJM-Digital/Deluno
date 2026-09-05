@@ -1072,14 +1072,15 @@ public sealed class SqliteJobStore(
         using var command = connection.CreateCommand();
         command.CommandText =
             """
-            INSERT INTO worker_schedule_state (schedule_key, last_run_utc, last_completed_utc, last_result, last_duration_ms, next_run_utc)
-            VALUES (@scheduleKey, @now, NULL, 'running', NULL, @nextRun)
+            INSERT INTO worker_schedule_state (schedule_key, last_run_utc, last_completed_utc, last_result, last_duration_ms, next_run_utc, interval_seconds)
+            VALUES (@scheduleKey, @now, NULL, 'running', NULL, @nextRun, @intervalSeconds)
             ON CONFLICT(schedule_key) DO UPDATE SET
                 last_run_utc = excluded.last_run_utc,
                 last_completed_utc = NULL,
                 last_result = 'running',
                 last_duration_ms = NULL,
-                next_run_utc = excluded.next_run_utc
+                next_run_utc = excluded.next_run_utc,
+                interval_seconds = excluded.interval_seconds
             WHERE worker_schedule_state.last_run_utc <= @cutoff;
             """;
 
@@ -1087,6 +1088,9 @@ public sealed class SqliteJobStore(
         AddParameter(command, "@now", now.ToString("O"));
         AddParameter(command, "@cutoff", cutoff.ToString("O"));
         AddParameter(command, "@nextRun", now.Add(interval).ToString("O"));
+        // Recorded so the System screen can report the cadence in use rather
+        // than the one declared — they differ wherever the user has a say.
+        AddParameter(command, "@intervalSeconds", (long)interval.TotalSeconds);
 
         var rowsAffected = await command.ExecuteNonQueryAsync(cancellationToken);
         return rowsAffected > 0;
@@ -1133,7 +1137,7 @@ public sealed class SqliteJobStore(
         using var command = connection.CreateCommand();
         command.CommandText =
             """
-            SELECT schedule_key, last_run_utc, last_completed_utc, last_result, last_duration_ms, next_run_utc
+            SELECT schedule_key, last_run_utc, last_completed_utc, last_result, last_duration_ms, next_run_utc, interval_seconds
             FROM worker_schedule_state;
             """;
 
@@ -1146,7 +1150,8 @@ public sealed class SqliteJobStore(
                 LastCompletedUtc: reader.IsDBNull(2) ? null : DateTimeOffset.Parse(reader.GetString(2)),
                 LastResult: reader.IsDBNull(3) ? null : reader.GetString(3),
                 LastDurationMs: reader.IsDBNull(4) ? null : reader.GetInt64(4),
-                NextRunUtc: reader.IsDBNull(5) ? null : DateTimeOffset.Parse(reader.GetString(5))));
+                NextRunUtc: reader.IsDBNull(5) ? null : DateTimeOffset.Parse(reader.GetString(5)),
+                IntervalSeconds: reader.IsDBNull(6) ? null : reader.GetInt64(6)));
         }
 
         return states;

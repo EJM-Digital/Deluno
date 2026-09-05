@@ -40,7 +40,8 @@ import {
   type PlatformSettingsSnapshot,
   type QualityModelSnapshot,
   type SearchCycleRunItem,
-  type BlockedRelease
+  type BlockedRelease,
+  type RecycleBinSettings
 } from "../lib/api";
 import type { PlatformSettingsPatch } from "../lib/api/settings";
 import { useApiMutation } from "../lib/use-api-mutation";
@@ -76,19 +77,21 @@ interface LoaderData {
   searchCycles: SearchCycleRunItem[];
   blockedReleases: BlockedRelease[];
   failureRules: ImportFailureRule[];
+  recycleBinSettings: RecycleBinSettings;
 }
 
 export async function searchCyclesLoader(): Promise<LoaderData> {
-  const [automationStates, libraries, qualityModel, settings, searchCycles, blockedReleases, failureRules] = await Promise.all([
+  const [automationStates, libraries, qualityModel, settings, searchCycles, blockedReleases, failureRules, recycleBinSettings] = await Promise.all([
     fetchPageItems<LibraryAutomationStateItem>("/api/library-automation?pageSize=50"),
     fetchJson<LibraryItem[]>("/api/libraries"),
     fetchJson<QualityModelSnapshot>("/api/quality-model"),
     fetchJson<PlatformSettingsSnapshot>("/api/settings"),
     fetchPageItems<SearchCycleRunItem>("/api/search-cycles?pageSize=50"),
     fetchJson<BlockedRelease[]>("/api/blocked-releases").catch(() => []),
-    fetchJson<ImportFailureRule[]>("/api/failure-rules").catch(() => [])
+    fetchJson<ImportFailureRule[]>("/api/failure-rules").catch(() => []),
+    fetchJson<RecycleBinSettings>("/api/recycle-bin/settings")
   ]);
-  return { automationStates, libraries, qualityModel, settings, searchCycles, blockedReleases, failureRules };
+  return { automationStates, libraries, qualityModel, settings, searchCycles, blockedReleases, failureRules, recycleBinSettings };
 }
 
 interface AutomationForm {
@@ -126,7 +129,7 @@ interface CleanupForm {
 }
 
 export function SearchCyclesPage() {
-  const { automationStates, libraries, qualityModel: loadedQualityModel, settings, searchCycles, blockedReleases, failureRules } = useLoaderData() as LoaderData;
+  const { automationStates, libraries, qualityModel: loadedQualityModel, settings, searchCycles, blockedReleases, failureRules, recycleBinSettings } = useLoaderData() as LoaderData;
   const location = useLocation();
   const navigate = useNavigate();
   const revalidator = useRevalidator();
@@ -524,6 +527,8 @@ export function SearchCyclesPage() {
         <BlockedReleasesConsole
           releases={blockedReleases}
           rules={failureRules}
+          settings={settings}
+          recycleBin={recycleBinSettings}
           onChanged={() => revalidator.revalidate()}
         />
       ) : null}

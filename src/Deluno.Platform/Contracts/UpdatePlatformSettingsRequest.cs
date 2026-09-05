@@ -54,4 +54,5 @@ public sealed record UpdatePlatformSettingsRequest(
     string? ShortDateFormat = null,
     string? LongDateFormat = null,
     string? TimeFormat = null,
-    bool? ShowRelativeDates = null);
+    bool? ShowRelativeDates = null,
+    int? LibraryFileCheckHours = null);

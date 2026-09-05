@@ -26,13 +26,19 @@ public sealed record SystemTask(
 /// and user-configured cadences can be displayed without pretending they are
 /// the same thing.
 /// </summary>
+/// <param name="IntervalSeconds">
+/// The cadence the pass was last claimed at, which for a configurable pass is
+/// the user's choice rather than the declared default. Null until it has run
+/// once, in which case the declaration is still the best answer available.
+/// </param>
 public sealed record SystemTaskState(
     string ScheduleKey,
     DateTimeOffset? LastStartedUtc,
     DateTimeOffset? LastCompletedUtc,
     string? LastResult,
     long? LastDurationMs,
-    DateTimeOffset? NextRunUtc);
+    DateTimeOffset? NextRunUtc,
+    long? IntervalSeconds = null);
 
 /// <summary>
 /// Every scheduled pass, in one place, on a fixed interval.

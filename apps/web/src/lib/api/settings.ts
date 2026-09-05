@@ -42,6 +42,7 @@ export interface PlatformSettingsPatch {
   releaseNeverGrabPatterns?: string;
   searchScoringMode?: string;
   importRecoveryRetentionDays?: number;
+  libraryFileCheckHours?: number;
   mdbListApiKey?: string;
   downloadHealthStrikeThreshold?: number;
   cleanupBlockReleaseAfterThreshold?: boolean;

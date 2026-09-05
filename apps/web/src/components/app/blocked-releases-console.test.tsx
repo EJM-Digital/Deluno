@@ -1,7 +1,7 @@
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { BlockedRelease } from "../../lib/api";
+import type { BlockedRelease, PlatformSettingsSnapshot } from "../../lib/api";
 import type { ImportFailureRule } from "../../lib/failure-reasons";
 import { authedFetch } from "../../lib/use-auth";
 import { BlockedReleasesConsole } from "./blocked-releases-console";
@@ -30,7 +30,7 @@ describe("the blocklist", () => {
   beforeEach(() => vi.clearAllMocks());
 
   it("shows the reason in words rather than in Deluno's vocabulary", () => {
-    render(<BlockedReleasesConsole releases={[release()]} rules={[]} onChanged={vi.fn()} />);
+    render(<BlockedReleasesConsole {...schedules()} releases={[release()]} rules={[]} onChanged={vi.fn()} />);
 
     // The import records "noVideoStream". Printing that asks the reader to
     // learn the codebase to find out why their film never arrived.
@@ -42,7 +42,7 @@ describe("the blocklist", () => {
   /// A code you can search for beats a word that tells you nothing.
   it("falls back to the code itself for a reason it has no words for", () => {
     render(
-      <BlockedReleasesConsole releases={[release({ reasonCode: "somethingNew" })]} rules={[]} onChanged={vi.fn()} />
+      <BlockedReleasesConsole {...schedules()} releases={[release({ reasonCode: "somethingNew" })]} rules={[]} onChanged={vi.fn()} />
     );
 
     expect(screen.getByText("somethingNew")).toBeInTheDocument();
@@ -52,7 +52,7 @@ describe("the blocklist", () => {
     vi.mocked(authedFetch).mockResolvedValue({ ok: true } as Response);
     const onChanged = vi.fn();
 
-    render(<BlockedReleasesConsole releases={[release()]} rules={[]} onChanged={onChanged} />);
+    render(<BlockedReleasesConsole {...schedules()} releases={[release()]} rules={[]} onChanged={onChanged} />);
     await userEvent.click(screen.getByRole("button", { name: /un-refuse/i }));
 
     expect(authedFetch).toHaveBeenCalledWith("/api/blocked-releases/block-1", { method: "DELETE" });
@@ -64,7 +64,7 @@ describe("the blocklist", () => {
   it("says that un-refusing has not started a search", async () => {
     vi.mocked(authedFetch).mockResolvedValue({ ok: true } as Response);
 
-    render(<BlockedReleasesConsole releases={[release()]} rules={[]} onChanged={vi.fn()} />);
+    render(<BlockedReleasesConsole {...schedules()} releases={[release()]} rules={[]} onChanged={vi.fn()} />);
     await userEvent.click(screen.getByRole("button", { name: /un-refuse/i }));
 
     expect(toasts.success).toHaveBeenCalledWith(expect.stringContaining("Search for the title when you want it"));
@@ -74,7 +74,7 @@ describe("the blocklist", () => {
     vi.mocked(authedFetch).mockResolvedValue({ ok: false } as Response);
     const onChanged = vi.fn();
 
-    render(<BlockedReleasesConsole releases={[release()]} rules={[]} onChanged={onChanged} />);
+    render(<BlockedReleasesConsole {...schedules()} releases={[release()]} rules={[]} onChanged={onChanged} />);
     await userEvent.click(screen.getByRole("button", { name: /un-refuse/i }));
 
     expect(toasts.error).toHaveBeenCalled();
@@ -84,7 +84,7 @@ describe("the blocklist", () => {
   /// An empty blocklist should read as "nothing has gone wrong", not as a
   /// broken screen.
   it("explains itself when nothing has been refused", () => {
-    render(<BlockedReleasesConsole releases={[]} rules={[]} onChanged={vi.fn()} />);
+    render(<BlockedReleasesConsole {...schedules()} releases={[]} rules={[]} onChanged={vi.fn()} />);
 
     expect(screen.getByText("Nothing has been refused")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /un-refuse/i })).not.toBeInTheDocument();
@@ -100,6 +100,7 @@ describe("the blocklist", () => {
     it("is kept apart from the ones it has refused", () => {
       render(
         <BlockedReleasesConsole
+          {...schedules()}
           releases={[release(), release({ id: "block-2", releaseName: "Dune.2021.2160p", state: "proposed" })]}
           rules={[]}
           onChanged={vi.fn()}
@@ -116,7 +117,7 @@ describe("the blocklist", () => {
       vi.mocked(authedFetch).mockResolvedValue({ ok: true } as Response);
 
       render(
-        <BlockedReleasesConsole releases={[release({ state: "proposed" })]} rules={[]} onChanged={vi.fn()} />
+        <BlockedReleasesConsole {...schedules()} releases={[release({ state: "proposed" })]} rules={[]} onChanged={vi.fn()} />
       );
       await userEvent.click(screen.getByRole("button", { name: /refuse it/i }));
 
@@ -128,7 +129,7 @@ describe("the blocklist", () => {
       vi.mocked(authedFetch).mockResolvedValue({ ok: true } as Response);
 
       render(
-        <BlockedReleasesConsole releases={[release({ state: "proposed" })]} rules={[]} onChanged={vi.fn()} />
+        <BlockedReleasesConsole {...schedules()} releases={[release({ state: "proposed" })]} rules={[]} onChanged={vi.fn()} />
       );
       await userEvent.click(screen.getByRole("button", { name: /allow it/i }));
 
@@ -138,7 +139,7 @@ describe("the blocklist", () => {
     /// No question, no section. An empty "waiting for you" reads as a chore
     /// that has not been done.
     it("is absent entirely when there is nothing to decide", () => {
-      render(<BlockedReleasesConsole releases={[release()]} rules={[]} onChanged={vi.fn()} />);
+      render(<BlockedReleasesConsole {...schedules()} releases={[release()]} rules={[]} onChanged={vi.fn()} />);
 
       expect(screen.queryByRole("heading", { name: /waiting for you/i })).not.toBeInTheDocument();
     });
@@ -157,7 +158,7 @@ describe("the blocklist", () => {
       } as Response);
       const onChanged = vi.fn();
 
-      render(<BlockedReleasesConsole releases={[release()]} rules={[]} onChanged={onChanged} />);
+      render(<BlockedReleasesConsole {...schedules()} releases={[release()]} rules={[]} onChanged={onChanged} />);
       await userEvent.click(screen.getByRole("button", { name: /clean up now/i }));
 
       expect(authedFetch).toHaveBeenCalledWith("/api/blocked-releases/block-1/cleanup", { method: "POST" });
@@ -176,7 +177,7 @@ describe("the blocklist", () => {
         json: async () => ({ outcome: "stillSharing" })
       } as Response);
 
-      render(<BlockedReleasesConsole releases={[release()]} rules={[]} onChanged={vi.fn()} />);
+      render(<BlockedReleasesConsole {...schedules()} releases={[release()]} rules={[]} onChanged={vi.fn()} />);
       await userEvent.click(screen.getByRole("button", { name: /clean up now/i }));
 
       expect(toasts.warning).toHaveBeenCalledWith(expect.stringContaining("sharing rule still needs"));
@@ -191,7 +192,7 @@ describe("the blocklist", () => {
         json: async () => ({ outcome: "clientUnavailable" })
       } as Response);
 
-      render(<BlockedReleasesConsole releases={[release()]} rules={[]} onChanged={vi.fn()} />);
+      render(<BlockedReleasesConsole {...schedules()} releases={[release()]} rules={[]} onChanged={vi.fn()} />);
       await userEvent.click(screen.getByRole("button", { name: /clean up now/i }));
 
       expect(toasts.warning).toHaveBeenCalledWith(expect.stringContaining("try again"));
@@ -203,6 +204,7 @@ describe("the blocklist", () => {
   it("keeps the rules folded away, and says how many you have changed", () => {
     render(
       <BlockedReleasesConsole
+        {...schedules()}
         releases={[]}
         rules={[rule(), rule({ reasonCode: "missingSource", isOverridden: true })]}
         onChanged={vi.fn()}
@@ -212,6 +214,17 @@ describe("the blocklist", () => {
     expect(screen.getByText("2 kinds of failure · 1 answered your way")).toBeInTheDocument();
     expect(screen.queryByRole("radiogroup")).not.toBeInTheDocument();
   });
+
+  /**
+   * The schedules section is its own component with its own spec. Spread in so
+   * the assertions here stay about the list, which is what this file is for.
+   */
+  function schedules() {
+    return {
+      settings: { libraryFileCheckHours: 6 } as PlatformSettingsSnapshot,
+      recycleBin: { retentionDays: 7, maxSizeMb: 10_000 }
+    };
+  }
 
   function release(overrides: Partial<BlockedRelease> = {}): BlockedRelease {
     return {

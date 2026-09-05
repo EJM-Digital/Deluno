@@ -209,14 +209,21 @@ public sealed class WorkPlanner(
     /// this adds is the schedule: the two paths cannot diverge, because there
     /// is only one of them.</para>
     /// </summary>
+    /// <param name="everyHours">
+    /// How often the user asked for it. The right answer depends on the disk:
+    /// a local pool can afford hourly, and a NAS that spins up to answer should
+    /// not be woken every hour to be asked.
+    /// </param>
     public Task RunLibraryFileCheckAsync(
         ILibraryFileCheckService fileCheck,
+        int everyHours,
         CancellationToken cancellationToken)
         => RunScheduledPassAsync(
             SystemTasks.LibraryFileCheck,
             () => fileCheck.RunAsync(cancellationToken),
             "Library file check failed.",
-            cancellationToken);
+            cancellationToken,
+            SystemTasks.IntervalForHours(SystemTasks.LibraryFileCheck, everyHours));
 
     /// <summary>
     /// Clears the leftovers of a refused release, when the sharing rule no
@@ -1559,15 +1566,25 @@ public sealed class WorkPlanner(
     /// its lease was claimed; the System screen gets a terminal result and
     /// duration instead.
     /// </summary>
+    /// <param name="chosenInterval">
+    /// A cadence the user has chosen, where the pass is configurable. Left null
+    /// for the fixed engineering cadences, which are the majority: how often it
+    /// is worth asking a download client what it is doing is not a preference.
+    /// It still comes from <see cref="SystemTasks"/> — a caller may choose
+    /// between declared cadences, never invent one.
+    /// </param>
     private async Task RunScheduledPassAsync(
         string scheduleKey,
         Func<Task> operation,
         string failureMessage,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        TimeSpan? chosenInterval = null)
     {
+        var interval = chosenInterval ?? SystemTasks.IntervalFor(scheduleKey);
+
         if (!await jobQueueRepository.TryClaimScheduledPassAsync(
                 scheduleKey,
-                SystemTasks.IntervalFor(scheduleKey),
+                interval,
                 cancellationToken))
         {
             return;

@@ -40,9 +40,73 @@ public sealed class SystemTasksAreDeclaredInOneSpotTests
                 $"A pass is claimed under the literal {key}. Declare it in SystemTasks and use the constant.");
 
             Assert.True(
-                interval.StartsWith("SystemTasks.IntervalFor(", StringComparison.Ordinal) ||
-                interval.StartsWith("SystemTasks.IntervalForHours(", StringComparison.Ordinal),
+                interval is "interval" || interval.StartsWith("SystemTasks.Interval", StringComparison.Ordinal),
                 $"A pass sets its own interval ({interval}). Move it to SystemTasks so the System screen can show it.");
+        }
+    }
+
+    /// <summary>
+    /// The shared helper takes a cadence now, because a configurable pass runs
+    /// at the one its owner chose. That is a second place a number could be
+    /// invented, so it is closed the same way: a caller may pick between
+    /// declared cadences, never write one.
+    /// </summary>
+    /// <remarks>
+    /// Parentheses are balanced rather than matched with a pattern, because
+    /// every one of these calls wraps a multi-line lambda full of commas and
+    /// semicolons. A regex over that reads the middle of somebody's loop and
+    /// reports it as a schedule.
+    /// </remarks>
+    [Fact]
+    public void A_pass_that_takes_a_cadence_still_takes_a_declared_one()
+    {
+        var calls = ScheduledSourceFiles()
+            .SelectMany(source => ArgumentsOfCallsTo(source, "RunScheduledPassAsync"))
+            .ToArray();
+
+        Assert.NotEmpty(calls);
+
+        foreach (var arguments in calls)
+        {
+            Assert.DoesNotContain(
+                "TimeSpan.From",
+                arguments,
+                StringComparison.Ordinal);
+        }
+
+        // And at least one really does choose, so this cannot pass by there
+        // being nothing to check.
+        Assert.Contains(calls, arguments => arguments.Contains("SystemTasks.IntervalForHours(", StringComparison.Ordinal));
+    }
+
+    /// <summary>
+    /// The text between the brackets of each call to <paramref name="method"/>,
+    /// with nesting respected.
+    /// </summary>
+    private static IEnumerable<string> ArgumentsOfCallsTo(string source, string method)
+    {
+        var token = method + "(";
+        var index = source.IndexOf(token, StringComparison.Ordinal);
+
+        while (index >= 0)
+        {
+            var open = index + token.Length;
+            var depth = 1;
+            var cursor = open;
+
+            while (cursor < source.Length && depth > 0)
+            {
+                if (source[cursor] == '(') depth++;
+                else if (source[cursor] == ')') depth--;
+                cursor++;
+            }
+
+            if (depth == 0)
+            {
+                yield return source[open..(cursor - 1)];
+            }
+
+            index = source.IndexOf(token, cursor, StringComparison.Ordinal);
         }
     }
 

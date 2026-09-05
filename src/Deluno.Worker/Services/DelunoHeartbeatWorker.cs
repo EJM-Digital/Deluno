@@ -234,6 +234,7 @@ public sealed class DelunoHeartbeatWorker(
         {
             var libraries = await librariesRepository.ListLibrariesAsync(stoppingToken);
             var automatedViews = await librariesRepository.ListAutomatedLibraryViewsAsync(stoppingToken);
+
             var automationPlans = libraries
                 .Select(library => new LibraryAutomationPlanItem(
                     LibraryId: library.Id,
@@ -324,6 +325,7 @@ public sealed class DelunoHeartbeatWorker(
                 stoppingToken);
             await workPlanner.RunLibraryFileCheckAsync(
                 services.GetRequiredService<ILibraryFileCheckService>(),
+                settings.LibraryFileCheckHours,
                 stoppingToken);
         }
 

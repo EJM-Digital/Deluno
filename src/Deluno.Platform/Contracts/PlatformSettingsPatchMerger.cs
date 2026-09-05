@@ -40,6 +40,7 @@ public static class PlatformSettingsPatchMerger
             ReleaseNeverGrabPatterns: patch.ReleaseNeverGrabPatterns ?? current.ReleaseNeverGrabPatterns,
             SearchScoringMode: patch.SearchScoringMode ?? current.SearchScoringMode,
             ImportRecoveryRetentionDays: patch.ImportRecoveryRetentionDays ?? current.ImportRecoveryRetentionDays,
+            LibraryFileCheckHours: patch.LibraryFileCheckHours ?? current.LibraryFileCheckHours,
             MdbListApiKey: patch.MdbListApiKey,
             DownloadHealthStrikeThreshold: patch.DownloadHealthStrikeThreshold ?? current.DownloadHealthStrikeThreshold,
             CleanupBlockReleaseAfterThreshold: patch.CleanupBlockReleaseAfterThreshold ?? current.CleanupBlockReleaseAfterThreshold,
