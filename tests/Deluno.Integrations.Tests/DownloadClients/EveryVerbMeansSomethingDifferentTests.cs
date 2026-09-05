@@ -30,6 +30,57 @@ namespace Deluno.Integrations.Tests.DownloadClients;
 public sealed class EveryVerbMeansSomethingDifferentTests
 {
     /// <summary>
+    /// A verb the clients implement has to survive the gateway that dispatches
+    /// to them.
+    ///
+    /// <para>Every adapter mapped <c>forget</c>, and
+    /// <c>DownloadClientTelemetryService.NormalizeAction</c> did not list it,
+    /// so the verb was refused before any adapter was reached. On the lab rig
+    /// on 2026-09-05, forcing a re-download reported <i>"qBittorrent would not
+    /// forget the release: Unsupported action."</i></para>
+    ///
+    /// <para>That took out every path that asks a client to forget a release:
+    /// the acquisition override, the refused-download clean-up pass, and
+    /// "Clean up now" on the blocklist. Not one of their tests could see it,
+    /// because all of them stand in for the service that was doing the
+    /// refusing — including the ones written the same day.</para>
+    ///
+    /// <para>So this reads the gateway's own source. The failure it catches is
+    /// a verb that exists at both ends and is dropped in the middle.</para>
+    /// </summary>
+    [Theory]
+    [InlineData(DownloadClientActions.Pause)]
+    [InlineData(DownloadClientActions.Resume)]
+    [InlineData(DownloadClientActions.Recheck)]
+    [InlineData(DownloadClientActions.Delete)]
+    [InlineData(DownloadClientActions.DeleteWithData)]
+    [InlineData(DownloadClientActions.Forget)]
+    public void The_gateway_passes_on_every_verb_the_clients_implement(string verb)
+    {
+        var source = File.ReadAllText(GatewaySourcePath());
+        var normalize = source[source.IndexOf("private static string? NormalizeAction", StringComparison.Ordinal)..];
+        normalize = normalize[..normalize.IndexOf("};", StringComparison.Ordinal)];
+
+        Assert.True(
+            normalize.Contains($"\"{verb}\"", StringComparison.Ordinal),
+            $"DownloadClientTelemetryService.NormalizeAction does not accept '{verb}', so every caller of it is "
+            + "refused with \"Unsupported action\" before any adapter is reached.");
+    }
+
+    private static string GatewaySourcePath()
+    {
+        var directory = new DirectoryInfo(AppContext.BaseDirectory);
+        while (directory is not null && !File.Exists(Path.Combine(directory.FullName, "Deluno.slnx")))
+        {
+            directory = directory.Parent;
+        }
+
+        Assert.NotNull(directory);
+        return Path.Combine(
+            directory!.FullName, "src", "Deluno.Integrations", "DownloadClients", "DownloadClientTelemetryService.cs");
+    }
+
+    /// <summary>
     /// The distinction the two verbs exist to draw: one takes the files, the
     /// other leaves them. A client that sends the same request for both has
     /// dropped it.
