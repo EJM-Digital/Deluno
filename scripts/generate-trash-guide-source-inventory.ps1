@@ -1,12 +1,21 @@
-[CmdletBinding()]
+﻿[CmdletBinding()]
 param(
     [Parameter(Mandatory = $true)]
     [string]$SourceRoot,
-    [string]$Destination = (Join-Path $PSScriptRoot '..\src\Deluno.Quality\Guides\trash-guide-source-inventory.json'),
+    [string]$Destination,
     [string]$ExpectedRevision = 'a63c1d05510d73887be1b0198f95a363c4f7bef6'
 )
 
 $ErrorActionPreference = 'Stop'
+
+# Not a param default. On Windows PowerShell 5.1 a script with [CmdletBinding()]
+# launched with a relative -File path sees $PSScriptRoot as empty while its
+# parameter defaults are being evaluated, so this resolved to nothing and the
+# script refused to start, complaining about an unrelated parameter.
+if (-not $Destination) {
+    $here = if ($PSScriptRoot) { $PSScriptRoot } else { Split-Path -Parent $MyInvocation.MyCommand.Path }
+    $Destination = Join-Path $here '..\src\Deluno.Quality\Guides\trash-guide-source-inventory.json'
+}
 
 $resolvedSource = (Resolve-Path -LiteralPath $SourceRoot).Path
 $resolvedDestination = [System.IO.Path]::GetFullPath($Destination)

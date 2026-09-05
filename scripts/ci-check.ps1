@@ -234,6 +234,19 @@ if ($agents.ExitCode -eq 0) {
     Write-Fail "agent readiness"
 }
 
+# Every .ps1 here has to run on both PowerShell editions, because
+# run-powershell.mjs falls back from pwsh to powershell and the machine Deluno
+# is developed on has only the latter. Three separate outages came from that:
+# #445, the reason run-powershell.mjs exists at all, and #461 - where the soak
+# collector had never once taken a reading, and exited 0 while not doing so.
+$portability = Invoke-LoggedCommand -FilePath $powerShellPath -Arguments @("-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "scripts/check-powershell-portability.ps1")
+if ($portability.ExitCode -eq 0) {
+    Write-Ok "scripts run on Windows PowerShell too"
+} else {
+    if ($portability.Output) { Write-Host $portability.Output }
+    Write-Fail "scripts run on Windows PowerShell too"
+}
+
 # The HEAD commit message is what gets squashed onto main, and GitHub reads a
 # closing verb next to an issue reference as an instruction - without reading
 # negation, and without caring that you are quoting. Three issues were closed
