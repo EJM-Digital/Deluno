@@ -245,6 +245,54 @@ public sealed class JobStoreTests
         Assert.DoesNotContain(await store.ListAsync(20, CancellationToken.None), job => job.Status == "dead-letter");
     }
 
+    /// <summary>
+    /// Retry empties a pile that earlier builds accumulated, rather than
+    /// promoting one row out of it and leaving the rest for ever.
+    ///
+    /// <para>Enqueue no longer creates these duplicates, but the lab rig was
+    /// carrying 455 rows made before that fix, and nothing in the product could
+    /// clear them. Pressing the button the dashboard sends you to left the
+    /// count exactly where it was.</para>
+    /// </summary>
+    [Fact]
+    public async Task Retry_discards_the_duplicates_of_the_job_it_puts_back()
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new MutableTimeProvider(DateTimeOffset.Parse("2026-09-05T04:00:00Z"));
+        await InitializeJobsAsync(storage, timeProvider);
+        var store = new SqliteJobStore(storage.Factory, timeProvider, new NullRealtimeEventPublisher(), new NullDownloadDispatchesRepository());
+
+        // The shape earlier builds left behind: many dead-letter rows for one
+        // piece of work, written straight to the table because enqueue will
+        // not make them any more.
+        await using (var connection = await storage.Factory.OpenConnectionAsync(DelunoDatabaseNames.Jobs))
+        {
+            for (var index = 0; index < 5; index++)
+            {
+                using var insert = connection.CreateCommand();
+                insert.CommandText =
+                    """
+                    INSERT INTO job_queue (id, job_type, source, status, payload_json, attempts, created_utc,
+                        scheduled_utc, dedupe_key, max_attempts)
+                    VALUES (@id, 'filesystem.import.execute', 'tv', 'dead-letter', '{}', 3, @createdUtc,
+                        @createdUtc, 'series:series-1:import', 3);
+                    """;
+                var id = insert.CreateParameter(); id.ParameterName = "@id"; id.Value = $"stale-{index}"; insert.Parameters.Add(id);
+                var created = insert.CreateParameter(); created.ParameterName = "@createdUtc"; created.Value = timeProvider.GetUtcNow().AddMinutes(-index).ToString("O"); insert.Parameters.Add(created);
+                await insert.ExecuteNonQueryAsync();
+            }
+        }
+
+        Assert.Equal(5, (await store.ListAsync(20, CancellationToken.None)).Count(job => job.Status == "dead-letter"));
+
+        var retried = await store.RetryFailedAsync(CancellationToken.None);
+
+        var rows = await store.ListAsync(20, CancellationToken.None);
+        Assert.Equal(1, retried);
+        Assert.Single(rows);
+        Assert.Equal("queued", rows[0].Status);
+    }
+
     /// <summary>Runs a job until it exhausts its attempts and gives up.</summary>
     private static async Task DeadLetterAsync(SqliteJobStore store, JobQueueItem job, MutableTimeProvider timeProvider)
     {

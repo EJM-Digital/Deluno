@@ -372,6 +372,36 @@ public sealed class SqliteJobStore(
             requeued = await update.ExecuteNonQueryAsync(cancellationToken);
         }
 
+        // The duplicates that were not promoted are the same work as the row
+        // that was, so they are removed rather than left dead-lettered for
+        // ever. Leaving them was what made Retry look broken: on the lab rig
+        // 459 rows shared one dedupe key, so pressing the button the dashboard
+        // sends you to promoted one and left 458 exactly where they were.
+        //
+        // Enqueue no longer creates these, so this only clears what earlier
+        // builds accumulated. Their history stays in the activity feed; the
+        // rows carry nothing the promoted one does not.
+        var discarded = 0;
+        using (var discard = connection.CreateCommand())
+        {
+            discard.Transaction = transaction;
+            discard.CommandText =
+                """
+                DELETE FROM job_queue
+                WHERE status = 'dead-letter'
+                  AND dedupe_key IS NOT NULL
+                  AND EXISTS (
+                      SELECT 1
+                      FROM job_queue AS promoted
+                      WHERE promoted.dedupe_key = job_queue.dedupe_key
+                        AND promoted.status = 'queued'
+                        AND promoted.scheduled_utc = @scheduledUtc
+                  );
+                """;
+            AddParameter(discard, "@scheduledUtc", now.ToString("O"));
+            discarded = await discard.ExecuteNonQueryAsync(cancellationToken);
+        }
+
         await InsertActivityAsync(
             connection,
             transaction,
@@ -392,7 +422,7 @@ public sealed class SqliteJobStore(
             detailsJson: JsonSerializer.Serialize(new DecisionExplanationPayload(
                 Scope: "job.retry",
                 Status: "requeued",
-                Reason: $"{DescribeRetry(requeued, failedJobs.Count)} Duplicates sharing a dedupe key are left where they are, because they are the same work.",
+                Reason: $"{DescribeRetry(requeued, failedJobs.Count)} {discarded} duplicate row(s) sharing a dedupe key were discarded, because they are the same work as one that was requeued.",
                 Inputs: new Dictionary<string, string?>
                 {
                     ["failedJobCount"] = failedJobs.Count.ToString(CultureInfo.InvariantCulture),
