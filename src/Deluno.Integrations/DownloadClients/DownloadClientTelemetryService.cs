@@ -147,7 +147,17 @@ public sealed class DownloadClientTelemetryService(
         // removal is therefore an opt-in, confirmed operation. Deluno does not use
         // this setting for automatic cleanup, and adapters that support deletion are
         // still asked to retain payload files wherever their client API permits it.
-        if (action == "delete" &&
+        // Deleting is gated; forgetting is not, and the difference is who asked.
+        //
+        // This setting exists so Deluno does not tidy away queue entries the
+        // owner wanted kept — an item can be shared or cross-seeded by another
+        // downloader. Forgetting is never Deluno tidying up: it comes from a
+        // confirmed "force a re-download", or from a refusal the owner can turn
+        // off in the failure console (DESIGN-007 decisions 9 and 16). Gating it
+        // here would make the force silently refuse on the strength of an
+        // unrelated setting, which is the same defect as a button that does not
+        // do what it says.
+        if (action is DownloadClientActions.Delete or DownloadClientActions.DeleteWithData &&
             !(await platformRepository.GetAsync(cancellationToken)).RemoveCompletedDownloads)
         {
             return new DownloadClientActionResult(
@@ -1208,13 +1218,30 @@ public sealed class DownloadClientTelemetryService(
         return "movies";
     }
 
+    /// <summary>
+    /// The verbs this gateway will pass to an adapter.
+    ///
+    /// <para>Every adapter implements <c>forget</c> and <c>delete-with-data</c>
+    /// — Deluge, NZBGet, qBittorrent and SABnzbd all map them — but this
+    /// function did not list them, so both were refused here and no adapter was
+    /// ever reached. Measured on the lab rig on 2026-09-05: forcing a
+    /// re-download reported <i>"qBittorrent would not forget the release:
+    /// Unsupported action."</i></para>
+    ///
+    /// <para>That took out every path that asks a client to forget a release —
+    /// the acquisition override, the refused-download clean-up pass, and
+    /// "Clean up now" on the blocklist. None of their tests could see it,
+    /// because they all stand in for this service.</para>
+    /// </summary>
     private static string? NormalizeAction(string action)
         => action.Trim().ToLowerInvariant() switch
         {
-            "pause" => "pause",
-            "resume" => "resume",
-            "remove" or "delete" => "delete",
-            "recheck" or "force-recheck" => "recheck",
+            "pause" => DownloadClientActions.Pause,
+            "resume" => DownloadClientActions.Resume,
+            "remove" or "delete" => DownloadClientActions.Delete,
+            "delete-with-data" => DownloadClientActions.DeleteWithData,
+            "forget" => DownloadClientActions.Forget,
+            "recheck" or "force-recheck" => DownloadClientActions.Recheck,
             _ => null
         };
 
