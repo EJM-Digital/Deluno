@@ -111,4 +111,16 @@ public static class AcquisitionBlockerKinds
 
     /// <summary>Not out yet, so there is nothing to find.</summary>
     public const string NotYetAvailable = "not-yet-available";
+
+    /// <summary>
+    /// Deluno fetched this once and no longer holds the file, so the download
+    /// client may still be refusing the release.
+    ///
+    /// <para>The one this whole feature was built for, and the last to be
+    /// added — because the source that finds blockers only looked at downloads
+    /// that had not finished importing. A title that downloaded, imported and
+    /// was then removed produced no blocker at all, which is precisely the
+    /// case somebody hits when they delete a film and ask for it again.</para>
+    /// </summary>
+    public const string PreviouslyDownloaded = "previously-downloaded";
 }

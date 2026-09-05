@@ -45,7 +45,9 @@ public static class AcquisitionBlockerReader
         string? processorHoldingFile,
         bool isImportExcluded,
         bool nextSearchSkipped,
-        DateTimeOffset now)
+        DateTimeOffset now,
+        string? previouslyFetchedFrom = null,
+        DateTimeOffset? previouslyFetchedUtc = null)
     {
         var blockers = new List<AcquisitionBlocker>();
 
@@ -80,6 +82,35 @@ public static class AcquisitionBlockerReader
                 "A hand-off that has not finished is why the import has not run.",
                 CanClear: true,
                 ClearEffect: $"Forgets the hand-off so the file can be sent to {processorHoldingFile} again."));
+        }
+
+        // Fetched before, and gone now.
+        //
+        // Suppressed while something is downloading: if a client has this
+        // release in hand right now, "you fetched this once" is not the answer
+        // to why it is not arriving, and two blockers naming the same client
+        // would read as two problems.
+        //
+        // The wording claims only what Deluno knows. It cannot see a download
+        // client's memory without asking, and the client may be unreachable or
+        // may have been cleared by hand — so this says what Deluno did and what
+        // it no longer has, and offers the override, rather than asserting a
+        // fact about somebody else's state.
+        if (previouslyFetchedFrom is { Length: > 0 } fetchedFrom &&
+            wanted is not { HasFile: true } &&
+            clientHoldingRelease is not { Length: > 0 })
+        {
+            var when = previouslyFetchedUtc is { } fetchedUtc
+                ? $" on {fetchedUtc:d MMMM yyyy}"
+                : string.Empty;
+
+            blockers.Add(new AcquisitionBlocker(
+                AcquisitionBlockerKinds.PreviouslyDownloaded,
+                fetchedFrom,
+                $"Deluno fetched {title} through {fetchedFrom}{when}, and the file is no longer here.",
+                $"A download client refuses a release it remembers — a torrent client by its infohash, a usenet client from its history — so the next attempt is accepted and then quietly ignored. Deluno cannot see {fetchedFrom}'s memory without asking it, so this may already be clear.",
+                CanClear: true,
+                ClearEffect: $"Makes {fetchedFrom} forget the release, so it will accept it again."));
         }
 
         if (isImportExcluded)

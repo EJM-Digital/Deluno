@@ -551,6 +551,10 @@ public static class MoviesEndpointRouteBuilderExtensions
                 dispatches, processors, "movies", id, cancellationToken);
             var excluded = await AcquisitionBlockerSources.IsExcludedAsync(
                 exclusions, "movies", item.Title, item.ImdbId, cancellationToken);
+            // What Deluno fetched before and no longer holds — read from its
+            // own dispatch record, so it answers with the client switched off.
+            var fetchedBefore = await AcquisitionBlockerSources.FindPreviousFetchAsync(
+                dispatches, "movies", id, cancellationToken);
 
             return Results.Ok(await gatherer.GatherAsync(
                 MediaKind.Movie,
@@ -559,7 +563,9 @@ public static class MoviesEndpointRouteBuilderExtensions
                 held.DownloadClientName,
                 held.ProcessorName,
                 excluded,
-                cancellationToken));
+                cancellationToken,
+                fetchedBefore?.ClientName,
+                fetchedBefore?.WhenUtc));
         });
 
         // Clear what is standing in the way, deliberately and on the record.
@@ -605,14 +611,24 @@ public static class MoviesEndpointRouteBuilderExtensions
             var exclusionIds = await AcquisitionBlockerSources.ExclusionIdsAsync(
                 exclusions, "movies", item.Title, item.ImdbId, cancellationToken);
 
+            // Nothing in flight is the case this feature exists for: the
+            // download finished, the file has gone, and the client is still
+            // refusing the release on the strength of remembering it. Fall
+            // back to that completed dispatch so the force has something to
+            // ask the client to forget.
+            var fetchedBefore = held.DownloadClientId is { Length: > 0 }
+                ? null
+                : await AcquisitionBlockerSources.FindPreviousFetchAsync(
+                    dispatches, "movies", id, cancellationToken);
+
             var result = await overrides.ForceAsync(
                 new AcquisitionOverrideRequest(
                     id,
                     item.Title,
                     held.HandoffId,
-                    held.DownloadClientId,
-                    held.DownloadClientName,
-                    held.QueueItemId,
+                    held.DownloadClientId ?? fetchedBefore?.ClientId,
+                    held.DownloadClientName ?? fetchedBefore?.ClientName,
+                    held.QueueItemId ?? fetchedBefore?.QueueItemId,
                     exclusionIds),
                 cancellationToken);
 

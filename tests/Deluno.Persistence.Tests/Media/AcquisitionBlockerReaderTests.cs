@@ -217,4 +217,97 @@ public sealed class AcquisitionBlockerReaderTests
             false,
             null,
             Now);
+
+    /// <summary>
+    /// The case this whole feature was built for, and the last one it learned
+    /// to answer.
+    ///
+    /// <para>A title that downloaded, imported and was then removed leaves a
+    /// *completed* dispatch — and the source that finds blockers deliberately
+    /// ignores completed dispatches, because a download that imported is
+    /// history rather than an obstacle. Right for everything else, and wrong
+    /// for exactly this: the file has gone, so that completed download is the
+    /// reason the client will refuse the next attempt.</para>
+    /// </summary>
+    [Fact]
+    public void A_title_fetched_before_and_no_longer_held_says_so()
+    {
+        var answer = AcquisitionBlockerReader.Read(
+            "movie-1",
+            "movies",
+            "Arrival",
+            Wanted(hasFile: false),
+            clientHoldingRelease: null,
+            processorHoldingFile: null,
+            isImportExcluded: false,
+            nextSearchSkipped: false,
+            Now,
+            previouslyFetchedFrom: "qBittorrent",
+            previouslyFetchedUtc: DateTimeOffset.Parse("2026-09-03T10:00:00Z"));
+
+        var blocker = Assert.Single(answer.Blockers);
+        Assert.Equal(AcquisitionBlockerKinds.PreviouslyDownloaded, blocker.Kind);
+        Assert.Contains("qBittorrent", blocker.Summary, StringComparison.Ordinal);
+        Assert.Contains("3 September 2026", blocker.Summary, StringComparison.Ordinal);
+        Assert.True(blocker.CanClear);
+        Assert.True(answer.CanForce);
+    }
+
+    /// <summary>
+    /// It claims only what Deluno knows. It cannot see a download client's
+    /// memory without asking, and the client may be unreachable or already
+    /// cleared by hand — so the detail says "may", and an override is offered
+    /// rather than a fact asserted about somebody else's state.
+    /// </summary>
+    [Fact]
+    public void It_does_not_claim_the_client_still_holds_the_release()
+    {
+        var answer = AcquisitionBlockerReader.Read(
+            "movie-1", "movies", "Arrival", Wanted(hasFile: false),
+            null, null, false, false, Now,
+            previouslyFetchedFrom: "SABnzbd",
+            previouslyFetchedUtc: Now);
+
+        var blocker = Assert.Single(answer.Blockers);
+        Assert.Contains("may already be clear", blocker.Detail, StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// And it stays quiet when the file is here. Having fetched something
+    /// before is only interesting once it has gone.
+    /// </summary>
+    [Fact]
+    public void A_title_that_is_still_held_does_not_mention_having_fetched_it()
+    {
+        var answer = AcquisitionBlockerReader.Read(
+            "movie-1", "movies", "Arrival", Wanted(hasFile: true),
+            null, null, false, false, Now,
+            previouslyFetchedFrom: "qBittorrent",
+            previouslyFetchedUtc: Now);
+
+        Assert.DoesNotContain(answer.Blockers, blocker => blocker.Kind == AcquisitionBlockerKinds.PreviouslyDownloaded);
+    }
+
+    /// <summary>
+    /// Suppressed while something is downloading. If a client has the release
+    /// in hand right now, "you fetched this once" is not the answer to why it
+    /// is not arriving — and two blockers naming the same client would read as
+    /// two problems.
+    /// </summary>
+    [Fact]
+    public void A_download_in_flight_silences_the_older_fetch()
+    {
+        var answer = AcquisitionBlockerReader.Read(
+            "movie-1", "movies", "Arrival", Wanted(hasFile: false),
+            clientHoldingRelease: "qBittorrent",
+            processorHoldingFile: null,
+            isImportExcluded: false,
+            nextSearchSkipped: false,
+            Now,
+            previouslyFetchedFrom: "qBittorrent",
+            previouslyFetchedUtc: Now);
+
+        var blocker = Assert.Single(answer.Blockers);
+        Assert.Equal(AcquisitionBlockerKinds.DownloadInFlight, blocker.Kind);
+    }
 }
