@@ -62,11 +62,11 @@ public sealed class SubtitleScaleBenchmark(ITestOutputHelper output)
         // SQLite opening the file and preparing statements.
         await off.ListPageAsync(new CatalogueQuery(PageSize: 100), CancellationToken.None);
 
-        var (offMs, offWorst) = await WalkAsync(off, total);
+        var (offMs, offWorst, _) = await WalkAsync(off, total);
         output.WriteLine($"no languages wanted   {offMs,6:N0} ms for {total / 100} pages ({offWorst} ms worst page)");
 
-        var (onMs, onWorst) = await WalkAsync(on, total);
-        output.WriteLine($"two languages wanted  {onMs,6:N0} ms for {total / 100} pages ({onWorst} ms worst page)");
+        var (onMs, onWorst, onMedian) = await WalkAsync(on, total);
+        output.WriteLine($"two languages wanted  {onMs,6:N0} ms for {total / 100} pages ({onMedian:F1} ms median, {onWorst} ms worst)");
         output.WriteLine($"subtitles cost        {onMs - offMs,6:N0} ms across the whole walk");
 
         var withBars = await on.ListPageAsync(new CatalogueQuery(PageSize: 100), CancellationToken.None);
@@ -77,12 +77,19 @@ public sealed class SubtitleScaleBenchmark(ITestOutputHelper output)
         var withoutBars = await off.ListPageAsync(new CatalogueQuery(PageSize: 100), CancellationToken.None);
         Assert.All(withoutBars.Items, item => Assert.Equal(0, item.SubtitleLanguagesWanted));
 
-        // Deliberately loose, like the benchmark next door: a guard against an
-        // order-of-magnitude regression, not a target, on hardware of unknown
+        // The median page, not the worst one — the same correction the
+        // catalogue benchmark next door needed, and for the same reason.
+        //
+        // Asserting on the slowest of two hundred pages reads a garbage
+        // collection or a lost scheduling slice on a shared runner as though it
+        // were a query regression. A rollup that has become a scan is slow on
+        // every page by construction, so the median moves first and moves
+        // further; the maximum only adds noise. Still deliberately loose: this
+        // guards an order of magnitude, not a target, on hardware of unknown
         // speed.
         Assert.True(
-            onWorst < 250,
-            $"A page with subtitles wanted took {onWorst} ms at {total:N0} titles, which suggests the rollup has become a scan.");
+            onMedian < 50,
+            $"The median page with subtitles wanted took {onMedian:F1} ms at {total:N0} titles, which suggests the rollup has become a scan.");
     }
 
     /// <summary>
@@ -120,10 +127,15 @@ public sealed class SubtitleScaleBenchmark(ITestOutputHelper output)
             "Reading what the libraries want is on the catalogue page's path, so it has to stay a rounding error.");
     }
 
-    private static async Task<(long TotalMs, long WorstPageMs)> WalkAsync(IMovieCatalogRepository movies, int total)
+    /// <summary>
+    /// The median page is the one worth asserting on. See the note at the
+    /// assertion for why the worst one is only ever printed.
+    /// </summary>
+    private static async Task<(long TotalMs, long WorstPageMs, double MedianPageMs)> WalkAsync(IMovieCatalogRepository movies, int total)
     {
         string? token = null;
         long worst = 0;
+        var timings = new List<double>();
         var clock = Stopwatch.StartNew();
 
         do
@@ -133,12 +145,14 @@ public sealed class SubtitleScaleBenchmark(ITestOutputHelper output)
                 new CatalogueQuery(PageSize: 100, PageToken: token), CancellationToken.None);
             pageClock.Stop();
             worst = Math.Max(worst, pageClock.ElapsedMilliseconds);
+            timings.Add(pageClock.Elapsed.TotalMilliseconds);
             token = page.NextPageToken;
         }
         while (token is not null);
 
         clock.Stop();
-        return (clock.ElapsedMilliseconds, worst);
+        timings.Sort();
+        return (clock.ElapsedMilliseconds, worst, timings[timings.Count / 2]);
     }
 
     private static async Task SeedAsync(TestStorage storage, int total)
