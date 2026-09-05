@@ -30,7 +30,13 @@ Run the same representative workload each day and record the outcome, IDs, and t
 2. Perform at least one grab → transfer → import → rename round trip using the external indexer and download client.
 3. Confirm the processor handoff when it is enabled, including the final path and monitored state.
 4. Exercise the retry/cleanup path only with an intentionally disposable test item; never use a destructive action against the non-critical library without an explicit operator decision.
-5. Run `npm run soak:snapshot -- -ApiKey <key> -RunId <run-id>` once after the checks. The API key must be supplied through the command invocation or a secret store and must never be written to the evidence files.
+5. Record the day. The collector takes the reading, decides six of the seven checks against the thresholds below, and writes the result:
+
+   ```powershell
+   npm run soak:snapshot -- -RunId <run-id> -BaseUrl <url> -ApiKeyFile <path> -WorkflowNote "<what you saw>"
+   ```
+
+   Prefer `-ApiKeyFile` to `-ApiKey`: the key is then never in a shell history, a scheduled-task definition, or this repository, and it is never written to the evidence files either way.
 
 ## Daily checklist and thresholds
 
@@ -47,6 +53,28 @@ The collector records the endpoint-backed values. The operator records the files
 | Workflow | Jobs, activity, and filesystem review | Discovery, grab, transfer, import, and rename all accounted for | Record IDs, paths, and no unexpected deletes/unmonitors |
 
 The seven checks are a daily decision, not a suggestion. A missing endpoint response or missing metric fails the day and must be recorded as such.
+
+**Six of them are arithmetic, so the collector decides them** and writes `PASS`, `ATTENTION` or `FAIL` into `daily.md` with the reason. The seventh is the operator's eyes on the filesystem and cannot be read off an endpoint: supply it with `-WorkflowNote`. A day without one is `ATTENTION`, not `PASS` - an unmade decision is not a passing one.
+
+The collector also tells a failing product apart from a broken collector. A day where no request even reached Deluno is a *missing* day: it warns, exits non-zero, and says so in the ledger, rather than recording fourteen red days that look like evidence. That distinction exists because the collector spent its whole life unable to take a reading on the machine that had to take it ([#461](https://github.com/jampat000/Deluno/issues/461)).
+
+## Starting and stopping the run
+
+Fourteen consecutive days is the point of the gate, and fourteen chances to remember is not a plan. Schedule it:
+
+```powershell
+npm run soak:snapshot -- -InstallDailyTask -RunId <run-id> -BaseUrl <url> -ApiKeyFile <path> -DailyTaskAt 09:00
+```
+
+Each collected day lands as `ATTENTION` until its workflow check is recorded, so the ledger shows what is still owed. Close a day by running the same command with `-WorkflowNote`.
+
+A P0 or P1 stops the clock. Remove the task, fix and verify, then start again with a **new** run id so the new ledger cannot be mistaken for a continuation of the old one:
+
+```powershell
+npm run soak:snapshot -- -RemoveDailyTask -RunId <run-id>
+```
+
+**Do not start the clock while the build is still moving.** The rule below says a P0 or P1 restarts the run at Day 1, and an end-to-end pass that has not been walked yet will find some. Finish that first, then start.
 
 ## Defect and restart rule
 
