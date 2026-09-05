@@ -4,6 +4,57 @@ The bits needed to run [`docs/exec-plans/active/E2E-full-product-test.md`](../..
 
 These lived in a session scratchpad and had to be hunted for across old session directories every time. They live here now.
 
+## `ensure-rig-services.ps1`
+
+Holds every service on the VM to one rule: it starts without a person, and it
+comes back after a reboot. Reports drift, repairs only what has it.
+
+```powershell
+./scripts/lab/ensure-rig-services.ps1 -ReportOnly
+./scripts/lab/ensure-rig-services.ps1
+```
+
+Deluno, qBittorrent and Weir are SYSTEM scheduled tasks with a boot trigger.
+SABnzbd is a real Windows service, because it will not run as anything else: it
+checks its own session id at startup, before parsing any argument, and every
+process launched over WinRM or by a SYSTEM task is in session 0, so it always
+decides it is a service. Its options live in the `CommandLine` value under its
+own service key, which is where its `get_serv_parms` reads them from.
+
+That one difference is why the end-to-end plan spent two runs recording "SABnzbd
+needs an interactive session" as a fact about the rig.
+
+## `provision-usenet.ps1`
+
+Brings the usenet half of the rig up and proves it moved real bytes: the
+NNTP/NZB fixture on the desktop, SABnzbd's news server and category, and the API
+key Deluno holds for it — read from SABnzbd rather than typed, so the two cannot
+drift apart again.
+
+```powershell
+./scripts/lab/provision-usenet.ps1 -Verify
+```
+
+Idempotent; every part is skipped when it is already right. `-Verify` pushes the
+fixture NZB through SABnzbd, waits for it to complete, compares the decoded
+SHA-256 against the source, and removes what the check created.
+
+## `fake-nntp-server.py`
+
+The deterministic NNTP server and NZB endpoint behind that. One genuine yEnc
+article over a real NNTP conversation, which SABnzbd requests, decodes and
+post-processes exactly as it would a commercial provider's. It proves the
+protocol, client and import path; it proves nothing about a real provider's
+authentication, retention or availability.
+
+Started for you by `provision-usenet.ps1`. Directly:
+
+```powershell
+python -u scripts/lab/fake-nntp-server.py --port 1119 --http-port 1180 `
+  --article 'C:\Deluno\e2e\data\Breaking.Bad.S01E01.1080p.WEB-DL.x264-DELUNO.mkv' `
+  --log 'C:\Deluno\e2e\logs\nntp.log'
+```
+
 ## `torznab_seed.py`
 
 A real Torznab indexer that serves genuine `.torrent` files — correct bencode, correct SHA1 piece hashes — whose bytes a real qBittorrent fetches over BEP-19 webseeds. It is not a mock: the client does an actual transfer and an actual hash check, and would fail one if the bytes were wrong.
