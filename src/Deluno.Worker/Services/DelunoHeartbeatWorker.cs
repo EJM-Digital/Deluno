@@ -235,7 +235,15 @@ public sealed class DelunoHeartbeatWorker(
             var libraries = await librariesRepository.ListLibrariesAsync(stoppingToken);
             var automatedViews = await librariesRepository.ListAutomatedLibraryViewsAsync(stoppingToken);
 
+            // A library whose root is not mounted is paused rather than
+            // searched. Searching it would grab releases that then fail to
+            // import, and record every one of those failures against the
+            // release rather than against the drive. DESIGN-007 decision 12.
+            var availability = await services.GetRequiredService<ILibraryAvailabilityService>()
+                .ReadAsync(libraries, stoppingToken);
+
             var automationPlans = libraries
+                .Where(library => availability.IsUsable(library.Id))
                 .Select(library => new LibraryAutomationPlanItem(
                     LibraryId: library.Id,
                     LibraryName: library.Name,
@@ -274,6 +282,7 @@ public sealed class DelunoHeartbeatWorker(
                 jobScheduler,
                 processorRepository,
                 librariesRepository,
+                services.GetRequiredService<ILibraryAvailabilityService>(),
                 downloadClientTelemetryService,
                 processorConnectionService,
                 activityFeedRepository,

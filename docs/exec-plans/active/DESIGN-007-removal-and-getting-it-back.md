@@ -421,6 +421,28 @@ never has to wait for a timer to find out what Deluno thinks.
 | An import fails and retries once | **Retry import now** | ✅ `POST /api/v1/download-dispatches/{id}/retry` |
 | A library pauses when its root is unreachable (decision 12) | **Re-check now**, rather than waiting | ✅ the same file check — it reports unreachable roots and touches nothing in them |
 
+### Decision 12, built
+
+A library whose root will not answer is now **paused**, not merely flagged.
+Search planning and import automation both filter through one
+`ILibraryAvailabilityService`, because two implementations of "is it there"
+would eventually disagree and the way you would find out is a library that
+imports but is never searched.
+
+- The pause is **said once** when it starts and once when it ends. A pause
+  nobody is told about is indistinguishable from Deluno having quietly stopped.
+- The answer is **held for a minute**. The worker asks on every tick, and a stat
+  call per library per tick against a sleeping NAS is its own problem.
+- A path that does not answer **within five seconds is treated as gone**, which
+  is what it is. An unreachable share fails when the network stack gives up,
+  and blocking the worker for that on every library is worse than the outage.
+- A library with **no root configured** is not called an outage. It is an
+  unfinished setup, and saying "not reachable" would send somebody to check a
+  drive that was never involved.
+
+Jobs already queued when a library goes still run; the gate is on planning, so
+what stops is Deluno *starting* new work it cannot finish.
+
 **Every one of these calls the same code the schedule calls.** The library file
 check and the refused-download clear-out were both bodies of lambdas inside the
 worker's planner, reachable only by a timer; they are now
@@ -879,3 +901,37 @@ A document that five code paths can ignore is the problem, not the fix.
    at the top of this page produces no card and no button.
 3. **The policy and the routing**, absorbing the seeding warning and the shared
    ownership check.
+
+---
+
+## What was built
+
+All of it, across six pull requests.
+
+| | Landed as |
+|---|---|
+| The reconcile, connected, with a schedule | #435 |
+| The "previously downloaded" blocker | #437 |
+| A download client can be told to forget, not just delete | #436 |
+| The failure table, the refusals, the clear-out, and the blocklist screen | #438 |
+| The rules — every decision a default, "ask me" included | #439 |
+| The manual triggers, and an empty that says what it takes | #440 |
+| The schedules — how often Deluno checks | #441 |
+| A library that is gone is paused, not worked on | #442 |
+
+What is deliberately **not** built is the register of five unknowns above.
+Every one of them needs the rig or a SABnzbd instance to answer, and guessing
+at them in code would be worse than leaving them written down.
+
+Two things are worth saying about how this went, because both were found by
+building rather than by reading:
+
+- **The check before the build.** Three times a capability was described as
+  missing when it existed under a name nobody had searched for — the
+  file-presence reconcile, the sharing rule, and recycle-bin retention. In this
+  codebase the answer is usually already there.
+- **The guards earned their keep.** The failure table's own guard found a
+  seventeenth reason nobody had decided about, because the code spells it `io`.
+  The one-spot guard caught a cadence being chosen at a call site. Playwright
+  caught two buttons sharing a name. None of those would have been noticed by
+  reading.
