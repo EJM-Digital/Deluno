@@ -310,4 +310,60 @@ public sealed class AcquisitionBlockerReaderTests
         var blocker = Assert.Single(answer.Blockers);
         Assert.Equal(AcquisitionBlockerKinds.DownloadInFlight, blocker.Kind);
     }
+
+    /// <summary>
+    /// The blocklist answering for itself.
+    ///
+    /// <para>Refusing releases is a mechanism that can become the problem:
+    /// refuse enough of them and a search finds nothing, with the reason
+    /// sitting in a list nobody thought to open. So it is stated wherever
+    /// somebody asks why a title is not arriving.</para>
+    /// </summary>
+    [Fact]
+    public void Refused_releases_for_a_title_are_stated_where_somebody_is_asking_why()
+    {
+        var answer = AcquisitionBlockerReader.Read(
+            "movie-1", "movies", "Arrival", Wanted(hasFile: false),
+            null, null, false, false, Now,
+            blockedReleaseCount: 3);
+
+        var blocker = Assert.Single(answer.Blockers);
+        Assert.Equal(AcquisitionBlockerKinds.ReleasesBlocked, blocker.Kind);
+        Assert.Contains("3 releases", blocker.Summary, StringComparison.Ordinal);
+        Assert.True(blocker.CanClear);
+        Assert.Contains("Un-refuses all 3", blocker.ClearEffect!, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Stated, not blamed. Deluno cannot know from here whether a good
+    /// candidate still exists — that needs a search — so the wording reports
+    /// the fact rather than claiming to be the cause.
+    /// </summary>
+    [Fact]
+    public void It_reports_the_refusals_without_claiming_they_are_the_cause()
+    {
+        var answer = AcquisitionBlockerReader.Read(
+            "movie-1", "movies", "Arrival", Wanted(hasFile: false),
+            null, null, false, false, Now,
+            blockedReleaseCount: 1);
+
+        var blocker = Assert.Single(answer.Blockers);
+        Assert.Contains("one fewer option", blocker.Summary, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("If every copy", blocker.Detail, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// And it is silent about a title already held. Refusing a bad copy of a
+    /// film you have is not something anybody needs telling.
+    /// </summary>
+    [Fact]
+    public void Refusals_are_not_mentioned_for_a_title_that_is_already_here()
+    {
+        var answer = AcquisitionBlockerReader.Read(
+            "movie-1", "movies", "Arrival", Wanted(hasFile: true, cutoffMet: true),
+            null, null, false, false, Now,
+            blockedReleaseCount: 3);
+
+        Assert.DoesNotContain(answer.Blockers, blocker => blocker.Kind == AcquisitionBlockerKinds.ReleasesBlocked);
+    }
 }

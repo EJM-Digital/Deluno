@@ -20,6 +20,7 @@ import { Drawer, DrawerFooter, DrawerSection, type DrawerSaveState } from "../co
 import { Field, FieldRow } from "../components/ui/field";
 import { ListCard, ListCell, ListEmpty, ListNameCell, ListRow, ListTable, LIST_TRACK } from "../components/ui/list-card";
 import { PageFooter } from "../components/ui/page-footer";
+import { BlockedReleasesConsole } from "../components/app/blocked-releases-console";
 import { PageToolbar } from "../components/ui/page-toolbar";
 import { SummaryStrip } from "../components/ui/summary-strip";
 import { ListGroupHeader, MediaTypeFilter, useMediaTypeSplit } from "../components/ui/media-type-split";
@@ -37,7 +38,8 @@ import {
   type LibraryItem,
   type PlatformSettingsSnapshot,
   type QualityModelSnapshot,
-  type SearchCycleRunItem
+  type SearchCycleRunItem,
+  type BlockedRelease
 } from "../lib/api";
 import type { PlatformSettingsPatch } from "../lib/api/settings";
 import { useApiMutation } from "../lib/use-api-mutation";
@@ -71,17 +73,19 @@ interface LoaderData {
   qualityModel: QualityModelSnapshot;
   settings: PlatformSettingsSnapshot;
   searchCycles: SearchCycleRunItem[];
+  blockedReleases: BlockedRelease[];
 }
 
 export async function searchCyclesLoader(): Promise<LoaderData> {
-  const [automationStates, libraries, qualityModel, settings, searchCycles] = await Promise.all([
+  const [automationStates, libraries, qualityModel, settings, searchCycles, blockedReleases] = await Promise.all([
     fetchPageItems<LibraryAutomationStateItem>("/api/library-automation?pageSize=50"),
     fetchJson<LibraryItem[]>("/api/libraries"),
     fetchJson<QualityModelSnapshot>("/api/quality-model"),
     fetchJson<PlatformSettingsSnapshot>("/api/settings"),
-    fetchPageItems<SearchCycleRunItem>("/api/search-cycles?pageSize=50")
+    fetchPageItems<SearchCycleRunItem>("/api/search-cycles?pageSize=50"),
+    fetchJson<BlockedRelease[]>("/api/blocked-releases").catch(() => [])
   ]);
-  return { automationStates, libraries, qualityModel, settings, searchCycles };
+  return { automationStates, libraries, qualityModel, settings, searchCycles, blockedReleases };
 }
 
 interface AutomationForm {
@@ -119,7 +123,7 @@ interface CleanupForm {
 }
 
 export function SearchCyclesPage() {
-  const { automationStates, libraries, qualityModel: loadedQualityModel, settings, searchCycles } = useLoaderData() as LoaderData;
+  const { automationStates, libraries, qualityModel: loadedQualityModel, settings, searchCycles, blockedReleases } = useLoaderData() as LoaderData;
   const location = useLocation();
   const navigate = useNavigate();
   const revalidator = useRevalidator();
@@ -127,7 +131,7 @@ export function SearchCyclesPage() {
 
   useVisibleInterval(() => revalidator.revalidate(), 10_000);
 
-  const view = location.pathname.endsWith("/missing") ? "missing" : location.pathname.endsWith("/upgrades") ? "upgrades" : location.pathname.endsWith("/failed-downloads") ? "failed" : "overview";
+  const view = location.pathname.endsWith("/missing") ? "missing" : location.pathname.endsWith("/upgrades") ? "upgrades" : location.pathname.endsWith("/failed-downloads") ? "failed" : location.pathname.endsWith("/blocklist") ? "blocklist" : "overview";
   const scheduleLibraries = useMemo(
     () => view === "missing" ? libraries.filter((library) => library.missingSearchEnabled) : view === "upgrades" ? libraries.filter((library) => library.upgradeSearchEnabled) : libraries,
     [libraries, view]
@@ -511,6 +515,13 @@ export function SearchCyclesPage() {
             ) : null}
           </div>
         </ListCard>
+      ) : null}
+
+      {view === "blocklist" ? (
+        <BlockedReleasesConsole
+          releases={blockedReleases}
+          onChanged={() => revalidator.revalidate()}
+        />
       ) : null}
 
       {view === "failed" ? <ListCard title="Failed downloads" count={`After ${cleanup.strikeThreshold || 3} strikes on the same release`}>

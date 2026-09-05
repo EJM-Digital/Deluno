@@ -75,6 +75,7 @@ public static class SystemTasks
     public const string DownloadDispatchPolling = "dispatch.polling";
     public const string RecycleBinCleanup = "recycle.bin.cleanup";
     public const string LibraryFileCheck = "library.file.check";
+    public const string BlockedReleaseCleanup = "blocked.release.cleanup";
 
     /// <summary>
     /// Ordered as somebody reading the screen would want them: the things that
@@ -103,6 +104,12 @@ public static class SystemTasks
         new(DispatchRetry, "Retry failed grabs",
             "Tries again on releases that failed to reach a download client.",
             TimeSpan.FromMinutes(2)),
+        // Cannot happen at the moment of blocking: the sharing rule may still
+        // own that copy, and it is the thing that knows how long the site
+        // expects you to keep seeding. DESIGN-007 decisions 16 and 17.
+        new(BlockedReleaseCleanup, "Clear refused downloads",
+            "Removes the leftovers of releases you have blocked, once your sharing rule no longer needs them.",
+            TimeSpan.FromMinutes(5)),
         new(DownloadState, "Reconcile downloads",
             "Asks each download client what it is actually working on, and clears anything it has forgotten.",
             TimeSpan.FromMinutes(5)),

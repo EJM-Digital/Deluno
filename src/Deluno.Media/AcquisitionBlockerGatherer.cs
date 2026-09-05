@@ -39,7 +39,8 @@ public sealed class AcquisitionBlockerGatherer(
         bool isImportExcluded,
         CancellationToken cancellationToken,
         string? previouslyFetchedFrom = null,
-        DateTimeOffset? previouslyFetchedUtc = null)
+        DateTimeOffset? previouslyFetchedUtc = null,
+        int blockedReleaseCount = 0)
     {
         var wantedRows = await mediaState.ListWantedByIdsAsync(kind, [mediaId], cancellationToken);
 
@@ -61,6 +62,7 @@ public sealed class AcquisitionBlockerGatherer(
             nextSearchSkipped: false,
             timeProvider.GetUtcNow(),
             previouslyFetchedFrom,
-            previouslyFetchedUtc);
+            previouslyFetchedUtc,
+            blockedReleaseCount);
     }
 }

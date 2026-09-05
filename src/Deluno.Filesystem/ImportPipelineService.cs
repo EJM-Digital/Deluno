@@ -46,7 +46,8 @@ public sealed partial class ImportPipelineService(
     IRecycleBinService? recycleBinService = null,
     IQualityRepository? qualityRepository = null,
     IGuidePackageStore? guidePackageStore = null,
-    IReleasePreferencePlanRepository? releasePreferencePlanRepository = null)
+    IReleasePreferencePlanRepository? releasePreferencePlanRepository = null,
+    IBlockedReleaseRepository? blockedReleases = null)
     : IImportPipelineService
 {
     private static readonly HashSet<string> SupportedVideoExtensions = new(StringComparer.OrdinalIgnoreCase)
@@ -217,13 +218,26 @@ public sealed partial class ImportPipelineService(
             return Failed(StatusCodes.Status409Conflict, message);
         }
 
+        if (preview.MediaProbe is { Status: "unreadable" })
+        {
+            var message = preview.MediaProbe.Message ?? "Deluno could not read this file to check it.";
+            await RecordImportFailureAsync(
+                request,
+                request.Preview,
+                ImportFailurePolicy.MediaProbeUnreadable,
+                message,
+                "Check the file is reachable — a share that dropped, a lock, or a disk error. The release itself is not suspected.",
+                cancellationToken);
+            return Failed(StatusCodes.Status400BadRequest, message);
+        }
+
         if (preview.MediaProbe is { Status: "failed" })
         {
             var message = preview.MediaProbe.Message ?? "Media probing failed. Deluno cannot confirm this file is playable.";
             await RecordImportFailureAsync(
                 request,
                 request.Preview,
-                "mediaProbeFailed",
+                ImportFailurePolicy.MediaProbeRejected,
                 message,
                 "Check whether the file is complete, playable, and readable by ffprobe before importing.",
                 cancellationToken);
@@ -1702,6 +1716,105 @@ public sealed partial class ImportPipelineService(
         return steps;
     }
 
+    /// <summary>
+    /// Refuses the release, if the failure was the release's fault.
+    ///
+    /// <para>Every import failure passes through <see cref="RecordImportFailureAsync"/>,
+    /// so this is the one place the decision is made — and the decision itself
+    /// lives in <see cref="ImportFailurePolicy"/> rather than here, so it can be
+    /// read and asserted without an import running.</para>
+    ///
+    /// <para><b>It does not touch the download client.</b> Removing a client's
+    /// copy belongs to the sharing rule, which knows how long the site the
+    /// release came from expects you to keep seeding, and which this pipeline
+    /// already defers to elsewhere. This records what was decided; the worker
+    /// acts on it when the rule allows. DESIGN-007 decision 17.</para>
+    /// </summary>
+    private async Task BlockTheReleaseIfTheTableSaysSoAsync(
+        ImportExecuteRequest executeRequest,
+        string failureKind,
+        string summary,
+        CancellationToken cancellationToken)
+    {
+        if (blockedReleases is null ||
+            downloadDispatchesRepository is null ||
+            string.IsNullOrEmpty(executeRequest.DispatchId) ||
+            ImportFailurePolicy.BlockFor(failureKind) == BlockDecision.Never)
+        {
+            return;
+        }
+
+        try
+        {
+            var dispatch = await downloadDispatchesRepository.GetDispatchAsync(executeRequest.DispatchId, cancellationToken);
+            if (dispatch is null || string.IsNullOrWhiteSpace(dispatch.ReleaseName))
+            {
+                return;
+            }
+
+            // Counts attempts at this same release that have already failed, so
+            // "one retry" means one retry rather than one per dispatch record.
+            var priorFailures = await CountPriorFailuresAsync(dispatch, cancellationToken);
+            if (!ImportFailurePolicy.ShouldBlock(failureKind, priorFailures))
+            {
+                return;
+            }
+
+            await blockedReleases.BlockAsync(
+                new BlockedRelease(
+                    Guid.NewGuid().ToString("n"),
+                    BlockedReleaseKeys.For(dispatch.ReleaseName, dispatch.IndexerName),
+                    dispatch.ReleaseName,
+                    dispatch.IndexerName,
+                    dispatch.MediaType,
+                    dispatch.EntityId,
+                    TitleForActivity(executeRequest.Preview),
+                    failureKind,
+                    summary,
+                    dispatch.TorrentHashOrItemId,
+                    dispatch.DownloadClientId,
+                    dispatch.DownloadClientName,
+                    DateTimeOffset.MinValue),
+                cancellationToken);
+
+            // Said out loud, because a refusal nobody is told about is the
+            // behaviour this whole feature replaces.
+            await activityFeedRepository.RecordActivityAsync(
+                "release.blocked",
+                $"Deluno will not use {dispatch.ReleaseName} again. {summary} Future searches skip it and say so, and you can undo this on the blocklist.",
+                null,
+                null,
+                dispatch.MediaType == "tv" ? "series" : "movie",
+                dispatch.EntityId,
+                cancellationToken);
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            // A failed import that also fails to record its own refusal is
+            // still a failed import, and the import's own reporting matters
+            // more than this does.
+            logger.LogWarning(exception, "Could not block the release for dispatch {DispatchId}.", executeRequest.DispatchId);
+        }
+    }
+
+    private async Task<int> CountPriorFailuresAsync(DownloadDispatchItem dispatch, CancellationToken cancellationToken)
+    {
+        if (downloadDispatchesRepository is null)
+        {
+            return 0;
+        }
+
+        var recent = await downloadDispatchesRepository.QueryDispatchesAsync(
+            new DispatchQueryFilter { MediaType = dispatch.MediaType, EntityId = dispatch.EntityId },
+            new DispatchPaginationOptions { PageSize = 25 },
+            cancellationToken);
+
+        return recent.Items.Count(item =>
+            !string.Equals(item.Id, dispatch.Id, StringComparison.Ordinal) &&
+            string.Equals(item.ReleaseName, dispatch.ReleaseName, StringComparison.OrdinalIgnoreCase) &&
+            string.Equals(item.ImportStatus, "failed", StringComparison.OrdinalIgnoreCase));
+    }
+
     private async Task RecordImportFailureAsync(
         ImportExecuteRequest executeRequest,
         ImportPreviewRequest request,
@@ -1713,6 +1826,7 @@ public sealed partial class ImportPipelineService(
         var title = TitleForActivity(request);
         var mediaType = NormalizeMediaType(request.MediaType);
         DelunoObservability.ImportFailed.Add(1, new("media.type", mediaType), new("failure.kind", failureKind));
+        await BlockTheReleaseIfTheTableSaysSoAsync(executeRequest, failureKind, summary, cancellationToken);
         logger.LogWarning(
             "Import failed for {MediaType} title {Title}. FailureKind={FailureKind} Source={SourcePath} Message={Summary}",
             mediaType,

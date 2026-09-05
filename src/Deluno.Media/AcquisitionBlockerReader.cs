@@ -47,7 +47,8 @@ public static class AcquisitionBlockerReader
         bool nextSearchSkipped,
         DateTimeOffset now,
         string? previouslyFetchedFrom = null,
-        DateTimeOffset? previouslyFetchedUtc = null)
+        DateTimeOffset? previouslyFetchedUtc = null,
+        int blockedReleaseCount = 0)
     {
         var blockers = new List<AcquisitionBlocker>();
 
@@ -111,6 +112,29 @@ public static class AcquisitionBlockerReader
                 $"A download client refuses a release it remembers — a torrent client by its infohash, a usenet client from its history — so the next attempt is accepted and then quietly ignored. Deluno cannot see {fetchedFrom}'s memory without asking it, so this may already be clear.",
                 CanClear: true,
                 ClearEffect: $"Makes {fetchedFrom} forget the release, so it will accept it again."));
+        }
+
+        // The blocklist answering for itself.
+        //
+        // Refusing releases is a mechanism that can become the problem: refuse
+        // enough of them and a search finds nothing, with the reason sitting in
+        // a list nobody thought to open. So it is stated wherever somebody asks
+        // why a title is not arriving — carefully, because Deluno cannot know
+        // from here whether a good candidate still exists. It reports the fact
+        // and offers the undo rather than claiming to be the cause.
+        if (blockedReleaseCount > 0 && wanted is not { HasFile: true })
+        {
+            blockers.Add(new AcquisitionBlocker(
+                AcquisitionBlockerKinds.ReleasesBlocked,
+                "deluno",
+                blockedReleaseCount == 1
+                    ? $"One release for {title} has been refused, so searches have one fewer option."
+                    : $"{blockedReleaseCount} releases for {title} have been refused, so searches have fewer options.",
+                "Refused after a failed import. If every copy anyone offers has been refused, a search will find nothing and report exactly that.",
+                CanClear: true,
+                ClearEffect: blockedReleaseCount == 1
+                    ? "Un-refuses that release, so searches can use it again."
+                    : $"Un-refuses all {blockedReleaseCount}, so searches can use them again."));
         }
 
         if (isImportExcluded)

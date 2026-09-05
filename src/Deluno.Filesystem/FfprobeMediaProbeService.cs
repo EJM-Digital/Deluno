@@ -128,8 +128,20 @@ public sealed class FfprobeMediaProbeService : IMediaProbeService
         {
             throw;
         }
-        catch (Exception exception) when (exception is IOException or InvalidOperationException or System.ComponentModel.Win32Exception or JsonException)
+        catch (IOException exception)
         {
+            // Deluno could not get at the file — a share dropped mid-read, a
+            // lock, a disk error. That says nothing about the release, and
+            // flattening it into the same answer as "ffprobe read this and
+            // rejected it" meant any policy for the pair was wrong about one of
+            // them half the time. DESIGN-007 decision 3.
+            return Unreadable(exception.Message);
+        }
+        catch (Exception exception) when (exception is InvalidOperationException or System.ComponentModel.Win32Exception or JsonException)
+        {
+            // ffprobe ran and could not make sense of the file. Corrupt,
+            // truncated, or an archive wearing a video extension — and any copy
+            // of that release is the same bytes.
             return Failed(exception.Message);
         }
     }
@@ -152,6 +164,9 @@ public sealed class FfprobeMediaProbeService : IMediaProbeService
 
     private static MediaProbeInfo Failed(string message)
         => new("failed", "ffprobe", message, null, null, null, [], [], []);
+
+    private static MediaProbeInfo Unreadable(string message)
+        => new("unreadable", "ffprobe", message, null, null, null, [], [], []);
 
     private static bool IsDisposed(FfprobeStream stream, string flag)
         => stream.Disposition is not null && stream.Disposition.TryGetValue(flag, out var value) && value == 1;

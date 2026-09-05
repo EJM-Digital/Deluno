@@ -17,7 +17,8 @@ export const ACQUISITION_BLOCKER_KINDS = {
   searchSkipped: "search-skipped",
   searchDeferred: "search-deferred",
   notYetAvailable: "not-yet-available",
-  previouslyDownloaded: "previously-downloaded"
+  previouslyDownloaded: "previously-downloaded",
+  releasesBlocked: "releases-blocked"
 } as const;
 
 export interface AcquisitionBlocker {
@@ -42,6 +43,29 @@ export interface AcquisitionBlockersResponse {
   nothingIsBlocking: boolean;
   summary: string;
   canForce: boolean;
+}
+
+/**
+ * A release Deluno has refused, as shown on the blocklist.
+ *
+ * <p>Mirrors `Deluno.Contracts.BlockedRelease`. The reason is carried as both a
+ * code and the import's own sentence, because the screen needs a short label
+ * and the person needs the detail.</p>
+ */
+export interface BlockedRelease {
+  id: string;
+  releaseKey: string;
+  releaseName: string;
+  indexerName: string;
+  mediaType: string;
+  entityId: string | null;
+  title: string | null;
+  reasonCode: string;
+  reason: string;
+  torrentHashOrItemId: string | null;
+  downloadClientId: string | null;
+  downloadClientName: string | null;
+  blockedUtc: string;
 }
 
 export interface AcquisitionOverrideResponse {
