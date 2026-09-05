@@ -82,6 +82,23 @@ public interface IJobQueueRepository
     Task<int> CountActiveJobsAsync(string jobType, CancellationToken cancellationToken);
 
     /// <summary>
+    /// How many jobs sit in each status, counted in the database rather than
+    /// in a page of results.
+    ///
+    /// <para>The monitoring summary used to count within
+    /// <see cref="ListAsync"/>'s newest 200 rows, so every one of its job
+    /// numbers saturated at 200. Measured on the lab rig on 2026-09-05: the
+    /// dashboard reported 136 failed jobs against a queue holding 455.</para>
+    ///
+    /// <para>That is worse than a wrong number on a screen. The soak plan's
+    /// daily rule is that <c>jobs_failed</c> must not trend upward across three
+    /// consecutive days, and a metric that saturates stops trending exactly
+    /// when the queue is growing worst — reporting healthy through the failure
+    /// the soak exists to catch.</para>
+    /// </summary>
+    Task<IReadOnlyDictionary<string, int>> CountJobsByStatusAsync(CancellationToken cancellationToken);
+
+    /// <summary>
     /// Atomically checks and claims a recurring background pass. Returns
     /// <c>true</c> only when the caller is the one that gets to run it — either
     /// no prior run is recorded, or the last one is older than

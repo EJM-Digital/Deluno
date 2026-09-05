@@ -117,6 +117,145 @@ public sealed class JobStoreTests
             realtime.Published);
     }
 
+    /// <summary>
+    /// "How many jobs failed" is a question about the queue, not about the page
+    /// of it somebody happened to read.
+    ///
+    /// <para>The monitoring summary counted statuses inside
+    /// <c>ListAsync(200)</c>, so every number it published saturated at 200. On
+    /// the lab rig on 2026-09-05 the dashboard reported <b>136</b> failed jobs
+    /// against a queue holding <b>455</b> — and would have reported much the
+    /// same against ten thousand.</para>
+    ///
+    /// <para>That is not just a wrong number on a screen. The soak plan's daily
+    /// rule is that <c>jobs_failed</c> must not trend upward across three
+    /// consecutive days; a metric that saturates stops trending exactly when
+    /// the queue is growing worst, so the gate would report healthy through the
+    /// failure it exists to catch.</para>
+    /// </summary>
+    [Fact]
+    public async Task Counting_jobs_by_status_sees_past_the_end_of_a_page()
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-09-05T04:00:00Z"));
+        await InitializeJobsAsync(storage, timeProvider);
+        var store = new SqliteJobStore(storage.Factory, timeProvider, new NullRealtimeEventPublisher(), new NullDownloadDispatchesRepository());
+
+        // More than one page of them, which is the whole point.
+        const int queuedCount = 250;
+        for (var index = 0; index < queuedCount; index++)
+        {
+            await store.EnqueueAsync(
+                new EnqueueJobRequest(
+                    JobType: "filesystem.import.execute",
+                    Source: "movies",
+                    PayloadJson: $$"""{"sourcePath":"C:\gone\{{index}}.mkv"}""",
+                    RelatedEntityType: "movie",
+                    RelatedEntityId: $"movie-{index}",
+                    IdempotencyKey: $"movie-{index}:import",
+                    DedupeKey: $"movie:movie-{index}:import"),
+                CancellationToken.None);
+        }
+
+        var counts = await store.CountJobsByStatusAsync(CancellationToken.None);
+
+        Assert.Equal(queuedCount, counts["queued"]);
+        Assert.True(
+            counts["queued"] > (await store.ListAsync(200, CancellationToken.None)).Count,
+            "The count came from a page rather than from the queue.");
+    }
+
+    /// <summary>
+    /// Work that has permanently failed gets one row, however many times it is
+    /// asked for again.
+    ///
+    /// <para>Dead-letter rows sit outside <c>ux_job_queue_active_dedupe</c>, so
+    /// every re-enqueue of failing work used to insert another row. The lab rig
+    /// carried <b>459 rows for a single vanished season pack</b>, accumulated
+    /// over seventeen hours, and nothing bounded it — the growth-without-bound
+    /// the 14-day soak exists to catch, sitting in the queue already.</para>
+    ///
+    /// <para>It also broke Retry. <c>RetryFailedAsync</c> promotes one row per
+    /// dedupe key, deliberately, because promoting duplicates into the active
+    /// index together is a 500. So pressing the button the dashboard sends you
+    /// to left 458 rows exactly where they were, and the product had told the
+    /// owner to do a thing it could not do.</para>
+    /// </summary>
+    [Fact]
+    public async Task Work_that_gave_up_is_revived_rather_than_queued_a_second_time()
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new MutableTimeProvider(DateTimeOffset.Parse("2026-09-05T04:00:00Z"));
+        await InitializeJobsAsync(storage, timeProvider);
+        var store = new SqliteJobStore(storage.Factory, timeProvider, new NullRealtimeEventPublisher(), new NullDownloadDispatchesRepository());
+
+        var request = new EnqueueJobRequest(
+            JobType: "filesystem.import.execute",
+            Source: "tv",
+            PayloadJson: """{"sourcePath":"C:\gone\pack"}""",
+            RelatedEntityType: "series",
+            RelatedEntityId: "series-1",
+            IdempotencyKey: null,
+            DedupeKey: "series:series-1:import");
+
+        var first = await store.EnqueueAsync(request, CancellationToken.None);
+        await DeadLetterAsync(store, first, timeProvider);
+        Assert.Equal("dead-letter", (await store.ListAsync(20, CancellationToken.None)).Single().Status);
+
+        // The automation pass comes round again and asks for the same work.
+        var second = await store.EnqueueAsync(request, CancellationToken.None);
+
+        var rows = await store.ListAsync(20, CancellationToken.None);
+        Assert.Single(rows);
+        Assert.Equal(first.Id, second.Id);
+        Assert.Equal("queued", rows[0].Status);
+        Assert.Equal(0, rows[0].Attempts);
+    }
+
+    /// <summary>
+    /// And because there is one row per key, Retry can promote all of them —
+    /// which is what the dashboard's "put them back in the queue" promises.
+    /// </summary>
+    [Fact]
+    public async Task Retry_puts_every_given_up_job_back_in_the_queue()
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new MutableTimeProvider(DateTimeOffset.Parse("2026-09-05T04:00:00Z"));
+        await InitializeJobsAsync(storage, timeProvider);
+        var store = new SqliteJobStore(storage.Factory, timeProvider, new NullRealtimeEventPublisher(), new NullDownloadDispatchesRepository());
+
+        for (var index = 0; index < 3; index++)
+        {
+            var job = await store.EnqueueAsync(
+                new EnqueueJobRequest(
+                    JobType: "filesystem.import.execute",
+                    Source: "movies",
+                    PayloadJson: $$"""{"sourcePath":"C:\gone\{{index}}.mkv"}""",
+                    RelatedEntityType: "movie",
+                    RelatedEntityId: $"movie-{index}",
+                    IdempotencyKey: null,
+                    DedupeKey: $"movie:movie-{index}:import"),
+                CancellationToken.None);
+            await DeadLetterAsync(store, job, timeProvider);
+        }
+
+        var retried = await store.RetryFailedAsync(CancellationToken.None);
+
+        Assert.Equal(3, retried);
+        Assert.DoesNotContain(await store.ListAsync(20, CancellationToken.None), job => job.Status == "dead-letter");
+    }
+
+    /// <summary>Runs a job until it exhausts its attempts and gives up.</summary>
+    private static async Task DeadLetterAsync(SqliteJobStore store, JobQueueItem job, MutableTimeProvider timeProvider)
+    {
+        for (var attempt = 0; attempt < job.MaxAttempts; attempt++)
+        {
+            await store.LeaseNextAsync("worker", TimeSpan.FromMinutes(5), [job.JobType], CancellationToken.None);
+            await store.FailAsync(job.Id, "worker", "The source file was not found.", CancellationToken.None);
+            timeProvider.Advance(TimeSpan.FromHours(1));
+        }
+    }
+
     [Fact]
     public async Task EnqueueAsync_reuses_active_job_for_duplicate_idempotency_key()
     {

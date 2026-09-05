@@ -271,13 +271,17 @@ public sealed class MonitoringService(
     {
         var indexers = await connectionsRepository.ListIndexersAsync(cancellationToken);
         var clients = await connectionsRepository.ListDownloadClientsAsync(cancellationToken);
-        var jobs = await jobQueueRepository.ListAsync(200, cancellationToken);
+        // Counted in the database, not within a page of it. These used to be
+        // counted inside ListAsync's newest 200 rows, so every number here
+        // saturated at 200: on the lab rig the dashboard reported 136 failed
+        // jobs against a queue holding 455, and would have reported the same
+        // 200-ish figure against ten thousand.
+        var jobCounts = await jobQueueRepository.CountJobsByStatusAsync(cancellationToken);
+        int JobsWith(params string[] statuses) => statuses.Sum(status => jobCounts.GetValueOrDefault(status, 0));
 
-        var activeJobs = jobs.Count(job => string.Equals(job.Status, "running", StringComparison.OrdinalIgnoreCase));
-        var queuedJobs = jobs.Count(job => string.Equals(job.Status, "queued", StringComparison.OrdinalIgnoreCase));
-        var failedJobs = jobs.Count(job =>
-            string.Equals(job.Status, "failed", StringComparison.OrdinalIgnoreCase) ||
-            string.Equals(job.Status, "dead-letter", StringComparison.OrdinalIgnoreCase));
+        var activeJobs = JobsWith("running");
+        var queuedJobs = JobsWith("queued");
+        var failedJobs = JobsWith("failed", "dead-letter");
 
         return new MonitoringServiceSummary(
             IndexersHealthy: indexers.Count(item => string.Equals(item.HealthStatus, "healthy", StringComparison.OrdinalIgnoreCase)),
