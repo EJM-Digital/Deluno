@@ -114,6 +114,7 @@ GET /api/movies/page
 GET /api/movies/search-history
 GET /api/movies/wanted
 GET /api/movies/{id}
+GET /api/movies/{id}/acquisition-blockers
 GET /api/movies/{id}/metadata/issue
 GET /api/movies/{id}/preference-evaluation
 GET /api/movies/{id}/removal-preview
@@ -149,6 +150,7 @@ GET /api/series/search-history
 GET /api/series/upcoming
 GET /api/series/wanted
 GET /api/series/{id}
+GET /api/series/{id}/acquisition-blockers
 GET /api/series/{id}/inventory
 GET /api/series/{id}/metadata/issue
 GET /api/series/{id}/monitored-missing
@@ -265,6 +267,7 @@ POST /api/movies/metadata/jobs
 POST /api/movies/{id}/automation/defer
 POST /api/movies/{id}/automation/skip-once
 POST /api/movies/{id}/evaluate-candidate
+POST /api/movies/{id}/force-redownload
 POST /api/movies/{id}/grab
 POST /api/movies/{id}/metadata/issue/acknowledge
 POST /api/movies/{id}/metadata/jobs
@@ -304,6 +307,7 @@ POST /api/series/metadata/jobs
 POST /api/series/{id}/automation/defer
 POST /api/series/{id}/automation/skip-once
 POST /api/series/{id}/episodes/search
+POST /api/series/{id}/force-redownload
 POST /api/series/{id}/grab
 POST /api/series/{id}/metadata/issue/acknowledge
 POST /api/series/{id}/metadata/jobs

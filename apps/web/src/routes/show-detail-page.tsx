@@ -28,7 +28,8 @@ import {
   type SeriesInventoryDetail,
   type SeriesListItem,
   type MetadataProviderIssue,
-  type SeriesSearchHistoryItem
+  type SeriesSearchHistoryItem,
+  type AcquisitionBlockersResponse
 } from "../lib/api";
 import { authedFetch } from "../lib/use-auth";
 import { cn } from "../lib/utils";
@@ -38,6 +39,7 @@ import { candidateLabel, candidateTone, canWinSearch, isTypedCandidate, likesCan
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { Card, CardContent } from "../components/ui/card";
+import { AcquisitionBlockersCard } from "../components/app/acquisition-blockers-card";
 import { RemoveMediaDialog, type MediaRemovalPreview, type RemoveMediaOptions } from "../components/app/remove-media-dialog";
 import { CreditsRow, readStoredCredits } from "../components/app/credits-row";
 import { DownloadDispatchDrawer } from "../components/app/download-dispatch-drawer";
@@ -72,6 +74,7 @@ import { TitleMarkLabel } from "../components/ui/title-mark";
 import { formatDateTime as formatPreferenceDateTime, formatRuntime, formatShortDate, useDisplayPreferences } from "../lib/display-preferences";
 
 interface ShowDetailLoaderData {
+  acquisitionBlockers: AcquisitionBlockersResponse | null;
   activity: ActivityEventItem[];
   decisions: DecisionExplanationItem[];
   dispatches: DownloadDispatchItem[];
@@ -106,7 +109,7 @@ export async function showDetailLoader({
   params: { id?: string };
 }): Promise<ShowDetailLoaderData> {
   const id = params.id!;
-  const [series, metadataIssue, searchHistory, dispatches, importRecovery, inventory, activity, decisions, libraries, origins, removalPreview] =
+  const [series, metadataIssue, searchHistory, dispatches, importRecovery, inventory, activity, decisions, libraries, origins, removalPreview, acquisitionBlockers] =
     await Promise.all([
       fetchJson<SeriesListItem>(`/api/series/${id}`),
       fetchJson<MetadataProviderIssue | null>(`/api/series/${id}/metadata/issue`).catch(() => null),
@@ -120,15 +123,19 @@ export async function showDetailLoader({
       fetchPageItems<DecisionExplanationItem>(`/api/decisions?relatedEntityType=series&relatedEntityId=${id}&pageSize=40`),
       fetchJson<LibraryItem[]>("/api/libraries"),
       fetchJson<IntakeTitleOriginItem[]>(`/api/intake-title-origins?mediaType=tv&entityId=${encodeURIComponent(id)}`).catch(() => []),
-      fetchJson<MediaRemovalPreview>(`/api/series/${id}/removal-preview`).catch(() => ({ filePaths: [], folderPaths: [], warnings: [] }))
+      fetchJson<MediaRemovalPreview>(`/api/series/${id}/removal-preview`).catch(() => ({ filePaths: [], folderPaths: [], warnings: [] })),
+      // Caught rather than awaited into the failure: a page that will not open
+      // because it could not find out why a download is stuck is worse than a
+      // page that simply does not mention it.
+      fetchJson<AcquisitionBlockersResponse>(`/api/series/${id}/acquisition-blockers`).catch(() => null)
     ]);
 
-  return { activity, decisions, importRecovery, inventory, libraries, metadataIssue, origins, removalPreview, searchHistory, series, dispatches };
+  return { acquisitionBlockers, activity, decisions, importRecovery, inventory, libraries, metadataIssue, origins, removalPreview, searchHistory, series, dispatches };
 }
 
 export function ShowDetailPage() {
   const loaderData = useLoaderData() as ShowDetailLoaderData;
-  const { activity, decisions, dispatches, importRecovery, inventory, libraries, metadataIssue, origins, removalPreview, searchHistory, series } = loaderData;
+  const { acquisitionBlockers, activity, decisions, dispatches, importRecovery, inventory, libraries, metadataIssue, origins, removalPreview, searchHistory, series } = loaderData;
   const navigate = useNavigate();
   const revalidator = useRevalidator();
   const { preferences } = useDisplayPreferences();
@@ -902,6 +909,19 @@ export function ShowDetailPage() {
           </CardContent>
         </Card>
       ) : null}
+
+      {/*
+        Above "Next step" on purpose. Advice about what to do next is worth
+        nothing to somebody whose last three attempts went nowhere for a reason
+        the screen never mentioned.
+      */}
+      <AcquisitionBlockersCard
+        blockers={acquisitionBlockers}
+        route="/api/series"
+        mediaId={series.id}
+        disabled={busyAction !== null}
+        onForced={() => revalidator.revalidate()}
+      />
 
       {nextStep ? (
         <ListCard title="Next step" count={nextStep.eyebrow}>

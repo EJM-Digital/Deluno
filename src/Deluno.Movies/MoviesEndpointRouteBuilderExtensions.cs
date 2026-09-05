@@ -180,7 +180,7 @@ public static class MoviesEndpointRouteBuilderExtensions
         // What the genre filter can offer. Its own endpoint rather than a facet
         // on the page, because it is asked for once when somebody opens the
         // filter panel and never again while they page through results.
-        // What this shelf can be asked, ordered by, and draw — declared once,
+        // What this shelf can be asked, ordered by, and draw â€” declared once,
         // per media kind, and served rather than copied into the browser.
         //
         // The browser used to keep its own sort list beside the server's and its
@@ -214,7 +214,7 @@ public static class MoviesEndpointRouteBuilderExtensions
             // The custom narrowing, flat on the query string rather than a JSON
             // blob: these travel in a URL people bookmark, share and read.
             //
-            // One `f` per condition — `f=quality:in:WEB 2160p|Remux 2160p` — read
+            // One `f` per condition â€” `f=quality:in:WEB 2160p|Remux 2160p` â€” read
             // against the field registry for this media kind. The nine named
             // parameters below it are what this shipped with, kept because URLs
             // outlive deploys, and translated into the same conditions.
@@ -517,6 +517,161 @@ public static class MoviesEndpointRouteBuilderExtensions
             return Results.Ok(new { message = "The next scheduled search will be skipped. Manual search remains available." });
         });
 
+        // Why a title will not download, and what could be done about it.
+        //
+        // The question a person asks of a title that never arrives is not "what
+        // is its wanted status" â€” it is "why is nothing happening". Every media
+        // manager accumulates records that quietly answer that and never say
+        // so: a client that already holds the release, a processor still
+        // holding the file, an exclusion added when it was removed. This says
+        // them out loud, and marks the ones a person is allowed to override.
+        movies.MapGet("/{id}/acquisition-blockers", async (
+            string id,
+            HttpContext httpContext,
+            IMovieCatalogRepository repository,
+            AcquisitionBlockerGatherer gatherer,
+            IUnifiedExclusionRepository exclusions,
+            IDownloadDispatchesRepository dispatches,
+            IProcessorRepository processors,
+            CancellationToken cancellationToken) =>
+        {
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
+            if (denied is not null)
+            {
+                return denied;
+            }
+
+            var item = await repository.GetByIdAsync(id, cancellationToken);
+            if (item is null)
+            {
+                return Results.NotFound();
+            }
+
+            var held = await AcquisitionBlockerSources.FindAsync(
+                dispatches, processors, "movies", id, cancellationToken);
+            var excluded = await AcquisitionBlockerSources.IsExcludedAsync(
+                exclusions, "movies", item.Title, item.ImdbId, cancellationToken);
+
+            return Results.Ok(await gatherer.GatherAsync(
+                MediaKind.Movie,
+                id,
+                item.Title,
+                held.DownloadClientName,
+                held.ProcessorName,
+                excluded,
+                cancellationToken));
+        });
+
+        // Clear what is standing in the way, deliberately and on the record.
+        //
+        // Destructive across systems Deluno does not own â€” it removes a
+        // download and its files, and restarts a processor hand-off â€” so it is
+        // a POST that reports every step, rather than something that happens
+        // quietly on the way to a search.
+        movies.MapPost("/{id}/force-redownload", async (
+            string id,
+            HttpContext httpContext,
+            IMovieCatalogRepository repository,
+            AcquisitionOverrideService overrides,
+            IUnifiedExclusionRepository exclusions,
+            IDownloadDispatchesRepository dispatches,
+            IProcessorRepository processors,
+            IActivityFeedRepository activityFeed,
+            IMediaStateRepository mediaStateRepository,
+            ILibrariesRepository platformSettingsRepository,
+            IQualityRepository qualityRepository,
+            IJobQueueRepository jobQueueRepository,
+            IAcquisitionDecisionPipeline acquisitionPipeline,
+            IDownloadClientGrabService downloadClientGrabService,
+            TimeProvider timeProvider,
+            IMediaTagStore tagStore,
+            IReleasePreferencePlanRepository releasePreferencePlanRepository,
+            CancellationToken cancellationToken) =>
+        {
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
+            if (denied is not null)
+            {
+                return denied;
+            }
+
+            var item = await repository.GetByIdAsync(id, cancellationToken);
+            if (item is null)
+            {
+                return Results.NotFound();
+            }
+
+            var held = await AcquisitionBlockerSources.FindAsync(
+                dispatches, processors, "movies", id, cancellationToken);
+            var exclusionIds = await AcquisitionBlockerSources.ExclusionIdsAsync(
+                exclusions, "movies", item.Title, item.ImdbId, cancellationToken);
+
+            var result = await overrides.ForceAsync(
+                new AcquisitionOverrideRequest(
+                    id,
+                    item.Title,
+                    held.HandoffId,
+                    held.DownloadClientId,
+                    held.DownloadClientName,
+                    held.QueueItemId,
+                    exclusionIds),
+                cancellationToken);
+
+            // And then actually look for it. Clearing the obstacles and stopping
+            // there would leave the person exactly where they were, one button
+            // press poorer â€” "force a re-download" has to end in a download
+            // being looked for, or the word force is a lie.
+            //
+            // The search runs whether or not anything was cleared: someone who
+            // presses this has decided they want the title now, and "there was
+            // nothing in the way" is not a reason to refuse to go and find it.
+            var searchStarted = false;
+            var outcome = string.Empty;
+            try
+            {
+                var search = await RunSearchAsync(
+                    id,
+                    null,
+                    repository,
+                    mediaStateRepository,
+                    platformSettingsRepository,
+                    qualityRepository,
+                    jobQueueRepository,
+                    acquisitionPipeline,
+                    downloadClientGrabService,
+                    activityFeed,
+                    timeProvider,
+                    tagStore,
+                    releasePreferencePlanRepository,
+                    cancellationToken);
+
+                searchStarted = !search.NotFound;
+                outcome = search.Summary;
+            }
+            catch (Exception exception) when (exception is not OperationCanceledException)
+            {
+                // The clearing already happened and is not undone by this. Say
+                // so rather than returning a 500 that hides what did work.
+                outcome = "The search could not be started, so try it by hand.";
+            }
+
+            var answer = result with
+            {
+                SearchStarted = searchStarted,
+                Summary = outcome.Length > 0 ? $"{result.Summary} {outcome}" : result.Summary
+            };
+
+            await activityFeed.RecordActivityAsync(
+                "acquisition.override",
+                $"Someone forced a re-download of {item.Title}. {answer.Summary}",
+                JsonSerializer.Serialize(new { answer.Cleared, answer.CouldNotClear, answer.SearchStarted }),
+                null,
+                "movies",
+                id,
+                cancellationToken);
+
+            return Results.Ok(answer);
+        });
+
         movies.MapPost("/{id}/search", async (
             string id,
             string? mode,
@@ -540,10 +695,10 @@ public static class MoviesEndpointRouteBuilderExtensions
                 return denied;
             }
 
-            var result = await MediaSearchHandler.ExecuteAsync(
-                MediaKind.Movie,
+            var result = await RunSearchAsync(
                 id,
                 mode,
+                repository,
                 mediaStateRepository,
                 platformSettingsRepository,
                 qualityRepository,
@@ -552,22 +707,9 @@ public static class MoviesEndpointRouteBuilderExtensions
                 downloadClientGrabService,
                 activityFeedRepository,
                 timeProvider,
-                (movieId, libraryId, triggerKind, outcome, now, nextEligibleUtc, lastSearchResult, releaseName, indexerName, detailsJson, cancellationToken) =>
-                    repository.RecordSearchAttemptAsync(
-                        movieId,
-                        libraryId,
-                        triggerKind,
-                        outcome,
-                        now,
-                        nextEligibleUtc,
-                        lastSearchResult,
-                        releaseName,
-                        indexerName,
-                        detailsJson,
-                        cancellationToken),
-                cancellationToken,
                 tagStore,
-                releasePreferencePlanRepository);
+                releasePreferencePlanRepository,
+                cancellationToken);
 
             if (result.NotFound)
             {
@@ -1325,7 +1467,7 @@ public static class MoviesEndpointRouteBuilderExtensions
                     movie.MetadataProviderId ?? movie.ImdbId ?? movie.Id,
                     // PUT replaces the override set: a field that arrives blank clears the
                     // stored value. Treating blank as "keep" made a manual override
-                    // impossible to undo — you could only replace it with other text.
+                    // impossible to undo â€” you could only replace it with other text.
                     NormalizeOverride(request.OriginalTitle),
                     NormalizeOverride(request.Overview),
                     NormalizeOverride(request.PosterUrl),
@@ -1461,8 +1603,8 @@ public static class MoviesEndpointRouteBuilderExtensions
                 //
                 // AddAsync dedupes: adding a title the catalogue already holds
                 // returns the row it already has. Passing false here then went
-                // on to overwrite it — EnsureWantedStateAsync upserts with
-                // `has_file = excluded.has_file` — so re-adding a film you
+                // on to overwrite it â€” EnsureWantedStateAsync upserts with
+                // `has_file = excluded.has_file` â€” so re-adding a film you
                 // already had wiped the record that its file existed, while
                 // leaving the file and its path on the entry untouched.
                 //
@@ -1470,7 +1612,7 @@ public static class MoviesEndpointRouteBuilderExtensions
                 // lab, and the reason reconciliation then called that same file
                 // an orphan: the tracked-file query selects on has_file = 1, so
                 // a file whose flag has been cleared is a file nothing owns.
-                // Worse than cosmetic — the title goes back on the wanted list
+                // Worse than cosmetic â€” the title goes back on the wanted list
                 // and Deluno re-downloads what it is already holding.
                 var decision = mediaDecisionService.DecideWantedState(new MediaWantedDecisionInput(
                     MediaType: library.MediaType,
@@ -1591,7 +1733,7 @@ public static class MoviesEndpointRouteBuilderExtensions
 
           It has always been settable one film at a time and never in bulk,
           which is the wrong way round: minimum availability is the setting you
-          change after realising a whole shelf is wrong — every film you added
+          change after realising a whole shelf is wrong â€” every film you added
           from a "coming soon" list sitting at Announced and burning searches on
           releases that do not exist yet.
         */
@@ -1906,6 +2048,59 @@ public static class MoviesEndpointRouteBuilderExtensions
     /// knows when the movie is actually obtainable rather than only what year it
     /// came out. A provider that cannot answer leaves the stored dates alone.
     /// </summary>
+    /// <summary>
+    /// One search, called from both places that start one.
+    ///
+    /// <para>The second place is a forced re-download, which would not be
+    /// forcing anything if it cleared every obstacle and then left the title
+    /// sitting exactly where it was. Extracted rather than copied because the
+    /// wiring is twenty-eight lines of service plumbing, and two copies of that
+    /// drift the moment one of them gains an argument.</para>
+    /// </summary>
+    private static Task<MediaSearchResult> RunSearchAsync(
+        string id,
+        string? mode,
+        IMovieCatalogRepository repository,
+        IMediaStateRepository mediaStateRepository,
+        ILibrariesRepository platformSettingsRepository,
+        IQualityRepository qualityRepository,
+        IJobQueueRepository jobQueueRepository,
+        IAcquisitionDecisionPipeline acquisitionPipeline,
+        IDownloadClientGrabService downloadClientGrabService,
+        IActivityFeedRepository activityFeedRepository,
+        TimeProvider timeProvider,
+        IMediaTagStore tagStore,
+        IReleasePreferencePlanRepository releasePreferencePlanRepository,
+        CancellationToken cancellationToken)
+        => MediaSearchHandler.ExecuteAsync(
+            MediaKind.Movie,
+            id,
+            mode,
+            mediaStateRepository,
+            platformSettingsRepository,
+            qualityRepository,
+            jobQueueRepository,
+            acquisitionPipeline,
+            downloadClientGrabService,
+            activityFeedRepository,
+            timeProvider,
+            (movieId, libraryId, triggerKind, outcome, now, nextEligibleUtc, lastSearchResult, releaseName, indexerName, detailsJson, token) =>
+                repository.RecordSearchAttemptAsync(
+                    movieId,
+                    libraryId,
+                    triggerKind,
+                    outcome,
+                    now,
+                    nextEligibleUtc,
+                    lastSearchResult,
+                    releaseName,
+                    indexerName,
+                    detailsJson,
+                    token),
+            cancellationToken,
+            tagStore,
+            releasePreferencePlanRepository);
+
     private static async Task SyncReleaseDatesAsync(
         IMovieCatalogRepository repository,
         IMetadataProvider metadataProvider,
@@ -2121,7 +2316,7 @@ public static class MoviesEndpointRouteBuilderExtensions
     /// Hand a provider result to the catalogue.
     ///
     /// <para>This used to spell the mapping out as sixteen positional
-    /// arguments, and it never passed <c>Status</c> or <c>Studio</c> — the two
+    /// arguments, and it never passed <c>Status</c> or <c>Studio</c> â€” the two
     /// fields V0020 added a column for. The write succeeded, the endpoint
     /// returned 200, and the filter over the column returned nothing. The
     /// mapping now lives in <c>CatalogueMetadata</c>, once.</para>
@@ -2249,7 +2444,7 @@ public static class MoviesEndpointRouteBuilderExtensions
     private static void AddMetadataChange(List<string> changes, string label, string? before, string? after)
     {
         if (string.Equals(before, after, StringComparison.OrdinalIgnoreCase)) return;
-        changes.Add($"{label}: {DisplayMetadataValue(before)} → {DisplayMetadataValue(after)}");
+        changes.Add($"{label}: {DisplayMetadataValue(before)} â†’ {DisplayMetadataValue(after)}");
     }
 
     private static string DisplayMetadataValue(string? value) => string.IsNullOrWhiteSpace(value) ? "not set" : value;
@@ -2322,14 +2517,14 @@ public static class MoviesEndpointRouteBuilderExtensions
         if (enqueued == 0)
         {
             return remaining > 0
-                ? "Nothing can be refreshed right now — everything stale was tried recently and is waiting out its cooldown."
+                ? "Nothing can be refreshed right now â€” everything stale was tried recently and is waiting out its cooldown."
                 : "Nothing needs refreshing.";
         }
 
         var queued = $"Queued {enqueued:N0} title{(enqueued == 1 ? string.Empty : "s")}";
 
         return remaining > 0
-            ? $"{queued}. Another {remaining:N0} still to go — Deluno keeps working through them in the background."
+            ? $"{queued}. Another {remaining:N0} still to go â€” Deluno keeps working through them in the background."
             : $"{queued}. That is everything that needs refreshing.";
     }
 

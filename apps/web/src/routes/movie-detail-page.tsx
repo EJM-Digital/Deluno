@@ -26,8 +26,10 @@ import {
   type MovieImportRecoverySummary,
   type MovieListItem,
   type MetadataProviderIssue,
-  type MovieSearchHistoryItem
+  type MovieSearchHistoryItem,
+  type AcquisitionBlockersResponse
 } from "../lib/api";
+import { AcquisitionBlockersCard } from "../components/app/acquisition-blockers-card";
 import { CreditsRow, readStoredCredits } from "../components/app/credits-row";
 import { DownloadDispatchDrawer } from "../components/app/download-dispatch-drawer";
 import { TitleTagsEditor } from "../components/app/title-tags-editor";
@@ -66,6 +68,7 @@ import { TitleMarkLabel } from "../components/ui/title-mark";
 import { formatDateTime as formatPreferenceDateTime, formatRuntime, formatShortDate, useDisplayPreferences } from "../lib/display-preferences";
 
 interface MovieDetailLoaderData {
+  acquisitionBlockers: AcquisitionBlockersResponse | null;
   activity: ActivityEventItem[];
   decisions: DecisionExplanationItem[];
   dispatches: DownloadDispatchItem[];
@@ -101,7 +104,7 @@ export async function movieDetailLoader({
   params: { id?: string };
 }): Promise<MovieDetailLoaderData> {
   const id = params.id!;
-  const [movie, metadataIssue, searchHistory, dispatches, importRecovery, activity, decisions, libraries, workflowStatus, origins, removalPreview] = await Promise.all([
+  const [movie, metadataIssue, searchHistory, dispatches, importRecovery, activity, decisions, libraries, workflowStatus, origins, removalPreview, acquisitionBlockers] = await Promise.all([
     fetchJson<MovieListItem>(`/api/movies/${id}`),
     fetchJson<MetadataProviderIssue | null>(`/api/movies/${id}/metadata/issue`).catch(() => null),
     fetchJson<MovieSearchHistoryItem[]>("/api/movies/search-history"),
@@ -112,15 +115,19 @@ export async function movieDetailLoader({
     fetchJson<LibraryItem[]>("/api/libraries"),
     fetchJson<MovieWorkflowStatus>(`/api/movies/${id}/workflow-status`).catch(() => null),
     fetchJson<IntakeTitleOriginItem[]>(`/api/intake-title-origins?mediaType=movies&entityId=${encodeURIComponent(id)}`).catch(() => []),
-    fetchJson<MediaRemovalPreview>(`/api/movies/${id}/removal-preview`).catch(() => ({ filePaths: [], folderPaths: [], warnings: [] }))
+    fetchJson<MediaRemovalPreview>(`/api/movies/${id}/removal-preview`).catch(() => ({ filePaths: [], folderPaths: [], warnings: [] })),
+    // Caught rather than awaited into the failure: a page that will not open
+    // because it could not find out why a download is stuck is worse than a
+    // page that simply does not mention it.
+    fetchJson<AcquisitionBlockersResponse>(`/api/movies/${id}/acquisition-blockers`).catch(() => null)
   ]);
 
-  return { activity, decisions, dispatches, importRecovery, libraries, metadataIssue, movie, origins, removalPreview, searchHistory, workflowStatus };
+  return { acquisitionBlockers, activity, decisions, dispatches, importRecovery, libraries, metadataIssue, movie, origins, removalPreview, searchHistory, workflowStatus };
 }
 
 export function MovieDetailPage() {
   const loaderData = useLoaderData() as MovieDetailLoaderData;
-  const { activity, decisions, dispatches, importRecovery, libraries, metadataIssue, movie, origins, removalPreview, searchHistory, workflowStatus } = loaderData;
+  const { acquisitionBlockers, activity, decisions, dispatches, importRecovery, libraries, metadataIssue, movie, origins, removalPreview, searchHistory, workflowStatus } = loaderData;
   const navigate = useNavigate();
   const revalidator = useRevalidator();
   const { preferences } = useDisplayPreferences();
@@ -825,6 +832,19 @@ export function MovieDetailPage() {
             help: importCases.length ? "need a decision" : "nothing stuck"
           }
         ]}
+      />
+
+      {/*
+        Above "Next step" on purpose. Advice about what to do next is worth
+        nothing to somebody whose last three attempts went nowhere for a reason
+        the screen never mentioned.
+      */}
+      <AcquisitionBlockersCard
+        blockers={acquisitionBlockers}
+        route="/api/movies"
+        mediaId={movie.id}
+        disabled={busyAction !== null}
+        onForced={() => revalidator.revalidate()}
       />
 
       {nextStep ? (

@@ -235,6 +235,54 @@ public sealed class SqliteProcessorRepository(
             await insert.ExecuteNonQueryAsync(cancellationToken);
         }
 
+        // A hand-off that has finished describes a cycle that is over, so being
+        // asked to ensure one again means a new cycle has started.
+        //
+        // The insert above is keyed on the source path and does nothing when a
+        // row is already there, which is the right answer while that row is
+        // still working — that is what stops one download being submitted to
+        // the processor twice. It was the wrong answer once the row had
+        // finished: downloading the same release to the same path a second time
+        // returned the earlier row, still marked completed and still carrying
+        // the previous output path and import job. WorkPlanner only acts on a
+        // hand-off whose status is "waiting", so nothing was submitted and
+        // nothing was imported, while the queue went on reporting that Deluno
+        // was waiting for a cleaned output. It never came.
+        //
+        // Seen on the lab: a film removed and re-acquired downloaded, refined,
+        // and then sat in the refined folder for ever.
+        using (var restart = connection.CreateCommand())
+        {
+            restart.CommandText =
+                """
+                UPDATE processor_handoffs
+                SET queue_item_id = @queueItemId,
+                    media_type = @mediaType,
+                    client_id = @clientId,
+                    release_name = @releaseName,
+                    processor_name = @processorName,
+                    status = 'waiting',
+                    output_path = NULL,
+                    import_job_id = NULL,
+                    failure_message = NULL,
+                    created_utc = @createdUtc,
+                    updated_utc = @updatedUtc
+                WHERE library_id = @libraryId
+                  AND source_key = @sourceKey
+                  AND status IN ('completed', 'failed');
+                """;
+            AddParameter(restart, "@libraryId", request.LibraryId.Trim());
+            AddParameter(restart, "@sourceKey", sourceKey);
+            AddParameter(restart, "@queueItemId", request.QueueItemId.Trim());
+            AddParameter(restart, "@mediaType", request.MediaType.Trim().ToLowerInvariant());
+            AddParameter(restart, "@clientId", request.ClientId.Trim());
+            AddParameter(restart, "@releaseName", request.ReleaseName.Trim());
+            AddParameter(restart, "@processorName", NormalizeName(request.ProcessorName));
+            AddParameter(restart, "@createdUtc", now.ToString("O"));
+            AddParameter(restart, "@updatedUtc", now.ToString("O"));
+            await restart.ExecuteNonQueryAsync(cancellationToken);
+        }
+
         return (await FindProcessorHandoffAsync(request.LibraryId, null, sourcePath, cancellationToken))
             ?? throw new InvalidOperationException("Processor hand-off could not be created or loaded.");
     }

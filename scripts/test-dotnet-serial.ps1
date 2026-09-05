@@ -20,6 +20,27 @@ if ($projects.Count -eq 0) {
 # whether the other six projects were healthy or hiding the same defect. One
 # fix, one push, one wait, to find out. Serially is still one project at a
 # time, because SQLite and file locks do not want two.
+# Build what is about to be tested, rather than trusting what is lying around.
+#
+# The tests below run `--configuration Release --no-build`, which is right for
+# CI because the workflow builds Release immediately before calling this. Run
+# by hand it is a trap: `dotnet test` and `dotnet build` produce **Debug**
+# output, so the gate quietly exercised whatever Release binaries were last
+# left behind and reported a confident green on code it had never compiled.
+# That happened on 2026-09-05 -- a local run counted 1,232 tests in
+# Deluno.Persistence.Tests where CI counted 1,261, and three real failures
+# reached the pull request.
+#
+# So the build happens here, in the one place that knows which configuration
+# the tests use. It is a no-op of a few seconds when the output is current,
+# including on CI.
+Write-Host "Building Release before testing it."
+& $dotnet.Source build (Join-Path $Root "Deluno.slnx") --configuration Release --nologo -v minimal
+if ($LASTEXITCODE -ne 0) {
+    throw "Release build failed, so the tests below would have run against stale binaries."
+}
+
+Write-Host ""
 Write-Host "Running $($projects.Count) .NET test projects serially."
 $failed = [System.Collections.Generic.List[string]]::new()
 foreach ($project in $projects) {
