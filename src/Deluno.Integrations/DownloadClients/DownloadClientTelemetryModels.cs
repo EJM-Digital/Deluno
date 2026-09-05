@@ -2,6 +2,41 @@ using Deluno.Contracts;
 
 namespace Deluno.Integrations.DownloadClients;
 
+/// <summary>
+/// The verbs a download client can be asked to perform.
+///
+/// <para>Named here rather than spelled at each call site, because two of them
+/// differ by one word and mean very different things to a person: `delete`
+/// leaves the files, `delete-with-data` takes them, and `forget` takes the
+/// client's memory of ever having had the release.</para>
+/// </summary>
+public static class DownloadClientActions
+{
+    public const string Pause = "pause";
+    public const string Resume = "resume";
+    public const string Recheck = "recheck";
+
+    /// <summary>Remove the transfer, leave what it downloaded.</summary>
+    public const string Delete = "delete";
+
+    /// <summary>Remove the transfer and the files it produced.</summary>
+    public const string DeleteWithData = "delete-with-data";
+
+    /// <summary>
+    /// Remove the transfer, its files, and the record that stops the same
+    /// release being accepted again.
+    ///
+    /// <para>Distinct from <see cref="DeleteWithData"/> on purpose, and the
+    /// distinction is the whole point of a forced re-download. A torrent client
+    /// refuses a release it still holds by infohash, so removing the transfer
+    /// is enough. A usenet client refuses it from <em>history</em>, which
+    /// survives the queue being emptied — so on SABnzbd and NZBGet, delete and
+    /// forget are two different requests, and only one of them lets the release
+    /// back in.</para>
+    /// </summary>
+    public const string Forget = "forget";
+}
+
 public static class DownloadQueueStatuses
 {
     public const string Downloading = "downloading";

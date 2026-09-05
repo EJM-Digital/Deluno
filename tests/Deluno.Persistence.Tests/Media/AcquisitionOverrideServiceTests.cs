@@ -60,12 +60,17 @@ public sealed class AcquisitionOverrideServiceTests
     }
 
     /// <summary>
-    /// With its data. The reason to force is that what is there is unwanted, and
-    /// leaving the files would have the client refuse the same release again for
-    /// the same reason.
+    /// Forget, not delete.
+    ///
+    /// <para>The distinction is the whole point of the override on a usenet
+    /// client. Deleting removes the transfer; SABnzbd and NZBGet refuse a
+    /// release from their <em>history</em>, which outlives the transfer — so a
+    /// delete would report success and change nothing. On a torrent client the
+    /// two resolve to the same request, and "forget" is still the honest name
+    /// for what is being asked for.</para>
     /// </summary>
     [Fact]
-    public async Task Clearing_a_download_removes_it_with_its_files()
+    public async Task Clearing_a_download_asks_the_client_to_forget_the_release()
     {
         var service = Build(out _, out var clients);
 
@@ -78,9 +83,9 @@ public sealed class AcquisitionOverrideServiceTests
                 QueueItemId: "hash-1"),
             CancellationToken.None);
 
-        Assert.Equal("delete-with-data", clients.RequestedAction);
+        Assert.Equal(DownloadClientActions.Forget, clients.RequestedAction);
         Assert.Equal("hash-1", clients.RequestedQueueItemId);
-        Assert.Contains(result.Cleared, entry => entry.Contains("qBittorrent", StringComparison.Ordinal));
+        Assert.Contains(result.Cleared, entry => entry.Contains("forget", StringComparison.OrdinalIgnoreCase));
     }
 
     /// <summary>

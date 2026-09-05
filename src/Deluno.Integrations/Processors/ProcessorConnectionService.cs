@@ -77,7 +77,25 @@ public sealed class ProcessorConnectionService(IHttpClientFactory httpClientFact
                     callbackPath = "/api/integrations/processors/events"
                 })
             };
-            request.Headers.TryAddWithoutValidation("Idempotency-Key", handoff.Id);
+            // The key is the hand-off *as of this revision*, not the hand-off.
+            //
+            // It used to be the id alone, which is right for its first purpose:
+            // a retry of the same submission must not make the processor do the
+            // work twice. It is wrong for the second one. A forced re-download
+            // resets this row rather than deleting it — deleting it would lose
+            // the record that stops one download being submitted twice — so the
+            // id is unchanged, the processor recognises the key it already
+            // answered, and it declines to process a file the person has just
+            // explicitly asked it to process again. James named exactly this:
+            // "Weir will also need to have that record cleared as well so
+            // it can re-process the file again if a user forces it."
+            //
+            // Stamping the revision keeps both. A retry of an unchanged row
+            // carries the same key and is still ignored; a row that has been
+            // deliberately put back to waiting carries a new one.
+            request.Headers.TryAddWithoutValidation(
+                "Idempotency-Key",
+                $"{handoff.Id}:{handoff.UpdatedUtc.ToUnixTimeMilliseconds()}");
             ApplyAuthentication(request, connection);
             using var response = await httpClientFactory.CreateClient("processor-connections").SendAsync(request, cancellationToken);
             var statusCode = (int)response.StatusCode;

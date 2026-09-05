@@ -117,24 +117,32 @@ public sealed class AcquisitionOverrideService(
 
         try
         {
+            // Forget, not delete-with-data.
+            //
+            // The difference is the whole point of the override on a usenet
+            // client. Deleting removes the transfer; SABnzbd and NZBGet refuse a
+            // release from their *history*, which outlives the transfer, so a
+            // delete would report success and change nothing. On a torrent
+            // client the two are the same request, and saying "forget" is still
+            // the honest name for what is being asked.
             var result = await downloadClients.ExecuteActionAsync(
                 clientId,
-                new DownloadClientActionRequest("delete-with-data", queueItemId),
+                new DownloadClientActionRequest(DownloadClientActions.Forget, queueItemId),
                 cancellationToken);
 
             if (result.Succeeded)
             {
-                cleared.Add($"Removed the download from {request.DownloadClientName ?? "the download client"}, along with its files.");
+                cleared.Add($"Made {request.DownloadClientName ?? "the download client"} forget the release, so it will accept it again.");
                 return;
             }
 
             couldNotClear.Add(
-                $"{request.DownloadClientName ?? "The download client"} would not remove the download: {result.Message}");
+                $"{request.DownloadClientName ?? "The download client"} would not forget the release: {result.Message}");
         }
         catch (Exception exception) when (exception is not OperationCanceledException)
         {
-            logger.LogWarning(exception, "Could not remove queue item {QueueItemId} during an acquisition override.", queueItemId);
-            couldNotClear.Add($"{request.DownloadClientName ?? "The download client"} could not be reached to remove the download.");
+            logger.LogWarning(exception, "Could not make the client forget queue item {QueueItemId} during an acquisition override.", queueItemId);
+            couldNotClear.Add($"{request.DownloadClientName ?? "The download client"} could not be reached to forget the release.");
         }
     }
 

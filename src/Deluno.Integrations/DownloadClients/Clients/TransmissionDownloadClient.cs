@@ -39,15 +39,33 @@ public sealed class TransmissionDownloadClient(IHttpClientFactory httpClientFact
 
     public override async Task<DownloadClientActionResult> ExecuteActionAsync(DownloadClientItem client, string action, string queueItemId, CancellationToken cancellationToken)
     {
-        var method = action switch { "pause" => "torrent-stop", "resume" => "torrent-start", "delete" or "delete-with-data" => "torrent-remove", "recheck" => "torrent-verify", _ => null };
+        // One arm per verb, with `delete-local-data` set by the arm rather than
+        // recomputed, because that flag is the whole of the difference between
+        // two of them. Deluno never deletes a shared file itself (#287).
+        //
+        // `forget` is the same request as `delete-with-data`, said rather than
+        // implied: Transmission keeps no record of a torrent it no longer has,
+        // so removing it is the whole of forgetting it.
+        var (method, deleteLocalData) = action switch
+        {
+            DownloadClientActions.Pause => ("torrent-stop", (bool?)null),
+            DownloadClientActions.Resume => ("torrent-start", null),
+            DownloadClientActions.Recheck => ("torrent-verify", null),
+            DownloadClientActions.Delete => ("torrent-remove", false),
+            DownloadClientActions.DeleteWithData => ("torrent-remove", true),
+            DownloadClientActions.Forget => ("torrent-remove", true),
+            _ => (null, null)
+        };
         if (method is null) return DownloadClientHelpers.Unsupported(client, queueItemId, action, "Transmission");
         var baseUri = DownloadClientHelpers.ResolveEndpoint(client);
         if (baseUri is null) return DownloadClientHelpers.MissingAddress(client, queueItemId, action);
-        var arguments = new Dictionary<string, object> { ["ids"] = new[] { DownloadClientHelpers.ParseId(queueItemId) } };
-        // The whole point of the distinction: "delete" forgets the torrent and
-        // leaves the file, "delete-with-data" asks Transmission to remove both.
-        // Deluno never deletes a shared file itself (#287).
-        if (action is "delete" or "delete-with-data") arguments["delete-local-data"] = action == "delete-with-data";
+        if (!DownloadClientHelpers.TryParseId(queueItemId, out var torrentId))
+        {
+            return DownloadClientHelpers.UnreadableId(client, queueItemId, action, "Transmission");
+        }
+
+        var arguments = new Dictionary<string, object> { ["ids"] = new[] { torrentId } };
+        if (deleteLocalData is { } wipe) arguments["delete-local-data"] = wipe;
         await SendAsync(client, baseUri, new TransmissionRequest(method, arguments), cancellationToken);
         return DownloadClientHelpers.ActionSuccess(client, queueItemId, action, "Transmission action sent.");
     }

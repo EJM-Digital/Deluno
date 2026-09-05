@@ -1,3 +1,4 @@
+using System.Net;
 using System.Globalization;
 using System.Net.Http.Json;
 using System.Text.Json;
@@ -183,10 +184,35 @@ public sealed class SabnzbdDownloadClient(IHttpClientFactory httpClientFactory) 
                 upstreamDetail: "The client configuration has no API key.",
                 category: "configuration");
         }
-        var mode = action switch { "pause" => "queue&name=pause", "resume" => "queue&name=resume", "delete" => "queue&name=delete", _ => null };
-        if (mode is null) return DownloadClientHelpers.Unsupported(client, queueItemId, action, "SABnzbd");
         var http = httpClientFactory.CreateClient("download-clients");
         http.Timeout = TimeSpan.FromSeconds(8);
+
+        if (string.Equals(action, DownloadClientActions.Forget, StringComparison.OrdinalIgnoreCase))
+        {
+            return await ForgetAsync(http, client, baseUri, client.Secret, queueItemId, cancellationToken);
+        }
+
+        // One arm per verb, and `del_files` is the whole of the difference
+        // between two of them. `delete-with-data` was absent entirely until
+        // now, which is how a forced re-download against a usenet client came
+        // to do nothing while reporting success: the override asked for it, and
+        // SABnzbd answered "does not support this action".
+        //
+        // `forget` is handled above rather than here, because on SABnzbd it is
+        // genuinely a different request and not a flag on this one — its
+        // duplicate detection reads the history, which outlives the queue.
+        var mode = action switch
+        {
+            DownloadClientActions.Pause => "queue&name=pause",
+            DownloadClientActions.Resume => "queue&name=resume",
+            DownloadClientActions.Delete => "queue&name=delete",
+            DownloadClientActions.DeleteWithData => "queue&name=delete&del_files=1",
+            // SABnzbd verifies its own downloads and exposes no per-item
+            // recheck, so that verb is refused rather than quietly mapped onto
+            // something adjacent.
+            _ => null
+        };
+        if (mode is null) return DownloadClientHelpers.Unsupported(client, queueItemId, action, "SABnzbd");
         using var response = await http.GetAsync(new Uri(baseUri, $"api?mode={mode}&value={Uri.EscapeDataString(queueItemId)}&apikey={Uri.EscapeDataString(client.Secret)}&output=json"), cancellationToken);
         if (response.IsSuccessStatusCode)
         {
@@ -200,6 +226,107 @@ public sealed class SabnzbdDownloadClient(IHttpClientFactory httpClientFactory) 
             $"SABnzbd returned {(int)response.StatusCode}.",
             response.StatusCode);
     }
+
+    /// <summary>
+    /// Remove this download from SABnzbd and from its memory of having had it.
+    ///
+    /// <para><b>The history is the half that matters.</b> SABnzbd's duplicate
+    /// detection reads its history, not its queue, so emptying the queue leaves
+    /// the record that refuses the same release next time. A force that only
+    /// cleared the queue would report success and change nothing — which is a
+    /// worse failure than doing nothing, because it is a confident one.</para>
+    ///
+    /// <para>Both calls are made because the item is in one place or the other
+    /// and Deluno does not know which: a download interrupted half way is in
+    /// the queue, and one that completed and was then deleted from disk is in
+    /// the history. Neither call failing to find it is an error.</para>
+    /// </summary>
+    private static async Task<DownloadClientActionResult> ForgetAsync(
+        HttpClient http,
+        DownloadClientItem client,
+        Uri baseUri,
+        string apiKey,
+        string queueItemId,
+        CancellationToken cancellationToken)
+    {
+        // SABnzbd's history delete takes an nzo id — and also the words "all"
+        // and "failed", which mean "empty the history". Deluno only ever passes
+        // an id it read from its own dispatch record, so this cannot happen
+        // today; it is here because the cost of being wrong once is somebody's
+        // entire download history, and the check is one comparison.
+        if (DangerousHistorySelectors.Contains(queueItemId))
+        {
+            return DownloadClientHelpers.ActionFailure(
+                client,
+                queueItemId,
+                DownloadClientActions.Forget,
+                $"\"{queueItemId}\" is not a download id — to SABnzbd it means the whole history, so Deluno will not send it.",
+                upstreamDetail: "Refused before the request was made.",
+                category: "configuration");
+        }
+
+        var id = Uri.EscapeDataString(queueItemId);
+        var key = Uri.EscapeDataString(apiKey);
+
+        var queueRemoved = await SendAsync(http, baseUri, $"api?mode=queue&name=delete&value={id}&del_files=1&apikey={key}&output=json", cancellationToken);
+        var historyRemoved = await SendAsync(http, baseUri, $"api?mode=history&name=delete&value={id}&del_files=1&apikey={key}&output=json", cancellationToken);
+
+        if (historyRemoved.Reached || queueRemoved.Reached)
+        {
+            var what = (queueRemoved.Accepted, historyRemoved.Accepted) switch
+            {
+                (true, true) => "Removed the download and its history entry from SABnzbd.",
+                (false, true) => "Removed SABnzbd's history entry, so it will accept this release again.",
+                (true, false) => "Removed the download from SABnzbd's queue. It had no history entry for it.",
+                _ => "SABnzbd had no record of this release to remove."
+            };
+
+            return DownloadClientHelpers.ActionSuccess(client, queueItemId, DownloadClientActions.Forget, what);
+        }
+
+        return DownloadClientHelpers.ActionFailure(
+            client,
+            queueItemId,
+            DownloadClientActions.Forget,
+            "SABnzbd could not be reached to forget this release.",
+            historyRemoved.StatusCode ?? queueRemoved.StatusCode);
+    }
+
+    /// <summary>
+    /// Values SABnzbd reads as "everything" rather than as one download.
+    /// </summary>
+    private static readonly HashSet<string> DangerousHistorySelectors =
+        new(StringComparer.OrdinalIgnoreCase) { "all", "failed", "completed" };
+
+    /// <summary>
+    /// Whether SABnzbd answered at all, and whether it said yes.
+    ///
+    /// <para>It replies <c>200</c> with <c>{"status": false}</c> when it has
+    /// nothing matching the id, so the HTTP code alone cannot tell "gone" from
+    /// "never there" — and both are fine for a forget.</para>
+    /// </summary>
+    private static async Task<SabActionOutcome> SendAsync(HttpClient http, Uri baseUri, string path, CancellationToken cancellationToken)
+    {
+        try
+        {
+            using var response = await http.GetAsync(new Uri(baseUri, path), cancellationToken);
+            if (!response.IsSuccessStatusCode)
+            {
+                return new SabActionOutcome(Reached: true, Accepted: false, response.StatusCode);
+            }
+
+            var body = await response.Content.ReadAsStringAsync(cancellationToken);
+            var accepted = body.Contains("\"status\": true", StringComparison.OrdinalIgnoreCase)
+                           || body.Contains("\"status\":true", StringComparison.OrdinalIgnoreCase);
+            return new SabActionOutcome(Reached: true, accepted, response.StatusCode);
+        }
+        catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException or IOException)
+        {
+            return new SabActionOutcome(Reached: false, Accepted: false, null);
+        }
+    }
+
+    private readonly record struct SabActionOutcome(bool Reached, bool Accepted, HttpStatusCode? StatusCode);
 
     public override string NormalizeStatus(string? nativeStatus, double? progress, int? errorCode = null, string? errorMessage = null)
     {
