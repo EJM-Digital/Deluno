@@ -660,10 +660,17 @@ public sealed class WorkPlanner(
         return fallback;
     }
 
+    /// <param name="availability">
+    /// Which libraries Deluno can act on. A library whose root is not mounted
+    /// is paused rather than imported into: attempting the move would fail for
+    /// every title in it and record each failure against the release rather
+    /// than against the drive. DESIGN-007 decision 12.
+    /// </param>
     public async Task PlanImportAutomationAsync(
         IJobScheduler jobScheduler,
         IProcessorRepository processorRepository,
         ILibrariesRepository librariesRepository,
+        ILibraryAvailabilityService availability,
         IDownloadClientTelemetryService downloadClientTelemetryService,
         IProcessorConnectionService processorConnectionService,
         IActivityFeedRepository activityFeedRepository,
@@ -678,7 +685,9 @@ public sealed class WorkPlanner(
             {
         var now = timeProvider.GetUtcNow();
 
-        var libraries = await librariesRepository.ListLibrariesAsync(cancellationToken);
+        var allLibraries = await librariesRepository.ListLibrariesAsync(cancellationToken);
+        var usable = await availability.ReadAsync(allLibraries, cancellationToken);
+        IReadOnlyList<LibraryItem> libraries = allLibraries.Where(library => usable.IsUsable(library.Id)).ToArray();
         if (libraries.Count == 0)
         {
             return;

@@ -24,6 +24,10 @@ public static class FilesystemServiceCollectionExtensions
         // Scoped, because the reconciliation it wraps is. The button and the
         // schedule resolve the same registration.
         services.AddScoped<ILibraryFileCheckService, LibraryFileCheckService>();
+        // Singleton, because it caches its answer for a minute and remembers
+        // which libraries it has already announced. A scoped copy per tick
+        // would probe every library every time and say so every time.
+        services.AddSingleton<ILibraryAvailabilityService, LibraryAvailabilityService>();
         return services;
     }
 }
