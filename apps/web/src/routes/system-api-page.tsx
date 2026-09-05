@@ -14,23 +14,41 @@ import { authedFetch } from "../lib/use-auth";
 import { fetchJson, type ApiKeyItem, type CreatedApiKeyResponse } from "../lib/api";
 import { formatDateTime, type DisplayPreferences, useDisplayPreferences } from "../lib/display-preferences";
 
+interface ApiKeyScopeTemplate {
+  id: string;
+  name: string;
+  description: string;
+  scopes: string[];
+  capabilities: string[];
+}
+
 interface SystemApiLoaderData {
   apiKeys: ApiKeyItem[];
+  scopeTemplates: ApiKeyScopeTemplate[];
 }
 
 export async function systemApiLoader(): Promise<SystemApiLoaderData> {
-  const apiKeys = await fetchJson<ApiKeyItem[]>("/api/api-keys");
-  return { apiKeys };
+  // The access choices are Deluno's, not this screen's. This list used to be
+  // four options typed out here, beside five templates the API published and
+  // nothing read - so the two could disagree, and the screen could offer an
+  // access level the server had stopped supporting.
+  const [apiKeys, scopeTemplates] = await Promise.all([
+    fetchJson<ApiKeyItem[]>("/api/api-keys"),
+    fetchJson<ApiKeyScopeTemplate[]>("/api/api-keys/scope-templates")
+  ]);
+  return { apiKeys, scopeTemplates };
 }
 
 export function SystemApiPage() {
   const loaderData = useLoaderData() as SystemApiLoaderData;
   const apiKeys = loaderData.apiKeys;
+  const scopeTemplates = loaderData.scopeTemplates;
   const revalidator = useRevalidator();
   const save = useSaveStatus();
   const { preferences } = useDisplayPreferences();
   const [name, setName] = useState("External automation");
-  const [scopes, setScopes] = useState("read, write, queue");
+  const [scopes, setScopes] = useState(
+    () => scopeTemplates.find((template) => template.id === "automation")?.id ?? "");
   const [createdKey, setCreatedKey] = useState<CreatedApiKeyResponse | null>(null);
   const [busy, setBusy] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
@@ -149,15 +167,17 @@ export function SystemApiPage() {
                 <PresetField
                   value={scopes}
                   onChange={setScopes}
-                  options={[
-                    { label: "Read-only telemetry", value: "read" },
-                    { label: "Home Assistant / automation", value: "read, write, queue" },
-                    { label: "Mobile app", value: "read, write, queue, imports" },
-                    { label: "Full local API access", value: "all" }
-                  ]}
+                  options={scopeTemplates.map((template) => ({
+                    label: template.name,
+                    value: template.id
+                  }))}
                   customLabel="Custom scopes"
                   customPlaceholder="read, queue, imports"
                 />
+                <p className="mt-2 density-help leading-relaxed text-muted-foreground">
+                  {scopeTemplates.find((template) => template.id === scopes)?.description ??
+                    "A comma-separated scope list. Leaving it empty is refused rather than granting everything."}
+                </p>
               </Field>
 
               <div className="rounded-xl border border-hairline bg-surface-1 p-[calc(var(--tile-pad)*0.75)]">

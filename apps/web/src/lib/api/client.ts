@@ -29,6 +29,47 @@ function waitForRetry(attempt: number) {
   return new Promise<void>((resolve) => globalThis.setTimeout(resolve, RETRY_DELAYS_MS[attempt] ?? RETRY_DELAYS_MS.at(-1)!));
 }
 
+/**
+ * The sentence to put in front of the user when a request fails.
+ *
+ * ASP.NET answers a rejected request with a ProblemDetails body whose `title`
+ * is the boilerplate "One or more validation errors occurred." and whose
+ * `errors` carries the reason. Reading `title` first meant every refusal in
+ * Deluno arrived as that sentence, and the thing the server had gone to the
+ * trouble of saying - which field, and what to do about it - was thrown away.
+ *
+ * So the specific beats the general: an explicit `message`, then the field
+ * errors, then `detail`, and only then the boilerplate title.
+ */
+export function readErrorMessage(responseBody: string, path: string, status: number): string {
+  const fallback = `Request failed for ${path} with status ${status}.`;
+  if (!responseBody) return fallback;
+
+  let parsed: { message?: unknown; title?: unknown; detail?: unknown; errors?: unknown };
+  try {
+    parsed = JSON.parse(responseBody) as typeof parsed;
+  } catch {
+    return responseBody;
+  }
+
+  if (typeof parsed.message === "string" && parsed.message.trim()) return parsed.message;
+
+  if (parsed.errors && typeof parsed.errors === "object") {
+    const reasons = Object.values(parsed.errors as Record<string, unknown>)
+      .flatMap((value) => (Array.isArray(value) ? value : [value]))
+      .filter((value): value is string => typeof value === "string" && value.trim().length > 0);
+
+    // Several fields can be wrong at once, and naming one of them would be
+    // worse than naming none.
+    if (reasons.length > 0) return reasons.join(" ");
+  }
+
+  if (typeof parsed.detail === "string" && parsed.detail.trim()) return parsed.detail;
+  if (typeof parsed.title === "string" && parsed.title.trim()) return parsed.title;
+
+  return fallback;
+}
+
 export async function fetchJson<T>(path: string, init?: RequestInit): Promise<T> {
   const requestInit: RequestInit = { cache: "no-store", ...init };
   const retryable = canRetryRequest(requestInit);
@@ -52,27 +93,11 @@ export async function fetchJson<T>(path: string, init?: RequestInit): Promise<T>
 
   if (!response.ok) {
     const responseBody = await response.text().catch(() => "");
-    let message = `Request failed for ${path} with status ${response.status}.`;
-
-    if (responseBody) {
-      try {
-        const parsed = JSON.parse(responseBody) as { message?: unknown; title?: unknown };
-        const serverMessage =
-          typeof parsed.message === "string"
-            ? parsed.message
-            : typeof parsed.title === "string"
-              ? parsed.title
-              : null;
-
-        if (serverMessage) {
-          message = serverMessage;
-        }
-      } catch {
-        message = responseBody;
-      }
-    }
-
-    throw new ApiRequestError(message, response.status, path, responseBody);
+    throw new ApiRequestError(
+      readErrorMessage(responseBody, path, response.status),
+      response.status,
+      path,
+      responseBody);
   }
 
   return (await response.json()) as T;

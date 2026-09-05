@@ -208,13 +208,17 @@ public static class SecurityEndpointRouteBuilderExtensions
                 });
             }
 
-            var scopeErrors = ApiKeyScopeTemplates.Validate(request.Scopes);
-            if (scopeErrors.Count > 0)
+            var scopes = ApiKeyScopeTemplates.Resolve(request.Scopes);
+            if (!scopes.IsGranted)
             {
-                return Results.ValidationProblem(scopeErrors);
+                return Results.ValidationProblem(scopes.AsValidationErrors());
             }
 
-            var created = await repository.CreateApiKeyAsync(request, cancellationToken);
+            // The resolved scopes, not what was typed: a template id has to
+            // reach the repository as the scopes it stands for.
+            var created = await repository.CreateApiKeyAsync(
+                request with { Scopes = scopes.Scopes },
+                cancellationToken);
             return Results.Ok(created);
         });
 
