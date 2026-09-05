@@ -14,6 +14,7 @@ public static class JobsServiceCollectionExtensions
         services.AddSingleton<IDownloadDispatchRepository>(provider =>
             provider.GetRequiredService<SqliteDownloadDispatchesRepository>());
         services.AddSingleton<IBlockedReleaseRepository, SqliteBlockedReleaseRepository>();
+        services.AddSingleton<IImportFailureRuleRepository, SqliteImportFailureRuleRepository>();
         services.AddSingleton<SqliteImportResolutionsRepository>();
         services.AddSingleton<IImportResolutionsRepository>(provider =>
             provider.GetRequiredService<SqliteImportResolutionsRepository>());

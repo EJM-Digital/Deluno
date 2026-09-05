@@ -47,7 +47,8 @@ public sealed partial class ImportPipelineService(
     IQualityRepository? qualityRepository = null,
     IGuidePackageStore? guidePackageStore = null,
     IReleasePreferencePlanRepository? releasePreferencePlanRepository = null,
-    IBlockedReleaseRepository? blockedReleases = null)
+    IBlockedReleaseRepository? blockedReleases = null,
+    IImportFailureRuleRepository? failureRules = null)
     : IImportPipelineService
 {
     private static readonly HashSet<string> SupportedVideoExtensions = new(StringComparer.OrdinalIgnoreCase)
@@ -1738,14 +1739,26 @@ public sealed partial class ImportPipelineService(
     {
         if (blockedReleases is null ||
             downloadDispatchesRepository is null ||
-            string.IsNullOrEmpty(executeRequest.DispatchId) ||
-            ImportFailurePolicy.BlockFor(failureKind) == BlockDecision.Never)
+            string.IsNullOrEmpty(executeRequest.DispatchId))
         {
             return;
         }
 
         try
         {
+            // The user's answers first, because they can turn a "never" into a
+            // "refuse immediately" and the shipped table cannot be trusted to
+            // rule this out on its own any more.
+            var overrides = failureRules is null
+                ? new Dictionary<string, BlockDecision>()
+                : await failureRules.GetOverridesAsync(cancellationToken);
+
+            var decision = ImportFailurePolicy.BlockFor(failureKind, overrides);
+            if (decision == BlockDecision.Never)
+            {
+                return;
+            }
+
             var dispatch = await downloadDispatchesRepository.GetDispatchAsync(executeRequest.DispatchId, cancellationToken);
             if (dispatch is null || string.IsNullOrWhiteSpace(dispatch.ReleaseName))
             {
@@ -1755,7 +1768,12 @@ public sealed partial class ImportPipelineService(
             // Counts attempts at this same release that have already failed, so
             // "one retry" means one retry rather than one per dispatch record.
             var priorFailures = await CountPriorFailuresAsync(dispatch, cancellationToken);
-            if (!ImportFailurePolicy.ShouldBlock(failureKind, priorFailures))
+
+            // "Ask me" asks on the first failure. Waiting for a retry first
+            // would be Deluno deciding how patient the person wants to be,
+            // which is the decision they took off it.
+            var proposing = decision == BlockDecision.AskMe;
+            if (!proposing && !ImportFailurePolicy.ShouldBlock(decision, priorFailures))
             {
                 return;
             }
@@ -1774,14 +1792,19 @@ public sealed partial class ImportPipelineService(
                     dispatch.TorrentHashOrItemId,
                     dispatch.DownloadClientId,
                     dispatch.DownloadClientName,
-                    DateTimeOffset.MinValue),
+                    DateTimeOffset.MinValue,
+                    proposing ? BlockedReleaseStates.Proposed : BlockedReleaseStates.Refused),
                 cancellationToken);
 
             // Said out loud, because a refusal nobody is told about is the
-            // behaviour this whole feature replaces.
+            // behaviour this whole feature replaces. A proposal is said out
+            // loud for the opposite reason: nothing has happened yet, and
+            // nothing will until somebody answers.
             await activityFeedRepository.RecordActivityAsync(
-                "release.blocked",
-                $"Deluno will not use {dispatch.ReleaseName} again. {summary} Future searches skip it and say so, and you can undo this on the blocklist.",
+                proposing ? "release.block.proposed" : "release.blocked",
+                proposing
+                    ? $"{dispatch.ReleaseName} failed and you asked to be consulted. {summary} Nothing has changed — decide on the blocklist."
+                    : $"Deluno will not use {dispatch.ReleaseName} again. {summary} Future searches skip it and say so, and you can undo this on the blocklist.",
                 null,
                 null,
                 dispatch.MediaType == "tv" ? "series" : "movie",

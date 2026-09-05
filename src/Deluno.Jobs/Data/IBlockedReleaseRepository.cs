@@ -19,10 +19,20 @@ public interface IBlockedReleaseRepository
     /// <summary>
     /// The keys a search should skip. Returned as a set because a search asks
     /// this once and then tests every candidate against it.
+    ///
+    /// <para>Proposals are not in it. "Ask me" means nothing has been decided,
+    /// and a search that skipped an undecided release would be deciding by
+    /// omission.</para>
     /// </summary>
     Task<IReadOnlySet<string>> ListKeysAsync(CancellationToken cancellationToken);
 
     Task<bool> UnblockAsync(string id, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Answers a proposal with "yes, refuse it". Does nothing to an entry that
+    /// is already refused, so a double click cannot move the date it happened.
+    /// </summary>
+    Task<bool> RefuseAsync(string id, CancellationToken cancellationToken);
 
     /// <summary>
     /// Blocked releases whose leftovers are still in a download client.

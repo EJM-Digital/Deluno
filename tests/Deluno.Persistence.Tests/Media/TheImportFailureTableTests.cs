@@ -138,6 +138,85 @@ public sealed class TheImportFailureTableTests
     }
 
     /// <summary>
+    /// Every reason is filed under whose fault it was, and the filing has to
+    /// agree with the decision. A reason refused on sight cannot be filed under
+    /// "your setup", because that would put a row on the rules screen whose
+    /// heading contradicts its own answer.
+    /// </summary>
+    [Fact]
+    public void What_a_failure_is_filed_under_agrees_with_what_is_done_about_it()
+    {
+        Assert.All(ImportFailurePolicy.KnownReasons, reason =>
+        {
+            var category = ImportFailurePolicy.CategoryFor(reason);
+            var decision = ImportFailurePolicy.BlockFor(reason);
+
+            Assert.Contains(
+                category,
+                new[]
+                {
+                    FailureCategories.BadFile,
+                    FailureCategories.CannotSay,
+                    FailureCategories.YourSetup,
+                    FailureCategories.NotAFailure
+                });
+
+            if (category == FailureCategories.YourSetup)
+            {
+                Assert.Equal(BlockDecision.Never, decision);
+            }
+
+            if (category == FailureCategories.BadFile)
+            {
+                Assert.Equal(BlockDecision.Immediately, decision);
+            }
+        });
+    }
+
+    /// <summary>
+    /// Nothing ships asking to be asked. "Ask me" is only ever something the
+    /// user chose, which is why a fresh install never stops to consult
+    /// anybody.
+    /// </summary>
+    [Fact]
+    public void Deluno_never_ships_a_rule_that_stops_and_asks()
+    {
+        Assert.All(
+            ImportFailurePolicy.KnownReasons,
+            reason => Assert.NotEqual(BlockDecision.AskMe, ImportFailurePolicy.BlockFor(reason)));
+    }
+
+    /// <summary>
+    /// The user's answer wins, in both directions — which is the whole point
+    /// of the console, and the reason none of the rows above is law.
+    /// </summary>
+    [Fact]
+    public void An_answer_of_your_own_beats_the_shipped_one_either_way()
+    {
+        var harsher = new Dictionary<string, BlockDecision>
+        {
+            [ImportFailurePolicy.MissingSource] = BlockDecision.Immediately
+        };
+        var softer = new Dictionary<string, BlockDecision>
+        {
+            [ImportFailurePolicy.NoVideoStream] = BlockDecision.Never
+        };
+
+        Assert.Equal(
+            BlockDecision.Immediately,
+            ImportFailurePolicy.BlockFor(ImportFailurePolicy.MissingSource, harsher));
+        Assert.Equal(
+            BlockDecision.Never,
+            ImportFailurePolicy.BlockFor(ImportFailurePolicy.NoVideoStream, softer));
+
+        // And a reason nobody has an opinion about is untouched by somebody
+        // else's opinion.
+        Assert.Equal(
+            ImportFailurePolicy.BlockFor(ImportFailurePolicy.LikelySample),
+            ImportFailurePolicy.BlockFor(ImportFailurePolicy.LikelySample, harsher));
+    }
+
+    /// <summary>
     /// And the guard that makes the rest of this table trustworthy: a reason
     /// the import pipeline can actually produce, which nobody has decided
     /// about, fails here rather than quietly taking the "never refuse"

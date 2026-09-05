@@ -85,6 +85,7 @@ public static class DelunoApiExtensions
 
         endpoints.MapDelunoDashboardMetricsEndpoints();
         endpoints.MapDelunoBlockedReleaseEndpoints();
+        endpoints.MapDelunoImportFailureRuleEndpoints();
 
         return endpoints;
     }

@@ -22,6 +22,9 @@ namespace Deluno.Contracts;
 /// The import or grab failure that caused it, so the rules screen can say which
 /// setting produced this block and the list can be filtered by cause.
 /// </param>
+/// <param name="State">
+/// Whether this is a decision or a question. See <see cref="BlockedReleaseStates"/>.
+/// </param>
 public sealed record BlockedRelease(
     string Id,
     string ReleaseKey,
@@ -35,7 +38,26 @@ public sealed record BlockedRelease(
     string? TorrentHashOrItemId,
     string? DownloadClientId,
     string? DownloadClientName,
-    DateTimeOffset BlockedUtc);
+    DateTimeOffset BlockedUtc,
+    string State = BlockedReleaseStates.Refused);
+
+/// <summary>
+/// A blocklist entry is either a decision Deluno made or a question it is
+/// asking.
+///
+/// <para>The second kind exists because the rules screen offers <i>ask me</i>,
+/// and "ask me" has to leave something behind or it is a slower way of doing
+/// nothing. A proposal is recorded with its reason, changes nothing about what
+/// searches do, and waits.</para>
+/// </summary>
+public static class BlockedReleaseStates
+{
+    /// <summary>Decided. Searches skip it and say so.</summary>
+    public const string Refused = "refused";
+
+    /// <summary>Asked. Searches are unaffected until somebody answers.</summary>
+    public const string Proposed = "proposed";
+}
 
 public static class BlockedReleaseKeys
 {

@@ -66,6 +66,11 @@ export interface BlockedRelease {
   downloadClientId: string | null;
   downloadClientName: string | null;
   blockedUtc: string;
+  /**
+   * "refused" or "proposed". A proposal is a question rather than a decision:
+   * it changes nothing about what searches do until somebody answers it.
+   */
+  state: string;
 }
 
 export interface AcquisitionOverrideResponse {

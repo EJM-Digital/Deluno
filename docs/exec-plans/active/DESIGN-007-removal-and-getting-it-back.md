@@ -494,9 +494,18 @@ they appear here.
 | **Failed** | The attempt did not produce a library file | Deluno chose not to |
 | **Rejected** | Deluno deliberately declined | Failed |
 | **Recycle** | Moved to the recycle bin, restorable | Deleted |
+| **Propose** | Deluno recording that it *would* refuse a release, and waiting. Listed under "waiting for you", answerable both ways. Changes nothing until answered. | Blocking it |
 
 **Nothing is silent.** A block that cannot be seen and cleared is Radarr's
 blocklist, which is the thing that started this.
+
+**Propose** is the eighth word, and it was not in the first draft. It arrived
+with the rules screen: the four answers are *never · one retry · immediately ·
+ask me*, and "ask me" has to leave something behind or it is a slower way of
+doing nothing. So it leaves a proposal — recorded with its reason, invisible to
+searches, waiting. The rule that makes it honest is that a proposal's
+downloaded copy is **not** cleared up: destroying the evidence before the
+question is answered would make "allow it" a lie.
 
 ## The outcomes
 

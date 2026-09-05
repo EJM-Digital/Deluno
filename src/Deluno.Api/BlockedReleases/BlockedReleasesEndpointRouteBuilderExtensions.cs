@@ -50,6 +50,27 @@ public static class BlockedReleasesEndpointRouteBuilderExtensions
                 : Results.NotFound();
         });
 
+        // Answering a proposal. The other answer is the DELETE above — allowing
+        // a proposed release is the same act as un-refusing a refused one, so
+        // it is deliberately the same route rather than a third verb that does
+        // the same thing.
+        endpoints.MapPost("/api/blocked-releases/{id}/refuse", async (
+            string id,
+            HttpContext httpContext,
+            [FromServices] IBlockedReleaseRepository repository,
+            CancellationToken cancellationToken) =>
+        {
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
+            if (denied is not null)
+            {
+                return denied;
+            }
+
+            return await repository.RefuseAsync(id, cancellationToken)
+                ? Results.NoContent()
+                : Results.NotFound();
+        });
+
         return endpoints;
     }
 }

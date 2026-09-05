@@ -24,10 +24,10 @@ public sealed class SqliteBlockedReleaseRepository(
             INSERT INTO blocked_releases (
                 id, release_key, release_name, indexer_name, media_type, entity_id, title,
                 reason_code, reason, torrent_hash_or_item_id, download_client_id,
-                download_client_name, blocked_utc
+                download_client_name, blocked_utc, state
             ) VALUES (
                 @id, @releaseKey, @releaseName, @indexerName, @mediaType, @entityId, @title,
-                @reasonCode, @reason, @hash, @clientId, @clientName, @blockedUtc
+                @reasonCode, @reason, @hash, @clientId, @clientName, @blockedUtc, @state
             )
             ON CONFLICT (release_key) DO NOTHING;
             """;
@@ -46,6 +46,7 @@ public sealed class SqliteBlockedReleaseRepository(
         Add(command, "@clientId", (object?)release.DownloadClientId ?? DBNull.Value);
         Add(command, "@clientName", (object?)release.DownloadClientName ?? DBNull.Value);
         Add(command, "@blockedUtc", blockedUtc.ToString("O", CultureInfo.InvariantCulture));
+        Add(command, "@state", release.State);
 
         await command.ExecuteNonQueryAsync(cancellationToken);
 
@@ -66,7 +67,7 @@ public sealed class SqliteBlockedReleaseRepository(
         command.CommandText =
             "SELECT id, release_key, release_name, indexer_name, media_type, entity_id, title, "
             + "reason_code, reason, torrent_hash_or_item_id, download_client_id, "
-            + "download_client_name, blocked_utc FROM blocked_releases "
+            + "download_client_name, blocked_utc, state FROM blocked_releases "
             + (where is null ? string.Empty : $"WHERE {where} ")
             + "ORDER BY blocked_utc DESC;";
 
@@ -87,7 +88,8 @@ public sealed class SqliteBlockedReleaseRepository(
                 reader.IsDBNull(9) ? null : reader.GetString(9),
                 reader.IsDBNull(10) ? null : reader.GetString(10),
                 reader.IsDBNull(11) ? null : reader.GetString(11),
-                DateTimeOffset.Parse(reader.GetString(12), CultureInfo.InvariantCulture)));
+                DateTimeOffset.Parse(reader.GetString(12), CultureInfo.InvariantCulture),
+                reader.GetString(13)));
         }
 
         return results;
@@ -100,7 +102,11 @@ public sealed class SqliteBlockedReleaseRepository(
             cancellationToken);
 
         using var command = connection.CreateCommand();
-        command.CommandText = "SELECT release_key FROM blocked_releases;";
+        // Proposals are excluded on purpose. "Ask me" means Deluno has not
+        // decided, and a search that quietly skipped an undecided release
+        // would be making the decision by omission — the exact thing the
+        // option exists to prevent.
+        command.CommandText = "SELECT release_key FROM blocked_releases WHERE state = 'refused';";
 
         var keys = new HashSet<string>(StringComparer.Ordinal);
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
@@ -126,11 +132,31 @@ public sealed class SqliteBlockedReleaseRepository(
     }
 
     public async Task<IReadOnlyList<BlockedRelease>> ListAwaitingCleanupAsync(CancellationToken cancellationToken)
+        // A proposal's copy is left where it is. Destroying the evidence
+        // before the question is answered would make "allow it" a lie.
         => (await ListWhereAsync(
-                "cleaned_up_utc IS NULL AND download_client_id IS NOT NULL AND torrent_hash_or_item_id IS NOT NULL",
+                "state = 'refused' AND cleaned_up_utc IS NULL "
+                + "AND download_client_id IS NOT NULL AND torrent_hash_or_item_id IS NOT NULL",
                 cancellationToken))
             .Where(release => ImportFailurePolicy.ShouldDeletePayload(release.ReasonCode))
             .ToArray();
+
+    public async Task<bool> RefuseAsync(string id, CancellationToken cancellationToken)
+    {
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Jobs,
+            cancellationToken);
+
+        using var command = connection.CreateCommand();
+        // Only a proposal can be promoted. Re-refusing something already
+        // refused would move its blocked_utc and lose when it actually
+        // happened.
+        command.CommandText =
+            "UPDATE blocked_releases SET state = 'refused' WHERE id = @id AND state = 'proposed';";
+        Add(command, "@id", id);
+
+        return await command.ExecuteNonQueryAsync(cancellationToken) > 0;
+    }
 
     public async Task<IReadOnlyList<BlockedRelease>> ListForAsync(
         string mediaType,

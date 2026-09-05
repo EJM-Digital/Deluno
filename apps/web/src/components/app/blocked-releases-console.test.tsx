@@ -1,7 +1,8 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { BlockedRelease } from "../../lib/api";
+import type { ImportFailureRule } from "../../lib/failure-reasons";
 import { authedFetch } from "../../lib/use-auth";
 import { BlockedReleasesConsole } from "./blocked-releases-console";
 
@@ -25,7 +26,7 @@ describe("the blocklist", () => {
   beforeEach(() => vi.clearAllMocks());
 
   it("shows the reason in words rather than in Deluno's vocabulary", () => {
-    render(<BlockedReleasesConsole releases={[release()]} onChanged={vi.fn()} />);
+    render(<BlockedReleasesConsole releases={[release()]} rules={[]} onChanged={vi.fn()} />);
 
     // The import records "noVideoStream". Printing that asks the reader to
     // learn the codebase to find out why their film never arrived.
@@ -36,7 +37,9 @@ describe("the blocklist", () => {
 
   /// A code you can search for beats a word that tells you nothing.
   it("falls back to the code itself for a reason it has no words for", () => {
-    render(<BlockedReleasesConsole releases={[release({ reasonCode: "somethingNew" })]} onChanged={vi.fn()} />);
+    render(
+      <BlockedReleasesConsole releases={[release({ reasonCode: "somethingNew" })]} rules={[]} onChanged={vi.fn()} />
+    );
 
     expect(screen.getByText("somethingNew")).toBeInTheDocument();
   });
@@ -45,7 +48,7 @@ describe("the blocklist", () => {
     vi.mocked(authedFetch).mockResolvedValue({ ok: true } as Response);
     const onChanged = vi.fn();
 
-    render(<BlockedReleasesConsole releases={[release()]} onChanged={onChanged} />);
+    render(<BlockedReleasesConsole releases={[release()]} rules={[]} onChanged={onChanged} />);
     await userEvent.click(screen.getByRole("button", { name: /un-refuse/i }));
 
     expect(authedFetch).toHaveBeenCalledWith("/api/blocked-releases/block-1", { method: "DELETE" });
@@ -57,7 +60,7 @@ describe("the blocklist", () => {
   it("says that un-refusing has not started a search", async () => {
     vi.mocked(authedFetch).mockResolvedValue({ ok: true } as Response);
 
-    render(<BlockedReleasesConsole releases={[release()]} onChanged={vi.fn()} />);
+    render(<BlockedReleasesConsole releases={[release()]} rules={[]} onChanged={vi.fn()} />);
     await userEvent.click(screen.getByRole("button", { name: /un-refuse/i }));
 
     expect(toasts.success).toHaveBeenCalledWith(expect.stringContaining("Search for the title when you want it"));
@@ -67,7 +70,7 @@ describe("the blocklist", () => {
     vi.mocked(authedFetch).mockResolvedValue({ ok: false } as Response);
     const onChanged = vi.fn();
 
-    render(<BlockedReleasesConsole releases={[release()]} onChanged={onChanged} />);
+    render(<BlockedReleasesConsole releases={[release()]} rules={[]} onChanged={onChanged} />);
     await userEvent.click(screen.getByRole("button", { name: /un-refuse/i }));
 
     expect(toasts.error).toHaveBeenCalled();
@@ -77,10 +80,79 @@ describe("the blocklist", () => {
   /// An empty blocklist should read as "nothing has gone wrong", not as a
   /// broken screen.
   it("explains itself when nothing has been refused", () => {
-    render(<BlockedReleasesConsole releases={[]} onChanged={vi.fn()} />);
+    render(<BlockedReleasesConsole releases={[]} rules={[]} onChanged={vi.fn()} />);
 
     expect(screen.getByText("Nothing has been refused")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /un-refuse/i })).not.toBeInTheDocument();
+  });
+
+  /**
+   * "Ask me" is only worth offering if the question actually gets asked
+   * somewhere a person will see it — and if the two kinds of entry are told
+   * apart. A proposal in the refused list would be Deluno claiming to have
+   * decided something it explicitly did not.
+   */
+  describe("a release it is asking about", () => {
+    it("is kept apart from the ones it has refused", () => {
+      render(
+        <BlockedReleasesConsole
+          releases={[release(), release({ id: "block-2", releaseName: "Dune.2021.2160p", state: "proposed" })]}
+          rules={[]}
+          onChanged={vi.fn()}
+        />
+      );
+
+      const waiting = screen.getByRole("heading", { name: /waiting for you/i }).closest("section")!;
+      expect(within(waiting).getByText("Dune.2021.2160p")).toBeInTheDocument();
+      expect(within(waiting).queryByText("Arrival.2016.2160p")).not.toBeInTheDocument();
+      expect(screen.getByText("1 refused release")).toBeInTheDocument();
+    });
+
+    it("offers both answers, and refusing is the one that changes searches", async () => {
+      vi.mocked(authedFetch).mockResolvedValue({ ok: true } as Response);
+
+      render(
+        <BlockedReleasesConsole releases={[release({ state: "proposed" })]} rules={[]} onChanged={vi.fn()} />
+      );
+      await userEvent.click(screen.getByRole("button", { name: /refuse it/i }));
+
+      expect(authedFetch).toHaveBeenCalledWith("/api/blocked-releases/block-1/refuse", { method: "POST" });
+      expect(toasts.success).toHaveBeenCalledWith(expect.stringContaining("Searches skip it"));
+    });
+
+    it("allows one through the same route that clears a refusal", async () => {
+      vi.mocked(authedFetch).mockResolvedValue({ ok: true } as Response);
+
+      render(
+        <BlockedReleasesConsole releases={[release({ state: "proposed" })]} rules={[]} onChanged={vi.fn()} />
+      );
+      await userEvent.click(screen.getByRole("button", { name: /allow it/i }));
+
+      expect(authedFetch).toHaveBeenCalledWith("/api/blocked-releases/block-1", { method: "DELETE" });
+    });
+
+    /// No question, no section. An empty "waiting for you" reads as a chore
+    /// that has not been done.
+    it("is absent entirely when there is nothing to decide", () => {
+      render(<BlockedReleasesConsole releases={[release()]} rules={[]} onChanged={vi.fn()} />);
+
+      expect(screen.queryByRole("heading", { name: /waiting for you/i })).not.toBeInTheDocument();
+    });
+  });
+
+  /// The rules are set once and then left alone; the list answers "why has my
+  /// film not arrived". Seventeen rules above the list would bury it.
+  it("keeps the rules folded away, and says how many you have changed", () => {
+    render(
+      <BlockedReleasesConsole
+        releases={[]}
+        rules={[rule(), rule({ reasonCode: "missingSource", isOverridden: true })]}
+        onChanged={vi.fn()}
+      />
+    );
+
+    expect(screen.getByText("2 kinds of failure · 1 answered your way")).toBeInTheDocument();
+    expect(screen.queryByRole("radiogroup")).not.toBeInTheDocument();
   });
 
   function release(overrides: Partial<BlockedRelease> = {}): BlockedRelease {
@@ -98,6 +170,18 @@ describe("the blocklist", () => {
       downloadClientId: "qbittorrent-main",
       downloadClientName: "qBittorrent",
       blockedUtc: "2026-09-05T12:00:00Z",
+      state: "refused",
+      ...overrides
+    };
+  }
+
+  function rule(overrides: Partial<ImportFailureRule> = {}): ImportFailureRule {
+    return {
+      reasonCode: "noVideoStream",
+      category: "badFile",
+      decision: "Immediately",
+      defaultDecision: "Immediately",
+      isOverridden: false,
       ...overrides
     };
   }
