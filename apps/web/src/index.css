@@ -12,25 +12,85 @@
 */
 @layer base {
   :root {
-    --background: 220 20% 97%;
-    --foreground: 222 26% 10%;
-    --card: 0 0% 100%;
-    --card-elevated: 0 0% 100%;
+    /*
+      ── THE LIGHT THEME'S BRIGHTNESS ──────────────────────────────────
+      Nothing here is pure white, and that is the point.
+
+      This theme used to paint the page at 97% and every card at a flat
+      100%. Two problems, and the second is the one you feel. A card three
+      points off the page reads as the same white, so the whole viewport
+      became one sheet held together by hairlines — and at that luminance,
+      full-screen, it glares. James: *"light mode needs to be toned down a
+      bit and not so bright smack in your face"*.
+
+      So the ladder came down and stretched, and then came down again. The
+      page sits at 89.8%, the card at 94.7%, and a dialog above it at 97.4%.
+      A dialog is now the brightest thing on screen rather than every panel
+      at once.
+
+      **The steps are sized against dark mode, in L* rather than in HSL.**
+      James, on the first pass: *"the side menu could do with a bit more
+      darker contrast, light mode doesnt really match the opposite of dark
+      mode and its still a little bright"*. He was right, and WCAG contrast
+      ratio said otherwise — it is a metric for text on a background, and it
+      reported the two themes as already matching. Perceptual lightness is
+      the right tool for large flat planes, and it found the gap at once:
+      page to card measured 4.5 L* in dark and 3.3 in light, card to dialog
+      2.6 against 1.4. Equal steps in HSL lightness are not equal steps to
+      an eye, because the sRGB curve compresses the top end.
+
+      **The rail is the one place a literal mirror is wrong.** Dark's rail
+      sits only 1.6 L* below its page and still reads as chrome, because it
+      is at the floor of the scale and "as dark as it gets" is a statement.
+      Light has no equivalent — nothing about 91% says "end of the scale" —
+      so copying dark's number gave a whisper. It is stepped about 5 L*
+      below the page instead, which is what it takes to read as a region
+      rather than a slightly tinted margin.
+
+      **The ink came down with it.** Contrast is a ratio, so dropping the
+      ground alone would quietly take every signal colour with it —
+      Missing was measured at 4.87:1 on the old card and would have landed
+      at 4.48:1, under AA, without a single line of it being edited. Each
+      light-theme signal is therefore about four points darker, chosen per
+      hue so its ratio against the new card beats what it had against the
+      old one. Measured, not eyeballed: Missing 4.87 -> 4.95, Downloading
+      4.20 -> 4.33, Upgradable 3.85 -> 3.98, Upcoming 6.38 -> 6.52,
+      Continuing 9.21 -> 9.30, muted text 6.01 -> 6.16.
+
+      Body text is the exception, and deliberately: `--foreground` went the
+      other way, 10% -> 12%. Near-black on near-white was the other half of
+      the glare, and 15.7:1 is not a contrast problem.
+
+      Gold came out ahead of where it started. As a page colour it was the
+      one rung that failed even the 3:1 large-text bar — 2.89:1 on white,
+      because a gold dark enough to read on a white page has stopped being
+      gold. On the dimmer card it clears 3:1 while keeping hue 42 and 96%
+      saturation, so it is still the same metal.
+
+      **What does not move:** `--mark-*-surface`, `--mark-leaf-*` and the
+      `--mark-*-on-track` set. Those sit on artwork or on a poster's own
+      track, not on the page, so the page getting darker tells them
+      nothing. See DESIGN-006 section 4.
+    */
+    --background: 220 16% 89.8%;
+    --foreground: 222 24% 12%;
+    --card: 220 22% 94.7%;
+    --card-elevated: 220 26% 97.4%;
     --card-foreground: 222 18% 8%;
-    --popover: 0 0% 100%;
+    --popover: 220 26% 97.4%;
     --popover-foreground: 222 18% 8%;
     --primary-foreground: 0 0% 100%;
-    --secondary: 220 14% 93%;
+    --secondary: 220 14% 85.6%;
     --secondary-foreground: 222 18% 15%;
-    --muted: 220 14% 93%;
-    --muted-foreground: 217 10% 40%;
-    --destructive: 0 84% 48%;
+    --muted: 220 14% 85.6%;
+    --muted-foreground: 217 11% 36%;
+    --destructive: 0 84% 44%;
     --destructive-foreground: 0 0% 100%;
-    --success: 145 72% 34%;
+    --success: 145 72% 31%;
     --success-foreground: 0 0% 100%;
-    --warning: 24 94% 38%;
+    --warning: 24 94% 34.5%;
     --warning-foreground: 28 40% 10%;
-    --info: 207 92% 45%;
+    --info: 207 92% 41%;
     --info-foreground: 0 0% 100%;
     /*
       The two marks a title can wear that no operational tone covers.
@@ -53,10 +113,10 @@
       carries no verdict of its own, which suits a rung that means "nothing to
       do yet", and it is what a calendar uses for something scheduled.
     */
-    --mark-missing: 0 84% 48%;
-    --mark-downloading: 207 92% 45%;
-    --mark-upgrade: 145 72% 34%;
-    --mark-quality-met: 42 96% 40%;
+    --mark-missing: 0 84% 44%;
+    --mark-downloading: 207 92% 41%;
+    --mark-upgrade: 145 72% 31%;
+    --mark-quality-met: 42 96% 37%;
     /*
       Gold is a *material*, and a flat fill of it reads as yellow. This is the
       surface: a highlight, a body and a shadow for `.mark-grail` to run a
@@ -79,7 +139,7 @@
     --mark-leaf-high: 52 100% 88%;
     --mark-leaf: 49 100% 62%;
     --mark-leaf-deep: 47 100% 52%;
-    --mark-upcoming: 265 62% 52%;
+    --mark-upcoming: 265 62% 47.5%;
     /*
       Continuing, and up to date.
 
@@ -91,8 +151,8 @@
       The semantic text colour is theme-specific because it sits on the page;
       the bar surface below is one artwork colour in both themes.
     */
-    --mark-airing: 318 74% 30%;
-    --mark-idle: 220 10% 82%;
+    --mark-airing: 318 74% 26.5%;
+    --mark-idle: 220 10% 74%;
 
     /*
       ── THE BAR SURFACES ──────────────────────────────────────────────
@@ -138,24 +198,24 @@
     --mark-quality-met-on-track: 44 98% 22%;
     --mark-upcoming-on-track: 268 72% 45%;
     --mark-unmonitored-on-track: 220 8% 35%;
-    --border: 220 14% 86%;
-    --input: 220 14% 86%;
-    --surface-1: 0 0% 100%;
-    --surface-2: 220 18% 95%;
-    --surface-3: 220 14% 91%;
-    --hairline: 220 14% 87%;
-    --sidebar-background: 220 18% 95%;
+    --border: 220 13% 77.8%;
+    --input: 220 13% 77.8%;
+    --surface-1: 220 22% 94.7%;
+    --surface-2: 220 16% 87.8%;
+    --surface-3: 220 14% 83.5%;
+    --hairline: 220 13% 79.3%;
+    --sidebar-background: 220 16% 84.6%;
     --sidebar-foreground: 222 20% 12%;
-    --sidebar-accent: 220 16% 90%;
+    --sidebar-accent: 220 15% 79%;
     --sidebar-accent-foreground: 222 24% 10%;
-    --sidebar-border: 220 14% 86%;
-    --state-ok: 145 72% 34%;
-    --state-warn: 24 94% 38%;
-    --state-danger: 0 84% 48%;
-    --state-info: 207 92% 45%;
+    --sidebar-border: 220 13% 76.7%;
+    --state-ok: 145 72% 31%;
+    --state-warn: 24 94% 34.5%;
+    --state-danger: 0 84% 44%;
+    --state-info: 207 92% 41%;
     --media-foreground: 0 0% 98%;
     --media-muted-foreground: 0 0% 82%;
-    --gradient-surface: linear-gradient(160deg, hsl(0 0% 100%) 0%, hsl(220 20% 97%) 100%);
+    --gradient-surface: linear-gradient(160deg, hsl(220 22% 94.7%) 0%, hsl(220 16% 89.8%) 100%);
     --shadow-card: 0 1px 2px hsl(222 18% 8% / 0.05), 0 4px 12px hsl(222 18% 8% / 0.04);
     --shadow-md: 0 8px 32px hsl(222 18% 8% / 0.07), 0 2px 8px hsl(222 18% 8% / 0.04);
     --shadow-lg: 0 20px 60px hsl(222 18% 8% / 0.1);
@@ -175,7 +235,7 @@
     --sidebar-width: 268px;
     --sidebar-rail: 58px;
     --mobile-tabbar-height: 56px;
-    --glass-bg: hsl(0 0% 100% / 0.82);
+    --glass-bg: hsl(220 22% 94.7% / 0.88);
     --glass-border: hsl(222 18% 8% / 0.08);
 
     /* ── MOTION LANGUAGE ───────────────────────────────
@@ -254,16 +314,16 @@
   }
 
   :root {
-    --primary: 213 82% 46%;
-    --primary-glow: 211 90% 60%;
-    --primary-2: 216 82% 54%;
+    --primary: 213 82% 42%;
+    --primary-glow: 211 90% 58%;
+    --primary-2: 216 82% 52%;
     --primary-deep: 218 76% 20%;
     --primary-foreground: 0 0% 100%;
-    --accent: 214 72% 96%;
+    --accent: 214 60% 88%;
     --accent-foreground: 215 70% 24%;
-    --ring: 213 82% 46%;
-    --sidebar-ring: 213 82% 46%;
-    --gradient-accent: linear-gradient(135deg, hsl(213 82% 46%) 0%, hsl(216 82% 54%) 100%);
+    --ring: 213 82% 42%;
+    --sidebar-ring: 213 82% 42%;
+    --gradient-accent: linear-gradient(135deg, hsl(213 82% 42%) 0%, hsl(216 82% 52%) 100%);
   }
   .dark {
     --primary: 211 100% 66%;
