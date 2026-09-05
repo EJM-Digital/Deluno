@@ -13,10 +13,10 @@
     "typecheck:sdk": "npm --workspace sdk/typescript run typecheck",
     "preview:web": "npm --workspace apps/web run preview",
     "check:metadata-gateway": "npm --prefix services/metadata-gateway run check && npm --prefix services/metadata-gateway test",
-    "ci:check": "node scripts/run-ci-check.mjs",
-    "ga:regression": "pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/run-ga-regression.ps1",
+    "ci:check": "node scripts/run-powershell.mjs scripts/ci-check.ps1",
+    "ga:regression": "node scripts/run-powershell.mjs scripts/run-ga-regression.ps1",
     "coverage:inventory": "node scripts/coverage-inventory.mjs",
-    "soak:snapshot": "pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/collect-soak-snapshot.ps1",
-    "validate:agents": "pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/validate-agent-readiness.ps1"
+    "soak:snapshot": "node scripts/run-powershell.mjs scripts/collect-soak-snapshot.ps1",
+    "validate:agents": "node scripts/run-powershell.mjs scripts/validate-agent-readiness.ps1"
   }
 }
