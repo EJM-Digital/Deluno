@@ -461,10 +461,14 @@ public sealed class SqliteSecurityRepository(
     private static string HashApiKey(string apiKey)
         => Convert.ToBase64String(SHA256.HashData(Encoding.UTF8.GetBytes(apiKey.Trim())));
 
+    // Defence in depth behind ApiKeyScopeTemplates.Resolve, which refuses a
+    // blank scope before it gets here. If one ever does arrive, the narrowest
+    // scope is the safe guess; this used to answer it with "all", so a caller
+    // who said nothing was handed everything.
     private static string NormalizeApiScopes(string? value)
     {
         var normalized = NormalizeCsv(value);
-        return string.IsNullOrWhiteSpace(normalized) ? "all" : normalized;
+        return string.IsNullOrWhiteSpace(normalized) ? "read" : normalized;
     }
 
     private static string Base64UrlEncode(byte[] value)
