@@ -54,6 +54,13 @@ without a signature.
   takes file locks on the built assemblies and fails the first with
   `MSB3027`/`MSB3021`, which reads like a broken build and is not one.
 
+  **A green run has to be a run you watched finish.** The intermittent test-host
+  hang ([#333](https://github.com/jampat000/Deluno/issues/333)) is back and now
+  reproduces under the serial runner and on CI: on 6 September the backend job
+  sat silent on `Deluno.Persistence.Tests` for nineteen minutes and was
+  cancelled, and the same commit passed on a plain re-run. A cancelled gate is
+  not a failed gate, and neither is evidence.
+
 ## RC1 Checklist
 
 - [ ] RC1 tag is cut and published with required artifacts. — **not done deliberately.** The validated candidate (`rc.10`/`rc.11`, commit `b73a8ae`) was built with `scripts/pack-windows-installer.ps1` and walked on the lab VM without cutting a release, which is what that script exists for. Published `1.x` releases exist but are not the candidate that was validated.
@@ -71,7 +78,7 @@ Exit criteria:
 
 - [x] RC1 defects are fixed and linked in issue [#78](https://github.com/jampat000/Deluno/issues/78). — four found by running the installer, all fixed and re-verified (#400–#403), plus packaging (#404).
 - [x] Installer/upgrade/rollback matrix is rerun and passes ([#81](https://github.com/jampat000/Deluno/issues/81)). — ten of twelve lines met; the two outstanding both want a signed installer, which is the decision above.
-- [ ] 14-day soak starts with daily checks recorded ([#82](https://github.com/jampat000/Deluno/issues/82)); follow [the soak plan](soak-plan.md). — **not started.** The plan and `npm run soak:snapshot` are both ready; this is wall-clock time on a machine holding a real library.
+- [ ] 14-day soak starts with daily checks recorded ([#82](https://github.com/jampat000/Deluno/issues/82)); follow [the soak plan](soak-plan.md). — **not started, and the collector was not ready either.** `npm run soak:snapshot` had never once taken a reading on Windows PowerShell 5.1: it recorded every endpoint as down and exited 0 ([#461](https://github.com/jampat000/Deluno/issues/461)). It works now, decides six of the seven daily checks itself, and can schedule its own run. What remains is wall-clock time on a machine holding a real library — and the plan's own restart rule means the clock should not start until the end-to-end pass has settled the build.
 - [x] Backup/restore drill succeeds on a second machine profile ([#83](https://github.com/jampat000/Deluno/issues/83)). — Rollback C on the lab VM; the first attempt failed and the recovery path was repaired (#403).
 - [ ] RC2 release notes draft exists and matches shipped behavior. — the draft exists (`release-notes-1.0.0-draft.md`, last touched 2026-09-02); **whether it still matches is unverified**, and behaviour has moved since.
 
