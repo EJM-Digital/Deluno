@@ -60,4 +60,9 @@ public sealed record PlatformSettingsSnapshot(
     string ShortDateFormat = "dmy",
     string LongDateFormat = "full",
     string TimeFormat = "12",
-    bool ShowRelativeDates = true);
+    bool ShowRelativeDates = true,
+    // How often Deluno looks at whether the files it thinks you have are still
+    // on disk. Configurable because the right answer depends on the disk: a
+    // local pool can afford hourly; a NAS that spins up to answer should not be
+    // woken every hour to be asked. DESIGN-007, the console's third section.
+    int LibraryFileCheckHours = 6);

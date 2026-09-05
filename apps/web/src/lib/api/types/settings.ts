@@ -76,6 +76,13 @@ export interface PlatformSettingsSnapshot {
   sharingUntilRatio: number | null;
   sharingStuckAction: string;
   sharingStuckAfterDays: number;
+  /**
+   * How often Deluno looks at whether the files it thinks you have are still
+   * on disk. The right answer depends on the disk: a local pool can afford
+   * hourly; a NAS that spins up to answer should not be woken every hour to be
+   * asked.
+   */
+  libraryFileCheckHours: number;
   updatedUtc: string;
 }
 
@@ -183,5 +190,6 @@ export const emptyPlatformSettingsSnapshot: PlatformSettingsSnapshot = {
   sharingUntilRatio: null,
   sharingStuckAction: "give-up",
   sharingStuckAfterDays: 14,
+  libraryFileCheckHours: 6,
   updatedUtc: new Date(0).toISOString()
 };

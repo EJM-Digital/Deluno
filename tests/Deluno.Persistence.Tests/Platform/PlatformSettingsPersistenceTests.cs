@@ -120,6 +120,62 @@ public sealed class PlatformSettingsPersistenceTests
         Assert.Equal(30, loaded.ImportRecoveryRetentionDays);
     }
 
+    /// <summary>
+    /// How often Deluno looks at whether the files it thinks you have are still
+    /// there. Declared configurable since the day the pass was written and
+    /// wired to nothing — the System screen printed "6h · configured" beside it
+    /// while nothing configured anything. DESIGN-007, the console's schedules.
+    /// </summary>
+    [Theory]
+    [InlineData(1, 1)]
+    [InlineData(24, 24)]
+    [InlineData(168, 168)]
+    // Clamped to the same 1..168 SystemTasks.IntervalForHours accepts, so a
+    // value that survives being saved is a value the scheduler will use. Two
+    // different bounds would let the screen show a cadence Deluno never runs at.
+    [InlineData(0, 1)]
+    [InlineData(10_000, 168)]
+    public async Task The_file_check_cadence_round_trips_within_the_hours_the_scheduler_accepts(int asked, int stored)
+    {
+        using var storage = TestStorage.Create();
+        var repository = await SettingsAsync(storage);
+
+        // The same path the PATCH endpoint takes: read, merge, save.
+        var merged = PlatformSettingsPatchMerger.Apply(
+            await repository.GetAsync(CancellationToken.None),
+            new PatchPlatformSettingsRequest(LibraryFileCheckHours: asked));
+        await repository.SaveAsync(merged, CancellationToken.None);
+
+        Assert.Equal(stored, (await repository.GetAsync(CancellationToken.None)).LibraryFileCheckHours);
+    }
+
+    /// <summary>
+    /// And an installation that has never been asked gets the six hours the
+    /// pass was declared with.
+    /// </summary>
+    [Fact]
+    public async Task The_file_check_cadence_defaults_to_six_hours()
+    {
+        using var storage = TestStorage.Create();
+        var repository = await SettingsAsync(storage);
+
+        Assert.Equal(6, (await repository.GetAsync(CancellationToken.None)).LibraryFileCheckHours);
+    }
+
+    private static async Task<SqlitePlatformSettingsRepository> SettingsAsync(TestStorage storage)
+    {
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-09-05T01:02:03Z"));
+        await new PlatformSchemaInitializer(
+            storage.Factory,
+            new SqliteDatabaseMigrator(storage.Factory, timeProvider),
+            NullLogger<PlatformSchemaInitializer>.Instance).StartAsync(CancellationToken.None);
+
+        return new SqlitePlatformSettingsRepository(
+            storage.Factory,
+            timeProvider,
+            TestSecretProtection.Create(storage));
+    }
+
     [Fact]
     public async Task Calendar_week_header_formats_round_trip_with_canonical_values()
     {

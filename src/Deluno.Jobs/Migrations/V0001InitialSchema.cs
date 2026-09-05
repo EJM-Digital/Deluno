@@ -34,7 +34,8 @@ public static class JobsDatabaseMigrations
         new V0026BlockedReleases(),
         new V0027BlockedReleaseCleanup(),
         new V0028ImportFailureRules(),
-        new V0029ProposedRefusals()
+        new V0029ProposedRefusals(),
+        new V0030ScheduleIntervalUsed()
     ];
 
     private sealed class V0001InitialSchema : SqliteSqlMigration

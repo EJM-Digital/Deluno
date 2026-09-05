@@ -1,5 +1,8 @@
+using Deluno.Contracts;
 using Deluno.Filesystem;
 using Deluno.Jobs.Data;
+using Deluno.Worker.Services;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 
@@ -106,7 +109,69 @@ public sealed class LibraryFileCheckTests
         activity.VerifyNoOtherCalls();
     }
 
+    /// <summary>
+    /// The cadence the user chose is the cadence the pass is claimed at.
+    ///
+    /// <para>The pass has declared itself configurable since it was written and
+    /// was wired to nothing: it always claimed at the fixed six hours, while the
+    /// System screen printed "6h · configured" beside it. A setting nothing
+    /// reads is worse than no setting, because it says the question has been
+    /// answered.</para>
+    /// </summary>
+    [Theory]
+    [InlineData(1)]
+    [InlineData(24)]
+    [InlineData(168)]
+    public async Task It_is_claimed_at_the_cadence_you_asked_for(int hours)
+    {
+        var jobs = ClaimingJobs();
+
+        await Planner(jobs).RunLibraryFileCheckAsync(Mock.Of<ILibraryFileCheckService>(), hours, CancellationToken.None);
+
+        jobs.Verify(
+            repository => repository.TryClaimScheduledPassAsync(
+                SystemTasks.LibraryFileCheck,
+                TimeSpan.FromHours(hours),
+                It.IsAny<CancellationToken>()),
+            Times.Once);
+    }
+
+    /// <summary>
+    /// A stored value outside what the scheduler accepts is brought back into
+    /// range rather than turned into a pass that never runs.
+    /// </summary>
+    [Fact]
+    public async Task A_cadence_beyond_a_week_is_brought_back_to_a_week()
+    {
+        var jobs = ClaimingJobs();
+
+        await Planner(jobs).RunLibraryFileCheckAsync(Mock.Of<ILibraryFileCheckService>(), 10_000, CancellationToken.None);
+
+        jobs.Verify(
+            repository => repository.TryClaimScheduledPassAsync(
+                SystemTasks.LibraryFileCheck,
+                TimeSpan.FromHours(168),
+                It.IsAny<CancellationToken>()),
+            Times.Once);
+    }
+
     // ------------------------------------------------------------------ helpers
+
+    private static Mock<IJobQueueRepository> ClaimingJobs()
+    {
+        var jobs = new Mock<IJobQueueRepository>();
+        jobs.Setup(repository => repository.TryClaimScheduledPassAsync(
+                It.IsAny<string>(), It.IsAny<TimeSpan>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
+        return jobs;
+    }
+
+    private static WorkPlanner Planner(Mock<IJobQueueRepository> jobs)
+        => new(
+            NullLogger<WorkPlanner>.Instance,
+            jobs.Object,
+            new ConfigurationBuilder().Build(),
+            TimeProvider.System);
 
     private static LibraryFileCheckService Check(
         IFilesystemReconciliationService reconciliation,

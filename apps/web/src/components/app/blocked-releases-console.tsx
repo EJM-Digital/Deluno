@@ -19,7 +19,7 @@
  */
 import { useState } from "react";
 import { Check, Eraser, RotateCcw, X } from "lucide-react";
-import type { BlockedRelease } from "../../lib/api";
+import type { BlockedRelease, PlatformSettingsSnapshot, RecycleBinSettings } from "../../lib/api";
 import { reasonWords, type ImportFailureRule } from "../../lib/failure-reasons";
 import { authedFetch } from "../../lib/use-auth";
 import { toast } from "../shell/toaster";
@@ -28,6 +28,7 @@ import { Chip } from "../ui/chip";
 import { Disclosure } from "../ui/disclosure";
 import { LIST_TRACK, ListCard, ListEmpty, ListNameCell, ListRow, ListTable } from "../ui/list-card";
 import { FailureRulesConsole } from "./failure-rules-console";
+import { FailureSchedulesConsole } from "./failure-schedules-console";
 
 /**
  * What clearing up actually did, said the way a person would say it.
@@ -45,12 +46,21 @@ const CLEANUP_WORDS: Record<string, string> = {
 export interface BlockedReleasesConsoleProps {
   releases: BlockedRelease[];
   rules: ImportFailureRule[];
+  settings: PlatformSettingsSnapshot;
+  recycleBin: RecycleBinSettings;
   onChanged: () => void;
 }
 
-export function BlockedReleasesConsole({ releases, rules, onChanged }: BlockedReleasesConsoleProps) {
+export function BlockedReleasesConsole({
+  releases,
+  rules,
+  settings,
+  recycleBin,
+  onChanged
+}: BlockedReleasesConsoleProps) {
   const [busyId, setBusyId] = useState<string | null>(null);
   const [rulesOpen, setRulesOpen] = useState(false);
+  const [schedulesOpen, setSchedulesOpen] = useState(false);
 
   const proposed = releases.filter((release) => release.state === "proposed");
   const refused = releases.filter((release) => release.state !== "proposed");
@@ -242,6 +252,31 @@ export function BlockedReleasesConsole({ releases, rules, onChanged }: BlockedRe
       >
         <FailureRulesConsole rules={rules} onChanged={onChanged} />
       </Disclosure>
+
+      {/*
+        The third section DESIGN-007 asked this console to carry. The other two
+        answer what Deluno does about a failure; this one answers how often it
+        looks, and how long you have to change your mind about what it took.
+      */}
+      <Disclosure
+        title="How often Deluno checks, and what it keeps"
+        summary={`Files checked every ${hours(settings.libraryFileCheckHours)} · removed files kept for ${days(recycleBin.retentionDays)}`}
+        open={schedulesOpen}
+        onOpenChange={setSchedulesOpen}
+      >
+        <FailureSchedulesConsole settings={settings} recycleBin={recycleBin} onChanged={onChanged} />
+      </Disclosure>
     </div>
   );
+}
+
+function hours(value: number): string {
+  if (value === 1) return "hour";
+  if (value === 24) return "day";
+  if (value === 168) return "week";
+  return `${value} hours`;
+}
+
+function days(value: number): string {
+  return value === 1 ? "a day" : `${value} days`;
 }

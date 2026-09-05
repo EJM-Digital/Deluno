@@ -400,7 +400,8 @@ changeable in the **Failure and blocklist** console, which carries three things:
   clear-the-client-on-removal setting from decision 9, and the ownership
   override from decision 10.
 - **The schedules** — how often the file check runs, and the recycle bin's
-  retention, which exists today and is enforced by nothing.
+  retention. Both are settable here now; retention is enforced by the scheduled
+  clean-up and on every write.
 
 The right harshness depends on the library. Somebody on a fast line with spare
 disk wants it strict; somebody on a flaky share does not.
