@@ -1,3 +1,4 @@
+using Deluno.Integrations.DownloadClients;
 using Deluno.Jobs.Data;
 using Deluno.Security;
 using Microsoft.AspNetCore.Builder;
@@ -69,6 +70,28 @@ public static class BlockedReleasesEndpointRouteBuilderExtensions
             return await repository.RefuseAsync(id, cancellationToken)
                 ? Results.NoContent()
                 : Results.NotFound();
+        });
+
+        // The manual half of the scheduled clear-out — for a refusal that
+        // predates the setting, or one whose client was off when the schedule
+        // came round. It calls the same service the schedule calls, so it
+        // still will not overrule the sharing rule.
+        endpoints.MapPost("/api/blocked-releases/{id}/cleanup", async (
+            string id,
+            HttpContext httpContext,
+            [FromServices] IRefusedDownloadCleanupService cleanup,
+            CancellationToken cancellationToken) =>
+        {
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
+            if (denied is not null)
+            {
+                return denied;
+            }
+
+            var outcome = await cleanup.CleanUpOneAsync(id, cancellationToken);
+            return outcome == RefusedDownloadCleanupOutcomes.NotFound
+                ? Results.NotFound()
+                : Results.Ok(new { outcome });
         });
 
         return endpoints;

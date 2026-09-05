@@ -3,8 +3,6 @@ using Deluno.Integrations.DownloadClients;
 using Deluno.Jobs.Data;
 using Deluno.Platform.Contracts;
 using Deluno.Platform.Data;
-using Deluno.Worker.Services;
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 
@@ -33,7 +31,7 @@ public sealed class ClearingRefusedDownloadsTests
         var blocklist = Blocklist(Refused("hash-1"));
         var clients = Clients();
 
-        await Planner().RunBlockedReleaseCleanupAsync(blocklist.Object, clients.Object, Sharing(), CancellationToken.None);
+        await Cleanup(blocklist.Object, clients.Object, Sharing()).CleanUpEverythingAsync(CancellationToken.None);
 
         // Forget, not delete: on a usenet client the history outlives the
         // transfer, and it is the history that refuses the release.
@@ -56,8 +54,7 @@ public sealed class ClearingRefusedDownloadsTests
         var blocklist = Blocklist(Refused("hash-1"));
         var clients = Clients();
 
-        await Planner().RunBlockedReleaseCleanupAsync(
-            blocklist.Object, clients.Object, Sharing("hash-1"), CancellationToken.None);
+        await Cleanup(blocklist.Object, clients.Object, Sharing("hash-1")).CleanUpEverythingAsync(CancellationToken.None);
 
         clients.VerifyNoOtherCalls();
         blocklist.Verify(list => list.MarkCleanedUpAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
@@ -76,7 +73,7 @@ public sealed class ClearingRefusedDownloadsTests
                 It.IsAny<string>(), It.IsAny<DownloadClientActionRequest>(), It.IsAny<CancellationToken>()))
             .ThrowsAsync(new HttpRequestException("The client is not answering."));
 
-        await Planner().RunBlockedReleaseCleanupAsync(blocklist.Object, clients.Object, Sharing(), CancellationToken.None);
+        await Cleanup(blocklist.Object, clients.Object, Sharing()).CleanUpEverythingAsync(CancellationToken.None);
 
         blocklist.Verify(list => list.MarkCleanedUpAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
     }
@@ -87,26 +84,75 @@ public sealed class ClearingRefusedDownloadsTests
         var blocklist = Blocklist();
         var clients = Clients();
 
-        await Planner().RunBlockedReleaseCleanupAsync(blocklist.Object, clients.Object, Sharing(), CancellationToken.None);
+        await Cleanup(blocklist.Object, clients.Object, Sharing()).CleanUpEverythingAsync(CancellationToken.None);
 
         clients.VerifyNoOtherCalls();
     }
 
+    /// <summary>
+    /// The manual half. DESIGN-007: "nothing automatic is only automatic" —
+    /// a refusal that predates the setting, or one whose client was off when
+    /// the schedule came round, can be cleared by hand.
+    /// </summary>
+    [Fact]
+    public async Task One_refusal_can_be_cleared_by_hand()
+    {
+        var blocklist = Blocklist(Refused("hash-1"));
+        var clients = Clients();
+
+        var outcome = await Cleanup(blocklist.Object, clients.Object, Sharing())
+            .CleanUpOneAsync("block-1", CancellationToken.None);
+
+        Assert.Equal(RefusedDownloadCleanupOutcomes.Cleared, outcome);
+        blocklist.Verify(list => list.MarkCleanedUpAsync("block-1", It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    /// <summary>
+    /// And the button does not get to overrule the sharing rule either. A
+    /// manual override that ignored the tracker would be a good way to lose an
+    /// account.
+    /// </summary>
+    [Fact]
+    public async Task Clearing_by_hand_still_waits_for_the_sharing_rule()
+    {
+        var blocklist = Blocklist(Refused("hash-1"));
+        var clients = Clients();
+
+        var outcome = await Cleanup(blocklist.Object, clients.Object, Sharing("hash-1"))
+            .CleanUpOneAsync("block-1", CancellationToken.None);
+
+        Assert.Equal(RefusedDownloadCleanupOutcomes.StillSharing, outcome);
+        clients.VerifyNoOtherCalls();
+    }
+
+    /// <summary>
+    /// Told apart, because they need different words on the screen: one is
+    /// "there was nothing left to clear", the other is "that is not a thing".
+    /// </summary>
+    [Fact]
+    public async Task A_refusal_with_nothing_left_to_clear_is_not_the_same_as_one_that_does_not_exist()
+    {
+        var blocklist = Blocklist();
+        blocklist.Setup(list => list.ListAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync([Refused("hash-1")]);
+
+        var cleanup = Cleanup(blocklist.Object, Clients().Object, Sharing());
+
+        Assert.Equal(
+            RefusedDownloadCleanupOutcomes.NothingToClear,
+            await cleanup.CleanUpOneAsync("block-1", CancellationToken.None));
+        Assert.Equal(
+            RefusedDownloadCleanupOutcomes.NotFound,
+            await cleanup.CleanUpOneAsync("never-blocked", CancellationToken.None));
+    }
+
     // ------------------------------------------------------------------ helpers
 
-    private static WorkPlanner Planner()
-    {
-        var jobs = new Mock<IJobQueueRepository>();
-        jobs.Setup(repository => repository.TryClaimScheduledPassAsync(
-                It.IsAny<string>(), It.IsAny<TimeSpan>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(true);
-
-        return new WorkPlanner(
-            NullLogger<WorkPlanner>.Instance,
-            jobs.Object,
-            new ConfigurationBuilder().Build(),
-            TimeProvider.System);
-    }
+    private static RefusedDownloadCleanupService Cleanup(
+        IBlockedReleaseRepository blocklist,
+        IDownloadClientTelemetryService clients,
+        IDownloadSharingRepository sharing)
+        => new(blocklist, clients, sharing, NullLogger<RefusedDownloadCleanupService>.Instance);
 
     private static Mock<IBlockedReleaseRepository> Blocklist(params BlockedRelease[] pending)
     {

@@ -224,6 +224,22 @@ public static class FilesystemEndpointRouteBuilderExtensions
             return result.Repaired ? Results.Ok(result) : Results.Conflict(result);
         });
 
+        // The manual half of the scheduled file check. DESIGN-007: "everything
+        // we have decided as far as a lot of the behaviour can have manual
+        // overrides like if a file is missing and the schedule hasn't run, a
+        // user can manually trigger a refresh of the library and it should come
+        // up as missing and then the user can manually trigger a search".
+        //
+        // It calls the same service the schedule calls, so the answer cannot
+        // depend on which one ran.
+        filesystem.MapPost("/file-check", async (
+            ILibraryFileCheckService fileCheck,
+            CancellationToken cancellationToken) =>
+        {
+            var result = await fileCheck.RunAsync(cancellationToken);
+            return Results.Ok(result);
+        });
+
         return endpoints;
     }
 

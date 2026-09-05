@@ -11,7 +11,11 @@ vi.mock("../shell/toaster", () => ({
   toast: { success: vi.fn(), warning: vi.fn(), error: vi.fn() }
 }));
 const { toast: toasts } = (await import("../shell/toaster")) as unknown as {
-  toast: { success: ReturnType<typeof vi.fn>; error: ReturnType<typeof vi.fn> };
+  toast: {
+    success: ReturnType<typeof vi.fn>;
+    warning: ReturnType<typeof vi.fn>;
+    error: ReturnType<typeof vi.fn>;
+  };
 };
 
 /**
@@ -137,6 +141,60 @@ describe("the blocklist", () => {
       render(<BlockedReleasesConsole releases={[release()]} rules={[]} onChanged={vi.fn()} />);
 
       expect(screen.queryByRole("heading", { name: /waiting for you/i })).not.toBeInTheDocument();
+    });
+  });
+
+  /**
+   * The manual half of the scheduled clear-out — for a refusal that predates
+   * the setting, or one whose client was off when the schedule came round.
+   * DESIGN-007: nothing automatic is only automatic.
+   */
+  describe("clearing up a refused copy by hand", () => {
+    it("says what the download client was asked to do", async () => {
+      vi.mocked(authedFetch).mockResolvedValue({
+        ok: true,
+        json: async () => ({ outcome: "cleared" })
+      } as Response);
+      const onChanged = vi.fn();
+
+      render(<BlockedReleasesConsole releases={[release()]} rules={[]} onChanged={onChanged} />);
+      await userEvent.click(screen.getByRole("button", { name: /clean up now/i }));
+
+      expect(authedFetch).toHaveBeenCalledWith("/api/blocked-releases/block-1/cleanup", { method: "POST" });
+      expect(toasts.success).toHaveBeenCalledWith(expect.stringContaining("Cleared at the download client"));
+      expect(onChanged).toHaveBeenCalled();
+    });
+
+    /**
+     * The one that matters. Pressing a button does not get to overrule the
+     * rule that knows what the tracker expects — and being told to wait is not
+     * a failure, so it must not read like one.
+     */
+    it("reads as a deliberate wait, not an error, when the tracker still needs it", async () => {
+      vi.mocked(authedFetch).mockResolvedValue({
+        ok: true,
+        json: async () => ({ outcome: "stillSharing" })
+      } as Response);
+
+      render(<BlockedReleasesConsole releases={[release()]} rules={[]} onChanged={vi.fn()} />);
+      await userEvent.click(screen.getByRole("button", { name: /clean up now/i }));
+
+      expect(toasts.warning).toHaveBeenCalledWith(expect.stringContaining("sharing rule still needs"));
+      expect(toasts.error).not.toHaveBeenCalled();
+    });
+
+    /// A client that is off now will not be off for ever, so the words say it
+    /// will be tried again rather than that it failed for good.
+    it("says a silent client will be tried again", async () => {
+      vi.mocked(authedFetch).mockResolvedValue({
+        ok: true,
+        json: async () => ({ outcome: "clientUnavailable" })
+      } as Response);
+
+      render(<BlockedReleasesConsole releases={[release()]} rules={[]} onChanged={vi.fn()} />);
+      await userEvent.click(screen.getByRole("button", { name: /clean up now/i }));
+
+      expect(toasts.warning).toHaveBeenCalledWith(expect.stringContaining("try again"));
     });
   });
 

@@ -138,6 +138,7 @@ GET /api/quality-profile-presets/
 GET /api/quality-profiles/
 GET /api/ranking-model/status
 GET /api/recycle-bin/
+GET /api/recycle-bin/cleanup/preview
 GET /api/recycle-bin/settings
 GET /api/release-profiles/
 GET /api/release-profiles/{id}
@@ -201,6 +202,7 @@ POST /api/automation/series/{seriesId}/episodes/bulk
 POST /api/backups/
 POST /api/backups/restore
 POST /api/backups/restore/preview
+POST /api/blocked-releases/{id}/cleanup
 POST /api/blocked-releases/{id}/refuse
 POST /api/connections/
 POST /api/custom-formats/
@@ -217,6 +219,7 @@ POST /api/download-clients/{clientId}/webhook
 POST /api/download-clients/{id}/path-mappings
 POST /api/download-clients/{id}/path-mappings/{mappingId}/test
 POST /api/download-clients/{id}/test
+POST /api/filesystem/file-check
 POST /api/filesystem/import/execute
 POST /api/filesystem/import/jobs
 POST /api/filesystem/import/preview

@@ -1,15 +1,12 @@
-using Deluno.Contracts;
 using Deluno.Filesystem;
 using Deluno.Jobs.Data;
-using Deluno.Worker.Services;
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 
 namespace Deluno.Worker.Tests.Services;
 
 /// <summary>
-/// The pass that stops Deluno claiming to hold files that are gone.
+/// The check that stops Deluno claiming to hold files that are gone.
 ///
 /// <para>Deluno never looked at a file again after importing it, so a film
 /// deleted outside Deluno still showed as held, was never searched for, and
@@ -17,6 +14,11 @@ namespace Deluno.Worker.Tests.Services;
 /// it would not download. Three wrong answers, all sounding certain. The scan
 /// and the repair both already existed; nothing ran them. DESIGN-007 decision
 /// 11.</para>
+///
+/// <para>The same service backs the <b>Check library files now</b> button, so
+/// these are equally the guards on what that button does. There is one
+/// implementation on purpose: the moment there are two, the answer starts
+/// depending on which one ran.</para>
 ///
 /// <para><b>What is guarded here is what the pass refuses to touch.</b> It runs
 /// unattended, so the question is not whether it works but whether it can do
@@ -33,7 +35,7 @@ public sealed class LibraryFileCheckTests
     {
         var reconciliation = Reconciliation(Missing("movie-1"), Missing("movie-2"));
 
-        await Planner().RunLibraryFileCheckAsync(reconciliation.Object, Mock.Of<IActivityFeedRepository>(), CancellationToken.None);
+        await Check(reconciliation.Object).RunAsync(CancellationToken.None);
 
         reconciliation.Verify(
             service => service.RepairAsync(
@@ -54,7 +56,7 @@ public sealed class LibraryFileCheckTests
             Issue("partialImportArtifact", "cleanup-artifact"),
             Issue("libraryRootUnreachable"));
 
-        await Planner().RunLibraryFileCheckAsync(reconciliation.Object, Mock.Of<IActivityFeedRepository>(), CancellationToken.None);
+        await Check(reconciliation.Object).RunAsync(CancellationToken.None);
 
         // Exactly one repair, and it is the one that only edits a database row.
         reconciliation.Verify(
@@ -76,7 +78,7 @@ public sealed class LibraryFileCheckTests
     {
         var activity = new Mock<IActivityFeedRepository>();
 
-        await Planner().RunLibraryFileCheckAsync(Reconciliation(Missing("movie-1")).Object, activity.Object, CancellationToken.None);
+        await Check(Reconciliation(Missing("movie-1")).Object, activity.Object).RunAsync(CancellationToken.None);
 
         activity.Verify(
             feed => feed.RecordActivityAsync(
@@ -99,28 +101,20 @@ public sealed class LibraryFileCheckTests
     {
         var activity = new Mock<IActivityFeedRepository>();
 
-        await Planner().RunLibraryFileCheckAsync(Reconciliation().Object, activity.Object, CancellationToken.None);
+        await Check(Reconciliation().Object, activity.Object).RunAsync(CancellationToken.None);
 
         activity.VerifyNoOtherCalls();
     }
 
     // ------------------------------------------------------------------ helpers
 
-    private static WorkPlanner Planner()
-    {
-        var jobs = new Mock<IJobQueueRepository>();
-        jobs.Setup(repository => repository.TryClaimScheduledPassAsync(
-                It.IsAny<string>(),
-                It.IsAny<TimeSpan>(),
-                It.IsAny<CancellationToken>()))
-            .ReturnsAsync(true);
-
-        return new WorkPlanner(
-            NullLogger<WorkPlanner>.Instance,
-            jobs.Object,
-            new ConfigurationBuilder().Build(),
-            TimeProvider.System);
-    }
+    private static LibraryFileCheckService Check(
+        IFilesystemReconciliationService reconciliation,
+        IActivityFeedRepository? activity = null)
+        => new(
+            reconciliation,
+            activity ?? Mock.Of<IActivityFeedRepository>(),
+            NullLogger<LibraryFileCheckService>.Instance);
 
     private static Mock<IFilesystemReconciliationService> Reconciliation(params FilesystemReconciliationIssue[] issues)
     {

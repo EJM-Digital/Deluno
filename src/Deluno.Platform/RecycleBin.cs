@@ -21,6 +21,19 @@ public sealed record RecycleBinItem(
     DateTimeOffset CreatedUtc,
     DateTimeOffset ExpiresUtc);
 
+/// <param name="Items">Exactly what a manual empty would take, in the order it would take it.</param>
+/// <param name="ExpiredCount">Items past their retention date.</param>
+/// <param name="OverCapacityCount">
+/// Items that have not expired but are going anyway because the bin is over
+/// its size limit. Counted separately because those are the ones somebody
+/// might want back, and a total on its own would hide them.
+/// </param>
+public sealed record RecycleBinCleanupPreview(
+    IReadOnlyList<RecycleBinItem> Items,
+    int ExpiredCount,
+    int OverCapacityCount,
+    long BytesFreed);
+
 public sealed record RecycleBinMoveResult(
     int MovedFileCount,
     int MovedFolderCount,
@@ -49,6 +62,15 @@ public interface IRecycleBinService
     Task<RecycleBinOperationResult> RestoreAsync(string id, CancellationToken cancellationToken);
     Task<RecycleBinOperationResult> PermanentlyDeleteAsync(string id, CancellationToken cancellationToken);
     Task<int> CleanupAsync(CancellationToken cancellationToken);
+
+    /// <summary>
+    /// What a manual empty would take, without taking it.
+    ///
+    /// <para>DESIGN-007 decision 15: <i>"Enforce retention automatically, and
+    /// show what a manual empty takes"</i>. Permanent deletion that only tells
+    /// you afterwards is not a choice, it is a report.</para>
+    /// </summary>
+    Task<RecycleBinCleanupPreview> PreviewCleanupAsync(CancellationToken cancellationToken);
 }
 
 /// <summary>
@@ -415,22 +437,10 @@ public sealed class RecycleBinService(
     {
         var now = timeProvider.GetUtcNow();
         var removed = 0;
-        var candidates = state.Items
-            .Where(item => item.ExpiresUtc <= now)
-            .OrderBy(item => item.ExpiresUtc)
-            .Concat(state.Items.OrderBy(item => item.CreatedUtc))
-            .DistinctBy(item => item.Id)
-            .ToList();
 
-        foreach (var item in candidates)
+        foreach (var item in ItemsRetentionWouldTake(state, now))
         {
             cancellationToken.ThrowIfCancellationRequested();
-            var totalBytes = state.Items.Sum(entry => Math.Max(0, entry.SizeBytes));
-            if (item.ExpiresUtc > now && totalBytes <= state.Settings.MaxSizeMb * 1024L * 1024L)
-            {
-                break;
-            }
-
             try
             {
                 DeletePath(item.RecyclePath, item.IsDirectory);
@@ -445,6 +455,70 @@ public sealed class RecycleBinService(
         }
 
         return removed;
+    }
+
+    /// <summary>
+    /// Which items retention says should go, in the order it would take them:
+    /// expired first, oldest first, then whatever else it takes to get back
+    /// under the size limit.
+    ///
+    /// <para>Chosen once and used by both the deleting and the showing, so the
+    /// preview cannot promise one thing and the empty do another. Deciding this
+    /// twice is exactly how a "this will remove 3 items" dialog ends up
+    /// removing five.</para>
+    ///
+    /// <para>It assumes each deletion succeeds. It previously recounted the
+    /// bin's size from the surviving items on every step, which meant a file
+    /// Deluno could not delete made it delete <em>another</em> one to make up
+    /// the space. Failing to free space is a reason to stop and retry, not a
+    /// reason to take more than was shown.</para>
+    /// </summary>
+    private static IReadOnlyList<RecycleBinItem> ItemsRetentionWouldTake(RecycleBinState state, DateTimeOffset now)
+    {
+        var candidates = state.Items
+            .Where(item => item.ExpiresUtc <= now)
+            .OrderBy(item => item.ExpiresUtc)
+            .Concat(state.Items.OrderBy(item => item.CreatedUtc))
+            .DistinctBy(item => item.Id)
+            .ToList();
+
+        var capacityBytes = state.Settings.MaxSizeMb * 1024L * 1024L;
+        var remainingBytes = state.Items.Sum(entry => Math.Max(0, entry.SizeBytes));
+        var taking = new List<RecycleBinItem>();
+
+        foreach (var item in candidates)
+        {
+            if (item.ExpiresUtc > now && remainingBytes <= capacityBytes)
+            {
+                break;
+            }
+
+            taking.Add(item);
+            remainingBytes -= Math.Max(0, item.SizeBytes);
+        }
+
+        return taking;
+    }
+
+    public async Task<RecycleBinCleanupPreview> PreviewCleanupAsync(CancellationToken cancellationToken)
+    {
+        await gate.WaitAsync(cancellationToken);
+        try
+        {
+            var state = await ReadStateAsync(cancellationToken);
+            var now = timeProvider.GetUtcNow();
+            var taking = ItemsRetentionWouldTake(state, now);
+
+            return new RecycleBinCleanupPreview(
+                taking,
+                taking.Count(item => item.ExpiresUtc <= now),
+                taking.Count(item => item.ExpiresUtc > now),
+                taking.Sum(item => Math.Max(0, item.SizeBytes)));
+        }
+        finally
+        {
+            gate.Release();
+        }
     }
 
     private static UnitSet BuildUnits(

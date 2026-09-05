@@ -21,6 +21,9 @@ public static class FilesystemServiceCollectionExtensions
         services.AddSingleton<ISubtitleTimingSync, SubtitleTimingSyncService>();
         services.AddScoped<IImportPipelineService, ImportPipelineService>();
         services.AddScoped<IFilesystemReconciliationService, FilesystemReconciliationService>();
+        // Scoped, because the reconciliation it wraps is. The button and the
+        // schedule resolve the same registration.
+        services.AddScoped<ILibraryFileCheckService, LibraryFileCheckService>();
         return services;
     }
 }

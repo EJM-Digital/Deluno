@@ -59,6 +59,14 @@ public static class PlatformEndpointRouteBuilderExtensions
             CancellationToken cancellationToken) =>
             Results.Ok(await service.SaveSettingsAsync(request, cancellationToken)));
 
+        // Says what an empty would take, before it takes it. Decision 15:
+        // permanent deletion that only tells you afterwards is not a choice,
+        // it is a report.
+        recycleBin.MapGet("/cleanup/preview", async (
+            IRecycleBinService service,
+            CancellationToken cancellationToken) =>
+            Results.Ok(await service.PreviewCleanupAsync(cancellationToken)));
+
         recycleBin.MapPost("/cleanup", async (
             IRecycleBinService service,
             CancellationToken cancellationToken) =>

@@ -38,6 +38,9 @@ public static class IntegrationsServiceCollectionExtensions
         services.AddSingleton<IDownloadClientRegistry, DownloadClientRegistry>();
         services.AddScoped<IDownloadClientTelemetryService, DownloadClientTelemetryService>();
         services.AddScoped<IDownloadClientGrabService, DownloadClientGrabService>();
+        // Scoped, because the telemetry service it drives is. The schedule and
+        // the "clean up now" button resolve the same registration.
+        services.AddScoped<IRefusedDownloadCleanupService, RefusedDownloadCleanupService>();
         services.AddScoped<IDownloadClientWebhookService, DownloadClientWebhookService>();
         services.AddScoped<IProcessorConnectionService, ProcessorConnectionService>();
 
