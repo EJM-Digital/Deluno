@@ -1,3 +1,4 @@
+using Deluno.Api.BlockedReleases;
 using Deluno.Contracts.Manifest;
 using Deluno.Api.Backup;
 using Deluno.Api.Downloads;
@@ -83,6 +84,7 @@ public static class DelunoApiExtensions
         }
 
         endpoints.MapDelunoDashboardMetricsEndpoints();
+        endpoints.MapDelunoBlockedReleaseEndpoints();
 
         return endpoints;
     }

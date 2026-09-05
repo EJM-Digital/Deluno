@@ -30,7 +30,9 @@ public static class JobsDatabaseMigrations
         new V0022DownloadDispatchImportFailureDetails(),
         new V0023DownloadDispatchGrabFailureDetails(),
         new V0024DownloadDispatchReplacementAuthority(),
-        new V0025DownloadDispatchReplacementManifest()
+        new V0025DownloadDispatchReplacementManifest(),
+        new V0026BlockedReleases(),
+        new V0027BlockedReleaseCleanup()
     ];
 
     private sealed class V0001InitialSchema : SqliteSqlMigration

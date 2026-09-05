@@ -270,6 +270,94 @@ public sealed class WorkPlanner(
             "Library file check failed.",
             cancellationToken);
 
+    /// <summary>
+    /// Clears the leftovers of a refused release, when the sharing rule no
+    /// longer needs them.
+    ///
+    /// <para>James found the hole this fills: <i>"if we are refusing something,
+    /// is it being deleted and cleaned up so there are no traces of it"</i>. It
+    /// was not — a refused copy kept costing disk and kept sitting in the
+    /// queue, and the client kept remembering it, so the day you un-refused it
+    /// the client would silently decline to fetch it.</para>
+    ///
+    /// <para><b>It asks the client to forget, not to delete.</b> On a torrent
+    /// client those are one request; on SABnzbd and NZBGet, forgetting also
+    /// clears the history that outlives the transfer, which is the half that
+    /// lets the release back in.</para>
+    ///
+    /// <para><b>And it waits for the sharing rule.</b> A copy still under a
+    /// hold is left alone and tried again next pass — the rule knows what the
+    /// site expects, and this does not.</para>
+    /// </summary>
+    public Task RunBlockedReleaseCleanupAsync(
+        IBlockedReleaseRepository blockedReleases,
+        IDownloadClientTelemetryService downloadClients,
+        IDownloadSharingRepository sharingRepository,
+        CancellationToken cancellationToken)
+        => RunScheduledPassAsync(
+            SystemTasks.BlockedReleaseCleanup,
+            async () =>
+            {
+                var pending = await blockedReleases.ListAwaitingCleanupAsync(cancellationToken);
+                if (pending.Count == 0)
+                {
+                    return;
+                }
+
+                var holds = (await sharingRepository.GetSnapshotAsync(cancellationToken)).Holds
+                    .Select(hold => hold.QueueItemId)
+                    .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+                var cleared = 0;
+                var waiting = 0;
+
+                foreach (var release in pending)
+                {
+                    if (release.TorrentHashOrItemId is not { Length: > 0 } queueItemId ||
+                        release.DownloadClientId is not { Length: > 0 } clientId)
+                    {
+                        continue;
+                    }
+
+                    if (holds.Contains(queueItemId))
+                    {
+                        waiting++;
+                        continue;
+                    }
+
+                    try
+                    {
+                        var result = await downloadClients.ExecuteActionAsync(
+                            clientId,
+                            new DownloadClientActionRequest(DownloadClientActions.Forget, queueItemId),
+                            cancellationToken);
+
+                        if (result.Succeeded)
+                        {
+                            await blockedReleases.MarkCleanedUpAsync(release.Id, cancellationToken);
+                            cleared++;
+                        }
+                    }
+                    catch (Exception exception) when (exception is not OperationCanceledException)
+                    {
+                        // Left unmarked on purpose, so the next pass tries
+                        // again. A client that is off right now will not be
+                        // off for ever.
+                        logger.LogWarning(exception, "Could not clear the blocked release {ReleaseName}.", release.ReleaseName);
+                    }
+                }
+
+                if (cleared > 0 || waiting > 0)
+                {
+                    logger.LogInformation(
+                        "Cleared {ClearedCount} refused download(s); {WaitingCount} still held by the sharing rule.",
+                        cleared,
+                        waiting);
+                }
+            },
+            "Blocked release cleanup failed.",
+            cancellationToken);
+
     public Task RunRecycleBinCleanupAsync(
         IRecycleBinService recycleBinService,
         CancellationToken cancellationToken)

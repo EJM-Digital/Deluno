@@ -54,7 +54,11 @@ export const BLOCKER_TONE: Record<string, Tone> = {
   // Warn rather than bad. Deluno fetched this once and no longer has it —
   // that is worth acting on, and it is nobody's fault. Red is reserved for
   // the exclusion, which is a decision someone made.
-  [ACQUISITION_BLOCKER_KINDS.previouslyDownloaded]: "warn"
+  [ACQUISITION_BLOCKER_KINDS.previouslyDownloaded]: "warn",
+  // Idle, not warning. Deluno refusing a bad release is Deluno working; this
+  // row is here so the mechanism cannot hide, not to suggest something is
+  // wrong.
+  [ACQUISITION_BLOCKER_KINDS.releasesBlocked]: "idle"
 };
 
 export interface AcquisitionBlockersCardProps {

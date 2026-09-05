@@ -361,6 +361,22 @@ original trap, reappearing at the far end of the same feature.
 
 ---
 
+### A seventeenth reason, found by the guard rather than by me
+
+This table was written from a survey of the import pipeline, and the survey
+missed one: `io`, an `IOException` during the move or copy itself. It was
+invisible to the search that found the other fifteen because the code is two
+letters long.
+
+It surfaced because the table is executable. The test that walks it reads the
+pipeline's own call sites and refuses any reason nobody has decided about — and
+it failed the first time it ran, on a reason I had not seen. That is the whole
+argument for building the table as code rather than prose: a document cannot
+notice what its author did not.
+
+`io` is environmental — still downloading, locked by another process, a network
+path that went away — so it never refuses a release.
+
 ## Two rules that apply to everything above
 
 James, having gone through all sixteen:
@@ -521,7 +537,8 @@ search after the normal retry delay (10); an activity entry (13).
 | `noVideoStream` | **permanent** | no | no | Payload **deleted** — it is not a film |
 | `likelySample` | **permanent** | no | no | Payload **deleted** |
 | `unsupportedFile` | **permanent** | no | no | — |
-| `mediaProbeFailed` | **contentious** | no | no | — |
+| `mediaProbeRejected` | **permanent** | no | no | ffprobe read it and refused it |
+| `mediaProbeUnreadable` | **one retry** | no | no | Deluno could not get at the file; says nothing about the release |
 | `unmatched` | **contentious** | no | **raised** | Deluno needs help identifying it |
 | `importFailed` | **contentious** | no | **raised** | — |
 | `replacementRejected` | **contentious** | no | no | Not a failure at all — see below |
@@ -533,6 +550,7 @@ search after the normal retry delay (10); an activity entry (13).
 | `missingSource` | no | **counts** | no | The client said done and the file is gone — that is the client's fault |
 | `samePath` | no | no | no | Nothing to do; activity only |
 | `conflict` | no | no | **raised** | Something is already there; a person decides |
+| `io` | no | no | no | The move itself threw — still downloading, locked, or a network path that went away |
 
 Three of those deserve their reason stated.
 

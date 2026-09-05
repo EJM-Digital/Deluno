@@ -1,4 +1,6 @@
 using Deluno.Integrations.DownloadClients;
+using Deluno.Contracts;
+using Deluno.Jobs.Data;
 using Deluno.Jobs.Decisions;
 using Deluno.Libraries.Contracts;
 using Deluno.Platform.Contracts;
@@ -28,17 +30,20 @@ public sealed class AcquisitionDecisionPipeline : IAcquisitionDecisionPipeline
     private readonly IReleaseRankingModelService rankingModelService;
     private readonly IIntelligentRoutingService? intelligentRoutingService;
     private readonly IConnectionsRepository? connectionsRepository;
+    private readonly IBlockedReleaseRepository? blockedReleases;
 
     public AcquisitionDecisionPipeline(
         IMediaSearchPlanner mediaSearchPlanner,
         IReleaseRankingModelService? rankingModelService = null,
         IIntelligentRoutingService? intelligentRoutingService = null,
-        IConnectionsRepository? connectionsRepository = null)
+        IConnectionsRepository? connectionsRepository = null,
+        IBlockedReleaseRepository? blockedReleases = null)
     {
         this.mediaSearchPlanner = mediaSearchPlanner;
         this.rankingModelService = rankingModelService ?? DisabledRankingModelService;
         this.intelligentRoutingService = intelligentRoutingService;
         this.connectionsRepository = connectionsRepository;
+        this.blockedReleases = blockedReleases;
     }
 
     public async Task<AcquisitionDecisionPlan> PlanAsync(
@@ -98,6 +103,8 @@ public sealed class AcquisitionDecisionPipeline : IAcquisitionDecisionPipeline
                 request.SizeRules,
                 request.UpgradeStop,
                 request.ProfileAcquisition);
+
+        searchPlan = await SkipBlockedReleasesAsync(searchPlan, cancellationToken);
 
         var bestCandidate = searchPlan.BestCandidate;
         var outcome = sourceCount == 0 || clientCount == 0
@@ -234,6 +241,74 @@ public sealed class AcquisitionDecisionPipeline : IAcquisitionDecisionPipeline
             RequiresOverride: !safe && !replacementBlocked,
             Reason: reason,
             Alternatives: BuildDecisionAlternatives(new MediaSearchPlan(candidate, [candidate], candidate.Summary)));
+    }
+
+    /// <summary>
+    /// Drops candidates Deluno has already decided not to use, and says how
+    /// many.
+    ///
+    /// <para>The saying is the point. A silent skip is the behaviour James
+    /// objected to in Radarr: a title stops arriving and nothing accounts for
+    /// it. Worse, once every candidate has been blocked, a silent skip becomes
+    /// "no results found" — which is a lie about the indexers.</para>
+    ///
+    /// <para>Applied after the plan is built rather than inside the planner.
+    /// By then the candidates are ordered and de-duplicated and the best is
+    /// simply the first of them, so filtering here and taking the first
+    /// survivor reuses every tie-break rather than repeating any of it.</para>
+    /// </summary>
+    private async Task<MediaSearchPlan> SkipBlockedReleasesAsync(
+        MediaSearchPlan plan,
+        CancellationToken cancellationToken)
+    {
+        if (blockedReleases is null || plan.Candidates.Count == 0)
+        {
+            return plan;
+        }
+
+        var blockedKeys = await blockedReleases.ListKeysAsync(cancellationToken);
+        return ApplyBlocklist(plan, blockedKeys);
+    }
+
+    /// <summary>
+    /// The decision itself, with nothing to fetch — separated so it can be
+    /// tested against a set of keys rather than against a planner with twenty
+    /// arguments and a database behind it.
+    /// </summary>
+    public static MediaSearchPlan ApplyBlocklist(MediaSearchPlan plan, IReadOnlySet<string> blockedKeys)
+    {
+        if (blockedKeys.Count == 0 || plan.Candidates.Count == 0)
+        {
+            return plan;
+        }
+
+        var kept = plan.Candidates
+            .Where(candidate => !blockedKeys.Contains(BlockedReleaseKeys.For(candidate.ReleaseName, candidate.IndexerName)))
+            .ToArray();
+
+        var skipped = plan.Candidates.Count - kept.Length;
+        if (skipped == 0)
+        {
+            return plan;
+        }
+
+        var best = kept.FirstOrDefault();
+        var note = skipped == 1
+            ? "Skipped 1 release you have blocked."
+            : $"Skipped {skipped} releases you have blocked.";
+
+        return plan with
+        {
+            BestCandidate = best,
+            Candidates = kept,
+            // When everything was blocked the old summary described a best
+            // candidate that no longer exists, and "no usable release" alone
+            // would blame the indexers for a decision Deluno made.
+            Summary = best is null
+                ? $"{note} Nothing else was offered."
+                : $"{plan.Summary} {note}",
+            Reason = best is null ? MediaSearchReasons.NoUsableRelease : plan.Reason
+        };
     }
 
     public static bool IsSafeForAutomaticDispatch(MediaSearchCandidate candidate)

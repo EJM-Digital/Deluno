@@ -319,6 +319,11 @@ public sealed class DelunoHeartbeatWorker(
             await workPlanner.RunRecycleBinCleanupAsync(
                 services.GetRequiredService<IRecycleBinService>(),
                 stoppingToken);
+            await workPlanner.RunBlockedReleaseCleanupAsync(
+                services.GetRequiredService<IBlockedReleaseRepository>(),
+                services.GetRequiredService<IDownloadClientTelemetryService>(),
+                services.GetRequiredService<IDownloadSharingRepository>(),
+                stoppingToken);
             await workPlanner.RunLibraryFileCheckAsync(
                 services.GetRequiredService<IFilesystemReconciliationService>(),
                 activityFeedRepository,

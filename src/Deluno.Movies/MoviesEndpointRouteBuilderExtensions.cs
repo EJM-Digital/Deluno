@@ -533,6 +533,7 @@ public static class MoviesEndpointRouteBuilderExtensions
             IUnifiedExclusionRepository exclusions,
             IDownloadDispatchesRepository dispatches,
             IProcessorRepository processors,
+            IBlockedReleaseRepository blockedReleases,
             CancellationToken cancellationToken) =>
         {
             var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
@@ -555,6 +556,7 @@ public static class MoviesEndpointRouteBuilderExtensions
             // own dispatch record, so it answers with the client switched off.
             var fetchedBefore = await AcquisitionBlockerSources.FindPreviousFetchAsync(
                 dispatches, "movies", id, cancellationToken);
+            var blocked = await blockedReleases.ListForAsync("movies", id, cancellationToken);
 
             return Results.Ok(await gatherer.GatherAsync(
                 MediaKind.Movie,
@@ -565,7 +567,8 @@ public static class MoviesEndpointRouteBuilderExtensions
                 excluded,
                 cancellationToken,
                 fetchedBefore?.ClientName,
-                fetchedBefore?.WhenUtc));
+                fetchedBefore?.WhenUtc,
+                blocked.Count));
         });
 
         // Clear what is standing in the way, deliberately and on the record.

@@ -123,4 +123,16 @@ public static class AcquisitionBlockerKinds
     /// case somebody hits when they delete a film and ask for it again.</para>
     /// </summary>
     public const string PreviouslyDownloaded = "previously-downloaded";
+
+    /// <summary>
+    /// Releases for this title have been refused, so searches are working with
+    /// fewer options than the indexers offered.
+    ///
+    /// <para>Stated rather than blamed. Deluno cannot know from here whether a
+    /// good candidate still exists — that needs a search — so this reports the
+    /// fact and offers the undo, instead of claiming to be the reason nothing
+    /// has arrived. It exists because the blocklist is a mechanism that can
+    /// itself become the problem, and it should have to answer for that.</para>
+    /// </summary>
+    public const string ReleasesBlocked = "releases-blocked";
 }

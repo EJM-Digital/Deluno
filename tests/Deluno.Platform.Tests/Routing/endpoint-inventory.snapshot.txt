@@ -4,6 +4,7 @@
  /hubs/deluno/negotiate
 DELETE /api/api-keys/{id}
 DELETE /api/backups/{id}
+DELETE /api/blocked-releases/{id}
 DELETE /api/connections/{id}
 DELETE /api/custom-formats/{id}
 DELETE /api/destination-rules/{id}
@@ -41,6 +42,7 @@ GET /api/automation/summary
 GET /api/backups/
 GET /api/backups/settings
 GET /api/backups/{id}/download
+GET /api/blocked-releases
 GET /api/calendar/feed.ics
 GET /api/connections/
 GET /api/custom-formats/
