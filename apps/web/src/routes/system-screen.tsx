@@ -50,6 +50,7 @@ import { authedFetch } from "../lib/use-auth";
 import { densityDisplayName } from "../lib/use-density";
 import { Button } from "../components/ui/button";
 import { ConfirmDialog } from "../components/ui/confirm-dialog";
+import { describeCleanup, type RecycleBinCleanupPreview } from "../lib/recycle-bin-words";
 import type { DrawerSaveState } from "../components/ui/drawer";
 import { Field } from "../components/ui/field";
 import { Input } from "../components/ui/input";
@@ -297,20 +298,102 @@ function jobTypeLabel(jobType: string) {
   return tail.charAt(0).toUpperCase() + tail.slice(1).replace(/([A-Z])/g, " $1");
 }
 
+/**
+ * The passes you can also start by hand, and what to call it.
+ *
+ * <p>DESIGN-007: "everything we have decided as far as a lot of the behaviour
+ * can have manual overrides like if a file is missing and the schedule hasn't
+ * run, a user can manually trigger a refresh of the library and it should come
+ * up as missing and then the user can manually trigger a search". A person
+ * should never have to wait for a timer to find out what Deluno thinks.</p>
+ *
+ * <p>Keyed rather than blanket, because most passes have no manual route and a
+ * button that quietly does nothing is worse than no button. The endpoint here
+ * runs the same service the schedule runs — there is one implementation, so
+ * the answer cannot depend on which one started it.</p>
+ */
+const RUN_NOW: Record<string, { path: string; label: string; said: (result: LibraryFileCheckResult) => string }> = {
+  "library.file.check": {
+    path: "/api/filesystem/file-check",
+    // Not "Check now": the metadata maintenance card on this same screen
+    // already has one, and it checks something else entirely. Two buttons with
+    // one name on one screen is a coin toss for the reader, and Playwright
+    // found it before a person did.
+    label: "Check files now",
+    said: (result) =>
+      result.markedMissing === 0 && result.unreachableRoots === 0
+        ? "Every file Deluno is holding is still on disk."
+        : [
+            result.markedMissing === 1
+              ? "1 title is now missing — search for it when you want it back."
+              : result.markedMissing > 1
+                ? `${result.markedMissing} titles are now missing — search for them when you want them back.`
+                : null,
+            result.unreachableRoots > 0
+              ? `${result.unreachableRoots} library ${result.unreachableRoots === 1 ? "root is" : "roots are"} unreachable, and nothing in ${result.unreachableRoots === 1 ? "it was" : "them was"} touched.`
+              : null
+          ]
+            .filter(Boolean)
+            .join(" ")
+  }
+};
+
+interface LibraryFileCheckResult {
+  markedMissing: number;
+  unreachableRoots: number;
+}
+
 function SystemTasksCard({ tasks }: { tasks: SystemTaskItem[] }) {
   const { preferences } = useDisplayPreferences();
+  const revalidator = useRevalidator();
+  const [running, setRunning] = useState<string | null>(null);
+  const [said, setSaid] = useState<{ key: string; message: string } | null>(null);
+
+  async function runNow(task: SystemTaskItem) {
+    const trigger = RUN_NOW[task.key];
+    if (!trigger) return;
+
+    setRunning(task.key);
+    setSaid(null);
+    try {
+      const result = await fetchJson<LibraryFileCheckResult>(trigger.path, { method: "POST" });
+      setSaid({ key: task.key, message: trigger.said(result) });
+      revalidator.revalidate();
+    } catch {
+      setSaid({ key: task.key, message: "That did not finish. Nothing was changed." });
+    } finally {
+      setRunning(null);
+    }
+  }
 
   return (
     <ListCard title="System tasks" count={`${tasks.length} recurring passes · durable across restarts`}>
-      <ListTable columns={[{ label: "Task" }, { label: "Cadence", width: "140px" }, { label: "Last execution", width: "180px" }, { label: "Next execution", width: "180px" }, { label: "Result", width: LIST_TRACK.status, mobile: true }]} chevron={false}>
+      <ListTable columns={[{ label: "Task" }, { label: "Cadence", width: "140px" }, { label: "Last execution", width: "180px" }, { label: "Next execution", width: "180px" }, { label: "Result", width: LIST_TRACK.status, mobile: true }, { label: "", width: "auto", align: "end", mobile: true }]} chevron={false}>
         {tasks.map((task) => (
           <ListRow key={task.key}>
-            <ListNameCell name={task.name} sub={task.description} />
+            <ListNameCell
+              name={task.name}
+              sub={said?.key === task.key ? said.message : task.description}
+            />
             <ListCell primary={`${formatInterval(task.intervalSeconds)}${task.isConfigurable ? " · configured" : ""}`} />
             <ListCell numeric primary={task.lastCompletedUtc ? formatWhen(task.lastCompletedUtc, preferences) : "Not run yet"} secondary={task.lastDurationMs === null ? undefined : `${task.lastDurationMs}ms`} />
             <ListCell numeric primary={task.nextRunUtc ? formatWhen(task.nextRunUtc, preferences) : "Not scheduled"} />
             <ListCell mobile>
               <Chip tone={jobTone(task.lastResult)}>{task.lastResult}</Chip>
+            </ListCell>
+            <ListCell mobile align="end">
+              {RUN_NOW[task.key] ? (
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  disabled={running !== null}
+                  onClick={() => void runNow(task)}
+                >
+                  <TimerReset aria-hidden className="h-3.5 w-3.5" />
+                  {running === task.key ? "Checking…" : RUN_NOW[task.key]!.label}
+                </Button>
+              ) : null}
             </ListCell>
           </ListRow>
         ))}
@@ -343,6 +426,7 @@ function RecycleBinCard({
   const [saveState, setSaveState] = useState<Exclude<DrawerSaveState, "clean" | "dirty">>();
   const [message, setMessage] = useState<string | null>(null);
   const [deleteItem, setDeleteItem] = useState<RecycleBinItem | null>(null);
+  const [cleanupPreview, setCleanupPreview] = useState<RecycleBinCleanupPreview | null>(null);
   const dirty = useMemo(() => JSON.stringify(settings) !== JSON.stringify(savedSettings), [settings, savedSettings]);
   const footerState: DrawerSaveState = saveState === "saving" ? "saving" : dirty ? "dirty" : saveState ?? "clean";
 
@@ -408,12 +492,38 @@ function RecycleBinCard({
     }
   }
 
+  /**
+   * Asks what an empty would take, then shows it and waits.
+   *
+   * <p>DESIGN-007 decision 15: "Enforce retention automatically, and show what
+   * a manual empty takes". This used to delete first and count afterwards,
+   * which is a report rather than a choice — and permanent deletion is the one
+   * place a report after the fact is worth nothing.</p>
+   *
+   * <p>The preview comes from the server, which decides what to take with the
+   * same code that then takes it. Working it out here from the item list would
+   * be a second implementation of the retention rule, which is how a dialog
+   * saying "3 items" ends up removing five.</p>
+   */
+  async function previewCleanup() {
+    setBusy("cleanup");
+    setMessage(null);
+    try {
+      setCleanupPreview(await fetchJson<RecycleBinCleanupPreview>("/api/recycle-bin/cleanup/preview"));
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Deluno could not work out what an empty would take.");
+    } finally {
+      setBusy(null);
+    }
+  }
+
   async function cleanup() {
     setBusy("cleanup");
     setMessage(null);
     try {
       const result = await fetchJson<{ removed: number }>("/api/recycle-bin/cleanup", { method: "POST" });
       setMessage(result.removed ? `Removed ${result.removed} expired recycle-bin item${result.removed === 1 ? "" : "s"}.` : "No recycle-bin items were ready to expire.");
+      setCleanupPreview(null);
       await reload();
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Recycle-bin cleanup failed.");
@@ -454,7 +564,7 @@ function RecycleBinCard({
             </Field>
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            <Button type="button" variant="outline" disabled={busy !== null} onClick={() => void cleanup()}>
+            <Button type="button" variant="outline" disabled={busy !== null} onClick={() => void previewCleanup()}>
               {busy === "cleanup" ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
               Clean expired items
             </Button>
@@ -507,6 +617,19 @@ function RecycleBinCard({
         confirmLabel="Delete permanently"
         busy={busy?.startsWith("delete:") ?? false}
         onConfirm={() => { if (deleteItem) void permanentlyDelete(deleteItem); }}
+      />
+      <ConfirmDialog
+        open={cleanupPreview !== null}
+        onOpenChange={(open) => { if (!open) setCleanupPreview(null); }}
+        title={cleanupPreview?.items.length ? "Empty these from the recycle bin?" : "Nothing is ready to be emptied"}
+        description={cleanupPreview ? describeCleanup(cleanupPreview, formatBytes) : ""}
+        confirmLabel={cleanupPreview?.items.length ? "Empty them" : "Close"}
+        confirmVariant={cleanupPreview?.items.length ? "destructive" : "default"}
+        busy={busy === "cleanup"}
+        onConfirm={() => {
+          if (cleanupPreview?.items.length) void cleanup();
+          else setCleanupPreview(null);
+        }}
       />
     </>
   );

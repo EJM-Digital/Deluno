@@ -204,69 +204,17 @@ public sealed class WorkPlanner(
     /// have this" when asked why it would not download. DESIGN-007 decision
     /// 11.</para>
     ///
-    /// <para><b>Only the missing-file repair is applied.</b> An orphan file or
-    /// a leftover staging artifact needs a judgement Deluno should not make on
-    /// its own; marking a tracked file missing needs none, because it only ever
-    /// corrects Deluno's own note and never touches disk. That asymmetry is why
-    /// this pass can run unattended at all.</para>
-    ///
-    /// <para>A library whose root is unreachable reports one issue and offers no
-    /// repair, so an unmounted drive cannot be mistaken for a library of
-    /// deleted files.</para>
+    /// <para>The check itself lives in <see cref="ILibraryFileCheckService"/>,
+    /// which is also what the <b>Check library files now</b> button calls. All
+    /// this adds is the schedule: the two paths cannot diverge, because there
+    /// is only one of them.</para>
     /// </summary>
     public Task RunLibraryFileCheckAsync(
-        IFilesystemReconciliationService reconciliation,
-        IActivityFeedRepository activityFeedRepository,
+        ILibraryFileCheckService fileCheck,
         CancellationToken cancellationToken)
         => RunScheduledPassAsync(
             SystemTasks.LibraryFileCheck,
-            async () =>
-            {
-                var report = await reconciliation.ScanAsync(cancellationToken);
-                var missing = report.Issues
-                    .Where(issue => issue.Kind == "missingTrackedFile")
-                    .ToArray();
-                var unreachable = report.Issues.Count(issue => issue.Kind == "libraryRootUnreachable");
-
-                var corrected = 0;
-                foreach (var issue in missing)
-                {
-                    var repair = await reconciliation.RepairAsync(
-                        new FilesystemReconciliationRepairRequest(issue.Id, "mark-missing"),
-                        cancellationToken);
-                    if (repair.Repaired)
-                    {
-                        corrected++;
-                    }
-                }
-
-                if (corrected == 0 && unreachable == 0)
-                {
-                    return;
-                }
-
-                logger.LogInformation(
-                    "Library file check marked {CorrectedCount} tracked file(s) missing and found {UnreachableCount} unreachable library root(s).",
-                    corrected,
-                    unreachable);
-
-                // Worth telling somebody about: a title going from held to
-                // missing is a thing they will see on a shelf, and they should
-                // learn it from Deluno rather than from a gap.
-                if (corrected > 0)
-                {
-                    await activityFeedRepository.RecordActivityAsync(
-                        "library.file.missing",
-                        corrected == 1
-                            ? "A file Deluno was holding is no longer on disk. That title is now missing and will be searched for again."
-                            : $"{corrected} files Deluno was holding are no longer on disk. Those titles are now missing and will be searched for again.",
-                        JsonSerializer.Serialize(new { corrected, unreachable }, PayloadJsonOptions),
-                        null,
-                        "library",
-                        null,
-                        cancellationToken);
-                }
-            },
+            () => fileCheck.RunAsync(cancellationToken),
             "Library file check failed.",
             cancellationToken);
 
@@ -274,87 +222,17 @@ public sealed class WorkPlanner(
     /// Clears the leftovers of a refused release, when the sharing rule no
     /// longer needs them.
     ///
-    /// <para>James found the hole this fills: <i>"if we are refusing something,
-    /// is it being deleted and cleaned up so there are no traces of it"</i>. It
-    /// was not — a refused copy kept costing disk and kept sitting in the
-    /// queue, and the client kept remembering it, so the day you un-refused it
-    /// the client would silently decline to fetch it.</para>
-    ///
-    /// <para><b>It asks the client to forget, not to delete.</b> On a torrent
-    /// client those are one request; on SABnzbd and NZBGet, forgetting also
-    /// clears the history that outlives the transfer, which is the half that
-    /// lets the release back in.</para>
-    ///
-    /// <para><b>And it waits for the sharing rule.</b> A copy still under a
-    /// hold is left alone and tried again next pass — the rule knows what the
-    /// site expects, and this does not.</para>
+    /// <para>The clearing itself lives in
+    /// <see cref="IRefusedDownloadCleanupService"/>, which is also what the
+    /// <b>Clean up now</b> button on a blocklist row calls. All this adds is
+    /// the schedule.</para>
     /// </summary>
     public Task RunBlockedReleaseCleanupAsync(
-        IBlockedReleaseRepository blockedReleases,
-        IDownloadClientTelemetryService downloadClients,
-        IDownloadSharingRepository sharingRepository,
+        IRefusedDownloadCleanupService cleanup,
         CancellationToken cancellationToken)
         => RunScheduledPassAsync(
             SystemTasks.BlockedReleaseCleanup,
-            async () =>
-            {
-                var pending = await blockedReleases.ListAwaitingCleanupAsync(cancellationToken);
-                if (pending.Count == 0)
-                {
-                    return;
-                }
-
-                var holds = (await sharingRepository.GetSnapshotAsync(cancellationToken)).Holds
-                    .Select(hold => hold.QueueItemId)
-                    .ToHashSet(StringComparer.OrdinalIgnoreCase);
-
-                var cleared = 0;
-                var waiting = 0;
-
-                foreach (var release in pending)
-                {
-                    if (release.TorrentHashOrItemId is not { Length: > 0 } queueItemId ||
-                        release.DownloadClientId is not { Length: > 0 } clientId)
-                    {
-                        continue;
-                    }
-
-                    if (holds.Contains(queueItemId))
-                    {
-                        waiting++;
-                        continue;
-                    }
-
-                    try
-                    {
-                        var result = await downloadClients.ExecuteActionAsync(
-                            clientId,
-                            new DownloadClientActionRequest(DownloadClientActions.Forget, queueItemId),
-                            cancellationToken);
-
-                        if (result.Succeeded)
-                        {
-                            await blockedReleases.MarkCleanedUpAsync(release.Id, cancellationToken);
-                            cleared++;
-                        }
-                    }
-                    catch (Exception exception) when (exception is not OperationCanceledException)
-                    {
-                        // Left unmarked on purpose, so the next pass tries
-                        // again. A client that is off right now will not be
-                        // off for ever.
-                        logger.LogWarning(exception, "Could not clear the blocked release {ReleaseName}.", release.ReleaseName);
-                    }
-                }
-
-                if (cleared > 0 || waiting > 0)
-                {
-                    logger.LogInformation(
-                        "Cleared {ClearedCount} refused download(s); {WaitingCount} still held by the sharing rule.",
-                        cleared,
-                        waiting);
-                }
-            },
+            () => cleanup.CleanUpEverythingAsync(cancellationToken),
             "Blocked release cleanup failed.",
             cancellationToken);
 

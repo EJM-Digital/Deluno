@@ -15,10 +15,10 @@
  * single title will search for it themselves.</p>
  *
  * Contract: GET /api/blocked-releases, DELETE /api/blocked-releases/{id},
- * POST /api/blocked-releases/{id}/refuse.
+ * POST /api/blocked-releases/{id}/refuse, POST /api/blocked-releases/{id}/cleanup.
  */
 import { useState } from "react";
-import { Check, RotateCcw, X } from "lucide-react";
+import { Check, Eraser, RotateCcw, X } from "lucide-react";
 import type { BlockedRelease } from "../../lib/api";
 import { reasonWords, type ImportFailureRule } from "../../lib/failure-reasons";
 import { authedFetch } from "../../lib/use-auth";
@@ -28,6 +28,19 @@ import { Chip } from "../ui/chip";
 import { Disclosure } from "../ui/disclosure";
 import { LIST_TRACK, ListCard, ListEmpty, ListNameCell, ListRow, ListTable } from "../ui/list-card";
 import { FailureRulesConsole } from "./failure-rules-console";
+
+/**
+ * What clearing up actually did, said the way a person would say it.
+ *
+ * <p>"Still sharing" is not a failure and must not read like one: the rule that
+ * knows what the tracker expects has said wait, and it wins over a button.</p>
+ */
+const CLEANUP_WORDS: Record<string, string> = {
+  cleared: "Cleared at the download client. It will accept this release again if you un-refuse it.",
+  stillSharing: "Left alone — your sharing rule still needs this copy seeded. It will be cleared once that is met.",
+  nothingToClear: "There was nothing left to clear.",
+  clientUnavailable: "The download client did not answer. Nothing was changed, and Deluno will try again."
+};
 
 export interface BlockedReleasesConsoleProps {
   releases: BlockedRelease[];
@@ -42,6 +55,34 @@ export function BlockedReleasesConsole({ releases, rules, onChanged }: BlockedRe
   const proposed = releases.filter((release) => release.state === "proposed");
   const refused = releases.filter((release) => release.state !== "proposed");
   const changedRules = rules.filter((rule) => rule.isOverridden).length;
+
+  /**
+   * The manual half of the scheduled clear-out — for a refusal that predates
+   * the setting, or one whose download client was off when the schedule came
+   * round. It calls the same service the schedule calls, so it still will not
+   * overrule the sharing rule: a copy the tracker expects you to keep seeding
+   * is left alone and says so.
+   */
+  async function cleanUp(release: BlockedRelease) {
+    setBusyId(release.id);
+    try {
+      const response = await authedFetch(`/api/blocked-releases/${release.id}/cleanup`, { method: "POST" });
+      if (!response.ok) throw new Error("cleanup-failed");
+
+      const { outcome } = (await response.json()) as { outcome: string };
+      const said = CLEANUP_WORDS[outcome];
+      if (outcome === "cleared") {
+        toast.success(said!);
+        onChanged();
+      } else {
+        toast.warning(said ?? outcome);
+      }
+    } catch {
+      toast.error("That could not be cleared up.");
+    } finally {
+      setBusyId(null);
+    }
+  }
 
   async function act(release: BlockedRelease, action: "allow" | "refuse") {
     setBusyId(release.id);
@@ -155,7 +196,17 @@ export function BlockedReleasesConsole({ releases, rules, onChanged }: BlockedRe
                     year: "numeric"
                   })}
                 </div>
-                <div role="cell" className="flex justify-end">
+                <div role="cell" className="flex justify-end gap-2">
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="ghost"
+                    disabled={busyId !== null}
+                    onClick={() => void cleanUp(release)}
+                  >
+                    <Eraser aria-hidden className="h-3.5 w-3.5" />
+                    Clean up now
+                  </Button>
                   <Button
                     type="button"
                     size="sm"

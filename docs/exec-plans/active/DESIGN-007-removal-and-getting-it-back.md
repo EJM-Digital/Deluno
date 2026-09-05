@@ -410,15 +410,46 @@ disk wants it strict; somebody on a flaky share does not.
 Every scheduled or automatic behaviour has a manual equivalent, so a person
 never has to wait for a timer to find out what Deluno thinks.
 
-| Automatic | Manual equivalent |
-|---|---|
-| Background file check (decision 11) | **Refresh this library now**, and **check this film now** |
-| A film found missing is searched for | **Search now**, already exists |
-| Retention clears the recycle bin (decision 15) | **Empty now**, saying exactly what it will take |
-| A refused copy is cleaned up (decision 16) | **Clean up now** on a refusal that predates the setting |
-| Removal clears the client (decision 9) | **Forget at the client** on a title, on its own |
-| An import fails and retries once | **Retry import now** |
-| A library pauses when its root is unreachable (decision 12) | **Re-check now**, rather than waiting |
+| Automatic | Manual equivalent | Built |
+|---|---|---|
+| Background file check (decision 11) | **Check now** on the system task, which also re-tests every library root | ✅ `POST /api/filesystem/file-check` |
+| A film found missing is searched for | **Search now** | ✅ already existed |
+| Retention clears the recycle bin (decision 15) | **Empty now**, saying exactly what it will take | ✅ `GET /api/recycle-bin/cleanup/preview`, then the existing `POST` |
+| A refused copy is cleaned up (decision 16) | **Clean up now** on the blocklist row | ✅ `POST /api/blocked-releases/{id}/cleanup` |
+| Removal clears the client (decision 9) | **Forget at the client** on a title, on its own | ✅ the acquisition override |
+| An import fails and retries once | **Retry import now** | ✅ `POST /api/v1/download-dispatches/{id}/retry` |
+| A library pauses when its root is unreachable (decision 12) | **Re-check now**, rather than waiting | ✅ the same file check — it reports unreachable roots and touches nothing in them |
+
+**Every one of these calls the same code the schedule calls.** The library file
+check and the refused-download clear-out were both bodies of lambdas inside the
+worker's planner, reachable only by a timer; they are now
+`ILibraryFileCheckService` and `IRefusedDownloadCleanupService`, and the
+scheduled pass is a claim wrapped round the same call the button makes. The
+moment there are two implementations the answer starts depending on which one
+ran, which is the failure this whole document is about.
+
+The manual clear-out still will not overrule the sharing rule. A button that
+ignored the tracker would be a good way to lose an account, so it reports
+*"left alone — your sharing rule still needs this copy seeded"* and waits.
+
+The recycle bin needed the same treatment for the opposite reason. Its empty
+deleted first and counted afterwards, which is a report rather than a choice —
+and permanent deletion is the one place a report after the fact is worth
+nothing. It now asks the server what retention would take, shows it, and waits,
+with the items that have **not** expired named first and separately: those are
+going because the bin is over its size limit, they are the only ones somebody
+might have wanted back, and a single total hid them.
+
+Retention is enforced on **every write**, not only by the schedule, so a bin
+that is over its size limit drops its oldest item the moment the next one is
+recycled. That was true already and written down nowhere; it now has a test,
+and it is why a preview taken a second later usually has nothing to report.
+
+Choosing what to take is now one function used by both the showing and the
+deleting. It also stopped recounting the bin's size on every step, which meant
+a file Deluno could not delete made it delete *another* one to make up the
+space — so the dialog could say three and the empty take four. Failing to free
+space is a reason to stop and retry, not a reason to take more than was shown.
 
 James's own worked example is the shape of it: the file is gone, the schedule
 has not run, so you refresh the library by hand, it comes up missing, and you
