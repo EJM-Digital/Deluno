@@ -1,0 +1,64 @@
+{
+  "$comment": [
+    "The exact software the rig runs, pinned.",
+    "",
+    "Captured from the simulation VM on 6 September 2026, before it was retired.",
+    "This is a known-good set: the end-to-end plan's phases 0-8 were walked",
+    "against these versions, so a new rig starts from something that has been",
+    "seen to work rather than from whatever is current on the day.",
+    "",
+    "The installers are staged on the developer machine and copied to the rig,",
+    "rather than downloaded on the rig. Two reasons: the rig may have no",
+    "internet, and a hash in this file is the difference between 'the version we",
+    "tested' and 'whatever that URL serves now'.",
+    "",
+    "sha256 is empty until the file has been staged and hashed once; provisioning",
+    "fills it in and then refuses anything that does not match.",
+    "",
+    "minimumBytes and mustBeSigned exist because of a real near-miss: SourceForge",
+    "answered a scripted download with a 0.1 MB Cloudflare challenge page, saved",
+    "under the installer's name. A hash alone would have pinned the wrong file",
+    "happily on first run. A size floor and an Authenticode check catch a web",
+    "page pretending to be an installer before it reaches the rig.",
+    "",
+    "On staying at 5.2.1 when qBittorrent 5.2.3 is out: this run is testing",
+    "Deluno, not the client. Holding the client at the version phases 0-8 were",
+    "walked against means a failure is Deluno's. Testing the client upgrade is",
+    "worth doing, and is a different run."
+  ],
+
+  "qbittorrent": {
+    "version": "5.2.1",
+    "fileName": "qbittorrent_5.2.1_x64_setup.exe",
+    "url": "https://sourceforge.net/projects/qbittorrent/files/qbittorrent-win32/qbittorrent-5.2.1/qbittorrent_5.2.1_x64_setup.exe/download",
+    "sha256": "",
+    "silentArgs": "/S",
+    "installedTo": "C:\\Program Files\\qBittorrent\\qbittorrent.exe"
+  },
+
+  "sabnzbd": {
+    "version": "5.0.4",
+    "fileName": "SABnzbd-5.0.4-win-setup.exe",
+    "url": "https://github.com/sabnzbd/sabnzbd/releases/download/5.0.4/SABnzbd-5.0.4-win-setup.exe",
+    "sha256": "",
+    "silentArgs": "/S",
+    "installedTo": "C:\\Program Files\\SABnzbd\\SABnzbd.exe"
+  },
+
+  "$weir": [
+    "Built from the sibling repository rather than downloaded:",
+    "  C:\\Projects\\Weir\\packaging\\windows\\build-velopack.ps1",
+    "which leaves Weir-win-Portable.zip in dist\\windows\\releases.",
+    "",
+    "The portable zip, not the Setup.exe: Velopack installs per-user, and the",
+    "rig's services run as a dedicated account rather than as the interactive",
+    "user, so an installer run by whoever is logged in would put Weir in the",
+    "wrong profile. Unzipping to a fixed path avoids the question."
+  ],
+  "weir": {
+    "version": "2.6.1",
+    "source": "C:\\Projects\\Weir\\dist\\windows\\releases\\Weir-win-Portable.zip",
+    "sha256": "",
+    "installedTo": "C:\\Deluno\\Weir\\server\\WeirServer.exe"
+  }
+}

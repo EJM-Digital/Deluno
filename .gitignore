@@ -33,3 +33,20 @@ __pycache__/
 # Test hosts write TRX, dumps, and run folders beside each test project.
 # CI publishes any diagnostics it needs; these local artifacts do not belong in source control.
 **/TestResults/
+
+# Third-party installers for the simulation rig.
+#
+# Not in git: this repository deliberately keeps binaries out - tools/ffmpeg is
+# ignored for the same reason, and the largest tracked file is 1.5 MB. Sixty
+# megabytes of vendor installers would be paid by every clone, for ever.
+#
+# What IS in git is scripts/lab/rig-software.json: the versions, the URLs, the
+# SHA-256 of each file and a size floor. That makes the set reproducible, which
+# is the part worth versioning. The bytes themselves live inside C:\Projects and
+# are covered by the NAS sync.
+vendor/rig-installers/
+
+# Lab fixture media: Big Buck Bunny (Blender Foundation, CC-BY) and the clips
+# derived from it. Sixty megabytes of video, regenerable from the source, and
+# covered by the NAS sync. Same reasoning as vendor/rig-installers above.
+vendor/e2e-fixtures/
