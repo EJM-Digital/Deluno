@@ -11,7 +11,7 @@ disposable shipped host):
 
 ```powershell
 .\scripts\test-automation-contract.ps1 `
-  -BaseUrl http://192.168.1.142:5099 `
+  -BaseUrl http://your-deluno-host:5099 `
   -Username admin `
   -Password '…'
 ```
