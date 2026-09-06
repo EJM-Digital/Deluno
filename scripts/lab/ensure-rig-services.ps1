@@ -39,21 +39,46 @@
 #>
 [CmdletBinding()]
 param(
-    [string] $ComputerName = '192.168.1.142',
-    [string] $UserName = 'Administrator',
-    [string] $Password = '***REMOVED***',
+    [string] $ComputerName,
+    [string] $UserName,
+    [string] $Password,
+
+    # Who the services run as. Empty means SYSTEM, which is right while
+    # everything they touch is local. See rig.json for why a library on a
+    # network share is the reason to change it.
+    [string] $ServiceAccount,
+    [string] $ServiceAccountPassword,
+
     [switch] $ReportOnly
 )
 
 $ErrorActionPreference = 'Stop'
 
+. (Join-Path $PSScriptRoot 'Get-Rig.ps1')
+$rig = Get-Rig
+if (-not $ComputerName) { $ComputerName = $rig.host }
+if (-not $UserName) { $UserName = $rig.userName }
+if (-not $Password) { $Password = $rig.password }
+if (-not $ServiceAccount) { $ServiceAccount = $rig.serviceAccount }
+if (-not $ServiceAccountPassword) { $ServiceAccountPassword = $rig.serviceAccountPassword }
+
+if ($ServiceAccount -and -not $ServiceAccountPassword) {
+    throw "A service account needs a password: the task has to store one, because S4U would run it with no network credentials and a share is the only reason to use an account at all."
+}
+
 $credential = New-Object System.Management.Automation.PSCredential(
     $UserName, (ConvertTo-SecureString $Password -AsPlainText -Force))
 
 $body = {
-    param($ReportOnly)
+    param($ReportOnly, $ServiceAccount, $ServiceAccountPassword)
 
     $ErrorActionPreference = 'Stop'
+
+    # SYSTEM unless the rig says otherwise. A library on a network share is the
+    # reason to say otherwise: a SYSTEM process authenticates to SMB as the
+    # machine account, so a workgroup NAS refuses it.
+    $runsAs = if ($ServiceAccount) { $ServiceAccount } else { 'SYSTEM' }
+    $isSystem = -not $ServiceAccount
 
     $rig = @(
         @{
@@ -87,8 +112,9 @@ $body = {
     function Get-TaskDrift($task, $spec) {
         if (-not $task) { return @('not registered') }
         $reasons = @()
-        if ($task.Principal.UserId -notin @('SYSTEM', 'S-1-5-18')) {
-            $reasons += "runs as $($task.Principal.UserId), not SYSTEM"
+        $expected = if ($isSystem) { @('SYSTEM', 'S-1-5-18') } else { @($runsAs, (Split-Path $runsAs -Leaf)) }
+        if ($task.Principal.UserId -notin $expected) {
+            $reasons += "runs as $($task.Principal.UserId), not $runsAs"
         }
         if ($task.Principal.LogonType -eq 'InteractiveToken') { $reasons += 'needs a logged-on session' }
         if (-not ($task.Triggers | Where-Object { $_.CimClass.CimClassName -eq 'MSFT_TaskBootTrigger' })) {
@@ -110,6 +136,13 @@ $body = {
             $reasons += "runs $registered"
         }
         if ($service.StartType -ne 'Automatic') { $reasons += "start type is $($service.StartType)" }
+        # sc.exe reports a local account as ".\name" and LocalSystem as
+        # "LocalSystem", so compare on the leaf rather than the written form.
+        $account = (Get-CimInstance Win32_Service -Filter "Name='$($spec.Name)'").StartName
+        $wantAccount = if ($isSystem) { 'LocalSystem' } else { $runsAs }
+        if ($account -and (Split-Path $account -Leaf) -ne (Split-Path $wantAccount -Leaf)) {
+            $reasons += "runs as $account, not $wantAccount"
+        }
         $parms = (Get-ItemProperty -Path $key -Name CommandLine -ErrorAction SilentlyContinue).CommandLine
         if (-not $parms -or (Compare-Object $parms $spec.CommandLine)) {
             $reasons += 'its registry CommandLine does not match'
@@ -153,14 +186,33 @@ $body = {
                 New-ScheduledTaskAction -Execute $spec.Command -WorkingDirectory $spec.WorkingDir
             }
 
-            Register-ScheduledTask -TaskName $spec.Name -Force `
-                -Action $action `
-                -Trigger (New-ScheduledTaskTrigger -AtStartup) `
-                -Principal (New-ScheduledTaskPrincipal -UserId 'SYSTEM' -LogonType ServiceAccount -RunLevel Highest) `
-                -Settings (New-ScheduledTaskSettingsSet `
+            # -Principal and -User/-Password are different parameter sets, so
+            # the identity is chosen by building the call rather than by
+            # threading a conditional through one.
+            $register = @{
+                TaskName = $spec.Name
+                Force    = $true
+                Action   = $action
+                Trigger  = New-ScheduledTaskTrigger -AtStartup
+                Settings = New-ScheduledTaskSettingsSet `
                     -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries `
                     -ExecutionTimeLimit ([TimeSpan]::Zero) -MultipleInstances IgnoreNew `
-                    -RestartCount 3 -RestartInterval (New-TimeSpan -Minutes 1)) | Out-Null
+                    -RestartCount 3 -RestartInterval (New-TimeSpan -Minutes 1)
+            }
+
+            if ($isSystem) {
+                $register.Principal = New-ScheduledTaskPrincipal -UserId 'SYSTEM' `
+                    -LogonType ServiceAccount -RunLevel Highest
+            } else {
+                # A stored password, not S4U. S4U runs the task with no network
+                # credentials, which would defeat the whole reason for using an
+                # account instead of SYSTEM.
+                $register.User = $runsAs
+                $register.Password = $ServiceAccountPassword
+                $register.RunLevel = 'Highest'
+            }
+
+            Register-ScheduledTask @register | Out-Null
             Start-ScheduledTask -TaskName $spec.Name
         } else {
             if (-not $existing) {
@@ -173,6 +225,10 @@ $body = {
             New-ItemProperty -Force -PropertyType MultiString `
                 -Path "HKLM:\SYSTEM\CurrentControlSet\Services\$($spec.Name)" `
                 -Name 'CommandLine' -Value $spec.CommandLine | Out-Null
+
+            if (-not $isSystem) {
+                & sc.exe config $spec.Name obj= $runsAs password= $ServiceAccountPassword | Out-Null
+            }
 
             & sc.exe failure $spec.Name reset= 86400 `
                 actions= restart/60000/restart/60000/restart/60000 | Out-Null
@@ -197,6 +253,7 @@ $body = {
 }
 
 Write-Host "Rig services on $ComputerName" -ForegroundColor Cyan
-Invoke-Command -ComputerName $ComputerName -Credential $credential -ScriptBlock $body -ArgumentList $ReportOnly.IsPresent |
+Invoke-Command -ComputerName $ComputerName -Credential $credential -ScriptBlock $body `
+    -ArgumentList $ReportOnly.IsPresent, $ServiceAccount, $ServiceAccountPassword |
     Select-Object Service, Kind, Action, Listening, Detail |
     Format-Table -AutoSize -Wrap

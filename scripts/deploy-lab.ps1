@@ -24,12 +24,12 @@
     ./scripts/deploy-lab.ps1
 #>
 param(
-    [string]$HostName = "192.168.1.142",
-    [string]$UserName = "Administrator",
+    [string]$HostName,
+    [string]$UserName,
     [string]$Password = $env:DELUNO_LAB_PASSWORD,
-    [string]$AppPath = "C:\Deluno\App",
-    [string]$TaskName = "Deluno Host",
-    [string]$ReadyUrl = "http://192.168.1.142:5099/api/health/ready",
+    [string]$AppPath,
+    [string]$TaskName,
+    [string]$ReadyUrl,
     [string]$Source,
 
     # Keep the previous App directory. Off by default now that only changed
@@ -39,6 +39,14 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+
+. (Join-Path $PSScriptRoot "lab\Get-Rig.ps1")
+$rig = Get-Rig
+if (-not $HostName) { $HostName = $rig.host }
+if (-not $UserName) { $UserName = $rig.userName }
+if (-not $AppPath)  { $AppPath = $rig.deluno.appPath }
+if (-not $TaskName) { $TaskName = $rig.deluno.taskName }
+if (-not $ReadyUrl) { $ReadyUrl = "$($rig.deluno.url)/api/health/ready" }
 
 if (-not $Source) {
     $Source = Join-Path (Split-Path -Parent $PSScriptRoot) "artifacts\publish\win-x64"

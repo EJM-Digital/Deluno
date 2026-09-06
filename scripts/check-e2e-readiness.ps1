@@ -9,10 +9,13 @@
 # Prints one line per stage and a final READY / NOT READY.
 
 $ErrorActionPreference = "Stop"
-$b = "http://192.168.1.142:5099"
+
+. (Join-Path $PSScriptRoot "lab\Get-Rig.ps1")
+$rig = Get-Rig
+$b = $rig.deluno.url
 
 $auth = (Invoke-RestMethod -Uri "$b/api/auth/login" -Method Post `
-    -Body (@{ username = "admin"; password = "***REMOVED***" } | ConvertTo-Json) `
+    -Body (@{ username = $rig.deluno.userName; password = $rig.deluno.password } | ConvertTo-Json) `
     -ContentType "application/json").accessToken
 $h = @{ Authorization = "Bearer $auth" }
 
@@ -23,9 +26,8 @@ $dispatch = (Invoke-RestMethod -Uri "$b/api/v1/download-dispatches?pageSize=5" -
 $queue = (Invoke-RestMethod -Uri "$b/api/download-clients/telemetry" -Headers $h).clients |
     Where-Object { $_.clientName -eq "qBittorrent" } | Select-Object -ExpandProperty queue
 
-$pw = ConvertTo-SecureString "***REMOVED***" -AsPlainText -Force
-$cred = New-Object System.Management.Automation.PSCredential("Administrator", $pw)
-$folders = Invoke-Command -ComputerName 192.168.1.142 -Credential $cred -ScriptBlock {
+$cred = Get-RigCredential -Rig $rig
+$folders = Invoke-Command -ComputerName $rig.host -Credential $cred -ScriptBlock {
     [pscustomobject]@{
         Downloads = (Get-ChildItem 'C:\Deluno\Downloads-Complete\Movies' -ErrorAction SilentlyContinue).Count
         Refined   = (Get-ChildItem 'C:\Deluno\Refined\Movies' -ErrorAction SilentlyContinue).Count
