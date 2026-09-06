@@ -4,6 +4,50 @@ The bits needed to run [`docs/exec-plans/active/E2E-full-product-test.md`](../..
 
 These lived in a session scratchpad and had to be hunted for across old session directories every time. They live here now.
 
+## `provision-rig.ps1`
+
+Turns a fresh Windows machine into the rig: the service account, the folder
+topology, qBittorrent, SABnzbd and Weir at pinned versions, the client
+configuration, and the services.
+
+```powershell
+./scripts/lab/provision-rig.ps1 -ComputerName <ip> -Password <admin> `
+    -ServiceAccount deluno -ServiceAccountPassword <pw> `
+    -LibraryPath '\nas\share' -NasUser <u> -NasPassword <p>
+```
+
+Stages are separable (`-Stage folders`), because provisioning a machine is a
+long sequence of things that each fail on their own and re-running all of it to
+retry the last step wastes the afternoon.
+
+**It stops before Deluno's first run, deliberately.** Phase 0.5 of the
+end-to-end plan is "a clean install asks to create an account, not to sign in",
+and phases 1 to 7 are the first-run experience, the libraries, the profiles and
+the connections. Provisioning those would destroy the first thing the plan
+tests, so this leaves Deluno installed, running and untouched.
+
+It does not restate the service shape either - `ensure-rig-services.ps1` owns
+that, and provisioning calls it.
+
+Two things it gets right that the hand-built rig got wrong:
+
+- The **NAS credential is stored in the service account's own vault**, through a
+  one-shot task running as that account. `cmdkey` only ever writes to the vault
+  of whoever runs it, so storing it as the administrator would leave the service
+  refused - the same shape as the bug the service account exists to avoid.
+- The **share is probed as the service account**, not from the provisioning
+  session. A WinRM session has no delegatable network credentials, so testing
+  the share from here fails whether or not the service could reach it, and sends
+  you to debug the wrong machine.
+
+## `rig-software.json`
+
+The exact software the rig runs, pinned by SHA-256 - captured from the
+simulation VM before it was retired, so a new rig starts from a set the
+end-to-end plan has actually been walked against rather than from whatever is
+current that day. Installers are staged on the developer machine and copied
+over, so the rig needs no internet and cannot quietly get a different build.
+
 ## `ensure-rig-services.ps1`
 
 Holds every service on the VM to one rule: it starts without a person, and it
@@ -51,8 +95,8 @@ Started for you by `provision-usenet.ps1`. Directly:
 
 ```powershell
 python -u scripts/lab/fake-nntp-server.py --port 1119 --http-port 1180 `
-  --article 'C:\Deluno\e2e\data\Breaking.Bad.S01E01.1080p.WEB-DL.x264-DELUNO.mkv' `
-  --log 'C:\Deluno\e2e\logs\nntp.log'
+  --article 'vendor\e2e-fixtures\data\Breaking.Bad.S01E01.1080p.WEB-DL.x264-DELUNO.mkv' `
+  --log 'vendor\e2e-fixtures\logs\nntp.log'
 ```
 
 ## `torznab_seed.py`
@@ -69,7 +113,7 @@ TORZNAB_BIND=0.0.0.0 TORZNAB_ADVERTISE=192.168.1.102 python scripts/lab/torznab_
 
 `TORZNAB_ADVERTISE` must be the address the VM can reach the desktop on, because it is baked into the torrent's webseed URLs. Defaults to loopback, which the VM cannot use.
 
-Expects source media at `C:\Deluno\e2e\data\bbb.mp4` and writes torrents to `C:\Deluno\e2e\torrents`.
+Expects source media at `vendor/e2e-fixtures/data/bbb.mp4` and writes torrents to `vendor/e2e-fixtures/torrents`, both repo-relative. Override with `TORZNAB_SOURCE` and `TORZNAB_OUT`.
 
 Add it to Deluno as a Torznab indexer at `http://192.168.1.102:9117/api`. Any API key is accepted.
 
@@ -86,7 +130,7 @@ episode plus its `.nfo`; qBittorrent still transfers and checks every byte.
 $env:TORZNAB_PORT = '9120'
 $env:TORZNAB_BIND = '0.0.0.0'
 $env:TORZNAB_ADVERTISE = '192.168.1.102'
-$env:TORZNAB_OUT = 'C:\Deluno\e2e\torrents-season-replacement'
+$env:TORZNAB_OUT = 'vendor\e2e-fixtures\torrents-season-replacement'
 $env:DELUNO_E2E_SEASON_PACK_RELEASE = 'Show.Name.S01.2160p.BluRay.x265-DELUNO'
 $env:DELUNO_E2E_SEASON_PACK_EPISODES = '1,2,3,4,5'
 python -u scripts\lab\torznab_seed.py

@@ -63,7 +63,11 @@ if (-not $NntpPort)        { $NntpPort = $rig.fixtures.nntpPort }
 if (-not $NzbPort)         { $NzbPort = $rig.fixtures.nzbPort }
 
 $repoRoot   = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
-$fixtureDir = 'C:\Deluno\e2e\data'
+# Repo-relative for the same reason torznab_seed.py is: nothing on the developer
+# machine lives outside C:\Projects, and C:\Deluno meant something different on
+# the rig than it did here.
+$fixtureRoot = Join-Path $repoRoot 'vendor\e2e-fixtures'
+$fixtureDir = Join-Path $fixtureRoot 'data'
 $sourceMp4  = Join-Path $fixtureDir 'bbb.mp4'
 $release    = 'Breaking.Bad.S01E01.1080p.WEB-DL.x264-DELUNO'
 $article    = Join-Path $fixtureDir "$release.mkv"
@@ -99,7 +103,7 @@ $listening = Get-NetTCPConnection -State Listen -LocalPort $NntpPort -ErrorActio
 if ($listening) {
     Step "nntp fixture already listening on $NntpPort"
 } else {
-    $logDir = 'C:\Deluno\e2e\logs'
+    $logDir = Join-Path $fixtureRoot 'logs'
     New-Item -ItemType Directory -Force $logDir | Out-Null
     Start-Process -FilePath (Get-Command python).Source -WindowStyle Hidden `
         -RedirectStandardOutput (Join-Path $logDir 'nntp.out') `
