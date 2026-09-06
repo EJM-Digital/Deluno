@@ -41,10 +41,16 @@ Deluno keeps product, architecture, and repo-state context in the repository so 
 Current note:
 
 - `agent-first-realignment.md` is completed work and now belongs under `exec-plans/completed/`.
-- `exec-plans/active/HANDOVER-next-chat.md` is the current Git, lab, validation,
-  deployed-versus-local, and open-backlog baseline.
-- `exec-plans/active/E2E-full-product-test-run-2026-08-31.md` is the live execution
-  ledger for the current multi-surface product run.
+- **`exec-plans/active/HANDOVER-new-rig-2026-09-06.md` is where to start.** The
+  Hyper-V VM was destroyed on 6 September and the rig moved to a physical server
+  with a NAS-hosted library. That note carries the current state, the four
+  things waiting on the owner, and the decisions already made so they are not
+  re-litigated.
+- `exec-plans/active/E2E-full-product-test.md` is the plan the new rig exists to
+  run. Phases 9.4-9.9 and 10-13 have never been walked.
+- Earlier `HANDOVER-*` notes and `E2E-full-product-test-run-*` ledgers are dated
+  records of what was true at the time. They name the retired VM's address; that
+  is history, not a live target.
 
 ## Source Of Truth Rules
 

@@ -75,9 +75,13 @@ $credential = New-Object System.Management.Automation.PSCredential(
     $UserName, (ConvertTo-SecureString $Password -AsPlainText -Force))
 
 $session = $null
-function Rig { param([scriptblock] $Body, [object[]] $Args)
+# $Arguments, never $Args. $Args is an automatic variable, and PowerShell
+# silently ignores it as a parameter name rather than refusing it: the function
+# binds nothing and the remote scriptblock receives nulls. Every stage that
+# passes anything to the rig would have run with empty parameters, quietly.
+function Rig { param([scriptblock] $Body, [object[]] $Arguments)
     if (-not $script:session) { $script:session = New-PSSession -ComputerName $ComputerName -Credential $credential }
-    Invoke-Command -Session $script:session -ScriptBlock $Body -ArgumentList $Args
+    Invoke-Command -Session $script:session -ScriptBlock $Body -ArgumentList $Arguments
 }
 
 function Head($text) { Write-Host "`n$text" -ForegroundColor Cyan }
@@ -208,15 +212,44 @@ if (Should 'account') {
         $db  = Join-Path $env:TEMP 'deluno-rights.sdb'
         secedit /export /cfg $inf /areas USER_RIGHTS | Out-Null
         $sid = (Get-LocalUser -Name $Account).SID.Value
-        $text = Get-Content $inf
-        foreach ($right in 'SeServiceLogonRight', 'SeBatchLogonRight') {
-            if ($text -match "^$right") {
-                $text = $text -replace "^($right\s*=\s*.*)$", "`$1,*$sid"
-            } else {
-                $text += "$right = *$sid"
+        $rights = @('SeServiceLogonRight', 'SeBatchLogonRight')
+
+        # Section-aware, and idempotent.
+        #
+        # An exported template is [Unicode], [Privilege Rights], [Version] - in
+        # that order. Appending a missing right to the end of the file puts it
+        # inside [Version], where secedit ignores it and reports success, so the
+        # account silently ends up unable to log on as a service. A right that
+        # is already there needs the SID added to its list rather than a second
+        # copy of the line, and re-running must not append the same SID twice.
+        $out = New-Object System.Collections.Generic.List[string]
+        $inPrivileges = $false
+        $seen = @{}
+
+        function Add-Missing {
+            foreach ($right in $rights) {
+                if (-not $seen[$right]) { $out.Add("$right = *$sid"); $seen[$right] = $true }
             }
         }
-        $text | Set-Content $inf -Encoding Unicode
+
+        foreach ($line in (Get-Content $inf)) {
+            if ($line -match '^\[') {
+                if ($inPrivileges) { Add-Missing }
+                $inPrivileges = $line -match '^\[Privilege Rights\]'
+            } elseif ($inPrivileges -and $line -match '^(\S+)\s*=\s*(.*)$') {
+                $name = $Matches[1]
+                if ($rights -contains $name) {
+                    $seen[$name] = $true
+                    $members = @($Matches[2] -split ',' | ForEach-Object { $_.Trim() } | Where-Object { $_ })
+                    if ($members -notcontains "*$sid") { $members += "*$sid" }
+                    $line = "$name = $($members -join ',')"
+                }
+            }
+            $out.Add($line)
+        }
+        if ($inPrivileges) { Add-Missing }
+
+        $out | Set-Content $inf -Encoding Unicode
         secedit /configure /db $db /cfg $inf /areas USER_RIGHTS | Out-Null
         Remove-Item $inf, $db -Force -ErrorAction SilentlyContinue
 

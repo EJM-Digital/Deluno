@@ -93,10 +93,15 @@ $body = {
             WorkingDir = 'C:\Program Files\qBittorrent'
         },
         @{
+            # Unpacked to a fixed path, not a user profile. The retired VM had
+            # Weir under C:\Users\Administrator\AppData\Local, because
+            # Velopack installs per-user - which only worked because everything
+            # there ran as that user. The rig's services run as a dedicated
+            # account now, and a per-user install would be in the wrong profile.
             Kind = 'task'; Name = 'Weir Server'; Port = 8788
-            Command = 'C:\Users\Administrator\AppData\Local\Weir\current\server\WeirServer.exe'
+            Command = 'C:\Deluno\Weir\current\server\WeirServer.exe'
             Arguments = ''
-            WorkingDir = 'C:\Users\Administrator\AppData\Local\Weir\current\server'
+            WorkingDir = 'C:\Deluno\Weir\current\server'
         },
         @{
             # A real service, for the reason in the comment block above. The
