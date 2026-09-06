@@ -36,19 +36,31 @@
 #>
 [CmdletBinding()]
 param(
-    [string] $ComputerName = '192.168.1.142',
-    [string] $DesktopAddress = '192.168.1.102',
-    [string] $UserName = 'Administrator',
-    [string] $Password = '***REMOVED***',
-    [string] $DelunoUrl = 'http://192.168.1.142:5099',
-    [string] $DelunoUser = 'admin',
-    [string] $DelunoPassword = '***REMOVED***',
-    [int]    $NntpPort = 1119,
-    [int]    $NzbPort = 1180,
+    [string] $ComputerName,
+    [string] $DesktopAddress,
+    [string] $UserName,
+    [string] $Password,
+    [string] $DelunoUrl,
+    [string] $DelunoUser,
+    [string] $DelunoPassword,
+    [int]    $NntpPort,
+    [int]    $NzbPort,
     [switch] $Verify
 )
 
 $ErrorActionPreference = 'Stop'
+
+. (Join-Path $PSScriptRoot 'Get-Rig.ps1')
+$rig = Get-Rig
+if (-not $ComputerName)    { $ComputerName = $rig.host }
+if (-not $UserName)        { $UserName = $rig.userName }
+if (-not $Password)        { $Password = $rig.password }
+if (-not $DelunoUrl)       { $DelunoUrl = $rig.deluno.url }
+if (-not $DelunoUser)      { $DelunoUser = $rig.deluno.userName }
+if (-not $DelunoPassword)  { $DelunoPassword = $rig.deluno.password }
+if (-not $DesktopAddress)  { $DesktopAddress = $rig.fixtures.host }
+if (-not $NntpPort)        { $NntpPort = $rig.fixtures.nntpPort }
+if (-not $NzbPort)         { $NzbPort = $rig.fixtures.nzbPort }
 
 $repoRoot   = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 $fixtureDir = 'C:\Deluno\e2e\data'

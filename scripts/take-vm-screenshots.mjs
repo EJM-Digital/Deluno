@@ -3,12 +3,19 @@
  * app has real libraries, a real client, a real indexer and a real import in it.
  */
 import { chromium } from "@playwright/test";
+import { readFileSync } from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 
-const BASE = process.env.DELUNO_URL ?? "http://192.168.1.142:5099";
+// Where the rig is lives in one file, not in each script that talks to it.
+const rig = JSON.parse(
+  readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), "lab", "rig.json"), "utf8")
+);
+
+const BASE = process.env.DELUNO_URL ?? rig.deluno.url;
 const CREDS = {
-  username: process.env.DELUNO_E2E_USERNAME ?? "admin",
-  password: process.env.DELUNO_E2E_PASSWORD ?? "***REMOVED***"
+  username: process.env.DELUNO_E2E_USERNAME ?? rig.deluno.userName,
+  password: process.env.DELUNO_E2E_PASSWORD ?? rig.deluno.password
 };
 const outDir = process.argv[2] ?? "screenshots";
 
