@@ -582,6 +582,40 @@ public sealed class SqliteQualityRepository(
         return await GetCustomFormatAsync(connection, id, cancellationToken);
     }
 
+    public async Task<CustomFormatItem?> ReplaceCustomFormatDefinitionAsync(
+        string id,
+        string name,
+        string? trashId,
+        string conditions,
+        string expectedConditions,
+        CancellationToken cancellationToken)
+    {
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Platform,
+            cancellationToken);
+
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            """
+            UPDATE custom_formats
+            SET
+                name = @name,
+                trash_id = @trashId,
+                conditions = @conditions,
+                updated_utc = @updatedUtc
+            WHERE id = @id AND conditions = @expectedConditions;
+            """;
+        AddParameter(command, "@id", id);
+        AddParameter(command, "@name", NormalizeName(name) ?? name);
+        AddParameter(command, "@trashId", NormalizeName(trashId));
+        AddParameter(command, "@conditions", conditions);
+        AddParameter(command, "@expectedConditions", expectedConditions);
+        AddParameter(command, "@updatedUtc", timeProvider.GetUtcNow().ToString("O"));
+        return await command.ExecuteNonQueryAsync(cancellationToken) == 1
+            ? await GetCustomFormatAsync(connection, id, cancellationToken)
+            : null;
+    }
+
     public async Task<PolicySetItem?> UpdatePolicySetAsync(
         string id,
         UpdatePolicySetRequest request,

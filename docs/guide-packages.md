@@ -15,8 +15,8 @@ GET /api/v1/guides/trash/package
 It contains:
 
 - quality tiers and their size ranges;
-- custom-format definitions with stable IDs, original scores, matching
-  patterns, and source provenance;
+- custom-format definitions with stable IDs, original scores, and source
+  provenance (see [Genuine TRaSH formats](#genuine-trash-formats));
 - quality profiles and their recommended formats;
 - reusable format bundles for common library goals;
 - a package version, upstream revision, review date, adaptation note, and
@@ -44,6 +44,65 @@ and pinned upstream group/profile is classified as a typed representation or an
 explicit Advanced representation. `Unaccounted` must remain empty; the
 persistence test treats a new unexplained guide item as a CI failure rather
 than silently dropping it.
+
+## Genuine TRaSH formats
+
+From package version 4 (schema 3), every entry Deluno curates is one of two
+kinds, and the package proves which:
+
+- **A genuine TRaSH format** (`sourceKind: trash-guides`). It has TRaSH's own
+  id and name for one media type. It is matched by TRaSH's own specifications
+  from the pinned inventory, never by patterns Deluno wrote. TRaSH publishes a
+  movies copy and a TV copy of most formats under different ids, so the
+  package carries both. Deluno adds only the category, a plain-language
+  description, the reviewed typed meaning, and a friendly display name in the
+  web app.
+- **A Deluno-owned extra** (`sourceKind: deluno`). It covers a format TRaSH
+  does not publish, such as HDR10 on its own or a remux. Its id starts with
+  `deluno-`, it is matched by any one of its patterns, and it serves movies
+  and TV.
+
+Validation rejects a genuine entry with patterns or without TRaSH
+specifications, and an extra whose id TRaSH already uses.
+`GenuineGuideFormatTests` also checks the file as shipped: every genuine
+entry's id must be the TRaSH format of that name and media type. Before
+version 4 nothing checked this. Of the 85 curated entries, 15 carried the id of
+a different TRaSH format ("Amazon Prime" was Crave), and 63 ids were invented.
+
+A rule made from a guide format sends only its guide id. The server writes the
+guide's own conditions (`GuideFormatConditions`), so every screen that makes
+such a rule gets the same definition.
+
+### Radarr and Sonarr numbering
+
+TRaSH writes each copy in the numbering of the app it is for. `SourceSpecification`
+3 is a telecine to Radarr and a WEB-DL to Sonarr. Sonarr also numbers a Blu-ray
+remux (7) apart from a Blu-ray encode (6). The matcher reads a movies rule with
+Radarr's numbers and a TV rule with Sonarr's.
+
+### Rules made from the old catalogue
+
+Rules created before version 4 still carry the old ids and Deluno's patterns.
+The catalogue that made them is kept as `trash-guide-legacy-catalogue.json`,
+which records what each old entry becomes for movies and for TV.
+
+`GET /api/v1/guides/trash/rule-migration` previews the move and changes
+nothing. Release Preferences shows it as "Rules from the old guide catalogue".
+Each rule keeps its id, score, media type and every profile answer about it.
+It takes the genuine format's id and conditions, and takes TRaSH's name only
+if the owner never renamed it. When TRaSH has no version of that format for
+the rule's media type, the rule stays the owner's own rule and loses its guide
+id. A rule whose conditions are specifications is a genuine import that
+happens to share an old id, and it is never offered.
+
+`POST /api/v1/guides/trash/rule-migration/apply` moves only the chosen rules,
+and only while the preview hash still matches. A rule edited after the preview
+is left alone. Each move is recorded in Activity (`quality.custom-format.guide-moved`)
+with what the rule was and what it became.
+
+An install that had stored an older package gets Deluno's new layer at startup.
+It is stored as a new version over the upstream inventory the owner synced, and
+the previous version stays retained.
 
 ## Mapping safety
 

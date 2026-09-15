@@ -134,13 +134,22 @@ export function formatsForStep(
   });
 }
 
-/** Rules without a shipped guide identity, shown separately from guide categories. */
+/**
+ * Rules no step offers, shown separately from the guide questions: rules with
+ * no guide identity, and rules for a TRaSH format Deluno has not placed in a
+ * step. A rule made from any of TRaSH's 478 formats carries a real guide id,
+ * and it used to vanish from both lists.
+ */
 export function customFormatsOutsideGuide(
   formats: readonly CustomFormatItem[],
   guide: GuidePackage
 ): CustomFormatItem[] {
-  const guideIds = new Set((guide.customFormats ?? []).map((format) => format.trashId));
-  return formats.filter((format) => !format.trashId || !guideIds.has(format.trashId));
+  const owned = new Set(QUALITY_STEPS.flatMap((step) => step.categories));
+  const byTrashId = new Map((guide.customFormats ?? []).map((format) => [format.trashId, format]));
+  return formats.filter((format) => {
+    const guideFormat = format.trashId ? byTrashId.get(format.trashId) : undefined;
+    return !guideFormat || !owned.has(guideFormat.category);
+  });
 }
 
 /**

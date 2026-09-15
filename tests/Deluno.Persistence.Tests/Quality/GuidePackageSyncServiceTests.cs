@@ -92,7 +92,16 @@ public sealed class GuidePackageSyncServiceTests
                 trash_description = "Fixture source used only to prove the sync boundary.",
                 trash_scores = new Dictionary<string, int> { ["default"] = 0 },
                 includeCustomFormatWhenRenaming = false,
-                specifications = Array.Empty<object>()
+                // A real format always has specifications, and a genuine guide
+                // entry is matched by them.
+                specifications = source.MatcherClauses.Select(clause => new
+                {
+                    name = clause.Name,
+                    implementation = clause.Implementation,
+                    negate = clause.Negate,
+                    required = clause.Required,
+                    fields = System.Text.Json.Nodes.JsonNode.Parse(clause.FieldsJson)
+                }).ToArray()
             });
             var group = JsonSerializer.Serialize(new
             {

@@ -7,8 +7,8 @@
  * the source, looks for something that exercises each one, and reports what is
  * left over.
  *
- * The pattern is borrowed from GuideCapabilityInventory, which accounts for all
- * 85 TRaSH formats and gates the write path on zero unaccounted. That is what
+ * The pattern is borrowed from GuideCapabilityInventory, which accounts for every
+ * guide format and gates the write path on zero unaccounted. That is what
  * turned "we handled the guide properly" from an assertion into a number, and
  * this is the same move applied to the product.
  *
