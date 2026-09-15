@@ -72,7 +72,7 @@ By default Deluno listens on loopback only, so nothing outside the machine can r
 ```yaml
 services:
   deluno:
-    image: ghcr.io/jampat000/deluno:1.0.0-rc.2
+    image: ghcr.io/jampat000/deluno:1.0.0-rc.3
     container_name: deluno
     ports:
       - "5099:8080"
@@ -81,7 +81,7 @@ services:
       Server__Port: 8080
       Server__AllowLan: "true"
       Storage__DataRoot: /data
-      DELUNO_IMAGE_REF: ghcr.io/jampat000/deluno:1.0.0-rc.2
+      DELUNO_IMAGE_REF: ghcr.io/jampat000/deluno:1.0.0-rc.3
     volumes:
       - ./data:/data
       - /your/media:/media
