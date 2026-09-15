@@ -246,7 +246,13 @@ export function LibraryView({
         setTotalCount(page.totalCount ?? 0);
         setFacets(page.facets);
         setNextPageToken(page.nextPageToken);
-        setSelectedIds([]);
+        // Keep what is still on the page selected. Clearing everything here
+        // raced a person's own click: typing in search schedules this fetch,
+        // so a title selected before it landed was silently unselected and
+        // the bulk actions never appeared (seen in CI as a Remove button that
+        // never came).
+        const stillShown = new Set(items.map((item) => item.id));
+        setSelectedIds((current) => current.filter((id) => stillShown.has(id)));
         firstSliceLanded = true;
         rememberCatalogue(cacheKeyRef.current, {
           items: items.slice(0, CATALOGUE_CACHE_ITEMS),

@@ -21,6 +21,16 @@ test.describe("library removal", () => {
     await page.getByPlaceholder("Search movies…").fill(title);
     await expect(page.getByText(title, { exact: true })).toBeVisible();
     await page.getByRole("button", { name: `Select ${title}`, exact: true }).click();
+
+    // A search refresh that still shows the title keeps it selected. It used to
+    // clear every selection when it landed, so a click made while it was on
+    // its way was silently undone and Remove never appeared.
+    const narrower = title.slice(0, -1);
+    const refreshed = page.waitForResponse((response) =>
+      response.url().includes("/api/movies/page") && new URL(response.url()).searchParams.get("search") === narrower);
+    await page.getByPlaceholder("Search movies…").fill(narrower);
+    await refreshed;
+    await expect(page.getByRole("button", { name: `Deselect ${title}`, exact: true })).toBeVisible();
     await page.getByRole("button", { name: "Remove", exact: true }).click();
 
     const dialog = page.getByRole("dialog");
