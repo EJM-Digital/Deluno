@@ -28,7 +28,8 @@ public static class InstalledPreferenceEvaluationFactory
         IReadOnlyList<PreferenceFact>? baselineFacts = null,
         string? probedVideoCodec = null,
         string? probedAudioCodec = null,
-        string? probedAudioChannels = null)
+        string? probedAudioChannels = null,
+        string? releaseNameEvidence = null)
     {
         ArgumentNullException.ThrowIfNull(profile);
         if (string.IsNullOrWhiteSpace(filePath))
@@ -38,6 +39,12 @@ public static class InstalledPreferenceEvaluationFactory
 
         var effectiveGuidePackage = guidePackage ?? GuidePackageCatalog.Current;
         var plan = preferencePlan ?? ReleasePreferencePlanFactory.CreateQualityPlan(profile, customFormats, effectiveGuidePackage);
+        var effectiveReleaseNameEvidence = string.IsNullOrWhiteSpace(releaseNameEvidence)
+            ? filePath.Trim()
+            : releaseNameEvidence.Trim();
+        var nameEvidenceSource = string.IsNullOrWhiteSpace(releaseNameEvidence)
+            ? "file-name"
+            : "release-title";
         var hasBaseline = baselineFacts is { Count: > 0 };
         var facts = (baselineFacts ?? []).ToList();
         var normalizedQuality = MediaPolicyCatalog.Current.NormalizeQuality(currentQuality);
@@ -92,7 +99,11 @@ public static class InstalledPreferenceEvaluationFactory
             facts.RemoveAll(fact => string.Equals(
                 fact.Evidence?.Source,
                 "guide-custom-format",
-                StringComparison.OrdinalIgnoreCase));
+                StringComparison.OrdinalIgnoreCase)
+                || string.Equals(
+                    fact.Evidence?.Source,
+                    "custom-format-matcher",
+                    StringComparison.OrdinalIgnoreCase));
             ApplyProbedFacts(
                 facts,
                 probedVideoCodec,
@@ -103,33 +114,44 @@ public static class InstalledPreferenceEvaluationFactory
         {
             AddNameFacts(
                 facts,
-                filePath,
+                effectiveReleaseNameEvidence,
+                nameEvidenceSource,
                 probedVideoCodec,
                 probedAudioCodec,
                 probedAudioChannels);
         }
 
-        var matchedFormats = ReleasePreferenceFormatEvidenceFactory.Match(
+        var formatEvaluations = ReleasePreferenceFormatEvidenceFactory.Evaluate(
             plan,
-            filePath,
+            effectiveReleaseNameEvidence,
             SelectProfileFormats(profile, customFormats),
             preferencePlan is null ? effectiveGuidePackage : null);
-        foreach (var matchedFormat in matchedFormats)
+        foreach (var formatEvaluation in formatEvaluations)
         {
-            foreach (var traitId in matchedFormat.TraitIds)
+            foreach (var (traitId, state) in formatEvaluation.TraitIds
+                         .Select(traitId => (traitId, PreferenceFactState.Present))
+                         .Concat((formatEvaluation.AbsentTraitIds ?? [])
+                             .Select(traitId => (traitId, PreferenceFactState.Absent))))
             {
+                var dynamicTrait = CustomFormatPreferenceTraits.IsDynamic(traitId);
                 facts.Add(new PreferenceFact(
                     traitId,
-                    PreferenceFactState.Present,
+                    state,
                     new PreferenceEvidence(
-                        Source: "guide-custom-format",
+                        Source: dynamicTrait ? "custom-format-matcher" : "guide-custom-format",
                         Confidence: 1,
-                        Detail: $"Matched guide rule '{matchedFormat.SourceId}'.",
-                        DetectionRule: "guide-custom-format-pattern",
+                        Detail: formatEvaluation.IsMatch
+                            ? $"Matched rule '{formatEvaluation.RuleName ?? formatEvaluation.SourceId}'."
+                            : $"Did not match rule '{formatEvaluation.RuleName ?? formatEvaluation.SourceId}'.",
+                        DetectionRule: dynamicTrait
+                            ? "immutable-custom-format-matcher"
+                            : "guide-custom-format-pattern",
                         DetectionVersion: preferencePlan is null
                             ? $"{effectiveGuidePackage.Version}:{effectiveGuidePackage.Source.UpstreamRevision}"
                             : $"immutable-plan:{plan.Version}:{plan.PlanHash}",
-                        Model: PreferenceEvidenceModel.OpenWorld)));
+                        Model: dynamicTrait
+                            ? PreferenceEvidenceModel.ClosedWorld
+                            : PreferenceEvidenceModel.OpenWorld)));
             }
         }
         var evaluation = ReleasePreferenceEvaluator.Evaluate(plan, facts);
@@ -145,9 +167,13 @@ public static class InstalledPreferenceEvaluationFactory
             PlanHash: plan.PlanHash,
             Facts: facts,
             Evaluation: evaluation,
-            MatchedRuleIds: matchedFormats.Select(item => item.RuleId).ToArray(),
+            MatchedRuleIds: formatEvaluations
+                .Where(item => item.IsMatch)
+                .Select(item => item.RuleId)
+                .ToArray(),
             EvaluatedUtc: evaluatedUtc,
-            Source: source?.Trim());
+            Source: source?.Trim(),
+            ReleaseNameEvidence: effectiveReleaseNameEvidence);
     }
 
     private static IReadOnlyList<CustomFormatItem> SelectProfileFormats(
@@ -172,15 +198,16 @@ public static class InstalledPreferenceEvaluationFactory
 
     private static void AddNameFacts(
         ICollection<PreferenceFact> facts,
-        string filePath,
+        string nameEvidence,
+        string nameEvidenceSource,
         string? probedVideoCodec,
         string? probedAudioCodec,
         string? probedAudioChannels)
     {
-        var parsed = MediaFileNameFacts.Parse(filePath);
-        var videoSource = string.IsNullOrWhiteSpace(probedVideoCodec) ? "file-name" : "media-probe";
-        var audioSource = string.IsNullOrWhiteSpace(probedAudioCodec) ? "file-name" : "media-probe";
-        var channelsSource = string.IsNullOrWhiteSpace(probedAudioChannels) ? "file-name" : "media-probe";
+        var parsed = MediaFileNameFacts.Parse(nameEvidence);
+        var videoSource = string.IsNullOrWhiteSpace(probedVideoCodec) ? nameEvidenceSource : "media-probe";
+        var audioSource = string.IsNullOrWhiteSpace(probedAudioCodec) ? nameEvidenceSource : "media-probe";
+        var channelsSource = string.IsNullOrWhiteSpace(probedAudioChannels) ? nameEvidenceSource : "media-probe";
         Add(facts, "video.codec", probedVideoCodec ?? parsed.VideoCodec, videoSource);
 
         var audioCodec = probedAudioCodec ?? parsed.AudioCodec;
@@ -193,8 +220,8 @@ public static class InstalledPreferenceEvaluationFactory
             Add(facts, "audio.format", audioCodec, audioSource);
         }
         Add(facts, "audio.channels", probedAudioChannels ?? parsed.AudioChannels, channelsSource);
-        Add(facts, "source", parsed.Source, "file-name");
-        Add(facts, "release-group", parsed.ReleaseGroup, "file-name");
+        Add(facts, "source", parsed.Source, nameEvidenceSource);
+        Add(facts, "release-group", parsed.ReleaseGroup, nameEvidenceSource);
     }
 
     private static void ApplyProbedFacts(
@@ -277,6 +304,13 @@ public static class InstalledPreferenceEvaluationFactory
                 ? "release-group.unclassified"
                 : $"{family}.{Slug(value)}";
 
+        var (detail, detectionRule) = evidenceSource switch
+        {
+            "media-probe" => ($"Read from '{value}' in the media container.", "media-probe-facts"),
+            "release-title" => ($"Read from '{value}' in the preserved release title.", "release-title-facts"),
+            _ => ($"Read from '{value}' in the file name.", "media-file-name-facts")
+        };
+
         facts.Add(new PreferenceFact(
             definition,
             PreferenceFactState.Present,
@@ -285,12 +319,8 @@ public static class InstalledPreferenceEvaluationFactory
                 Confidence: string.Equals(evidenceSource, "media-probe", StringComparison.OrdinalIgnoreCase)
                     ? 1
                     : 0.8,
-                Detail: evidenceSource == "media-probe"
-                    ? $"Read from '{value}' in the media container."
-                    : $"Read from '{value}' in the file name.",
-                DetectionRule: evidenceSource == "media-probe"
-                    ? "media-probe-facts"
-                    : "media-file-name-facts",
+                Detail: detail,
+                DetectionRule: detectionRule,
                 DetectionVersion: "v1",
                 Model: PreferenceEvidenceModel.OpenWorld)));
     }

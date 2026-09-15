@@ -263,32 +263,33 @@ public sealed class PreferenceTraitRegistry
                          .Where(level => level is not null)
                          .SelectMany(level => level.NormalizedTraitIds))
             {
-                ValidatePlanTrait(traitId, family, plan.MediaType, errors);
+                ValidatePlanTrait(plan, traitId, family, plan.MediaType, errors);
             }
         }
 
         foreach (var traitId in (plan.RequiredTraitIds ?? []).Concat(plan.ForbiddenTraitIds ?? []))
         {
-            ValidatePlanTrait(traitId, family: null, plan.MediaType, errors);
+            ValidatePlanTrait(plan, traitId, family: null, plan.MediaType, errors);
         }
 
         foreach (var traitId in (plan.RequiredAnyTraitGroups ?? [])
                      .Where(group => group is not null)
                      .SelectMany(group => group))
         {
-            ValidatePlanTrait(traitId, family: null, plan.MediaType, errors);
+            ValidatePlanTrait(plan, traitId, family: null, plan.MediaType, errors);
         }
 
         foreach (var relationship in (plan.Relationships ?? []).Where(relationship => relationship is not null))
         {
-            ValidatePlanTrait(relationship.FromTraitId, family: null, plan.MediaType, errors);
-            ValidatePlanTrait(relationship.ToTraitId, family: null, plan.MediaType, errors);
+            ValidatePlanTrait(plan, relationship.FromTraitId, family: null, plan.MediaType, errors);
+            ValidatePlanTrait(plan, relationship.ToTraitId, family: null, plan.MediaType, errors);
         }
 
         return errors;
     }
 
     private void ValidatePlanTrait(
+        ReleasePreferencePlan plan,
         string? traitId,
         PreferenceFamily? family,
         string? mediaType,
@@ -302,6 +303,22 @@ public sealed class PreferenceTraitRegistry
 
         if (!TryResolve(traitId, out var definition))
         {
+            if (CustomFormatPreferenceTraits.IsDynamic(traitId)
+                && CustomFormatPreferenceTraits.IsBackedByPlan(plan, traitId.Trim()))
+            {
+                if (!string.Equals(traitId.Trim(), traitId.Trim().ToLowerInvariant(), StringComparison.Ordinal))
+                {
+                    errors.Add($"Plan trait '{traitId}' must use its canonical lowercase custom-format id.");
+                }
+
+                if (family?.Transient == true)
+                {
+                    errors.Add($"Trait '{traitId}' must be placed in a persistent family.");
+                }
+
+                return;
+            }
+
             errors.Add($"Plan trait '{traitId}' is not in the {Version} registry.");
             return;
         }

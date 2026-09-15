@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import {
   QUALITY_STEPS,
+  customFormatsOutsideGuide,
   describeAnswer,
   formatsForStep,
   guideCategories,
@@ -78,13 +79,12 @@ describe("which formats a step offers", () => {
     expect(formatsForStep(step("picture"), formats, renamed).map((format) => format.id)).toContain("hdr10");
   });
 
-  it("puts a rule you wrote yourself under what you never want", () => {
-    // Not a guess about what a local rule means. A rule somebody wrote is a
-    // rule they are asserting, and step 7 is the step that shows assertions.
+  it("keeps a rule you wrote yourself out of guide questions and returns it separately", () => {
     const mine: CustomFormatItem = { ...formats[0], id: "mine", name: "My own rule", trashId: null };
 
-    expect(formatsForStep(step("never"), [mine], guide()).map((format) => format.id)).toEqual(["mine"]);
+    expect(formatsForStep(step("never"), [mine], guide())).toEqual([]);
     expect(formatsForStep(step("picture"), [mine], guide())).toEqual([]);
+    expect(customFormatsOutsideGuide([mine], guide()).map((format) => format.id)).toEqual(["mine"]);
   });
 });
 

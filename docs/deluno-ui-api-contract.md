@@ -273,6 +273,14 @@ Current UI contract expectations:
 - intake sources now carry per-source filter/routing fields (`requiredGenres`, `minimumRating`, `minimumYear`, `maximumAgeDays`, `allowedCertifications`, `audience`) plus sync diagnostics (`lastSyncUtc`, `lastSyncStatus`, `lastSyncSummary`)
 - the quality model endpoint exposes explicit editable tiers with movie/episode size bounds and upgrade-stop policy
 - custom format dry-run is implemented and should be documented as a real workflow, not a future one
+- custom-format names are unique within a normalized media type; an accidental
+  duplicate is rejected with an edit-the-existing-rule message, while Movies
+  and TV may deliberately own separate rules with the same name
+- every selected custom format with a valid matcher compiles to a plan-scoped
+  matched/not-matched decision. The profile's words (must not have, avoid, do
+  not care, prefer, strongly prefer) control the decision; imported numeric
+  scores remain provenance only. The immutable source records the saved rule
+  id/name, matcher, intent, and version
 - migration preview/apply exists and should remain tied to authenticated single-user setup and import workflows
 
 Current gaps:
@@ -387,6 +395,16 @@ single catalogue transaction fails: copied or linked destinations are removed an
 sources are restored. A retry is reported as already committed only when every episode
 still owns its reviewed path and the source and destination SHA-256 content match; file
 size alone is not accepted as proof.
+
+When an import belongs to a download dispatch, completion appends
+`file_provenance_recorded` to that dispatch's timeline. Its payload correlates
+the exact original release title, indexer, client and client item, processor,
+source and destination paths, rename, transfer/fallback result, destination
+rule, matched custom rules, cleanup outcome, media probe, and immutable
+preference-plan id/version/hash. The Movies and Series preference snapshots
+also store `releaseNameEvidence` independently of `filePath`, so a clean library
+name cannot erase NF/AMZN/group/edition/repack evidence and a later media probe
+re-evaluates the same immutable matchers against that preserved title.
 
 The native picker is available in the installed interactive Windows tray app and in an interactive Windows development host. It can select local folders, mapped drives, and UNC locations visible to the same Windows user session. When Deluno runs as a Windows service, in Docker, or on a non-Windows host, the endpoint reports that the picker is unavailable; the web UI then opens the advanced server browser and manual path entry instead. If the browser is remote, the native dialog belongs to the backend desktop session, so advanced browse or manual entry is the appropriate path. Server-side path visibility and permissions remain authoritative, especially for services and network shares.
 

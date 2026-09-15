@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Deluno.Quality;
 using Deluno.Quality.Guides;
 using Deluno.Quality.ReleasePreferences;
 
@@ -239,14 +240,20 @@ public sealed class GuidePackageTests
 
         var plan = Deluno.Quality.ReleasePreferences.ReleasePreferencePlanFactory.CreateQualityPlan(profile, [format]);
         var audio = Assert.Single(plan.Families, family => family.Dimension == "audio.format");
+        var customRule = Assert.Single(plan.Families, family => family.Dimension == $"Custom rule · {format.Name}");
 
-        Assert.Equal(Deluno.Quality.ReleasePreferences.PreferenceIntent.Ranked, audio.Intent);
-        Assert.True(audio.UpgradeDriving);
-        Assert.Equal("audio-format-truehd", audio.TargetLevelId);
+        Assert.Equal(Deluno.Quality.ReleasePreferences.PreferenceIntent.Neutral, audio.Intent);
+        Assert.False(audio.UpgradeDriving);
+        Assert.Equal(Deluno.Quality.ReleasePreferences.PreferenceIntent.Ranked, customRule.Intent);
+        Assert.True(customRule.UpgradeDriving);
+        Assert.Equal("matched", customRule.TargetLevelId);
         Assert.DoesNotContain(plan.Families.SelectMany(family => family.Levels)
             .SelectMany(level => level.TraitIds), traitId =>
             traitId.Contains("999999", StringComparison.Ordinal));
-        Assert.Contains(plan.Sources!, source => source.AssignedScore == "999999");
+        Assert.Contains(plan.Sources!, source =>
+            source.AssignedScore == "999999"
+            && source.RuleId == format.Id
+            && source.ProfileIntent == ProfileFormatIntents.StronglyPrefer);
     }
 
     [Fact]
@@ -302,9 +309,9 @@ public sealed class GuidePackageTests
             qualityProfile,
             [customFormat]);
 
-        Assert.All(guideFormat.MappedTraitIds, traitId =>
-            Assert.Contains(traitId, runtimePlan.ForbiddenTraitIds!));
-        Assert.Contains(runtimePlan.Sources!, source => source.SourceId == guideFormat.TrashId);
+        var source = Assert.Single(runtimePlan.Sources!, source => source.RuleId == customFormat.Id);
+        Assert.Contains(Deluno.Quality.ReleasePreferences.CustomFormatPreferenceTraits.Matched(customFormat.Id), runtimePlan.ForbiddenTraitIds!);
+        Assert.Equal(guideFormat.TrashId, source.MappingId?.Split(':').Last());
 
         var snapshot = Deluno.Quality.ReleasePreferences.InstalledPreferenceEvaluationFactory.Create(
             qualityProfile,
@@ -325,7 +332,7 @@ public sealed class GuidePackageTests
                 && fact.State == Deluno.Quality.ReleasePreferences.PreferenceFactState.Present));
         Assert.Contains(customFormat.Id, snapshot.MatchedRuleIds);
         Assert.Contains(snapshot.Facts, fact =>
-            fact.Evidence?.Detail?.Contains(guideFormat.TrashId, StringComparison.OrdinalIgnoreCase) == true);
+            fact.Evidence?.Detail?.Contains(customFormat.Name, StringComparison.OrdinalIgnoreCase) == true);
     }
 
     [Fact]

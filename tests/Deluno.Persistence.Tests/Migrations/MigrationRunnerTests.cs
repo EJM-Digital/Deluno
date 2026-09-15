@@ -121,6 +121,7 @@ public sealed class MigrationRunnerTests
         Assert.Equal("movie_subtitle_match", await ReadScalarAsync<string>(moviesConnection, "SELECT name FROM schema_migrations WHERE version = 18;"));
         Assert.Equal("movie_preference_evaluations", await ReadScalarAsync<string>(moviesConnection, "SELECT name FROM schema_migrations WHERE version = 33;"));
         Assert.Equal("movie_subtitle_failure_details", await ReadScalarAsync<string>(moviesConnection, "SELECT name FROM schema_migrations WHERE version = 34;"));
+        Assert.Equal("movie_release_name_evidence", await ReadScalarAsync<string>(moviesConnection, "SELECT name FROM schema_migrations WHERE version = 36;"));
 
         await using var seriesConnection = await storage.Factory.OpenConnectionAsync(DelunoDatabaseNames.Series);
         await AssertVersionsAreContiguousAsync(seriesConnection);
@@ -149,6 +150,7 @@ public sealed class MigrationRunnerTests
         Assert.Equal("series_preference_evaluations", await ReadScalarAsync<string>(seriesConnection, "SELECT name FROM schema_migrations WHERE version = 34;"));
         Assert.Equal("series_numbering", await ReadScalarAsync<string>(seriesConnection, "SELECT name FROM schema_migrations WHERE version = 35;"));
         Assert.Equal("series_subtitle_failure_details", await ReadScalarAsync<string>(seriesConnection, "SELECT name FROM schema_migrations WHERE version = 36;"));
+        Assert.Equal("series_release_name_evidence", await ReadScalarAsync<string>(seriesConnection, "SELECT name FROM schema_migrations WHERE version = 39;"));
 
         await using var platformConnection = await storage.Factory.OpenConnectionAsync(DelunoDatabaseNames.Platform);
         await AssertVersionsAreContiguousAsync(platformConnection);
@@ -226,6 +228,55 @@ public sealed class MigrationRunnerTests
         Assert.Equal("import_failure_rules", await ReadScalarAsync<string>(jobsConnection, "SELECT name FROM schema_migrations WHERE version = 28;"));
         Assert.Equal("proposed_refusals", await ReadScalarAsync<string>(jobsConnection, "SELECT name FROM schema_migrations WHERE version = 29;"));
         Assert.Equal("schedule_interval_used", await ReadScalarAsync<string>(jobsConnection, "SELECT name FROM schema_migrations WHERE version = 30;"));
+    }
+
+    [Fact]
+    public async Task Existing_movie_and_series_databases_gain_release_name_evidence_without_a_rebuild()
+    {
+        using var storage = TestStorage.Create();
+        var migrator = new SqliteDatabaseMigrator(
+            storage.Factory,
+            new FixedTimeProvider(DateTimeOffset.Parse("2026-09-15T00:00:00Z")));
+
+        await migrator.ApplyAsync(
+            DelunoDatabaseNames.Movies,
+            Deluno.Movies.Migrations.MoviesDatabaseMigrations.All
+                .Where(migration => migration.Version < 36)
+                .ToArray(),
+            CancellationToken.None);
+        await migrator.ApplyAsync(
+            DelunoDatabaseNames.Series,
+            Deluno.Series.Migrations.SeriesDatabaseMigrations.All
+                .Where(migration => migration.Version < 39)
+                .ToArray(),
+            CancellationToken.None);
+
+        await using (var moviesBefore = await storage.Factory.OpenConnectionAsync(DelunoDatabaseNames.Movies))
+        {
+            Assert.Equal(0, await ReadScalarAsync<int>(moviesBefore,
+                "SELECT COUNT(*) FROM pragma_table_info('media_preference_evaluations') WHERE name = 'release_name_evidence';"));
+        }
+        await using (var seriesBefore = await storage.Factory.OpenConnectionAsync(DelunoDatabaseNames.Series))
+        {
+            Assert.Equal(0, await ReadScalarAsync<int>(seriesBefore,
+                "SELECT COUNT(*) FROM pragma_table_info('media_preference_evaluations') WHERE name = 'release_name_evidence';"));
+        }
+
+        await migrator.ApplyAsync(
+            DelunoDatabaseNames.Movies,
+            Deluno.Movies.Migrations.MoviesDatabaseMigrations.All,
+            CancellationToken.None);
+        await migrator.ApplyAsync(
+            DelunoDatabaseNames.Series,
+            Deluno.Series.Migrations.SeriesDatabaseMigrations.All,
+            CancellationToken.None);
+
+        await using var moviesAfter = await storage.Factory.OpenConnectionAsync(DelunoDatabaseNames.Movies);
+        await using var seriesAfter = await storage.Factory.OpenConnectionAsync(DelunoDatabaseNames.Series);
+        Assert.Equal(1, await ReadScalarAsync<int>(moviesAfter,
+            "SELECT COUNT(*) FROM pragma_table_info('media_preference_evaluations') WHERE name = 'release_name_evidence';"));
+        Assert.Equal(1, await ReadScalarAsync<int>(seriesAfter,
+            "SELECT COUNT(*) FROM pragma_table_info('media_preference_evaluations') WHERE name = 'release_name_evidence';"));
     }
 
     [Fact]

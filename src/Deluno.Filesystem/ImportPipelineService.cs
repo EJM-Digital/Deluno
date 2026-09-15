@@ -398,6 +398,7 @@ public sealed partial class ImportPipelineService(
                 mediaType,
                 libraries,
                 settings.UnmonitorWhenCutoffMet,
+                request.DispatchId,
                 cancellationToken);
 
             var matchedLibrary = ResolveLibraryForImport(preview.DestinationPath, mediaType, libraries);
@@ -447,23 +448,32 @@ public sealed partial class ImportPipelineService(
                 preview.SourcePath,
                 matchedLibrary,
                 await IsStillSharedByClientAsync(request.DispatchId, cancellationToken));
+            var provenance = BuildImportProvenance(
+                request,
+                preview.SourcePath,
+                preview.DestinationPath,
+                preview.PreferredTransferMode,
+                mode,
+                usedFallback,
+                catalogImportResult,
+                matchedLibrary,
+                cleanup.Summary,
+                preview.MatchedRuleId,
+                preview.MatchedRuleName,
+                preview.MediaProbe);
+            if (downloadDispatchesRepository is not null && !string.IsNullOrWhiteSpace(request.DispatchId))
+            {
+                await downloadDispatchesRepository.RecordTimelineEventAsync(
+                    request.DispatchId,
+                    "file_provenance_recorded",
+                    JsonSerializer.Serialize(provenance),
+                    cancellationToken);
+            }
 
             await activityFeedRepository.RecordActivityAsync(
                 "filesystem.import.completed",
                 $"{TitleForActivity(request.Preview)} was imported using {mode}.",
-                JsonSerializer.Serialize(new
-                {
-                    preview.SourcePath,
-                    preview.DestinationPath,
-                    preview.PreferredTransferMode,
-                    TransferModeUsed = mode,
-                    usedFallback,
-                    catalogUpdated = catalogImportResult.CatalogUpdated,
-                    workflowCleanup = cleanup,
-                    preview.MatchedRuleId,
-                    preview.MatchedRuleName,
-                    MediaProbe = preview.MediaProbe
-                }),
+                JsonSerializer.Serialize(provenance),
                 null,
                 mediaType == "tv" ? "series" : "movie",
                 null,
@@ -486,7 +496,14 @@ public sealed partial class ImportPipelineService(
                         ["matchedRuleId"] = preview.MatchedRuleId,
                         ["matchedRuleName"] = preview.MatchedRuleName,
                         ["catalogUpdated"] = catalogImportResult.CatalogUpdated.ToString(),
-                        ["workflowCleanup"] = cleanup.Summary
+                        ["workflowCleanup"] = cleanup.Summary,
+                        ["dispatchId"] = provenance.DispatchId,
+                        ["releaseNameEvidence"] = provenance.ReleaseNameEvidence,
+                        ["indexer"] = provenance.IndexerName,
+                        ["downloadClient"] = provenance.DownloadClientName,
+                        ["preferencePlan"] = provenance.PreferencePlanId,
+                        ["preferencePlanHash"] = provenance.PreferencePlanHash,
+                        ["matchedCustomRules"] = provenance.MatchedRuleNames
                     },
                     Outcome: $"{TitleForActivity(request.Preview)} imported to {preview.DestinationPath}. {cleanup.Summary}",
                     Alternatives: []),
@@ -536,11 +553,20 @@ public sealed partial class ImportPipelineService(
 
             DelunoObservability.ImportCompleted.Add(1, new("media.type", mediaType), new("transfer.mode", mode));
             logger.LogInformation(
-                "Import completed for {MediaType} title {Title} using {TransferMode}. Destination={DestinationPath} Fallback={UsedFallback}",
+                "Import completed for {MediaType} title {Title} using {TransferMode}. Dispatch={DispatchId} ReleaseNameEvidence={ReleaseNameEvidence} Indexer={IndexerName} DownloadClient={DownloadClientName} Source={SourcePath} Destination={DestinationPath} Rename={Rename} MatchedRules={MatchedRules} PreferencePlan={PreferencePlanId} PreferencePlanHash={PreferencePlanHash} Fallback={UsedFallback}",
                 mediaType,
                 TitleForActivity(request.Preview),
                 mode,
+                provenance.DispatchId,
+                provenance.ReleaseNameEvidence,
+                provenance.IndexerName,
+                provenance.DownloadClientName,
+                provenance.SourcePath,
                 preview.DestinationPath,
+                provenance.Rename,
+                provenance.MatchedRuleNames,
+                provenance.PreferencePlanId,
+                provenance.PreferencePlanHash,
                 usedFallback);
 
             return new ImportPipelineResult(true, StatusCodes.Status200OK, response, response.Message);
@@ -1044,6 +1070,7 @@ public sealed partial class ImportPipelineService(
                 "tv",
                 libraries,
                 settings.UnmonitorWhenCutoffMet,
+                request.DispatchId,
                 cancellationToken,
                 plan.Numbers,
                 plan.Files.Select(file => file.Preview).ToArray());
@@ -1220,6 +1247,28 @@ public sealed partial class ImportPipelineService(
                 placement.File.Preview.SourcePath,
                 ResolveLibraryForImport(placement.File.Preview.DestinationPath, "tv", libraries),
                 sharedByClient)).ToArray();
+            var matchedLibrary = ResolveLibraryForImport(plan.Summary.DestinationPath, "tv", libraries);
+            var provenance = BuildImportProvenance(
+                request,
+                request.Preview.SourcePath,
+                plan.Summary.DestinationFolder,
+                plan.Summary.PreferredTransferMode,
+                modeUsed,
+                usedFallback,
+                catalog,
+                matchedLibrary,
+                string.Join(" ", cleanup.Select(item => item.Summary)),
+                plan.Summary.MatchedRuleId,
+                plan.Summary.MatchedRuleName,
+                plan.Summary.MediaProbe);
+            if (downloadDispatchesRepository is not null && !string.IsNullOrWhiteSpace(request.DispatchId))
+            {
+                await downloadDispatchesRepository.RecordTimelineEventAsync(
+                    request.DispatchId,
+                    "file_provenance_recorded",
+                    JsonSerializer.Serialize(provenance),
+                    cancellationToken);
+            }
             await activityFeedRepository.RecordActivityAsync(
                 "filesystem.import.season-pack.completed",
                 $"{TitleForActivity(request.Preview)} season pack imported {placements.Count} files covering {plan.Numbers.Episodes.Count} episodes.",
@@ -1233,7 +1282,8 @@ public sealed partial class ImportPipelineService(
                         placement.UsedFallback,
                         Episodes = placement.File.Numbers.Episodes.Select(episode => EpisodeKey(episode.SeasonNumber, episode.EpisodeNumber))
                     }),
-                    Cleanup = cleanup.Select(item => item.Summary)
+                    Cleanup = cleanup.Select(item => item.Summary),
+                    Provenance = provenance
                 }),
                 null,
                 "series",
@@ -1250,7 +1300,14 @@ public sealed partial class ImportPipelineService(
                         ["fileCount"] = placements.Count.ToString(),
                         ["episodeCount"] = plan.Numbers.Episodes.Count.ToString(),
                         ["transferModeUsed"] = modeUsed,
-                        ["usedFallback"] = usedFallback.ToString()
+                        ["usedFallback"] = usedFallback.ToString(),
+                        ["dispatchId"] = provenance.DispatchId,
+                        ["releaseNameEvidence"] = provenance.ReleaseNameEvidence,
+                        ["indexer"] = provenance.IndexerName,
+                        ["downloadClient"] = provenance.DownloadClientName,
+                        ["preferencePlan"] = provenance.PreferencePlanId,
+                        ["preferencePlanHash"] = provenance.PreferencePlanHash,
+                        ["matchedCustomRules"] = provenance.MatchedRuleNames
                     },
                     Outcome: $"All {placements.Count} files were placed before one transaction marked {plan.Numbers.Episodes.Count} episodes imported.",
                     Alternatives:
@@ -2045,10 +2102,95 @@ public sealed partial class ImportPipelineService(
             request.AllowCopyFallback
         });
 
+    private sealed record ImportProvenanceDetails(
+        string? DispatchId,
+        string? ReleaseNameEvidence,
+        string? IndexerName,
+        string? DownloadClientName,
+        string? DownloadClientItemId,
+        string SourcePath,
+        string DestinationPath,
+        string Rename,
+        string PreferredTransferMode,
+        string TransferModeUsed,
+        bool UsedFallback,
+        bool CatalogUpdated,
+        string? DestinationRuleId,
+        string? DestinationRuleName,
+        string? ImportWorkflow,
+        string? ProcessorName,
+        string? PreferencePlanId,
+        string? PreferencePlanVersion,
+        string? PreferencePlanHash,
+        string? PreferenceStatus,
+        string MatchedRuleIds,
+        string MatchedRuleNames,
+        string WorkflowCleanup,
+        MediaProbeInfo? MediaProbe);
+
+    private static ImportProvenanceDetails BuildImportProvenance(
+        ImportExecuteRequest request,
+        string sourcePath,
+        string destinationPath,
+        string preferredTransferMode,
+        string transferModeUsed,
+        bool usedFallback,
+        CatalogImportResult catalog,
+        LibraryItem? library,
+        string workflowCleanup,
+        string? destinationRuleId,
+        string? destinationRuleName,
+        MediaProbeInfo? mediaProbe)
+    {
+        var evaluation = catalog.PreferenceEvaluations.FirstOrDefault();
+        var matchedRuleIds = catalog.PreferenceEvaluations
+            .SelectMany(item => item.MatchedRuleIds)
+            .Where(id => !string.IsNullOrWhiteSpace(id))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(id => id, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+        var sourceName = Path.GetFileName(sourcePath);
+        var destinationName = Path.GetFileName(destinationPath);
+
+        return new ImportProvenanceDetails(
+            DispatchId: request.DispatchId?.Trim(),
+            ReleaseNameEvidence: catalog.ReleaseNameEvidence,
+            IndexerName: catalog.Dispatch?.IndexerName,
+            DownloadClientName: catalog.Dispatch?.DownloadClientName,
+            DownloadClientItemId: catalog.Dispatch?.TorrentHashOrItemId,
+            SourcePath: sourcePath,
+            DestinationPath: destinationPath,
+            Rename: string.Equals(sourceName, destinationName, StringComparison.Ordinal)
+                ? "Filename preserved"
+                : $"{sourceName} -> {destinationName}",
+            PreferredTransferMode: preferredTransferMode,
+            TransferModeUsed: transferModeUsed,
+            UsedFallback: usedFallback,
+            CatalogUpdated: catalog.CatalogUpdated,
+            DestinationRuleId: destinationRuleId,
+            DestinationRuleName: destinationRuleName,
+            ImportWorkflow: library?.ImportWorkflow,
+            ProcessorName: string.Equals(library?.ImportWorkflow, "refine-before-import", StringComparison.OrdinalIgnoreCase)
+                ? library?.ProcessorName
+                : null,
+            PreferencePlanId: evaluation?.PlanId,
+            PreferencePlanVersion: evaluation?.PlanVersion,
+            PreferencePlanHash: evaluation?.PlanHash,
+            PreferenceStatus: evaluation?.Evaluation.Status.ToString(),
+            MatchedRuleIds: string.Join(", ", matchedRuleIds),
+            MatchedRuleNames: string.Join(", ", catalog.MatchedRuleNames),
+            WorkflowCleanup: workflowCleanup,
+            MediaProbe: mediaProbe);
+    }
+
     private sealed class CatalogImportResult
     {
         public required bool CatalogUpdated { get; init; }
         public required string? CatalogId { get; init; }
+        public DownloadDispatchItem? Dispatch { get; init; }
+        public string? ReleaseNameEvidence { get; init; }
+        public IReadOnlyList<PreferenceEvaluationSnapshot> PreferenceEvaluations { get; init; } = [];
+        public IReadOnlyList<string> MatchedRuleNames { get; init; } = [];
     }
 
     private async Task<CatalogImportResult> MarkCatalogImportedAsync(
@@ -2057,6 +2199,7 @@ public sealed partial class ImportPipelineService(
         string mediaType,
         IReadOnlyList<LibraryItem> libraries,
         bool unmonitorWhenCutoffMet,
+        string? dispatchId,
         CancellationToken cancellationToken,
         TvImportNumbers? tvNumbersOverride = null,
         IReadOnlyList<ImportPreviewResponse>? tvFilePreviews = null)
@@ -2093,6 +2236,10 @@ public sealed partial class ImportPipelineService(
         var guidePackage = preferenceProfile is null || preferencePlan is not null || guidePackageStore is null
             ? null
             : (await guidePackageStore.GetCurrentAsync(cancellationToken)).Package;
+        var dispatch = await ResolveDispatchAsync(dispatchId, cancellationToken);
+        var dispatchReleaseName = string.IsNullOrWhiteSpace(dispatch?.ReleaseName)
+            ? null
+            : dispatch.ReleaseName.Trim();
         var evidencePreviews = (tvFilePreviews is { Count: > 0 } ? tvFilePreviews : [preview])
             .GroupBy(item => item.DestinationPath, GetPathComparer())
             .Select(group => group.First())
@@ -2112,7 +2259,8 @@ public sealed partial class ImportPipelineService(
                     source: "filesystem.import",
                     customFormats: customFormats,
                     guidePackage: guidePackage,
-                    preferencePlan: preferencePlan))
+                    preferencePlan: preferencePlan,
+                    releaseNameEvidence: dispatchReleaseName ?? item.SourcePath))
                 .OfType<PreferenceEvaluationSnapshot>()
                 .ToArray();
         var preferenceEvaluation = preferenceEvaluations.FirstOrDefault();
@@ -2162,7 +2310,15 @@ public sealed partial class ImportPipelineService(
             // existing, addressable catalogue item; the write above still
             // updates its wanted state and episode file.
             var catalogUpdated = result || !string.IsNullOrWhiteSpace(request.SeriesId);
-            return new CatalogImportResult { CatalogUpdated = catalogUpdated, CatalogId = catalogUpdated ? catalogId : null };
+            return new CatalogImportResult
+            {
+                CatalogUpdated = catalogUpdated,
+                CatalogId = catalogUpdated ? catalogId : null,
+                Dispatch = dispatch,
+                ReleaseNameEvidence = dispatchReleaseName ?? preview.SourcePath,
+                PreferenceEvaluations = preferenceEvaluations,
+                MatchedRuleNames = ResolveMatchedRuleNames(preferenceEvaluations, customFormats, preferencePlan)
+            };
         }
 
         // A film Deluno cannot name is not a film Deluno should invent.
@@ -2188,7 +2344,15 @@ public sealed partial class ImportPipelineService(
                     null),
                 cancellationToken);
 
-            return new CatalogImportResult { CatalogUpdated = false, CatalogId = null };
+            return new CatalogImportResult
+            {
+                CatalogUpdated = false,
+                CatalogId = null,
+                Dispatch = dispatch,
+                ReleaseNameEvidence = dispatchReleaseName ?? preview.SourcePath,
+                PreferenceEvaluations = preferenceEvaluations,
+                MatchedRuleNames = ResolveMatchedRuleNames(preferenceEvaluations, customFormats, preferencePlan)
+            };
         }
 
         var movieResult = await movieCatalogRepository.ImportExistingAsync(
@@ -2205,7 +2369,50 @@ public sealed partial class ImportPipelineService(
             fileSizeBytes,
             cancellationToken,
             preferenceEvaluation);
-        return new CatalogImportResult { CatalogUpdated = movieResult, CatalogId = movieResult ? catalogId : null };
+        return new CatalogImportResult
+        {
+            CatalogUpdated = movieResult,
+            CatalogId = movieResult ? catalogId : null,
+            Dispatch = dispatch,
+            ReleaseNameEvidence = dispatchReleaseName ?? preview.SourcePath,
+            PreferenceEvaluations = preferenceEvaluations,
+            MatchedRuleNames = ResolveMatchedRuleNames(preferenceEvaluations, customFormats, preferencePlan)
+        };
+    }
+
+    private async Task<DownloadDispatchItem?> ResolveDispatchAsync(
+        string? dispatchId,
+        CancellationToken cancellationToken)
+    {
+        if (downloadDispatchesRepository is null || string.IsNullOrWhiteSpace(dispatchId))
+        {
+            return null;
+        }
+
+        return await downloadDispatchesRepository.GetDispatchAsync(dispatchId, cancellationToken);
+    }
+
+    private static IReadOnlyList<string> ResolveMatchedRuleNames(
+        IReadOnlyList<PreferenceEvaluationSnapshot> evaluations,
+        IReadOnlyList<CustomFormatItem>? customFormats,
+        ReleasePreferencePlan? preferencePlan)
+    {
+        var matchedIds = evaluations
+            .SelectMany(item => item.MatchedRuleIds)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var immutableNames = (preferencePlan?.Sources ?? [])
+            .Where(source => matchedIds.Contains(source.RuleId ?? source.SourceId))
+            .Select(source => source.RuleName);
+        var currentNames = (customFormats ?? [])
+            .Where(format => matchedIds.Contains(format.Id))
+            .Select(format => format.Name);
+        return immutableNames
+            .Concat(currentNames)
+            .Where(name => !string.IsNullOrWhiteSpace(name))
+            .Cast<string>()
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(name => name, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
     }
 
     private async Task<QualityProfileItem?> ResolvePreferenceProfileAsync(

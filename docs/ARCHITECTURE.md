@@ -101,6 +101,20 @@ but must not make either domain depend on the other:
 - Libraries resolves routing and destination policy.
 - Quality evaluates profiles, custom formats, and policy sets.
 
+Quality compiles every selected custom-format matcher into an immutable,
+plan-scoped Boolean family: matched and not matched. The profile stores an
+owner-facing intent (must not have, avoid, do not care, prefer, or strongly
+prefer); legacy numeric scores are retained only as source provenance and are
+never summed into the typed decision. The compiled source retains the saved
+rule id, name, matcher, intent, and version so later guide edits cannot rewrite
+the meaning of an installed file's decision.
+Imported Radarr/Sonarr specifications are executable only when every condition
+has a lossless release-name interpretation. Their native grouping is retained:
+every specification type must pass, every required condition in that type must
+match, and at least one condition in that type must match. Context-dependent
+conditions such as original language and indexer flags remain review-only
+instead of being partially or optimistically evaluated.
+
 ### Jobs, Realtime, And Operations
 
 Operational visibility is split intentionally:
@@ -131,6 +145,11 @@ Operational visibility is split intentionally:
 - Status strings used by queues/imports/download clients should have one canonical home.
 - Protocol support differences should be encoded as capability data, not scattered UI conditionals.
 - External payloads should be parsed into typed contracts before business logic touches them.
+- Import and rename must not destroy acquisition evidence. Movie and episode
+  preference snapshots persist the exact pre-rename release title separately
+  from the installed file path, and a download dispatch records one correlated
+  `file_provenance_recorded` timeline event with source, destination, rename,
+  processor, matched custom rules, transfer result, and immutable plan proof.
 
 ## Current Architectural Risk
 

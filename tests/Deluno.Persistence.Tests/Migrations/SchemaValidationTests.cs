@@ -170,6 +170,7 @@ public sealed class SchemaValidationTests
         Assert.Contains("facts_json", cols);
         Assert.Contains("evaluation_json", cols);
         Assert.Contains("source", cols);
+        Assert.Contains("release_name_evidence", cols);
         var attemptCols = await GetColumnsAsync(conn, "movie_subtitle_attempt");
         Assert.Contains("failure_json", attemptCols);
     }
@@ -231,6 +232,7 @@ public sealed class SchemaValidationTests
         Assert.Contains("numbering_source", episodeCols);
         Assert.Contains("plan_hash", evidenceCols);
         Assert.Contains("file_path", evidenceCols);
+        Assert.Contains("release_name_evidence", evidenceCols);
         var attemptCols = await GetColumnsAsync(conn, "episode_subtitle_attempt");
         Assert.Contains("failure_json", attemptCols);
     }

@@ -218,7 +218,8 @@ public sealed class LibraryMediaProbeJobHandler(
                     baselineFacts: previous?.Facts,
                     probedVideoCodec: facts.VideoCodec,
                     probedAudioCodec: facts.AudioCodec,
-                    probedAudioChannels: facts.AudioChannels);
+                    probedAudioChannels: facts.AudioChannels,
+                    releaseNameEvidence: previous?.ReleaseNameEvidence);
 
                 if (snapshot is not null)
                 {

@@ -46,6 +46,7 @@ import {
 import { authedFetch } from "../lib/use-auth";
 import { formatBytes } from "../lib/utils";
 import { resolveImportSourcePath } from "../lib/import-source";
+import { fileProvenanceFromTimeline } from "../lib/dispatch-provenance";
 import { JOB_STATUS, isJobActive, isJobDeadLettered, isJobFailed, type JobStatus } from "../lib/job-status-constants";
 import { downloadQueueStatuses, isImportReadyStatus, isProcessingStatus, queueStatusLabel } from "../lib/download-telemetry";
 import { Button } from "../components/ui/button";
@@ -215,6 +216,7 @@ export function QueuePage() {
   const openActivity = drawer?.kind === "activity" ? activity.find((entry) => entry.id === drawer.id) ?? null : null;
   const openDispatchSummary = drawer?.kind === "dispatch" ? dispatches.find((item) => item.id === drawer.id) ?? null : null;
   const openDispatchDetail = drawer?.kind === "dispatch" ? dispatchDetails[drawer.id] ?? null : null;
+  const openFileProvenance = fileProvenanceFromTimeline(openDispatchDetail?.timeline ?? []);
 
   /* ------------------------------------------------------------- actions */
   async function run(key: string, action: () => Promise<unknown>, success?: string) {
@@ -931,6 +933,32 @@ export function QueuePage() {
               </DrawerSection>
             ) : null}
 
+            {openFileProvenance ? (
+              <DrawerSection title="File provenance" aside={openFileProvenance.preferenceStatus ?? "Recorded at import"}>
+                <div className="grid gap-1.5">
+                  <Fact label="Original release" value={openFileProvenance.releaseNameEvidence ?? "Not recorded"} mono />
+                  <Fact label="Source file" value={openFileProvenance.sourcePath ?? "Not recorded"} mono />
+                  <Fact label="Destination file" value={openFileProvenance.destinationPath ?? "Not recorded"} mono />
+                  <Fact label="Rename" value={openFileProvenance.rename ?? "Not recorded"} mono />
+                  <Fact label="Matched rules" value={openFileProvenance.matchedRuleNames || "None"} />
+                  <Fact label="Processor" value={openFileProvenance.processorName ?? openFileProvenance.importWorkflow ?? "Direct import"} />
+                  <Fact
+                    label="Transfer"
+                    value={transferProvenanceLabel(
+                      openFileProvenance.preferredTransferMode,
+                      openFileProvenance.transferModeUsed,
+                      openFileProvenance.usedFallback
+                    )}
+                  />
+                  {openFileProvenance.preferencePlanId ? (
+                    <Fact label="Preference plan" value={`${openFileProvenance.preferencePlanId}${openFileProvenance.preferencePlanVersion ? ` · ${openFileProvenance.preferencePlanVersion}` : ""}`} mono />
+                  ) : null}
+                  {openFileProvenance.preferencePlanHash ? <Fact label="Plan proof" value={openFileProvenance.preferencePlanHash} mono /> : null}
+                  {openFileProvenance.workflowCleanup ? <Fact label="Cleanup" value={openFileProvenance.workflowCleanup} /> : null}
+                </div>
+              </DrawerSection>
+            ) : null}
+
             <DrawerSection title="Recorded timeline" aside={openDispatchDetail.timeline.length ? `${openDispatchDetail.timeline.length} events` : "No events recorded"}>
               {openDispatchDetail.timeline.length ? (
                 <div className="grid gap-0">
@@ -1310,8 +1338,11 @@ function timelineEventLabel(eventType: string) {
     .replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
-function timelineEventDetail(event: { detailsJson: string | null }) {
+function timelineEventDetail(event: { eventType: string; detailsJson: string | null }) {
   if (!event.detailsJson) return null;
+  if (event.eventType.toLowerCase() === "file_provenance_recorded") {
+    return "Recorded the original release, rename, destination, matched rules and immutable preference-plan proof.";
+  }
   try {
     const parsed = JSON.parse(event.detailsJson) as Record<string, unknown>;
     const values = Object.entries(parsed)
@@ -1321,6 +1352,14 @@ function timelineEventDetail(event: { detailsJson: string | null }) {
   } catch {
     return event.detailsJson;
   }
+}
+
+function transferProvenanceLabel(preferred: string | null, used: string | null, fallback: boolean | null) {
+  if (!preferred && !used) return "Not recorded";
+  const result = preferred && used && preferred !== used
+    ? `${preferred} requested · ${used} used`
+    : `${used ?? preferred} used`;
+  return fallback ? `${result} · fallback required` : result;
 }
 
 function cleanupPolicyLabel(settings: PlatformSettingsSnapshot) {

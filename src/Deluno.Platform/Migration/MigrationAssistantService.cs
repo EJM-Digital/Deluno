@@ -644,10 +644,12 @@ public sealed class MigrationAssistantService(
     }
 
     /// <summary>
-    /// Preserves every imported custom-format row. Reviewed guide mappings may
-    /// be applied with their stable source id. Opaque matchers remain
-    /// report-only unless the owner explicitly opts into Advanced legacy
-    /// storage. The raw matcher/specification JSON is retained because
+    /// Preserves every imported custom-format row. Any matcher Deluno can
+    /// interpret completely may be applied with its stable source id; a TRaSH
+    /// identity is useful provenance, not permission to work. Opaque or
+    /// partially supported matchers remain report-only unless the owner
+    /// explicitly opts into Advanced legacy storage. The raw
+    /// matcher/specification JSON is retained because
     /// flattening a regex, negation, required flag, or nested condition into a
     /// name would violate the migration granularity guarantee. Numeric scores
     /// remain provenance; they never become typed intent here.
@@ -677,16 +679,21 @@ public sealed class MigrationAssistantService(
                 && IsReviewedGuideMapping(
                     guidePackage,
                     ReadString(item, "trashId") ?? ReadString(item, "trashGuid"));
+            var matcherExecutable = CustomFormatDefinitionMatcher.CanEvaluate(conditions);
             var classification = string.IsNullOrWhiteSpace(conditions)
                 ? LegacyPreferenceRuleKind.Invalid.ToString()
-                : guideMapped
-                    ? LegacyPreferenceRuleKind.GuideMapped.ToString()
+                : matcherExecutable
+                    ? (guideMapped
+                        ? LegacyPreferenceRuleKind.GuideMapped
+                        : LegacyPreferenceRuleKind.ExactTyped).ToString()
                     : LegacyPreferenceRuleKind.UnmappedAdvanced.ToString();
             var reason = string.IsNullOrWhiteSpace(conditions)
                 ? "The custom format has no matcher/specification payload, so it is preserved as invalid and cannot affect decisions."
-                : guideMapped
-                    ? "The matcher has a reviewed TRaSH mapping and will be retained with its stable source id; the original score remains provenance only."
-                    : "The matcher is preserved as Advanced input. Numeric score and checkbox placement are not enough to infer required, forbidden, ranked, or tie-break intent.";
+                : matcherExecutable
+                    ? guideMapped
+                        ? "The matcher has a reviewed TRaSH mapping and will be retained with its stable source id; the original score remains provenance only."
+                        : "Every matcher clause is supported and will become a plan-scoped typed rule; the imported score is retained only as provenance and mapped once to a named intent."
+                    : "The matcher is preserved as Advanced input because Deluno cannot interpret every clause without changing its meaning.";
             var mediaType = ReadString(item, "mediaType") ?? context.MediaType;
             var trashId = ReadString(item, "trashId") ?? ReadString(item, "trashGuid");
             var existingFormat = FindExistingCustomFormat(
@@ -704,8 +711,8 @@ public sealed class MigrationAssistantService(
                 && string.Equals(existingFormat.TrashId, trashId, StringComparison.OrdinalIgnoreCase)
                 && string.Equals(existingFormat.Conditions, conditions ?? string.Empty, StringComparison.Ordinal)
                 && existingFormat.UpgradeAllowed == (ReadBool(item, "upgradeAllowed") ?? true);
-            var canApply = !string.IsNullOrWhiteSpace(conditions)
-                && (guideMapped || allowAdvancedLegacyRules);
+            var canApply = matcherExecutable
+                || (!string.IsNullOrWhiteSpace(conditions) && allowAdvancedLegacyRules);
             var action = string.IsNullOrWhiteSpace(conditions)
                 ? "report"
                 : isExisting
@@ -723,8 +730,8 @@ public sealed class MigrationAssistantService(
                 ["upgradeAllowed"] = (ReadBool(item, "upgradeAllowed") ?? true).ToString(CultureInfo.InvariantCulture),
                 ["conditions"] = conditions,
                 ["classification"] = classification,
-                ["requiresReview"] = (!string.IsNullOrWhiteSpace(conditions)).ToString(CultureInfo.InvariantCulture),
-                ["activation"] = guideMapped ? "typed" : "advanced-legacy",
+                ["requiresReview"] = (!matcherExecutable && !string.IsNullOrWhiteSpace(conditions)).ToString(CultureInfo.InvariantCulture),
+                ["activation"] = matcherExecutable ? "typed" : "advanced-legacy",
                 ["existingId"] = existingFormat?.Id,
                 ["rawJson"] = item.GetRawText()
             };
@@ -742,9 +749,9 @@ public sealed class MigrationAssistantService(
                     ? ["A row with the same stable identity exists but its matcher, score, or upgrade flag differs; review before applying."]
                     : string.IsNullOrWhiteSpace(conditions)
                         ? ["No matcher was found; the original row is retained for repair/export but will not be evaluated."]
-                        : guideMapped
+                        : matcherExecutable
                             ? []
-                            : ["Owner review is required before this legacy matcher can become typed intent."]));
+                            : ["Owner review is required because at least one legacy matcher clause is unsupported."]));
         }
     }
 

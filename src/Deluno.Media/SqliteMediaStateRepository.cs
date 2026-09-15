@@ -1009,7 +1009,7 @@ public sealed class SqliteMediaStateRepository(
         command.CommandText = $"""
             SELECT media_id, library_id, file_identity, file_path, file_size_bytes,
                    plan_id, plan_version, plan_hash, facts_json, evaluation_json,
-                   matched_rule_ids_json, evaluated_utc, source
+                   matched_rule_ids_json, evaluated_utc, source, release_name_evidence
             FROM {map.PreferenceEvaluationTable}
             WHERE media_id = @mediaId
               AND library_id = @libraryId
@@ -1054,7 +1054,8 @@ public sealed class SqliteMediaStateRepository(
                 Evaluation: evaluation,
                 MatchedRuleIds: matchedRuleIds,
                 EvaluatedUtc: ParseTimestamp(reader.GetString(11)),
-                Source: reader.IsDBNull(12) ? null : reader.GetString(12));
+                Source: reader.IsDBNull(12) ? null : reader.GetString(12),
+                ReleaseNameEvidence: reader.IsDBNull(13) ? null : reader.GetString(13));
         }
         catch (JsonException)
         {
@@ -1447,12 +1448,12 @@ public sealed class SqliteMediaStateRepository(
             INSERT INTO {map.PreferenceEvaluationTable} (
                 id, media_id, library_id, file_identity, file_path, file_size_bytes,
                 plan_id, plan_version, plan_hash, facts_json, evaluation_json,
-                matched_rule_ids_json, evaluated_utc, source, created_utc, updated_utc
+                matched_rule_ids_json, evaluated_utc, source, release_name_evidence, created_utc, updated_utc
             )
             VALUES (
                 @id, @mediaId, @libraryId, @fileIdentity, @filePath, @fileSizeBytes,
                 @planId, @planVersion, @planHash, @factsJson, @evaluationJson,
-                @matchedRuleIdsJson, @evaluatedUtc, @source, @createdUtc, @updatedUtc
+                @matchedRuleIdsJson, @evaluatedUtc, @source, @releaseNameEvidence, @createdUtc, @updatedUtc
             )
             ON CONFLICT(media_id, library_id, file_identity, plan_hash) DO UPDATE SET
                 file_path = excluded.file_path,
@@ -1464,6 +1465,7 @@ public sealed class SqliteMediaStateRepository(
                 matched_rule_ids_json = excluded.matched_rule_ids_json,
                 evaluated_utc = excluded.evaluated_utc,
                 source = excluded.source,
+                release_name_evidence = COALESCE(excluded.release_name_evidence, release_name_evidence),
                 updated_utc = excluded.updated_utc;
             """;
         AddParameter(command, "@id", Guid.CreateVersion7().ToString("N"));
@@ -1480,6 +1482,7 @@ public sealed class SqliteMediaStateRepository(
         AddParameter(command, "@matchedRuleIdsJson", matchedRuleIdsJson);
         AddParameter(command, "@evaluatedUtc", snapshot.EvaluatedUtc.ToUniversalTime().ToString("O"));
         AddParameter(command, "@source", snapshot.Source);
+        AddParameter(command, "@releaseNameEvidence", snapshot.ReleaseNameEvidence);
         AddParameter(command, "@createdUtc", now);
         AddParameter(command, "@updatedUtc", now);
         await command.ExecuteNonQueryAsync(cancellationToken);

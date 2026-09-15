@@ -86,7 +86,10 @@ public static class ReleasePreferencePlanCodec
                     MappingVersion = NormalizeNullable(source.MappingVersion),
                     Layer = NormalizeNullable(source.Layer),
                     MatcherDefinition = NormalizeNullable(source.MatcherDefinition),
-                    MappedTraitIds = PreferenceTraitRegistry.Current.CanonicalizeIds(source.MappedTraitIds)
+                    MappedTraitIds = PreferenceTraitRegistry.Current.CanonicalizeIds(source.MappedTraitIds),
+                    RuleId = NormalizeNullable(source.RuleId),
+                    RuleName = NormalizeNullable(source.RuleName),
+                    ProfileIntent = NormalizeNullable(source.ProfileIntent)?.ToLowerInvariant()
                 })
                 .OrderBy(source => Normalize(source.SourceKind), StringComparer.Ordinal)
                 .ThenBy(source => Normalize(source.SourceId), StringComparer.Ordinal)
@@ -98,6 +101,9 @@ public static class ReleasePreferencePlanCodec
                 .ThenBy(source => source.MatcherAny)
                 .ThenBy(source => Normalize(source.OriginalScore), StringComparer.Ordinal)
                 .ThenBy(source => Normalize(source.AssignedScore), StringComparer.Ordinal)
+                .ThenBy(source => Normalize(source.RuleId), StringComparer.Ordinal)
+                .ThenBy(source => Normalize(source.RuleName), StringComparer.Ordinal)
+                .ThenBy(source => Normalize(source.ProfileIntent), StringComparer.Ordinal)
                 .ThenBy(source => string.Join("|", source.MappedTraitIds ?? []), StringComparer.Ordinal)
                 .ToArray()
         };

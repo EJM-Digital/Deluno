@@ -118,8 +118,42 @@ public static class ReleasePreferenceFactFactory
         AddObserved(facts, "edition", DetectEdition(lower), evidenceSource);
         AddObserved(facts, "streaming.service", DetectService(lower), evidenceSource);
         AddObserved(facts, "unwanted", DetectUnwanted(lower), evidenceSource);
+        AddPlanMatcherFacts(facts, plan, releaseName);
 
         return facts;
+    }
+
+    private static void AddPlanMatcherFacts(
+        ICollection<PreferenceFact> facts,
+        ReleasePreferencePlan plan,
+        string releaseName)
+    {
+        foreach (var result in ReleasePreferenceFormatEvidenceFactory.Evaluate(plan, releaseName))
+        {
+            foreach (var (traitId, state) in result.TraitIds
+                         .Select(traitId => (traitId, PreferenceFactState.Present))
+                         .Concat((result.AbsentTraitIds ?? [])
+                             .Select(traitId => (traitId, PreferenceFactState.Absent))))
+            {
+                var dynamicTrait = CustomFormatPreferenceTraits.IsDynamic(traitId);
+                facts.Add(new PreferenceFact(
+                    traitId,
+                    state,
+                    new PreferenceEvidence(
+                        Source: dynamicTrait ? "custom-format-matcher" : "guide-custom-format",
+                        Confidence: 1,
+                        Detail: result.IsMatch
+                            ? $"Matched rule '{result.RuleName ?? result.SourceId}'."
+                            : $"Did not match rule '{result.RuleName ?? result.SourceId}'.",
+                        DetectionRule: dynamicTrait
+                            ? "immutable-custom-format-matcher"
+                            : "guide-custom-format-pattern",
+                        DetectionVersion: $"immutable-plan:{plan.Version}:{plan.PlanHash}",
+                        Model: dynamicTrait
+                            ? PreferenceEvidenceModel.ClosedWorld
+                            : PreferenceEvidenceModel.OpenWorld)));
+            }
+        }
     }
 
     private static void AddObserved(
@@ -213,15 +247,53 @@ public static class ReleasePreferenceFactFactory
                     : value.Contains("uncut", StringComparison.Ordinal) ? "Uncut" : null;
 
     private static string? DetectService(string value)
-        => value.Contains("netflix", StringComparison.Ordinal)
+        => value.Contains("netflix", StringComparison.Ordinal) || HasReleaseToken(value, "nf")
             ? "Netflix"
-            : value.Contains("amazon", StringComparison.Ordinal) || value.Contains("amzn", StringComparison.Ordinal)
+            : value.Contains("amazon", StringComparison.Ordinal) || HasReleaseToken(value, "amzn")
                 ? "Amazon Prime"
-                : value.Contains("apple", StringComparison.Ordinal) || value.Contains("itunes", StringComparison.Ordinal)
+                : value.Contains("apple tv", StringComparison.Ordinal)
+                  || value.Contains("apple.tv", StringComparison.Ordinal)
+                  || HasReleaseToken(value, "atvp")
                     ? "Apple TV+"
                     : value.Contains("disney", StringComparison.Ordinal)
+                      || HasReleaseToken(value, "dsnp", "dsny")
                         ? "Disney+"
-                        : value.Contains("hulu", StringComparison.Ordinal) ? "Hulu" : null;
+                        : HasReleaseToken(value, "hmax", "max", "hbo")
+                            ? "Max"
+                            : value.Contains("hulu", StringComparison.Ordinal) ? "Hulu" : null;
+
+    /// <summary>
+    /// Matches the compact service tags used in real release names without
+    /// treating the same letters inside a film title or release group as a
+    /// service. The aliases mirror the reviewed guide package patterns.
+    /// </summary>
+    private static bool HasReleaseToken(string value, params string[] tokens)
+    {
+        foreach (var token in tokens)
+        {
+            var start = 0;
+            while (start < value.Length)
+            {
+                var index = value.IndexOf(token, start, StringComparison.OrdinalIgnoreCase);
+                if (index < 0)
+                {
+                    break;
+                }
+
+                var leftBoundary = index == 0 || !char.IsLetterOrDigit(value[index - 1]);
+                var end = index + token.Length;
+                var rightBoundary = end == value.Length || !char.IsLetterOrDigit(value[end]);
+                if (leftBoundary && rightBoundary)
+                {
+                    return true;
+                }
+
+                start = index + 1;
+            }
+        }
+
+        return false;
+    }
 
     private static string? DetectUnwanted(string value)
         => value.Contains("upscaled", StringComparison.Ordinal)

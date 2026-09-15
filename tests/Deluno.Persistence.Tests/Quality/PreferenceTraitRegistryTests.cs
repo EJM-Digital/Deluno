@@ -1,3 +1,4 @@
+using Deluno.Quality;
 using Deluno.Quality.ReleasePreferences;
 
 namespace Deluno.Persistence.Tests.Quality;
@@ -80,5 +81,40 @@ public sealed class PreferenceTraitRegistryTests
             [new PreferenceRelationship("audio.format.aac", "audio.format.missing", PreferenceRelationshipKind.Implies)]);
 
         Assert.Contains(registry.Validate(), error => error.Contains("unknown trait", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void Plan_scoped_custom_traits_require_the_exact_immutable_matcher_provenance()
+    {
+        var trait = CustomFormatPreferenceTraits.Matched("rule-1");
+        var unbacked = new ReleasePreferencePlan(
+            "movies/custom",
+            "1",
+            "movies",
+            [new PreferenceFamily(
+                CustomFormatPreferenceTraits.Family("rule-1"),
+                "Custom rule · one",
+                1,
+                PreferenceIntent.TieBreak,
+                [new PreferenceFamilyLevel("matched", 0, [trait])])]);
+
+        Assert.Contains(PreferenceTraitRegistry.Current.ValidatePlan(unbacked), error =>
+            error.Contains("not in", StringComparison.OrdinalIgnoreCase));
+
+        var backed = unbacked with
+        {
+            Sources = [new PreferencePlanProvenance(
+                CustomFormatPreferenceTraits.SourceKind,
+                "rule-1",
+                "1",
+                MappingVersion: CustomFormatPreferenceTraits.MappingVersion,
+                MatcherDefinition: "releaseGroup:DELUNO",
+                MappedTraitIds: [trait, CustomFormatPreferenceTraits.NotMatched("rule-1")],
+                RuleId: "rule-1",
+                RuleName: "one",
+                ProfileIntent: ProfileFormatIntents.Prefer)]
+        };
+
+        Assert.Empty(PreferenceTraitRegistry.Current.ValidatePlan(backed));
     }
 }

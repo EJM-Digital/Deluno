@@ -6,6 +6,7 @@ import { cn } from "../../lib/utils";
 import { judgeDraftProfile, type DraftProfileJudgement } from "../../lib/api";
 import {
   QUALITY_STEPS,
+  customFormatsOutsideGuide,
   describeAnswer,
   formatsForStep,
   type QualityStep
@@ -58,6 +59,10 @@ export interface QualityBuildStepsProps {
 
 export function QualityBuildSteps(props: QualityBuildStepsProps) {
   const [openStep, setOpenStep] = useState<string | null>(QUALITY_STEPS[0].id);
+  const customRules = useMemo(
+    () => customFormatsOutsideGuide(props.customFormats, props.guide).filter((format) => format.mediaType === props.mediaType),
+    [props.customFormats, props.guide, props.mediaType]
+  );
 
   return (
     <div className="grid gap-2" role="list" aria-label="Build this profile">
@@ -70,6 +75,14 @@ export function QualityBuildSteps(props: QualityBuildStepsProps) {
           {...props}
         />
       ))}
+      {customRules.length ? (
+        <CustomRulesRow
+          {...props}
+          rules={customRules}
+          open={openStep === "custom-rules"}
+          onOpenChange={(open) => setOpenStep(open ? "custom-rules" : null)}
+        />
+      ) : null}
     </div>
   );
 }
@@ -184,40 +197,12 @@ function StepRow({
               must be able to disagree about whether it is a nice-to-have or the
               whole point — and the answer is words, because an unbounded score
               is exactly what #353 took off this surface. */}
-          {chosen.length ? (
-            <ul className="grid gap-1.5">
-              {chosen.map((formatId) => {
-                const format = offered.find((candidate) => candidate.id === formatId);
-                if (!format) return null;
-                const intent = props.formatIntents[formatId] ?? guideIntentFor(format.score);
-                return (
-                  <li key={formatId} className="flex flex-wrap items-center justify-between gap-2">
-                    <span className="text-[length:var(--type-caption)]">{format.name}</span>
-                    <div role="radiogroup" aria-label={`How much this profile wants ${format.name}`} className="flex gap-1">
-                      {INTENT_CHOICES.map((choice) => (
-                        <button
-                          key={choice.value}
-                          type="button"
-                          role="radio"
-                          aria-checked={intent === choice.value}
-                          title={choice.help}
-                          onClick={() => props.onFormatIntentChange(formatId, choice.value)}
-                          className={cn(
-                            "rounded-md border px-2 py-0.5 text-[length:var(--type-caption)] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                            intent === choice.value
-                              ? "border-ring bg-ring/15 text-foreground"
-                              : "border-hairline text-muted-foreground hover:text-foreground"
-                          )}
-                        >
-                          {choice.label}
-                        </button>
-                      ))}
-                    </div>
-                  </li>
-                );
-              })}
-            </ul>
-          ) : null}
+          <RuleIntentPicker
+            chosen={chosen}
+            offered={offered}
+            formatIntents={props.formatIntents}
+            onFormatIntentChange={props.onFormatIntentChange}
+          />
 
           {props.renderStepExtras?.(step) ?? null}
           {props.renderAdvanced?.(step) ?? null}
@@ -226,6 +211,138 @@ function StepRow({
         </div>
       ) : null}
     </div>
+  );
+}
+
+function CustomRulesRow({
+  rules,
+  open,
+  onOpenChange,
+  ...props
+}: QualityBuildStepsProps & {
+  rules: CustomFormatItem[];
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
+  const bodyId = useId();
+  const chosen = props.customFormatIds.filter((id) => rules.some((format) => format.id === id));
+  const chosenNames = chosen
+    .map((id) => rules.find((format) => format.id === id)?.name)
+    .filter((name): name is string => Boolean(name));
+  const answer = chosenNames.length === 0
+    ? "No custom rules active"
+    : chosenNames.length <= 2 ? chosenNames.join(" and ") : `${chosenNames.slice(0, 2).join(", ")}, and ${chosenNames.length - 2} more`;
+
+  function toggle(id: string) {
+    props.onCustomFormatIdsChange(
+      props.customFormatIds.includes(id)
+        ? props.customFormatIds.filter((current) => current !== id)
+        : [...props.customFormatIds, id]
+    );
+  }
+
+  return (
+    <div role="listitem" className={cn("overflow-hidden rounded-[10px] border bg-surface-2/50 transition-colors", open ? "border-ring/60" : "border-hairline")}>
+      <button
+        type="button"
+        aria-expanded={open}
+        aria-controls={bodyId}
+        onClick={() => onOpenChange(!open)}
+        className="flex w-full items-start gap-3 px-[var(--field-pad-x)] py-3 text-left transition-colors hover:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+      >
+        <span aria-hidden className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-surface-3 text-[length:var(--type-caption)] font-medium text-muted-foreground">+</span>
+        <span className="min-w-0 flex-1">
+          <span className="block text-[length:var(--type-body)] font-medium">How should your own rules affect a choice?</span>
+          <span className="mt-0.5 flex items-center gap-1.5 text-[length:var(--type-caption)] text-muted-foreground">
+            <Check aria-hidden className="h-3.5 w-3.5 text-success" />
+            {answer}
+          </span>
+        </span>
+        <ChevronDown aria-hidden className={cn("mt-1 h-4 w-4 shrink-0 text-muted-foreground transition-transform", open && "rotate-180")} />
+      </button>
+
+      {open ? (
+        <div id={bodyId} className="grid gap-[var(--grid-gap)] border-t border-hairline px-[var(--field-pad-x)] py-3">
+          <p className="text-[length:var(--type-caption)] text-muted-foreground">
+            These are your exact matchers, separate from guide categories. Deluno keeps each match result with the original release title when it renames the file.
+          </p>
+          <div role="group" aria-label="Your custom release rules" className="flex flex-wrap gap-1.5">
+            {rules.map((format) => {
+              const on = props.customFormatIds.includes(format.id);
+              return (
+                <button
+                  key={format.id}
+                  type="button"
+                  role="checkbox"
+                  aria-checked={on}
+                  onClick={() => toggle(format.id)}
+                  className={cn(
+                    "rounded-full border px-2.5 py-1 text-[length:var(--type-caption)] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                    on ? "border-ring bg-ring/15 text-foreground" : "border-hairline text-muted-foreground hover:border-ring/50 hover:text-foreground"
+                  )}
+                >
+                  {format.name}
+                </button>
+              );
+            })}
+          </div>
+          <RuleIntentPicker
+            chosen={chosen}
+            offered={rules}
+            formatIntents={props.formatIntents}
+            onFormatIntentChange={props.onFormatIntentChange}
+          />
+          <StepJudgement step={QUALITY_STEPS[4]} {...props} />
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function RuleIntentPicker({
+  chosen,
+  offered,
+  formatIntents,
+  onFormatIntentChange
+}: {
+  chosen: string[];
+  offered: CustomFormatItem[];
+  formatIntents: Record<string, string>;
+  onFormatIntentChange: (formatId: string, intent: string) => void;
+}) {
+  if (!chosen.length) return null;
+
+  return (
+    <ul className="grid gap-1.5">
+      {chosen.map((formatId) => {
+        const format = offered.find((candidate) => candidate.id === formatId);
+        if (!format) return null;
+        const intent = formatIntents[formatId] ?? guideIntentFor(format.score);
+        return (
+          <li key={formatId} className="flex flex-wrap items-center justify-between gap-2">
+            <span className="text-[length:var(--type-caption)]">{format.name}</span>
+            <div role="radiogroup" aria-label={`How much this profile wants ${format.name}`} className="flex gap-1">
+              {INTENT_CHOICES.map((choice) => (
+                <button
+                  key={choice.value}
+                  type="button"
+                  role="radio"
+                  aria-checked={intent === choice.value}
+                  title={choice.help}
+                  onClick={() => onFormatIntentChange(formatId, choice.value)}
+                  className={cn(
+                    "rounded-md border px-2 py-0.5 text-[length:var(--type-caption)] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                    intent === choice.value ? "border-ring bg-ring/15 text-foreground" : "border-hairline text-muted-foreground hover:text-foreground"
+                  )}
+                >
+                  {choice.label}
+                </button>
+              ))}
+            </div>
+          </li>
+        );
+      })}
+    </ul>
   );
 }
 
@@ -394,7 +511,7 @@ const INTENT_CHOICES = [
   { value: "avoid", label: "Avoid", help: "Taken only when nothing better is available." },
   { value: "neutral", label: "Don't mind", help: "Makes no difference to which release Deluno picks." },
   { value: "prefer", label: "Prefer", help: "Tips a close call towards releases that match." },
-  { value: "strong-prefer", label: "Must have", help: "Weighs heavily in favour, and can justify replacing a file you already have." }
+  { value: "strong-prefer", label: "Strongly prefer", help: "Ranks the match first and can justify replacing a file you already have." }
 ];
 
 /**
