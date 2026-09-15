@@ -48,6 +48,30 @@ end-to-end plan has actually been walked against rather than from whatever is
 current that day. Installers are staged on the developer machine and copied
 over, so the rig needs no internet and cannot quietly get a different build.
 
+## `assert-media-boundary.ps1`
+
+The owner's real library shares a NAS with the test run, and the NAS account
+Deluno uses can write to the whole share. Nothing on the NAS refuses a write,
+so this refuses instead. **Run it before any step that can import, rename,
+move, clean, or turn on automation, and stop if it fails.**
+
+```powershell
+./scripts/lab/assert-media-boundary.ps1
+```
+
+It reads, and never changes, every path Deluno or qBittorrent could write to:
+library roots, downloads and processor folders, derived recycle bins, global
+root settings, destination rules, and qBittorrent's save paths. It exits
+non-zero if any NAS path is outside `rig.json`'s `mediaBoundary.isolatedRoot`,
+if any path is inside a protected root, or if any path uses a drive letter
+mapped to the share. The NAS is judged the same by name or by address.
+
+Its first draft had a bug that would have let a production path through.
+PowerShell 7 returns a JSON array as one object, so both libraries were judged
+as one space-joined string, and the isolated Movies root at the front passed
+whatever followed it. Test the guard against a rig file that must fail
+(`-RigPath`), not only against one that passes.
+
 ## `ensure-rig-services.ps1`
 
 Holds every service on the VM to one rule: it starts without a person, and it
