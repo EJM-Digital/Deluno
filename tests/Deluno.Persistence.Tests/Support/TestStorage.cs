@@ -28,7 +28,12 @@ internal sealed class TestStorage : IDisposable
         // of them had accumulated under %TEMP%\deluno-tests by 3 September,
         // and creating one more directory in there is slow enough that the
         // persistence suite stopped finishing.
-        Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
+        //
+        // Only this test's own pools. This used to be ClearAllPools(), which
+        // closed the pooled connections of every other test running in
+        // parallel as well - a connection disposed out from under a query in
+        // another class, seen as ObjectDisposedException on a sqlite3 handle.
+        Factory.ClearPools();
 
         for (var attempt = 1; attempt <= 3; attempt++)
         {

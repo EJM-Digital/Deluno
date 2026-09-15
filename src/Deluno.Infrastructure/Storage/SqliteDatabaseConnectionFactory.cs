@@ -70,13 +70,34 @@ public sealed class SqliteDatabaseConnectionFactory(IOptions<StoragePathOptions>
             cancellationToken);
     }
 
-    private static async Task<DbConnection> OpenConfiguredConnectionAsync(
-        string databasePath,
-        SqliteOpenMode mode,
-        bool applyInitializationPragmas,
-        CancellationToken cancellationToken)
+    /// <summary>
+    /// Releases the pooled connections to this data root's databases, and to
+    /// nobody else's.
+    ///
+    /// <para>A pooled connection keeps its file open and its write-ahead log
+    /// unmerged, so anything that copies, restores or deletes the files first
+    /// has to let go of them. The tests used
+    /// <c>SqliteConnection.ClearAllPools()</c> for that, which clears every
+    /// pool in the process - including those of other tests running in
+    /// parallel, mid-query. That is how a test failed with
+    /// <c>ObjectDisposedException: SQLitePCL.sqlite3</c> on a connection it
+    /// was still using.</para>
+    /// </summary>
+    public void ClearPools()
     {
-        var connectionStringBuilder = new SqliteConnectionStringBuilder
+        foreach (var database in DatabaseLookup.Values)
+        {
+            var databasePath = Path.Combine(storageOptions.Value.DataRoot, database.FileName);
+            foreach (var mode in new[] { SqliteOpenMode.ReadWriteCreate, SqliteOpenMode.ReadOnly })
+            {
+                using var connection = new SqliteConnection(BuildConnectionString(databasePath, mode));
+                SqliteConnection.ClearPool(connection);
+            }
+        }
+    }
+
+    private static string BuildConnectionString(string databasePath, SqliteOpenMode mode)
+        => new SqliteConnectionStringBuilder
         {
             DataSource = databasePath,
             Mode = mode,
@@ -94,9 +115,15 @@ public sealed class SqliteDatabaseConnectionFactory(IOptions<StoragePathOptions>
             // waiting legitimately for a lock times out on its own deadline
             // before SQLite has finished waiting.
             DefaultTimeout = 30
-        };
+        }.ToString();
 
-        var connection = new SqliteConnection(connectionStringBuilder.ToString());
+    private static async Task<DbConnection> OpenConfiguredConnectionAsync(
+        string databasePath,
+        SqliteOpenMode mode,
+        bool applyInitializationPragmas,
+        CancellationToken cancellationToken)
+    {
+        var connection = new SqliteConnection(BuildConnectionString(databasePath, mode));
         await connection.OpenAsync(cancellationToken);
 
         try
