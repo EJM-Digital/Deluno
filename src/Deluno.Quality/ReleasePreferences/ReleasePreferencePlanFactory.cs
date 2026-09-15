@@ -28,18 +28,32 @@ public static class ReleasePreferencePlanFactory
 
         guidePackage ??= GuidePackageCatalog.Current;
         var selected = SelectProfileFormats(profile, customFormats);
-        var version = $"profile/{profile.UpdatedUtc.ToUniversalTime():yyyyMMddHHmmssfffffff}/"
+        var inputsVersion = $"profile/{profile.UpdatedUtc.ToUniversalTime():yyyyMMddHHmmssfffffff}/"
             + $"{guidePackage.Version}:{guidePackage.Source.UpstreamRevision}";
-        return CreateQualityPlan(
+        var compiled = CreateQualityPlan(
             profile.MediaType,
             profile.CutoffQuality,
             Split(profile.AllowedQualities),
             profile.UpgradeUntilCutoff,
             id: $"quality-profile/{profile.Id}",
-            version: version,
+            version: inputsVersion,
             customFormats: selected,
             guidePackage: guidePackage,
             formatIntents: profile.FormatIntents);
+
+        // The profile's saved time and the guide package do not say what the
+        // plan was compiled into, and plans are immutable per version. Found on
+        // the physical rig after an upgrade: an older build had stored this
+        // profile's plan under this same version, the newer build compiled a
+        // different definition, and every read of the profile's plan failed
+        // with "is immutable and already contains a different definition". A
+        // rule edited without re-saving the profile collides the same way.
+        //
+        // So the definition names itself. An unchanged definition keeps its
+        // version across restarts; a changed one gets a new version beside the
+        // old, and anything recorded under the old one still resolves to exactly
+        // the plan that decided it.
+        return compiled with { Version = $"{inputsVersion}/def-{compiled.PlanHash[..16]}" };
     }
 
     /// <summary>
