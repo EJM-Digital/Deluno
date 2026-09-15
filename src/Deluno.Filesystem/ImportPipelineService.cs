@@ -99,7 +99,14 @@ public sealed partial class ImportPipelineService(
         var settings = await platformRepository.GetAsync(cancellationToken);
         var rules = await librariesRepository.ListDestinationRulesAsync(cancellationToken);
         var libraries = await librariesRepository.ListLibrariesAsync(cancellationToken);
-        var resolvedPreview = await ResolveImportPreviewAsync(request.Preview, settings, rules, libraries, cancellationToken);
+        // The release Deluno chose is what the file is named from, so the
+        // decision is resolved before the destination, not after it.
+        var decision = await ResolveNamingDecisionAsync(
+            request.Preview,
+            libraries,
+            (await ResolveDispatchAsync(request.DispatchId, cancellationToken))?.ReleaseName,
+            cancellationToken);
+        var resolvedPreview = await ResolveImportPreviewAsync(request.Preview, settings, rules, libraries, cancellationToken, decision);
 
         if (resolvedPreview.SourceExists && !ImportFileReadiness.IsReady(resolvedPreview.SourcePath))
         {
@@ -1651,8 +1658,13 @@ public sealed partial class ImportPipelineService(
         PlatformSettingsSnapshot settings,
         IReadOnlyList<DestinationRuleItem> rules,
         IReadOnlyList<LibraryItem> libraries,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        NamingDecision? decision = null)
     {
+        // A preview asked for on its own has no dispatch to read, so the
+        // incoming name is all there is; an import resolves the decision first
+        // and passes it in, and both then name the file the same way.
+        decision ??= await ResolveNamingDecisionAsync(request, libraries, releaseName: null, cancellationToken);
         request = ResolveDirectorySource(request);
         var mediaType = NormalizeMediaType(request.MediaType);
         var seriesNumbering = mediaType == "tv"
@@ -1693,7 +1705,7 @@ public sealed partial class ImportPipelineService(
             request.Tags?.FirstOrDefault(),
             request.Network);
         var destinationFolder = string.IsNullOrWhiteSpace(rootPath) ? folder : Path.Combine(rootPath, folder);
-        var resolvedName = ResolveDestinationFileName(request, settings, mediaType, title, seriesNumbering);
+        var resolvedName = ResolveDestinationFileName(request, settings, mediaType, title, seriesNumbering, decision);
         var fileName = resolvedName.FileName;
         var destinationPath = Path.Combine(destinationFolder, SanitizeFileName(fileName));
         var canHardlink = CanLikelyHardlink(request.SourcePath, destinationPath);
@@ -2965,13 +2977,106 @@ public sealed partial class ImportPipelineService(
             tag,
             network);
 
+    /// <summary>
+    /// What Deluno decided about the release being imported: the quality it
+    /// counts as, the group that made it, and the custom formats it matched.
+    ///
+    /// <para>The formats a name keeps are the ones TRaSH marks
+    /// <c>includeCustomFormatWhenRenaming</c>, so a rename carries exactly what
+    /// the guide says belongs in a file name - no Deluno list to drift, and
+    /// nothing added because a parser happened to spot a word.</para>
+    /// </summary>
+    private async Task<NamingDecision> ResolveNamingDecisionAsync(
+        ImportPreviewRequest request,
+        IReadOnlyList<LibraryItem> libraries,
+        string? releaseName,
+        CancellationToken cancellationToken)
+    {
+        var mediaType = NormalizeMediaType(request.MediaType);
+        var evidence = string.IsNullOrWhiteSpace(releaseName)
+            ? Path.GetFileNameWithoutExtension(string.IsNullOrWhiteSpace(request.FileName) ? request.SourcePath : request.FileName)
+            : releaseName.Trim();
+        if (string.IsNullOrWhiteSpace(evidence))
+        {
+            return NamingDecision.None;
+        }
+
+        var quality = mediaDecisionService.DetectQuality($"{evidence} {request.SourcePath}");
+        var releaseGroup = ReleaseGroupPattern().Match(evidence) is { Success: true } group
+            ? group.Groups["group"].Value
+            : null;
+        if (qualityRepository is null)
+        {
+            return new NamingDecision(quality, releaseGroup);
+        }
+
+        var profileId = ResolveLibrary(libraries, mediaType)?.QualityProfileId;
+        var profile = string.IsNullOrWhiteSpace(profileId)
+            ? null
+            : (await qualityRepository.ListQualityProfilesAsync(cancellationToken))
+                .FirstOrDefault(item => string.Equals(item.Id, profileId, StringComparison.OrdinalIgnoreCase));
+        var rules = (await qualityRepository.ListCustomFormatsAsync(cancellationToken))
+            .Where(rule => string.Equals(rule.MediaType, mediaType, StringComparison.OrdinalIgnoreCase))
+            .Where(rule => profile is null || SplitIds(profile.CustomFormatIds).Contains(rule.Id, StringComparer.OrdinalIgnoreCase))
+            .ToArray();
+        if (rules.Length == 0)
+        {
+            return new NamingDecision(quality, releaseGroup);
+        }
+
+        var guide = guidePackageStore is null
+            ? GuidePackageCatalog.Current
+            : (await guidePackageStore.GetCurrentAsync(cancellationToken)).Package;
+        var guideById = guide.CustomFormats.ToDictionary(format => format.TrashId, StringComparer.OrdinalIgnoreCase);
+        var names = new List<string>();
+        var editions = new List<string>();
+        foreach (var rule in rules)
+        {
+            // The same matcher acquisition and the installed snapshot use, so a
+            // name can only say what the decision said.
+            if (!CustomFormatDefinitionMatcher.Evaluate(
+                    evidence,
+                    rule.Conditions,
+                    anyCondition: rule.TrashId is not null,
+                    mediaType).IsMatch)
+            {
+                continue;
+            }
+
+            var guideFormat = string.IsNullOrWhiteSpace(rule.TrashId) ? null : guideById.GetValueOrDefault(rule.TrashId);
+            if (guideFormat?.IncludeWhenRenaming == true)
+            {
+                names.Add(guideFormat.Name);
+            }
+
+            if (string.Equals(guideFormat?.Category, "edition", StringComparison.OrdinalIgnoreCase))
+            {
+                editions.Add(guideFormat!.Name);
+            }
+        }
+
+        return new NamingDecision(
+            quality,
+            releaseGroup,
+            names.OrderBy(name => name, StringComparer.Ordinal).ToArray(),
+            editions.OrderBy(name => name, StringComparer.Ordinal).ToArray());
+    }
+
+    private static IEnumerable<string> SplitIds(string? csv)
+        => (csv ?? string.Empty).Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
+
+    [GeneratedRegex(@"-(?<group>[A-Za-z0-9]{2,20})$", RegexOptions.CultureInvariant)]
+    private static partial Regex ReleaseGroupPattern();
+
     private static ResolvedDestinationFileName ResolveDestinationFileName(
         ImportPreviewRequest request,
         PlatformSettingsSnapshot settings,
         string mediaType,
         string title,
-        SeriesNumberingDetail? numbering = null)
+        SeriesNumberingDetail? numbering = null,
+        NamingDecision? decision = null)
     {
+        decision ??= NamingDecision.None;
         var incomingName = string.IsNullOrWhiteSpace(request.FileName)
             ? Path.GetFileName(request.SourcePath)
             : request.FileName.Trim();
@@ -2988,7 +3093,20 @@ public sealed partial class ImportPipelineService(
 
         if (mediaType != "tv")
         {
-            var movieName = ApplyTemplate("{Movie Title} ({Release Year})", title, request.Year);
+            // A movie had no file-name template at all, so every import became
+            // "Title (Year)" and the quality, the release group and every
+            // custom format Deluno matched were thrown away.
+            var movieName = NamingTemplateRenderer.RenderSegment(
+                settings.MovieFileFormat,
+                title,
+                request.Year,
+                request.ImdbId,
+                request.TvDbId,
+                request.QualityProfile,
+                request.Genres?.FirstOrDefault(),
+                request.Tags?.FirstOrDefault(),
+                request.Network,
+                decision);
             return new ResolvedDestinationFileName($"{movieName}{extension}", null);
         }
 
@@ -3031,7 +3149,12 @@ public sealed partial class ImportPipelineService(
         var episodeTitle = string.IsNullOrWhiteSpace(cataloguedEpisode?.Title)
             ? $"Episode {episodeNumber:D2}"
             : cataloguedEpisode.Title.Trim();
-        var quality = LibraryQualityDecider.DetectQuality($"{incomingName} {request.SourcePath}") ?? string.Empty;
+        // The decision's quality when there is one: reading it back out of the
+        // incoming name is how an episode Deluno took as WEB-DL could be filed
+        // as something else entirely.
+        var quality = decision.Quality
+            ?? LibraryQualityDecider.DetectQuality($"{incomingName} {request.SourcePath}")
+            ?? string.Empty;
         var formatted = settings.EpisodeFileFormat
             .Replace("{Series Title}", SanitizeFileName(title), StringComparison.OrdinalIgnoreCase)
             .Replace("{Title}", SanitizeFileName(title), StringComparison.OrdinalIgnoreCase)
@@ -3042,7 +3165,7 @@ public sealed partial class ImportPipelineService(
             .Replace("{Episode Title}", episodeTitle, StringComparison.OrdinalIgnoreCase)
             .Replace("{Quality}", quality, StringComparison.OrdinalIgnoreCase);
         return new ResolvedDestinationFileName(
-            $"{NamingTemplateRenderer.RenderSegment(formatted, title: null, year: null)}{extension}",
+            $"{NamingTemplateRenderer.RenderSegment(formatted, title: null, year: null, decision: decision)}{extension}",
             null);
     }
 

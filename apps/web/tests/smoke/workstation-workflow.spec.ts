@@ -487,6 +487,13 @@ test.describe("dashboard workflow", () => {
 
     await expect(page.getByText("Live preview", { exact: true })).toBeVisible();
     await expect(page.getByText("See how Deluno will name new and imported media.", { exact: true })).toBeVisible();
+
+    // A movie had no file-name pattern at all, so an import kept nothing of
+    // the release Deluno chose. The preview shows what it keeps now.
+    await expect(page.getByText("Movie files", { exact: true })).toBeVisible();
+    const moviePreview = page.getByText("Movie file", { exact: true }).locator("xpath=following-sibling::*[1]");
+    await expect(moviePreview).toContainText("WEB 1080p");
+    await expect(moviePreview).toContainText("AMZN");
     await page.getByRole("radio", { name: "Custom pattern", exact: true }).first().click();
     await expect(page.getByRole("textbox", { name: "Custom pattern", exact: true }).first()).toBeVisible();
     await expect(page.getByRole("button", { name: "Movie title", exact: true }).first()).toBeVisible();

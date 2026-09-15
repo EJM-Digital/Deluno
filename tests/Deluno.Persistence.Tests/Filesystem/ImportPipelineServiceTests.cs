@@ -92,7 +92,7 @@ public sealed class ImportPipelineServiceTests
         Assert.True(result.Response.CatalogUpdated);
         Assert.Equal("copy", result.Response.TransferModeUsed);
 
-        var destinationPath = Path.Combine(movieRootPath, "Arrival (2016)", "Arrival (2016).mkv");
+        var destinationPath = Path.Combine(movieRootPath, "Arrival (2016)", "Arrival (2016) [WEB 1080p].mkv");
         Assert.True(File.Exists(sourcePath));
         Assert.True(File.Exists(destinationPath));
         Assert.Equal(new FileInfo(sourcePath).Length, new FileInfo(destinationPath).Length);
@@ -242,7 +242,7 @@ public sealed class ImportPipelineServiceTests
             CancellationToken.None);
 
         Assert.True(result.Succeeded, result.Message);
-        var destinationPath = Path.Combine(movieRootPath, "Arrival (2016)", "Arrival (2016).mkv");
+        var destinationPath = Path.Combine(movieRootPath, "Arrival (2016)", "Arrival (2016) [WEB 1080p].mkv");
         Assert.True(File.Exists(destinationPath));
         Assert.Equal(new FileInfo(featurePath).Length, new FileInfo(destinationPath).Length);
     }
@@ -306,7 +306,7 @@ public sealed class ImportPipelineServiceTests
         File.SetLastWriteTimeUtc(sourcePath, DateTime.UtcNow.AddMinutes(-1));
 
         var destinationFolder = Path.Combine(movieRootPath, "Blade Runner 2017 (2017)");
-        var blockedDestinationPath = Path.Combine(destinationFolder, "Blade Runner 2017 (2017).mkv");
+        var blockedDestinationPath = Path.Combine(destinationFolder, "Blade Runner 2017 (2017) [WEB 720p].mkv");
         Directory.CreateDirectory(blockedDestinationPath);
 
         var platform = CreatePlatformRepository(storage, timeProvider);
@@ -1024,9 +1024,13 @@ public sealed class ImportPipelineServiceTests
             tracked.Add(item);
         }
         var imported = Assert.Single(tracked);
-        Assert.Equal("Big Buck Bunny (2008).mkv", Path.GetFileName(imported.FilePath));
-        Assert.DoesNotContain("NF", imported.FilePath, StringComparison.OrdinalIgnoreCase);
+        // The name keeps what Deluno decided - the quality, and the formats
+        // TRaSH marks as belonging in a file name - without the raw release
+        // name or its group. See also the test below, where the incoming file
+        // name says none of it.
+        Assert.Equal("Big Buck Bunny (2008) [WEB 1080p] [NF].mkv", Path.GetFileName(imported.FilePath));
         Assert.DoesNotContain("DELUNO", Path.GetFileName(imported.FilePath), StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("x264", Path.GetFileName(imported.FilePath), StringComparison.OrdinalIgnoreCase);
 
         var snapshot = await mediaState.GetLatestPreferenceEvaluationSnapshotAsync(
             MediaKind.Movie,
@@ -1055,6 +1059,85 @@ public sealed class ImportPipelineServiceTests
         Assert.Equal(imported.FilePath, provenance.RootElement.GetProperty("DestinationPath").GetString());
         Assert.Contains("DELUNO", provenance.RootElement.GetProperty("MatchedRuleNames").GetString(), StringComparison.OrdinalIgnoreCase);
         Assert.Equal(snapshot.PlanHash, provenance.RootElement.GetProperty("PreferencePlanHash").GetString());
+    }
+
+    /// <summary>
+    /// The name comes from the decision, not from the incoming file name.
+    ///
+    /// <para>A download client hands over whatever the release put on disk -
+    /// here a file called <c>video.mkv</c>. Reading the name back out of that
+    /// is how a release Deluno took <em>because</em> it was Netflix at WEB
+    /// 1080p lands in the library saying neither.</para>
+    /// </summary>
+    [Fact]
+    public async Task A_file_named_nothing_still_carries_the_decision_into_its_name()
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-09-16T04:00:00Z"));
+        await InitializeAllAsync(storage, timeProvider);
+
+        var downloadsPath = Path.Combine(storage.DataRoot, "downloads");
+        var movieRootPath = Path.Combine(storage.DataRoot, "movies");
+        Directory.CreateDirectory(downloadsPath);
+        Directory.CreateDirectory(movieRootPath);
+        // Nothing in this name says Netflix, WEB, or 1080p.
+        var sourcePath = Path.Combine(downloadsPath, "video.mkv");
+        await File.WriteAllBytesAsync(sourcePath, Enumerable.Repeat((byte)0x21, 4096).ToArray());
+        File.SetLastWriteTimeUtc(sourcePath, DateTime.UtcNow.AddMinutes(-1));
+
+        var platform = CreatePlatformRepository(storage, timeProvider);
+        var libraries = CreateLibrariesRepository(storage, timeProvider);
+        await SaveSettingsAsync(platform, movieRootPath, downloadsPath);
+        var quality = new SqliteQualityRepository(storage.Factory, timeProvider);
+        var netflixGuide = GuidePackageCatalog.Current.CustomFormats.Single(format =>
+            format.Name.Equals("NF", StringComparison.Ordinal)
+            && GuideFormatConditions.AppliesTo(format, "movies"));
+        var netflix = await quality.CreateCustomFormatAsync(
+            new CreateCustomFormatRequest(netflixGuide.Name, "movies", 0, netflixGuide.TrashId, GuideFormatConditions.For(netflixGuide), true),
+            CancellationToken.None);
+        var profile = await quality.CreateQualityProfileAsync(
+            new CreateQualityProfileRequest("E2E Movies 1080p", "movies", "WEB 1080p", "WEB 1080p", netflix.Id, UpgradeUntilCutoff: true, UpgradeUnknownItems: false),
+            CancellationToken.None);
+        await CreateMovieLibraryAsync(libraries, movieRootPath, downloadsPath, qualityProfileId: profile.Id);
+        var library = Assert.Single(await libraries.ListLibrariesAsync(CancellationToken.None));
+
+        var realtime = new RecordingRealtimeEventPublisher();
+        var jobStore = new SqliteJobStore(storage.Factory, timeProvider, realtime, new NullDownloadDispatchesRepository());
+        var dispatches = new SqliteDownloadDispatchesRepository(storage.Factory, timeProvider);
+        var dispatchId = await jobStore.RecordDownloadDispatchAsync(
+            library.Id,
+            "movies",
+            "movie",
+            "movie-sintel",
+            "Sintel.2010.1080p.NF.WEB-DL.DDP5.1.H.264-DELUNO",
+            "TestIndexer",
+            "client-1",
+            "TestClient",
+            "sent",
+            notesJson: null,
+            cancellationToken: CancellationToken.None);
+
+        var mediaState = new SqliteMediaStateRepository(storage.Factory, timeProvider);
+        var movies = new SqliteMovieCatalogRepository(storage.Factory, timeProvider, mediaState);
+        var service = CreateService(storage, timeProvider, platform, libraries, movies, qualityRepository: quality, downloadDispatchesRepository: dispatches);
+
+        var result = await service.ExecuteAsync(
+            new ImportExecuteRequest(
+                new ImportPreviewRequest(sourcePath, null, "movies", "Sintel", 2010, [], [], null, "en"),
+                "copy",
+                Overwrite: false,
+                AllowCopyFallback: true,
+                DispatchId: dispatchId),
+            CancellationToken.None);
+
+        Assert.True(result.Succeeded, result.Message);
+        var tracked = new List<MovieTrackedFileItem>();
+        await foreach (var item in movies.StreamTrackedFilesAsync(library.Id, CancellationToken.None))
+        {
+            tracked.Add(item);
+        }
+
+        Assert.Equal("Sintel (2010) [WEB 1080p] [NF].mkv", Path.GetFileName(Assert.Single(tracked).FilePath));
     }
 
     [Fact]
@@ -2030,7 +2113,8 @@ public sealed class ImportPipelineServiceTests
         string movieRootPath,
         string downloadsPath,
         string? seriesRootPath = null,
-        string episodeFileFormat = "{Series Title} - S{season:00}E{episode:00} - {Episode Title}")
+        string episodeFileFormat = "{Series Title} - S{season:00}E{episode:00} - {Episode Title}",
+        string movieFileFormat = "{Movie Title} ({Release Year}) [{Quality}] [{Custom Formats}]")
     {
         await platform.SaveAsync(
             new UpdatePlatformSettingsRequest(
@@ -2048,6 +2132,7 @@ public sealed class ImportPipelineServiceTests
                 UnmonitorWhenCutoffMet: false,
                 MovieFolderFormat: "{Movie Title} ({Release Year})",
                 SeriesFolderFormat: "{Series Title} ({Series Year})",
+                MovieFileFormat: movieFileFormat,
                 EpisodeFileFormat: episodeFileFormat,
                 HostBindAddress: null,
                 HostPort: 5099,

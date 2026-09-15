@@ -80,6 +80,7 @@ interface CustomPatternDrawerState {
 function customPatternMeta(kind: NamingFormatKind) {
   if (kind === "movie-folder") return { label: "Movie folders", placeholder: "{Movie Title} ({Release Year})" };
   if (kind === "series-folder") return { label: "TV show folders", placeholder: "{Series Title} ({Series Year})" };
+  if (kind === "movie-file") return { label: "Movie files", placeholder: "{Movie Title} ({Release Year}) [{Quality}] [{Custom Formats}]" };
   if (kind === "episode-file") return { label: "Episode files", placeholder: "{Series Title} - S{Season:00}E{Episode:00} - {Episode Title}" };
   return { label: "Custom format", placeholder: "{Title}" };
 }
@@ -87,6 +88,7 @@ function customPatternMeta(kind: NamingFormatKind) {
 function updateCustomPattern(settings: PlatformSettingsSnapshot, kind: NamingFormatKind, value: string) {
   if (kind === "movie-folder") return { ...settings, movieFolderFormat: value };
   if (kind === "series-folder") return { ...settings, seriesFolderFormat: value };
+  if (kind === "movie-file") return { ...settings, movieFileFormat: value };
   if (kind === "episode-file") return { ...settings, episodeFileFormat: value };
   return settings;
 }
@@ -135,6 +137,7 @@ function FileHandlingPage() {
       const nextSettings = await settingsMutation.mutate({
         movieFolderFormat: form.movieFolderFormat,
         seriesFolderFormat: form.seriesFolderFormat,
+        movieFileFormat: form.movieFileFormat,
         episodeFileFormat: form.episodeFileFormat,
         renameOnImport: form.renameOnImport,
         useHardlinks: form.useHardlinks,
@@ -163,6 +166,18 @@ function FileHandlingPage() {
                 <p className="text-[length:var(--type-caption)] leading-snug text-muted-foreground">Used when Deluno creates or renames a movie folder.</p>
               </div>
               <NamingFormatField kind="movie-folder" value={form.movieFolderFormat} onChange={(value) => setForm((current) => ({ ...current, movieFolderFormat: value }))} onCustomModeChange={(active, draftValue, previousValue) => handleCustomMode("movie-folder", active, draftValue, previousValue)} placeholder="{Movie Title} ({Release Year})" showExamples={false} />
+            </div>
+            <div className="grid gap-[var(--grid-gap)] p-[var(--card-pad-x)]">
+              <div className="grid content-start gap-1.5">
+                <p className="text-[length:var(--type-body-sm)] font-medium leading-tight text-foreground">Movie files</p>
+                {/*
+                  A movie had no file-name pattern at all, so every import was
+                  named "Title (Year)" and the quality and the guide formats
+                  Deluno matched were lost the moment the file landed.
+                */}
+                <p className="text-[length:var(--type-caption)] leading-snug text-muted-foreground">Used when Deluno renames an imported movie. Quality and custom formats come from the release Deluno chose, not from the old file name.</p>
+              </div>
+              <NamingFormatField kind="movie-file" value={form.movieFileFormat} onChange={(value) => setForm((current) => ({ ...current, movieFileFormat: value }))} onCustomModeChange={(active, draftValue, previousValue) => handleCustomMode("movie-file", active, draftValue, previousValue)} placeholder="{Movie Title} ({Release Year}) [{Quality}] [{Custom Formats}]" showExamples={false} />
             </div>
             <div className="grid gap-[var(--grid-gap)] p-[var(--card-pad-x)] md:grid-cols-2">
               <div className="grid content-start gap-[var(--grid-gap)]">
@@ -193,6 +208,9 @@ function FileHandlingPage() {
                 </div>
                 <div className="grid gap-[var(--grid-gap)] border-b border-hairline pb-[var(--grid-gap)] last:border-b-0 last:pb-0">
                   <NamingPreview label="TV show folder" value={`TV Shows\\${previewNamingFormat(form.seriesFolderFormat || "{Series Title} ({Series Year})")}`} />
+                </div>
+                <div className="grid gap-[var(--grid-gap)] border-b border-hairline pb-[var(--grid-gap)] last:border-b-0 last:pb-0">
+                  <NamingPreview label="Movie file" value={previewNamingFormat(form.movieFileFormat || "{Movie Title} ({Release Year}) [{Quality}] [{Custom Formats}]")} />
                 </div>
                 <div className="grid gap-[var(--grid-gap)] border-b border-hairline pb-[var(--grid-gap)] last:border-b-0 last:pb-0">
                   <NamingPreview label="Episode file" value={previewNamingFormat(form.episodeFileFormat || "{Series Title} - S{Season:00}E{Episode:00} - {Episode Title}")} />

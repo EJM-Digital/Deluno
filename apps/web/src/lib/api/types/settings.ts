@@ -34,6 +34,7 @@ export interface PlatformSettingsSnapshot {
   unmonitorWhenCutoffMet: boolean;
   movieFolderFormat: string;
   seriesFolderFormat: string;
+  movieFileFormat: string;
   episodeFileFormat: string;
   hostBindAddress: string;
   hostPort: number;
@@ -149,7 +150,8 @@ export const emptyPlatformSettingsSnapshot: PlatformSettingsSnapshot = {
   unmonitorWhenCutoffMet: false,
   movieFolderFormat: "{Movie Title} ({Release Year})",
   seriesFolderFormat: "{Series Title} ({Series Year})",
-  episodeFileFormat: "{Series Title} - S{season:00}E{episode:00} - {Episode Title}",
+  movieFileFormat: "{Movie Title} ({Release Year}) [{Quality}] [{Custom Formats}]",
+  episodeFileFormat: "{Series Title} - S{season:00}E{episode:00} - {Episode Title} [{Quality}] [{Custom Formats}]",
   hostBindAddress: "127.0.0.1",
   hostPort: 5099,
   urlBase: "",

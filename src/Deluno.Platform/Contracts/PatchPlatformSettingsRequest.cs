@@ -20,6 +20,7 @@ public sealed record PatchPlatformSettingsRequest(
     bool? UnmonitorWhenCutoffMet = null,
     string? MovieFolderFormat = null,
     string? SeriesFolderFormat = null,
+    string? MovieFileFormat = null,
     string? EpisodeFileFormat = null,
     string? HostBindAddress = null,
     int? HostPort = null,

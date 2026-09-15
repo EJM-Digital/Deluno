@@ -243,7 +243,8 @@ public static class GuidePackageCatalog
                     SourceGroupIds = groupIds,
                     SourceMatcherClauses = sourceFormat.MatcherClauses,
                     SourceScores = sourceFormat.Scores,
-                    SourcePath = sourceFormat.SourcePath
+                    SourcePath = sourceFormat.SourcePath,
+                    IncludeWhenRenaming = sourceFormat.IncludeWhenRenaming
                 });
                 continue;
             }
@@ -263,7 +264,8 @@ public static class GuidePackageCatalog
                 groupIds,
                 sourceFormat.MatcherClauses,
                 sourceFormat.Scores,
-                sourceFormat.SourcePath));
+                sourceFormat.SourcePath,
+                sourceFormat.IncludeWhenRenaming));
         }
 
         // Deluno may retain deliberately authored rules that do not map to an

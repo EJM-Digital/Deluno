@@ -4,7 +4,7 @@ import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { cn } from "../../lib/utils";
 
-export type NamingFormatKind = "movie-folder" | "series-folder" | "episode-file" | "destination-movie" | "destination-series";
+export type NamingFormatKind = "movie-folder" | "series-folder" | "movie-file" | "episode-file" | "destination-movie" | "destination-series";
 
 interface FormatPreset {
   label: string;
@@ -38,6 +38,11 @@ const PRESETS: Record<NamingFormatKind, FormatPreset[]> = {
     { label: "Title and year", value: "{Series Title} ({Series Year})", hint: "Severance (2022)", description: "Best default for TV. Keeps reboots and same-name shows separate." },
     { label: "Title, year, TVDb", value: "{Series Title} ({Series Year}) [tvdb-{TVDb ID}]", hint: "Severance (2022) [tvdb-371980]", description: "Most precise. Useful if you sync with tools that understand TVDb IDs." },
     { label: "Title only", value: "{Series Title}", hint: "Severance", description: "Cleanest format, but easier to confuse with remakes." }
+  ],
+  "movie-file": [
+    { label: "Title, year and what it is", value: "{Movie Title} ({Release Year}) [{Quality}] [{Custom Formats}]", hint: "Arrival (2016) [WEB 1080p] [AMZN]", description: "Best default. Keeps the quality and the guide formats Deluno matched, so the file still says what it is." },
+    { label: "Title and year", value: "{Movie Title} ({Release Year})", hint: "Arrival (2016)", description: "Shortest. The file name then says nothing about the release it came from." },
+    { label: "With the release group", value: "{Movie Title} ({Release Year}) [{Quality}] [{Custom Formats}]-{Release Group}", hint: "Arrival (2016) [WEB 1080p] [AMZN]-FLUX", description: "Adds who made the release, the way most release names end." }
   ],
   "episode-file": [
     { label: "Standard episode", value: "{Series Title} - S{Season:00}E{Episode:00} - {Episode Title}", hint: "Severance - S01E01 - Good News About Hell", description: "Best default. Human-readable and compatible with media servers." },
@@ -74,7 +79,17 @@ const TOKENS: Record<NamingFormatKind, FormatToken[]> = {
     { label: "Season 01", value: "{Season:00}" },
     { label: "Episode 01", value: "{Episode:00}" },
     { label: "Episode title", value: "{Episode Title}" },
-    { label: "Quality", value: "{Quality}" }
+    { label: "Quality", value: "{Quality}" },
+    { label: "Custom formats", value: "{Custom Formats}" },
+    { label: "Release group", value: "{Release Group}" }
+  ],
+  "movie-file": [
+    { label: "Movie title", value: "{Movie Title}" },
+    { label: "Release year", value: "{Release Year}" },
+    { label: "Quality", value: "{Quality}" },
+    { label: "Custom formats", value: "{Custom Formats}" },
+    { label: "Release group", value: "{Release Group}" },
+    { label: "Edition", value: "{Edition}" }
   ],
   "destination-movie": [
     { label: "Movie title", value: "{Movie Title}" },
@@ -243,7 +258,10 @@ export function previewNamingFormat(format: string) {
     .replaceAll("{Episode:00}", "01")
     .replaceAll("{episode:00}", "01")
     .replaceAll("{Episode Title}", "Good News About Hell")
-    .replaceAll("{Quality}", "WEB-DL 1080p")
+    .replaceAll("{Quality}", "WEB 1080p")
+    .replaceAll("{Custom Formats}", "AMZN")
+    .replaceAll("{Release Group}", "FLUX")
+    .replaceAll("{Edition}", "IMAX")
     .replaceAll("{Genre}", "Sci-Fi")
     .replaceAll("{Tag}", "premium");
 }

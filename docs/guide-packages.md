@@ -80,6 +80,21 @@ TRaSH writes each copy in the numbering of the app it is for. `SourceSpecificati
 remux (7) apart from a Blu-ray encode (6). The matcher reads a movies rule with
 Radarr's numbers and a TV rule with Sonarr's.
 
+### What a rename keeps
+
+TRaSH marks each format with `includeCustomFormatWhenRenaming`: its own answer
+to whether that format belongs in a file's name. Deluno keeps that flag on the
+package entry and uses it for the `{Custom Formats}` token, so a rename carries
+exactly the formats the guide says it should, and no list of Deluno's own can
+drift from it.
+
+An imported file is named from the decision Deluno made — the quality it
+counts as, the formats it matched, the group that made it — never by reading
+the incoming file name again. Movies and episodes both have a file-name
+pattern; the tokens are `{Quality}`, `{Custom Formats}`, `{Release Group}` and
+`{Edition}`, alongside the title and id tokens. An empty token leaves no empty
+brackets behind.
+
 ### Rules made from the old catalogue
 
 Rules created before version 4 still carry the old ids and Deluno's patterns.

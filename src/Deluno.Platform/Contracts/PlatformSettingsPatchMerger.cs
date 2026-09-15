@@ -20,6 +20,7 @@ public static class PlatformSettingsPatchMerger
             UnmonitorWhenCutoffMet: patch.UnmonitorWhenCutoffMet ?? current.UnmonitorWhenCutoffMet,
             MovieFolderFormat: patch.MovieFolderFormat ?? current.MovieFolderFormat,
             SeriesFolderFormat: patch.SeriesFolderFormat ?? current.SeriesFolderFormat,
+            MovieFileFormat: patch.MovieFileFormat ?? current.MovieFileFormat,
             EpisodeFileFormat: patch.EpisodeFileFormat ?? current.EpisodeFileFormat,
             HostBindAddress: patch.HostBindAddress ?? current.HostBindAddress,
             HostPort: patch.HostPort ?? current.HostPort,

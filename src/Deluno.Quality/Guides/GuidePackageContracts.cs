@@ -52,7 +52,15 @@ public sealed record GuideCustomFormat(
     IReadOnlyList<string>? SourceGroupIds = null,
     IReadOnlyList<GuideSourceMatcherClause>? SourceMatcherClauses = null,
     IReadOnlyDictionary<string, int>? SourceScores = null,
-    string? SourcePath = null);
+    string? SourcePath = null,
+    /// <summary>
+    /// TRaSH's own answer to "should this format appear in a file's name?".
+    /// Deluno uses it to decide what a rename keeps, rather than inventing a
+    /// list. Null on packages stored before naming read it, and omitted from
+    /// the JSON then, so their integrity hashes are unchanged.
+    /// </summary>
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    bool? IncludeWhenRenaming = null);
 
 public enum GuideMappingStatus
 {
