@@ -61,7 +61,8 @@ public static class CustomFormatMatcher
             var result = CustomFormatDefinitionMatcher.Evaluate(
                 releaseName,
                 format.Conditions,
-                anyCondition: format.TrashId is not null);
+                anyCondition: format.TrashId is not null,
+                format.MediaType);
             if (!result.IsMatch)
             {
                 continue;
@@ -98,7 +99,8 @@ public static class CustomFormatMatcher
             var match = CustomFormatDefinitionMatcher.Evaluate(
                 releaseName,
                 format.Conditions,
-                anyCondition: format.TrashId is not null);
+                anyCondition: format.TrashId is not null,
+                format.MediaType);
             return new CustomFormatDryRunResult(
                 FormatId: format.Id,
                 FormatName: format.Name,

@@ -98,7 +98,7 @@ public static class ReleasePreferencePlanFactory
                 continue;
             }
 
-            if (!CustomFormatDefinitionMatcher.CanEvaluate(format.Conditions))
+            if (!CustomFormatDefinitionMatcher.CanEvaluate(format.Conditions, profile.MediaType))
             {
                 var explanation = string.IsNullOrWhiteSpace(format.Conditions)
                     ? "The custom format has no matcher conditions, so Deluno cannot prove whether a release matches it."
@@ -216,7 +216,7 @@ public static class ReleasePreferencePlanFactory
         foreach (var format in customFormats ?? [])
         {
             if (string.IsNullOrWhiteSpace(format.Id)
-                || !CustomFormatDefinitionMatcher.CanEvaluate(format.Conditions))
+                || !CustomFormatDefinitionMatcher.CanEvaluate(format.Conditions, normalizedMediaType))
             {
                 continue;
             }

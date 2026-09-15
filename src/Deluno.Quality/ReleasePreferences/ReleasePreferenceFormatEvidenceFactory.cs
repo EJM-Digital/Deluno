@@ -81,7 +81,8 @@ public static class ReleasePreferenceFormatEvidenceFactory
                 matched = CustomFormatDefinitionMatcher.Evaluate(
                     filePath,
                     source.MatcherDefinition,
-                    source.MatcherAny).IsMatch;
+                    source.MatcherAny,
+                    plan.MediaType).IsMatch;
                 matcherAvailable = true;
             }
             else if (!string.IsNullOrWhiteSpace(customFormat?.TrashId)
@@ -94,7 +95,8 @@ public static class ReleasePreferenceFormatEvidenceFactory
                 matched = CustomFormatDefinitionMatcher.Evaluate(
                     filePath,
                     string.Join('\n', guideFormat.Patterns),
-                    anyCondition: true).IsMatch;
+                    anyCondition: true,
+                    plan.MediaType).IsMatch;
                 mappedTraitIds = PreferenceTraitRegistry.Current.CanonicalizeIds(guideFormat.MappedTraitIds);
                 matcherAvailable = true;
             }
