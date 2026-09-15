@@ -141,6 +141,33 @@ Expects source media at `vendor/e2e-fixtures/data/bbb.mp4` and writes torrents t
 
 Add it to Deluno as a Torznab indexer at `http://192.168.1.102:9117/api`. Any API key is accepted.
 
+### Release-decision evidence
+
+For the custom-format proof, where the same named decisions must hold from dry run
+through search, dispatch, import, installed file and history, set
+`TORZNAB_EVIDENCE=1`. That adds releases carrying the evidence TRaSH formats
+read:
+
+| Release | Proves |
+|---|---|
+| `Sintel.2010.1080p.NF.WEB-DL.DDP5.1.H.264-DELUNO` | Netflix, a WEB-DL source, group `DELUNO` |
+| `Sintel.2010.1080p.AMZN.WEBRip.DDP5.1.x264-DELUNO` | Amazon matches: the Amazon title clause **and** a WEB-DL/WEBRip source clause |
+| `Sintel.2010.1080p.AMZN.HDTV.x264-DELUNO` | Amazon must **not** match: the title clause alone fails the source group |
+| `Sintel.2010.1080p.WEB-DL.DDP5.1.H.264.PROPER-DELUNO` | a revision |
+| `Sintel.2010.Directors.Cut.1080p.WEB-DL.DDP5.1.H.264-DELUNO` | an edition |
+| `Breaking.Bad.S01E03.1080p.{NF.WEB-DL,AMZN.WEBRip,AMZN.HDTV}…-DELUNO` | the same three decisions for an episode no default release uses |
+
+```powershell
+$env:TORZNAB_BIND = '0.0.0.0'
+$env:TORZNAB_ADVERTISE = '192.168.1.102'
+$env:TORZNAB_EVIDENCE = '1'
+python -u scripts\lab\torznab_seed.py
+```
+
+Without the variable the catalogue is exactly as before. A `Sintel 2010` search
+returns the three original Sintel releases plus these five. An S01E03 search
+returns only the three evidence releases.
+
 ### Isolated multi-file season pack
 
 For a whole-season replacement acceptance run, start a second, temporary

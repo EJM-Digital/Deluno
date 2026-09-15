@@ -4,12 +4,15 @@ This file is the small entry point for agent work. It is a map, not the full man
 
 ## First Checks
 
-- Work from `C:\Users\User\Projects\Deluno`.
+- Work from `C:\Projects\Deluno`.
 - Do not use `C:\Users\User\Deluno`.
 - Run `git status --short --branch` before editing.
 - Use `rg` for search.
 - Use `apply_patch` for manual edits.
 - Stage explicit paths only.
+- Branch from current `main` with a purpose prefix (`fix/`, `lab/`, `docs/`),
+  never `codex/`. Delete the branch locally and on GitHub once its PR merges,
+  and confirm `git branch -r` shows nothing left behind.
 
 ## Source Of Truth
 
