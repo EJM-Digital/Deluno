@@ -650,7 +650,9 @@ public sealed class TmdbMetadataProviderTests : IDisposable
         // Same reason as TestStorage: the connection pool holds the file open,
         // so a plain delete fails and leaves the folder behind. 967 of these
         // had accumulated by 3 September.
-        Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
+        // Only this test's databases; ClearAllPools() also closed the pooled
+        // connections of tests running alongside it.
+        new SqliteDatabaseConnectionFactory(Options.Create(new StoragePathOptions { DataRoot = _dataRoot })).ClearPools();
 
         try
         {

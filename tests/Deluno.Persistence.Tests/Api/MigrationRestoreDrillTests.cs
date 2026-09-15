@@ -57,7 +57,7 @@ public sealed class MigrationRestoreDrillTests
         // reached them. This is what a running host does when it closes its
         // pooled connections; skipping it is how a "successful" backup comes
         // back empty.
-        SqliteConnection.ClearAllPools();
+        storage.Factory.ClearPools();
 
         var backupService = new DelunoBackupService(
             Options.Create(new StoragePathOptions { DataRoot = storage.DataRoot }),
@@ -89,7 +89,7 @@ public sealed class MigrationRestoreDrillTests
         Assert.Empty(await quality.ListCustomFormatsAsync(CancellationToken.None));
 
         // Roll back.
-        SqliteConnection.ClearAllPools();
+        storage.Factory.ClearPools();
         var opened = await backupService.OpenBackupAsync(receipt.BackupId, CancellationToken.None);
         Assert.NotNull(opened);
         RestoreResultResponse restored;
@@ -110,7 +110,7 @@ public sealed class MigrationRestoreDrillTests
 
         // Read it back through the repositories rather than off the disk: a
         // restore that produces a file SQLite will not open is not a restore.
-        SqliteConnection.ClearAllPools();
+        storage.Factory.ClearPools();
         var afterRestore = new SqliteQualityRepository(storage.Factory, clock);
 
         var recoveredProfile = Assert.Single(await afterRestore.ListQualityProfilesAsync(CancellationToken.None));

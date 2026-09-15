@@ -59,6 +59,24 @@ foreach ($project in $projects) {
     # stops work on everything else while a test-host lifetime problem is
     # diagnosed. The problem is real and is written down; this gate should
     # report on the tests.
+    #
+    # The cause (#333) was one test that never finished. In both hung runs whose
+    # results survived, exactly one listed test had no result:
+    # ReferenceSearchFlowTests.Configured_request_interval_paces_concurrent_
+    # searches_for_the_same_indexer_host. It advanced a FakeTimeProvider once;
+    # when the second paced search read the clock before that advance and
+    # created its delay timer after it, the timer was due past the advanced time
+    # and never fired. Nothing was left running, so every stack looked idle.
+    # Under a full parallel run the race opened often; alone it almost never did.
+    #
+    # To find the next one, list the tests and diff against the TRX of the hung
+    # run - the test without a result is the one xunit is still waiting for:
+    #   dotnet test <project> --list-tests    vs    TestResults\*.trx
+    #
+    # A separate interference fixed at the same time: fixtures that released
+    # their files with SqliteConnection.ClearAllPools() closed other parallel
+    # tests' connections mid-query (ObjectDisposedException on sqlite3). They
+    # now use SqliteDatabaseConnectionFactory.ClearPools() for their own files.
     & $dotnet.Source test $project.FullName --configuration Release --no-build --no-restore `
         --logger "trx;LogFileName=backend-tests.trx"
     if ($LASTEXITCODE -ne 0) {

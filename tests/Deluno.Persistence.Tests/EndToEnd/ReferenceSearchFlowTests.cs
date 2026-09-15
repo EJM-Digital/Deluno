@@ -59,8 +59,24 @@ public sealed class ReferenceSearchFlowTests
         await handler.WaitForFirstRequestAsync(CancellationToken.None);
         Assert.Equal(1, handler.RequestCount);
 
-        time.Advance(TimeSpan.FromSeconds(10));
-        await Task.WhenAll(first, second);
+        // Keep time moving until both finish. This used to advance once, and
+        // that raced the second search (#333): if it read the clock before the
+        // advance but created its pacing timer after, the timer fell due ten
+        // seconds past the advanced time and never fired. The test then awaited
+        // it for ever, with no thread running, and xunit never reported the
+        // assembly finished. Under a full parallel run the window was wide
+        // enough to hang most runs; alone it almost never opened. The pacing
+        // itself is proven above: the second request waited.
+        var both = Task.WhenAll(first, second);
+        var giveUp = DateTime.UtcNow.AddSeconds(30);
+        while (!both.IsCompleted && DateTime.UtcNow < giveUp)
+        {
+            time.Advance(TimeSpan.FromSeconds(10));
+            await Task.WhenAny(both, Task.Delay(50));
+        }
+
+        Assert.True(both.IsCompleted, "Both paced searches finish once time moves on.");
+        await both;
         Assert.Equal(2, handler.RequestCount);
     }
 
