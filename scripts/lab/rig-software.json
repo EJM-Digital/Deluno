@@ -12,14 +12,16 @@
     "internet, and a hash in this file is the difference between 'the version we",
     "tested' and 'whatever that URL serves now'.",
     "",
-    "sha256 is empty until the file has been staged and hashed once; provisioning",
-    "fills it in and then refuses anything that does not match.",
+    "sha256 is empty until a signed artifact has been staged and hashed once;",
+    "provisioning fills it in and then refuses anything that does not match.",
+    "An artifact without Authenticode must already carry a SHA-256 verified by",
+    "another vendor-authenticated channel; provisioning will never trust-on-first-use it.",
     "",
     "minimumBytes and mustBeSigned exist because of a real near-miss: SourceForge",
     "answered a scripted download with a 0.1 MB Cloudflare challenge page, saved",
-    "under the installer's name. A hash alone would have pinned the wrong file",
-    "happily on first run. A size floor and an Authenticode check catch a web",
-    "page pretending to be an installer before it reaches the rig.",
+    "under the installer's name. A size floor plus Authenticode where available",
+    "prevents trust-on-first-use; a pre-authenticated hash covers the exceptional",
+    "unsigned artifact and every repeat run.",
     "",
     "On staying at 5.2.1 when qBittorrent 5.2.3 is out: this run is testing",
     "Deluno, not the client. Holding the client at the version phases 0-8 were",
@@ -30,11 +32,13 @@
   "qbittorrent": {
     "version": "5.2.1",
     "fileName": "qbittorrent_5.2.1_x64_setup.exe",
-    "url": "https://sourceforge.net/projects/qbittorrent/files/qbittorrent-win32/qbittorrent-5.2.1/qbittorrent_5.2.1_x64_setup.exe/download",
-    "note": "SourceForge sits behind a Cloudflare bot challenge, so this cannot be fetched by script. Download it in a browser and drop it in vendor/rig-installers/; staging will size-check, signature-check and hash-pin it.",
-    "sha256": "",
+    "url": "https://github.com/qbittorrent/qBittorrent/releases/download/release-5.2.1/qbittorrent_5.2.1_x64_setup.exe",
+    "note": "The official 5.2.1 Windows asset is not Authenticode-signed. This exact GitHub release asset was verified against its detached PGP signature and the qBittorrent fingerprint below before its SHA-256 was pinned. Staging therefore requires the pinned hash instead of trusting the first file it sees.",
+    "sha256": "02A177C43C08DF4DB30A8F1C2E3D71D51590403EB6BA8B8B2B7D9CF00E68E18C",
     "minimumBytes": 20000000,
-    "mustBeSigned": true,
+    "mustBeSigned": false,
+    "pgpFingerprint": "D8F3DA77AAC6741053599C136E4A2D025B7CC9A2",
+    "pgpSignatureUrl": "https://github.com/qbittorrent/qBittorrent/releases/download/release-5.2.1/qbittorrent_5.2.1_x64_setup.exe.asc",
     "silentArgs": "/S",
     "installedTo": "C:\\Program Files\\qBittorrent\\qbittorrent.exe"
   },
@@ -63,7 +67,7 @@
   "weir": {
     "version": "2.6.1",
     "source": "C:\\Projects\\Weir\\dist\\windows\\releases\\Weir-win-Portable.zip",
-    "sha256": "",
+    "sha256": "F38171C3D01A91C0287E2220A92EA94059C01AB68780B6D8F7DE6AE4E7136595",
     "installedTo": "C:\\Deluno\\Weir\\current\\server\\WeirServer.exe"
   }
 }

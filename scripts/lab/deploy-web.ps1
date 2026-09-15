@@ -46,6 +46,7 @@ $rig = Get-Rig
 if (-not $ComputerName) { $ComputerName = $rig.host }
 if (-not $UserName) { $UserName = $rig.userName }
 if (-not $Password) { $Password = $rig.password }
+if (-not $Password) { throw 'Pass -Password; the Windows administrator password is not stored in rig.json.' }
 
 $repo = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 $dist = Join-Path $repo 'apps\web\dist'

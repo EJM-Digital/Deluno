@@ -55,6 +55,7 @@ $rig = Get-Rig
 if (-not $ComputerName)    { $ComputerName = $rig.host }
 if (-not $UserName)        { $UserName = $rig.userName }
 if (-not $Password)        { $Password = $rig.password }
+if (-not $Password)        { throw 'Pass -Password; the Windows administrator password is not stored in rig.json.' }
 if (-not $DelunoUrl)       { $DelunoUrl = $rig.deluno.url }
 if (-not $DelunoUser)      { $DelunoUser = $rig.deluno.userName }
 if (-not $DelunoPassword)  { $DelunoPassword = $rig.deluno.password }

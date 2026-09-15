@@ -60,6 +60,22 @@ if (-not $Password) {
 
 $started = [System.Diagnostics.Stopwatch]::StartNew()
 
+function Wait-DelunoReady {
+    param([string] $Url)
+
+    $ready = $null
+    $deadline = (Get-Date).AddSeconds(120)
+    do {
+        Start-Sleep -Seconds 3
+        try { $ready = Invoke-RestMethod -Uri $Url -TimeoutSec 10 } catch { $ready = $null }
+    } while (($null -eq $ready -or $ready.status -ne 'ready') -and (Get-Date) -lt $deadline)
+
+    if ($null -eq $ready -or $ready.status -ne 'ready') {
+        throw "Deluno did not become ready after deployment. Last status: $($ready.status)"
+    }
+    $ready
+}
+
 $secure = ConvertTo-SecureString $Password -AsPlainText -Force
 $credential = New-Object System.Management.Automation.PSCredential($UserName, $secure)
 $session = New-PSSession -ComputerName $HostName -Credential $credential
@@ -100,6 +116,27 @@ try {
 
     if ($changed.Count -eq 0 -and $orphaned.Count -eq 0) {
         Write-Host "Deployed build already matches. Nothing to do."
+        $info = Invoke-Command -Session $session -ArgumentList $AppPath -ScriptBlock {
+            param($appPath)
+            $process = Get-Process -Name 'Deluno.Host' -ErrorAction SilentlyContinue
+            [PSCustomObject]@{
+                Pid = ($process | Select-Object -First 1 -ExpandProperty Id)
+                ExeSha256 = (Get-FileHash (Join-Path $appPath 'Deluno.Host.exe') -Algorithm SHA256).Hash
+            }
+        }
+        $ready = Wait-DelunoReady -Url $ReadyUrl
+        $readyChecks = @($ready.checks | Where-Object { $_.status -eq 'ready' }).Count
+        $started.Stop()
+        [PSCustomObject]@{
+            FilesCopied = 0
+            FilesRemoved = 0
+            MegabytesSent = 0
+            Rollback = $null
+            Pid = $info.Pid
+            ExeSha256 = $info.ExeSha256
+            Readiness = "$readyChecks/$(@($ready.checks).Count) ready"
+            Elapsed = "$([math]::Round($started.Elapsed.TotalSeconds, 1))s"
+        }
         return
     }
 
@@ -182,16 +219,7 @@ try {
         }
     }
 
-    $ready = $null
-    $deadline = (Get-Date).AddSeconds(120)
-    do {
-        Start-Sleep -Seconds 3
-        try { $ready = Invoke-RestMethod -Uri $ReadyUrl -TimeoutSec 10 } catch { $ready = $null }
-    } while (($null -eq $ready -or $ready.status -ne 'ready') -and (Get-Date) -lt $deadline)
-
-    if ($null -eq $ready -or $ready.status -ne 'ready') {
-        throw "Deluno did not become ready after deployment. Last status: $($ready.status)"
-    }
+    $ready = Wait-DelunoReady -Url $ReadyUrl
 
     $readyChecks = @($ready.checks | Where-Object { $_.status -eq 'ready' }).Count
     $started.Stop()

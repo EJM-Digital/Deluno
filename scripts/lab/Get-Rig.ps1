@@ -45,6 +45,9 @@ function Get-RigCredential {
     # An environment variable wins, so a rig whose password is not the lab one
     # does not need the file edited.
     $password = if ($env:DELUNO_LAB_PASSWORD) { $env:DELUNO_LAB_PASSWORD } else { $Rig.password }
+    if (-not $password) {
+        throw 'Set DELUNO_LAB_PASSWORD; the Windows administrator password is not stored in rig.json.'
+    }
 
     return New-Object System.Management.Automation.PSCredential(
         $Rig.userName, (ConvertTo-SecureString $password -AsPlainText -Force))

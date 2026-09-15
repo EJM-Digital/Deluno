@@ -5,14 +5,14 @@
     "at a decommissioned machine is worse than no default: it points somewhere",
     "plausible and fails somewhere else.",
     "",
-    "These credentials are for a disposable lab machine on a private subnet.",
-    "They are deliberately in the repository and are not used anywhere else.",
-    "Nothing here is a production secret, and nothing here should become one."
+    "The Windows administrator password is deliberately not stored here.",
+    "Pass -Password or set DELUNO_LAB_PASSWORD for scripts that need WinRM.",
+    "The Deluno sign-in below is disposable application test data."
   ],
 
-  "host": "192.168.1.142",
+  "host": "192.168.1.51",
   "userName": "Administrator",
-  "password": "***REMOVED***",
+  "password": null,
 
   "$serviceAccount": [
     "Who the rig's services run as. null means SYSTEM, which is right when",
@@ -23,10 +23,10 @@
     "NAS refuses it. That, not networking, is why the old VM could never reach",
     "\\\\nas\\Data\\Media."
   ],
-  "serviceAccount": null,
+  "serviceAccount": "deluno",
 
   "deluno": {
-    "url": "http://192.168.1.142:5099",
+    "url": "http://192.168.1.51:5099",
     "userName": "admin",
     "password": "***REMOVED***",
     "appPath": "C:\\Deluno\\App",
@@ -34,9 +34,9 @@
   },
 
   "services": {
-    "qbittorrent": "http://192.168.1.142:8080",
-    "weir": "http://192.168.1.142:8788",
-    "sabnzbd": "http://192.168.1.142:8085"
+    "qbittorrent": "http://192.168.1.51:8080",
+    "weir": "http://192.168.1.51:8788",
+    "sabnzbd": "http://192.168.1.51:8085"
   },
 
   "$fixtures": [
