@@ -516,6 +516,92 @@ public sealed class ReleasePreferencePersistenceTests
         Assert.Contains("hash", tampered.Message, StringComparison.OrdinalIgnoreCase);
     }
 
+    /// <summary>
+    /// Seen on the physical rig after an upgrade: a profile saved by an older
+    /// build had its plan stored under the version its inputs produce, the newer
+    /// build compiled a different definition for that version, and every read of
+    /// the profile's plan failed as an immutability violation.
+    /// </summary>
+    [Fact]
+    public async Task A_profile_plan_compiled_differently_sits_beside_the_plan_stored_before()
+    {
+        using var storage = TestStorage.Create();
+        var now = new DateTimeOffset(2026, 9, 15, 3, 54, 55, TimeSpan.Zero);
+        var clock = new FixedTimeProvider(now);
+        var migrator = new SqliteDatabaseMigrator(storage.Factory, clock);
+        await new PlatformSchemaInitializer(storage.Factory, migrator,
+            NullLogger<PlatformSchemaInitializer>.Instance).StartAsync(CancellationToken.None);
+        var repository = new SqliteReleasePreferencePlanRepository(storage.Factory, clock);
+
+        var format = new CustomFormatItem(
+            "preferred-deluno",
+            "Preferred DELUNO group",
+            "movies",
+            100,
+            null,
+            "[{\"type\":\"releaseGroup\",\"value\":\"DELUNO\",\"negate\":false,\"required\":true}]",
+            true,
+            now,
+            now);
+        var profile = new QualityProfileItem(
+            "profile-upgrade",
+            "Upgrade",
+            "movies",
+            "WEB 1080p",
+            "WEB 1080p",
+            format.Id,
+            true,
+            false,
+            false,
+            null,
+            null,
+            false,
+            now,
+            now,
+            FormatIntents: new Dictionary<string, string> { [format.Id] = ProfileFormatIntents.Prefer });
+
+        var current = ReleasePreferencePlanFactory.CreateQualityPlan(profile, [format]);
+        var definitionMarker = current.Version.LastIndexOf("/def-", StringComparison.Ordinal);
+        Assert.True(definitionMarker > 0, $"A profile plan version names its definition: {current.Version}");
+        var inputsVersion = current.Version[..definitionMarker];
+
+        // What an older build stored for this profile: same saved moment, same
+        // guide package, compiled into something else.
+        var olderBuild = current with { Version = inputsVersion, Scenario = "compiled-by-an-older-build" };
+        await repository.SaveAsync(olderBuild, CancellationToken.None);
+
+        var stored = await repository.SaveAsync(current, CancellationToken.None);
+
+        Assert.Equal(current.PlanHash, stored.PlanHash);
+        // A decision recorded under the older version still resolves to exactly
+        // the plan that made it.
+        Assert.Equal(
+            olderBuild.PlanHash,
+            (await repository.GetAsync(olderBuild.Id, olderBuild.Version, CancellationToken.None))!.PlanHash);
+
+        // An unchanged definition keeps its version.
+        Assert.Equal(current.Version, ReleasePreferencePlanFactory.CreateQualityPlan(profile, [format]).Version);
+
+        // A changed intent, or a rule edited without re-saving the profile, gets
+        // a new version, and both store beside the first.
+        var changedIntent = ReleasePreferencePlanFactory.CreateQualityPlan(
+            profile with { FormatIntents = new Dictionary<string, string> { [format.Id] = ProfileFormatIntents.StronglyPrefer } },
+            [format]);
+        var editedRule = ReleasePreferencePlanFactory.CreateQualityPlan(
+            profile,
+            [format with
+            {
+                Conditions = "[{\"type\":\"releaseGroup\",\"value\":\"FLUX\",\"negate\":false,\"required\":true}]",
+                UpdatedUtc = now.AddMinutes(5)
+            }]);
+        foreach (var changed in new[] { changedIntent, editedRule })
+        {
+            Assert.StartsWith(inputsVersion + "/def-", changed.Version, StringComparison.Ordinal);
+            Assert.NotEqual(current.Version, changed.Version);
+            Assert.Equal(changed.PlanHash, (await repository.SaveAsync(changed, CancellationToken.None)).PlanHash);
+        }
+    }
+
     [Fact]
     public async Task Unpinned_profile_resolves_one_plan_identity_for_probe_import_and_search()
     {
