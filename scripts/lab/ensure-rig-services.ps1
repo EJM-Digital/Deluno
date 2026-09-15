@@ -63,7 +63,11 @@ if (-not $ServiceAccount) { $ServiceAccount = $rig.serviceAccount }
 if (-not $ServiceAccountPassword) { $ServiceAccountPassword = $rig.serviceAccountPassword }
 if (-not $Password) { throw 'Pass -Password; the Windows administrator password is not stored in rig.json.' }
 
-if ($ServiceAccount -and -not $ServiceAccountPassword) {
+# Only a repair registers a task or reconfigures a service, so only a repair
+# needs the account's password. A report reads state; asking for a second secret
+# just to look made the documented first step after a rig outage impossible
+# without one.
+if ($ServiceAccount -and -not $ServiceAccountPassword -and -not $ReportOnly) {
     throw "A service account needs a password: the task has to store one, because S4U would run it with no network credentials and a share is the only reason to use an account at all."
 }
 
