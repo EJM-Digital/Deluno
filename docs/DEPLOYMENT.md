@@ -276,7 +276,32 @@ After the app starts:
 - `/api/health/ready`
 - `/api/system/health` after authentication
 
+### Application log
+
+Every install writes Deluno's own log to `logs` under the data root:
+
+| Install | Folder |
+| --- | --- |
+| Windows package | `%LocalAppData%\DelunoData\logs` |
+| Docker | `/data/logs` (your data mount) |
+| Published or lab host | `<Storage:DataRoot>\logs` |
+
+It holds one file per UTC day (`deluno-yyyyMMdd.jsonl`). A day's file rolls to
+`deluno-yyyyMMdd.1.jsonl` at 50 MB, and files are kept for 14 days. Each line is
+one JSON object: timestamp, level, category, message, the structured properties
+the message was written with, and its scopes, including the request
+`TraceId`. So one trace or dispatch ID can be followed through the file. Values
+under secret-looking names, and secrets quoted in messages, are written as
+`[redacted]`. The file is opened for shared read, so it can be tailed while
+Deluno runs. It is not included in backups.
+
+Tune it under `Logging:File` (`Enabled`, `Directory`, `RetainDays`,
+`MaxFileBytes`). Its level follows `Logging:LogLevel`, or
+`Logging:DelunoFile:LogLevel` for this file only.
+
 ### Docker Logs
+
+Standard output carries the same events:
 
 ```powershell
 docker compose logs -f deluno
@@ -290,7 +315,9 @@ docker logs -f deluno
 
 ### Windows Logs
 
-If you run the published app from a terminal, standard output is your first log surface.
+The application log above is the durable record. When you run the published
+app from a terminal, standard output shows the same events live. The tray
+writes its own start-up problems to `%LocalAppData%\Deluno\logs\tray-startup.log`.
 
 For dev-mode local runs, the convenience script writes:
 

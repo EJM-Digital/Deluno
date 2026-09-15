@@ -195,6 +195,28 @@ public sealed class DelunoBackupServiceTests
         }
     }
 
+    /// <summary>
+    /// The application log lives under the data root, and a backup is of the
+    /// library's state, not of two weeks of log lines - which a restore would
+    /// otherwise write back over the log that explains why it was needed.
+    /// </summary>
+    [Fact]
+    public async Task The_application_log_is_not_part_of_a_backup()
+    {
+        using var storage = TempDataRoot.Create();
+        SeedDataRoot(storage.Path, new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["platform.db"] = "platform",
+            [Path.Combine("logs", "deluno-20260915.jsonl")] = "{\"message\":\"imported\"}"
+        });
+
+        var backup = await CreateService(storage.Path, "2026-09-15T02:00:00Z").CreateBackupAsync("manual", CancellationToken.None);
+
+        using var archive = System.IO.Compression.ZipFile.OpenRead(Path.Combine(storage.Path, "backups", $"{backup.Id}.zip"));
+        Assert.NotNull(archive.GetEntry("data/platform.db"));
+        Assert.DoesNotContain(archive.Entries, entry => entry.FullName.Contains("logs", StringComparison.OrdinalIgnoreCase));
+    }
+
     private static DelunoBackupService CreateService(string dataRoot, string utcNowIso)
     {
         return new DelunoBackupService(

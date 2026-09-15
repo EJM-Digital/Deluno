@@ -67,6 +67,34 @@ public static class SensitiveDataRedactor
     public static string RedactScalar(string value)
         => LooksSensitive(value) ? "[redacted]" : value;
 
+    /// <summary>
+    /// Masks only the secret inside a longer sentence, such as a log line
+    /// quoting a URL with <c>apikey=</c> or a header with <c>Bearer</c>, so the
+    /// rest of the line still says what happened. <see cref="RedactScalar"/>
+    /// blanks the whole value, which is right for a field and useless for a log.
+    /// </summary>
+    public static string RedactInline(string? value)
+    {
+        if (string.IsNullOrEmpty(value))
+        {
+            return value ?? string.Empty;
+        }
+
+        var redacted = InlineAssignment.Replace(value, match => $"{match.Groups["key"].Value}{match.Groups["sep"].Value}[redacted]");
+        return BearerToken.Replace(redacted, "Bearer [redacted]");
+    }
+
+    /// <summary>Whether a property or header name looks like it carries a secret.</summary>
+    public static bool IsSensitiveName(string name) => IsSensitiveKey(name);
+
+    private static readonly System.Text.RegularExpressions.Regex InlineAssignment = new(
+        @"(?<key>\b(?:api[_-]?key|apikey|password|passwd|access[_-]?token|token|secret)\b)(?<sep>\s*[=:]\s*)(?<value>[^&\s""',;]+)",
+        System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.CultureInvariant);
+
+    private static readonly System.Text.RegularExpressions.Regex BearerToken = new(
+        @"Bearer\s+[A-Za-z0-9\-\._~\+/]+=*",
+        System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.CultureInvariant);
+
     private static void WriteRedactedElement(
         Utf8JsonWriter writer,
         JsonElement element,

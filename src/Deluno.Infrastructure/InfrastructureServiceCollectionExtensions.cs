@@ -1,9 +1,12 @@
 using Deluno.Infrastructure.Storage;
 using Deluno.Infrastructure.Storage.Migrations;
+using Deluno.Infrastructure.Observability;
 using Deluno.Infrastructure.Resilience;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 
 namespace Deluno.Infrastructure;
 
@@ -24,6 +27,14 @@ public static class InfrastructureServiceCollectionExtensions
 
                 options.DataRoot = Path.GetFullPath(configuredRoot, environment.ContentRootPath);
             });
+
+        // Every host - the headless host, the tray and the tray's Windows
+        // service - comes through here, so the durable log is registered once
+        // rather than three times. Under any of them the console is discarded.
+        services
+            .AddOptions<DelunoFileLogOptions>()
+            .Bind(configuration.GetSection(DelunoFileLogOptions.SectionName));
+        services.TryAddEnumerable(ServiceDescriptor.Singleton<ILoggerProvider, DelunoFileLoggerProvider>());
 
         services.AddSingleton<IDelunoDatabaseConnectionFactory, SqliteDatabaseConnectionFactory>();
         services.AddSingleton<IDelunoDatabaseMigrator, SqliteDatabaseMigrator>();
