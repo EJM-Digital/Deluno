@@ -349,6 +349,50 @@ public sealed class ExistingLibraryImportServiceTests
         Assert.Equal(1, finished.Run.DeferredCount);
     }
 
+    /// <summary>
+    /// Seen on the physical rig: a show imported with one episode on disk had
+    /// no air dates yet, so its rung said Deluno had not catalogued its
+    /// episodes - and kept saying it after metadata catalogued all of them.
+    /// </summary>
+    [Fact]
+    public async Task A_metadata_catalogue_sync_recomputes_the_shows_rung()
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-09-15T08:00:00Z"));
+        await InitializeAsync(storage, timeProvider);
+
+        var rootPath = Path.Combine(storage.DataRoot, "tv-rung");
+        var season = Path.Combine(rootPath, "Harbour Lights (2020)", "Season 01");
+        Directory.CreateDirectory(season);
+        await File.WriteAllTextAsync(Path.Combine(season, "Harbour.Lights.S01E02.1080p.WEB-DL.mkv"), string.Empty);
+
+        var libraries = new SqliteLibrariesRepository(storage.Factory, timeProvider);
+        var libraryId = await CreateLibraryAsync(libraries, rootPath, "tv");
+        var series = new SqliteSeriesCatalogRepository(storage.Factory, timeProvider);
+        var service = CreateService(storage, timeProvider, libraries, new SqliteMovieCatalogRepository(storage.Factory, timeProvider), series: series);
+
+        Assert.NotNull(await service.ImportSelectedAsync(libraryId, [Path.Combine(rootPath, "Harbour Lights (2020)")], CancellationToken.None));
+        var show = Assert.Single(await series.ListAsync(CancellationToken.None));
+        var mediaState = new Deluno.Media.SqliteMediaStateRepository(storage.Factory, timeProvider);
+        var before = Assert.Single(await mediaState.ListWantedByIdsAsync(MediaKind.Series, [show.Id], CancellationToken.None));
+        Assert.Contains("not catalogued", before.WantedReason, StringComparison.OrdinalIgnoreCase);
+
+        var aired = timeProvider.GetUtcNow().AddDays(-30);
+        await series.SyncEpisodeCatalogueAsync(
+            show.Id,
+            [
+                new Deluno.Series.Contracts.CatalogueEpisodeItem(1, 1, "One", null, aired),
+                new Deluno.Series.Contracts.CatalogueEpisodeItem(1, 2, "Two", null, aired.AddDays(7)),
+                new Deluno.Series.Contracts.CatalogueEpisodeItem(1, 3, "Three", null, aired.AddDays(14))
+            ],
+            "tmdb",
+            CancellationToken.None);
+
+        var after = Assert.Single(await mediaState.ListWantedByIdsAsync(MediaKind.Series, [show.Id], CancellationToken.None));
+        Assert.Equal(WantedStatuses.Missing, after.WantedStatus);
+        Assert.Equal("1 of 3 aired episodes are here.", after.WantedReason);
+    }
+
     [Fact]
     public async Task Folders_with_no_video_are_walked_past_rather_than_stopping_the_run()
     {

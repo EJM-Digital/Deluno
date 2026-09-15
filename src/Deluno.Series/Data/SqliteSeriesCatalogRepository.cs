@@ -4384,6 +4384,29 @@ public sealed class SqliteSeriesCatalogRepository(
             await backfill.ExecuteNonQueryAsync(cancellationToken);
         }
 
+        // The episodes and their air dates just changed, so every library's rung
+        // for this show did too. Found on the physical rig: a show imported with
+        // one episode on disk and no air dates stored "Deluno has not catalogued
+        // this show's episodes yet", and kept saying it after metadata added all
+        // of them, because only the import path recomputed the rung.
+        var libraryIds = new List<string>();
+        using (var libraries = connection.CreateCommand())
+        {
+            libraries.Transaction = transaction;
+            libraries.CommandText = "SELECT DISTINCT library_id FROM series_wanted_state WHERE series_id = @seriesId;";
+            AddParameter(libraries, "@seriesId", seriesId);
+            using var reader = await libraries.ExecuteReaderAsync(cancellationToken);
+            while (await reader.ReadAsync(cancellationToken))
+            {
+                libraryIds.Add(reader.GetString(0));
+            }
+        }
+
+        foreach (var libraryId in libraryIds)
+        {
+            await RefreshSeriesRungAsync(connection, transaction, seriesId, libraryId, now, cancellationToken);
+        }
+
         await transaction.CommitAsync(cancellationToken);
 
         return new SeriesCatalogueSyncResult(
