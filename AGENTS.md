@@ -52,12 +52,16 @@ npm run test:web
 ```
 
 Changes reach `main` through a pull request. Wait for every required GitHub
-check to pass, then manually squash-merge; never use auto-merge. `main` **is**
-branch-protected and asks for one approving review, so a solo squash-merge
-needs `gh pr merge --squash --admin` (admin enforcement is off for exactly
-this). This paragraph used to say the branch was unprotected, which was true
-once and stopped being true without anyone noticing. A local pre-push hook is
-available; enable it once with:
+check to pass, then manually squash-merge; never use auto-merge. **Nothing on
+GitHub enforces this today.** The repository is private on a personal Free
+plan, where branch protection and rulesets are unavailable: the protection API
+answers "Upgrade to GitHub Pro or make this repository public". Collaborators on
+a personal private repository can only hold Write access, so any collaborator
+could push to `main` or push a `v*` tag, and a tag publishes a public container
+image and GitHub release. Hold the pull-request rule by discipline. This
+paragraph has now been wrong twice, once in each direction; check the
+protection API before trusting it. A local pre-push hook is available; enable
+it once with:
 
 ```powershell
 git config core.hooksPath .githooks
