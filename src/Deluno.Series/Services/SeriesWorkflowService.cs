@@ -9,6 +9,7 @@ namespace Deluno.Series.Services;
 public interface ISeriesWorkflowService
 {
     EpisodeWorkflowDecision EvaluateEpisodeWantedStatus(
+        bool hasFile,
         string? currentQuality,
         string? targetQuality,
         bool qualityCutoffMet,
@@ -48,7 +49,13 @@ public sealed class SeriesWorkflowService : ISeriesWorkflowService
         _policyEngine = policyEngine;
     }
 
+    /// <summary>
+    /// The episode's file is its own fact, not inferred from a known quality;
+    /// see <c>MovieWorkflowService.EvaluateWantedStatus</c> for how that went
+    /// wrong for films imported from an existing library.
+    /// </summary>
     public EpisodeWorkflowDecision EvaluateEpisodeWantedStatus(
+        bool hasFile,
         string? currentQuality,
         string? targetQuality,
         bool qualityCutoffMet,
@@ -57,7 +64,7 @@ public sealed class SeriesWorkflowService : ISeriesWorkflowService
     {
         var decision = MediaDecisionRules.DecideWantedState(new MediaWantedDecisionInput(
             MediaType: "tv",
-            HasFile: !string.IsNullOrWhiteSpace(currentQuality),
+            HasFile: hasFile,
             CurrentQuality: currentQuality,
             CutoffQuality: targetQuality,
             UpgradeUntilCutoff: upgradeUntilCutoff,
@@ -92,7 +99,10 @@ public sealed class SeriesWorkflowService : ISeriesWorkflowService
             ? false
             : CalculateQualityDelta(input.CurrentQuality, input.TargetQuality, input.Profile) is >= 0;
 
+        // A candidate evaluation carries no file fact of its own; a known current
+        // quality is the only evidence of a file it has, as it always was here.
         var wantedDecision = EvaluateEpisodeWantedStatus(
+            !string.IsNullOrWhiteSpace(input.CurrentQuality),
             input.CurrentQuality,
             input.TargetQuality,
             qualityCutoffMet,

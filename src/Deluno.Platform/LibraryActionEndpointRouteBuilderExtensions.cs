@@ -129,6 +129,8 @@ public static class LibraryActionEndpointRouteBuilderExtensions
             HttpContext httpContext,
             [FromBody] ExistingLibraryImportSelectionRequest request,
             [FromServices] IExistingLibraryImportService importService,
+            [FromServices] ILibrariesRepository librariesRepository,
+            [FromServices] IActivityFeedRepository activityFeedRepository,
             CancellationToken cancellationToken) =>
         {
             var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
@@ -143,7 +145,32 @@ public static class LibraryActionEndpointRouteBuilderExtensions
             }
 
             var result = await importService.ImportSelectedAsync(id, request.SourcePaths.Take(100).ToArray(), cancellationToken);
-            return result is null ? Results.NotFound() : Results.Ok(result);
+            if (result is null)
+            {
+                return Results.NotFound();
+            }
+
+            // The background run has always said so in Activity; the selected
+            // import, the one the Review screen actually offers, said nothing.
+            // On the rig two imports left Activity with no rows at all.
+            var libraryName = (await librariesRepository.ListLibrariesAsync(cancellationToken))
+                .FirstOrDefault(item => string.Equals(item.Id, id, StringComparison.OrdinalIgnoreCase))?.Name;
+            await activityFeedRepository.RecordActivityAsync(
+                "library.import.existing.selected",
+                ExistingLibraryImportActivity.DescribeSelected(libraryName, result),
+                JsonSerializer.Serialize(new
+                {
+                    result.RequestedCount,
+                    result.ImportedCount,
+                    result.SkippedCount,
+                    issues = result.Issues.Select(issue => new { issue.Kind, issue.SourcePath })
+                }),
+                null,
+                "library",
+                id,
+                cancellationToken);
+
+            return Results.Ok(result);
         });
 
         // Importing an existing library is a tracked background operation, not

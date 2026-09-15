@@ -1023,6 +1023,7 @@ public static class MoviesEndpointRouteBuilderExtensions
             }
 
             var decision = workflowService.EvaluateWantedStatus(
+                wantedItem.HasFile,
                 wantedItem.CurrentQuality,
                 wantedItem.TargetQuality,
                 wantedItem.QualityCutoffMet,
