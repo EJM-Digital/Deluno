@@ -64,6 +64,7 @@ $rig = Get-Rig
 if (-not $ComputerName) { $ComputerName = $rig.host }
 if (-not $UserName) { $UserName = $rig.userName }
 if (-not $Password) { $Password = $rig.password }
+if (-not $Password) { throw 'Pass -Password; the Windows administrator password is not stored in rig.json.' }
 
 $repoRoot   = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 # vendor, not artifacts: these are inputs to a build, not output from one, and
@@ -144,11 +145,12 @@ if (Should 'stage') {
             throw "Missing $([IO.Path]::GetFileName($item.Local)) in $stagingDir.`n  Get it from $where"
         }
 
-        # Before the hash, two cheaper questions: is it plausibly the file at
-        # all, and did the vendor sign it? SourceForge answered a scripted
-        # download with a 0.1 MB Cloudflare challenge page saved under the
-        # installer's name. A hash alone would have pinned that happily on the
-        # first run and copied a web page to the rig to be "installed".
+        # Before the hash, ask whether it is plausibly the file at all and,
+        # where the vendor supplies Authenticode, whether the vendor signed it.
+        # SourceForge once answered a scripted download with a 0.1 MB challenge
+        # page saved under the installer's name. An unsigned artifact is allowed
+        # only when its hash was authenticated and pinned before this run; never
+        # trust-on-first-use one here.
         $actualBytes = (Get-Item $item.Local).Length
         if ($spec.minimumBytes -and $actualBytes -lt $spec.minimumBytes) {
             throw "$([IO.Path]::GetFileName($item.Local)) is only $([math]::Round($actualBytes/1MB,1)) MB, under the $([math]::Round($spec.minimumBytes/1MB,1)) MB floor. That is usually a download page saved under the installer's name, not the installer."
@@ -162,7 +164,12 @@ if (Should 'stage') {
         }
 
         $hash = (Get-FileHash $item.Local -Algorithm SHA256).Hash
-        $pinned = $spec.sha256
+        $pinned = "$($spec.sha256)".Trim()
+        $signatureRule = $spec.PSObject.Properties['mustBeSigned']
+
+        if ($null -ne $signatureRule -and -not [bool]$signatureRule.Value -and -not $pinned) {
+            throw "$([IO.Path]::GetFileName($item.Local)) is not Authenticode-gated and has no pre-authenticated SHA-256. Refusing to trust the first file staged under that name."
+        }
 
         if (-not $pinned) {
             # First time: record what we staged, so every rig after this one
@@ -261,11 +268,12 @@ if (Should 'account') {
         # avoid, so it is worth not repeating one level down.
         if ($NasHost -and $NasUser) {
             $task = 'Deluno one-shot store NAS credential'
+            $taskUser = if ($Account -match '\\') { $Account } else { "$env:COMPUTERNAME\$Account" }
             Register-ScheduledTask -TaskName $task -Force `
                 -Action (New-ScheduledTaskAction -Execute 'cmdkey.exe' `
                     -Argument "/add:$NasHost /user:$NasUser /pass:$NasPassword") `
                 -Trigger (New-ScheduledTaskTrigger -Once -At (Get-Date).AddYears(1)) `
-                -User ".\$Account" -Password $AccountPassword -RunLevel Highest | Out-Null
+                -User $taskUser -Password $AccountPassword -RunLevel Highest | Out-Null
             Start-ScheduledTask -TaskName $task
             Start-Sleep -Seconds 8
             Unregister-ScheduledTask -TaskName $task -Confirm:$false
@@ -362,6 +370,10 @@ if (Should 'configure') {
         $profile = 'C:\Deluno\qbt-profile\qBittorrent\config'
         New-Item -ItemType Directory -Force $profile | Out-Null
 
+        # qBittorrent 5.2.1 refuses to start the Web UI with an empty
+        # credential, even when every caller is inside AuthSubnetWhitelist.
+        # Password_PBKDF2 is the form qBittorrent itself writes for the
+        # disposable lab credential.
         @'
 [BitTorrent]
 Session\DefaultSavePath=C:/Deluno/Downloads-Complete
@@ -374,8 +386,11 @@ Session\DisableAutoTMMTriggers\DefaultSavePathChanged=false
 Downloads\SavePath=C:/Deluno/Downloads-Complete
 Downloads\TempPath=C:/Deluno/Downloads-Incomplete
 Downloads\TempPathEnabled=true
+WebUI\Enabled=true
 WebUI\Address=*
 WebUI\Port=8080
+WebUI\Username=admin
+WebUI\Password_PBKDF2=@ByteArray(vkziFEaXj8pfuxIlHUKH/w==:HdAvS8fzHwoMWt8BeRUlrkhcBl9uDuKEfNtchjnnVzjtWw1i9Yhj7/F6QvuxOKxEBbrpl4lnyHwfCxAyf4S8rw==)
 WebUI\LocalHostAuth=false
 WebUI\AuthSubnetWhitelist=192.168.1.0/24
 WebUI\AuthSubnetWhitelistEnabled=true
@@ -409,7 +424,7 @@ if (Should 'services') {
 
     & (Join-Path $PSScriptRoot 'ensure-rig-services.ps1') `
         -ComputerName $ComputerName -UserName $UserName -Password $Password `
-        -ServiceAccount ".\$ServiceAccount" -ServiceAccountPassword $ServiceAccountPassword
+        -ServiceAccount $ServiceAccount -ServiceAccountPassword $ServiceAccountPassword
 }
 
 # ------------------------------------------------------------------ verify
@@ -442,26 +457,39 @@ if (Should 'verify') {
             @"
 try {
     `$count = (Get-ChildItem -LiteralPath '$Path' -ErrorAction Stop).Count
-    Set-Content -LiteralPath '$out' -Value "OK `$count entries"
+    `$probeName = ".deluno-write-probe-`$([guid]::NewGuid().ToString('N')).tmp"
+    `$shareProbe = Join-Path -Path '$Path' -ChildPath `$probeName
+    `$proof = [guid]::NewGuid().ToString('N')
+    try {
+        Set-Content -LiteralPath `$shareProbe -Value `$proof -Encoding ascii -ErrorAction Stop
+        `$readBack = Get-Content -LiteralPath `$shareProbe -Raw -ErrorAction Stop
+        if (`$readBack.Trim() -ne `$proof) { throw 'The write probe did not read back the bytes it wrote.' }
+    } finally {
+        if (`$shareProbe -and (Test-Path -LiteralPath `$shareProbe)) {
+            Remove-Item -LiteralPath `$shareProbe -Force -ErrorAction SilentlyContinue
+        }
+    }
+    Set-Content -LiteralPath '$out' -Value "OK `$count entries; read/write verified"
 } catch {
     Set-Content -LiteralPath '$out' -Value "FAIL `$(`$_.Exception.Message)"
 }
 "@ | Set-Content -LiteralPath $probe -Encoding utf8
 
             $task = 'Deluno one-shot NAS probe'
+            $taskUser = if ($Account -match '\\') { $Account } else { "$env:COMPUTERNAME\$Account" }
             Register-ScheduledTask -TaskName $task -Force `
                 -Action (New-ScheduledTaskAction -Execute 'powershell.exe' `
                     -Argument "-NoProfile -ExecutionPolicy Bypass -File `"$probe`"") `
                 -Trigger (New-ScheduledTaskTrigger -Once -At (Get-Date).AddYears(1)) `
-                -User ".\$Account" -Password $AccountPassword -RunLevel Highest | Out-Null
+                -User $taskUser -Password $AccountPassword -RunLevel Highest | Out-Null
             Start-ScheduledTask -TaskName $task
             Start-Sleep -Seconds 10
             Unregister-ScheduledTask -TaskName $task -Confirm:$false
             if (Test-Path $out) { Get-Content $out -Raw } else { 'FAIL the probe never wrote a result' }
         } @($ServiceAccount, $ServiceAccountPassword, $LibraryPath)
 
-        if ($result -like 'OK*') { Step "$ServiceAccount can read $LibraryPath - $($result.Trim())" }
-        else { Warn "$ServiceAccount cannot read ${LibraryPath}: $($result.Trim())" }
+        if ($result -like 'OK*') { Step "$ServiceAccount can read and write $LibraryPath - $($result.Trim())" }
+        else { Warn "$ServiceAccount cannot read and write ${LibraryPath}: $($result.Trim())" }
     }
 
     Head 'Provisioned. Deluno is running and untouched - its first run is phase 0 of the plan, not this script.'

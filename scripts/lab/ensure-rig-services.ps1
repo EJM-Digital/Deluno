@@ -61,6 +61,7 @@ if (-not $UserName) { $UserName = $rig.userName }
 if (-not $Password) { $Password = $rig.password }
 if (-not $ServiceAccount) { $ServiceAccount = $rig.serviceAccount }
 if (-not $ServiceAccountPassword) { $ServiceAccountPassword = $rig.serviceAccountPassword }
+if (-not $Password) { throw 'Pass -Password; the Windows administrator password is not stored in rig.json.' }
 
 if ($ServiceAccount -and -not $ServiceAccountPassword) {
     throw "A service account needs a password: the task has to store one, because S4U would run it with no network credentials and a share is the only reason to use an account at all."
@@ -77,19 +78,40 @@ $body = {
     # SYSTEM unless the rig says otherwise. A library on a network share is the
     # reason to say otherwise: a SYSTEM process authenticates to SMB as the
     # machine account, so a workgroup NAS refuses it.
-    $runsAs = if ($ServiceAccount) { $ServiceAccount } else { 'SYSTEM' }
+    # `Register-ScheduledTask -User '.\name'` does not resolve inside a remote
+    # WinRM session on a fresh Server 2025 host, even though the same local user
+    # resolves by its bare and machine-qualified names. Normalize the local
+    # shorthand on the target, where the machine name is authoritative.
+    $runsAs = if (-not $ServiceAccount) {
+        'SYSTEM'
+    } elseif ($ServiceAccount -match '^\.\\(.+)$') {
+        "$env:COMPUTERNAME\$($Matches[1])"
+    } elseif ($ServiceAccount -notmatch '\\') {
+        "$env:COMPUTERNAME\$ServiceAccount"
+    } else {
+        $ServiceAccount
+    }
     $isSystem = -not $ServiceAccount
 
     $rig = @(
         @{
             Kind = 'task'; Name = 'Deluno Host'; Port = 5099
-            Command = 'C:\Deluno\App\Deluno.Host.exe'; Arguments = ''
+            Command = 'C:\Deluno\App\Deluno.Host.exe'
+            # Deluno deliberately defaults to loopback because its fresh-install
+            # setup surface is unauthenticated. This is an explicit LAN test rig,
+            # so opt in here rather than weakening the product default.
+            # Keep mutable databases, keys and backups outside the deployment
+            # tree so a hash-based promotion never treats them as build output.
+            Arguments = '--Server:AllowLan=true --Storage:DataRoot="C:\Deluno\Data"'
             WorkingDir = 'C:\Deluno\App'
         },
         @{
             Kind = 'task'; Name = 'qBittorrent'; Port = 8080
             Command = 'C:\Program Files\qBittorrent\qbittorrent.exe'
-            Arguments = '--profile="C:\Deluno\qbt-profile"'
+            # A fresh profile has not accepted qBittorrent's legal notice. A
+            # password-backed task runs in session 0, where no person can click
+            # the dialog, so use the vendor's explicit unattended acknowledgement.
+            Arguments = '--confirm-legal-notice --profile="C:\Deluno\qbt-profile"'
             WorkingDir = 'C:\Program Files\qBittorrent'
         },
         @{
@@ -129,6 +151,15 @@ $body = {
         if ($task.Settings.ExecutionTimeLimit -ne 'PT0S') { $reasons += "gives up after $($task.Settings.ExecutionTimeLimit)" }
         if ($task.Settings.RestartCount -lt 1) { $reasons += 'does not restart on failure' }
         if ($task.Actions[0].Execute -ne $spec.Command) { $reasons += "runs $($task.Actions[0].Execute)" }
+        if ("$($task.Actions[0].Arguments)" -ne "$($spec.Arguments)") {
+            $reasons += "uses arguments '$($task.Actions[0].Arguments)', not '$($spec.Arguments)'"
+        }
+        if ("$($task.Actions[0].WorkingDirectory)" -ne "$($spec.WorkingDir)") {
+            $reasons += "works in '$($task.Actions[0].WorkingDirectory)', not '$($spec.WorkingDir)'"
+        }
+        if ((Test-Path $spec.Command) -and $task.State -ne 'Running') {
+            $reasons += "is $($task.State), not running"
+        }
         return $reasons
     }
 
@@ -141,6 +172,7 @@ $body = {
             $reasons += "runs $registered"
         }
         if ($service.StartType -ne 'Automatic') { $reasons += "start type is $($service.StartType)" }
+        if ($service.Status -ne 'Running') { $reasons += "is $($service.Status), not running" }
         # sc.exe reports a local account as ".\name" and LocalSystem as
         # "LocalSystem", so compare on the leaf rather than the written form.
         $account = (Get-CimInstance Win32_Service -Filter "Name='$($spec.Name)'").StartName
@@ -217,6 +249,21 @@ $body = {
                 $register.RunLevel = 'Highest'
             }
 
+            if ($existing -and $existing.State -eq 'Running') {
+                Stop-ScheduledTask -TaskName $spec.Name
+                $stopDeadline = (Get-Date).AddSeconds(10)
+                do {
+                    Start-Sleep -Milliseconds 200
+                    $stopped = (Get-ScheduledTask -TaskName $spec.Name).State -ne 'Running'
+                } until ($stopped -or (Get-Date) -ge $stopDeadline)
+                if (-not $stopped) {
+                    throw "$($spec.Name) did not stop before its scheduled task was repaired."
+                }
+                # qBittorrent uses a single-instance socket. Give the stopped
+                # process one final beat to release it before the replacement
+                # asks whether another instance exists.
+                Start-Sleep -Milliseconds 500
+            }
             Register-ScheduledTask @register | Out-Null
             Start-ScheduledTask -TaskName $spec.Name
         } else {
@@ -244,6 +291,45 @@ $body = {
         $results += [pscustomobject]@{
             Service = $spec.Name; Kind = $spec.Kind; Action = 'repaired'
             Listening = $listening; Detail = ($drift -join '; ')
+        }
+    }
+
+    # The installers happen to add rules for some clients, but a bare Windows
+    # rig must not depend on that undocumented side effect. Allow these lab
+    # endpoints only from the local subnet. Use every profile because a fresh
+    # Server installation initially classifies an otherwise valid lab LAN as
+    # Public; the remote-address boundary is the durable restriction here.
+    foreach ($spec in $rig) {
+        $ruleName = "Deluno E2E lab - $($spec.Name)"
+        $rule = Get-NetFirewallRule -DisplayName $ruleName -ErrorAction SilentlyContinue
+        $portFilter = @($rule | Get-NetFirewallPortFilter -ErrorAction SilentlyContinue)
+        $addressFilter = @($rule | Get-NetFirewallAddressFilter -ErrorAction SilentlyContinue)
+        $firewallDrift = -not $rule -or
+            $rule.Enabled -ne 'True' -or
+            $rule.Direction -ne 'Inbound' -or
+            $rule.Action -ne 'Allow' -or
+            $rule.Profile -ne 'Any' -or
+            $portFilter.Protocol -ne 'TCP' -or
+            "$($portFilter.LocalPort)" -ne "$($spec.Port)" -or
+            'LocalSubnet' -notin $addressFilter.RemoteAddress
+
+        if (-not $firewallDrift) { continue }
+
+        if ($ReportOnly) {
+            $results += [pscustomobject]@{
+                Service = $spec.Name; Kind = 'firewall'; Action = 'would repair'
+                Listening = $false; Detail = "LAN rule for TCP $($spec.Port) is missing or differs"
+            }
+            continue
+        }
+
+        $rule | Remove-NetFirewallRule -ErrorAction SilentlyContinue
+        New-NetFirewallRule -DisplayName $ruleName -Direction Inbound -Action Allow `
+            -Protocol TCP -LocalPort $spec.Port -RemoteAddress LocalSubnet `
+            -Profile Any | Out-Null
+        $results += [pscustomobject]@{
+            Service = $spec.Name; Kind = 'firewall'; Action = 'repaired'
+            Listening = $true; Detail = "allowed TCP $($spec.Port) from the local subnet"
         }
     }
 
