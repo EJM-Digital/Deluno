@@ -32,6 +32,8 @@ import { configurationNavAreas } from "../components/app/settings-shell";
 import { QualityBuildSteps } from "../components/app/quality-build-steps";
 import { ProfileSizeSteps } from "../components/app/profile-size-steps";
 import { QUALITY_STEPS, type QualityStep } from "../lib/quality-steps";
+import { createRuleFromGuide, guideFormatAppliesTo } from "../lib/guide-formats";
+import { friendlyRuleName } from "../lib/guide-names";
 import {
   compileQualityProfilePreferences,
   fetchTrashGuidePackage,
@@ -1011,7 +1013,9 @@ function recommendedFormatsFor(starterId: string, guide: GuidePackage) {
 async function ensureRecommendedFormats(starterId: string, mediaType: "movies" | "tv", existing: CustomFormatItem[], guide: GuidePackage) {
   const recommended = recommendedFormatsFor(starterId, guide);
   if (!recommended.length) return [];
-  const byTrashId = new Map(existing.filter((format) => format.trashId).map((format) => [format.trashId!, format]));
+  // Only this media type's rules: a Deluno extra serves movies and TV under one
+  // id, and a TV profile used to attach the movie rule it found first.
+  const byTrashId = new Map(existing.filter((format) => format.trashId && format.mediaType === mediaType).map((format) => [format.trashId!, format]));
   const ids: string[] = [];
 
   for (const { trashId, score } of recommended) {
@@ -1021,21 +1025,13 @@ async function ensureRecommendedFormats(starterId: string, mediaType: "movies" |
       continue;
     }
     const bundled = guide.customFormats.find((format) => format.trashId === trashId);
-    if (!bundled) continue;
-    const response = await authedFetch("/api/custom-formats", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        name: bundled.name,
-        mediaType,
-        score,
-        trashId: bundled.trashId,
-        conditions: bundled.patterns.map((pattern) => `regex: ${pattern}`).join("\n"),
-        upgradeAllowed: true
-      })
-    });
-    if (!response.ok) throw new Error(`Could not create the “${bundled.name}” format.`);
-    const created = (await response.json()) as CustomFormatItem;
+    if (!bundled || !guideFormatAppliesTo(bundled, mediaType)) continue;
+    let created: CustomFormatItem;
+    try {
+      created = await createRuleFromGuide(bundled, mediaType, score);
+    } catch (error) {
+      throw new Error(`Could not create the “${friendlyRuleName(bundled.name)}” format: ${error instanceof Error ? error.message : "unknown error"}`);
+    }
     ids.push(created.id);
     byTrashId.set(trashId, created);
   }

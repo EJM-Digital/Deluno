@@ -539,7 +539,7 @@ test.describe("indexer and download client CRUD", () => {
         name: `Smoke-Trace-HDR10-${stamp}`,
         mediaType: "movies",
         score: mappedScore,
-        trashId: "7878c33f1963fefb3d6c8657d46c2f0a",
+        trashId: "deluno-hdr-hdr10",
         conditions: "\bHDR10\b",
         upgradeAllowed: true
       },
@@ -582,7 +582,7 @@ test.describe("indexer and download client CRUD", () => {
       await drawer.getByRole("button", { name: /Where these came from/ }).click();
       const provenance = drawer.getByLabel("Preference provenance");
       await expect(provenance).toBeVisible();
-      await expect(provenance.getByText("7878c33f1963fefb3d6c8657d46c2f0a")).toBeVisible();
+      await expect(provenance.getByText("deluno-hdr-hdr10")).toBeVisible();
       await expect(provenance.getByText(`510 → ${mappedScore} in this profile`)).toBeVisible();
       await expect(provenance.getByText("Strongly prefer")).toBeVisible();
       await expect(provenance.getByText(/Hdr10/i).first()).toBeVisible();

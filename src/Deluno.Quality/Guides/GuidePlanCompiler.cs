@@ -198,13 +198,13 @@ public static class GuidePlanCompiler
                 MappingId: $"{package.Id}:{format.TrashId}",
                 MappingVersion: MappingVersion,
                 Layer: "guide-default",
-                // Typed mappings use Deluno's reviewed matcher snapshot. The
-                // native upstream clause list is retained separately for
-                // traceability and Advanced inspection; it is never treated
-                // as an equivalent matcher without a semantic review.
-                MatcherDefinition: JsonSerializer.Serialize(format.Patterns ?? []),
+                // A genuine TRaSH format is matched by TRaSH's own
+                // specifications with TRaSH's grouping; a Deluno extra by any
+                // one of its patterns. Packages from before genuine formats
+                // still carry patterns and compile exactly as they did.
+                MatcherDefinition: GuideFormatConditions.For(format),
                 MappedTraitIds: PreferenceTraitRegistry.Current.CanonicalizeIds(format.MappedTraitIds),
-                MatcherAny: true));
+                MatcherAny: !GuideFormatConditions.IsGenuine(format)));
 
             if (format.MappingStatus != GuideMappingStatus.Reviewed || format.MappedTraitIds is null || format.MappedTraitIds.Count == 0)
             {

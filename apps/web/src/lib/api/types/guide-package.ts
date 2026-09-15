@@ -248,3 +248,32 @@ export interface GuideUpdateCheckAddedSource {
   mediaType: string;
   sourcePath: string;
 }
+
+/** What one rule made from Deluno's old guide catalogue becomes. */
+export interface GuideRuleMigrationItem {
+  ruleId: string;
+  mediaType: string;
+  currentName: string;
+  currentTrashId?: string | null;
+  currentConditions: string;
+  action: "adopt-trash-format" | "adopt-deluno-format" | "keep-as-own-rule";
+  newName: string;
+  newTrashId?: string | null;
+  newFormatName?: string | null;
+  newConditions: string;
+  conditionsWereEdited: boolean;
+  profileNames: string[];
+  explanation: string;
+}
+
+export interface GuideRuleMigrationPreview {
+  packageVersion: number;
+  items: GuideRuleMigrationItem[];
+  previewHash: string;
+}
+
+export interface GuideRuleMigrationResult {
+  outcomes: Array<{ ruleId: string; name: string; moved: boolean; message: string }>;
+  moved: number;
+  skipped: number;
+}

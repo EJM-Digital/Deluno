@@ -94,8 +94,8 @@ public static class ReleasePreferenceFormatEvidenceFactory
                 // rely on this mutable fallback.
                 matched = CustomFormatDefinitionMatcher.Evaluate(
                     filePath,
-                    string.Join('\n', guideFormat.Patterns),
-                    anyCondition: true,
+                    GuideFormatConditions.For(guideFormat),
+                    anyCondition: !GuideFormatConditions.IsGenuine(guideFormat),
                     plan.MediaType).IsMatch;
                 mappedTraitIds = PreferenceTraitRegistry.Current.CanonicalizeIds(guideFormat.MappedTraitIds);
                 matcherAvailable = true;

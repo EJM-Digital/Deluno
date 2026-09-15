@@ -8,7 +8,7 @@
  * This lives here rather than in the guide package because the package is
  * pinned to an upstream revision with an integrity hash: a display name is
  * Deluno's word for the thing, not the guide's, and adding one upstream would
- * mean re-pinning 85 entries to change a label.
+ * mean re-pinning the package to change a label.
  */
 const FRIENDLY_NAMES: Record<string, string> = {
   "HD Bluray Tier 01": "Top-tier Blu-ray groups",
@@ -28,7 +28,28 @@ const FRIENDLY_NAMES: Record<string, string> = {
   "Retags": "Re-tagged re-uploads",
   "Obfuscated": "Obfuscated file names",
   "No Release Group": "Releases without a release group",
-  "LQ (Low Quality Groups)": "Known low-quality release groups"
+  "LQ (Low Quality Groups)": "Known low-quality release groups",
+  // TRaSH's own names for the same formats. Rules made before the catalogue
+  // used TRaSH's formats keep the older names above until they are moved.
+  "Repack/Proper": "Corrected re-release",
+  "LQ": "Known low-quality release groups",
+  "No-RlsGroup": "Releases without a release group",
+  "Anime Web Tier 01": "Top-tier anime WEB groups",
+  "Line/Mic Dubbed": "Line or mic dubbed audio",
+  "DV (w/o HDR fallback)": "Dolby Vision without an HDR fallback",
+  "Language: Not English": "Not in English",
+  "AMZN": "Amazon Prime Video",
+  "ATVP": "Apple TV+",
+  "NF": "Netflix",
+  "DSNP": "Disney+",
+  "HMAX": "HBO Max",
+  "MAX": "Max",
+  "PCOK": "Peacock",
+  "PMTP": "Paramount+",
+  "HULU": "Hulu",
+  "iT": "iTunes",
+  "ROKU": "The Roku Channel",
+  "CR": "Crunchyroll"
 };
 
 /** The name to show a person, given whatever the rule is called. */

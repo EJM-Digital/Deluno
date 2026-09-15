@@ -438,7 +438,7 @@ public sealed class FeedMediaSearchPlannerReasonTests
     {
         var indexer = CreateIndexer("guide-indexer", "Guide indexer");
         var guideFormat = GuidePackageCatalog.Current.CustomFormats
-            .First(format => format.MappingStatus == GuideMappingStatus.Reviewed && format.MappedTraitIds.Count > 0);
+            .First(format => format.MappingStatus == GuideMappingStatus.Reviewed && format.MappedTraitIds.Count > 0 && GuideFormatConditions.AppliesTo(format, "movies"));
         var activePackage = GuidePackageCatalog.Current with
         {
             Version = GuidePackageCatalog.Current.Version + 1,
@@ -468,7 +468,7 @@ public sealed class FeedMediaSearchPlannerReasonTests
                         "movies",
                         guideFormat.OriginalScore,
                         guideFormat.TrashId,
-                        string.Join(";", guideFormat.Patterns),
+                        GuideFormatConditions.For(guideFormat),
                         true,
                         DateTimeOffset.UtcNow,
                         DateTimeOffset.UtcNow)

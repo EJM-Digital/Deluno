@@ -27,6 +27,7 @@ public static class QualityServiceCollectionExtensions
         services.AddSingleton<IGuideUpdateCheckStore, SqliteGuideUpdateCheckStore>();
         services.AddSingleton<IGuideUpdateCheckService, GuideUpdateCheckService>();
         services.AddHostedService<GuideUpdateCheckHostedService>();
+        services.AddHostedService<GuideCatalogueUpgradeHostedService>();
         return services;
     }
 

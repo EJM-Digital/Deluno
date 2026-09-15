@@ -168,6 +168,7 @@ public sealed class GuidePackageTests
     {
         var formats = GuidePackageCatalog.Current.CustomFormats
             .Where(format => format.MappingStatus == GuideMappingStatus.Reviewed
+                && GuideFormatConditions.AppliesTo(format, "movies")
                 && format.MappedTraitIds.Any(trait => trait.StartsWith("audio.format.", StringComparison.Ordinal)))
             .Select(format => new Deluno.Quality.Contracts.CustomFormatItem(
                 format.TrashId,
@@ -175,7 +176,7 @@ public sealed class GuidePackageTests
                 "movies",
                 format.OriginalScore,
                 format.TrashId,
-                string.Join("\n", format.Patterns),
+                GuideFormatConditions.For(format),
                 true,
                 DateTimeOffset.UtcNow,
                 DateTimeOffset.UtcNow))
@@ -210,6 +211,7 @@ public sealed class GuidePackageTests
     {
         var guideFormat = Assert.Single(GuidePackageCatalog.Current.CustomFormats,
             format => format.MappingStatus == GuideMappingStatus.Reviewed
+                && GuideFormatConditions.AppliesTo(format, "movies")
                 && format.MappedTraitIds.Contains("audio.format.truehd"));
         var timestamp = DateTimeOffset.UtcNow;
         var format = new Deluno.Quality.Contracts.CustomFormatItem(
@@ -218,7 +220,7 @@ public sealed class GuidePackageTests
             "movies",
             999999,
             guideFormat.TrashId,
-            string.Join("\n", guideFormat.Patterns),
+            GuideFormatConditions.For(guideFormat),
             true,
             timestamp,
             timestamp);
@@ -261,6 +263,7 @@ public sealed class GuidePackageTests
     {
         var guideFormat = Assert.Single(GuidePackageCatalog.Current.CustomFormats,
             format => format.MappingStatus == GuideMappingStatus.Reviewed
+                && GuideFormatConditions.AppliesTo(format, "movies")
                 && string.Equals(format.Category, "unwanted", StringComparison.OrdinalIgnoreCase));
         var profile = GuidePackageCatalog.Current.QualityProfiles
             .First(item => string.Equals(item.MediaType, "movies", StringComparison.OrdinalIgnoreCase))
@@ -285,7 +288,7 @@ public sealed class GuidePackageTests
             profile.MediaType,
             guideFormat.OriginalScore,
             guideFormat.TrashId,
-            string.Join("\n", guideFormat.Patterns),
+            GuideFormatConditions.For(guideFormat),
             true,
             timestamp,
             timestamp);

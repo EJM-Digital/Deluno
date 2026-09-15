@@ -1,15 +1,15 @@
 {
   "id": "trash-guides",
   "name": "TRaSH Guides — Deluno curated package",
-  "version": 3,
-  "schemaVersion": 2,
+  "version": 4,
+  "schemaVersion": 3,
   "source": {
     "sourceName": "TRaSH Guides",
     "repositoryUrl": "https://github.com/TRaSH-Guides/Guides",
     "guideUrl": "https://trash-guides.info/Radarr/Radarr-collection-of-custom-formats/",
     "upstreamRevision": "a63c1d05510d73887be1b0198f95a363c4f7bef6",
-    "reviewedUtc": "2026-08-31",
-    "adaptation": "Reviewed Deluno adaptation of the upstream quality, custom-format, and profile guidance. The pinned backend source inventory retains every upstream custom format, group, profile, score set, matcher clause, and Git blob fingerprint. Only explicitly reviewed mappings enter typed decisions; unreviewed semantics remain Advanced. This package is not a Recyclarr export."
+    "reviewedUtc": "2026-09-15",
+    "adaptation": "Deluno's guided layer over the pinned TRaSH Guides revision. Every entry that names a TRaSH format carries that format's exact id, name and conditions from the pinned source inventory, per media type; Deluno adds only the friendly grouping, the plain-language description and the reviewed typed meaning. Formats TRaSH does not publish are Deluno-owned extras with deluno- ids. Unreviewed upstream formats stay Advanced. This package is not a Recyclarr export."
   },
   "integritySha256": null,
   "qualityTiers": [
@@ -147,18 +147,26 @@
       "category": "hdr",
       "description": "Any HDR content — HDR10, HDR10+, Dolby Vision, or HLG. A must-have for 4K libraries.",
       "originalScore": 500,
-      "patterns": [
-        "\\bHDR(\\b|\\d)",
-        "\\bHDR10\\b",
-        "\\bHLG\\b"
-      ],
+      "patterns": [],
       "bundleOnly": false,
       "mappingStatus": "advanced",
       "mappedTraitIds": [],
-      "sourceKind": "curated-adaptation"
+      "sourceKind": "trash-guides"
     },
     {
-      "trashId": "7878c33f1963fefb3d6c8657d46c2f0a",
+      "trashId": "505d871304820ba7106b693be6fe4a9e",
+      "name": "HDR",
+      "category": "hdr",
+      "description": "Any HDR content — HDR10, HDR10+, Dolby Vision, or HLG. A must-have for 4K libraries.",
+      "originalScore": 500,
+      "patterns": [],
+      "bundleOnly": false,
+      "mappingStatus": "advanced",
+      "mappedTraitIds": [],
+      "sourceKind": "trash-guides"
+    },
+    {
+      "trashId": "deluno-hdr-hdr10",
       "name": "HDR10",
       "category": "hdr",
       "description": "HDR10 — the baseline open standard. Works on all HDR-capable displays.",
@@ -171,10 +179,10 @@
       "mappedTraitIds": [
         "video.dynamic-range.hdr10"
       ],
-      "sourceKind": "curated-adaptation"
+      "sourceKind": "deluno"
     },
     {
-      "trashId": "5d96ce331b98e077abb8ceb60553aa16",
+      "trashId": "deluno-hdr-hdr10-plus",
       "name": "HDR10+",
       "category": "hdr",
       "description": "HDR10+ — dynamic metadata, better than HDR10 on supported displays.",
@@ -187,10 +195,10 @@
       "mappedTraitIds": [
         "video.dynamic-range.hdr10-plus"
       ],
-      "sourceKind": "curated-adaptation"
+      "sourceKind": "deluno"
     },
     {
-      "trashId": "e23edd2482476e595fb990b12e7c609c",
+      "trashId": "deluno-hdr-dolby-vision",
       "name": "Dolby Vision",
       "category": "hdr",
       "description": "Dolby Vision — the best HDR format with dynamic metadata. Requires a DV-capable display.",
@@ -203,7 +211,7 @@
       "mappedTraitIds": [
         "video.dynamic-range.dolby-vision"
       ],
-      "sourceKind": "curated-adaptation"
+      "sourceKind": "deluno"
     },
     {
       "trashId": "b337d6812e06c200ec9a2d3cfa9d20a7",
@@ -211,13 +219,23 @@
       "category": "hdr",
       "description": "Boost score for Dolby Vision releases. Add this if you have a DV display and want DV preferred over HDR10.",
       "originalScore": 1000,
-      "patterns": [
-        "\\b(DV|DoVi|Dolby.?Vision)\\b"
-      ],
+      "patterns": [],
       "bundleOnly": false,
       "mappingStatus": "advanced",
       "mappedTraitIds": [],
-      "sourceKind": "curated-adaptation"
+      "sourceKind": "trash-guides"
+    },
+    {
+      "trashId": "7c3a61a9c6cb04f52f1544be6d44a026",
+      "name": "DV Boost",
+      "category": "hdr",
+      "description": "Boost score for Dolby Vision releases. Add this if you have a DV display and want DV preferred over HDR10.",
+      "originalScore": 1000,
+      "patterns": [],
+      "bundleOnly": false,
+      "mappingStatus": "advanced",
+      "mappedTraitIds": [],
+      "sourceKind": "trash-guides"
     },
     {
       "trashId": "caa37d0df9c348912df1fb1d88f9273a",
@@ -225,188 +243,326 @@
       "category": "hdr",
       "description": "Boost score for HDR10+ releases. Add if you have an HDR10+-capable display.",
       "originalScore": 100,
-      "patterns": [
-        "\\bHDR10(\\+|Plus)\\b"
-      ],
+      "patterns": [],
       "bundleOnly": false,
       "mappingStatus": "advanced",
       "mappedTraitIds": [],
-      "sourceKind": "curated-adaptation"
+      "sourceKind": "trash-guides"
+    },
+    {
+      "trashId": "0c4b99df9206d2cfac3c05ab897dd62a",
+      "name": "HDR10+ Boost",
+      "category": "hdr",
+      "description": "Boost score for HDR10+ releases. Add if you have an HDR10+-capable display.",
+      "originalScore": 100,
+      "patterns": [],
+      "bundleOnly": false,
+      "mappingStatus": "advanced",
+      "mappedTraitIds": [],
+      "sourceKind": "trash-guides"
     },
     {
       "trashId": "923b6abef9b17f937fab56cfcf89e1f1",
-      "name": "DV (No HDR Fallback)",
+      "name": "DV (w/o HDR fallback)",
       "category": "hdr",
       "description": "Dolby Vision WITHOUT an HDR10 fallback layer. Will look washed-out on non-DV displays. Penalise unless you only have DV displays.",
       "originalScore": -10000,
-      "patterns": [
-        "\\b(DV|DoVi)\\b(?!.*HDR10)"
-      ],
+      "patterns": [],
       "bundleOnly": false,
       "mappingStatus": "advanced",
       "mappedTraitIds": [],
-      "sourceKind": "curated-adaptation"
+      "sourceKind": "trash-guides"
     },
     {
-      "trashId": "9d27d9d2181838f76dee150882bdc58c",
+      "trashId": "9b27ab6498ec0f31a3353992e19434ca",
+      "name": "DV (w/o HDR fallback)",
+      "category": "hdr",
+      "description": "Dolby Vision WITHOUT an HDR10 fallback layer. Will look washed-out on non-DV displays. Penalise unless you only have DV displays.",
+      "originalScore": -10000,
+      "patterns": [],
+      "bundleOnly": false,
+      "mappingStatus": "advanced",
+      "mappedTraitIds": [],
+      "sourceKind": "trash-guides"
+    },
+    {
+      "trashId": "9364dd386c9b4a1100dde8264690add7",
       "name": "HLG",
       "category": "hdr",
       "description": "Hybrid Log-Gamma HDR — used mainly by broadcast. No tonemapping needed on HLG displays.",
-      "originalScore": 0,
-      "patterns": [
-        "\\bHLG\\b"
-      ],
+      "originalScore": -10000,
+      "patterns": [],
       "bundleOnly": false,
       "mappingStatus": "reviewed",
       "mappedTraitIds": [
         "video.dynamic-range.hlg"
       ],
-      "sourceKind": "curated-adaptation"
+      "sourceKind": "trash-guides"
     },
     {
-      "trashId": "aadb0e9ebba39a5fcf97c5a6d5ed0cff",
+      "trashId": "17e889ce13117940092308f48b48b45b",
+      "name": "HLG",
+      "category": "hdr",
+      "description": "Hybrid Log-Gamma HDR — used mainly by broadcast. No tonemapping needed on HLG displays.",
+      "originalScore": -10000,
+      "patterns": [],
+      "bundleOnly": false,
+      "mappingStatus": "reviewed",
+      "mappedTraitIds": [
+        "video.dynamic-range.hlg"
+      ],
+      "sourceKind": "trash-guides"
+    },
+    {
+      "trashId": "dc98083864ea246d05a42df0d05f81cc",
       "name": "x265 (HD)",
       "category": "codec",
       "description": "Penalise x265/HEVC encodes at 720p and 1080p — these are often lower quality than x264 at those resolutions.",
       "originalScore": -10000,
-      "patterns": [
-        "\\b(x265|HEVC|h265|H.265)\\b(?!.*2160p)(?!.*4K)"
-      ],
+      "patterns": [],
       "bundleOnly": false,
       "mappingStatus": "advanced",
       "mappedTraitIds": [],
-      "sourceKind": "curated-adaptation"
+      "sourceKind": "trash-guides"
+    },
+    {
+      "trashId": "47435ece6b99a0b477caf360e79ba0bb",
+      "name": "x265 (HD)",
+      "category": "codec",
+      "description": "Penalise x265/HEVC encodes at 720p and 1080p — these are often lower quality than x264 at those resolutions.",
+      "originalScore": -10000,
+      "patterns": [],
+      "bundleOnly": false,
+      "mappingStatus": "advanced",
+      "mappedTraitIds": [],
+      "sourceKind": "trash-guides"
     },
     {
       "trashId": "9170d55c319f4fe40da8711ba9d8050d",
-      "name": "x265 (4K)",
+      "name": "x265",
       "category": "codec",
-      "description": "x265/HEVC at 4K resolution — excellent efficiency and quality. No penalty needed here.",
+      "description": "x265/HEVC encodes at any resolution. A remux is left out: it is a copy of the disc, not an encode.",
       "originalScore": 0,
-      "patterns": [
-        "\\b(x265|HEVC|h265|H.265)\\b.*2160p|2160p.*\\b(x265|HEVC|h265|H.265)\\b"
-      ],
+      "patterns": [],
       "bundleOnly": false,
       "mappingStatus": "reviewed",
       "mappedTraitIds": [
         "video.codec.hevc"
       ],
-      "sourceKind": "curated-adaptation"
+      "sourceKind": "trash-guides"
     },
     {
-      "trashId": "403f405f92f536f18ea8e2a99ddb9db5",
+      "trashId": "c9eafd50846d299b862ca9bb6ea91950",
+      "name": "x265",
+      "category": "codec",
+      "description": "x265/HEVC encodes at any resolution. A remux is left out: it is a copy of the disc, not an encode.",
+      "originalScore": 0,
+      "patterns": [],
+      "bundleOnly": false,
+      "mappingStatus": "reviewed",
+      "mappedTraitIds": [
+        "video.codec.hevc"
+      ],
+      "sourceKind": "trash-guides"
+    },
+    {
+      "trashId": "cae4ca30163749b891686f95532519bd",
       "name": "AV1",
       "category": "codec",
       "description": "AV1 — next-generation codec with excellent compression. Relatively new; not all devices support it.",
-      "originalScore": 0,
-      "patterns": [
-        "\\bAV1\\b"
-      ],
+      "originalScore": -10000,
+      "patterns": [],
       "bundleOnly": false,
       "mappingStatus": "reviewed",
       "mappedTraitIds": [
         "video.codec.av1"
       ],
-      "sourceKind": "curated-adaptation"
+      "sourceKind": "trash-guides"
+    },
+    {
+      "trashId": "15a05bc7c1a36e2b57fd628f8977e2fc",
+      "name": "AV1",
+      "category": "codec",
+      "description": "AV1 — next-generation codec with excellent compression. Relatively new; not all devices support it.",
+      "originalScore": -10000,
+      "patterns": [],
+      "bundleOnly": false,
+      "mappingStatus": "reviewed",
+      "mappedTraitIds": [
+        "video.codec.av1"
+      ],
+      "sourceKind": "trash-guides"
     },
     {
       "trashId": "496f355514737f7d83bf7aa4d24f8169",
-      "name": "TrueHD Atmos",
+      "name": "TrueHD ATMOS",
       "category": "audio",
       "description": "TrueHD with Dolby Atmos — the best lossless surround format. Found on Blu-ray and Remux releases.",
-      "originalScore": 5,
-      "patterns": [
-        "\\bTrueHD\\b.*\\bAtmos\\b|\\bAtmos\\b.*\\bTrueHD\\b"
-      ],
+      "originalScore": 5000,
+      "patterns": [],
       "bundleOnly": false,
       "mappingStatus": "reviewed",
       "mappedTraitIds": [
         "audio.format.truehd-atmos"
       ],
-      "sourceKind": "curated-adaptation"
+      "sourceKind": "trash-guides"
+    },
+    {
+      "trashId": "0d7824bb924701997f874e7ff7d4844a",
+      "name": "TrueHD ATMOS",
+      "category": "audio",
+      "description": "TrueHD with Dolby Atmos — the best lossless surround format. Found on Blu-ray and Remux releases.",
+      "originalScore": 5000,
+      "patterns": [],
+      "bundleOnly": false,
+      "mappingStatus": "reviewed",
+      "mappedTraitIds": [
+        "audio.format.truehd-atmos"
+      ],
+      "sourceKind": "trash-guides"
     },
     {
       "trashId": "2f22d89048b01681dde8afe203bf2e95",
       "name": "DTS X",
       "category": "audio",
       "description": "DTS:X — immersive audio, the DTS alternative to Atmos.",
-      "originalScore": 4,
-      "patterns": [
-        "\\bDTS[-. ]?X\\b"
-      ],
+      "originalScore": 4500,
+      "patterns": [],
       "bundleOnly": false,
       "mappingStatus": "reviewed",
       "mappedTraitIds": [
         "audio.format.dtsx"
       ],
-      "sourceKind": "curated-adaptation"
+      "sourceKind": "trash-guides"
     },
     {
-      "trashId": "1c1a4c5e823891c75bc50380a6866f73",
+      "trashId": "9d00418ba386a083fbf4d58235fc37ef",
+      "name": "DTS X",
+      "category": "audio",
+      "description": "DTS:X — immersive audio, the DTS alternative to Atmos.",
+      "originalScore": 4500,
+      "patterns": [],
+      "bundleOnly": false,
+      "mappingStatus": "reviewed",
+      "mappedTraitIds": [
+        "audio.format.dtsx"
+      ],
+      "sourceKind": "trash-guides"
+    },
+    {
+      "trashId": "3cafb66171b47f226146a0770576870f",
       "name": "TrueHD",
       "category": "audio",
       "description": "TrueHD lossless audio without Atmos — still excellent quality.",
-      "originalScore": 3,
-      "patterns": [
-        "\\bTrueHD\\b(?!.*Atmos)"
-      ],
+      "originalScore": 2750,
+      "patterns": [],
       "bundleOnly": false,
       "mappingStatus": "reviewed",
       "mappedTraitIds": [
         "audio.format.truehd"
       ],
-      "sourceKind": "curated-adaptation"
+      "sourceKind": "trash-guides"
     },
     {
-      "trashId": "ca3e897c30fb3d15b3f643e8dfae1ce6",
+      "trashId": "1808e4b9cee74e064dfae3f1db99dbfe",
+      "name": "TrueHD",
+      "category": "audio",
+      "description": "TrueHD lossless audio without Atmos — still excellent quality.",
+      "originalScore": 2750,
+      "patterns": [],
+      "bundleOnly": false,
+      "mappingStatus": "reviewed",
+      "mappedTraitIds": [
+        "audio.format.truehd"
+      ],
+      "sourceKind": "trash-guides"
+    },
+    {
+      "trashId": "dcf3ec6938fa32445f590a4da84256cd",
       "name": "DTS-HD MA",
       "category": "audio",
       "description": "DTS-HD Master Audio — lossless DTS, common on Blu-ray releases.",
-      "originalScore": 2,
-      "patterns": [
-        "\\bDTS[-. ]?HD[-. ]?MA\\b"
-      ],
+      "originalScore": 2500,
+      "patterns": [],
       "bundleOnly": false,
       "mappingStatus": "reviewed",
       "mappedTraitIds": [
         "audio.format.dts-hd-ma"
       ],
-      "sourceKind": "curated-adaptation"
+      "sourceKind": "trash-guides"
     },
     {
-      "trashId": "240770601cc226190c367ef59aba7463",
-      "name": "DD+ Atmos",
+      "trashId": "c429417a57ea8c41d57e6990a8b0033f",
+      "name": "DTS-HD MA",
+      "category": "audio",
+      "description": "DTS-HD Master Audio — lossless DTS, common on Blu-ray releases.",
+      "originalScore": 2500,
+      "patterns": [],
+      "bundleOnly": false,
+      "mappingStatus": "reviewed",
+      "mappedTraitIds": [
+        "audio.format.dts-hd-ma"
+      ],
+      "sourceKind": "trash-guides"
+    },
+    {
+      "trashId": "1af239278386be2919e1bcee0bde047e",
+      "name": "DD+ ATMOS",
       "category": "audio",
       "description": "Dolby Digital Plus with Atmos — used by streaming services. Lossy but Atmos-capable.",
-      "originalScore": 1,
-      "patterns": [
-        "\\b(EAC3|DD\\+|Dolby.?Digital.?Plus)\\b.*\\bAtmos\\b"
-      ],
+      "originalScore": 3000,
+      "patterns": [],
       "bundleOnly": false,
       "mappingStatus": "reviewed",
       "mappedTraitIds": [
         "audio.format.eac3-atmos"
       ],
-      "sourceKind": "curated-adaptation"
+      "sourceKind": "trash-guides"
     },
     {
-      "trashId": "185f1dd7264c4562b9022d963ac37424",
+      "trashId": "4232a509ce60c4e208d13825b7c06264",
+      "name": "DD+ ATMOS",
+      "category": "audio",
+      "description": "Dolby Digital Plus with Atmos — used by streaming services. Lossy but Atmos-capable.",
+      "originalScore": 3000,
+      "patterns": [],
+      "bundleOnly": false,
+      "mappingStatus": "reviewed",
+      "mappedTraitIds": [
+        "audio.format.eac3-atmos"
+      ],
+      "sourceKind": "trash-guides"
+    },
+    {
+      "trashId": "a570d4a0e56a2874b64e5bfa55202a1b",
       "name": "FLAC",
       "category": "audio",
       "description": "FLAC lossless audio — common in MKV and other high-quality releases.",
-      "originalScore": 2,
-      "patterns": [
-        "\\bFLAC\\b"
-      ],
+      "originalScore": 2250,
+      "patterns": [],
       "bundleOnly": false,
       "mappingStatus": "reviewed",
       "mappedTraitIds": [
         "audio.format.flac"
       ],
-      "sourceKind": "curated-adaptation"
+      "sourceKind": "trash-guides"
     },
     {
-      "trashId": "9f86d08ede6d42d86c2d1b30a10c16f8",
+      "trashId": "851bd64e04c9374c51102be3dd9ae4cc",
+      "name": "FLAC",
+      "category": "audio",
+      "description": "FLAC lossless audio — common in MKV and other high-quality releases.",
+      "originalScore": 2250,
+      "patterns": [],
+      "bundleOnly": false,
+      "mappingStatus": "reviewed",
+      "mappedTraitIds": [
+        "audio.format.flac"
+      ],
+      "sourceKind": "trash-guides"
+    },
+    {
+      "trashId": "deluno-source-remux",
       "name": "REMUX",
       "category": "source",
       "description": "Remux — a direct copy of the Blu-ray disc without re-encoding. The highest quality source available.",
@@ -419,10 +575,10 @@
       "mappedTraitIds": [
         "source.remux"
       ],
-      "sourceKind": "curated-adaptation"
+      "sourceKind": "deluno"
     },
     {
-      "trashId": "bfd8eb01832d646a0a89c4deb46f8564",
+      "trashId": "deluno-source-bluray",
       "name": "Blu-ray",
       "category": "source",
       "description": "Blu-ray source (encoded) — very high quality, significantly smaller than Remux.",
@@ -435,203 +591,336 @@
       "mappedTraitIds": [
         "source.bluray"
       ],
-      "sourceKind": "curated-adaptation"
+      "sourceKind": "deluno"
     },
     {
-      "trashId": "9de657fd3d327ecf144ec73dfe3a3e9a",
+      "trashId": "9f6cbff8cfe4ebbc1bde14c7b7bec0de",
       "name": "IMAX Enhanced",
       "category": "source",
       "description": "IMAX Enhanced — expanded aspect ratio, higher resolution for IMAX-certified scenes.",
       "originalScore": 800,
-      "patterns": [
-        "\\bIMAX.?Enhanced\\b",
-        "\\bDECH\\b",
-        "\\bIMAX\\b.*\\bEnhanced\\b"
-      ],
+      "patterns": [],
       "bundleOnly": false,
       "mappingStatus": "advanced",
       "mappedTraitIds": [],
-      "sourceKind": "curated-adaptation"
+      "sourceKind": "trash-guides"
     },
     {
-      "trashId": "4b900e171accbfb172729b63323f9d5e",
+      "trashId": "eecf3a857724171f968a66cb5719e152",
       "name": "IMAX",
       "category": "source",
       "description": "IMAX version — filmed or presented in IMAX format.",
       "originalScore": 800,
-      "patterns": [
-        "\\bIMAX\\b"
-      ],
+      "patterns": [],
       "bundleOnly": false,
       "mappingStatus": "reviewed",
       "mappedTraitIds": [
         "edition.imax"
       ],
-      "sourceKind": "curated-adaptation"
+      "sourceKind": "trash-guides"
     },
     {
-      "trashId": "3a4127d8aa781b44120d907f2cd62627",
-      "name": "Repack / Proper",
+      "trashId": "e7718d7a3ce595f289bfee26adc178f5",
+      "name": "Repack/Proper",
       "category": "misc",
       "description": "Proper or Repack — a corrected re-release, usually fixing technical issues with the original.",
       "originalScore": 5,
-      "patterns": [
-        "\\b(PROPER|REPACK)\\b"
-      ],
+      "patterns": [],
       "bundleOnly": false,
       "mappingStatus": "reviewed",
       "mappedTraitIds": [
         "release.revision.proper"
       ],
-      "sourceKind": "curated-adaptation"
+      "sourceKind": "trash-guides"
     },
     {
-      "trashId": "4eee26f9ab44a27e8e4dd0a7a2f14697",
+      "trashId": "ec8fa7296b64e8cd390a1600981f3923",
+      "name": "Repack/Proper",
+      "category": "misc",
+      "description": "Proper or Repack — a corrected re-release, usually fixing technical issues with the original.",
+      "originalScore": 5,
+      "patterns": [],
+      "bundleOnly": false,
+      "mappingStatus": "reviewed",
+      "mappedTraitIds": [
+        "release.revision.proper"
+      ],
+      "sourceKind": "trash-guides"
+    },
+    {
+      "trashId": "ae43b294509409a6a13919dedd4764c4",
       "name": "Repack2",
       "category": "misc",
       "description": "Second repack — slightly preferred over the first repack.",
       "originalScore": 6,
-      "patterns": [
-        "\\bREPACK2\\b"
-      ],
+      "patterns": [],
       "bundleOnly": false,
       "mappingStatus": "reviewed",
       "mappedTraitIds": [
         "release.revision.repack2"
       ],
-      "sourceKind": "curated-adaptation"
+      "sourceKind": "trash-guides"
     },
     {
-      "trashId": "9b64dff695c2115facf1b6ea59c9bd07",
+      "trashId": "eb3d5cc0a2be0db205fb823640db6a3c",
+      "name": "Repack2",
+      "category": "misc",
+      "description": "Second repack — slightly preferred over the first repack.",
+      "originalScore": 6,
+      "patterns": [],
+      "bundleOnly": false,
+      "mappingStatus": "reviewed",
+      "mappedTraitIds": [
+        "release.revision.repack2"
+      ],
+      "sourceKind": "trash-guides"
+    },
+    {
+      "trashId": "5caaaa1c08c1742aa4342d8c4cc463f2",
       "name": "Repack3",
       "category": "misc",
       "description": "Third repack — highest repack preference.",
       "originalScore": 7,
-      "patterns": [
-        "\\bREPACK3\\b"
-      ],
+      "patterns": [],
       "bundleOnly": false,
       "mappingStatus": "reviewed",
       "mappedTraitIds": [
         "release.revision.repack3"
       ],
-      "sourceKind": "curated-adaptation"
+      "sourceKind": "trash-guides"
     },
     {
-      "trashId": "4e9a630db98d5391aec1368a0256e2fe",
-      "name": "Amazon Prime",
-      "category": "streaming",
-      "description": "Amazon Prime Video release — identified by AMZN tag.",
-      "originalScore": 0,
-      "patterns": [
-        "\\bAMZN\\b",
-        "\\bAmazon\\b"
+      "trashId": "44e7c4de10ae50265753082e5dc76047",
+      "name": "Repack3",
+      "category": "misc",
+      "description": "Third repack — highest repack preference.",
+      "originalScore": 7,
+      "patterns": [],
+      "bundleOnly": false,
+      "mappingStatus": "reviewed",
+      "mappedTraitIds": [
+        "release.revision.repack3"
       ],
+      "sourceKind": "trash-guides"
+    },
+    {
+      "trashId": "b3b3a6ac74ecbd56bcdbefa4799fb9df",
+      "name": "AMZN",
+      "category": "streaming",
+      "description": "Amazon Prime Video, from a WEB-DL or WEBRip source.",
+      "originalScore": 0,
+      "patterns": [],
       "bundleOnly": false,
       "mappingStatus": "reviewed",
       "mappedTraitIds": [
         "service.amazon"
       ],
-      "sourceKind": "curated-adaptation"
+      "sourceKind": "trash-guides"
     },
     {
-      "trashId": "cc5f3e7c8f2b61f4a56f0001a2a0daab",
-      "name": "Apple TV+",
+      "trashId": "d660701077794679fd59e8bdf4ce3a29",
+      "name": "AMZN",
       "category": "streaming",
-      "description": "Apple TV+ release — identified by ATVP tag.",
-      "originalScore": 0,
-      "patterns": [
-        "\\bATVP\\b",
-        "\\bApple.?TV\\b"
+      "description": "Amazon Prime Video, from a WEB-DL or WEBRip source.",
+      "originalScore": 75,
+      "patterns": [],
+      "bundleOnly": false,
+      "mappingStatus": "reviewed",
+      "mappedTraitIds": [
+        "service.amazon"
       ],
+      "sourceKind": "trash-guides"
+    },
+    {
+      "trashId": "40e9380490e748672c2522eaaeb692f7",
+      "name": "ATVP",
+      "category": "streaming",
+      "description": "Apple TV+, from a WEB-DL or WEBRip source.",
+      "originalScore": 0,
+      "patterns": [],
       "bundleOnly": false,
       "mappingStatus": "reviewed",
       "mappedTraitIds": [
         "service.apple"
       ],
-      "sourceKind": "curated-adaptation"
+      "sourceKind": "trash-guides"
     },
     {
-      "trashId": "4e9a630db98d5391aec1368a0256e2ef",
-      "name": "Netflix",
+      "trashId": "f67c9ca88f463a48346062e8ad07713f",
+      "name": "ATVP",
       "category": "streaming",
-      "description": "Netflix original release — identified by NF tag.",
-      "originalScore": 0,
-      "patterns": [
-        "\\bNF\\b",
-        "\\bNetflix\\b"
+      "description": "Apple TV+, from a WEB-DL or WEBRip source.",
+      "originalScore": 75,
+      "patterns": [],
+      "bundleOnly": false,
+      "mappingStatus": "reviewed",
+      "mappedTraitIds": [
+        "service.apple"
       ],
+      "sourceKind": "trash-guides"
+    },
+    {
+      "trashId": "170b1d363bd8516fbf3a3eb05d4faff6",
+      "name": "NF",
+      "category": "streaming",
+      "description": "Netflix, from a WEB-DL or WEBRip source.",
+      "originalScore": 0,
+      "patterns": [],
       "bundleOnly": false,
       "mappingStatus": "reviewed",
       "mappedTraitIds": [
         "service.netflix"
       ],
-      "sourceKind": "curated-adaptation"
+      "sourceKind": "trash-guides"
     },
     {
-      "trashId": "bf7e73dd1d85b12cc527dc619761c840",
-      "name": "Disney+",
+      "trashId": "d34870697c9db575f17700212167be23",
+      "name": "NF",
       "category": "streaming",
-      "description": "Disney+ release — identified by DSNP or DSNY tag.",
-      "originalScore": 0,
-      "patterns": [
-        "\\b(DSNP|DSNY|Disney\\+)\\b"
+      "description": "Netflix, from a WEB-DL or WEBRip source.",
+      "originalScore": 75,
+      "patterns": [],
+      "bundleOnly": false,
+      "mappingStatus": "reviewed",
+      "mappedTraitIds": [
+        "service.netflix"
       ],
+      "sourceKind": "trash-guides"
+    },
+    {
+      "trashId": "84272245b2988854bfb76a16e60baea5",
+      "name": "DSNP",
+      "category": "streaming",
+      "description": "Disney+, from a WEB-DL or WEBRip source.",
+      "originalScore": 0,
+      "patterns": [],
       "bundleOnly": false,
       "mappingStatus": "reviewed",
       "mappedTraitIds": [
         "service.disney"
       ],
-      "sourceKind": "curated-adaptation"
+      "sourceKind": "trash-guides"
     },
     {
-      "trashId": "526d445d4c16214309f0fd2b3be18a89",
-      "name": "HBO Max",
+      "trashId": "89358767a60cc28783cdc3d0be9388a4",
+      "name": "DSNP",
       "category": "streaming",
-      "description": "HBO Max / Max release — identified by HMAX or MAX tag.",
-      "originalScore": 0,
-      "patterns": [
-        "\\b(HMAX|MAX|HBO)\\b"
+      "description": "Disney+, from a WEB-DL or WEBRip source.",
+      "originalScore": 75,
+      "patterns": [],
+      "bundleOnly": false,
+      "mappingStatus": "reviewed",
+      "mappedTraitIds": [
+        "service.disney"
       ],
+      "sourceKind": "trash-guides"
+    },
+    {
+      "trashId": "5763d1b0ce84aff3b21038eea8e9b8ad",
+      "name": "HMAX",
+      "category": "streaming",
+      "description": "HBO Max, from a WEB-DL or WEBRip source.",
+      "originalScore": 0,
+      "patterns": [],
       "bundleOnly": false,
       "mappingStatus": "reviewed",
       "mappedTraitIds": [
         "service.max"
       ],
-      "sourceKind": "curated-adaptation"
+      "sourceKind": "trash-guides"
     },
     {
-      "trashId": "2a6039655313bf5dab785a6e4b82f6e6",
-      "name": "Peacock",
+      "trashId": "a880d6abc21e7c16884f3ae393f84179",
+      "name": "HMAX",
       "category": "streaming",
-      "description": "Peacock streaming release.",
-      "originalScore": 0,
-      "patterns": [
-        "\\bPCOK\\b",
-        "\\bPeacock\\b"
+      "description": "HBO Max, from a WEB-DL or WEBRip source.",
+      "originalScore": 75,
+      "patterns": [],
+      "bundleOnly": false,
+      "mappingStatus": "reviewed",
+      "mappedTraitIds": [
+        "service.max"
       ],
+      "sourceKind": "trash-guides"
+    },
+    {
+      "trashId": "6a061313d22e51e0f25b7cd4dc065233",
+      "name": "MAX",
+      "category": "streaming",
+      "description": "Max, the service HBO Max became, from a WEB-DL or WEBRip source.",
+      "originalScore": 0,
+      "patterns": [],
+      "bundleOnly": false,
+      "mappingStatus": "reviewed",
+      "mappedTraitIds": [
+        "service.max"
+      ],
+      "sourceKind": "trash-guides"
+    },
+    {
+      "trashId": "81d1fbf600e2540cee87f3a23f9d3c1c",
+      "name": "MAX",
+      "category": "streaming",
+      "description": "Max, the service HBO Max became, from a WEB-DL or WEBRip source.",
+      "originalScore": 75,
+      "patterns": [],
+      "bundleOnly": false,
+      "mappingStatus": "reviewed",
+      "mappedTraitIds": [
+        "service.max"
+      ],
+      "sourceKind": "trash-guides"
+    },
+    {
+      "trashId": "c9fd353f8f5f1baf56dc601c4cb29920",
+      "name": "PCOK",
+      "category": "streaming",
+      "description": "Peacock, from a WEB-DL or WEBRip source.",
+      "originalScore": 0,
+      "patterns": [],
       "bundleOnly": false,
       "mappingStatus": "advanced",
       "mappedTraitIds": [],
-      "sourceKind": "curated-adaptation"
+      "sourceKind": "trash-guides"
     },
     {
-      "trashId": "7a235133c87f7da4c8cccceca7e3c7a6",
-      "name": "Paramount+",
+      "trashId": "1656adc6d7bb2c8cca6acfb6592db421",
+      "name": "PCOK",
       "category": "streaming",
-      "description": "Paramount+ streaming release.",
-      "originalScore": 0,
-      "patterns": [
-        "\\bPMTP\\b",
-        "\\bParamount\\+?\\b"
-      ],
+      "description": "Peacock, from a WEB-DL or WEBRip source.",
+      "originalScore": 75,
+      "patterns": [],
       "bundleOnly": false,
       "mappingStatus": "advanced",
       "mappedTraitIds": [],
-      "sourceKind": "curated-adaptation"
+      "sourceKind": "trash-guides"
     },
     {
-      "trashId": "ade9a7a4b13e7e5b0f31b2f87f5e9e98",
+      "trashId": "e36a0ba1bc902b26ee40818a1d59b8bd",
+      "name": "PMTP",
+      "category": "streaming",
+      "description": "Paramount+, from a WEB-DL or WEBRip source.",
+      "originalScore": 0,
+      "patterns": [],
+      "bundleOnly": false,
+      "mappingStatus": "advanced",
+      "mappedTraitIds": [],
+      "sourceKind": "trash-guides"
+    },
+    {
+      "trashId": "c67a75ae4a1715f2bb4d492755ba4195",
+      "name": "PMTP",
+      "category": "streaming",
+      "description": "Paramount+, from a WEB-DL or WEBRip source.",
+      "originalScore": 75,
+      "patterns": [],
+      "bundleOnly": false,
+      "mappingStatus": "advanced",
+      "mappedTraitIds": [],
+      "sourceKind": "trash-guides"
+    },
+    {
+      "trashId": "deluno-edition-extended",
       "name": "Extended Edition",
       "category": "edition",
       "description": "Extended cut with additional scenes not in the theatrical release.",
@@ -644,10 +933,10 @@
       "mappedTraitIds": [
         "edition.extended"
       ],
-      "sourceKind": "curated-adaptation"
+      "sourceKind": "deluno"
     },
     {
-      "trashId": "ae9b7c9ebde1f3bd336a8cbd1b5fbd67",
+      "trashId": "deluno-edition-directors-cut",
       "name": "Director's Cut",
       "category": "edition",
       "description": "The director's preferred version of the movie.",
@@ -661,63 +950,103 @@
       "mappedTraitIds": [
         "edition.directors-cut"
       ],
-      "sourceKind": "curated-adaptation"
+      "sourceKind": "deluno"
     },
     {
-      "trashId": "ed27ebfef2f323293b7b9c9c9b7e4f25",
+      "trashId": "ed27ebfef2f323e964fb1f61391bcb35",
       "name": "HD Bluray Tier 01",
       "category": "groups",
-      "description": "Top-tier trusted Blu-ray release groups — consistently excellent quality (FraMeSToR, BLURAYBITS, SiNNERS, etc.).",
+      "description": "The Blu-ray encode groups TRaSH ranks highest, at 720p and 1080p.",
       "originalScore": 1800,
-      "patterns": [
-        "\\b(FraMeSToR|BLURAYBITS|SiNNERS|EPSiLON|TRiToN|iFT|decibeL|NCmt|DON|HiDt)\\b"
-      ],
+      "patterns": [],
       "bundleOnly": false,
       "mappingStatus": "advanced",
       "mappedTraitIds": [],
-      "sourceKind": "curated-adaptation"
+      "sourceKind": "trash-guides"
     },
     {
-      "trashId": "a58f517a70193f8e578056642178419d",
+      "trashId": "d6819cba26b1a6508138d25fb5e32293",
+      "name": "HD Bluray Tier 01",
+      "category": "groups",
+      "description": "The Blu-ray encode groups TRaSH ranks highest, at 720p and 1080p.",
+      "originalScore": 1800,
+      "patterns": [],
+      "bundleOnly": false,
+      "mappingStatus": "advanced",
+      "mappedTraitIds": [],
+      "sourceKind": "trash-guides"
+    },
+    {
+      "trashId": "c20c8647f2746a1f4c4262b0fbbeeeae",
       "name": "HD Bluray Tier 02",
       "category": "groups",
-      "description": "Second-tier trusted Blu-ray groups.",
+      "description": "The Blu-ray encode groups TRaSH ranks second, at 720p and 1080p.",
       "originalScore": 1750,
-      "patterns": [
-        "\\b(Flights|HANDJOB|BHDStudio|CRiSC|THORA|BluDragon|ZQ|D-Z0N3|W4NK3R|HQMUX)\\b"
-      ],
+      "patterns": [],
       "bundleOnly": false,
       "mappingStatus": "advanced",
       "mappedTraitIds": [],
-      "sourceKind": "curated-adaptation"
+      "sourceKind": "trash-guides"
     },
     {
-      "trashId": "e61e28db84184857a8ca8e7e2e8d6ef2",
-      "name": "WEB Tier 01",
+      "trashId": "c2216b7b8aa545dc1ce8388c618f8d57",
+      "name": "HD Bluray Tier 02",
       "category": "groups",
-      "description": "Top-tier trusted WEB-DL release groups — NTb, NTG, FLUX, etc.",
-      "originalScore": 1700,
-      "patterns": [
-        "\\b(NTb|NTG|FLUX|NPMS|KiNGS|MZABI|TEPES|GNOME|NOSiViD|XEBEC|TOMMY)\\b"
-      ],
+      "description": "The Blu-ray encode groups TRaSH ranks second, at 720p and 1080p.",
+      "originalScore": 1750,
+      "patterns": [],
       "bundleOnly": false,
       "mappingStatus": "advanced",
       "mappedTraitIds": [],
-      "sourceKind": "curated-adaptation"
+      "sourceKind": "trash-guides"
+    },
+    {
+      "trashId": "c20f169ef63c5f40c2def54abaf4438e",
+      "name": "WEB Tier 01",
+      "category": "groups",
+      "description": "The WEB groups TRaSH ranks highest.",
+      "originalScore": 1700,
+      "patterns": [],
+      "bundleOnly": false,
+      "mappingStatus": "advanced",
+      "mappedTraitIds": [],
+      "sourceKind": "trash-guides"
+    },
+    {
+      "trashId": "e6258996055b9fbab7e9cb2f75819294",
+      "name": "WEB Tier 01",
+      "category": "groups",
+      "description": "The WEB groups TRaSH ranks highest.",
+      "originalScore": 1700,
+      "patterns": [],
+      "bundleOnly": false,
+      "mappingStatus": "advanced",
+      "mappedTraitIds": [],
+      "sourceKind": "trash-guides"
+    },
+    {
+      "trashId": "403816d65392c79236dcb6dd591aeda4",
+      "name": "WEB Tier 02",
+      "category": "groups",
+      "description": "The WEB groups TRaSH ranks second.",
+      "originalScore": 1650,
+      "patterns": [],
+      "bundleOnly": false,
+      "mappingStatus": "advanced",
+      "mappedTraitIds": [],
+      "sourceKind": "trash-guides"
     },
     {
       "trashId": "58790d4e2fdcd9733aa7ae68ba2bb503",
       "name": "WEB Tier 02",
       "category": "groups",
-      "description": "Second-tier trusted WEB-DL groups.",
+      "description": "The WEB groups TRaSH ranks second.",
       "originalScore": 1650,
-      "patterns": [
-        "\\b(AJP69|YIFY|YTS|GOLDENBEARD|PSA|CMRG|GHOST|SiC|GGEZ|BYNDR)\\b"
-      ],
+      "patterns": [],
       "bundleOnly": false,
       "mappingStatus": "advanced",
       "mappedTraitIds": [],
-      "sourceKind": "curated-adaptation"
+      "sourceKind": "trash-guides"
     },
     {
       "trashId": "b8cd450cbfa689c0259a01d9e29ba3d6",
@@ -725,686 +1054,1074 @@
       "category": "unwanted",
       "description": "3D releases — usually unwanted unless you have a 3D display. Heavily penalised by default.",
       "originalScore": -10000,
-      "patterns": [
-        "\\b3D\\b",
-        "\\bHSBS\\b",
-        "\\bSBS\\b",
-        "\\bHOU\\b"
-      ],
+      "patterns": [],
       "bundleOnly": false,
       "mappingStatus": "advanced",
       "mappedTraitIds": [],
-      "sourceKind": "curated-adaptation"
+      "sourceKind": "trash-guides"
     },
     {
-      "trashId": "90a87bd7b54af7e7f0c5c5c5a6b2e9b3",
-      "name": "No Release Group",
+      "trashId": "ae9b7c9ebde1f3bd336a8cbd1ec4c5e5",
+      "name": "No-RlsGroup",
       "category": "unwanted",
       "description": "Release has no group tag — often scene or low-quality encode. Penalise to prefer tagged releases.",
       "originalScore": -10000,
-      "patterns": [
-        "-(?!\\w)$"
-      ],
+      "patterns": [],
       "bundleOnly": false,
       "mappingStatus": "advanced",
       "mappedTraitIds": [],
-      "sourceKind": "curated-adaptation"
+      "sourceKind": "trash-guides"
     },
     {
-      "trashId": "ae9b7c9ebde1f3bd336a8cbd1b5fbd68",
+      "trashId": "82d40da2bc6923f41e14394075dd4b03",
+      "name": "No-RlsGroup",
+      "category": "unwanted",
+      "description": "Release has no group tag — often scene or low-quality encode. Penalise to prefer tagged releases.",
+      "originalScore": -10000,
+      "patterns": [],
+      "bundleOnly": false,
+      "mappingStatus": "advanced",
+      "mappedTraitIds": [],
+      "sourceKind": "trash-guides"
+    },
+    {
+      "trashId": "bfd8eb01832d646a0a89c4deb46f8564",
       "name": "Upscaled",
       "category": "unwanted",
       "description": "Artificially upscaled to 4K — not true 4K content. Should be avoided in 4K libraries.",
       "originalScore": -10000,
-      "patterns": [
-        "\\bUpscale\\b",
-        "\\bUpscaled\\b",
-        "\\bAI.?Upscale\\b"
-      ],
+      "patterns": [],
       "bundleOnly": false,
       "mappingStatus": "reviewed",
       "mappedTraitIds": [
         "unwanted.upscaled"
       ],
-      "sourceKind": "curated-adaptation"
+      "sourceKind": "trash-guides"
     },
     {
-      "trashId": "cae4ca30163749d0b87284ca3be2980a",
-      "name": "LQ (Low Quality Groups)",
+      "trashId": "23297a736ca77c0fc8e70f8edd7ee56c",
+      "name": "Upscaled",
+      "category": "unwanted",
+      "description": "Artificially upscaled to 4K — not true 4K content. Should be avoided in 4K libraries.",
+      "originalScore": -10000,
+      "patterns": [],
+      "bundleOnly": false,
+      "mappingStatus": "reviewed",
+      "mappedTraitIds": [
+        "unwanted.upscaled"
+      ],
+      "sourceKind": "trash-guides"
+    },
+    {
+      "trashId": "90a6f9a284dff5103f6346090e6280c8",
+      "name": "LQ",
       "category": "unwanted",
       "description": "Releases from known low-quality groups — avoid these in favour of trusted tiers.",
       "originalScore": -10000,
-      "patterns": [
-        "\\b(mSD|STUTTERSHIT|YIFY|YTS(?!\\s)|nhanc3|Sprinter|Ghost|0SEC|FRDS)\\b"
-      ],
+      "patterns": [],
       "bundleOnly": false,
       "mappingStatus": "advanced",
       "mappedTraitIds": [],
-      "sourceKind": "curated-adaptation"
+      "sourceKind": "trash-guides"
     },
     {
-      "trashId": "dc98083864ea246d05a42df0d05f81cc",
+      "trashId": "9c11cd3f07101cdba90a2d81cf0e56b4",
+      "name": "LQ",
+      "category": "unwanted",
+      "description": "Releases from known low-quality groups — avoid these in favour of trusted tiers.",
+      "originalScore": -10000,
+      "patterns": [],
+      "bundleOnly": false,
+      "mappingStatus": "advanced",
+      "mappedTraitIds": [],
+      "sourceKind": "trash-guides"
+    },
+    {
+      "trashId": "0a3f082873eb454bde444150b70253cc",
       "name": "Extras",
       "category": "unwanted",
       "description": "Extra content (featurettes, interviews, deleted scenes) — not the main feature.",
       "originalScore": -10000,
-      "patterns": [
-        "\\b(Featurette|Interview|Deleted.?Scene|Behind.?the.?Scene|Extra|Bonus)\\b"
-      ],
+      "patterns": [],
       "bundleOnly": false,
       "mappingStatus": "advanced",
       "mappedTraitIds": [],
-      "sourceKind": "curated-adaptation"
+      "sourceKind": "trash-guides"
     },
     {
-      "trashId": "deluno-trash-audio-pcm",
+      "trashId": "fbcb31d8dabd2a319072b84fc0b7249c",
+      "name": "Extras",
+      "category": "unwanted",
+      "description": "Extra content (featurettes, interviews, deleted scenes) — not the main feature.",
+      "originalScore": -10000,
+      "patterns": [],
+      "bundleOnly": false,
+      "mappingStatus": "advanced",
+      "mappedTraitIds": [],
+      "sourceKind": "trash-guides"
+    },
+    {
+      "trashId": "e7c2fcae07cbada050a0af3357491d7b",
       "name": "PCM",
       "category": "audio",
       "description": "PCM/LPCM lossless audio.",
-      "originalScore": 2,
-      "patterns": [
-        "\\b(LPCM|PCM)\\b"
-      ],
+      "originalScore": 2250,
+      "patterns": [],
       "bundleOnly": false,
       "mappingStatus": "reviewed",
       "mappedTraitIds": [
         "audio.format.pcm"
       ],
-      "sourceKind": "curated-adaptation"
+      "sourceKind": "trash-guides"
     },
     {
-      "trashId": "deluno-trash-audio-dts-hra",
+      "trashId": "30f70576671ca933adbdcfc736a69718",
+      "name": "PCM",
+      "category": "audio",
+      "description": "PCM/LPCM lossless audio.",
+      "originalScore": 2250,
+      "patterns": [],
+      "bundleOnly": false,
+      "mappingStatus": "reviewed",
+      "mappedTraitIds": [
+        "audio.format.pcm"
+      ],
+      "sourceKind": "trash-guides"
+    },
+    {
+      "trashId": "8e109e50e0a0b83a5098b056e13bf6db",
       "name": "DTS-HD HRA",
       "category": "audio",
       "description": "DTS-HD High Resolution Audio.",
-      "originalScore": 1,
-      "patterns": [
-        "\\bDTS[-. ]?HD[-. ]?HRA\\b"
-      ],
+      "originalScore": 2000,
+      "patterns": [],
       "bundleOnly": false,
       "mappingStatus": "advanced",
       "mappedTraitIds": [],
-      "sourceKind": "curated-adaptation"
+      "sourceKind": "trash-guides"
     },
     {
-      "trashId": "deluno-trash-audio-ddplus",
+      "trashId": "cfa5fbd8f02a86fc55d8d223d06a5e1f",
+      "name": "DTS-HD HRA",
+      "category": "audio",
+      "description": "DTS-HD High Resolution Audio.",
+      "originalScore": 2000,
+      "patterns": [],
+      "bundleOnly": false,
+      "mappingStatus": "advanced",
+      "mappedTraitIds": [],
+      "sourceKind": "trash-guides"
+    },
+    {
+      "trashId": "185f1dd7264c4562b9022d963ac37424",
       "name": "DD+",
       "category": "audio",
       "description": "Dolby Digital Plus audio without Atmos.",
-      "originalScore": 0,
-      "patterns": [
-        "\\b(EAC3|DD\\+|Dolby.?Digital.?Plus)\\b(?!.*Atmos)"
-      ],
+      "originalScore": 1750,
+      "patterns": [],
       "bundleOnly": false,
       "mappingStatus": "reviewed",
       "mappedTraitIds": [
         "audio.format.eac3"
       ],
-      "sourceKind": "curated-adaptation"
+      "sourceKind": "trash-guides"
     },
     {
-      "trashId": "deluno-trash-audio-aac",
+      "trashId": "63487786a8b01b7f20dd2bc90dd4a477",
+      "name": "DD+",
+      "category": "audio",
+      "description": "Dolby Digital Plus audio without Atmos.",
+      "originalScore": 1750,
+      "patterns": [],
+      "bundleOnly": false,
+      "mappingStatus": "reviewed",
+      "mappedTraitIds": [
+        "audio.format.eac3"
+      ],
+      "sourceKind": "trash-guides"
+    },
+    {
+      "trashId": "240770601cc226190c367ef59aba7463",
       "name": "AAC",
       "category": "audio",
       "description": "AAC audio. Common for smaller WEB releases.",
-      "originalScore": 0,
-      "patterns": [
-        "\\bAAC\\b"
-      ],
+      "originalScore": 1000,
+      "patterns": [],
       "bundleOnly": false,
       "mappingStatus": "reviewed",
       "mappedTraitIds": [
         "audio.format.aac"
       ],
-      "sourceKind": "curated-adaptation"
+      "sourceKind": "trash-guides"
     },
     {
-      "trashId": "deluno-trash-audio-dts",
+      "trashId": "a50b8a0c62274a7c38b09a9619ba9d86",
+      "name": "AAC",
+      "category": "audio",
+      "description": "AAC audio. Common for smaller WEB releases.",
+      "originalScore": 1000,
+      "patterns": [],
+      "bundleOnly": false,
+      "mappingStatus": "reviewed",
+      "mappedTraitIds": [
+        "audio.format.aac"
+      ],
+      "sourceKind": "trash-guides"
+    },
+    {
+      "trashId": "1c1a4c5e823891c75bc50380a6866f73",
       "name": "DTS",
       "category": "audio",
       "description": "Standard DTS audio.",
-      "originalScore": 0,
-      "patterns": [
-        "\\bDTS\\b(?![-. ]?HD|[-. ]?X)"
-      ],
+      "originalScore": 1250,
+      "patterns": [],
       "bundleOnly": false,
       "mappingStatus": "reviewed",
       "mappedTraitIds": [
         "audio.format.dts"
       ],
-      "sourceKind": "curated-adaptation"
+      "sourceKind": "trash-guides"
     },
     {
-      "trashId": "deluno-trash-audio-opus",
+      "trashId": "5964f2a8b3be407d083498e4459d05d0",
+      "name": "DTS",
+      "category": "audio",
+      "description": "Standard DTS audio.",
+      "originalScore": 1250,
+      "patterns": [],
+      "bundleOnly": false,
+      "mappingStatus": "reviewed",
+      "mappedTraitIds": [
+        "audio.format.dts"
+      ],
+      "sourceKind": "trash-guides"
+    },
+    {
+      "trashId": "a061e2e700f81932daf888599f8a8273",
       "name": "Opus",
       "category": "audio",
       "description": "Opus audio. Efficient, but not universally supported by every playback chain.",
-      "originalScore": 0,
-      "patterns": [
-        "\\bOpus\\b"
-      ],
+      "originalScore": 250,
+      "patterns": [],
       "bundleOnly": false,
       "mappingStatus": "reviewed",
       "mappedTraitIds": [
         "audio.format.opus"
       ],
-      "sourceKind": "curated-adaptation"
+      "sourceKind": "trash-guides"
     },
     {
-      "trashId": "deluno-trash-channel-mono",
+      "trashId": "28f6ef16d61e2d1adfce3156ed8257e3",
+      "name": "Opus",
+      "category": "audio",
+      "description": "Opus audio. Efficient, but not universally supported by every playback chain.",
+      "originalScore": 250,
+      "patterns": [],
+      "bundleOnly": false,
+      "mappingStatus": "reviewed",
+      "mappedTraitIds": [
+        "audio.format.opus"
+      ],
+      "sourceKind": "trash-guides"
+    },
+    {
+      "trashId": "b124be9b146540f8e62f98fe32e49a2a",
       "name": "1.0 Mono",
       "category": "channels",
       "description": "Mono audio. Useful for older titles, but usually not preferred for modern releases.",
-      "originalScore": -50,
-      "patterns": [
-        "\\b1\\.0\\b",
-        "\\bMono\\b"
-      ],
+      "originalScore": 0,
+      "patterns": [],
       "bundleOnly": false,
       "mappingStatus": "reviewed",
       "mappedTraitIds": [
         "audio.channels.1-0"
       ],
-      "sourceKind": "curated-adaptation"
+      "sourceKind": "trash-guides"
     },
     {
-      "trashId": "deluno-trash-channel-stereo",
+      "trashId": "bd6dd5e043aa27ff4696a08d011c7d96",
+      "name": "1.0 Mono",
+      "category": "channels",
+      "description": "Mono audio. Useful for older titles, but usually not preferred for modern releases.",
+      "originalScore": 0,
+      "patterns": [],
+      "bundleOnly": false,
+      "mappingStatus": "reviewed",
+      "mappedTraitIds": [
+        "audio.channels.1-0"
+      ],
+      "sourceKind": "trash-guides"
+    },
+    {
+      "trashId": "89dac1be53d5268a7e10a19d3c896826",
       "name": "2.0 Stereo",
       "category": "channels",
       "description": "Stereo audio.",
       "originalScore": 0,
-      "patterns": [
-        "\\b2\\.0\\b",
-        "\\bStereo\\b"
-      ],
+      "patterns": [],
       "bundleOnly": false,
       "mappingStatus": "reviewed",
       "mappedTraitIds": [
         "audio.channels.2-0"
       ],
-      "sourceKind": "curated-adaptation"
+      "sourceKind": "trash-guides"
     },
     {
-      "trashId": "deluno-trash-channel-51",
+      "trashId": "834e534f103938853ffced4203b53e72",
+      "name": "2.0 Stereo",
+      "category": "channels",
+      "description": "Stereo audio.",
+      "originalScore": 0,
+      "patterns": [],
+      "bundleOnly": false,
+      "mappingStatus": "reviewed",
+      "mappedTraitIds": [
+        "audio.channels.2-0"
+      ],
+      "sourceKind": "trash-guides"
+    },
+    {
+      "trashId": "77ff61788dfe1097194fd8743d7b4524",
       "name": "5.1 Surround",
       "category": "channels",
       "description": "5.1 surround audio.",
-      "originalScore": 1,
-      "patterns": [
-        "\\b5\\.1\\b"
-      ],
+      "originalScore": 0,
+      "patterns": [],
       "bundleOnly": false,
       "mappingStatus": "reviewed",
       "mappedTraitIds": [
         "audio.channels.5-1"
       ],
-      "sourceKind": "curated-adaptation"
+      "sourceKind": "trash-guides"
     },
     {
-      "trashId": "deluno-trash-channel-71",
+      "trashId": "3fbafa924f361e66fbc6187af82dfa85",
+      "name": "5.1 Surround",
+      "category": "channels",
+      "description": "5.1 surround audio.",
+      "originalScore": 0,
+      "patterns": [],
+      "bundleOnly": false,
+      "mappingStatus": "reviewed",
+      "mappedTraitIds": [
+        "audio.channels.5-1"
+      ],
+      "sourceKind": "trash-guides"
+    },
+    {
+      "trashId": "e77382bcfeba57cb83744c9c5449b401",
       "name": "7.1 Surround",
       "category": "channels",
       "description": "7.1 surround audio.",
-      "originalScore": 2,
-      "patterns": [
-        "\\b7\\.1\\b"
-      ],
+      "originalScore": 0,
+      "patterns": [],
       "bundleOnly": false,
       "mappingStatus": "reviewed",
       "mappedTraitIds": [
         "audio.channels.7-1"
       ],
-      "sourceKind": "curated-adaptation"
+      "sourceKind": "trash-guides"
     },
     {
-      "trashId": "deluno-trash-hdr-dv-disk",
-      "name": "DV Disk",
+      "trashId": "204c8c3e7315bb0ea81332774fa888d6",
+      "name": "7.1 Surround",
+      "category": "channels",
+      "description": "7.1 surround audio.",
+      "originalScore": 0,
+      "patterns": [],
+      "bundleOnly": false,
+      "mappingStatus": "reviewed",
+      "mappedTraitIds": [
+        "audio.channels.7-1"
+      ],
+      "sourceKind": "trash-guides"
+    },
+    {
+      "trashId": "f700d29429c023a5734505e77daeaea7",
+      "name": "DV (Disk)",
       "category": "hdr",
       "description": "Dolby Vision from disc/remux sources. Prefer only when your playback chain handles DV correctly.",
-      "originalScore": 0,
-      "patterns": [
-        "\\b(DV|DoVi)\\b.*\\b(REMUX|BluRay|Blu-Ray)\\b",
-        "\\b(REMUX|BluRay|Blu-Ray)\\b.*\\b(DV|DoVi)\\b"
-      ],
+      "originalScore": 101,
+      "patterns": [],
       "bundleOnly": false,
       "mappingStatus": "advanced",
       "mappedTraitIds": [],
-      "sourceKind": "curated-adaptation"
+      "sourceKind": "trash-guides"
     },
     {
-      "trashId": "deluno-trash-hdr-sdr",
+      "trashId": "ef4963043b0987f8485bc9106f16db38",
+      "name": "DV (Disk)",
+      "category": "hdr",
+      "description": "Dolby Vision from disc/remux sources. Prefer only when your playback chain handles DV correctly.",
+      "originalScore": 101,
+      "patterns": [],
+      "bundleOnly": false,
+      "mappingStatus": "advanced",
+      "mappedTraitIds": [],
+      "sourceKind": "trash-guides"
+    },
+    {
+      "trashId": "9c38ebb7384dada637be8899efa68e6f",
       "name": "SDR",
       "category": "hdr",
       "description": "Standard dynamic range release. Useful when you want non-HDR compatibility.",
-      "originalScore": 0,
-      "patterns": [
-        "\\bSDR\\b"
-      ],
+      "originalScore": -10000,
+      "patterns": [],
       "bundleOnly": false,
       "mappingStatus": "advanced",
       "mappedTraitIds": [],
-      "sourceKind": "curated-adaptation"
+      "sourceKind": "trash-guides"
     },
     {
-      "trashId": "deluno-trash-edition-hybrid",
+      "trashId": "2016d1676f5ee13a5b7257ff86ac9a93",
+      "name": "SDR",
+      "category": "hdr",
+      "description": "Standard dynamic range release. Useful when you want non-HDR compatibility.",
+      "originalScore": -10000,
+      "patterns": [],
+      "bundleOnly": false,
+      "mappingStatus": "advanced",
+      "mappedTraitIds": [],
+      "sourceKind": "trash-guides"
+    },
+    {
+      "trashId": "0f12c086e289cf966fa5948eac571f44",
       "name": "Hybrid",
       "category": "edition",
       "description": "Hybrid release assembled from multiple sources. Often desirable when done by trusted groups.",
-      "originalScore": 0,
-      "patterns": [
-        "\\bHybrid\\b"
-      ],
+      "originalScore": 100,
+      "patterns": [],
       "bundleOnly": false,
       "mappingStatus": "advanced",
       "mappedTraitIds": [],
-      "sourceKind": "curated-adaptation"
+      "sourceKind": "trash-guides"
     },
     {
-      "trashId": "deluno-trash-edition-remaster",
+      "trashId": "3a4127d8aa781b44120d907f2cd62627",
+      "name": "Hybrid",
+      "category": "edition",
+      "description": "Hybrid release assembled from multiple sources. Often desirable when done by trusted groups.",
+      "originalScore": 100,
+      "patterns": [],
+      "bundleOnly": false,
+      "mappingStatus": "advanced",
+      "mappedTraitIds": [],
+      "sourceKind": "trash-guides"
+    },
+    {
+      "trashId": "570bc9ebecd92723d2d21500f4be314c",
       "name": "Remaster",
       "category": "edition",
       "description": "Remastered release.",
-      "originalScore": 0,
-      "patterns": [
-        "\\bRemaster(ed)?\\b"
-      ],
+      "originalScore": 25,
+      "patterns": [],
       "bundleOnly": false,
       "mappingStatus": "advanced",
       "mappedTraitIds": [],
-      "sourceKind": "curated-adaptation"
+      "sourceKind": "trash-guides"
     },
     {
-      "trashId": "deluno-trash-edition-criterion",
+      "trashId": "b735f09d3c025cbb7d75a5d38325b73b",
+      "name": "Remaster",
+      "category": "edition",
+      "description": "Remastered release.",
+      "originalScore": 25,
+      "patterns": [],
+      "bundleOnly": false,
+      "mappingStatus": "advanced",
+      "mappedTraitIds": [],
+      "sourceKind": "trash-guides"
+    },
+    {
+      "trashId": "e0c07d59beb37348e975a930d5e50319",
       "name": "Criterion Collection",
       "category": "edition",
       "description": "Criterion Collection release.",
-      "originalScore": 0,
-      "patterns": [
-        "\\bCriterion\\b"
-      ],
+      "originalScore": 25,
+      "patterns": [],
       "bundleOnly": false,
       "mappingStatus": "advanced",
       "mappedTraitIds": [],
-      "sourceKind": "curated-adaptation"
+      "sourceKind": "trash-guides"
     },
     {
-      "trashId": "deluno-trash-edition-open-matte",
+      "trashId": "09d9dd29a0fc958f9796e65c2a8864b4",
       "name": "Open Matte",
       "category": "edition",
       "description": "Open matte presentation with more vertical image area.",
-      "originalScore": 0,
-      "patterns": [
-        "\\bOpen.?Matte\\b"
-      ],
+      "originalScore": 25,
+      "patterns": [],
       "bundleOnly": false,
       "mappingStatus": "advanced",
       "mappedTraitIds": [],
-      "sourceKind": "curated-adaptation"
+      "sourceKind": "trash-guides"
     },
     {
-      "trashId": "deluno-trash-groups-remux-tier-01",
+      "trashId": "3a3ff47579026e76d6504ebea39390de",
       "name": "Remux Tier 01",
       "category": "groups",
-      "description": "Top-tier remux groups. Best used inside premium/remux profiles.",
-      "originalScore": 1900,
-      "patterns": [
-        "\\b(FraMeSToR|EPSiLON|TRiToN|BLURANiUM|PmP|KRaLiMaRKo|WiLDCAT|HiFi)\\b"
-      ],
+      "description": "The remux groups TRaSH ranks highest.",
+      "originalScore": 1950,
+      "patterns": [],
       "bundleOnly": false,
       "mappingStatus": "advanced",
       "mappedTraitIds": [],
-      "sourceKind": "curated-adaptation"
+      "sourceKind": "trash-guides"
     },
     {
-      "trashId": "deluno-trash-groups-remux-tier-02",
+      "trashId": "9965a052eb87b0d10313b1cea89eb451",
+      "name": "Remux Tier 01",
+      "category": "groups",
+      "description": "The remux groups TRaSH ranks highest.",
+      "originalScore": 1900,
+      "patterns": [],
+      "bundleOnly": false,
+      "mappingStatus": "advanced",
+      "mappedTraitIds": [],
+      "sourceKind": "trash-guides"
+    },
+    {
+      "trashId": "9f98181fe5a3fbeb0cc29340da2a468a",
       "name": "Remux Tier 02",
       "category": "groups",
-      "description": "Second-tier remux groups.",
-      "originalScore": 1850,
-      "patterns": [
-        "\\b(PTer|DecibeL|NCmt|iFT|CtrlHD|BMF|ZQ)\\b"
-      ],
+      "description": "The remux groups TRaSH ranks second.",
+      "originalScore": 1900,
+      "patterns": [],
       "bundleOnly": false,
       "mappingStatus": "advanced",
       "mappedTraitIds": [],
-      "sourceKind": "curated-adaptation"
+      "sourceKind": "trash-guides"
     },
     {
-      "trashId": "deluno-trash-groups-uhd-bluray-tier-01",
+      "trashId": "8a1d0c3d7497e741736761a1da866a2e",
+      "name": "Remux Tier 02",
+      "category": "groups",
+      "description": "The remux groups TRaSH ranks second.",
+      "originalScore": 1850,
+      "patterns": [],
+      "bundleOnly": false,
+      "mappingStatus": "advanced",
+      "mappedTraitIds": [],
+      "sourceKind": "trash-guides"
+    },
+    {
+      "trashId": "4d74ac4c4db0b64bff6ce0cffef99bf0",
       "name": "UHD Bluray Tier 01",
       "category": "groups",
-      "description": "Top-tier UHD Blu-ray encode groups.",
+      "description": "The 4K Blu-ray encode groups TRaSH ranks highest.",
       "originalScore": 1800,
-      "patterns": [
-        "\\b(DON|HQMUX|TayTO|EbP|CRiSC|CtrlHD|NTb)\\b"
-      ],
+      "patterns": [],
       "bundleOnly": false,
       "mappingStatus": "advanced",
       "mappedTraitIds": [],
-      "sourceKind": "curated-adaptation"
+      "sourceKind": "trash-guides"
     },
     {
-      "trashId": "deluno-trash-groups-web-tier-03",
+      "trashId": "af94e0fe497124d1f9ce732069ec8c3b",
       "name": "WEB Tier 03",
       "category": "groups",
-      "description": "Third-tier WEB groups. Useful as a fallback, not a primary preference.",
+      "description": "The WEB groups TRaSH ranks third. A fallback, not a first choice.",
       "originalScore": 1600,
-      "patterns": [
-        "\\b(MiU|MEMENTO|EDITH|LAZY|PECULATE|SMURF|HONE|TrollHD|TEPES)\\b"
-      ],
+      "patterns": [],
       "bundleOnly": false,
       "mappingStatus": "advanced",
       "mappedTraitIds": [],
-      "sourceKind": "curated-adaptation"
+      "sourceKind": "trash-guides"
     },
     {
-      "trashId": "deluno-trash-streaming-hulu",
+      "trashId": "d84935abd3f8556dcd51d4f27e22d0a6",
+      "name": "WEB Tier 03",
+      "category": "groups",
+      "description": "The WEB groups TRaSH ranks third. A fallback, not a first choice.",
+      "originalScore": 1600,
+      "patterns": [],
+      "bundleOnly": false,
+      "mappingStatus": "advanced",
+      "mappedTraitIds": [],
+      "sourceKind": "trash-guides"
+    },
+    {
+      "trashId": "526d445d4c16214309f0fd2b3be18a89",
       "name": "Hulu",
       "category": "streaming",
-      "description": "Hulu streaming release.",
+      "description": "Hulu, from a WEB-DL or WEBRip source.",
       "originalScore": 0,
-      "patterns": [
-        "\\bHULU\\b"
-      ],
+      "patterns": [],
       "bundleOnly": false,
       "mappingStatus": "reviewed",
       "mappedTraitIds": [
         "service.hulu"
       ],
-      "sourceKind": "curated-adaptation"
+      "sourceKind": "trash-guides"
     },
     {
-      "trashId": "deluno-trash-streaming-itunes",
-      "name": "iTunes",
+      "trashId": "f6cce30f1733d5c8194222a7507909bb",
+      "name": "HULU",
       "category": "streaming",
-      "description": "iTunes source tag.",
-      "originalScore": 0,
-      "patterns": [
-        "\\b(iT|iTunes)\\b"
+      "description": "Hulu, from a WEB-DL or WEBRip source.",
+      "originalScore": 75,
+      "patterns": [],
+      "bundleOnly": false,
+      "mappingStatus": "reviewed",
+      "mappedTraitIds": [
+        "service.hulu"
       ],
+      "sourceKind": "trash-guides"
+    },
+    {
+      "trashId": "e0ec9672be6cac914ffad34a6b077209",
+      "name": "iT",
+      "category": "streaming",
+      "description": "iTunes, from a WEB-DL or WEBRip source.",
+      "originalScore": 0,
+      "patterns": [],
       "bundleOnly": false,
       "mappingStatus": "advanced",
       "mappedTraitIds": [],
-      "sourceKind": "curated-adaptation"
+      "sourceKind": "trash-guides"
     },
     {
-      "trashId": "deluno-trash-streaming-roku",
-      "name": "Roku",
+      "trashId": "0ac24a2a68a9700bcb7eeca8e5cd644c",
+      "name": "iT",
       "category": "streaming",
-      "description": "Roku Channel streaming release.",
-      "originalScore": 0,
-      "patterns": [
-        "\\bROKU\\b"
-      ],
+      "description": "iTunes, from a WEB-DL or WEBRip source.",
+      "originalScore": 75,
+      "patterns": [],
       "bundleOnly": false,
       "mappingStatus": "advanced",
       "mappedTraitIds": [],
-      "sourceKind": "curated-adaptation"
+      "sourceKind": "trash-guides"
     },
     {
-      "trashId": "deluno-trash-streaming-crunchyroll",
-      "name": "Crunchyroll",
+      "trashId": "44c2b54d7c81c1a442a8b2cabeaef54f",
+      "name": "ROKU",
       "category": "streaming",
-      "description": "Crunchyroll anime streaming release.",
+      "description": "The Roku Channel, from a WEB-DL or WEBRip source.",
       "originalScore": 0,
-      "patterns": [
-        "\\b(CR|Crunchyroll)\\b"
-      ],
+      "patterns": [],
       "bundleOnly": false,
       "mappingStatus": "advanced",
       "mappedTraitIds": [],
-      "sourceKind": "curated-adaptation"
+      "sourceKind": "trash-guides"
     },
     {
-      "trashId": "deluno-trash-streaming-hidive",
+      "trashId": "da393fd4e2c0cce7c9dc2669c43e0593",
+      "name": "ROKU",
+      "category": "streaming",
+      "description": "The Roku Channel, from a WEB-DL or WEBRip source.",
+      "originalScore": 75,
+      "patterns": [],
+      "bundleOnly": false,
+      "mappingStatus": "advanced",
+      "mappedTraitIds": [],
+      "sourceKind": "trash-guides"
+    },
+    {
+      "trashId": "3e0b26604165f463f3e8e192261e7284",
+      "name": "CR",
+      "category": "streaming",
+      "description": "Crunchyroll, from a WEB-DL or WEBRip source.",
+      "originalScore": 6,
+      "patterns": [],
+      "bundleOnly": false,
+      "mappingStatus": "advanced",
+      "mappedTraitIds": [],
+      "sourceKind": "trash-guides"
+    },
+    {
+      "trashId": "570b03b3145a25011bf073274a407259",
       "name": "HIDIVE",
       "category": "streaming",
-      "description": "HIDIVE anime streaming release.",
+      "description": "HIDIVE, from a WEB-DL or WEBRip source.",
       "originalScore": 0,
-      "patterns": [
-        "\\bHIDIVE\\b"
-      ],
+      "patterns": [],
       "bundleOnly": false,
       "mappingStatus": "advanced",
       "mappedTraitIds": [],
-      "sourceKind": "curated-adaptation"
+      "sourceKind": "trash-guides"
     },
     {
-      "trashId": "deluno-trash-unwanted-br-disk",
+      "trashId": "ed38b889b31be83fda192888e2286d83",
       "name": "BR-DISK",
       "category": "unwanted",
       "description": "Full Blu-ray disc folder/image instead of a normal media file. Usually not wanted for library automation.",
       "originalScore": -10000,
-      "patterns": [
-        "\\b(BD25|BD50|BD66|BD100|BR.?DISK|Blu.?ray.?Disk)\\b"
-      ],
+      "patterns": [],
       "bundleOnly": false,
       "mappingStatus": "advanced",
       "mappedTraitIds": [],
-      "sourceKind": "curated-adaptation"
+      "sourceKind": "trash-guides"
     },
     {
-      "trashId": "deluno-trash-unwanted-generated-dynamic-hdr",
+      "trashId": "85c61753df5da1fb2aab6f2a47426b09",
+      "name": "BR-DISK",
+      "category": "unwanted",
+      "description": "Full Blu-ray disc folder/image instead of a normal media file. Usually not wanted for library automation.",
+      "originalScore": -10000,
+      "patterns": [],
+      "bundleOnly": false,
+      "mappingStatus": "advanced",
+      "mappedTraitIds": [],
+      "sourceKind": "trash-guides"
+    },
+    {
+      "trashId": "e6886871085226c3da1830830146846c",
       "name": "Generated Dynamic HDR",
       "category": "unwanted",
       "description": "Generated or converted dynamic HDR metadata. Avoid unless explicitly wanted.",
       "originalScore": -10000,
-      "patterns": [
-        "\\b(DV.?HDR10|Generated.?HDR|Dynamic.?HDR)\\b"
-      ],
+      "patterns": [],
       "bundleOnly": false,
       "mappingStatus": "advanced",
       "mappedTraitIds": [],
-      "sourceKind": "curated-adaptation"
+      "sourceKind": "trash-guides"
     },
     {
-      "trashId": "deluno-trash-unwanted-obfuscated",
+      "trashId": "7357cf5161efbf8c4d5d0c30b4815ee2",
       "name": "Obfuscated",
       "category": "unwanted",
       "description": "Obfuscated release names. Usually harder to identify and import cleanly.",
       "originalScore": -10000,
-      "patterns": [
-        "\\b(Obfuscated|Scrambled|Randomized)\\b"
-      ],
+      "patterns": [],
       "bundleOnly": false,
       "mappingStatus": "advanced",
       "mappedTraitIds": [],
-      "sourceKind": "curated-adaptation"
+      "sourceKind": "trash-guides"
     },
     {
-      "trashId": "deluno-trash-unwanted-retags",
+      "trashId": "e1a997ddb54e3ecbfe06341ad323c458",
+      "name": "Obfuscated",
+      "category": "unwanted",
+      "description": "Obfuscated release names. Usually harder to identify and import cleanly.",
+      "originalScore": -10000,
+      "patterns": [],
+      "bundleOnly": false,
+      "mappingStatus": "advanced",
+      "mappedTraitIds": [],
+      "sourceKind": "trash-guides"
+    },
+    {
+      "trashId": "5c44f52a8714fdd79bb4d98e2673be1f",
       "name": "Retags",
       "category": "unwanted",
       "description": "Retagged releases that only change the release group tag.",
       "originalScore": -10000,
-      "patterns": [
-        "\\b(RETAG|Re.?tag)\\b"
-      ],
+      "patterns": [],
       "bundleOnly": false,
       "mappingStatus": "advanced",
       "mappedTraitIds": [],
-      "sourceKind": "curated-adaptation"
+      "sourceKind": "trash-guides"
     },
     {
-      "trashId": "deluno-trash-unwanted-line-mic-dubbed",
-      "name": "Line / Mic Dubbed",
+      "trashId": "06d66ab109d4d2eddb2794d21526d140",
+      "name": "Retags",
+      "category": "unwanted",
+      "description": "Retagged releases that only change the release group tag.",
+      "originalScore": -10000,
+      "patterns": [],
+      "bundleOnly": false,
+      "mappingStatus": "advanced",
+      "mappedTraitIds": [],
+      "sourceKind": "trash-guides"
+    },
+    {
+      "trashId": "c465ccc73923871b3eb1802042331306",
+      "name": "Line/Mic Dubbed",
       "category": "unwanted",
       "description": "Line, mic, or dubbed cinema audio. Avoid for normal libraries.",
       "originalScore": -10000,
-      "patterns": [
-        "\\b(LiNE|LINE|Mic|MIC|Dubbed)\\b"
-      ],
+      "patterns": [],
       "bundleOnly": false,
       "mappingStatus": "advanced",
       "mappedTraitIds": [],
-      "sourceKind": "curated-adaptation"
+      "sourceKind": "trash-guides"
     },
     {
-      "trashId": "deluno-trash-unwanted-hfr",
+      "trashId": "73613461ac2cea99d52c4cd6e177ab82",
       "name": "HFR",
       "category": "unwanted",
       "description": "High-frame-rate releases. Neutral by default because this is user preference.",
       "originalScore": 0,
-      "patterns": [
-        "\\b(HFR|48FPS|60FPS)\\b"
-      ],
+      "patterns": [],
       "bundleOnly": false,
       "mappingStatus": "advanced",
       "mappedTraitIds": [],
-      "sourceKind": "curated-adaptation"
+      "sourceKind": "trash-guides"
     },
     {
-      "trashId": "deluno-trash-misc-720p",
+      "trashId": "1bd69272e23c5e6c5b1d6c8a36fce95e",
+      "name": "HFR",
+      "category": "unwanted",
+      "description": "High-frame-rate releases. Neutral by default because this is user preference.",
+      "originalScore": 0,
+      "patterns": [],
+      "bundleOnly": false,
+      "mappingStatus": "advanced",
+      "mappedTraitIds": [],
+      "sourceKind": "trash-guides"
+    },
+    {
+      "trashId": "b2be17d608fc88818940cd1833b0b24c",
       "name": "720p",
       "category": "misc",
       "description": "Resolution tag for 720p releases.",
-      "originalScore": 0,
-      "patterns": [
-        "\\b720p\\b"
-      ],
+      "originalScore": 5,
+      "patterns": [],
       "bundleOnly": false,
       "mappingStatus": "reviewed",
       "mappedTraitIds": [
         "video.resolution.720p"
       ],
-      "sourceKind": "curated-adaptation"
+      "sourceKind": "trash-guides"
     },
     {
-      "trashId": "deluno-trash-misc-1080p",
+      "trashId": "c99279ee27a154c2f20d1d505cc99e25",
+      "name": "720p",
+      "category": "misc",
+      "description": "Resolution tag for 720p releases.",
+      "originalScore": 5,
+      "patterns": [],
+      "bundleOnly": false,
+      "mappingStatus": "reviewed",
+      "mappedTraitIds": [
+        "video.resolution.720p"
+      ],
+      "sourceKind": "trash-guides"
+    },
+    {
+      "trashId": "820b09bb9acbfde9c35c71e0e565dad8",
       "name": "1080p",
       "category": "misc",
       "description": "Resolution tag for 1080p releases.",
-      "originalScore": 0,
-      "patterns": [
-        "\\b1080p\\b"
-      ],
+      "originalScore": 50,
+      "patterns": [],
       "bundleOnly": false,
       "mappingStatus": "reviewed",
       "mappedTraitIds": [
         "video.resolution.1080p"
       ],
-      "sourceKind": "curated-adaptation"
+      "sourceKind": "trash-guides"
     },
     {
-      "trashId": "deluno-trash-misc-2160p",
+      "trashId": "290078c8b266272a5cc8e251b5e2eb0b",
+      "name": "1080p",
+      "category": "misc",
+      "description": "Resolution tag for 1080p releases.",
+      "originalScore": 50,
+      "patterns": [],
+      "bundleOnly": false,
+      "mappingStatus": "reviewed",
+      "mappedTraitIds": [
+        "video.resolution.1080p"
+      ],
+      "sourceKind": "trash-guides"
+    },
+    {
+      "trashId": "fb392fb0d61a010ae38e49ceaa24a1ef",
       "name": "2160p",
       "category": "misc",
       "description": "Resolution tag for 4K / 2160p releases.",
-      "originalScore": 0,
-      "patterns": [
-        "\\b(2160p|4K|UHD)\\b"
-      ],
+      "originalScore": 100,
+      "patterns": [],
       "bundleOnly": false,
       "mappingStatus": "reviewed",
       "mappedTraitIds": [
         "video.resolution.2160p"
       ],
-      "sourceKind": "curated-adaptation"
+      "sourceKind": "trash-guides"
     },
     {
-      "trashId": "deluno-trash-anime-bd-tier-01",
+      "trashId": "1bef6c151fa35093015b0bfef18279e5",
+      "name": "2160p",
+      "category": "misc",
+      "description": "Resolution tag for 4K / 2160p releases.",
+      "originalScore": 100,
+      "patterns": [],
+      "bundleOnly": false,
+      "mappingStatus": "reviewed",
+      "mappedTraitIds": [
+        "video.resolution.2160p"
+      ],
+      "sourceKind": "trash-guides"
+    },
+    {
+      "trashId": "fb3ccc5d5cc8f77c9055d4cb4561dded",
       "name": "Anime BD Tier 01",
       "category": "anime",
       "description": "Top anime Blu-ray groups. Use in anime profiles.",
-      "originalScore": 1600,
-      "patterns": [
-        "\\b(Beatrice-Raws|sam|SCY|ZQ|Kawaiika-Raws|VCB-Studio)\\b"
-      ],
+      "originalScore": 1400,
+      "patterns": [],
       "bundleOnly": false,
       "mappingStatus": "advanced",
       "mappedTraitIds": [],
-      "sourceKind": "curated-adaptation"
+      "sourceKind": "trash-guides"
     },
     {
-      "trashId": "deluno-trash-anime-web-tier-01",
-      "name": "Anime WEB Tier 01",
+      "trashId": "949c16fe0a8147f50ba82cc2df9411c9",
+      "name": "Anime BD Tier 01",
+      "category": "anime",
+      "description": "Top anime Blu-ray groups. Use in anime profiles.",
+      "originalScore": 1400,
+      "patterns": [],
+      "bundleOnly": false,
+      "mappingStatus": "advanced",
+      "mappedTraitIds": [],
+      "sourceKind": "trash-guides"
+    },
+    {
+      "trashId": "8167cffba4febfb9a6988ef24f274e7e",
+      "name": "Anime Web Tier 01",
       "category": "anime",
       "description": "Top anime WEB groups. Use in anime streaming profiles.",
-      "originalScore": 1500,
-      "patterns": [
-        "\\b(SubsPlease|Erai-raws|ASW|GJM|EMBER|Judas)\\b"
-      ],
+      "originalScore": 600,
+      "patterns": [],
       "bundleOnly": false,
       "mappingStatus": "advanced",
       "mappedTraitIds": [],
-      "sourceKind": "curated-adaptation"
+      "sourceKind": "trash-guides"
     },
     {
-      "trashId": "deluno-trash-anime-raws",
+      "trashId": "e0014372773c8f0e1bef8824f00c7dc4",
+      "name": "Anime Web Tier 01",
+      "category": "anime",
+      "description": "Top anime WEB groups. Use in anime streaming profiles.",
+      "originalScore": 600,
+      "patterns": [],
+      "bundleOnly": false,
+      "mappingStatus": "advanced",
+      "mappedTraitIds": [],
+      "sourceKind": "trash-guides"
+    },
+    {
+      "trashId": "06b6542a47037d1e33b15aa3677c2365",
       "name": "Anime Raws",
       "category": "anime",
       "description": "Raw anime release without subtitles.",
       "originalScore": -10000,
-      "patterns": [
-        "\\b(RAW|Raws)\\b"
-      ],
+      "patterns": [],
       "bundleOnly": false,
       "mappingStatus": "advanced",
       "mappedTraitIds": [],
-      "sourceKind": "curated-adaptation"
+      "sourceKind": "trash-guides"
     },
     {
-      "trashId": "deluno-trash-anime-uncensored",
+      "trashId": "b4a1b3d705159cdca36d71e57ca86871",
+      "name": "Anime Raws",
+      "category": "anime",
+      "description": "Raw anime release without subtitles.",
+      "originalScore": -10000,
+      "patterns": [],
+      "bundleOnly": false,
+      "mappingStatus": "advanced",
+      "mappedTraitIds": [],
+      "sourceKind": "trash-guides"
+    },
+    {
+      "trashId": "064af5f084a0a24458cc8ecd3220f93f",
       "name": "Uncensored",
       "category": "anime",
       "description": "Uncensored anime release.",
-      "originalScore": 100,
-      "patterns": [
-        "\\bUncensored\\b"
-      ],
+      "originalScore": 0,
+      "patterns": [],
       "bundleOnly": false,
       "mappingStatus": "advanced",
       "mappedTraitIds": [],
-      "sourceKind": "curated-adaptation"
+      "sourceKind": "trash-guides"
     },
     {
-      "trashId": "deluno-trash-anime-10bit",
+      "trashId": "026d5aadd1a6b4e550b134cb6c72b3ca",
+      "name": "Uncensored",
+      "category": "anime",
+      "description": "Uncensored anime release.",
+      "originalScore": 0,
+      "patterns": [],
+      "bundleOnly": false,
+      "mappingStatus": "advanced",
+      "mappedTraitIds": [],
+      "sourceKind": "trash-guides"
+    },
+    {
+      "trashId": "a5d148168c4506b55cf53984107c396e",
       "name": "10bit",
       "category": "anime",
       "description": "10-bit anime encode.",
       "originalScore": 0,
-      "patterns": [
-        "\\b(10bit|10-bit|Hi10P)\\b"
-      ],
+      "patterns": [],
       "bundleOnly": false,
       "mappingStatus": "reviewed",
       "mappedTraitIds": [
         "video.bit-depth.10"
       ],
-      "sourceKind": "curated-adaptation"
+      "sourceKind": "trash-guides"
     },
     {
-      "trashId": "deluno-trash-anime-dual-audio",
+      "trashId": "b2550eb333d27b75833e25b8c2557b38",
+      "name": "10bit",
+      "category": "anime",
+      "description": "10-bit anime encode.",
+      "originalScore": 0,
+      "patterns": [],
+      "bundleOnly": false,
+      "mappingStatus": "reviewed",
+      "mappedTraitIds": [
+        "video.bit-depth.10"
+      ],
+      "sourceKind": "trash-guides"
+    },
+    {
+      "trashId": "4a3b087eea2ce012fcc1ce319259a3be",
       "name": "Anime Dual Audio",
       "category": "anime",
       "description": "Anime release with more than one audio language.",
-      "originalScore": 100,
-      "patterns": [
-        "\\b(Dual.?Audio|Multi.?Audio)\\b"
-      ],
+      "originalScore": 0,
+      "patterns": [],
       "bundleOnly": false,
       "mappingStatus": "reviewed",
       "mappedTraitIds": [
         "audio.language.multi"
       ],
-      "sourceKind": "curated-adaptation"
+      "sourceKind": "trash-guides"
     },
     {
-      "trashId": "deluno-trash-language-not-english",
-      "name": "Not English",
+      "trashId": "418f50b10f1907201b6cfdf881f467b7",
+      "name": "Anime Dual Audio",
+      "category": "anime",
+      "description": "Anime release with more than one audio language.",
+      "originalScore": 0,
+      "patterns": [],
+      "bundleOnly": false,
+      "mappingStatus": "reviewed",
+      "mappedTraitIds": [
+        "audio.language.multi"
+      ],
+      "sourceKind": "trash-guides"
+    },
+    {
+      "trashId": "0dc8aec3bd1c47cd6c40c46ecd27e846",
+      "name": "Language: Not English",
       "category": "language",
       "description": "Release is not English. Useful for English-only profiles.",
       "originalScore": -10000,
-      "patterns": [
-        "\\b(FRENCH|GERMAN|SPANISH|ITALIAN|DUTCH|RUSSIAN|PORTUGUESE)\\b"
-      ],
+      "patterns": [],
       "bundleOnly": false,
       "mappingStatus": "advanced",
       "mappedTraitIds": [],
-      "sourceKind": "curated-adaptation"
+      "sourceKind": "trash-guides"
     },
     {
-      "trashId": "deluno-trash-language-french",
+      "trashId": "69aa1e159f97d860440b04cd6d590c4f",
+      "name": "Language: Not English",
+      "category": "language",
+      "description": "Release is not English. Useful for English-only profiles.",
+      "originalScore": -10000,
+      "patterns": [],
+      "bundleOnly": false,
+      "mappingStatus": "advanced",
+      "mappedTraitIds": [],
+      "sourceKind": "trash-guides"
+    },
+    {
+      "trashId": "deluno-language-french",
       "name": "French Audio",
       "category": "language",
       "description": "French audio/version tags such as VFF, VFQ, VOSTFR, FanSUB and FastSUB.",
@@ -1417,23 +2134,35 @@
       "mappedTraitIds": [
         "audio.language.fr"
       ],
-      "sourceKind": "curated-adaptation"
+      "sourceKind": "deluno"
     },
     {
-      "trashId": "deluno-trash-language-german",
-      "name": "German Audio",
+      "trashId": "86bc3115eb4e9873ac96904a4a68e19e",
+      "name": "German",
       "category": "language",
-      "description": "German or German dual-language release.",
-      "originalScore": 0,
-      "patterns": [
-        "\\b(German|Deutsch|GERMAN.?DL|DL.?German)\\b"
-      ],
+      "description": "German audio alone, without a second language.",
+      "originalScore": 10000,
+      "patterns": [],
       "bundleOnly": false,
       "mappingStatus": "reviewed",
       "mappedTraitIds": [
         "audio.language.de"
       ],
-      "sourceKind": "curated-adaptation"
+      "sourceKind": "trash-guides"
+    },
+    {
+      "trashId": "8a9fcdbb445f2add0505926df3bb7b8a",
+      "name": "German",
+      "category": "language",
+      "description": "German audio alone, without a second language.",
+      "originalScore": 10000,
+      "patterns": [],
+      "bundleOnly": false,
+      "mappingStatus": "reviewed",
+      "mappedTraitIds": [
+        "audio.language.de"
+      ],
+      "sourceKind": "trash-guides"
     }
   ],
   "qualityProfiles": [
@@ -1461,19 +2190,19 @@
       "cutoffFormatScore": 10000,
       "recommendedFormats": [
         {
-          "trashId": "3a4127d8aa781b44120d907f2cd62627",
+          "trashId": "e7718d7a3ce595f289bfee26adc178f5",
           "score": 5
         },
         {
-          "trashId": "4eee26f9ab44a27e8e4dd0a7a2f14697",
+          "trashId": "ae43b294509409a6a13919dedd4764c4",
           "score": 6
         },
         {
-          "trashId": "9b64dff695c2115facf1b6ea59c9bd07",
+          "trashId": "5caaaa1c08c1742aa4342d8c4cc463f2",
           "score": 7
         },
         {
-          "trashId": "aadb0e9ebba39a5fcf97c5a6d5ed0cff",
+          "trashId": "dc98083864ea246d05a42df0d05f81cc",
           "score": -10000
         },
         {
@@ -1481,7 +2210,7 @@
           "score": -10000
         },
         {
-          "trashId": "dc98083864ea246d05a42df0d05f81cc",
+          "trashId": "0a3f082873eb454bde444150b70253cc",
           "score": -10000
         }
       ]
@@ -1510,35 +2239,35 @@
       "cutoffFormatScore": 10000,
       "recommendedFormats": [
         {
-          "trashId": "ed27ebfef2f323293b7b9c9c9b7e4f25",
+          "trashId": "ed27ebfef2f323e964fb1f61391bcb35",
           "score": 1800
         },
         {
-          "trashId": "a58f517a70193f8e578056642178419d",
+          "trashId": "c20c8647f2746a1f4c4262b0fbbeeeae",
           "score": 1750
         },
         {
-          "trashId": "e61e28db84184857a8ca8e7e2e8d6ef2",
+          "trashId": "c20f169ef63c5f40c2def54abaf4438e",
           "score": 1700
         },
         {
-          "trashId": "58790d4e2fdcd9733aa7ae68ba2bb503",
+          "trashId": "403816d65392c79236dcb6dd591aeda4",
           "score": 1650
         },
         {
-          "trashId": "3a4127d8aa781b44120d907f2cd62627",
+          "trashId": "e7718d7a3ce595f289bfee26adc178f5",
           "score": 5
         },
         {
-          "trashId": "4eee26f9ab44a27e8e4dd0a7a2f14697",
+          "trashId": "ae43b294509409a6a13919dedd4764c4",
           "score": 6
         },
         {
-          "trashId": "9b64dff695c2115facf1b6ea59c9bd07",
+          "trashId": "5caaaa1c08c1742aa4342d8c4cc463f2",
           "score": 7
         },
         {
-          "trashId": "aadb0e9ebba39a5fcf97c5a6d5ed0cff",
+          "trashId": "dc98083864ea246d05a42df0d05f81cc",
           "score": -10000
         },
         {
@@ -1546,7 +2275,7 @@
           "score": -10000
         },
         {
-          "trashId": "cae4ca30163749d0b87284ca3be2980a",
+          "trashId": "90a6f9a284dff5103f6346090e6280c8",
           "score": -10000
         }
       ]
@@ -1579,27 +2308,27 @@
           "score": 500
         },
         {
-          "trashId": "5d96ce331b98e077abb8ceb60553aa16",
+          "trashId": "deluno-hdr-hdr10-plus",
           "score": 520
         },
         {
-          "trashId": "e61e28db84184857a8ca8e7e2e8d6ef2",
+          "trashId": "c20f169ef63c5f40c2def54abaf4438e",
           "score": 1700
         },
         {
-          "trashId": "58790d4e2fdcd9733aa7ae68ba2bb503",
+          "trashId": "403816d65392c79236dcb6dd591aeda4",
           "score": 1650
         },
         {
-          "trashId": "3a4127d8aa781b44120d907f2cd62627",
+          "trashId": "e7718d7a3ce595f289bfee26adc178f5",
           "score": 5
         },
         {
-          "trashId": "4eee26f9ab44a27e8e4dd0a7a2f14697",
+          "trashId": "ae43b294509409a6a13919dedd4764c4",
           "score": 6
         },
         {
-          "trashId": "9b64dff695c2115facf1b6ea59c9bd07",
+          "trashId": "5caaaa1c08c1742aa4342d8c4cc463f2",
           "score": 7
         },
         {
@@ -1641,7 +2370,7 @@
           "score": 500
         },
         {
-          "trashId": "5d96ce331b98e077abb8ceb60553aa16",
+          "trashId": "deluno-hdr-hdr10-plus",
           "score": 520
         },
         {
@@ -1657,7 +2386,7 @@
           "score": 5
         },
         {
-          "trashId": "ca3e897c30fb3d15b3f643e8dfae1ce6",
+          "trashId": "dcf3ec6938fa32445f590a4da84256cd",
           "score": 3
         },
         {
@@ -1665,11 +2394,11 @@
           "score": 4
         },
         {
-          "trashId": "9de657fd3d327ecf144ec73dfe3a3e9a",
+          "trashId": "9f6cbff8cfe4ebbc1bde14c7b7bec0de",
           "score": 800
         },
         {
-          "trashId": "4b900e171accbfb172729b63323f9d5e",
+          "trashId": "eecf3a857724171f968a66cb5719e152",
           "score": 800
         },
         {
@@ -1677,7 +2406,7 @@
           "score": -10000
         },
         {
-          "trashId": "cae4ca30163749d0b87284ca3be2980a",
+          "trashId": "90a6f9a284dff5103f6346090e6280c8",
           "score": -10000
         }
       ]
@@ -1705,7 +2434,7 @@
       "cutoffFormatScore": 10000,
       "recommendedFormats": [
         {
-          "trashId": "e61e28db84184857a8ca8e7e2e8d6ef2",
+          "trashId": "e6258996055b9fbab7e9cb2f75819294",
           "score": 1700
         },
         {
@@ -1713,23 +2442,19 @@
           "score": 1650
         },
         {
-          "trashId": "3a4127d8aa781b44120d907f2cd62627",
+          "trashId": "ec8fa7296b64e8cd390a1600981f3923",
           "score": 5
         },
         {
-          "trashId": "4eee26f9ab44a27e8e4dd0a7a2f14697",
+          "trashId": "eb3d5cc0a2be0db205fb823640db6a3c",
           "score": 6
         },
         {
-          "trashId": "9b64dff695c2115facf1b6ea59c9bd07",
+          "trashId": "44e7c4de10ae50265753082e5dc76047",
           "score": 7
         },
         {
-          "trashId": "aadb0e9ebba39a5fcf97c5a6d5ed0cff",
-          "score": -10000
-        },
-        {
-          "trashId": "b8cd450cbfa689c0259a01d9e29ba3d6",
+          "trashId": "47435ece6b99a0b477caf360e79ba0bb",
           "score": -10000
         }
       ]
@@ -1758,16 +2483,12 @@
       "cutoffFormatScore": 10000,
       "recommendedFormats": [
         {
-          "trashId": "185f1dd7264c4562b9022d963ac37424",
+          "trashId": "851bd64e04c9374c51102be3dd9ae4cc",
           "score": 5
         },
         {
-          "trashId": "3a4127d8aa781b44120d907f2cd62627",
+          "trashId": "ec8fa7296b64e8cd390a1600981f3923",
           "score": 5
-        },
-        {
-          "trashId": "b8cd450cbfa689c0259a01d9e29ba3d6",
-          "score": -10000
         }
       ]
     }
@@ -1782,35 +2503,63 @@
       "bestFor": "First setup, small libraries, families, laptops, and users who just want reliable 1080p playback.",
       "includes": [
         {
-          "trashId": "deluno-trash-misc-1080p",
+          "trashId": "820b09bb9acbfde9c35c71e0e565dad8",
           "score": null
         },
         {
-          "trashId": "deluno-trash-streaming-itunes",
+          "trashId": "290078c8b266272a5cc8e251b5e2eb0b",
           "score": null
         },
         {
-          "trashId": "deluno-trash-streaming-hulu",
+          "trashId": "e0ec9672be6cac914ffad34a6b077209",
           "score": null
         },
         {
-          "trashId": "deluno-trash-unwanted-br-disk",
+          "trashId": "0ac24a2a68a9700bcb7eeca8e5cd644c",
           "score": null
         },
         {
-          "trashId": "deluno-trash-unwanted-obfuscated",
+          "trashId": "526d445d4c16214309f0fd2b3be18a89",
           "score": null
         },
         {
-          "trashId": "deluno-trash-unwanted-retags",
+          "trashId": "f6cce30f1733d5c8194222a7507909bb",
           "score": null
         },
         {
-          "trashId": "deluno-trash-unwanted-line-mic-dubbed",
+          "trashId": "ed38b889b31be83fda192888e2286d83",
           "score": null
         },
         {
-          "trashId": "aadb0e9ebba39a5fcf97c5a6d5ed0cff",
+          "trashId": "85c61753df5da1fb2aab6f2a47426b09",
+          "score": null
+        },
+        {
+          "trashId": "7357cf5161efbf8c4d5d0c30b4815ee2",
+          "score": null
+        },
+        {
+          "trashId": "e1a997ddb54e3ecbfe06341ad323c458",
+          "score": null
+        },
+        {
+          "trashId": "5c44f52a8714fdd79bb4d98e2673be1f",
+          "score": null
+        },
+        {
+          "trashId": "06d66ab109d4d2eddb2794d21526d140",
+          "score": null
+        },
+        {
+          "trashId": "c465ccc73923871b3eb1802042331306",
+          "score": null
+        },
+        {
+          "trashId": "dc98083864ea246d05a42df0d05f81cc",
+          "score": null
+        },
+        {
+          "trashId": "47435ece6b99a0b477caf360e79ba0bb",
           "score": null
         }
       ],
@@ -1825,11 +2574,19 @@
       "bestFor": "Main libraries where quality matters but storage should not explode.",
       "includes": [
         {
-          "trashId": "deluno-trash-misc-1080p",
+          "trashId": "820b09bb9acbfde9c35c71e0e565dad8",
           "score": null
         },
         {
-          "trashId": "deluno-trash-groups-web-tier-03",
+          "trashId": "290078c8b266272a5cc8e251b5e2eb0b",
+          "score": null
+        },
+        {
+          "trashId": "af94e0fe497124d1f9ce732069ec8c3b",
+          "score": 1200
+        },
+        {
+          "trashId": "d84935abd3f8556dcd51d4f27e22d0a6",
           "score": 1200
         },
         {
@@ -1837,31 +2594,59 @@
           "score": null
         },
         {
-          "trashId": "1c1a4c5e823891c75bc50380a6866f73",
+          "trashId": "0d7824bb924701997f874e7ff7d4844a",
           "score": null
         },
         {
-          "trashId": "deluno-trash-audio-ddplus",
+          "trashId": "3cafb66171b47f226146a0770576870f",
           "score": null
         },
         {
-          "trashId": "deluno-trash-channel-51",
+          "trashId": "1808e4b9cee74e064dfae3f1db99dbfe",
           "score": null
         },
         {
-          "trashId": "deluno-trash-unwanted-br-disk",
+          "trashId": "185f1dd7264c4562b9022d963ac37424",
           "score": null
         },
         {
-          "trashId": "deluno-trash-unwanted-obfuscated",
+          "trashId": "63487786a8b01b7f20dd2bc90dd4a477",
           "score": null
         },
         {
-          "trashId": "deluno-trash-unwanted-retags",
+          "trashId": "77ff61788dfe1097194fd8743d7b4524",
           "score": null
         },
         {
-          "trashId": "deluno-trash-unwanted-line-mic-dubbed",
+          "trashId": "3fbafa924f361e66fbc6187af82dfa85",
+          "score": null
+        },
+        {
+          "trashId": "ed38b889b31be83fda192888e2286d83",
+          "score": null
+        },
+        {
+          "trashId": "85c61753df5da1fb2aab6f2a47426b09",
+          "score": null
+        },
+        {
+          "trashId": "7357cf5161efbf8c4d5d0c30b4815ee2",
+          "score": null
+        },
+        {
+          "trashId": "e1a997ddb54e3ecbfe06341ad323c458",
+          "score": null
+        },
+        {
+          "trashId": "5c44f52a8714fdd79bb4d98e2673be1f",
+          "score": null
+        },
+        {
+          "trashId": "06d66ab109d4d2eddb2794d21526d140",
+          "score": null
+        },
+        {
+          "trashId": "c465ccc73923871b3eb1802042331306",
           "score": null
         }
       ],
@@ -1876,7 +2661,11 @@
       "bestFor": "4K televisions, Apple TV / Shield / Plex users, and users who want a premium library without huge files.",
       "includes": [
         {
-          "trashId": "deluno-trash-misc-2160p",
+          "trashId": "fb392fb0d61a010ae38e49ceaa24a1ef",
+          "score": null
+        },
+        {
+          "trashId": "1bef6c151fa35093015b0bfef18279e5",
           "score": null
         },
         {
@@ -1884,11 +2673,15 @@
           "score": null
         },
         {
-          "trashId": "7878c33f1963fefb3d6c8657d46c2f0a",
+          "trashId": "505d871304820ba7106b693be6fe4a9e",
           "score": null
         },
         {
-          "trashId": "5d96ce331b98e077abb8ceb60553aa16",
+          "trashId": "deluno-hdr-hdr10",
+          "score": null
+        },
+        {
+          "trashId": "deluno-hdr-hdr10-plus",
           "score": null
         },
         {
@@ -1896,31 +2689,59 @@
           "score": null
         },
         {
-          "trashId": "deluno-trash-hdr-sdr",
+          "trashId": "7c3a61a9c6cb04f52f1544be6d44a026",
           "score": null
         },
         {
-          "trashId": "deluno-trash-groups-web-tier-03",
+          "trashId": "9c38ebb7384dada637be8899efa68e6f",
           "score": null
         },
         {
-          "trashId": "deluno-trash-audio-ddplus",
+          "trashId": "2016d1676f5ee13a5b7257ff86ac9a93",
           "score": null
         },
         {
-          "trashId": "deluno-trash-channel-51",
+          "trashId": "af94e0fe497124d1f9ce732069ec8c3b",
           "score": null
         },
         {
-          "trashId": "deluno-trash-unwanted-generated-dynamic-hdr",
+          "trashId": "d84935abd3f8556dcd51d4f27e22d0a6",
           "score": null
         },
         {
-          "trashId": "deluno-trash-unwanted-br-disk",
+          "trashId": "185f1dd7264c4562b9022d963ac37424",
           "score": null
         },
         {
-          "trashId": "deluno-trash-unwanted-obfuscated",
+          "trashId": "63487786a8b01b7f20dd2bc90dd4a477",
+          "score": null
+        },
+        {
+          "trashId": "77ff61788dfe1097194fd8743d7b4524",
+          "score": null
+        },
+        {
+          "trashId": "3fbafa924f361e66fbc6187af82dfa85",
+          "score": null
+        },
+        {
+          "trashId": "e6886871085226c3da1830830146846c",
+          "score": null
+        },
+        {
+          "trashId": "ed38b889b31be83fda192888e2286d83",
+          "score": null
+        },
+        {
+          "trashId": "85c61753df5da1fb2aab6f2a47426b09",
+          "score": null
+        },
+        {
+          "trashId": "7357cf5161efbf8c4d5d0c30b4815ee2",
+          "score": null
+        },
+        {
+          "trashId": "e1a997ddb54e3ecbfe06341ad323c458",
           "score": null
         }
       ],
@@ -1937,7 +2758,7 @@
       "bestFor": "Reference movie libraries, home cinema rooms, and users who care more about quality than disk usage.",
       "includes": [
         {
-          "trashId": "deluno-trash-misc-2160p",
+          "trashId": "fb392fb0d61a010ae38e49ceaa24a1ef",
           "score": null
         },
         {
@@ -1949,15 +2770,15 @@
           "score": null
         },
         {
-          "trashId": "deluno-trash-groups-remux-tier-01",
+          "trashId": "3a3ff47579026e76d6504ebea39390de",
           "score": null
         },
         {
-          "trashId": "deluno-trash-groups-remux-tier-02",
+          "trashId": "9f98181fe5a3fbeb0cc29340da2a468a",
           "score": null
         },
         {
-          "trashId": "deluno-trash-groups-uhd-bluray-tier-01",
+          "trashId": "4d74ac4c4db0b64bff6ce0cffef99bf0",
           "score": null
         },
         {
@@ -1969,31 +2790,31 @@
           "score": null
         },
         {
-          "trashId": "deluno-trash-audio-dts-hra",
+          "trashId": "8e109e50e0a0b83a5098b056e13bf6db",
           "score": null
         },
         {
-          "trashId": "deluno-trash-channel-71",
+          "trashId": "e77382bcfeba57cb83744c9c5449b401",
           "score": null
         },
         {
-          "trashId": "deluno-trash-edition-criterion",
+          "trashId": "e0c07d59beb37348e975a930d5e50319",
           "score": null
         },
         {
-          "trashId": "deluno-trash-edition-remaster",
+          "trashId": "570bc9ebecd92723d2d21500f4be314c",
           "score": null
         },
         {
-          "trashId": "deluno-trash-unwanted-br-disk",
+          "trashId": "ed38b889b31be83fda192888e2286d83",
           "score": null
         },
         {
-          "trashId": "deluno-trash-unwanted-obfuscated",
+          "trashId": "7357cf5161efbf8c4d5d0c30b4815ee2",
           "score": null
         },
         {
-          "trashId": "deluno-trash-unwanted-retags",
+          "trashId": "5c44f52a8714fdd79bb4d98e2673be1f",
           "score": null
         }
       ],
@@ -2010,39 +2831,39 @@
       "bestFor": "Anime libraries where normal Sonarr-style scoring is not enough.",
       "includes": [
         {
-          "trashId": "deluno-trash-anime-web-tier-01",
+          "trashId": "e0014372773c8f0e1bef8824f00c7dc4",
           "score": null
         },
         {
-          "trashId": "deluno-trash-anime-bd-tier-01",
+          "trashId": "949c16fe0a8147f50ba82cc2df9411c9",
           "score": null
         },
         {
-          "trashId": "deluno-trash-anime-dual-audio",
+          "trashId": "418f50b10f1907201b6cfdf881f467b7",
           "score": null
         },
         {
-          "trashId": "deluno-trash-anime-uncensored",
+          "trashId": "026d5aadd1a6b4e550b134cb6c72b3ca",
           "score": null
         },
         {
-          "trashId": "deluno-trash-anime-10bit",
+          "trashId": "b2550eb333d27b75833e25b8c2557b38",
           "score": null
         },
         {
-          "trashId": "deluno-trash-streaming-crunchyroll",
+          "trashId": "3e0b26604165f463f3e8e192261e7284",
           "score": null
         },
         {
-          "trashId": "deluno-trash-streaming-hidive",
+          "trashId": "570b03b3145a25011bf073274a407259",
           "score": null
         },
         {
-          "trashId": "deluno-trash-anime-raws",
+          "trashId": "b4a1b3d705159cdca36d71e57ca86871",
           "score": null
         },
         {
-          "trashId": "deluno-trash-unwanted-obfuscated",
+          "trashId": "e1a997ddb54e3ecbfe06341ad323c458",
           "score": null
         }
       ],
@@ -2057,31 +2878,55 @@
       "bestFor": "NAS storage limits, remote users, slower upload links, or libraries with many users.",
       "includes": [
         {
-          "trashId": "deluno-trash-misc-1080p",
+          "trashId": "820b09bb9acbfde9c35c71e0e565dad8",
           "score": null
         },
         {
-          "trashId": "aadb0e9ebba39a5fcf97c5a6d5ed0cff",
+          "trashId": "290078c8b266272a5cc8e251b5e2eb0b",
           "score": null
         },
         {
-          "trashId": "deluno-trash-unwanted-br-disk",
+          "trashId": "dc98083864ea246d05a42df0d05f81cc",
           "score": null
         },
         {
-          "trashId": "deluno-trash-unwanted-obfuscated",
+          "trashId": "47435ece6b99a0b477caf360e79ba0bb",
           "score": null
         },
         {
-          "trashId": "deluno-trash-unwanted-retags",
+          "trashId": "ed38b889b31be83fda192888e2286d83",
           "score": null
         },
         {
-          "trashId": "deluno-trash-unwanted-generated-dynamic-hdr",
+          "trashId": "85c61753df5da1fb2aab6f2a47426b09",
           "score": null
         },
         {
-          "trashId": "deluno-trash-unwanted-hfr",
+          "trashId": "7357cf5161efbf8c4d5d0c30b4815ee2",
+          "score": null
+        },
+        {
+          "trashId": "e1a997ddb54e3ecbfe06341ad323c458",
+          "score": null
+        },
+        {
+          "trashId": "5c44f52a8714fdd79bb4d98e2673be1f",
+          "score": null
+        },
+        {
+          "trashId": "06d66ab109d4d2eddb2794d21526d140",
+          "score": null
+        },
+        {
+          "trashId": "e6886871085226c3da1830830146846c",
+          "score": null
+        },
+        {
+          "trashId": "73613461ac2cea99d52c4cd6e177ab82",
+          "score": -100
+        },
+        {
+          "trashId": "1bd69272e23c5e6c5b1d6c8a36fce95e",
           "score": -100
         }
       ],

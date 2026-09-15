@@ -20,6 +20,7 @@ public static class PlatformServiceCollectionExtensions
         services.AddSingleton<IProcessorRepository, SqliteProcessorRepository>();
         services.AddSingleton<IMigrationAuditRepository, SqliteMigrationAuditRepository>();
         services.AddSingleton<IMigrationAssistantService, MigrationAssistantService>();
+        services.AddSingleton<IGuideRuleMigrationService, GuideRuleMigrationService>();
         services.AddSingleton<IAutomationIdempotencyStore, SqliteAutomationIdempotencyStore>();
         services.AddHostedService<PlatformSchemaInitializer>();
         return services;

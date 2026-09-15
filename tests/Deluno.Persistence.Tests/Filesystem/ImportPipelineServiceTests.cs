@@ -929,14 +929,15 @@ public sealed class ImportPipelineServiceTests
 
         var quality = new SqliteQualityRepository(storage.Factory, timeProvider);
         var netflixGuide = GuidePackageCatalog.Current.CustomFormats.Single(format =>
-            format.Name.Equals("Netflix", StringComparison.OrdinalIgnoreCase));
+            format.Name.Equals("NF", StringComparison.Ordinal)
+            && GuideFormatConditions.AppliesTo(format, "movies"));
         var netflix = await quality.CreateCustomFormatAsync(
             new CreateCustomFormatRequest(
                 netflixGuide.Name,
                 "movies",
                 netflixGuide.OriginalScore,
                 netflixGuide.TrashId,
-                string.Join(Environment.NewLine, netflixGuide.Patterns.Select(pattern => $"regex: {pattern}")),
+                GuideFormatConditions.For(netflixGuide),
                 true),
             CancellationToken.None);
         var preferredGroup = await quality.CreateCustomFormatAsync(

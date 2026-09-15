@@ -15,6 +15,23 @@ public static class GuidePackageCatalog
 {
     private const string ResourceName = "Deluno.Quality.Guides.trash-guide-package.json";
 
+    /// <summary>A reviewed entry that is a genuine TRaSH format, id and all.</summary>
+    public const string GenuineSourceKind = "trash-guides";
+
+    /// <summary>A format TRaSH does not publish, owned and named by Deluno.</summary>
+    public const string DelunoSourceKind = "deluno";
+
+    public const string DelunoIdPrefix = "deluno-";
+
+    /// <summary>
+    /// From this schema on, every reviewed entry is either a genuine TRaSH
+    /// format or a Deluno-owned extra, and the package proves which. Before it,
+    /// the shipped catalogue gave TRaSH-looking ids to its own adaptations -
+    /// "Amazon Prime" carried TRaSH's id for the Canadian service Crave - and
+    /// nothing checked. Earlier packages stay readable as they were.
+    /// </summary>
+    public const int GenuineFormatsSchemaVersion = 3;
+
     public static GuidePackage Current { get; } = Load();
 
     public static string ComputeIntegritySha256(GuidePackage package)
@@ -122,8 +139,44 @@ public static class GuidePackageCatalog
         }
 
         ValidateSourceInventory(package, formatIds, errors);
+        if (package.SchemaVersion >= GenuineFormatsSchemaVersion)
+        {
+            ValidateGenuineFormats(package, errors);
+        }
 
         return errors;
+    }
+
+    private static void ValidateGenuineFormats(GuidePackage package, ICollection<string> errors)
+    {
+        var sourceById = (package.SourceInventory?.CustomFormats ?? [])
+            .Where(item => !string.IsNullOrWhiteSpace(item.TrashId))
+            .ToDictionary(item => item.TrashId, StringComparer.OrdinalIgnoreCase);
+        foreach (var format in package.CustomFormats ?? [])
+        {
+            var upstream = sourceById.GetValueOrDefault(format.TrashId);
+            switch (format.SourceKind)
+            {
+                case GenuineSourceKind:
+                    // A format TRaSH later drops keeps the specifications it
+                    // was merged with, so a sync cannot silently change it.
+                    if (format.SourceMatcherClauses is not { Count: > 0 })
+                        errors.Add($"Guide custom format '{format.Name}' claims TRaSH id '{format.TrashId}' but has no TRaSH specifications.");
+                    if (upstream is not null && !string.Equals(upstream.Name, format.Name, StringComparison.Ordinal))
+                        errors.Add($"Guide custom format '{format.Name}' carries the TRaSH id of '{upstream.Name}'.");
+                    if (format.Patterns is { Count: > 0 })
+                        errors.Add($"Genuine TRaSH format '{format.Name}' must be matched by TRaSH's specifications, not by Deluno patterns.");
+                    break;
+                case DelunoSourceKind:
+                    if (!format.TrashId.StartsWith(DelunoIdPrefix, StringComparison.Ordinal))
+                        errors.Add($"Deluno guide format '{format.Name}' must use a '{DelunoIdPrefix}' id, not '{format.TrashId}'.");
+                    if (upstream is not null)
+                        errors.Add($"Deluno guide format '{format.Name}' uses an id TRaSH already gives '{upstream.Name}'.");
+                    if (format.Patterns is not { Count: > 0 })
+                        errors.Add($"Deluno guide format '{format.Name}' needs at least one pattern.");
+                    break;
+            }
+        }
     }
 
     private static GuidePackage Load()
@@ -181,6 +234,11 @@ public static class GuidePackageCatalog
             {
                 formats.Add(reviewed with
                 {
+                    // A genuine entry is TRaSH's format under TRaSH's name, so
+                    // an upstream rename is followed rather than hidden.
+                    Name = string.Equals(reviewed.SourceKind, GenuineSourceKind, StringComparison.Ordinal)
+                        ? sourceFormat.Name
+                        : reviewed.Name,
                     MediaTypes = [sourceFormat.MediaType],
                     SourceGroupIds = groupIds,
                     SourceMatcherClauses = sourceFormat.MatcherClauses,

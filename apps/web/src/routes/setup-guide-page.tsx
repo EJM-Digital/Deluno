@@ -37,6 +37,7 @@ import {
   type GuidePackage
 } from "../lib/api";
 import { metadataCreatePayload } from "../hooks/use-library-create";
+import { createRuleFromGuide, guideBundleTargets } from "../lib/guide-formats";
 import { authedFetch } from "../lib/use-auth";
 import { cn } from "../lib/utils";
 import { Button } from "../components/ui/button";
@@ -1480,10 +1481,12 @@ function getEffectiveFormatBundle(guide: GuidePackage, _mediaType: "movies" | "t
 function previewFormats(guide: GuidePackage, goal: SelectedFormatGoal): GuideCustomFormat[] {
   const bundle = getFormatBundle(guide, goal);
   if (!bundle) return [];
-  return bundle.includes
-    .slice(0, 6)
-    .map((entry) => guide.customFormats.find((format) => format.trashId === entry.trashId))
-    .filter((format): format is GuideCustomFormat => Boolean(format));
+  // TRaSH's movies and TV copies of a format share a name; show each once.
+  const seen = new Set<string>();
+  return guideBundleTargets(bundle.includes, bundle.mediaType, guide)
+    .map((target) => target.format)
+    .filter((format) => !seen.has(format.name) && Boolean(seen.add(format.name)))
+    .slice(0, 6);
 }
 
 async function ensureCustomFormats(existing: CustomFormatItem[], mediaType: "movies" | "tv", form: GuideForm, guide: GuidePackage, createdEntities: CreatedEntity[]): Promise<string[]> {
@@ -1491,30 +1494,18 @@ async function ensureCustomFormats(existing: CustomFormatItem[], mediaType: "mov
   if (!bundle) return [];
 
   const ids: string[] = [];
-  for (const entry of bundle.includes) {
-    const format = guide.customFormats.find((item) => item.trashId === entry.trashId);
-    if (!format) continue;
+  // This media type's copy of each format: TRaSH's TV AMZN is not its movies AMZN.
+  for (const target of guideBundleTargets(bundle.includes, bundle.mediaType === "all" ? "all" : bundle.mediaType, guide)) {
+    if (target.mediaType !== mediaType) continue;
+    const format = target.format;
 
-    const existingFormat = existing.find(
-      (item) => item.trashId === format.trashId && (item.mediaType === mediaType || item.mediaType === "all")
-    );
+    const existingFormat = existing.find((item) => item.trashId === format.trashId && item.mediaType === mediaType);
     if (existingFormat) {
       ids.push(existingFormat.id);
       continue;
     }
 
-    const created = await fetchJson<CustomFormatItem>("/api/custom-formats", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        name: format.name,
-        mediaType,
-        score: entry.score ?? format.originalScore,
-        trashId: format.trashId,
-        conditions: format.patterns.map((pattern) => `regex: ${pattern}`).join("\n"),
-        upgradeAllowed: true
-      })
-    });
+    const created = await createRuleFromGuide(format, mediaType, target.score);
     existing.push(created);
     createdEntities.push({ kind: "customFormat", id: created.id });
     ids.push(created.id);

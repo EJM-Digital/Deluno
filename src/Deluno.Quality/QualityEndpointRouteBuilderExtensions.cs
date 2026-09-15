@@ -1030,12 +1030,37 @@ public static class QualityEndpointRouteBuilderExtensions
             HttpContext httpContext,
             [FromBody] CreateCustomFormatRequest request,
             [FromServices] IQualityRepository repository,
+            [FromServices] IGuidePackageStore guidePackageStore,
             CancellationToken cancellationToken) =>
         {
             var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
             if (denied is not null)
             {
                 return denied;
+            }
+
+            // A rule made from a guide format sends its guide id and no
+            // conditions, and gets the guide's own. The screens that make
+            // these rules used to write the conditions themselves, three
+            // different ways.
+            if (!string.IsNullOrWhiteSpace(request.TrashId) && string.IsNullOrWhiteSpace(request.Conditions))
+            {
+                var package = (await guidePackageStore.GetCurrentAsync(cancellationToken)).Package;
+                var guideFormat = package.CustomFormats.FirstOrDefault(format =>
+                    string.Equals(format.TrashId, request.TrashId.Trim(), StringComparison.OrdinalIgnoreCase));
+                if (guideFormat is null || !GuideFormatConditions.AppliesTo(guideFormat, request.MediaType))
+                {
+                    return Results.ValidationProblem(new Dictionary<string, string[]>
+                    {
+                        ["trashId"] = [$"The guide has no format '{request.TrashId}' for {MediaPolicyCatalog.NormalizeMediaType(request.MediaType)}."]
+                    });
+                }
+
+                request = request with
+                {
+                    Name = string.IsNullOrWhiteSpace(request.Name) ? guideFormat.Name : request.Name,
+                    Conditions = GuideFormatConditions.For(guideFormat)
+                };
             }
 
             var errors = ValidateCustomFormat(request.Name);

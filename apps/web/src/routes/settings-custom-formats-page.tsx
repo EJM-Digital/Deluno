@@ -18,6 +18,7 @@ import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { useLoaderData, useRevalidator } from "react-router-dom";
 import { FlaskConical, Loader2, Plus, RotateCcw, X } from "lucide-react";
 import { Button } from "../components/ui/button";
+import { Checkbox } from "../components/ui/checkbox";
 import { Chip } from "../components/ui/chip";
 import { Disclosure } from "../components/ui/disclosure";
 import { Drawer, DrawerDanger, DrawerFooter, DrawerSection, type DrawerSaveState } from "../components/ui/drawer";
@@ -30,6 +31,16 @@ import { PageFooter } from "../components/ui/page-footer";
 import { PageToolbar, PageToolbarAction } from "../components/ui/page-toolbar";
 import { ChoiceRows } from "../components/ui/choice-rows";
 import { friendlyRuleName } from "../lib/guide-names";
+import {
+  createRuleFromGuide,
+  guideBundleTargets,
+  guideFormatAppliesTo,
+  guideSpecifications,
+  isGenuineGuideFormat,
+  readSpecifications,
+  specificationKind,
+  type RuleSpecification
+} from "../lib/guide-formats";
 import { PresetField } from "../components/ui/preset-field";
 import { SegmentedControl } from "../components/ui/segmented-control";
 import { Select } from "../components/ui/select";
@@ -40,6 +51,8 @@ import { useUnsavedChanges } from "../hooks/use-unsaved-changes";
 import {
   compileQualityProfilePreferences,
   activateTrashGuideVersion,
+  applyGuideRuleMigration,
+  fetchGuideRuleMigration,
   fetchTrashGuidePackage,
   fetchTrashGuideUpdateCheck,
   fetchTrashGuideVersions,
@@ -51,10 +64,10 @@ import {
   runTrashGuideUpdateCheck,
   setTrashGuideUpdateCheckEnabled,
   type CustomFormatItem,
-  type GuideCustomFormat,
   type GuideFormatBundle,
   type GuidePackage,
   type GuidePackageUpdatePreview,
+  type GuideRuleMigrationPreview,
   type GuideUpdateCheckState,
   type StoredGuidePackage,
   type LibraryItem,
@@ -174,17 +187,19 @@ interface LoaderData {
   guide: GuidePackage;
   guideUpdateCheck: GuideUpdateCheckState;
   guideVersions: StoredGuidePackage[];
+  ruleMigration: GuideRuleMigrationPreview | null;
 }
 
 export async function settingsCustomFormatsLoader(): Promise<LoaderData> {
-  const [overview, customFormats, guide, guideUpdateCheck, guideVersions] = await Promise.all([
+  const [overview, customFormats, guide, guideUpdateCheck, guideVersions, ruleMigration] = await Promise.all([
     settingsOverviewLoader(),
     fetchJson<CustomFormatItem[]>("/api/custom-formats"),
     fetchTrashGuidePackage(),
     fetchTrashGuideUpdateCheck(),
-    fetchTrashGuideVersions().catch(() => [] as StoredGuidePackage[])
+    fetchTrashGuideVersions().catch(() => [] as StoredGuidePackage[]),
+    fetchGuideRuleMigration().catch(() => null)
   ]);
-  return { ...overview, customFormats, guide, guideUpdateCheck, guideVersions };
+  return { ...overview, customFormats, guide, guideUpdateCheck, guideVersions, ruleMigration };
 }
 
 interface RuleForm {
@@ -193,6 +208,12 @@ interface RuleForm {
   score: string;
   conditions: Condition[];
   trashId: string | null;
+  /**
+   * A rule stored with TRaSH or Radarr/Sonarr specifications. Deluno's editor
+   * cannot represent them, so they are shown as they are and saved untouched
+   * - editing one used to turn every specification into an empty title match.
+   */
+  specifications: string | null;
 }
 
 interface SafeguardForm {
@@ -204,10 +225,11 @@ type DrawerMode =
   | { kind: "rule"; id: string | null }
   | { kind: "preset"; id: string }
   | { kind: "test" }
+  | { kind: "guide-move" }
   | null;
 
 export function SettingsCustomFormatsPage() {
-  const { customFormats, settings, libraries, policySets, qualityProfiles, guide, guideUpdateCheck, guideVersions } = useLoaderData() as LoaderData;
+  const { customFormats, settings, libraries, policySets, qualityProfiles, guide, guideUpdateCheck, guideVersions, ruleMigration } = useLoaderData() as LoaderData;
   const revalidator = useRevalidator();
   const settingsMutation = useApiMutation<PlatformSettingsPatch, PlatformSettingsSnapshot>("/api/settings", "PATCH");
   const [busy, setBusy] = useState<string | null>(null);
@@ -359,7 +381,11 @@ export function SettingsCustomFormatsPage() {
     }
   }
 
-  /** Choosing a guide format fills the whole rule in — name, score and conditions. */
+  /**
+   * Choosing a guide format fills in its name and score. Its conditions are
+   * the guide's own and come from the server when the rule is created, so
+   * they are shown here but not copied into the editor.
+   */
   function startFrom(trashId: string) {
     const bundled = guide.customFormats.find((format) => format.trashId === trashId);
     if (!bundled) {
@@ -372,9 +398,27 @@ export function SettingsCustomFormatsPage() {
       trashId,
       name: bundled.name,
       score: String(bundled.originalScore),
-      conditions: bundled.patterns.map((pattern) => ({ type: "releaseTitle" as ConditionType, value: pattern, negate: false, required: true }))
+      conditions: [],
+      specifications: null
     }));
     setAdvancedOpen(false);
+  }
+
+  /**
+   * TRaSH's movies AMZN and TV AMZN are different formats with different ids.
+   * Switching media type moves a guide choice to that media's copy, or clears
+   * it when TRaSH has none.
+   */
+  function changeRuleMediaType(mediaType: "movies" | "tv") {
+    setForm((current) => {
+      const chosen = !editing && current.trashId ? guide.customFormats.find((format) => format.trashId === current.trashId) : undefined;
+      if (!chosen || guideFormatAppliesTo(chosen, mediaType)) return { ...current, mediaType };
+      const counterpart = guide.customFormats.find((format) =>
+        format.name === chosen.name && format.category === chosen.category && guideFormatAppliesTo(format, mediaType));
+      return counterpart
+        ? { ...current, mediaType, trashId: counterpart.trashId, score: String(counterpart.originalScore) }
+        : { ...current, mediaType, trashId: null, name: "" };
+    });
   }
 
   async function submitRule(event: FormEvent<HTMLFormElement>) {
@@ -392,7 +436,9 @@ export function SettingsCustomFormatsPage() {
         mediaType: form.mediaType,
         score: Number(form.score || 0),
         trashId: form.trashId,
-        conditions: JSON.stringify(form.conditions.filter((condition) => condition.value.trim())),
+        conditions: !editing && form.trashId
+          ? null
+          : form.specifications ?? JSON.stringify(form.conditions.filter((condition) => condition.value.trim())),
         upgradeAllowed: true
       });
       const response = editing
@@ -403,7 +449,12 @@ export function SettingsCustomFormatsPage() {
         throw new Error(readErrorMessage(detail, response.url || "/api/custom-formats", response.status));
       }
       const saved = (await response.json()) as CustomFormatItem;
-      setInitialForm(form);
+      // The drawer stays on the saved rule, so it has to show what was saved:
+      // a rule created from the guide got its conditions from the server, and
+      // keeping the pre-save form would save empty conditions over them.
+      const next = ruleFrom(saved);
+      setForm(next);
+      setInitialForm(next);
       setRuleState("saved");
       setRuleMessage("Saved just now");
       setDrawer({ kind: "rule", id: saved.id });
@@ -438,16 +489,54 @@ export function SettingsCustomFormatsPage() {
   const [presetMessage, setPresetMessage] = useState<string | null>(null);
   const [presetState, setPresetState] = useState<Exclude<DrawerSaveState, "clean" | "dirty">>();
 
+  /**
+   * A "Movies and TV" preset used to count and add only movie rules, and a TV
+   * preset reused the movie ids. Each format is now added for each media type
+   * it serves, under that media type's own id.
+   */
+  /* ------------------------------------------- old catalogue rule move */
+  // Rules made from the catalogue Deluno shipped before genuine TRaSH formats.
+  // Preselected unless the owner changed a rule's conditions, which a move
+  // would replace.
+  const moveItems = ruleMigration?.items ?? [];
+  const [moveSelection, setMoveSelection] = useState<string[]>([]);
+  useEffect(() => {
+    setMoveSelection((ruleMigration?.items ?? []).filter((item) => !item.conditionsWereEdited).map((item) => item.ruleId));
+  }, [ruleMigration]);
+  const [moveState, setMoveState] = useState<Exclude<DrawerSaveState, "clean" | "dirty">>();
+  const [moveMessage, setMoveMessage] = useState<string | null>(null);
+
+  async function applyGuideMove() {
+    if (!ruleMigration || moveSelection.length === 0) return;
+    setBusy("guide-move");
+    setMoveState("saving");
+    setMoveMessage(null);
+    try {
+      const result = await applyGuideRuleMigration(ruleMigration.previewHash, moveSelection);
+      const notMoved = result.outcomes.filter((outcome) => !outcome.moved);
+      setMoveState(notMoved.length ? "error" : "saved");
+      setMoveMessage(
+        `Moved ${result.moved} ${result.moved === 1 ? "rule" : "rules"}; each move is recorded in Activity.`
+        + (notMoved.length ? ` Not moved: ${notMoved.map((outcome) => `${outcome.name} (${outcome.message})`).join("; ")}` : "")
+      );
+      revalidator.revalidate();
+    } catch (error) {
+      setMoveState("error");
+      setMoveMessage(error instanceof Error ? error.message : "The rules could not be moved.");
+    } finally {
+      setBusy(null);
+    }
+  }
+
   function presetProgress(bundle: GuideFormatBundle) {
-    const target = bundle.mediaType === "tv" ? "tv" : "movies";
-    const resolved = bundle.includes.map((entry) => guide.customFormats.find((format) => format.trashId === entry.trashId)).filter((cf): cf is GuideCustomFormat => Boolean(cf));
-    const applied = resolved.filter((cf) => appliedTrashIds.has(`${target}:${cf.trashId}`));
-    return { target, resolved, applied: applied.length, total: resolved.length };
+    const targets = guideBundleTargets(bundle.includes, bundle.mediaType, guide);
+    const applied = targets.filter((target) => appliedTrashIds.has(`${target.mediaType}:${target.format.trashId}`));
+    return { targets, applied: applied.length, total: targets.length };
   }
 
   async function applyPreset(bundle: GuideFormatBundle) {
-    const { target, resolved, applied } = presetProgress(bundle);
-    const missing = resolved.filter((cf) => !appliedTrashIds.has(`${target}:${cf.trashId}`));
+    const { targets, applied } = presetProgress(bundle);
+    const missing = targets.filter((target) => !appliedTrashIds.has(`${target.mediaType}:${target.format.trashId}`));
     if (missing.length === 0) {
       setPresetState("saved");
       setPresetMessage("Every rule in this preset is already applied.");
@@ -457,21 +546,12 @@ export function SettingsCustomFormatsPage() {
     setPresetState("saving");
     setPresetMessage(null);
     try {
-      for (const cf of missing) {
-        const score = bundle.includes.find((entry) => entry.trashId === cf.trashId)?.score ?? cf.originalScore;
-        const response = await authedFetch("/api/custom-formats", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            name: cf.name,
-            mediaType: target,
-            score,
-            trashId: cf.trashId,
-            conditions: JSON.stringify(cf.patterns.map((pattern) => ({ type: "releaseTitle", value: pattern, negate: false, required: true }))),
-            upgradeAllowed: true
-          })
-        });
-        if (!response.ok) throw new Error(`${cf.name} could not be added.`);
+      for (const target of missing) {
+        try {
+          await createRuleFromGuide(target.format, target.mediaType, target.score);
+        } catch (error) {
+          throw new Error(`${friendlyRuleName(target.format.name)} (${mediaTypeLabel(target.mediaType)}) could not be added: ${error instanceof Error ? error.message : "unknown error"}`);
+        }
       }
       setPresetState("saved");
       setPresetMessage(`Added ${missing.length} ${missing.length === 1 ? "rule" : "rules"}${applied ? ` — ${applied} were already here` : ""}.`);
@@ -587,6 +667,16 @@ export function SettingsCustomFormatsPage() {
 
   /* ------------------------------------------------------------ render */
   const selectedGuide = form.trashId ? guide.customFormats.find((format) => format.trashId === form.trashId) ?? null : null;
+  // What a rule is matched by when this page cannot edit it: a guide choice
+  // not yet created (the server writes its conditions), or a rule stored with
+  // TRaSH or Radarr/Sonarr specifications.
+  const lockedDefinition: RuleSpecification[] | null = form.specifications
+    ? readSpecifications(form.specifications)
+    : !editing && selectedGuide
+      ? isGenuineGuideFormat(selectedGuide)
+        ? guideSpecifications(selectedGuide)
+        : selectedGuide.patterns.map((pattern) => ({ name: "", implementation: "ReleaseTitleSpecification", negate: false, required: false, value: pattern }))
+      : null;
   return (
     <form onSubmit={submitSafeguards} className="flex flex-col gap-[var(--page-gap)]" noValidate>
       <PageToolbar
@@ -602,6 +692,19 @@ export function SettingsCustomFormatsPage() {
           </>
         }
       />
+
+      {moveItems.length ? (
+        <ListCard title="Rules from the old guide catalogue" count={`${moveItems.length} to review`}>
+          <div className="flex flex-wrap items-center justify-between gap-3 p-[var(--card-pad-x)]">
+            <p className="max-w-3xl text-[length:var(--type-body-sm)] text-muted-foreground">
+              {moveItems.length === 1 ? "One rule was" : `${moveItems.length} rules were`} made from Deluno's earlier guide catalogue, whose ids were not TRaSH's and whose rules matched by Deluno's own patterns. Moving {moveItems.length === 1 ? "it" : "them"} onto TRaSH's formats keeps every score and every profile answer.
+            </p>
+            <Button type="button" onClick={() => { setMoveState(undefined); setMoveMessage(null); setDrawer({ kind: "guide-move" }); }}>
+              Review the move
+            </Button>
+          </div>
+        </ListCard>
+      ) : null}
 
       <ListCard title="Guide presets" count="Start with a goal instead of building rules yourself">
         <ListTable columns={[{ label: "Preset" }, { label: "Best for", width: "minmax(0,1.6fr)" }, { label: "Rules" }, { label: "Status", width: LIST_TRACK.status, mobile: true }]}>
@@ -801,26 +904,29 @@ export function SettingsCustomFormatsPage() {
             {split.groups.flatMap((group) => [
               split.showGroups && split.scope === "all" ? <ListGroupHeader key={group.key} label={group.label} count={group.items.length} /> : null,
               ...group.items.map((format) => {
-                const conditions = parseConditions(format.conditions);
+                const specifications = readSpecifications(format.conditions);
+                const conditions = specifications ? [] : parseConditions(format.conditions);
+                const conditionCount = specifications?.length ?? conditions.length;
                 const guideFormat = format.trashId ? guide.customFormats.find((candidate) => candidate.trashId === format.trashId) : undefined;
                 const usedBy = librariesByFormat.get(format.id) ?? [];
                 // The guide's own names are its filenames: "WEB Tier 01",
                 // "Repack2", "BR-DISK". The column your eye lands on first
                 // should be English, with the guide's name kept underneath
                 // because that is what you would search the guide for.
-                const shownName = guideFormat ? friendlyRuleName(guideFormat.name) : format.name;
+                // A rule the owner renamed is shown by their name.
+                const shownName = guideFormat && format.name === guideFormat.name ? friendlyRuleName(guideFormat.name) : format.name;
                 return (
                   <ListRow key={format.id} onClick={() => openRule(format)} selected={drawer?.kind === "rule" && drawer.id === format.id}>
                     <ListNameCell
                       name={shownName}
                       sub={guideFormat
-                        ? (shownName === guideFormat.name ? "From the guide catalogue" : `${guideFormat.name} · from the guide catalogue`)
-                        : "Written here"}
+                        ? `${shownName === guideFormat.name ? "" : `${guideFormat.name} · `}${isGenuineGuideFormat(guideFormat) ? "TRaSH format" : "Deluno guide format"}`
+                        : specifications ? "Imported specifications" : "Written here"}
                     />
                     {/* Guide rules are raw regex — lead with what they mean, not the pattern. */}
                     <ListCell
-                      primary={guideFormat?.description ?? (conditions.length ? conditionSummary(conditions) : "No conditions")}
-                      secondary={conditions.length ? `${conditions.length} ${conditions.length === 1 ? "condition" : "conditions"}` : "never matches anything"}
+                      primary={guideFormat?.description ?? (conditions.length ? conditionSummary(conditions) : specifications ? specificationKind(specifications[0]!.implementation) : "No conditions")}
+                      secondary={conditionCount ? `${conditionCount} ${conditionCount === 1 ? "condition" : "conditions"}` : "never matches anything"}
                     />
                     {/*
                       A library reaches these rules through its quality profile,
@@ -922,7 +1028,7 @@ export function SettingsCustomFormatsPage() {
         }}
         // The same name the list showed. Opening "Top-tier WEB groups" and
         // landing on a panel headed "WEB Tier 01" reads as the wrong rule.
-        title={editing ? (selectedGuide ? friendlyRuleName(selectedGuide.name) : editing.name) : "New custom release rule"}
+        title={editing ? (selectedGuide && editing.name === selectedGuide.name ? friendlyRuleName(selectedGuide.name) : editing.name) : "New custom release rule"}
         description={editing ? `${mediaTypeLabel(editing.mediaType)} · ${selectedGuide ? "Guide-backed" : "Custom rule"}` : "Choose a guide rule or build your own"}
         onSubmit={submitRule}
         footer={
@@ -941,7 +1047,7 @@ export function SettingsCustomFormatsPage() {
             <Field label="Guide choice" optional help="Choose a guide-backed rule and Deluno fills in the technical matching for you. Choose Custom rule when you want to define your own.">
               <Select value={form.trashId ?? ""} onChange={(event) => startFrom(event.target.value)} placeholder="Custom rule">
                 {GUIDE_CATEGORY_ORDER.map((category) => {
-                  const entries = guide.customFormats.filter((cf) => cf.category === category && !cf.bundleOnly);
+                  const entries = guide.customFormats.filter((cf) => cf.category === category && !cf.bundleOnly && guideFormatAppliesTo(cf, form.mediaType));
                   if (!entries.length) return null;
                   return (
                     <optgroup key={category} label={GUIDE_CATEGORY_LABELS[category] ?? category}>
@@ -960,7 +1066,7 @@ export function SettingsCustomFormatsPage() {
             <div className="grid gap-1 rounded-[10px] border border-primary/25 bg-primary/5 px-3 py-2">
               <p className="text-[length:var(--type-body-sm)] font-medium text-foreground">{friendlyRuleName(selectedGuide.name)}</p>
               <p className="text-[length:var(--type-caption)] text-muted-foreground">{selectedGuide.description}</p>
-              <p className="text-[length:var(--type-caption)] text-muted-foreground">The guide definition stays attached; the technical match is available under Advanced matching.</p>
+              <p className="text-[length:var(--type-caption)] text-muted-foreground">{isGenuineGuideFormat(selectedGuide) ? "TRaSH's own format, with TRaSH's id and conditions." : "Deluno's own format: TRaSH does not publish one."}</p>
             </div>
           ) : null}
           <Field label="Name" help="What this rule is looking for, in your own words.">
@@ -970,7 +1076,7 @@ export function SettingsCustomFormatsPage() {
             <SegmentedControl<"movies" | "tv">
               aria-label="Applies to"
               value={form.mediaType}
-              onValueChange={(value) => setForm((current) => ({ ...current, mediaType: value }))}
+              onValueChange={changeRuleMediaType}
               options={[
                 { value: "movies", label: "Movies" },
                 { value: "tv", label: "TV" }
@@ -1017,6 +1123,16 @@ export function SettingsCustomFormatsPage() {
           </Field>
         </Disclosure>
 
+        {lockedDefinition ? (
+          <DrawerSection title="Matching" aside={`${lockedDefinition.length} ${lockedDefinition.length === 1 ? "condition" : "conditions"}`}>
+            <p className="text-[length:var(--type-caption)] text-muted-foreground">
+              {lockedDefinition.some((specification) => specification.implementation !== "ReleaseTitleSpecification" || specification.required)
+                ? "Matched exactly as TRaSH defines it: every required condition must hold, and at least one condition of each kind. These are TRaSH's, so they are not edited here."
+                : "Matches a release title containing any one of these patterns."}
+            </p>
+            <SpecificationList specifications={lockedDefinition} />
+          </DrawerSection>
+        ) : (
         <DrawerSection title="Matching" aside={selectedGuide ? "Guide-backed" : form.conditions.length ? `${form.conditions.length} criteria` : "Set up below"}>
           <p className="text-[length:var(--type-caption)] text-muted-foreground">
             {selectedGuide
@@ -1086,6 +1202,7 @@ export function SettingsCustomFormatsPage() {
             </div>
           </Disclosure>
         </DrawerSection>
+        )}
 
         {editing ? (
           <DrawerSection title="Library impact" aside={librariesByFormat.get(editing.id)?.length ? `${librariesByFormat.get(editing.id)!.length} libraries` : "Not assigned"}>
@@ -1108,6 +1225,59 @@ export function SettingsCustomFormatsPage() {
             />
           </DrawerSection>
         ) : null}
+      </Drawer>
+
+      {/* ----------------------------------------------- guide move drawer */}
+      <Drawer
+        open={drawer?.kind === "guide-move"}
+        onOpenChange={(open) => {
+          if (!open) setDrawer(null);
+        }}
+        title="Move rules onto TRaSH's formats"
+        description="Each rule keeps its id, score and profile answers"
+        footer={
+          <DrawerFooter
+            state={moveState ?? "clean"}
+            message={moveMessage}
+            saveLabel={`Move ${moveSelection.length} ${moveSelection.length === 1 ? "rule" : "rules"}`}
+            saveType="button"
+            saveEnabled={moveSelection.length > 0}
+            onSave={() => void applyGuideMove()}
+            onCancel={() => setDrawer(null)}
+            disabled={busy !== null}
+          />
+        }
+      >
+        <DrawerSection title="What each rule becomes" aside={moveItems.length ? `${moveSelection.length} of ${moveItems.length} chosen` : "Nothing left to move"}>
+          <div className="grid gap-2">
+            {moveItems.map((item) => {
+              const checked = moveSelection.includes(item.ruleId);
+              return (
+                <label key={item.ruleId} className="grid cursor-pointer grid-cols-[auto_minmax(0,1fr)] gap-3 rounded-[10px] border border-hairline px-3 py-2 hover:bg-surface-2/40">
+                  <Checkbox
+                    className="mt-0.5"
+                    checked={checked}
+                    aria-label={`Move ${item.currentName} (${mediaTypeLabel(item.mediaType)})`}
+                    onCheckedChange={(next) => setMoveSelection((current) => next ? [...new Set([...current, item.ruleId])] : current.filter((id) => id !== item.ruleId))}
+                  />
+                  <span className="grid min-w-0 gap-0.5">
+                    <span className="text-[length:var(--type-body-sm)] font-medium text-foreground">
+                      {item.currentName} → {friendlyRuleName(item.newName)}
+                      <span className="font-normal text-muted-foreground"> · {mediaTypeLabel(item.mediaType)}</span>
+                    </span>
+                    <span className="text-[length:var(--type-caption)] text-muted-foreground">{item.explanation}</span>
+                    {item.profileNames.length ? (
+                      <span className="text-[length:var(--type-caption)] text-muted-foreground">Used by {item.profileNames.join(", ")}</span>
+                    ) : null}
+                    {item.conditionsWereEdited ? (
+                      <span><Chip tone="warn">Your conditions differ from what Deluno shipped</Chip></span>
+                    ) : null}
+                  </span>
+                </label>
+              );
+            })}
+          </div>
+        </DrawerSection>
       </Drawer>
 
       {/* ------------------------------------------------- preset drawer */}
@@ -1154,14 +1324,15 @@ export function SettingsCustomFormatsPage() {
               aside={`${presetProgress(presetDetail).applied} of ${presetProgress(presetDetail).total} already here`}
             >
               <div className="grid gap-1.5">
-                {presetProgress(presetDetail).resolved.map((cf) => {
-                  const target = presetDetail.mediaType === "tv" ? "tv" : "movies";
-                  const already = appliedTrashIds.has(`${target}:${cf.trashId}`);
-                  const score = presetDetail.includes.find((entry) => entry.trashId === cf.trashId)?.score ?? cf.originalScore;
+                {presetProgress(presetDetail).targets.map(({ format: cf, mediaType, score }) => {
+                  const already = appliedTrashIds.has(`${mediaType}:${cf.trashId}`);
                   return (
-                    <div key={cf.trashId} className="flex items-center justify-between gap-3 border-b border-hairline py-1.5 last:border-b-0">
+                    <div key={`${mediaType}:${cf.trashId}`} className="flex items-center justify-between gap-3 border-b border-hairline py-1.5 last:border-b-0">
                       <span className="min-w-0">
-                        <span className="block truncate text-[length:var(--type-body-sm)] text-foreground">{cf.name}</span>
+                        <span className="block truncate text-[length:var(--type-body-sm)] text-foreground">
+                          {friendlyRuleName(cf.name)}
+                          {presetDetail.mediaType === "all" ? <span className="text-muted-foreground"> · {mediaTypeLabel(mediaType)}</span> : null}
+                        </span>
                         <span className="block truncate text-[length:var(--type-caption)] text-muted-foreground">{cf.description}</span>
                       </span>
                       <span className="flex shrink-0 items-center gap-2">
@@ -1370,7 +1541,7 @@ function updateCondition(setForm: React.Dispatch<React.SetStateAction<RuleForm>>
 }
 
 function emptyRule(): RuleForm {
-  return { name: "", mediaType: "movies", score: "100", conditions: [], trashId: null };
+  return { name: "", mediaType: "movies", score: "100", conditions: [], trashId: null, specifications: null };
 }
 
 function ruleFrom(format: CustomFormatItem): RuleForm {
@@ -1378,8 +1549,9 @@ function ruleFrom(format: CustomFormatItem): RuleForm {
     name: format.name,
     mediaType: format.mediaType === "tv" ? "tv" : "movies",
     score: String(format.score),
-    conditions: parseConditions(format.conditions),
-    trashId: format.trashId ?? null
+    conditions: readSpecifications(format.conditions) ? [] : parseConditions(format.conditions),
+    trashId: format.trashId ?? null,
+    specifications: readSpecifications(format.conditions) ? format.conditions : null
   };
 }
 
@@ -1416,6 +1588,25 @@ function parseConditions(raw: string | null | undefined): Condition[] {
     .map((line) => line.trim())
     .filter(Boolean)
     .map((value) => ({ type: "releaseTitle" as ConditionType, value, negate: false, required: true }));
+}
+
+/** TRaSH's specifications as TRaSH names them, shown rather than edited. */
+function SpecificationList({ specifications }: { specifications: RuleSpecification[] }) {
+  return (
+    <ul className="grid gap-1.5" aria-label="Matching conditions">
+      {specifications.map((specification, index) => (
+        <li key={index} className="grid gap-0.5 rounded-[10px] border border-hairline bg-surface-2/40 px-3 py-2">
+          <span className="flex flex-wrap items-center gap-2 text-[length:var(--type-body-sm)] text-foreground">
+            {specificationKind(specification.implementation)}
+            {specification.name ? <span className="text-muted-foreground">{specification.name}</span> : null}
+            {specification.negate ? <Chip tone="warn">must not match</Chip> : null}
+            {specification.required ? <Chip tone="info">required</Chip> : null}
+          </span>
+          <span className="break-all font-mono text-[length:var(--type-caption)] text-muted-foreground">{specification.value}</span>
+        </li>
+      ))}
+    </ul>
+  );
 }
 
 function conditionSummary(conditions: Condition[]) {

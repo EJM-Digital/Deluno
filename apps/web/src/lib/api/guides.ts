@@ -6,6 +6,8 @@ import type {
   GuidePackageSyncRequest,
   GuideCapabilityInventory,
   GuideUpdateCheckState,
+  GuideRuleMigrationPreview,
+  GuideRuleMigrationResult,
   StoredGuidePackage
 } from "./types";
 
@@ -85,5 +87,22 @@ export function applyTrashGuideSync(request: GuidePackageSyncRequest): Promise<S
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(request)
+  });
+}
+
+/**
+ * Rules made from Deluno's old guide catalogue, and what each becomes on
+ * genuine TRaSH formats. Reading it changes nothing.
+ */
+export function fetchGuideRuleMigration(): Promise<GuideRuleMigrationPreview> {
+  return fetchJson<GuideRuleMigrationPreview>("/api/v1/guides/trash/rule-migration");
+}
+
+/** Moves exactly the chosen rules, and only if the preview still describes them. */
+export function applyGuideRuleMigration(previewHash: string, ruleIds: string[]): Promise<GuideRuleMigrationResult> {
+  return fetchJson<GuideRuleMigrationResult>("/api/v1/guides/trash/rule-migration/apply", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ previewHash, ruleIds })
   });
 }

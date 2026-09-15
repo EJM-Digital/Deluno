@@ -75,16 +75,17 @@ public sealed class InstalledPreferenceEvaluationTests
     public void Imported_file_snapshot_records_selected_guide_matches_and_typed_facts()
     {
         var now = DateTimeOffset.Parse("2026-09-01T00:00:00Z");
-        var guideFormat = GuidePackageCatalog.Current.CustomFormats.First(format =>
+        var guideFormat = GuidePackageCatalog.Current.CustomFormats.Single(format =>
             format.MappingStatus == GuideMappingStatus.Reviewed
-            && format.Name.Equals("TrueHD Atmos", StringComparison.OrdinalIgnoreCase));
+            && GuideFormatConditions.AppliesTo(format, "movies")
+            && format.Name.Equals("TrueHD ATMOS", StringComparison.Ordinal));
         var customFormat = new CustomFormatItem(
             "local-truehd-atmos",
             guideFormat.Name,
             "movies",
             guideFormat.OriginalScore,
             guideFormat.TrashId,
-            string.Join(Environment.NewLine, guideFormat.Patterns.Select(pattern => $"regex: {pattern}")),
+            GuideFormatConditions.For(guideFormat),
             true,
             now,
             now);
@@ -224,20 +225,15 @@ public sealed class InstalledPreferenceEvaluationTests
     {
         var now = DateTimeOffset.Parse("2026-09-15T00:00:00Z");
         var guideFormat = GuidePackageCatalog.Current.CustomFormats.Single(format =>
-            format.Name.Equals("Netflix", StringComparison.OrdinalIgnoreCase));
+            format.Name.Equals("NF", StringComparison.Ordinal)
+            && GuideFormatConditions.AppliesTo(format, "movies"));
         var netflix = new CustomFormatItem(
             "netflix",
             guideFormat.Name,
             "movies",
             guideFormat.OriginalScore,
             guideFormat.TrashId,
-            System.Text.Json.JsonSerializer.Serialize(guideFormat.Patterns.Select(pattern => new
-            {
-                type = "releaseTitle",
-                value = pattern,
-                negate = false,
-                required = true
-            })),
+            GuideFormatConditions.For(guideFormat),
             true,
             now,
             now);

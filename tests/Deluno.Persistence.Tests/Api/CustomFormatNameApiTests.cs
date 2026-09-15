@@ -56,4 +56,30 @@ public sealed class CustomFormatNameApiTests
         Assert.Equal(HttpStatusCode.OK, movieResponse.StatusCode);
         Assert.Equal(HttpStatusCode.OK, tvResponse.StatusCode);
     }
+
+    /// <summary>
+    /// A rule made from a guide format names the format and gets the guide's
+    /// conditions - TRaSH's specifications, for TRaSH's own copy of the format
+    /// for that media type. The screens used to write them three ways.
+    /// </summary>
+    [Fact]
+    public async Task A_rule_made_from_a_guide_format_gets_the_guides_own_conditions()
+    {
+        await using var app = await ApplicationTestHost.StartAsync();
+        var amazonTv = Deluno.Quality.Guides.GuidePackageCatalog.Current.CustomFormats
+            .Single(format => format.TrashId == "d660701077794679fd59e8bdf4ce3a29");
+
+        var created = await app.Client.PostAsJsonAsync(
+            "/api/custom-formats",
+            new CreateCustomFormatRequest("AMZN", "tv", 75, amazonTv.TrashId, null, true));
+        var wrongMedia = await app.Client.PostAsJsonAsync(
+            "/api/custom-formats",
+            new CreateCustomFormatRequest("AMZN", "movies", 75, amazonTv.TrashId, "", true));
+
+        Assert.Equal(HttpStatusCode.OK, created.StatusCode);
+        var rule = await created.Content.ReadFromJsonAsync<CustomFormatItem>();
+        Assert.Equal(Deluno.Quality.Guides.GuideFormatConditions.For(amazonTv), rule!.Conditions);
+        Assert.Equal(amazonTv.TrashId, rule.TrashId);
+        Assert.Equal(HttpStatusCode.BadRequest, wrongMedia.StatusCode);
+    }
 }

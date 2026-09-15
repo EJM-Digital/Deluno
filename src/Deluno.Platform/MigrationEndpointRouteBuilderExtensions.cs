@@ -43,6 +43,35 @@ public static class MigrationEndpointRouteBuilderExtensions
 
         var migration = write.MapGroup("/api/migration");
 
+        // Rules made from Deluno's old guide catalogue, and what each becomes
+        // on genuine TRaSH formats. Reading changes nothing.
+        var guideRules = write.MapGroup("/api/v1/guides/trash");
+        guideRules.MapGet("/rule-migration", async (
+            IGuideRuleMigrationService service,
+            CancellationToken cancellationToken) =>
+            Results.Ok(await service.PreviewAsync(cancellationToken)));
+        guideRules.MapPost("/rule-migration/apply", async (
+            HttpContext httpContext,
+            [FromBody] GuideRuleMigrationApplyRequest request,
+            IGuideRuleMigrationService service,
+            CancellationToken cancellationToken) =>
+        {
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
+            if (denied is not null)
+            {
+                return denied;
+            }
+
+            try
+            {
+                return Results.Ok(await service.ApplyAsync(request, cancellationToken));
+            }
+            catch (InvalidOperationException exception)
+            {
+                return Results.Conflict(new { message = exception.Message });
+            }
+        });
+
         migration.MapPost("/preview", async (
             HttpContext httpContext,
             [FromBody] MigrationImportRequest request,

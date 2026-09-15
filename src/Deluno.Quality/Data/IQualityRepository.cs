@@ -50,6 +50,22 @@ public interface IQualityRepository
         UpdateCustomFormatRequest request,
         CancellationToken cancellationToken);
 
+    /// <summary>
+    /// Replaces what a rule is - its name, guide identity and conditions - and
+    /// keeps what the owner chose: its id (so every profile answer about it
+    /// stays attached), score and media type. Unlike an update this can clear
+    /// the guide identity. Returns null when the rule is gone or its conditions
+    /// are no longer <paramref name="expectedConditions"/>, so a definition
+    /// the owner edited after a preview is never overwritten.
+    /// </summary>
+    Task<CustomFormatItem?> ReplaceCustomFormatDefinitionAsync(
+        string id,
+        string name,
+        string? trashId,
+        string conditions,
+        string expectedConditions,
+        CancellationToken cancellationToken);
+
     Task<PolicySetItem?> UpdatePolicySetAsync(
         string id,
         UpdatePolicySetRequest request,

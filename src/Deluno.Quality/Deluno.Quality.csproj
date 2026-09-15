@@ -11,5 +11,6 @@
   <ItemGroup>
     <EmbeddedResource Include="Guides\trash-guide-package.json" />
     <EmbeddedResource Include="Guides\trash-guide-source-inventory.json" />
+    <EmbeddedResource Include="Guides\trash-guide-legacy-catalogue.json" />
   </ItemGroup>
 </Project>
