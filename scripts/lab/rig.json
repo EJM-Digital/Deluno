@@ -33,6 +33,26 @@
     "taskName": "Deluno Host"
   },
 
+  "$mediaBoundary": [
+    "The owner's real library shares a NAS with the test run, and the NAS",
+    "account Deluno uses can write to the whole share. Nothing on the NAS",
+    "refuses a write, so assert-media-boundary.ps1 refuses instead: every path",
+    "Deluno could write to must sit below isolatedRoot, and nothing may sit",
+    "below a protected root or on a drive letter mapped to the share."
+  ],
+  "mediaBoundary": {
+    "isolatedRoot": "\\\\nas\\media\\Deluno-E2E-20260915-main-78a8287d",
+    "protectedRoots": [
+      "\\\\nas\\media\\Movies",
+      "\\\\nas\\media\\TV"
+    ],
+    "nasShareRoots": [
+      "\\\\nas\\media",
+      "\\\\192.168.1.207\\media"
+    ],
+    "mappedDriveLetters": ["X:", "Z:"]
+  },
+
   "services": {
     "qbittorrent": "http://192.168.1.51:8080",
     "weir": "http://192.168.1.51:8788",
