@@ -51,6 +51,7 @@ public class SeriesWorkflowServiceTests
     public void EvaluateEpisodeWantedStatus_WithNoFile_ReturnsMissingStatus()
     {
         var result = service.EvaluateEpisodeWantedStatus(
+            hasFile: false,
             currentQuality: null,
             targetQuality: "WEB 1080p",
             qualityCutoffMet: false,
@@ -64,6 +65,7 @@ public class SeriesWorkflowServiceTests
     public void EvaluateEpisodeWantedStatus_WithFileAtCutoff_ReturnsWaitingStatus()
     {
         var result = service.EvaluateEpisodeWantedStatus(
+            hasFile: true,
             currentQuality: "WEB 1080p",
             targetQuality: "WEB 1080p",
             qualityCutoffMet: true,
@@ -77,6 +79,7 @@ public class SeriesWorkflowServiceTests
     public void EvaluateEpisodeWantedStatus_BelowCutoffWithUpgradeEnabled_ReturnsUpgradeStatus()
     {
         var result = service.EvaluateEpisodeWantedStatus(
+            hasFile: true,
             currentQuality: "WEB 720p",
             targetQuality: "WEB 1080p",
             qualityCutoffMet: false,
@@ -90,6 +93,7 @@ public class SeriesWorkflowServiceTests
     public void EvaluateEpisodeWantedStatus_EmptyCurrentQuality_ReturnsMissing()
     {
         var result = realEngineService.EvaluateEpisodeWantedStatus(
+            hasFile: false,
             currentQuality: "",
             targetQuality: "WEB 1080p",
             qualityCutoffMet: false,
@@ -103,10 +107,25 @@ public class SeriesWorkflowServiceTests
     public void EvaluateEpisodeWantedStatus_BelowCutoffWithUpgradeDisabled_ReturnsWaiting()
     {
         var result = realEngineService.EvaluateEpisodeWantedStatus(
+            hasFile: true,
             currentQuality: "WEB 720p",
             targetQuality: "WEB 1080p",
             qualityCutoffMet: false,
             upgradeUntilCutoff: false,
+            upgradeUnknownItems: false);
+
+        Assert.Equal("covered", result.WantedStatus);
+    }
+
+    [Fact]
+    public void EvaluateEpisodeWantedStatus_FileOnDiskWithUnknownQuality_IsNotMissing()
+    {
+        var result = realEngineService.EvaluateEpisodeWantedStatus(
+            hasFile: true,
+            currentQuality: null,
+            targetQuality: "WEB 1080p",
+            qualityCutoffMet: false,
+            upgradeUntilCutoff: true,
             upgradeUnknownItems: false);
 
         Assert.Equal("covered", result.WantedStatus);

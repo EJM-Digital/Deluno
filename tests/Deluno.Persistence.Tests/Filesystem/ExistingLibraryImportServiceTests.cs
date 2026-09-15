@@ -52,6 +52,46 @@ public sealed class ExistingLibraryImportServiceTests
         Assert.Single(await movies.ListAsync(CancellationToken.None));
     }
 
+    /// <summary>
+    /// Seen on the physical rig: a Radarr library keeps the quality on the file,
+    /// not the folder, and every film previewed and imported as unknown quality.
+    /// </summary>
+    [Fact]
+    public async Task A_film_takes_its_quality_from_the_file_inside_its_folder()
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-09-15T08:00:00Z"));
+        await InitializeAsync(storage, timeProvider);
+
+        var rootPath = Path.Combine(storage.DataRoot, "radarr-layout");
+        var radarrFolder = Path.Combine(rootPath, "Silent Harbour (1998)");
+        Directory.CreateDirectory(radarrFolder);
+        await File.WriteAllTextAsync(Path.Combine(radarrFolder, "Silent Harbour (1998) (WEBDL-1080p).mp4"), string.Empty);
+        var releaseFolder = Path.Combine(rootPath, "Quiet.Coast.2004.2160p.BluRay.x265-GROUP");
+        Directory.CreateDirectory(releaseFolder);
+        await File.WriteAllTextAsync(Path.Combine(releaseFolder, "movie.mkv"), string.Empty);
+
+        var libraries = new SqliteLibrariesRepository(storage.Factory, timeProvider);
+        var libraryId = await CreateLibraryAsync(libraries, rootPath, "movies");
+        var movies = new SqliteMovieCatalogRepository(storage.Factory, timeProvider);
+        var service = CreateService(storage, timeProvider, libraries, movies);
+
+        var preview = await service.PreviewAsync(libraryId, cursor: null, take: 10, CancellationToken.None);
+
+        Assert.NotNull(preview);
+        Assert.Equal("WEB 1080p", preview.Items.Single(item => item.Title == "Silent Harbour").DetectedQuality);
+        // A plain file name falls back to the release folder's own quality.
+        Assert.Equal("Bluray 2160p", preview.Items.Single(item => item.Title == "Quiet Coast").DetectedQuality);
+
+        var result = await service.ImportSelectedAsync(libraryId, [radarrFolder], CancellationToken.None);
+
+        Assert.NotNull(result);
+        Assert.Equal(1, result.ImportedCount);
+        var wanted = await new Deluno.Media.SqliteMediaStateRepository(storage.Factory, timeProvider)
+            .ListWantedByIdsAsync(MediaKind.Movie, [(await movies.ListAsync(CancellationToken.None)).Single().Id], CancellationToken.None);
+        Assert.Equal("WEB 1080p", wanted.Single().CurrentQuality);
+    }
+
     [Fact]
     public async Task Start_creates_a_queued_run_rather_than_importing_inline()
     {

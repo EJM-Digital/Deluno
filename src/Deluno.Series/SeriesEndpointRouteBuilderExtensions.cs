@@ -2561,8 +2561,6 @@ public static class SeriesEndpointRouteBuilderExtensions
             string id,
             ISeriesCatalogRepository repository,
             IMediaStateRepository mediaStateRepository,
-            ILibrariesRepository platformSettingsRepository,
-            ISeriesWorkflowService workflowService,
             CancellationToken cancellationToken) =>
         {
             var seriesItem = await repository.GetByIdAsync(id, cancellationToken);
@@ -2593,25 +2591,17 @@ public static class SeriesEndpointRouteBuilderExtensions
                 });
             }
 
-            var libraries = await platformSettingsRepository.ListLibrariesAsync(cancellationToken);
-            var library = libraries.FirstOrDefault(item => item.Id == wantedItem.LibraryId);
-            var upgradeUntilCutoff = library?.UpgradeUntilCutoff ?? false;
-            var upgradeUnknownItems = library?.UpgradeUnknownItems ?? false;
-            var qualityCutoffMet = wantedItem.QualityCutoffMet;
-
-            var decision = workflowService.EvaluateEpisodeWantedStatus(
-                wantedItem.CurrentQuality,
-                wantedItem.TargetQuality,
-                qualityCutoffMet,
-                upgradeUntilCutoff,
-                upgradeUnknownItems);
-
+            // A show's status is its episodes' rung, which the catalogue stores
+            // on this row (SeriesRung). Re-deciding it here from the title-level
+            // file and quality is the category mistake SeriesRung was written to
+            // remove: it called a show with one episode on disk "missing" only
+            // because that one file's quality had no name.
             return Results.Ok(new
             {
-                wantedStatus = decision.WantedStatus,
-                reason = decision.Reason,
-                isReplacementAllowed = decision.IsReplacementAllowed,
-                qualityDelta = decision.QualityDelta,
+                wantedStatus = wantedItem.WantedStatus,
+                reason = wantedItem.WantedReason,
+                isReplacementAllowed = true,
+                qualityDelta = (int?)null,
                 currentQuality = wantedItem.CurrentQuality,
                 targetQuality = wantedItem.TargetQuality,
                 preventLowerQualityReplacements = wantedItem.PreventLowerQualityReplacements,

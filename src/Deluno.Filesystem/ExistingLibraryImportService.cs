@@ -906,11 +906,17 @@ public sealed class ExistingLibraryImportService(
             return new DetectionResult(null, null);
         }
 
+        // The title comes from the folder, the quality from the file. Radarr
+        // names the folder `Title (Year)` and puts the quality only on the file
+        // inside it, so reading both from the folder imported every film of an
+        // ordinary Radarr library as unknown quality. The folder is still asked
+        // second, for release folders whose file inside was renamed plain.
         var rawName = Path.GetFileName(entry);
         return new DetectionResult(
             ParseTitle(rawName) with
             {
-                DetectedQuality = LibraryQualityDecider.DetectQuality(rawName),
+                DetectedQuality = LibraryQualityDecider.DetectQuality(Path.GetFileNameWithoutExtension(videoFile))
+                    ?? LibraryQualityDecider.DetectQuality(rawName),
                 FilePath = videoFile,
                 FileSizeBytes = GetFileSize(videoFile)
             },
