@@ -116,9 +116,8 @@ export function orphanedCategories(guide: GuidePackage): string[] {
  *
  * <p>Matched through the guide rather than the format's own name, so a format
  * renamed upstream keeps its step. A local custom format the guide has never
- * heard of has no category, and lands under step 7 — not as a guess about what
- * it means, but because a rule you wrote yourself is a rule you are asserting,
- * and step 7 is the one that shows assertions.</p>
+ * heard of is deliberately not guessed into one of these seven guide
+ * questions; the profile editor presents it in its own custom-rules section.</p>
  */
 export function formatsForStep(
   step: QualityStep,
@@ -131,10 +130,17 @@ export function formatsForStep(
 
   return formats.filter((format) => {
     const guideFormat = format.trashId ? byTrashId.get(format.trashId) : undefined;
-    return guideFormat
-      ? step.categories.includes(guideFormat.category)
-      : step.id === "never";
+    return guideFormat ? step.categories.includes(guideFormat.category) : false;
   });
+}
+
+/** Rules without a shipped guide identity, shown separately from guide categories. */
+export function customFormatsOutsideGuide(
+  formats: readonly CustomFormatItem[],
+  guide: GuidePackage
+): CustomFormatItem[] {
+  const guideIds = new Set((guide.customFormats ?? []).map((format) => format.trashId));
+  return formats.filter((format) => !format.trashId || !guideIds.has(format.trashId));
 }
 
 /**

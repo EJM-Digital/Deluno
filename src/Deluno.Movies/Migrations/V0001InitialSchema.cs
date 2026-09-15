@@ -43,7 +43,8 @@ public static class MoviesDatabaseMigrations
         new V0032MovieCollections(),
         new V0033MoviePreferenceEvaluations(),
         new V0034MovieSubtitleFailureDetails(),
-        new V0035MovieMetadataProviderIssues()
+        new V0035MovieMetadataProviderIssues(),
+        new V0036MovieReleaseNameEvidence()
     ];
 
     private sealed class V0001InitialSchema : SqliteSqlMigration

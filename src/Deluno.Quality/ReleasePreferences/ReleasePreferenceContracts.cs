@@ -119,7 +119,13 @@ public sealed record PreferencePlanProvenance(
     string? MatcherDefinition = null,
     IReadOnlyList<string>? MappedTraitIds = null,
     /// <summary>Whether matcher conditions are alternatives rather than an AND.</summary>
-    bool MatcherAny = false);
+    bool MatcherAny = false,
+    /// <summary>The saved Deluno rule row that supplied this matcher.</summary>
+    string? RuleId = null,
+    /// <summary>The owner-facing rule name captured when the plan was compiled.</summary>
+    string? RuleName = null,
+    /// <summary>The typed profile answer; never a numeric ranking score.</summary>
+    string? ProfileIntent = null);
 
 /// <summary>
 /// One normalized fact. Missing facts are treated as unknown by the evaluator;
@@ -341,7 +347,15 @@ public sealed record PreferenceEvaluationSnapshot(
     PreferenceEvaluation Evaluation,
     IReadOnlyList<string> MatchedRuleIds,
     DateTimeOffset EvaluatedUtc,
-    string? Source = null);
+    string? Source = null,
+    /// <summary>
+    /// The immutable release-title or source-name evidence used to classify
+    /// this installed file. It is deliberately separate from
+    /// <see cref="FilePath"/>: a clean library rename must not erase the
+    /// service, revision, edition, group or custom-format evidence that made
+    /// Deluno choose the release.
+    /// </summary>
+    string? ReleaseNameEvidence = null);
 
 /// <summary>
 /// Canonical serialization for persisted release-preference evidence. Facts,
@@ -728,6 +742,9 @@ internal static class ReleasePreferencePlanHash
                      .ThenBy(item => item.MatcherAny)
                      .ThenBy(item => Normalize(item.OriginalScore ?? string.Empty), StringComparer.Ordinal)
                      .ThenBy(item => Normalize(item.AssignedScore ?? string.Empty), StringComparer.Ordinal)
+                     .ThenBy(item => Normalize(item.RuleId ?? string.Empty), StringComparer.Ordinal)
+                     .ThenBy(item => Normalize(item.RuleName ?? string.Empty), StringComparer.Ordinal)
+                     .ThenBy(item => Normalize(item.ProfileIntent ?? string.Empty), StringComparer.Ordinal)
                      .ThenBy(item => string.Join("|", (item.MappedTraitIds ?? [])
                          .Where(id => !string.IsNullOrWhiteSpace(id))
                          .Select(Normalize)
@@ -744,6 +761,17 @@ internal static class ReleasePreferencePlanHash
             Append(builder, Normalize(source.Layer ?? string.Empty));
             Append(builder, Normalize(source.MatcherDefinition ?? string.Empty));
             Append(builder, source.MatcherAny.ToString());
+            // Keep hashes for plans written before rule-level provenance was
+            // introduced byte-for-byte stable. New provenance is hash-bound
+            // only when it is actually present.
+            if (!string.IsNullOrWhiteSpace(source.RuleId)
+                || !string.IsNullOrWhiteSpace(source.RuleName)
+                || !string.IsNullOrWhiteSpace(source.ProfileIntent))
+            {
+                Append(builder, "rule-id:" + Normalize(source.RuleId ?? string.Empty));
+                Append(builder, "rule-name:" + Normalize(source.RuleName ?? string.Empty));
+                Append(builder, "profile-intent:" + Normalize(source.ProfileIntent ?? string.Empty));
+            }
             foreach (var traitId in (source.MappedTraitIds ?? [])
                          .Where(id => !string.IsNullOrWhiteSpace(id))
                          .Select(Normalize)

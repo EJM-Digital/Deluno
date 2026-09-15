@@ -55,6 +55,43 @@ public sealed class ReleasePreferenceProofTests
     }
 
     [Fact]
+    public void Adding_optional_rule_provenance_does_not_invalidate_legacy_plan_hashes()
+    {
+        var legacySource = new PreferencePlanProvenance(
+            "guide",
+            "rule",
+            "v1",
+            OriginalScore: "1",
+            AssignedScore: "2",
+            MappingId: "map",
+            MappingVersion: "m1",
+            Layer: "x",
+            MatcherDefinition: "regex: a",
+            MappedTraitIds: ["source.webdl"],
+            MatcherAny: true);
+        var legacy = new ReleasePreferencePlan(
+            "proof/hash",
+            "1",
+            "movies",
+            [],
+            Sources: [legacySource]);
+        var withRuleIdentity = legacy with
+        {
+            Sources = [legacySource with
+            {
+                RuleId = "17",
+                RuleName = "Amazon",
+                ProfileIntent = "prefer"
+            }]
+        };
+
+        Assert.Equal(
+            "54526948af03a0f1773c1af52cb6c8aea7abc59f3fe71b2ea521c1879f6c9746",
+            legacy.PlanHash);
+        Assert.NotEqual(legacy.PlanHash, withRuleIdentity.PlanHash);
+    }
+
+    [Fact]
     public void Plan_validation_rejects_requiring_a_trait_it_also_forbids()
     {
         var requiredSpecificButForbiddenBroad = AudioPlan() with

@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Deluno.Connections.Contracts;
 using Deluno.Connections.Data;
 using Deluno.Contracts;
@@ -17,6 +18,7 @@ using Deluno.Platform.Data;
 using Deluno.Quality;
 using Deluno.Quality.Contracts;
 using Deluno.Quality.Data;
+using Deluno.Quality.Guides;
 using Deluno.Quality.ReleasePreferences;
 using Deluno.Series.Contracts;
 using Deluno.Series.Data;
@@ -907,6 +909,154 @@ public sealed class ImportPipelineServiceTests
     }
 
     [Fact]
+    public async Task Import_preserves_dispatch_release_evidence_after_clean_movie_rename()
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-09-15T04:00:00Z"));
+        await InitializeAllAsync(storage, timeProvider);
+
+        var downloadsPath = Path.Combine(storage.DataRoot, "downloads");
+        var movieRootPath = Path.Combine(storage.DataRoot, "movies");
+        Directory.CreateDirectory(downloadsPath);
+        Directory.CreateDirectory(movieRootPath);
+        var sourcePath = Path.Combine(downloadsPath, "Big.Buck.Bunny.2008.1080p.WEB-DL.mkv");
+        await File.WriteAllBytesAsync(sourcePath, Enumerable.Repeat((byte)0x42, 4096).ToArray());
+        File.SetLastWriteTimeUtc(sourcePath, DateTime.UtcNow.AddMinutes(-1));
+
+        var platform = CreatePlatformRepository(storage, timeProvider);
+        var libraries = CreateLibrariesRepository(storage, timeProvider);
+        await SaveSettingsAsync(platform, movieRootPath, downloadsPath);
+
+        var quality = new SqliteQualityRepository(storage.Factory, timeProvider);
+        var netflixGuide = GuidePackageCatalog.Current.CustomFormats.Single(format =>
+            format.Name.Equals("Netflix", StringComparison.OrdinalIgnoreCase));
+        var netflix = await quality.CreateCustomFormatAsync(
+            new CreateCustomFormatRequest(
+                netflixGuide.Name,
+                "movies",
+                netflixGuide.OriginalScore,
+                netflixGuide.TrashId,
+                string.Join(Environment.NewLine, netflixGuide.Patterns.Select(pattern => $"regex: {pattern}")),
+                true),
+            CancellationToken.None);
+        var preferredGroup = await quality.CreateCustomFormatAsync(
+            new CreateCustomFormatRequest(
+                "Preferred DELUNO group",
+                "movies",
+                100,
+                null,
+                "[{\"type\":\"releaseGroup\",\"value\":\"DELUNO\",\"negate\":false,\"required\":true}]",
+                true),
+            CancellationToken.None);
+        var profile = await quality.CreateQualityProfileAsync(
+            new CreateQualityProfileRequest(
+                "E2E Movies 1080p",
+                "movies",
+                "WEB 1080p",
+                "WEB 1080p",
+                $"{netflix.Id},{preferredGroup.Id}",
+                UpgradeUntilCutoff: true,
+                UpgradeUnknownItems: false,
+                FormatIntents: new Dictionary<string, string>
+                {
+                    [netflix.Id] = "prefer",
+                    [preferredGroup.Id] = "prefer"
+                }),
+            CancellationToken.None);
+        await CreateMovieLibraryAsync(
+            libraries,
+            movieRootPath,
+            downloadsPath,
+            qualityProfileId: profile.Id);
+        var library = Assert.Single(await libraries.ListLibrariesAsync(CancellationToken.None));
+
+        var realtime = new RecordingRealtimeEventPublisher();
+        var jobStore = new SqliteJobStore(storage.Factory, timeProvider, realtime, new NullDownloadDispatchesRepository());
+        var dispatches = new SqliteDownloadDispatchesRepository(storage.Factory, timeProvider);
+        const string releaseName = "Big.Buck.Bunny.2008.1080p.NF.WEB-DL.x264-DELUNO";
+        var dispatchId = await jobStore.RecordDownloadDispatchAsync(
+            library.Id,
+            "movies",
+            "movie",
+            "movie-big-buck-bunny",
+            releaseName,
+            "TestIndexer",
+            "client-1",
+            "TestClient",
+            "sent",
+            notesJson: null,
+            cancellationToken: CancellationToken.None);
+
+        var mediaState = new SqliteMediaStateRepository(storage.Factory, timeProvider);
+        var movies = new SqliteMovieCatalogRepository(storage.Factory, timeProvider, mediaState);
+        var service = CreateService(
+            storage,
+            timeProvider,
+            platform,
+            libraries,
+            movies,
+            qualityRepository: quality,
+            downloadDispatchesRepository: dispatches);
+
+        var result = await service.ExecuteAsync(
+            new ImportExecuteRequest(
+                new ImportPreviewRequest(
+                    sourcePath,
+                    null,
+                    "movies",
+                    "Big Buck Bunny",
+                    2008,
+                    [],
+                    [],
+                    null,
+                    "en"),
+                "copy",
+                Overwrite: false,
+                AllowCopyFallback: true,
+                DispatchId: dispatchId),
+            CancellationToken.None);
+
+        Assert.True(result.Succeeded, result.Message);
+        var tracked = new List<MovieTrackedFileItem>();
+        await foreach (var item in movies.StreamTrackedFilesAsync(library.Id, CancellationToken.None))
+        {
+            tracked.Add(item);
+        }
+        var imported = Assert.Single(tracked);
+        Assert.Equal("Big Buck Bunny (2008).mkv", Path.GetFileName(imported.FilePath));
+        Assert.DoesNotContain("NF", imported.FilePath, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("DELUNO", Path.GetFileName(imported.FilePath), StringComparison.OrdinalIgnoreCase);
+
+        var snapshot = await mediaState.GetLatestPreferenceEvaluationSnapshotAsync(
+            MediaKind.Movie,
+            imported.MovieId,
+            library.Id,
+            fileIdentity: null,
+            CancellationToken.None,
+            imported.FilePath,
+            imported.FileSizeBytes);
+        Assert.NotNull(snapshot);
+        Assert.Equal(releaseName, snapshot.ReleaseNameEvidence);
+        Assert.Equal(
+            new[] { netflix.Id, preferredGroup.Id }.Order(StringComparer.Ordinal),
+            snapshot.MatchedRuleIds.Order(StringComparer.Ordinal));
+        Assert.Contains(snapshot.Facts, fact =>
+            fact.TraitId.Equals("service.netflix", StringComparison.OrdinalIgnoreCase)
+            && fact.Evidence?.Source == "guide-custom-format");
+
+        var timeline = await dispatches.GetDispatchTimelineAsync(dispatchId, CancellationToken.None);
+        var provenanceEvent = Assert.Single(timeline, item => item.EventType == "file_provenance_recorded");
+        using var provenance = JsonDocument.Parse(Assert.IsType<string>(provenanceEvent.DetailsJson));
+        Assert.Equal(releaseName, provenance.RootElement.GetProperty("ReleaseNameEvidence").GetString());
+        Assert.Equal("TestIndexer", provenance.RootElement.GetProperty("IndexerName").GetString());
+        Assert.Equal("TestClient", provenance.RootElement.GetProperty("DownloadClientName").GetString());
+        Assert.Equal(sourcePath, provenance.RootElement.GetProperty("SourcePath").GetString());
+        Assert.Equal(imported.FilePath, provenance.RootElement.GetProperty("DestinationPath").GetString());
+        Assert.Contains("DELUNO", provenance.RootElement.GetProperty("MatchedRuleNames").GetString(), StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(snapshot.PlanHash, provenance.RootElement.GetProperty("PreferencePlanHash").GetString());
+    }
+
+    [Fact]
     public async Task Tv_import_uses_persisted_airdate_numbering_for_rename_and_catalogue_identity()
     {
         using var storage = TestStorage.Create();
@@ -1786,7 +1936,8 @@ public sealed class ImportPipelineServiceTests
         SqliteMovieCatalogRepository movies,
         IMediaProbeService? mediaProbeService = null,
         ISeriesCatalogRepository? seriesCatalogRepository = null,
-        IQualityRepository? qualityRepository = null)
+        IQualityRepository? qualityRepository = null,
+        IDownloadDispatchesRepository? downloadDispatchesRepository = null)
         => new(
             platform,
             librariesRepository,
@@ -1797,7 +1948,7 @@ public sealed class ImportPipelineServiceTests
             new MediaDecisionService(new VersionedMediaPolicyEngine()),
             null, // IOutboundNotificationService — not needed in tests
             new NullImportResolutionsRepository(),
-            null,
+            downloadDispatchesRepository,
             null,
             NullLogger<ImportPipelineService>.Instance,
             null,
@@ -1821,7 +1972,8 @@ public sealed class ImportPipelineServiceTests
         string movieRootPath,
         string downloadsPath,
         string cleanupMode = "keep-source",
-        bool removeEmptySourceFolders = false)
+        bool removeEmptySourceFolders = false,
+        string? qualityProfileId = null)
     {
         var request = new CreateLibraryRequest(
             Name: "Movies",
@@ -1829,7 +1981,7 @@ public sealed class ImportPipelineServiceTests
             Purpose: "Main",
             RootPath: movieRootPath,
             DownloadsPath: downloadsPath,
-            QualityProfileId: null,
+            QualityProfileId: qualityProfileId,
             ImportWorkflow: "standard",
             ProcessorName: null,
             ProcessorOutputPath: null,

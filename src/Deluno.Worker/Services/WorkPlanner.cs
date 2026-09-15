@@ -835,6 +835,9 @@ public sealed class WorkPlanner(
                             : $"Deluno could not submit {item.Title} to {connection.Name}. {submission.Message}",
                         JsonSerializer.Serialize(new
                         {
+                            DispatchId = dispatch?.DispatchId,
+                            item.ReleaseName,
+                            item.SourcePath,
                             HandoffId = handoff.Id,
                             ConnectionId = connection.Id,
                             connection.Name,
@@ -858,6 +861,7 @@ public sealed class WorkPlanner(
                         waitingMessage,
                         JsonSerializer.Serialize(new
                         {
+                            DispatchId = dispatch?.DispatchId,
                             item.ClientId,
                             item.ClientName,
                             item.ReleaseName,
@@ -1185,6 +1189,8 @@ public sealed class WorkPlanner(
                 $"Deluno matched processed output for {handoff.ReleaseName} and queued it for import.",
                 JsonSerializer.Serialize(new
                 {
+                    DispatchId = dispatch?.DispatchId,
+                    handoff.ReleaseName,
                     HandoffId = handoff.Id,
                     library.Id,
                     library.Name,

@@ -1039,6 +1039,12 @@ public static class QualityEndpointRouteBuilderExtensions
             }
 
             var errors = ValidateCustomFormat(request.Name);
+            AddDuplicateCustomFormatNameError(
+                errors,
+                await repository.ListCustomFormatsAsync(cancellationToken),
+                request.Name,
+                request.MediaType,
+                exceptId: null);
             if (errors.Count > 0)
             {
                 return Results.ValidationProblem(errors);
@@ -1062,6 +1068,12 @@ public static class QualityEndpointRouteBuilderExtensions
             }
 
             var errors = ValidateCustomFormat(request.Name);
+            AddDuplicateCustomFormatNameError(
+                errors,
+                await repository.ListCustomFormatsAsync(cancellationToken),
+                request.Name,
+                request.MediaType,
+                exceptId: id);
             if (errors.Count > 0)
             {
                 return Results.ValidationProblem(errors);
@@ -1568,6 +1580,34 @@ public static class QualityEndpointRouteBuilderExtensions
         }
 
         return errors;
+    }
+
+    private static void AddDuplicateCustomFormatNameError(
+        IDictionary<string, string[]> errors,
+        IReadOnlyList<CustomFormatItem> existing,
+        string? name,
+        string? mediaType,
+        string? exceptId)
+    {
+        if (string.IsNullOrWhiteSpace(name))
+        {
+            return;
+        }
+
+        var normalizedMediaType = MediaPolicyCatalog.NormalizeMediaType(mediaType);
+        if (existing.Any(item =>
+                !string.Equals(item.Id, exceptId, StringComparison.OrdinalIgnoreCase)
+                && string.Equals(item.Name.Trim(), name.Trim(), StringComparison.OrdinalIgnoreCase)
+                && string.Equals(
+                    MediaPolicyCatalog.NormalizeMediaType(item.MediaType),
+                    normalizedMediaType,
+                    StringComparison.OrdinalIgnoreCase)))
+        {
+            errors["name"] =
+            [
+                $"A {normalizedMediaType} custom rule named '{name.Trim()}' already exists. Edit that rule instead of creating a duplicate that would report the same match twice."
+            ];
+        }
     }
 
     private static Dictionary<string, string[]> ValidatePolicySet(string? name)

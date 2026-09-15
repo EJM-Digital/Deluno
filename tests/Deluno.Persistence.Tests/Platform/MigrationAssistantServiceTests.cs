@@ -80,10 +80,10 @@ public sealed class MigrationAssistantServiceTests
     }
 
     [Fact]
-    public async Task PreviewAsync_preserves_custom_formats_and_keeps_profiles_with_unresolved_matchers_review_only()
+    public async Task PreviewAsync_compiles_a_supported_unreviewed_matcher_to_typed_intent()
     {
         using var storage = TestStorage.Create();
-        var service = await CreateServiceAsync(storage);
+        var service = await CreateServiceAsync(storage, includeReleasePreferencePlans: true);
 
         var report = await service.PreviewAsync(
             new MigrationImportRequest("radarr", "Radarr custom formats", """
@@ -114,22 +114,24 @@ public sealed class MigrationAssistantServiceTests
             CancellationToken.None);
 
         var customFormat = Assert.Single(report.Operations, operation => operation.TargetType == "custom-format");
-        Assert.Equal("report", customFormat.Action);
-        Assert.False(customFormat.CanApply);
+        Assert.Equal("create", customFormat.Action);
+        Assert.True(customFormat.CanApply);
         Assert.Equal("trash-web", customFormat.Data["trashId"]);
         Assert.Contains("required", customFormat.Data["rawJson"]!, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal("ExactTyped", customFormat.Data["classification"]);
+        Assert.Equal("typed", customFormat.Data["activation"]);
+        Assert.Equal("False", customFormat.Data["requiresReview"]);
 
         var plan = Assert.Single(report.Operations, operation => operation.TargetType == "release-preference-plan");
-        Assert.Equal("report", plan.Action);
-        Assert.False(plan.CanApply);
-        Assert.Equal("True", plan.Data["requiresReview"]);
+        Assert.Equal("create", plan.Action);
+        Assert.True(plan.CanApply);
+        Assert.Equal("False", plan.Data["requiresReview"]);
         Assert.False(string.IsNullOrWhiteSpace(plan.Data["planHash"]));
         Assert.Contains("quality", plan.Data["planJson"]!, StringComparison.OrdinalIgnoreCase);
 
         var profile = Assert.Single(report.Operations, operation => operation.TargetType == "quality-profile");
         Assert.Equal("create", profile.Action);
-        Assert.False(profile.CanApply);
-        Assert.Contains("custom-format", profile.Reason, StringComparison.OrdinalIgnoreCase);
+        Assert.True(profile.CanApply);
     }
 
     [Fact]
@@ -237,11 +239,14 @@ public sealed class MigrationAssistantServiceTests
             .OrderBy(plan => plan.Id, StringComparer.Ordinal)
             .ToArray();
         Assert.Equal(2, compiled.Length);
-        var lowSource = Assert.Single(compiled[0].Sources!, source => source.SourceId == guideFormat.TrashId);
-        var highSource = Assert.Single(compiled[1].Sources!, source => source.SourceId == guideFormat.TrashId);
+        var lowSource = Assert.Single(compiled[0].Sources!, source => source.RuleId == "17");
+        var highSource = Assert.Single(compiled[1].Sources!, source => source.RuleId == "17");
         Assert.Equal("125", lowSource.AssignedScore);
         Assert.Equal("875", highSource.AssignedScore);
         Assert.Equal(guideFormat.OriginalScore.ToString(System.Globalization.CultureInfo.InvariantCulture), lowSource.OriginalScore);
+        Assert.EndsWith(guideFormat.TrashId, lowSource.MappingId, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal("prefer", lowSource.ProfileIntent);
+        Assert.Equal("strong-prefer", highSource.ProfileIntent);
         Assert.NotEqual(compiled[0].PlanHash, compiled[1].PlanHash);
 
         var applied = await service.ApplyAsync(request, CancellationToken.None);
@@ -288,7 +293,7 @@ public sealed class MigrationAssistantServiceTests
                       "score": 999,
                       "upgradeAllowed": false,
                       "specifications": [
-                        { "name": "release group", "implementation": "ReleaseGroupSpecification", "fields": [{ "name": "value", "value": "trusted" }], "negate": true, "required": false }
+                        { "name": "indexer flag", "implementation": "IndexerFlagSpecification", "fields": [{ "name": "value", "value": "freeleech" }], "negate": true, "required": false }
                       ]
                     }
                   ],

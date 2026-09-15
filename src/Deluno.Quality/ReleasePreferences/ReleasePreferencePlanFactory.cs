@@ -5,11 +5,11 @@ namespace Deluno.Quality.ReleasePreferences;
 
 /// <summary>
 /// Creates the typed quality policy used by acquisition when a persisted
-/// profile has not yet been compiled into a guide-backed plan. This keeps the
-/// runtime path on the same contract while legacy custom-format rows remain
-/// available for migration and Advanced diagnostics. Reviewed safety mappings
-/// are compiled as forbidden hard gates; they never behave like a positive
-/// preference.
+/// profile has not yet been compiled into a guide-backed plan. Every valid
+/// selected custom-format matcher becomes an immutable Boolean decision family;
+/// only missing or empty matchers remain in Advanced diagnostics. Reviewed
+/// safety mappings are compiled as forbidden hard gates and never behave like
+/// a positive preference.
 /// </summary>
 public static class ReleasePreferencePlanFactory
 {
@@ -43,10 +43,10 @@ public static class ReleasePreferencePlanFactory
     }
 
     /// <summary>
-    /// Returns the typed plan plus the explicit Advanced review items that
-    /// could not be given a reviewed semantic mapping. This is used by the
-    /// preview API so legacy matcher rows are visible without allowing their
-    /// numeric scores to affect acquisition.
+    /// Returns the typed plan plus explicit review items that cannot be
+    /// evaluated safely. A valid local or unreviewed matcher is compiled as a
+    /// plan-scoped matched/not-matched family, so its typed owner intent works
+    /// without turning its legacy numeric score into decision arithmetic.
     /// </summary>
     public static RuntimeQualityProfileCompilation CompileProfile(
         QualityProfileItem profile,
@@ -61,8 +61,6 @@ public static class ReleasePreferencePlanFactory
         var availableById = (customFormats ?? [])
             .Where(item => !string.IsNullOrWhiteSpace(item.Id))
             .ToDictionary(item => item.Id, StringComparer.OrdinalIgnoreCase);
-        var guideFormats = guidePackage.CustomFormats
-            .ToDictionary(item => item.TrashId, StringComparer.OrdinalIgnoreCase);
         var advanced = new List<LegacyPreferenceRuleTranslation>();
         var warnings = new List<string>();
 
@@ -86,8 +84,11 @@ public static class ReleasePreferencePlanFactory
                 continue;
             }
 
-            if (!TryGetReviewedMapping(format, guideFormats, out _, out var explanation))
+            if (!CustomFormatDefinitionMatcher.CanEvaluate(format.Conditions))
             {
+                var explanation = string.IsNullOrWhiteSpace(format.Conditions)
+                    ? "The custom format has no matcher conditions, so Deluno cannot prove whether a release matches it."
+                    : "The custom format contains a condition Deluno cannot interpret completely, so it remains review-only rather than changing the rule.";
                 advanced.Add(new LegacyPreferenceRuleTranslation(
                     format.Id,
                     format.Name,
@@ -100,6 +101,7 @@ public static class ReleasePreferencePlanFactory
                     null,
                     true,
                     explanation));
+                warnings.Add($"Custom format '{format.Name}' cannot be evaluated completely and needs review.");
             }
         }
 
@@ -195,64 +197,87 @@ public static class ReleasePreferencePlanFactory
             .ToDictionary(format => format.TrashId, StringComparer.OrdinalIgnoreCase);
         var mappedTraits = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var forbiddenTraits = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        var upgradeDrivingTraits = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var customFormatFamilies = new List<PreferenceFamily>();
         var sources = new List<PreferencePlanProvenance>();
         foreach (var format in customFormats ?? [])
         {
-            if (string.IsNullOrWhiteSpace(format.TrashId)
-                || !guideFormats.TryGetValue(format.TrashId, out var guideFormat)
-                || guideFormat.MappingStatus != GuideMappingStatus.Reviewed)
+            if (string.IsNullOrWhiteSpace(format.Id)
+                || !CustomFormatDefinitionMatcher.CanEvaluate(format.Conditions))
             {
                 continue;
             }
 
-            // #394: how much this profile cares. A preference it has not
-            // answered for keeps the guide's own recommendation, which is what
-            // every profile had before it could answer at all.
+            guideFormats.TryGetValue(format.TrashId ?? string.Empty, out var guideFormat);
+            var hasReviewedMapping = guideFormat?.MappingStatus == GuideMappingStatus.Reviewed;
             var answer = formatIntents is not null && formatIntents.TryGetValue(format.Id, out var stated)
                 ? ProfileFormatIntents.Normalize(stated)
                 : ProfileFormatIntents.FromGuideScore(format.Score);
+            if (hasReviewedMapping && IsForbiddenCategory(guideFormat!.Category))
+            {
+                answer = ProfileFormatIntents.MustNotHave;
+            }
+
+            var matchedTrait = CustomFormatPreferenceTraits.Matched(format.Id);
+            var notMatchedTrait = CustomFormatPreferenceTraits.NotMatched(format.Id);
+            var semanticTraits = hasReviewedMapping
+                ? PreferenceTraitRegistry.Current.CanonicalizeIds(guideFormat!.MappedTraitIds)
+                : [];
 
             sources.Add(new PreferencePlanProvenance(
-                SourceKind: guideFormat.SourceKind,
-                SourceId: guideFormat.TrashId,
-                SourceVersion: $"{guidePackage.Version}:{guidePackage.Source.UpstreamRevision}",
-                OriginalScore: guideFormat.OriginalScore.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                SourceKind: CustomFormatPreferenceTraits.SourceKind,
+                SourceId: format.Id,
+                SourceVersion: format.UpdatedUtc.ToUniversalTime().ToString("O"),
+                OriginalScore: (hasReviewedMapping ? guideFormat!.OriginalScore : format.Score)
+                    .ToString(System.Globalization.CultureInfo.InvariantCulture),
                 AssignedScore: format.Score.ToString(System.Globalization.CultureInfo.InvariantCulture),
-                MappingId: $"{guidePackage.Id}:{guideFormat.TrashId}",
-                MappingVersion: "trash-semantic-map/v1",
+                MappingId: hasReviewedMapping ? $"{guidePackage.Id}:{guideFormat!.TrashId}" : null,
+                MappingVersion: CustomFormatPreferenceTraits.MappingVersion,
                 Layer: "runtime-quality",
                 MatcherDefinition: format.Conditions,
-                MappedTraitIds: PreferenceTraitRegistry.Current.CanonicalizeIds(guideFormat.MappedTraitIds),
-                MatcherAny: !string.IsNullOrWhiteSpace(format.TrashId)));
+                MappedTraitIds: [matchedTrait, notMatchedTrait, .. semanticTraits],
+                MatcherAny: !string.IsNullOrWhiteSpace(format.TrashId),
+                RuleId: format.Id,
+                RuleName: format.Name,
+                ProfileIntent: answer));
 
-            foreach (var traitId in guideFormat.MappedTraitIds ?? [])
+            if (ProfileFormatIntents.Refuses(answer))
+            {
+                forbiddenTraits.Add(matchedTrait);
+            }
+            else
+            {
+                var preferMatch = answer is ProfileFormatIntents.Prefer or ProfileFormatIntents.StronglyPrefer;
+                var ruleLevels = preferMatch
+                    ? new[]
+                    {
+                        new PreferenceFamilyLevel("matched", 0, [matchedTrait]),
+                        new PreferenceFamilyLevel("not-matched", 1, [notMatchedTrait])
+                    }
+                    : new[]
+                    {
+                        new PreferenceFamilyLevel("not-matched", 0, [notMatchedTrait]),
+                        new PreferenceFamilyLevel("matched", 1, [matchedTrait])
+                    };
+                var drivesUpgrade = ProfileFormatIntents.DrivesUpgrade(answer) && format.UpgradeAllowed;
+                customFormatFamilies.Add(new PreferenceFamily(
+                    Id: CustomFormatPreferenceTraits.Family(format.Id),
+                    Dimension: $"Custom rule · {format.Name}",
+                    Order: customFormatFamilies.Count + 2,
+                    Intent: answer == ProfileFormatIntents.DoNotCare
+                        ? PreferenceIntent.Neutral
+                        : drivesUpgrade ? PreferenceIntent.Ranked : PreferenceIntent.TieBreak,
+                    Levels: ruleLevels,
+                    TargetLevelId: drivesUpgrade ? "matched" : null,
+                    UpgradeDriving: drivesUpgrade,
+                    Transient: false));
+            }
+
+            foreach (var traitId in semanticTraits)
             {
                 if (PreferenceTraitRegistry.Current.TryResolve(traitId, out var trait)
                     && !trait.Transient)
                 {
-                    // The profile's own answer decides, and it can refuse a
-                    // trait the guide merely dislikes as well as tolerate one
-                    // the guide's category would have refused outright. Two
-                    // shelves that both want HDR must be able to disagree about
-                    // whether it is a nice-to-have or the whole point.
-                    if (ProfileFormatIntents.Refuses(answer) || IsForbiddenCategory(guideFormat.Category))
-                    {
-                        forbiddenTraits.Add(trait.Id);
-                        continue;
-                    }
-
-                    // "Don't mind" still puts the trait on the ladder. It has
-                    // to be there for the plan to *place* a file carrying it -
-                    // dropping it would leave a rung missing and a held file
-                    // unrankable, which is the same defect the quality family
-                    // had in #379. Not caring means it does not drive an
-                    // upgrade, not that Deluno cannot see it.
                     mappedTraits.Add(trait.Id);
-                    if (ProfileFormatIntents.DrivesUpgrade(answer))
-                    {
-                        upgradeDrivingTraits.Add(trait.Id);
-                    }
                 }
             }
         }
@@ -285,23 +310,21 @@ public static class ReleasePreferencePlanFactory
                 group.Select(trait => trait.Id));
             if (familyLevels.Count == 0) continue;
 
-            var upgradeTarget = familyLevels
-                .FirstOrDefault(level => level.TraitIds.Any(traitId => upgradeDrivingTraits.Contains(traitId)))
-                ?.Id;
-            var upgradeDriving = upgradeTarget is not null;
-
             mappedFamilies.Add(new PreferenceFamily(
                 Id: $"guide.{Slug(group.Key)}",
                 Dimension: group.Key,
-                Order: mappedFamilies.Count + 2,
-                Intent: upgradeDriving ? PreferenceIntent.Ranked : PreferenceIntent.TieBreak,
+                Order: mappedFamilies.Count + customFormatFamilies.Count + 2,
+                Intent: PreferenceIntent.Neutral,
                 Levels: familyLevels,
-                TargetLevelId: upgradeTarget,
-                UpgradeDriving: upgradeDriving,
+                TargetLevelId: null,
+                UpgradeDriving: false,
                 Transient: false));
         }
 
-        var persistentFamilies = new[] { qualityFamily }.Concat(mappedFamilies).ToArray();
+        var persistentFamilies = new[] { qualityFamily }
+            .Concat(customFormatFamilies)
+            .Concat(mappedFamilies)
+            .ToArray();
         var allFamilies = persistentFamilies
             .Concat([CreateSeederAvailabilityFamily(persistentFamilies.Length + 1)])
             .ToArray();
@@ -358,39 +381,6 @@ public static class ReleasePreferencePlanFactory
         return customFormats
             .Where(item => ids.Contains(item.Id, StringComparer.OrdinalIgnoreCase))
             .ToArray();
-    }
-
-    private static bool TryGetReviewedMapping(
-        CustomFormatItem format,
-        IReadOnlyDictionary<string, GuideCustomFormat> guideFormats,
-        out GuideCustomFormat? guideFormat,
-        out string explanation)
-    {
-        if (string.IsNullOrWhiteSpace(format.TrashId)
-            || !guideFormats.TryGetValue(format.TrashId, out guideFormat))
-        {
-            guideFormat = null;
-            explanation = "The custom format has no reviewed TRaSH mapping. Its matcher and original score remain Advanced input; no numeric score affects Deluno decisions.";
-            return false;
-        }
-
-        if (guideFormat.MappingStatus != GuideMappingStatus.Reviewed
-            || guideFormat.MappedTraitIds is null
-            || guideFormat.MappedTraitIds.Count == 0)
-        {
-            explanation = "This guide rule is not semantically reviewed. Its matcher and original score remain Advanced input; no numeric score affects Deluno decisions.";
-            return false;
-        }
-
-        if (guideFormat.MappedTraitIds.Any(traitId =>
-                !PreferenceTraitRegistry.Current.TryResolve(traitId, out var trait) || trait.Transient))
-        {
-            explanation = "One or more mapped traits are not available in the current typed registry, so the original matcher remains Advanced input.";
-            return false;
-        }
-
-        explanation = string.Empty;
-        return true;
     }
 
     private static bool IsForbiddenCategory(string? category)

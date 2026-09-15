@@ -44,6 +44,7 @@ import {
   fetchTrashGuideUpdateCheck,
   fetchTrashGuideVersions,
   fetchJson,
+  readErrorMessage,
   previewTrashGuideSync,
   applyTrashGuideSync,
   previewReleasePreference,
@@ -397,7 +398,10 @@ export function SettingsCustomFormatsPage() {
       const response = editing
         ? await authedFetch(`/api/custom-formats/${editing.id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body })
         : await authedFetch("/api/custom-formats", { method: "POST", headers: { "Content-Type": "application/json" }, body });
-      if (!response.ok) throw new Error(editing ? "Rule could not be saved." : "Rule could not be created.");
+      if (!response.ok) {
+        const detail = await response.text().catch(() => "");
+        throw new Error(readErrorMessage(detail, response.url || "/api/custom-formats", response.status));
+      }
       const saved = (await response.json()) as CustomFormatItem;
       setInitialForm(form);
       setRuleState("saved");

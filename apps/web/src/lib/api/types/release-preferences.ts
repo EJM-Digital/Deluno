@@ -78,6 +78,12 @@ export interface PreferencePlanProvenance {
   matcherDefinition: string | null;
   mappedTraitIds: string[] | null;
   matcherAny: boolean;
+  /** Stable saved-rule identity captured when this immutable plan was compiled. */
+  ruleId: string | null;
+  /** Owner-facing saved-rule name captured at the same point in time. */
+  ruleName: string | null;
+  /** Typed profile answer; legacy numeric scores remain provenance only. */
+  profileIntent: string | null;
 }
 
 export interface ReleasePreferencePlan {

@@ -509,7 +509,13 @@ test.describe("indexer and download client CRUD", () => {
     const formatName = `Smoke-Trace-Format-${stamp}`;
     const profileName = `Smoke-Trace-Profile-${stamp}`;
     const trashId = `smoke-trace-${stamp}`;
-    const conditions = "audio=truehd-atmos";
+    const conditions = JSON.stringify([{
+      name: "Indexer flag",
+      implementation: "IndexerFlagSpecification",
+      fields: [{ name: "value", value: "freeleech" }],
+      negate: false,
+      required: true
+    }]);
     const legacyScore = 4321;
 
     const qualityModel = await page.request.get("/api/quality-model", { headers: authHeaders() });
@@ -578,8 +584,9 @@ test.describe("indexer and download client CRUD", () => {
       await expect(provenance).toBeVisible();
       await expect(provenance.getByText("7878c33f1963fefb3d6c8657d46c2f0a")).toBeVisible();
       await expect(provenance.getByText(`510 → ${mappedScore} in this profile`)).toBeVisible();
+      await expect(provenance.getByText("Strongly prefer")).toBeVisible();
       await expect(provenance.getByText(/Hdr10/i).first()).toBeVisible();
-      await expect(provenance.getByText("trash-semantic-map/v1")).toBeVisible();
+      await expect(provenance.getByText("deluno-custom-format/v1")).toBeVisible();
     } finally {
       await page.request.delete(`/api/quality-profiles/${profile.id}`, { headers: authHeaders() });
       await page.request.delete(`/api/custom-formats/${format.id}`, { headers: authHeaders() });

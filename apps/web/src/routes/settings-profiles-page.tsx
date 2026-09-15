@@ -736,7 +736,7 @@ export function SettingsProfilesPage() {
                       {planCompilation.plan.sources.map((source) => (
                         <div key={`${source.sourceKind}:${source.sourceId}:${source.layer ?? ""}`} className="rounded-[10px] border border-hairline px-3 py-2">
                           <div className="flex flex-wrap items-center justify-between gap-2">
-                            <span className="font-mono text-[length:var(--type-caption)] break-all text-foreground">{source.sourceId}</span>
+                            <span className="text-[length:var(--type-caption)] break-all text-foreground">{source.ruleName ?? source.sourceId}</span>
                             <Chip tone="idle">{source.sourceKind}</Chip>
                           </div>
                           <dl className="mt-1 grid gap-x-3 gap-y-1 text-[length:var(--type-caption)] sm:grid-cols-[auto_minmax(0,1fr)]">
@@ -749,6 +749,24 @@ export function SettingsProfilesPage() {
                                     ? ` → ${source.assignedScore} in this profile`
                                     : ""}
                                 </dd>
+                              </>
+                            ) : null}
+                            {source.profileIntent ? (
+                              <>
+                                <dt className="text-muted-foreground">Intent</dt>
+                                <dd className="text-foreground">{profileFormatIntentLabel(source.profileIntent)}</dd>
+                              </>
+                            ) : null}
+                            {source.ruleId ? (
+                              <>
+                                <dt className="text-muted-foreground">Saved rule</dt>
+                                <dd className="font-mono break-all text-foreground">{source.ruleId}</dd>
+                              </>
+                            ) : null}
+                            {source.mappingId ? (
+                              <>
+                                <dt className="text-muted-foreground">Guide identity</dt>
+                                <dd className="font-mono break-all text-foreground">{source.mappingId}</dd>
                               </>
                             ) : null}
                             {source.mappedTraitIds?.length ? (
@@ -1028,12 +1046,15 @@ function rankOf(tiers: { name: string; rank: number }[], name: string) {
   return tiers.find((tier) => tier.name === name)?.rank ?? 0;
 }
 
-function preferenceIntent(score: number) {
-  if (score <= -10000) return "Must not have";
-  if (score < 0) return "Avoid";
-  if (score === 0) return "I do not care";
-  if (score >= 500) return "Strongly prefer";
-  return "Prefer";
+function profileFormatIntentLabel(intent: string) {
+  switch (intent) {
+    case "blocked": return "Must not have";
+    case "avoid": return "Avoid";
+    case "neutral": return "Do not care";
+    case "prefer": return "Prefer";
+    case "strong-prefer": return "Strongly prefer";
+    default: return intent;
+  }
 }
 
 /**
