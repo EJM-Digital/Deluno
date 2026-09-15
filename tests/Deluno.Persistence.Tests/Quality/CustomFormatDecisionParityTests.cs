@@ -1,6 +1,8 @@
+using System.Text.Json.Nodes;
 using Deluno.Integrations.Search;
 using Deluno.Quality;
 using Deluno.Quality.Contracts;
+using Deluno.Quality.Guides;
 using Deluno.Quality.ReleasePreferences;
 
 namespace Deluno.Persistence.Tests.Quality;
@@ -87,6 +89,93 @@ public sealed class CustomFormatDecisionParityTests
             releaseName,
             definition,
             anyCondition: true).IsMatch);
+    }
+
+    /// <summary>
+    /// TRaSH's streaming formats need the service name and a WEB source, in
+    /// the numbering of the app each was written for. The TV "AMZN" format's
+    /// sources are Sonarr's 3 and 4; read as Radarr's numbers they were a
+    /// telecine and a workprint, so it could never match an Amazon WEB-DL.
+    /// These are the release names the physical rig's fixture serves.
+    /// </summary>
+    [Theory]
+    [InlineData("movies", "b3b3a6ac74ecbd56bcdbefa4799fb9df", "Sintel.2010.1080p.AMZN.WEBRip.DDP5.1.x264-DELUNO", true)]
+    [InlineData("movies", "b3b3a6ac74ecbd56bcdbefa4799fb9df", "Sintel.2010.1080p.AMZN.HDTV.x264-DELUNO", false)]
+    [InlineData("movies", "b3b3a6ac74ecbd56bcdbefa4799fb9df", "Sintel.2010.1080p.NF.WEB-DL.DDP5.1.H.264-DELUNO", false)]
+    [InlineData("movies", "170b1d363bd8516fbf3a3eb05d4faff6", "Sintel.2010.1080p.NF.WEB-DL.DDP5.1.H.264-DELUNO", true)]
+    [InlineData("tv", "d660701077794679fd59e8bdf4ce3a29", "Breaking.Bad.S01E03.1080p.AMZN.WEBRip.DDP5.1.x264-DELUNO", true)]
+    [InlineData("tv", "d660701077794679fd59e8bdf4ce3a29", "Breaking.Bad.S01E03.1080p.AMZN.WEB-DL.DDP5.1.H.264-DELUNO", true)]
+    [InlineData("tv", "d660701077794679fd59e8bdf4ce3a29", "Breaking.Bad.S01E03.1080p.AMZN.HDTV.x264-DELUNO", false)]
+    [InlineData("tv", "d34870697c9db575f17700212167be23", "Breaking.Bad.S01E03.1080p.NF.WEB-DL.DDP5.1.H.264-DELUNO", true)]
+    [InlineData("tv", "d34870697c9db575f17700212167be23", "Breaking.Bad.S01E03.1080p.AMZN.WEBRip.DDP5.1.x264-DELUNO", false)]
+    public void A_genuine_trash_streaming_format_needs_its_service_and_a_web_source(
+        string mediaType,
+        string trashId,
+        string releaseName,
+        bool expected)
+        => AssertGenuineFormat(mediaType, trashId, releaseName, expected);
+
+    /// <summary>
+    /// Sonarr numbers a Blu-ray remux (7) apart from a Blu-ray encode (6), where
+    /// Radarr marks a remux with a modifier instead.
+    /// </summary>
+    [Theory]
+    [InlineData("9965a052eb87b0d10313b1cea89eb451", "Harbour.Lights.S01E01.1080p.BluRay.REMUX.AVC.DTS-HD.MA.5.1-FraMeSToR", true)]
+    [InlineData("9965a052eb87b0d10313b1cea89eb451", "Harbour.Lights.S01E01.1080p.BluRay.x264-FraMeSToR", false)]
+    [InlineData("d6819cba26b1a6508138d25fb5e32293", "Harbour.Lights.S01E01.1080p.BluRay.x264-CtrlHD", true)]
+    [InlineData("d6819cba26b1a6508138d25fb5e32293", "Harbour.Lights.S01E01.1080p.BluRay.REMUX.AVC-CtrlHD", false)]
+    [InlineData("d6819cba26b1a6508138d25fb5e32293", "Harbour.Lights.S01E01.2160p.BluRay.x265-CtrlHD", false)]
+    public void Genuine_trash_tv_group_tiers_tell_a_remux_from_a_blu_ray_encode(
+        string trashId,
+        string releaseName,
+        bool expected)
+        => AssertGenuineFormat("tv", trashId, releaseName, expected);
+
+    [Theory]
+    [InlineData("tv", true)]
+    [InlineData("movies", false)]
+    public void The_same_source_number_is_a_web_dl_to_sonarr_and_a_telecine_to_radarr(string mediaType, bool expected)
+    {
+        const string definition =
+            "[{\"implementation\":\"SourceSpecification\",\"required\":true,\"fields\":{\"value\":3}}]";
+
+        Assert.Equal(expected, CustomFormatDefinitionMatcher.Evaluate(
+            "Harbour.Lights.S01E01.1080p.WEB-DL.H.264-GRP",
+            definition,
+            anyCondition: false,
+            mediaType).IsMatch);
+    }
+
+    private static void AssertGenuineFormat(string mediaType, string trashId, string releaseName, bool expected)
+    {
+        var source = Assert.Single(
+            GuideSourceInventoryCatalog.Current.CustomFormats,
+            format => format.TrashId == trashId);
+        Assert.Equal(mediaType, source.MediaType);
+        var conditions = new JsonArray(source.MatcherClauses
+            .Select(clause => (JsonNode)new JsonObject
+            {
+                ["name"] = clause.Name,
+                ["implementation"] = clause.Implementation,
+                ["negate"] = clause.Negate,
+                ["required"] = clause.Required,
+                ["fields"] = JsonNode.Parse(clause.FieldsJson)
+            })
+            .ToArray()).ToJsonString();
+        var now = DateTimeOffset.Parse("2026-09-15T00:00:00Z");
+        var format = new CustomFormatItem(trashId, source.Name, mediaType, 0, trashId, conditions, true, now, now);
+        var plan = ReleasePreferencePlanFactory.CreateQualityPlan(
+            mediaType,
+            "WEB 1080p",
+            ["WEB 1080p", "Bluray 1080p"],
+            customFormats: [format],
+            formatIntents: new Dictionary<string, string> { [format.Id] = ProfileFormatIntents.Prefer });
+
+        Assert.True(CustomFormatDefinitionMatcher.CanEvaluate(conditions, mediaType));
+        var dryRun = Assert.Single(CustomFormatMatcher.DryRun(releaseName, [format]));
+        var typed = Assert.Single(ReleasePreferenceFormatEvidenceFactory.Evaluate(plan, releaseName));
+        Assert.Equal(expected, dryRun.IsMatch);
+        Assert.Equal(expected, typed.IsMatch);
     }
 
     [Fact]

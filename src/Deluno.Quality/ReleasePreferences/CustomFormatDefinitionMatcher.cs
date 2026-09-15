@@ -29,9 +29,11 @@ public static partial class CustomFormatDefinitionMatcher
     /// Partial interpretation is unsafe: silently dropping one required or
     /// negated clause changes the rule.
     /// </summary>
-    public static bool CanEvaluate(string? rawConditions)
+    /// <param name="mediaType">The rule's media type. It decides whether a
+    /// numbered source is Radarr's or Sonarr's; see <see cref="UsesSonarrNumbering"/>.</param>
+    public static bool CanEvaluate(string? rawConditions, string? mediaType = null)
     {
-        var conditions = ParseConditions(rawConditions);
+        var conditions = ParseConditions(rawConditions, UsesSonarrNumbering(mediaType));
         return conditions.Count > 0
                && conditions.All(condition =>
                    !string.IsNullOrWhiteSpace(condition.Value)
@@ -41,7 +43,8 @@ public static partial class CustomFormatDefinitionMatcher
     public static CustomFormatDefinitionMatch Evaluate(
         string releaseName,
         string? rawConditions,
-        bool anyCondition)
+        bool anyCondition,
+        string? mediaType = null)
     {
         if (string.IsNullOrWhiteSpace(releaseName))
         {
@@ -53,7 +56,7 @@ public static partial class CustomFormatDefinitionMatcher
             return new CustomFormatDefinitionMatch(false, [], ["No conditions defined"]);
         }
 
-        var conditions = ParseConditions(rawConditions);
+        var conditions = ParseConditions(rawConditions, UsesSonarrNumbering(mediaType));
         if (conditions.Count == 0
             || conditions.Any(condition =>
                 string.IsNullOrWhiteSpace(condition.Value)
@@ -112,7 +115,19 @@ public static partial class CustomFormatDefinitionMatcher
         return new CustomFormatDefinitionMatch(isMatch, matched, missed);
     }
 
-    private static IReadOnlyList<CustomFormatDefinitionCondition> ParseConditions(string? rawConditions)
+    /// <summary>
+    /// Radarr and Sonarr number their sources differently, and TRaSH publishes
+    /// each format in the numbering of the app it was written for: 3 is a
+    /// telecine to Radarr and a WEB-DL to Sonarr, 7 is a WEB-DL to Radarr and a
+    /// Blu-ray remux to Sonarr. Movies rules carry Radarr's numbers and TV rules
+    /// Sonarr's, so the rule's media type says which one a number means. Read
+    /// with Radarr's numbers, TRaSH's TV "AMZN" format could never match an
+    /// Amazon WEB-DL.
+    /// </summary>
+    private static bool UsesSonarrNumbering(string? mediaType)
+        => mediaType?.Trim().ToLowerInvariant() is "tv" or "series" or "shows" or "anime";
+
+    private static IReadOnlyList<CustomFormatDefinitionCondition> ParseConditions(string? rawConditions, bool sonarrNumbering)
     {
         if (string.IsNullOrWhiteSpace(rawConditions))
         {
@@ -143,7 +158,7 @@ public static partial class CustomFormatDefinitionMatcher
                 }
 
                 var conditions = document.RootElement.EnumerateArray()
-                    .Select(ParseJsonCondition)
+                    .Select(element => ParseJsonCondition(element, sonarrNumbering))
                     .ToArray();
                 return conditions.Length > 0 && conditions.All(condition => condition is not null)
                     ? conditions.Cast<CustomFormatDefinitionCondition>().ToArray()
@@ -161,7 +176,7 @@ public static partial class CustomFormatDefinitionMatcher
             .ToArray();
     }
 
-    private static CustomFormatDefinitionCondition? ParseJsonCondition(JsonElement element)
+    private static CustomFormatDefinitionCondition? ParseJsonCondition(JsonElement element, bool sonarrNumbering)
     {
         if (element.ValueKind != JsonValueKind.Object)
         {
@@ -174,7 +189,7 @@ public static partial class CustomFormatDefinitionMatcher
         if (string.IsNullOrWhiteSpace(type))
         {
             var implementation = ReadString(element, "implementation");
-            var external = MapExternalCondition(implementation, ReadExternalFieldValue(element));
+            var external = MapExternalCondition(implementation, ReadExternalFieldValue(element), sonarrNumbering);
             type = external?.Type;
             value = external?.Value;
             externalGroup = implementation;
@@ -197,7 +212,8 @@ public static partial class CustomFormatDefinitionMatcher
 
     private static (string Type, string Value)? MapExternalCondition(
         string? implementation,
-        string? rawValue)
+        string? rawValue,
+        bool sonarrNumbering)
     {
         if (string.IsNullOrWhiteSpace(rawValue))
         {
@@ -208,8 +224,9 @@ public static partial class CustomFormatDefinitionMatcher
         return implementation?.Trim().ToLowerInvariant() switch
         {
             "releasetitlespecification" => ("releaseTitle", value),
-            "sourcespecification" when MapQualitySource(value) is { } source => ("source", source),
-            "resolutionspecification" => ("resolution", value),
+            "sourcespecification" when MapQualitySource(value, sonarrNumbering) is { } source => ("source", source),
+            // Both apps store a resolution as its line count: 2160, not 2160p.
+            "resolutionspecification" => ("resolution", value.All(char.IsAsciiDigit) ? value + "p" : value),
             "qualitymodifierspecification" when value == "5" => ("source", "remux"),
             "hdrspecification" => ("hdr", value),
             "codecspecification" => ("codec", value),
@@ -218,18 +235,24 @@ public static partial class CustomFormatDefinitionMatcher
         };
     }
 
-    private static string? MapQualitySource(string value)
+    /// <summary>
+    /// Radarr: 1 cam, 2 telesync, 3 telecine, 4 workprint, 5 DVD, 6 TV,
+    /// 7 WEB-DL, 8 WEBRip, 9 Blu-ray (a remux is a Blu-ray with a modifier).
+    /// Sonarr: 1 television, 2 raw HD, 3 WEB-DL, 4 WEBRip, 5 DVD, 6 Blu-ray,
+    /// 7 Blu-ray raw, which is its remux. Unknown (0) is not claimed.
+    /// </summary>
+    private static string? MapQualitySource(string value, bool sonarrNumbering)
         => value.ToLowerInvariant() switch
         {
-            "1" => "cam",
-            "2" => "telesync",
-            "3" => "telecine",
-            "4" => "workprint",
+            "1" => sonarrNumbering ? "hdtv" : "cam",
+            "2" => sonarrNumbering ? "rawhd" : "telesync",
+            "3" => sonarrNumbering ? "web" : "telecine",
+            "4" => sonarrNumbering ? "webrip" : "workprint",
             "5" => "dvd",
-            "6" => "hdtv",
-            "7" => "web",
-            "8" => "webrip",
-            "9" => "bluray",
+            "6" => sonarrNumbering ? "bluray-encode" : "hdtv",
+            "7" => sonarrNumbering ? "remux" : "web",
+            "8" when !sonarrNumbering => "webrip",
+            "9" when !sonarrNumbering => "bluray",
             "cam" or "telesync" or "telecine" or "workprint" or "dvd" or "hdtv"
                 or "web" or "web-dl" or "webdl" or "webrip" or "bluray" or "blu-ray" => value,
             _ => null
@@ -411,7 +434,14 @@ public static partial class CustomFormatDefinitionMatcher
                      || lower.Contains("webdl", StringComparison.Ordinal)
                      || (lower.Contains("web", StringComparison.Ordinal) && !lower.Contains("webrip", StringComparison.Ordinal)),
             "webrip" => lower.Contains("webrip", StringComparison.Ordinal),
-            "hdtv" => lower.Contains("hdtv", StringComparison.Ordinal),
+            "hdtv" => lower.Contains("hdtv", StringComparison.Ordinal)
+                      || lower.Contains("pdtv", StringComparison.Ordinal)
+                      || lower.Contains("sdtv", StringComparison.Ordinal)
+                      || lower.Contains("tvrip", StringComparison.Ordinal),
+            "rawhd" => lower.Contains("raw-hd", StringComparison.Ordinal) || lower.Contains("rawhd", StringComparison.Ordinal),
+            // Sonarr's Blu-ray source excludes the remux, which it numbers apart.
+            "bluray-encode" => (lower.Contains("bluray", StringComparison.Ordinal) || lower.Contains("blu-ray", StringComparison.Ordinal))
+                               && !lower.Contains("remux", StringComparison.Ordinal),
             "dvd" => lower.Contains("dvdrip", StringComparison.Ordinal) || lower.Contains("dvd", StringComparison.Ordinal),
             var other => lower.Contains(other, StringComparison.Ordinal)
         };

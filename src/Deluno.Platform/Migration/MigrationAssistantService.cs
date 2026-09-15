@@ -679,7 +679,9 @@ public sealed class MigrationAssistantService(
                 && IsReviewedGuideMapping(
                     guidePackage,
                     ReadString(item, "trashId") ?? ReadString(item, "trashGuid"));
-            var matcherExecutable = CustomFormatDefinitionMatcher.CanEvaluate(conditions);
+            var mediaType = ReadString(item, "mediaType") ?? context.MediaType;
+            // A Sonarr export numbers its sources as Sonarr does.
+            var matcherExecutable = CustomFormatDefinitionMatcher.CanEvaluate(conditions, mediaType);
             var classification = string.IsNullOrWhiteSpace(conditions)
                 ? LegacyPreferenceRuleKind.Invalid.ToString()
                 : matcherExecutable
@@ -694,7 +696,6 @@ public sealed class MigrationAssistantService(
                         ? "The matcher has a reviewed TRaSH mapping and will be retained with its stable source id; the original score remains provenance only."
                         : "Every matcher clause is supported and will become a plan-scoped typed rule; the imported score is retained only as provenance and mapped once to a named intent."
                     : "The matcher is preserved as Advanced input because Deluno cannot interpret every clause without changing its meaning.";
-            var mediaType = ReadString(item, "mediaType") ?? context.MediaType;
             var trashId = ReadString(item, "trashId") ?? ReadString(item, "trashGuid");
             var existingFormat = FindExistingCustomFormat(
                 existing.CustomFormatsByIdentity,
