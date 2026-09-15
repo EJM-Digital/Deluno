@@ -37,6 +37,15 @@ public sealed class SensitiveDataRedactorTests
         Assert.Equal("[redacted]", SensitiveDataRedactor.RedactScalar(value));
     }
 
+    [Theory]
+    [InlineData("Search failed for http://indexer.test/api?t=movie&apikey=abc123&q=Sintel", "Search failed for http://indexer.test/api?t=movie&apikey=[redacted]&q=Sintel")]
+    [InlineData("Client rejected password: hunter2 for user deluno", "Client rejected password: [redacted] for user deluno")]
+    [InlineData("Sent Authorization: Bearer eyJhbGciOi.abc-def to broker", "Sent Authorization: Bearer [redacted] to broker")]
+    public void RedactInline_masks_the_secret_and_keeps_the_sentence(string value, string expected)
+    {
+        Assert.Equal(expected, SensitiveDataRedactor.RedactInline(value));
+    }
+
     private static int CountOccurrences(string value, string expected)
     {
         var count = 0;

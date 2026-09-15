@@ -61,7 +61,7 @@ Download the installer from [Releases](https://github.com/jampat000/Deluno/relea
 | Application | `%LocalAppData%\Deluno` |
 | Data | `%LocalAppData%\DelunoData` |
 | Config | `%LocalAppData%\Deluno\config\deluno.json` |
-| Logs | `%LocalAppData%\Deluno\logs` |
+| Logs | `%LocalAppData%\DelunoData\logs` (tray start-up problems: `%LocalAppData%\Deluno\logs`) |
 
 Deluno runs at [http://localhost:5099](http://localhost:5099). Updates appear in **System → Updates** and install in the background.
 

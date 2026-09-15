@@ -406,7 +406,11 @@ public sealed class DelunoBackupService(
         var excludedRoots = new[]
         {
             Path.Combine(DataRoot, "backups"),
-            Path.Combine(DataRoot, "restore-staging")
+            Path.Combine(DataRoot, "restore-staging"),
+            // The application log (DelunoFileLoggerProvider). Weeks of lines
+            // would swell every backup, and a restore would write an old log
+            // back over the one that explains why the restore was needed.
+            Path.Combine(DataRoot, "logs")
         };
 
         return Directory
