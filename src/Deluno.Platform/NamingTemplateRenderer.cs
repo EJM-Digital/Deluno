@@ -11,6 +11,34 @@ namespace Deluno.Platform;
 /// leave literal tokens behind. Keeping the rendering here gives the import,
 /// destination preview, and rename-preview paths the same behaviour.</para>
 /// </summary>
+/// <summary>
+/// What Deluno decided about the release a file came from, for the tokens that
+/// describe the file rather than the title.
+///
+/// <para>These are read from the decision, never re-read from the incoming file
+/// name. A name assembled by parsing the old name loses whatever the parser
+/// cannot see - which is how a release Deluno chose <em>because</em> it was
+/// Amazon ends up on disk with no sign of it.</para>
+/// </summary>
+public sealed record NamingDecision(
+    string? Quality = null,
+    string? ReleaseGroup = null,
+    IReadOnlyList<string>? CustomFormats = null,
+    IReadOnlyList<string>? Editions = null)
+{
+    public static NamingDecision None { get; } = new();
+
+    public string CustomFormatText => Join(CustomFormats);
+
+    public string EditionText => Join(Editions);
+
+    private static string Join(IReadOnlyList<string>? values)
+        => string.Join(" ", (values ?? [])
+            .Where(value => !string.IsNullOrWhiteSpace(value))
+            .Select(value => value.Trim())
+            .Distinct(StringComparer.OrdinalIgnoreCase));
+}
+
 public static partial class NamingTemplateRenderer
 {
     public static string RenderFolder(
@@ -22,9 +50,10 @@ public static partial class NamingTemplateRenderer
         string? qualityProfile = null,
         string? genre = null,
         string? tag = null,
-        string? network = null)
+        string? network = null,
+        NamingDecision? decision = null)
     {
-        var resolved = ReplaceTokens(template, title, year, imdbId, tvDbId, qualityProfile, genre, tag, network);
+        var resolved = ReplaceTokens(template, title, year, imdbId, tvDbId, qualityProfile, genre, tag, network, decision);
         var segments = resolved
             .Split(['/', '\\'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
             .Select(RemoveEmptyWrappers)
@@ -46,9 +75,10 @@ public static partial class NamingTemplateRenderer
         string? qualityProfile = null,
         string? genre = null,
         string? tag = null,
-        string? network = null)
+        string? network = null,
+        NamingDecision? decision = null)
     {
-        var resolved = ReplaceTokens(template, title, year, imdbId, tvDbId, qualityProfile, genre, tag, network);
+        var resolved = ReplaceTokens(template, title, year, imdbId, tvDbId, qualityProfile, genre, tag, network, decision);
         return SanitizeSegment(RemoveEmptyWrappers(resolved));
     }
 
@@ -61,11 +91,17 @@ public static partial class NamingTemplateRenderer
         string? qualityProfile,
         string? genre,
         string? tag,
-        string? network)
+        string? network,
+        NamingDecision? decision)
     {
+        decision ??= NamingDecision.None;
         var source = string.IsNullOrWhiteSpace(template) ? "{Title} ({Year})" : template;
         return TokenPattern().Replace(source, match => match.Value.ToLowerInvariant() switch
         {
+            "{quality}" => SanitizeSegment(decision.Quality),
+            "{release group}" => SanitizeSegment(decision.ReleaseGroup),
+            "{custom formats}" => SanitizeSegment(decision.CustomFormatText),
+            "{edition}" => SanitizeSegment(decision.EditionText),
             "{movie title}" or "{series title}" or "{title}" => SanitizeSegment(title),
             "{release year}" or "{series year}" or "{year}" => year?.ToString() ?? "Unknown Year",
             "{imdb id}" => SanitizeSegment(imdbId),

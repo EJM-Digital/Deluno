@@ -35,6 +35,7 @@ public sealed class SecretStorageTests
                 UnmonitorWhenCutoffMet: false,
                 MovieFolderFormat: null,
                 SeriesFolderFormat: null,
+                MovieFileFormat: null,
                 EpisodeFileFormat: null,
                 HostBindAddress: null,
                 HostPort: 5099,

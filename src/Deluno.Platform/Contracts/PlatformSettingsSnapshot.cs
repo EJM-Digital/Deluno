@@ -15,6 +15,7 @@ public sealed record PlatformSettingsSnapshot(
     bool UnmonitorWhenCutoffMet,
     string MovieFolderFormat,
     string SeriesFolderFormat,
+    string MovieFileFormat,
     string EpisodeFileFormat,
     string HostBindAddress,
     int HostPort,

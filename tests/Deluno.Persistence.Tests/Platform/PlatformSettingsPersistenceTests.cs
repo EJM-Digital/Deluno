@@ -44,6 +44,7 @@ public sealed class PlatformSettingsPersistenceTests
                 UnmonitorWhenCutoffMet: true,
                 MovieFolderFormat: "{Movie Title} ({Release Year})",
                 SeriesFolderFormat: "{Series Title} ({Series Year})",
+                MovieFileFormat: "{Movie Title} ({Release Year}) [{Quality}] [{Custom Formats}]",
                 EpisodeFileFormat: "{Series Title} - S{season:00}E{episode:00} - {Episode Title}",
                 HostBindAddress: "127.0.0.1",
                 HostPort: 5099,

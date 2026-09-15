@@ -13,6 +13,7 @@ export interface PlatformSettingsPatch {
   unmonitorWhenCutoffMet?: boolean;
   movieFolderFormat?: string;
   seriesFolderFormat?: string;
+  movieFileFormat?: string;
   episodeFileFormat?: string;
   hostBindAddress?: string;
   hostPort?: number;

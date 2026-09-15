@@ -583,6 +583,7 @@ public sealed class FeedMediaSearchPlannerReasonTests
             UnmonitorWhenCutoffMet: false,
             MovieFolderFormat: "{Movie Title} ({Release Year})",
             SeriesFolderFormat: "{Series Title}",
+            MovieFileFormat: "{Movie Title} ({Release Year}) [{Quality}] [{Custom Formats}]",
             EpisodeFileFormat: "S{Season:00}E{Episode:00} - {Episode Title}",
             HostBindAddress: "127.0.0.1",
             HostPort: 5099,
