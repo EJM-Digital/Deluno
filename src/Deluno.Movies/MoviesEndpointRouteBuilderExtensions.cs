@@ -810,31 +810,7 @@ public static class MoviesEndpointRouteBuilderExtensions
                 result.DispatchStatus,
                 result.DispatchMessage,
                 failures = result.Failures ?? [],
-                candidates = result.Candidates.Select(candidate => new
-                {
-                    candidate.ReleaseName,
-                    candidate.IndexerName,
-                    candidate.Quality,
-                    Score = candidate.PreferenceEvaluation is null ? (int?)candidate.Score : null,
-                    candidate.MeetsCutoff,
-                    candidate.Summary,
-                    candidate.DownloadUrl,
-                    candidate.SizeBytes,
-                    candidate.Seeders,
-                    candidate.DecisionStatus,
-                    candidate.DecisionReasons,
-                    candidate.RiskFlags,
-                    candidate.QualityDelta,
-                    CustomFormatScore = candidate.PreferenceEvaluation is null ? (int?)candidate.CustomFormatScore : null,
-                    SeederScore = candidate.PreferenceEvaluation is null ? (int?)candidate.SeederScore : null,
-                    SizeScore = candidate.PreferenceEvaluation is null ? (int?)candidate.SizeScore : null,
-                    candidate.ReleaseGroup,
-                    candidate.EstimatedBitrateMbps,
-                    candidate.PolicyVersion,
-                    MatchedCustomFormats = candidate.PreferenceEvaluation is null ? candidate.MatchedCustomFormats : null,
-                    candidate.PreferenceEvaluation,
-                    candidate.PreferenceComparison
-                }).ToArray()
+                candidates = MediaSearchCandidateView.ForAll(result.Candidates)
             });
         });
 

@@ -729,30 +729,7 @@ public static class SeriesEndpointRouteBuilderExtensions
                 result.DispatchStatus,
                 result.DispatchMessage,
                 failures = result.Failures ?? [],
-                candidates = result.Candidates.Select(candidate => new
-                {
-                    candidate.ReleaseName,
-                    candidate.IndexerName,
-                    candidate.Quality,
-                    Score = candidate.PreferenceEvaluation is null ? (int?)candidate.Score : null,
-                    candidate.MeetsCutoff,
-                    candidate.Summary,
-                    candidate.DownloadUrl,
-                    candidate.SizeBytes,
-                    candidate.Seeders,
-                    candidate.DecisionStatus,
-                    candidate.DecisionReasons,
-                    candidate.RiskFlags,
-                    candidate.QualityDelta,
-                    CustomFormatScore = candidate.PreferenceEvaluation is null ? (int?)candidate.CustomFormatScore : null,
-                    SeederScore = candidate.PreferenceEvaluation is null ? (int?)candidate.SeederScore : null,
-                    SizeScore = candidate.PreferenceEvaluation is null ? (int?)candidate.SizeScore : null,
-                    candidate.ReleaseGroup,
-                    candidate.EstimatedBitrateMbps,
-                    candidate.PolicyVersion,
-                    candidate.PreferenceEvaluation,
-                    candidate.PreferenceComparison
-                }).ToArray()
+                candidates = MediaSearchCandidateView.ForAll(result.Candidates)
             });
         });
 
@@ -1383,6 +1360,12 @@ public static class SeriesEndpointRouteBuilderExtensions
             var failedCount = 0;
             var searchReasons = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             var failures = new List<IntegrationFailure>();
+            // What each episode's search actually found. The counts alone told
+            // a person nothing: Deluno would compare three releases, choose
+            // one, hold it for review, and the screen had no way to say which
+            // release, or why. A movie search has returned its candidates all
+            // along.
+            var episodeResults = new List<object>();
 
             foreach (var episode in targetEpisodes)
             {
@@ -1430,6 +1413,19 @@ public static class SeriesEndpointRouteBuilderExtensions
                 var outcome = decisionPlan.Outcome;
                 searchReasons.Add(searchPlan.Reason);
                 failures.AddRange(searchPlan.Failures ?? []);
+                episodeResults.Add(new
+                {
+                    episode.EpisodeId,
+                    episode.SeasonNumber,
+                    episode.EpisodeNumber,
+                    episode.Title,
+                    outcome,
+                    reason = searchPlan.Reason,
+                    summary = searchPlan.Summary,
+                    releaseName = bestCandidate?.ReleaseName,
+                    indexerName = bestCandidate?.IndexerName,
+                    candidates = MediaSearchCandidateView.ForAll(searchPlan.Candidates)
+                });
 
                 if (decisionPlan.ShouldDispatch && decisionPlan.SelectedDownloadClient is not null && decisionPlan.DispatchRequest is not null)
                 {
@@ -1572,6 +1568,7 @@ public static class SeriesEndpointRouteBuilderExtensions
                 sentCount,
                 plannedCount,
                 failedCount,
+                episodes = episodeResults.ToArray(),
                 failures = failures.Distinct().ToArray()
             });
         });
