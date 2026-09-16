@@ -454,10 +454,26 @@ export function ControlRail({ label, variant, facets, actions, controls }: {
                 These carry no count and no click for the same reason.
               */}
 
-              <TitleMarkBarLegend className="ml-1.5 border-l border-hairline pl-3" type={variant === "movies" ? "movie" : "show"} />
-
-
             </div>
+
+            {/*
+              Outside the chip track on purpose.
+
+              It used to sit inside it, and that track wraps. Once the chips
+              filled the width the legend dropped onto a line of its own, still
+              wearing the left-hand rule that was meant to separate it from
+              them - so it arrived at the start of a new line as a second run of
+              chip-shaped things with a stray divider in front. That is the exact
+              shape #327 said a legend must never take, and the owner spotted it.
+
+              As a sibling it keeps its place beside the chips at every width:
+              the chips wrap among themselves, and the rule stays between the two
+              clusters rather than in front of one.
+            */}
+            <TitleMarkBarLegend
+              className="shrink-0 border-l border-hairline pl-3"
+              type={variant === "movies" ? "movie" : "show"}
+            />
 
             {/*
               Two clusters, and the gap between them is the organising idea:

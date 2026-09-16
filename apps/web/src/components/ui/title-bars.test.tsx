@@ -268,6 +268,48 @@ describe("the bars are pinned to the artwork's edges", () => {
   });
 });
 
+describe("the texture is for the bar that has no words", () => {
+  const texture = (bar: HTMLElement) => bar.querySelector(".title-mark-pattern");
+
+  /**
+   * The texture exists so hue is never the only carrier (#318). A 5px strip
+   * has nothing but hue, so it needs one.
+   */
+  it("textures the wordless strip", () => {
+    const [media] = bars(film(), false, false);
+    expect(texture(media!)).not.toBeNull();
+  });
+
+  /**
+   * The 16px bar spells the state out. Hatching behind "WEB 1080p" repeats
+   * what the words already say and reads as a rendering fault.
+   */
+  it("leaves the labelled bar alone", () => {
+    const [media] = bars(film(), true, true);
+    expect(media!.textContent).toContain("Bluray-1080p");
+    expect(texture(media!)).toBeNull();
+  });
+});
+
+describe("the key is painted in what the posters actually wear", () => {
+  /**
+   * The texture is a carrier of state, not decoration. A key that shows the
+   * hue and not the pattern teaches half the language to the one reader the
+   * pattern exists for.
+   */
+  it("gives every legend swatch the texture its strip wears", () => {
+    const { container } = render(<TitleMarkBarLegend type="show" />);
+    const swatches = [...container.querySelectorAll<HTMLElement>("span.title-mark-pattern")];
+
+    expect(swatches.length).toBeGreaterThan(0);
+    for (const swatch of swatches) {
+      // The same state class the poster strip carries, so one pattern change
+      // moves both.
+      expect(swatch.className).toMatch(/title-mark-(missing|downloading|upgrade|covered|airing|upcoming)/);
+    }
+  });
+});
+
 describe("the switches remove words, never facts", () => {
   it("shrinks the bar to the 5px strip when its words are off, per bar", () => {
     // A 16px band exists to carry a label. With no label it is 16px of chrome
