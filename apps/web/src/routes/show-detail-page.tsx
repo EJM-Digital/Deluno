@@ -148,6 +148,10 @@ export function ShowDetailPage() {
   const [isRemoveConfirmationOpen, setIsRemoveConfirmationOpen] = useState(false);
   const [isMetadataOpen, setIsMetadataOpen] = useState(false);
   const [releaseCandidates, setReleaseCandidates] = useState<SearchPlanCandidate[]>([]);
+  // Which episode the candidates below belong to, when they came from an
+  // episode search rather than a show-wide one. Without it the card would say
+  // "Choose a release" for a show with 71 episodes and name none of them.
+  const [candidatesFor, setCandidatesFor] = useState<string | null>(null);
   const [openCandidate, setOpenCandidate] = useState<SearchPlanCandidate | null>(null);
   const [forceReason, setForceReason] = useState<string | null>(null);
   const [openEpisodeId, setOpenEpisodeId] = useState<string | null>(null);
@@ -482,6 +486,7 @@ export function ShowDetailPage() {
       const best = payload.releaseName ? `${payload.releaseName}${payload.indexerName ? ` via ${payload.indexerName}` : ""}` : null;
       const failureNotice = formatSearchFailureNotice(payload.failures);
       setReleaseCandidates(mode === "interactive" ? payload.candidates ?? [] : []);
+      setCandidatesFor(null);
 
       if (mode === "interactive") {
         const found = payload.candidates?.length ?? 0;
@@ -560,6 +565,7 @@ export function ShowDetailPage() {
       toast.success(formatGrabMessage(best, payload));
       setOpenCandidate(null);
       setReleaseCandidates([]);
+      setCandidatesFor(null);
       revalidator.revalidate();
     } catch (grabError) {
       const explained = await describeRequestFailure(grabResponse, grabError, {
@@ -598,10 +604,33 @@ export function ShowDetailPage() {
         plannedCount?: number;
         failedCount?: number;
         reason?: string;
+        episodes?: Array<{
+          episodeId: string;
+          seasonNumber: number;
+          episodeNumber: number;
+          title?: string | null;
+          summary?: string | null;
+          releaseName?: string | null;
+          candidates?: SearchPlanCandidate[];
+        }>;
         failures?: IntegrationFailure[];
       };
       const searched = payload.searchedEpisodes ?? episodeIds.length;
       const matched = payload.matchedCount ?? 0;
+
+      // Show what the search actually compared. Counts alone left a person
+      // with no way to see which release Deluno chose, or to choose another.
+      const withCandidates = (payload.episodes ?? []).filter((item) => (item.candidates?.length ?? 0) > 0);
+      if (withCandidates.length === 1) {
+        const only = withCandidates[0]!;
+        setReleaseCandidates(only.candidates ?? []);
+        setCandidatesFor(`S${String(only.seasonNumber).padStart(2, "0")}E${String(only.episodeNumber).padStart(2, "0")}${only.title ? ` · ${only.title}` : ""}`);
+        setOpenEpisodeId(null);
+        setSection("episodes");
+      } else if (withCandidates.length === 0) {
+        setReleaseCandidates([]);
+        setCandidatesFor(null);
+      }
       const failureNotice = formatSearchFailureNotice(payload.failures);
       if (payload.reason && payload.reason !== "ok") {
         const explained = describeSearchReason(payload.reason, `Searched ${searched} episode${searched === 1 ? "" : "s"}. Nothing matched yet.`);
@@ -611,10 +640,16 @@ export function ShowDetailPage() {
           action: action ? { label: action.label, onClick: () => navigate(action.href) } : undefined
         });
       } else {
+        const compared = withCandidates.reduce((total, item) => total + (item.candidates?.length ?? 0), 0);
         toast.success(
           matched > 0
             ? `Searched ${searched} episode${searched === 1 ? "" : "s"}, matched ${matched}. ${formatDispatchSummary(payload)}`
-            : `Searched ${searched} episode${searched === 1 ? "" : "s"}. Nothing matched yet.`,
+            : compared > 0
+              // Not "nothing matched": it compared releases and is waiting for
+              // a person. Saying nothing was found sends them off to fix a
+              // search that worked.
+              ? `Compared ${compared} release${compared === 1 ? "" : "s"}. Choose one below.`
+              : `Searched ${searched} episode${searched === 1 ? "" : "s"}. Nothing matched yet.`,
           failureNotice ? { description: failureNotice } : undefined
         );
       }
@@ -968,7 +1003,10 @@ export function ShowDetailPage() {
           />
 
           {releaseCandidates.length ? (
-            <ListCard title="Choose a release" count={`${releaseCandidates.length} candidate${releaseCandidates.length === 1 ? "" : "s"}`}>
+            <ListCard
+              title={candidatesFor ? `Choose a release for ${candidatesFor}` : "Choose a release"}
+              count={`${releaseCandidates.length} candidate${releaseCandidates.length === 1 ? "" : "s"}`}
+            >
               <ListTable
                 columns={[
                   { label: "Release" },
