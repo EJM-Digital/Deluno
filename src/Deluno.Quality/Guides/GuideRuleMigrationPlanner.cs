@@ -105,10 +105,14 @@ public static class GuideRuleMigrationPlanner
                 newConditions,
                 edited,
                 profileNames,
+                // Scores and profile answers surviving is true of every rule in
+                // the move, so it is said once where the move is described, not
+                // appended to all of them. Repeated on every row it stopped
+                // being reassurance and became noise the eye skips - taking the
+                // part that differs per rule with it.
                 (genuine
                     ? $"Becomes TRaSH's “{target.Name}” for {mediaLabel}, with TRaSH's own id and conditions."
                     : $"TRaSH has no such format. It keeps Deluno's patterns under Deluno's own id, {target.TrashId}.")
-                + " Its score and every profile answer about it stay."
                 + editedNote));
         }
 
