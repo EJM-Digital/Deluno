@@ -1366,6 +1366,7 @@ public static class SeriesEndpointRouteBuilderExtensions
             // release, or why. A movie search has returned its candidates all
             // along.
             var episodeResults = new List<object>();
+            var comparedCandidates = 0;
 
             foreach (var episode in targetEpisodes)
             {
@@ -1413,6 +1414,7 @@ public static class SeriesEndpointRouteBuilderExtensions
                 var outcome = decisionPlan.Outcome;
                 searchReasons.Add(searchPlan.Reason);
                 failures.AddRange(searchPlan.Failures ?? []);
+                comparedCandidates += searchPlan.Candidates.Count;
                 episodeResults.Add(new
                 {
                     episode.EpisodeId,
@@ -1559,9 +1561,16 @@ public static class SeriesEndpointRouteBuilderExtensions
             return Results.Ok(new
             {
                 outcome = matchedCount > 0 ? "matched" : "checked",
+                // "No results" is about whether anything was found. It was
+                // being reported whenever nothing was *dispatched*, so a search
+                // that returned three candidates and held the best one for a
+                // person said the indexers had returned nothing.
                 reason = matchedCount > 0
                     ? MediaSearchReasons.Ok
-                    : searchReasons.FirstOrDefault(item => !string.Equals(item, MediaSearchReasons.Ok, StringComparison.OrdinalIgnoreCase)) ?? MediaSearchReasons.NoResults,
+                    : searchReasons.FirstOrDefault(item => !string.Equals(item, MediaSearchReasons.Ok, StringComparison.OrdinalIgnoreCase))
+                        ?? (episodeResults.Count > 0 && comparedCandidates > 0
+                            ? MediaSearchReasons.HeldForReview
+                            : MediaSearchReasons.NoResults),
                 searchedEpisodes = targetEpisodes.Count,
                 matchedCount,
                 queuedCount,

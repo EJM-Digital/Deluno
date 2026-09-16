@@ -19,4 +19,19 @@ describe("describeSearchReason", () => {
     expect(describeSearchReason("season_pack_candidate_not_upgrade_for_every_episode", "fallback").title)
       .toBe("The season pack would not improve every installed episode");
   });
+
+  /**
+   * A search that returned three candidates and held the best one for a person
+   * reported "no_results", so the screen said the indexers had returned none.
+   * Whether anything was found and whether anything was sent are two questions.
+   */
+  it("does not tell a person nothing was found when releases are waiting on them", () => {
+    const held = describeSearchReason("held_for_review", "fallback");
+
+    expect(held.title).not.toMatch(/no matching|nothing/i);
+    expect(held.title).toMatch(/waiting on you/i);
+    expect(held.description).toMatch(/compared/i);
+    // And the genuinely empty case still says so.
+    expect(describeSearchReason("no_results", "fallback").title).toMatch(/no matching/i);
+  });
 });

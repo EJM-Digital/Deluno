@@ -632,7 +632,17 @@ export function ShowDetailPage() {
         setCandidatesFor(null);
       }
       const failureNotice = formatSearchFailureNotice(payload.failures);
-      if (payload.reason && payload.reason !== "ok") {
+      const compared = withCandidates.reduce((total, item) => total + (item.candidates?.length ?? 0), 0);
+      // Candidates on the page beat any reason code. A search that produced
+      // releases to choose from succeeded, whatever it chose to call itself -
+      // and telling a person nothing was found while the list sits under the
+      // toast sends them off to fix something that works.
+      if (compared > 0) {
+        toast.success(
+          `Compared ${compared} release${compared === 1 ? "" : "s"}. Choose one below.`,
+          failureNotice ? { description: failureNotice } : undefined
+        );
+      } else if (payload.reason && payload.reason !== "ok") {
         const explained = describeSearchReason(payload.reason, `Searched ${searched} episode${searched === 1 ? "" : "s"}. Nothing matched yet.`);
         const action = explained.action;
         toast.info(explained.title, {
@@ -640,16 +650,10 @@ export function ShowDetailPage() {
           action: action ? { label: action.label, onClick: () => navigate(action.href) } : undefined
         });
       } else {
-        const compared = withCandidates.reduce((total, item) => total + (item.candidates?.length ?? 0), 0);
         toast.success(
           matched > 0
             ? `Searched ${searched} episode${searched === 1 ? "" : "s"}, matched ${matched}. ${formatDispatchSummary(payload)}`
-            : compared > 0
-              // Not "nothing matched": it compared releases and is waiting for
-              // a person. Saying nothing was found sends them off to fix a
-              // search that worked.
-              ? `Compared ${compared} release${compared === 1 ? "" : "s"}. Choose one below.`
-              : `Searched ${searched} episode${searched === 1 ? "" : "s"}. Nothing matched yet.`,
+            : `Searched ${searched} episode${searched === 1 ? "" : "s"}. Nothing matched yet.`,
           failureNotice ? { description: failureNotice } : undefined
         );
       }

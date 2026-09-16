@@ -166,6 +166,14 @@ export function describeSearchReason(reason: string | undefined, fallback: strin
         title: "No matching releases were returned",
         description: "The linked indexers answered, but none returned a release for this title."
       };
+    // Found, compared, and waiting on a person. This used to report as
+    // "no_results", so a search that returned three candidates told the owner
+    // the indexers had returned none.
+    case "held_for_review":
+      return {
+        title: "Releases were found and are waiting on you",
+        description: "Deluno compared what the indexers returned and did not send any of them automatically. Choose the one to send."
+      };
     case "no_usable_release":
       return {
         title: "No release met the active policy",
