@@ -350,6 +350,55 @@ public sealed class ExistingLibraryImportServiceTests
     }
 
     /// <summary>
+    /// Each episode records the quality of its own file.
+    ///
+    /// <para>A show's quality was read from whichever video file the scan
+    /// reached first and then written onto every episode. A library part-way
+    /// through an upgrade — a few episodes replaced with WEB 1080p, the rest
+    /// still the original DVD rips — reported one tier for all of it, so the
+    /// upgrade check had nothing true to compare against and the episode pages
+    /// showed a quality no file on disk had.</para>
+    /// </summary>
+    [Fact]
+    public async Task Each_episode_records_the_quality_of_its_own_file()
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-09-16T09:00:00Z"));
+        await InitializeAsync(storage, timeProvider);
+
+        var rootPath = Path.Combine(storage.DataRoot, "tv-mixed");
+        var season = Path.Combine(rootPath, "Harbour Lights (2020)", "Season 01");
+        Directory.CreateDirectory(season);
+
+        // A part-upgraded season: two tiers under one folder.
+        await File.WriteAllTextAsync(Path.Combine(season, "Harbour.Lights.S01E01.1080p.WEB-DL.mkv"), string.Empty);
+        await File.WriteAllTextAsync(Path.Combine(season, "Harbour.Lights.S01E02.480p.DVDRip.mkv"), string.Empty);
+        await File.WriteAllTextAsync(Path.Combine(season, "Harbour.Lights.S01E03.1080p.WEB-DL.mkv"), string.Empty);
+
+        var libraries = new SqliteLibrariesRepository(storage.Factory, timeProvider);
+        var libraryId = await CreateLibraryAsync(libraries, rootPath, "tv");
+        var series = new SqliteSeriesCatalogRepository(storage.Factory, timeProvider);
+        var service = CreateService(storage, timeProvider, libraries, new SqliteMovieCatalogRepository(storage.Factory, timeProvider), series: series);
+
+        Assert.NotNull(await service.ImportSelectedAsync(libraryId, [Path.Combine(rootPath, "Harbour Lights (2020)")], CancellationToken.None));
+
+        var show = Assert.Single(await series.ListAsync(CancellationToken.None));
+        var detail = await series.GetInventoryDetailAsync(show.Id, CancellationToken.None);
+        Assert.NotNull(detail);
+
+        var first = Assert.Single(detail.Episodes, item => item.EpisodeNumber == 1);
+        var second = Assert.Single(detail.Episodes, item => item.EpisodeNumber == 2);
+        var third = Assert.Single(detail.Episodes, item => item.EpisodeNumber == 3);
+
+        Assert.Equal("WEB 1080p", first.CurrentQuality);
+        Assert.Equal("WEB 1080p", third.CurrentQuality);
+
+        // The one that used to inherit the first file's tier.
+        Assert.Equal("DVD", second.CurrentQuality);
+        Assert.NotEqual(first.CurrentQuality, second.CurrentQuality);
+    }
+
+    /// <summary>
     /// Seen on the physical rig: a show imported with one episode on disk had
     /// no air dates yet, so its rung said Deluno had not catalogued its
     /// episodes - and kept saying it after metadata catalogued all of them.

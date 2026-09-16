@@ -3023,9 +3023,23 @@ public sealed class SqliteSeriesCatalogRepository(
                     // episode that held a file and recorded no quality showed
                     // none on its own page and gave the upgrade check nothing
                     // to compare against, so a covered episode never settled.
-                    AddParameter(upsertEpisodeWanted, "@episodeCurrentQuality", episode.HasFile ? currentQuality : null);
+                    // This episode's own quality when the caller knows it, and
+                    // the series' answer only as a fallback.
+                    var episodeQuality = episode.HasFile
+                        ? (string.IsNullOrWhiteSpace(episode.CurrentQuality) ? currentQuality : episode.CurrentQuality)
+                        : null;
+
+                    // And its own cutoff, decided by the caller from that
+                    // quality. Inheriting the series verdict marked every
+                    // episode of an incomplete show as not-met - including the
+                    // ones holding a file at the cutoff quality - so they never
+                    // settled and looked permanently upgradable.
+                    var episodeCutoffMet = episode.HasFile
+                        && (episode.QualityCutoffMet ?? qualityCutoffMet);
+
+                    AddParameter(upsertEpisodeWanted, "@episodeCurrentQuality", episodeQuality);
                     AddParameter(upsertEpisodeWanted, "@episodeTargetQuality", targetQuality);
-                    AddParameter(upsertEpisodeWanted, "@episodeQualityCutoffMet", episode.HasFile && qualityCutoffMet ? 1 : 0);
+                    AddParameter(upsertEpisodeWanted, "@episodeQualityCutoffMet", episodeCutoffMet ? 1 : 0);
                     AddParameter(upsertEpisodeWanted, "@updatedUtc", now.ToString("O"));
                     await upsertEpisodeWanted.ExecuteNonQueryAsync(cancellationToken);
                 }
