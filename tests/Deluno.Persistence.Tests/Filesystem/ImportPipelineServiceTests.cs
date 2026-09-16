@@ -1155,6 +1155,117 @@ public sealed class ImportPipelineServiceTests
         Assert.Equal([netflix.Id], snapshot.MatchedRuleIds);
     }
 
+    /// <summary>
+    /// Where a copy came from must outlive the dispatch that brought it. A
+    /// successful import archives its dispatch row at once, and every
+    /// provenance query hides archived rows, so a title asking later used to
+    /// be told nothing about its own file.
+    ///
+    /// The same import is also the title's history: it must be filed against
+    /// the title, name the release that was taken, and record the rename as
+    /// its own step.
+    /// </summary>
+    [Fact]
+    public async Task Where_a_copy_came_from_outlives_the_dispatch_that_brought_it()
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-09-16T05:00:00Z"));
+        await InitializeAllAsync(storage, timeProvider);
+
+        var downloadsPath = Path.Combine(storage.DataRoot, "downloads");
+        var movieRootPath = Path.Combine(storage.DataRoot, "movies");
+        Directory.CreateDirectory(downloadsPath);
+        Directory.CreateDirectory(movieRootPath);
+        var sourcePath = Path.Combine(downloadsPath, "Sintel.2010.1080p.NF.WEB-DL.DDP5.1.H.264-DELUNO.mkv");
+        await File.WriteAllBytesAsync(sourcePath, Enumerable.Repeat((byte)0x33, 4096).ToArray());
+        File.SetLastWriteTimeUtc(sourcePath, DateTime.UtcNow.AddMinutes(-1));
+
+        var platform = CreatePlatformRepository(storage, timeProvider);
+        var libraries = CreateLibrariesRepository(storage, timeProvider);
+        await SaveSettingsAsync(platform, movieRootPath, downloadsPath);
+        var quality = new SqliteQualityRepository(storage.Factory, timeProvider);
+        var netflixGuide = GuidePackageCatalog.Current.CustomFormats.Single(format =>
+            format.Name.Equals("NF", StringComparison.Ordinal)
+            && GuideFormatConditions.AppliesTo(format, "movies"));
+        var netflix = await quality.CreateCustomFormatAsync(
+            new CreateCustomFormatRequest(netflixGuide.Name, "movies", 0, netflixGuide.TrashId, GuideFormatConditions.For(netflixGuide), true),
+            CancellationToken.None);
+        var profile = await quality.CreateQualityProfileAsync(
+            new CreateQualityProfileRequest("E2E Movies 1080p", "movies", "WEB 1080p", "WEB 1080p", netflix.Id, UpgradeUntilCutoff: true, UpgradeUnknownItems: false),
+            CancellationToken.None);
+        await CreateMovieLibraryAsync(libraries, movieRootPath, downloadsPath, qualityProfileId: profile.Id);
+        var library = Assert.Single(await libraries.ListLibrariesAsync(CancellationToken.None));
+
+        var mediaState = new SqliteMediaStateRepository(storage.Factory, timeProvider);
+        var movies = new SqliteMovieCatalogRepository(storage.Factory, timeProvider, mediaState);
+        var movie = await movies.AddAsync(new CreateMovieRequest("Sintel", 2010, null), CancellationToken.None);
+
+        var jobStore = new SqliteJobStore(storage.Factory, timeProvider, new NullRealtimeEventPublisher(), new NullDownloadDispatchesRepository());
+        var dispatches = new SqliteDownloadDispatchesRepository(storage.Factory, timeProvider);
+        var dispatchId = await jobStore.RecordDownloadDispatchAsync(
+            library.Id,
+            "movies",
+            "movie",
+            movie.Id,
+            "Sintel.2010.1080p.NF.WEB-DL.DDP5.1.H.264-DELUNO",
+            "TestIndexer",
+            "client-1",
+            "qBittorrent",
+            "sent",
+            notesJson: null,
+            cancellationToken: CancellationToken.None);
+
+        var service = CreateService(storage, timeProvider, platform, libraries, movies, qualityRepository: quality, downloadDispatchesRepository: dispatches);
+        var result = await service.ExecuteAsync(
+            new ImportExecuteRequest(
+                new ImportPreviewRequest(sourcePath, null, "movies", "Sintel", 2010, [], [], null, "en"),
+                "copy",
+                Overwrite: false,
+                AllowCopyFallback: true,
+                DispatchId: dispatchId),
+            CancellationToken.None);
+        Assert.True(result.Succeeded, result.Message);
+
+        // What the poller does the moment an import succeeds. After it, no
+        // dispatch query can see the row at all.
+        await dispatches.ArchiveDispatchAsync(dispatchId, "import_completed", CancellationToken.None);
+        var visible = await dispatches.QueryDispatchesAsync(
+            new DispatchQueryFilter { MediaType = "movies", EntityId = movie.Id },
+            new DispatchPaginationOptions { PageSize = 10 },
+            CancellationToken.None);
+        Assert.Empty(visible.Items);
+
+        var tracked = new List<MovieTrackedFileItem>();
+        await foreach (var item in movies.StreamTrackedFilesAsync(library.Id, CancellationToken.None))
+        {
+            tracked.Add(item);
+        }
+
+        var imported = Assert.Single(tracked);
+        var snapshot = await mediaState.GetLatestPreferenceEvaluationSnapshotAsync(
+            MediaKind.Movie,
+            imported.MovieId,
+            library.Id,
+            fileIdentity: null,
+            CancellationToken.None,
+            imported.FilePath,
+            imported.FileSizeBytes);
+
+        Assert.NotNull(snapshot);
+        Assert.NotNull(snapshot.Acquisition);
+        Assert.Equal("TestIndexer", snapshot.Acquisition.IndexerName);
+        Assert.Equal("qBittorrent", snapshot.Acquisition.DownloadClientName);
+        Assert.Equal(dispatchId, snapshot.Acquisition.DispatchId);
+        Assert.NotNull(snapshot.Acquisition.GrabbedUtc);
+
+        var history = await jobStore.ListActivityAsync(50, "movie", movie.Id, CancellationToken.None);
+        var completed = Assert.Single(history, item => item.Category == "filesystem.import.completed");
+        Assert.Contains("Sintel.2010.1080p.NF.WEB-DL.DDP5.1.H.264-DELUNO", completed.Message, StringComparison.Ordinal);
+        var named = Assert.Single(history, item => item.Category == "filesystem.import.named");
+        Assert.Contains("Sintel (2010) [WEB 1080p] [NF].mkv", named.Message, StringComparison.Ordinal);
+        Assert.Contains(history, item => item.Category == "filesystem.import.started");
+    }
+
     [Fact]
     public async Task Tv_import_uses_persisted_airdate_numbering_for_rename_and_catalogue_identity()
     {

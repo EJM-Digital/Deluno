@@ -127,6 +127,48 @@ public sealed class DownloadDispatchRepositoryTests
         Assert.Equal(@"C:\Library\Movies\Sintel (2010)\Sintel.mkv", link.ReplacementExpectedPath);
     }
 
+    /// <summary>
+    /// Archiving is how the operational views stay clean, and every successful
+    /// import archives its dispatch at once. A history view must be able to ask
+    /// for those rows, or the titles Deluno actually downloaded are the ones
+    /// with no record of ever being sent anywhere.
+    /// </summary>
+    [Fact]
+    public async Task A_history_query_can_still_see_a_dispatch_that_was_archived()
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-09-16T04:00:00Z"));
+
+        await new JobsSchemaInitializer(
+            storage.Factory,
+            new SqliteDatabaseMigrator(storage.Factory, timeProvider),
+            NullLogger<JobsSchemaInitializer>.Instance).StartAsync(CancellationToken.None);
+
+        await InsertDispatchAsync(storage.Factory, "dispatch-imported", "movies-main", "movie-1", "Sintel.2010.1080p.NF.WEB-DL-DELUNO");
+        var repository = new SqliteDownloadDispatchesRepository(storage.Factory, timeProvider);
+        await repository.ArchiveDispatchAsync("dispatch-imported", "import_completed", CancellationToken.None);
+
+        var operational = await repository.QueryDispatchesAsync(
+            new DispatchQueryFilter { EntityId = "movie-1" },
+            new DispatchPaginationOptions { PageSize = 10 },
+            CancellationToken.None);
+        var history = await repository.QueryDispatchesAsync(
+            new DispatchQueryFilter { EntityId = "movie-1", IncludeArchived = true },
+            new DispatchPaginationOptions { PageSize = 10 },
+            CancellationToken.None);
+
+        Assert.Empty(operational.Items);
+        var kept = Assert.Single(history.Items);
+        Assert.Equal("Sintel.2010.1080p.NF.WEB-DL-DELUNO", kept.ReleaseName);
+        Assert.Equal("test-indexer", kept.IndexerName);
+        Assert.Equal("qBittorrent", kept.DownloadClientName);
+
+        // Deliberately unchanged: a single-dispatch lookup stays strict, so
+        // nothing acts on a retired row and a dispatch a person deleted really
+        // is gone. History is a list question, and that is where it is asked.
+        Assert.Null(await repository.GetDispatchAsync("dispatch-imported", CancellationToken.None));
+    }
+
     [Fact]
     public async Task Ordinary_and_legacy_dispatches_cannot_authorize_an_overwrite()
     {

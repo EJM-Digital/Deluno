@@ -79,6 +79,7 @@ public static class DownloadDispatchesEndpointRouteBuilderExtensions
         string? libraryId,
         DateTime? minGrabTime,
         DateTime? maxGrabTime,
+        bool includeArchived = false,
         int pageSize = 50,
         string? pageToken = null,
         CancellationToken cancellationToken = default)
@@ -93,7 +94,8 @@ public static class DownloadDispatchesEndpointRouteBuilderExtensions
             EntityId = entityId,
             LibraryId = libraryId,
             MinGrabTime = minGrabTime.HasValue ? new DateTimeOffset(minGrabTime.Value, TimeSpan.Zero) : null,
-            MaxGrabTime = maxGrabTime.HasValue ? new DateTimeOffset(maxGrabTime.Value, TimeSpan.Zero) : null
+            MaxGrabTime = maxGrabTime.HasValue ? new DateTimeOffset(maxGrabTime.Value, TimeSpan.Zero) : null,
+            IncludeArchived = includeArchived
         };
 
         var pagination = new DispatchPaginationOptions

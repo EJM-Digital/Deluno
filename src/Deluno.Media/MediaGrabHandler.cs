@@ -270,9 +270,12 @@ public static class MediaGrabHandler
 
         await activityFeedRepository.RecordActivityAsync(
             forceOverride ? $"{entityType}.release.force-grabbed" : $"{entityType}.release.grabbed",
+            // Naming the release is the point of the row. "A release was
+            // selected" leaves the one fact a person came to find - which
+            // release Deluno actually took - only in the drawer behind it.
             forceOverride
-                ? $"{item.Title} release was force grabbed and sent to {downloadClient.DownloadClientName}."
-                : $"{item.Title} release was manually selected and sent to {downloadClient.DownloadClientName}.",
+                ? $"{releaseName} was forced for {item.Title} and sent to {downloadClient.DownloadClientName}."
+                : $"{releaseName} was chosen for {item.Title} by hand and sent to {downloadClient.DownloadClientName}.",
             serializedAudit,
             null,
             entityType,

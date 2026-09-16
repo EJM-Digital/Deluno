@@ -1009,7 +1009,8 @@ public sealed class SqliteMediaStateRepository(
         command.CommandText = $"""
             SELECT media_id, library_id, file_identity, file_path, file_size_bytes,
                    plan_id, plan_version, plan_hash, facts_json, evaluation_json,
-                   matched_rule_ids_json, evaluated_utc, source, release_name_evidence
+                   matched_rule_ids_json, evaluated_utc, source, release_name_evidence,
+                   acquisition_json
             FROM {map.PreferenceEvaluationTable}
             WHERE media_id = @mediaId
               AND library_id = @libraryId
@@ -1055,7 +1056,10 @@ public sealed class SqliteMediaStateRepository(
                 MatchedRuleIds: matchedRuleIds,
                 EvaluatedUtc: ParseTimestamp(reader.GetString(11)),
                 Source: reader.IsDBNull(12) ? null : reader.GetString(12),
-                ReleaseNameEvidence: reader.IsDBNull(13) ? null : reader.GetString(13));
+                ReleaseNameEvidence: reader.IsDBNull(13) ? null : reader.GetString(13),
+                Acquisition: reader.IsDBNull(14)
+                    ? null
+                    : JsonSerializer.Deserialize<ReleaseAcquisition>(reader.GetString(14), PreferenceJsonOptions));
         }
         catch (JsonException)
         {
@@ -1448,12 +1452,14 @@ public sealed class SqliteMediaStateRepository(
             INSERT INTO {map.PreferenceEvaluationTable} (
                 id, media_id, library_id, file_identity, file_path, file_size_bytes,
                 plan_id, plan_version, plan_hash, facts_json, evaluation_json,
-                matched_rule_ids_json, evaluated_utc, source, release_name_evidence, created_utc, updated_utc
+                matched_rule_ids_json, evaluated_utc, source, release_name_evidence, acquisition_json,
+                created_utc, updated_utc
             )
             VALUES (
                 @id, @mediaId, @libraryId, @fileIdentity, @filePath, @fileSizeBytes,
                 @planId, @planVersion, @planHash, @factsJson, @evaluationJson,
-                @matchedRuleIdsJson, @evaluatedUtc, @source, @releaseNameEvidence, @createdUtc, @updatedUtc
+                @matchedRuleIdsJson, @evaluatedUtc, @source, @releaseNameEvidence, @acquisitionJson,
+                @createdUtc, @updatedUtc
             )
             ON CONFLICT(media_id, library_id, file_identity, plan_hash) DO UPDATE SET
                 file_path = excluded.file_path,
@@ -1466,6 +1472,10 @@ public sealed class SqliteMediaStateRepository(
                 evaluated_utc = excluded.evaluated_utc,
                 source = excluded.source,
                 release_name_evidence = COALESCE(excluded.release_name_evidence, release_name_evidence),
+                -- Same reason as the release title above: a later pass that
+                -- knows nothing about the download must not erase where the
+                -- copy came from.
+                acquisition_json = COALESCE(excluded.acquisition_json, acquisition_json),
                 updated_utc = excluded.updated_utc;
             """;
         AddParameter(command, "@id", Guid.CreateVersion7().ToString("N"));
@@ -1483,6 +1493,12 @@ public sealed class SqliteMediaStateRepository(
         AddParameter(command, "@evaluatedUtc", snapshot.EvaluatedUtc.ToUniversalTime().ToString("O"));
         AddParameter(command, "@source", snapshot.Source);
         AddParameter(command, "@releaseNameEvidence", snapshot.ReleaseNameEvidence);
+        AddParameter(
+            command,
+            "@acquisitionJson",
+            snapshot.Acquisition is { HasAnything: true } acquisition
+                ? JsonSerializer.Serialize(acquisition, PreferenceJsonOptions)
+                : null);
         AddParameter(command, "@createdUtc", now);
         AddParameter(command, "@updatedUtc", now);
         await command.ExecuteNonQueryAsync(cancellationToken);

@@ -136,13 +136,17 @@ public static class JobsEndpointRouteBuilderExtensions
             int? pageSize,
             string? pageToken,
             string? mediaType,
+            bool? includeArchived,
+            string? entityId,
             IJobQueueRepository repository,
             CancellationToken cancellationToken) =>
         {
             var page = await repository.ListDownloadDispatchesPageAsync(
                 new PageRequest(pageSize ?? 20, pageToken),
                 mediaType,
-                cancellationToken);
+                cancellationToken,
+                includeArchived ?? false,
+                entityId);
             return Results.Ok(page);
         });
 

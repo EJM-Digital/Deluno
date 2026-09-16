@@ -286,7 +286,9 @@ public sealed class SqliteDownloadDispatchesRepository(
             DelunoDatabaseNames.Jobs,
             cancellationToken);
 
-        var whereConditions = new List<string> { "status != 'archived'" };
+        var whereConditions = filter.IncludeArchived
+            ? new List<string>()
+            : new List<string> { "status != 'archived'" };
         var parameters = new Dictionary<string, object?>();
 
         if (!string.IsNullOrEmpty(filter.GrabStatus))

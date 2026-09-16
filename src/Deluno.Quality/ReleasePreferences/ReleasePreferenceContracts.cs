@@ -355,7 +355,40 @@ public sealed record PreferenceEvaluationSnapshot(
     /// service, revision, edition, group or custom-format evidence that made
     /// Deluno choose the release.
     /// </summary>
-    string? ReleaseNameEvidence = null);
+    string? ReleaseNameEvidence = null,
+    /// <summary>
+    /// Where this copy came from, recorded beside the file itself. The
+    /// dispatch row that carried the grab is archived as soon as the import
+    /// succeeds and is eventually pruned, so provenance kept only there
+    /// disappears exactly when the file arrives.
+    /// </summary>
+    ReleaseAcquisition? Acquisition = null);
+
+/// <summary>
+/// How an installed file was acquired: the indexer it was found on, the client
+/// that fetched it, and when. Null for a file Deluno did not download, such as
+/// one found by scanning an existing library.
+/// </summary>
+public sealed record ReleaseAcquisition(
+    string? IndexerName,
+    string? DownloadClientName,
+    string? DownloadClientItemId,
+    DateTimeOffset? GrabbedUtc,
+    string? DispatchId)
+{
+    /// <summary>
+    /// True when this says something worth keeping. An acquisition with every
+    /// field empty is not provenance, and storing it would make a manual
+    /// import look like a download.
+    /// </summary>
+    [JsonIgnore]
+    public bool HasAnything =>
+        !string.IsNullOrWhiteSpace(IndexerName)
+        || !string.IsNullOrWhiteSpace(DownloadClientName)
+        || !string.IsNullOrWhiteSpace(DownloadClientItemId)
+        || GrabbedUtc is not null
+        || !string.IsNullOrWhiteSpace(DispatchId);
+}
 
 /// <summary>
 /// Canonical serialization for persisted release-preference evidence. Facts,

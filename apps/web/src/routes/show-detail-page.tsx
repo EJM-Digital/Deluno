@@ -114,7 +114,11 @@ export async function showDetailLoader({
       fetchJson<SeriesListItem>(`/api/series/${id}`),
       fetchJson<MetadataProviderIssue | null>(`/api/series/${id}/metadata/issue`).catch(() => null),
       fetchJson<SeriesSearchHistoryItem[]>("/api/series/search-history"),
-      fetchPageItems<DownloadDispatchItem>("/api/download-dispatches?mediaType=tv&pageSize=20"),
+      // Archived rows included on purpose: an import archives its dispatch the
+      // moment it succeeds, so a history that hides them shows nothing was ever
+      // sent for the very shows Deluno did download. Asked for by title, because
+      // the newest twenty rows across the whole library are not this show's.
+      fetchPageItems<DownloadDispatchItem>(`/api/download-dispatches?mediaType=tv&pageSize=20&includeArchived=true&entityId=${encodeURIComponent(id)}`),
       fetchJson<SeriesImportRecoverySummary>("/api/series/import-recovery"),
       fetchJson<SeriesInventoryDetail>(`/api/series/${id}/inventory`),
       fetchPageItems<ActivityEventItem>(

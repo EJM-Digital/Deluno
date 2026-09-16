@@ -449,13 +449,20 @@ public static class MoviesEndpointRouteBuilderExtensions
                 .Where(rule => rule is not null)
                 .Select(rule => new { id = rule!.Id, name = rule.Name, trashId = rule.TrashId })
                 .ToArray();
-            var dispatch = (await dispatchesRepository.QueryDispatchesAsync(
-                    new DispatchQueryFilter { MediaType = "movies", EntityId = id },
-                    new DispatchPaginationOptions { PageSize = 5 },
-                    cancellationToken))
-                .Items
-                .OrderByDescending(item => item.CreatedUtc)
-                .FirstOrDefault();
+            // The file's own record answers first. A dispatch is consulted only
+            // for a copy imported before provenance was kept with the file -
+            // and it must ask for archived rows, because a successful import
+            // archives its dispatch immediately.
+            var acquisition = snapshot?.Acquisition;
+            var dispatch = acquisition is not null
+                ? null
+                : (await dispatchesRepository.QueryDispatchesAsync(
+                        new DispatchQueryFilter { MediaType = "movies", EntityId = id, IncludeArchived = true },
+                        new DispatchPaginationOptions { PageSize = 5 },
+                        cancellationToken))
+                    .Items
+                    .OrderByDescending(item => item.CreatedUtc)
+                    .FirstOrDefault();
 
             return Results.Ok(new
             {
@@ -465,9 +472,9 @@ public static class MoviesEndpointRouteBuilderExtensions
                 quality = movie.CurrentQuality,
                 releaseName = snapshot?.ReleaseNameEvidence ?? dispatch?.ReleaseName,
                 releaseGroup = movie.ReleaseGroup,
-                indexerName = dispatch?.IndexerName,
-                downloadClientName = dispatch?.DownloadClientName,
-                grabbedUtc = dispatch?.CreatedUtc,
+                indexerName = acquisition?.IndexerName ?? dispatch?.IndexerName,
+                downloadClientName = acquisition?.DownloadClientName ?? dispatch?.DownloadClientName,
+                grabbedUtc = acquisition?.GrabbedUtc ?? dispatch?.CreatedUtc,
                 importedUtc = snapshot?.EvaluatedUtc,
                 source = snapshot?.Source,
                 formats = matched,
