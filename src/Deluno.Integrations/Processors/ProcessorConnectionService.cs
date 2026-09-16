@@ -99,13 +99,88 @@ public sealed class ProcessorConnectionService(IHttpClientFactory httpClientFact
             ApplyAuthentication(request, connection);
             using var response = await httpClientFactory.CreateClient("processor-connections").SendAsync(request, cancellationToken);
             var statusCode = (int)response.StatusCode;
-            return response.IsSuccessStatusCode
-                ? new ProcessorSubmissionResult(true, "submitted", "Deluno submitted the hand-off to the processor.", statusCode)
-                : new ProcessorSubmissionResult(false, "failed", $"Processor submission returned HTTP {statusCode}.", statusCode);
+            if (response.IsSuccessStatusCode)
+            {
+                return new ProcessorSubmissionResult(true, "submitted", "Deluno submitted the hand-off to the processor.", statusCode);
+            }
+
+            // Say what the processor said.
+            //
+            // This used to record the status code alone. A real rejection on the
+            // rig read "Processor submission returned HTTP 400." while the
+            // response body held the whole answer - "Refiner's watched folder is
+            // not set for this media scope, so there is nowhere to resolve the
+            // hand-off against." - which names the setting to change. Throwing
+            // that away leaves an owner with a number and nowhere to go, and it
+            // is the processor, not Deluno, that knows why it refused.
+            var explanation = await ReadRefusalAsync(response, cancellationToken);
+            return new ProcessorSubmissionResult(
+                false,
+                "failed",
+                explanation is null
+                    ? $"Processor submission returned HTTP {statusCode}."
+                    : $"The processor refused the hand-off with HTTP {statusCode}: {explanation}",
+                statusCode);
         }
         catch (Exception exception) when (!cancellationToken.IsCancellationRequested && (exception is HttpRequestException or TaskCanceledException))
         {
             return new ProcessorSubmissionResult(false, "failed", "Deluno could not submit the hand-off. Check the processor connection before retrying.", null);
+        }
+    }
+
+    /// <summary>
+    /// The processor's own words, when it gave any.
+    ///
+    /// <para>Bounded and best-effort: a refusal is already a bad moment, and a
+    /// processor that answers with a megabyte of HTML must not make it worse.
+    /// A JSON <c>detail</c> or <c>message</c> is preferred because that is what
+    /// FastAPI and friends put the sentence in; anything else is taken as plain
+    /// text.</para>
+    /// </summary>
+    private static async Task<string?> ReadRefusalAsync(HttpResponseMessage response, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var body = await response.Content.ReadAsStringAsync(cancellationToken);
+            if (string.IsNullOrWhiteSpace(body))
+            {
+                return null;
+            }
+
+            body = body.Trim();
+            if (body.StartsWith('{'))
+            {
+                try
+                {
+                    using var document = System.Text.Json.JsonDocument.Parse(body);
+                    foreach (var name in (string[])["detail", "message", "error", "title"])
+                    {
+                        if (document.RootElement.TryGetProperty(name, out var value)
+                            && value.ValueKind == System.Text.Json.JsonValueKind.String
+                            && value.GetString() is { Length: > 0 } text)
+                        {
+                            return Trim(text);
+                        }
+                    }
+                }
+                catch (System.Text.Json.JsonException)
+                {
+                    // Not JSON after all; fall through to the raw text.
+                }
+            }
+
+            return Trim(body);
+        }
+        catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException or InvalidOperationException)
+        {
+            // Never let reading the explanation replace the failure being reported.
+            return null;
+        }
+
+        static string Trim(string value)
+        {
+            var single = string.Join(" ", value.ReplaceLineEndings(" ").Split(" ", StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
+            return single.Length <= 400 ? single : single[..400] + "…";
         }
     }
 
