@@ -42,6 +42,46 @@ public sealed class ProcessorConnectionServiceTests
     }
 
     /// <summary>
+    /// A refusal keeps the processor's own words.
+    ///
+    /// <para>On the rig Weir refused a hand-off with a complete, actionable
+    /// sentence - "Refiner's watched folder is not set for this media scope" -
+    /// and Deluno recorded "Processor submission returned HTTP 400." The one
+    /// thing that named the setting to change was in the response body and was
+    /// thrown away, leaving an owner with a number and nowhere to go.</para>
+    /// </summary>
+    [Fact]
+    public async Task A_refused_handoff_keeps_what_the_processor_said()
+    {
+        var handler = new StubHandler(_ => new HttpResponseMessage(HttpStatusCode.BadRequest)
+        {
+            Content = new StringContent("{\"detail\":\"Refiner's watched folder is not set for this media scope.\"}")
+        });
+        var service = new ProcessorConnectionService(new StubHttpClientFactory(new HttpClient(handler)));
+
+        var result = await service.SubmitAsync(Connection(), Handoff(DateTimeOffset.UtcNow), CancellationToken.None);
+
+        Assert.False(result.IsAccepted);
+        Assert.Contains("Refiner's watched folder is not set", result.Message, StringComparison.Ordinal);
+        Assert.Contains("400", result.Message, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// And a processor that says nothing still reports the status it gave.
+    /// </summary>
+    [Fact]
+    public async Task A_refusal_with_no_body_still_reports_its_status()
+    {
+        var handler = new StubHandler(_ => new HttpResponseMessage(HttpStatusCode.ServiceUnavailable));
+        var service = new ProcessorConnectionService(new StubHttpClientFactory(new HttpClient(handler)));
+
+        var result = await service.SubmitAsync(Connection(), Handoff(DateTimeOffset.UtcNow), CancellationToken.None);
+
+        Assert.False(result.IsAccepted);
+        Assert.Contains("503", result.Message, StringComparison.Ordinal);
+    }
+
+    /// <summary>
     /// The same hand-off, unchanged, is the same request twice.
     ///
     /// <para>Which is what an idempotency key is for: a retry after a timeout
