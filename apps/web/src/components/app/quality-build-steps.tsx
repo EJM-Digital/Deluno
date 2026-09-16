@@ -4,6 +4,10 @@ import { Chip } from "../ui/chip";
 import { Input } from "../ui/input";
 import { cn } from "../../lib/utils";
 import { judgeDraftProfile, type DraftProfileJudgement } from "../../lib/api";
+// The same name the rules list, the picker and the title page use. These chips
+// printed TRaSH's raw token, so one screen said "AMZN" while every other said
+// "Amazon Prime Video" - for the same rule, in the same session.
+import { friendlyRuleName } from "../../lib/guide-names";
 import {
   QUALITY_STEPS,
   customFormatsOutsideGuide,
@@ -186,7 +190,7 @@ function StepRow({
                         : "border-hairline text-muted-foreground hover:border-ring/50 hover:text-foreground"
                     )}
                   >
-                    {format.name}
+                    {friendlyRuleName(format.name)}
                   </button>
                 );
               })}
@@ -281,7 +285,7 @@ function CustomRulesRow({
                     on ? "border-ring bg-ring/15 text-foreground" : "border-hairline text-muted-foreground hover:border-ring/50 hover:text-foreground"
                   )}
                 >
-                  {format.name}
+                  {friendlyRuleName(format.name)}
                 </button>
               );
             })}
@@ -320,8 +324,8 @@ function RuleIntentPicker({
         const intent = formatIntents[formatId] ?? guideIntentFor(format.score);
         return (
           <li key={formatId} className="flex flex-wrap items-center justify-between gap-2">
-            <span className="text-[length:var(--type-caption)]">{format.name}</span>
-            <div role="radiogroup" aria-label={`How much this profile wants ${format.name}`} className="flex gap-1">
+            <span className="text-[length:var(--type-caption)]">{friendlyRuleName(format.name)}</span>
+            <div role="radiogroup" aria-label={`How much this profile wants ${friendlyRuleName(format.name)}`} className="flex gap-1">
               {INTENT_CHOICES.map((choice) => (
                 <button
                   key={choice.value}

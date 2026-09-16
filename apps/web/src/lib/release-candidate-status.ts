@@ -30,7 +30,11 @@ export function candidateLabel(candidate: ReleaseCandidateStatusInput): string {
       // Nothing rejected this release. Saying so would be untrue, and it
       // would hide the only fact that matters here: you already have better.
       case "current-better": return "Your file is better";
-      case "preferred": return "Best match";
+      // NOT "Best match". This chip says what Deluno thinks of one release,
+      // and several releases can be preferred at once - five of them were, on
+      // one search, each claiming to be the best. Which one Deluno would
+      // actually take is a ranking, and the first row's caption says it.
+      case "preferred": return "Preferred";
       case "acceptable": return "Acceptable";
       case "eligible": return "Eligible";
       default: return "Needs review";

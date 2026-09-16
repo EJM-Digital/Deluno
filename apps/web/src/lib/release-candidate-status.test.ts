@@ -20,11 +20,24 @@ describe("release candidate status", () => {
   });
 
   it("labels the remaining typed statuses in the owner's words", () => {
-    expect(candidateLabel(typed("preferred"))).toBe("Best match");
+    expect(candidateLabel(typed("preferred"))).toBe("Preferred");
     expect(candidateLabel(typed("acceptable"))).toBe("Acceptable");
     expect(candidateLabel(typed("eligible"))).toBe("Eligible");
     expect(candidateLabel(typed("equivalent"))).toBe("Equivalent");
     expect(candidateLabel(typed("held"))).toBe("Needs review");
+  });
+
+  /**
+   * A search returned five preferred candidates and the list put "Best match"
+   * on all five. A superlative cannot be true of five things at once: the chip
+   * classifies one release, and the ranking belongs to the row that leads.
+   */
+  it("does not let every preferred release call itself the best", () => {
+    const five = [typed("preferred"), typed("preferred"), typed("preferred"), typed("preferred"), typed("preferred")];
+    const labels = five.map(candidateLabel);
+
+    expect(new Set(labels).size).toBe(1);
+    expect(labels.every((label) => !label.toLowerCase().includes("best"))).toBe(true);
   });
 
   it("only calls a row the best match when that row could actually win", () => {
