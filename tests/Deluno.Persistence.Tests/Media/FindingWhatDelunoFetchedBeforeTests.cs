@@ -29,7 +29,7 @@ public sealed class FindingWhatDelunoFetchedBeforeTests
         using var storage = await StorageAsync();
         var dispatches = new SqliteDownloadDispatchesRepository(storage.Factory, Clock);
 
-        await InsertAsync(storage.Factory, "dispatch-done", "movie-1", "Arrival.2016.1080p", importStatus: "completed");
+        await InsertAsync(storage.Factory, "dispatch-done", "movie-1", "Arrival.2016.1080p", importStatus: "imported");
 
         var found = await AcquisitionBlockerSources.FindPreviousFetchAsync(
             dispatches, "movies", "movie-1", CancellationToken.None);
@@ -53,6 +53,24 @@ public sealed class FindingWhatDelunoFetchedBeforeTests
 
         Assert.Null(await AcquisitionBlockerSources.FindPreviousFetchAsync(
             dispatches, "movies", "movie-1", CancellationToken.None));
+    }
+
+    /// <summary>
+    /// #507: the in-flight blocker asked for <c>completed</c>, a word no writer
+    /// uses, so an imported download was reported as still in the client.
+    /// </summary>
+    [Fact]
+    public async Task An_imported_download_is_not_reported_as_in_flight()
+    {
+        using var storage = await StorageAsync();
+        var dispatches = new SqliteDownloadDispatchesRepository(storage.Factory, Clock);
+
+        await InsertAsync(storage.Factory, "dispatch-done", "movie-1", "Arrival.2016.1080p", importStatus: "imported");
+
+        var held = await AcquisitionBlockerSources.FindAsync(
+            dispatches, processors: null!, "movies", "movie-1", CancellationToken.None);
+
+        Assert.Null(held.DownloadClientName);
     }
 
     [Fact]

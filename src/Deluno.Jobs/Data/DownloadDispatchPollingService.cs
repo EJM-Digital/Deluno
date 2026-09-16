@@ -14,9 +14,7 @@ public sealed class DownloadDispatchPollingService(
     IActivityFeedRepository activityFeedRepository,
     IDownloadDispatchesRepository downloadDispatchesRepository,
     IDispatchAlertRepository alertRepository,
-    IJobScheduler jobScheduler,
-    IRealtimeEventPublisher realtimeEventPublisher,
-    IRetryPolicyCatalog retryPolicyCatalog)
+    IRealtimeEventPublisher realtimeEventPublisher)
     : IDownloadDispatchPollingService
 {
     private static readonly TimeSpan GrabTimeout = TimeSpan.FromHours(2);
@@ -241,14 +239,6 @@ public sealed class DownloadDispatchPollingService(
             "warning",
             new Dictionary<string, string> { { "client", dispatch.DownloadClientName } },
             cancellationToken);
-
-        await QueueRetryJobAsync(
-            dispatch.Id,
-            "search_retry_grab",
-            "grab_timeout_recovery",
-            detailsJson,
-            timeProvider.GetUtcNow(),
-            cancellationToken);
     }
 
     private async Task RecordDetectionTimeoutRecoveryAsync(
@@ -293,14 +283,6 @@ public sealed class DownloadDispatchPollingService(
             "warning",
             new Dictionary<string, string> { { "mediaType", dispatch.MediaType } },
             cancellationToken);
-
-        await QueueRetryJobAsync(
-            dispatch.Id,
-            "search_retry_detection",
-            "detection_timeout_recovery",
-            detailsJson,
-            timeProvider.GetUtcNow(),
-            cancellationToken);
     }
 
     private async Task RecordImportTimeoutRecoveryAsync(
@@ -344,14 +326,6 @@ public sealed class DownloadDispatchPollingService(
             "import-timeout",
             "error",
             new Dictionary<string, string> { { "mediaType", dispatch.MediaType } },
-            cancellationToken);
-
-        await QueueRetryJobAsync(
-            dispatch.Id,
-            "search_retry_import",
-            "import_timeout_recovery",
-            detailsJson,
-            timeProvider.GetUtcNow(),
             cancellationToken);
     }
 
@@ -408,14 +382,6 @@ public sealed class DownloadDispatchPollingService(
                 { "failureMessage", dispatch.ImportFailureMessage ?? "" }
             },
             cancellationToken);
-
-        await QueueRetryJobAsync(
-            dispatch.Id,
-            "search_retry_import_failure",
-            "import_failure_recovery",
-            detailsJson,
-            timeProvider.GetUtcNow(),
-            cancellationToken);
     }
 
     private ActivityEventItem CreateRecoveryActivity(
@@ -461,41 +427,6 @@ public sealed class DownloadDispatchPollingService(
                 "import_completed",
                 cancellationToken);
         }
-    }
-
-    private async Task QueueRetryJobAsync(
-        string dispatchId,
-        string jobType,
-        string failureKind,
-        string payloadJson,
-        DateTimeOffset now,
-        CancellationToken cancellationToken)
-    {
-        var policy = retryPolicyCatalog.GetPolicyForKind(failureKind);
-        if (policy.MaxRetries == 0)
-            return;
-
-        var nextRetryDelay = retryPolicyCatalog.CalculateNextRetryDelay(1, policy);
-        var scheduledUtc = now.Add(nextRetryDelay);
-
-        var retryPayload = JsonSerializer.Serialize(new
-        {
-            dispatchId,
-            failureKind,
-            attemptNumber = 1,
-            originalPayload = payloadJson
-        });
-
-        var request = new EnqueueJobRequest(
-            JobType: jobType,
-            Source: "dispatch_polling_recovery",
-            PayloadJson: retryPayload,
-            RelatedEntityType: "download_dispatch",
-            RelatedEntityId: dispatchId,
-            ScheduledUtc: scheduledUtc,
-            MaxAttempts: policy.MaxRetries);
-
-        await jobScheduler.EnqueueAsync(request, cancellationToken);
     }
 
     private sealed record UnresolvedDispatch(

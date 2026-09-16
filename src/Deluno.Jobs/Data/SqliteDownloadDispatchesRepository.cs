@@ -454,6 +454,12 @@ public sealed class SqliteDownloadDispatchesRepository(
                 grab_status = 'succeeded'
                 AND detected_utc IS NULL
                 AND grab_attempted_utc <= @cutoffTime
+                -- Imported, refused at import, or archived is finished whether
+                -- or not a client webhook ever stamped detected_utc. Without
+                -- this a hand-picked grab stayed 'downloading' for the whole
+                -- seven-day backstop after its import had failed (#507).
+                AND archived_utc IS NULL
+                AND COALESCE(import_status, '') NOT IN ('imported', 'failed')
             """;
 
         if (!string.IsNullOrEmpty(clientId))
