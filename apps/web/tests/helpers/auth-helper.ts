@@ -62,7 +62,18 @@ export async function authenticateAndNavigate(page: Page, targetUrl: string) {
       }
     : fallbackCredentials;
 
-  await page.getByLabel(/username/i).fill(credentials.username);
+  // Wait for the form, not just the document.
+  //
+  // `goto` resolves when the document loads; the login form is rendered by the
+  // app afterwards. With four workers running and the mobile project emulating
+  // a slower device, that cold first paint can take longer than Playwright's
+  // 30s default - and this helper is where every spec pays it once. The result
+  // was a `locator.fill` timeout that moved between specs run to run and always
+  // passed in isolation, which is the worst shape a gate failure can have:
+  // it teaches you to ignore red.
+  const username = page.getByLabel(/username/i);
+  await username.waitFor({ state: "visible", timeout: 90_000 });
+  await username.fill(credentials.username);
   await page.getByLabel("Password", { exact: true }).fill(credentials.password);
   await page.getByRole("button", { name: /sign in/i }).click();
 
