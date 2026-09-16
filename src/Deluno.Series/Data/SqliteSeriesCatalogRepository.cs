@@ -2987,7 +2987,18 @@ public sealed class SqliteSeriesCatalogRepository(
                             -- must not blank what a previous import recorded.
                             current_quality = COALESCE(excluded.current_quality, current_quality),
                             target_quality = COALESCE(excluded.target_quality, target_quality),
-                            quality_cutoff_met = excluded.quality_cutoff_met,
+                            -- And the same care for the flag, which was written
+                            -- unconditionally at first. A rescan of a healthy
+                            -- library reports "has a file" without deciding a
+                            -- cutoff, so every settled episode was un-settled
+                            -- and looked upgradable again. Only an import that
+                            -- actually met the cutoff may raise it; only an
+                            -- episode losing its file may clear it.
+                            quality_cutoff_met = CASE
+                                WHEN excluded.quality_cutoff_met = 1 THEN 1
+                                WHEN excluded.wanted_status = 'missing' THEN 0
+                                ELSE quality_cutoff_met
+                            END,
                             last_search_result = excluded.last_search_result,
                             updated_utc = excluded.updated_utc;
                         """;
