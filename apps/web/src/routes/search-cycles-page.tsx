@@ -46,6 +46,7 @@ import {
 import type { PlatformSettingsPatch } from "../lib/api/settings";
 import { useApiMutation } from "../lib/use-api-mutation";
 import { authedFetch } from "../lib/use-auth";
+import { resolveDrawerSaveState, shouldClearSaveState } from "../lib/drawer-save-state";
 
 const INTERVAL_OPTIONS = [
   { value: "1", label: "Every hour" },
@@ -223,9 +224,9 @@ export function SearchCyclesPage() {
 
   const editing = drawerId ? libraries.find((library) => library.id === drawerId) ?? null : null;
   const drawerDirty = drawerId !== null && JSON.stringify(form) !== JSON.stringify(initialForm);
-  const drawerFooterState: DrawerSaveState = drawerState === "saving" ? "saving" : drawerDirty ? "dirty" : drawerState ?? "clean";
+  const drawerFooterState: DrawerSaveState = resolveDrawerSaveState(drawerState, drawerDirty);
   useEffect(() => {
-    if (drawerDirty && (drawerState === "saved" || drawerState === "error")) setDrawerState(undefined);
+    if (shouldClearSaveState(drawerState, drawerDirty)) setDrawerState(undefined);
   }, [drawerDirty, drawerState]);
 
   function openLibrary(library: LibraryItem) {
@@ -292,10 +293,10 @@ export function SearchCyclesPage() {
     setSharing(settingsSharing);
   }, [cleanupDirty, savedCleanup, settingsCleanup, settingsSharing]);
 
-  const cleanupFooter: DrawerSaveState = cleanupState === "saving" ? "saving" : automationDirty ? "dirty" : cleanupState ?? "clean";
+  const cleanupFooter: DrawerSaveState = resolveDrawerSaveState(cleanupState, automationDirty);
   useUnsavedChanges(automationDirty || drawerDirty);
   useEffect(() => {
-    if (automationDirty && (cleanupState === "saved" || cleanupState === "error")) setCleanupState(undefined);
+    if (shouldClearSaveState(cleanupState, automationDirty)) setCleanupState(undefined);
   }, [automationDirty, cleanupState]);
 
   async function submitCleanup(event: FormEvent<HTMLFormElement>) {

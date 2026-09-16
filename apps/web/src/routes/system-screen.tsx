@@ -62,7 +62,7 @@ import { ListCard, ListCell, ListEmpty, ListNameCell, ListRow, ListTable, LIST_T
 import { SummaryStrip } from "../components/ui/summary-strip";
 import { useUnsavedChanges } from "../hooks/use-unsaved-changes";
 import { formatDateTime, type DisplayPreferences, useDisplayPreferences } from "../lib/display-preferences";
-import { resolveDrawerSaveState } from "../lib/drawer-save-state";
+import { resolveDrawerSaveState, shouldClearSaveState } from "../lib/drawer-save-state";
 
 interface SystemLoaderData {
   activity: ActivityEventItem[];
@@ -810,11 +810,11 @@ function BackupCard({
   const [restoreFile, setRestoreFile] = useState<File | null>(null);
   const [showRestoreConfirm, setShowRestoreConfirm] = useState(false);
   const dirty = useMemo(() => JSON.stringify(settings) !== JSON.stringify(savedSettings), [settings, savedSettings]);
-  const scheduleState: DrawerSaveState = scheduleSaveState === "saving" ? "saving" : dirty ? "dirty" : scheduleSaveState ?? "clean";
+  const scheduleState: DrawerSaveState = resolveDrawerSaveState(scheduleSaveState, dirty);
   useUnsavedChanges(dirty, "Your backup schedule edits have not been saved.", saveSchedule);
 
   useEffect(() => {
-    if (dirty && (scheduleSaveState === "saved" || scheduleSaveState === "error")) setScheduleSaveState(undefined);
+    if (shouldClearSaveState(scheduleSaveState, dirty)) setScheduleSaveState(undefined);
   }, [dirty, scheduleSaveState]);
 
   async function reload() {
@@ -1088,7 +1088,7 @@ function UpgradeCard({ status, children }: { status: UpdateStatusResponse; child
     () => preferences !== null && savedPreferences !== null && JSON.stringify(preferences) !== JSON.stringify(savedPreferences),
     [preferences, savedPreferences]
   );
-  const preferencesState: DrawerSaveState = preferencesSaveState === "saving" ? "saving" : preferencesDirty ? "dirty" : preferencesSaveState ?? "clean";
+  const preferencesState: DrawerSaveState = resolveDrawerSaveState(preferencesSaveState, preferencesDirty);
   useUnsavedChanges(preferencesDirty, "Your update preference edits have not been saved.", () => {
     if (preferences) return savePreferences(preferences);
   });
@@ -1157,7 +1157,7 @@ function UpgradeCard({ status, children }: { status: UpdateStatusResponse; child
   }, [preferences]);
 
   useEffect(() => {
-    if (preferencesDirty && (preferencesSaveState === "saved" || preferencesSaveState === "error")) setPreferencesSaveState(undefined);
+    if (shouldClearSaveState(preferencesSaveState, preferencesDirty)) setPreferencesSaveState(undefined);
   }, [preferencesDirty, preferencesSaveState]);
 
   const isDocker = current.installKind === "docker";

@@ -80,6 +80,7 @@ import { settingsOverviewLoader } from "./settings-overview-page";
 import type { PlatformSettingsPatch } from "../lib/api/settings";
 import { useApiMutation } from "../lib/use-api-mutation";
 import { authedFetch } from "../lib/use-auth";
+import { resolveDrawerSaveState, shouldClearSaveState } from "../lib/drawer-save-state";
 
 const TABS = configurationNavAreas.find((area) => area.label === "Quality & Release")?.items ?? [];
 
@@ -266,9 +267,9 @@ export function SettingsCustomFormatsPage() {
 
   const editing = drawer?.kind === "rule" && drawer.id ? customFormats.find((format) => format.id === drawer.id) ?? null : null;
   const ruleDirty = drawer?.kind === "rule" && !same(form, initialForm);
-  const ruleFooter: DrawerSaveState = ruleState === "saving" ? "saving" : ruleDirty ? "dirty" : ruleState ?? "clean";
+  const ruleFooter: DrawerSaveState = resolveDrawerSaveState(ruleState, ruleDirty);
   useEffect(() => {
-    if (ruleDirty && (ruleState === "saved" || ruleState === "error")) setRuleState(undefined);
+    if (shouldClearSaveState(ruleState, ruleDirty)) setRuleState(undefined);
   }, [ruleDirty, ruleState]);
 
   function openRule(format: CustomFormatItem | null) {
@@ -634,10 +635,10 @@ export function SettingsCustomFormatsPage() {
     setSafeguards(settingsSafeguards);
   }, [safeguardsDirty, savedSafeguards, settingsSafeguards]);
 
-  const safeguardFooter: DrawerSaveState = safeguardState === "saving" ? "saving" : safeguardsDirty ? "dirty" : safeguardState ?? "clean";
+  const safeguardFooter: DrawerSaveState = resolveDrawerSaveState(safeguardState, safeguardsDirty);
   useUnsavedChanges(safeguardsDirty || Boolean(ruleDirty));
   useEffect(() => {
-    if (safeguardsDirty && (safeguardState === "saved" || safeguardState === "error")) setSafeguardState(undefined);
+    if (shouldClearSaveState(safeguardState, safeguardsDirty)) setSafeguardState(undefined);
   }, [safeguardsDirty, safeguardState]);
 
   function addNeverGrab() {
