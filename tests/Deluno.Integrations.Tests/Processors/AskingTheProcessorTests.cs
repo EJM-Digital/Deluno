@@ -67,6 +67,22 @@ public sealed class AskingTheProcessorTests
         Assert.Contains("Set a webhook secret in Weir", support.Message, StringComparison.Ordinal);
     }
 
+    /// <summary>
+    /// Weir answers 401 for a wrong or missing secret. Read as "not
+    /// supported" it would have quietly fallen back to judging the processor
+    /// without asking it.
+    /// </summary>
+    [Fact]
+    public async Task A_refused_secret_is_said_as_the_secret_to_fix_not_as_unsupported()
+    {
+        var support = await Service(_ => new HttpResponseMessage(HttpStatusCode.Unauthorized)).GetStatusSupportAsync(Weir, CancellationToken.None);
+        var status = await Service(_ => new HttpResponseMessage(HttpStatusCode.Unauthorized)).GetHandoffStatusAsync(Weir, "h-1", CancellationToken.None);
+
+        Assert.Equal(ProcessorAnswer.Forbidden, support.Answer);
+        Assert.Contains("refused the webhook secret", support.Message, StringComparison.Ordinal);
+        Assert.Equal(ProcessorAnswer.Forbidden, status.Answer);
+    }
+
     [Fact]
     public async Task A_status_is_read_in_full()
     {

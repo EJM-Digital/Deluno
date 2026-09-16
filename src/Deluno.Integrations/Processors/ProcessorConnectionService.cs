@@ -198,7 +198,7 @@ public sealed class ProcessorConnectionService(IHttpClientFactory httpClientFact
             using var request = new HttpRequestMessage(HttpMethod.Get, endpoints.Capabilities);
             ApplyAuthentication(request, connection);
             using var response = await httpClientFactory.CreateClient("processor-connections").SendAsync(request, cancellationToken);
-            if (response.StatusCode == System.Net.HttpStatusCode.Forbidden)
+            if (response.StatusCode is System.Net.HttpStatusCode.Forbidden or System.Net.HttpStatusCode.Unauthorized)
             {
                 return new ProcessorStatusSupport(ProcessorAnswer.Forbidden, false, false, await ForbiddenMessageAsync(response, connection, cancellationToken));
             }
@@ -242,7 +242,7 @@ public sealed class ProcessorConnectionService(IHttpClientFactory httpClientFact
             {
                 case System.Net.HttpStatusCode.NotFound:
                     return new ProcessorHandoffStatusResult(ProcessorAnswer.NotFound, Message: $"{connection.Name} has no record of this hand-off.");
-                case System.Net.HttpStatusCode.Forbidden:
+                case System.Net.HttpStatusCode.Forbidden or System.Net.HttpStatusCode.Unauthorized:
                     return new ProcessorHandoffStatusResult(ProcessorAnswer.Forbidden, Message: await ForbiddenMessageAsync(response, connection, cancellationToken));
             }
 
@@ -285,7 +285,7 @@ public sealed class ProcessorConnectionService(IHttpClientFactory httpClientFact
                 _ when response.IsSuccessStatusCode => new ProcessorHandoffCancelResult(ProcessorAnswer.Answered, null),
                 System.Net.HttpStatusCode.Conflict => new ProcessorHandoffCancelResult(ProcessorAnswer.Busy, await ReadRefusalAsync(response, cancellationToken)),
                 System.Net.HttpStatusCode.NotFound => new ProcessorHandoffCancelResult(ProcessorAnswer.NotFound, null),
-                System.Net.HttpStatusCode.Forbidden => new ProcessorHandoffCancelResult(ProcessorAnswer.Forbidden, await ForbiddenMessageAsync(response, connection, cancellationToken)),
+                System.Net.HttpStatusCode.Forbidden or System.Net.HttpStatusCode.Unauthorized => new ProcessorHandoffCancelResult(ProcessorAnswer.Forbidden, await ForbiddenMessageAsync(response, connection, cancellationToken)),
                 _ => new ProcessorHandoffCancelResult(ProcessorAnswer.Unreachable, await ReadRefusalAsync(response, cancellationToken))
             };
         }
@@ -296,8 +296,9 @@ public sealed class ProcessorConnectionService(IHttpClientFactory httpClientFact
     }
 
     /// <summary>
-    /// A 403 here is almost always one thing: the processor will not describe
-    /// its files to anyone until a shared secret is set. Said as that, because
+    /// A refusal here is one of two things, and each has one fix. Weir
+    /// answers 403 when no webhook secret is set anywhere, and 401 when the one
+    /// Deluno sent is missing or wrong (Weir #480). Said as that, because
     /// "forbidden" gives nobody anything to do.
     /// </summary>
     private static async Task<string> ForbiddenMessageAsync(
@@ -306,7 +307,9 @@ public sealed class ProcessorConnectionService(IHttpClientFactory httpClientFact
         CancellationToken cancellationToken)
     {
         var explanation = await ReadRefusalAsync(response, cancellationToken);
-        var advice = $"Set a webhook secret in {connection.Name} and the same secret on this processor connection in Deluno, so Deluno can ask about hand-offs.";
+        var advice = response.StatusCode == System.Net.HttpStatusCode.Unauthorized
+            ? $"{connection.Name} refused the webhook secret on this processor connection. Copy {connection.Name}'s secret for Deluno into the connection, so Deluno can ask about hand-offs."
+            : $"Set a webhook secret in {connection.Name} and the same secret on this processor connection in Deluno, so Deluno can ask about hand-offs.";
         return explanation is null ? advice : $"{advice} ({explanation})";
     }
 
