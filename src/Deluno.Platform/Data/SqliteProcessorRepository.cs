@@ -266,10 +266,27 @@ public sealed class SqliteProcessorRepository(
                     import_job_id = NULL,
                     failure_message = NULL,
                     created_utc = @createdUtc,
-                    updated_utc = @updatedUtc
+                    updated_utc = @updatedUtc,
+                    processor_state = NULL,
+                    processor_message = NULL,
+                    processor_queue_position = NULL,
+                    processor_scheduled_for_utc = NULL,
+                    processor_last_changed_utc = NULL,
+                    processor_checked_utc = NULL,
+                    processor_unreachable_since_utc = NULL,
+                    processor_answering_since_utc = NULL
                 WHERE library_id = @libraryId
                   AND source_key = @sourceKey
-                  AND status IN ('completed', 'failed');
+                  -- Any other ending restarts only for a new download. The same
+                  -- download still sitting in the client after the processor
+                  -- gave up on it, or after its original was imported, is that
+                  -- ending, not a new cycle: restarting it resubmitted the file
+                  -- every pass once processors' final failure reports began to
+                  -- land (#511). Retrying the same download is a person's
+                  -- choice, from Queue.
+                  AND (status = 'completed'
+                    OR (status IN ('failed', 'rejected', 'timed-out', 'stalled', 'lost', 'cancelled', 'released')
+                        AND queue_item_id <> @queueItemId));
                 """;
             AddParameter(restart, "@libraryId", request.LibraryId.Trim());
             AddParameter(restart, "@sourceKey", sourceKey);
@@ -303,8 +320,8 @@ public sealed class SqliteProcessorRepository(
             cancellationToken);
         using var command = connection.CreateCommand();
         command.CommandText = !string.IsNullOrWhiteSpace(handoffId)
-            ? "SELECT id, library_id, media_type, client_id, queue_item_id, release_name, source_path, processor_name, status, output_path, import_job_id, failure_message, created_utc, updated_utc FROM processor_handoffs WHERE id = @id AND library_id = @libraryId LIMIT 1;"
-            : "SELECT id, library_id, media_type, client_id, queue_item_id, release_name, source_path, processor_name, status, output_path, import_job_id, failure_message, created_utc, updated_utc FROM processor_handoffs WHERE library_id = @libraryId AND source_key = @sourceKey LIMIT 1;";
+            ? HandoffSelect + " WHERE id = @id AND library_id = @libraryId LIMIT 1;"
+            : HandoffSelect + " WHERE library_id = @libraryId AND source_key = @sourceKey LIMIT 1;";
         AddParameter(command, "@libraryId", libraryId.Trim());
         if (!string.IsNullOrWhiteSpace(handoffId)) AddParameter(command, "@id", handoffId.Trim());
         else AddParameter(command, "@sourceKey", BuildProcessorSourceKey(sourcePath!));
@@ -325,7 +342,7 @@ public sealed class SqliteProcessorRepository(
             DelunoDatabaseNames.Platform,
             cancellationToken);
         using var command = connection.CreateCommand();
-        command.CommandText = "SELECT id, library_id, media_type, client_id, queue_item_id, release_name, source_path, processor_name, status, output_path, import_job_id, failure_message, created_utc, updated_utc FROM processor_handoffs WHERE id = @id LIMIT 1;";
+        command.CommandText = HandoffSelect + " WHERE id = @id LIMIT 1;";
         AddParameter(command, "@id", id.Trim());
         using var reader = await command.ExecuteReaderAsync(cancellationToken);
         return await reader.ReadAsync(cancellationToken) ? ReadProcessorHandoff(reader) : null;
@@ -351,7 +368,17 @@ public sealed class SqliteProcessorRepository(
                     output_path = COALESCE(@outputPath, output_path),
                     import_job_id = COALESCE(@importJobId, import_job_id),
                     failure_message = @failureMessage,
-                    updated_utc = @updatedUtc
+                    updated_utc = @updatedUtc,
+                    -- Back to waiting starts a new conversation with the
+                    -- processor; the last one's answers do not carry over.
+                    processor_state = CASE WHEN @status = 'waiting' THEN NULL ELSE processor_state END,
+                    processor_message = CASE WHEN @status = 'waiting' THEN NULL ELSE processor_message END,
+                    processor_queue_position = CASE WHEN @status = 'waiting' THEN NULL ELSE processor_queue_position END,
+                    processor_scheduled_for_utc = CASE WHEN @status = 'waiting' THEN NULL ELSE processor_scheduled_for_utc END,
+                    processor_last_changed_utc = CASE WHEN @status = 'waiting' THEN NULL ELSE processor_last_changed_utc END,
+                    processor_checked_utc = CASE WHEN @status = 'waiting' THEN NULL ELSE processor_checked_utc END,
+                    processor_unreachable_since_utc = CASE WHEN @status = 'waiting' THEN NULL ELSE processor_unreachable_since_utc END,
+                    processor_answering_since_utc = CASE WHEN @status = 'waiting' THEN NULL ELSE processor_answering_since_utc END
                 WHERE id = @id;
                 """;
             AddParameter(update, "@id", id.Trim());
@@ -364,7 +391,7 @@ public sealed class SqliteProcessorRepository(
         }
 
         await using var select = connection.CreateCommand();
-        select.CommandText = "SELECT id, library_id, media_type, client_id, queue_item_id, release_name, source_path, processor_name, status, output_path, import_job_id, failure_message, created_utc, updated_utc FROM processor_handoffs WHERE id = @id LIMIT 1;";
+        select.CommandText = HandoffSelect + " WHERE id = @id LIMIT 1;";
         AddParameter(select, "@id", id.Trim());
         using var reader = await select.ExecuteReaderAsync(cancellationToken);
         return await reader.ReadAsync(cancellationToken) ? ReadProcessorHandoff(reader) : null;
@@ -380,8 +407,8 @@ public sealed class SqliteProcessorRepository(
             cancellationToken);
         using var command = connection.CreateCommand();
         command.CommandText = string.IsNullOrWhiteSpace(libraryId)
-            ? "SELECT id, library_id, media_type, client_id, queue_item_id, release_name, source_path, processor_name, status, output_path, import_job_id, failure_message, created_utc, updated_utc FROM processor_handoffs ORDER BY updated_utc DESC LIMIT @take;"
-            : "SELECT id, library_id, media_type, client_id, queue_item_id, release_name, source_path, processor_name, status, output_path, import_job_id, failure_message, created_utc, updated_utc FROM processor_handoffs WHERE library_id = @libraryId ORDER BY updated_utc DESC LIMIT @take;";
+            ? HandoffSelect + " ORDER BY updated_utc DESC LIMIT @take;"
+            : HandoffSelect + " WHERE library_id = @libraryId ORDER BY updated_utc DESC LIMIT @take;";
         AddParameter(command, "@take", Math.Clamp(take, 1, 200));
         if (!string.IsNullOrWhiteSpace(libraryId)) AddParameter(command, "@libraryId", libraryId.Trim());
         var items = new List<ProcessorHandoffItem>();
@@ -390,12 +417,66 @@ public sealed class SqliteProcessorRepository(
         return items;
     }
 
+    /// <summary>One column list for every hand-off read, so a new column cannot reach some reads and miss others.</summary>
+    private const string HandoffSelect =
+        "SELECT id, library_id, media_type, client_id, queue_item_id, release_name, source_path, processor_name, status, output_path, import_job_id, failure_message, created_utc, updated_utc, "
+        + "processor_state, processor_message, processor_queue_position, processor_scheduled_for_utc, processor_last_changed_utc, processor_checked_utc, processor_unreachable_since_utc, processor_answering_since_utc "
+        + "FROM processor_handoffs";
+
     private static ProcessorHandoffItem ReadProcessorHandoff(System.Data.Common.DbDataReader reader)
         => new(
             reader.GetString(0), reader.GetString(1), reader.GetString(2), reader.GetString(3), reader.GetString(4),
             reader.GetString(5), reader.GetString(6), reader.IsDBNull(7) ? null : reader.GetString(7), reader.GetString(8),
             reader.IsDBNull(9) ? null : reader.GetString(9), reader.IsDBNull(10) ? null : reader.GetString(10),
-            reader.IsDBNull(11) ? null : reader.GetString(11), ParseTimestamp(reader.GetString(12)), ParseTimestamp(reader.GetString(13)));
+            reader.IsDBNull(11) ? null : reader.GetString(11), ParseTimestamp(reader.GetString(12)), ParseTimestamp(reader.GetString(13)),
+            reader.IsDBNull(19)
+                ? null
+                : new ProcessorHandoffObservation(
+                    reader.IsDBNull(14) ? null : reader.GetString(14),
+                    reader.IsDBNull(15) ? null : reader.GetString(15),
+                    reader.IsDBNull(16) ? null : reader.GetInt32(16),
+                    ReadOptionalTimestamp(reader, 17),
+                    ReadOptionalTimestamp(reader, 18),
+                    ParseTimestamp(reader.GetString(19)),
+                    ReadOptionalTimestamp(reader, 20),
+                    ReadOptionalTimestamp(reader, 21)));
+
+    private static DateTimeOffset? ReadOptionalTimestamp(System.Data.Common.DbDataReader reader, int ordinal)
+        => reader.IsDBNull(ordinal) ? null : ParseTimestamp(reader.GetString(ordinal));
+
+    public async Task RecordProcessorObservationAsync(
+        string id,
+        ProcessorHandoffObservation observation,
+        CancellationToken cancellationToken)
+    {
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Platform,
+            cancellationToken);
+        using var update = connection.CreateCommand();
+        update.CommandText =
+            """
+            UPDATE processor_handoffs
+            SET processor_state = @state,
+                processor_message = @message,
+                processor_queue_position = @queuePosition,
+                processor_scheduled_for_utc = @scheduledFor,
+                processor_last_changed_utc = @lastChanged,
+                processor_checked_utc = @checked,
+                processor_unreachable_since_utc = @unreachableSince,
+                processor_answering_since_utc = @answeringSince
+            WHERE id = @id;
+            """;
+        AddParameter(update, "@id", id.Trim());
+        AddParameter(update, "@state", observation.State);
+        AddParameter(update, "@message", observation.Message);
+        AddParameter(update, "@queuePosition", observation.QueuePosition);
+        AddParameter(update, "@scheduledFor", observation.ScheduledForUtc?.ToString("O"));
+        AddParameter(update, "@lastChanged", observation.LastChangedUtc?.ToString("O"));
+        AddParameter(update, "@checked", observation.CheckedUtc.ToString("O"));
+        AddParameter(update, "@unreachableSince", observation.UnreachableSinceUtc?.ToString("O"));
+        AddParameter(update, "@answeringSince", observation.AnsweringSinceUtc?.ToString("O"));
+        await update.ExecuteNonQueryAsync(cancellationToken);
+    }
 
     private ProcessorConnectionItem ReadProcessorConnection(System.Data.Common.DbDataReader reader)
     {
@@ -437,11 +518,9 @@ public sealed class SqliteProcessorRepository(
         => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(value.Trim().ToLowerInvariant())));
 
     private static string NormalizeProcessorHandoffStatus(string? status)
-        => status?.Trim().ToLowerInvariant() switch
-        {
-            "submitted" or "accepted" or "started" or "waiting" or "completed" or "failed" or "rejected" or "timed-out" => status.Trim().ToLowerInvariant(),
-            _ => "waiting"
-        };
+        => status is not null && ProcessorHandoffStatuses.All.Contains(status.Trim())
+            ? status.Trim().ToLowerInvariant()
+            : ProcessorHandoffStatuses.Waiting;
 
     private static string NormalizeProcessorConnectionProvider(string? value)
         => value?.Trim().ToLowerInvariant() switch

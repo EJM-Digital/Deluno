@@ -760,9 +760,10 @@ public static class LibrariesEndpointRouteBuilderExtensions
             errors["processorOutputPath"] = ["Choose where the processor will write cleaned files before Deluno imports them."];
         }
 
-        if (request.ProcessorTimeoutMinutes is <= 0)
+        if (request.ProcessorTimeoutMinutes is { } minutes &&
+            (minutes < ProcessorStallLimits.MinimumMinutes || minutes > ProcessorStallLimits.MaximumMinutes))
         {
-            errors["processorTimeoutMinutes"] = ["Choose how long Deluno should wait for the processor."];
+            errors["processorTimeoutMinutes"] = ["Choose between 24 hours and 7 days of no progress before Deluno stops waiting for the processor."];
         }
 
         return errors;

@@ -213,6 +213,7 @@ export function QueuePage() {
   const visibleActivity = activityKind === "all" ? activity : activity.filter((entry) => entry.kind === activityKind);
   const openQueueItem = drawer?.kind === "queue" ? queue.find((item) => item.id === drawer.id) ?? null : null;
   const openActivity = drawer?.kind === "activity" ? activity.find((entry) => entry.id === drawer.id) ?? null : null;
+  const openHandoff = openActivity?.kind === "processor" ? processorHandoffs.find((entry) => `processor:${entry.id}` === openActivity.id) ?? null : null;
   const openDispatchSummary = drawer?.kind === "dispatch" ? dispatches.find((item) => item.id === drawer.id) ?? null : null;
   const openDispatchDetail = drawer?.kind === "dispatch" ? dispatchDetails[drawer.id] ?? null : null;
   const openFileProvenance = fileProvenanceFromTimeline(openDispatchDetail?.timeline ?? []);
@@ -340,6 +341,20 @@ export function QueuePage() {
         if (!response.ok) throw new Error("That case could not be dismissed.");
       },
       `${item.title} dismissed`
+    );
+  }
+
+  async function importOriginal(handoff: ProcessorHandoffItem) {
+    await run(
+      `original:${handoff.id}`,
+      async () => {
+        const response = await authedFetch(`/api/integrations/processors/handoffs/${handoff.id}/import-original`, { method: "POST" });
+        if (!response.ok) {
+          const body = (await response.json().catch(() => null)) as { message?: string } | null;
+          throw new Error(body?.message || "The original could not be queued for import.");
+        }
+      },
+      `${handoff.releaseName} will be imported unprocessed`
     );
   }
 
@@ -526,7 +541,7 @@ export function QueuePage() {
               {processorHandoffs.map((handoff) => (
                 <ListRow key={handoff.id} onClick={() => setDrawer({ kind: "activity", id: `processor:${handoff.id}` })} selected={openActivity?.id === `processor:${handoff.id}`}>
                   <ListNameCell name={handoff.releaseName} sub={handoff.mediaType === "tv" ? "TV" : "Movies"} />
-                  <ListCell primary={handoff.processorName ?? "Configured processor"} secondary={handoff.outputPath ? "Output received" : "Waiting for output"} />
+                  <ListCell primary={handoff.processorName ?? "Configured processor"} secondary={processorSays(handoff, (utc) => formatPreferenceDateTime(utc, preferences)) ?? (handoff.outputPath ? "Output received" : "Waiting for output")} />
                   <ListCell primary={processorStageLabel(handoff.status)} secondary={handoff.failureMessage ?? undefined} />
                   <ListCell primary={handoff.outputPath ?? handoff.sourcePath} secondary={handoff.outputPath ? `From ${handoff.sourcePath}` : "Source hand-off"} />
                   <ListCell mobile><Chip tone={processorTone(handoff)}>{processorStatusLabel(handoff.status)}</Chip></ListCell>
@@ -1000,8 +1015,7 @@ export function QueuePage() {
               saveLabel="Try again"
               saveEnabled={busyKey === null}
               onSave={() => {
-                const handoff = processorHandoffs.find((entry) => `processor:${entry.id}` === openActivity?.id);
-                if (handoff) void retryHandoff(handoff);
+                if (openHandoff) void retryHandoff(openHandoff);
               }}
               onCancel={() => setDrawer(null)}
             />
@@ -1017,6 +1031,19 @@ export function QueuePage() {
               {openActivity.extra ? <Fact label="Detail" value={openActivity.extra} mono /> : null}
               <Fact label="When" value={formatPreferenceDateTime(openActivity.whenUtc, preferences)} />
               <Fact label="Kind" value={activityKindLabel(openActivity.kind)} />
+            </div>
+          </DrawerSection>
+        ) : null}
+        {openHandoff && canImportOriginal(openHandoff.status) ? (
+          <DrawerSection title="Use the original" aside={processorStageLabel(openHandoff.status)}>
+            <p className="text-[length:var(--type-caption)] text-muted-foreground">
+              The processor did not finish this file. Deluno can import the download as it is, unprocessed, with the same naming as any other import.
+            </p>
+            <div className="flex flex-wrap gap-2">
+              <Button type="button" size="sm" onClick={() => void importOriginal(openHandoff)} disabled={busyKey !== null}>
+                {busyKey === `original:${openHandoff.id}` ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
+                Import original
+              </Button>
             </div>
           </DrawerSection>
         ) : null}
@@ -1232,11 +1259,47 @@ function failureRetryAfterLabel(value: string) {
 }
 
 function isProcessorTerminal(status: string) {
-  return status.toLowerCase() === "completed";
+  return ["completed", "released"].includes(status.toLowerCase());
 }
 
 function isProcessorFailure(status: string) {
-  return ["failed", "rejected", "timed-out", "timeout"].includes(status.toLowerCase());
+  return ["failed", "rejected", "timed-out", "timeout", "stalled", "lost", "cancelled"].includes(status.toLowerCase());
+}
+
+/** Mirrors `ProcessorHandoffStatuses.CanReleaseOriginal`: the processor stopped without delivering. */
+function canImportOriginal(status: string) {
+  return ["failed", "timed-out", "stalled", "lost", "cancelled"].includes(status.toLowerCase());
+}
+
+function ordinal(position: number) {
+  const tens = position % 100;
+  if (tens >= 11 && tens <= 13) return `${position}th`;
+  return `${position}${({ 1: "st", 2: "nd", 3: "rd" } as Record<number, string>)[position % 10] ?? "th"}`;
+}
+
+/**
+ * What the processor itself says about a file it holds, in a few words (#511):
+ * "Weir: 3rd in queue", "Weir: runs at 01:00". Null when it cannot be
+ * asked, so the row falls back to Deluno's own view.
+ */
+function processorSays(handoff: ProcessorHandoffItem, formatWhen: (utc: string) => string) {
+  const seen = handoff.processor;
+  const name = handoff.processorName ?? "Processor";
+  if (!seen || isProcessorTerminal(handoff.status) || isProcessorFailure(handoff.status)) return null;
+  if (seen.unreachableSinceUtc) return `${name} isn't answering · still waiting`;
+  switch (seen.state) {
+    case "queued":
+      return seen.queuePosition ? `${name}: ${ordinal(seen.queuePosition)} in queue` : `${name}: queued`;
+    case "scheduled":
+      return seen.scheduledForUtc ? `${name}: runs at ${formatWhen(seen.scheduledForUtc)}` : `${name}: ${seen.message ?? "waiting for its schedule"}`;
+    case "working":
+      return `${name}: working on it`;
+    case "completed":
+    case "passed-through":
+      return `${name}: finished · importing`;
+    default:
+      return seen.message ? `${name}: ${seen.message}` : null;
+  }
 }
 
 function processorStageLabel(status: string) {
@@ -1258,6 +1321,14 @@ function processorStageLabel(status: string) {
       return "Processing failed";
     case "rejected":
       return "Rejected · searching again";
+    case "stalled":
+      return "Stalled";
+    case "lost":
+      return "Processor has no record";
+    case "cancelled":
+      return "Cancelled";
+    case "released":
+      return "Importing the original";
     default:
       return status || "Waiting";
   }

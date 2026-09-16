@@ -20,7 +20,8 @@ public sealed record ProcessorHandoffItem(
     string? ImportJobId,
     string? FailureMessage,
     DateTimeOffset CreatedUtc,
-    DateTimeOffset UpdatedUtc);
+    DateTimeOffset UpdatedUtc,
+    ProcessorHandoffObservation? Processor = null);
 
 public sealed record CreateProcessorHandoffRequest(
     string LibraryId,
