@@ -24,6 +24,24 @@ public static class ApiKeyScopeTemplates
             "Read Deluno sensors and invoke the safe search, pause and resume actions exposed by the integration.",
             ["read", "write", "queue"],
             ["readiness", "queue/import counts", "attention items", "search now", "automation pause/resume"]),
+        // The preset the API screen has been telling people to choose.
+        //
+        // Its help said "a processor that only reports completed files needs
+        // Media automation access" and no such template existed, so wiring a
+        // processor meant picking "Native mobile app" - the only one carrying
+        // `imports`, and the last name anybody would choose for a file cleaner.
+        //
+        // `read` belongs with it. A processor does not only post events: every
+        // integration first asks /api/integrations/external/health, which is a
+        // read. An `imports`-only key passes the callback and fails its own
+        // connection test, which is what Weir reported on the rig -
+        // "the API key was refused", naming no scope.
+        new(
+            "media-automation",
+            "Media automation",
+            "Report finished files back to Deluno and read its health. For a processor that cleans media before Deluno imports it.",
+            ["read", "imports"],
+            ["processor events", "hand-off status", "import preview", "health"]),
         new(
             "native-mobile",
             "Native mobile app",

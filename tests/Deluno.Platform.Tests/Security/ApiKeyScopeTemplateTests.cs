@@ -61,7 +61,32 @@ public sealed class ApiKeyScopeTemplateTests
         Assert.Equal("read", ApiKeyScopeTemplates.Resolve("dashboard-read").Scopes);
         Assert.Equal("read, write, queue", ApiKeyScopeTemplates.Resolve("automation").Scopes);
         Assert.Equal("read, write, queue, imports", ApiKeyScopeTemplates.Resolve("native-mobile").Scopes);
+        Assert.Equal("read, imports", ApiKeyScopeTemplates.Resolve("media-automation").Scopes);
         Assert.Equal("all", ApiKeyScopeTemplates.Resolve("full-local").Scopes);
+    }
+
+    /// <summary>
+    /// The screen tells a person wiring a processor to choose "Media
+    /// automation". It has to exist, and it has to carry enough.
+    ///
+    /// <para>It did not exist: the only template with <c>imports</c> was
+    /// "Native mobile app". And <c>imports</c> alone is not enough - a
+    /// processor's first call is the integration health route, which is a
+    /// read, so an imports-only key posts events fine and fails its own
+    /// connection test. Weir reported exactly that on the rig: "the API
+    /// key was refused", naming no scope.</para>
+    /// </summary>
+    [Fact]
+    public void The_preset_the_api_screen_names_for_a_processor_exists_and_carries_enough()
+    {
+        var template = Assert.Single(ApiKeyScopeTemplates.All, item => item.Id == "media-automation");
+
+        Assert.Equal("Media automation", template.Name);
+        Assert.Contains("imports", template.Scopes);
+        // The health route every integration starts with.
+        Assert.Contains("read", template.Scopes);
+        Assert.DoesNotContain("all", template.Scopes);
+        Assert.DoesNotContain("write", template.Scopes);
     }
 
     /// <summary>
