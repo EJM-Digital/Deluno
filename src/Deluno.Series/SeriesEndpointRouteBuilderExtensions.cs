@@ -1539,14 +1539,21 @@ public static class SeriesEndpointRouteBuilderExtensions
                 new DecisionExplanationPayload(
                     Scope: "series.episode-search",
                     Status: matchedCount > 0 ? "matched" : "checked",
+                    // The third place this claim was made, and the last. Saying
+                    // nothing satisfied the rules is only true when nothing was
+                    // found: a search that compared releases and is waiting on a
+                    // person satisfied them well enough to offer a choice.
                     Reason: matchedCount > 0
                         ? $"{matchedCount} episode search result{(matchedCount == 1 ? string.Empty : "s")} met the active quality and policy rules."
-                        : "No selected episodes produced a release that satisfied the active quality and policy rules.",
+                        : comparedCandidates > 0
+                            ? $"{comparedCandidates} release{(comparedCandidates == 1 ? " was" : "s were")} compared and none was sent automatically, so the choice is yours."
+                            : "No selected episodes produced a release that satisfied the active quality and policy rules.",
                     Inputs: new Dictionary<string, string?>
                     {
                         ["title"] = seriesItem.Title,
                         ["libraryId"] = library.Id,
                         ["episodeCount"] = targetEpisodes.Count.ToString(),
+                        ["candidatesCompared"] = comparedCandidates.ToString(),
                         ["sourceCount"] = configuredSources.ToString(),
                         ["downloadClientCount"] = configuredClients.ToString(),
                         ["policyVersion"] = Deluno.Quality.MediaPolicyCatalog.CurrentVersion

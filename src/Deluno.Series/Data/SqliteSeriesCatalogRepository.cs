@@ -2970,16 +2970,24 @@ public sealed class SqliteSeriesCatalogRepository(
                         """
                         INSERT INTO episode_wanted_state (
                             episode_id, series_id, library_id, wanted_status, wanted_reason,
+                            current_quality, target_quality, quality_cutoff_met,
                             last_search_utc, next_eligible_search_utc, last_search_result, updated_utc
                         )
                         VALUES (
                             @episodeId, @seriesId, @libraryId, @wantedStatus, @wantedReason,
+                            @episodeCurrentQuality, @episodeTargetQuality, @episodeQualityCutoffMet,
                             NULL, NULL, @lastSearchResult, @updatedUtc
                         )
                         ON CONFLICT(episode_id) DO UPDATE SET
                             library_id = excluded.library_id,
                             wanted_status = excluded.wanted_status,
                             wanted_reason = excluded.wanted_reason,
+                            -- COALESCE, not a plain overwrite: an episode that
+                            -- is being marked missing carries no quality, and
+                            -- must not blank what a previous import recorded.
+                            current_quality = COALESCE(excluded.current_quality, current_quality),
+                            target_quality = COALESCE(excluded.target_quality, target_quality),
+                            quality_cutoff_met = excluded.quality_cutoff_met,
                             last_search_result = excluded.last_search_result,
                             updated_utc = excluded.updated_utc;
                         """;
@@ -3000,6 +3008,13 @@ public sealed class SqliteSeriesCatalogRepository(
                         upsertEpisodeWanted,
                         "@lastSearchResult",
                         episode.HasFile ? "Imported from your existing library." : null);
+                    // The quality the series row has been given all along. An
+                    // episode that held a file and recorded no quality showed
+                    // none on its own page and gave the upgrade check nothing
+                    // to compare against, so a covered episode never settled.
+                    AddParameter(upsertEpisodeWanted, "@episodeCurrentQuality", episode.HasFile ? currentQuality : null);
+                    AddParameter(upsertEpisodeWanted, "@episodeTargetQuality", targetQuality);
+                    AddParameter(upsertEpisodeWanted, "@episodeQualityCutoffMet", episode.HasFile && qualityCutoffMet ? 1 : 0);
                     AddParameter(upsertEpisodeWanted, "@updatedUtc", now.ToString("O"));
                     await upsertEpisodeWanted.ExecuteNonQueryAsync(cancellationToken);
                 }
