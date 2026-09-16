@@ -302,6 +302,14 @@ export const router = createBrowserRouter([
         })
       },
       {
+        // Plex, Jellyfin and Emby: where retention reads watch history (#493).
+        path: "indexers/media-servers",
+        lazy: withSkeleton(async () => {
+          const module = await import("./routes/media-servers-screen");
+          return { loader: module.mediaServersLoader, Component: module.MediaServersPage };
+        })
+      },
+      {
         path: "search-cycles",
         lazy: withSkeleton(async () => {
           const module = await import("./routes/search-cycles-page");

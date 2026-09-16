@@ -18,6 +18,7 @@ DELETE /api/intake-sources/{id}/exclusions/{exclusionId}
 DELETE /api/integrations/processors/connections/{id}
 DELETE /api/libraries/{id}
 DELETE /api/library-views/{id}
+DELETE /api/media-servers/{id}
 DELETE /api/metadata/cache
 DELETE /api/movies/import-recovery/{id}
 DELETE /api/movies/{id}
@@ -93,6 +94,7 @@ GET /api/library-views/
 GET /api/manifest
 GET /api/media-plan-scenarios/
 GET /api/media-plan-scenarios/{id}/compile
+GET /api/media-servers/
 GET /api/metadata/artwork/{cacheKey}
 GET /api/metadata/broker/search
 GET /api/metadata/broker/status
@@ -257,6 +259,9 @@ POST /api/libraries/{id}/skip-cycle
 POST /api/library-views/
 POST /api/media-plan-scenarios/{id}/apply
 POST /api/media-plan-scenarios/{id}/preview
+POST /api/media-servers/
+POST /api/media-servers/test
+POST /api/media-servers/{id}/test
 POST /api/metadata/test
 POST /api/migration/apply
 POST /api/migration/preview
@@ -364,6 +369,7 @@ PUT /api/libraries/{id}/routing
 PUT /api/libraries/{id}/subtitles
 PUT /api/libraries/{id}/workflow
 PUT /api/library-views/{id}
+PUT /api/media-servers/{id}
 PUT /api/movie-collections/{id}
 PUT /api/movie-collections/{id}/members/{providerId}/exclusion
 PUT /api/movies/monitoring
