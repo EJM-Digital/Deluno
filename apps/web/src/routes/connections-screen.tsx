@@ -38,6 +38,7 @@ import { ClientDrawerBody } from "./connections/client-drawer-body";
 import { IndexerDrawerBody } from "./connections/indexer-drawer-body";
 import { RoutingDrawerBody } from "./connections/routing-drawer-body";
 import { IndexerScoreboard } from "./connections/indexer-scoreboard";
+import { resolveDrawerSaveState, shouldClearSaveState } from "../lib/drawer-save-state";
 
 const TABS = configurationNavAreas.find((area) => area.to === "/indexers/indexers")?.items ?? [];
 
@@ -187,7 +188,7 @@ export function IndexersPage() {
     if (drawer.kind === "routing") return !sameSet(routeSources, routeInitial.sources) || !sameSet(routeClients, routeInitial.clients) || !sameRouteCategories(routeCategories, routeInitial.categories);
     return false;
   }, [drawer.kind, indexerForm, indexerInitial, clientForm, clientInitial, routeSources, routeClients, routeCategories, routeInitial]);
-  const footerState: DrawerSaveState = saveState === "saving" ? "saving" : dirty ? "dirty" : saveState ?? "clean";
+  const footerState: DrawerSaveState = resolveDrawerSaveState(saveState, dirty);
   /**
    * A create drawer opens with values the user is entitled to accept as-is, so
    * its Save is gated on the form being *valid*, not on it being *dirty* (#293).
@@ -201,7 +202,7 @@ export function IndexersPage() {
   useUnsavedChanges(dirty);
 
   useEffect(() => {
-    if (dirty && (saveState === "saved" || saveState === "error")) setSaveState(undefined);
+    if (shouldClearSaveState(saveState, dirty)) setSaveState(undefined);
   }, [dirty, saveState]);
 
   const resetDrawerChrome = useCallback(() => {

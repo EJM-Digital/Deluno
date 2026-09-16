@@ -23,6 +23,7 @@ import { toast } from "../components/shell/toaster";
 import { useUnsavedChanges } from "../hooks/use-unsaved-changes";
 import { authedFetch } from "../lib/use-auth";
 import { fetchJson, type ReleaseProfileItem, type ReleaseTermScore } from "../lib/api";
+import { resolveDrawerSaveState, shouldClearSaveState } from "../lib/drawer-save-state";
 
 const TABS = configurationNavAreas.find((area) => area.label === "Quality & Release")?.items ?? [];
 
@@ -64,11 +65,11 @@ export function SettingsReleaseRulesPage() {
   const editing = mode.kind === "edit" ? profiles.find((profile) => profile.id === mode.id) ?? null : null;
   const open = mode.kind !== "closed";
   const dirty = open && !sameForm(form, initialForm);
-  const footerState: DrawerSaveState = saveState === "saving" ? "saving" : dirty ? "dirty" : saveState ?? "clean";
+  const footerState: DrawerSaveState = resolveDrawerSaveState(saveState, dirty);
   useUnsavedChanges(dirty);
 
   useEffect(() => {
-    if (dirty && (saveState === "saved" || saveState === "error")) setSaveState(undefined);
+    if (shouldClearSaveState(saveState, dirty)) setSaveState(undefined);
   }, [dirty, saveState]);
 
   const sorted = useMemo(

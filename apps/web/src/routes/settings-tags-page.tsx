@@ -20,6 +20,7 @@ import { settingsOverviewLoader } from "./settings-overview-page";
 import { authedFetch } from "../lib/use-auth";
 import { useUnsavedChanges } from "../hooks/use-unsaved-changes";
 import { cn } from "../lib/utils";
+import { resolveDrawerSaveState, shouldClearSaveState } from "../lib/drawer-save-state";
 
 const COLORS = ["slate", "emerald", "teal", "blue", "violet", "amber", "rose"] as const;
 
@@ -67,10 +68,10 @@ export function SettingsTagsPage() {
   const isOpen = mode.kind !== "closed";
   const editing = mode.kind === "edit" ? tags.find((tag) => tag.id === mode.id) ?? null : null;
   const dirty = isOpen && (form.name !== initialForm.name || form.color !== initialForm.color || form.description !== initialForm.description);
-  const footerState: DrawerSaveState = saveState === "saving" ? "saving" : dirty ? "dirty" : saveState ?? "clean";
+  const footerState: DrawerSaveState = resolveDrawerSaveState(saveState, dirty);
   useUnsavedChanges(dirty);
   useEffect(() => {
-    if (dirty && (saveState === "saved" || saveState === "error")) setSaveState(undefined);
+    if (shouldClearSaveState(saveState, dirty)) setSaveState(undefined);
   }, [dirty, saveState]);
 
   function open(tag: TagItem | null) {

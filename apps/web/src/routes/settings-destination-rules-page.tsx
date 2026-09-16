@@ -31,6 +31,7 @@ import { fetchJson, type DestinationRuleItem, type ImportPreviewResponse, type L
 import { settingsOverviewLoader } from "./settings-overview-page";
 import { authedFetch } from "../lib/use-auth";
 import { useUnsavedChanges } from "../hooks/use-unsaved-changes";
+import { resolveDrawerSaveState, shouldClearSaveState } from "../lib/drawer-save-state";
 
 interface LoaderData {
   libraries: LibraryItem[];
@@ -147,10 +148,10 @@ export function SettingsDestinationRulesPage() {
   const isRuleDrawer = mode.kind === "create" || mode.kind === "edit";
   const editing = mode.kind === "edit" ? destinationRules.find((rule) => rule.id === mode.id) ?? null : null;
   const dirty = isRuleDrawer && !sameForm(form, initialForm);
-  const footerState: DrawerSaveState = saveState === "saving" ? "saving" : dirty ? "dirty" : saveState ?? "clean";
+  const footerState: DrawerSaveState = resolveDrawerSaveState(saveState, dirty);
   useUnsavedChanges(dirty);
   useEffect(() => {
-    if (dirty && (saveState === "saved" || saveState === "error")) setSaveState(undefined);
+    if (shouldClearSaveState(saveState, dirty)) setSaveState(undefined);
   }, [dirty, saveState]);
 
   function openRule(rule: DestinationRuleItem | null) {

@@ -26,6 +26,7 @@ import type { PlatformSettingsPatch } from "../lib/api/settings";
 import { useApiMutation } from "../lib/use-api-mutation";
 import { isColorMode, useColorMode, type ColorMode } from "../lib/use-color-mode";
 import { useDisplayPreferences } from "../lib/display-preferences";
+import { resolveDrawerSaveState, shouldClearSaveState } from "../lib/drawer-save-state";
 
 /** One line each — the four presets differ by degree, so a paragraph apiece said nothing. */
 const DENSITY_OPTIONS: { value: Density; label: string; help: string }[] = [
@@ -91,10 +92,10 @@ export function SettingsUiPage() {
     setColorMode(settingsColorMode);
   }, [dirty, savedColorMode, settingsColorMode, savedForm, settingsForm, setColorMode]);
 
-  const state: DrawerSaveState = saveState === "saving" ? "saving" : dirty ? "dirty" : saveState ?? "clean";
+  const state: DrawerSaveState = resolveDrawerSaveState(saveState, dirty);
   useUnsavedChanges(dirty);
   useEffect(() => {
-    if (dirty && (saveState === "saved" || saveState === "error")) setSaveState(undefined);
+    if (shouldClearSaveState(saveState, dirty)) setSaveState(undefined);
   }, [dirty, saveState]);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {

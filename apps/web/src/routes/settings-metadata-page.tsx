@@ -25,6 +25,7 @@ import {
 } from "../lib/api";
 import type { PlatformSettingsPatch } from "../lib/api/settings";
 import { useApiMutation } from "../lib/use-api-mutation";
+import { resolveDrawerSaveState, shouldClearSaveState } from "../lib/drawer-save-state";
 
 const COUNTRY_OPTIONS = [
   { label: "Australia (AU)", value: "AU" },
@@ -80,10 +81,10 @@ export function SettingsMetadataPage() {
     setForm(settingsForm);
   }, [dirty, savedForm, settingsForm]);
 
-  const state: DrawerSaveState = saveState === "saving" ? "saving" : dirty ? "dirty" : saveState ?? "clean";
+  const state: DrawerSaveState = resolveDrawerSaveState(saveState, dirty);
   useUnsavedChanges(dirty);
   useEffect(() => {
-    if (dirty && (saveState === "saved" || saveState === "error")) setSaveState(undefined);
+    if (shouldClearSaveState(saveState, dirty)) setSaveState(undefined);
   }, [dirty, saveState]);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {

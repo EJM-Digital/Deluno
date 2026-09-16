@@ -26,6 +26,7 @@ import { useUnsavedChanges } from "../hooks/use-unsaved-changes";
 import { fetchJson, type QualityModelSnapshot, type QualityTierDefinition } from "../lib/api";
 import { cn } from "../lib/utils";
 import type { DrawerSaveState } from "../components/ui/drawer";
+import { resolveDrawerSaveState, shouldClearSaveState } from "../lib/drawer-save-state";
 
 const TABS = configurationNavAreas.find((area) => area.label === "Quality & Release")?.items ?? [];
 
@@ -47,11 +48,11 @@ export function SettingsQualityPage() {
   // One table at a time: 26 tiers × two units is a page nobody can scan.
   const [scope, setScope] = useState<"movie" | "episode">("movie");
   const dirty = useMemo(() => JSON.stringify(model) !== JSON.stringify(saved), [model, saved]);
-  const state: DrawerSaveState = saveState === "saving" ? "saving" : dirty ? "dirty" : saveState ?? "clean";
+  const state: DrawerSaveState = resolveDrawerSaveState(saveState, dirty);
   useUnsavedChanges(dirty);
 
   useEffect(() => {
-    if (dirty && (saveState === "saved" || saveState === "error")) setSaveState(undefined);
+    if (shouldClearSaveState(saveState, dirty)) setSaveState(undefined);
   }, [dirty, saveState]);
 
   function updateTier(index: number, key: keyof QualityTierDefinition, value: number) {
