@@ -222,3 +222,34 @@ One call that prints where an acquisition has got to: the telemetry summary, eac
 ```
 
 Credentials are the lab ones and are in the handover.
+
+## `soak/` — the fourteen-day soak fixture
+
+The E2E fixtures above prove the acquisition path once, and they ran on the
+owner's desktop. The soak needs something different: new releases every day so
+scheduled searches have real work, files that genuinely are the size and
+resolution their names claim, and nothing that disappears when a desktop
+restarts. Everything here runs on the rig.
+
+| File | What it does |
+|---|---|
+| `generate-media.ps1` | Builds the pool of real video files with the rig's FFmpeg over Intel Quick Sync. Each file is checked against the tier band it is meant to sit inside, below or above, and the script stops if one lands on the wrong side. |
+| `plan_catalogue.py` | Writes the catalogue: 116 releases over 16 days, each with the reason it exists. |
+| `soak_fixture.py` | One process serving Torznab on `127.0.0.1:9117`, Newznab on `:9118`, a BEP-19 webseed, and NNTP on `:1119` with multi-part yEnc streamed from disk. Releases are invisible until their soak day. Standard library only. |
+| `install-fixture.ps1` | Plans the catalogue for a given day 0 and runs the fixture as a scheduled task: at boot, restarted on failure, whether or not anyone is logged on. |
+| `start-detached.ps1` | Runs a long job as a one-shot scheduled task, because a process started from a WinRM session dies when the session closes. |
+
+Python on the rig is the official embeddable 3.13 package in
+`C:\Deluno\Soak\python`, verified against python.org's published SHA-256 before
+it was unpacked. Nothing is installed.
+
+To start or restart a run, give the fixture its day 0:
+
+```powershell
+C:\Deluno\Soak\scripts\install-fixture.ps1 -Start 2026-09-17
+```
+
+A date in the future hides every release, which is how the fixture is wired up
+before the clock starts. `http://127.0.0.1:9117/status` reports the soak day,
+what is visible, what was published today, and which sources are still being
+hashed.
