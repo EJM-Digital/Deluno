@@ -29,6 +29,7 @@ import type { PlatformSettingsPatch } from "../lib/api/settings";
 import { useApiMutation } from "../lib/use-api-mutation";
 import { authedFetch } from "../lib/use-auth";
 import { useUnsavedChanges } from "../hooks/use-unsaved-changes";
+import { resolveDrawerSaveState, shouldClearSaveState } from "../lib/drawer-save-state";
 
 const EVENT_OPTIONS = [
   { value: "all", label: "All events" },
@@ -82,10 +83,10 @@ export function SettingsNotificationsPage() {
   const isOpen = mode.kind !== "closed";
   const editing = mode.kind === "edit" ? webhooks.find((webhook) => webhook.id === mode.id) ?? null : null;
   const dirty = isOpen && (form.name !== initialForm.name || form.url !== initialForm.url || form.eventFilters !== initialForm.eventFilters || form.isEnabled !== initialForm.isEnabled);
-  const footerState: DrawerSaveState = saveState === "saving" ? "saving" : dirty ? "dirty" : saveState ?? "clean";
+  const footerState: DrawerSaveState = resolveDrawerSaveState(saveState, dirty);
   useUnsavedChanges(dirty);
   useEffect(() => {
-    if (dirty && (saveState === "saved" || saveState === "error")) setSaveState(undefined);
+    if (shouldClearSaveState(saveState, dirty)) setSaveState(undefined);
   }, [dirty, saveState]);
 
   function open(webhook: NotificationWebhookItem | null) {

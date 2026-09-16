@@ -63,6 +63,7 @@ import { ListCard, ListCell, ListEmpty, ListNameCell, ListRow, ListTable, LIST_T
 import { SummaryStrip } from "../components/ui/summary-strip";
 import { useUnsavedChanges } from "../hooks/use-unsaved-changes";
 import { formatDateTime, type DisplayPreferences, useDisplayPreferences } from "../lib/display-preferences";
+import { resolveDrawerSaveState } from "../lib/drawer-save-state";
 
 interface SystemLoaderData {
   activity: ActivityEventItem[];
@@ -428,7 +429,7 @@ function RecycleBinCard({
   const [deleteItem, setDeleteItem] = useState<RecycleBinItem | null>(null);
   const [cleanupPreview, setCleanupPreview] = useState<RecycleBinCleanupPreview | null>(null);
   const dirty = useMemo(() => JSON.stringify(settings) !== JSON.stringify(savedSettings), [settings, savedSettings]);
-  const footerState: DrawerSaveState = saveState === "saving" ? "saving" : dirty ? "dirty" : saveState ?? "clean";
+  const footerState: DrawerSaveState = resolveDrawerSaveState(saveState, dirty);
 
   async function reload() {
     const [nextItems, nextSettings] = await Promise.all([

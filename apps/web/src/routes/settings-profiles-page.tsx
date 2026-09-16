@@ -55,6 +55,7 @@ import { settingsOverviewLoader } from "./settings-overview-page";
 import { authedFetch } from "../lib/use-auth";
 import { useUnsavedChanges } from "../hooks/use-unsaved-changes";
 import { cn } from "../lib/utils";
+import { resolveDrawerSaveState, shouldClearSaveState } from "../lib/drawer-save-state";
 
 const TABS = configurationNavAreas.find((area) => area.label === "Quality & Release")?.items ?? [];
 
@@ -142,10 +143,10 @@ export function SettingsProfilesPage() {
   const isOpen = mode.kind !== "closed";
   const editing = mode.kind === "edit" ? qualityProfiles.find((profile) => profile.id === mode.id) ?? null : null;
   const dirty = useMemo(() => isOpen && !sameForm(form, initialForm), [isOpen, form, initialForm]);
-  const footerState: DrawerSaveState = saveState === "saving" ? "saving" : dirty ? "dirty" : saveState ?? "clean";
+  const footerState: DrawerSaveState = resolveDrawerSaveState(saveState, dirty);
   useUnsavedChanges(dirty);
   useEffect(() => {
-    if (dirty && (saveState === "saved" || saveState === "error")) setSaveState(undefined);
+    if (shouldClearSaveState(saveState, dirty)) setSaveState(undefined);
   }, [dirty, saveState]);
 
   useEffect(() => {

@@ -30,6 +30,7 @@ import { emptyPlatformSettingsSnapshot, fetchJson, type LibraryItem, type Platfo
 import { authedFetch } from "../lib/use-auth";
 import { useUnsavedChanges } from "../hooks/use-unsaved-changes";
 import { ExistingMediaImportDialog } from "../components/app/existing-media-import-dialog";
+import { resolveDrawerSaveState, shouldClearSaveState } from "../lib/drawer-save-state";
 
 interface LoaderData {
   libraries: LibraryItem[];
@@ -89,11 +90,11 @@ export function SettingsLibrariesPage() {
   const editing = mode.kind === "edit" ? libraries.find((library) => library.id === mode.id) ?? null : null;
   const existingImportLibrary = existingImportLibraryId ? libraries.find((library) => library.id === existingImportLibraryId) ?? null : null;
   const dirty = useMemo(() => isOpen && !sameForm(form, initialForm), [isOpen, form, initialForm]);
-  const footerState: DrawerSaveState = saveState === "saving" ? "saving" : dirty ? "dirty" : saveState ?? "clean";
+  const footerState: DrawerSaveState = resolveDrawerSaveState(saveState, dirty);
   useUnsavedChanges(dirty);
 
   useEffect(() => {
-    if (dirty && (saveState === "saved" || saveState === "error")) setSaveState(undefined);
+    if (shouldClearSaveState(saveState, dirty)) setSaveState(undefined);
   }, [dirty, saveState]);
 
   useEffect(() => {

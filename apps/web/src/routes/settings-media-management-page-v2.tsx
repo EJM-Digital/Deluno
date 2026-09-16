@@ -33,6 +33,7 @@ import type { PlatformSettingsPatch } from "../lib/api/settings";
 import { useApiMutation } from "../lib/use-api-mutation";
 import { authedFetch } from "../lib/use-auth";
 import { useUnsavedChanges } from "../hooks/use-unsaved-changes";
+import { resolveDrawerSaveState, shouldClearSaveState } from "../lib/drawer-save-state";
 
 const TIMEOUT_OPTIONS = [
   { value: "60", label: "1 hour" },
@@ -110,11 +111,11 @@ function FileHandlingPage() {
   const [message, setMessage] = useState<string | null>(null);
 
   const dirty = useMemo(() => JSON.stringify(form) !== JSON.stringify(saved), [form, saved]);
-  const state: DrawerSaveState = saveState === "saving" ? "saving" : dirty ? "dirty" : saveState ?? "clean";
+  const state: DrawerSaveState = resolveDrawerSaveState(saveState, dirty);
   const customDrawerDirty = customDrawer !== null && customDrawer.value !== customDrawer.previousValue;
   useUnsavedChanges(dirty);
   useEffect(() => {
-    if (dirty && (saveState === "saved" || saveState === "error")) setSaveState(undefined);
+    if (shouldClearSaveState(saveState, dirty)) setSaveState(undefined);
   }, [dirty, saveState]);
 
   function handleCustomMode(kind: NamingFormatKind, active: boolean, draftValue = "", previousValue = "") {
@@ -256,10 +257,10 @@ function ImportPolicyPage() {
   const [message, setMessage] = useState<string | null>(null);
 
   const dirty = useMemo(() => JSON.stringify(form) !== JSON.stringify(saved), [form, saved]);
-  const state: DrawerSaveState = saveState === "saving" ? "saving" : dirty ? "dirty" : saveState ?? "clean";
+  const state: DrawerSaveState = resolveDrawerSaveState(saveState, dirty);
   useUnsavedChanges(dirty);
   useEffect(() => {
-    if (dirty && (saveState === "saved" || saveState === "error")) setSaveState(undefined);
+    if (shouldClearSaveState(saveState, dirty)) setSaveState(undefined);
   }, [dirty, saveState]);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -378,10 +379,10 @@ function ProcessingWorkflowPage() {
       : drawer.kind === "callback"
         ? Boolean(callback.name.trim() || callback.submissionUrl.trim() || callback.secret.trim())
         : false;
-  const footerState: DrawerSaveState = saveState === "saving" ? "saving" : dirty ? "dirty" : saveState ?? "clean";
+  const footerState: DrawerSaveState = resolveDrawerSaveState(saveState, dirty);
   useUnsavedChanges(dirty);
   useEffect(() => {
-    if (dirty && (saveState === "saved" || saveState === "error")) setSaveState(undefined);
+    if (shouldClearSaveState(saveState, dirty)) setSaveState(undefined);
   }, [dirty, saveState]);
 
   function openLibrary(library: LibraryItem) {

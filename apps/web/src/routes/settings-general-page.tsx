@@ -22,6 +22,7 @@ import { settingsOverviewLoader } from "./settings-overview-page";
 import type { LibraryItem, PlatformSettingsSnapshot, QualityProfileItem } from "../lib/api";
 import type { PlatformSettingsPatch } from "../lib/api/settings";
 import { useApiMutation } from "../lib/use-api-mutation";
+import { resolveDrawerSaveState, shouldClearSaveState } from "../lib/drawer-save-state";
 
 interface LoaderData {
   libraries: LibraryItem[];
@@ -55,10 +56,10 @@ export function SettingsGeneralPage() {
     setForm(settingsForm);
   }, [dirty, savedForm, settingsForm]);
 
-  const state: DrawerSaveState = saveState === "saving" ? "saving" : dirty ? "dirty" : saveState ?? "clean";
+  const state: DrawerSaveState = resolveDrawerSaveState(saveState, dirty);
   useUnsavedChanges(dirty);
   useEffect(() => {
-    if (dirty && (saveState === "saved" || saveState === "error")) setSaveState(undefined);
+    if (shouldClearSaveState(saveState, dirty)) setSaveState(undefined);
   }, [dirty, saveState]);
 
   /** Address and port only take effect on restart, so say so rather than imply a live change. */
