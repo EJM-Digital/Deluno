@@ -21,7 +21,9 @@ public sealed class MediaServerClientTests
         var client = new JellyfinMediaServerClient(Factory(request =>
         {
             requests.Add(request.RequestUri!.PathAndQuery);
-            Assert.Equal("token-123", Assert.Single(request.Headers.GetValues("X-Emby-Token")));
+            // Jellyfin 12 refuses the legacy X-Emby-Token header (#493, found on the rig).
+            Assert.Equal("MediaBrowser Token=\"token-123\"", Assert.Single(request.Headers.GetValues("Authorization")));
+            Assert.False(request.Headers.Contains("X-Emby-Token"));
             var path = request.RequestUri!.AbsolutePath;
             var query = request.RequestUri.Query;
             return path switch

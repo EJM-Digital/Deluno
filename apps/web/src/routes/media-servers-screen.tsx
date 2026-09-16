@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { useLoaderData, useRevalidator } from "react-router-dom";
-import { Loader2, Plus, Wifi } from "lucide-react";
+import { Loader2, Wifi } from "lucide-react";
 import { fetchJson, readValidationProblem } from "../lib/api";
 import type { IntegrationFailure } from "../lib/api/types";
 import { authedFetch } from "../lib/use-auth";
@@ -240,7 +240,6 @@ export function MediaServersPage() {
         tabs={TABS}
         actions={
           <PageToolbarAction type="button" onClick={() => open(null)}>
-            <Plus className="h-3.5 w-3.5" />
             Add server
           </PageToolbarAction>
         }
@@ -333,7 +332,9 @@ export function MediaServersPage() {
               {editing.lastHealthMessage ? (<><dt className="text-muted-foreground">Message</dt><dd className="text-foreground">{editing.lastHealthMessage}</dd></>) : null}
             </dl>
           ) : null}
-          {testResult ? (
+          {/* A saved server's test lands in the facts above once it reloads;
+              only a draft, which has nowhere else to say it, shows it here. */}
+          {testResult && !editing?.lastHealthTestUtc ? (
             <p className={`text-[length:var(--type-body-sm)] ${testResult.ok ? "text-success" : "text-destructive"}`} role="status">
               {testResult.message}
             </p>
