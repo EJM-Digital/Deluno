@@ -161,10 +161,23 @@ public interface IJobQueueRepository
         string? mediaType,
         CancellationToken cancellationToken);
 
+    /// <param name="includeArchived">
+    /// A history view asks for archived rows too. Every successful import
+    /// archives its dispatch immediately, so leaving them out answers "what
+    /// was ever sent for this title" with nothing at all.
+    /// </param>
+    /// <param name="entityId">
+    /// Narrow to one title. A page that asks for the newest rows across the
+    /// whole library and filters them itself loses this title's rows as soon
+    /// as twenty newer ones exist — and including archived rows makes that far
+    /// more likely, not less.
+    /// </param>
     Task<Page<DownloadDispatchItem>> ListDownloadDispatchesPageAsync(
         PageRequest request,
         string? mediaType,
-        CancellationToken cancellationToken);
+        CancellationToken cancellationToken,
+        bool includeArchived = false,
+        string? entityId = null);
 
     Task<bool> RequestLibrarySearchAsync(
         LibraryAutomationPlanItem library,

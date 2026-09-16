@@ -24,6 +24,33 @@ route. A Torznab source still needs its own successful connection test.
 The TV fixture follows the equivalent route for an episode and an external
 Usenet download client.
 
+## Where a copy came from, after the download is gone
+
+A dispatch is a live record of work in progress. The moment an import succeeds
+it is archived, and every operational view hides archived rows on purpose — the
+Transfers screen should not list finished work for ever.
+
+That makes the dispatch the wrong place to keep provenance. Deluno writes the
+indexer, the download client, the client's own item id, the time of the grab and
+the dispatch id into the file's preference evaluation, beside the release title
+evidence it already kept there. That record is keyed on the file, survives the
+archive, survives dispatch cleanup, and survives a library rename.
+
+Two consequences follow:
+
+- `GET /api/movies/{id}/copy` answers **Came from** out of the file's own
+  record. It falls back to a dispatch query only for a copy imported before
+  this was kept, and that query cannot see archived rows.
+- A title's History asks for `includeArchived=true`. It is a history: the rows
+  archiving removes are exactly the ones it exists to show. Operational screens
+  (Transfers, Activity) keep the default and stay clean.
+
+The import also files its own events against the title rather than against
+nothing, so a title's History carries the journey: the release was searched for,
+grabbed, sent to a client, imported — naming the release actually taken — and
+then named, with the rename recorded as its own step and saying which custom
+formats the new name kept.
+
 ## Advanced processing flow
 
 An optional, separately configured route supports external processing before

@@ -159,6 +159,13 @@ public class DispatchQueryFilter
     public DateTimeOffset? MaxGrabTime { get; set; }
     public DateTimeOffset? MinImportTime { get; set; }
     public DateTimeOffset? MaxImportTime { get; set; }
+
+    /// <summary>
+    /// Include rows that have been archived. A successful import archives its
+    /// dispatch at once, so the operational views that hide archived rows are
+    /// right and a history view that hides them shows an empty past.
+    /// </summary>
+    public bool IncludeArchived { get; set; }
 }
 
 public class DispatchPaginationOptions

@@ -1575,12 +1575,16 @@ public sealed class SqliteJobStore(
     public async Task<Page<DownloadDispatchItem>> ListDownloadDispatchesPageAsync(
         PageRequest request,
         string? mediaType,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool includeArchived = false,
+        string? entityId = null)
     {
         var (items, nextPageToken) = await downloadDispatchesRepository.QueryDispatchesAsync(
             new DispatchQueryFilter
             {
-                MediaType = string.IsNullOrWhiteSpace(mediaType) ? null : mediaType.Trim().ToLowerInvariant()
+                MediaType = string.IsNullOrWhiteSpace(mediaType) ? null : mediaType.Trim().ToLowerInvariant(),
+                EntityId = string.IsNullOrWhiteSpace(entityId) ? null : entityId.Trim(),
+                IncludeArchived = includeArchived
             },
             new DispatchPaginationOptions
             {

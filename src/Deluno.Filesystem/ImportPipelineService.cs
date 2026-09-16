@@ -479,11 +479,17 @@ public sealed partial class ImportPipelineService(
 
             await activityFeedRepository.RecordActivityAsync(
                 "filesystem.import.completed",
-                $"{TitleForActivity(request.Preview)} was imported using {mode}.",
+                ImportCompletedMessage(TitleForActivity(request.Preview), provenance, mode),
                 JsonSerializer.Serialize(provenance),
                 null,
                 mediaType == "tv" ? "series" : "movie",
-                null,
+                catalogImportResult.EntityId,
+                cancellationToken);
+
+            await RecordRenameAsync(
+                provenance,
+                mediaType,
+                catalogImportResult.EntityId,
                 cancellationToken);
 
             await activityFeedRepository.RecordDecisionAsync(
@@ -516,7 +522,7 @@ public sealed partial class ImportPipelineService(
                     Alternatives: []),
                 null,
                 mediaType == "tv" ? "series" : "movie",
-                null,
+                catalogImportResult.EntityId,
                 cancellationToken);
 
             var response = new ImportExecuteResponse(
@@ -2056,6 +2062,11 @@ public sealed partial class ImportPipelineService(
         string mediaType,
         CancellationToken cancellationToken)
     {
+        // Attributed to the title, so the file's own journey is readable from
+        // the title's History rather than only from the whole-system feed.
+        var entityId = (await ResolveDispatchAsync(request.DispatchId, cancellationToken))?.EntityId
+            ?? request.Preview.SeriesId;
+
         await activityFeedRepository.RecordActivityAsync(
             "filesystem.import.started",
             $"{TitleForActivity(request.Preview)} import started.",
@@ -2074,7 +2085,7 @@ public sealed partial class ImportPipelineService(
             }),
             null,
             mediaType == "tv" ? "series" : "movie",
-            null,
+            entityId,
             cancellationToken);
 
         await activityFeedRepository.RecordDecisionAsync(
@@ -2096,7 +2107,7 @@ public sealed partial class ImportPipelineService(
                 Alternatives: []),
             null,
             mediaType == "tv" ? "series" : "movie",
-            null,
+            entityId,
             cancellationToken);
     }
 
@@ -2139,6 +2150,65 @@ public sealed partial class ImportPipelineService(
         string MatchedRuleNames,
         string WorkflowCleanup,
         MediaProbeInfo? MediaProbe);
+
+    /// <summary>
+    /// Names the release the copy actually came from. Without it the feed says
+    /// only that something was imported, and the release that was chosen -
+    /// the one fact a person is looking for - is nowhere on the title.
+    /// </summary>
+    private static string ImportCompletedMessage(
+        string title,
+        ImportProvenanceDetails provenance,
+        string mode)
+    {
+        var release = provenance.ReleaseNameEvidence;
+        if (string.IsNullOrWhiteSpace(release) || release.Contains(Path.DirectorySeparatorChar) || release.Contains('/'))
+        {
+            // A path is the source file, not a release title; saying "imported
+            // from C:\..." tells a person nothing they cannot see already.
+            return $"{title} was imported using {mode}.";
+        }
+
+        return $"{title} was imported from {release.Trim()} using {mode}.";
+    }
+
+    /// <summary>
+    /// The rename is its own step. It is the moment a release title becomes a
+    /// library filename, and it is the step people most often need to check.
+    /// A file that kept its name has nothing to report.
+    /// </summary>
+    private async Task RecordRenameAsync(
+        ImportProvenanceDetails provenance,
+        string mediaType,
+        string? entityId,
+        CancellationToken cancellationToken)
+    {
+        var sourceName = Path.GetFileName(provenance.SourcePath);
+        var destinationName = Path.GetFileName(provenance.DestinationPath);
+        if (string.IsNullOrWhiteSpace(destinationName)
+            || string.Equals(sourceName, destinationName, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        await activityFeedRepository.RecordActivityAsync(
+            "filesystem.import.named",
+            string.IsNullOrWhiteSpace(provenance.MatchedRuleNames)
+                ? $"{sourceName} was named {destinationName}."
+                : $"{sourceName} was named {destinationName}, keeping {provenance.MatchedRuleNames}.",
+            JsonSerializer.Serialize(new
+            {
+                provenance.SourcePath,
+                provenance.DestinationPath,
+                provenance.ReleaseNameEvidence,
+                provenance.MatchedRuleNames,
+                provenance.DestinationRuleName
+            }),
+            null,
+            mediaType == "tv" ? "series" : "movie",
+            entityId,
+            cancellationToken);
+    }
 
     private static ImportProvenanceDetails BuildImportProvenance(
         ImportExecuteRequest request,
@@ -2199,6 +2269,14 @@ public sealed partial class ImportPipelineService(
     {
         public required bool CatalogUpdated { get; init; }
         public required string? CatalogId { get; init; }
+
+        /// <summary>
+        /// The catalogue entity this import belongs to, as the activity feed
+        /// addresses it. <see cref="CatalogId"/> is a title-and-year slug and
+        /// matches nothing the title page asks for, so import events recorded
+        /// against it never reached the title's own History.
+        /// </summary>
+        public string? EntityId { get; init; }
         public DownloadDispatchItem? Dispatch { get; init; }
         public string? ReleaseNameEvidence { get; init; }
         public IReadOnlyList<PreferenceEvaluationSnapshot> PreferenceEvaluations { get; init; } = [];
@@ -2252,6 +2330,17 @@ public sealed partial class ImportPipelineService(
         var dispatchReleaseName = string.IsNullOrWhiteSpace(dispatch?.ReleaseName)
             ? null
             : dispatch.ReleaseName.Trim();
+        // Kept with the file, not with the dispatch: a successful import
+        // archives its dispatch row immediately, so a title asking later where
+        // its copy came from would otherwise get nothing.
+        var acquisition = dispatch is null
+            ? null
+            : new ReleaseAcquisition(
+                IndexerName: dispatch.IndexerName,
+                DownloadClientName: dispatch.DownloadClientName,
+                DownloadClientItemId: dispatch.TorrentHashOrItemId,
+                GrabbedUtc: dispatch.GrabAttemptedUtc ?? dispatch.CreatedUtc,
+                DispatchId: dispatch.Id);
         var evidencePreviews = (tvFilePreviews is { Count: > 0 } ? tvFilePreviews : [preview])
             .GroupBy(item => item.DestinationPath, GetPathComparer())
             .Select(group => group.First())
@@ -2272,7 +2361,8 @@ public sealed partial class ImportPipelineService(
                     customFormats: customFormats,
                     guidePackage: guidePackage,
                     preferencePlan: preferencePlan,
-                    releaseNameEvidence: dispatchReleaseName ?? item.SourcePath))
+                    releaseNameEvidence: dispatchReleaseName ?? item.SourcePath,
+                    acquisition: acquisition))
                 .OfType<PreferenceEvaluationSnapshot>()
                 .ToArray();
         var preferenceEvaluation = preferenceEvaluations.FirstOrDefault();
@@ -2327,6 +2417,7 @@ public sealed partial class ImportPipelineService(
                 CatalogUpdated = catalogUpdated,
                 CatalogId = catalogUpdated ? catalogId : null,
                 Dispatch = dispatch,
+                EntityId = dispatch?.EntityId ?? request.SeriesId,
                 ReleaseNameEvidence = dispatchReleaseName ?? preview.SourcePath,
                 PreferenceEvaluations = preferenceEvaluations,
                 MatchedRuleNames = ResolveMatchedRuleNames(preferenceEvaluations, customFormats, preferencePlan)
@@ -2361,6 +2452,7 @@ public sealed partial class ImportPipelineService(
                 CatalogUpdated = false,
                 CatalogId = null,
                 Dispatch = dispatch,
+                EntityId = dispatch?.EntityId ?? request.SeriesId,
                 ReleaseNameEvidence = dispatchReleaseName ?? preview.SourcePath,
                 PreferenceEvaluations = preferenceEvaluations,
                 MatchedRuleNames = ResolveMatchedRuleNames(preferenceEvaluations, customFormats, preferencePlan)
@@ -2386,6 +2478,7 @@ public sealed partial class ImportPipelineService(
             CatalogUpdated = movieResult,
             CatalogId = movieResult ? catalogId : null,
             Dispatch = dispatch,
+            EntityId = dispatch?.EntityId ?? request.SeriesId,
             ReleaseNameEvidence = dispatchReleaseName ?? preview.SourcePath,
             PreferenceEvaluations = preferenceEvaluations,
             MatchedRuleNames = ResolveMatchedRuleNames(preferenceEvaluations, customFormats, preferencePlan)

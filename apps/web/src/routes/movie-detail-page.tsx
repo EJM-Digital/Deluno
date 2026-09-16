@@ -131,7 +131,11 @@ export async function movieDetailLoader({
     fetchJson<MovieListItem>(`/api/movies/${id}`),
     fetchJson<MetadataProviderIssue | null>(`/api/movies/${id}/metadata/issue`).catch(() => null),
     fetchJson<MovieSearchHistoryItem[]>("/api/movies/search-history"),
-    fetchPageItems<DownloadDispatchItem>("/api/download-dispatches?mediaType=movies&pageSize=20"),
+    // Archived rows included on purpose: an import archives its dispatch the
+    // moment it succeeds, so a history that hides them shows nothing was ever
+    // sent for the very titles Deluno did download. Asked for by title, because
+    // the newest twenty rows across the whole library are not this title's.
+    fetchPageItems<DownloadDispatchItem>(`/api/download-dispatches?mediaType=movies&pageSize=20&includeArchived=true&entityId=${encodeURIComponent(id)}`),
     fetchJson<MovieImportRecoverySummary>("/api/movies/import-recovery"),
     fetchPageItems<ActivityEventItem>(`/api/activity?relatedEntityType=movie&relatedEntityId=${id}&pageSize=20`),
     fetchPageItems<DecisionExplanationItem>(`/api/decisions?relatedEntityType=movie&relatedEntityId=${id}&pageSize=40`),

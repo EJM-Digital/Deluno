@@ -29,7 +29,8 @@ public static class InstalledPreferenceEvaluationFactory
         string? probedVideoCodec = null,
         string? probedAudioCodec = null,
         string? probedAudioChannels = null,
-        string? releaseNameEvidence = null)
+        string? releaseNameEvidence = null,
+        ReleaseAcquisition? acquisition = null)
     {
         ArgumentNullException.ThrowIfNull(profile);
         if (string.IsNullOrWhiteSpace(filePath))
@@ -173,7 +174,8 @@ public static class InstalledPreferenceEvaluationFactory
                 .ToArray(),
             EvaluatedUtc: evaluatedUtc,
             Source: source?.Trim(),
-            ReleaseNameEvidence: effectiveReleaseNameEvidence);
+            ReleaseNameEvidence: effectiveReleaseNameEvidence,
+            Acquisition: acquisition is { HasAnything: true } ? acquisition : null);
     }
 
     private static IReadOnlyList<CustomFormatItem> SelectProfileFormats(
