@@ -118,7 +118,36 @@ public sealed class TmdbMetadataProvider(
             LastFailure);
     }
 
-    public async Task<IReadOnlyList<MetadataSearchResult>> SearchAsync(
+    public Task<IReadOnlyList<MetadataSearchResult>> SearchAsync(
+        MetadataLookupRequest request,
+        CancellationToken cancellationToken)
+        => SearchWithTypedYearAsync(request, SearchByQueryAsync, cancellationToken);
+
+    /// <summary>
+    /// Runs a title search with any year the person typed moved into the
+    /// year filter, and falls back to the query as typed when that finds
+    /// nothing — so a title that ends in a year still finds itself.
+    /// </summary>
+    private async Task<IReadOnlyList<MetadataSearchResult>> SearchWithTypedYearAsync(
+        MetadataLookupRequest request,
+        Func<MetadataLookupRequest, CancellationToken, Task<IReadOnlyList<MetadataSearchResult>>> search,
+        CancellationToken cancellationToken)
+    {
+        if (request.Year is null &&
+            string.IsNullOrWhiteSpace(request.ProviderId) &&
+            MetadataQueryYear.TrySplit(request.Query, timeProvider.GetUtcNow().Year, out var title, out var year))
+        {
+            var byYear = await search(request with { Query = title, Year = year }, cancellationToken);
+            if (byYear.Count > 0)
+            {
+                return byYear;
+            }
+        }
+
+        return await search(request, cancellationToken);
+    }
+
+    private async Task<IReadOnlyList<MetadataSearchResult>> SearchByQueryAsync(
         MetadataLookupRequest request,
         CancellationToken cancellationToken)
     {
@@ -265,7 +294,12 @@ public sealed class TmdbMetadataProvider(
             Failure: failure);
     }
 
-    public async Task<IReadOnlyList<MetadataSearchResult>> SearchDirectAsync(
+    public Task<IReadOnlyList<MetadataSearchResult>> SearchDirectAsync(
+        MetadataLookupRequest request,
+        CancellationToken cancellationToken)
+        => SearchWithTypedYearAsync(request, SearchDirectByQueryAsync, cancellationToken);
+
+    private async Task<IReadOnlyList<MetadataSearchResult>> SearchDirectByQueryAsync(
         MetadataLookupRequest request,
         CancellationToken cancellationToken)
     {
