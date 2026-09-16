@@ -78,7 +78,7 @@ public sealed class DownloadDispatchPollingService(
             if (dispatch.GrabStatus == "succeeded" && dispatch.DetectedUtc is null)
             {
                 var age = now - dispatch.GrabAttemptedUtc;
-                if (age > GrabTimeout)
+                if (age > GrabTimeout && !await alertRepository.HasOpenAlertAsync(dispatch.Id, "grab-timeout", cancellationToken))
                 {
                     await RecordGrabTimeoutRecoveryAsync(
                         dispatch,
@@ -92,7 +92,7 @@ public sealed class DownloadDispatchPollingService(
             else if (dispatch.DetectedUtc is not null && dispatch.ImportStatus is null)
             {
                 var age = now - dispatch.DetectedUtc.Value;
-                if (age > DetectionTimeout)
+                if (age > DetectionTimeout && !await alertRepository.HasOpenAlertAsync(dispatch.Id, "detection-timeout", cancellationToken))
                 {
                     await RecordDetectionTimeoutRecoveryAsync(
                         dispatch,
@@ -106,7 +106,7 @@ public sealed class DownloadDispatchPollingService(
             else if (dispatch.ImportStatus == "pending" && dispatch.ImportDetectedUtc is not null)
             {
                 var age = now - dispatch.ImportDetectedUtc.Value;
-                if (age > ImportTimeout)
+                if (age > ImportTimeout && !await alertRepository.HasOpenAlertAsync(dispatch.Id, "import-timeout", cancellationToken))
                 {
                     await RecordImportTimeoutRecoveryAsync(
                         dispatch,
@@ -117,7 +117,9 @@ public sealed class DownloadDispatchPollingService(
                     report = report with { ImportTimeoutsDetected = report.ImportTimeoutsDetected + 1, RecoveryCasesRecorded = report.RecoveryCasesRecorded + 1 };
                 }
             }
-            else if (dispatch.ImportStatus == "failed" && !string.IsNullOrWhiteSpace(dispatch.ImportFailureCode))
+            else if (dispatch.ImportStatus == "failed"
+                && !string.IsNullOrWhiteSpace(dispatch.ImportFailureCode)
+                && !await alertRepository.HasOpenAlertAsync(dispatch.Id, "import-failed", cancellationToken))
             {
                 await RecordImportFailureRecoveryAsync(
                     dispatch,
@@ -136,6 +138,11 @@ public sealed class DownloadDispatchPollingService(
 
         await ArchiveSuccessfulDispatchesAsync(connection, cancellationToken);
 
+        // After archiving, so a download archived on this pass closes its
+        // alerts on this pass rather than an hour later.
+        var resolved = await alertRepository.ResolveSettledAlertsAsync(cancellationToken);
+        report = report with { AlertsResolved = resolved };
+
         return report;
     }
 
@@ -153,9 +160,19 @@ public sealed class DownloadDispatchPollingService(
                 download_client_id, download_client_name, grab_status, grab_attempted_utc,
                 detected_utc, import_status, import_detected_utc, import_failure_code, import_failure_message
             FROM download_dispatches
-            WHERE (grab_status IS NULL OR grab_status = 'succeeded' AND detected_utc IS NULL)
-               OR (detected_utc IS NOT NULL AND import_status IS NULL)
-               OR (import_status IN ('pending', 'failed'))
+            -- A download that was imported or archived is finished, whatever an
+            -- earlier stage recorded. The import can complete through a
+            -- processor callback or a manual import without the client-detection
+            -- step ever stamping detected_utc, and this query used to read that
+            -- as "grabbed but never seen": on the rig it raised a grab timeout
+            -- about a film after importing it, three times, each with its own
+            -- activity entry and a recovery case saying the download never
+            -- reached the client.
+            WHERE COALESCE(status, '') <> 'archived'
+              AND COALESCE(import_status, '') <> 'imported'
+              AND ((grab_status IS NULL OR grab_status = 'succeeded' AND detected_utc IS NULL)
+                OR (detected_utc IS NOT NULL AND import_status IS NULL)
+                OR (import_status IN ('pending', 'failed')))
             ORDER BY grab_attempted_utc DESC
             LIMIT 500;
             """;

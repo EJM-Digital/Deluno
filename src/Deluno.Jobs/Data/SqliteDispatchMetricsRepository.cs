@@ -104,7 +104,9 @@ public sealed class SqliteDispatchMetricsRepository(
         CancellationToken cancellationToken)
     {
         using var command = connection.CreateCommand();
-        command.CommandText = "SELECT COUNT(*) FROM dispatch_alerts WHERE acknowledged = 0";
+        // Unacknowledged and unresolved: an alert about a download that has since
+        // moved on is history, not something waiting on the owner.
+        command.CommandText = "SELECT COUNT(*) FROM dispatch_alerts WHERE acknowledged = 0 AND resolved_utc IS NULL";
 
         var result = await command.ExecuteScalarAsync(cancellationToken);
         return result is long count ? (int)count : 0;

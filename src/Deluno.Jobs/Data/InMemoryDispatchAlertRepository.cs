@@ -68,4 +68,14 @@ public sealed class InMemoryDispatchAlertRepository : IDispatchAlertRepository
         await Task.CompletedTask;
         return _alerts.Count(a => !a.Acknowledged);
     }
+
+    public Task<bool> HasOpenAlertAsync(string dispatchId, string alertKind, CancellationToken cancellationToken)
+        => Task.FromResult(_alerts.Any(a => !a.Acknowledged && a.DispatchId == dispatchId && a.AlertKind == alertKind));
+
+    /// <summary>
+    /// This store holds alerts and nothing about the downloads they describe,
+    /// so it cannot tell which have settled. Nothing is registered against it;
+    /// the SQLite repository is the one that resolves.
+    /// </summary>
+    public Task<int> ResolveSettledAlertsAsync(CancellationToken cancellationToken) => Task.FromResult(0);
 }
