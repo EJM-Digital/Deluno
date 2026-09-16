@@ -1,0 +1,309 @@
+using Deluno.Jobs.Data;
+using Deluno.Libraries.Contracts;
+using Deluno.Movies.Contracts;
+using Deluno.Movies.Data;
+using Deluno.Platform.Contracts;
+using Deluno.Platform.Data;
+using Deluno.Series.Data;
+using Deluno.Worker.Services;
+using Moq;
+
+namespace Deluno.Worker.Tests.Services;
+
+/// <summary>
+/// #511: Deluno stops giving files to a processor a fixed six hours. It asks
+/// the processor what it is doing, waits while the answer is "busy", and gives
+/// up only when nothing has changed for the library's limit while the
+/// processor was answering.
+/// </summary>
+public sealed class ProcessorHandoffWatcherTests
+{
+    private static readonly DateTimeOffset Now = DateTimeOffset.Parse("2026-09-20T12:00:00Z");
+
+    private readonly Mock<IProcessorRepository> _repository = new();
+    private readonly Mock<IProcessorConnectionService> _processor = new();
+    private readonly Mock<IActivityFeedRepository> _activity = new();
+    private readonly Mock<IMovieCatalogRepository> _movies = new();
+    private readonly Mock<ISeriesCatalogRepository> _series = new();
+    private readonly List<(string Status, string? Message)> _updates = [];
+    private readonly List<ProcessorHandoffObservation> _observations = [];
+    private readonly List<CreateMovieImportRecoveryCaseRequest> _cases = [];
+
+    public ProcessorHandoffWatcherTests()
+    {
+        _repository.Setup(repo => repo.FindProcessorConnectionByNameAsync("Weir", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ProcessorConnectionItem(
+                "connection-1", "Weir", "generic-webhook", "http://weir:8788/api/v1/intake/webhook/deluno",
+                "X-Webhook-Secret", "secret", true, "healthy", null, null, Now, Now));
+        _repository.Setup(repo => repo.UpdateProcessorHandoffAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()))
+            .Callback<string, string, string?, string?, string?, CancellationToken>((_, status, _, _, message, _) => _updates.Add((status, message)))
+            .ReturnsAsync((ProcessorHandoffItem?)null);
+        _repository.Setup(repo => repo.RecordProcessorObservationAsync(It.IsAny<string>(), It.IsAny<ProcessorHandoffObservation>(), It.IsAny<CancellationToken>()))
+            .Callback<string, ProcessorHandoffObservation, CancellationToken>((_, observation, _) => _observations.Add(observation))
+            .Returns(Task.CompletedTask);
+        _movies.Setup(repo => repo.AddImportRecoveryCaseAsync(It.IsAny<CreateMovieImportRecoveryCaseRequest>(), It.IsAny<CancellationToken>()))
+            .Callback<CreateMovieImportRecoveryCaseRequest, CancellationToken>((request, _) => _cases.Add(request))
+            .ReturnsAsync((MovieImportRecoveryCase)null!);
+        CanAsk(status: true, cancel: true);
+    }
+
+    [Fact]
+    public async Task A_file_queued_behind_others_is_waited_for_however_long_it_has_been_with_the_processor()
+    {
+        GivenHandoff(updated: Now.AddDays(-4), previous: Answering(since: Now.AddDays(-4)));
+        Answers(ProcessorHandoffStates.Queued, lastChanged: Now.AddHours(-3), queuePosition: 3);
+
+        await Watch();
+
+        Assert.Empty(_updates);
+        var seen = Assert.Single(_observations);
+        Assert.Equal(3, seen.QueuePosition);
+        Assert.Equal(Now, seen.CheckedUtc);
+    }
+
+    [Fact]
+    public async Task A_run_scheduled_ahead_is_never_a_stall()
+    {
+        GivenHandoff(updated: Now.AddDays(-5), previous: Answering(since: Now.AddDays(-5)));
+        Answers(ProcessorHandoffStates.Scheduled, lastChanged: Now.AddDays(-5), scheduledFor: Now.AddHours(13));
+
+        await Watch();
+
+        Assert.Empty(_updates);
+    }
+
+    [Fact]
+    public async Task Queued_while_the_processor_waits_on_Deluno_is_never_a_stall()
+    {
+        GivenHandoff(updated: Now.AddDays(-5), previous: Answering(since: Now.AddDays(-5)));
+        Answers(ProcessorHandoffStates.Queued, lastChanged: Now.AddDays(-5), message: "Waiting for Deluno to finish importing the previous copy.");
+
+        await Watch();
+
+        Assert.Empty(_updates);
+    }
+
+    [Fact]
+    public async Task No_change_for_the_limit_imports_the_original_when_that_is_the_library_rule()
+    {
+        GivenHandoff(updated: Now.AddDays(-3), previous: Answering(since: Now.AddDays(-3)), mode: "import-original");
+        Answers(ProcessorHandoffStates.Queued, lastChanged: Now.AddHours(-49), queuePosition: 1);
+
+        await Watch();
+
+        _processor.Verify(service => service.CancelHandoffAsync(It.IsAny<ProcessorConnectionItem>(), "handoff-1", It.IsAny<CancellationToken>()), Times.Once);
+        var (status, message) = Assert.Single(_updates);
+        Assert.Equal(ProcessorHandoffStatuses.Released, status);
+        Assert.Contains("no change for 2 days", message, StringComparison.Ordinal);
+        Assert.Empty(_cases);
+    }
+
+    [Theory]
+    [InlineData("manual-review")]
+    [InlineData("block")]
+    public async Task No_change_for_the_limit_leaves_it_for_a_person_under_the_other_rules(string mode)
+    {
+        GivenHandoff(updated: Now.AddDays(-3), previous: Answering(since: Now.AddDays(-3)), mode: mode);
+        Answers(ProcessorHandoffStates.Queued, lastChanged: Now.AddHours(-49));
+
+        await Watch();
+
+        Assert.Equal(ProcessorHandoffStatuses.Stalled, Assert.Single(_updates).Status);
+        Assert.Equal("processor-stalled", Assert.Single(_cases).FailureKind);
+    }
+
+    [Fact]
+    public async Task A_limit_set_on_the_library_is_the_limit_used()
+    {
+        GivenHandoff(updated: Now.AddDays(-3), previous: Answering(since: Now.AddDays(-3)), stallMinutes: 24 * 60);
+        Answers(ProcessorHandoffStates.Queued, lastChanged: Now.AddHours(-25));
+
+        await Watch();
+
+        Assert.Equal(ProcessorHandoffStatuses.Released, Assert.Single(_updates).Status);
+    }
+
+    [Fact]
+    public async Task A_processor_that_started_the_file_meanwhile_is_left_to_finish()
+    {
+        GivenHandoff(updated: Now.AddDays(-3), previous: Answering(since: Now.AddDays(-3)));
+        Answers(ProcessorHandoffStates.Queued, lastChanged: Now.AddHours(-49));
+        _processor.Setup(service => service.CancelHandoffAsync(It.IsAny<ProcessorConnectionItem>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ProcessorHandoffCancelResult(ProcessorAnswer.Busy, "Working on it."));
+
+        await Watch();
+
+        Assert.Empty(_updates);
+    }
+
+    [Fact]
+    public async Task Working_with_no_change_is_said_once_and_never_interrupted()
+    {
+        GivenHandoff(updated: Now.AddDays(-3), previous: Answering(since: Now.AddDays(-3)));
+        Answers(ProcessorHandoffStates.Working, lastChanged: Now.AddHours(-60));
+
+        await Watch();
+
+        var (status, message) = Assert.Single(_updates);
+        Assert.Equal(ProcessorHandoffStatuses.Started, status);
+        Assert.Contains("working on", message, StringComparison.Ordinal);
+        _processor.Verify(service => service.CancelHandoffAsync(It.IsAny<ProcessorConnectionItem>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    /// <summary>
+    /// A processor switched off for the weekend does not get its files given
+    /// up on - neither while it is off, nor the moment it comes back.
+    /// </summary>
+    [Fact]
+    public async Task Time_the_processor_could_not_be_asked_does_not_count_against_the_file()
+    {
+        GivenHandoff(updated: Now.AddDays(-4), previous: Answering(since: Now.AddDays(-4)));
+        _processor.Setup(service => service.GetHandoffStatusAsync(It.IsAny<ProcessorConnectionItem>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ProcessorHandoffStatusResult(ProcessorAnswer.Unreachable, Message: "Deluno could not reach Weir."));
+
+        await Watch();
+
+        Assert.Empty(_updates);
+        Assert.Equal(Now, Assert.Single(_observations).UnreachableSinceUtc);
+    }
+
+    [Fact]
+    public async Task A_processor_back_after_being_unreachable_gets_the_whole_limit_again()
+    {
+        var previous = new ProcessorHandoffObservation(ProcessorHandoffStates.Queued, null, 2, null, Now.AddDays(-3), Now.AddMinutes(-5), Now.AddDays(-2), null);
+        GivenHandoff(updated: Now.AddDays(-4), previous: previous);
+        Answers(ProcessorHandoffStates.Queued, lastChanged: Now.AddDays(-3), queuePosition: 2);
+
+        await Watch();
+
+        Assert.Empty(_updates);
+        Assert.Equal(Now, Assert.Single(_observations).AnsweringSinceUtc);
+    }
+
+    [Fact]
+    public async Task A_refused_question_says_to_set_a_webhook_secret_and_gives_up_on_nothing()
+    {
+        GivenHandoff(updated: Now.AddDays(-9), previous: null);
+        _processor.Setup(service => service.GetStatusSupportAsync(It.IsAny<ProcessorConnectionItem>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ProcessorStatusSupport(ProcessorAnswer.Forbidden, false, false, "Set a webhook secret in Weir and the same secret on this processor connection in Deluno, so Deluno can ask about hand-offs."));
+
+        await Watch();
+
+        Assert.Empty(_updates);
+        _repository.Verify(repo => repo.RecordProcessorConnectionHealthAsync("connection-1", "degraded", It.Is<string>(text => text.Contains("webhook secret")), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task A_hand_off_the_processor_never_received_is_lost_and_offers_the_original()
+    {
+        GivenHandoff(updated: Now.AddHours(-2), previous: null);
+        _processor.Setup(service => service.GetHandoffStatusAsync(It.IsAny<ProcessorConnectionItem>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ProcessorHandoffStatusResult(ProcessorAnswer.NotFound));
+
+        await Watch();
+
+        Assert.Equal(ProcessorHandoffStatuses.Lost, Assert.Single(_updates).Status);
+        var raised = Assert.Single(_cases);
+        Assert.Equal("processor-lost", raised.FailureKind);
+        Assert.Contains("Import original", raised.RecommendedAction, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task A_hand_off_just_submitted_is_not_called_lost()
+    {
+        GivenHandoff(updated: Now.AddMinutes(-2), previous: null);
+        _processor.Setup(service => service.GetHandoffStatusAsync(It.IsAny<ProcessorConnectionItem>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ProcessorHandoffStatusResult(ProcessorAnswer.NotFound));
+
+        await Watch();
+
+        Assert.Empty(_updates);
+    }
+
+    [Theory]
+    [InlineData(ProcessorHandoffStates.Cancelled, ProcessorHandoffStatuses.Cancelled)]
+    [InlineData(ProcessorHandoffStates.Failed, ProcessorHandoffStatuses.Failed)]
+    [InlineData("exploded", ProcessorHandoffStatuses.Failed)]
+    public async Task A_state_that_will_not_deliver_stops_the_wait(string state, string expected)
+    {
+        GivenHandoff(updated: Now.AddHours(-1), previous: null);
+        Answers(state, lastChanged: Now.AddMinutes(-10));
+
+        await Watch();
+
+        Assert.Equal(expected, Assert.Single(_updates).Status);
+    }
+
+    [Fact]
+    public async Task A_processor_that_cannot_be_asked_is_judged_from_the_hand_off_last_change()
+    {
+        CanAsk(status: false, cancel: false);
+        GivenHandoff(updated: Now.AddHours(-49), previous: null, mode: "block");
+
+        await Watch();
+
+        Assert.Equal(ProcessorHandoffStatuses.TimedOut, Assert.Single(_updates).Status);
+        Assert.Equal("processor-timeout", Assert.Single(_cases).FailureKind);
+    }
+
+    [Fact]
+    public async Task A_processor_that_cannot_be_asked_still_gets_the_whole_limit()
+    {
+        CanAsk(status: false, cancel: false);
+        GivenHandoff(updated: Now.AddHours(-47), previous: null);
+
+        await Watch();
+
+        Assert.Empty(_updates);
+    }
+
+    private Task Watch()
+        => new ProcessorHandoffWatcher(_repository.Object, _processor.Object, _activity.Object, _movies.Object, _series.Object)
+            .WatchAsync([Library(_mode, _stallMinutes)], Now, CancellationToken.None);
+
+    private string _mode = "import-original";
+    private int _stallMinutes = ProcessorStallLimits.DefaultMinutes;
+
+    private void GivenHandoff(DateTimeOffset updated, ProcessorHandoffObservation? previous, string mode = "import-original", int stallMinutes = ProcessorStallLimits.DefaultMinutes)
+    {
+        _mode = mode;
+        _stallMinutes = stallMinutes;
+        _repository.Setup(repo => repo.ListProcessorHandoffsAsync(null, It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync([
+                new ProcessorHandoffItem(
+                    "handoff-1", "library-1", "movies", "qbittorrent", "hash-1", "Sintel.2010.1080p",
+                    @"D:\Downloads\Sintel.2010.1080p", "Weir", ProcessorHandoffStatuses.Started, null, null, null,
+                    updated.AddHours(-1), updated, previous)
+            ]);
+    }
+
+    private void CanAsk(bool status, bool cancel)
+    {
+        _processor.Setup(service => service.GetStatusSupportAsync(It.IsAny<ProcessorConnectionItem>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ProcessorStatusSupport(ProcessorAnswer.Answered, status, cancel, null));
+        _processor.Setup(service => service.CancelHandoffAsync(It.IsAny<ProcessorConnectionItem>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ProcessorHandoffCancelResult(ProcessorAnswer.Answered, null));
+    }
+
+    private void Answers(string state, DateTimeOffset lastChanged, int? queuePosition = null, DateTimeOffset? scheduledFor = null, string? message = null)
+        => _processor.Setup(service => service.GetHandoffStatusAsync(It.IsAny<ProcessorConnectionItem>(), "handoff-1", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ProcessorHandoffStatusResult(ProcessorAnswer.Answered, state, queuePosition, scheduledFor, lastChanged, null, message));
+
+    private static ProcessorHandoffObservation Answering(DateTimeOffset since)
+        => new(ProcessorHandoffStates.Queued, null, null, null, since, Now.AddMinutes(-5), null, since);
+
+    private static LibraryItem Library(string mode, int stallMinutes)
+    {
+        var library = (LibraryItem)System.Runtime.CompilerServices.RuntimeHelpers.GetUninitializedObject(typeof(LibraryItem));
+        return library with
+        {
+            Id = "library-1",
+            Name = "Movies",
+            MediaType = "movies",
+            ImportWorkflow = "refine-before-import",
+            ProcessorName = "Weir",
+            ProcessorTimeoutMinutes = stallMinutes,
+            ProcessorFailureMode = mode
+        };
+    }
+}

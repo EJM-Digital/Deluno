@@ -291,6 +291,45 @@ Pass its `id` back as `handoffId` in every processor event. `sourcePath` remains
 
 Supported statuses are `accepted`, `started`, `completed`, and `failed`. Completed events must include `outputPath`; failed events should include a user-readable `message`.
 
+#### Failure dispositions
+
+A `failed` event may say what the processor did with the file:
+
+| Field | Values | Deluno's response |
+|---|---|---|
+| `disposition` | `held` | The processor kept the original. Deluno records the failure and raises a Queue recovery case. |
+| | `rejected` | The processor deleted the download. Deluno refuses that release, tells the download client to forget it, searches for another copy, and answers `202`. If it cannot identify the release or record the refusal, it answers `409` and has done nothing, so the processor should keep the original. A repeat report for a hand-off already rejected answers `202` with `alreadyHandled: true` and does nothing new. |
+| `sourceRemoved` | `true` / `false` | Whether the file at `sourcePath` is gone. Informational. |
+| `failureClass` | e.g. `preflight`, `guardrail`, `execution` | Recorded with the refusal reason. |
+
+A processor should send `rejected` only when the manifest's `capabilities` include `processor-reject-regrab`.
+
+#### Asking the processor instead of timing it out
+
+Deluno does not give a processor a fixed time to finish. When the connection's submission URL has the shape `…/intake/webhook/{source}`, Deluno reads `…/intake/capabilities` with the same authentication. If that lists `handoff-status`, Deluno asks `GET …/intake/handoffs/{source}/{handoffId}` on every planning pass and expects:
+
+```json
+{
+  "handoffId": "…",
+  "state": "queued | scheduled | working | completed | passed-through | failed | rejected | cancelled",
+  "queuePosition": 3,
+  "scheduledFor": "2026-09-17T01:00:00Z",
+  "lastChangedUtc": "2026-09-16T10:00:00Z",
+  "outputPath": null,
+  "message": "Outside this library's processing hours."
+}
+```
+
+- `queued`, `scheduled` and `working` are waited for, and Queue shows what the processor said.
+- `404` means the processor never received the hand-off. Deluno stops waiting and offers **Import original**.
+- `403` is shown as "set a webhook secret".
+- A processor that cannot be reached is waited for. The time it is unreachable does not count.
+- When nothing has changed for the library's **No progress for** setting (24 hours to 7 days, 48 hours by default) while the processor answers and has no scheduled run ahead, Deluno first calls `DELETE` on the same URL if `handoff-cancel` is listed. A `409` means it is working, so Deluno keeps waiting. Then the library's **If processing stalls or fails** rule applies: import the original, or leave it for review in Queue.
+- A processor without these endpoints is judged the same way, from the hand-off's last recorded change.
+- Whichever way the wait ends, a processed file that appears in the output folder afterwards is still imported.
+
+`POST /api/integrations/processors/handoffs/{id}/import-original` imports the untouched download for a hand-off the processor did not finish.
+
 ### Completion safety boundary
 
 Deluno accepts a completed event only when all of these are true:
@@ -329,7 +368,7 @@ Deluno now supports import coordination without requiring tools to read internal
 
 - processor events can queue clean-output imports only within the library-owned output boundary
 - processor output folder checks report uncorrelated finished files for recovery; they never auto-import a file that has no matching hand-off
-- processor timeouts create recovery cases for Queue/Activity review
+- a processor that stops making progress is handled by the library's stall rule; late processed output is still imported
 - import preview uses the same destination resolver as the app UI
 
 ## Design Rule

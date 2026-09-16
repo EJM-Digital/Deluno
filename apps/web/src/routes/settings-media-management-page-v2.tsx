@@ -35,13 +35,15 @@ import { authedFetch } from "../lib/use-auth";
 import { useUnsavedChanges } from "../hooks/use-unsaved-changes";
 import { resolveDrawerSaveState, shouldClearSaveState } from "../lib/drawer-save-state";
 
+/** Mirrors `ProcessorStallLimits`: a day to a week with no progress, two days unless chosen (#511). */
 const TIMEOUT_OPTIONS = [
-  { value: "60", label: "1 hour" },
-  { value: "180", label: "3 hours" },
-  { value: "360", label: "6 hours" },
-  { value: "720", label: "12 hours" },
-  { value: "1440", label: "24 hours" }
+  { value: "1440", label: "24 hours" },
+  { value: "2880", label: "48 hours" },
+  { value: "4320", label: "3 days" },
+  { value: "5760", label: "4 days" },
+  { value: "10080", label: "7 days" }
 ];
+const DEFAULT_STALL_MINUTES = 2880;
 const FAILURE_OPTIONS = [
   { value: "block", label: "Stop and ask me" },
   { value: "manual-review", label: "Send to manual review" },
@@ -435,7 +437,7 @@ function ProcessingWorkflowPage() {
             importWorkflow: workflow.importWorkflow,
             processorName: workflow.processorName || null,
             processorOutputPath: workflow.processorOutputPath || null,
-            processorTimeoutMinutes: Number(workflow.processorTimeoutMinutes || 360),
+            processorTimeoutMinutes: Number(workflow.processorTimeoutMinutes || DEFAULT_STALL_MINUTES),
             processorFailureMode: workflow.processorFailureMode,
             cleanupMode: workflow.cleanupMode,
             removeEmptySourceFolders: workflow.removeEmptySourceFolders
@@ -507,7 +509,7 @@ function ProcessingWorkflowPage() {
                 <ListRow key={library.id} onClick={() => openLibrary(library)} selected={drawer.kind === "library" && drawer.id === library.id}>
                   <ListNameCell name={library.name} sub={library.mediaType === "tv" ? "TV shows" : "Movies"} />
                   <ListCell primary={refined ? "Process, then import" : "Import immediately"} secondary={refined ? library.processorName || "Waits for cleaned output" : "Use the finished download"} />
-                  <ListCell mono primary={refined ? library.processorOutputPath || <span className="font-sans text-warning">Not set</span> : <span className="font-sans text-muted-foreground">—</span>} secondary={refined ? `Waits up to ${Math.round((library.processorTimeoutMinutes || 360) / 60)} h` : undefined} />
+                  <ListCell mono primary={refined ? library.processorOutputPath || <span className="font-sans text-warning">Not set</span> : <span className="font-sans text-muted-foreground">—</span>} secondary={refined ? `Gives up after ${Math.round((library.processorTimeoutMinutes || DEFAULT_STALL_MINUTES) / 60)} h with no progress` : undefined} />
                   <ListCell primary={(library.cleanupMode ?? "keep-source") === "remove-source-after-import" ? "Remove downloaded file" : "Keep downloaded file"} secondary={library.removeEmptySourceFolders ? "Also remove empty folders" : undefined} />
                   <ListCell primary={refined ? FAILURE_OPTIONS.find((option) => option.value === library.processorFailureMode)?.label ?? library.processorFailureMode : <span className="text-muted-foreground">—</span>} />
                   <ListCell mobile>
@@ -586,10 +588,10 @@ function ProcessingWorkflowPage() {
                   <PathInput value={workflow.processorOutputPath} onChange={(value) => setWorkflow((current) => ({ ...current, processorOutputPath: value }))} browseTitle="Choose processed-output folder" />
                 </Field>
                 <FieldRow>
-                  <Field label="Wait up to" help="Then Deluno asks you to review.">
+                  <Field label="No progress for" help="Deluno asks the processor what it is doing. Queued, scheduled or working is waited for however long it takes; this is how long nothing may change before the rule on the right applies.">
                     <Select value={workflow.processorTimeoutMinutes} onChange={(event) => setWorkflow((current) => ({ ...current, processorTimeoutMinutes: event.target.value }))} options={TIMEOUT_OPTIONS} />
                   </Field>
-                  <Field label="If processing fails" help="Deluno keeps the original out of the library unless you explicitly choose Import the original file.">
+                  <Field label="If processing stalls or fails" help="Import the original file brings the untouched download in. The other two keep it out of the library and ask you in Queue.">
                     <Select value={workflow.processorFailureMode} onChange={(event) => setWorkflow((current) => ({ ...current, processorFailureMode: event.target.value }))} options={FAILURE_OPTIONS} />
                   </Field>
                 </FieldRow>
@@ -698,14 +700,14 @@ function ProcessingWorkflowPage() {
 /* --------------------------------------------------------------- utils */
 
 function emptyWorkflow(): WorkflowForm {
-  return { importWorkflow: "standard", processorName: "", processorOutputPath: "", processorTimeoutMinutes: "360", processorFailureMode: "block", cleanupMode: "keep-source", removeEmptySourceFolders: false };
+  return { importWorkflow: "standard", processorName: "", processorOutputPath: "", processorTimeoutMinutes: String(DEFAULT_STALL_MINUTES), processorFailureMode: "import-original", cleanupMode: "keep-source", removeEmptySourceFolders: false };
 }
 function workflowFrom(library: LibraryItem): WorkflowForm {
   return {
     importWorkflow: library.importWorkflow ?? "standard",
     processorName: library.processorName ?? "",
     processorOutputPath: library.processorOutputPath ?? "",
-    processorTimeoutMinutes: String(library.processorTimeoutMinutes || 360),
+    processorTimeoutMinutes: String(library.processorTimeoutMinutes || DEFAULT_STALL_MINUTES),
     processorFailureMode: library.processorFailureMode ?? "block",
     cleanupMode: library.cleanupMode ?? "keep-source",
     removeEmptySourceFolders: library.removeEmptySourceFolders ?? false

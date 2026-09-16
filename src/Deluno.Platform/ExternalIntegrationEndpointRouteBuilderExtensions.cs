@@ -391,11 +391,11 @@ public static class ExternalIntegrationEndpointRouteBuilderExtensions
 
             var handoff = await repository.GetProcessorHandoffAsync(id, cancellationToken);
             if (handoff is null) return Results.NotFound();
-            if (handoff.Status is not ("failed" or "timed-out"))
+            if (!ProcessorHandoffStatuses.CanReleaseOriginal(handoff.Status))
             {
                 return Results.Conflict(new
                 {
-                    message = "Only a failed or timed-out processor hand-off can be tried again. Deluno will not resubmit an active or already completed hand-off."
+                    message = "Only a hand-off the processor did not finish can be tried again. Deluno will not resubmit an active or already completed hand-off."
                 });
             }
 
@@ -435,6 +435,52 @@ public static class ExternalIntegrationEndpointRouteBuilderExtensions
                 cancellationToken);
 
             return Results.Accepted($"/api/integrations/processors/handoffs?libraryId={Uri.EscapeDataString(handoff.LibraryId)}", retried);
+        });
+
+        // Import the untouched download instead of waiting for a processed copy
+        // (#511). Offered wherever the processor did not finish: it failed, went
+        // quiet, stalled, lost the hand-off or was told to stop.
+        integrations.MapPost("/processors/handoffs/{id}/import-original", async (
+            string id,
+            HttpContext httpContext,
+            IProcessorRepository repository,
+            IActivityFeedRepository activityFeed,
+            CancellationToken cancellationToken) =>
+        {
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
+            if (denied is not null) return denied;
+            var scopeDenied = UserAuthorization.RequireApiScope(httpContext, "imports");
+            if (scopeDenied is not null) return scopeDenied;
+
+            var handoff = await repository.GetProcessorHandoffAsync(id, cancellationToken);
+            if (handoff is null) return Results.NotFound();
+            if (!ProcessorHandoffStatuses.CanReleaseOriginal(handoff.Status))
+            {
+                return Results.Conflict(new
+                {
+                    message = "The original can only be imported once the processor has stopped working on it. Deluno will not import a file the processor may still deliver."
+                });
+            }
+
+            var released = await repository.UpdateProcessorHandoffAsync(
+                handoff.Id,
+                ProcessorHandoffStatuses.Released,
+                null,
+                null,
+                $"Importing the original of {handoff.ReleaseName}, unprocessed, as requested.",
+                cancellationToken);
+            if (released is null) return Results.NotFound();
+
+            await activityFeed.RecordActivityAsync(
+                "processing.released",
+                $"Deluno will import the original of {handoff.ReleaseName} without processing, as requested.",
+                JsonSerializer.Serialize(new { HandoffId = handoff.Id, handoff.LibraryId, handoff.ReleaseName, handoff.SourcePath, PreviousStatus = handoff.Status }),
+                null,
+                "processor-handoff",
+                handoff.Id,
+                cancellationToken);
+
+            return Results.Accepted($"/api/integrations/processors/handoffs?libraryId={Uri.EscapeDataString(handoff.LibraryId)}", released);
         });
 
         integrations.MapGet("/processors/connections", async (

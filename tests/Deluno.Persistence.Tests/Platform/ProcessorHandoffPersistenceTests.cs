@@ -1,3 +1,5 @@
+using Deluno.Platform.Migrations;
+using Deluno.Infrastructure.Storage;
 using Deluno.Infrastructure.Storage.Migrations;
 using Deluno.Persistence.Tests.Support;
 using Deluno.Platform.Contracts;
@@ -131,6 +133,103 @@ public sealed class ProcessorHandoffPersistenceTests
         Assert.Equal(workingStatus, again.Status);
         // Not re-pointed at a different queue item while it is mid-flight.
         Assert.Equal("queue-1", again.QueueItemId);
+    }
+
+    /// <summary>
+    /// #511: the same download still in the client after the processor gave up
+    /// on it is not a new cycle. Restarting it resubmitted the file every pass
+    /// once Weir's final failure reports began to land.
+    /// </summary>
+    [Theory]
+    [InlineData("failed")]
+    [InlineData("rejected")]
+    [InlineData("timed-out")]
+    [InlineData("stalled")]
+    [InlineData("lost")]
+    [InlineData("cancelled")]
+    [InlineData("released")]
+    public async Task An_ending_is_not_restarted_by_the_same_download(string ending)
+    {
+        using var storage = TestStorage.Create();
+        var clock = new FixedTimeProvider(DateTimeOffset.Parse("2026-09-16T00:00:00Z"));
+        await new PlatformSchemaInitializer(
+            storage.Factory,
+            new SqliteDatabaseMigrator(storage.Factory, clock),
+            NullLogger<PlatformSchemaInitializer>.Instance).StartAsync(CancellationToken.None);
+        var repository = new SqliteProcessorRepository(storage.Factory, clock, TestSecretProtection.Create(storage));
+        var request = new CreateProcessorHandoffRequest(
+            "library-1", "movies", "client-1", "queue-1", "Sintel", "/downloads/sintel", "Weir");
+
+        var first = await repository.EnsureProcessorHandoffAsync(request, CancellationToken.None);
+        await repository.UpdateProcessorHandoffAsync(first.Id, ending, null, null, "why", CancellationToken.None);
+
+        var sameDownload = await repository.EnsureProcessorHandoffAsync(request, CancellationToken.None);
+        Assert.Equal(ending, sameDownload.Status);
+
+        var newDownload = await repository.EnsureProcessorHandoffAsync(request with { QueueItemId = "queue-2" }, CancellationToken.None);
+        Assert.Equal("waiting", newDownload.Status);
+        Assert.Null(newDownload.Processor);
+    }
+
+    [Fact]
+    public async Task What_the_processor_said_is_kept_and_does_not_count_as_a_change()
+    {
+        using var storage = TestStorage.Create();
+        var clock = new FixedTimeProvider(DateTimeOffset.Parse("2026-09-16T00:00:00Z"));
+        await new PlatformSchemaInitializer(
+            storage.Factory,
+            new SqliteDatabaseMigrator(storage.Factory, clock),
+            NullLogger<PlatformSchemaInitializer>.Instance).StartAsync(CancellationToken.None);
+        var repository = new SqliteProcessorRepository(storage.Factory, clock, TestSecretProtection.Create(storage));
+        var handoff = await repository.EnsureProcessorHandoffAsync(
+            new CreateProcessorHandoffRequest("library-1", "movies", "client-1", "queue-1", "Sintel", "/downloads/sintel", "Weir"),
+            CancellationToken.None);
+        await repository.UpdateProcessorHandoffAsync(handoff.Id, "submitted", null, null, null, CancellationToken.None);
+        var submitted = await repository.GetProcessorHandoffAsync(handoff.Id, CancellationToken.None);
+
+        var observation = new ProcessorHandoffObservation(
+            "scheduled", "Runs at 01:00", 4, DateTimeOffset.Parse("2026-09-17T01:00:00Z"),
+            DateTimeOffset.Parse("2026-09-15T20:00:00Z"), clock.GetUtcNow(), null, DateTimeOffset.Parse("2026-09-15T00:00:00Z"));
+        await repository.RecordProcessorObservationAsync(handoff.Id, observation, CancellationToken.None);
+
+        var read = await repository.GetProcessorHandoffAsync(handoff.Id, CancellationToken.None);
+        Assert.Equal(observation, read!.Processor);
+        Assert.Equal(submitted!.UpdatedUtc, read.UpdatedUtc);
+
+        // Back to waiting starts a new conversation with the processor.
+        var retried = await repository.UpdateProcessorHandoffAsync(handoff.Id, "waiting", null, null, null, CancellationToken.None);
+        Assert.Null(retried!.Processor);
+    }
+
+    [Theory]
+    [InlineData(360, 2880)]
+    [InlineData(60, 1440)]
+    [InlineData(4320, 4320)]
+    [InlineData(20000, 10080)]
+    public async Task The_old_wait_becomes_a_no_progress_limit_in_the_chosen_range(int before, int after)
+    {
+        using var storage = TestStorage.Create();
+        var clock = new FixedTimeProvider(DateTimeOffset.Parse("2026-09-16T00:00:00Z"));
+        var migrator = new SqliteDatabaseMigrator(storage.Factory, clock);
+        await migrator.ApplyAsync(
+            DelunoDatabaseNames.Platform,
+            PlatformDatabaseMigrations.All.Where(migration => migration.Version < 57).ToArray(),
+            CancellationToken.None);
+        await using (var connection = await storage.Factory.OpenConnectionAsync(DelunoDatabaseNames.Platform, CancellationToken.None))
+        {
+            using var insert = connection.CreateCommand();
+            insert.CommandText =
+                "INSERT INTO libraries (id, name, media_type, purpose, root_path, processor_timeout_minutes, created_utc, updated_utc) " +
+                "VALUES ('library-1', 'Movies', 'movies', 'main', '/media/movies', " + before + ", '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z');";
+            await insert.ExecuteNonQueryAsync(CancellationToken.None);
+        }
+
+        await migrator.ApplyAsync(DelunoDatabaseNames.Platform, PlatformDatabaseMigrations.All, CancellationToken.None);
+
+        await using var verify = await storage.Factory.OpenConnectionAsync(DelunoDatabaseNames.Platform, CancellationToken.None);
+        using var read = verify.CreateCommand();
+        read.CommandText = "SELECT processor_timeout_minutes FROM libraries WHERE id = 'library-1';";
+        Assert.Equal((long)after, (long)(await read.ExecuteScalarAsync(CancellationToken.None))!);
     }
 
     [Fact]

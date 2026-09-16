@@ -184,6 +184,201 @@ public sealed class ProcessorConnectionService(IHttpClientFactory httpClientFact
         }
     }
 
+    public async Task<ProcessorStatusSupport> GetStatusSupportAsync(
+        ProcessorConnectionItem connection,
+        CancellationToken cancellationToken)
+    {
+        if (!ProcessorStatusEndpoints.TryDerive(connection.SubmissionUrl, out var endpoints))
+        {
+            return ProcessorStatusSupport.None;
+        }
+
+        try
+        {
+            using var request = new HttpRequestMessage(HttpMethod.Get, endpoints.Capabilities);
+            ApplyAuthentication(request, connection);
+            using var response = await httpClientFactory.CreateClient("processor-connections").SendAsync(request, cancellationToken);
+            if (response.StatusCode == System.Net.HttpStatusCode.Forbidden)
+            {
+                return new ProcessorStatusSupport(ProcessorAnswer.Forbidden, false, false, await ForbiddenMessageAsync(response, connection, cancellationToken));
+            }
+
+            if (!response.IsSuccessStatusCode)
+            {
+                // Absent or refused: this processor does not answer questions,
+                // so Deluno keeps treating it the way it always has.
+                return ProcessorStatusSupport.None;
+            }
+
+            var capabilities = await ReadCapabilitiesAsync(response, cancellationToken);
+            return new ProcessorStatusSupport(
+                ProcessorAnswer.Answered,
+                capabilities.Contains("handoff-status"),
+                capabilities.Contains("handoff-cancel"),
+                null);
+        }
+        catch (Exception exception) when (!cancellationToken.IsCancellationRequested && (exception is HttpRequestException or TaskCanceledException))
+        {
+            return new ProcessorStatusSupport(ProcessorAnswer.Unreachable, false, false, $"Deluno could not reach {connection.Name}.");
+        }
+    }
+
+    public async Task<ProcessorHandoffStatusResult> GetHandoffStatusAsync(
+        ProcessorConnectionItem connection,
+        string handoffId,
+        CancellationToken cancellationToken)
+    {
+        if (!ProcessorStatusEndpoints.TryDerive(connection.SubmissionUrl, out var endpoints))
+        {
+            return new ProcessorHandoffStatusResult(ProcessorAnswer.Unsupported);
+        }
+
+        try
+        {
+            using var request = new HttpRequestMessage(HttpMethod.Get, endpoints.Handoff(handoffId));
+            ApplyAuthentication(request, connection);
+            using var response = await httpClientFactory.CreateClient("processor-connections").SendAsync(request, cancellationToken);
+            switch (response.StatusCode)
+            {
+                case System.Net.HttpStatusCode.NotFound:
+                    return new ProcessorHandoffStatusResult(ProcessorAnswer.NotFound, Message: $"{connection.Name} has no record of this hand-off.");
+                case System.Net.HttpStatusCode.Forbidden:
+                    return new ProcessorHandoffStatusResult(ProcessorAnswer.Forbidden, Message: await ForbiddenMessageAsync(response, connection, cancellationToken));
+            }
+
+            if (!response.IsSuccessStatusCode)
+            {
+                var explanation = await ReadRefusalAsync(response, cancellationToken);
+                return new ProcessorHandoffStatusResult(
+                    ProcessorAnswer.Unreachable,
+                    Message: explanation is null
+                        ? $"{connection.Name} answered HTTP {(int)response.StatusCode} when asked about the hand-off."
+                        : $"{connection.Name} answered HTTP {(int)response.StatusCode}: {explanation}");
+            }
+
+            return await ReadHandoffStatusAsync(response, cancellationToken)
+                ?? new ProcessorHandoffStatusResult(ProcessorAnswer.Unreachable, Message: $"{connection.Name} answered with a status Deluno could not read.");
+        }
+        catch (Exception exception) when (!cancellationToken.IsCancellationRequested && (exception is HttpRequestException or TaskCanceledException))
+        {
+            return new ProcessorHandoffStatusResult(ProcessorAnswer.Unreachable, Message: $"Deluno could not reach {connection.Name}.");
+        }
+    }
+
+    public async Task<ProcessorHandoffCancelResult> CancelHandoffAsync(
+        ProcessorConnectionItem connection,
+        string handoffId,
+        CancellationToken cancellationToken)
+    {
+        if (!ProcessorStatusEndpoints.TryDerive(connection.SubmissionUrl, out var endpoints))
+        {
+            return new ProcessorHandoffCancelResult(ProcessorAnswer.Unsupported, null);
+        }
+
+        try
+        {
+            using var request = new HttpRequestMessage(HttpMethod.Delete, endpoints.Handoff(handoffId));
+            ApplyAuthentication(request, connection);
+            using var response = await httpClientFactory.CreateClient("processor-connections").SendAsync(request, cancellationToken);
+            return response.StatusCode switch
+            {
+                _ when response.IsSuccessStatusCode => new ProcessorHandoffCancelResult(ProcessorAnswer.Answered, null),
+                System.Net.HttpStatusCode.Conflict => new ProcessorHandoffCancelResult(ProcessorAnswer.Busy, await ReadRefusalAsync(response, cancellationToken)),
+                System.Net.HttpStatusCode.NotFound => new ProcessorHandoffCancelResult(ProcessorAnswer.NotFound, null),
+                System.Net.HttpStatusCode.Forbidden => new ProcessorHandoffCancelResult(ProcessorAnswer.Forbidden, await ForbiddenMessageAsync(response, connection, cancellationToken)),
+                _ => new ProcessorHandoffCancelResult(ProcessorAnswer.Unreachable, await ReadRefusalAsync(response, cancellationToken))
+            };
+        }
+        catch (Exception exception) when (!cancellationToken.IsCancellationRequested && (exception is HttpRequestException or TaskCanceledException))
+        {
+            return new ProcessorHandoffCancelResult(ProcessorAnswer.Unreachable, $"Deluno could not reach {connection.Name}.");
+        }
+    }
+
+    /// <summary>
+    /// A 403 here is almost always one thing: the processor will not describe
+    /// its files to anyone until a shared secret is set. Said as that, because
+    /// "forbidden" gives nobody anything to do.
+    /// </summary>
+    private static async Task<string> ForbiddenMessageAsync(
+        HttpResponseMessage response,
+        ProcessorConnectionItem connection,
+        CancellationToken cancellationToken)
+    {
+        var explanation = await ReadRefusalAsync(response, cancellationToken);
+        var advice = $"Set a webhook secret in {connection.Name} and the same secret on this processor connection in Deluno, so Deluno can ask about hand-offs.";
+        return explanation is null ? advice : $"{advice} ({explanation})";
+    }
+
+    private static async Task<HashSet<string>> ReadCapabilitiesAsync(HttpResponseMessage response, CancellationToken cancellationToken)
+    {
+        var found = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        try
+        {
+            using var document = await System.Text.Json.JsonDocument.ParseAsync(
+                await response.Content.ReadAsStreamAsync(cancellationToken),
+                cancellationToken: cancellationToken);
+            if (document.RootElement.ValueKind == System.Text.Json.JsonValueKind.Object &&
+                document.RootElement.TryGetProperty("capabilities", out var list) &&
+                list.ValueKind == System.Text.Json.JsonValueKind.Array)
+            {
+                foreach (var item in list.EnumerateArray())
+                {
+                    if (item.ValueKind == System.Text.Json.JsonValueKind.String && item.GetString() is { Length: > 0 } value)
+                    {
+                        found.Add(value.Trim());
+                    }
+                }
+            }
+        }
+        catch (System.Text.Json.JsonException)
+        {
+            // Unreadable capabilities are no capabilities.
+        }
+
+        return found;
+    }
+
+    private static async Task<ProcessorHandoffStatusResult?> ReadHandoffStatusAsync(HttpResponseMessage response, CancellationToken cancellationToken)
+    {
+        try
+        {
+            using var document = await System.Text.Json.JsonDocument.ParseAsync(
+                await response.Content.ReadAsStreamAsync(cancellationToken),
+                cancellationToken: cancellationToken);
+            var root = document.RootElement;
+            if (root.ValueKind != System.Text.Json.JsonValueKind.Object ||
+                ReadString(root, "state") is not { Length: > 0 } state)
+            {
+                return null;
+            }
+
+            return new ProcessorHandoffStatusResult(
+                ProcessorAnswer.Answered,
+                state.Trim().ToLowerInvariant(),
+                root.TryGetProperty("queuePosition", out var position) && position.ValueKind == System.Text.Json.JsonValueKind.Number && position.TryGetInt32(out var number) ? number : null,
+                ReadTimestamp(root, "scheduledFor"),
+                ReadTimestamp(root, "lastChangedUtc"),
+                ReadString(root, "outputPath"),
+                ReadString(root, "message"));
+        }
+        catch (System.Text.Json.JsonException)
+        {
+            return null;
+        }
+
+        static string? ReadString(System.Text.Json.JsonElement root, string name)
+            => root.TryGetProperty(name, out var value) && value.ValueKind == System.Text.Json.JsonValueKind.String
+                ? value.GetString()
+                : null;
+
+        static DateTimeOffset? ReadTimestamp(System.Text.Json.JsonElement root, string name)
+            => ReadString(root, name) is { } text &&
+               DateTimeOffset.TryParse(text, System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.AssumeUniversal, out var parsed)
+                ? parsed
+                : null;
+    }
+
     private static void ApplyAuthentication(HttpRequestMessage request, ProcessorConnectionItem connection)
     {
         if (string.IsNullOrWhiteSpace(connection.Secret))

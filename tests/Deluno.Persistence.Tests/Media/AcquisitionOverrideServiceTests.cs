@@ -303,6 +303,9 @@ public sealed class AcquisitionOverrideServiceTests
 
     private sealed class FakeProcessors : IProcessorRepository
     {
+        public Task RecordProcessorObservationAsync(string id, ProcessorHandoffObservation observation, CancellationToken cancellationToken)
+            => Task.CompletedTask;
+
         public ProcessorHandoffItem? Handoff { get; set; }
         public string? UpdatedStatus { get; private set; }
         public string? UpdatedOutputPath { get; private set; }

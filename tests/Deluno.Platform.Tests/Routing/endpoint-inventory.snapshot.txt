@@ -242,6 +242,7 @@ POST /api/integrations/external/trigger-refresh
 POST /api/integrations/processors/connections
 POST /api/integrations/processors/connections/{id}/test
 POST /api/integrations/processors/events
+POST /api/integrations/processors/handoffs/{id}/import-original
 POST /api/integrations/processors/handoffs/{id}/retry
 POST /api/intelligent-routing/recommend-release
 POST /api/jobs/retry-failed

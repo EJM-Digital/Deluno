@@ -64,4 +64,23 @@ public interface IProcessorConnectionService
         ProcessorConnectionItem connection,
         ProcessorHandoffItem handoff,
         CancellationToken cancellationToken);
+
+    /// <summary>Whether this processor can be asked about a hand-off, and cancel one (#511).</summary>
+    Task<ProcessorStatusSupport> GetStatusSupportAsync(
+        ProcessorConnectionItem connection,
+        CancellationToken cancellationToken);
+
+    Task<ProcessorHandoffStatusResult> GetHandoffStatusAsync(
+        ProcessorConnectionItem connection,
+        string handoffId,
+        CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Asks the processor to drop work it has not started. A processor already
+    /// working on the file answers <see cref="ProcessorAnswer.Busy"/>.
+    /// </summary>
+    Task<ProcessorHandoffCancelResult> CancelHandoffAsync(
+        ProcessorConnectionItem connection,
+        string handoffId,
+        CancellationToken cancellationToken);
 }

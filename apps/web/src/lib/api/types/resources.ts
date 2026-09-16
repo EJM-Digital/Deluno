@@ -861,6 +861,20 @@ export interface ProcessorHandoffItem {
   failureMessage: string | null;
   createdUtc: string;
   updatedUtc: string;
+  /** What the processor last said about this hand-off, when it can be asked (#511). */
+  processor?: ProcessorHandoffObservation | null;
+}
+
+/** Mirrors `Deluno.Platform.Contracts.ProcessorHandoffObservation`. */
+export interface ProcessorHandoffObservation {
+  state: string | null;
+  message: string | null;
+  queuePosition: number | null;
+  scheduledForUtc: string | null;
+  lastChangedUtc: string | null;
+  checkedUtc: string;
+  unreachableSinceUtc: string | null;
+  answeringSinceUtc: string | null;
 }
 
 export interface ProcessorConnectionItem {

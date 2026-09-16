@@ -24,6 +24,15 @@ public interface IProcessorRepository
         string? failureMessage,
         CancellationToken cancellationToken);
 
+    /// <summary>
+    /// Records what the processor last said about a hand-off. Does not move the
+    /// hand-off's <c>updated_utc</c>: asking is not a change.
+    /// </summary>
+    Task RecordProcessorObservationAsync(
+        string id,
+        ProcessorHandoffObservation observation,
+        CancellationToken cancellationToken);
+
     Task<IReadOnlyList<ProcessorHandoffItem>> ListProcessorHandoffsAsync(
         string? libraryId,
         int take,

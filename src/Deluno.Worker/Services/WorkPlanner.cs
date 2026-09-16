@@ -732,15 +732,13 @@ public sealed class WorkPlanner(
             knownImportSources,
             recentWaiting,
             cancellationToken);
-        await RecordProcessorTimeoutsAsync(
-            processorRepository,
-            activityFeedRepository,
-            movieCatalogRepository,
-            seriesCatalogRepository,
-            libraries,
-            recentWaiting,
-            now,
-            cancellationToken);
+        await new ProcessorHandoffWatcher(
+                processorRepository,
+                processorConnectionService,
+                activityFeedRepository,
+                movieCatalogRepository,
+                seriesCatalogRepository)
+            .WatchAsync(libraries, now, cancellationToken);
 
         var recentWaitingKeys = recentWaiting
             .Where(item => item.Category == "processing.waiting" && item.CreatedUtc > now.AddHours(-6))
@@ -798,7 +796,17 @@ public sealed class WorkPlanner(
                 continue;
             }
 
+            // A hand-off released to import the original leaves the processor out
+            // of it: the download goes through the ordinary import below, with
+            // the same catalogue naming as any other (#511).
+            var released = false;
             if (string.Equals(library.ImportWorkflow, "refine-before-import", StringComparison.OrdinalIgnoreCase))
+            {
+                var existing = await processorRepository.FindProcessorHandoffAsync(library.Id, null, item.SourcePath, cancellationToken);
+                released = existing?.Status == ProcessorHandoffStatuses.Released;
+            }
+
+            if (!released && string.Equals(library.ImportWorkflow, "refine-before-import", StringComparison.OrdinalIgnoreCase))
             {
                 var handoff = await processorRepository.EnsureProcessorHandoffAsync(
                     new CreateProcessorHandoffRequest(
@@ -1071,10 +1079,6 @@ public sealed class WorkPlanner(
         IReadOnlyList<JobQueueItem> existingJobs,
         CancellationToken cancellationToken)
     {
-        var waitingStatuses = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-        {
-            "waiting", "submitted", "accepted", "started"
-        };
         var handoffs = await processorRepository.ListProcessorHandoffsAsync(null, 250, cancellationToken);
 
         // Outputs this pass has already queued. The reservation rule reads the
@@ -1082,7 +1086,9 @@ public sealed class WorkPlanner(
         // correlating to one file would both queue it.
         var queuedThisPass = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
-        foreach (var handoff in handoffs.Where(item => waitingStatuses.Contains(item.Status)))
+        // Including hand-offs Deluno stopped waiting for: a processor that
+        // delivers late has still delivered, and the file is still wanted (#511).
+        foreach (var handoff in handoffs.Where(item => ProcessorHandoffStatuses.AcceptsLateOutput(item.Status)))
         {
             var library = libraries.FirstOrDefault(item =>
                 string.Equals(item.Id, handoff.LibraryId, StringComparison.OrdinalIgnoreCase) &&
@@ -1259,110 +1265,8 @@ public sealed class WorkPlanner(
         }
     }
 
-    private static async Task RecordProcessorTimeoutsAsync(
-        IProcessorRepository processorRepository,
-        IActivityFeedRepository activityFeedRepository,
-        IMovieCatalogRepository movieCatalogRepository,
-        ISeriesCatalogRepository seriesCatalogRepository,
-        IReadOnlyList<LibraryItem> libraries,
-        IReadOnlyList<ActivityEventItem> recentActivity,
-        DateTimeOffset now,
-        CancellationToken cancellationToken)
-    {
-        var timeoutKeys = recentActivity
-            .Where(item => item.Category == "processing.timeout")
-            .Select(item => item.RelatedEntityId)
-            .Where(id => !string.IsNullOrWhiteSpace(id))
-            .ToHashSet(StringComparer.OrdinalIgnoreCase);
-
-        foreach (var waiting in recentActivity.Where(item => item.Category == "processing.waiting"))
-        {
-            if (string.IsNullOrWhiteSpace(waiting.RelatedEntityId) ||
-                timeoutKeys.Contains(waiting.RelatedEntityId))
-            {
-                continue;
-            }
-
-            var details = TryReadProcessingWaitDetails(waiting.DetailsJson);
-            var library = !string.IsNullOrWhiteSpace(details.LibraryId)
-                ? libraries.FirstOrDefault(item => string.Equals(item.Id, details.LibraryId, StringComparison.OrdinalIgnoreCase))
-                : null;
-            if (library is null)
-            {
-                continue;
-            }
-
-            var timeout = TimeSpan.FromMinutes(Math.Max(1, library.ProcessorTimeoutMinutes));
-            if (now - waiting.CreatedUtc < timeout)
-            {
-                continue;
-            }
-
-            var title = details.ReleaseName ?? details.SourcePath ?? "Processor output";
-            var summary = $"{title} waited longer than {library.ProcessorTimeoutMinutes} minutes for a cleaned processor output.";
-            var recommended = library.ProcessorFailureMode switch
-            {
-                "import-original" => "Review the original download, then manually queue import if it is acceptable.",
-                "manual-review" => "Open Queue recovery and choose retry, manual import, or dismiss.",
-                _ => "Check the processor logs and output folder, then retry once the cleaned file exists."
-            };
-
-            if (library.MediaType == "tv")
-            {
-                await seriesCatalogRepository.AddImportRecoveryCaseAsync(
-                    new CreateSeriesImportRecoveryCaseRequest(title, "processor-timeout", summary, recommended, waiting.DetailsJson),
-                    cancellationToken);
-            }
-            else
-            {
-                await movieCatalogRepository.AddImportRecoveryCaseAsync(
-                    new CreateMovieImportRecoveryCaseRequest(title, "processor-timeout", summary, recommended, waiting.DetailsJson),
-                    cancellationToken);
-            }
-
-            await processorRepository.UpdateProcessorHandoffAsync(
-                waiting.RelatedEntityId,
-                "timed-out",
-                null,
-                null,
-                summary,
-                cancellationToken);
-
-            await activityFeedRepository.RecordActivityAsync(
-                "processing.timeout",
-                summary,
-                waiting.DetailsJson,
-                null,
-                "download",
-                waiting.RelatedEntityId,
-                cancellationToken);
-        }
-    }
-
     private static bool IsImportableVideoFile(string path)
         => Path.GetExtension(path).ToLowerInvariant() is ".mkv" or ".mp4" or ".avi" or ".mov" or ".m4v";
-
-    private static ProcessingWaitDetails TryReadProcessingWaitDetails(string? detailsJson)
-    {
-        if (string.IsNullOrWhiteSpace(detailsJson))
-        {
-            return new ProcessingWaitDetails(null, null, null);
-        }
-
-        try
-        {
-            using var document = JsonDocument.Parse(detailsJson);
-            var root = document.RootElement;
-            return new ProcessingWaitDetails(
-                TryGetProperty(root, "libraryId", out var libraryId) && libraryId.ValueKind == JsonValueKind.String ? libraryId.GetString() : null,
-                TryGetProperty(root, "releaseName", out var releaseName) && releaseName.ValueKind == JsonValueKind.String ? releaseName.GetString() : null,
-                TryGetProperty(root, "sourcePath", out var sourcePath) && sourcePath.ValueKind == JsonValueKind.String ? sourcePath.GetString() : null);
-        }
-        catch (JsonException)
-        {
-            return new ProcessingWaitDetails(null, null, null);
-        }
-    }
 
     private static LibraryItem? ResolveLibraryForQueueItem(
         DownloadQueueItem item,
@@ -1805,8 +1709,4 @@ public sealed class WorkPlanner(
         public static CatalogueNaming Empty { get; } = new(null, null, null, null, null, null, []);
     }
 
-    private sealed record ProcessingWaitDetails(
-        string? LibraryId,
-        string? ReleaseName,
-        string? SourcePath);
 }

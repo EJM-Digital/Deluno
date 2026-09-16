@@ -387,8 +387,10 @@ public sealed class SqliteLibrariesRepository(
             ImportWorkflow: NormalizeImportWorkflow(request.ImportWorkflow),
             ProcessorName: NormalizeName(request.ProcessorName),
             ProcessorOutputPath: NormalizePath(request.ProcessorOutputPath),
-            ProcessorTimeoutMinutes: NormalizePositiveValue(request.ProcessorTimeoutMinutes, 360),
-            ProcessorFailureMode: NormalizeProcessorFailureMode(request.ProcessorFailureMode),
+            ProcessorTimeoutMinutes: ProcessorStallLimits.Normalize(request.ProcessorTimeoutMinutes),
+            // A new library imports the untouched download when its processor
+            // stalls, rather than leaving the title missing (#511).
+            ProcessorFailureMode: NormalizeProcessorFailureMode(request.ProcessorFailureMode, "import-original"),
             AutoSearchEnabled: request.AutoSearchEnabled,
             MissingSearchEnabled: request.MissingSearchEnabled,
             UpgradeSearchEnabled: request.UpgradeSearchEnabled,
@@ -860,7 +862,7 @@ public sealed class SqliteLibrariesRepository(
         AddParameter(command, "@importWorkflow", workflow);
         AddParameter(command, "@processorName", NormalizeName(request.ProcessorName));
         AddParameter(command, "@processorOutputPath", processorOutputPath);
-        AddParameter(command, "@processorTimeoutMinutes", NormalizePositiveValue(request.ProcessorTimeoutMinutes, 360));
+        AddParameter(command, "@processorTimeoutMinutes", ProcessorStallLimits.Normalize(request.ProcessorTimeoutMinutes));
         AddParameter(command, "@processorFailureMode", NormalizeProcessorFailureMode(request.ProcessorFailureMode));
         AddParameter(command, "@cleanupMode", string.IsNullOrWhiteSpace(request.CleanupMode) ? null : NormalizeCleanupMode(request.CleanupMode));
         AddParameter(command, "@removeEmptySourceFolders", request.RemoveEmptySourceFolders.HasValue ? (request.RemoveEmptySourceFolders.Value ? 1 : 0) : null);
@@ -1189,14 +1191,15 @@ public sealed class SqliteLibrariesRepository(
     }
 
 
-    private static string NormalizeProcessorFailureMode(string? value)
+    private static string NormalizeProcessorFailureMode(string? value, string fallback = "block")
     {
         var normalized = value?.Trim().ToLowerInvariant();
         return normalized switch
         {
             "import-original" or "fallback-original" or "fallback" => "import-original",
             "manual-review" or "review" => "manual-review",
-            _ => "block"
+            "block" => "block",
+            _ => fallback
         };
     }
 
@@ -1330,7 +1333,7 @@ public sealed class SqliteLibrariesRepository(
             ImportWorkflow: reader.IsDBNull(11) ? "standard" : NormalizeImportWorkflow(reader.GetString(11)),
             ProcessorName: reader.IsDBNull(12) ? null : reader.GetString(12),
             ProcessorOutputPath: reader.IsDBNull(13) ? null : reader.GetString(13),
-            ProcessorTimeoutMinutes: reader.IsDBNull(14) ? 360 : reader.GetInt32(14),
+            ProcessorTimeoutMinutes: reader.IsDBNull(14) ? ProcessorStallLimits.DefaultMinutes : reader.GetInt32(14),
             ProcessorFailureMode: reader.IsDBNull(15) ? "block" : NormalizeProcessorFailureMode(reader.GetString(15)),
             AutoSearchEnabled: reader.GetInt64(16) == 1,
             MissingSearchEnabled: reader.GetInt64(17) == 1,
