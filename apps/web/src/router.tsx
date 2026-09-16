@@ -310,6 +310,14 @@ export const router = createBrowserRouter([
         })
       },
       {
+        // Fetch, verify, install and connect SABnzbd, qBittorrent and Weir (#506).
+        path: "indexers/companion-tools",
+        lazy: withSkeleton(async () => {
+          const module = await import("./routes/companion-tools-screen");
+          return { loader: module.companionToolsLoader, Component: module.CompanionToolsPage };
+        })
+      },
+      {
         path: "search-cycles",
         lazy: withSkeleton(async () => {
           const module = await import("./routes/search-cycles-page");

@@ -1017,7 +1017,8 @@ public static class ConnectionsEndpointRouteBuilderExtensions
         };
     }
 
-    private static async Task<(string healthStatus, string message, string? failureCategory)> TestDownloadClientAsync(
+    /// <summary>The same test a person runs from the client drawer, for callers that set a client up themselves (#506).</summary>
+    public static async Task<(string healthStatus, string message, string? failureCategory)> TestDownloadClientAsync(
         DownloadClientItem item,
         CancellationToken cancellationToken)
     {

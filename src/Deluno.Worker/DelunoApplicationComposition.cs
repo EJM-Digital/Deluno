@@ -1,3 +1,4 @@
+using Deluno.Companions;
 using Deluno.Retention;
 using Deluno.Api;
 using Deluno.Connections;
@@ -76,6 +77,7 @@ public static class DelunoApplicationComposition
         services.AddDelunoRealtimeModule();
         services.AddDelunoWorkerModule();
         services.AddDelunoRetentionModule();
+        services.AddDelunoCompanionsModule();
 
         return services;
     }
