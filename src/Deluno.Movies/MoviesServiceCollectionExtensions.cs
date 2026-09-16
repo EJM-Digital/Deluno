@@ -30,6 +30,7 @@ public static class MoviesServiceCollectionExtensions
         // which is scoped. Registering it as a singleton captures that
         // dependency, and the composition test refuses to build the container.
         services.TryAddScoped<AcquisitionOverrideService>();
+        services.TryAddScoped<TitleRemovalService>();
 
         // Registered beside the state it repairs. It is the other half of
         // WantedStatuses.Downloading: without it a failed dispatch leaves a

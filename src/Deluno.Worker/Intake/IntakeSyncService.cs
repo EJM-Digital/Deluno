@@ -103,7 +103,12 @@ public sealed class IntakeSyncService(
             if (excludedKeys.TryGetValue(BuildKey(title, entry.Year, entry.ImdbId), out var exclusion))
             {
                 items.Add(new IntakeListPreviewItem(title, entry.Year, entryMediaType, entry.ImdbId,
-                    "excluded", "You previously chose not to add this entry from this list.", GetMatchConfidence(entry), exclusion.Id));
+                    "excluded",
+                    string.Equals(exclusion.SourceId, source.Id, StringComparison.OrdinalIgnoreCase)
+                        ? "You previously chose not to add this entry from this list."
+                        : exclusion.Reason,
+                    GetMatchConfidence(entry),
+                    exclusion.Id));
                 continue;
             }
 

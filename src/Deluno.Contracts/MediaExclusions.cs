@@ -4,6 +4,40 @@ public static class MediaExclusionSourceKinds
 {
     public const string ImportList = "import-list";
     public const string Collection = "collection";
+
+    /// <summary>
+    /// Cleaned up by a retention rule (#492). Unlike the other two it is not
+    /// scoped to the source that added the title: whichever list or collection
+    /// would bring it back, it stays out, because the person decided the title
+    /// should go, not that one list should stop offering it.
+    /// </summary>
+    public const string Retention = "retention";
+}
+
+public static class MediaExclusionMatching
+{
+    /// <summary>
+    /// Whether an exclusion names this title, by the strongest identity both
+    /// sides have: IMDb id, then TMDb id (kept in <c>Provider</c> as
+    /// <c>tmdb:&lt;id&gt;</c> on retention rows), then title and year.
+    /// </summary>
+    public static bool Names(MediaExclusionItem exclusion, string? imdbId, string? tmdbId, string? title, int? year)
+    {
+        if (!string.IsNullOrWhiteSpace(imdbId) && !string.IsNullOrWhiteSpace(exclusion.ImdbId))
+        {
+            return string.Equals(imdbId.Trim(), exclusion.ImdbId.Trim(), StringComparison.OrdinalIgnoreCase);
+        }
+
+        if (!string.IsNullOrWhiteSpace(tmdbId) &&
+            string.Equals(exclusion.Provider, $"tmdb:{tmdbId.Trim()}", StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        return !string.IsNullOrWhiteSpace(title) &&
+               string.Equals(title.Trim(), exclusion.Title.Trim(), StringComparison.OrdinalIgnoreCase) &&
+               (year is null || exclusion.Year is null || year == exclusion.Year);
+    }
 }
 
 /// <summary>

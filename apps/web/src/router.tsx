@@ -338,6 +338,13 @@ export const router = createBrowserRouter([
         })
       },
       {
+        path: "search-cycles/retention",
+        lazy: withSkeleton(async () => {
+          const module = await import("./routes/retention-screen");
+          return { loader: module.retentionLoader, Component: module.RetentionPage };
+        })
+      },
+      {
         path: "search-cycles/blocklist",
         lazy: withSkeleton(async () => {
           const module = await import("./routes/search-cycles-page");

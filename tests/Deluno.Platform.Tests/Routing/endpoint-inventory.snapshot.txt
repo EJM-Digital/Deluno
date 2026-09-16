@@ -29,6 +29,7 @@ DELETE /api/policy-sets/{id}
 DELETE /api/quality-profiles/{id}
 DELETE /api/recycle-bin/{id}
 DELETE /api/release-profiles/{id}
+DELETE /api/retention/rules/{id}
 DELETE /api/series/import-recovery/{id}
 DELETE /api/series/{id}
 DELETE /api/setup/draft
@@ -145,6 +146,10 @@ GET /api/recycle-bin/cleanup/preview
 GET /api/recycle-bin/settings
 GET /api/release-profiles/
 GET /api/release-profiles/{id}
+GET /api/retention/fields
+GET /api/retention/rules
+GET /api/retention/rules/{id}/runs
+GET /api/retention/runs/{runId}
 GET /api/search-cycles
 GET /api/search-retry-windows
 GET /api/series/calendar
@@ -308,6 +313,9 @@ POST /api/recycle-bin/cleanup
 POST /api/recycle-bin/{id}/restore
 POST /api/release-profiles/
 POST /api/releases/explain
+POST /api/retention/rules
+POST /api/retention/rules/{id}/preview
+POST /api/retention/runs/{runId}/cleanup
 POST /api/series/
 POST /api/series/bulk
 POST /api/series/bulk/quality-profile
@@ -383,6 +391,7 @@ PUT /api/quality-profiles/order
 PUT /api/quality-profiles/{id}
 PUT /api/recycle-bin/settings
 PUT /api/release-profiles/{id}
+PUT /api/retention/rules/{id}
 PUT /api/series/episodes/monitoring
 PUT /api/series/monitoring
 PUT /api/series/{id}/metadata/override

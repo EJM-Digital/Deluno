@@ -67,12 +67,28 @@ public sealed class SqliteIntakeRepository(
     {
         if (unifiedExclusionRepository is not null)
         {
-            return (await unifiedExclusionRepository.ListActiveAsync(
+            var own = (await unifiedExclusionRepository.ListActiveAsync(
                     mediaType: null,
                     sourceKind: MediaExclusionSourceKinds.ImportList,
                     sourceId,
                     cancellationToken))
-                .Select(ToIntakeListExclusion)
+                .Select(ToIntakeListExclusion);
+
+            // Titles a retention rule cleaned up stay out of every list, keyed
+            // the way a list entry is so the sync's lookup finds them (#492).
+            var source = await GetIntakeSourceAsync(sourceId, cancellationToken);
+            var cleanedUp = source is null
+                ? []
+                : (await unifiedExclusionRepository.ListActiveAsync(
+                        mediaType: source.MediaType == "tv" ? "tv" : "movies",
+                        sourceKind: MediaExclusionSourceKinds.Retention,
+                        sourceId: null,
+                        cancellationToken))
+                    .Select(item => ToIntakeListExclusion(item) with { EntryKey = BuildIntakeEntryKey(item.Title, item.Year, item.ImdbId) });
+
+            return own.Concat(cleanedUp)
+                .GroupBy(item => item.EntryKey, StringComparer.OrdinalIgnoreCase)
+                .Select(group => group.First())
                 .ToArray();
         }
 

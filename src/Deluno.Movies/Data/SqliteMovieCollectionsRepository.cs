@@ -230,8 +230,18 @@ public sealed class SqliteMovieCollectionsRepository(
         var excludedKeys = exclusions
             .Select(item => item.EntryKey)
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        // A film a retention rule cleaned up is not added back by its collection (#492).
+        var cleanedUp = await unifiedExclusionRepository.ListActiveAsync(
+            mediaType: "movies",
+            sourceKind: MediaExclusionSourceKinds.Retention,
+            sourceId: null,
+            cancellationToken);
         return items
-            .Select(item => item with { IsExcluded = excludedKeys.Contains(item.ProviderId) })
+            .Select(item => item with
+            {
+                IsExcluded = excludedKeys.Contains(item.ProviderId) ||
+                    cleanedUp.Any(exclusion => MediaExclusionMatching.Names(exclusion, item.ImdbId, item.ProviderId, item.Title, item.ReleaseYear))
+            })
             .ToArray();
     }
 
