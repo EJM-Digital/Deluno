@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     Brings the usenet half of the rig up, and proves it moved real bytes.
 
@@ -234,9 +234,29 @@ if ($expected -ne $actual) { throw "The decoded file does not match the fixture.
 Step "sha256 matches the fixture ($expected)"
 
 Sab "mode=history&name=delete&value=$nzoId&del_files=1" | Out-Null
-Invoke-Command -ComputerName $ComputerName -Credential $credential -ScriptBlock {
-    Remove-Item 'C:\Deluno\Downloads-Complete\TV' -Recurse -Force -ErrorAction SilentlyContinue
-}
-Step 'removed what the check created'
+
+# What the check created, and nothing else.
+#
+# This used to remove C:\Deluno\Downloads-Complete\TV entire, under the label
+# "removed what the check created" - which was not what it did. That folder is
+# where every TV download lands, so running -Verify while a real acquisition was
+# mid-flight would delete a payload the check never made and Deluno was still
+# waiting on. SABnzbd reports the exact folder it completed into; remove that,
+# and only when it is genuinely underneath the downloads root.
+$completed = $entry.storage
+Invoke-Command -ComputerName $ComputerName -Credential $credential -ArgumentList $completed -ScriptBlock {
+    param($path)
+    $root = 'C:\Deluno\Downloads-Complete'
+    if (-not $path) { return 'SABnzbd reported no storage path; nothing removed.' }
+    $full = [System.IO.Path]::GetFullPath($path)
+    if (-not $full.StartsWith($root + [System.IO.Path]::DirectorySeparatorChar, [StringComparison]::OrdinalIgnoreCase)) {
+        return ("Refusing to remove {0}: it is not inside {1}." -f $full, $root)
+    }
+    if ($full.TrimEnd([System.IO.Path]::DirectorySeparatorChar) -ieq $root) {
+        return "Refusing to remove the downloads root itself."
+    }
+    Remove-Item -LiteralPath $full -Recurse -Force -ErrorAction SilentlyContinue
+    "removed $full"
+} | ForEach-Object { Step $_ }
 
 Head 'The usenet path moves real bytes and lands them where Deluno looks.'
