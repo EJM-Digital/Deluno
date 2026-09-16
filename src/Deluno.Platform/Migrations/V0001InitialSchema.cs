@@ -64,7 +64,8 @@ public static class PlatformDatabaseMigrations
         new V0056ProfileAcquisitionRules(),
         new V0057ProcessorHandoffStatus(),
         new V0058MediaServers(),
-        new V0059RetentionRules()
+        new V0059RetentionRules(),
+        new V0060CompanionToolLogins()
     ];
 
     private sealed class V0001InitialSchema : SqliteSqlMigration

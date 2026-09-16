@@ -9,6 +9,7 @@ using Deluno.Connections;
 using Deluno.Integrations.Subtitles;
 using Deluno.Integrations.MediaServers;
 using Deluno.Retention;
+using Deluno.Companions;
 using Deluno.Filesystem;
 using Deluno.Integrations.DownloadClients;
 using Deluno.Integrations.Metadata;
@@ -79,6 +80,7 @@ public static class DelunoApplicationEndpointMapping
         endpoints.MapDelunoSubtitleProviders();
         endpoints.MapDelunoMediaServers();
         endpoints.MapDelunoRetention();
+        endpoints.MapDelunoCompanions();
         writeEndpoints.MapDelunoLibraries();
         endpoints.MapDelunoReleasePreferenceEndpoints();
         endpoints.MapDelunoSecurityEndpoints();

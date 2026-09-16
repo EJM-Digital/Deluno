@@ -47,6 +47,8 @@ GET /api/backups/settings
 GET /api/backups/{id}/download
 GET /api/blocked-releases
 GET /api/calendar/feed.ics
+GET /api/companion-tools/
+GET /api/companion-tools/{id}/login
 GET /api/connections/
 GET /api/custom-formats/
 GET /api/dashboard/metrics
@@ -213,6 +215,7 @@ POST /api/backups/restore
 POST /api/backups/restore/preview
 POST /api/blocked-releases/{id}/cleanup
 POST /api/blocked-releases/{id}/refuse
+POST /api/companion-tools/install
 POST /api/connections/
 POST /api/custom-formats/
 POST /api/custom-formats/dry-run

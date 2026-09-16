@@ -14,6 +14,7 @@
     <ProjectReference Include="..\Deluno.Recovery\Deluno.Recovery.csproj" />
     <ProjectReference Include="..\Deluno.Series\Deluno.Series.csproj" />
     <ProjectReference Include="..\Deluno.Retention\Deluno.Retention.csproj" />
+    <ProjectReference Include="..\Deluno.Companions\Deluno.Companions.csproj" />
       <ProjectReference Include="..\Deluno.Api\Deluno.Api.csproj" />
     <ProjectReference Include="..\Deluno.Security\Deluno.Security.csproj" />
     <ProjectReference Include="..\Deluno.Notifications\Deluno.Notifications.csproj" />

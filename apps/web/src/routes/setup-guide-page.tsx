@@ -937,6 +937,10 @@ function ServicesStep({
 
       <FieldShell icon={DownloadCloud} label="Download client" copy="Required for operational readiness. The external client owns downloading; Deluno orchestrates, observes, and imports.">
         <div className="grid gap-3">
+          {/* #506: the first-run offer to install one, rather than find, install and wire it by hand. */}
+          <p className="text-[length:var(--type-caption)] text-muted-foreground">
+            Not installed yet? <Link className="font-medium text-primary hover:underline" to="/indexers/companion-tools">Let Deluno install and connect SABnzbd, qBittorrent or Weir</Link>, then come back.
+          </p>
           <PresetRadioGroup
             label="Download client presets"
             options={CLIENT_SETUP_PRESETS.map((preset) => ({
