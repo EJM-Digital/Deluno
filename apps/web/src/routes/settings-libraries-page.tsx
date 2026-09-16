@@ -26,7 +26,7 @@ import { SegmentedControl } from "../components/ui/segmented-control";
 import { Switch } from "../components/ui/switch";
 import { toast } from "../components/shell/toaster";
 import { librarySetupNavItems } from "../components/app/settings-shell";
-import { emptyPlatformSettingsSnapshot, fetchJson, type LibraryItem, type PlatformSettingsSnapshot, type QualityProfileItem, type SubtitleLanguageOption } from "../lib/api";
+import { emptyPlatformSettingsSnapshot, fetchJson, type LibraryItem, type PlatformSettingsSnapshot, type QualityProfileItem, type SubtitleLanguageOption, readErrorText } from "../lib/api";
 import { authedFetch } from "../lib/use-auth";
 import { useUnsavedChanges } from "../hooks/use-unsaved-changes";
 import { ExistingMediaImportDialog } from "../components/app/existing-media-import-dialog";
@@ -184,7 +184,7 @@ export function SettingsLibrariesPage() {
             maxItemsPerRun: 10
           })
         });
-        if (!response.ok) throw new Error((await response.text().catch(() => "")) || "Library could not be created.");
+        if (!response.ok) throw new Error(await readErrorText(response, "Library could not be created."));
         library = (await response.json()) as LibraryItem;
       } else {
         const id = mode.id;

@@ -44,8 +44,7 @@ import {
   type SystemTaskItem,
   type UpdateActionResponse,
   type UpdatePreferencesResponse,
-  type UpdateStatusResponse
-} from "../lib/api";
+  type UpdateStatusResponse, readErrorText } from "../lib/api";
 import { authedFetch } from "../lib/use-auth";
 import { densityDisplayName } from "../lib/use-density";
 import { Button } from "../components/ui/button";
@@ -658,7 +657,7 @@ function AutomationCard({
     try {
       const response = await authedFetch(`/api/libraries/${libraryId}/search-now`, { method: "POST" });
       if (!response.ok) {
-        throw new Error(await response.text().catch(() => "Search could not be requested."));
+        throw new Error(await readErrorText(response, "Search could not be requested."));
       }
       onRefresh();
     } finally {

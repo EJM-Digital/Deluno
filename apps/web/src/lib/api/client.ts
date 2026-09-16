@@ -70,6 +70,30 @@ export function readErrorMessage(responseBody: string, path: string, status: num
   return fallback;
 }
 
+/**
+ * The sentence to show when a caller made its own `fetch` and got a failure.
+ *
+ * Screens that call `fetch` directly were passing the raw body straight into
+ * `new Error(...)`, so a rejected save put an entire RFC 9110 problem+json
+ * document in front of the owner - braces, type URL and all - with the one
+ * useful sentence buried inside it. Seen on the rig: refusing a library whose
+ * root is a file rendered the whole JSON blob.
+ *
+ * The second half is subtler. `response.text().catch(() => "fallback")` only
+ * runs its fallback when reading the body *throws*, which is close to never.
+ * An empty body produced an empty string, and the carefully written fallback
+ * sentence was unreachable. Here an empty body means the fallback.
+ */
+export async function readErrorText(response: Response, fallback: string): Promise<string> {
+  const body = await response.text().catch(() => "");
+  if (!body.trim()) return fallback;
+
+  const message = readErrorMessage(body, response.url, response.status);
+  // readErrorMessage's own last resort names the path and status, which belongs
+  // in a log rather than in front of a person. The caller's sentence is better.
+  return message.startsWith("Request failed for ") ? fallback : message;
+}
+
 export async function fetchJson<T>(path: string, init?: RequestInit): Promise<T> {
   const requestInit: RequestInit = { cache: "no-store", ...init };
   const retryable = canRetryRequest(requestInit);
