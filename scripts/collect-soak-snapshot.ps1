@@ -33,7 +33,12 @@ param(
     [string]$TaskUserName,
     # Supply only if the account cannot be granted "log on as a batch job";
     # with no password the task is registered S4U, which needs no secret.
-    [string]$TaskPassword
+    [string]$TaskPassword,
+    # Close a day that already has a reading, without taking another. Needs
+    # -WorkflowNote. The operator's check does not always run on the UTC date it
+    # is judging - the machine it runs on may have been off - and a note written
+    # "today" would land on the wrong day.
+    [string]$CloseDate
 )
 
 $ErrorActionPreference = "Stop"
@@ -243,6 +248,28 @@ function Get-CriticalAlertCount {
     }
 }
 
+$responses = @()
+if (-not [string]::IsNullOrWhiteSpace($CloseDate)) {
+    if ([string]::IsNullOrWhiteSpace($WorkflowNote)) {
+        throw "-CloseDate records the workflow check for a day; supply the evidence with -WorkflowNote."
+    }
+    $closeHistoryPath = Join-Path $runDirectory "daily.jsonl"
+    $recordedRows = @()
+    if (Test-Path $closeHistoryPath) {
+        $recordedRows = @(Get-Content $closeHistoryPath | Where-Object { $_.Trim() } | ForEach-Object { $_ | ConvertFrom-Json })
+    }
+    $row = $recordedRows | Where-Object { $_.DateUtc -eq $CloseDate } | Select-Object -Last 1
+    if (-not $row) {
+        # A note is evidence about a day; it is not a reading of it. A day with
+        # no reading is a gap, and it stays one.
+        throw "No reading was taken on $CloseDate in $safeRunId, so there is no day to close. A workflow note cannot stand in for a reading."
+    }
+    foreach ($field in 'WorkflowNote', 'Result', 'Reasons') {
+        if (-not ($row.PSObject.Properties.Name -contains $field)) {
+            $row | Add-Member -NotePropertyName $field -NotePropertyValue ''
+        }
+    }
+} else {
 $timestamp = (Get-Date).ToUniversalTime()
 $responses = @(
     (Invoke-SoakEndpoint -Name "health-ready" -Uri "$BaseUrl/api/health/ready"),
@@ -278,6 +305,7 @@ $row = [ordered]@{
     ClientsHealthy = Get-PrometheusValue -Text $metricsText -MetricName "deluno_monitoring_clients_healthy"
     ClientsTotal = Get-PrometheusValue -Text $metricsText -MetricName "deluno_monitoring_clients_total"
 }
+}
 
 # ---------------------------------------------------------------- the decision
 
@@ -308,6 +336,27 @@ if (Test-Path $historyPath) {
     $history = @(Get-Content $historyPath | Where-Object { $_.Trim() } | ForEach-Object { $_ | ConvertFrom-Json })
 }
 
+# One row per UTC date.
+#
+# The plan says to close a day by running this again with -WorkflowNote, and that
+# used to append a second row for the same date. The ledger then showed the day
+# twice, "Day N of the run" counted rows rather than days - fourteen days would
+# have read as twenty-eight - and the failed-jobs trend treated a same-day
+# re-reading as a day of its own. A later reading of a date now replaces the
+# earlier one.
+#
+# A workflow note already recorded for the date is kept when a later reading
+# brings none, so the unattended daily task running after the operator's check
+# cannot quietly reopen a day that was closed.
+$sameDate = @($history | Where-Object { $_.DateUtc -eq $row.DateUtc })
+$history = @($history | Where-Object { $_.DateUtc -ne $row.DateUtc })
+if ([string]::IsNullOrWhiteSpace($WorkflowNote)) {
+    $recorded = $sameDate | Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_.WorkflowNote) } | Select-Object -Last 1
+    if ($recorded) {
+        $WorkflowNote = [string]$recorded.WorkflowNote
+    }
+}
+
 $failures = @()
 
 if ($row.Ready -ne "1") { $failures += "not ready" }
@@ -336,7 +385,9 @@ foreach ($pair in @(
 # Three consecutive days of more failed jobs than the day before. One bad day
 # is a retry; three in a row is a direction.
 if (-not [string]::IsNullOrWhiteSpace([string]$row.JobsFailed)) {
-    $failedSeries = @($history | ForEach-Object { $_.JobsFailed }) + @($row.JobsFailed) |
+    # The days before the one being judged, so closing an earlier day does not
+    # count later ones as its past.
+    $failedSeries = @($history | Where-Object { $_.DateUtc -lt $row.DateUtc } | Sort-Object -Property DateUtc | ForEach-Object { $_.JobsFailed }) + @($row.JobsFailed) |
         Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) } |
         ForEach-Object { [int]$_ }
     if ($failedSeries.Count -ge 4) {
@@ -363,28 +414,30 @@ $row.WorkflowNote = if ([string]::IsNullOrWhiteSpace($WorkflowNote)) { "" } else
 $row.Result = $result
 $row.Reasons = $reasons
 
-($row | ConvertTo-Json -Compress) | Add-Content -Path $historyPath -Encoding utf8
+$allRows = @(@($history) + @([pscustomobject]$row) | Sort-Object -Property DateUtc)
+($allRows | ForEach-Object { $_ | ConvertTo-Json -Compress }) | Set-Content -Path $historyPath -Encoding utf8
 
+# Rewritten whole from the history, so the ledger always matches it.
 $dailyPath = Join-Path $runDirectory "daily.md"
-if (-not (Test-Path $dailyPath)) {
-    @(
-        "# Soak daily snapshots: $safeRunId"
-        ""
-        "Raw endpoint responses are stored beside this file. A failed endpoint is recorded as data; it does not abort the day's collection."
-        ""
-        "| UTC date | Ready | Critical alerts | Jobs queued | Jobs failed | API error % | Free storage % | Indexers healthy/total | Clients healthy/total | Result | Why |"
-        "| --- | ---: | ---: | ---: | ---: | ---: | ---: | --- | --- | --- | --- |"
-    ) | Out-File -FilePath $dailyPath -Encoding utf8
+$markdown = @(
+    "# Soak daily snapshots: $safeRunId"
+    ""
+    "Raw endpoint responses are stored beside this file. A failed endpoint is recorded as data; it does not abort the day's collection."
+    ""
+    "| UTC date | Ready | Critical alerts | Jobs queued | Jobs failed | API error % | Free storage % | Indexers healthy/total | Clients healthy/total | Result | Why |"
+    "| --- | ---: | ---: | ---: | ---: | ---: | ---: | --- | --- | --- | --- |"
+)
+foreach ($entry in $allRows) {
+    $rowValues = @(
+        $entry.DateUtc, $entry.Ready, $entry.CriticalAlerts, $entry.JobsQueued, $entry.JobsFailed,
+        $entry.ApiErrorRatePercent, $entry.StorageFreePercent,
+        "$($entry.IndexersHealthy)/$($entry.IndexersTotal)",
+        "$($entry.ClientsHealthy)/$($entry.ClientsTotal)",
+        $entry.Result, $entry.Reasons
+    ) | ForEach-Object { if ([string]::IsNullOrWhiteSpace([string]$_)) { "n/a" } else { ([string]$_) -replace '\|', '/' } }
+    $markdown += "| " + ($rowValues -join " | ") + " |"
 }
-
-$rowValues = @(
-    $row.DateUtc, $row.Ready, $row.CriticalAlerts, $row.JobsQueued, $row.JobsFailed,
-    $row.ApiErrorRatePercent, $row.StorageFreePercent,
-    "$($row.IndexersHealthy)/$($row.IndexersTotal)",
-    "$($row.ClientsHealthy)/$($row.ClientsTotal)",
-    $row.Result, $row.Reasons
-) | ForEach-Object { if ([string]::IsNullOrWhiteSpace([string]$_)) { "n/a" } else { [string]$_ } }
-("| " + ($rowValues -join " | ") + " |") | Add-Content -Path $dailyPath -Encoding utf8
+$markdown | Set-Content -Path $dailyPath -Encoding utf8
 
 Write-Host "Soak snapshot recorded: $runDirectory"
 Write-Host "Daily evidence: $dailyPath"
@@ -395,7 +448,7 @@ foreach ($response in $responses) {
 
 $colour = switch ($row.Result) { "PASS" { "Green" } "ATTENTION" { "Yellow" } default { "Red" } }
 Write-Host ""
-Write-Host ("Day {0} of the run: {1}" -f ($history.Count + 1), $row.Result) -ForegroundColor $colour
+Write-Host ("Day {0} of the run: {1}" -f $allRows.Count, $row.Result) -ForegroundColor $colour
 Write-Host "  $($row.Reasons)"
 if ($row.Result -eq "ATTENTION") {
     Write-Host "  Record the workflow check with -WorkflowNote to close the day." -ForegroundColor Yellow
@@ -406,7 +459,7 @@ if ($row.Result -eq "ATTENTION") {
 # even be asked, say so as its own thing and fail the command - the row is still
 # written, so the gap is visible in the ledger too.
 $unreachable = @($responses | Where-Object { $_.Unreachable })
-if ($unreachable.Count -eq $responses.Count) {
+if ($responses.Count -gt 0 -and $unreachable.Count -eq $responses.Count) {
     Write-Host ""
     Write-Warning "No reading was taken. Every request failed before it reached Deluno, so today's row says nothing about the product:"
     foreach ($response in $unreachable) {
