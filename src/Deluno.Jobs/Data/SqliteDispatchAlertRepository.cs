@@ -74,7 +74,7 @@ public sealed class SqliteDispatchAlertRepository(
             cancellationToken);
 
         using var command = connection.CreateCommand();
-        var whereClause = "WHERE acknowledged = 0";
+        var whereClause = $"WHERE {OpenPredicate}";
         if (!string.IsNullOrEmpty(severity))
         {
             whereClause += " AND severity = @severity";
@@ -137,14 +137,89 @@ public sealed class SqliteDispatchAlertRepository(
             cancellationToken);
 
         using var command = connection.CreateCommand();
-        command.CommandText =
-            """
-            SELECT COUNT(*) FROM dispatch_alerts WHERE acknowledged = 0
-            """;
+        command.CommandText = $"SELECT COUNT(*) FROM dispatch_alerts WHERE {OpenPredicate}";
 
         var result = await command.ExecuteScalarAsync(cancellationToken);
         return result is long count ? (int)count : 0;
     }
+
+    public async Task<bool> HasOpenAlertAsync(string dispatchId, string alertKind, CancellationToken cancellationToken)
+    {
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Jobs,
+            cancellationToken);
+
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            $"""
+            SELECT EXISTS (
+                SELECT 1 FROM dispatch_alerts
+                WHERE dispatch_id = @dispatchId AND alert_kind = @alertKind AND {OpenPredicate}
+            )
+            """;
+        AddParameter(command, "@dispatchId", dispatchId);
+        AddParameter(command, "@alertKind", alertKind);
+
+        var result = await command.ExecuteScalarAsync(cancellationToken);
+        return result is long exists && exists == 1;
+    }
+
+    /// <summary>
+    /// Closes open alerts that no longer describe a live problem.
+    ///
+    /// <para>The reasons are ordered from the most final to the most specific,
+    /// so an alert on a download that was both imported and archived says
+    /// "archived" once rather than being judged by the stage it complained
+    /// about. Each alert kind is otherwise closed by the step it was waiting
+    /// for: a grab timeout by the client picking the download up, a detection
+    /// timeout by the import starting, an import timeout by the import no
+    /// longer waiting, and an import failure by a retry that got further.</para>
+    /// </summary>
+    public async Task<int> ResolveSettledAlertsAsync(CancellationToken cancellationToken)
+    {
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Jobs,
+            cancellationToken);
+
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            $"""
+            UPDATE dispatch_alerts
+            SET resolved_utc = @now,
+                resolved_reason = (
+                    SELECT CASE
+                        WHEN d.id IS NULL THEN 'The download no longer exists.'
+                        WHEN d.status = 'archived' THEN 'The download was archived.'
+                        WHEN d.import_status = 'imported' THEN 'The download was imported.'
+                        WHEN dispatch_alerts.alert_kind = 'grab-timeout' THEN 'The download client picked it up.'
+                        WHEN dispatch_alerts.alert_kind = 'detection-timeout' THEN 'The import started.'
+                        WHEN dispatch_alerts.alert_kind = 'import-timeout' THEN 'The import stopped waiting.'
+                        ELSE 'The import was retried.'
+                    END
+                    FROM (SELECT 1) AS anchor
+                    LEFT JOIN download_dispatches d ON d.id = dispatch_alerts.dispatch_id
+                )
+            WHERE {OpenPredicate}
+              AND NOT EXISTS (
+                  SELECT 1 FROM download_dispatches d
+                  WHERE d.id = dispatch_alerts.dispatch_id
+                    AND COALESCE(d.status, '') <> 'archived'
+                    AND COALESCE(d.import_status, '') <> 'imported'
+                    AND NOT (dispatch_alerts.alert_kind = 'grab-timeout' AND d.detected_utc IS NOT NULL)
+                    AND NOT (dispatch_alerts.alert_kind = 'detection-timeout' AND d.import_status IS NOT NULL)
+                    AND NOT (dispatch_alerts.alert_kind = 'import-timeout' AND COALESCE(d.import_status, '') <> 'pending')
+                    AND NOT (dispatch_alerts.alert_kind = 'import-failed' AND COALESCE(d.import_status, '') <> 'failed')
+              )
+            """;
+        AddParameter(command, "@now", timeProvider.GetUtcNow().ToString("O"));
+
+        return await command.ExecuteNonQueryAsync(cancellationToken);
+    }
+
+    /// <summary>
+    /// Open means nobody has acknowledged it and the download has not moved on.
+    /// </summary>
+    private const string OpenPredicate = "acknowledged = 0 AND resolved_utc IS NULL";
 
     private static DispatchAlert ReadAlert(DbDataReader reader)
     {

@@ -11,4 +11,5 @@ public sealed record DownloadDispatchPollingReport(
     int DetectionTimeoutsDetected,
     int ImportTimeoutsDetected,
     int ImportFailuresDetected,
-    int RecoveryCasesRecorded);
+    int RecoveryCasesRecorded,
+    int AlertsResolved = 0);
