@@ -38,7 +38,8 @@ const REASON_WORDS: Record<string, string> = {
   hardlinkFailed: "The hardlink itself failed",
   samePath: "It was already where it belongs",
   conflict: "Something else is already using that name",
-  replacementOwnershipMismatch: "That file belongs to a different title"
+  replacementOwnershipMismatch: "That file belongs to a different title",
+  processorRejected: "The processor could not use it and removed it"
 };
 
 export function reasonWords(reasonCode: string): string {

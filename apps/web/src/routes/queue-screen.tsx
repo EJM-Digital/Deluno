@@ -1236,7 +1236,7 @@ function isProcessorTerminal(status: string) {
 }
 
 function isProcessorFailure(status: string) {
-  return ["failed", "timed-out", "timeout"].includes(status.toLowerCase());
+  return ["failed", "rejected", "timed-out", "timeout"].includes(status.toLowerCase());
 }
 
 function processorStageLabel(status: string) {
@@ -1256,6 +1256,8 @@ function processorStageLabel(status: string) {
       return "Timed out";
     case "failed":
       return "Processing failed";
+    case "rejected":
+      return "Rejected · searching again";
     default:
       return status || "Waiting";
   }

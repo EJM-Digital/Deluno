@@ -295,4 +295,81 @@ public sealed class SearchJobHandlerTests
         Assert.Equal(["episode-1", "episode-2"], planned!.Select(item => item.EpisodeId));
         Assert.Equal("S02E05", planned[1].Title);
     }
+
+    /// <summary>
+    /// #497: a search aimed at one episode - after a processor rejected its
+    /// download - used to read <c>maxItems</c> (one) eligible episodes before
+    /// filtering to the target, and to compare the target with the series id
+    /// when the download is recorded against the episode. It found nothing.
+    /// </summary>
+    [Fact]
+    public async Task LibrarySearchJobHandler_a_targeted_search_finds_its_episode_whatever_else_is_wanted()
+    {
+        var librariesRepository = new Mock<ILibrariesRepository>();
+        var seriesCatalogRepository = new Mock<ISeriesCatalogRepository>();
+        var jobQueueRepository = new Mock<IJobQueueRepository>();
+
+        librariesRepository
+            .Setup(repository => repository.ListLibrariesAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync([]);
+        seriesCatalogRepository
+            .Setup(repository => repository.ListEligibleWantedAsync(
+                It.IsAny<string>(), It.IsAny<int>(), It.IsAny<DateTimeOffset>(), It.IsAny<bool>(),
+                It.IsAny<CancellationToken>(), It.IsAny<string?>()))
+            .ReturnsAsync([]);
+
+        int? limitAsked = null;
+        bool? retryWindowIgnored = null;
+        seriesCatalogRepository
+            .Setup(repository => repository.ListEligibleWantedEpisodesAsync(
+                "library-tv", It.IsAny<int>(), It.IsAny<DateTimeOffset>(), It.IsAny<bool>(),
+                It.IsAny<CancellationToken>(), It.IsAny<string?>()))
+            .Callback<string, int, DateTimeOffset, bool, CancellationToken, string?, Deluno.Contracts.CatalogueFilters?>((_, limit, _, ignore, _, _, _) =>
+            {
+                limitAsked = limit;
+                retryWindowIgnored = ignore;
+            })
+            .ReturnsAsync([
+                new EpisodeSearchEligibilityItem("episode-1", "series-1", 1, 1, "Pilot", null, null),
+                new EpisodeSearchEligibilityItem("episode-9", "series-3", 1, 9, "The one that was rejected", null, null)
+            ]);
+
+        IReadOnlyList<EpisodeSearchPlanItem>? planned = null;
+        jobQueueRepository
+            .Setup(repository => repository.PlanEpisodeSearchesAsync(
+                It.IsAny<string>(), It.IsAny<IReadOnlyList<EpisodeSearchPlanItem>>(), It.IsAny<CancellationToken>()))
+            .Callback<string, IReadOnlyList<EpisodeSearchPlanItem>, CancellationToken>((_, episodes, _) => planned = episodes)
+            .Returns(Task.CompletedTask);
+
+        var handler = new TvLibrarySearchJobHandler(
+            librariesRepository.Object,
+            new Mock<IQualityRepository>().Object,
+            jobQueueRepository.Object,
+            new Mock<Deluno.Movies.Data.IMovieCatalogRepository>().Object,
+            seriesCatalogRepository.Object,
+            new Mock<IAcquisitionDecisionPipeline>().Object,
+            new Mock<IDownloadClientGrabService>().Object,
+            new Mock<IActivityFeedRepository>().Object,
+            TimeProvider.System);
+
+        var payload = JsonSerializer.Serialize(new
+        {
+            libraryId = "library-tv",
+            libraryName = "TV",
+            mediaType = "tv",
+            checkMissing = true,
+            checkUpgrades = true,
+            maxItems = 1,
+            retryDelayHours = 24,
+            triggeredBy = "processor-rejected",
+            targetEntityId = "episode-9"
+        });
+
+        await handler.HandleAsync(TestJobs.Create("library.search.tv", payloadJson: payload), CancellationToken.None);
+
+        Assert.True(limitAsked > 1);
+        Assert.True(retryWindowIgnored);
+        Assert.NotNull(planned);
+        Assert.Equal(["episode-9"], planned!.Select(item => item.EpisodeId));
+    }
 }

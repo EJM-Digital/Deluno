@@ -10,4 +10,7 @@ public sealed record ProcessorEventRequest(
     string? Status,
     string? Message,
     string? ProcessorName,
-    string? HandoffId = null);
+    string? HandoffId = null,
+    string? Disposition = null,
+    bool? SourceRemoved = null,
+    string? FailureClass = null);
