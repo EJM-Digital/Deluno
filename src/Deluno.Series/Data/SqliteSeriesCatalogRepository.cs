@@ -3227,6 +3227,39 @@ public sealed class SqliteSeriesCatalogRepository(
         await update.ExecuteNonQueryAsync(cancellationToken);
     }
 
+    public async Task<IReadOnlyDictionary<string, string>> ListRecordedFileQualitiesAsync(
+        string libraryId,
+        CancellationToken cancellationToken)
+    {
+        var recorded = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        if (string.IsNullOrWhiteSpace(libraryId))
+        {
+            return recorded;
+        }
+
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Series,
+            cancellationToken);
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            """
+            SELECT episode.file_path, wanted.current_quality
+            FROM episode_entries AS episode
+            INNER JOIN episode_wanted_state AS wanted ON wanted.episode_id = episode.id
+            WHERE wanted.library_id = @libraryId
+              AND episode.file_path IS NOT NULL
+              AND wanted.current_quality IS NOT NULL;
+            """;
+        AddParameter(command, "@libraryId", libraryId);
+        using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            recorded[reader.GetString(0)] = reader.GetString(1);
+        }
+
+        return recorded;
+    }
+
     public async IAsyncEnumerable<SeriesTrackedFileItem> StreamTrackedFilesAsync(
         string libraryId,
         [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken)

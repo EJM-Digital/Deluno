@@ -103,13 +103,14 @@ public sealed class ExistingLibraryImportService(
             .ToArray();
         var hasMore = page.Length > Math.Clamp(take, 1, 100);
         var visible = page.Take(Math.Clamp(take, 1, 100)).ToArray();
+        var known = await LoadKnownFilesAsync(library, string.Equals(library.MediaType, "movies", StringComparison.OrdinalIgnoreCase), cancellationToken);
 
         return new ExistingLibraryPreviewPage(
             LibraryId: library.Id,
             LibraryName: library.Name,
             MediaType: library.MediaType,
             RootPath: library.RootPath,
-            Items: visible.Select(entry => ToPreviewCandidate(library, entry)).ToArray(),
+            Items: visible.Select(entry => ToPreviewCandidate(library, entry, known)).ToArray(),
             NextCursor: hasMore && visible.Length > 0 ? visible[^1] : null,
             HasMore: hasMore);
     }
@@ -146,6 +147,7 @@ public sealed class ExistingLibraryImportService(
 
         var pending = new List<DetectedLibraryItem>(requested.Count);
         var isMovies = string.Equals(library.MediaType, "movies", StringComparison.OrdinalIgnoreCase);
+        var known = await LoadKnownFilesAsync(library, isMovies, cancellationToken);
 
         foreach (var sourcePath in requested)
         {
@@ -155,7 +157,7 @@ public sealed class ExistingLibraryImportService(
                 continue;
             }
 
-            var detection = TryDetect(library, sourcePath, isMovies);
+            var detection = TryDetect(library, sourcePath, isMovies, known);
             if (detection.Item is null)
             {
                 var issue = detection.Issue ?? new DetectionIssue("notImportable", "Deluno could not find a supported media file here.");
@@ -272,10 +274,10 @@ public sealed class ExistingLibraryImportService(
         CancellationToken cancellationToken)
         => importRunsRepository.ListResumableRunsAsync(idleBeforeUtc, take, cancellationToken);
 
-    private ExistingLibraryCandidate ToPreviewCandidate(LibraryItem library, string entry)
+    private ExistingLibraryCandidate ToPreviewCandidate(LibraryItem library, string entry, KnownLibraryFiles known)
     {
         var isMovies = string.Equals(library.MediaType, "movies", StringComparison.OrdinalIgnoreCase);
-        var detection = TryDetect(library, entry, isMovies);
+        var detection = TryDetect(library, entry, isMovies, known);
         var item = detection.Item;
 
         return new ExistingLibraryCandidate(
@@ -291,11 +293,11 @@ public sealed class ExistingLibraryImportService(
             IssueDetail: detection.Issue?.Detail);
     }
 
-    private DetectionResult TryDetect(LibraryItem library, string entry, bool isMovies)
+    private DetectionResult TryDetect(LibraryItem library, string entry, bool isMovies, KnownLibraryFiles known)
     {
         try
         {
-            return isMovies ? DetectMovie(entry) : DetectSeries(entry);
+            return isMovies ? DetectMovie(entry, known) : DetectSeries(entry, known);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException)
         {
@@ -440,6 +442,7 @@ public sealed class ExistingLibraryImportService(
         }
 
         var isMovies = string.Equals(library.MediaType, "movies", StringComparison.OrdinalIgnoreCase);
+        var known = await LoadKnownFilesAsync(library, isMovies, cancellationToken);
         var batchSize = isMovies ? _slice.MovieBatchSize : _slice.SeriesBatchSize;
 
         var stopwatch = Stopwatch.StartNew();
@@ -473,8 +476,8 @@ public sealed class ExistingLibraryImportService(
             }
 
             var detected = isMovies
-                ? DetectMovie(entry)
-                : DetectSeries(entry);
+                ? DetectMovie(entry, known)
+                : DetectSeries(entry, known);
 
             lastExamined = entry;
             processedInSlice++;
@@ -875,7 +878,28 @@ public sealed class ExistingLibraryImportService(
         return entries;
     }
 
-    private DetectionResult DetectMovie(string entry)
+    /// <summary>
+    /// What Deluno already knows about the files in a library, by path.
+    ///
+    /// <para>A scan used to read a file's quality out of its name, so a library
+    /// named the way its owner likes - "Title (Year)", nothing else - came back
+    /// as unknown quality for files Deluno had imported itself and still holds
+    /// the decision for. The name is a preference; the record is the truth.</para>
+    /// </summary>
+    internal sealed class KnownLibraryFiles(IReadOnlyDictionary<string, string> qualityByPath)
+    {
+        public static KnownLibraryFiles None { get; } = new(new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase));
+
+        public string? QualityFor(string? path)
+            => string.IsNullOrWhiteSpace(path) ? null : qualityByPath.GetValueOrDefault(path.Trim());
+    }
+
+    private async Task<KnownLibraryFiles> LoadKnownFilesAsync(LibraryItem library, bool isMovies, CancellationToken cancellationToken)
+        => new(isMovies
+            ? await movieCatalogRepository.ListRecordedFileQualitiesAsync(library.Id, cancellationToken)
+            : await seriesCatalogRepository.ListRecordedFileQualitiesAsync(library.Id, cancellationToken));
+
+    private DetectionResult DetectMovie(string entry, KnownLibraryFiles known)
     {
         if (File.Exists(entry))
         {
@@ -883,7 +907,7 @@ public sealed class ExistingLibraryImportService(
             return new DetectionResult(
                 ParseTitle(rawFileName) with
                 {
-                    DetectedQuality = LibraryQualityDecider.DetectQuality(rawFileName),
+                    DetectedQuality = known.QualityFor(entry) ?? LibraryQualityDecider.DetectQuality(rawFileName),
                     FilePath = entry,
                     FileSizeBytes = GetFileSize(entry)
                 },
@@ -915,7 +939,10 @@ public sealed class ExistingLibraryImportService(
         return new DetectionResult(
             ParseTitle(rawName) with
             {
-                DetectedQuality = LibraryQualityDecider.DetectQuality(Path.GetFileNameWithoutExtension(videoFile))
+                // Deluno's own record first: a file it imported keeps its
+                // quality even when the owner's naming says nothing about it.
+                DetectedQuality = known.QualityFor(videoFile)
+                    ?? LibraryQualityDecider.DetectQuality(Path.GetFileNameWithoutExtension(videoFile))
                     ?? LibraryQualityDecider.DetectQuality(rawName),
                 FilePath = videoFile,
                 FileSizeBytes = GetFileSize(videoFile)
@@ -923,7 +950,7 @@ public sealed class ExistingLibraryImportService(
             null);
     }
 
-    private DetectionResult DetectSeries(string entry)
+    private DetectionResult DetectSeries(string entry, KnownLibraryFiles known)
     {
         if (File.Exists(entry))
         {
@@ -948,7 +975,7 @@ public sealed class ExistingLibraryImportService(
                     ? match.Groups["title"].Value
                     : fileHasSeasonPackLabel ? RemoveSeasonPackMarker(fileName) : fileName) with
                 {
-                    DetectedQuality = LibraryQualityDecider.DetectQuality(fileName),
+                    DetectedQuality = known.QualityFor(entry) ?? LibraryQualityDecider.DetectQuality(fileName),
                     FilePath = entry,
                     FileSizeBytes = GetFileSize(entry),
                     Episodes = fileEpisodes,
@@ -985,7 +1012,7 @@ public sealed class ExistingLibraryImportService(
         var item = ParseTitle(hasSeasonPackLabel ? RemoveSeasonPackMarker(rawName) : rawName) with
         {
             DetectedQuality = videoFiles
-                .Select(file => LibraryQualityDecider.DetectQuality(Path.GetFileNameWithoutExtension(file)))
+                .Select(file => known.QualityFor(file) ?? LibraryQualityDecider.DetectQuality(Path.GetFileNameWithoutExtension(file)))
                 .FirstOrDefault(value => !string.IsNullOrWhiteSpace(value)),
             FilePath = videoFiles[0],
             FileSizeBytes = GetFileSize(videoFiles[0]),

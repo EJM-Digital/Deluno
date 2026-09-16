@@ -1137,7 +1137,22 @@ public sealed class ImportPipelineServiceTests
             tracked.Add(item);
         }
 
-        Assert.Equal("Sintel (2010) [WEB 1080p] [NF].mkv", Path.GetFileName(Assert.Single(tracked).FilePath));
+        var imported = Assert.Single(tracked);
+        Assert.Equal("Sintel (2010) [WEB 1080p] [NF].mkv", Path.GetFileName(imported.FilePath));
+
+        // And when the owner's naming says none of it, Deluno's own record
+        // still does: this is what the title page reads.
+        var snapshot = await mediaState.GetLatestPreferenceEvaluationSnapshotAsync(
+            MediaKind.Movie,
+            imported.MovieId,
+            library.Id,
+            fileIdentity: null,
+            CancellationToken.None,
+            imported.FilePath,
+            imported.FileSizeBytes);
+        Assert.NotNull(snapshot);
+        Assert.Equal("Sintel.2010.1080p.NF.WEB-DL.DDP5.1.H.264-DELUNO", snapshot.ReleaseNameEvidence);
+        Assert.Equal([netflix.Id], snapshot.MatchedRuleIds);
     }
 
     [Fact]

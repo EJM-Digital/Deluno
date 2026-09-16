@@ -419,6 +419,64 @@ public static class MoviesEndpointRouteBuilderExtensions
             return removed ? Results.NoContent() : Results.NotFound();
         });
 
+        // What the copy on disk is, in words: the release it came from, what it
+        // matched, and where it went. The file's name is a preference and may
+        // say none of this, so Deluno answers from its own record.
+        movies.MapGet("/{id}/copy", async (
+            string id,
+            IMovieCatalogRepository repository,
+            IMediaStateRepository mediaStateRepository,
+            IQualityRepository qualityRepository,
+            IDownloadDispatchesRepository dispatchesRepository,
+            CancellationToken cancellationToken) =>
+        {
+            var movie = await repository.GetByIdAsync(id, cancellationToken);
+            if (movie is null)
+            {
+                return Results.NotFound();
+            }
+
+            var snapshot = await mediaStateRepository.GetLatestPreferenceEvaluationSnapshotAsync(
+                MediaKind.Movie,
+                id,
+                movie.LibraryId,
+                fileIdentity: null,
+                cancellationToken,
+                movie.FilePath);
+            var rules = await qualityRepository.ListCustomFormatsAsync(cancellationToken);
+            var matched = (snapshot?.MatchedRuleIds ?? [])
+                .Select(ruleId => rules.FirstOrDefault(rule => string.Equals(rule.Id, ruleId, StringComparison.OrdinalIgnoreCase)))
+                .Where(rule => rule is not null)
+                .Select(rule => new { id = rule!.Id, name = rule.Name, trashId = rule.TrashId })
+                .ToArray();
+            var dispatch = (await dispatchesRepository.QueryDispatchesAsync(
+                    new DispatchQueryFilter { MediaType = "movies", EntityId = id },
+                    new DispatchPaginationOptions { PageSize = 5 },
+                    cancellationToken))
+                .Items
+                .OrderByDescending(item => item.CreatedUtc)
+                .FirstOrDefault();
+
+            return Results.Ok(new
+            {
+                movieId = movie.Id,
+                filePath = movie.FilePath,
+                fileSizeBytes = movie.FileSizeBytes,
+                quality = movie.CurrentQuality,
+                releaseName = snapshot?.ReleaseNameEvidence ?? dispatch?.ReleaseName,
+                releaseGroup = movie.ReleaseGroup,
+                indexerName = dispatch?.IndexerName,
+                downloadClientName = dispatch?.DownloadClientName,
+                grabbedUtc = dispatch?.CreatedUtc,
+                importedUtc = snapshot?.EvaluatedUtc,
+                source = snapshot?.Source,
+                formats = matched,
+                planId = snapshot?.PlanId,
+                planVersion = snapshot?.PlanVersion,
+                planHash = snapshot?.PlanHash
+            });
+        });
+
         movies.MapGet("/{id}/preference-evaluation", async (
             string id,
             string? libraryId,

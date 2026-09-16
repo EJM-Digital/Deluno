@@ -119,6 +119,7 @@ GET /api/movies/search-history
 GET /api/movies/wanted
 GET /api/movies/{id}
 GET /api/movies/{id}/acquisition-blockers
+GET /api/movies/{id}/copy
 GET /api/movies/{id}/metadata/issue
 GET /api/movies/{id}/preference-evaluation
 GET /api/movies/{id}/removal-preview

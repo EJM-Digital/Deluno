@@ -1967,6 +1967,39 @@ public sealed class SqliteMovieCatalogRepository(
         return created;
     }
 
+    public async Task<IReadOnlyDictionary<string, string>> ListRecordedFileQualitiesAsync(
+        string libraryId,
+        CancellationToken cancellationToken)
+    {
+        var recorded = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        if (string.IsNullOrWhiteSpace(libraryId))
+        {
+            return recorded;
+        }
+
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Movies,
+            cancellationToken);
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            """
+            SELECT w.file_path, w.current_quality
+            FROM movie_wanted_state w
+            WHERE w.library_id = @libraryId
+              AND w.has_file = 1
+              AND w.file_path IS NOT NULL
+              AND w.current_quality IS NOT NULL;
+            """;
+        AddParameter(command, "@libraryId", libraryId);
+        using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            recorded[reader.GetString(0)] = reader.GetString(1);
+        }
+
+        return recorded;
+    }
+
     public async IAsyncEnumerable<MovieTrackedFileItem> StreamTrackedFilesAsync(
         string libraryId,
         [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken)
