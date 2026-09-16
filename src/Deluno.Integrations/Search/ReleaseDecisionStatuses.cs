@@ -64,7 +64,11 @@ public static class ReleaseDecisionStatuses
         {
             Preferred => "the preferred candidate",
             Acceptable => "usable but not the best available",
-            Eligible => "below your cutoff",
+            // NOT "below your cutoff": an eligible candidate has passed every
+            // hard gate and its quality meets the cutoff. What it has not done
+            // is satisfy every preference the profile asks for, which is a
+            // different thing and the reason it waits for a person.
+            Eligible => "usable, but it does not meet every preference yet",
             Equivalent => "equivalent to the file you already have",
             CurrentBetter => "not as good as the file you already have",
             Held => "waiting for your review",

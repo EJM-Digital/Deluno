@@ -358,4 +358,35 @@ public class AcquisitionDecisionPipelineTests
             EvaluatedUtc: DateTimeOffset.UnixEpoch,
             Source: "test"));
     }
+
+    /// <summary>
+    /// A held candidate must be described by what is actually true of it.
+    ///
+    /// On the rig, Breaking Bad S01E03 found three releases, chose
+    /// AMZN.WEBRip with MeetsCutoff=true and "Quality WEB 1080p meets or
+    /// exceeds cutoff WEB 1080p", and the screen said it was held "because the
+    /// best candidate is below your cutoff". Eligible means every hard gate
+    /// passed and some preference target has not been met - the opposite of
+    /// being below the cutoff.
+    /// </summary>
+    [Fact]
+    public void An_eligible_candidate_held_for_review_is_not_called_below_your_cutoff()
+    {
+        var candidate = new MediaSearchCandidate(
+            ReleaseName: "Breaking.Bad.S01E03.1080p.AMZN.WEBRip.DDP5.1.x264-DELUNO",
+            IndexerId: "indexer-1",
+            IndexerName: "E2E Torznab fixture",
+            Quality: "WEB 1080p",
+            Score: 0,
+            MeetsCutoff: true,
+            Summary: "Eligible under the typed release plan.",
+            DecisionStatus: ReleaseDecisionStatuses.Eligible);
+        var plan = new MediaSearchPlan(candidate, [candidate], "Best feed candidate is that one.");
+
+        var message = AcquisitionDecisionPipeline.BuildSearchResult(plan, configuredClients: 1);
+
+        Assert.Contains("Held for manual review", message, StringComparison.Ordinal);
+        Assert.DoesNotContain("below your cutoff", message, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("does not meet every preference", message, StringComparison.Ordinal);
+    }
 }
