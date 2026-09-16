@@ -739,7 +739,7 @@ public sealed class ExistingLibraryImportService(
             UnmonitorWhenCutoffMet: false,
             FilePath: item.FilePath,
             FileSizeBytes: item.FileSizeBytes,
-            Episodes: item.Episodes,
+            Episodes: DecideEpisodes(library, item.Episodes, model),
             PreferenceEvaluation: preferenceEvaluation,
             AlternateEpisodes: item.AlternateEpisodes,
             SeasonPacks: item.SeasonPacks);
@@ -823,6 +823,39 @@ public sealed class ExistingLibraryImportService(
             UpgradeUnknownItems: library.UpgradeUnknownItems,
             FileSizeBytes: item.FileSizeBytes,
             SizeFloorBytes: FloorFor(library.MediaType, item.DetectedQuality, model)));
+
+    /// <summary>
+    /// The same judgement, made once per episode against its own file.
+    ///
+    /// <para>An episode used to take the show's verdict. A show missing
+    /// sixty-nine of its seventy-one episodes has not met its cutoff — true of
+    /// the show, and false of the two episodes that do hold a file at the right
+    /// quality. Those two were written as not-met, so they never settled and
+    /// offered themselves for upgrade forever.</para>
+    ///
+    /// <para>Episodes whose quality could not be read are left undecided, and
+    /// the repository falls back to the series answer as before.</para>
+    /// </summary>
+    private IReadOnlyList<ImportedEpisodeItem> DecideEpisodes(
+        LibraryItem library,
+        IReadOnlyList<ImportedEpisodeItem>? episodes,
+        QualityModelSnapshot model)
+        => (episodes ?? [])
+            .Select(episode => episode.HasFile && !string.IsNullOrWhiteSpace(episode.CurrentQuality)
+                ? episode with
+                {
+                    QualityCutoffMet = mediaDecisionService.DecideWantedState(new MediaWantedDecisionInput(
+                        MediaType: library.MediaType,
+                        HasFile: true,
+                        CurrentQuality: episode.CurrentQuality,
+                        CutoffQuality: library.CutoffQuality,
+                        UpgradeUntilCutoff: library.UpgradeUntilCutoff,
+                        UpgradeUnknownItems: library.UpgradeUnknownItems,
+                        FileSizeBytes: episode.FileSizeBytes,
+                        SizeFloorBytes: FloorFor(library.MediaType, episode.CurrentQuality, model))).QualityCutoffMet
+                }
+                : episode)
+            .ToArray();
 
     /// <summary>
     /// The size floor this tier sets, in bytes, or null where there is no rule.
@@ -956,7 +989,7 @@ public sealed class ExistingLibraryImportService(
         {
             var fileName = Path.GetFileNameWithoutExtension(entry);
             var match = EpisodePattern.Match(fileName);
-            var fileEpisodes = DetectEpisodes([entry]);
+            var fileEpisodes = DetectEpisodes([entry], known);
             var fileAlternateEpisodes = DetectAlternateEpisodes([entry]);
             var fileHasSeasonPackLabel = SeriesNumberingResolver.ParseSeasonPackNumbers(entry).Count > 0;
             if (!match.Success && fileEpisodes.Count == 0 && fileAlternateEpisodes.Count == 0)
@@ -1006,7 +1039,7 @@ public sealed class ExistingLibraryImportService(
         }
 
         var rawName = Path.GetFileName(entry);
-        var episodes = DetectEpisodes(videoFiles);
+        var episodes = DetectEpisodes(videoFiles, known);
         var alternateEpisodes = DetectAlternateEpisodes(videoFiles);
         var hasSeasonPackLabel = SeriesNumberingResolver.ParseSeasonPackNumbers(rawName).Count > 0;
         var item = ParseTitle(hasSeasonPackLabel ? RemoveSeasonPackMarker(rawName) : rawName) with
@@ -1137,17 +1170,32 @@ public sealed class ExistingLibraryImportService(
             : fileName;
     }
 
-    private IReadOnlyList<ImportedEpisodeItem> DetectEpisodes(IEnumerable<string> files)
+    private IReadOnlyList<ImportedEpisodeItem> DetectEpisodes(IEnumerable<string> files, KnownLibraryFiles known)
         => files
-            .SelectMany(ExtractEpisodes)
+            .SelectMany(file => ExtractEpisodes(file, known))
             .Distinct()
             .OrderBy(item => item.SeasonNumber)
             .ThenBy(item => item.EpisodeNumber)
             .ToArray();
 
-    private IEnumerable<ImportedEpisodeItem> ExtractEpisodes(string filePath)
+    /// <summary>
+    /// The episodes one file holds, each carrying that file's own quality.
+    ///
+    /// <para>A show's quality used to be read from whichever video file came
+    /// first and then written onto every episode. A library where season one is
+    /// a DVD rip and season five is WEB 1080p reported one tier for all of it,
+    /// and the upgrade check had nothing true to compare against.</para>
+    /// </summary>
+    private IEnumerable<ImportedEpisodeItem> ExtractEpisodes(string filePath, KnownLibraryFiles known)
     {
         var parsed = SeriesNumberingResolver.ParseFileName(filePath, SeriesNumberingSchemes.Standard);
+
+        // Deluno's own record first, exactly as the series-level detection does:
+        // a file Deluno imported keeps its quality even when the owner's naming
+        // says nothing about it.
+        var quality = known.QualityFor(filePath)
+            ?? LibraryQualityDecider.DetectQuality(Path.GetFileNameWithoutExtension(filePath));
+
         foreach (var episode in parsed.Matches.Where(item => item.SeasonNumber is not null && item.EpisodeNumber is not null))
         {
             yield return new ImportedEpisodeItem(
@@ -1155,7 +1203,8 @@ public sealed class ExistingLibraryImportService(
                 EpisodeNumber: episode.EpisodeNumber!.Value,
                 HasFile: true,
                 FilePath: filePath,
-                FileSizeBytes: GetFileSize(filePath));
+                FileSizeBytes: GetFileSize(filePath),
+                CurrentQuality: quality);
         }
     }
 

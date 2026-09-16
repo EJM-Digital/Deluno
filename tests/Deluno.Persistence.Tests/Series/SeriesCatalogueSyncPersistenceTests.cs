@@ -137,6 +137,108 @@ public sealed class SeriesCatalogueSyncPersistenceTests
         Assert.True(afterRescan.QualityCutoffMet);
     }
 
+    /// <summary>
+    /// An episode's cutoff is a fact about its own file, not about the show.
+    ///
+    /// <para>Proved on the rig with Breaking Bad: seventy-one episodes, two on
+    /// disk. The series is correctly <c>missing</c> and has correctly not met
+    /// its cutoff — but both episodes held a WEB 1080p file at the library's
+    /// cutoff quality, and both were written not-met because the series verdict
+    /// was applied to every episode. They could never settle, and offered
+    /// themselves for upgrade forever.</para>
+    ///
+    /// <para>An episode whose own quality is unknown still takes the series
+    /// answer, which is what every caller did before.</para>
+    /// </summary>
+    [Fact]
+    public async Task An_episode_meets_its_own_cutoff_even_when_the_show_has_not()
+    {
+        var now = DateTimeOffset.Parse("2026-09-16T07:00:00Z");
+        var (storage, repository, _, seriesId) = await CreateSeriesAsync(now);
+        using var _ = storage;
+
+        await repository.SyncEpisodeCatalogueAsync(
+            seriesId,
+            [
+                new CatalogueEpisodeItem(1, 1, "Pilot", null, now.AddDays(-40)),
+                new CatalogueEpisodeItem(1, 2, "Half Loop", null, now.AddDays(-33)),
+                new CatalogueEpisodeItem(1, 3, "Cat's in the Bag", null, now.AddDays(-26))
+            ],
+            source: "tmdb",
+            CancellationToken.None);
+
+        // The show is missing most of its episodes, so its own verdict is
+        // "not met" - exactly the state that used to be copied onto every row.
+        await repository.ImportExistingAsync(
+            libraryId: "series-main", title: "Severance", startYear: 2022,
+            wantedStatus: "missing", wantedReason: "Episodes are missing from the library.",
+            currentQuality: "WEB 1080p", targetQuality: "WEB 1080p",
+            qualityCutoffMet: false, unmonitorWhenCutoffMet: false,
+            filePath: @"C:\media\s01e01.mkv", fileSizeBytes: 123456,
+            episodes:
+            [
+                // On disk at the cutoff quality: the caller decided this one met it.
+                new ImportedEpisodeItem(
+                    1, 1, HasFile: true, FilePath: @"C:\media\s01e01.mkv", FileSizeBytes: 123456,
+                    CurrentQuality: "WEB 1080p", QualityCutoffMet: true),
+                // On disk, but below the cutoff: decided, and decided false.
+                new ImportedEpisodeItem(
+                    1, 2, HasFile: true, FilePath: @"C:\media\s01e02.mkv", FileSizeBytes: 45678,
+                    CurrentQuality: "HDTV 720p", QualityCutoffMet: false),
+                // Not on disk at all.
+                new ImportedEpisodeItem(1, 3, HasFile: false)
+            ],
+            CancellationToken.None);
+
+        var episodes = (await repository.GetInventoryDetailAsync(seriesId, CancellationToken.None))!.Episodes;
+
+        var met = Assert.Single(episodes, item => item.EpisodeNumber == 1);
+        Assert.Equal("WEB 1080p", met.CurrentQuality);
+        Assert.True(met.QualityCutoffMet);
+
+        var below = Assert.Single(episodes, item => item.EpisodeNumber == 2);
+        Assert.Equal("HDTV 720p", below.CurrentQuality);
+        Assert.False(below.QualityCutoffMet);
+
+        var absent = Assert.Single(episodes, item => item.EpisodeNumber == 3);
+        Assert.False(absent.HasFile);
+        Assert.False(absent.QualityCutoffMet);
+    }
+
+    /// <summary>
+    /// A caller that does not know an episode's quality still gets the old
+    /// behaviour: the series answer, applied as before.
+    /// </summary>
+    [Fact]
+    public async Task An_episode_with_no_quality_of_its_own_still_takes_the_series_answer()
+    {
+        var now = DateTimeOffset.Parse("2026-09-16T08:00:00Z");
+        var (storage, repository, _, seriesId) = await CreateSeriesAsync(now);
+        using var _ = storage;
+
+        await repository.SyncEpisodeCatalogueAsync(
+            seriesId,
+            [new CatalogueEpisodeItem(1, 1, "Pilot", null, now.AddDays(-40))],
+            source: "tmdb",
+            CancellationToken.None);
+
+        await repository.ImportExistingAsync(
+            libraryId: "series-main", title: "Severance", startYear: 2022,
+            wantedStatus: "covered", wantedReason: "Current file is accepted.",
+            currentQuality: "WEB 1080p", targetQuality: "WEB 1080p",
+            qualityCutoffMet: true, unmonitorWhenCutoffMet: false,
+            filePath: @"C:\media\s01e01.mkv", fileSizeBytes: 123456,
+            episodes: [new ImportedEpisodeItem(1, 1, HasFile: true, FilePath: @"C:\media\s01e01.mkv", FileSizeBytes: 123456)],
+            CancellationToken.None);
+
+        var episode = Assert.Single(
+            (await repository.GetInventoryDetailAsync(seriesId, CancellationToken.None))!.Episodes,
+            item => item.EpisodeNumber == 1);
+
+        Assert.Equal("WEB 1080p", episode.CurrentQuality);
+        Assert.True(episode.QualityCutoffMet);
+    }
+
     [Fact]
     public async Task SyncEpisodeCatalogueAsync_ReSync_updates_metadata_but_never_clobbers_disk_state()
     {
