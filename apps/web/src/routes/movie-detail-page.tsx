@@ -35,6 +35,7 @@ import { DownloadDispatchDrawer } from "../components/app/download-dispatch-draw
 import { TitleTagsEditor } from "../components/app/title-tags-editor";
 import { authedFetch } from "../lib/use-auth";
 import { cn } from "../lib/utils";
+import { friendlyRuleName } from "../lib/guide-names";
 import { describeSearchReason, describeRequestFailure, formatSearchFailureNotice } from "../lib/search-reasons";
 import { candidateLabel, candidateTone, canWinSearch, isTypedCandidate, likesCandidate } from "../lib/release-candidate-status";
 import { Badge } from "../components/ui/badge";
@@ -67,9 +68,31 @@ import { toast } from "../components/shell/toaster";
 import { TitleMarkLabel } from "../components/ui/title-mark";
 import { formatDateTime as formatPreferenceDateTime, formatRuntime, formatShortDate, useDisplayPreferences } from "../lib/display-preferences";
 
+/**
+ * What Deluno recorded about the copy it holds: the release it came from, what
+ * that release matched, and where it landed. Deluno keeps this whether or not
+ * the owner's naming puts any of it in the file name.
+ */
+interface MovieCopyRecord {
+  filePath?: string | null;
+  fileSizeBytes?: number | null;
+  quality?: string | null;
+  releaseName?: string | null;
+  releaseGroup?: string | null;
+  indexerName?: string | null;
+  downloadClientName?: string | null;
+  grabbedUtc?: string | null;
+  importedUtc?: string | null;
+  source?: string | null;
+  formats: Array<{ id: string; name: string; trashId?: string | null }>;
+  planVersion?: string | null;
+  planHash?: string | null;
+}
+
 interface MovieDetailLoaderData {
   acquisitionBlockers: AcquisitionBlockersResponse | null;
   activity: ActivityEventItem[];
+  copy: MovieCopyRecord | null;
   decisions: DecisionExplanationItem[];
   dispatches: DownloadDispatchItem[];
   importRecovery: MovieImportRecoverySummary;
@@ -104,7 +127,7 @@ export async function movieDetailLoader({
   params: { id?: string };
 }): Promise<MovieDetailLoaderData> {
   const id = params.id!;
-  const [movie, metadataIssue, searchHistory, dispatches, importRecovery, activity, decisions, libraries, workflowStatus, origins, removalPreview, acquisitionBlockers] = await Promise.all([
+  const [movie, metadataIssue, searchHistory, dispatches, importRecovery, activity, decisions, libraries, workflowStatus, origins, removalPreview, acquisitionBlockers, copy] = await Promise.all([
     fetchJson<MovieListItem>(`/api/movies/${id}`),
     fetchJson<MetadataProviderIssue | null>(`/api/movies/${id}/metadata/issue`).catch(() => null),
     fetchJson<MovieSearchHistoryItem[]>("/api/movies/search-history"),
@@ -119,15 +142,18 @@ export async function movieDetailLoader({
     // Caught rather than awaited into the failure: a page that will not open
     // because it could not find out why a download is stuck is worse than a
     // page that simply does not mention it.
-    fetchJson<AcquisitionBlockersResponse>(`/api/movies/${id}/acquisition-blockers`).catch(() => null)
+    fetchJson<AcquisitionBlockersResponse>(`/api/movies/${id}/acquisition-blockers`).catch(() => null),
+    // What the copy on disk is, in Deluno's own words. The file name is a
+    // preference and may say none of it.
+    fetchJson<MovieCopyRecord>(`/api/movies/${id}/copy`).catch(() => null)
   ]);
 
-  return { acquisitionBlockers, activity, decisions, dispatches, importRecovery, libraries, metadataIssue, movie, origins, removalPreview, searchHistory, workflowStatus };
+  return { acquisitionBlockers, activity, copy, decisions, dispatches, importRecovery, libraries, metadataIssue, movie, origins, removalPreview, searchHistory, workflowStatus };
 }
 
 export function MovieDetailPage() {
   const loaderData = useLoaderData() as MovieDetailLoaderData;
-  const { acquisitionBlockers, activity, decisions, dispatches, importRecovery, libraries, metadataIssue, movie, origins, removalPreview, searchHistory, workflowStatus } = loaderData;
+  const { acquisitionBlockers, activity, copy, decisions, dispatches, importRecovery, libraries, metadataIssue, movie, origins, removalPreview, searchHistory, workflowStatus } = loaderData;
   const navigate = useNavigate();
   const revalidator = useRevalidator();
   const { preferences } = useDisplayPreferences();
@@ -904,7 +930,19 @@ export function MovieDetailPage() {
                 { label: "Library", value: library?.name ?? "Not linked" },
                 { label: "Root folder", value: library?.rootPath || "No root configured", path: Boolean(library?.rootPath) },
                 { label: "Downloads folder", value: library?.downloadsPath || "Download client default", path: Boolean(library?.downloadsPath) },
-                { label: "Import workflow", value: library?.importWorkflow === "refine-before-import" ? "Refine before import" : "Standard import" }
+                { label: "Import workflow", value: library?.importWorkflow === "refine-before-import" ? "Refine before import" : "Standard import" },
+                // What this copy is, kept by Deluno rather than read back out
+                // of the file name - which says only what the owner's naming
+                // pattern asks for, and may say none of this.
+                ...(copy?.releaseName
+                  ? [{ label: "Release taken", value: copy.releaseName, path: true }]
+                  : []),
+                ...(copy?.formats?.length
+                  ? [{ label: "Matched", value: copy.formats.map((format) => friendlyRuleName(format.name)).join(", ") }]
+                  : []),
+                ...(copy?.indexerName || copy?.downloadClientName
+                  ? [{ label: "Came from", value: [copy.indexerName, copy.downloadClientName].filter(Boolean).join(" · ") }]
+                  : [])
                 // Current and Target quality are NOT here. This table is where a
                 // title is ROUTED — library, folders, workflow — and quality is
                 // not routing. The summary strip says both, with a tone and a

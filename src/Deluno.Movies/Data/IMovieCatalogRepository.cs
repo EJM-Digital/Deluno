@@ -214,6 +214,16 @@ public interface IMovieCatalogRepository : IMovieImportRecoveryRetentionReposito
         IReadOnlyList<ExistingMovieImportRequest> requests,
         CancellationToken cancellationToken);
 
+    /// <summary>
+    /// The quality Deluno recorded for each file it holds in this library, by
+    /// path. A scan reads this before it reads a file name: an owner who names
+    /// files "Title (Year)" has not thrown the decision away, and Deluno must
+    /// not pretend they have.
+    /// </summary>
+    Task<IReadOnlyDictionary<string, string>> ListRecordedFileQualitiesAsync(
+        string libraryId,
+        CancellationToken cancellationToken);
+
     IAsyncEnumerable<MovieTrackedFileItem> StreamTrackedFilesAsync(
         string libraryId,
         CancellationToken cancellationToken);

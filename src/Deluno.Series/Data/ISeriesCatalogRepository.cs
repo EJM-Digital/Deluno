@@ -271,6 +271,15 @@ public interface ISeriesCatalogRepository : ISeriesImportRecoveryRetentionReposi
         IReadOnlyList<ExistingSeriesImportRequest> requests,
         CancellationToken cancellationToken);
 
+    /// <summary>
+    /// The quality Deluno recorded for each episode file it holds in this
+    /// library, by path. See <c>IMovieCatalogRepository</c> for why a scan
+    /// reads this before it reads a file name.
+    /// </summary>
+    Task<IReadOnlyDictionary<string, string>> ListRecordedFileQualitiesAsync(
+        string libraryId,
+        CancellationToken cancellationToken);
+
     IAsyncEnumerable<SeriesTrackedFileItem> StreamTrackedFilesAsync(
         string libraryId,
         CancellationToken cancellationToken);

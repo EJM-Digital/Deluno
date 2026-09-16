@@ -393,6 +393,57 @@ public sealed class ExistingLibraryImportServiceTests
         Assert.Equal("1 of 3 aired episodes are here.", after.WantedReason);
     }
 
+    /// <summary>
+    /// Naming is a preference; the record is the truth.
+    ///
+    /// <para>An owner who names files "Title (Year)" and nothing else has not
+    /// thrown away what Deluno decided. A scan used to read the quality back
+    /// out of the name, so a library named that way came back as unknown
+    /// quality for files Deluno imported itself - and an import of a file it
+    /// already holds would then have downgraded what it knows.</para>
+    /// </summary>
+    [Fact]
+    public async Task A_scan_reads_the_quality_Deluno_recorded_rather_than_the_file_name()
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-09-16T09:00:00Z"));
+        await InitializeAsync(storage, timeProvider);
+
+        var rootPath = Path.Combine(storage.DataRoot, "movies-plain");
+        var folder = Path.Combine(rootPath, "Sintel (2010)");
+        Directory.CreateDirectory(folder);
+        // Nothing here says WEB 1080p.
+        var filePath = Path.Combine(folder, "Sintel (2010).mkv");
+        await File.WriteAllTextAsync(filePath, string.Empty);
+
+        var libraries = new SqliteLibrariesRepository(storage.Factory, timeProvider);
+        var libraryId = await CreateLibraryAsync(libraries, rootPath, "movies");
+        var movies = new SqliteMovieCatalogRepository(storage.Factory, timeProvider);
+        var service = CreateService(storage, timeProvider, libraries, movies);
+
+        var beforeRecord = await service.PreviewAsync(libraryId, null, 10, CancellationToken.None);
+        Assert.Null(Assert.Single(beforeRecord!.Items).DetectedQuality);
+
+        // Deluno holds it, and its record says what the release was.
+        Assert.True(await movies.ImportExistingAsync(
+            libraryId,
+            "Sintel",
+            2010,
+            WantedStatuses.Covered,
+            "This movie is already in your library.",
+            "WEB 1080p",
+            "WEB 1080p",
+            qualityCutoffMet: true,
+            unmonitorWhenCutoffMet: false,
+            filePath,
+            1024,
+            CancellationToken.None));
+
+        var afterRecord = await service.PreviewAsync(libraryId, null, 10, CancellationToken.None);
+
+        Assert.Equal("WEB 1080p", Assert.Single(afterRecord!.Items).DetectedQuality);
+    }
+
     [Fact]
     public async Task Folders_with_no_video_are_walked_past_rather_than_stopping_the_run()
     {

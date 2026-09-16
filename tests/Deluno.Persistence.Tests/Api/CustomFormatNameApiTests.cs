@@ -58,6 +58,30 @@ public sealed class CustomFormatNameApiTests
     }
 
     /// <summary>
+    /// The title page asks Deluno what the copy on disk is. A film with no file
+    /// answers plainly rather than failing, and one that does not exist is a
+    /// not-found.
+    /// </summary>
+    [Fact]
+    public async Task A_title_can_be_asked_what_copy_Deluno_holds()
+    {
+        await using var app = await ApplicationTestHost.StartAsync();
+        var created = await app.Client.PostAsJsonAsync("/api/movies/", new { title = $"Copy record {Guid.NewGuid():N}", releaseYear = 2026, monitored = true });
+        Assert.Equal(HttpStatusCode.Created, created.StatusCode);
+        var movie = await created.Content.ReadFromJsonAsync<JsonElement>();
+        var id = movie.GetProperty("id").GetString();
+
+        var copy = await app.Client.GetAsync($"/api/movies/{id}/copy");
+        var missing = await app.Client.GetAsync("/api/movies/not-a-movie/copy");
+
+        Assert.Equal(HttpStatusCode.OK, copy.StatusCode);
+        var body = await copy.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal(id, body.GetProperty("movieId").GetString());
+        Assert.Empty(body.GetProperty("formats").EnumerateArray());
+        Assert.Equal(HttpStatusCode.NotFound, missing.StatusCode);
+    }
+
+    /// <summary>
     /// A rule made from a guide format names the format and gets the guide's
     /// conditions - TRaSH's specifications, for TRaSH's own copy of the format
     /// for that media type. The screens used to write them three ways.
