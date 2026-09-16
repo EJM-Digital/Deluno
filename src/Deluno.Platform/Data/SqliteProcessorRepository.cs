@@ -439,7 +439,7 @@ public sealed class SqliteProcessorRepository(
     private static string NormalizeProcessorHandoffStatus(string? status)
         => status?.Trim().ToLowerInvariant() switch
         {
-            "submitted" or "accepted" or "started" or "waiting" or "completed" or "failed" or "timed-out" => status.Trim().ToLowerInvariant(),
+            "submitted" or "accepted" or "started" or "waiting" or "completed" or "failed" or "rejected" or "timed-out" => status.Trim().ToLowerInvariant(),
             _ => "waiting"
         };
 

@@ -99,20 +99,20 @@ public abstract class LibrarySearchJobHandler(
         DateTimeOffset now,
         CancellationToken cancellationToken)
     {
-        var ignoreRetryWindow = string.Equals(payload.TriggeredBy, "manual", StringComparison.OrdinalIgnoreCase);
+        var ignoreRetryWindow = IgnoresRetryWindow(payload);
         var startedUtc = now;
         var retryDelayed = ignoreRetryWindow
             ? 0
             : await movieCatalogRepository.CountRetryDelayedWantedAsync(payload.LibraryId, now, cancellationToken, searchStatus);
         var candidates = (await movieCatalogRepository.ListEligibleWantedAsync(
             payload.LibraryId,
-            payload.MaxItems,
+            CandidateLimit(payload),
             now,
             ignoreRetryWindow,
             cancellationToken,
             searchStatus,
             scopeFilters))
-            .Where(candidate => string.IsNullOrWhiteSpace(payload.TargetEntityId) || string.Equals(candidate.MovieId, payload.TargetEntityId, StringComparison.OrdinalIgnoreCase))
+            .Where(candidate => MatchesTarget(payload, candidate.MovieId))
             .ToArray();
         var matchedCount = 0;
         var blockedCount = 0;
@@ -297,6 +297,38 @@ public abstract class LibrarySearchJobHandler(
         return SearchExecutionSupport.FormatCompletionMessage(payload.LibraryName, candidates.Length, configuredSources, configuredClients, "movie");
     }
 
+    /// <summary>
+    /// How many eligible titles a targeted search reads before it filters to
+    /// its target. The limit used to be the payload's <c>MaxItems</c> - one -
+    /// applied before the filter, so a search aimed at one title took whichever
+    /// title happened to come first and then threw it away (#497). Big enough
+    /// to hold any real library.
+    /// </summary>
+    private const int TargetedCandidateLimit = 100_000;
+
+    private static bool IsTargeted(JobPayloads.LibrarySearchPayload payload)
+        => !string.IsNullOrWhiteSpace(payload.TargetEntityId);
+
+    /// <summary>
+    /// A search aimed at one title was asked for because something just
+    /// happened to it - its release was refused, its download died - so the
+    /// retry window that paces routine searching does not apply.
+    /// </summary>
+    private static bool IgnoresRetryWindow(JobPayloads.LibrarySearchPayload payload)
+        => IsTargeted(payload) || string.Equals(payload.TriggeredBy, "manual", StringComparison.OrdinalIgnoreCase);
+
+    private static int CandidateLimit(JobPayloads.LibrarySearchPayload payload)
+        => IsTargeted(payload) ? TargetedCandidateLimit : payload.MaxItems;
+
+    /// <summary>
+    /// Whether a candidate is the target. An episode is named by its own id
+    /// or its series: a download is recorded against the episode, a person
+    /// asks for the show.
+    /// </summary>
+    private static bool MatchesTarget(JobPayloads.LibrarySearchPayload payload, params string?[] ids)
+        => !IsTargeted(payload) ||
+           ids.Any(id => string.Equals(id, payload.TargetEntityId, StringComparison.OrdinalIgnoreCase));
+
     private async Task<string> SearchSeriesAsync(
         JobQueueItem job,
         JobPayloads.LibrarySearchPayload payload,
@@ -312,16 +344,16 @@ public abstract class LibrarySearchJobHandler(
         DateTimeOffset now,
         CancellationToken cancellationToken)
     {
-        var seriesIgnoreRetryWindow = string.Equals(payload.TriggeredBy, "manual", StringComparison.OrdinalIgnoreCase);
+        var seriesIgnoreRetryWindow = IgnoresRetryWindow(payload);
         var seriesCandidates = (await seriesCatalogRepository.ListEligibleWantedAsync(
             payload.LibraryId,
-            payload.MaxItems,
+            CandidateLimit(payload),
             now,
             seriesIgnoreRetryWindow,
             cancellationToken,
             searchStatus,
             scopeFilters))
-            .Where(candidate => string.IsNullOrWhiteSpace(payload.TargetEntityId) || string.Equals(candidate.SeriesId, payload.TargetEntityId, StringComparison.OrdinalIgnoreCase))
+            .Where(candidate => MatchesTarget(payload, candidate.SeriesId))
             .ToArray();
         var seriesStartedUtc = now;
         var seriesRetryDelayed = seriesIgnoreRetryWindow
@@ -504,13 +536,13 @@ public abstract class LibrarySearchJobHandler(
         // due, and asks for the same half of the work.
         var eligibleEpisodes = (await seriesCatalogRepository.ListEligibleWantedEpisodesAsync(
             payload.LibraryId,
-            payload.MaxItems,
+            CandidateLimit(payload),
             now,
             seriesIgnoreRetryWindow,
             cancellationToken,
             searchStatus,
             scopeFilters))
-            .Where(episode => string.IsNullOrWhiteSpace(payload.TargetEntityId) || string.Equals(episode.SeriesId, payload.TargetEntityId, StringComparison.OrdinalIgnoreCase))
+            .Where(episode => MatchesTarget(payload, episode.SeriesId, episode.EpisodeId))
             .Select(episode => new EpisodeSearchPlanItem(
                 EpisodeId: episode.EpisodeId,
                 SeriesId: episode.SeriesId,

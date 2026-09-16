@@ -1,0 +1,155 @@
+using System.Text.Json;
+using Deluno.Contracts;
+using Deluno.Integrations.DownloadClients;
+using Deluno.Jobs.Contracts;
+using Deluno.Jobs.Data;
+using Deluno.Movies.Contracts;
+using Deluno.Movies.Data;
+using Deluno.Platform.Contracts;
+using Deluno.Series.Contracts;
+using Deluno.Series.Data;
+using Microsoft.Extensions.Logging;
+
+namespace Deluno.Worker.Services;
+
+/// <summary>
+/// What Deluno does when a processor gives up on a file (#497).
+///
+/// <para><b>Rejected</b> means the processor has deleted the download and is
+/// waiting for Deluno's answer before it counts the deletion as safe. So the
+/// answer is yes only once the release is refused: from then on no search takes
+/// that copy again. Having the client forget it and searching for another copy
+/// follow, and neither decides the answer — the client is told again by the
+/// scheduled clean-up if it is off, and the next scheduled search finds the
+/// title still wanted if the immediate one cannot run.</para>
+///
+/// <para><b>Held</b> means the processor kept the original. Nothing is refused:
+/// the file may be fine and the processor wrong. It becomes a recovery case so
+/// a person sees it.</para>
+/// </summary>
+public sealed class ProcessorFailureReportHandler(
+    IJobQueueRepository jobQueueRepository,
+    IDownloadDispatchesRepository dispatches,
+    IBlockedReleaseRepository blockedReleases,
+    IRefusedDownloadCleanupService refusedDownloadCleanup,
+    IJobScheduler jobScheduler,
+    IMovieCatalogRepository movieCatalogRepository,
+    ISeriesCatalogRepository seriesCatalogRepository,
+    ILogger<ProcessorFailureReportHandler> logger) : IProcessorFailureReportHandler
+{
+    public async Task<ProcessorRejectionOutcome> HandleRejectedAsync(
+        ProcessorFailureReport report,
+        CancellationToken cancellationToken)
+    {
+        var handoff = report.Handoff;
+        var link = await jobQueueRepository.FindRecentDispatchLinkAsync(handoff.ClientId, handoff.ReleaseName, cancellationToken);
+        var dispatch = link is null ? null : await dispatches.GetDispatchAsync(link.DispatchId, cancellationToken);
+        if (dispatch is null)
+        {
+            return new ProcessorRejectionOutcome(
+                false,
+                $"Deluno could not find the download {handoff.ReleaseName} came from, so it could not refuse that release. Keep the original and hand it back.");
+        }
+
+        var failureClass = string.IsNullOrWhiteSpace(report.FailureClass) ? null : report.FailureClass.Trim();
+        var reason = failureClass is null
+            ? $"{report.ProcessorName} could not process it and removed it: {report.Message}"
+            : $"{report.ProcessorName} could not process it ({failureClass}) and removed it: {report.Message}";
+
+        BlockedRelease blocked;
+        try
+        {
+            blocked = await blockedReleases.BlockAsync(
+                new BlockedRelease(
+                    Guid.NewGuid().ToString("n"),
+                    BlockedReleaseKeys.For(dispatch.ReleaseName, dispatch.IndexerName),
+                    dispatch.ReleaseName,
+                    dispatch.IndexerName,
+                    dispatch.MediaType,
+                    dispatch.EntityId,
+                    handoff.ReleaseName,
+                    ImportFailurePolicy.ProcessorRejected,
+                    reason,
+                    dispatch.TorrentHashOrItemId,
+                    dispatch.DownloadClientId,
+                    dispatch.DownloadClientName,
+                    DateTimeOffset.MinValue),
+                cancellationToken);
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            logger.LogWarning(exception, "Could not refuse {ReleaseName} after {Processor} rejected it.", dispatch.ReleaseName, report.ProcessorName);
+            return new ProcessorRejectionOutcome(
+                false,
+                $"Deluno could not record {dispatch.ReleaseName} as refused. Keep the original and hand it back.");
+        }
+
+        try
+        {
+            await refusedDownloadCleanup.CleanUpOneAsync(blocked.Id, cancellationToken);
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            // The scheduled clean-up tries every uncleared refusal again.
+            logger.LogInformation(exception, "{Client} will be told to forget {ReleaseName} on the next clean-up.", dispatch.DownloadClientName, dispatch.ReleaseName);
+        }
+
+        var search = await jobScheduler.EnqueueAsync(
+            new EnqueueJobRequest(
+                LibrarySearchJobTypes.For(dispatch.MediaType),
+                "processor-rejected",
+                JsonSerializer.Serialize(new
+                {
+                    libraryId = dispatch.LibraryId,
+                    libraryName = report.Library.Name,
+                    mediaType = dispatch.MediaType,
+                    checkMissing = true,
+                    checkUpgrades = true,
+                    maxItems = 1,
+                    retryDelayHours = 24,
+                    triggeredBy = "processor-rejected",
+                    targetEntityId = dispatch.EntityId
+                }),
+                "download_dispatch",
+                dispatch.Id,
+                IdempotencyKey: $"processor-rejected:{handoff.Id}",
+                DedupeKey: $"processor-rejected:{handoff.Id}"),
+            cancellationToken);
+
+        return new ProcessorRejectionOutcome(
+            true,
+            $"{report.ProcessorName} could not process {dispatch.ReleaseName} and removed it. Deluno refused that release and is searching for another copy.",
+            blocked.Id,
+            search.Id);
+    }
+
+    public async Task HandleHeldAsync(
+        ProcessorFailureReport report,
+        CancellationToken cancellationToken)
+    {
+        var handoff = report.Handoff;
+        var summary = $"{report.ProcessorName} could not process {handoff.ReleaseName} and is keeping the original: {report.Message}";
+        const string recommended = "Retry or release the file in the processor, or import the original from the download folder if it is acceptable.";
+        var details = JsonSerializer.Serialize(new
+        {
+            libraryId = handoff.LibraryId,
+            handoffId = handoff.Id,
+            releaseName = handoff.ReleaseName,
+            sourcePath = handoff.SourcePath,
+            failureClass = report.FailureClass
+        });
+
+        if (DelunoValueNormalizers.NormalizeMediaType(report.Library.MediaType) == "tv")
+        {
+            await seriesCatalogRepository.AddImportRecoveryCaseAsync(
+                new CreateSeriesImportRecoveryCaseRequest(handoff.ReleaseName, "processor-held", summary, recommended, details),
+                cancellationToken);
+        }
+        else
+        {
+            await movieCatalogRepository.AddImportRecoveryCaseAsync(
+                new CreateMovieImportRecoveryCaseRequest(handoff.ReleaseName, "processor-held", summary, recommended, details),
+                cancellationToken);
+        }
+    }
+}

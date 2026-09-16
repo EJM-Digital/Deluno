@@ -99,6 +99,17 @@ public static class ImportFailurePolicy
     public const string Conflict = "conflict";
     public const string ReplacementOwnershipMismatch = "replacementOwnershipMismatch";
 
+    /// <summary>
+    /// The processing stage could not use the file and deleted it (#497).
+    ///
+    /// <para>Not an import failure and not in <see cref="KnownReasons"/>: the
+    /// person already chose this outcome when they set the processor's reject
+    /// policy, so there is no rule here for them to answer again. It is still a
+    /// reason a release is refused, so the blocklist has words for it and the
+    /// client is told to forget the copy.</para>
+    /// </summary>
+    public const string ProcessorRejected = "processorRejected";
+
     /// <summary>Every reason this table has an answer for.</summary>
     public static readonly IReadOnlyList<string> KnownReasons =
     [
@@ -164,7 +175,7 @@ public static class ImportFailurePolicy
     /// </summary>
     public static string CategoryFor(string reasonCode) => reasonCode switch
     {
-        NoVideoStream or LikelySample or UnsupportedFile or MediaProbeRejected => FailureCategories.BadFile,
+        NoVideoStream or LikelySample or UnsupportedFile or MediaProbeRejected or ProcessorRejected => FailureCategories.BadFile,
         ReplacementRejected => FailureCategories.NotAFailure,
         Unmatched or ImportFailed or MediaProbeUnreadable => FailureCategories.CannotSay,
         _ => FailureCategories.YourSetup
@@ -177,7 +188,7 @@ public static class ImportFailurePolicy
     /// might be environmental, and deleting on a guess cannot be undone.</para>
     /// </summary>
     public static bool ShouldDeletePayload(string reasonCode)
-        => reasonCode is NoVideoStream or LikelySample or ReplacementRejected;
+        => reasonCode is NoVideoStream or LikelySample or ReplacementRejected or ProcessorRejected;
 
     /// <summary>
     /// Whether this counts against the download client's health record.

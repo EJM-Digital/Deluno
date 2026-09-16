@@ -106,6 +106,7 @@ public static class ExternalIntegrationEndpointRouteBuilderExtensions
                     "metadata",
                     "media-probing",
                     "pre-import-processing",
+                    ProcessorCapabilities.RejectRegrab,
                     "activity-feed",
                     "signalr"
                 ],
@@ -519,6 +520,7 @@ public static class ExternalIntegrationEndpointRouteBuilderExtensions
             ILibrariesRepository librariesRepository,
             IActivityFeedRepository activityFeed,
             IJobScheduler jobScheduler,
+            IProcessorFailureReportHandler failureReports,
             CancellationToken cancellationToken) =>
         {
             var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
@@ -598,6 +600,60 @@ public static class ExternalIntegrationEndpointRouteBuilderExtensions
                 });
             }
 
+            // A processor that deleted its copy is waiting on this answer before
+            // it counts the deletion as safe (#497). A repeat of a report already
+            // acted on is answered the same way and does nothing new: a worker
+            // restart must not refuse twice or search twice.
+            var disposition = status == "failed" ? ProcessorDispositions.Normalize(request.Disposition) : null;
+            if (disposition == ProcessorDispositions.Rejected)
+            {
+                if (string.Equals(handoff.Status, "rejected", StringComparison.OrdinalIgnoreCase))
+                {
+                    return Results.Json(
+                        new { status = "rejected", handoffId = handoff.Id, alreadyHandled = true, message = handoff.FailureMessage },
+                        statusCode: StatusCodes.Status202Accepted);
+                }
+
+                var outcome = await failureReports.HandleRejectedAsync(
+                    new ProcessorFailureReport(library, handoff, processorName, message ?? "No reason given.", request.FailureClass),
+                    cancellationToken);
+                if (!outcome.Acted)
+                {
+                    await activityFeed.RecordActivityAsync(
+                        "processing.rejected.not-acted",
+                        outcome.Message,
+                        JsonSerializer.Serialize(new { request.LibraryId, HandoffId = handoff.Id, handoff.ReleaseName, Message = message }),
+                        null,
+                        "processor-handoff",
+                        handoff.Id,
+                        cancellationToken);
+                    return Results.Conflict(new { message = outcome.Message, handoffId = handoff.Id });
+                }
+
+                await repository.UpdateProcessorHandoffAsync(handoff.Id, "rejected", null, null, outcome.Message, cancellationToken);
+                var rejectedActivity = await activityFeed.RecordActivityAsync(
+                    "processing.rejected",
+                    outcome.Message,
+                    JsonSerializer.Serialize(new
+                    {
+                        request.LibraryId,
+                        HandoffId = handoff.Id,
+                        handoff.ReleaseName,
+                        Message = message,
+                        request.FailureClass,
+                        outcome.BlockedReleaseId,
+                        outcome.SearchJobId,
+                        ProcessorName = processorName
+                    }),
+                    outcome.SearchJobId,
+                    "processor-handoff",
+                    handoff.Id,
+                    cancellationToken);
+                return Results.Json(
+                    new { status = "rejected", handoffId = handoff.Id, activityId = rejectedActivity.Id, outcome.BlockedReleaseId, outcome.SearchJobId },
+                    statusCode: StatusCodes.Status202Accepted);
+            }
+
             await repository.UpdateProcessorHandoffAsync(
                 handoff.Id,
                 status,
@@ -605,6 +661,13 @@ public static class ExternalIntegrationEndpointRouteBuilderExtensions
                 null,
                 status == "failed" ? message : null,
                 cancellationToken);
+
+            if (disposition == ProcessorDispositions.Held)
+            {
+                await failureReports.HandleHeldAsync(
+                    new ProcessorFailureReport(library, handoff, processorName, message ?? "No reason given.", request.FailureClass),
+                    cancellationToken);
+            }
 
             var activity = await activityFeed.RecordActivityAsync(
                 "processing",
