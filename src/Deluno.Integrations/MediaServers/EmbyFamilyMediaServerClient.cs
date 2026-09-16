@@ -9,8 +9,8 @@ namespace Deluno.Integrations.MediaServers;
 /// Jellyfin and Emby.
 ///
 /// <para>One implementation for two kinds because Jellyfin began as a fork of
-/// Emby and the parts Deluno uses are still the same API: an API key in
-/// <c>X-Emby-Token</c>, <c>/System/Info</c>, <c>/Users</c>, <c>/Items</c> with
+/// Emby and the parts Deluno uses are still the same API: an API key,
+/// <c>/System/Info</c>, <c>/Users</c>, <c>/Items</c> with
 /// provider ids, per-user play state under <c>/Users/{id}/Items</c>, and
 /// <c>/Library/Media/Updated</c> to report a deletion. Emby serves them under
 /// <c>/emby</c>; Jellyfin at the root.</para>
@@ -293,12 +293,16 @@ public abstract class EmbyFamilyMediaServerClient(IHttpClientFactory httpClientF
         return new Uri($"{baseUrl}{prefix}{pathAndQuery}");
     }
 
-    private static IReadOnlyDictionary<string, string> Headers(MediaServerConnection connection)
-        => new Dictionary<string, string>
-        {
-            ["X-Emby-Token"] = connection.Token ?? string.Empty,
-            ["Accept"] = "application/json"
-        };
+    private IReadOnlyDictionary<string, string> Headers(MediaServerConnection connection)
+    {
+        var headers = new Dictionary<string, string> { ["Accept"] = "application/json" };
+        headers[TokenHeaderName] = TokenHeaderValue(connection.Token ?? string.Empty);
+        return headers;
+    }
+
+    protected abstract string TokenHeaderName { get; }
+
+    protected abstract string TokenHeaderValue(string token);
 }
 
 public sealed class JellyfinMediaServerClient(IHttpClientFactory httpClientFactory) : EmbyFamilyMediaServerClient(httpClientFactory)
@@ -306,6 +310,12 @@ public sealed class JellyfinMediaServerClient(IHttpClientFactory httpClientFacto
     public override string Kind => MediaServerKinds.Jellyfin;
 
     protected override string PathPrefix => string.Empty;
+
+    // Jellyfin 10.11 turned the legacy X-Emby-Token header off by default, and
+    // 12.1 on the rig refused it with 401 while accepting this form.
+    protected override string TokenHeaderName => "Authorization";
+
+    protected override string TokenHeaderValue(string token) => $"MediaBrowser Token=\"{token}\"";
 }
 
 public sealed class EmbyMediaServerClient(IHttpClientFactory httpClientFactory) : EmbyFamilyMediaServerClient(httpClientFactory)
@@ -313,4 +323,8 @@ public sealed class EmbyMediaServerClient(IHttpClientFactory httpClientFactory) 
     public override string Kind => MediaServerKinds.Emby;
 
     protected override string PathPrefix => "/emby";
+
+    protected override string TokenHeaderName => "X-Emby-Token";
+
+    protected override string TokenHeaderValue(string token) => token;
 }
