@@ -80,6 +80,63 @@ public sealed class SeriesCatalogueSyncPersistenceTests
         Assert.True(episode.QualityCutoffMet);
     }
 
+    /// <summary>
+    /// A rescan fills in what is missing without undoing what is settled.
+    ///
+    /// <para>Proved on the rig, in both directions. Reviewing existing files
+    /// healed an episode that held a file and recorded no quality - which is
+    /// how an install upgrading past that defect recovers. The same pass then
+    /// cleared <c>quality_cutoff_met</c> on an episode that had legitimately
+    /// met it, because the flag was written unconditionally: a rescan reports
+    /// "there is a file here" without deciding a cutoff, so every settled
+    /// episode came back looking upgradable.</para>
+    /// </summary>
+    [Fact]
+    public async Task A_rescan_fills_a_missing_quality_without_unsettling_a_met_cutoff()
+    {
+        var now = DateTimeOffset.Parse("2026-09-16T05:00:00Z");
+        var (storage, repository, _, seriesId) = await CreateSeriesAsync(now);
+        using var _ = storage;
+
+        await repository.SyncEpisodeCatalogueAsync(
+            seriesId,
+            [new CatalogueEpisodeItem(1, 1, "Pilot", null, now.AddDays(-40))],
+            source: "tmdb",
+            CancellationToken.None);
+
+        // An import that met the cutoff: settled.
+        await repository.ImportExistingAsync(
+            libraryId: "series-main", title: "Severance", startYear: 2022,
+            wantedStatus: "covered", wantedReason: "Current file is accepted.",
+            currentQuality: "WEB 1080p", targetQuality: "WEB 1080p",
+            qualityCutoffMet: true, unmonitorWhenCutoffMet: false,
+            filePath: @"C:\media\s01e01.mkv", fileSizeBytes: 123456,
+            episodes: [new ImportedEpisodeItem(1, 1, HasFile: true, FilePath: @"C:\media\s01e01.mkv", FileSizeBytes: 123456)],
+            CancellationToken.None);
+
+        var settled = Assert.Single(
+            (await repository.GetInventoryDetailAsync(seriesId, CancellationToken.None))!.Episodes,
+            item => item.EpisodeNumber == 1);
+        Assert.True(settled.QualityCutoffMet);
+
+        // A rescan: it sees the file, and decides no cutoff.
+        await repository.ImportExistingAsync(
+            libraryId: "series-main", title: "Severance", startYear: 2022,
+            wantedStatus: "covered", wantedReason: "Found during a library review.",
+            currentQuality: "WEB 1080p", targetQuality: "WEB 1080p",
+            qualityCutoffMet: false, unmonitorWhenCutoffMet: false,
+            filePath: @"C:\media\s01e01.mkv", fileSizeBytes: 123456,
+            episodes: [new ImportedEpisodeItem(1, 1, HasFile: true, FilePath: @"C:\media\s01e01.mkv", FileSizeBytes: 123456)],
+            CancellationToken.None);
+
+        var afterRescan = Assert.Single(
+            (await repository.GetInventoryDetailAsync(seriesId, CancellationToken.None))!.Episodes,
+            item => item.EpisodeNumber == 1);
+
+        Assert.Equal("WEB 1080p", afterRescan.CurrentQuality);
+        Assert.True(afterRescan.QualityCutoffMet);
+    }
+
     [Fact]
     public async Task SyncEpisodeCatalogueAsync_ReSync_updates_metadata_but_never_clobbers_disk_state()
     {

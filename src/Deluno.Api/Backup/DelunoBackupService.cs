@@ -64,10 +64,10 @@ public sealed class DelunoBackupService(
     public async Task<IReadOnlyList<BackupItem>> ListBackupsAsync(CancellationToken cancellationToken)
     {
         var state = await ReadSettingsStateAsync(cancellationToken);
-        Directory.CreateDirectory(state.BackupFolder);
+        Directory.CreateDirectory(EffectiveBackupFolder(state));
 
         return Directory
-            .EnumerateFiles(state.BackupFolder, "*.zip", SearchOption.TopDirectoryOnly)
+            .EnumerateFiles(EffectiveBackupFolder(state), "*.zip", SearchOption.TopDirectoryOnly)
             .Select(ReadBackupItem)
             .Where(item => item is not null)
             .Select(item => item!)
@@ -81,12 +81,12 @@ public sealed class DelunoBackupService(
         try
         {
             var state = await ReadSettingsStateAsync(cancellationToken);
-            Directory.CreateDirectory(state.BackupFolder);
+            Directory.CreateDirectory(EffectiveBackupFolder(state));
 
             var now = timeProvider.GetUtcNow();
             var safeReason = string.IsNullOrWhiteSpace(reason) ? "manual" : reason.Trim();
             var id = $"deluno-backup-{now:yyyyMMdd-HHmmss}";
-            var targetPath = Path.Combine(state.BackupFolder, $"{id}.zip");
+            var targetPath = Path.Combine(EffectiveBackupFolder(state), $"{id}.zip");
             var dataFiles = EnumerateDataFiles().ToArray();
             var archived = new List<string>(dataFiles.Length);
 
@@ -169,7 +169,7 @@ public sealed class DelunoBackupService(
     public async Task<(Stream Stream, string ContentType, string FileName)?> OpenBackupAsync(string id, CancellationToken cancellationToken)
     {
         var state = await ReadSettingsStateAsync(cancellationToken);
-        var file = ResolveBackupPath(state.BackupFolder, id);
+        var file = ResolveBackupPath(EffectiveBackupFolder(state), id);
         if (file is null || !File.Exists(file))
         {
             return null;
@@ -182,7 +182,7 @@ public sealed class DelunoBackupService(
     public async Task<bool> DeleteBackupAsync(string id, CancellationToken cancellationToken)
     {
         var state = await ReadSettingsStateAsync(cancellationToken);
-        var file = ResolveBackupPath(state.BackupFolder, id);
+        var file = ResolveBackupPath(EffectiveBackupFolder(state), id);
         if (file is null || !File.Exists(file))
         {
             return false;
@@ -475,7 +475,15 @@ public sealed class DelunoBackupService(
                 Frequency = "daily",
                 TimeOfDay = "03:00",
                 RetentionCount = 7,
-                BackupFolder = DefaultBackupFolder,
+                // Deliberately empty. Writing the computed default here turned
+                // "wherever the data root is" into a fixed absolute path the
+                // moment the file was first created - so a data directory
+                // copied, restored or moved to another machine kept sending
+                // backups to the old machine's path. This rig inherited
+                // C:\Projects\Deluno\src\Deluno.Host\dataackups from a
+                // developer's checkout and dutifully created it on a server.
+                // Empty means "the default, wherever that is now".
+                BackupFolder = string.Empty,
                 LastRunUtc = null,
                 NextRunUtc = null
             };
@@ -500,7 +508,7 @@ public sealed class DelunoBackupService(
     private async Task WriteSettingsStateAsync(BackupSettingsState state, CancellationToken cancellationToken)
     {
         Directory.CreateDirectory(DefaultBackupFolder);
-        Directory.CreateDirectory(state.BackupFolder);
+        Directory.CreateDirectory(EffectiveBackupFolder(state));
         await using var stream = File.Create(SettingsPath);
         await JsonSerializer.SerializeAsync(stream, state, JsonOptions, cancellationToken);
     }
@@ -511,7 +519,7 @@ public sealed class DelunoBackupService(
             state.Frequency,
             state.TimeOfDay,
             state.RetentionCount,
-            state.BackupFolder,
+            EffectiveBackupFolder(state),
             state.LastRunUtc,
             state.NextRunUtc);
 
@@ -539,11 +547,19 @@ public sealed class DelunoBackupService(
         return candidate;
     }
 
-    private string NormalizeBackupFolder(string? value)
-    {
-        var path = string.IsNullOrWhiteSpace(value) ? DefaultBackupFolder : value.Trim();
-        return Path.GetFullPath(path);
-    }
+    /// <summary>
+    /// What the owner chose, or nothing. An empty answer means "the default",
+    /// which is resolved from the data root at the moment it is used rather
+    /// than frozen into the settings file.
+    /// </summary>
+    private static string NormalizeBackupFolder(string? value)
+        => string.IsNullOrWhiteSpace(value) ? string.Empty : Path.GetFullPath(value.Trim());
+
+    /// <summary>
+    /// The folder to actually write to: the chosen one, else today's default.
+    /// </summary>
+    private string EffectiveBackupFolder(BackupSettingsState state)
+        => string.IsNullOrWhiteSpace(state.BackupFolder) ? DefaultBackupFolder : state.BackupFolder;
 
     private static string NormalizeFrequency(string? value)
         => value?.Trim().ToLowerInvariant() switch

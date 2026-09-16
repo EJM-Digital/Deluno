@@ -29,6 +29,65 @@ public sealed class DelunoBackupServiceTests
         Assert.Equal(500, loaded.RetentionCount);
     }
 
+    /// <summary>
+    /// The default backup folder follows the data root, and is never frozen.
+    ///
+    /// <para>It used to be materialised into the settings file the first time
+    /// they were written, which turned "wherever the data root is" into a fixed
+    /// absolute path. A data directory then carried that path with it: the
+    /// physical rig inherited
+    /// <c>C:\Projects\Deluno\src\Deluno.Host\dataackups</c> from a
+    /// developer's checkout and created it on a server, while the operator's
+    /// own data folder stayed empty. Backups were real, and nowhere anybody
+    /// would look for them.</para>
+    /// </summary>
+    [Fact]
+    public async Task An_unchosen_backup_folder_follows_the_data_root_rather_than_being_frozen()
+    {
+        using var first = TempDataRoot.Create();
+        var service = CreateService(first.Path, "2026-09-16T05:00:00Z");
+
+        // Nothing chosen: the settings file must not record a folder.
+        await service.GetSettingsAsync(CancellationToken.None);
+        var settingsFile = Path.Combine(first.Path, "backups", "backup-settings.json");
+        Assert.True(File.Exists(settingsFile));
+        Assert.DoesNotContain("\"backupFolder\": \"" + first.Path.Replace("\\", "\\\\"), File.ReadAllText(settingsFile), StringComparison.Ordinal);
+
+        var created = await service.CreateBackupAsync("manual", CancellationToken.None);
+        Assert.StartsWith(Path.Combine(first.Path, "backups"), created.FullPath, StringComparison.OrdinalIgnoreCase);
+
+        // The same settings, carried to a different data root, follow it.
+        using var second = TempDataRoot.Create();
+        Directory.CreateDirectory(Path.Combine(second.Path, "backups"));
+        File.Copy(settingsFile, Path.Combine(second.Path, "backups", "backup-settings.json"), overwrite: true);
+
+        var moved = CreateService(second.Path, "2026-09-16T06:00:00Z");
+        var movedBackup = await moved.CreateBackupAsync("manual", CancellationToken.None);
+
+        Assert.StartsWith(Path.Combine(second.Path, "backups"), movedBackup.FullPath, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain(first.Path, movedBackup.FullPath, StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// A folder the owner actually chose is still honoured, and still moves
+    /// with them: the fix must not quietly ignore an explicit setting.
+    /// </summary>
+    [Fact]
+    public async Task A_chosen_backup_folder_is_kept()
+    {
+        using var storage = TempDataRoot.Create();
+        using var chosen = TempDataRoot.Create();
+        var service = CreateService(storage.Path, "2026-09-16T05:00:00Z");
+
+        await service.SaveSettingsAsync(
+            new UpdateBackupSettingsRequest(false, "daily", "02:00", 7, chosen.Path),
+            CancellationToken.None);
+
+        var created = await service.CreateBackupAsync("manual", CancellationToken.None);
+
+        Assert.StartsWith(chosen.Path, created.FullPath, StringComparison.OrdinalIgnoreCase);
+    }
+
     [Fact]
     public async Task RestoreAsync_restores_backup_into_second_machine_profile_and_keeps_pre_restore_copy()
     {
