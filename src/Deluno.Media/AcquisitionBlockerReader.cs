@@ -164,8 +164,13 @@ public static class AcquisitionBlockerReader
             blockers.Add(new AcquisitionBlocker(
                 AcquisitionBlockerKinds.SearchDeferred,
                 "deluno",
-                $"Deluno is waiting until {nextEligible:u} before searching again, after an earlier attempt found nothing.",
-                $"Last attempt: {wanted.LastSearchResult ?? "not recorded"}.",
+                // The old wording asserted the last attempt "found nothing".
+                // It says that whatever happened - and the common case on this
+                // path is the opposite: Deluno found candidates, chose one, and
+                // is holding it for a person. Do not claim an outcome the
+                // detail underneath is about to contradict.
+                $"Deluno is waiting until {nextEligible:u} before searching again.",
+                LastAttemptDetail(wanted.LastSearchResult),
                 CanClear: true,
                 ClearEffect: "Clears the retry delay so it can be searched now."));
         }
@@ -189,6 +194,24 @@ public static class AcquisitionBlockerReader
             NothingIsBlocking: blockers.Count == 0,
             Summary: Describe(title, blockers),
             CanForce: blockers.Any(blocker => blocker.CanClear));
+    }
+
+    /// <summary>
+    /// What the last search actually said, quoted as it was recorded. The
+    /// recorded result is already a sentence, so appending a full stop to it
+    /// produced "below your cutoff.." on screen.
+    /// </summary>
+    private static string LastAttemptDetail(string? lastSearchResult)
+    {
+        var recorded = lastSearchResult?.Trim();
+        if (string.IsNullOrEmpty(recorded))
+        {
+            return "Last attempt: not recorded.";
+        }
+
+        return recorded.EndsWith('.') || recorded.EndsWith('!') || recorded.EndsWith('?')
+            ? $"Last attempt: {recorded}"
+            : $"Last attempt: {recorded}.";
     }
 
     /// <summary>
