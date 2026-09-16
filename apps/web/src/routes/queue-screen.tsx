@@ -41,8 +41,7 @@ import {
   type PlatformSettingsSnapshot,
   type ProcessorConnectionItem,
   type ProcessorHandoffItem,
-  type SeriesImportRecoverySummary
-} from "../lib/api";
+  type SeriesImportRecoverySummary, readErrorText } from "../lib/api";
 import { authedFetch } from "../lib/use-auth";
 import { formatBytes } from "../lib/utils";
 import { resolveImportSourcePath } from "../lib/import-source";
@@ -257,7 +256,7 @@ export function QueuePage() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ action, queueItemId: item.id })
         });
-        if (!response.ok) throw new Error((await response.text().catch(() => "")) || "The download action failed.");
+        if (!response.ok) throw new Error(await readErrorText(response, "The download action failed."));
       },
       `${actionLabel(action)} sent to ${item.clientName}`
     );

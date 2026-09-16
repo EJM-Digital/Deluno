@@ -34,8 +34,7 @@ import {
   type CustomFormatItem,
   type GuideCustomFormat,
   type GuideFormatBundle,
-  type GuidePackage
-} from "../lib/api";
+  type GuidePackage, readErrorText } from "../lib/api";
 import { metadataCreatePayload } from "../hooks/use-library-create";
 import { createRuleFromGuide, guideBundleTargets } from "../lib/guide-formats";
 import { authedFetch } from "../lib/use-auth";
@@ -685,7 +684,7 @@ export function SetupGuidePage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(buildIndexerPayload(form))
       });
-      if (!response.ok) throw new Error(await response.text().catch(() => "Indexer test failed."));
+      if (!response.ok) throw new Error(await readErrorText(response, "Indexer test failed."));
       const payload = await response.json().catch(() => null) as ConnectionTestResponse | null;
       if (payload?.healthStatus !== "healthy") throw new Error(payload?.message ?? "Indexer test needs attention.");
       setServiceTest((current) => ({ ...current, indexer: "passed", indexerMessage: payload?.message ?? "Indexer test passed." }));
@@ -711,7 +710,7 @@ export function SetupGuidePage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(buildClientPayload(form))
       });
-      if (!response.ok) throw new Error(await response.text().catch(() => "Download client test failed."));
+      if (!response.ok) throw new Error(await readErrorText(response, "Download client test failed."));
       const payload = await response.json().catch(() => null) as ConnectionTestResponse | null;
       if (payload?.healthStatus !== "healthy") throw new Error(payload?.message ?? "Download client test needs attention.");
       setServiceTest((current) => ({ ...current, client: "passed", clientMessage: payload?.message ?? "Download client test passed." }));
@@ -1417,7 +1416,7 @@ async function recordSetupCompleted(result: SetupCompletion) {
   });
 
   if (!response.ok) {
-    throw new Error(await response.text().catch(() => "Setup audit event could not be recorded."));
+    throw new Error(await readErrorText(response, "Setup audit event could not be recorded."));
   }
 }
 
@@ -1701,7 +1700,7 @@ async function createFirstTitle(form: GuideForm, createdEntities: CreatedEntity[
   });
 
   if (!response.ok) {
-    throw new Error(await response.text().catch(() => `Could not add ${title}.`));
+    throw new Error(await readErrorText(response, `Could not add ${title}.`));
   }
 
   const created = await response.json() as { id: string; title: string };
@@ -1754,7 +1753,7 @@ async function saveRouting(libraryId: string, indexerId: string, downloadClientI
     })
   });
   if (!response.ok) {
-    throw new Error(await response.text().catch(() => "Routing could not be saved."));
+    throw new Error(await readErrorText(response, "Routing could not be saved."));
   }
 }
 
