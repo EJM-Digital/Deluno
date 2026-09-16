@@ -169,6 +169,94 @@ public sealed class DownloadDispatchRepositoryTests
         Assert.Null(await repository.GetDispatchAsync("dispatch-imported", CancellationToken.None));
     }
 
+    /// <summary>
+    /// A query that filters on nothing is still a query.
+    ///
+    /// <para>The clause was assembled from a list that began with
+    /// "not archived". Asking for archived rows removed that, and with no media
+    /// type or entity to take its place the list was empty - so the SQL became
+    /// <c>WHERE  AND (...)</c> and the endpoint answered 500. Every test at the
+    /// time passed a filter, so none of them saw it; the rig did, on the first
+    /// unfiltered call.</para>
+    /// </summary>
+    [Fact]
+    public async Task Asking_for_everything_including_archived_is_not_an_error()
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-09-16T05:00:00Z"));
+
+        await new JobsSchemaInitializer(
+            storage.Factory,
+            new SqliteDatabaseMigrator(storage.Factory, timeProvider),
+            NullLogger<JobsSchemaInitializer>.Instance).StartAsync(CancellationToken.None);
+
+        await InsertDispatchAsync(storage.Factory, "dispatch-live", "movies-main", "movie-1", "Live.Release");
+        await InsertDispatchAsync(storage.Factory, "dispatch-gone", "movies-main", "movie-2", "Archived.Release");
+        var repository = new SqliteDownloadDispatchesRepository(storage.Factory, timeProvider);
+        await repository.ArchiveDispatchAsync("dispatch-gone", "import_completed", CancellationToken.None);
+
+        // No media type, no entity, no status: the shape the rig used.
+        var everything = await repository.QueryDispatchesAsync(
+            new DispatchQueryFilter { IncludeArchived = true },
+            new DispatchPaginationOptions { PageSize = 50 },
+            CancellationToken.None);
+        var operational = await repository.QueryDispatchesAsync(
+            new DispatchQueryFilter(),
+            new DispatchPaginationOptions { PageSize = 50 },
+            CancellationToken.None);
+
+        Assert.Equal(2, everything.Items.Count);
+        Assert.Single(operational.Items);
+    }
+
+    /// <summary>
+    /// Every combination of filters builds SQL that runs.
+    ///
+    /// <para>The 500 that prompted this was not about archived rows: it was
+    /// about a condition list that could reach zero. One test per interesting
+    /// filter is not the same as one test per <em>shape</em> of clause, and the
+    /// shape that broke - no conditions at all - was the one nothing asked for.
+    /// This walks the combinations so a future filter that empties the list
+    /// cannot pass.</para>
+    /// </summary>
+    [Theory]
+    [InlineData(false, null, null, null)]
+    [InlineData(true, null, null, null)]
+    [InlineData(true, "movies", null, null)]
+    [InlineData(true, null, "movie-1", null)]
+    [InlineData(true, null, null, "succeeded")]
+    [InlineData(false, "movies", "movie-1", "succeeded")]
+    [InlineData(true, "movies", "movie-1", "succeeded")]
+    public async Task Any_combination_of_filters_still_builds_a_query_that_runs(
+        bool includeArchived, string? mediaType, string? entityId, string? grabStatus)
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-09-16T05:00:00Z"));
+
+        await new JobsSchemaInitializer(
+            storage.Factory,
+            new SqliteDatabaseMigrator(storage.Factory, timeProvider),
+            NullLogger<JobsSchemaInitializer>.Instance).StartAsync(CancellationToken.None);
+
+        await InsertDispatchAsync(storage.Factory, "dispatch-a", "movies-main", "movie-1", "Some.Release");
+        var repository = new SqliteDownloadDispatchesRepository(storage.Factory, timeProvider);
+
+        // The assertion is that it answers at all: a malformed clause throws
+        // rather than returning nothing.
+        var page = await repository.QueryDispatchesAsync(
+            new DispatchQueryFilter
+            {
+                IncludeArchived = includeArchived,
+                MediaType = mediaType,
+                EntityId = entityId,
+                GrabStatus = grabStatus
+            },
+            new DispatchPaginationOptions { PageSize = 25 },
+            CancellationToken.None);
+
+        Assert.NotNull(page.Items);
+    }
+
     [Fact]
     public async Task Ordinary_and_legacy_dispatches_cannot_authorize_an_overwrite()
     {

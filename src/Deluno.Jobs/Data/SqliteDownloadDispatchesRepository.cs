@@ -362,6 +362,19 @@ public sealed class SqliteDownloadDispatchesRepository(
         var pageSize = new PageRequest(pagination.PageSize, pagination.PageToken).BoundedPageSize;
         var token = DelunoPageToken.Decode(pagination.PageToken, 2);
 
+        // The page boundary is a condition like any other, and keeping it in
+        // the list is what stops the clause ever being empty. A query that
+        // filtered on nothing built "WHERE  AND (...)" - a syntax error, and a
+        // 500 to the caller. Asking for archived rows without naming a media
+        // type or an entity did exactly that, because dropping the
+        // "not archived" condition left nothing behind it.
+        whereConditions.Add(
+            """
+            (@sortUtc IS NULL
+             OR COALESCE(grab_attempted_utc, created_utc) < @sortUtc
+             OR (COALESCE(grab_attempted_utc, created_utc) = @sortUtc AND id < @id))
+            """);
+
         var whereClause = string.Join(" AND ", whereConditions);
 
         // Fetch one extra to determine if there's a next page
@@ -380,9 +393,6 @@ public sealed class SqliteDownloadDispatchesRepository(
                 import_failure_message, import_failure_json, circuit_open_until_utc, next_retry_eligible_utc, attempt_count
             FROM download_dispatches
             WHERE {{whereClause}}
-              AND (@sortUtc IS NULL
-                   OR COALESCE(grab_attempted_utc, created_utc) < @sortUtc
-                   OR (COALESCE(grab_attempted_utc, created_utc) = @sortUtc AND id < @id))
             ORDER BY COALESCE(grab_attempted_utc, created_utc) DESC, id DESC
             LIMIT @limit
             """;
