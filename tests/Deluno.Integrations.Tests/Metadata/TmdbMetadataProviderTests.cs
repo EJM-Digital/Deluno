@@ -607,6 +607,90 @@ public sealed class TmdbMetadataProviderTests : IDisposable
         Assert.DoesNotContain(requestedUrls, url => url.Contains("/search/", StringComparison.Ordinal));
     }
 
+    /// <summary>
+    /// #509: TMDb matches <c>query</c> against titles only, so a typed year has
+    /// to arrive as the year filter. The fake below behaves that way: a query
+    /// carrying the year finds nothing, exactly as the rig measured.
+    /// </summary>
+    [Theory]
+    [InlineData("movies", "Night of the Living Dead 1968", "Night of the Living Dead", "1968", "Night of the Living Dead", "1968-10-04")]
+    [InlineData("movies", "Night of the Living Dead (1968)", "Night of the Living Dead", "1968", "Night of the Living Dead", "1968-10-04")]
+    [InlineData("movies", "1917", "1917", null, "1917", "2019-12-25")]
+    [InlineData("movies", "Blade Runner 2049", "Blade Runner 2049", null, "Blade Runner 2049", "2017-10-04")]
+    [InlineData("movies", "Wonder Woman 1984", "Wonder Woman 1984", null, "Wonder Woman 1984", "2020-12-16")]
+    [InlineData("tv", "Battlestar Galactica 2004", "Battlestar Galactica", "2004", "Battlestar Galactica", "2004-10-18")]
+    public async Task SearchAsync_sends_a_typed_year_as_the_year_filter_and_keeps_numbers_that_are_titles(
+        string mediaType,
+        string typed,
+        string expectedQuery,
+        string? expectedYear,
+        string title,
+        string releaseDate)
+    {
+        var settings = new Mock<IPlatformSettingsRepository>();
+        settings.Setup(repo => repo.GetAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(CreateSettingsSnapshot("direct", string.Empty));
+
+        var storageOptions = Options.Create(new StoragePathOptions { DataRoot = _dataRoot });
+        var factory = new SqliteDatabaseConnectionFactory(storageOptions);
+        var timeProvider = new FakeTimeProvider(DateTimeOffset.Parse("2026-09-16T00:00:00Z"));
+        await new CacheSchemaInitializer(
+            factory,
+            new SqliteDatabaseMigrator(factory, timeProvider),
+            NullLogger<CacheSchemaInitializer>.Instance).StartAsync(CancellationToken.None);
+
+        var searches = new List<(string Query, string? Year)>();
+        var yearParameter = mediaType == "tv" ? "first_air_date_year" : "year";
+        var dateField = mediaType == "tv" ? "first_air_date" : "release_date";
+        var titleField = mediaType == "tv" ? "name" : "title";
+        var provider = new TmdbMetadataProvider(
+            new HttpClient(new StubHttpMessageHandler(request =>
+            {
+                var uri = request.RequestUri!;
+                if (!uri.AbsolutePath.Contains("/search/", StringComparison.Ordinal))
+                {
+                    return new HttpResponseMessage(HttpStatusCode.NotFound);
+                }
+
+                var parameters = System.Web.HttpUtility.ParseQueryString(uri.Query);
+                var query = parameters["query"]!;
+                var year = parameters[yearParameter];
+                searches.Add((query, year));
+
+                // Title-only matching, and the year filter narrowing it.
+                var matches = string.Equals(query, title, StringComparison.OrdinalIgnoreCase) &&
+                              (year is null || releaseDate.StartsWith(year, StringComparison.Ordinal));
+                var body = matches
+                    ? $$"""{ "results": [{ "id": 42, "{{titleField}}": "{{title}}", "{{dateField}}": "{{releaseDate}}" }] }"""
+                    : """{ "results": [] }""";
+                return new HttpResponseMessage(HttpStatusCode.OK)
+                {
+                    Content = new StringContent(body, Encoding.UTF8, "application/json")
+                };
+            })),
+            new ConfigurationBuilder()
+                .AddInMemoryCollection(new Dictionary<string, string?>
+                {
+                    ["Deluno:Metadata:TMDbApiKey"] = "test-key"
+                })
+                .Build(),
+            settings.Object,
+            factory,
+            storageOptions,
+            timeProvider,
+            new PassthroughResiliencePolicy(),
+            new OutboundRequestThrottle(timeProvider, NullLogger<OutboundRequestThrottle>.Instance),
+            NullLogger<TmdbMetadataProvider>.Instance);
+
+        var result = Assert.Single(await provider.SearchAsync(
+            new MetadataLookupRequest(typed, mediaType, null, null),
+            CancellationToken.None));
+
+        Assert.Equal(title, result.Title);
+        Assert.Equal(int.Parse(releaseDate[..4], System.Globalization.CultureInfo.InvariantCulture), result.Year);
+        Assert.Contains((expectedQuery, expectedYear), searches);
+    }
+
     private static PlatformSettingsSnapshot CreateSettingsSnapshot(string providerMode, string brokerUrl)
         => new(
             AppInstanceName: "Deluno Test",
