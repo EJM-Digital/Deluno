@@ -24,7 +24,9 @@ export const automationNavItems = [
   { to: "/search-cycles/failed-downloads", label: "Failed Downloads", end: false },
   // Decisions 1 and 2 made refusals permanent, which is only safe because they
   // are visible and reversible. This tab is that.
-  { to: "/search-cycles/blocklist", label: "Blocklist", end: false }
+  { to: "/search-cycles/blocklist", label: "Blocklist", end: false },
+  // What gets cleaned out, previewed before anything is removed (#494).
+  { to: "/search-cycles/retention", label: "Retention", end: false }
 ] as const;
 
 /**

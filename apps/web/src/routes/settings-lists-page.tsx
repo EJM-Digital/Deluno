@@ -422,7 +422,7 @@ export function SettingsListsPage() {
               .map((exclusion) => (
                 <ListRow key={exclusion.id}>
                   <ListNameCell name={exclusion.title} sub={exclusion.year ? String(exclusion.year) : exclusion.imdbId ?? "No year or IMDb id"} />
-                  <ListCell primary={exclusion.sourceName || (intakeSources.find((source) => source.id === exclusion.sourceId)?.name ?? exclusion.sourceKind)} secondary={exclusion.sourceKind === "collection" ? "Collection" : "Import list"} />
+                  <ListCell primary={exclusion.sourceName || (intakeSources.find((source) => source.id === exclusion.sourceId)?.name ?? exclusion.sourceKind)} secondary={exclusion.sourceKind === "collection" ? "Collection" : exclusion.sourceKind === "retention" ? "Retention rule" : "Import list"} />
                   <ListCell
                     primary={exclusion.expiresUtc ? `Ignored until ${formatShortDate(exclusion.expiresUtc, { ...preferences, showRelativeDates: false })}` : "Excluded permanently"}
                     secondary={exclusion.reason || "Excluded from import list by user"}

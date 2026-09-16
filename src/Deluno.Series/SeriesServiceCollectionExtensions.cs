@@ -30,6 +30,7 @@ public static class SeriesServiceCollectionExtensions
         // which is scoped. Registering it as a singleton captures that
         // dependency, and the composition test refuses to build the container.
         services.TryAddScoped<AcquisitionOverrideService>();
+        services.TryAddScoped<TitleRemovalService>();
         services.TryAddSingleton<IMediaSubtitleRepository, SqliteMediaSubtitleRepository>();
         services.AddSingleton<ISeriesCatalogRepository, SqliteSeriesCatalogRepository>();
         // The quality ladder has to reach this catalogue's own database for a

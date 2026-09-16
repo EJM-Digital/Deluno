@@ -1608,7 +1608,7 @@ public static class SeriesEndpointRouteBuilderExtensions
             IJobQueueRepository jobQueueRepository,
             IActivityFeedRepository activityFeedRepository,
             IRealtimeEventPublisher realtimeEventPublisher,
-            IRecycleBinService recycleBinService,
+            [FromServices] TitleRemovalService titleRemoval,
             CancellationToken cancellationToken) =>
         {
             var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
@@ -1623,19 +1623,9 @@ public static class SeriesEndpointRouteBuilderExtensions
                 return Results.NotFound();
             }
 
-            await RemoveSeriesAsync(
-                series,
-                new BulkSeriesRequest(
-                    [id],
-                    "remove",
-                    DeleteFiles: deleteFiles ?? false,
-                    AddImportListExclusion: addImportListExclusion ?? false),
-                repository,
-                platformSettingsRepository,
-                intakeRepository,
-                jobQueueRepository,
-                activityFeedRepository,
-                recycleBinService,
+            await titleRemoval.RemoveAsync(
+                SeriesRemoval.Target(series, repository),
+                new TitleRemovalOptions(deleteFiles ?? false, addImportListExclusion ?? false),
                 cancellationToken);
 
             await realtimeEventPublisher.PublishEntityChangedAsync("Series", id, cancellationToken);
@@ -1652,7 +1642,7 @@ public static class SeriesEndpointRouteBuilderExtensions
             IJobQueueRepository jobQueueRepository,
             IActivityFeedRepository activityFeedRepository,
             IRealtimeEventPublisher realtimeEventPublisher,
-            IRecycleBinService recycleBinService,
+            [FromServices] TitleRemovalService titleRemoval,
             CancellationToken cancellationToken) =>
         {
             var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
@@ -1697,15 +1687,9 @@ public static class SeriesEndpointRouteBuilderExtensions
                     switch (operation)
                     {
                         case "remove":
-                            var removalMetadata = await RemoveSeriesAsync(
-                                series,
-                                request,
-                                repository,
-                                platformSettingsRepository,
-                                intakeRepository,
-                                jobQueueRepository,
-                                activityFeedRepository,
-                                recycleBinService,
+                            var removalMetadata = await titleRemoval.RemoveAsync(
+                                SeriesRemoval.Target(series, repository),
+                                new TitleRemovalOptions(request.DeleteFiles, request.AddImportListExclusion),
                                 cancellationToken);
                             successCount++;
                             results.Add(new BulkSeriesItemResult(series.Id, series.Title, true, null, removalMetadata));
@@ -3106,91 +3090,6 @@ public static class SeriesEndpointRouteBuilderExtensions
         }
 
         return errors;
-    }
-
-    private static async Task<Dictionary<string, string?>> RemoveSeriesAsync(
-        SeriesListItem series,
-        BulkSeriesRequest request,
-        ISeriesCatalogRepository repository,
-        ILibrariesRepository platformSettingsRepository,
-        IIntakeRepository intakeRepository,
-        IJobQueueRepository jobQueueRepository,
-        IActivityFeedRepository activityFeedRepository,
-        IRecycleBinService recycleBinService,
-        CancellationToken cancellationToken)
-    {
-        var metadata = new Dictionary<string, string?>();
-        var libraries = await platformSettingsRepository.ListLibrariesAsync(cancellationToken);
-        var cancelledJobs = await jobQueueRepository.CancelPendingForRelatedEntityAsync("series", series.Id, cancellationToken);
-        metadata["cancelledPendingJobCount"] = cancelledJobs.ToString();
-
-        if (request.DeleteFiles)
-        {
-            var trackedFiles = new List<TrackedLibraryFile>();
-            foreach (var library in libraries)
-            {
-                await foreach (var file in repository.StreamTrackedFilesAsync(library.Id, cancellationToken))
-                {
-                    if (string.Equals(file.SeriesId, series.Id, StringComparison.OrdinalIgnoreCase))
-                    {
-                        trackedFiles.Add(new TrackedLibraryFile(file.LibraryId, file.FilePath));
-                    }
-                }
-            }
-
-            var deletion = await recycleBinService.MoveAsync(trackedFiles, libraries, cancellationToken);
-            metadata["deletedFileCount"] = deletion.MovedFileCount.ToString();
-            metadata["deletedFolderCount"] = deletion.MovedFolderCount.ToString();
-            metadata["recycleBinItemCount"] = deletion.Items.Count.ToString();
-            if (deletion.Warnings.Count > 0)
-            {
-                metadata["fileDeletionWarnings"] = string.Join(" ", deletion.Warnings);
-            }
-        }
-
-        if (request.AddImportListExclusion)
-        {
-            var origins = await intakeRepository.ListIntakeTitleOriginsAsync("tv", series.Id, cancellationToken);
-            var exclusionsAdded = 0;
-            var exclusionWarnings = new List<string>();
-            foreach (var origin in origins.GroupBy(item => item.SourceId, StringComparer.OrdinalIgnoreCase).Select(group => group.First()))
-            {
-                try
-                {
-                    var exclusion = await intakeRepository.CreateIntakeListExclusionAsync(
-                        origin.SourceId,
-                        new CreateIntakeListExclusionRequest(series.Title, series.StartYear, series.ImdbId, null, "Removed from library by user"),
-                        cancellationToken);
-                    if (exclusion is not null) exclusionsAdded++;
-                }
-                catch
-                {
-                    exclusionWarnings.Add($"Deluno could not add the exclusion for {origin.SourceName}.");
-                }
-            }
-
-            metadata["importListExclusionsAdded"] = exclusionsAdded.ToString();
-            if (exclusionWarnings.Count > 0)
-            {
-                metadata["importListExclusionWarnings"] = string.Join(" ", exclusionWarnings);
-            }
-        }
-
-        if (!await repository.DeleteAsync(series.Id, cancellationToken))
-        {
-            throw new InvalidOperationException("TV show was not removed from Deluno.");
-        }
-
-        await activityFeedRepository.RecordActivityAsync(
-            "series.removed",
-            $"{series.Title} was removed from Deluno.{(request.DeleteFiles ? " Imported library files were also selected for deletion." : string.Empty)}",
-            JsonSerializer.Serialize(new { request.DeleteFiles, request.AddImportListExclusion, metadata }),
-            null,
-            "series",
-            series.Id,
-            cancellationToken);
-
-        return metadata;
     }
 
     private static async Task<IReadOnlyList<CustomFormatItem>> ResolveCustomFormatsAsync(

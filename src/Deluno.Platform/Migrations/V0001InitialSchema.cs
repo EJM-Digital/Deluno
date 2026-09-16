@@ -63,7 +63,8 @@ public static class PlatformDatabaseMigrations
         new V0055ProfileFormatIntents(),
         new V0056ProfileAcquisitionRules(),
         new V0057ProcessorHandoffStatus(),
-        new V0058MediaServers()
+        new V0058MediaServers(),
+        new V0059RetentionRules()
     ];
 
     private sealed class V0001InitialSchema : SqliteSqlMigration

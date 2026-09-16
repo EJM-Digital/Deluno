@@ -1,3 +1,4 @@
+using Deluno.Retention;
 using Deluno.Api;
 using Deluno.Connections;
 using Deluno.Filesystem;
@@ -74,6 +75,7 @@ public static class DelunoApplicationComposition
         services.AddDelunoFilesystemModule();
         services.AddDelunoRealtimeModule();
         services.AddDelunoWorkerModule();
+        services.AddDelunoRetentionModule();
 
         return services;
     }
