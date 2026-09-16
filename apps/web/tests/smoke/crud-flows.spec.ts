@@ -262,9 +262,9 @@ test.describe("indexer and download client CRUD", () => {
       const drawer = page.getByRole("dialog", { name });
       await expect(drawer.getByLabel("URL")).toHaveValue("https://before-indexer.example.test/feed.rss");
       await drawer.getByLabel("URL").fill(updatedUrl);
-      const update = page.waitForRequest((request) => request.method() === "PUT" && new URL(request.url()).pathname === `/api/indexers/${indexer.id}`);
+      const update = page.waitForResponse((response) => response.request().method() === "PUT" && new URL(response.url()).pathname === `/api/indexers/${indexer.id}`);
       await drawer.getByRole("button", { name: "Save indexer" }).click();
-      await update;
+      expect((await update).ok()).toBe(true);
       const list = await page.request.get("/api/indexers", { headers: authHeaders() });
       expect(list.ok()).toBe(true);
       expect((await list.json() as Array<{ id: string; baseUrl: string }>).find((item) => item.id === indexer.id)).toMatchObject({ id: indexer.id, baseUrl: updatedUrl });
@@ -458,9 +458,9 @@ test.describe("indexer and download client CRUD", () => {
       const drawer = page.getByRole("dialog", { name });
       await expect(drawer.getByLabel("Custom host / IP")).toHaveValue("before-client.example.test");
       await drawer.getByLabel("Custom host / IP").fill(updatedHost);
-      const update = page.waitForRequest((request) => request.method() === "PUT" && new URL(request.url()).pathname === `/api/download-clients/${client.id}`);
+      const update = page.waitForResponse((response) => response.request().method() === "PUT" && new URL(response.url()).pathname === `/api/download-clients/${client.id}`);
       await drawer.getByRole("button", { name: "Save client" }).click();
-      await update;
+      expect((await update).ok()).toBe(true);
       const list = await page.request.get("/api/download-clients", { headers: authHeaders() });
       expect(list.ok()).toBe(true);
       expect((await list.json() as Array<{ id: string; host: string }>).find((item) => item.id === client.id)).toMatchObject({ id: client.id, host: updatedHost });
@@ -489,9 +489,9 @@ test.describe("indexer and download client CRUD", () => {
       const drawer = page.getByRole("dialog", { name });
       await expect(drawer.getByLabel("Profile name")).toHaveValue(name);
       await drawer.getByLabel("Profile name").fill(renamed);
-      const update = page.waitForRequest((request) => request.method() === "PUT" && new URL(request.url()).pathname === `/api/quality-profiles/${profile.id}`);
+      const update = page.waitForResponse((response) => response.request().method() === "PUT" && new URL(response.url()).pathname === `/api/quality-profiles/${profile.id}`);
       await drawer.getByRole("button", { name: "Save quality profile" }).click();
-      await update;
+      expect((await update).ok()).toBe(true);
       const list = await page.request.get("/api/quality-profiles", { headers: authHeaders() });
       expect(list.ok()).toBe(true);
       expect((await list.json() as Array<{ id: string; name: string }>).find((item) => item.id === profile.id)).toMatchObject({ id: profile.id, name: renamed });

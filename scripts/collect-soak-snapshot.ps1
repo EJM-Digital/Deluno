@@ -28,7 +28,12 @@ param(
     [string]$ApiKeyFile,
     [switch]$InstallDailyTask,
     [switch]$RemoveDailyTask,
-    [string]$DailyTaskAt = "09:00"
+    [string]$DailyTaskAt = "09:00",
+    # Who the daily task runs as. Defaults to the account installing it.
+    [string]$TaskUserName,
+    # Supply only if the account cannot be granted "log on as a batch job";
+    # with no password the task is registered S4U, which needs no secret.
+    [string]$TaskPassword
 )
 
 $ErrorActionPreference = "Stop"
@@ -70,12 +75,45 @@ if ($InstallDailyTask) {
         "-ApiKeyFile", "`"$(Resolve-Path $ApiKeyFile)`""
     ) -join " "
 
-    Register-ScheduledTask -TaskName $taskName -Force `
-        -Action (New-ScheduledTaskAction -Execute "powershell.exe" -Argument $arguments -WorkingDirectory $Root) `
-        -Trigger (New-ScheduledTaskTrigger -Daily -At $DailyTaskAt) `
-        -Settings (New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable) | Out-Null
+    # Whether or not anybody is logged on.
+    #
+    # Registered without a principal, Task Scheduler defaults to LogonType
+    # Interactive, which means "run only when this user is logged on". A soak
+    # host is a server that nobody is sitting at, so the daily reading would
+    # never have fired - and the failure is silent: the task sits Ready, the
+    # trigger passes, and no row is written. Caught on the rig by reading the
+    # registered task's principal back, which is why this now sets one.
+    #
+    # S4U runs without storing a secret and is the default here. It cannot reach
+    # network resources, which this does not need: it reads a local HTTP
+    # endpoint and writes to a local folder. Pass -TaskPassword where an account
+    # cannot be granted the batch logon right.
+    $taskUser = if ($TaskUserName) { $TaskUserName } else { "$env:USERDOMAIN\$env:USERNAME" }
 
-    Write-Host "Collecting $RunId every day at $DailyTaskAt."
+    $register = @{
+        TaskName = $taskName
+        Force    = $true
+        Action   = New-ScheduledTaskAction -Execute "powershell.exe" -Argument $arguments -WorkingDirectory $Root
+        Trigger  = New-ScheduledTaskTrigger -Daily -At $DailyTaskAt
+        Settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable
+    }
+    if ($TaskPassword) {
+        # A password-backed registration takes the account directly; LogonType
+        # and RunLevel are not parameters of Register-ScheduledTask.
+        $register.User = $taskUser
+        $register.Password = $TaskPassword
+    } else {
+        $register.Principal = New-ScheduledTaskPrincipal -UserId $taskUser -LogonType S4U -RunLevel Highest
+    }
+
+    Register-ScheduledTask @register | Out-Null
+
+    $registered = Get-ScheduledTask -TaskName $taskName
+    if ($registered.Principal.LogonType -eq "Interactive") {
+        throw "The task registered as Interactive, so it would only run while $taskUser is logged on. Re-run with -TaskPassword."
+    }
+
+    Write-Host "Collecting $RunId every day at $DailyTaskAt as $($registered.Principal.UserId) ($($registered.Principal.LogonType))."
     Write-Host "Each day lands as ATTENTION until its workflow check is recorded:"
     Write-Host "  npm run soak:snapshot -- -RunId $RunId -BaseUrl $BaseUrl -ApiKeyFile <path> -WorkflowNote '...'"
     Write-Host "Stop it with -RemoveDailyTask -RunId $RunId."
