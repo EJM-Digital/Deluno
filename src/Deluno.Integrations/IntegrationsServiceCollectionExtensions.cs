@@ -44,6 +44,15 @@ public static class IntegrationsServiceCollectionExtensions
         services.AddScoped<IDownloadClientWebhookService, DownloadClientWebhookService>();
         services.AddScoped<IProcessorConnectionService, ProcessorConnectionService>();
 
+        // Plex, Jellyfin and Emby (#493). Thirty seconds because a library
+        // listing of a large server is one long page; no retry handler, so a
+        // server that is down costs one quiet failure rather than a storm.
+        services.AddHttpClient(MediaServers.MediaServerHttp.ClientName, client => client.Timeout = TimeSpan.FromSeconds(30));
+        services.AddSingleton<MediaServers.IMediaServerClient, MediaServers.PlexMediaServerClient>();
+        services.AddSingleton<MediaServers.IMediaServerClient, MediaServers.JellyfinMediaServerClient>();
+        services.AddSingleton<MediaServers.IMediaServerClient, MediaServers.EmbyMediaServerClient>();
+        services.AddSingleton<MediaServers.IMediaServerClientRegistry, MediaServers.MediaServerClientRegistry>();
+
         // Six subtitle sources, registered as themselves so the registry can
         // list what Deluno ships without a second table saying so.
         //

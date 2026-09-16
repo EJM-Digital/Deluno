@@ -13,6 +13,7 @@ public static class ConnectionsServiceCollectionExtensions
         // Its own repository rather than fourteen more methods on the one
         // ADR-001 Step 1 has just finished splitting for being too large.
         services.AddSingleton<ISubtitleProviderRepository, SqliteSubtitleProviderRepository>();
+        services.AddSingleton<IMediaServerRepository, SqliteMediaServerRepository>();
         return services;
     }
 

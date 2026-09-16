@@ -7,6 +7,7 @@ using Deluno.Api.Calendar;
 using Deluno.Api.Downloads;
 using Deluno.Connections;
 using Deluno.Integrations.Subtitles;
+using Deluno.Integrations.MediaServers;
 using Deluno.Filesystem;
 using Deluno.Integrations.DownloadClients;
 using Deluno.Integrations.Metadata;
@@ -75,6 +76,7 @@ public static class DelunoApplicationEndpointMapping
         // is what they are (DESIGN-002 rule 4) — the routes live in
         // Deluno.Integrations only because the provider registry does.
         endpoints.MapDelunoSubtitleProviders();
+        endpoints.MapDelunoMediaServers();
         writeEndpoints.MapDelunoLibraries();
         endpoints.MapDelunoReleasePreferenceEndpoints();
         endpoints.MapDelunoSecurityEndpoints();

@@ -84,7 +84,8 @@ export const configurationNavAreas = [
       { to: "/indexers/scoreboard", label: "Scoreboard", end: false },
       { to: "/indexers/download-clients", label: "Download Clients", end: false },
       { to: "/indexers/library-routing", label: "Library Routing", end: false },
-      { to: "/indexers/subtitle-providers", label: "Subtitle Providers", end: false }
+      { to: "/indexers/subtitle-providers", label: "Subtitle Providers", end: false },
+      { to: "/indexers/media-servers", label: "Media Servers", end: false }
     ]
   },
   {

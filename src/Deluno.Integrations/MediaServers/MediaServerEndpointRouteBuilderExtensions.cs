@@ -1,0 +1,163 @@
+using Deluno.Connections.Contracts;
+using Deluno.Connections.Data;
+using Deluno.Security;
+using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Routing;
+
+namespace Deluno.Integrations.MediaServers;
+
+/// <summary>
+/// Plex, Jellyfin and Emby servers (#493).
+///
+/// <para>Here rather than in <c>Deluno.Connections</c> for the reason the
+/// subtitle providers are: the clients live in Integrations, which already
+/// references Connections, so the routes that need both live on this side.</para>
+///
+/// <para><b>The test is what it says.</b> It asks the server who it is and what
+/// it holds, and reports the name the server gave itself - so a person can see
+/// which machine an address actually reaches before any rule acts on it.</para>
+/// </summary>
+public static class MediaServerEndpointRouteBuilderExtensions
+{
+    public static IEndpointRouteBuilder MapDelunoMediaServers(this IEndpointRouteBuilder endpoints)
+    {
+        var servers = endpoints.MapGroup("/api/media-servers")
+            .RequireAuthorization(DelunoAuthorizationPolicies.Write);
+
+        servers.MapGet(string.Empty, async ([FromServices] IMediaServerRepository repository, CancellationToken cancellationToken)
+            => Results.Ok(await repository.ListAsync(cancellationToken)));
+
+        servers.MapPost(string.Empty, async (
+            [FromBody] SaveMediaServerRequest request,
+            [FromServices] IMediaServerRepository repository,
+            CancellationToken cancellationToken) =>
+        {
+            var errors = Validate(request, stored: null);
+            if (errors.Count > 0)
+            {
+                return Results.ValidationProblem(errors);
+            }
+
+            var saved = await repository.SaveAsync(null, request, cancellationToken);
+            return Results.Created($"/api/media-servers/{saved!.Id}", saved);
+        });
+
+        servers.MapPut("{id}", async (
+            string id,
+            [FromBody] SaveMediaServerRequest request,
+            [FromServices] IMediaServerRepository repository,
+            CancellationToken cancellationToken) =>
+        {
+            var stored = await repository.GetAsync(id, cancellationToken);
+            if (stored is null)
+            {
+                return Results.NotFound();
+            }
+
+            var errors = Validate(request, stored);
+            if (errors.Count > 0)
+            {
+                return Results.ValidationProblem(errors);
+            }
+
+            return Results.Ok(await repository.SaveAsync(id, request, cancellationToken));
+        });
+
+        servers.MapDelete("{id}", async (string id, [FromServices] IMediaServerRepository repository, CancellationToken cancellationToken)
+            => await repository.DeleteAsync(id, cancellationToken) ? Results.NoContent() : Results.NotFound());
+
+        // A draft, before it is saved: the token being offered, not a stored one.
+        servers.MapPost("test", async (
+            [FromBody] SaveMediaServerRequest request,
+            [FromServices] IMediaServerClientRegistry registry,
+            CancellationToken cancellationToken) =>
+        {
+            var errors = Validate(request, stored: null);
+            if (errors.Count > 0)
+            {
+                return Results.ValidationProblem(errors);
+            }
+
+            var client = registry.Find(MediaServerKinds.Normalize(request.Kind)!)!;
+            return Results.Ok(await client.TestAsync(Draft(request, stored: null), cancellationToken));
+        });
+
+        servers.MapPost("{id}/test", async (
+            string id,
+            [FromBody] SaveMediaServerRequest? request,
+            [FromServices] IMediaServerRepository repository,
+            [FromServices] IMediaServerClientRegistry registry,
+            CancellationToken cancellationToken) =>
+        {
+            var stored = await repository.GetAsync(id, cancellationToken);
+            if (stored is null)
+            {
+                return Results.NotFound();
+            }
+
+            var candidate = request is null ? stored : Draft(request, stored);
+            var client = registry.Find(candidate.Kind);
+            if (client is null)
+            {
+                return Results.ValidationProblem(new Dictionary<string, string[]> { ["kind"] = ["Choose Plex, Jellyfin or Emby."] });
+            }
+
+            var result = await client.TestAsync(candidate, cancellationToken);
+            await repository.RecordHealthAsync(id, result, cancellationToken);
+            return Results.Ok(result);
+        });
+
+        return endpoints;
+    }
+
+    private static MediaServerConnection Draft(SaveMediaServerRequest request, MediaServerConnection? stored)
+    {
+        var now = DateTimeOffset.UtcNow;
+        return new MediaServerConnection(
+            stored?.Id ?? "draft",
+            MediaServerKinds.Normalize(request.Kind) ?? stored?.Kind ?? MediaServerKinds.Jellyfin,
+            string.IsNullOrWhiteSpace(request.Name) ? stored?.Name ?? "Media server" : request.Name.Trim(),
+            string.IsNullOrWhiteSpace(request.BaseUrl) ? stored?.BaseUrl ?? string.Empty : SqliteMediaServerRepository.NormalizeBaseUrl(request.BaseUrl),
+            string.IsNullOrWhiteSpace(request.Token) ? stored?.Token : request.Token.Trim(),
+            request.IsEnabled,
+            stored?.HealthStatus ?? "untested",
+            null,
+            null,
+            null,
+            stored?.ServerName,
+            stored?.ServerId,
+            stored?.CreatedUtc ?? now,
+            now);
+    }
+
+    private static Dictionary<string, string[]> Validate(SaveMediaServerRequest request, MediaServerConnection? stored)
+    {
+        var errors = new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase);
+        if (MediaServerKinds.Normalize(request.Kind) is null)
+        {
+            errors["kind"] = ["Choose Plex, Jellyfin or Emby."];
+        }
+
+        if (string.IsNullOrWhiteSpace(request.Name))
+        {
+            errors["name"] = ["Give this server a name."];
+        }
+
+        if (!Uri.TryCreate(request.BaseUrl?.Trim(), UriKind.Absolute, out var uri) ||
+            (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps))
+        {
+            errors["baseUrl"] = ["Use the server's http or https address, for example http://192.168.1.20:8096."];
+        }
+
+        if (string.IsNullOrWhiteSpace(request.Token) && stored?.HasToken != true)
+        {
+            errors["token"] = [MediaServerKinds.Normalize(request.Kind) == MediaServerKinds.Plex
+                ? "Paste the server's X-Plex-Token."
+                : "Paste an API key created in the server's dashboard."];
+        }
+
+        return errors;
+    }
+}
