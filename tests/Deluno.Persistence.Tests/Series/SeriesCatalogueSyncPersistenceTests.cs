@@ -34,6 +34,52 @@ public sealed class SeriesCatalogueSyncPersistenceTests
         return (storage, repository, timeProvider, series.Id);
     }
 
+    /// <summary>
+    /// An imported episode records the quality it holds.
+    ///
+    /// <para>On the rig, Breaking Bad S01E03 imported a WEB 1080p file and its
+    /// own row reported <c>hasFile=true, currentQuality='', cutoffMet=false</c>.
+    /// The series row carried the quality and the episode row never did, so the
+    /// episode showed none on its page and the upgrade check had nothing to
+    /// compare against - a covered episode that could never settle.</para>
+    /// </summary>
+    [Fact]
+    public async Task An_imported_episode_records_the_quality_it_holds()
+    {
+        var now = DateTimeOffset.Parse("2026-09-16T03:00:00Z");
+        var (storage, repository, _, seriesId) = await CreateSeriesAsync(now);
+        using var _ = storage;
+
+        await repository.SyncEpisodeCatalogueAsync(
+            seriesId,
+            [new CatalogueEpisodeItem(1, 3, "...And the Bag's in the River", null, now.AddDays(-40))],
+            source: "tmdb",
+            CancellationToken.None);
+
+        await repository.ImportExistingAsync(
+            libraryId: "series-main",
+            title: "Severance",
+            startYear: 2022,
+            wantedStatus: "covered",
+            wantedReason: "Current file is accepted.",
+            currentQuality: "WEB 1080p",
+            targetQuality: "WEB 1080p",
+            qualityCutoffMet: true,
+            unmonitorWhenCutoffMet: false,
+            filePath: @"C:\media\s01e03.mkv",
+            fileSizeBytes: 123456,
+            episodes: [new ImportedEpisodeItem(1, 3, HasFile: true, FilePath: @"C:\media\s01e03.mkv", FileSizeBytes: 123456)],
+            CancellationToken.None);
+
+        var inventory = await repository.GetInventoryDetailAsync(seriesId, CancellationToken.None);
+        var episode = Assert.Single(inventory!.Episodes, item => item.SeasonNumber == 1 && item.EpisodeNumber == 3);
+
+        Assert.True(episode.HasFile);
+        Assert.Equal("WEB 1080p", episode.CurrentQuality);
+        Assert.Equal("WEB 1080p", episode.TargetQuality);
+        Assert.True(episode.QualityCutoffMet);
+    }
+
     [Fact]
     public async Task SyncEpisodeCatalogueAsync_ReSync_updates_metadata_but_never_clobbers_disk_state()
     {

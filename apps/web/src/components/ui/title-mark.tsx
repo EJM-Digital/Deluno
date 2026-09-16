@@ -422,14 +422,16 @@ function TwoToneBar({
           aria-hidden layers still see the fill followed by the two clipped
           label copies, rather than mistaking the texture for a label layer.
 
-          **Only on the wordless bar.** The texture exists so hue is never the
-          only carrier (#318), which is true of the 5px strip and not true of
-          the 16px bar: that one spells the state out. Painted behind "WEB
-          1080p" it was hatching laid over text that already said it, and it
-          read as a rendering fault rather than as information. James: *"whats
-          with the weird patterns in the colours - this seems odd"*. Where
-          there are words, the words carry it. */}
-      {pattern && !inner ? <span aria-hidden="true" className={cn("title-mark-pattern", pattern)} /> : null}
+          **On every bar, labelled or not.** It was briefly taken off the
+          labelled bar, on the reasoning that the words there already say the
+          state. They do not: the label is the *quality* - "WEB 1080p" - and
+          the state is Quality met / Upgradable / Missing, which that bar
+          carries in hue alone. Three posters reading "WEB 1080p", one green
+          and two yellow, are then distinguishable only by colour, which is the
+          exact thing #318 exists to prevent. Removing it also left the key
+          wearing a pattern the posters did not, so the legend explained
+          something nothing drew. */}
+      {pattern ? <span aria-hidden="true" className={cn("title-mark-pattern", pattern)} /> : null}
     </div>
   );
 }

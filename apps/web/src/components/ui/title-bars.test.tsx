@@ -281,13 +281,17 @@ describe("the texture is for the bar that has no words", () => {
   });
 
   /**
-   * The 16px bar spells the state out. Hatching behind "WEB 1080p" repeats
-   * what the words already say and reads as a rendering fault.
+   * And the labelled bar too, which is the one this got wrong.
+   *
+   * The label is the QUALITY - "Bluray-1080p" - not the state. Quality met and
+   * Upgradable are both drawn on a bar reading the same quality, so without a
+   * texture the only thing between them is hue. Three posters all saying "WEB
+   * 1080p", one green and two yellow, is exactly the case #318 exists for.
    */
-  it("leaves the labelled bar alone", () => {
+  it("textures the labelled bar, because its words are the quality not the state", () => {
     const [media] = bars(film(), true, true);
     expect(media!.textContent).toContain("Bluray-1080p");
-    expect(texture(media!)).toBeNull();
+    expect(texture(media!)).not.toBeNull();
   });
 });
 
