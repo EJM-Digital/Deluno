@@ -62,7 +62,7 @@ public static class AcquisitionBlockerSources
             cancellationToken);
 
         var open = recent.Items
-            .Where(dispatch => !string.Equals(dispatch.ImportStatus, "completed", StringComparison.OrdinalIgnoreCase))
+            .Where(dispatch => !string.Equals(dispatch.ImportStatus, "imported", StringComparison.OrdinalIgnoreCase))
             .OrderByDescending(dispatch => dispatch.CreatedUtc)
             .FirstOrDefault();
 
@@ -121,7 +121,7 @@ public static class AcquisitionBlockerSources
             cancellationToken);
 
         var completed = recent.Items
-            .Where(dispatch => string.Equals(dispatch.ImportStatus, "completed", StringComparison.OrdinalIgnoreCase))
+            .Where(dispatch => string.Equals(dispatch.ImportStatus, "imported", StringComparison.OrdinalIgnoreCase))
             .OrderByDescending(dispatch => dispatch.ImportCompletedUtc ?? dispatch.CreatedUtc)
             .FirstOrDefault();
 

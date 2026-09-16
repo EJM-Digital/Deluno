@@ -909,6 +909,82 @@ public sealed class DownloadDispatchRepositoryTests
         Assert.Equal(unresolvedId, unresolvedList[0].Id);
     }
 
+    /// <summary>
+    /// #507: without a client webhook detected_utc is never stamped, so a
+    /// hand-picked grab whose import had already finished, or been refused,
+    /// still counted as downloading and held its title out of search for the
+    /// whole seven-day backstop.
+    /// </summary>
+    [Theory]
+    [InlineData("imported", false)]
+    [InlineData("failed", false)]
+    [InlineData(null, true)]
+    public async Task FindUnresolvedDispatches_leaves_out_downloads_whose_import_finished(string? importStatus, bool stillUnresolved)
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-04-29T04:00:00Z"));
+
+        await new JobsSchemaInitializer(
+            storage.Factory,
+            new SqliteDatabaseMigrator(storage.Factory, timeProvider),
+            NullLogger<JobsSchemaInitializer>.Instance).StartAsync(CancellationToken.None);
+
+        var repository = new SqliteDownloadDispatchesRepository(storage.Factory, timeProvider);
+        var id = Guid.CreateVersion7().ToString("N");
+        await InsertDispatchAsync(storage.Factory, id, "movies-main", "123", "Test.Movie.2024.1080p");
+        await repository.RecordGrabAsync(
+            dispatchId: id,
+            grabStatus: "succeeded",
+            grabResponseCode: 200,
+            grabMessage: "ok",
+            grabFailureCode: null,
+            grabResponseJson: null,
+            cancellationToken: CancellationToken.None);
+        if (importStatus is not null)
+        {
+            await repository.RecordImportOutcomeAsync(
+                id,
+                importStatus,
+                importStatus == "imported" ? @"D:\Movies\Test Movie (2024)\Test Movie (2024).mkv" : null,
+                importStatus == "failed" ? "importFailed" : null,
+                importStatus == "failed" ? "Unreadable" : null,
+                CancellationToken.None);
+        }
+
+        var unresolved = await repository.FindUnresolvedDispatchesAsync(0, null, 100, CancellationToken.None);
+
+        Assert.Equal(stillUnresolved, unresolved.Any(item => item.Id == id));
+    }
+
+    [Fact]
+    public async Task FindUnresolvedDispatches_leaves_out_archived_downloads()
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-04-29T04:00:00Z"));
+
+        await new JobsSchemaInitializer(
+            storage.Factory,
+            new SqliteDatabaseMigrator(storage.Factory, timeProvider),
+            NullLogger<JobsSchemaInitializer>.Instance).StartAsync(CancellationToken.None);
+
+        var repository = new SqliteDownloadDispatchesRepository(storage.Factory, timeProvider);
+        var id = Guid.CreateVersion7().ToString("N");
+        await InsertDispatchAsync(storage.Factory, id, "movies-main", "123", "Test.Movie.2024.1080p");
+        await repository.RecordGrabAsync(
+            dispatchId: id,
+            grabStatus: "succeeded",
+            grabResponseCode: 200,
+            grabMessage: "ok",
+            grabFailureCode: null,
+            grabResponseJson: null,
+            cancellationToken: CancellationToken.None);
+        await repository.ArchiveDispatchAsync(id, "import_completed", CancellationToken.None);
+
+        Assert.DoesNotContain(
+            await repository.FindUnresolvedDispatchesAsync(0, null, 100, CancellationToken.None),
+            item => item.Id == id);
+    }
+
     [Fact]
     public async Task ArchiveDispatch_soft_deletes_dispatch()
     {

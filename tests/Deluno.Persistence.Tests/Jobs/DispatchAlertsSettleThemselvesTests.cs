@@ -200,7 +200,6 @@ public sealed class DispatchAlertsSettleThemselvesTests
         FixedTimeProvider clock)
     {
         var alerts = new SqliteDispatchAlertRepository(storage.Factory, clock);
-        var scheduler = new InMemoryJobScheduler();
         var recovery = new CountingRecoveryHandler();
         var dispatches = new SqliteDownloadDispatchesRepository(storage.Factory, clock);
         var activity = new SqliteJobStore(storage.Factory, clock, new NullRealtimeEventPublisher(), dispatches);
@@ -212,9 +211,7 @@ public sealed class DispatchAlertsSettleThemselvesTests
             activity,
             dispatches,
             alerts,
-            scheduler,
-            new NullRealtimeEventPublisher(),
-            new RetryPolicyCatalog());
+            new NullRealtimeEventPublisher());
 
         return (poller, alerts, recovery);
     }

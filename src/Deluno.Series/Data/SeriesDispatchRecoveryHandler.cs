@@ -15,7 +15,7 @@ public sealed class SeriesDispatchRecoveryHandler(ISeriesCatalogRepository catal
         string detailsJson,
         CancellationToken cancellationToken)
     {
-        if (mediaType != "tv")
+        if (DelunoValueNormalizers.NormalizeMediaType(mediaType) != "tv")
             return;
 
         var summary = $"Download was sent to {downloadClientName} but never appeared in the client's queue after 2 hours.";
@@ -35,7 +35,7 @@ public sealed class SeriesDispatchRecoveryHandler(ISeriesCatalogRepository catal
         string detailsJson,
         CancellationToken cancellationToken)
     {
-        if (mediaType != "tv")
+        if (DelunoValueNormalizers.NormalizeMediaType(mediaType) != "tv")
             return;
 
         var summary = $"Download was detected but import was not attempted after 4 hours.";
@@ -55,7 +55,7 @@ public sealed class SeriesDispatchRecoveryHandler(ISeriesCatalogRepository catal
         string detailsJson,
         CancellationToken cancellationToken)
     {
-        if (mediaType != "tv")
+        if (DelunoValueNormalizers.NormalizeMediaType(mediaType) != "tv")
             return;
 
         var summary = $"Import was detected but never completed after 24 hours.";
@@ -77,7 +77,7 @@ public sealed class SeriesDispatchRecoveryHandler(ISeriesCatalogRepository catal
         string detailsJson,
         CancellationToken cancellationToken)
     {
-        if (mediaType != "tv")
+        if (DelunoValueNormalizers.NormalizeMediaType(mediaType) != "tv")
             return;
 
         var failureReason = !string.IsNullOrWhiteSpace(importFailureMessage)
