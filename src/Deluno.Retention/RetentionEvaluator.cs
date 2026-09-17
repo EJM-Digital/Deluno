@@ -3,80 +3,71 @@ using Deluno.Connections.Contracts;
 using Deluno.Connections.Data;
 using Deluno.Contracts;
 using Deluno.Integrations.MediaServers;
-using Deluno.Libraries.Data;
-using Deluno.Movies.Data;
-using Deluno.Series.Data;
 
 namespace Deluno.Retention;
 
-/// <summary>
-/// The conditions a rule can use that are not catalogue facts: what media
-/// servers say has been watched (#494).
-/// </summary>
-public static class RetentionWatchFields
-{
-    public const string Watched = "watched";
-    public const string LastPlayed = "lastPlayed";
-
-    public static bool IsWatchField(string condition)
-    {
-        var field = condition.Split(':', 2)[0];
-        return string.Equals(field, Watched, StringComparison.OrdinalIgnoreCase) ||
-               string.Equals(field, LastPlayed, StringComparison.OrdinalIgnoreCase);
-    }
-
-    public static IReadOnlyList<RetentionField> Fields =>
-    [
-        new(Watched, "Watched", "Whether anyone has finished it, on the media servers the rule reads.", "watching", "boolean", ["is"], null, NeedsMediaServer: true),
-        new(LastPlayed, "Last played", "The most recent time anyone played it, on the media servers the rule reads.", "watching", "date", ["beyond", "within", "unset"], null, NeedsMediaServer: true)
-    ];
-}
-
 /// <summary>A title a rule was asked about, and what came of it.</summary>
 public sealed record RetentionCandidate(
-    string EntityId,
-    string MediaType,
-    string Title,
-    int? Year,
-    string? ImdbId,
-    long? SizeBytes,
+    RetentionUnit Unit,
     IReadOnlyList<string> Reasons,
     string Outcome,
     string? Message,
-    IReadOnlyList<(MediaServerConnection Server, MediaServerItem Item)> ServerItems);
+    IReadOnlyList<RetentionServerMatch> ServerItems)
+{
+    public string EntityId => Unit.EntityId;
+
+    public string MediaType => RetentionLevels.MediaType(Unit.Level);
+
+    public string Title => Unit.Title;
+
+    public int? Year => Unit.Year;
+
+    public string? ImdbId => Unit.ImdbId;
+
+    public long? SizeBytes => Unit.SizeBytes;
+}
+
+/// <summary>How many titles were left after a step; a block's own steps inside it.</summary>
+public sealed record RetentionStepCount(int Count, IReadOnlyList<RetentionStepCount>? Steps = null);
+
+/// <summary>Something on a media server that Deluno does not manage. Listed, never touched.</summary>
+public sealed record RetentionUnmanagedItem(string Server, string Title, int? Year);
 
 public sealed record RetentionEvaluation(
     IReadOnlyList<RetentionCandidate> Candidates,
     IReadOnlyList<string> UnreachableServers,
-    IReadOnlyList<string> Problems)
+    IReadOnlyList<string> Problems,
+    int Considered = 0,
+    IReadOnlyList<RetentionStepCount>? StepCounts = null,
+    IReadOnlyList<RetentionUnmanagedItem>? Unmanaged = null)
 {
     public IEnumerable<RetentionCandidate> Matched => Candidates.Where(item => item.Outcome == RetentionItemOutcomes.Matched);
 }
 
 /// <summary>
-/// Works out which titles a rule selects, and why each one.
+/// Works out which titles a rule selects, and why each one (#494, DESIGN-008).
 ///
-/// <para><b>Silence is not consent.</b> A rule that reads watch history, or that
-/// removes titles from media servers, depends on those servers answering. If any
-/// of them could not be asked, nothing is selected: every title that met the
-/// catalogue conditions is listed as left out, with the server named. A server
-/// that could not say whether a film was watched has not said it was.</para>
+/// <para><b>Steps, top to bottom.</b> "Keep only" narrows the titles so far to
+/// those a condition holds for; "Also include" adds the titles from the whole
+/// library it holds for; a block runs its own steps from the whole library and
+/// counts as one step. After every step the number left is recorded, so the
+/// builder can show what each step did.</para>
 ///
-/// <para><b>Titles are matched to server items</b> first by file path - the
-/// exact file for a film, the show's folder for a series - and then by TMDb or
-/// IMDb id. A path match cannot pick the wrong film; an id match covers a server
-/// that sees the files through a different mount.</para>
+/// <para><b>Silence is not consent.</b> If a server the rule reads could not be
+/// asked, nothing is selected: every title is listed as left out, with the
+/// server named. A server that could not say whether a film was watched has not
+/// said it was.</para>
+///
+/// <para><b>Cannot say is not no.</b> A condition a server cannot answer neither
+/// keeps a title nor adds one; the title is listed as undecided, with why.</para>
 /// </summary>
 public sealed class RetentionEvaluator(
-    IMovieCatalogRepository movies,
-    ISeriesCatalogRepository series,
-    ILibrariesRepository libraries,
+    RetentionUnitReader units,
     IMediaServerRepository mediaServers,
     IMediaServerClientRegistry clients,
+    IRetentionDiskSpace disk,
     TimeProvider timeProvider)
 {
-    private const int PageSize = 500;
-
     public static IReadOnlyList<string> Validate(SaveRetentionRuleRequest request, IReadOnlyList<MediaServerConnection> servers)
     {
         var problems = new List<string>();
@@ -85,58 +76,87 @@ public sealed class RetentionEvaluator(
             problems.Add("Give the rule a name.");
         }
 
-        var kind = request.MediaType == "tv" ? MediaKind.Series : MediaKind.Movie;
-        var conditions = request.Conditions ?? [];
-        if (conditions.Count == 0)
-        {
-            problems.Add("Add at least one condition. A rule with none would select everything.");
-        }
+        var level = RetentionLevels.Normalize(request.Level, request.MediaType);
+        var steps = request.Steps ?? RetentionStepList.FromConditions(request.Conditions ?? []);
+        problems.AddRange(RetentionStepList.ShapeProblems(steps));
 
-        CatalogueFilters.Parse(kind, conditions.Where(condition => !RetentionWatchFields.IsWatchField(condition)), out var catalogueErrors);
-        problems.AddRange(catalogueErrors);
-        foreach (var condition in conditions.Where(RetentionWatchFields.IsWatchField))
-        {
-            if (ParseWatch(condition) is null)
-            {
-                problems.Add($"“{condition}” is not a watch condition Deluno understands.");
-            }
-        }
-
-        var chosen = request.MediaServerIds ?? [];
-        if ((conditions.Any(RetentionWatchFields.IsWatchField) || request.RemoveFromServers) && chosen.Count == 0)
-        {
-            problems.Add(conditions.Any(RetentionWatchFields.IsWatchField)
-                ? "Choose the media servers whose watch history this rule reads."
-                : "Choose the media servers to remove titles from, or turn that off.");
-        }
-
+        var chosen = (request.MediaServerIds ?? []).ToArray();
         foreach (var id in chosen.Where(id => servers.All(server => server.Id != id)))
         {
             problems.Add($"There is no media server with id “{id}”.");
         }
 
-        return problems;
-    }
+        var chosenServers = servers.Where(server => chosen.Contains(server.Id, StringComparer.OrdinalIgnoreCase)).ToArray();
+        var conditions = RetentionStepList.Conditions(steps).Select(RetentionFieldCatalog.Upgrade).ToArray();
+        CatalogueFilters.Parse(RetentionFieldCatalog.CatalogueKind(level), conditions.Where(condition => !RetentionFieldCatalog.IsRetentionField(condition)), out var catalogueErrors);
+        problems.AddRange(catalogueErrors);
 
-    public async Task<RetentionEvaluation> EvaluateAsync(RetentionRule rule, CancellationToken cancellationToken)
-    {
-        var kind = rule.MediaType == "tv" ? MediaKind.Series : MediaKind.Movie;
-        var catalogueConditions = rule.Conditions.Where(condition => !RetentionWatchFields.IsWatchField(condition)).ToArray();
-        var watchConditions = rule.Conditions.Where(RetentionWatchFields.IsWatchField).Select(ParseWatch).OfType<WatchCondition>().ToArray();
-        var filters = CatalogueFilters.Parse(kind, catalogueConditions, out var parseErrors);
-        if (parseErrors.Count > 0)
+        foreach (var condition in conditions.Where(RetentionFieldCatalog.IsRetentionField))
         {
-            return new RetentionEvaluation([], [], parseErrors);
+            var (field, op, value, problem) = Parse(condition);
+            if (problem is not null)
+            {
+                problems.Add(problem);
+                continue;
+            }
+
+            if (!field!.Levels.Contains(level))
+            {
+                problems.Add($"“{field.Label}” does not apply to {LevelNoun(level)}.");
+            }
+
+            if (field.Source == RetentionFieldSources.Server)
+            {
+                if (chosenServers.Length == 0)
+                {
+                    problems.Add($"“{field.Label}” comes from media servers. Choose the servers this rule reads.");
+                }
+                else if (chosenServers.All(server => field.UnsupportedOn?.Contains(server.Kind, StringComparer.OrdinalIgnoreCase) == true))
+                {
+                    problems.Add($"None of the chosen servers can tell “{field.Label}” ({string.Join(", ", chosenServers.Select(server => server.Name))}).");
+                }
+            }
+
+            if (NeedsValue(op!) && string.IsNullOrWhiteSpace(value))
+            {
+                problems.Add($"“{field.Label}” needs a value to compare with.");
+            }
         }
 
-        var titles = await ReadTitlesAsync(rule.MediaType, filters, cancellationToken);
-        var catalogueReasons = catalogueConditions.Select(condition => Describe(kind, condition)).ToArray();
+        if (request.RemoveFromServers && chosen.Length == 0)
+        {
+            problems.Add("Choose the media servers to tell when a title is removed, or turn that off.");
+        }
 
-        var needsServers = watchConditions.Length > 0 || rule.RemoveFromServers;
+        return problems.Distinct().ToArray();
+    }
+
+    /// <param name="cachedLibraries">
+    /// Server listings already read in the last minutes, for the builder's live
+    /// counts. A check that can remove anything always passes null and reads fresh.
+    /// </param>
+    public async Task<RetentionEvaluation> EvaluateAsync(
+        RetentionRule rule,
+        CancellationToken cancellationToken,
+        Func<MediaServerConnection, string, CancellationToken, Task<MediaServerAnswer<MediaServerLibrary>>>? cachedLibraries = null)
+    {
+        var level = rule.Level;
+        var steps = rule.Steps;
+        var conditions = RetentionStepList.Conditions(steps).ToArray();
         var configured = await mediaServers.ListAsync(cancellationToken);
+        var problems = Validate(
+            new SaveRetentionRuleRequest(rule.Name, RetentionLevels.MediaType(level), rule.IsEnabled, null, rule.MediaServerIds, rule.RemoveFromServers, rule.ScheduleMode, rule.ScheduleIntervalHours, level, steps),
+            configured);
+        if (problems.Count > 0)
+        {
+            return new RetentionEvaluation([], [], problems);
+        }
+
+        var readsServers = conditions.Any(condition => condition.StartsWith("server.", StringComparison.OrdinalIgnoreCase));
+        var needsServers = readsServers || rule.RemoveFromServers;
         var chosen = configured.Where(server => rule.MediaServerIds.Contains(server.Id, StringComparer.OrdinalIgnoreCase)).ToArray();
         var unreachable = new List<string>();
-        var serverItems = new List<(MediaServerConnection Server, IReadOnlyList<MediaServerItem> Items)>();
+        var indexes = new List<RetentionServerIndex>();
         foreach (var server in chosen)
         {
             if (!server.IsEnabled)
@@ -147,17 +167,19 @@ public sealed class RetentionEvaluator(
 
             var client = clients.Find(server.Kind);
             var answer = client is null
-                ? new MediaServerAnswer<IReadOnlyList<MediaServerItem>>.NotSupported($"{server.Name} is a kind of server this build cannot read.")
-                : await client.ListItemsAsync(server, rule.MediaType, cancellationToken);
+                ? new MediaServerAnswer<MediaServerLibrary>.NotSupported($"{server.Name} is a kind of server this build cannot read.")
+                : cachedLibraries is not null
+                    ? await cachedLibraries(server, RetentionLevels.MediaType(level), cancellationToken)
+                    : await client.ListItemsAsync(server, RetentionLevels.MediaType(level), cancellationToken);
             switch (answer)
             {
-                case MediaServerAnswer<IReadOnlyList<MediaServerItem>>.Reported reported:
-                    serverItems.Add((server, reported.Value));
+                case MediaServerAnswer<MediaServerLibrary>.Reported reported:
+                    indexes.Add(new RetentionServerIndex(server, reported.Value));
                     break;
-                case MediaServerAnswer<IReadOnlyList<MediaServerItem>>.Unreachable failed:
+                case MediaServerAnswer<MediaServerLibrary>.Unreachable failed:
                     unreachable.Add(Naming(server, failed.Reason));
                     break;
-                case MediaServerAnswer<IReadOnlyList<MediaServerItem>>.NotSupported unsupported:
+                case MediaServerAnswer<MediaServerLibrary>.NotSupported unsupported:
                     unreachable.Add(Naming(server, unsupported.Reason));
                     break;
             }
@@ -168,46 +190,212 @@ public sealed class RetentionEvaluator(
             unreachable.Add("A media server this rule reads has been removed from Deluno");
         }
 
-        var now = timeProvider.GetUtcNow();
-        var candidates = new List<RetentionCandidate>();
-        foreach (var title in titles)
+        var all = await units.ReadAsync(level, cancellationToken);
+        var answers = new RetentionFieldAnswers(indexes, disk, timeProvider.GetUtcNow());
+
+        // Library filter conditions are asked of the catalogue once each; a
+        // season or episode carries its show's answer.
+        var catalogue = new Dictionary<string, IReadOnlySet<string>>(StringComparer.Ordinal);
+        var kind = RetentionFieldCatalog.CatalogueKind(level);
+        foreach (var condition in conditions.Select(RetentionFieldCatalog.Upgrade).Where(condition => !RetentionFieldCatalog.IsRetentionField(condition)).Distinct(StringComparer.Ordinal))
         {
-            if (needsServers && unreachable.Count > 0)
+            var filters = CatalogueFilters.Parse(kind, [condition], out _);
+            catalogue[condition] = await units.CatalogueMatchesAsync(kind, filters, cancellationToken);
+        }
+
+        RetentionAnswer Ask(RetentionUnit unit, string raw)
+        {
+            var condition = RetentionFieldCatalog.Upgrade(raw);
+            if (!RetentionFieldCatalog.IsRetentionField(condition))
             {
-                // Why is said once, in the run's summary; each title only records
-                // that it was left alone.
-                candidates.Add(new RetentionCandidate(
-                    title.Id, rule.MediaType, title.Title, title.Year, title.ImdbId, title.SizeBytes, catalogueReasons,
-                    RetentionItemOutcomes.ExcludedUnreachable,
-                    null,
-                    []));
-                continue;
+                var sentence = Describe(kind, condition);
+                return catalogue[condition].Contains(unit.CatalogueId) ? RetentionAnswer.Yes(sentence) : RetentionAnswer.No(sentence);
             }
 
-            var matches = serverItems
-                .SelectMany(entry => entry.Items.Where(item => SameTitle(title, item)).Select(item => (entry.Server, Item: item)))
-                .ToArray();
-            var reasons = catalogueReasons.ToList();
-            var holds = true;
-            foreach (var condition in watchConditions)
+            var (field, op, value, _) = Parse(condition);
+            return answers.Answer(unit, field!, op!, value);
+        }
+
+        var outcome = Run(steps, all, Ask);
+
+        var candidates = new List<RetentionCandidate>();
+        var serverMatches = new Dictionary<string, RetentionServerMatch[]>(StringComparer.OrdinalIgnoreCase);
+        RetentionServerMatch[] MatchesFor(RetentionUnit unit)
+        {
+            if (!serverMatches.TryGetValue(unit.EntityId, out var found))
             {
-                var (met, reason) = condition.Evaluate(matches, now);
-                reasons.Add(reason);
-                holds &= met;
+                serverMatches[unit.EntityId] = found = indexes.Select(index => index.Find(unit)).OfType<RetentionServerMatch>().ToArray();
             }
 
-            if (holds)
+            return found;
+        }
+
+        foreach (var unit in all)
+        {
+            if (outcome.Selected.TryGetValue(unit.EntityId, out var reasons))
             {
+                if (needsServers && unreachable.Count > 0)
+                {
+                    // Why is said once, in the run's summary; each title only
+                    // records that it was left alone.
+                    candidates.Add(new RetentionCandidate(unit, reasons, RetentionItemOutcomes.ExcludedUnreachable, null, []));
+                    continue;
+                }
+
+                var matches = MatchesFor(unit);
                 candidates.Add(new RetentionCandidate(
-                    title.Id, rule.MediaType, title.Title, title.Year, title.ImdbId, title.SizeBytes, reasons,
+                    unit,
+                    reasons,
                     RetentionItemOutcomes.Matched,
                     rule.RemoveFromServers && matches.Length > 0 ? $"Also on {string.Join(", ", matches.Select(match => match.Server.Name).Distinct())}." : null,
                     matches));
             }
+            else if (outcome.Undecided.TryGetValue(unit.EntityId, out var why))
+            {
+                // With a server unreachable, what could not be decided is what
+                // that server would have decided: left alone, and said so once.
+                candidates.Add(needsServers && unreachable.Count > 0
+                    ? new RetentionCandidate(unit, [], RetentionItemOutcomes.ExcludedUnreachable, null, [])
+                    : new RetentionCandidate(unit, [why], RetentionItemOutcomes.Undecided, why, []));
+            }
         }
 
-        return new RetentionEvaluation(candidates, unreachable, []);
+        // What the servers hold that Deluno does not: listed so it can be
+        // brought in, and never acted on.
+        var unmanaged = new List<RetentionUnmanagedItem>();
+        if (level is RetentionLevels.Movie or RetentionLevels.Show && unreachable.Count == 0)
+        {
+            foreach (var index in indexes)
+            {
+                var matchedIds = all.Select(unit => index.Find(unit)?.Item.ServerItemId).OfType<string>().ToHashSet(StringComparer.OrdinalIgnoreCase);
+                unmanaged.AddRange(index.Unmatched(matchedIds).Select(item => new RetentionUnmanagedItem(index.Server.Name, item.Title, item.Year)));
+            }
+        }
+
+        return new RetentionEvaluation(candidates, unreachable, [], all.Count, outcome.Counts, unmanaged);
     }
+
+    private sealed record StepOutcome(
+        Dictionary<string, IReadOnlyList<string>> Selected,
+        Dictionary<string, string> Undecided,
+        IReadOnlyList<RetentionStepCount> Counts);
+
+    /// <summary>Runs steps from the whole library.</summary>
+    private static StepOutcome Run(IReadOnlyList<RetentionStep> steps, IReadOnlyList<RetentionUnit> all, Func<RetentionUnit, string, RetentionAnswer> ask)
+    {
+        Dictionary<string, IReadOnlyList<string>>? current = null;
+        var undecided = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        var counts = new List<RetentionStepCount>();
+
+        foreach (var step in steps)
+        {
+            // What this step holds for, over the whole library, with why.
+            Dictionary<string, IReadOnlyList<string>> holds;
+            Dictionary<string, string> cannotSay;
+            IReadOnlyList<RetentionStepCount>? inner = null;
+            if (step.Type == RetentionStep.BlockType)
+            {
+                var block = Run(step.Steps ?? [], all, ask);
+                holds = block.Selected;
+                cannotSay = block.Undecided;
+                inner = block.Counts;
+            }
+            else
+            {
+                holds = new Dictionary<string, IReadOnlyList<string>>(StringComparer.OrdinalIgnoreCase);
+                cannotSay = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+                // A Keep only step only needs asking about what is left.
+                var asked = step.Op == RetentionStep.Keep && current is not null
+                    ? all.Where(unit => current.ContainsKey(unit.EntityId))
+                    : all;
+                foreach (var unit in asked)
+                {
+                    var answer = ask(unit, step.Condition!);
+                    if (answer.Holds == true) holds[unit.EntityId] = [answer.Sentence];
+                    else if (answer.Holds is null) cannotSay[unit.EntityId] = answer.Sentence;
+                }
+            }
+
+            if (step.Op == RetentionStep.Include || current is null)
+            {
+                var start = current ?? new Dictionary<string, IReadOnlyList<string>>(StringComparer.OrdinalIgnoreCase);
+                if (current is null && step.Op == RetentionStep.Keep)
+                {
+                    // The first step starts from the whole library either way.
+                    start = new Dictionary<string, IReadOnlyList<string>>(holds, StringComparer.OrdinalIgnoreCase);
+                }
+                else
+                {
+                    foreach (var (id, why) in holds)
+                    {
+                        start.TryAdd(id, why);
+                    }
+                }
+
+                current = start;
+                foreach (var (id, why) in cannotSay.Where(pair => !current.ContainsKey(pair.Key)))
+                {
+                    undecided.TryAdd(id, why);
+                }
+            }
+            else
+            {
+                var kept = new Dictionary<string, IReadOnlyList<string>>(StringComparer.OrdinalIgnoreCase);
+                foreach (var (id, why) in current)
+                {
+                    if (holds.TryGetValue(id, out var more))
+                    {
+                        kept[id] = why.Concat(more).ToArray();
+                    }
+                    else if (cannotSay.TryGetValue(id, out var reason))
+                    {
+                        undecided[id] = reason;
+                    }
+                }
+
+                current = kept;
+            }
+
+            foreach (var id in current.Keys)
+            {
+                undecided.Remove(id);
+            }
+
+            counts.Add(new RetentionStepCount(current.Count, inner));
+        }
+
+        return new StepOutcome(current ?? new Dictionary<string, IReadOnlyList<string>>(StringComparer.OrdinalIgnoreCase), undecided, counts);
+    }
+
+    private static (RetentionFieldDefinition? Field, string? Op, string? Value, string? Problem) Parse(string condition)
+    {
+        var parts = condition.Split(':', 3);
+        var field = RetentionFieldCatalog.Find(parts[0]);
+        if (field is null)
+        {
+            return (null, null, null, $"There is no “{parts[0]}” for a rule to use.");
+        }
+
+        var op = parts.Length > 1 ? parts[1].Trim().ToLowerInvariant() : string.Empty;
+        if (!field.Operators.Contains(op))
+        {
+            return (field, null, null, $"“{field.Label}” cannot be compared with “{op}”.");
+        }
+
+        return (field, op, parts.Length > 2 ? parts[2] : null, null);
+    }
+
+    private static bool NeedsValue(string op)
+        => op is not ("set" or "unset" or RetentionOperators.Anyone or RetentionOperators.Nobody or RetentionOperators.Everyone);
+
+    private static string LevelNoun(string level)
+        => level switch
+        {
+            RetentionLevels.Movie => "movies",
+            RetentionLevels.Show => "whole shows",
+            RetentionLevels.Season => "seasons",
+            _ => "episodes"
+        };
 
     /// <summary>A server's own sentence, without naming the server twice or ending in two full stops.</summary>
     private static string Naming(MediaServerConnection server, string reason)
@@ -216,82 +404,9 @@ public sealed class RetentionEvaluator(
         return trimmed.Contains(server.Name, StringComparison.OrdinalIgnoreCase) ? trimmed : $"{server.Name}: {trimmed}";
     }
 
-    private sealed record TitleFacts(string Id, string Title, int? Year, string? ImdbId, string? TmdbId, long? SizeBytes, IReadOnlyList<string> Paths, bool IsSeries);
+    internal static string NormalizePath(string path) => RetentionServerIndex.NormalizePath(path);
 
-    private async Task<IReadOnlyList<TitleFacts>> ReadTitlesAsync(string mediaType, CatalogueFilters filters, CancellationToken cancellationToken)
-    {
-        var allLibraries = (await libraries.ListLibrariesAsync(cancellationToken))
-            .Where(library => (library.MediaType == "tv") == (mediaType == "tv"))
-            .ToArray();
-        var paths = new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase);
-        void Remember(string id, string path)
-        {
-            if (!paths.TryGetValue(id, out var list)) paths[id] = list = [];
-            list.Add(path);
-        }
-
-        var facts = new List<TitleFacts>();
-        string? token = null;
-        if (mediaType == "tv")
-        {
-            foreach (var library in allLibraries)
-            {
-                await foreach (var file in series.StreamTrackedFilesAsync(library.Id, cancellationToken)) Remember(file.SeriesId, file.FilePath);
-            }
-
-            do
-            {
-                var page = await series.ListPageAsync(new CatalogueQuery(Status: CatalogueStatusFilters.Downloaded, PageSize: PageSize, PageToken: token, Filters: filters), cancellationToken);
-                facts.AddRange(page.Items.Select(item => new TitleFacts(
-                    item.Id, item.Title, item.StartYear, item.ImdbId, TmdbId(item.MetadataProvider, item.MetadataProviderId), item.FileSizeBytes,
-                    paths.TryGetValue(item.Id, out var held) ? held : [], IsSeries: true)));
-                token = page.HasMore ? page.NextPageToken : null;
-            }
-            while (token is not null);
-        }
-        else
-        {
-            foreach (var library in allLibraries)
-            {
-                await foreach (var file in movies.StreamTrackedFilesAsync(library.Id, cancellationToken)) Remember(file.MovieId, file.FilePath);
-            }
-
-            do
-            {
-                var page = await movies.ListPageAsync(new CatalogueQuery(Status: CatalogueStatusFilters.Downloaded, PageSize: PageSize, PageToken: token, Filters: filters), cancellationToken);
-                facts.AddRange(page.Items.Select(item => new TitleFacts(
-                    item.Id, item.Title, item.ReleaseYear, item.ImdbId, TmdbId(item.MetadataProvider, item.MetadataProviderId), item.FileSizeBytes,
-                    paths.TryGetValue(item.Id, out var held) ? held : [], IsSeries: false)));
-                token = page.HasMore ? page.NextPageToken : null;
-            }
-            while (token is not null);
-        }
-
-        return facts;
-    }
-
-    private static string? TmdbId(string? provider, string? providerId)
-        => string.Equals(provider, "tmdb", StringComparison.OrdinalIgnoreCase) && !string.IsNullOrWhiteSpace(providerId) ? providerId : null;
-
-    private static bool SameTitle(TitleFacts title, MediaServerItem item)
-    {
-        foreach (var serverPath in item.Paths.Select(NormalizePath))
-        {
-            foreach (var titlePath in title.Paths.Select(NormalizePath))
-            {
-                if (titlePath == serverPath) return true;
-                if (title.IsSeries && titlePath.StartsWith(serverPath + "/", StringComparison.Ordinal)) return true;
-            }
-        }
-
-        return (title.TmdbId is not null && string.Equals(title.TmdbId, item.TmdbId, StringComparison.OrdinalIgnoreCase)) ||
-               (title.ImdbId is not null && string.Equals(title.ImdbId, item.ImdbId, StringComparison.OrdinalIgnoreCase));
-    }
-
-    internal static string NormalizePath(string path)
-        => path.Trim().Replace('\\', '/').TrimEnd('/').ToLowerInvariant();
-
-    /// <summary>A condition, in the words a person reads in a preview.</summary>
+    /// <summary>A library filter condition, in the words a person reads in a preview.</summary>
     internal static string Describe(MediaKind kind, string condition)
     {
         var parts = condition.Split(':', 3);
@@ -327,71 +442,6 @@ public sealed class RetentionEvaluator(
             "unset" => "is not set",
             var other => $"{other} {joined}"
         };
-        return $"{label} {phrase}";
-    }
-
-    private static WatchCondition? ParseWatch(string condition)
-    {
-        var parts = condition.Split(':', 3);
-        var op = parts.Length > 1 ? parts[1].ToLowerInvariant() : string.Empty;
-        var value = parts.Length > 2 ? parts[2] : null;
-        if (string.Equals(parts[0], RetentionWatchFields.Watched, StringComparison.OrdinalIgnoreCase) && op == "is" &&
-            bool.TryParse(value, out var watched))
-        {
-            return new WatchedCondition(watched);
-        }
-
-        if (string.Equals(parts[0], RetentionWatchFields.LastPlayed, StringComparison.OrdinalIgnoreCase))
-        {
-            if (op == "unset") return new LastPlayedCondition(op, 0);
-            if (op is "beyond" or "within" && int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var days) && days > 0)
-            {
-                return new LastPlayedCondition(op, days);
-            }
-        }
-
-        return null;
-    }
-
-    private abstract record WatchCondition
-    {
-        public abstract (bool Met, string Reason) Evaluate(IReadOnlyList<(MediaServerConnection Server, MediaServerItem Item)> matches, DateTimeOffset now);
-
-        protected static string WhoWatched(IReadOnlyList<(MediaServerConnection Server, MediaServerItem Item)> matches)
-        {
-            var played = matches.Where(match => match.Item.Watch.PlayedByAnyone).ToArray();
-            if (played.Length == 0)
-            {
-                return matches.Count == 0 ? "not on any of the rule's media servers" : "nobody has watched it";
-            }
-
-            return string.Join("; ", played.Select(match => match.Item.Watch.PerUserKnown && match.Item.Watch.PlayedBy.Count > 0
-                ? $"watched by {string.Join(", ", match.Item.Watch.PlayedBy)} on {match.Server.Name}"
-                : $"watched on {match.Server.Name}"));
-        }
-    }
-
-    private sealed record WatchedCondition(bool Watched) : WatchCondition
-    {
-        public override (bool Met, string Reason) Evaluate(IReadOnlyList<(MediaServerConnection Server, MediaServerItem Item)> matches, DateTimeOffset now)
-        {
-            var played = matches.Any(match => match.Item.Watch.PlayedByAnyone);
-            return (played == Watched, $"{(Watched ? "Watched" : "Not watched")}: {WhoWatched(matches)}");
-        }
-    }
-
-    private sealed record LastPlayedCondition(string Operator, int Days) : WatchCondition
-    {
-        public override (bool Met, string Reason) Evaluate(IReadOnlyList<(MediaServerConnection Server, MediaServerItem Item)> matches, DateTimeOffset now)
-        {
-            var last = matches.Select(match => match.Item.Watch.LastPlayedUtc).Where(when => when is not null).Max();
-            var said = last is null ? "never played" : $"last played {last.Value:d MMM yyyy}";
-            return Operator switch
-            {
-                "unset" => (last is null, $"Never played: {said}"),
-                "beyond" => (last is not null && last < now.AddDays(-Days), $"Last played more than {Days} days ago: {said}"),
-                _ => (last is not null && last >= now.AddDays(-Days), $"Last played within {Days} days: {said}")
-            };
-        }
+        return string.Create(CultureInfo.InvariantCulture, $"{label} {phrase}");
     }
 }

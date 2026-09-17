@@ -25,36 +25,93 @@ public sealed class MediaServerClientTests
             Assert.Equal("MediaBrowser Token=\"token-123\"", Assert.Single(request.Headers.GetValues("Authorization")));
             Assert.False(request.Headers.Contains("X-Emby-Token"));
             var path = request.RequestUri!.AbsolutePath;
-            var query = request.RequestUri.Query;
-            return path switch
+            var query = Uri.UnescapeDataString(request.RequestUri.Query);
+            if (path == "/Users") return Json("""[{"Id":"u1","Name":"Owner"},{"Id":"u2","Name":"Ben"},{"Id":"u3","Name":"Old","Policy":{"IsDisabled":true}}]""");
+            if (path == "/Items") return Json(
+                """
+                {"Items":[
+                {"Id":"m1","Type":"Movie","Name":"Sintel","ProductionYear":2010,"ProviderIds":{"Tmdb":"45745","Imdb":"tt1727587"},"Path":"\\\\nas\\media\\Deluno-E2E\\Movies\\Sintel (2010)\\Sintel.mkv","DateCreated":"2026-09-01T00:00:00Z",
+                 "PremiereDate":"2010-09-27T00:00:00Z","Genres":["Animation","Fantasy"],"People":[{"Name":"Halina Reijn"}],"Tags":["open movie"],"CommunityRating":7.1,"CriticRating":88,
+                 "MediaSources":[{"Bitrate":4200000,"MediaStreams":[{"Type":"Video","Width":1920,"Height":818,"Codec":"h264"},{"Type":"Audio"}]}]},
+                {"Id":"m2","Type":"Movie","Name":"Big Buck Bunny","ProductionYear":2008,"ProviderIds":{"tmdb":"10378"},"Path":"/media/bbb.mkv"}],"TotalRecordCount":2}
+                """);
+            if (query.Contains("IncludeItemTypes=BoxSet", StringComparison.Ordinal)) return Json("""{"Items":[{"Id":"bs1","Name":"Blender films"}],"TotalRecordCount":1}""");
+            if (query.Contains("ParentId=bs1", StringComparison.Ordinal)) return Json("""{"Items":[{"Id":"m1"}],"TotalRecordCount":1}""");
+            if (query.Contains("IncludeItemTypes=Playlist", StringComparison.Ordinal)) return Json("""{"Items":[],"TotalRecordCount":0}""");
+            return (path, query) switch
             {
-                "/Users" => Json("""[{"Id":"u1","Name":"Owner"},{"Id":"u2","Name":"Ben"},{"Id":"u3","Name":"Old","Policy":{"IsDisabled":true}}]"""),
-                "/Items" => Json(
-                    """
-                    {"Items":[
-                    {"Id":"m1","Name":"Sintel","ProductionYear":2010,"ProviderIds":{"Tmdb":"45745","Imdb":"tt1727587"},"Path":"\\\\nas\\media\\Deluno-E2E\\Movies\\Sintel (2010)\\Sintel.mkv","DateCreated":"2026-09-01T00:00:00Z"},
-                    {"Id":"m2","Name":"Big Buck Bunny","ProductionYear":2008,"ProviderIds":{"tmdb":"10378"},"Path":"/media/bbb.mkv"}],"TotalRecordCount":2}
-                    """),
-                "/Users/u1/Items" => Json("""{"Items":[{"Id":"m1","UserData":{"Played":true,"LastPlayedDate":"2026-09-10T20:00:00Z"}}],"TotalRecordCount":1}"""),
-                "/Users/u2/Items" => Json("""{"Items":[{"Id":"m1","UserData":{"Played":true,"LastPlayedDate":"2026-09-12T21:00:00Z"}}],"TotalRecordCount":1}"""),
+                ("/Users/u1/Items", var q) when q.Contains("IsPlayed=true") => Json("""{"Items":[{"Id":"m1","UserData":{"Played":true,"PlayCount":2,"LastPlayedDate":"2026-09-10T20:00:00Z"}}],"TotalRecordCount":1}"""),
+                ("/Users/u2/Items", var q) when q.Contains("IsPlayed=true") => Json("""{"Items":[{"Id":"m1","UserData":{"Played":true,"PlayCount":1,"LastPlayedDate":"2026-09-12T21:00:00Z"}}],"TotalRecordCount":1}"""),
+                ("/Users/u2/Items", var q) when q.Contains("IsFavorite=true") => Json("""{"Items":[{"Id":"m2","UserData":{"Played":false,"IsFavorite":true}}],"TotalRecordCount":1}"""),
+                ("/Users/u1/Items", var q) when q.Contains("IsResumable") => Json("""{"Items":[{"Id":"m2","UserData":{"Played":false,"PlaybackPositionTicks":1200000000}}],"TotalRecordCount":1}"""),
+                (_, _) when path.StartsWith("/Users/", StringComparison.Ordinal) => Json("""{"Items":[],"TotalRecordCount":0}"""),
                 _ => new HttpResponseMessage(HttpStatusCode.NotFound)
             };
         }));
 
         var answer = await client.ListItemsAsync(Server(MediaServerKinds.Jellyfin), "movies", CancellationToken.None);
 
-        var items = Assert.IsType<MediaServerAnswer<IReadOnlyList<MediaServerItem>>.Reported>(answer).Value;
+        var library = Assert.IsType<MediaServerAnswer<MediaServerLibrary>.Reported>(answer).Value;
+        Assert.Equal(["Owner", "Ben"], library.Users);
+        var items = library.Items;
         var sintel = Assert.Single(items, item => item.ServerItemId == "m1");
+        Assert.Equal(MediaServerItemLevels.Movie, sintel.Level);
         Assert.Equal("45745", sintel.TmdbId);
         Assert.Equal("tt1727587", sintel.ImdbId);
         Assert.True(sintel.Watch.PlayedByAnyone);
         Assert.True(sintel.Watch.PerUserKnown);
         Assert.Equal(["Owner", "Ben"], sintel.Watch.PlayedBy);
         Assert.Equal(DateTimeOffset.Parse("2026-09-12T21:00:00Z"), sintel.Watch.LastPlayedUtc);
+        Assert.Equal(3, sintel.Viewers.Sum(viewer => viewer.PlayCount));
+        Assert.Equal(["Animation", "Fantasy"], sintel.Genres);
+        Assert.Equal(["Halina Reijn"], sintel.People);
+        Assert.Equal(["open movie"], sintel.Labels);
+        Assert.Equal(["Blender films"], sintel.Collections);
+        Assert.Equal(8.8, sintel.Ratings.Critic);
+        Assert.Equal(7.1, sintel.Ratings.Audience);
+        Assert.Null(sintel.Ratings.Imdb);
+        Assert.Equal(new MediaServerVideo("1080p", 4200, "h264"), sintel.Video);
+        Assert.Equal(DateTimeOffset.Parse("2010-09-27T00:00:00Z"), sintel.ReleaseDate);
+
         var bunny = Assert.Single(items, item => item.ServerItemId == "m2");
         Assert.Equal("10378", bunny.TmdbId);
         Assert.False(bunny.Watch.PlayedByAnyone);
+        Assert.Contains(bunny.Viewers, viewer => viewer is { User: "Ben", Favourite: true });
+        Assert.Contains(bunny.Viewers, viewer => viewer is { User: "Owner", InProgress: true });
         Assert.DoesNotContain(requests, request => request.StartsWith("/Users/u3/", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task A_Jellyfin_TV_listing_holds_shows_seasons_and_episodes()
+    {
+        var client = new JellyfinMediaServerClient(Factory(request =>
+        {
+            var path = request.RequestUri!.AbsolutePath;
+            var query = Uri.UnescapeDataString(request.RequestUri.Query);
+            if (path == "/Users") return Json("""[{"Id":"u1","Name":"Owner"}]""");
+            if (path == "/Items")
+            {
+                Assert.Contains("IncludeItemTypes=Series,Season,Episode", query, StringComparison.Ordinal);
+                return Json(
+                    """
+                    {"Items":[
+                    {"Id":"s1","Type":"Series","Name":"Breaking Bad","Path":"/tv/Breaking Bad"},
+                    {"Id":"se1","Type":"Season","Name":"Season 1","SeriesId":"s1","IndexNumber":1},
+                    {"Id":"e1","Type":"Episode","Name":"Pilot","SeriesId":"s1","SeasonId":"se1","ParentIndexNumber":1,"IndexNumber":1,"Path":"/tv/Breaking Bad/S01E01.mkv","PremiereDate":"2008-01-20T00:00:00Z"}],"TotalRecordCount":3}
+                    """);
+            }
+
+            return Json("""{"Items":[],"TotalRecordCount":0}""");
+        }));
+
+        var answer = await client.ListItemsAsync(Server(MediaServerKinds.Jellyfin), "tv", CancellationToken.None);
+
+        var items = Assert.IsType<MediaServerAnswer<MediaServerLibrary>.Reported>(answer).Value.Items;
+        Assert.Equal(MediaServerItemLevels.Show, Assert.Single(items, item => item.ServerItemId == "s1").Level);
+        var season = Assert.Single(items, item => item.ServerItemId == "se1");
+        Assert.Equal((MediaServerItemLevels.Season, "s1", 1), (season.Level, season.ShowServerItemId, season.SeasonNumber));
+        var episode = Assert.Single(items, item => item.ServerItemId == "e1");
+        Assert.Equal((MediaServerItemLevels.Episode, "s1", "se1", 1, 1), (episode.Level, episode.ShowServerItemId, episode.SeasonServerItemId, episode.SeasonNumber, episode.EpisodeNumber));
     }
 
     [Fact]
@@ -68,7 +125,7 @@ public sealed class MediaServerClientTests
 
         var answer = await client.ListItemsAsync(Server(MediaServerKinds.Jellyfin), "movies", CancellationToken.None);
 
-        Assert.Empty(Assert.IsType<MediaServerAnswer<IReadOnlyList<MediaServerItem>>.Reported>(answer).Value);
+        Assert.Empty(Assert.IsType<MediaServerAnswer<MediaServerLibrary>.Reported>(answer).Value.Items);
     }
 
     [Theory]
@@ -80,7 +137,7 @@ public sealed class MediaServerClientTests
 
         var answer = await client.ListItemsAsync(Server(MediaServerKinds.Emby), "movies", CancellationToken.None);
 
-        Assert.IsType<MediaServerAnswer<IReadOnlyList<MediaServerItem>>.Unreachable>(answer);
+        Assert.IsType<MediaServerAnswer<MediaServerLibrary>.Unreachable>(answer);
     }
 
     [Fact]
@@ -90,7 +147,7 @@ public sealed class MediaServerClientTests
 
         var answer = await client.ListItemsAsync(Server(MediaServerKinds.Plex, "http://192.168.1.51:32400"), "movies", CancellationToken.None);
 
-        var unreachable = Assert.IsType<MediaServerAnswer<IReadOnlyList<MediaServerItem>>.Unreachable>(answer);
+        var unreachable = Assert.IsType<MediaServerAnswer<MediaServerLibrary>.Unreachable>(answer);
         Assert.Contains("could not reach", unreachable.Reason, StringComparison.Ordinal);
     }
 
@@ -110,7 +167,7 @@ public sealed class MediaServerClientTests
 
         var answer = await client.ListItemsAsync(Server(MediaServerKinds.Jellyfin), "movies", CancellationToken.None);
 
-        Assert.IsType<MediaServerAnswer<IReadOnlyList<MediaServerItem>>.Unreachable>(answer);
+        Assert.IsType<MediaServerAnswer<MediaServerLibrary>.Unreachable>(answer);
     }
 
     [Fact]
@@ -162,28 +219,45 @@ public sealed class MediaServerClientTests
     }
 
     [Fact]
-    public async Task Plex_reads_ids_files_and_one_account_watch_state()
+    public async Task Plex_reads_ids_files_scores_and_one_account_watch_state()
     {
         var client = new PlexMediaServerClient(Factory(request =>
         {
             Assert.Equal("token-123", Assert.Single(request.Headers.GetValues("X-Plex-Token")));
+            if (request.RequestUri!.Host == "discover.provider.plex.tv")
+            {
+                return Json("""{"MediaContainer":{"totalSize":1,"Metadata":[{"guid":"plex://movie/5d776b"}]}}""");
+            }
+
             return request.RequestUri!.AbsolutePath switch
             {
                 "/library/sections" => Json("""{"MediaContainer":{"Directory":[{"key":"1","type":"movie"},{"key":"2","type":"show"}]}}"""),
+                "/myplex/account" => Json("""{"MyPlex":{"username":"jampat"}}"""),
                 "/library/sections/1/all" => Json(
                     """
                     {"MediaContainer":{"totalSize":1,"Metadata":[
-                    {"ratingKey":"101","title":"Sintel","year":2010,"addedAt":1756684800,"viewCount":2,"lastViewedAt":1757530800,
+                    {"ratingKey":"101","type":"movie","guid":"plex://movie/5d776b","title":"Sintel","year":2010,"addedAt":1756684800,"viewCount":2,"lastViewedAt":1757530800,"userRating":9,
+                     "rating":8.8,"audienceRating":7.2,
                      "Guid":[{"id":"imdb://tt1727587"},{"id":"tmdb://45745"}],
-                     "Media":[{"Part":[{"file":"/media/Deluno-E2E/Movies/Sintel (2010)/Sintel.mkv"}]}]}]}}
+                     "Media":[{"videoResolution":"1080","bitrate":4200,"videoCodec":"h264","Part":[{"file":"/media/Deluno-E2E/Movies/Sintel (2010)/Sintel.mkv"}]}]}]}}
                     """),
+                "/library/metadata/101" => Json(
+                    """
+                    {"MediaContainer":{"Metadata":[{"ratingKey":"101",
+                     "Genre":[{"tag":"Animation"}],"Label":[{"tag":"kids"}],"Collection":[{"tag":"Blender films"}],"Role":[{"tag":"Halina Reijn"}],"Director":[{"tag":"Colin Levy"}],
+                     "Rating":[{"image":"imdb://image.rating","value":7.4,"type":"audience"},{"image":"rottentomatoes://image.rating.ripe","value":8.8,"type":"critic"},{"image":"rottentomatoes://image.rating.upright","value":7.9,"type":"audience"},{"image":"themoviedb://image.rating","value":7.1,"type":"audience"}]}]}}
+                    """),
+                "/playlists" => Json("""{"MediaContainer":{"totalSize":1,"Metadata":[{"ratingKey":"900","title":"Friday night"}]}}"""),
+                "/playlists/900/items" => Json("""{"MediaContainer":{"totalSize":1,"Metadata":[{"ratingKey":"101"}]}}"""),
                 _ => new HttpResponseMessage(HttpStatusCode.NotFound)
             };
         }));
 
         var answer = await client.ListItemsAsync(Server(MediaServerKinds.Plex, "http://192.168.1.51:32400"), "movies", CancellationToken.None);
 
-        var sintel = Assert.Single(Assert.IsType<MediaServerAnswer<IReadOnlyList<MediaServerItem>>.Reported>(answer).Value);
+        var library = Assert.IsType<MediaServerAnswer<MediaServerLibrary>.Reported>(answer).Value;
+        Assert.Equal(["jampat"], library.Users);
+        var sintel = Assert.Single(library.Items);
         Assert.Equal("101", sintel.ServerItemId);
         Assert.Equal("45745", sintel.TmdbId);
         Assert.Equal("tt1727587", sintel.ImdbId);
@@ -192,6 +266,38 @@ public sealed class MediaServerClientTests
         Assert.True(sintel.Watch.PlayedByAnyone);
         Assert.False(sintel.Watch.PerUserKnown);
         Assert.Equal(DateTimeOffset.FromUnixTimeSeconds(1757530800), sintel.Watch.LastPlayedUtc);
+        var viewer = Assert.Single(sintel.Viewers);
+        Assert.Equal(("jampat", true, 2, (bool?)null, 9d), (viewer.User, viewer.Played, viewer.PlayCount, viewer.Favourite, viewer.Rating));
+        Assert.Equal(new MediaServerRatings(8.8, 7.2, 7.4, 8.8, 7.9, 7.1), sintel.Ratings);
+        Assert.Equal(["Halina Reijn", "Colin Levy"], sintel.People);
+        Assert.Equal(["Animation"], sintel.Genres);
+        Assert.Equal(["kids"], sintel.Labels);
+        Assert.Equal(["Blender films"], sintel.Collections);
+        Assert.Equal(["Friday night"], sintel.Playlists);
+        Assert.Equal(["jampat"], sintel.WatchlistedBy);
+        Assert.Equal(new MediaServerVideo("1080p", 4200, "h264"), sintel.Video);
+    }
+
+    [Fact]
+    public async Task A_Plex_watchlist_that_cannot_be_asked_is_unknown_not_empty()
+    {
+        var client = new PlexMediaServerClient(Factory(request =>
+        {
+            if (request.RequestUri!.Host == "discover.provider.plex.tv") return new HttpResponseMessage(HttpStatusCode.Unauthorized);
+            return request.RequestUri!.AbsolutePath switch
+            {
+                "/library/sections" => Json("""{"MediaContainer":{"Directory":[{"key":"1","type":"movie"}]}}"""),
+                "/library/sections/1/all" => Json("""{"MediaContainer":{"totalSize":1,"Metadata":[{"ratingKey":"101","type":"movie","title":"Sintel"}]}}"""),
+                "/library/metadata/101" => Json("""{"MediaContainer":{"Metadata":[{"ratingKey":"101"}]}}"""),
+                "/playlists" => Json("""{"MediaContainer":{"totalSize":0}}"""),
+                _ => new HttpResponseMessage(HttpStatusCode.NotFound)
+            };
+        }));
+
+        var answer = await client.ListItemsAsync(Server(MediaServerKinds.Plex, "http://192.168.1.51:32400"), "movies", CancellationToken.None);
+
+        var sintel = Assert.Single(Assert.IsType<MediaServerAnswer<MediaServerLibrary>.Reported>(answer).Value.Items);
+        Assert.Null(sintel.WatchlistedBy);
     }
 
     [Fact]
