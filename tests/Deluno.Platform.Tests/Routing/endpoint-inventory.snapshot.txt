@@ -32,6 +32,7 @@ DELETE /api/release-profiles/{id}
 DELETE /api/retention/episode-removals/{episodeId}
 DELETE /api/retention/keeps/{id}
 DELETE /api/retention/rules/{id}
+DELETE /api/seerr-servers/{id}
 DELETE /api/series/import-recovery/{id}
 DELETE /api/series/{id}
 DELETE /api/setup/draft
@@ -157,9 +158,11 @@ GET /api/retention/leaving-soon
 GET /api/retention/rules
 GET /api/retention/rules/{id}/runs
 GET /api/retention/runs/{runId}
+GET /api/retention/seerr-cleanups
 GET /api/retention/titles/{entityId}
 GET /api/search-cycles
 GET /api/search-retry-windows
+GET /api/seerr-servers/
 GET /api/series/calendar
 GET /api/series/controls
 GET /api/series/episodes/wanted
@@ -327,6 +330,9 @@ POST /api/retention/leaving-soon/remove
 POST /api/retention/rules
 POST /api/retention/rules/trial
 POST /api/retention/rules/{id}/check
+POST /api/seerr-servers/
+POST /api/seerr-servers/test
+POST /api/seerr-servers/{id}/test
 POST /api/series/
 POST /api/series/bulk
 POST /api/series/bulk/quality-profile
@@ -403,6 +409,7 @@ PUT /api/quality-profiles/{id}
 PUT /api/recycle-bin/settings
 PUT /api/release-profiles/{id}
 PUT /api/retention/rules/{id}
+PUT /api/seerr-servers/{id}
 PUT /api/series/episodes/monitoring
 PUT /api/series/monitoring
 PUT /api/series/{id}/metadata/override

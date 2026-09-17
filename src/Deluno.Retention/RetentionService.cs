@@ -45,6 +45,7 @@ public sealed class RetentionService(
     IRecycleBinService recycleBin,
     IUnifiedExclusionRepository exclusions,
     IMediaServerClientRegistry clients,
+    IRetentionSeerr seerr,
     IActivityFeedRepository activity,
     IOutboundNotificationService notifications,
     TimeProvider timeProvider,
@@ -406,9 +407,13 @@ public sealed class RetentionService(
                 Reason: char.ToUpperInvariant(reason[0]) + reason[1..]),
             cancellationToken);
 
-        return rule.RemoveFromServers
+        // Seerr would otherwise go on showing it available or requested (#522).
+        // A failure here never undoes the removal; it is owed and tried again.
+        var seerrNote = await seerr.ClearAsync(candidate.EntityId, rule.MediaType, candidate.Title, target.Value.TmdbId, candidate.Unit.TvdbId, cancellationToken);
+        var notes = rule.RemoveFromServers
             ? await TellServersAsync(candidate.ServerItems.Select(match => (match.Server, match.Item)), candidate.Title, cancellationToken)
             : [];
+        return seerrNote is null ? notes : [.. notes, $"Seerr: {seerrNote}"];
     }
 
     /// <summary>A season's or episode's files go; the show stays, and the episodes are no longer wanted.</summary>

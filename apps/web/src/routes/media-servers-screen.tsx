@@ -18,6 +18,7 @@ import { PageToolbar, PageToolbarAction } from "../components/ui/page-toolbar";
 import { Select } from "../components/ui/select";
 import { Switch, SwitchRow } from "../components/ui/switch";
 import { healthChip, relative } from "./connections/format";
+import { SeerrServersCard, type SeerrCleanup, type SeerrServer } from "../components/app/seerr-servers-card";
 
 const TABS = configurationNavAreas.find((area) => area.to === "/indexers/indexers")?.items ?? [];
 
@@ -74,12 +75,14 @@ interface ServerForm {
 }
 
 export async function mediaServersLoader() {
-  const [servers, collections] = await Promise.all([
+  const [servers, collections, seerrServers, seerrCleanups] = await Promise.all([
     fetchJson<MediaServerConnection[]>("/api/media-servers"),
     // Only a person who can see retention sees its collections; the servers stand on their own.
-    fetchJson<LeavingSoonCollection[]>("/api/retention/collections").catch(() => [] as LeavingSoonCollection[])
+    fetchJson<LeavingSoonCollection[]>("/api/retention/collections").catch(() => [] as LeavingSoonCollection[]),
+    fetchJson<SeerrServer[]>("/api/seerr-servers").catch(() => [] as SeerrServer[]),
+    fetchJson<SeerrCleanup[]>("/api/retention/seerr-cleanups").catch(() => [] as SeerrCleanup[])
   ]);
-  return { servers, collections };
+  return { servers, collections, seerrServers, seerrCleanups };
 }
 
 function kindOf(kind: string) {
@@ -105,7 +108,12 @@ function same(left: ServerForm, right: ServerForm) {
  * reaches - two servers on the same default port are otherwise easy to mix up.
  */
 export function MediaServersPage() {
-  const { servers, collections } = useLoaderData() as { servers: MediaServerConnection[]; collections: LeavingSoonCollection[] };
+  const { servers, collections, seerrServers, seerrCleanups } = useLoaderData() as {
+    servers: MediaServerConnection[];
+    collections: LeavingSoonCollection[];
+    seerrServers: SeerrServer[];
+    seerrCleanups: SeerrCleanup[];
+  };
   const revalidator = useRevalidator();
 
   const [drawer, setDrawer] = useState<{ open: boolean; id: string | null }>({ open: false, id: null });
@@ -302,6 +310,8 @@ export function MediaServersPage() {
           </ListTable>
         )}
       </ListCard>
+
+      <SeerrServersCard servers={seerrServers} cleanups={seerrCleanups} onChanged={() => revalidator.revalidate()} />
 
       <Drawer
         open={drawer.open}

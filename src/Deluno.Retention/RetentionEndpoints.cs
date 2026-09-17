@@ -25,6 +25,7 @@ public static class RetentionModule
         services.AddScoped<RetentionEvaluator>();
         services.AddScoped<RetentionService>();
         services.AddScoped<RetentionCollectionService>();
+        services.AddScoped<IRetentionSeerr, RetentionSeerrService>();
         services.AddHostedService<RetentionScheduleHostedService>();
         return services;
     }
@@ -62,9 +63,10 @@ public static class RetentionModule
             [FromBody] SaveRetentionRuleRequest request,
             [FromServices] IRetentionRepository repository,
             [FromServices] IMediaServerRepository mediaServers,
+            [FromServices] ISeerrRepository seerrServers,
             CancellationToken cancellationToken) =>
         {
-            var problems = RetentionEvaluator.Validate(request, await mediaServers.ListAsync(cancellationToken));
+            var problems = RetentionEvaluator.Validate(request, await mediaServers.ListAsync(cancellationToken), (await seerrServers.ListAsync(cancellationToken)).Count(server => server.IsEnabled));
             if (problems.Count > 0)
             {
                 return Results.ValidationProblem(new Dictionary<string, string[]> { ["rule"] = problems.ToArray() });
@@ -79,10 +81,11 @@ public static class RetentionModule
             [FromBody] SaveRetentionRuleRequest request,
             [FromServices] IRetentionRepository repository,
             [FromServices] IMediaServerRepository mediaServers,
+            [FromServices] ISeerrRepository seerrServers,
             [FromServices] RetentionCollectionService collections,
             CancellationToken cancellationToken) =>
         {
-            var problems = RetentionEvaluator.Validate(request, await mediaServers.ListAsync(cancellationToken));
+            var problems = RetentionEvaluator.Validate(request, await mediaServers.ListAsync(cancellationToken), (await seerrServers.ListAsync(cancellationToken)).Count(server => server.IsEnabled));
             if (problems.Count > 0)
             {
                 return Results.ValidationProblem(new Dictionary<string, string[]> { ["rule"] = problems.ToArray() });
@@ -148,6 +151,7 @@ public static class RetentionModule
             [FromServices] IRetentionRepository repository,
             [FromServices] RetentionService service,
             [FromServices] RetentionCollectionService collections,
+            [FromServices] IRetentionSeerr seerr,
             CancellationToken cancellationToken) =>
         {
             var rule = await repository.GetRuleAsync(id, cancellationToken);
@@ -158,6 +162,7 @@ public static class RetentionModule
 
             var run = await service.CheckAsync(rule, "person", cancellationToken);
             await collections.TrySyncAsync(cancellationToken);
+            await seerr.RetryAsync(cancellationToken);
             return Results.Ok(run);
         });
 
@@ -208,6 +213,10 @@ public static class RetentionModule
         // Undoing a keep does not mark the title again; the rule's next check does.
         group.MapDelete("keeps/{id}", async (string id, [FromServices] IRetentionRepository repository, CancellationToken cancellationToken)
             => await repository.DeleteKeepAsync(id, cancellationToken) is null ? Results.NotFound() : Results.NoContent());
+
+        // Titles a rule removed that Seerr has not been cleared of yet, and why (#522).
+        group.MapGet("seerr-cleanups", async ([FromServices] IRetentionSeerr seerr, CancellationToken cancellationToken)
+            => Results.Ok(await seerr.ListCleanupsAsync(cancellationToken)));
 
         // Each server's Leaving soon collections, and why the last update failed if it did.
         group.MapGet("collections", async ([FromServices] IRetentionRepository repository, CancellationToken cancellationToken)
@@ -290,6 +299,7 @@ public sealed class RetentionScheduleHostedService(
         // that failed last time is caught up here.
         if (checkedAny)
         {
+            await scope.ServiceProvider.GetRequiredService<IRetentionSeerr>().RetryAsync(cancellationToken);
             await scope.ServiceProvider.GetRequiredService<RetentionCollectionService>().TrySyncAsync(cancellationToken);
         }
     }

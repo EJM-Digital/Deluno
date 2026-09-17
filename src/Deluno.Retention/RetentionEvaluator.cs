@@ -66,9 +66,11 @@ public sealed class RetentionEvaluator(
     IMediaServerRepository mediaServers,
     IMediaServerClientRegistry clients,
     IRetentionDiskSpace disk,
+    IRetentionSeerr seerr,
     TimeProvider timeProvider)
 {
-    public static IReadOnlyList<string> Validate(SaveRetentionRuleRequest request, IReadOnlyList<MediaServerConnection> servers)
+    /// <param name="seerrServers">Enabled Seerr servers; null when the caller does not know, and request fields are not checked for one.</param>
+    public static IReadOnlyList<string> Validate(SaveRetentionRuleRequest request, IReadOnlyList<MediaServerConnection> servers, int? seerrServers = null)
     {
         var problems = new List<string>();
         if (string.IsNullOrWhiteSpace(request.Name))
@@ -117,6 +119,11 @@ public sealed class RetentionEvaluator(
                 }
             }
 
+            if (field.Source == RetentionFieldSources.Seerr && seerrServers == 0)
+            {
+                problems.Add($"“{field.Label}” comes from Seerr. Connect a Seerr server under Media Servers first.");
+            }
+
             if (NeedsValue(op!) && string.IsNullOrWhiteSpace(value))
             {
                 problems.Add($"“{field.Label}” needs a value to compare with.");
@@ -163,7 +170,8 @@ public sealed class RetentionEvaluator(
         }
 
         var readsServers = conditions.Any(condition => condition.StartsWith("server.", StringComparison.OrdinalIgnoreCase));
-        var needsServers = readsServers || rule.RemoveFromServers;
+        var readsSeerr = conditions.Any(condition => condition.StartsWith("seerr.", StringComparison.OrdinalIgnoreCase));
+        var needsServers = readsServers || readsSeerr || rule.RemoveFromServers;
         var chosen = configured.Where(server => rule.MediaServerIds.Contains(server.Id, StringComparer.OrdinalIgnoreCase)).ToArray();
         var unreachable = new List<string>();
         var indexes = new List<RetentionServerIndex>();
@@ -200,8 +208,18 @@ public sealed class RetentionEvaluator(
             unreachable.Add("A media server this rule reads has been removed from Deluno");
         }
 
+        // Seerr is asked like a server: if one cannot be read, what depends on
+        // it is left alone rather than read as "nobody requested it" (#522).
+        RetentionSeerrIndex? requests = null;
+        if (readsSeerr)
+        {
+            var (index, seerrUnreachable) = await seerr.ReadAsync(cancellationToken);
+            requests = index;
+            unreachable.AddRange(seerrUnreachable);
+        }
+
         var all = await units.ReadAsync(level, cancellationToken);
-        var answers = new RetentionFieldAnswers(indexes, disk, timeProvider.GetUtcNow());
+        var answers = new RetentionFieldAnswers(indexes, disk, timeProvider.GetUtcNow(), requests);
 
         // Library filter conditions are asked of the catalogue once each; a
         // season or episode carries its show's answer.
