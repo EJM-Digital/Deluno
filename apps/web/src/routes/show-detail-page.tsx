@@ -40,6 +40,7 @@ import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { Card, CardContent } from "../components/ui/card";
 import { AcquisitionBlockersCard } from "../components/app/acquisition-blockers-card";
+import { RetentionTitleCard } from "../components/app/retention-title-card";
 import { RemoveMediaDialog, type MediaRemovalPreview, type RemoveMediaOptions } from "../components/app/remove-media-dialog";
 import { CreditsRow, readStoredCredits } from "../components/app/credits-row";
 import { DownloadDispatchDrawer } from "../components/app/download-dispatch-drawer";
@@ -965,6 +966,8 @@ export function ShowDetailPage() {
         disabled={busyAction !== null}
         onForced={() => revalidator.revalidate()}
       />
+
+      <RetentionTitleCard entityId={series.id} onChanged={() => revalidator.revalidate()} />
 
       {nextStep ? (
         <ListCard title="Next step" count={nextStep.eyebrow}>

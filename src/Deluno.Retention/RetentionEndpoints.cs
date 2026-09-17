@@ -1,6 +1,6 @@
-using Deluno.Connections.Data;
 using System.Collections.Concurrent;
 using Deluno.Connections.Contracts;
+using Deluno.Connections.Data;
 using Deluno.Contracts;
 using Deluno.Integrations.MediaServers;
 using Deluno.Security;
@@ -54,36 +54,6 @@ public static class RetentionModule
             return Results.Ok(retention.Concat(catalogue).ToArray());
         });
 
-        // The builder's live counts: what the rule as drawn would select now.
-        // Nothing is saved, and server listings may be a few minutes old.
-        group.MapPost("rules/trial", async (
-            [FromBody] SaveRetentionRuleRequest request,
-            [FromServices] RetentionEvaluator evaluator,
-            [FromServices] RetentionLibraryCache cache,
-            [FromServices] IMediaServerClientRegistry clients,
-            CancellationToken cancellationToken) =>
-        {
-            var level = RetentionLevels.Normalize(request.Level, request.MediaType);
-            var rule = new RetentionRule(
-                "trial", request.Name ?? "Trial", RetentionLevels.MediaType(level), true, request.MediaServerIds ?? [], request.RemoveFromServers,
-                RetentionScheduleModes.Manual, 24, null, DateTimeOffset.UnixEpoch, DateTimeOffset.UnixEpoch, level,
-                request.Steps ?? RetentionStepList.FromConditions(request.Conditions ?? []));
-            var evaluation = await evaluator.EvaluateAsync(rule, cancellationToken, (server, mediaType, token) => cache.GetAsync(server, mediaType, clients, token));
-            var matched = evaluation.Matched.ToArray();
-            return Results.Ok(new RetentionTrial(
-                evaluation.Considered,
-                evaluation.StepCounts ?? [],
-                matched.Length,
-                matched.Sum(item => item.SizeBytes ?? 0),
-                matched.OrderBy(item => item.Title, StringComparer.OrdinalIgnoreCase).Take(50)
-                    .Select(item => new RetentionRunItem(item.EntityId, item.MediaType, item.Title, item.Year, item.SizeBytes, item.Reasons, item.Outcome, item.Message))
-                    .ToArray(),
-                evaluation.Candidates.Count(item => item.Outcome == RetentionItemOutcomes.Undecided),
-                evaluation.UnreachableServers,
-                evaluation.Problems,
-                evaluation.Unmanaged ?? []));
-        });
-
         group.MapGet("rules", async ([FromServices] IRetentionRepository repository, CancellationToken cancellationToken)
             => Results.Ok(await repository.ListRulesAsync(cancellationToken)));
 
@@ -123,16 +93,47 @@ public static class RetentionModule
         group.MapDelete("rules/{id}", async (string id, [FromServices] IRetentionRepository repository, CancellationToken cancellationToken)
             => await repository.DeleteRuleAsync(id, cancellationToken) ? Results.NoContent() : Results.NotFound());
 
-        // A preview is a dry run: it removes nothing, and it is the only thing a
-        // cleanup can act on.
-        group.MapPost("rules/{id}/preview", async (
+        // The builder's live counts: what the rule as drawn would select now.
+        // Nothing is saved, and server listings may be a few minutes old.
+        group.MapPost("rules/trial", async (
+            [FromBody] SaveRetentionRuleRequest request,
+            [FromServices] RetentionEvaluator evaluator,
+            [FromServices] RetentionLibraryCache cache,
+            [FromServices] IMediaServerClientRegistry clients,
+            CancellationToken cancellationToken) =>
+        {
+            var level = RetentionLevels.Normalize(request.Level, request.MediaType);
+            var rule = new RetentionRule(
+                "trial", request.Name ?? "Trial", level, true,
+                request.Steps ?? RetentionStepList.FromConditions(request.Conditions ?? []),
+                request.MediaServerIds ?? [], request.RemoveFromServers,
+                request.WaitDays ?? RetentionLimits.DefaultWaitDays, RetentionRemovalModes.Normalize(request.RemovalMode),
+                request.CheckIntervalHours ?? RetentionLimits.DefaultCheckIntervalHours, null, DateTimeOffset.UnixEpoch, DateTimeOffset.UnixEpoch);
+            var evaluation = await evaluator.EvaluateAsync(rule, cancellationToken, (server, mediaType, token) => cache.GetAsync(server, mediaType, clients, token));
+            var matched = evaluation.Matched.ToArray();
+            return Results.Ok(new RetentionTrial(
+                evaluation.Considered,
+                evaluation.StepCounts ?? [],
+                matched.Length,
+                matched.Sum(item => item.SizeBytes ?? 0),
+                matched.OrderBy(item => item.Title, StringComparer.OrdinalIgnoreCase).Take(50)
+                    .Select(item => new RetentionRunItem(item.EntityId, item.MediaType, item.Title, item.Year, item.SizeBytes, item.Reasons, item.Outcome, item.Message))
+                    .ToArray(),
+                evaluation.Candidates.Count(item => item.Outcome == RetentionItemOutcomes.Undecided),
+                evaluation.UnreachableServers,
+                evaluation.Problems,
+                evaluation.Unmanaged ?? []));
+        });
+
+        // Run now: the same check the schedule runs.
+        group.MapPost("rules/{id}/check", async (
             string id,
             [FromServices] IRetentionRepository repository,
             [FromServices] RetentionService service,
             CancellationToken cancellationToken) =>
         {
             var rule = await repository.GetRuleAsync(id, cancellationToken);
-            return rule is null ? Results.NotFound() : Results.Ok(await service.PreviewAsync(rule, "person", cancellationToken));
+            return rule is null ? Results.NotFound() : Results.Ok(await service.CheckAsync(rule, "person", cancellationToken));
         });
 
         group.MapGet("rules/{id}/runs", async (string id, int? take, [FromServices] IRetentionRepository repository, CancellationToken cancellationToken)
@@ -141,55 +142,60 @@ public static class RetentionModule
         group.MapGet("runs/{runId}", async (string runId, [FromServices] IRetentionRepository repository, CancellationToken cancellationToken)
             => await repository.GetRunAsync(runId, cancellationToken) is { } run ? Results.Ok(run) : Results.NotFound());
 
-        group.MapPost("runs/{runId}/cleanup", async (
-            string runId,
-            [FromBody] RetentionCleanupRequest? request,
+        group.MapGet("leaving-soon", async ([FromServices] IRetentionRepository repository, CancellationToken cancellationToken)
+            => Results.Ok(await repository.ListMarksAsync(null, cancellationToken)));
+
+        // Ready to remove, confirmed. The rule is asked again before anything goes.
+        group.MapPost("leaving-soon/remove", async (
+            [FromBody] RetentionConfirmRequest request,
             [FromServices] IRetentionRepository repository,
             [FromServices] RetentionService service,
-            TimeProvider timeProvider,
             CancellationToken cancellationToken) =>
         {
-            var preview = await repository.GetRunAsync(runId, cancellationToken);
-            if (preview is null)
-            {
-                return Results.NotFound();
-            }
-
-            if (preview.Kind != RetentionRunKinds.Preview)
-            {
-                return Results.Conflict(new { message = "Only a preview can be cleaned up. Run a preview and choose from what it lists." });
-            }
-
-            // A preview is what a person saw. An old one is not.
-            if (timeProvider.GetUtcNow() - preview.StartedUtc > TimeSpan.FromHours(24))
-            {
-                return Results.Conflict(new { message = "This preview is more than a day old. Run a new preview so you see what would be removed now." });
-            }
-
-            var rule = await repository.GetRuleAsync(preview.RuleId, cancellationToken);
+            var rule = string.IsNullOrWhiteSpace(request.RuleId) ? null : await repository.GetRuleAsync(request.RuleId, cancellationToken);
             if (rule is null)
             {
                 return Results.NotFound();
             }
 
-            return Results.Ok(await service.CleanupAsync(rule, preview, request?.EntityIds, "person", cancellationToken));
+            return Results.Ok(await service.ConfirmAsync(rule, request.EntityIds ?? [], cancellationToken));
         });
+
+        group.MapGet("keeps", async ([FromServices] IRetentionRepository repository, CancellationToken cancellationToken)
+            => Results.Ok(await repository.ListKeepsAsync(cancellationToken)));
+
+        group.MapPost("keeps", async ([FromBody] SaveRetentionKeepRequest request, [FromServices] RetentionService service, CancellationToken cancellationToken) =>
+        {
+            var kept = await service.KeepAsync(request, cancellationToken);
+            return kept is null
+                ? Results.ValidationProblem(new Dictionary<string, string[]> { ["keep"] = ["Choose a title to keep."] })
+                : Results.Ok(kept);
+        });
+
+        group.MapDelete("keeps/{id}", async (string id, [FromServices] IRetentionRepository repository, CancellationToken cancellationToken)
+            => await repository.DeleteKeepAsync(id, cancellationToken) is null ? Results.NotFound() : Results.NoContent());
+
+        group.MapGet("titles/{entityId}", async (string entityId, [FromServices] RetentionService service, CancellationToken cancellationToken)
+            => Results.Ok(await service.TitleStatusAsync(entityId, cancellationToken)));
+
+        group.MapDelete("episode-removals/{episodeId}", async (string episodeId, [FromServices] RetentionService service, CancellationToken cancellationToken)
+            => await service.UndoEpisodeRemovalAsync(episodeId, cancellationToken) is null ? Results.NotFound() : Results.NoContent());
 
         return endpoints;
     }
 }
 
 /// <summary>
-/// Runs rules on their schedules. A rule set to preview only records what it
-/// would remove; only a rule explicitly set to clean up removes anything
-/// unattended.
+/// Checks each enabled rule when its interval has passed (#494). A check marks
+/// what matches as Leaving soon and removes only what is past its wait and
+/// still matches.
 /// </summary>
 public sealed class RetentionScheduleHostedService(
     IServiceScopeFactory scopes,
     TimeProvider timeProvider,
     ILogger<RetentionScheduleHostedService> logger) : BackgroundService
 {
-    private static readonly TimeSpan Tick = TimeSpan.FromMinutes(15);
+    private static readonly TimeSpan Tick = TimeSpan.FromMinutes(5);
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
@@ -223,21 +229,19 @@ public sealed class RetentionScheduleHostedService(
         var now = timeProvider.GetUtcNow();
         foreach (var rule in await repository.ListRulesAsync(cancellationToken))
         {
-            if (!rule.IsEnabled || rule.ScheduleMode == RetentionScheduleModes.Manual)
+            if (rule.NextCheckUtc is not { } due || due > now)
             {
                 continue;
             }
 
-            if (rule.LastScheduledRunUtc is { } last && now - last < TimeSpan.FromHours(rule.ScheduleIntervalHours))
+            try
             {
-                continue;
+                await service.CheckAsync(rule, "schedule", cancellationToken);
             }
-
-            await repository.MarkScheduledRunAsync(rule.Id, now, cancellationToken);
-            var preview = await service.PreviewAsync(rule, "schedule", cancellationToken);
-            if (rule.ScheduleMode == RetentionScheduleModes.Cleanup && preview.MatchedCount > 0)
+            catch (Exception exception) when (exception is not OperationCanceledException)
             {
-                await service.CleanupAsync(rule, preview, null, "schedule", cancellationToken);
+                // One rule's failure does not stop the others being checked.
+                logger.LogWarning(exception, "Retention rule {Rule} could not be checked.", rule.Name);
             }
         }
     }

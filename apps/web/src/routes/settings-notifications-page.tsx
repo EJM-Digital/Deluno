@@ -37,6 +37,7 @@ const EVENT_OPTIONS = [
   { value: "import", label: "Import — a file was added to the library" },
   { value: "upgrade", label: "Upgrade — a better release replaced a file" },
   { value: "health", label: "Health alerts" },
+  { value: "retention", label: "Retention — Leaving soon, removed, waiting for you, failed" },
   { value: "test", label: "Test events only" }
 ];
 

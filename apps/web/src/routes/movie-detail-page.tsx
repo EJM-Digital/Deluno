@@ -30,6 +30,7 @@ import {
   type AcquisitionBlockersResponse
 } from "../lib/api";
 import { AcquisitionBlockersCard } from "../components/app/acquisition-blockers-card";
+import { RetentionTitleCard } from "../components/app/retention-title-card";
 import { CreditsRow, readStoredCredits } from "../components/app/credits-row";
 import { DownloadDispatchDrawer } from "../components/app/download-dispatch-drawer";
 import { TitleTagsEditor } from "../components/app/title-tags-editor";
@@ -876,6 +877,8 @@ export function MovieDetailPage() {
         disabled={busyAction !== null}
         onForced={() => revalidator.revalidate()}
       />
+
+      <RetentionTitleCard entityId={movie.id} onChanged={() => revalidator.revalidate()} />
 
       {nextStep ? (
         <ListCard title="Next step" count={nextStep.eyebrow}>

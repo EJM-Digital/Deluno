@@ -10,6 +10,7 @@ using Deluno.Libraries.Data;
 using Deluno.Media;
 using Deluno.Movies.Contracts;
 using Deluno.Movies.Data;
+using Deluno.Notifications;
 using Deluno.Platform;
 using Deluno.Retention;
 using Deluno.Series.Contracts;
@@ -36,7 +37,9 @@ public sealed class RetentionRuleTests
     private readonly Mock<IMediaServerRepository> _servers = new();
     private readonly Mock<IMediaServerClient> _jellyfin = new();
     private readonly Mock<IUnifiedExclusionRepository> _exclusions = new();
-    private readonly Mock<IRetentionRepository> _runs = new();
+    private readonly InMemoryRetentionRepository _store = new();
+    private readonly Mock<IOutboundNotificationService> _notifications = new();
+    private readonly MutableClock _clock = new(Now);
     private readonly Mock<IRecycleBinService> _recycleBin = new();
     private readonly FakeDisk _disk = new();
     private readonly List<MovieListItem> _catalogue = [];
@@ -175,33 +178,10 @@ public sealed class RetentionRuleTests
     [Fact]
     public async Task A_season_everyone_has_finished_is_found_under_its_show()
     {
-        var library = (LibraryItem)RuntimeHelpers.GetUninitializedObject(typeof(LibraryItem));
-        var show = (SeriesListItem)RuntimeHelpers.GetUninitializedObject(typeof(SeriesListItem));
-        show = show with { Id = "s1", Title = "Breaking Bad", StartYear = 2008, MetadataProvider = "tmdb", MetadataProviderId = "1396" };
-        _series.Setup(repo => repo.ListPageAsync(It.IsAny<CatalogueQuery>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new CataloguePage<SeriesListItem>([show], null, false, 1, null));
-        _series.Setup(repo => repo.StreamTrackedFilesAsync("lib-tv", It.IsAny<CancellationToken>())).Returns(() => EpisodeFiles(
-            ("e1", 1, 1), ("e2", 1, 2), ("e3", 2, 1)));
-        _series.Setup(repo => repo.GetInventoryDetailAsync("s1", It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new SeriesInventoryDetail("s1", "Breaking Bad", 2008, 2, 3, 3, []));
-
-        var showItem = Item("js", @"C:\Deluno\RetentionLab\TV\Breaking Bad (2008)", tmdb: "1396") with { Level = MediaServerItemLevels.Show, MediaType = "tv" };
-        MediaServerItem Season(string id, int number) => Item(id, "", tmdb: null) with { Level = MediaServerItemLevels.Season, MediaType = "tv", Paths = [], ShowServerItemId = "js", SeasonNumber = number };
-        MediaServerItem Episode(string id, string seasonId, int season, int number, params string[] playedBy)
-            => Item(id, EpisodePath(season, number), tmdb: null, playedBy: playedBy) with
-            {
-                Level = MediaServerItemLevels.Episode, MediaType = "tv", ShowServerItemId = "js", SeasonServerItemId = seasonId, SeasonNumber = season, EpisodeNumber = number
-            };
-        _jellyfin.Setup(client => client.ListItemsAsync(_server, "tv", It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new MediaServerAnswer<MediaServerLibrary>.Reported(new MediaServerLibrary(
-            [
-                showItem, Season("js1", 1), Season("js2", 2),
-                Episode("je1", "js1", 1, 1, "owner", "ben"), Episode("je2", "js1", 1, 2, "owner", "ben"),
-                Episode("je3", "js2", 2, 1, "owner")
-            ], ["owner", "ben"])));
+        SeasonLibrary();
 
         var evaluation = await Evaluator().EvaluateAsync(
-            Rule(Keep("server.allEpisodesSeenBy:everyone:")) with { Level = RetentionLevels.Season, MediaType = "tv" },
+            Rule(Keep("server.allEpisodesSeenBy:everyone:")) with { Level = RetentionLevels.Season },
             CancellationToken.None);
 
         var season = Assert.Single(evaluation.Matched);
@@ -249,97 +229,209 @@ public sealed class RetentionRuleTests
     {
         var steps = condition.Length == 0 ? Array.Empty<RetentionStep>() : [Keep(condition)];
         var problems = RetentionEvaluator.Validate(
-            new SaveRetentionRuleRequest("Rule", "movies", true, null, withServer ? ["server-1"] : [], false, "manual", 24, RetentionLevels.Movie, steps),
+            new SaveRetentionRuleRequest("Rule", RetentionLevels.Movie, true, steps, withServer ? ["server-1"] : [], false),
             [_server]);
 
         Assert.Contains(problems, problem => problem.Contains(expected, StringComparison.Ordinal));
     }
 
     [Fact]
-    public async Task A_cleanup_removes_what_was_previewed_and_still_matches_and_nothing_else()
+    public async Task A_match_is_marked_leaving_soon_and_nothing_is_removed_before_its_day()
     {
         ServerAnswers(
-            Item("j1", Path("Nosferatu", 1922), tmdb: "653", playedBy: ["delunolab"], last: Now.AddDays(-40)),
-            Item("j2", Path("His Girl Friday", 1940), tmdb: "3085", playedBy: ["delunolab"], last: Now.AddDays(-40)));
-        _jellyfin.Setup(client => client.RemoveAsync(_server, It.IsAny<MediaServerItem>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new MediaServerAnswer<MediaServerRemoval>.Reported(new MediaServerRemoval("Rig lab Jellyfin was told it is gone.")));
-        var rule = Rule(Keep("server.watchedBy:anyone:")) with { RemoveFromServers = true };
-        var service = Service();
-
-        var preview = await service.PreviewAsync(rule, "person", CancellationToken.None);
-        Assert.Equal(2, preview.MatchedCount);
-
-        // Between preview and cleanup, His Girl Friday drops off the server's
-        // watched list and no longer matches.
-        ServerAnswers(
-            Item("j1", Path("Nosferatu", 1922), tmdb: "653", playedBy: ["delunolab"], last: Now.AddDays(-40)),
+            Item("j1", Path("Nosferatu", 1922), tmdb: "653", playedBy: ["owner"], last: Now.AddDays(-40)),
             Item("j2", Path("His Girl Friday", 1940), tmdb: "3085"));
+        var rule = Rule(Keep("server.watchedBy:anyone:"));
+        _store.Add(rule);
+
+        var run = await Service().CheckAsync(rule, "schedule", CancellationToken.None);
+
+        var mark = Assert.Single(await _store.ListMarksAsync(rule.Id, CancellationToken.None));
+        Assert.Equal(("m1", RetentionMarkStates.Leaving, Now.AddDays(14)), (mark.EntityId, mark.State, mark.RemoveAfterUtc));
+        Assert.Equal(["Watched by anyone: owner"], mark.Reasons);
+        Assert.Equal(1, run.MatchedCount);
+        Assert.Equal(RetentionItemOutcomes.Marked, Assert.Single(run.Items!).Outcome);
+        // Said once: the total adds nothing when it is what was just marked.
+        Assert.Equal("1 title marked leaving soon.", run.Summary);
+        Assert.Equal("Nothing changed; 1 title still leaving soon.", (await Service().CheckAsync(rule, "schedule", CancellationToken.None)).Summary);
+        _movies.Verify(repo => repo.DeleteAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+        _notifications.Verify(service => service.DispatchAsync(RetentionService.LeavingSoonEvent, "1 title leaving soon", It.Is<string>(text => text.Contains("Nosferatu on 1 Oct 2026")), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task On_its_day_a_title_that_still_matches_goes_and_one_that_stopped_matching_does_not()
+    {
+        ServerAnswers(
+            Item("j1", Path("Nosferatu", 1922), tmdb: "653", playedBy: ["owner"], last: Now.AddDays(-40)),
+            Item("j2", Path("His Girl Friday", 1940), tmdb: "3085", playedBy: ["owner"], last: Now.AddDays(-40)));
+        _jellyfin.Setup(client => client.RemoveAsync(_server, It.IsAny<MediaServerItem>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new MediaServerAnswer<MediaServerRemoval>.Reported(new MediaServerRemoval("told")));
+        var rule = Rule(Keep("server.watchedBy:anyone:"), Keep("server.lastViewed:beyond:30")) with { RemoveFromServers = true };
+        _store.Add(rule);
+        await Service().CheckAsync(rule, "schedule", CancellationToken.None);
+        Assert.Equal(2, (await _store.ListMarksAsync(rule.Id, CancellationToken.None)).Count);
+
+        // A fortnight on, somebody has watched His Girl Friday again.
+        _clock.Now = Now.AddDays(15);
+        ServerAnswers(
+            Item("j1", Path("Nosferatu", 1922), tmdb: "653", playedBy: ["owner"], last: Now.AddDays(-40)),
+            Item("j2", Path("His Girl Friday", 1940), tmdb: "3085", playedBy: ["owner"], last: _clock.Now.AddDays(-2)));
         UpsertMediaExclusionRequest? excluded = null;
         _exclusions.Setup(repo => repo.UpsertAsync(It.IsAny<UpsertMediaExclusionRequest>(), It.IsAny<CancellationToken>()))
             .Callback<UpsertMediaExclusionRequest, CancellationToken>((request, _) => excluded = request)
             .ReturnsAsync((MediaExclusionItem?)null);
 
-        var cleanup = await service.CleanupAsync(rule, preview, null, "person", CancellationToken.None);
+        var run = await Service().CheckAsync(rule, "schedule", CancellationToken.None);
 
-        Assert.Equal(1, cleanup.RemovedCount);
-        var removed = Assert.Single(cleanup.Items!, item => item.Outcome == RetentionItemOutcomes.Removed);
-        Assert.Equal("m1", removed.EntityId);
-        Assert.Contains("Rig lab Jellyfin was told it is gone.", removed.Message, StringComparison.Ordinal);
-        Assert.Equal(RetentionItemOutcomes.Changed, Assert.Single(cleanup.Items!, item => item.EntityId == "m2").Outcome);
-
+        Assert.Equal(1, run.RemovedCount);
+        Assert.Equal("m1", Assert.Single(run.Items!, item => item.Outcome == RetentionItemOutcomes.Removed).EntityId);
+        Assert.Equal("No longer matches the rule.", Assert.Single(run.Items!, item => item.EntityId == "m2").Message);
+        Assert.Empty(await _store.ListMarksAsync(rule.Id, CancellationToken.None));
         _movies.Verify(repo => repo.DeleteAsync("m1", It.IsAny<CancellationToken>()), Times.Once);
         _movies.Verify(repo => repo.DeleteAsync("m2", It.IsAny<CancellationToken>()), Times.Never);
-        _recycleBin.Verify(bin => bin.MoveAsync(It.Is<IReadOnlyList<TrackedLibraryFile>>(files => files.Any(file => file.FilePath.EndsWith("Nosferatu (1922).mkv", StringComparison.Ordinal))), It.IsAny<IReadOnlyList<LibraryItem>>(), It.IsAny<CancellationToken>()), Times.Once);
-
         Assert.NotNull(excluded);
         Assert.Equal(MediaExclusionSourceKinds.Retention, excluded!.SourceKind);
-        Assert.Equal("rule-1", excluded.SourceId);
         Assert.Equal("imdb:tt0013442", excluded.EntryKey);
-        Assert.Equal("tmdb:653", excluded.Provider);
-        Assert.Null(excluded.DurationDays);
-        Assert.StartsWith("Cleaned up by retention rule “Watched films” on 17 Sep 2026", excluded.Reason, StringComparison.Ordinal);
+        Assert.StartsWith("Removed by retention rule “Watched films” on 2 Oct 2026", excluded.Reason, StringComparison.Ordinal);
         _jellyfin.Verify(client => client.RemoveAsync(_server, It.Is<MediaServerItem>(item => item.ServerItemId == "j1"), It.IsAny<CancellationToken>()), Times.Once);
+        _notifications.Verify(service => service.DispatchAsync(RetentionService.RemovedEvent, It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]
-    public async Task A_cleanup_while_a_server_cannot_be_asked_removes_nothing()
+    public async Task A_rule_that_asks_first_waits_for_a_person_and_then_removes()
     {
-        ServerAnswers(Item("j1", Path("Nosferatu", 1922), tmdb: "653", playedBy: ["delunolab"], last: Now.AddDays(-40)));
-        var rule = Rule(Keep("server.watchedBy:anyone:"));
-        var service = Service();
-        var preview = await service.PreviewAsync(rule, "person", CancellationToken.None);
-        Assert.Equal(1, preview.MatchedCount);
+        ServerAnswers(Item("j1", Path("Nosferatu", 1922), tmdb: "653", playedBy: ["owner"], last: Now.AddDays(-40)));
+        var rule = Rule(Keep("server.watchedBy:anyone:")) with { RemovalMode = RetentionRemovalModes.Ask, WaitDays = 1 };
+        _store.Add(rule);
+        await Service().CheckAsync(rule, "schedule", CancellationToken.None);
 
+        _clock.Now = Now.AddDays(2);
+        var check = await Service().CheckAsync(rule, "schedule", CancellationToken.None);
+        Assert.Equal(RetentionMarkStates.Ready, Assert.Single(await _store.ListMarksAsync(rule.Id, CancellationToken.None)).State);
+        Assert.Equal(0, check.RemovedCount);
+        _movies.Verify(repo => repo.DeleteAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+        _notifications.Verify(service => service.DispatchAsync(RetentionService.WaitingEvent, It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Once);
+
+        var confirmed = await Service().ConfirmAsync(rule, ["m1"], CancellationToken.None);
+
+        Assert.Equal(1, confirmed.RemovedCount);
+        _movies.Verify(repo => repo.DeleteAsync("m1", It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task A_kept_title_leaves_leaving_soon_and_is_not_marked_again()
+    {
+        ServerAnswers(Item("j1", Path("Nosferatu", 1922), tmdb: "653", playedBy: ["owner"], last: Now.AddDays(-40)));
+        var rule = Rule(Keep("server.watchedBy:anyone:"));
+        _store.Add(rule);
+        await Service().CheckAsync(rule, "schedule", CancellationToken.None);
+
+        var kept = await Service().KeepAsync(new SaveRetentionKeepRequest("m1", null, null, "Kids' favourite"), CancellationToken.None);
+        _clock.Now = Now.AddDays(20);
+        var run = await Service().CheckAsync(rule, "schedule", CancellationToken.None);
+
+        Assert.Equal((1, "Nosferatu", null, "Kids' favourite"), (kept!.ClearedMarks, kept.Keep.Title, kept.Keep.RuleId, kept.Keep.Note));
+        Assert.Empty(await _store.ListMarksAsync(rule.Id, CancellationToken.None));
+        Assert.Empty(run.Items!);
+        _movies.Verify(repo => repo.DeleteAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task A_check_while_a_server_cannot_be_asked_changes_nothing_and_holds_what_is_due()
+    {
+        ServerAnswers(Item("j1", Path("Nosferatu", 1922), tmdb: "653", playedBy: ["owner"], last: Now.AddDays(-40)));
+        var rule = Rule(Keep("server.watchedBy:anyone:"));
+        _store.Add(rule);
+        await Service().CheckAsync(rule, "schedule", CancellationToken.None);
+
+        _clock.Now = Now.AddDays(30);
         _jellyfin.Setup(client => client.ListItemsAsync(_server, "movies", It.IsAny<CancellationToken>()))
             .ReturnsAsync(new MediaServerAnswer<MediaServerLibrary>.Unreachable("Deluno could not reach Rig lab Jellyfin."));
 
-        var cleanup = await service.CleanupAsync(rule, preview, null, "person", CancellationToken.None);
+        var run = await Service().CheckAsync(rule, "schedule", CancellationToken.None);
 
-        Assert.Equal(0, cleanup.RemovedCount);
-        Assert.StartsWith("Nothing was removed", cleanup.Summary, StringComparison.Ordinal);
+        var mark = Assert.Single(await _store.ListMarksAsync(rule.Id, CancellationToken.None));
+        Assert.Equal((RetentionMarkStates.Held, "Deluno could not reach Rig lab Jellyfin"), (mark.State, mark.StateReason));
+        Assert.Equal(0, run.RemovedCount);
+        Assert.StartsWith("Nothing changed: Deluno could not reach Rig lab Jellyfin.", run.Summary, StringComparison.Ordinal);
         _movies.Verify(repo => repo.DeleteAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task A_season_removed_by_a_rule_loses_its_files_and_is_no_longer_wanted_until_undone()
+    {
+        SeasonLibrary();
+        var rule = Rule(Keep("server.allEpisodesSeenBy:everyone:")) with { Level = RetentionLevels.Season, WaitDays = 1 };
+        _store.Add(rule);
+        await Service().CheckAsync(rule, "schedule", CancellationToken.None);
+
+        _clock.Now = Now.AddDays(2);
+        var run = await Service().CheckAsync(rule, "schedule", CancellationToken.None);
+
+        Assert.Equal("s1:s1", Assert.Single(run.Items!, item => item.Outcome == RetentionItemOutcomes.Removed).EntityId);
+        _recycleBin.Verify(bin => bin.MoveAsync(It.Is<IReadOnlyList<TrackedLibraryFile>>(files => files.Count == 2 && files.All(file => file.FilePath.Contains("Season 1"))), It.IsAny<IReadOnlyList<LibraryItem>>(), It.IsAny<CancellationToken>()), Times.Once);
+        _series.Verify(repo => repo.UpdateEpisodeMonitoredAsync(It.Is<IReadOnlyList<string>>(ids => ids.Order().SequenceEqual(new[] { "e1", "e2" })), false, It.IsAny<CancellationToken>()), Times.Once);
+        _series.Verify(repo => repo.DeleteAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+        var removals = await _store.ListEpisodeRemovalsAsync("s1", CancellationToken.None);
+        Assert.Equal(["e1", "e2"], removals.Select(item => item.EpisodeId).Order());
+        Assert.All(removals, item => Assert.StartsWith("Removed by retention rule “Watched films”", item.Reason, StringComparison.Ordinal));
+
+        var undone = await Service().UndoEpisodeRemovalAsync("e1", CancellationToken.None);
+
+        Assert.NotNull(undone);
+        _series.Verify(repo => repo.UpdateEpisodeMonitoredAsync(It.Is<IReadOnlyList<string>>(ids => ids.SequenceEqual(new[] { "e1" })), true, It.IsAny<CancellationToken>()), Times.Once);
+        Assert.Equal("e2", Assert.Single(await _store.ListEpisodeRemovalsAsync("s1", CancellationToken.None)).EpisodeId);
     }
 
     private RetentionEvaluator Evaluator()
         => new(
-            new RetentionUnitReader(_movies.Object, _series.Object, _libraries.Object, new FixedClock(Now)),
+            new RetentionUnitReader(_movies.Object, _series.Object, _libraries.Object, _clock),
             _servers.Object,
             new MediaServerClientRegistry([_jellyfin.Object]),
             _disk,
-            new FixedClock(Now));
+            _clock);
 
     private RetentionService Service()
     {
         var intake = new Mock<IIntakeRepository>();
         var removal = new TitleRemovalService(_libraries.Object, intake.Object, Mock.Of<IJobQueueRepository>(), Mock.Of<IActivityFeedRepository>(), _recycleBin.Object);
-        return new RetentionService(_runs.Object, Evaluator(), removal, _movies.Object, _series.Object, _exclusions.Object,
-            new MediaServerClientRegistry([_jellyfin.Object]), Mock.Of<IActivityFeedRepository>(), new FixedClock(Now), NullLogger<RetentionService>.Instance);
+        return new RetentionService(_store, Evaluator(), removal, _movies.Object, _series.Object, _libraries.Object, _recycleBin.Object, _exclusions.Object,
+            new MediaServerClientRegistry([_jellyfin.Object]), Mock.Of<IActivityFeedRepository>(), _notifications.Object, _clock, NullLogger<RetentionService>.Instance);
+    }
+
+    /// <summary>Breaking Bad: season 1 watched by everyone, season 2 by one person.</summary>
+    private void SeasonLibrary()
+    {
+        var show = (SeriesListItem)RuntimeHelpers.GetUninitializedObject(typeof(SeriesListItem));
+        show = show with { Id = "s1", Title = "Breaking Bad", StartYear = 2008, MetadataProvider = "tmdb", MetadataProviderId = "1396" };
+        _series.Setup(repo => repo.ListPageAsync(It.IsAny<CatalogueQuery>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new CataloguePage<SeriesListItem>([show], null, false, 1, null));
+        _series.Setup(repo => repo.StreamTrackedFilesAsync("lib-tv", It.IsAny<CancellationToken>())).Returns(() => EpisodeFiles(
+            ("e1", 1, 1), ("e2", 1, 2), ("e3", 2, 1)));
+        _series.Setup(repo => repo.GetInventoryDetailAsync("s1", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new SeriesInventoryDetail("s1", "Breaking Bad", 2008, 2, 3, 3, []));
+
+        var showItem = Item("js", @"C:\Deluno\RetentionLab\TV\Breaking Bad (2008)", tmdb: "1396") with { Level = MediaServerItemLevels.Show, MediaType = "tv" };
+        MediaServerItem Season(string id, int number) => Item(id, "", tmdb: null) with { Level = MediaServerItemLevels.Season, MediaType = "tv", Paths = [], ShowServerItemId = "js", SeasonNumber = number };
+        MediaServerItem Episode(string id, string seasonId, int season, int number, params string[] playedBy)
+            => Item(id, EpisodePath(season, number), tmdb: null, playedBy: playedBy) with
+            {
+                Level = MediaServerItemLevels.Episode, MediaType = "tv", ShowServerItemId = "js", SeasonServerItemId = seasonId, SeasonNumber = season, EpisodeNumber = number
+            };
+        _jellyfin.Setup(client => client.ListItemsAsync(_server, "tv", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new MediaServerAnswer<MediaServerLibrary>.Reported(new MediaServerLibrary(
+            [
+                showItem, Season("js1", 1), Season("js2", 2),
+                Episode("je1", "js1", 1, 1, "owner", "ben"), Episode("je2", "js1", 1, 2, "owner", "ben"),
+                Episode("je3", "js2", 2, 1, "owner")
+            ], ["owner", "ben"])));
+
     }
 
     private static RetentionStep Keep(string condition) => RetentionStep.KeepOnly(condition);
 
     private static RetentionRule Rule(params RetentionStep[] steps)
-        => new("rule-1", "Watched films", "movies", true, ["server-1"], false, "manual", 24, null, Now, Now, RetentionLevels.Movie, steps);
+        => new("rule-1", "Watched films", RetentionLevels.Movie, true, steps, ["server-1"], false, 14, RetentionRemovalModes.Automatic, 8, null, Now, Now);
 
     private void ServerAnswers(params MediaServerItem[] items)
         => _jellyfin.Setup(client => client.ListItemsAsync(_server, "movies", It.IsAny<CancellationToken>()))
@@ -406,8 +498,10 @@ public sealed class RetentionRuleTests
         }
     }
 
-    private sealed class FixedClock(DateTimeOffset now) : TimeProvider
+    private sealed class MutableClock(DateTimeOffset now) : TimeProvider
     {
-        public override DateTimeOffset GetUtcNow() => now;
+        public DateTimeOffset Now { get; set; } = now;
+
+        public override DateTimeOffset GetUtcNow() => Now;
     }
 }

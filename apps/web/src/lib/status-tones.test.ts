@@ -48,6 +48,8 @@ describe("the one status table", () => {
       // Failed and out of retries. Nothing happens until someone looks.
       "connection.degraded",
       "job.deadLetter",
+      // A rule that asks first: nothing is removed until someone confirms.
+      "retention.ready",
       // Stopped, and it will not restart itself.
       "transfer.needsALook",
       "transfer.stalled"
