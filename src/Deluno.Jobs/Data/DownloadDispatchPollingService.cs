@@ -209,6 +209,7 @@ public sealed class DownloadDispatchPollingService(
         var title = dispatch.ReleaseName;
         var detailsJson = JsonSerializer.Serialize(new
         {
+            DispatchId = dispatch.Id,
             dispatch.DownloadClientId,
             dispatch.DownloadClientName,
             dispatch.ReleaseName,
@@ -251,6 +252,7 @@ public sealed class DownloadDispatchPollingService(
         var title = dispatch.ReleaseName;
         var detailsJson = JsonSerializer.Serialize(new
         {
+            DispatchId = dispatch.Id,
             dispatch.DownloadClientId,
             dispatch.DownloadClientName,
             dispatch.ReleaseName,
@@ -295,6 +297,7 @@ public sealed class DownloadDispatchPollingService(
         var title = dispatch.ReleaseName;
         var detailsJson = JsonSerializer.Serialize(new
         {
+            DispatchId = dispatch.Id,
             dispatch.DownloadClientId,
             dispatch.DownloadClientName,
             dispatch.ReleaseName,
@@ -342,6 +345,7 @@ public sealed class DownloadDispatchPollingService(
             : dispatch.ImportFailureCode ?? "unknown";
         var detailsJson = JsonSerializer.Serialize(new
         {
+            DispatchId = dispatch.Id,
             dispatch.DownloadClientId,
             dispatch.DownloadClientName,
             dispatch.ReleaseName,

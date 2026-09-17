@@ -130,6 +130,49 @@ public sealed class SqliteDispatchAlertRepository(
         return rowsAffected > 0;
     }
 
+    public async Task<int> AcknowledgeAlertsForDispatchAsync(string dispatchId, CancellationToken cancellationToken)
+    {
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Jobs,
+            cancellationToken);
+
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            $"""
+            UPDATE dispatch_alerts
+            SET acknowledged = 1, acknowledged_utc = @acknowledgedUtc
+            WHERE dispatch_id = @dispatchId AND {OpenPredicate}
+            """;
+        AddParameter(command, "@dispatchId", dispatchId);
+        AddParameter(command, "@acknowledgedUtc", timeProvider.GetUtcNow().ToString("O"));
+
+        return await command.ExecuteNonQueryAsync(cancellationToken);
+    }
+
+    public async Task<int> AcknowledgeAlertsForReleaseAsync(string downloadClientId, string releaseName, CancellationToken cancellationToken)
+    {
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Jobs,
+            cancellationToken);
+
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            $"""
+            UPDATE dispatch_alerts
+            SET acknowledged = 1, acknowledged_utc = @acknowledgedUtc
+            WHERE {OpenPredicate}
+              AND dispatch_id IN (
+                  SELECT id FROM download_dispatches
+                  WHERE download_client_id = @clientId AND release_name = @releaseName
+              )
+            """;
+        AddParameter(command, "@clientId", downloadClientId);
+        AddParameter(command, "@releaseName", releaseName);
+        AddParameter(command, "@acknowledgedUtc", timeProvider.GetUtcNow().ToString("O"));
+
+        return await command.ExecuteNonQueryAsync(cancellationToken);
+    }
+
     public async Task<int> GetOpenAlertCountBySeverityAsync(CancellationToken cancellationToken)
     {
         await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
