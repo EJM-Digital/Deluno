@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { useLoaderData, useRevalidator } from "react-router-dom";
-import { Eye, Loader2 } from "lucide-react";
+import { Loader2, Play } from "lucide-react";
 import { fetchJson, readValidationProblem } from "../lib/api";
 import { authedFetch } from "../lib/use-auth";
 import { formatBytes } from "../lib/utils";
@@ -9,34 +9,39 @@ import { formatDateTime, useDisplayPreferences } from "../lib/display-preference
 import { useUnsavedChanges } from "../hooks/use-unsaved-changes";
 import { automationNavItems } from "../components/app/settings-shell";
 import { describeCondition, RetentionStepBuilder, type RetentionField, type RetentionStep, type RetentionStepCount } from "../components/app/retention-step-builder";
+import { RetentionKeepDialog, type KeepChoice } from "../components/app/retention-keep-dialog";
 import { Button } from "../components/ui/button";
 import { Chip } from "../components/ui/chip";
+import { retentionMarkPresentation } from "../lib/status-tones";
 import { ConfirmDialog } from "../components/ui/confirm-dialog";
 import { Drawer, DrawerDanger, DrawerFooter, DrawerSection, type DrawerSaveState } from "../components/ui/drawer";
 import { Field, FieldRow } from "../components/ui/field";
 import { Input } from "../components/ui/input";
 import { LIST_TRACK, ListCard, ListCell, ListEmpty, ListNameCell, ListRow, ListTable } from "../components/ui/list-card";
 import { PageToolbar, PageToolbarAction } from "../components/ui/page-toolbar";
+import { SegmentedControl } from "../components/ui/segmented-control";
 import { Select } from "../components/ui/select";
 import { Switch, SwitchRow } from "../components/ui/switch";
 import type { MediaServerConnection } from "./media-servers-screen";
+
+type Level = "movie" | "show" | "season" | "episode";
+type RemovalMode = "automatic" | "ask";
 
 /** Mirrors `Deluno.Retention.RetentionRule`. */
 interface RetentionRule {
   id: string;
   name: string;
-  mediaType: "movies" | "tv" | string;
   level: Level;
   isEnabled: boolean;
   steps: RetentionStep[];
   mediaServerIds: string[];
   removeFromServers: boolean;
-  scheduleMode: "manual" | "preview" | "cleanup" | string;
-  scheduleIntervalHours: number;
-  lastScheduledRunUtc: string | null;
+  waitDays: number;
+  removalMode: RemovalMode;
+  checkIntervalHours: number;
+  lastCheckedUtc: string | null;
+  nextCheckUtc: string | null;
 }
-
-type Level = "movie" | "show" | "season" | "episode";
 
 /** Mirrors `Deluno.Retention.RetentionTrial`. */
 interface RetentionTrial {
@@ -50,30 +55,43 @@ interface RetentionTrial {
   unmanaged: { server: string; title: string; year: number | null }[];
 }
 
-interface RetentionRunItem {
+/** Mirrors `Deluno.Retention.RetentionMark`. */
+interface RetentionMark {
+  ruleId: string;
+  ruleName: string;
   entityId: string;
-  mediaType: string;
+  level: Level;
+  showId: string | null;
   title: string;
   year: number | null;
   sizeBytes: number | null;
   reasons: string[];
-  outcome: "matched" | "excluded-unreachable" | "removed" | "changed" | "failed" | string;
-  message: string | null;
+  firstMatchedUtc: string;
+  removeAfterUtc: string;
+  state: "leaving" | "ready" | "held" | string;
+  stateReason: string | null;
 }
 
+/** Mirrors `Deluno.Retention.RetentionKeep`. */
+interface RetentionKeep {
+  id: string;
+  entityId: string;
+  level: Level;
+  title: string;
+  ruleId: string | null;
+  ruleName: string | null;
+  note: string | null;
+  createdUtc: string;
+}
+
+/** Mirrors `Deluno.Retention.RetentionRun`. */
 interface RetentionRun {
   id: string;
-  ruleId: string;
-  kind: "preview" | "cleanup" | string;
+  kind: "check" | "confirmed" | "preview" | "cleanup" | string;
   trigger: string;
   startedUtc: string;
-  matchedCount: number;
-  excludedCount: number;
   removedCount: number;
-  failedCount: number;
-  bytes: number;
   summary: string;
-  items?: RetentionRunItem[] | null;
 }
 
 interface RuleForm {
@@ -83,8 +101,9 @@ interface RuleForm {
   steps: RetentionStep[];
   mediaServerIds: string[];
   removeFromServers: boolean;
-  scheduleMode: string;
-  scheduleIntervalHours: string;
+  waitDays: string;
+  removalMode: RemovalMode;
+  checkIntervalHours: string;
 }
 
 const LEVELS: { value: Level; label: string; noun: string }[] = [
@@ -94,26 +113,21 @@ const LEVELS: { value: Level; label: string; noun: string }[] = [
   { value: "episode", label: "Episodes", noun: "episode" }
 ];
 
-const SCHEDULE_MODES = [
-  { value: "manual", label: "Only when I run it" },
-  { value: "preview", label: "Preview on a schedule (removes nothing)" },
-  { value: "cleanup", label: "Clean up on a schedule (removes without asking)" }
-];
-
-const INTERVALS = [
-  { value: "6", label: "Every 6 hours" },
-  { value: "24", label: "Every day" },
-  { value: "168", label: "Every week" }
-];
+const INTERVALS = [1, 2, 4, 8, 12, 24, 48, 72, 168].map((hours) => ({
+  value: String(hours),
+  label: hours === 1 ? "Every hour" : hours % 24 === 0 ? (hours === 24 ? "Every day" : hours === 168 ? "Every week" : `Every ${hours / 24} days`) : `Every ${hours} hours`
+}));
 
 export async function retentionLoader() {
-  const [rules, servers, ...byLevel] = await Promise.all([
+  const [rules, servers, marks, keeps, ...byLevel] = await Promise.all([
     fetchJson<RetentionRule[]>("/api/retention/rules"),
     fetchJson<MediaServerConnection[]>("/api/media-servers"),
+    fetchJson<RetentionMark[]>("/api/retention/leaving-soon"),
+    fetchJson<RetentionKeep[]>("/api/retention/keeps"),
     ...LEVELS.map((level) => fetchJson<RetentionField[]>(`/api/retention/fields?level=${level.value}`))
   ]);
   const fields = Object.fromEntries(LEVELS.map((level, index) => [level.value, byLevel[index] as RetentionField[]])) as Record<Level, RetentionField[]>;
-  return { rules, servers: servers as MediaServerConnection[], fields };
+  return { rules: rules as RetentionRule[], servers: servers as MediaServerConnection[], marks: marks as RetentionMark[], keeps: keeps as RetentionKeep[], fields };
 }
 
 function formFrom(rule: RetentionRule | null): RuleForm {
@@ -125,8 +139,9 @@ function formFrom(rule: RetentionRule | null): RuleForm {
         steps: rule.steps,
         mediaServerIds: rule.mediaServerIds,
         removeFromServers: rule.removeFromServers,
-        scheduleMode: rule.scheduleMode,
-        scheduleIntervalHours: String(rule.scheduleIntervalHours)
+        waitDays: String(rule.waitDays),
+        removalMode: rule.removalMode,
+        checkIntervalHours: String(rule.checkIntervalHours)
       }
     : {
         name: "",
@@ -138,8 +153,9 @@ function formFrom(rule: RetentionRule | null): RuleForm {
         ],
         mediaServerIds: [],
         removeFromServers: true,
-        scheduleMode: "manual",
-        scheduleIntervalHours: "24"
+        waitDays: "14",
+        removalMode: "automatic",
+        checkIntervalHours: "8"
       };
 }
 
@@ -147,13 +163,13 @@ function payload(form: RuleForm) {
   return {
     name: form.name,
     level: form.level,
-    mediaType: form.level === "movie" ? "movies" : "tv",
     isEnabled: form.isEnabled,
     steps: form.steps,
     mediaServerIds: form.mediaServerIds,
     removeFromServers: form.removeFromServers,
-    scheduleMode: form.scheduleMode,
-    scheduleIntervalHours: Number(form.scheduleIntervalHours)
+    waitDays: Number(form.waitDays),
+    removalMode: form.removalMode,
+    checkIntervalHours: Number(form.checkIntervalHours)
   };
 }
 
@@ -165,31 +181,19 @@ function summarise(steps: RetentionStep[], fields: RetentionField[]) {
   return { primary, secondary: steps.length > 1 ? `and ${steps.length - 1} more ${steps.length === 2 ? "step" : "steps"}` : undefined };
 }
 
-function scheduleChip(rule: RetentionRule): { tone: "idle" | "info" | "warn"; label: string } {
-  if (!rule.isEnabled) return { tone: "idle", label: "Off" };
-  if (rule.scheduleMode === "cleanup") return { tone: "warn", label: "Cleans up on schedule" };
-  if (rule.scheduleMode === "preview") return { tone: "info", label: "Previews on schedule" };
-  return { tone: "idle", label: "Run by hand" };
+function levelLabel(level: Level) {
+  return LEVELS.find((item) => item.value === level)?.label ?? "Movies";
 }
 
-const OUTCOME: Record<string, { tone: "ok" | "warn" | "bad" | "idle" | "info"; label: string }> = {
-  matched: { tone: "info", label: "Would go" },
-  undecided: { tone: "warn", label: "Can't decide" },
-  "excluded-unreachable": { tone: "warn", label: "Left alone" },
-  removed: { tone: "ok", label: "Removed" },
-  changed: { tone: "idle", label: "Changed" },
-  failed: { tone: "bad", label: "Failed" }
-};
+
 
 /**
- * Retention rules (#494): describe what should be cleaned out, see every title
- * that matches and why, then remove exactly those.
- *
- * Nothing is removed from this page without a preview and a confirmation, and
- * nothing is removed on a schedule unless the rule says so in as many words.
+ * Retention (#494, DESIGN-008): a rule marks what it matches as Leaving soon,
+ * the title waits the rule's days, and is removed on its day if it still
+ * matches and nobody kept it - or waits for a person, for a rule that asks first.
  */
 export function RetentionPage() {
-  const { rules, servers, fields } = useLoaderData() as Awaited<ReturnType<typeof retentionLoader>>;
+  const { rules, servers, marks, keeps, fields } = useLoaderData() as Awaited<ReturnType<typeof retentionLoader>>;
   const revalidator = useRevalidator();
   const { preferences } = useDisplayPreferences();
 
@@ -199,17 +203,17 @@ export function RetentionPage() {
   const [saveState, setSaveState] = useState<Exclude<DrawerSaveState, "clean" | "dirty">>();
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
-  const [preview, setPreview] = useState<RetentionRun | null>(null);
-  const [cleanup, setCleanup] = useState<RetentionRun | null>(null);
   const [history, setHistory] = useState<RetentionRun[]>([]);
-  const [confirmCleanup, setConfirmCleanup] = useState(false);
+  const [trial, setTrial] = useState<RetentionTrial | null>(null);
+  const [trialBusy, setTrialBusy] = useState(false);
+  const [keeping, setKeeping] = useState<RetentionMark | null>(null);
+  const [confirming, setConfirming] = useState<RetentionMark | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [confirmDiscard, setConfirmDiscard] = useState(false);
+  const [pageMessage, setPageMessage] = useState<string | null>(null);
 
   const editing = drawer.id ? rules.find((rule) => rule.id === drawer.id) ?? null : null;
   const ruleFields = fields[form.level] ?? [];
-  const [trial, setTrial] = useState<RetentionTrial | null>(null);
-  const [trialBusy, setTrialBusy] = useState(false);
   const dirty = drawer.open && JSON.stringify(payload(form)) !== JSON.stringify(payload(initial));
   const footerState = resolveDrawerSaveState(saveState, dirty);
   useUnsavedChanges(dirty);
@@ -219,7 +223,7 @@ export function RetentionPage() {
   }, [dirty, saveState]);
 
   const serverNames = useMemo(() => new Map(servers.map((server) => [server.id, server.name])), [servers]);
-  const matched = preview?.items?.filter((item) => item.outcome === "matched") ?? [];
+  const leavingBytes = marks.reduce((sum, mark) => sum + (mark.sizeBytes ?? 0), 0);
 
   async function loadHistory(ruleId: string) {
     setHistory(await fetchJson<RetentionRun[]>(`/api/retention/rules/${ruleId}/runs?take=10`).catch(() => []));
@@ -232,8 +236,6 @@ export function RetentionPage() {
     setInitial(next);
     setSaveState(undefined);
     setSaveMessage(null);
-    setPreview(null);
-    setCleanup(null);
     setHistory([]);
     setTrial(null);
     if (rule) void loadHistory(rule.id);
@@ -272,7 +274,7 @@ export function RetentionPage() {
       cancelled = true;
       window.clearTimeout(timer);
     };
-    // The key is the form's rule-shaping parts; the name and schedule do not change a count.
+    // The key is the form's rule-shaping parts; the name, wait and schedule do not change a count.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [trialKey]);
 
@@ -297,7 +299,6 @@ export function RetentionPage() {
       setDrawer({ open: true, id: saved.id });
       setSaveState("saved");
       setSaveMessage(editing ? "Saved just now" : "Rule added");
-      setPreview(null);
       revalidator.revalidate();
     } catch (error) {
       setSaveState("error");
@@ -305,43 +306,20 @@ export function RetentionPage() {
     }
   }
 
-  async function runPreview() {
+  async function runNow() {
     if (!editing) return;
-    setBusy("preview");
-    setCleanup(null);
+    setBusy("check");
     try {
-      const response = await authedFetch(`/api/retention/rules/${editing.id}/preview`, { method: "POST" });
-      if (!response.ok) throw new Error(`The preview could not run (HTTP ${response.status}).`);
-      setPreview((await response.json()) as RetentionRun);
-      void loadHistory(editing.id);
-    } catch (error) {
-      setSaveState("error");
-      setSaveMessage(error instanceof Error ? error.message : "The preview could not run.");
-    } finally {
-      setBusy(null);
-    }
-  }
-
-  async function runCleanup() {
-    if (!preview || !editing) return;
-    setBusy("cleanup");
-    try {
-      const response = await authedFetch(`/api/retention/runs/${preview.id}/cleanup`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ entityIds: null })
-      });
-      const body = await response.json().catch(() => null);
-      if (!response.ok) throw new Error((body as { message?: string } | null)?.message ?? "The cleanup could not run.");
-      setCleanup(body as RetentionRun);
-      setPreview(null);
-      setConfirmCleanup(false);
+      const response = await authedFetch(`/api/retention/rules/${editing.id}/check`, { method: "POST" });
+      if (!response.ok) throw new Error(`The rule could not be checked (HTTP ${response.status}).`);
+      const run = (await response.json()) as RetentionRun;
+      setSaveState("saved");
+      setSaveMessage(run.summary);
       void loadHistory(editing.id);
       revalidator.revalidate();
     } catch (error) {
-      setConfirmCleanup(false);
       setSaveState("error");
-      setSaveMessage(error instanceof Error ? error.message : "The cleanup could not run.");
+      setSaveMessage(error instanceof Error ? error.message : "The rule could not be checked.");
     } finally {
       setBusy(null);
     }
@@ -380,9 +358,52 @@ export function RetentionPage() {
     }
   }
 
-  const shownRun = cleanup ?? preview;
-  // The run on screen above is not repeated in its own history.
-  const pastRuns = history.filter((run) => run.id !== shownRun?.id);
+  async function keep(mark: RetentionMark, choice: KeepChoice) {
+    setBusy("keep");
+    try {
+      const response = await authedFetch("/api/retention/keeps", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ entityId: mark.entityId, ruleId: choice.scope === "rule" ? mark.ruleId : null, note: choice.note })
+      });
+      if (!response.ok) throw new Error();
+      setKeeping(null);
+      setPageMessage(`${mark.title} is kept${choice.scope === "rule" ? ` from “${mark.ruleName}”` : " from every rule"}.`);
+      revalidator.revalidate();
+    } catch {
+      setKeeping(null);
+      setPageMessage(`${mark.title} could not be kept. Try again.`);
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function undoKeep(item: RetentionKeep) {
+    setBusy(`undo:${item.id}`);
+    try {
+      await authedFetch(`/api/retention/keeps/${item.id}`, { method: "DELETE" });
+      revalidator.revalidate();
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function confirmRemoval(mark: RetentionMark) {
+    setBusy("confirm");
+    try {
+      const response = await authedFetch("/api/retention/leaving-soon/remove", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ruleId: mark.ruleId, entityIds: [mark.entityId] })
+      });
+      const run = (await response.json().catch(() => null)) as RetentionRun | null;
+      setConfirming(null);
+      setPageMessage(run?.summary ?? `${mark.title} could not be removed.`);
+      revalidator.revalidate();
+    } finally {
+      setBusy(null);
+    }
+  }
 
   return (
     <div className="grid gap-[var(--page-gap)]">
@@ -391,36 +412,73 @@ export function RetentionPage() {
         actions={<PageToolbarAction type="button" onClick={() => open(null)}>New rule</PageToolbarAction>}
       />
 
+      <ListCard title="Leaving soon" count={marks.length ? `${marks.length} ${marks.length === 1 ? "title" : "titles"}${leavingBytes > 0 ? ` · ${formatBytes(leavingBytes)}` : ""}` : undefined}>
+        {pageMessage ? <p className="px-[var(--card-pad-x)] py-3 text-[length:var(--type-caption)] text-foreground" role="status">{pageMessage}</p> : null}
+        {marks.length === 0 ? (
+          <ListEmpty title="Nothing is leaving soon" description="When a rule matches a title, it waits here for the rule's days before it goes, and anyone can keep it." />
+        ) : (
+          <ListTable
+            columns={[
+              { label: "Title" },
+              { label: "Why" },
+              { label: "Goes" },
+              { label: "Size", width: LIST_TRACK.status },
+              { label: "", width: "220px", mobile: true, srOnly: true }
+            ]}
+          >
+            {marks.map((mark) => {
+              const chip = retentionMarkPresentation(mark.state);
+              return (
+                <ListRow key={`${mark.ruleId}:${mark.entityId}`}>
+                  <ListNameCell name={`${mark.title}${mark.year && mark.level === "movie" ? ` (${mark.year})` : ""}`} sub={`${levelLabel(mark.level)} · ${mark.ruleName}`} />
+                  <ListCell primary={mark.reasons[0] ?? "—"} secondary={mark.reasons.length > 1 ? `and ${mark.reasons.length - 1} more` : undefined} />
+                  <ListCell
+                    primary={<Chip tone={chip.tone}>{chip.label}</Chip>}
+                    secondary={mark.state === "held" ? mark.stateReason ?? undefined : formatDateTime(mark.removeAfterUtc, preferences)}
+                  />
+                  <ListCell primary={mark.sizeBytes ? formatBytes(mark.sizeBytes) : "—"} />
+                  <ListCell mobile>
+                    <span className="flex justify-end gap-2">
+                      <Button type="button" variant="outline" size="sm" onClick={() => setKeeping(mark)} disabled={busy !== null}>Keep…</Button>
+                      {mark.state === "ready" ? (
+                        <Button type="button" variant="destructive" size="sm" onClick={() => setConfirming(mark)} disabled={busy !== null}>Remove…</Button>
+                      ) : null}
+                    </span>
+                  </ListCell>
+                </ListRow>
+              );
+            })}
+          </ListTable>
+        )}
+      </ListCard>
+
       <ListCard title="Retention rules" count={rules.length ? `${rules.filter((rule) => rule.isEnabled).length} of ${rules.length} on` : undefined}>
         {rules.length === 0 ? (
           <ListEmpty
             title="No retention rules"
-            description="Describe what should be cleaned out - for example films everyone has watched and nobody has played for three months - and preview exactly which titles that means before anything is removed."
+            description="Describe what should be cleaned out - for example films nobody has watched in three months. Matches wait in Leaving soon before anything is removed."
           />
         ) : (
           <ListTable
             columns={[
               { label: "Rule" },
               { label: "Selects" },
-              { label: "Media servers" },
-              { label: "Last scheduled run" },
-              { label: "Status", width: LIST_TRACK.status, mobile: true },
+              { label: "When it matches" },
+              { label: "Next check" },
               { label: "On", width: LIST_TRACK.toggle, mobile: true }
             ]}
           >
             {rules.map((rule) => {
-              const chip = scheduleChip(rule);
               const selects = summarise(rule.steps, fields[rule.level] ?? []);
               return (
                 <ListRow key={rule.id} onClick={() => open(rule)} selected={drawer.open && drawer.id === rule.id}>
-                  <ListNameCell name={rule.name} sub={LEVELS.find((level) => level.value === rule.level)?.label ?? "Movies"} />
-                  <ListCell primary={selects.primary} secondary={selects.secondary} />
-                  <ListCell
-                    primary={rule.mediaServerIds.length ? rule.mediaServerIds.map((id) => serverNames.get(id) ?? "Removed server").join(", ") : <span className="text-muted-foreground">None</span>}
-                    secondary={rule.mediaServerIds.length ? (rule.removeFromServers ? "Removes from them too" : "Reads watch history only") : undefined}
+                  <ListNameCell
+                    name={rule.name}
+                    sub={`${levelLabel(rule.level)}${rule.mediaServerIds.length ? ` · ${rule.mediaServerIds.map((id) => serverNames.get(id) ?? "Removed server").join(", ")}` : ""}`}
                   />
-                  <ListCell primary={rule.lastScheduledRunUtc ? formatDateTime(rule.lastScheduledRunUtc, preferences) : "—"} />
-                  <ListCell mobile><Chip tone={chip.tone}>{chip.label}</Chip></ListCell>
+                  <ListCell primary={selects.primary} secondary={selects.secondary} />
+                  <ListCell primary={`Waits ${rule.waitDays} ${rule.waitDays === 1 ? "day" : "days"}`} secondary={rule.removalMode === "ask" ? "Then asks you" : "Then removes it"} />
+                  <ListCell primary={rule.isEnabled && rule.nextCheckUtc ? formatDateTime(rule.nextCheckUtc, preferences) : "—"} />
                   <ListCell mobile>
                     <Switch size="sm" aria-label={`${rule.isEnabled ? "Turn off" : "Turn on"} ${rule.name}`} checked={rule.isEnabled} disabled={busy === `toggle:${rule.id}`} onCheckedChange={(checked) => void toggle(rule, checked)} />
                   </ListCell>
@@ -431,13 +489,37 @@ export function RetentionPage() {
         )}
       </ListCard>
 
+      {keeps.length > 0 ? (
+        <ListCard title="Kept" count={`${keeps.length} ${keeps.length === 1 ? "title" : "titles"}`}>
+          <ListTable
+            columns={[
+              { label: "Title" },
+              { label: "Kept from" },
+              { label: "Note" },
+              { label: "", width: "120px", mobile: true, srOnly: true }
+            ]}
+          >
+            {keeps.map((item) => (
+              <ListRow key={item.id}>
+                <ListNameCell name={item.title} sub={levelLabel(item.level)} />
+                <ListCell primary={item.ruleId ? `“${item.ruleName ?? "Deleted rule"}”` : "Every rule"} secondary={formatDateTime(item.createdUtc, preferences)} />
+                <ListCell primary={item.note ?? <span className="text-muted-foreground">—</span>} />
+                <ListCell mobile>
+                  <Button type="button" variant="ghost" size="sm" onClick={() => void undoKeep(item)} disabled={busy === `undo:${item.id}`}>Undo</Button>
+                </ListCell>
+              </ListRow>
+            ))}
+          </ListTable>
+        </ListCard>
+      ) : null}
+
       <Drawer
         open={drawer.open}
         onOpenChange={(next) => {
           if (!next) requestClose();
         }}
         title={editing?.name ?? (form.name || "New retention rule")}
-        description={editing ? `${LEVELS.find((level) => level.value === editing.level)?.label ?? "Movies"} · ${scheduleChip(editing).label}` : "Choose what should be cleaned out. You will see every title it selects before anything is removed."}
+        description={editing ? levelLabel(editing.level) : "Choose what should be cleaned out. Matches wait in Leaving soon before anything is removed."}
         onSubmit={handleSubmit}
         footer={
           <DrawerFooter state={footerState} message={saveMessage} saveLabel={editing ? "Save rule" : "Add rule"} onCancel={requestClose} saveEnabled={editing ? undefined : true} disabled={busy !== null} />
@@ -446,7 +528,7 @@ export function RetentionPage() {
         <DrawerSection title="Basics">
           <FieldRow>
             <Field label="Name">
-              <Input value={form.name} onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))} placeholder="Watched films" autoComplete="off" />
+              <Input value={form.name} onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))} placeholder="Unwatched films" autoComplete="off" />
             </Field>
             <Field label="Cleans out">
               <Select
@@ -457,7 +539,7 @@ export function RetentionPage() {
               />
             </Field>
           </FieldRow>
-          <SwitchRow label="Enabled" description="A rule that is off never runs on its schedule." checked={form.isEnabled} onCheckedChange={(checked) => setForm((current) => ({ ...current, isEnabled: checked }))} />
+          <SwitchRow label="Enabled" description="A rule that is off is not checked, and marks nothing." checked={form.isEnabled} onCheckedChange={(checked) => setForm((current) => ({ ...current, isEnabled: checked }))} />
         </DrawerSection>
 
         <DrawerSection title="Steps" aside={trialBusy ? "counting…" : trial && !trial.problems.length ? `${trial.matchedCount} match${trial.matchedBytes > 0 ? ` · ${formatBytes(trial.matchedBytes)}` : ""}` : undefined}>
@@ -505,81 +587,53 @@ export function RetentionPage() {
             ))
           )}
           <SwitchRow
-            label="Remove cleaned-up titles from these servers"
-            description="If any of them cannot be asked when the rule runs, nothing is selected at all."
+            label="Tell these servers when a title goes"
+            description="If any of them cannot be asked when a check runs, nothing is marked or removed until they can."
             checked={form.removeFromServers}
             onCheckedChange={(checked) => setForm((current) => ({ ...current, removeFromServers: checked }))}
           />
         </DrawerSection>
 
-        <DrawerSection title="Schedule">
+        <DrawerSection title="When it matches">
           <FieldRow>
-            <Field label="Runs" help={form.scheduleMode === "cleanup" ? "Removes everything it selects without showing you first. History still records every title." : undefined}>
-              <Select value={form.scheduleMode} onChange={(event) => setForm((current) => ({ ...current, scheduleMode: event.target.value }))} options={SCHEDULE_MODES} />
+            <Field label="Leaving soon for" help="Days a title waits before its removal day. It is checked again on the day.">
+              <Input type="number" min={1} max={365} value={form.waitDays} onChange={(event) => setForm((current) => ({ ...current, waitDays: event.target.value }))} />
             </Field>
-            <Field label="How often">
-              <Select value={form.scheduleIntervalHours} disabled={form.scheduleMode === "manual"} onChange={(event) => setForm((current) => ({ ...current, scheduleIntervalHours: event.target.value }))} options={INTERVALS} />
+            <Field label="Check every">
+              <Select value={form.checkIntervalHours} onChange={(event) => setForm((current) => ({ ...current, checkIntervalHours: event.target.value }))} options={INTERVALS} />
             </Field>
           </FieldRow>
+          <Field label="On the day" help={form.removalMode === "ask" ? "It waits in Leaving soon as Ready to remove until you confirm." : "Removed if it still matches and nobody kept it."}>
+            <SegmentedControl<RemovalMode>
+              value={form.removalMode}
+              onValueChange={(removalMode) => setForm((current) => ({ ...current, removalMode }))}
+              options={[
+                { value: "automatic", label: "Remove it" },
+                { value: "ask", label: "Ask me first" }
+              ]}
+            />
+          </Field>
         </DrawerSection>
 
         {editing ? (
-          <DrawerSection title="Preview" aside={dirty ? "save first" : undefined}>
-            <p className="text-[length:var(--type-caption)] text-muted-foreground">Removes nothing. Lists every title the rule selects now, why, and how much space it would free.</p>
-            <div className="flex flex-wrap gap-2">
-              <Button type="button" variant="outline" size="sm" onClick={() => void runPreview()} disabled={busy !== null || dirty}>
-                {busy === "preview" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Eye className="h-3.5 w-3.5" />}
-                Preview
-              </Button>
-              {preview && matched.length > 0 ? (
-                <Button type="button" variant="destructive" size="sm" onClick={() => setConfirmCleanup(true)} disabled={busy !== null || dirty}>
-                  Clean up {matched.length} {matched.length === 1 ? "title" : "titles"}…
-                </Button>
-              ) : null}
-            </div>
-            {shownRun ? (
-              <div className="grid gap-2" role="status">
-                <p className="text-[length:var(--type-body-sm)] text-foreground">{shownRun.summary}</p>
-                {/* Titles left alone because a server could not be asked all share
-                    one reason, which the summary above already says. */}
-                {(shownRun.items ?? []).filter((item) => item.outcome !== "excluded-unreachable").map((item) => {
-                  const outcome = OUTCOME[item.outcome] ?? { tone: "idle" as const, label: item.outcome };
-                  return (
-                    <div key={item.entityId} className="grid gap-1 rounded-[10px] border border-hairline px-[var(--field-pad-x)] py-2">
-                      <div className="flex items-center justify-between gap-2">
-                        <span className="min-w-0 truncate text-[length:var(--type-body-sm)] font-medium text-foreground">
-                          {item.title}{item.year ? ` (${item.year})` : ""}
-                        </span>
-                        <span className="flex shrink-0 items-center gap-2">
-                          {item.sizeBytes ? <span className="text-[length:var(--type-caption)] text-muted-foreground">{formatBytes(item.sizeBytes)}</span> : null}
-                          <Chip tone={outcome.tone}>{outcome.label}</Chip>
-                        </span>
-                      </div>
-                      <ul className="grid gap-0.5 text-[length:var(--type-caption)] text-muted-foreground">
-                        {item.reasons.map((reason) => <li key={reason}>{reason}</li>)}
-                      </ul>
-                      {item.message ? <p className="text-[length:var(--type-caption)] text-foreground">{item.message}</p> : null}
-                    </div>
-                  );
-                })}
-              </div>
+          <DrawerSection title="Check" aside={dirty ? "save first" : editing.lastCheckedUtc ? `last ${formatDateTime(editing.lastCheckedUtc, preferences)}` : undefined}>
+            <Button type="button" variant="outline" size="sm" className="w-max" onClick={() => void runNow()} disabled={busy !== null || dirty}>
+              {busy === "check" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Play className="h-3.5 w-3.5" />}
+              Run now
+            </Button>
+            {history.length > 0 ? (
+              <dl className="grid grid-cols-[150px_1fr] gap-x-[var(--grid-gap)] gap-y-2 text-[length:var(--type-body-sm)]">
+                {history.map((run) => (
+                  <div key={run.id} className="contents">
+                    <dt className="text-muted-foreground">
+                      {formatDateTime(run.startedUtc, preferences)}
+                      <span className="block text-[length:var(--type-caption)]">{run.kind === "confirmed" ? "Confirmed" : run.trigger === "schedule" ? "Scheduled" : run.kind === "check" ? "Run now" : "Earlier version"}</span>
+                    </dt>
+                    <dd className="text-foreground">{run.summary}</dd>
+                  </div>
+                ))}
+              </dl>
             ) : null}
-          </DrawerSection>
-        ) : null}
-
-        {editing && pastRuns.length > 0 ? (
-          <DrawerSection title="History">
-            <dl className="grid grid-cols-[150px_1fr] gap-x-[var(--grid-gap)] gap-y-2 text-[length:var(--type-body-sm)]">
-              {pastRuns.map((run) => (
-                <div key={run.id} className="contents">
-                  <dt className="text-muted-foreground">
-                    {formatDateTime(run.startedUtc, preferences)}
-                    <span className="block text-[length:var(--type-caption)]">{run.kind === "cleanup" ? "Cleanup" : "Preview"}{run.trigger === "schedule" ? " · scheduled" : ""}</span>
-                  </dt>
-                  <dd className="text-foreground">{run.summary}</dd>
-                </div>
-              ))}
-            </dl>
           </DrawerSection>
         ) : null}
 
@@ -587,22 +641,34 @@ export function RetentionPage() {
           <DrawerSection>
             <DrawerDanger
               title="Delete this rule"
-              description="Titles it already removed stay removed; their exclusions stay until you restore them."
+              description="Its Leaving soon titles are cleared. Titles it already removed stay removed, with their exclusions."
               action={<Button type="button" variant="destructive" size="sm" onClick={() => setConfirmDelete(true)} disabled={busy !== null}>Delete…</Button>}
             />
           </DrawerSection>
         ) : null}
       </Drawer>
 
+      <RetentionKeepDialog
+        open={keeping !== null}
+        onOpenChange={(next) => {
+          if (!next) setKeeping(null);
+        }}
+        title={keeping?.title ?? "title"}
+        ruleName={keeping?.ruleName ?? "this rule"}
+        busy={busy === "keep"}
+        onConfirm={(choice) => keeping && void keep(keeping, choice)}
+      />
       <ConfirmDialog
-        open={confirmCleanup}
-        onOpenChange={setConfirmCleanup}
-        title={`Remove ${matched.length} ${matched.length === 1 ? "title" : "titles"}?`}
-        description={`Deluno removes the titles this preview listed that still match: their files go to the recycle bin (${formatBytes(matched.reduce((sum, item) => sum + (item.sizeBytes ?? 0), 0))}), each gets an exclusion saying why so no list adds it back${form.removeFromServers && form.mediaServerIds.length ? ", and the media servers are told they are gone" : ""}. Exclusions can be restored under Discover Media → Import Lists.`}
-        confirmLabel="Remove titles"
+        open={confirming !== null}
+        onOpenChange={(next) => {
+          if (!next) setConfirming(null);
+        }}
+        title={`Remove ${confirming?.title ?? "title"}?`}
+        description={`The rule is checked once more first. If it still matches, the files go to the recycle bin (${confirming?.sizeBytes ? formatBytes(confirming.sizeBytes) : "size unknown"}) and ${confirming?.level === "season" || confirming?.level === "episode" ? "the episodes are no longer wanted" : "an exclusion records why, so no list adds it back"}.`}
+        confirmLabel="Remove"
         confirmVariant="destructive"
-        busy={busy === "cleanup"}
-        onConfirm={() => void runCleanup()}
+        busy={busy === "confirm"}
+        onConfirm={() => confirming && void confirmRemoval(confirming)}
       />
       <ConfirmDialog
         open={confirmDelete}

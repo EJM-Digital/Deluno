@@ -1,29 +1,31 @@
 namespace Deluno.Retention;
 
-/// <summary>When a rule runs without a person pressing a button (#494).</summary>
-public static class RetentionScheduleModes
+/// <summary>What happens on the day a Leaving soon title's wait is over (#494, DESIGN-008).</summary>
+public static class RetentionRemovalModes
 {
-    /// <summary>Only when somebody asks. The default: nothing happens on its own.</summary>
-    public const string Manual = "manual";
+    /// <summary>Removed on the day, if it still matches and every server it depends on answered. The default.</summary>
+    public const string Automatic = "automatic";
 
-    /// <summary>Works out what would go, on a schedule, and removes nothing.</summary>
-    public const string Preview = "preview";
-
-    /// <summary>Removes what matches, on a schedule. Chosen explicitly, never the default.</summary>
-    public const string Cleanup = "cleanup";
+    /// <summary>Moves to Ready to remove, and waits for a person to confirm.</summary>
+    public const string Ask = "ask";
 
     public static string Normalize(string? value)
-        => value?.Trim().ToLowerInvariant() switch
-        {
-            Preview => Preview,
-            Cleanup => Cleanup,
-            _ => Manual
-        };
+        => string.Equals(value?.Trim(), Ask, StringComparison.OrdinalIgnoreCase) ? Ask : Automatic;
+}
+
+public static class RetentionLimits
+{
+    public const int DefaultWaitDays = 14;
+    public const int MinWaitDays = 1;
+    public const int MaxWaitDays = 365;
+    public const int DefaultCheckIntervalHours = 8;
+    public const int MinCheckIntervalHours = 1;
+    public const int MaxCheckIntervalHours = 168;
 }
 
 /// <summary>
 /// One rule: what it acts on, the steps that choose it, which servers it reads,
-/// and when (#494, DESIGN-008).
+/// how long a match waits and what happens then (#494, DESIGN-008).
 /// </summary>
 /// <param name="Level"><c>movie</c>, <c>show</c>, <c>season</c> or <c>episode</c>.</param>
 /// <param name="Steps">
@@ -34,43 +36,59 @@ public static class RetentionScheduleModes
 /// </param>
 /// <param name="MediaServerIds">Servers whose answers the rule reads, and which a removal tells.</param>
 /// <param name="RemoveFromServers">Whether a removal also tells those servers.</param>
+/// <param name="WaitDays">How long a title stays Leaving soon before its removal day.</param>
+/// <param name="RemovalMode"><see cref="RetentionRemovalModes"/>.</param>
+/// <param name="CheckIntervalHours">How often the rule is checked.</param>
 public sealed record RetentionRule(
     string Id,
     string Name,
-    string MediaType,
+    string Level,
     bool IsEnabled,
+    IReadOnlyList<RetentionStep> Steps,
     IReadOnlyList<string> MediaServerIds,
     bool RemoveFromServers,
-    string ScheduleMode,
-    int ScheduleIntervalHours,
-    DateTimeOffset? LastScheduledRunUtc,
+    int WaitDays,
+    string RemovalMode,
+    int CheckIntervalHours,
+    DateTimeOffset? LastCheckedUtc,
     DateTimeOffset CreatedUtc,
-    DateTimeOffset UpdatedUtc,
-    string Level,
-    IReadOnlyList<RetentionStep> Steps);
+    DateTimeOffset UpdatedUtc)
+{
+    public string MediaType => RetentionLevels.MediaType(Level);
+
+    public DateTimeOffset? NextCheckUtc => IsEnabled ? (LastCheckedUtc ?? CreatedUtc).AddHours(CheckIntervalHours) : null;
+}
 
 /// <param name="Conditions">The first version's flat list; read as a run of Keep only steps when <paramref name="Steps"/> is absent.</param>
 public sealed record SaveRetentionRuleRequest(
     string? Name,
-    string? MediaType,
+    string? Level,
     bool IsEnabled,
-    IReadOnlyList<string>? Conditions,
+    IReadOnlyList<RetentionStep>? Steps,
     IReadOnlyList<string>? MediaServerIds,
     bool RemoveFromServers,
-    string? ScheduleMode,
-    int? ScheduleIntervalHours,
-    string? Level = null,
-    IReadOnlyList<RetentionStep>? Steps = null);
+    int? WaitDays = null,
+    string? RemovalMode = null,
+    int? CheckIntervalHours = null,
+    string? MediaType = null,
+    IReadOnlyList<string>? Conditions = null);
 
 public static class RetentionRunKinds
 {
+    /// <summary>A rule looked at the library: what it marked, cleared, removed.</summary>
+    public const string Check = "check";
+
+    /// <summary>A person confirmed Ready to remove titles.</summary>
+    public const string Confirmed = "confirmed";
+
+    // What the first version recorded; kept so its history still reads.
     public const string Preview = "preview";
     public const string Cleanup = "cleanup";
 }
 
 public static class RetentionItemOutcomes
 {
-    /// <summary>Would be removed. A preview's answer.</summary>
+    /// <summary>Would be selected. The builder's answer.</summary>
     public const string Matched = "matched";
 
     /// <summary>A step could not be answered for it, so it was neither kept nor added. Never removed.</summary>
@@ -79,15 +97,29 @@ public static class RetentionItemOutcomes
     /// <summary>Left out because a server the rule depends on could not be asked.</summary>
     public const string ExcludedUnreachable = "excluded-unreachable";
 
+    /// <summary>Newly marked Leaving soon.</summary>
+    public const string Marked = "marked";
+
+    /// <summary>No longer Leaving soon: it stopped matching, or somebody kept it.</summary>
+    public const string Cleared = "cleared";
+
+    /// <summary>Its wait is over and the rule asks first: waiting for a person.</summary>
+    public const string Ready = "ready";
+
+    /// <summary>Its day came but it was not removed: a server could not be asked, or a step could not be answered.</summary>
+    public const string Held = "held";
+
     public const string Removed = "removed";
 
-    /// <summary>In the preview, but no longer matched when the cleanup ran.</summary>
+    /// <summary>The first version's "in the preview, no longer matched".</summary>
     public const string Changed = "changed";
 
     public const string Failed = "failed";
 }
 
-/// <summary>One run of a rule: a preview, or the cleanup that acted on one.</summary>
+/// <summary>What a check or a confirmation did.</summary>
+/// <param name="MatchedCount">Titles Leaving soon for this rule after the run.</param>
+/// <param name="ExcludedCount">Titles held or undecided.</param>
 public sealed record RetentionRun(
     string Id,
     string RuleId,
@@ -105,7 +137,7 @@ public sealed record RetentionRun(
     string Summary,
     IReadOnlyList<RetentionRunItem>? Items = null);
 
-/// <param name="Reasons">Why it matched, one sentence per condition, in the words the screen prints.</param>
+/// <param name="Reasons">Why it matched, one sentence per step, in the words the screen prints.</param>
 public sealed record RetentionRunItem(
     string EntityId,
     string MediaType,
@@ -142,4 +174,76 @@ public sealed record RetentionTrial(
     IReadOnlyList<string> Problems,
     IReadOnlyList<RetentionUnmanagedItem> Unmanaged);
 
-public sealed record RetentionCleanupRequest(IReadOnlyList<string>? EntityIds);
+public static class RetentionMarkStates
+{
+    /// <summary>Waiting for its removal day.</summary>
+    public const string Leaving = "leaving";
+
+    /// <summary>Its day has come and the rule asks first.</summary>
+    public const string Ready = "ready";
+
+    /// <summary>Not removed on its day: a server could not be asked, or a step could not be answered. Tried again at the next check.</summary>
+    public const string Held = "held";
+}
+
+/// <summary>A title a rule has marked Leaving soon (#494).</summary>
+/// <param name="EpisodeIds">A season's or episode's episodes; empty for a movie or whole show.</param>
+/// <param name="StateReason">Why a held title was not removed.</param>
+public sealed record RetentionMark(
+    string RuleId,
+    string RuleName,
+    string EntityId,
+    string Level,
+    string? ShowId,
+    int? SeasonNumber,
+    IReadOnlyList<string> EpisodeIds,
+    string Title,
+    int? Year,
+    long? SizeBytes,
+    IReadOnlyList<string> Reasons,
+    DateTimeOffset FirstMatchedUtc,
+    DateTimeOffset RemoveAfterUtc,
+    string State,
+    string? StateReason,
+    DateTimeOffset UpdatedUtc)
+{
+    public string MediaType => RetentionLevels.MediaType(Level);
+}
+
+/// <summary>A title somebody kept: from one rule, or from all of them (#494).</summary>
+/// <param name="RuleId">Null when kept from every rule.</param>
+public sealed record RetentionKeep(
+    string Id,
+    string EntityId,
+    string Level,
+    string Title,
+    string? RuleId,
+    string? RuleName,
+    string? Note,
+    DateTimeOffset CreatedUtc);
+
+/// <param name="RuleId">The rule to keep it from; null for every rule.</param>
+/// <param name="Title">Needed only when the title is not Leaving soon.</param>
+public sealed record SaveRetentionKeepRequest(string? EntityId, string? Level, string? RuleId, string? Note, string? Title = null);
+
+/// <summary>An episode a rule removed while its show stayed: the reason it is no longer wanted.</summary>
+public sealed record RetentionEpisodeRemoval(
+    string EpisodeId,
+    string SeriesId,
+    int? SeasonNumber,
+    int? EpisodeNumber,
+    string RuleId,
+    string RuleName,
+    string Reason,
+    DateTimeOffset RemovedUtc);
+
+/// <summary>Everything retention says about one movie or show, for its own page.</summary>
+public sealed record RetentionTitleStatus(
+    IReadOnlyList<RetentionMark> Marks,
+    IReadOnlyList<RetentionKeep> Keeps,
+    IReadOnlyList<RetentionEpisodeRemoval> EpisodeRemovals);
+
+/// <param name="EntityIds">Ready to remove titles to remove now.</param>
+public sealed record RetentionConfirmRequest(string? RuleId, IReadOnlyList<string>? EntityIds);
+
+public sealed record RetentionKeepResult(RetentionKeep Keep, int ClearedMarks);

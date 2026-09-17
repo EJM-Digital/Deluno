@@ -123,6 +123,16 @@ public sealed class RetentionEvaluator(
             }
         }
 
+        if (request.WaitDays is { } wait && (wait < RetentionLimits.MinWaitDays || wait > RetentionLimits.MaxWaitDays))
+        {
+            problems.Add($"A title waits {RetentionLimits.MinWaitDays} to {RetentionLimits.MaxWaitDays} days before it goes. There is always a warning first.");
+        }
+
+        if (request.CheckIntervalHours is { } hours && (hours < RetentionLimits.MinCheckIntervalHours || hours > RetentionLimits.MaxCheckIntervalHours))
+        {
+            problems.Add($"A rule is checked every {RetentionLimits.MinCheckIntervalHours} to {RetentionLimits.MaxCheckIntervalHours} hours.");
+        }
+
         if (request.RemoveFromServers && chosen.Length == 0)
         {
             problems.Add("Choose the media servers to tell when a title is removed, or turn that off.");
@@ -145,7 +155,7 @@ public sealed class RetentionEvaluator(
         var conditions = RetentionStepList.Conditions(steps).ToArray();
         var configured = await mediaServers.ListAsync(cancellationToken);
         var problems = Validate(
-            new SaveRetentionRuleRequest(rule.Name, RetentionLevels.MediaType(level), rule.IsEnabled, null, rule.MediaServerIds, rule.RemoveFromServers, rule.ScheduleMode, rule.ScheduleIntervalHours, level, steps),
+            new SaveRetentionRuleRequest(rule.Name, level, rule.IsEnabled, steps, rule.MediaServerIds, rule.RemoveFromServers, rule.WaitDays, rule.RemovalMode, rule.CheckIntervalHours),
             configured);
         if (problems.Count > 0)
         {

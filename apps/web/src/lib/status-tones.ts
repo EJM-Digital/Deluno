@@ -91,7 +91,18 @@ export const STATUS_PRESENTATION = {
   // Deluno backed off deliberately and resumes on its own. Nothing to do.
   "connection.rateLimited": { tone: "info", label: "Rate-limited" },
   // A configuration fact, not motion.
-  "connection.categoryRoute": { tone: "idle", label: "Routed" }
+  "connection.categoryRoute": { tone: "idle", label: "Routed" },
+
+  // ── Retention ───────────────────────────────────────────────────────────
+  // Counting down to its day: motion, and anyone may keep it.
+  "retention.leaving": { tone: "info", label: "Leaving soon" },
+  // A rule that asks first: nothing is removed until a person confirms.
+  "retention.ready": { tone: "warn", label: "Ready to remove" },
+  // Due, but a server could not be asked; it goes on by itself once it can.
+  "retention.held": { tone: "info", label: "Held" },
+  "retention.kept": { tone: "ok", label: "Kept" },
+  // Gone by rule, and nothing is waiting on it.
+  "retention.removed": { tone: "idle", label: "Removed" }
 } as const satisfies Record<string, StatusPresentation>;
 
 export type StatusKey = keyof typeof STATUS_PRESENTATION;
@@ -106,6 +117,11 @@ export function statusTone(key: StatusKey): Tone {
 
 export function statusLabel(key: StatusKey): string {
   return STATUS_PRESENTATION[key].label;
+}
+
+/** A retention mark's state (`leaving`, `ready`, `held`) as a chip. */
+export function retentionMarkPresentation(state: string): StatusPresentation {
+  return state === "ready" ? STATUS_PRESENTATION["retention.ready"] : state === "held" ? STATUS_PRESENTATION["retention.held"] : STATUS_PRESENTATION["retention.leaving"];
 }
 
 /* ═══════════════ THE MARK ON A TITLE ═══════════════ */
