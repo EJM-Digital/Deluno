@@ -1,0 +1,187 @@
+using System.Text.Json;
+using Deluno.Filesystem;
+using Deluno.Jobs.Contracts;
+using Deluno.Jobs.Data;
+using Deluno.Libraries.Contracts;
+using Deluno.Movies.Data;
+using Deluno.Platform.Contracts;
+using Deluno.Series.Data;
+
+namespace Deluno.Worker.Services;
+
+/// <summary>
+/// The one way a processed file is queued for import (#526).
+///
+/// <para>The completion callback used to build its own import out of the output
+/// file name: title = the release name, year = none, no grab and no library.
+/// So a refined film landed as <c>Dementia.13.1963.1080p.WEB-DL… (Unknown Year)</c>
+/// in whichever movie library came first, and the film that had been grabbed
+/// stayed Missing. The output-folder watcher had been fixed for exactly this
+/// (#268); its sibling had not. Both now come through here.</para>
+/// </summary>
+public sealed class ProcessorOutputImportQueue(
+    IJobQueueRepository jobQueueRepository,
+    IJobScheduler jobScheduler,
+    IMovieCatalogRepository movieCatalogRepository,
+    ISeriesCatalogRepository seriesCatalogRepository) : IProcessorOutputImportQueue
+{
+    // The options WorkPlanner serialises every import payload with, so the
+    // import handler reads this one the same way.
+    private static readonly JsonSerializerOptions PayloadJsonOptions = new()
+    {
+        PropertyNameCaseInsensitive = true
+    };
+
+    public async Task<ProcessorOutputImport> QueueAsync(
+        LibraryItem library,
+        ProcessorHandoffItem handoff,
+        string outputPath,
+        string source,
+        CancellationToken cancellationToken)
+    {
+        var dispatch = await jobQueueRepository.FindRecentDispatchLinkAsync(handoff.ClientId, handoff.ReleaseName, cancellationToken);
+        var catalogue = await CatalogueImportNaming.ResolveAsync(dispatch, movieCatalogRepository, seriesCatalogRepository, cancellationToken);
+
+        var importRequest = new ImportExecuteRequest(
+            Preview: new ImportPreviewRequest(
+                SourcePath: outputPath,
+                FileName: Path.GetFileName(outputPath),
+                MediaType: library.MediaType,
+                Title: catalogue.Title ?? Path.GetFileNameWithoutExtension(outputPath),
+                Year: catalogue.Year ?? CatalogueImportNaming.InferYear(handoff.ReleaseName),
+                Genres: catalogue.Genres,
+                Tags: ["processed"],
+                Studio: catalogue.Studio,
+                OriginalLanguage: null,
+                ImdbId: catalogue.ImdbId,
+                TvDbId: catalogue.TvDbId,
+                Network: catalogue.Network,
+                SeriesId: catalogue.SeriesId,
+                SeriesType: catalogue.SeriesType,
+                NumberingScheme: catalogue.NumberingScheme,
+                // The hand-off belongs to the library that grabbed the release.
+                LibraryId: library.Id),
+            TransferMode: "auto",
+            Overwrite: dispatch?.ReplacementAuthorized == true,
+            AllowCopyFallback: true,
+            ForceReplacement: dispatch?.ForceReplacementAuthorized == true,
+            DispatchId: dispatch?.DispatchId,
+            ExpectedExistingPath: dispatch?.ReplacementExpectedPath,
+            ReplacementTargets: dispatch?.ReplacementTargets);
+
+        var job = await jobScheduler.EnqueueAsync(
+            new EnqueueJobRequest(
+                JobType: "filesystem.import.execute",
+                Source: source,
+                PayloadJson: JsonSerializer.Serialize(importRequest, PayloadJsonOptions),
+                RelatedEntityType: library.MediaType == "tv" ? "series" : "movie",
+                RelatedEntityId: dispatch?.EntityId,
+                IdempotencyKey: $"processor-output:{library.Id}:{Path.GetFullPath(outputPath).ToLowerInvariant()}"),
+            cancellationToken);
+
+        return new ProcessorOutputImport(job.Id, dispatch?.DispatchId, dispatch?.EntityId);
+    }
+}
+
+/// <summary>
+/// The catalogue's name for a grabbed release: title, year and ids, instead of
+/// whatever the release name parses to (#268).
+/// </summary>
+internal static class CatalogueImportNaming
+{
+    /// <summary>
+    /// The catalogue metadata behind a dispatched release, or empty values when
+    /// the grab cannot be tied to a catalogue item - in which case the caller
+    /// falls back to parsing the release name.
+    /// </summary>
+    public static async Task<CatalogueNaming> ResolveAsync(
+        DispatchCatalogueLink? dispatch,
+        IMovieCatalogRepository movieCatalogRepository,
+        ISeriesCatalogRepository seriesCatalogRepository,
+        CancellationToken cancellationToken)
+    {
+        if (dispatch is null || string.IsNullOrWhiteSpace(dispatch.EntityId))
+        {
+            return CatalogueNaming.Empty;
+        }
+
+        if (string.Equals(dispatch.EntityType, "series", StringComparison.OrdinalIgnoreCase))
+        {
+            var series = await seriesCatalogRepository.GetByIdAsync(dispatch.EntityId, cancellationToken);
+            return series is null
+                ? CatalogueNaming.Empty
+                : new CatalogueNaming(
+                    series.Title,
+                    series.StartYear,
+                    series.ImdbId,
+                    ReadMetadataText(series.MetadataJson, "TvDbId", "tvdbId", "tvdb_id"),
+                    null,
+                    ReadMetadataText(series.MetadataJson, "Network", "network"),
+                    SplitCsv(series.Genres),
+                    dispatch.EntityId,
+                    series.SeriesType,
+                    series.NumberingScheme);
+        }
+
+        var movie = await movieCatalogRepository.GetByIdAsync(dispatch.EntityId, cancellationToken);
+        return movie is null
+            ? CatalogueNaming.Empty
+            : new CatalogueNaming(
+                movie.Title,
+                movie.ReleaseYear,
+                movie.ImdbId,
+                null,
+                ReadMetadataText(movie.MetadataJson, "Studio", "studio"),
+                null,
+                SplitCsv(movie.Genres));
+    }
+
+    public static int? InferYear(string value) => ReleaseNameParser.InferYear(value);
+
+    private static IReadOnlyList<string> SplitCsv(string? value)
+        => string.IsNullOrWhiteSpace(value)
+            ? []
+            : value.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
+
+    private static string? ReadMetadataText(string? metadataJson, params string[] names)
+    {
+        if (string.IsNullOrWhiteSpace(metadataJson))
+        {
+            return null;
+        }
+
+        try
+        {
+            using var document = JsonDocument.Parse(metadataJson);
+            foreach (var property in document.RootElement.EnumerateObject())
+            {
+                if (names.Any(name => string.Equals(property.Name, name, StringComparison.OrdinalIgnoreCase)) &&
+                    property.Value.ValueKind == JsonValueKind.String)
+                {
+                    return property.Value.GetString();
+                }
+            }
+        }
+        catch (JsonException)
+        {
+            // Provider metadata is optional and may be an older/manual blob.
+        }
+
+        return null;
+    }
+
+    public sealed record CatalogueNaming(
+        string? Title,
+        int? Year,
+        string? ImdbId,
+        string? TvDbId,
+        string? Studio,
+        string? Network,
+        IReadOnlyList<string> Genres,
+        string? SeriesId = null,
+        string? SeriesType = null,
+        string? NumberingScheme = null)
+    {
+        public static CatalogueNaming Empty { get; } = new(null, null, null, null, null, null, []);
+    }
+}

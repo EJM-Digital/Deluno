@@ -41,6 +41,7 @@ public static class WorkerServiceCollectionExtensions
 
         services.AddScoped<WorkPlanner>();
         services.AddScoped<Deluno.Platform.Contracts.IProcessorFailureReportHandler, ProcessorFailureReportHandler>();
+        services.AddScoped<Deluno.Platform.Contracts.IProcessorOutputImportQueue, ProcessorOutputImportQueue>();
         services.AddHostedService<DelunoHeartbeatWorker>();
         services.AddHostedService<DownloadThroughputSampler>();
 
