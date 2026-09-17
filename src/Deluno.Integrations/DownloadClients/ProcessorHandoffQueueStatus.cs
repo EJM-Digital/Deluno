@@ -22,15 +22,30 @@ public static class ProcessorHandoffQueueStatus
         IReadOnlyDictionary<string, JobQueueItem> jobsById,
         string fallback)
     {
-        if (string.Equals(handoff.Status, "failed", StringComparison.OrdinalIgnoreCase))
+        var status = handoff.Status?.ToLowerInvariant();
+        switch (status)
         {
-            return DownloadQueueStatuses.ProcessingFailed;
-        }
+            case ProcessorHandoffStatuses.Waiting:
+            case ProcessorHandoffStatuses.Submitted:
+            case ProcessorHandoffStatuses.Accepted:
+            case ProcessorHandoffStatuses.Started:
+                // The processor still has it.
+                return DownloadQueueStatuses.WaitingForProcessor;
 
-        if (!string.Equals(handoff.Status, "completed", StringComparison.OrdinalIgnoreCase))
-        {
-            // waiting, submitted, accepted, started - the processor still has it.
-            return DownloadQueueStatuses.WaitingForProcessor;
+            case ProcessorHandoffStatuses.Released:
+                // The original is going through the ordinary import, so the
+                // client's own reading of the download says where it is.
+                return fallback;
+
+            case ProcessorHandoffStatuses.Completed:
+                break;
+
+            default:
+                // failed, rejected, timed-out, stalled, lost, cancelled: nothing
+                // is coming back and a person chooses what happens next. These
+                // read "waiting for the cleaned output" for ever, beside a
+                // hand-off already called lost (seen on the rig).
+                return DownloadQueueStatuses.ProcessingFailed;
         }
 
         if (string.IsNullOrWhiteSpace(handoff.ImportJobId))

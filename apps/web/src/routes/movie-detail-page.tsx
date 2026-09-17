@@ -30,6 +30,7 @@ import {
   type AcquisitionBlockersResponse
 } from "../lib/api";
 import { AcquisitionBlockersCard } from "../components/app/acquisition-blockers-card";
+import { LibraryMembershipCard, type LibraryMembership } from "../components/app/library-membership-card";
 import { RetentionTitleCard } from "../components/app/retention-title-card";
 import { CreditsRow, readStoredCredits } from "../components/app/credits-row";
 import { DownloadDispatchDrawer } from "../components/app/download-dispatch-drawer";
@@ -98,6 +99,7 @@ interface MovieDetailLoaderData {
   dispatches: DownloadDispatchItem[];
   importRecovery: MovieImportRecoverySummary;
   libraries: LibraryItem[];
+  memberships: LibraryMembership[];
   movie: MovieListItem;
   metadataIssue: MetadataProviderIssue | null;
   origins: IntakeTitleOriginItem[];
@@ -128,7 +130,7 @@ export async function movieDetailLoader({
   params: { id?: string };
 }): Promise<MovieDetailLoaderData> {
   const id = params.id!;
-  const [movie, metadataIssue, searchHistory, dispatches, importRecovery, activity, decisions, libraries, workflowStatus, origins, removalPreview, acquisitionBlockers, copy] = await Promise.all([
+  const [movie, metadataIssue, searchHistory, dispatches, importRecovery, activity, decisions, libraries, workflowStatus, origins, removalPreview, acquisitionBlockers, copy, memberships] = await Promise.all([
     fetchJson<MovieListItem>(`/api/movies/${id}`),
     fetchJson<MetadataProviderIssue | null>(`/api/movies/${id}/metadata/issue`).catch(() => null),
     fetchJson<MovieSearchHistoryItem[]>("/api/movies/search-history"),
@@ -150,15 +152,17 @@ export async function movieDetailLoader({
     fetchJson<AcquisitionBlockersResponse>(`/api/movies/${id}/acquisition-blockers`).catch(() => null),
     // What the copy on disk is, in Deluno's own words. The file name is a
     // preference and may say none of it.
-    fetchJson<MovieCopyRecord>(`/api/movies/${id}/copy`).catch(() => null)
+    fetchJson<MovieCopyRecord>(`/api/movies/${id}/copy`).catch(() => null),
+    // The libraries this film is in, as a person chose them (#530).
+    fetchJson<LibraryMembership[]>(`/api/movies/${id}/libraries/`).catch(() => [] as LibraryMembership[])
   ]);
 
-  return { acquisitionBlockers, activity, copy, decisions, dispatches, importRecovery, libraries, metadataIssue, movie, origins, removalPreview, searchHistory, workflowStatus };
+  return { acquisitionBlockers, activity, copy, decisions, dispatches, importRecovery, libraries, memberships, metadataIssue, movie, origins, removalPreview, searchHistory, workflowStatus };
 }
 
 export function MovieDetailPage() {
   const loaderData = useLoaderData() as MovieDetailLoaderData;
-  const { acquisitionBlockers, activity, copy, decisions, dispatches, importRecovery, libraries, metadataIssue, movie, origins, removalPreview, searchHistory, workflowStatus } = loaderData;
+  const { acquisitionBlockers, activity, copy, decisions, dispatches, importRecovery, libraries, memberships, metadataIssue, movie, origins, removalPreview, searchHistory, workflowStatus } = loaderData;
   const navigate = useNavigate();
   const revalidator = useRevalidator();
   const { preferences } = useDisplayPreferences();
@@ -193,7 +197,14 @@ export function MovieDetailPage() {
         qualityCutoffMet: movie.qualityCutoffMet ?? false
       }
     : null;
-  const library = wantedItem ? libraries.find((item) => item.id === wantedItem.libraryId) ?? null : null;
+  // Which of its libraries the page's actions go through. With one library that
+  // is the answer; with several, the Libraries card lets a person point them.
+  const [chosenLibraryId, setChosenLibraryId] = useState<string | null>(null);
+  const actingLibraryId = memberships.some((item) => item.libraryId === chosenLibraryId)
+    ? chosenLibraryId
+    : memberships.find((item) => item.libraryId === wantedItem?.libraryId)?.libraryId ?? memberships[0]?.libraryId ?? wantedItem?.libraryId ?? null;
+  const libraryQuery = memberships.length > 1 && actingLibraryId ? `libraryId=${encodeURIComponent(actingLibraryId)}` : "";
+  const library = actingLibraryId ? libraries.find((item) => item.id === actingLibraryId) ?? null : null;
   const movieSearches = searchHistory.filter((item) => item.movieId === movie.id);
   const movieDispatches = dispatches.filter((item) => item.entityId === movie.id);
   const importCases = importRecovery.recentCases.filter(
@@ -323,7 +334,7 @@ export function MovieDetailPage() {
       const response = await authedFetch(`/api/movies/${movie.id}/automation/defer`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ libraryId: wantedItem.libraryId, hours: 24 })
+        body: JSON.stringify({ libraryId: actingLibraryId ?? wantedItem.libraryId, hours: 24 })
       });
       if (!response.ok) throw new Error("movie-defer-failed");
       toast.success("Deferred for 24 hours. Manual searches still work.");
@@ -342,7 +353,7 @@ export function MovieDetailPage() {
       const response = await authedFetch(`/api/movies/${movie.id}/automation/skip-once`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ libraryId: wantedItem.libraryId })
+        body: JSON.stringify({ libraryId: actingLibraryId ?? wantedItem.libraryId })
       });
       if (!response.ok) throw new Error("movie-skip-once-failed");
       toast.success("The next scheduled search will be skipped.");
@@ -407,7 +418,8 @@ export function MovieDetailPage() {
     let searchResponse: Response | null = null;
 
     try {
-      searchResponse = await authedFetch(`/api/movies/${movie.id}/search${mode === "interactive" ? "?mode=preview" : ""}`, { method: "POST" });
+      const query = [mode === "interactive" ? "mode=preview" : "", libraryQuery].filter(Boolean).join("&");
+      searchResponse = await authedFetch(`/api/movies/${movie.id}/search${query ? `?${query}` : ""}`, { method: "POST" });
       if (!searchResponse.ok) throw new Error("movie-search-failed");
       const response = searchResponse;
 
@@ -472,7 +484,7 @@ export function MovieDetailPage() {
     let grabResponse: Response | null = null;
 
     try {
-      const response = await authedFetch(`/api/movies/${movie.id}/grab`, {
+      const response = await authedFetch(`/api/movies/${movie.id}/grab${libraryQuery ? `?${libraryQuery}` : ""}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -871,7 +883,7 @@ export function MovieDetailPage() {
         the screen never mentioned.
       */}
       <AcquisitionBlockersCard
-        blockers={acquisitionBlockers}
+        blockers={acquisitionBlockers} libraryId={libraryQuery ? actingLibraryId : null}
         route="/api/movies"
         mediaId={movie.id}
         disabled={busyAction !== null}
@@ -926,6 +938,19 @@ export function MovieDetailPage() {
                 ))}
               </ListTable>
             </ListCard>
+          ) : null}
+
+          {memberships.length > 0 ? (
+            <LibraryMembershipCard
+              route="/api/movies"
+              mediaId={movie.id}
+              noun="film"
+              libraries={libraries.filter((item) => item.mediaType === "movies")}
+              memberships={memberships}
+              selectedLibraryId={actingLibraryId}
+              onSelect={setChosenLibraryId}
+              onChanged={() => revalidator.revalidate()}
+            />
           ) : null}
 
           <ListCard title="Routing and destination" count={library?.name ?? "No library linked"}>

@@ -644,6 +644,7 @@ public static class MoviesEndpointRouteBuilderExtensions
         // quietly on the way to a search.
         movies.MapPost("/{id}/force-redownload", async (
             string id,
+            string? libraryId,
             HttpContext httpContext,
             IMovieCatalogRepository repository,
             AcquisitionOverrideService overrides,
@@ -697,7 +698,8 @@ public static class MoviesEndpointRouteBuilderExtensions
                     held.DownloadClientId ?? fetchedBefore?.ClientId,
                     held.DownloadClientName ?? fetchedBefore?.ClientName,
                     held.QueueItemId ?? fetchedBefore?.QueueItemId,
-                    exclusionIds),
+                    exclusionIds,
+                    held.DispatchId),
                 cancellationToken);
 
             // And then actually look for it. Clearing the obstacles and stopping
@@ -715,6 +717,7 @@ public static class MoviesEndpointRouteBuilderExtensions
                 var search = await RunSearchAsync(
                     id,
                     null,
+                    libraryId,
                     repository,
                     mediaStateRepository,
                     platformSettingsRepository,
@@ -758,6 +761,7 @@ public static class MoviesEndpointRouteBuilderExtensions
 
         movies.MapPost("/{id}/search", async (
             string id,
+            string? libraryId,
             string? mode,
             HttpContext httpContext,
             IMovieCatalogRepository repository,
@@ -782,6 +786,7 @@ public static class MoviesEndpointRouteBuilderExtensions
             var result = await RunSearchAsync(
                 id,
                 mode,
+                libraryId,
                 repository,
                 mediaStateRepository,
                 platformSettingsRepository,
@@ -946,6 +951,7 @@ public static class MoviesEndpointRouteBuilderExtensions
         movies.MapPost("/{id}/grab", async (
             string id,
             [FromBody] ReleaseGrabRequest request,
+            string? libraryId,
             HttpContext httpContext,
             IMovieCatalogRepository repository,
             IMediaStateRepository mediaStateRepository,
@@ -1004,7 +1010,8 @@ public static class MoviesEndpointRouteBuilderExtensions
                         cancellationToken),
                 cancellationToken,
                 guidePackageStore,
-                releasePreferencePlanRepository);
+                releasePreferencePlanRepository,
+                libraryId);
 
             if (result.NotFound)
             {
@@ -1636,6 +1643,7 @@ public static class MoviesEndpointRouteBuilderExtensions
             IMediaDecisionService mediaDecisionService,
             IJobScheduler jobScheduler,
             IRealtimeEventPublisher realtimeEventPublisher,
+            IMediaStateRepository mediaState,
             CancellationToken cancellationToken) =>
         {
             var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
@@ -1650,9 +1658,19 @@ public static class MoviesEndpointRouteBuilderExtensions
                 return Results.ValidationProblem(errors);
             }
 
-            var movie = await repository.AddAsync(request, cancellationToken);
             var libraries = await platformSettingsRepository.ListLibrariesAsync(cancellationToken);
-            foreach (var library in libraries.Where(item => item.MediaType == "movies"))
+            if (!string.IsNullOrWhiteSpace(request.LibraryId) &&
+                LibraryMembership.Targets(libraries, "movies", request.LibraryId, []).Count == 0)
+            {
+                return Results.ValidationProblem(new Dictionary<string, string[]> { ["libraryId"] = ["Choose one of your movie libraries."] });
+            }
+
+            var movie = await repository.AddAsync(request, cancellationToken);
+            // Only the library the person chose, or the one it is already in (#530).
+            var already = (await mediaState.ListWantedByIdsAsync(MediaKind.Movie, [movie.Id], cancellationToken))
+                .Select(row => row.LibraryId)
+                .ToArray();
+            foreach (var library in LibraryMembership.Targets(libraries, "movies", request.LibraryId, already))
             {
                 // The film's own state, not a fresh install's.
                 //
@@ -2105,6 +2123,7 @@ public static class MoviesEndpointRouteBuilderExtensions
     private static Task<MediaSearchResult> RunSearchAsync(
         string id,
         string? mode,
+        string? libraryId,
         IMovieCatalogRepository repository,
         IMediaStateRepository mediaStateRepository,
         ILibrariesRepository platformSettingsRepository,
@@ -2144,7 +2163,8 @@ public static class MoviesEndpointRouteBuilderExtensions
                     token),
             cancellationToken,
             tagStore,
-            releasePreferencePlanRepository);
+            releasePreferencePlanRepository,
+            libraryId);
 
     private static async Task SyncReleaseDatesAsync(
         IMovieCatalogRepository repository,

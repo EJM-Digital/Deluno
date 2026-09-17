@@ -29,6 +29,37 @@ public sealed class NotificationWebhookDeliveryTests
         await command.ExecuteNonQueryAsync(CancellationToken.None);
     }
 
+    /// <summary>
+    /// #524: "All events" is stored as <c>all</c>, which is no category's
+    /// prefix, so those webhooks received only tests. Stored rows are covered
+    /// as they are; a filtered webhook still receives only its own.
+    /// </summary>
+    [Theory]
+    [InlineData("all", "import.failed", true)]
+    [InlineData("All", "retention.removed", true)]
+    [InlineData("*", "health.alert", true)]
+    [InlineData("import", "import.failed", true)]
+    [InlineData("import", "grab.sent", false)]
+    [InlineData("import,retention", "retention.leaving-soon", true)]
+    public async Task A_webhook_receives_the_categories_its_filter_names(string filters, string category, bool delivered)
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-09-17T02:00:00Z"));
+        await new PlatformSchemaInitializer(
+            storage.Factory,
+            new SqliteDatabaseMigrator(storage.Factory, timeProvider),
+            NullLogger<PlatformSchemaInitializer>.Instance).StartAsync(CancellationToken.None);
+        await EnableOutboundNotificationsAsync(storage);
+        var repository = new SqliteNotificationRepository(storage.Factory, timeProvider);
+        await repository.CreateNotificationWebhookAsync(new CreateNotificationWebhookRequest("Everything", "https://hooks.example.test/all", filters, true), CancellationToken.None);
+        var handler = new SequencedHandler([]);
+        var service = new OutboundNotificationService(repository, new SingleClientFactory(handler), NullLogger<OutboundNotificationService>.Instance);
+
+        await service.DispatchAsync(category, "Title", "Message", null, CancellationToken.None);
+
+        Assert.Equal(delivered ? 1 : 0, handler.Attempts);
+    }
+
     [Fact]
     public async Task DispatchAsync_retries_failed_delivery_then_records_success()
     {

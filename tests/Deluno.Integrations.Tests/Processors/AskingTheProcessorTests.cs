@@ -64,7 +64,8 @@ public sealed class AskingTheProcessorTests
             .GetStatusSupportAsync(Weir, CancellationToken.None);
 
         Assert.Equal(ProcessorAnswer.Forbidden, support.Answer);
-        Assert.Contains("Set a webhook secret in Weir", support.Message, StringComparison.Ordinal);
+        // Said once, without the processor repeating it in brackets.
+        Assert.Equal("Set a webhook secret in Weir and the same secret on this processor connection in Deluno, so Deluno can ask about hand-offs.", support.Message);
     }
 
     /// <summary>

@@ -563,6 +563,7 @@ public static class SeriesEndpointRouteBuilderExtensions
         // quietly on the way to a search.
         series.MapPost("/{id}/force-redownload", async (
             string id,
+            string? libraryId,
             HttpContext httpContext,
             ISeriesCatalogRepository repository,
             AcquisitionOverrideService overrides,
@@ -616,7 +617,8 @@ public static class SeriesEndpointRouteBuilderExtensions
                     held.DownloadClientId ?? fetchedBefore?.ClientId,
                     held.DownloadClientName ?? fetchedBefore?.ClientName,
                     held.QueueItemId ?? fetchedBefore?.QueueItemId,
-                    exclusionIds),
+                    exclusionIds,
+                    held.DispatchId),
                 cancellationToken);
 
             // And then actually look for it. Clearing the obstacles and stopping
@@ -634,6 +636,7 @@ public static class SeriesEndpointRouteBuilderExtensions
                 var search = await RunSearchAsync(
                     id,
                     null,
+                    libraryId,
                     repository,
                     mediaStateRepository,
                     platformSettingsRepository,
@@ -677,6 +680,7 @@ public static class SeriesEndpointRouteBuilderExtensions
 
         series.MapPost("/{id}/search", async (
             string id,
+            string? libraryId,
             string? mode,
             HttpContext httpContext,
             ISeriesCatalogRepository repository,
@@ -701,6 +705,7 @@ public static class SeriesEndpointRouteBuilderExtensions
             var result = await RunSearchAsync(
                 id,
                 mode,
+                libraryId,
                 repository,
                 mediaStateRepository,
                 platformSettingsRepository,
@@ -2023,6 +2028,7 @@ public static class SeriesEndpointRouteBuilderExtensions
         series.MapPost("/{id}/grab", async (
             string id,
             [FromBody] ReleaseGrabRequest request,
+            string? libraryId,
             HttpContext httpContext,
             ISeriesCatalogRepository repository,
             IMediaStateRepository mediaStateRepository,
@@ -2083,7 +2089,8 @@ public static class SeriesEndpointRouteBuilderExtensions
                         cancellationToken),
                 cancellationToken,
                 guidePackageStore,
-                releasePreferencePlanRepository);
+                releasePreferencePlanRepository,
+                libraryId);
 
             if (result.NotFound)
             {
@@ -2724,6 +2731,7 @@ public static class SeriesEndpointRouteBuilderExtensions
             IMediaDecisionService mediaDecisionService,
             IJobScheduler jobScheduler,
             IRealtimeEventPublisher realtimeEventPublisher,
+            IMediaStateRepository mediaState,
             CancellationToken cancellationToken) =>
         {
             var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
@@ -2738,9 +2746,19 @@ public static class SeriesEndpointRouteBuilderExtensions
                 return Results.ValidationProblem(errors);
             }
 
-            var item = await repository.AddAsync(request, cancellationToken);
             var libraries = await platformSettingsRepository.ListLibrariesAsync(cancellationToken);
-            foreach (var library in libraries.Where(entry => entry.MediaType == "tv"))
+            if (!string.IsNullOrWhiteSpace(request.LibraryId) &&
+                LibraryMembership.Targets(libraries, "tv", request.LibraryId, []).Count == 0)
+            {
+                return Results.ValidationProblem(new Dictionary<string, string[]> { ["libraryId"] = ["Choose one of your TV libraries."] });
+            }
+
+            var item = await repository.AddAsync(request, cancellationToken);
+            // Only the library the person chose, or the one it is already in (#530).
+            var already = (await mediaState.ListWantedByIdsAsync(MediaKind.Series, [item.Id], cancellationToken))
+                .Select(row => row.LibraryId)
+                .ToArray();
+            foreach (var library in LibraryMembership.Targets(libraries, "tv", request.LibraryId, already))
             {
                 // The show's own state, not a fresh install's.
                 //
@@ -2810,6 +2828,7 @@ public static class SeriesEndpointRouteBuilderExtensions
     private static Task<MediaSearchResult> RunSearchAsync(
         string id,
         string? mode,
+        string? libraryId,
         ISeriesCatalogRepository repository,
         IMediaStateRepository mediaStateRepository,
         ILibrariesRepository platformSettingsRepository,
@@ -2850,7 +2869,8 @@ public static class SeriesEndpointRouteBuilderExtensions
                     token),
             cancellationToken,
             tagStore,
-            releasePreferencePlanRepository);
+            releasePreferencePlanRepository,
+            libraryId);
 
     private static string? NormalizeOverride(string? value) =>
         string.IsNullOrWhiteSpace(value) ? null : value.Trim();

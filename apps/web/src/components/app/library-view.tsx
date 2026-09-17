@@ -165,6 +165,8 @@ export function LibraryView({
   const compatibleLibraries = libraries
     .filter((library) => library.mediaType === (variant === "movies" ? "movies" : "tv"))
     .sort((left, right) => left.name.localeCompare(right.name));
+  const [createLibraryId, setCreateLibraryId] = useState<string | null>(null);
+  const addIntoLibraryId = compatibleLibraries.some((library) => library.id === createLibraryId) ? createLibraryId : compatibleLibraries[0]?.id ?? null;
 
   useEffect(() => {
     let cancelled = false;
@@ -196,6 +198,13 @@ export function LibraryView({
     metadataResults, setMetadataResults, selectedMetadataResults, setSelectedMetadataResults,
     isSearchingMetadata, setIsSearchingMetadata, metadataSearchSequence
   } = useLibraryCreate(variant, searchParams.get("add") === "true");
+
+  // Opened from elsewhere with a title to look for, such as a film on a media
+  // server that Deluno does not manage yet (#494): start with that title.
+  const addTitle = searchParams.get("add") === "true" ? searchParams.get("title") : null;
+  useEffect(() => {
+    if (addTitle) setCreateForm((current) => (current.title ? current : { ...current, title: addTitle }));
+  }, [addTitle, setCreateForm]);
 
   /**
    * One page of whichever catalogue this view is showing.
@@ -695,6 +704,7 @@ export function LibraryView({
               releaseYear: draft.year ? Number(draft.year) : null,
               imdbId: draft.imdbId || null,
               monitored: draft.monitored,
+              libraryId: addIntoLibraryId,
               ...metadataCreatePayload(resolvedMetadata)
             }
           : {
@@ -702,6 +712,7 @@ export function LibraryView({
               startYear: draft.year ? Number(draft.year) : null,
               imdbId: draft.imdbId || null,
               monitored: draft.monitored,
+              libraryId: addIntoLibraryId,
               ...metadataCreatePayload(resolvedMetadata)
             }
       )
@@ -970,6 +981,9 @@ export function LibraryView({
           onSelectResult={applyMetadataResult}
           onOpenHeldResult={openHeldMetadataResult}
           onCreate={handleCreate}
+          libraries={compatibleLibraries}
+          libraryId={addIntoLibraryId ?? undefined}
+          onLibraryChange={setCreateLibraryId}
         />
 
         {/* ═══════ CONTROL RAIL ═══════ */}

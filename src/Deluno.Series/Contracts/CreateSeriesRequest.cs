@@ -17,4 +17,5 @@ public sealed record CreateSeriesRequest(
     string? MetadataJson = null,
     string? SeriesType = SeriesTypes.Standard,
     string? NumberingScheme = null,
-    string? NumberingSource = "provider");
+    string? NumberingSource = "provider",
+    string? LibraryId = null);

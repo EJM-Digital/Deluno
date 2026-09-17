@@ -96,8 +96,9 @@ export function AcquisitionBlockersCard({
   route,
   mediaId,
   onForced,
-  disabled = false
-}: AcquisitionBlockersCardProps) {
+  disabled = false,
+  libraryId
+}: AcquisitionBlockersCardProps & { libraryId?: string | null }) {
   const [isConfirming, setIsConfirming] = useState(false);
   const [isForcing, setIsForcing] = useState(false);
 
@@ -108,7 +109,9 @@ export function AcquisitionBlockersCard({
   async function force() {
     setIsForcing(true);
     try {
-      const response = await authedFetch(`${route}/${mediaId}/force-redownload`, { method: "POST" });
+      // The library it searches through, when the title is in more than one (#530).
+      const query = libraryId ? `?libraryId=${encodeURIComponent(libraryId)}` : "";
+      const response = await authedFetch(`${route}/${mediaId}/force-redownload${query}`, { method: "POST" });
       if (!response.ok) throw new Error("force-redownload-failed");
 
       const result = (await response.json()) as AcquisitionOverrideResponse;

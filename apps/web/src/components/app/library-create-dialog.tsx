@@ -5,8 +5,10 @@ import type { MetadataProviderStatus, MetadataSearchResult } from "../../lib/api
 import type { CreateFormDraft, LibraryVariant } from "../../hooks/use-library-create";
 import { cn } from "../../lib/utils";
 import { Badge } from "../ui/badge";
+import { Select } from "../ui/select";
 import { Button } from "../ui/button";
 import { Checkbox } from "../ui/checkbox";
+import { Field } from "../ui/field";
 import { Input } from "../ui/input";
 
 type LibraryCreateDialogProps = {
@@ -34,6 +36,10 @@ type LibraryCreateDialogProps = {
    */
   onOpenHeldResult: (result: MetadataSearchResult) => void;
   onCreate: FormEventHandler<HTMLFormElement>;
+  /** Libraries of this type; the choice is offered when there is more than one (#530). */
+  libraries?: { id: string; name: string }[];
+  libraryId?: string;
+  onLibraryChange?: (libraryId: string) => void;
 };
 
 function sameMetadataResult(left: MetadataSearchResult, right: MetadataSearchResult) {
@@ -44,7 +50,7 @@ export function LibraryCreateDialog({
   open, onOpenChange, variant, label, singular, metadataStatus, isCreating, createForm,
   setCreateForm, metadataResults, setMetadataResults, selectedMetadataResults,
   setSelectedMetadataResults, isSearchingMetadata, metadataSearchSequence, onSearch,
-  onSelectResult, onOpenHeldResult, onCreate,
+  onSelectResult, onOpenHeldResult, onCreate, libraries = [], libraryId, onLibraryChange,
 }: LibraryCreateDialogProps) {
   const selectedMetadataCount = selectedMetadataResults.length;
 
@@ -118,9 +124,19 @@ export function LibraryCreateDialog({
             </details>
           </div>
 
+          {/* Only the chosen library searches for it and holds it (#530). */}
+          {libraries.length > 1 && onLibraryChange ? (
+            <div className="border-t border-hairline px-6 py-4">
+              <Field label="Add into" help={variant === "movies" ? "Only this library searches for it and holds it. It can be kept in another library too, later, from its page." : "Only this library searches for it and holds it. It can be moved to another library later, from its page."}>
+                <Select aria-label="Library" value={libraryId ?? libraries[0].id} onChange={(event) => onLibraryChange(event.target.value)} options={libraries.map((library) => ({ value: library.id, label: library.name }))} />
+              </Field>
+            </div>
+          ) : null}
+
           <form onSubmit={onCreate} className="flex flex-col gap-3 border-t border-hairline bg-surface-1/70 px-6 py-4 sm:flex-row sm:items-center sm:justify-between">
             <div className="inline-flex min-h-[1.25rem] items-center gap-2 text-sm text-muted-foreground">
               <label className="inline-flex select-none items-center gap-2"><Checkbox checked={createForm.monitored} onCheckedChange={(monitored) => setCreateForm((current) => ({ ...current, monitored }))} />Monitor and search automatically</label>
+
               {selectedMetadataCount > 0 ? <span className="inline-flex items-center gap-2 text-xs font-semibold text-primary"><span className="h-1.5 w-1.5 rounded-full bg-primary" />{selectedMetadataCount} {selectedMetadataCount === 1 ? singular : label} selected</span> : null}
             </div>
             <div className="flex gap-2">

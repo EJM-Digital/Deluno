@@ -105,6 +105,7 @@ public static class ExternalIntegrationEndpointRouteBuilderExtensions
                     "destination-rules",
                     "metadata",
                     "media-probing",
+                    "external-file-changed",
                     "pre-import-processing",
                     ProcessorCapabilities.RejectRegrab,
                     "activity-feed",

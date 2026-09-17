@@ -207,6 +207,7 @@ queue, activity, and history records preserve the failure through restart.
 - `GET /api/integrations/external/activity` returns recent Deluno activity events.
 - `POST /api/integrations/external/import-preview` runs the same destination-rule/import preview engine used by Deluno's queue UI.
 - `POST /api/integrations/external/trigger-refresh` requests library search refreshes by media type.
+- `POST /api/integrations/external/file-changed` tells Deluno a tool changed one library file in place, so Deluno re-reads it. See [A library file changed](#a-library-file-changed).
 - `POST /api/integrations/processors/events` reports generic processor status for refine-before-import workflows.
 - `POST /api/intake-sources/{id}/sync` queues an immediate watchlist/intake sync for a configured source.
 - `GET /api/intake-sources/{id}/diagnostics?pageSize=50&pageToken=…` returns one explicit page of recent sync diagnostics and skip reasons for that source.
@@ -226,10 +227,48 @@ queue, activity, and history records preserve the failure through restart.
 API key scopes:
 
 - `read` can call health, manifest, queue, and activity endpoints.
-- `imports` can call import preview.
+- `imports` can call import preview and report a changed library file.
 - `imports` can list processor hand-offs and report processor events.
 - `queue` can trigger refreshes and queue-related actions.
 - `all` can call everything.
+
+### A library file changed
+
+A tool that edits files already in the library, such as Weir removing unwanted
+audio tracks, calls this after it swaps the file in place. Deluno's record of
+the file (size, codecs, audio and subtitle languages) is otherwise stale.
+
+```http
+POST /api/integrations/external/file-changed
+X-Api-Key: <key with the imports scope>
+Content-Type: application/json
+
+{ "path": "D:\Media\Movies\Blade Runner 2049 (2017)\Blade Runner 2049.mkv",
+  "reason": "removed 2 audio tracks",
+  "tool": "Weir" }
+```
+
+- `path` must be a file Deluno tracks, matched exactly but ignoring case.
+- Deluno takes the file's current size and marks its streams as owed a fresh
+  read. The media probe and the subtitle scan run for it on their own lanes.
+- Nothing is searched, upgraded, renamed or imported because of this call. If
+  the fresh read changes whether a title meets its cutoff, that follows the
+  library's normal schedule.
+- Activity records "Weir changed Blade Runner 2049.mkv: removed 2 audio tracks.
+  Deluno is re-reading it."
+
+Responses:
+
+| Status | Meaning |
+|---|---|
+| `202` | Accepted. `titles` lists the movie or series rows holding the file. `coalesced: true` means the same path was reported less than a minute ago and is already being re-read. |
+| `400` | `path` is empty. |
+| `404` | No file exists at `path`, or Deluno does not track it. |
+
+The manifest advertises this as the `external-file-changed` capability.
+
+Not `trigger-refresh`: that asks for library searches, which can download
+things.
 
 ## Refine Before Import
 

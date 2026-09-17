@@ -1,3 +1,5 @@
+using System.Reflection;
+using Deluno.Jobs.Data;
 using Deluno.Contracts;
 using Deluno.Integrations.DownloadClients;
 using Deluno.Media;
@@ -86,6 +88,46 @@ public sealed class AcquisitionOverrideServiceTests
         Assert.Equal(DownloadClientActions.Forget, clients.RequestedAction);
         Assert.Equal("hash-1", clients.RequestedQueueItemId);
         Assert.Contains(result.Cleared, entry => entry.Contains("forget", StringComparison.OrdinalIgnoreCase));
+    }
+
+    /// <summary>
+    /// The open dispatch is what says a client holds the release. Once the
+    /// client has forgotten it, the dispatch is archived, so "already has a
+    /// download" does not stay on the title (seen on the rig). A client that
+    /// refuses leaves it alone.
+    /// </summary>
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task A_forgotten_download_no_longer_counts_as_held(bool clientForgets)
+    {
+        var archived = new List<string>();
+        var dispatches = DispatchProxy.Create<IDownloadDispatchesRepository, ArchiveRecorder>();
+        ((ArchiveRecorder)(object)dispatches).Archived = archived;
+        var clients = new FakeClients { Succeed = clientForgets, Message = "Not allowed." };
+        var service = new AcquisitionOverrideService(new FakeProcessors(), new FakeExclusions(), clients, NullLogger<AcquisitionOverrideService>.Instance, dispatches);
+
+        await service.ForceAsync(
+            new AcquisitionOverrideRequest("movie-1", "Arrival", DownloadClientId: "client-1", DownloadClientName: "qBittorrent", QueueItemId: "hash-1", DispatchId: "dispatch-1"),
+            CancellationToken.None);
+
+        Assert.Equal(clientForgets ? ["dispatch-1"] : [], archived);
+    }
+
+    public class ArchiveRecorder : DispatchProxy
+    {
+        public List<string> Archived { get; set; } = [];
+
+        protected override object? Invoke(MethodInfo? targetMethod, object?[]? args)
+        {
+            if (targetMethod?.Name == nameof(IDownloadDispatchesRepository.ArchiveDispatchAsync))
+            {
+                Archived.Add((string)args![0]!);
+                return Task.CompletedTask;
+            }
+
+            throw new NotSupportedException(targetMethod?.Name);
+        }
     }
 
     /// <summary>

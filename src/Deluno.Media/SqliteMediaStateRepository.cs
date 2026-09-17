@@ -739,6 +739,116 @@ public sealed class SqliteMediaStateRepository(
     /// files would be marked read forever while every automatic replacement
     /// remained held for a missing or stale baseline.</para>
     /// </summary>
+    public async Task<bool> RemoveFromLibraryAsync(MediaKind kind, string mediaId, string libraryId, CancellationToken cancellationToken)
+    {
+        var map = MediaTableMap.For(kind);
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(map.DatabaseName, cancellationToken);
+        await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+        using var command = connection.CreateCommand();
+        command.Transaction = (System.Data.Common.DbTransaction)transaction;
+        command.CommandText = $"""
+            DELETE FROM {map.WantedTable}
+            WHERE {map.WantedMediaIdColumn} = @id
+              AND library_id = @library
+              AND has_file = 0
+              AND (SELECT COUNT(*) FROM {map.WantedTable} WHERE {map.WantedMediaIdColumn} = @id) > 1;
+            """;
+        AddParameter(command, "@id", mediaId);
+        AddParameter(command, "@library", libraryId);
+        var removed = await command.ExecuteNonQueryAsync(cancellationToken) > 0;
+        if (removed && kind == MediaKind.Series)
+        {
+            // Episodes carry one library each; those that pointed at the library
+            // the show left follow the show to one it is still in.
+            using var episodes = connection.CreateCommand();
+            episodes.Transaction = (System.Data.Common.DbTransaction)transaction;
+            episodes.CommandText = """
+                UPDATE episode_wanted_state
+                SET library_id = (SELECT MIN(library_id) FROM series_wanted_state WHERE series_id = @id)
+                WHERE series_id = @id AND library_id = @library;
+                """;
+            AddParameter(episodes, "@id", mediaId);
+            AddParameter(episodes, "@library", libraryId);
+            await episodes.ExecuteNonQueryAsync(cancellationToken);
+        }
+
+        await transaction.CommitAsync(cancellationToken);
+        return removed;
+    }
+
+    public async Task<bool> MoveToLibraryAsync(MediaKind kind, string mediaId, string fromLibraryId, string toLibraryId, CancellationToken cancellationToken)
+    {
+        var map = MediaTableMap.For(kind);
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(map.DatabaseName, cancellationToken);
+        await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+        using var command = connection.CreateCommand();
+        command.Transaction = (System.Data.Common.DbTransaction)transaction;
+        command.CommandText = $"""
+            UPDATE {map.WantedTable}
+            SET library_id = @to, updated_utc = @now
+            WHERE {map.WantedMediaIdColumn} = @id
+              AND library_id = @from
+              AND has_file = 0
+              AND NOT EXISTS (SELECT 1 FROM {map.WantedTable} WHERE {map.WantedMediaIdColumn} = @id AND library_id = @to);
+            """;
+        AddParameter(command, "@id", mediaId);
+        AddParameter(command, "@from", fromLibraryId);
+        AddParameter(command, "@to", toLibraryId);
+        AddParameter(command, "@now", timeProvider.GetUtcNow().ToString("O"));
+        var moved = await command.ExecuteNonQueryAsync(cancellationToken) > 0;
+        if (moved && kind == MediaKind.Series)
+        {
+            using var episodes = connection.CreateCommand();
+            episodes.Transaction = (System.Data.Common.DbTransaction)transaction;
+            episodes.CommandText = "UPDATE episode_wanted_state SET library_id = @to WHERE series_id = @id AND library_id = @from;";
+            AddParameter(episodes, "@id", mediaId);
+            AddParameter(episodes, "@from", fromLibraryId);
+            AddParameter(episodes, "@to", toLibraryId);
+            await episodes.ExecuteNonQueryAsync(cancellationToken);
+        }
+
+        await transaction.CommitAsync(cancellationToken);
+        return moved;
+    }
+
+    public async Task<IReadOnlyList<ChangedLibraryFile>> MarkFileChangedAsync(
+        MediaKind kind,
+        string filePath,
+        long sizeBytes,
+        CancellationToken cancellationToken)
+    {
+        var map = MediaTableMap.For(kind);
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(map.DatabaseName, cancellationToken);
+        using var command = connection.CreateCommand();
+        // The new size is also what tells the subtitle scan the file changed:
+        // it compares its own recorded size with this one.
+        command.CommandText = kind == MediaKind.Series
+            ? """
+              UPDATE episode_entries
+              SET file_size_bytes = @size, facts_probed_utc = NULL
+              WHERE has_file = 1 AND file_path = @path COLLATE NOCASE
+              RETURNING series_id,
+                        (SELECT w.library_id FROM episode_wanted_state w WHERE w.episode_id = episode_entries.id LIMIT 1),
+                        file_path;
+              """
+            : $"""
+              UPDATE {map.WantedTable}
+              SET file_size_bytes = @size, facts_probed_utc = NULL
+              WHERE has_file = 1 AND file_path = @path COLLATE NOCASE
+              RETURNING {map.WantedMediaIdColumn}, library_id, file_path;
+              """;
+        AddParameter(command, "@path", filePath);
+        AddParameter(command, "@size", sizeBytes);
+        var changed = new List<ChangedLibraryFile>();
+        using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            changed.Add(new ChangedLibraryFile(reader.GetString(0), reader.IsDBNull(1) ? null : reader.GetString(1), reader.GetString(2)));
+        }
+
+        return changed;
+    }
+
     public async Task<IReadOnlyList<MediaFileProbeCandidate>> ListFileProbeCandidatesAsync(
         MediaKind kind,
         int take,
