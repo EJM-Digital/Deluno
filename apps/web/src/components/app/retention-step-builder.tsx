@@ -38,6 +38,7 @@ const GROUPS: { id: string; label: string }[] = [
   { id: "watching", label: "Watching" },
   { id: "server", label: "From the media servers" },
   { id: "part", label: "This season or episode" },
+  { id: "requests", label: "Requests (Seerr)" },
   { id: "storage", label: "Storage" },
   { id: "title", label: "Title" },
   { id: "file", label: "File" },

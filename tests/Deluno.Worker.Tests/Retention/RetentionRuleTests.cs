@@ -3,6 +3,7 @@ using Deluno.Connections.Contracts;
 using Deluno.Connections.Data;
 using Deluno.Contracts;
 using Deluno.Integrations.MediaServers;
+using Deluno.Integrations.Seerr;
 using Deluno.Intake.Data;
 using Deluno.Jobs.Data;
 using Deluno.Libraries.Contracts;
@@ -42,6 +43,7 @@ public sealed class RetentionRuleTests
     private readonly MutableClock _clock = new(Now);
     private readonly Mock<IRecycleBinService> _recycleBin = new();
     private readonly FakeDisk _disk = new();
+    private readonly FakeRetentionSeerr _seerr = new();
     private readonly List<MovieListItem> _catalogue = [];
     private readonly MediaServerConnection _server = new("server-1", "jellyfin", "Rig lab Jellyfin", "http://127.0.0.1:8096", "key", true, "healthy", null, null, null, "WIN-RIG", "id", Now, Now);
 
@@ -385,12 +387,84 @@ public sealed class RetentionRuleTests
         Assert.Equal("e2", Assert.Single(await _store.ListEpisodeRemovalsAsync("s1", CancellationToken.None)).EpisodeId);
     }
 
+    // ------------------------------------------------------------------ Seerr (#522)
+
+    [Fact]
+    public async Task Request_fields_read_who_asked_when_and_how_often()
+    {
+        _seerr.Library = new SeerrLibrary(
+        [
+            new SeerrRequest(11, "movies", "653", null, "ben", Now.AddDays(-60), Now.AddDays(-59)),
+            new SeerrRequest(11, "movies", "653", null, "owner", Now.AddDays(-20), null),
+            new SeerrRequest(12, "movies", "3085", null, "ben", Now.AddDays(-5), Now.AddDays(-5))
+        ], ["ben", "owner", "sam"]);
+        ServerAnswers();
+
+        var requestedByBen = await Evaluator().EvaluateAsync(Rule(Keep("seerr.requestedBy:in:ben"), Keep("seerr.approvalDate:beyond:30")), CancellationToken.None);
+        var match = Assert.Single(requestedByBen.Matched);
+        Assert.Equal("m1", match.EntityId);
+        Assert.Equal("Requested by includes any of ben: ben, owner", match.Reasons[0]);
+
+        var neverRequested = await Evaluator().EvaluateAsync(Rule(Keep("seerr.isRequested:is:false")), CancellationToken.None);
+        Assert.Equal(["m3"], neverRequested.Matched.Select(item => item.EntityId));
+
+        var twice = await Evaluator().EvaluateAsync(Rule(Keep("seerr.timesRequested:min:2")), CancellationToken.None);
+        Assert.Equal(["m1"], twice.Matched.Select(item => item.EntityId));
+    }
+
+    [Fact]
+    public async Task A_Seerr_that_cannot_be_read_decides_nothing_it_would_have_decided()
+    {
+        _seerr.Library = new SeerrLibrary([], []);
+        _seerr.Unreachable = "Deluno could not reach Lab Seerr.";
+        ServerAnswers();
+        var rule = Rule(Keep("seerr.isRequested:is:false"));
+        _store.Add(rule);
+
+        var run = await Service().CheckAsync(rule, "schedule", CancellationToken.None);
+
+        Assert.StartsWith("Nothing changed: Deluno could not reach Lab Seerr", run.Summary, StringComparison.Ordinal);
+        Assert.Empty(await _store.ListMarksAsync(rule.Id, CancellationToken.None));
+    }
+
+    [Fact]
+    public void A_rule_reading_requests_needs_a_Seerr_server()
+    {
+        var problems = RetentionEvaluator.Validate(
+            new SaveRetentionRuleRequest("Rule", RetentionLevels.Movie, true, [RetentionStep.KeepOnly("seerr.isRequested:is:true")], [], false),
+            [_server],
+            seerrServers: 0);
+
+        Assert.Contains(problems, problem => problem.Contains("comes from Seerr", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task Removing_a_whole_title_clears_it_from_Seerr_and_a_failure_does_not_undo_the_removal()
+    {
+        _seerr.Library = new SeerrLibrary([], []);
+        _seerr.ClearProblem = "Deluno could not reach Lab Seerr";
+        ServerAnswers(Item("j1", Path("Nosferatu", 1922), tmdb: "653", playedBy: ["owner"], last: Now.AddDays(-40)));
+        _exclusions.Setup(repo => repo.UpsertAsync(It.IsAny<UpsertMediaExclusionRequest>(), It.IsAny<CancellationToken>())).ReturnsAsync((MediaExclusionItem?)null);
+        var rule = Rule(Keep("server.watchedBy:anyone:"));
+        _store.Add(rule);
+        await Service().CheckAsync(rule, "schedule", CancellationToken.None);
+        _clock.Now = Now.AddDays(15);
+
+        var run = await Service().CheckAsync(rule, "schedule", CancellationToken.None);
+
+        var removed = Assert.Single(run.Items!, item => item.Outcome == RetentionItemOutcomes.Removed);
+        Assert.Contains("Seerr: Lab Seerr could not be cleared yet", removed.Message, StringComparison.Ordinal);
+        Assert.Equal([("m1", "movies", (string?)"653")], _seerr.Cleared);
+        _movies.Verify(repo => repo.DeleteAsync("m1", It.IsAny<CancellationToken>()), Times.Once);
+    }
+
     private RetentionEvaluator Evaluator()
         => new(
             new RetentionUnitReader(_movies.Object, _series.Object, _libraries.Object, _clock),
             _servers.Object,
             new MediaServerClientRegistry([_jellyfin.Object]),
             _disk,
+            _seerr,
             _clock);
 
     private RetentionService Service()
@@ -398,7 +472,7 @@ public sealed class RetentionRuleTests
         var intake = new Mock<IIntakeRepository>();
         var removal = new TitleRemovalService(_libraries.Object, intake.Object, Mock.Of<IJobQueueRepository>(), Mock.Of<IActivityFeedRepository>(), _recycleBin.Object);
         return new RetentionService(_store, Evaluator(), removal, _movies.Object, _series.Object, _libraries.Object, _recycleBin.Object, _exclusions.Object,
-            new MediaServerClientRegistry([_jellyfin.Object]), Mock.Of<IActivityFeedRepository>(), _notifications.Object, _clock, NullLogger<RetentionService>.Instance);
+            new MediaServerClientRegistry([_jellyfin.Object]), _seerr, Mock.Of<IActivityFeedRepository>(), _notifications.Object, _clock, NullLogger<RetentionService>.Instance);
     }
 
     /// <summary>Breaking Bad: season 1 watched by everyone, season 2 by one person.</summary>

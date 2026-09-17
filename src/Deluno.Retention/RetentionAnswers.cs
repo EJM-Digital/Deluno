@@ -59,10 +59,12 @@ public sealed class RetentionDiskSpace : IRetentionDiskSpace
 }
 
 /// <summary>Answers the rule fields that are not library filters.</summary>
+/// <param name="seerr">Every connected Seerr server's requests; null when none is connected.</param>
 public sealed class RetentionFieldAnswers(
     IReadOnlyList<RetentionServerIndex> servers,
     IRetentionDiskSpace disk,
-    DateTimeOffset now)
+    DateTimeOffset now,
+    RetentionSeerrIndex? seerr = null)
 {
     private readonly Dictionary<string, (long FreeBytes, long TotalBytes)?> _drives = new(StringComparer.OrdinalIgnoreCase);
 
@@ -71,6 +73,7 @@ public sealed class RetentionFieldAnswers(
         {
             RetentionFieldSources.Disk => Disk(unit, field, op, value),
             RetentionFieldSources.Deluno => Part(unit, field, op, value),
+            RetentionFieldSources.Seerr => Seerr(unit, field, op, value),
             _ => Server(unit, field, op, value)
         };
 
@@ -244,6 +247,49 @@ public sealed class RetentionFieldAnswers(
             "disk.totalGb" => Holds(Number(op, value, total, GigaByte), $"{Lead(field, op, value)}: {total / (double)GigaByte:0.#} GB"),
             _ => Holds(Number(op, value, free, GigaByte), $"{Lead(field, op, value)}: {free / (double)GigaByte:0.#} GB free")
         };
+    }
+
+    // -------------------------------------------------------------------- Seerr
+    private RetentionAnswer Seerr(RetentionUnit unit, RetentionFieldDefinition field, string op, string? value)
+    {
+        if (seerr is null)
+        {
+            return RetentionAnswer.CannotSay($"{field.Label}: no Seerr server is connected.");
+        }
+
+        // Seerr's list of requests is complete, so no request is an answer:
+        // nobody asked for it. A title with no id Seerr could know it by is not.
+        var requests = seerr.Find(unit);
+        if (requests is null)
+        {
+            return RetentionAnswer.CannotSay($"{field.Label}: Deluno has no TMDb or TVDb id Seerr could know it by.");
+        }
+
+        var phrase = Lead(field, op, value);
+        switch (field.Id)
+        {
+            case "seerr.requestedBy":
+            {
+                var people = requests.Select(request => request.RequestedBy).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+                var said = people.Length == 0 ? (op == RetentionOperators.Nobody ? string.Empty : ": nobody") : $": {string.Join(", ", people)}";
+                return Holds(Users(op, value, people, seerr.Users), $"{field.Label} {Phrase(field, op, value)}{said}");
+            }
+
+            case "seerr.requestDate":
+            case "seerr.approvalDate":
+            {
+                var when = field.Id == "seerr.requestDate"
+                    ? requests.Select(request => (DateTimeOffset?)request.RequestedUtc).Max()
+                    : requests.Select(request => request.ApprovedUtc).Max();
+                return Holds(Date(op, value, when), $"{phrase}: {(when is null ? "never" : when.Value.ToString("d MMM yyyy", CultureInfo.InvariantCulture))}");
+            }
+
+            case "seerr.isRequested":
+                return Holds(Boolean(value, requests.Count > 0), $"{phrase}: {(requests.Count > 0 ? "yes" : "no")}");
+
+            default:
+                return Holds(Number(op, value, requests.Count, 1), $"{phrase}: {requests.Count}");
+        }
     }
 
     // ------------------------------------------------------- seasons, episodes

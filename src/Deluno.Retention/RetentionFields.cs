@@ -32,6 +32,7 @@ public static class RetentionFieldSources
     public const string Deluno = "deluno";
     public const string Server = "server";
     public const string Disk = "disk";
+    public const string Seerr = "seerr";
 }
 
 /// <summary>The operators the rule fields add to the library filter vocabulary.</summary>
@@ -100,6 +101,7 @@ public static class RetentionFieldCatalog
     private const string ServerDetails = "server";
     private const string Storage = "storage";
     private const string Part = "part";
+    private const string Requests = "requests";
 
     public static readonly IReadOnlyList<RetentionFieldDefinition> Fields =
     [
@@ -142,6 +144,12 @@ public static class RetentionFieldCatalog
         new("disk.freePercent", "Free space on the library drive (%)", "Percent free where the library lives.", Storage, RetentionValueKinds.Decimal, RetentionFieldSources.Disk, Everywhere),
         new("disk.totalGb", "Size of the library drive", "Gigabytes in total where the library lives.", Storage, RetentionValueKinds.Gigabytes, RetentionFieldSources.Disk, Everywhere),
 
+        new("seerr.requestedBy", "Requested by", "Who asked for it in Seerr. A season or episode is asked about through its show.", Requests, RetentionValueKinds.Users, RetentionFieldSources.Seerr, Everywhere),
+        new("seerr.requestDate", "Request date", "When it was most recently requested in Seerr.", Requests, RetentionValueKinds.Date, RetentionFieldSources.Seerr, Everywhere),
+        new("seerr.approvalDate", "Approval date", "When a request for it was most recently approved in Seerr.", Requests, RetentionValueKinds.Date, RetentionFieldSources.Seerr, Everywhere),
+        new("seerr.isRequested", "Is requested", "Whether anyone has asked for it in Seerr.", Requests, RetentionValueKinds.Boolean, RetentionFieldSources.Seerr, Everywhere),
+        new("seerr.timesRequested", "Times requested", "How many requests Seerr holds for it.", Requests, RetentionValueKinds.Integer, RetentionFieldSources.Seerr, Everywhere),
+
         new("part.seasonNumber", "Season number", "Specials are season 0.", Part, RetentionValueKinds.Integer, RetentionFieldSources.Deluno, Parts),
         new("part.latestSeason", "Latest season", "Whether it is, or is in, the show's newest season.", Part, RetentionValueKinds.Boolean, RetentionFieldSources.Deluno, Parts),
         new("part.hasUnaired", "Has unaired episodes", "Whether the season still has episodes to come.", Part, RetentionValueKinds.Boolean, RetentionFieldSources.Deluno, Parts),
@@ -164,7 +172,8 @@ public static class RetentionFieldCatalog
         var field = condition.Split(':', 2)[0];
         return field.StartsWith("server.", StringComparison.OrdinalIgnoreCase) ||
                field.StartsWith("disk.", StringComparison.OrdinalIgnoreCase) ||
-               field.StartsWith("part.", StringComparison.OrdinalIgnoreCase);
+               field.StartsWith("part.", StringComparison.OrdinalIgnoreCase) ||
+               field.StartsWith("seerr.", StringComparison.OrdinalIgnoreCase);
     }
 
     /// <summary>A catalogue field a whole show carries, read at a season or episode through its show.</summary>
