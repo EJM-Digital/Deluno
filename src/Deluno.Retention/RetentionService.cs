@@ -44,16 +44,18 @@ public sealed class RetentionService(
         var evaluation = await evaluator.EvaluateAsync(rule, cancellationToken);
         var items = evaluation.Candidates.Select(ToItem).ToArray();
         var matched = items.Where(item => item.Outcome == RetentionItemOutcomes.Matched).ToArray();
-        var excluded = items.Count(item => item.Outcome == RetentionItemOutcomes.ExcludedUnreachable);
+        var excluded = items.Count(item => item.Outcome is RetentionItemOutcomes.ExcludedUnreachable or RetentionItemOutcomes.Undecided);
+        var undecided = items.Count(item => item.Outcome == RetentionItemOutcomes.Undecided);
         var bytes = matched.Sum(item => item.SizeBytes ?? 0);
 
         var summary = evaluation.Problems.Count > 0
             ? $"The rule could not be run: {string.Join(" ", evaluation.Problems)}"
             : evaluation.UnreachableServers.Count > 0
                 ? $"Nothing selected: {string.Join("; ", evaluation.UnreachableServers)}. A server that could not be asked has not said anything was watched, so {excluded} {Titles(excluded)} {(excluded == 1 ? "was" : "were")} left alone."
-                : matched.Length == 0
+                : (matched.Length == 0
                     ? "Nothing matches this rule right now."
-                    : $"{matched.Length} {Titles(matched.Length)} would be removed, freeing {FormatBytes(bytes)}.";
+                    : $"{matched.Length} {Titles(matched.Length)} would be removed, freeing {FormatBytes(bytes)}.")
+                  + (undecided > 0 ? $" {undecided} {Titles(undecided)} could not be decided and will be left alone." : string.Empty);
 
         var run = new RetentionRun(
             Guid.CreateVersion7().ToString("N"), rule.Id, rule.Name, RetentionRunKinds.Preview, trigger, null,
@@ -70,6 +72,13 @@ public sealed class RetentionService(
         CancellationToken cancellationToken)
     {
         var started = timeProvider.GetUtcNow();
+        if (RetentionLevels.IsPartOfShow(rule.Level))
+        {
+            // Seasons and episodes are removed as parts of a show, which keeps
+            // the show: that arrives with Leaving soon (DESIGN-008).
+            return await FinishAsync(rule, preview, trigger, started, [], "Nothing was removed: removing seasons and episodes is not available yet.", cancellationToken);
+        }
+
         var listed = (preview.Items ?? [])
             .Where(item => item.Outcome == RetentionItemOutcomes.Matched)
             .Where(item => entityIds is null || entityIds.Contains(item.EntityId, StringComparer.OrdinalIgnoreCase))
@@ -127,7 +136,7 @@ public sealed class RetentionService(
                 var serverNotes = new List<string>();
                 if (rule.RemoveFromServers)
                 {
-                    foreach (var (server, serverItem) in candidate.ServerItems)
+                    foreach (var (server, serverItem) in candidate.ServerItems.Select(match => (match.Server, match.Item)))
                     {
                         var client = clients.Find(server.Kind);
                         var answer = client is null

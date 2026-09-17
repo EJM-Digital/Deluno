@@ -317,6 +317,7 @@ POST /api/recycle-bin/{id}/restore
 POST /api/release-profiles/
 POST /api/releases/explain
 POST /api/retention/rules
+POST /api/retention/rules/trial
 POST /api/retention/rules/{id}/preview
 POST /api/retention/runs/{runId}/cleanup
 POST /api/series/

@@ -1,5 +1,8 @@
 using Deluno.Connections.Data;
+using System.Collections.Concurrent;
+using Deluno.Connections.Contracts;
 using Deluno.Contracts;
+using Deluno.Integrations.MediaServers;
 using Deluno.Security;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
@@ -16,6 +19,9 @@ public static class RetentionModule
     public static IServiceCollection AddDelunoRetentionModule(this IServiceCollection services)
     {
         services.AddSingleton<IRetentionRepository, SqliteRetentionRepository>();
+        services.AddSingleton<IRetentionDiskSpace, RetentionDiskSpace>();
+        services.AddSingleton<RetentionLibraryCache>();
+        services.AddScoped<RetentionUnitReader>();
         services.AddScoped<RetentionEvaluator>();
         services.AddScoped<RetentionService>();
         services.AddHostedService<RetentionScheduleHostedService>();
@@ -26,9 +32,14 @@ public static class RetentionModule
     {
         var group = endpoints.MapGroup("/api/retention").RequireAuthorization(DelunoAuthorizationPolicies.Write);
 
-        group.MapGet("fields", (string? mediaType) =>
+        group.MapGet("fields", (string? level, string? mediaType) =>
         {
-            var kind = mediaType == "tv" ? MediaKind.Series : MediaKind.Movie;
+            var at = RetentionLevels.Normalize(level, mediaType);
+            var kind = RetentionFieldCatalog.CatalogueKind(at);
+            var retention = RetentionFieldCatalog.Fields
+                .Where(field => field.Levels.Contains(at))
+                .Select(field => new RetentionField(field.Id, field.Label, field.Hint, field.Group, field.ValueKind, field.Operators, null, field.Source, field.UnsupportedOn ?? []));
+            // A season or episode is asked its show's catalogue questions.
             var catalogue = CatalogueFilterFields.For(kind).Select(field => new RetentionField(
                 field.Id,
                 field.Label,
@@ -38,8 +49,39 @@ public static class RetentionModule
                 System.Text.Json.JsonNamingPolicy.CamelCase.ConvertName(field.ValueKind.ToString()),
                 field.Operators.Select(CatalogueFilterOperators.Token).ToArray(),
                 field.Options,
-                NeedsMediaServer: false));
-            return Results.Ok(RetentionWatchFields.Fields.Concat(catalogue).ToArray());
+                RetentionFieldSources.Deluno,
+                []));
+            return Results.Ok(retention.Concat(catalogue).ToArray());
+        });
+
+        // The builder's live counts: what the rule as drawn would select now.
+        // Nothing is saved, and server listings may be a few minutes old.
+        group.MapPost("rules/trial", async (
+            [FromBody] SaveRetentionRuleRequest request,
+            [FromServices] RetentionEvaluator evaluator,
+            [FromServices] RetentionLibraryCache cache,
+            [FromServices] IMediaServerClientRegistry clients,
+            CancellationToken cancellationToken) =>
+        {
+            var level = RetentionLevels.Normalize(request.Level, request.MediaType);
+            var rule = new RetentionRule(
+                "trial", request.Name ?? "Trial", RetentionLevels.MediaType(level), true, request.MediaServerIds ?? [], request.RemoveFromServers,
+                RetentionScheduleModes.Manual, 24, null, DateTimeOffset.UnixEpoch, DateTimeOffset.UnixEpoch, level,
+                request.Steps ?? RetentionStepList.FromConditions(request.Conditions ?? []));
+            var evaluation = await evaluator.EvaluateAsync(rule, cancellationToken, (server, mediaType, token) => cache.GetAsync(server, mediaType, clients, token));
+            var matched = evaluation.Matched.ToArray();
+            return Results.Ok(new RetentionTrial(
+                evaluation.Considered,
+                evaluation.StepCounts ?? [],
+                matched.Length,
+                matched.Sum(item => item.SizeBytes ?? 0),
+                matched.OrderBy(item => item.Title, StringComparer.OrdinalIgnoreCase).Take(50)
+                    .Select(item => new RetentionRunItem(item.EntityId, item.MediaType, item.Title, item.Year, item.SizeBytes, item.Reasons, item.Outcome, item.Message))
+                    .ToArray(),
+                evaluation.Candidates.Count(item => item.Outcome == RetentionItemOutcomes.Undecided),
+                evaluation.UnreachableServers,
+                evaluation.Problems,
+                evaluation.Unmanaged ?? []));
         });
 
         group.MapGet("rules", async ([FromServices] IRetentionRepository repository, CancellationToken cancellationToken)
@@ -198,5 +240,42 @@ public sealed class RetentionScheduleHostedService(
                 await service.CleanupAsync(rule, preview, null, "schedule", cancellationToken);
             }
         }
+    }
+}
+
+/// <summary>
+/// Server listings kept for a few minutes for the step builder's live counts,
+/// so changing one step does not read every library again. Never used by a run
+/// that can remove anything.
+/// </summary>
+public sealed class RetentionLibraryCache(TimeProvider timeProvider)
+{
+    private static readonly TimeSpan Lifetime = TimeSpan.FromMinutes(3);
+    private readonly ConcurrentDictionary<string, (DateTimeOffset At, MediaServerAnswer<MediaServerLibrary> Answer)> _entries = new(StringComparer.OrdinalIgnoreCase);
+
+    public async Task<MediaServerAnswer<MediaServerLibrary>> GetAsync(
+        MediaServerConnection server,
+        string mediaType,
+        IMediaServerClientRegistry clients,
+        CancellationToken cancellationToken)
+    {
+        var key = $"{server.Id}|{server.UpdatedUtc:O}|{mediaType}";
+        var now = timeProvider.GetUtcNow();
+        if (_entries.TryGetValue(key, out var entry) && now - entry.At < Lifetime)
+        {
+            return entry.Answer;
+        }
+
+        var client = clients.Find(server.Kind);
+        var answer = client is null
+            ? new MediaServerAnswer<MediaServerLibrary>.NotSupported($"{server.Name} is a kind of server this build cannot read.")
+            : await client.ListItemsAsync(server, mediaType, cancellationToken);
+        // Only an answer is worth keeping; a server that could not be asked is asked again.
+        if (answer is MediaServerAnswer<MediaServerLibrary>.Reported)
+        {
+            _entries[key] = (now, answer);
+        }
+
+        return answer;
     }
 }

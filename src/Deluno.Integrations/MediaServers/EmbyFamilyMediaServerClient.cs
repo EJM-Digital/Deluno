@@ -74,19 +74,18 @@ public abstract class EmbyFamilyMediaServerClient(IHttpClientFactory httpClientF
             userCount);
     }
 
-    public async Task<MediaServerAnswer<IReadOnlyList<MediaServerItem>>> ListItemsAsync(
+    public async Task<MediaServerAnswer<MediaServerLibrary>> ListItemsAsync(
         MediaServerConnection connection,
         string mediaType,
         CancellationToken cancellationToken)
     {
-        var itemType = mediaType == "tv" ? "Series" : "Movie";
+        var itemTypes = mediaType == "tv" ? "Series,Season,Episode" : "Movie";
 
         var usersCall = await GetAsync(connection, "/Users", cancellationToken);
         using var usersDocument = usersCall.Ok ? TryParse(usersCall.Body) : null;
         if (usersDocument?.RootElement.ValueKind != JsonValueKind.Array)
         {
-            return new MediaServerAnswer<IReadOnlyList<MediaServerItem>>.Unreachable(
-                usersCall.Problem ?? $"{connection.Name} did not list its users, so what has been watched cannot be known.");
+            return Unreachable(usersCall.Problem ?? $"{connection.Name} did not list its users, so what has been watched cannot be known.");
         }
 
         var users = usersDocument.RootElement.EnumerateArray()
@@ -98,72 +97,152 @@ public abstract class EmbyFamilyMediaServerClient(IHttpClientFactory httpClientF
         var items = new Dictionary<string, MediaServerItem>(StringComparer.OrdinalIgnoreCase);
         var catalogue = await PageAsync(
             connection,
-            $"/Items?Recursive=true&IncludeItemTypes={itemType}&Fields=ProviderIds,Path,DateCreated,ProductionYear",
+            $"/Items?Recursive=true&IncludeItemTypes={itemTypes}&Fields={CatalogueFields}",
             item => items[String(item, "Id")!] = ToItem(item, mediaType),
             cancellationToken);
         if (catalogue is not null)
         {
-            return new MediaServerAnswer<IReadOnlyList<MediaServerItem>>.Unreachable(catalogue);
+            return Unreachable(catalogue);
         }
 
-        var playedBy = new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase);
-        var lastPlayed = new Dictionary<string, DateTimeOffset>(StringComparer.OrdinalIgnoreCase);
+        // What each person has done: finished, favourited, or started and left.
+        // Three narrow questions rather than every item for every user.
+        var viewers = new Dictionary<string, Dictionary<string, MediaServerViewer>>(StringComparer.OrdinalIgnoreCase);
         foreach (var user in users)
         {
-            // A film is played when its own play state says so. A show is
-            // played when every episode is - which Series.UserData.Played
-            // already means - and was last played when its latest episode was.
-            var played = await PageAsync(
-                connection,
-                $"/Users/{Uri.EscapeDataString(user.Id!)}/Items?Recursive=true&IncludeItemTypes={itemType}&IsPlayed=true&Fields=UserData",
-                item =>
-                {
-                    var id = String(item, "Id")!;
-                    if (!playedBy.TryGetValue(id, out var names))
-                    {
-                        playedBy[id] = names = [];
-                    }
-
-                    names.Add(user.Name);
-                    Remember(lastPlayed, id, item.TryGetProperty("UserData", out var data) ? Date(data, "LastPlayedDate") : null);
-                },
-                cancellationToken);
-            if (played is not null)
+            foreach (var filter in new[] { "IsPlayed=true", "IsFavorite=true", "Filters=IsResumable" })
             {
-                return new MediaServerAnswer<IReadOnlyList<MediaServerItem>>.Unreachable(played);
-            }
-
-            if (mediaType == "tv")
-            {
-                var episodes = await PageAsync(
+                var answered = await PageAsync(
                     connection,
-                    $"/Users/{Uri.EscapeDataString(user.Id!)}/Items?Recursive=true&IncludeItemTypes=Episode&IsPlayed=true&Fields=UserData,SeriesId",
-                    episode =>
+                    $"/Users/{Uri.EscapeDataString(user.Id!)}/Items?Recursive=true&IncludeItemTypes={itemTypes}&{filter}&Fields=UserData",
+                    item =>
                     {
-                        if (String(episode, "SeriesId") is { Length: > 0 } seriesId)
+                        if (!item.TryGetProperty("UserData", out var data))
                         {
-                            Remember(lastPlayed, seriesId, episode.TryGetProperty("UserData", out var data) ? Date(data, "LastPlayedDate") : null);
+                            return;
                         }
+
+                        var id = String(item, "Id")!;
+                        if (!viewers.TryGetValue(id, out var byUser))
+                        {
+                            viewers[id] = byUser = new Dictionary<string, MediaServerViewer>(StringComparer.OrdinalIgnoreCase);
+                        }
+
+                        var played = Bool(data, "Played");
+                        byUser[user.Name] = new MediaServerViewer(
+                            user.Name,
+                            Played: played,
+                            PlayCount: Int(data, "PlayCount") ?? (played ? 1 : 0),
+                            LastPlayedUtc: Date(data, "LastPlayedDate"),
+                            InProgress: !played && (Long(data, "PlaybackPositionTicks") ?? 0) > 0,
+                            Favourite: Bool(data, "IsFavorite"),
+                            Rating: Double(data, "Rating"));
                     },
                     cancellationToken);
-                if (episodes is not null)
+                if (answered is not null)
                 {
-                    return new MediaServerAnswer<IReadOnlyList<MediaServerItem>>.Unreachable(episodes);
+                    return Unreachable(answered);
                 }
             }
         }
 
-        return new MediaServerAnswer<IReadOnlyList<MediaServerItem>>.Reported(
+        var collections = await MembershipAsync(connection, users.Select(user => user.Id).FirstOrDefault(), "BoxSet", cancellationToken);
+        if (collections.Problem is not null)
+        {
+            return Unreachable(collections.Problem);
+        }
+
+        var playlists = new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase);
+        foreach (var user in users)
+        {
+            var owned = await MembershipAsync(connection, user.Id, "Playlist", cancellationToken);
+            if (owned.Problem is not null)
+            {
+                return Unreachable(owned.Problem);
+            }
+
+            foreach (var (id, names) in owned.Names)
+            {
+                if (!playlists.TryGetValue(id, out var list)) playlists[id] = list = [];
+                list.AddRange(names.Where(name => !list.Contains(name, StringComparer.OrdinalIgnoreCase)));
+            }
+        }
+
+        return new MediaServerAnswer<MediaServerLibrary>.Reported(new MediaServerLibrary(
             items.Values
-                .Select(item => item with
+                .Select(item =>
                 {
-                    Watch = new MediaServerWatchState(
-                        playedBy.ContainsKey(item.ServerItemId),
-                        playedBy.TryGetValue(item.ServerItemId, out var names) ? names : [],
-                        lastPlayed.TryGetValue(item.ServerItemId, out var when) ? when : null,
-                        PerUserKnown: true)
+                    var seen = viewers.TryGetValue(item.ServerItemId, out var byUser) ? byUser.Values.ToArray() : [];
+                    var played = seen.Where(viewer => viewer.Played).ToArray();
+                    return item with
+                    {
+                        Viewers = seen,
+                        Collections = collections.Names.TryGetValue(item.ServerItemId, out var inCollections) ? inCollections : [],
+                        Playlists = playlists.TryGetValue(item.ServerItemId, out var inPlaylists) ? inPlaylists : [],
+                        Watch = new MediaServerWatchState(
+                            played.Length > 0,
+                            played.Select(viewer => viewer.User).ToArray(),
+                            seen.Select(viewer => viewer.LastPlayedUtc).Where(when => when is not null).Max(),
+                            PerUserKnown: true)
+                    };
                 })
-                .ToArray());
+                .ToArray(),
+            users.Select(user => user.Name).ToArray()));
+    }
+
+    private const string CatalogueFields =
+        "ProviderIds,Path,DateCreated,ProductionYear,PremiereDate,Genres,People,Tags,TagItems,CommunityRating,CriticRating,MediaSources,SeriesId,SeasonId,ParentIndexNumber,IndexNumber";
+
+    private static MediaServerAnswer<MediaServerLibrary> Unreachable(string reason)
+        => new MediaServerAnswer<MediaServerLibrary>.Unreachable(reason);
+
+    /// <summary>
+    /// Which items sit in which collections (<c>BoxSet</c>) or playlists, by
+    /// name. Asked as a user because both are browsed as one.
+    /// </summary>
+    private async Task<(Dictionary<string, List<string>> Names, string? Problem)> MembershipAsync(
+        MediaServerConnection connection,
+        string? userId,
+        string containerType,
+        CancellationToken cancellationToken)
+    {
+        var names = new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase);
+        if (string.IsNullOrWhiteSpace(userId))
+        {
+            return (names, null);
+        }
+
+        var user = Uri.EscapeDataString(userId);
+        var containers = new List<(string Id, string Name)>();
+        var listed = await PageAsync(
+            connection,
+            $"/Users/{user}/Items?Recursive=true&IncludeItemTypes={containerType}",
+            item => containers.Add((String(item, "Id")!, String(item, "Name") ?? containerType)),
+            cancellationToken);
+        if (listed is not null)
+        {
+            return (names, listed);
+        }
+
+        foreach (var container in containers)
+        {
+            var members = await PageAsync(
+                connection,
+                $"/Users/{user}/Items?ParentId={Uri.EscapeDataString(container.Id)}",
+                item =>
+                {
+                    var id = String(item, "Id")!;
+                    if (!names.TryGetValue(id, out var list)) names[id] = list = [];
+                    if (!list.Contains(container.Name, StringComparer.OrdinalIgnoreCase)) list.Add(container.Name);
+                },
+                cancellationToken);
+            if (members is not null)
+            {
+                return (names, members);
+            }
+        }
+
+        return (names, null);
     }
 
     public async Task<MediaServerAnswer<MediaServerRemoval>> RemoveAsync(
@@ -196,14 +275,6 @@ public abstract class EmbyFamilyMediaServerClient(IHttpClientFactory httpClientF
     // The names as the servers document them. Jellyfin reads either case;
     // Emby's older request binding is not promised to.
     private static readonly JsonSerializerOptions DocumentedNames = new() { PropertyNamingPolicy = null };
-
-    private static void Remember(IDictionary<string, DateTimeOffset> latest, string id, DateTimeOffset? when)
-    {
-        if (when is { } value && (!latest.TryGetValue(id, out var current) || value > current))
-        {
-            latest[id] = value;
-        }
-    }
 
     /// <returns>Null when every page was read; otherwise why it could not be.</returns>
     private async Task<string?> PageAsync(
@@ -249,6 +320,37 @@ public abstract class EmbyFamilyMediaServerClient(IHttpClientFactory httpClientF
     private static MediaServerItem ToItem(JsonElement item, string mediaType)
     {
         var providers = item.TryGetProperty("ProviderIds", out var ids) && ids.ValueKind == JsonValueKind.Object ? ids : default;
+        var level = String(item, "Type") switch
+        {
+            "Series" => MediaServerItemLevels.Show,
+            "Season" => MediaServerItemLevels.Season,
+            "Episode" => MediaServerItemLevels.Episode,
+            _ => mediaType == "tv" ? MediaServerItemLevels.Show : MediaServerItemLevels.Movie
+        };
+
+        // The first source is the file the server plays; its video stream is
+        // the picture a person sees.
+        var video = MediaServerVideo.None;
+        if (item.TryGetProperty("MediaSources", out var sources) && sources.ValueKind == JsonValueKind.Array && sources.GetArrayLength() > 0)
+        {
+            var source = sources[0];
+            var stream = source.TryGetProperty("MediaStreams", out var streams) && streams.ValueKind == JsonValueKind.Array
+                ? streams.EnumerateArray().FirstOrDefault(entry => String(entry, "Type") == "Video")
+                : default;
+            var bitrate = Long(source, "Bitrate");
+            video = new MediaServerVideo(
+                stream.ValueKind == JsonValueKind.Object ? ResolutionLabel(Int(stream, "Width"), Int(stream, "Height")) : null,
+                bitrate is > 0 ? bitrate / 1000 : null,
+                stream.ValueKind == JsonValueKind.Object ? String(stream, "Codec") : null);
+        }
+
+        // CriticRating is Rotten Tomatoes' critic score out of a hundred;
+        // CommunityRating is the audience score the metadata provider (TMDb) gave.
+        var critic = Double(item, "CriticRating") is { } criticScore ? Math.Round(criticScore / 10d, 1) : (double?)null;
+        var community = Double(item, "CommunityRating");
+        var tags = Names(item, "Tags");
+        if (tags.Count == 0) tags = Names(item, "TagItems");
+
         return new MediaServerItem(
             String(item, "Id")!,
             mediaType,
@@ -259,7 +361,20 @@ public abstract class EmbyFamilyMediaServerClient(IHttpClientFactory httpClientF
             ProviderId(providers, "Tvdb"),
             String(item, "Path") is { Length: > 0 } path ? [path] : [],
             Date(item, "DateCreated"),
-            MediaServerWatchState.Unplayed);
+            MediaServerWatchState.Unplayed)
+        {
+            Level = level,
+            ShowServerItemId = level is MediaServerItemLevels.Season or MediaServerItemLevels.Episode ? String(item, "SeriesId") : null,
+            SeasonServerItemId = level == MediaServerItemLevels.Episode ? String(item, "SeasonId") : null,
+            SeasonNumber = level == MediaServerItemLevels.Season ? Int(item, "IndexNumber") : level == MediaServerItemLevels.Episode ? Int(item, "ParentIndexNumber") : null,
+            EpisodeNumber = level == MediaServerItemLevels.Episode ? Int(item, "IndexNumber") : null,
+            ReleaseDate = Date(item, "PremiereDate"),
+            Genres = Names(item, "Genres"),
+            People = Names(item, "People"),
+            Labels = tags,
+            Ratings = new MediaServerRatings(Critic: critic, Audience: community, RottenTomatoesCritic: critic, Tmdb: community),
+            Video = video
+        };
     }
 
     private static string? ProviderId(JsonElement providers, string name)

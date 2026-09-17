@@ -29,7 +29,7 @@ public sealed class SqliteRetentionRepository(
     TimeProvider timeProvider) : IRetentionRepository
 {
     private const string RuleColumns =
-        "id, name, media_type, is_enabled, conditions_json, media_server_ids_json, remove_from_servers, schedule_mode, schedule_interval_hours, last_scheduled_run_utc, created_utc, updated_utc";
+        "id, name, media_type, is_enabled, conditions_json, media_server_ids_json, remove_from_servers, schedule_mode, schedule_interval_hours, last_scheduled_run_utc, created_utc, updated_utc, level, steps_json";
 
     private const string RunColumns =
         "id, rule_id, rule_name, kind, trigger, preview_run_id, started_utc, finished_utc, matched_count, excluded_count, removed_count, failed_count, bytes, summary";
@@ -73,21 +73,23 @@ public sealed class SqliteRetentionRepository(
         using var command = connection.CreateCommand();
         command.CommandText = existing is null
             ? """
-              INSERT INTO retention_rules (id, name, media_type, is_enabled, conditions_json, media_server_ids_json, remove_from_servers, schedule_mode, schedule_interval_hours, created_utc, updated_utc)
-              VALUES (@id, @name, @mediaType, @isEnabled, @conditions, @servers, @removeFromServers, @scheduleMode, @interval, @now, @now);
+              INSERT INTO retention_rules (id, name, media_type, is_enabled, conditions_json, media_server_ids_json, remove_from_servers, schedule_mode, schedule_interval_hours, created_utc, updated_utc, level, steps_json)
+              VALUES (@id, @name, @mediaType, @isEnabled, '[]', @servers, @removeFromServers, @scheduleMode, @interval, @now, @now, @level, @steps);
               """
             : """
               UPDATE retention_rules
-              SET name = @name, media_type = @mediaType, is_enabled = @isEnabled, conditions_json = @conditions,
+              SET name = @name, media_type = @mediaType, is_enabled = @isEnabled, conditions_json = '[]', level = @level, steps_json = @steps,
                   media_server_ids_json = @servers, remove_from_servers = @removeFromServers,
                   schedule_mode = @scheduleMode, schedule_interval_hours = @interval, updated_utc = @now
               WHERE id = @id;
               """;
         AddParameter(command, "@id", rowId);
         AddParameter(command, "@name", request.Name!.Trim());
-        AddParameter(command, "@mediaType", request.MediaType == "tv" ? "tv" : "movies");
+        var level = RetentionLevels.Normalize(request.Level, request.MediaType);
+        AddParameter(command, "@mediaType", RetentionLevels.MediaType(level));
+        AddParameter(command, "@level", level);
+        AddParameter(command, "@steps", RetentionStepList.Serialize(request.Steps ?? RetentionStepList.FromConditions(request.Conditions ?? [])));
         AddParameter(command, "@isEnabled", request.IsEnabled ? 1 : 0);
-        AddParameter(command, "@conditions", JsonSerializer.Serialize((request.Conditions ?? []).Where(value => !string.IsNullOrWhiteSpace(value)).Select(value => value.Trim())));
         AddParameter(command, "@servers", JsonSerializer.Serialize((request.MediaServerIds ?? []).Distinct(StringComparer.OrdinalIgnoreCase)));
         AddParameter(command, "@removeFromServers", request.RemoveFromServers ? 1 : 0);
         AddParameter(command, "@scheduleMode", RetentionScheduleModes.Normalize(request.ScheduleMode));
@@ -240,19 +242,28 @@ public sealed class SqliteRetentionRepository(
         => databaseConnectionFactory.OpenConnectionAsync(DelunoDatabaseNames.Platform, cancellationToken).AsTask();
 
     private static RetentionRule ReadRule(DbDataReader reader)
-        => new(
+    {
+        var mediaType = reader.GetString(2);
+        // A rule saved before steps existed keeps its meaning: its flat
+        // conditions all had to hold, which is a run of Keep only.
+        var steps = reader.IsDBNull(13)
+            ? RetentionStepList.FromConditions((JsonSerializer.Deserialize<string[]>(reader.GetString(4)) ?? []).Select(RetentionFieldCatalog.Upgrade))
+            : RetentionStepList.Deserialize(reader.GetString(13));
+        return new RetentionRule(
             reader.GetString(0),
             reader.GetString(1),
-            reader.GetString(2),
+            mediaType,
             reader.GetInt32(3) == 1,
-            JsonSerializer.Deserialize<string[]>(reader.GetString(4)) ?? [],
             JsonSerializer.Deserialize<string[]>(reader.GetString(5)) ?? [],
             reader.GetInt32(6) == 1,
             RetentionScheduleModes.Normalize(reader.GetString(7)),
             reader.GetInt32(8),
             reader.IsDBNull(9) ? null : DateTimeOffset.Parse(reader.GetString(9)),
             DateTimeOffset.Parse(reader.GetString(10)),
-            DateTimeOffset.Parse(reader.GetString(11)));
+            DateTimeOffset.Parse(reader.GetString(11)),
+            RetentionLevels.Normalize(reader.IsDBNull(12) ? null : reader.GetString(12), mediaType),
+            steps);
+    }
 
     private static RetentionRun ReadRun(DbDataReader reader)
         => new(

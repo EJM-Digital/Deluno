@@ -22,29 +22,34 @@ public static class RetentionScheduleModes
 }
 
 /// <summary>
-/// One rule: which titles, judged by what, read from which servers, and when.
+/// One rule: what it acts on, the steps that choose it, which servers it reads,
+/// and when (#494, DESIGN-008).
 /// </summary>
-/// <param name="Conditions">
-/// Every condition must hold. The same <c>field:operator:value</c> strings the
-/// library filters use, plus two that come from media servers - <c>watched</c>
-/// and <c>lastPlayed</c>. Data, not code: a new combination is configuration.
+/// <param name="Level"><c>movie</c>, <c>show</c>, <c>season</c> or <c>episode</c>.</param>
+/// <param name="Steps">
+/// Keep only / Also include steps and blocks, each condition in the
+/// <c>field:operator:value</c> shape the library filters use plus the rule
+/// fields (<see cref="RetentionFieldCatalog"/>). Data, not code: a new
+/// combination is configuration.
 /// </param>
-/// <param name="MediaServerIds">Servers whose watch history the rule reads, and which a cleanup tells.</param>
-/// <param name="RemoveFromServers">Whether a cleanup also removes the title from those servers.</param>
+/// <param name="MediaServerIds">Servers whose answers the rule reads, and which a removal tells.</param>
+/// <param name="RemoveFromServers">Whether a removal also tells those servers.</param>
 public sealed record RetentionRule(
     string Id,
     string Name,
     string MediaType,
     bool IsEnabled,
-    IReadOnlyList<string> Conditions,
     IReadOnlyList<string> MediaServerIds,
     bool RemoveFromServers,
     string ScheduleMode,
     int ScheduleIntervalHours,
     DateTimeOffset? LastScheduledRunUtc,
     DateTimeOffset CreatedUtc,
-    DateTimeOffset UpdatedUtc);
+    DateTimeOffset UpdatedUtc,
+    string Level,
+    IReadOnlyList<RetentionStep> Steps);
 
+/// <param name="Conditions">The first version's flat list; read as a run of Keep only steps when <paramref name="Steps"/> is absent.</param>
 public sealed record SaveRetentionRuleRequest(
     string? Name,
     string? MediaType,
@@ -53,7 +58,9 @@ public sealed record SaveRetentionRuleRequest(
     IReadOnlyList<string>? MediaServerIds,
     bool RemoveFromServers,
     string? ScheduleMode,
-    int? ScheduleIntervalHours);
+    int? ScheduleIntervalHours,
+    string? Level = null,
+    IReadOnlyList<RetentionStep>? Steps = null);
 
 public static class RetentionRunKinds
 {
@@ -65,6 +72,9 @@ public static class RetentionItemOutcomes
 {
     /// <summary>Would be removed. A preview's answer.</summary>
     public const string Matched = "matched";
+
+    /// <summary>A step could not be answered for it, so it was neither kept nor added. Never removed.</summary>
+    public const string Undecided = "undecided";
 
     /// <summary>Left out because a server the rule depends on could not be asked.</summary>
     public const string ExcludedUnreachable = "excluded-unreachable";
@@ -106,7 +116,9 @@ public sealed record RetentionRunItem(
     string Outcome,
     string? Message);
 
-/// <summary>A field a rule can use, for the condition builder.</summary>
+/// <summary>A field a rule can use, for the step builder.</summary>
+/// <param name="Source"><c>deluno</c>, <c>server</c> or <c>disk</c>.</param>
+/// <param name="UnsupportedOn">Server kinds that cannot answer it.</param>
 public sealed record RetentionField(
     string Id,
     string Label,
@@ -115,6 +127,19 @@ public sealed record RetentionField(
     string ValueKind,
     IReadOnlyList<string> Operators,
     IReadOnlyList<string>? Options,
-    bool NeedsMediaServer);
+    string Source,
+    IReadOnlyList<string> UnsupportedOn);
+
+/// <summary>What a rule would select right now, for the builder: nothing is saved.</summary>
+public sealed record RetentionTrial(
+    int Considered,
+    IReadOnlyList<RetentionStepCount> StepCounts,
+    int MatchedCount,
+    long MatchedBytes,
+    IReadOnlyList<RetentionRunItem> Sample,
+    int UndecidedCount,
+    IReadOnlyList<string> UnreachableServers,
+    IReadOnlyList<string> Problems,
+    IReadOnlyList<RetentionUnmanagedItem> Unmanaged);
 
 public sealed record RetentionCleanupRequest(IReadOnlyList<string>? EntityIds);

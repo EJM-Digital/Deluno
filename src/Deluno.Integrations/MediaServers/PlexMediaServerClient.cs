@@ -56,7 +56,7 @@ public sealed class PlexMediaServerClient(IHttpClientFactory httpClientFactory) 
             libraryCount);
     }
 
-    public async Task<MediaServerAnswer<IReadOnlyList<MediaServerItem>>> ListItemsAsync(
+    public async Task<MediaServerAnswer<MediaServerLibrary>> ListItemsAsync(
         MediaServerConnection connection,
         string mediaType,
         CancellationToken cancellationToken)
@@ -68,9 +68,19 @@ public sealed class PlexMediaServerClient(IHttpClientFactory httpClientFactory) 
             !sections.TryGetProperty("Directory", out var directories) ||
             directories.ValueKind != JsonValueKind.Array)
         {
-            return new MediaServerAnswer<IReadOnlyList<MediaServerItem>>.Unreachable(sectionsCall.Problem ?? $"{connection.Name} did not list its libraries.");
+            return Unreachable(sectionsCall.Problem ?? $"{connection.Name} did not list its libraries.");
         }
 
+        // A Plex token speaks for one account; that account is who "watched" means.
+        var accountCall = await GetAsync(connection, "/myplex/account", cancellationToken);
+        using var accountDocument = accountCall.Ok ? TryParse(accountCall.Body) : null;
+        var account = accountDocument is not null && accountDocument.RootElement.TryGetProperty("MyPlex", out var myPlex)
+            ? String(myPlex, "username")
+            : null;
+        account = string.IsNullOrWhiteSpace(account) ? "Plex account" : account;
+
+        // Movies are type 1; shows, seasons and episodes 2, 3 and 4.
+        var types = mediaType == "tv" ? new[] { 2, 3, 4 } : [1];
         var items = new List<MediaServerItem>();
         foreach (var directory in directories.EnumerateArray())
         {
@@ -80,41 +90,194 @@ public sealed class PlexMediaServerClient(IHttpClientFactory httpClientFactory) 
                 continue;
             }
 
-            for (var start = 0; ; start += PageSize)
+            foreach (var type in types)
             {
-                var page = await GetAsync(
+                var problem = await PageAsync(
                     connection,
-                    $"/library/sections/{Uri.EscapeDataString(key)}/all?includeGuids=1&X-Plex-Container-Start={start}&X-Plex-Container-Size={PageSize}",
-                    cancellationToken);
-                using var pageDocument = page.Ok ? TryParse(page.Body) : null;
-                if (Container(pageDocument) is not { } container)
-                {
-                    return new MediaServerAnswer<IReadOnlyList<MediaServerItem>>.Unreachable(page.Problem ?? $"{connection.Name} answered with a library listing Deluno could not read.");
-                }
-
-                var count = 0;
-                if (container.TryGetProperty("Metadata", out var metadata) && metadata.ValueKind == JsonValueKind.Array)
-                {
-                    foreach (var entry in metadata.EnumerateArray())
+                    $"/library/sections/{Uri.EscapeDataString(key)}/all?type={type}&includeGuids=1",
+                    entry =>
                     {
-                        count++;
-                        if (ToItem(entry, mediaType, key) is { } item)
+                        if (ToItem(entry, mediaType, key, account) is { } item)
                         {
                             items.Add(item);
                         }
-                    }
-                }
-
-                var total = Int(container, "totalSize") ?? count;
-                if (count < PageSize || start + count >= total)
+                    },
+                    cancellationToken);
+                if (problem is not null)
                 {
-                    break;
+                    return Unreachable(problem);
                 }
             }
         }
 
-        return new MediaServerAnswer<IReadOnlyList<MediaServerItem>>.Reported(items);
+        // A listing carries only the first few people and tags. A film's or
+        // show's own page carries all of them, and the scores from IMDb, Rotten
+        // Tomatoes and TMDb.
+        for (var index = 0; index < items.Count; index++)
+        {
+            var item = items[index];
+            if (item.Level is not (MediaServerItemLevels.Movie or MediaServerItemLevels.Show))
+            {
+                continue;
+            }
+
+            var detail = await GetAsync(connection, $"/library/metadata/{Uri.EscapeDataString(item.ServerItemId)}", cancellationToken);
+            using var detailDocument = detail.Ok ? TryParse(detail.Body) : null;
+            if (Container(detailDocument) is not { } container ||
+                !container.TryGetProperty("Metadata", out var metadata) ||
+                metadata.ValueKind != JsonValueKind.Array ||
+                metadata.GetArrayLength() == 0)
+            {
+                return Unreachable(detail.Problem ?? $"{connection.Name} did not describe {item.Title}.");
+            }
+
+            items[index] = WithDetail(item, metadata[0]);
+        }
+
+        var playlists = await PlaylistsAsync(connection, cancellationToken);
+        if (playlists.Problem is not null)
+        {
+            return Unreachable(playlists.Problem);
+        }
+
+        var watchlist = await WatchlistAsync(connection, cancellationToken);
+        return new MediaServerAnswer<MediaServerLibrary>.Reported(new MediaServerLibrary(
+            items
+                .Select(item => item with
+                {
+                    Playlists = playlists.Names.TryGetValue(item.ServerItemId, out var names) ? names : [],
+                    // Plex's watchlist belongs to the account, not the server. If
+                    // plex.tv could not be asked, nobody is said to have it listed.
+                    WatchlistedBy = watchlist is null
+                        ? null
+                        : item.Guid is not null && watchlist.Contains(item.Guid) ? [account] : []
+                })
+                .ToArray(),
+            [account]));
     }
+
+    private static MediaServerAnswer<MediaServerLibrary> Unreachable(string reason)
+        => new MediaServerAnswer<MediaServerLibrary>.Unreachable(reason);
+
+    /// <returns>Null when every page was read; otherwise why it could not be.</returns>
+    private async Task<string?> PageAsync(
+        MediaServerConnection connection,
+        string pathAndQuery,
+        Action<JsonElement> each,
+        CancellationToken cancellationToken)
+    {
+        for (var start = 0; ; start += PageSize)
+        {
+            var page = await GetAsync(connection, $"{pathAndQuery}&X-Plex-Container-Start={start}&X-Plex-Container-Size={PageSize}", cancellationToken);
+            using var pageDocument = page.Ok ? TryParse(page.Body) : null;
+            if (Container(pageDocument) is not { } container)
+            {
+                return page.Problem ?? $"{connection.Name} answered with a library listing Deluno could not read.";
+            }
+
+            var count = 0;
+            if (container.TryGetProperty("Metadata", out var metadata) && metadata.ValueKind == JsonValueKind.Array)
+            {
+                foreach (var entry in metadata.EnumerateArray())
+                {
+                    count++;
+                    each(entry);
+                }
+            }
+
+            var total = Int(container, "totalSize") ?? count;
+            if (count < PageSize || start + count >= total)
+            {
+                return null;
+            }
+        }
+    }
+
+    private async Task<(Dictionary<string, List<string>> Names, string? Problem)> PlaylistsAsync(
+        MediaServerConnection connection,
+        CancellationToken cancellationToken)
+    {
+        var names = new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase);
+        var playlists = new List<(string Key, string Title)>();
+        var listed = await PageAsync(
+            connection,
+            "/playlists?playlistType=video",
+            entry =>
+            {
+                if (String(entry, "ratingKey") is { Length: > 0 } key)
+                {
+                    playlists.Add((key, String(entry, "title") ?? "Playlist"));
+                }
+            },
+            cancellationToken);
+        if (listed is not null)
+        {
+            return (names, listed);
+        }
+
+        foreach (var playlist in playlists)
+        {
+            var members = await PageAsync(
+                connection,
+                $"/playlists/{Uri.EscapeDataString(playlist.Key)}/items?type=0",
+                entry =>
+                {
+                    if (String(entry, "ratingKey") is not { Length: > 0 } key) return;
+                    if (!names.TryGetValue(key, out var list)) names[key] = list = [];
+                    if (!list.Contains(playlist.Title, StringComparer.OrdinalIgnoreCase)) list.Add(playlist.Title);
+                },
+                cancellationToken);
+            if (members is not null)
+            {
+                return (names, members);
+            }
+        }
+
+        return (names, null);
+    }
+
+    /// <summary>
+    /// The account's watchlist, as the <c>plex://</c> guids of what is on it.
+    /// Null when plex.tv could not be asked: the watchlist is then unknown, not empty.
+    /// </summary>
+    private async Task<HashSet<string>?> WatchlistAsync(MediaServerConnection connection, CancellationToken cancellationToken)
+    {
+        var guids = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        for (var start = 0; ; start += PageSize)
+        {
+            var page = await SendAsync(
+                httpClientFactory,
+                HttpMethod.Get,
+                new Uri($"{WatchlistBaseUrl}/library/sections/watchlist/all?X-Plex-Container-Start={start}&X-Plex-Container-Size={PageSize}"),
+                Headers(connection),
+                "plex.tv",
+                cancellationToken);
+            using var document = page.Ok ? TryParse(page.Body) : null;
+            if (Container(document) is not { } container)
+            {
+                return null;
+            }
+
+            var count = 0;
+            if (container.TryGetProperty("Metadata", out var metadata) && metadata.ValueKind == JsonValueKind.Array)
+            {
+                foreach (var entry in metadata.EnumerateArray())
+                {
+                    count++;
+                    if (String(entry, "guid") is { Length: > 0 } guid) guids.Add(guid);
+                }
+            }
+
+            var total = Int(container, "totalSize") ?? count;
+            if (count < PageSize || start + count >= total)
+            {
+                return guids;
+            }
+        }
+    }
+
+    /// <summary>plex.tv's service that holds account watchlists.</summary>
+    internal const string WatchlistBaseUrl = "https://discover.provider.plex.tv";
 
     public async Task<MediaServerAnswer<MediaServerRemoval>> RemoveAsync(
         MediaServerConnection connection,
@@ -159,12 +322,20 @@ public sealed class PlexMediaServerClient(IHttpClientFactory httpClientFactory) 
         return separator > 0 ? path[..separator] : path;
     }
 
-    private static MediaServerItem? ToItem(JsonElement entry, string mediaType, string sectionKey)
+    private static MediaServerItem? ToItem(JsonElement entry, string mediaType, string sectionKey, string account)
     {
         if (String(entry, "ratingKey") is not { Length: > 0 } ratingKey)
         {
             return null;
         }
+
+        var level = String(entry, "type") switch
+        {
+            "show" => MediaServerItemLevels.Show,
+            "season" => MediaServerItemLevels.Season,
+            "episode" => MediaServerItemLevels.Episode,
+            _ => MediaServerItemLevels.Movie
+        };
 
         string? tmdb = null, imdb = null, tvdb = null;
         if (entry.TryGetProperty("Guid", out var guids) && guids.ValueKind == JsonValueKind.Array)
@@ -180,6 +351,7 @@ public sealed class PlexMediaServerClient(IHttpClientFactory httpClientFactory) 
         }
 
         var paths = new List<string>();
+        var video = MediaServerVideo.None;
         if (entry.TryGetProperty("Media", out var media) && media.ValueKind == JsonValueKind.Array)
         {
             foreach (var part in media.EnumerateArray()
@@ -187,6 +359,15 @@ public sealed class PlexMediaServerClient(IHttpClientFactory httpClientFactory) 
                          .SelectMany(item => item.GetProperty("Part").EnumerateArray()))
             {
                 if (String(part, "file") is { Length: > 0 } file) paths.Add(file);
+            }
+
+            if (media.GetArrayLength() > 0)
+            {
+                var first = media[0];
+                video = new MediaServerVideo(
+                    PlexResolution(String(first, "videoResolution")),
+                    Long(first, "bitrate"),
+                    String(first, "videoCodec"));
             }
         }
 
@@ -198,13 +379,19 @@ public sealed class PlexMediaServerClient(IHttpClientFactory httpClientFactory) 
             }
         }
 
-        // A film is watched once its view count is set; a show once every
-        // episode has been.
-        var played = mediaType == "tv"
+        // A film or episode is watched once its view count is set; a show or a
+        // season once every episode in it has been.
+        var views = Int(entry, "viewCount") ?? 0;
+        var played = level is MediaServerItemLevels.Show or MediaServerItemLevels.Season
             ? Int(entry, "leafCount") is > 0 and var leaves && Int(entry, "viewedLeafCount") >= leaves
-            : Int(entry, "viewCount") is > 0;
+            : views > 0;
         var lastViewed = Long(entry, "lastViewedAt") is > 0 and var seconds ? DateTimeOffset.FromUnixTimeSeconds(seconds) : (DateTimeOffset?)null;
         var added = Long(entry, "addedAt") is > 0 and var addedSeconds ? DateTimeOffset.FromUnixTimeSeconds(addedSeconds) : (DateTimeOffset?)null;
+        var inProgress = !played && (Long(entry, "viewOffset") ?? 0) > 0;
+        var userRating = Double(entry, "userRating");
+        var viewer = played || inProgress || views > 0 || lastViewed is not null || userRating is not null
+            ? new MediaServerViewer(account, played, views, lastViewed, inProgress, Favourite: null, userRating)
+            : null;
 
         return new MediaServerItem(
             ratingKey,
@@ -217,8 +404,76 @@ public sealed class PlexMediaServerClient(IHttpClientFactory httpClientFactory) 
             paths,
             added,
             new MediaServerWatchState(played, [], lastViewed, PerUserKnown: false),
-            sectionKey);
+            sectionKey)
+        {
+            Level = level,
+            Guid = String(entry, "guid"),
+            ShowServerItemId = level switch
+            {
+                MediaServerItemLevels.Season => String(entry, "parentRatingKey"),
+                MediaServerItemLevels.Episode => String(entry, "grandparentRatingKey"),
+                _ => null
+            },
+            SeasonServerItemId = level == MediaServerItemLevels.Episode ? String(entry, "parentRatingKey") : null,
+            SeasonNumber = level == MediaServerItemLevels.Season ? Int(entry, "index") : level == MediaServerItemLevels.Episode ? Int(entry, "parentIndex") : null,
+            EpisodeNumber = level == MediaServerItemLevels.Episode ? Int(entry, "index") : null,
+            ReleaseDate = Date(entry, "originallyAvailableAt"),
+            Genres = Names(entry, "Genre", "tag"),
+            Labels = Names(entry, "Label", "tag"),
+            Collections = Names(entry, "Collection", "tag"),
+            Ratings = new MediaServerRatings(Critic: Double(entry, "rating"), Audience: Double(entry, "audienceRating")),
+            Video = video,
+            Viewers = viewer is null ? [] : [viewer]
+        };
     }
+
+    /// <summary>A film's or show's own page: every person, tag and score.</summary>
+    private static MediaServerItem WithDetail(MediaServerItem item, JsonElement detail)
+    {
+        double? imdb = null, rtCritic = null, rtAudience = null, tmdb = null;
+        if (detail.TryGetProperty("Rating", out var ratings) && ratings.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var rating in ratings.EnumerateArray())
+            {
+                var image = String(rating, "image") ?? string.Empty;
+                var value = Double(rating, "value");
+                var type = String(rating, "type");
+                if (image.StartsWith("imdb://", StringComparison.OrdinalIgnoreCase)) imdb = value;
+                else if (image.StartsWith("themoviedb://", StringComparison.OrdinalIgnoreCase)) tmdb = value;
+                else if (image.StartsWith("rottentomatoes://", StringComparison.OrdinalIgnoreCase))
+                {
+                    if (type == "critic") rtCritic = value;
+                    else rtAudience = value;
+                }
+            }
+        }
+
+        var people = new List<string>();
+        foreach (var role in new[] { "Role", "Director", "Writer", "Producer" })
+        {
+            people.AddRange(Names(detail, role, "tag").Where(name => !people.Contains(name, StringComparer.OrdinalIgnoreCase)));
+        }
+
+        return item with
+        {
+            Genres = Names(detail, "Genre", "tag") is { Count: > 0 } genres ? genres : item.Genres,
+            Labels = Names(detail, "Label", "tag") is { Count: > 0 } labels ? labels : item.Labels,
+            Collections = Names(detail, "Collection", "tag") is { Count: > 0 } collections ? collections : item.Collections,
+            People = people,
+            Ratings = item.Ratings with { Imdb = imdb, RottenTomatoesCritic = rtCritic, RottenTomatoesAudience = rtAudience, Tmdb = tmdb }
+        };
+    }
+
+    /// <summary>Plex says <c>4k</c>, <c>1080</c>, <c>720</c>, <c>480</c>, <c>sd</c>.</summary>
+    private static string? PlexResolution(string? value)
+        => value?.ToLowerInvariant() switch
+        {
+            null or "" => null,
+            "4k" => "2160p",
+            "sd" => "SD",
+            var digits when int.TryParse(digits, out _) => $"{digits}p",
+            var other => other
+        };
 
     private static JsonElement? Container(JsonDocument? document)
         => document is not null && document.RootElement.TryGetProperty("MediaContainer", out var container) ? container : null;

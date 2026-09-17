@@ -47,7 +47,48 @@ public sealed record MediaServerWatchState(
     public static readonly MediaServerWatchState Unplayed = new(false, [], null, true);
 }
 
-/// <summary>One movie or show as a media server sees it.</summary>
+/// <summary>What one person on a server has done with an item (#494).</summary>
+/// <param name="InProgress">Started and not finished: a play attempt.</param>
+/// <param name="Favourite">Null where the server cannot say.</param>
+/// <param name="Rating">The person's own score out of ten, when they gave one.</param>
+public sealed record MediaServerViewer(
+    string User,
+    bool Played,
+    int PlayCount,
+    DateTimeOffset? LastPlayedUtc,
+    bool InProgress,
+    bool? Favourite,
+    double? Rating = null);
+
+/// <summary>Scores a server carries, each out of ten. Null is "the server has none".</summary>
+public sealed record MediaServerRatings(
+    double? Critic = null,
+    double? Audience = null,
+    double? Imdb = null,
+    double? RottenTomatoesCritic = null,
+    double? RottenTomatoesAudience = null,
+    double? Tmdb = null)
+{
+    public static readonly MediaServerRatings None = new();
+}
+
+/// <summary>The video the server found in the file.</summary>
+/// <param name="Resolution">As a person says it: <c>2160p</c>, <c>1080p</c>, <c>720p</c>, <c>480p</c>, <c>SD</c>.</param>
+public sealed record MediaServerVideo(string? Resolution = null, long? BitrateKbps = null, string? Codec = null)
+{
+    public static readonly MediaServerVideo None = new();
+}
+
+/// <summary>Where an item sits in a server's library.</summary>
+public static class MediaServerItemLevels
+{
+    public const string Movie = "movie";
+    public const string Show = "show";
+    public const string Season = "season";
+    public const string Episode = "episode";
+}
+
+/// <summary>One movie, show, season or episode as a media server sees it.</summary>
 /// <param name="ServerItemId">The server's own id: <c>ratingKey</c> on Plex, <c>Id</c> on Jellyfin and Emby.</param>
 /// <param name="SectionId">Plex library section the item lives in; Jellyfin and Emby leave it null.</param>
 public sealed record MediaServerItem(
@@ -61,7 +102,55 @@ public sealed record MediaServerItem(
     IReadOnlyList<string> Paths,
     DateTimeOffset? AddedUtc,
     MediaServerWatchState Watch,
-    string? SectionId = null);
+    string? SectionId = null)
+{
+    /// <summary>Movie, show, season or episode. A <c>tv</c> listing holds all three TV levels.</summary>
+    public string Level { get; init; } = MediaType == "tv" ? MediaServerItemLevels.Show : MediaServerItemLevels.Movie;
+
+    /// <summary>Plex's own <c>plex://</c> identity, which its watchlist is keyed by.</summary>
+    public string? Guid { get; init; }
+
+    /// <summary>The show a season or episode belongs to.</summary>
+    public string? ShowServerItemId { get; init; }
+
+    /// <summary>The season an episode belongs to.</summary>
+    public string? SeasonServerItemId { get; init; }
+
+    public int? SeasonNumber { get; init; }
+
+    public int? EpisodeNumber { get; init; }
+
+    /// <summary>Release date, or an episode's air date.</summary>
+    public DateTimeOffset? ReleaseDate { get; init; }
+
+    public IReadOnlyList<string> Genres { get; init; } = [];
+
+    public IReadOnlyList<string> People { get; init; } = [];
+
+    /// <summary>Labels on Plex, tags on Jellyfin and Emby.</summary>
+    public IReadOnlyList<string> Labels { get; init; } = [];
+
+    public IReadOnlyList<string> Collections { get; init; } = [];
+
+    public IReadOnlyList<string> Playlists { get; init; } = [];
+
+    public MediaServerRatings Ratings { get; init; } = MediaServerRatings.None;
+
+    public MediaServerVideo Video { get; init; } = MediaServerVideo.None;
+
+    /// <summary>Everyone the server reports anything for. Plex reports its token's account only.</summary>
+    public IReadOnlyList<MediaServerViewer> Viewers { get; init; } = [];
+
+    /// <summary>Who has it on a watchlist. Null where the server has no watchlist to ask.</summary>
+    public IReadOnlyList<string>? WatchlistedBy { get; init; }
+}
+
+/// <summary>
+/// A server's whole library for one media type, and who uses it: "everyone has
+/// watched it" needs the list of everyone.
+/// </summary>
+/// <param name="Users">Every enabled account; Plex's token account only.</param>
+public sealed record MediaServerLibrary(IReadOnlyList<MediaServerItem> Items, IReadOnlyList<string> Users);
 
 /// <summary>What removing an item from a server did.</summary>
 public sealed record MediaServerRemoval(string Message);
@@ -78,8 +167,12 @@ public interface IMediaServerClient
 
     Task<MediaServerTestResult> TestAsync(MediaServerConnection connection, CancellationToken cancellationToken);
 
-    /// <param name="mediaType"><c>movies</c> or <c>tv</c>.</param>
-    Task<MediaServerAnswer<IReadOnlyList<MediaServerItem>>> ListItemsAsync(
+    /// <param name="mediaType">
+    /// <c>movies</c>, or <c>tv</c> for every show, season and episode. A listing
+    /// that could not be read completely is <see cref="MediaServerAnswer{T}.Unreachable"/>:
+    /// half a library would read as "these were never watched".
+    /// </param>
+    Task<MediaServerAnswer<MediaServerLibrary>> ListItemsAsync(
         MediaServerConnection connection,
         string mediaType,
         CancellationToken cancellationToken);

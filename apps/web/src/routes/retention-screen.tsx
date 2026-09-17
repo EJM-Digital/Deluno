@@ -1,14 +1,14 @@
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { useLoaderData, useRevalidator } from "react-router-dom";
-import { Eye, Loader2, Plus, Trash2 } from "lucide-react";
+import { Eye, Loader2 } from "lucide-react";
 import { fetchJson, readValidationProblem } from "../lib/api";
 import { authedFetch } from "../lib/use-auth";
 import { formatBytes } from "../lib/utils";
 import { resolveDrawerSaveState, shouldClearSaveState } from "../lib/drawer-save-state";
 import { formatDateTime, useDisplayPreferences } from "../lib/display-preferences";
-import { OPERATOR_LABELS, type FilterOperator } from "../lib/library-controls";
 import { useUnsavedChanges } from "../hooks/use-unsaved-changes";
 import { automationNavItems } from "../components/app/settings-shell";
+import { describeCondition, RetentionStepBuilder, type RetentionField, type RetentionStep, type RetentionStepCount } from "../components/app/retention-step-builder";
 import { Button } from "../components/ui/button";
 import { Chip } from "../components/ui/chip";
 import { ConfirmDialog } from "../components/ui/confirm-dialog";
@@ -26,8 +26,9 @@ interface RetentionRule {
   id: string;
   name: string;
   mediaType: "movies" | "tv" | string;
+  level: Level;
   isEnabled: boolean;
-  conditions: string[];
+  steps: RetentionStep[];
   mediaServerIds: string[];
   removeFromServers: boolean;
   scheduleMode: "manual" | "preview" | "cleanup" | string;
@@ -35,15 +36,18 @@ interface RetentionRule {
   lastScheduledRunUtc: string | null;
 }
 
-interface RetentionField {
-  id: string;
-  label: string;
-  hint: string;
-  group: string;
-  valueKind: string;
-  operators: string[];
-  options: string[] | null;
-  needsMediaServer: boolean;
+type Level = "movie" | "show" | "season" | "episode";
+
+/** Mirrors `Deluno.Retention.RetentionTrial`. */
+interface RetentionTrial {
+  considered: number;
+  stepCounts: RetentionStepCount[];
+  matchedCount: number;
+  matchedBytes: number;
+  undecidedCount: number;
+  unreachableServers: string[];
+  problems: string[];
+  unmanaged: { server: string; title: string; year: number | null }[];
 }
 
 interface RetentionRunItem {
@@ -72,26 +76,22 @@ interface RetentionRun {
   items?: RetentionRunItem[] | null;
 }
 
-interface ConditionRow {
-  field: string;
-  operator: string;
-  value: string;
-}
-
 interface RuleForm {
   name: string;
-  mediaType: string;
+  level: Level;
   isEnabled: boolean;
-  conditions: ConditionRow[];
+  steps: RetentionStep[];
   mediaServerIds: string[];
   removeFromServers: boolean;
   scheduleMode: string;
   scheduleIntervalHours: string;
 }
 
-const MEDIA_TYPES = [
-  { value: "movies", label: "Movies" },
-  { value: "tv", label: "TV shows" }
+const LEVELS: { value: Level; label: string; noun: string }[] = [
+  { value: "movie", label: "Movies", noun: "movie" },
+  { value: "show", label: "Whole shows", noun: "show" },
+  { value: "season", label: "Seasons", noun: "season" },
+  { value: "episode", label: "Episodes", noun: "episode" }
 ];
 
 const SCHEDULE_MODES = [
@@ -106,36 +106,23 @@ const INTERVALS = [
   { value: "168", label: "Every week" }
 ];
 
-/** Watch fields use the server's wording; everything else the library filter's. */
-const WATCH_OPERATOR_LABELS: Record<string, string> = { beyond: "more than … days ago", within: "within the last … days", unset: "never", is: "is" };
-
 export async function retentionLoader() {
-  const [rules, servers, movieFields, tvFields] = await Promise.all([
+  const [rules, servers, ...byLevel] = await Promise.all([
     fetchJson<RetentionRule[]>("/api/retention/rules"),
     fetchJson<MediaServerConnection[]>("/api/media-servers"),
-    fetchJson<RetentionField[]>("/api/retention/fields?mediaType=movies"),
-    fetchJson<RetentionField[]>("/api/retention/fields?mediaType=tv")
+    ...LEVELS.map((level) => fetchJson<RetentionField[]>(`/api/retention/fields?level=${level.value}`))
   ]);
-  return { rules, servers, fields: { movies: movieFields, tv: tvFields } as Record<string, RetentionField[]> };
-}
-
-function parseCondition(raw: string): ConditionRow {
-  const [field = "", operator = "", ...rest] = raw.split(":");
-  return { field, operator, value: rest.join(":").split("|").join(", ") };
-}
-
-function encodeCondition(row: ConditionRow) {
-  const values = row.value.split(",").map((value) => value.trim()).filter(Boolean);
-  return values.length ? `${row.field}:${row.operator}:${values.join("|")}` : `${row.field}:${row.operator}`;
+  const fields = Object.fromEntries(LEVELS.map((level, index) => [level.value, byLevel[index] as RetentionField[]])) as Record<Level, RetentionField[]>;
+  return { rules, servers: servers as MediaServerConnection[], fields };
 }
 
 function formFrom(rule: RetentionRule | null): RuleForm {
   return rule
     ? {
         name: rule.name,
-        mediaType: rule.mediaType,
+        level: rule.level,
         isEnabled: rule.isEnabled,
-        conditions: rule.conditions.map(parseCondition),
+        steps: rule.steps,
         mediaServerIds: rule.mediaServerIds,
         removeFromServers: rule.removeFromServers,
         scheduleMode: rule.scheduleMode,
@@ -143,9 +130,12 @@ function formFrom(rule: RetentionRule | null): RuleForm {
       }
     : {
         name: "",
-        mediaType: "movies",
+        level: "movie",
         isEnabled: true,
-        conditions: [{ field: "watched", operator: "is", value: "true" }, { field: "lastPlayed", operator: "beyond", value: "90" }],
+        steps: [
+          { type: "condition", op: "keep", condition: "server.watchedBy:anyone:" },
+          { type: "condition", op: "keep", condition: "server.lastViewed:beyond:90" }
+        ],
         mediaServerIds: [],
         removeFromServers: true,
         scheduleMode: "manual",
@@ -156,9 +146,10 @@ function formFrom(rule: RetentionRule | null): RuleForm {
 function payload(form: RuleForm) {
   return {
     name: form.name,
-    mediaType: form.mediaType,
+    level: form.level,
+    mediaType: form.level === "movie" ? "movies" : "tv",
     isEnabled: form.isEnabled,
-    conditions: form.conditions.filter((row) => row.field && row.operator).map(encodeCondition),
+    steps: form.steps,
     mediaServerIds: form.mediaServerIds,
     removeFromServers: form.removeFromServers,
     scheduleMode: form.scheduleMode,
@@ -166,17 +157,12 @@ function payload(form: RuleForm) {
   };
 }
 
-function operatorLabel(field: RetentionField | undefined, operator: string) {
-  if (field?.group === "watching") return WATCH_OPERATOR_LABELS[operator] ?? operator;
-  return OPERATOR_LABELS[operator as FilterOperator] ?? operator;
-}
-
-function describeRow(row: ConditionRow, fields: RetentionField[]) {
-  const field = fields.find((item) => item.id === row.field);
-  const label = field?.label ?? row.field;
-  if (row.field === "watched") return row.value === "false" ? "Not watched" : "Watched";
-  if (row.field === "lastPlayed") return row.operator === "unset" ? "Never played" : `Last played ${row.operator === "beyond" ? "over" : "within"} ${row.value} days ago`;
-  return `${label} ${operatorLabel(field, row.operator)}${row.value ? ` ${row.value}` : ""}`;
+/** The first step of a rule, and how many follow, for the list. */
+function summarise(steps: RetentionStep[], fields: RetentionField[]) {
+  const first = steps[0];
+  if (!first) return { primary: "—", secondary: undefined };
+  const primary = first.type === "block" ? `Block ${first.name || "1"}` : describeCondition(first.condition, fields);
+  return { primary, secondary: steps.length > 1 ? `and ${steps.length - 1} more ${steps.length === 2 ? "step" : "steps"}` : undefined };
 }
 
 function scheduleChip(rule: RetentionRule): { tone: "idle" | "info" | "warn"; label: string } {
@@ -188,6 +174,7 @@ function scheduleChip(rule: RetentionRule): { tone: "idle" | "info" | "warn"; la
 
 const OUTCOME: Record<string, { tone: "ok" | "warn" | "bad" | "idle" | "info"; label: string }> = {
   matched: { tone: "info", label: "Would go" },
+  undecided: { tone: "warn", label: "Can't decide" },
   "excluded-unreachable": { tone: "warn", label: "Left alone" },
   removed: { tone: "ok", label: "Removed" },
   changed: { tone: "idle", label: "Changed" },
@@ -220,7 +207,9 @@ export function RetentionPage() {
   const [confirmDiscard, setConfirmDiscard] = useState(false);
 
   const editing = drawer.id ? rules.find((rule) => rule.id === drawer.id) ?? null : null;
-  const ruleFields = fields[form.mediaType] ?? [];
+  const ruleFields = fields[form.level] ?? [];
+  const [trial, setTrial] = useState<RetentionTrial | null>(null);
+  const [trialBusy, setTrialBusy] = useState(false);
   const dirty = drawer.open && JSON.stringify(payload(form)) !== JSON.stringify(payload(initial));
   const footerState = resolveDrawerSaveState(saveState, dirty);
   useUnsavedChanges(dirty);
@@ -246,6 +235,7 @@ export function RetentionPage() {
     setPreview(null);
     setCleanup(null);
     setHistory([]);
+    setTrial(null);
     if (rule) void loadHistory(rule.id);
   }
 
@@ -259,21 +249,32 @@ export function RetentionPage() {
     else close();
   }
 
-  function setCondition(index: number, patch: Partial<ConditionRow>) {
-    setForm((current) => ({
-      ...current,
-      conditions: current.conditions.map((row, position) => {
-        if (position !== index) return row;
-        const next = { ...row, ...patch };
-        if (patch.field) {
-          const field = ruleFields.find((item) => item.id === patch.field);
-          next.operator = field?.operators[0] ?? "";
-          next.value = field?.valueKind === "boolean" ? "true" : "";
-        }
-        return next;
-      })
-    }));
-  }
+  // Live counts: what the rule as drawn would select now. Asked a moment after
+  // the last change, so typing a value does not read every library per key.
+  const trialKey = drawer.open ? JSON.stringify({ level: form.level, steps: form.steps, servers: form.mediaServerIds, remove: form.removeFromServers }) : null;
+  useEffect(() => {
+    if (!trialKey) return;
+    let cancelled = false;
+    setTrialBusy(true);
+    const timer = window.setTimeout(async () => {
+      try {
+        const response = await authedFetch("/api/retention/rules/trial", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload(form))
+        });
+        if (!cancelled && response.ok) setTrial((await response.json()) as RetentionTrial);
+      } finally {
+        if (!cancelled) setTrialBusy(false);
+      }
+    }, 700);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+    // The key is the form's rule-shaping parts; the name and schedule do not change a count.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [trialKey]);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -409,11 +410,11 @@ export function RetentionPage() {
           >
             {rules.map((rule) => {
               const chip = scheduleChip(rule);
-              const conditions = rule.conditions.map((raw) => describeRow(parseCondition(raw), fields[rule.mediaType] ?? []));
+              const selects = summarise(rule.steps, fields[rule.level] ?? []);
               return (
                 <ListRow key={rule.id} onClick={() => open(rule)} selected={drawer.open && drawer.id === rule.id}>
-                  <ListNameCell name={rule.name} sub={rule.mediaType === "tv" ? "TV shows" : "Movies"} />
-                  <ListCell primary={conditions[0] ?? "—"} secondary={conditions.length > 1 ? `and ${conditions.slice(1).join(", ")}` : undefined} />
+                  <ListNameCell name={rule.name} sub={LEVELS.find((level) => level.value === rule.level)?.label ?? "Movies"} />
+                  <ListCell primary={selects.primary} secondary={selects.secondary} />
                   <ListCell
                     primary={rule.mediaServerIds.length ? rule.mediaServerIds.map((id) => serverNames.get(id) ?? "Removed server").join(", ") : <span className="text-muted-foreground">None</span>}
                     secondary={rule.mediaServerIds.length ? (rule.removeFromServers ? "Removes from them too" : "Reads watch history only") : undefined}
@@ -436,7 +437,7 @@ export function RetentionPage() {
           if (!next) requestClose();
         }}
         title={editing?.name ?? (form.name || "New retention rule")}
-        description={editing ? `${editing.mediaType === "tv" ? "TV shows" : "Movies"} · ${scheduleChip(editing).label}` : "Choose what should be cleaned out. You will see every title it selects before anything is removed."}
+        description={editing ? `${LEVELS.find((level) => level.value === editing.level)?.label ?? "Movies"} · ${scheduleChip(editing).label}` : "Choose what should be cleaned out. You will see every title it selects before anything is removed."}
         onSubmit={handleSubmit}
         footer={
           <DrawerFooter state={footerState} message={saveMessage} saveLabel={editing ? "Save rule" : "Add rule"} onCancel={requestClose} saveEnabled={editing ? undefined : true} disabled={busy !== null} />
@@ -449,57 +450,49 @@ export function RetentionPage() {
             </Field>
             <Field label="Cleans out">
               <Select
-                value={form.mediaType}
+                value={form.level}
                 disabled={Boolean(editing)}
-                onChange={(event) => setForm((current) => ({ ...current, mediaType: event.target.value, conditions: formFrom(null).conditions }))}
-                options={MEDIA_TYPES}
+                onChange={(event) => setForm((current) => ({ ...current, level: event.target.value as Level, steps: formFrom(null).steps }))}
+                options={LEVELS.map((level) => ({ value: level.value, label: level.label }))}
               />
             </Field>
           </FieldRow>
           <SwitchRow label="Enabled" description="A rule that is off never runs on its schedule." checked={form.isEnabled} onCheckedChange={(checked) => setForm((current) => ({ ...current, isEnabled: checked }))} />
         </DrawerSection>
 
-        <DrawerSection title="Conditions" aside="every one must hold">
-          {form.conditions.map((row, index) => {
-            const field = ruleFields.find((item) => item.id === row.field);
-            const takesValue = row.operator !== "set" && row.operator !== "unset";
-            return (
-              <div key={index} className="grid grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_minmax(0,1fr)_auto] items-end gap-2">
-                <Field label={index === 0 ? "Field" : undefined}>
-                  <Select
-                    aria-label={`Condition ${index + 1} field`}
-                    value={row.field}
-                    onChange={(event) => setCondition(index, { field: event.target.value })}
-                    options={ruleFields.map((item) => ({ value: item.id, label: item.needsMediaServer ? `${item.label} (media servers)` : item.label }))}
-                  />
-                </Field>
-                <Field label={index === 0 ? "Test" : undefined}>
-                  <Select aria-label={`Condition ${index + 1} test`} value={row.operator} onChange={(event) => setCondition(index, { operator: event.target.value })} options={(field?.operators ?? []).map((operator) => ({ value: operator, label: operatorLabel(field, operator) }))} />
-                </Field>
-                <Field label={index === 0 ? "Value" : undefined}>
-                  {field?.valueKind === "boolean" ? (
-                    <Select aria-label={`Condition ${index + 1} value`} value={row.value} onChange={(event) => setCondition(index, { value: event.target.value })} options={[{ value: "true", label: "Yes" }, { value: "false", label: "No" }]} />
-                  ) : field?.options?.length ? (
-                    <Select aria-label={`Condition ${index + 1} value`} value={row.value} onChange={(event) => setCondition(index, { value: event.target.value })} options={field.options.map((option) => ({ value: option, label: option }))} />
-                  ) : (
-                    <Input aria-label={`Condition ${index + 1} value`} value={row.value} disabled={!takesValue} onChange={(event) => setCondition(index, { value: event.target.value })} placeholder={takesValue ? (row.operator === "beyond" || row.operator === "within" ? "days" : "value") : ""} />
-                  )}
-                </Field>
-                <Button type="button" variant="ghost" size="icon" aria-label={`Remove condition ${index + 1}`} onClick={() => setForm((current) => ({ ...current, conditions: current.conditions.filter((_, position) => position !== index) }))}>
-                  <Trash2 className="h-3.5 w-3.5" />
-                </Button>
-              </div>
-            );
-          })}
-          <Button type="button" variant="outline" size="sm" className="w-max" onClick={() => setForm((current) => ({ ...current, conditions: [...current.conditions, { field: ruleFields[0]?.id ?? "", operator: ruleFields[0]?.operators[0] ?? "", value: ruleFields[0]?.valueKind === "boolean" ? "true" : "" }] }))}>
-            <Plus className="h-3.5 w-3.5" />
-            Add condition
-          </Button>
+        <DrawerSection title="Steps" aside={trialBusy ? "counting…" : trial && !trial.problems.length ? `${trial.matchedCount} match${trial.matchedBytes > 0 ? ` · ${formatBytes(trial.matchedBytes)}` : ""}` : undefined}>
+          <RetentionStepBuilder
+            steps={form.steps}
+            onChange={(steps) => setForm((current) => ({ ...current, steps }))}
+            fields={ruleFields}
+            serverKinds={servers.filter((server) => form.mediaServerIds.includes(server.id)).map((server) => server.kind)}
+            counts={trial && !trial.problems.length ? trial.stepCounts : null}
+            considered={trial?.considered ?? null}
+            noun={LEVELS.find((level) => level.value === form.level)?.noun ?? "title"}
+          />
+          {trial?.problems.length ? (
+            <ul className="grid gap-0.5 text-[length:var(--type-caption)] text-warning" role="alert">
+              {trial.problems.map((problem) => <li key={problem}>{problem}</li>)}
+            </ul>
+          ) : null}
+          {trial?.unreachableServers.length ? (
+            <p className="text-[length:var(--type-caption)] text-warning">Nothing would be selected: {trial.unreachableServers.join("; ")}.</p>
+          ) : null}
+          {trial && trial.undecidedCount > 0 ? (
+            <p className="text-[length:var(--type-caption)] text-muted-foreground">
+              {trial.undecidedCount} {trial.undecidedCount === 1 ? "title" : "titles"} could not be decided — a server could not answer a step — and would be left alone.
+            </p>
+          ) : null}
+          {trial && trial.unmanaged.length > 0 ? (
+            <p className="text-[length:var(--type-caption)] text-muted-foreground">
+              {trial.unmanaged.length} on your servers but not in Deluno. They are never touched.
+            </p>
+          ) : null}
         </DrawerSection>
 
         <DrawerSection title="Media servers" aside={servers.length ? undefined : "none connected"}>
           {servers.length === 0 ? (
-            <p className="text-[length:var(--type-caption)] text-muted-foreground">Connect Plex, Jellyfin or Emby under Find &amp; Download → Media Servers to use watch history.</p>
+            <p className="text-[length:var(--type-caption)] text-muted-foreground">Connect Plex, Jellyfin or Emby under Find &amp; Download → Media Servers to use what they know.</p>
           ) : (
             servers.map((server) => (
               <SwitchRow
