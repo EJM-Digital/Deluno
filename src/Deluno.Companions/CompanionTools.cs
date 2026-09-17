@@ -285,6 +285,15 @@ public sealed class WeirCompanion(
 
         if (!IsInstalled())
         {
+            // Weir's installer stops every Weir running on the computer,
+            // whoever started it, and the new copy shares their settings in
+            // ProgramData (seen on the rig: it stopped two). One already running
+            // is connected, not installed over.
+            if (system.IsRunningOnThisComputer("WeirServer"))
+            {
+                throw new CompanionStepException($"{Name} is already running on this computer, and installing it again would stop that copy. Connect it under Media Management → Processor connections.");
+            }
+
             var artifact = await LatestReleaseAsync(context, cancellationToken);
             context.Progress.Report("download", $"Downloading {Name} {artifact.FileName} and checking it against the checksum its release publishes.");
             var setup = await downloader.DownloadAsync(artifact, context.DownloadFolder, cancellationToken);
@@ -383,18 +392,34 @@ public sealed class WeirCompanion(
         }
     }
 
+    /// <summary>
+    /// The Weir this account installed, answering.
+    ///
+    /// <para>Found by the process that owns the port, not by the first port
+    /// between 8788 and 8807 that answers like Weir: another copy running on
+    /// the same computer - a portable one, or someone else's - answered first,
+    /// and Deluno would have set itself up against that one (seen on the rig).
+    /// An installed copy that is not running is started.</para>
+    /// </summary>
     private async Task<string?> FindRunningAsync(CancellationToken cancellationToken)
     {
         using var probe = new HttpClient { Timeout = TimeSpan.FromSeconds(3) };
+        var installFolder = Path.Combine(system.LocalAppData, "Weir");
+        var started = false;
         for (var attempt = 0; attempt < 40; attempt++)
         {
-            for (var port = 8788; port <= 8807; port++)
+            var ports = system.ListeningPortsOf(installFolder);
+            if (ports.Count == 0 && !started && attempt >= 3)
             {
-                if (!system.IsPortInUse(port))
-                {
-                    continue;
-                }
+                var executable = system.FileExists(Path.Combine(installFolder, "current", "Weir.exe"))
+                    ? Path.Combine(installFolder, "current", "Weir.exe")
+                    : Executable;
+                system.Start(executable, string.Empty);
+                started = true;
+            }
 
+            foreach (var port in ports)
+            {
                 try
                 {
                     using var response = await probe.GetAsync($"http://127.0.0.1:{port}/api/v1/auth/bootstrap/status", cancellationToken);

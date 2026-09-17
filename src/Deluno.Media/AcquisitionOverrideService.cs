@@ -35,7 +35,8 @@ public sealed class AcquisitionOverrideService(
     IUnifiedExclusionRepository exclusions,
     IDownloadClientTelemetryService downloadClients,
     ILogger<AcquisitionOverrideService> logger,
-    IDownloadDispatchesRepository? dispatches = null)
+    IDownloadDispatchesRepository? dispatches = null,
+    IBlockedReleaseRepository? blockedReleases = null)
 {
     public async Task<AcquisitionOverrideResponse> ForceAsync(
         AcquisitionOverrideRequest request,
@@ -47,6 +48,7 @@ public sealed class AcquisitionOverrideService(
         await ClearHandoffAsync(request, cleared, couldNotClear, cancellationToken);
         await ClearDownloadAsync(request, cleared, couldNotClear, cancellationToken);
         await ClearExclusionsAsync(request, cleared, couldNotClear, cancellationToken);
+        await ClearBlockedReleasesAsync(request, cleared, couldNotClear, cancellationToken);
 
         return new AcquisitionOverrideResponse(
             request.MediaId,
@@ -257,6 +259,53 @@ public sealed class AcquisitionOverrideService(
         }
     }
 
+    /// <summary>
+    /// Un-refuses the releases blocked for this title. The blocker offered this
+    /// ("Un-refuses that release, so searches can use it again") and the force
+    /// never did it, so the search it started skipped the very release a person
+    /// had chosen to try again (seen on the rig proving #497).
+    /// </summary>
+    private async Task ClearBlockedReleasesAsync(
+        AcquisitionOverrideRequest request,
+        List<string> cleared,
+        List<string> couldNotClear,
+        CancellationToken cancellationToken)
+    {
+        if (request.BlockedReleaseIds.Count == 0 || blockedReleases is null)
+        {
+            return;
+        }
+
+        var allowed = 0;
+        foreach (var id in request.BlockedReleaseIds)
+        {
+            try
+            {
+                if (await blockedReleases.UnblockAsync(id, cancellationToken))
+                {
+                    allowed++;
+                }
+            }
+            catch (Exception exception) when (exception is not OperationCanceledException)
+            {
+                logger.LogWarning(exception, "Could not un-refuse release {BlockedReleaseId} during an acquisition override.", id);
+            }
+        }
+
+        if (allowed > 0)
+        {
+            cleared.Add(allowed == 1
+                ? "Un-refused the release, so searches can use it again."
+                : $"Un-refused {allowed} releases, so searches can use them again.");
+        }
+
+        if (allowed < request.BlockedReleaseIds.Count)
+        {
+            var left = request.BlockedReleaseIds.Count - allowed;
+            couldNotClear.Add(left == 1 ? "One refused release could not be un-refused." : $"{left} refused releases could not be un-refused.");
+        }
+    }
+
     private async Task ClearExclusionsAsync(
         AcquisitionOverrideRequest request,
         List<string> cleared,
@@ -342,7 +391,10 @@ public sealed record AcquisitionOverrideRequest(
     string? DownloadClientName = null,
     string? QueueItemId = null,
     IReadOnlyList<string>? ExclusionIdsOrNull = null,
-    string? DispatchId = null)
+    string? DispatchId = null,
+    IReadOnlyList<string>? BlockedReleaseIdsOrNull = null)
 {
     public IReadOnlyList<string> ExclusionIds => ExclusionIdsOrNull ?? [];
+
+    public IReadOnlyList<string> BlockedReleaseIds => BlockedReleaseIdsOrNull ?? [];
 }
