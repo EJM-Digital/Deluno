@@ -605,7 +605,13 @@ public sealed record ImportPreviewRequest(
     /// </summary>
     string? SeriesId = null,
     string? SeriesType = null,
-    string? NumberingScheme = null);
+    string? NumberingScheme = null,
+    /// <summary>
+    /// The library the release was grabbed for (#526). An automated import goes
+    /// there, not into the first library of its media type. A destination rule
+    /// still wins; a manual import without it keeps choosing as before.
+    /// </summary>
+    string? LibraryId = null);
 
 public sealed record ImportPreviewResponse(
     string SourcePath,

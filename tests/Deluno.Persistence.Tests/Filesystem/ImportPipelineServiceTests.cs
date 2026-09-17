@@ -908,6 +908,75 @@ public sealed class ImportPipelineServiceTests
         Assert.True(resolution.IsSuccessful);
     }
 
+    /// <summary>
+    /// #526: with two movie libraries, a film grabbed for the second went into
+    /// the first, because the destination was "the first library of its type".
+    /// </summary>
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task An_import_goes_to_the_library_that_grabbed_it(bool named)
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-09-17T08:00:00Z"));
+        await InitializeAllAsync(storage, timeProvider);
+
+        var downloadsPath = Path.Combine(storage.DataRoot, "downloads");
+        var firstRoot = Path.Combine(storage.DataRoot, "movies");
+        var secondRoot = Path.Combine(storage.DataRoot, "refined-movies");
+        Directory.CreateDirectory(downloadsPath);
+        Directory.CreateDirectory(firstRoot);
+        Directory.CreateDirectory(secondRoot);
+        var sourcePath = Path.Combine(downloadsPath, "Dementia.13.1963.1080p.WEB-DL.mkv");
+        await File.WriteAllBytesAsync(sourcePath, Enumerable.Range(0, 4096).Select(value => (byte)(value % 251)).ToArray());
+        File.SetLastWriteTimeUtc(sourcePath, DateTime.UtcNow.AddMinutes(-1));
+
+        var platform = CreatePlatformRepository(storage, timeProvider);
+        var libraries = CreateLibrariesRepository(storage, timeProvider);
+        await SaveSettingsAsync(platform, firstRoot, downloadsPath);
+        await CreateMovieLibraryAsync(libraries, firstRoot, downloadsPath);
+        await CreateMovieLibraryAsync(libraries, secondRoot, downloadsPath);
+        var second = (await libraries.ListLibrariesAsync(CancellationToken.None)).Single(library => library.RootPath == secondRoot);
+
+        var realtime = new RecordingRealtimeEventPublisher();
+        var jobStore = new SqliteJobStore(storage.Factory, timeProvider, realtime, new NullDownloadDispatchesRepository());
+        var service = new ImportPipelineService(
+            platform,
+            libraries,
+            new SqliteMovieCatalogRepository(storage.Factory, timeProvider),
+            new SqliteSeriesCatalogRepository(storage.Factory, timeProvider),
+            jobStore,
+            new SuccessfulProbeService(),
+            new MediaDecisionService(new VersionedMediaPolicyEngine()),
+            null,
+            null,
+            null,
+            null,
+            NullLogger<ImportPipelineService>.Instance,
+            realtime);
+
+        var result = await service.ExecuteAsync(
+            new ImportExecuteRequest(
+                Preview: new ImportPreviewRequest(
+                    SourcePath: sourcePath,
+                    FileName: null,
+                    MediaType: "movies",
+                    Title: "Dementia 13",
+                    Year: 1963,
+                    Genres: [],
+                    Tags: [],
+                    Studio: null,
+                    OriginalLanguage: "en",
+                    LibraryId: named ? second.Id : null),
+                TransferMode: "copy",
+                Overwrite: false,
+                AllowCopyFallback: true),
+            CancellationToken.None);
+
+        Assert.True(result.Succeeded);
+        Assert.StartsWith(named ? secondRoot : firstRoot, result.Response!.Preview.DestinationPath, StringComparison.OrdinalIgnoreCase);
+    }
+
     [Fact]
     public async Task Import_preserves_dispatch_release_evidence_after_clean_movie_rename()
     {

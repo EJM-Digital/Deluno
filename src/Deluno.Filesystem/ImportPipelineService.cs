@@ -1651,13 +1651,14 @@ public sealed partial class ImportPipelineService(
     /// library of that type has one. First match wins; a library without a root
     /// is skipped rather than treated as an empty answer.
     /// </summary>
-    private static LibraryItem? ResolveLibrary(IReadOnlyList<LibraryItem> libraries, string mediaType)
-        => libraries
-            .Where(library => NormalizeMediaType(library.MediaType) == mediaType)
-            .FirstOrDefault(library => !string.IsNullOrWhiteSpace(library.RootPath));
-
-    private static string? ResolveLibraryRoot(IReadOnlyList<LibraryItem> libraries, string mediaType)
-        => ResolveLibrary(libraries, mediaType)?.RootPath;
+    private static LibraryItem? ResolveLibrary(IReadOnlyList<LibraryItem> libraries, string mediaType, string? libraryId = null)
+    {
+        var usable = libraries
+            .Where(library => NormalizeMediaType(library.MediaType) == mediaType && !string.IsNullOrWhiteSpace(library.RootPath))
+            .ToArray();
+        return (libraryId is null ? null : usable.FirstOrDefault(library => string.Equals(library.Id, libraryId, StringComparison.OrdinalIgnoreCase)))
+               ?? usable.FirstOrDefault();
+    }
 
     private async Task<ImportPreviewResponse> ResolveImportPreviewAsync(
         ImportPreviewRequest request,
@@ -1693,13 +1694,17 @@ public sealed partial class ImportPipelineService(
         // string.Empty and imported to a *relative* path — which .NET resolves
         // against the host's working directory. Media landed wherever the
         // service happened to be started from while Deluno reported success.
+        //
+        // And the library is the one the release was grabbed for, when the
+        // request says so (#526). "The first library of this media type" put a
+        // film grabbed for a second movie library into the first one.
+        var library = ResolveLibrary(libraries, mediaType, request.LibraryId);
         var rootPath = rule?.RootPath ??
-                       ResolveLibraryRoot(libraries, mediaType) ??
+                       library?.RootPath ??
                        (mediaType == "tv" ? settings.SeriesRootPath : settings.MovieRootPath) ??
                        string.Empty;
         var template = rule?.FolderTemplate ??
                        (mediaType == "tv" ? settings.SeriesFolderFormat : settings.MovieFolderFormat);
-        var library = ResolveLibrary(libraries, mediaType);
         var folder = ApplyTemplate(
             template,
             title,
@@ -3103,7 +3108,7 @@ public sealed partial class ImportPipelineService(
             return new NamingDecision(quality, releaseGroup);
         }
 
-        var profileId = ResolveLibrary(libraries, mediaType)?.QualityProfileId;
+        var profileId = ResolveLibrary(libraries, mediaType, request.LibraryId)?.QualityProfileId;
         var profile = string.IsNullOrWhiteSpace(profileId)
             ? null
             : (await qualityRepository.ListQualityProfilesAsync(cancellationToken))

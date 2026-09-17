@@ -567,6 +567,7 @@ public static class ExternalIntegrationEndpointRouteBuilderExtensions
             IActivityFeedRepository activityFeed,
             IJobScheduler jobScheduler,
             IProcessorFailureReportHandler failureReports,
+            IProcessorOutputImportQueue outputImports,
             CancellationToken cancellationToken) =>
         {
             var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
@@ -736,49 +737,20 @@ public static class ExternalIntegrationEndpointRouteBuilderExtensions
                 handoff.Id,
                 cancellationToken);
 
-            JobQueueItem? importJob = null;
+            ProcessorOutputImport? importJob = null;
             if (status == "completed" && !string.IsNullOrWhiteSpace(request.OutputPath))
             {
+                // Named from the catalogue, into the library that grabbed it: the
+                // same queue the output-folder watcher uses (#526).
                 var resolvedMediaType = library.MediaType;
                 var outputPath = request.OutputPath.Trim();
-                var title = string.IsNullOrWhiteSpace(entityId)
-                    ? Path.GetFileNameWithoutExtension(outputPath)
-                    : entityId;
-                var importPayload = new
-                {
-                    preview = new
-                    {
-                        sourcePath = outputPath,
-                        fileName = Path.GetFileName(outputPath),
-                        mediaType = resolvedMediaType,
-                        title,
-                        year = (int?)null,
-                        genres = Array.Empty<string>(),
-                        tags = new[] { "processed" },
-                        studio = (string?)null,
-                        originalLanguage = (string?)null
-                    },
-                    transferMode = "auto",
-                    overwrite = false,
-                    allowCopyFallback = true,
-                    forceReplacement = false
-                };
-
-                importJob = await jobScheduler.EnqueueAsync(
-                    new EnqueueJobRequest(
-                        JobType: "filesystem.import.execute",
-                        Source: "processor",
-                        PayloadJson: JsonSerializer.Serialize(importPayload),
-                        RelatedEntityType: resolvedMediaType == "tv" ? "series" : "movie",
-                        RelatedEntityId: null,
-                        IdempotencyKey: $"processor-output:{library.Id}:{Path.GetFullPath(outputPath).ToLowerInvariant()}"),
-                    cancellationToken);
+                importJob = await outputImports.QueueAsync(library, handoff, outputPath, "processor", cancellationToken);
 
                 await repository.UpdateProcessorHandoffAsync(
                     handoff.Id,
                     "completed",
                     outputPath,
-                    importJob.Id,
+                    importJob.JobId,
                     null,
                     cancellationToken);
 
@@ -794,15 +766,16 @@ public static class ExternalIntegrationEndpointRouteBuilderExtensions
                         EntityId = entityId,
                         request.SourcePath,
                         OutputPath = outputPath,
-                        JobId = importJob.Id
+                        JobId = importJob.JobId,
+                        importJob.DispatchId
                     }),
-                    importJob.Id,
+                    importJob.JobId,
                     "processor-handoff",
                     handoff.Id,
                     cancellationToken);
             }
 
-            return Results.Json(new { status, handoffId = handoff.Id, activityId = activity.Id, importJobId = importJob?.Id }, statusCode: StatusCodes.Status202Accepted);
+            return Results.Json(new { status, handoffId = handoff.Id, activityId = activity.Id, importJobId = importJob?.JobId }, statusCode: StatusCodes.Status202Accepted);
         });
 
         return endpoints;

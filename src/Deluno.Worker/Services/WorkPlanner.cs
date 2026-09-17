@@ -894,7 +894,7 @@ public sealed class WorkPlanner(
             // The client reports a release name ("Blade.Runner.2049.2017.1080p…"),
             // and parsing it produced both a mangled folder name and the wrong
             // year — 2049 is part of the title, not the release year (#268).
-            var catalogue = await ResolveCatalogueNamingAsync(
+            var catalogue = await CatalogueImportNaming.ResolveAsync(
                 dispatch,
                 movieCatalogRepository,
                 seriesCatalogRepository,
@@ -906,7 +906,7 @@ public sealed class WorkPlanner(
                     FileName: InferImportFileName(item),
                     MediaType: item.MediaType,
                     Title: catalogue.Title ?? item.Title,
-                    Year: catalogue.Year ?? InferYear(item.ReleaseName),
+                    Year: catalogue.Year ?? CatalogueImportNaming.InferYear(item.ReleaseName),
                     Genres: catalogue.Genres,
                     Tags: string.IsNullOrWhiteSpace(item.Category) ? [] : [item.Category],
                     Studio: catalogue.Studio,
@@ -916,7 +916,9 @@ public sealed class WorkPlanner(
                     Network: catalogue.Network,
                     SeriesId: catalogue.SeriesId,
                     SeriesType: catalogue.SeriesType,
-                    NumberingScheme: catalogue.NumberingScheme),
+                    NumberingScheme: catalogue.NumberingScheme,
+                    // Into the library that grabbed it, not the first of its type (#526).
+                    LibraryId: library.Id),
                 TransferMode: "auto",
                 Overwrite: dispatch?.ReplacementAuthorized == true,
                 AllowCopyFallback: true,
@@ -1113,9 +1115,8 @@ public sealed class WorkPlanner(
             // definition, and scopes the reservation to the dispatch. The rule
             // existed; this call site did not use it.
             //
-            // Read once and used twice: which dispatch this hand-off belongs to
-            // decides both whether the output is already spoken for and what the
-            // import is named after.
+            // Which dispatch this hand-off belongs to decides whether the output
+            // is already spoken for; the import queue reads it again to name it.
             var dispatch = await jobQueueRepository.FindRecentDispatchLinkAsync(
                 handoff.ClientId,
                 handoff.ReleaseName,
@@ -1132,61 +1133,14 @@ public sealed class WorkPlanner(
             }
 
             var outputPath = candidates[0];
-
-            // Name from the catalogue, exactly as the direct-import path does.
-            // This used to build the whole import out of the output file name:
-            // title = the release name, year = null. So a refined movie landed as
-            // "Big.Buck.Bunny.2008.1080p.WEB-DL.x264-DELUNO (Unknown Year)", and
-            // with no RelatedEntityId the catalogue never learned it had arrived
-            // — the movie stayed Missing and Deluno would grab it all over again.
-            // #268 fixed precisely this for downloads that import directly; the
-            // sibling path never got the same treatment.
-            var catalogue = await ResolveCatalogueNamingAsync(
-                dispatch,
-                movieCatalogRepository,
-                seriesCatalogRepository,
-                cancellationToken);
-
-            var importRequest = new ImportExecuteRequest(
-                Preview: new ImportPreviewRequest(
-                    SourcePath: outputPath,
-                    FileName: Path.GetFileName(outputPath),
-                    MediaType: library.MediaType,
-                    Title: catalogue.Title ?? Path.GetFileNameWithoutExtension(outputPath),
-                    Year: catalogue.Year ?? InferYear(handoff.ReleaseName),
-                    Genres: catalogue.Genres,
-                    Tags: ["processed"],
-                    Studio: catalogue.Studio,
-                    OriginalLanguage: null,
-                    ImdbId: catalogue.ImdbId,
-                    TvDbId: catalogue.TvDbId,
-                    Network: catalogue.Network,
-                    SeriesId: catalogue.SeriesId,
-                    SeriesType: catalogue.SeriesType,
-                    NumberingScheme: catalogue.NumberingScheme),
-                TransferMode: "auto",
-                Overwrite: dispatch?.ReplacementAuthorized == true,
-                AllowCopyFallback: true,
-                ForceReplacement: dispatch?.ForceReplacementAuthorized == true,
-                DispatchId: dispatch?.DispatchId,
-                ExpectedExistingPath: dispatch?.ReplacementExpectedPath,
-                ReplacementTargets: dispatch?.ReplacementTargets);
-
-            var importJob = await jobScheduler.EnqueueAsync(
-                new EnqueueJobRequest(
-                    JobType: "filesystem.import.execute",
-                    Source: "processor-output-watch",
-                    PayloadJson: JsonSerializer.Serialize(importRequest, PayloadJsonOptions),
-                    RelatedEntityType: library.MediaType == "tv" ? "series" : "movie",
-                    RelatedEntityId: dispatch?.EntityId,
-                    IdempotencyKey: $"processor-output:{library.Id}:{Path.GetFullPath(outputPath).ToLowerInvariant()}"),
-                cancellationToken);
+            var importJob = await new ProcessorOutputImportQueue(jobQueueRepository, jobScheduler, movieCatalogRepository, seriesCatalogRepository)
+                .QueueAsync(library, handoff, outputPath, "processor-output-watch", cancellationToken);
 
             await processorRepository.UpdateProcessorHandoffAsync(
                 handoff.Id,
                 "completed",
                 outputPath,
-                importJob.Id,
+                importJob.JobId,
                 null,
                 cancellationToken);
             queuedThisPass.Add(NormalizeSourceKey(outputPath));
@@ -1195,17 +1149,17 @@ public sealed class WorkPlanner(
                 $"Deluno matched processed output for {handoff.ReleaseName} and queued it for import.",
                 JsonSerializer.Serialize(new
                 {
-                    DispatchId = dispatch?.DispatchId,
+                    importJob.DispatchId,
                     handoff.ReleaseName,
                     HandoffId = handoff.Id,
                     library.Id,
                     library.Name,
                     SourcePath = handoff.SourcePath,
                     OutputPath = outputPath,
-                    JobId = importJob.Id,
+                    JobId = importJob.JobId,
                     Match = "stable processed-output subfolder"
                 }, PayloadJsonOptions),
-                importJob.Id,
+                importJob.JobId,
                 "processor-handoff",
                 handoff.Id,
                 cancellationToken);
@@ -1613,100 +1567,5 @@ public sealed class WorkPlanner(
         return $"{(string.IsNullOrWhiteSpace(cleaned) ? item.Id : cleaned)}.mkv";
     }
 
-    /// <summary>
-    /// The catalogue metadata behind a dispatched release, or empty values when
-    /// the grab cannot be tied to a catalogue item — in which case the caller
-    /// falls back to parsing the release name.
-    /// </summary>
-    private static async Task<CatalogueNaming> ResolveCatalogueNamingAsync(
-        DispatchCatalogueLink? dispatch,
-        IMovieCatalogRepository movieCatalogRepository,
-        ISeriesCatalogRepository seriesCatalogRepository,
-        CancellationToken cancellationToken)
-    {
-        if (dispatch is null || string.IsNullOrWhiteSpace(dispatch.EntityId))
-        {
-            return CatalogueNaming.Empty;
-        }
-
-        if (string.Equals(dispatch.EntityType, "series", StringComparison.OrdinalIgnoreCase))
-        {
-            var series = await seriesCatalogRepository.GetByIdAsync(dispatch.EntityId, cancellationToken);
-            return series is null
-                ? CatalogueNaming.Empty
-                : new CatalogueNaming(
-                    series.Title,
-                    series.StartYear,
-                    series.ImdbId,
-                    ReadMetadataText(series.MetadataJson, "TvDbId", "tvdbId", "tvdb_id"),
-                    null,
-                    ReadMetadataText(series.MetadataJson, "Network", "network"),
-                    SplitCsv(series.Genres),
-                    dispatch.EntityId,
-                    series.SeriesType,
-                    series.NumberingScheme);
-        }
-
-        var movie = await movieCatalogRepository.GetByIdAsync(dispatch.EntityId, cancellationToken);
-        return movie is null
-            ? CatalogueNaming.Empty
-            : new CatalogueNaming(
-                movie.Title,
-                movie.ReleaseYear,
-                movie.ImdbId,
-                null,
-                ReadMetadataText(movie.MetadataJson, "Studio", "studio"),
-                null,
-                SplitCsv(movie.Genres));
-    }
-
-    private static IReadOnlyList<string> SplitCsv(string? value)
-        => string.IsNullOrWhiteSpace(value)
-            ? []
-            : value.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
-
-    private static string? ReadMetadataText(string? metadataJson, params string[] names)
-    {
-        if (string.IsNullOrWhiteSpace(metadataJson))
-        {
-            return null;
-        }
-
-        try
-        {
-            using var document = JsonDocument.Parse(metadataJson);
-            foreach (var property in document.RootElement.EnumerateObject())
-            {
-                if (names.Any(name => string.Equals(property.Name, name, StringComparison.OrdinalIgnoreCase)) &&
-                    property.Value.ValueKind == JsonValueKind.String)
-                {
-                    return property.Value.GetString();
-                }
-            }
-        }
-        catch (JsonException)
-        {
-            // Provider metadata is optional and may be an older/manual blob.
-        }
-
-        return null;
-    }
-
-    private static int? InferYear(string value) => ReleaseNameParser.InferYear(value);
-
-    private sealed record CatalogueNaming(
-        string? Title,
-        int? Year,
-        string? ImdbId,
-        string? TvDbId,
-        string? Studio,
-        string? Network,
-        IReadOnlyList<string> Genres,
-        string? SeriesId = null,
-        string? SeriesType = null,
-        string? NumberingScheme = null)
-    {
-        public static CatalogueNaming Empty { get; } = new(null, null, null, null, null, null, []);
-    }
 
 }
