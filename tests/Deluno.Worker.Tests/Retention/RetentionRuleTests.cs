@@ -249,6 +249,8 @@ public sealed class RetentionRuleTests
         var mark = Assert.Single(await _store.ListMarksAsync(rule.Id, CancellationToken.None));
         Assert.Equal(("m1", RetentionMarkStates.Leaving, Now.AddDays(14)), (mark.EntityId, mark.State, mark.RemoveAfterUtc));
         Assert.Equal(["Watched by anyone: james"], mark.Reasons);
+        // What it matched on each server, for the Leaving soon collections (#521).
+        Assert.Equal([new RetentionServerItem("server-1", "j1", MediaServerItemLevels.Movie, null)], mark.ServerItems);
         Assert.Equal(1, run.MatchedCount);
         Assert.Equal(RetentionItemOutcomes.Marked, Assert.Single(run.Items!).Outcome);
         // Said once: the total adds nothing when it is what was just marked.

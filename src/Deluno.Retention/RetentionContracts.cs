@@ -208,7 +208,27 @@ public sealed record RetentionMark(
     DateTimeOffset UpdatedUtc)
 {
     public string MediaType => RetentionLevels.MediaType(Level);
+
+    /// <summary>What the mark was matched to on each server at its last check (#521).</summary>
+    public IReadOnlyList<RetentionServerItem> ServerItems { get; init; } = [];
 }
+
+/// <summary>A marked title's item on one server: what goes in that server's Leaving soon collection.</summary>
+/// <param name="Level">The server item's level: movie, show, season or episode.</param>
+/// <param name="SectionId">Plex's library section.</param>
+public sealed record RetentionServerItem(string ServerId, string ItemId, string Level, string? SectionId);
+
+/// <summary>How the last attempt to bring one server's Leaving soon collection into line went.</summary>
+/// <param name="Skipped">Titles that server cannot hold in the collection, such as a season on Plex.</param>
+/// <param name="Problem">Why the last attempt failed; null when it worked.</param>
+public sealed record RetentionCollectionState(
+    string ServerId,
+    string MediaType,
+    int Members,
+    int Skipped,
+    string? Problem,
+    DateTimeOffset AttemptedUtc,
+    DateTimeOffset? SyncedUtc);
 
 /// <summary>A title somebody kept: from one rule, or from all of them (#494).</summary>
 /// <param name="RuleId">Null when kept from every rule.</param>

@@ -36,6 +36,18 @@ export interface MediaServerConnection {
   serverName: string | null;
   serverId: string | null;
   lastHealthFailure?: IntegrationFailure | null;
+  leavingSoonOnHome: boolean;
+}
+
+/** Mirrors `Deluno.Retention.RetentionCollectionState` (#521). */
+interface LeavingSoonCollection {
+  serverId: string;
+  mediaType: "movies" | "tv" | string;
+  members: number;
+  skipped: number;
+  problem: string | null;
+  attemptedUtc: string;
+  syncedUtc: string | null;
 }
 
 interface MediaServerTestResult {
@@ -58,10 +70,16 @@ interface ServerForm {
   baseUrl: string;
   token: string;
   isEnabled: boolean;
+  leavingSoonOnHome: boolean;
 }
 
 export async function mediaServersLoader() {
-  return { servers: await fetchJson<MediaServerConnection[]>("/api/media-servers") };
+  const [servers, collections] = await Promise.all([
+    fetchJson<MediaServerConnection[]>("/api/media-servers"),
+    // Only a person who can see retention sees its collections; the servers stand on their own.
+    fetchJson<LeavingSoonCollection[]>("/api/retention/collections").catch(() => [] as LeavingSoonCollection[])
+  ]);
+  return { servers, collections };
 }
 
 function kindOf(kind: string) {
@@ -70,12 +88,12 @@ function kindOf(kind: string) {
 
 function formFrom(server: MediaServerConnection | null): ServerForm {
   return server
-    ? { kind: server.kind, name: server.name, baseUrl: server.baseUrl, token: "", isEnabled: server.isEnabled }
-    : { kind: "jellyfin", name: "Jellyfin", baseUrl: "", token: "", isEnabled: true };
+    ? { kind: server.kind, name: server.name, baseUrl: server.baseUrl, token: "", isEnabled: server.isEnabled, leavingSoonOnHome: server.leavingSoonOnHome ?? false }
+    : { kind: "jellyfin", name: "Jellyfin", baseUrl: "", token: "", isEnabled: true, leavingSoonOnHome: false };
 }
 
 function same(left: ServerForm, right: ServerForm) {
-  return left.kind === right.kind && left.name === right.name && left.baseUrl === right.baseUrl && left.token === right.token && left.isEnabled === right.isEnabled;
+  return left.kind === right.kind && left.name === right.name && left.baseUrl === right.baseUrl && left.token === right.token && left.isEnabled === right.isEnabled && left.leavingSoonOnHome === right.leavingSoonOnHome;
 }
 
 /**
@@ -87,7 +105,7 @@ function same(left: ServerForm, right: ServerForm) {
  * reaches - two servers on the same default port are otherwise easy to mix up.
  */
 export function MediaServersPage() {
-  const { servers } = useLoaderData() as { servers: MediaServerConnection[] };
+  const { servers, collections } = useLoaderData() as { servers: MediaServerConnection[]; collections: LeavingSoonCollection[] };
   const revalidator = useRevalidator();
 
   const [drawer, setDrawer] = useState<{ open: boolean; id: string | null }>({ open: false, id: null });
@@ -102,6 +120,7 @@ export function MediaServersPage() {
   const [confirmDiscard, setConfirmDiscard] = useState(false);
 
   const editing = drawer.id ? servers.find((server) => server.id === drawer.id) ?? null : null;
+  const editingCollections = editing ? collections.filter((collection) => collection.serverId === editing.id) : [];
   const kind = kindOf(form.kind);
   const dirty = drawer.open && !same(form, initial);
   const footerState = resolveDrawerSaveState(saveState, dirty);
@@ -207,7 +226,7 @@ export function MediaServersPage() {
       await authedFetch(`/api/media-servers/${server.id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ kind: server.kind, name: server.name, baseUrl: server.baseUrl, token: "", isEnabled })
+        body: JSON.stringify({ kind: server.kind, name: server.name, baseUrl: server.baseUrl, token: "", isEnabled, leavingSoonOnHome: server.leavingSoonOnHome ?? false })
       });
       revalidator.revalidate();
     } finally {
@@ -264,12 +283,13 @@ export function MediaServersPage() {
           >
             {servers.map((server) => {
               const chip = healthChip(server);
+              const collectionProblem = collections.find((collection) => collection.serverId === server.id && collection.problem)?.problem;
               return (
                 <ListRow key={server.id} onClick={() => open(server)} selected={drawer.open && drawer.id === server.id}>
                   <ListNameCell name={server.name} sub={kindOf(server.kind).label} />
                   <ListCell mono primary={server.baseUrl} />
                   <ListCell primary={server.serverName ?? <span className="text-muted-foreground">Not tested yet</span>} />
-                  <ListCell primary={relative(server.lastHealthTestUtc)} secondary={server.lastHealthMessage ?? undefined} />
+                  <ListCell primary={relative(server.lastHealthTestUtc)} secondary={collectionProblem ? `Leaving soon collection: ${collectionProblem}` : server.lastHealthMessage ?? undefined} />
                   <ListCell mobile>
                     <Chip tone={chip.tone}>{chip.label}</Chip>
                   </ListCell>
@@ -344,6 +364,36 @@ export function MediaServersPage() {
             Test connection
           </Button>
         </DrawerSection>
+
+        {editing ? (
+          <DrawerSection title="Leaving soon" aside={editingCollections.length ? undefined : "nothing leaving"}>
+            {editingCollections.length ? (
+              <dl className="grid grid-cols-[120px_1fr] gap-x-[var(--grid-gap)] gap-y-2 text-[length:var(--type-body-sm)]">
+                {editingCollections.map((collection) => (
+                  <div key={collection.mediaType} className="contents">
+                    <dt className="text-muted-foreground">{collection.mediaType === "tv" ? "TV collection" : "Movie collection"}</dt>
+                    <dd className={collection.problem ? "text-destructive" : "text-foreground"}>
+                      {collection.problem
+                        ? `${collection.problem} Tried ${relative(collection.attemptedUtc)}; tried again at the next check.`
+                        : `${collection.members === 0 ? "Removed, nothing is leaving" : `${collection.members} ${collection.members === 1 ? "title" : "titles"}`} · updated ${relative(collection.syncedUtc ?? collection.attemptedUtc)}`}
+                      {collection.skipped > 0 ? <span className="block text-[length:var(--type-caption)] text-muted-foreground">{collection.skipped} seasons or episodes cannot sit in a Plex show collection.</span> : null}
+                    </dd>
+                  </div>
+                ))}
+              </dl>
+            ) : (
+              <p className="text-[length:var(--type-body-sm)] text-muted-foreground">When a retention rule reading this server marks a title, it appears in a Leaving soon collection here.</p>
+            )}
+            {editing.kind === "plex" ? (
+              <SwitchRow
+                label="Show on home"
+                description="Puts the Leaving soon collections on this server's home screen."
+                checked={form.leavingSoonOnHome}
+                onCheckedChange={(checked) => setForm((current) => ({ ...current, leavingSoonOnHome: checked }))}
+              />
+            ) : null}
+          </DrawerSection>
+        ) : null}
 
         {editing ? (
           <DrawerSection>

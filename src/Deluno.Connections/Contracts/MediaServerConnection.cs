@@ -65,6 +65,9 @@ public sealed record MediaServerConnection(
 
     /// <summary>Last typed failure from a test or a real request.</summary>
     public IntegrationFailure? LastHealthFailure { get; init; }
+
+    /// <summary>Plex: show the Leaving soon collections on home (#521).</summary>
+    public bool LeavingSoonOnHome { get; init; }
 }
 
 /// <param name="Token">
@@ -76,7 +79,8 @@ public sealed record SaveMediaServerRequest(
     string? Name,
     string? BaseUrl,
     string? Token,
-    bool IsEnabled);
+    bool IsEnabled,
+    bool? LeavingSoonOnHome = null);
 
 /// <summary>What a test found out, in the words the screen prints.</summary>
 public sealed record MediaServerTestResult(

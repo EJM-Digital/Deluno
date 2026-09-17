@@ -150,6 +150,7 @@ GET /api/recycle-bin/cleanup/preview
 GET /api/recycle-bin/settings
 GET /api/release-profiles/
 GET /api/release-profiles/{id}
+GET /api/retention/collections
 GET /api/retention/fields
 GET /api/retention/keeps
 GET /api/retention/leaving-soon

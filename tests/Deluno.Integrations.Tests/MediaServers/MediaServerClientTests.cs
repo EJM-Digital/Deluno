@@ -319,6 +319,55 @@ public sealed class MediaServerClientTests
         Assert.DoesNotContain(sent, call => call.Method == HttpMethod.Delete);
     }
 
+    /// <summary>
+    /// Jellyfin answers a film that is in a collection with the collection,
+    /// unless told not to. On the rig a title in "Leaving soon" vanished from
+    /// the listing and was read as unwatched (#521). Every listing says not to
+    /// group, and a listing that groups anyway is not an answer.
+    /// </summary>
+    [Fact]
+    public async Task Jellyfin_is_asked_not_to_group_films_into_collections_and_a_grouped_listing_is_not_an_answer()
+    {
+        var queries = new List<string>();
+        var client = new JellyfinMediaServerClient(Factory(request =>
+        {
+            var path = request.RequestUri!.AbsolutePath;
+            var query = Uri.UnescapeDataString(request.RequestUri.Query);
+            if (path == "/Users") return Json("""[{"Id":"u1","Name":"James"}]""");
+            if (query.Contains("IncludeItemTypes=Movie", StringComparison.Ordinal)) queries.Add(query);
+            if (path == "/Items" && query.Contains("IncludeItemTypes=Movie", StringComparison.Ordinal))
+                return Json("""{"Items":[{"Id":"m1","Type":"Movie","Name":"Night of the Living Dead"},{"Id":"bs1","Type":"BoxSet","Name":"Leaving soon"}],"TotalRecordCount":2}""");
+            return Json("""{"Items":[],"TotalRecordCount":0}""");
+        }));
+
+        var answer = await client.ListItemsAsync(Server(MediaServerKinds.Jellyfin), "movies", CancellationToken.None);
+
+        var unreachable = Assert.IsType<MediaServerAnswer<MediaServerLibrary>.Unreachable>(answer);
+        Assert.Contains("Leaving soon", unreachable.Reason, StringComparison.Ordinal);
+        Assert.NotEmpty(queries);
+        Assert.All(queries, query => Assert.Contains("CollapseBoxSetItems=false", query, StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task A_Plex_section_that_hides_titles_in_collections_is_not_an_answer()
+    {
+        var client = new PlexMediaServerClient(Factory(request =>
+        {
+            var path = request.RequestUri!.AbsolutePath;
+            return path switch
+            {
+                "/library/sections" => Json("""{"MediaContainer":{"Directory":[{"key":"1","type":"movie"}]}}"""),
+                "/myplex/account" => Json("""{"MyPlex":{"username":"james"}}"""),
+                "/library/sections/1/all" => Json("""{"MediaContainer":{"size":2,"totalSize":2,"Metadata":[{"ratingKey":"10","type":"movie","title":"Sintel"},{"ratingKey":"99","type":"collection","title":"Leaving soon"}]}}"""),
+                _ => Json("""{"MediaContainer":{"size":0,"Metadata":[]}}""")
+            };
+        }));
+
+        var answer = await client.ListItemsAsync(Server(MediaServerKinds.Plex, "http://192.168.1.51:32400"), "movies", CancellationToken.None);
+
+        Assert.Contains("Leaving soon", Assert.IsType<MediaServerAnswer<MediaServerLibrary>.Unreachable>(answer).Reason, StringComparison.Ordinal);
+    }
+
     private static HttpResponseMessage Json(string body)
         => new(HttpStatusCode.OK) { Content = new StringContent(body, Encoding.UTF8, "application/json") };
 

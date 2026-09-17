@@ -48,6 +48,10 @@ public interface IRetentionRepository
     Task<IReadOnlyList<RetentionEpisodeRemoval>> ListEpisodeRemovalsAsync(string seriesId, CancellationToken cancellationToken);
 
     Task<RetentionEpisodeRemoval?> DeleteEpisodeRemovalAsync(string episodeId, CancellationToken cancellationToken);
+
+    Task<IReadOnlyList<RetentionCollectionState>> ListCollectionStatesAsync(CancellationToken cancellationToken);
+
+    Task SaveCollectionStateAsync(RetentionCollectionState state, CancellationToken cancellationToken);
 }
 
 public sealed class SqliteRetentionRepository(
@@ -61,7 +65,7 @@ public sealed class SqliteRetentionRepository(
         "id, rule_id, rule_name, kind, trigger, preview_run_id, started_utc, finished_utc, matched_count, excluded_count, removed_count, failed_count, bytes, summary";
 
     private const string MarkColumns =
-        "m.rule_id, COALESCE(r.name, 'Deleted rule'), m.entity_id, m.level, m.show_id, m.season_number, m.episode_ids_json, m.title, m.year, m.size_bytes, m.reasons_json, m.first_matched_utc, m.remove_after_utc, m.state, m.state_reason, m.updated_utc";
+        "m.rule_id, COALESCE(r.name, 'Deleted rule'), m.entity_id, m.level, m.show_id, m.season_number, m.episode_ids_json, m.title, m.year, m.size_bytes, m.reasons_json, m.first_matched_utc, m.remove_after_utc, m.state, m.state_reason, m.updated_utc, m.server_items_json";
 
     private const string KeepColumns =
         "k.id, k.entity_id, k.level, k.title, k.rule_id, r.name, k.note, k.created_utc";
@@ -315,14 +319,15 @@ public sealed class SqliteRetentionRepository(
         using var command = connection.CreateCommand();
         command.CommandText =
             """
-            INSERT INTO retention_marks (rule_id, entity_id, level, show_id, season_number, episode_ids_json, title, year, size_bytes, reasons_json, first_matched_utc, remove_after_utc, state, state_reason, updated_utc)
-            VALUES (@ruleId, @entityId, @level, @showId, @season, @episodes, @title, @year, @size, @reasons, @first, @removeAfter, @state, @stateReason, @updated)
+            INSERT INTO retention_marks (rule_id, entity_id, level, show_id, season_number, episode_ids_json, title, year, size_bytes, reasons_json, first_matched_utc, remove_after_utc, state, state_reason, updated_utc, server_items_json)
+            VALUES (@ruleId, @entityId, @level, @showId, @season, @episodes, @title, @year, @size, @reasons, @first, @removeAfter, @state, @stateReason, @updated, @serverItems)
             ON CONFLICT (rule_id, entity_id) DO UPDATE SET
                 level = excluded.level, show_id = excluded.show_id, season_number = excluded.season_number,
                 episode_ids_json = excluded.episode_ids_json, title = excluded.title, year = excluded.year,
                 size_bytes = excluded.size_bytes, reasons_json = excluded.reasons_json,
                 remove_after_utc = excluded.remove_after_utc, state = excluded.state,
-                state_reason = excluded.state_reason, updated_utc = excluded.updated_utc;
+                state_reason = excluded.state_reason, updated_utc = excluded.updated_utc,
+                server_items_json = excluded.server_items_json;
             """;
         AddParameter(command, "@ruleId", mark.RuleId);
         AddParameter(command, "@entityId", mark.EntityId);
@@ -330,6 +335,7 @@ public sealed class SqliteRetentionRepository(
         AddParameter(command, "@showId", mark.ShowId);
         AddParameter(command, "@season", mark.SeasonNumber);
         AddParameter(command, "@episodes", JsonSerializer.Serialize(mark.EpisodeIds));
+        AddParameter(command, "@serverItems", JsonSerializer.Serialize(mark.ServerItems));
         AddParameter(command, "@title", mark.Title);
         AddParameter(command, "@year", mark.Year);
         AddParameter(command, "@size", mark.SizeBytes);
@@ -502,6 +508,51 @@ public sealed class SqliteRetentionRepository(
         return removal;
     }
 
+    // ------------------------------------------------------------ collections
+    public async Task<IReadOnlyList<RetentionCollectionState>> ListCollectionStatesAsync(CancellationToken cancellationToken)
+    {
+        await using var connection = await OpenAsync(cancellationToken);
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT server_id, media_type, members, skipped, problem, attempted_utc, synced_utc FROM retention_collections ORDER BY server_id, media_type;";
+        var states = new List<RetentionCollectionState>();
+        using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            states.Add(new RetentionCollectionState(
+                reader.GetString(0),
+                reader.GetString(1),
+                reader.GetInt32(2),
+                reader.GetInt32(3),
+                reader.IsDBNull(4) ? null : reader.GetString(4),
+                DateTimeOffset.Parse(reader.GetString(5)),
+                reader.IsDBNull(6) ? null : DateTimeOffset.Parse(reader.GetString(6))));
+        }
+
+        return states;
+    }
+
+    public async Task SaveCollectionStateAsync(RetentionCollectionState state, CancellationToken cancellationToken)
+    {
+        await using var connection = await OpenAsync(cancellationToken);
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            """
+            INSERT INTO retention_collections (server_id, media_type, members, skipped, problem, attempted_utc, synced_utc)
+            VALUES (@server, @mediaType, @members, @skipped, @problem, @attempted, @synced)
+            ON CONFLICT (server_id, media_type) DO UPDATE SET
+                members = excluded.members, skipped = excluded.skipped, problem = excluded.problem,
+                attempted_utc = excluded.attempted_utc, synced_utc = COALESCE(excluded.synced_utc, retention_collections.synced_utc);
+            """;
+        AddParameter(command, "@server", state.ServerId);
+        AddParameter(command, "@mediaType", state.MediaType);
+        AddParameter(command, "@members", state.Members);
+        AddParameter(command, "@skipped", state.Skipped);
+        AddParameter(command, "@problem", state.Problem);
+        AddParameter(command, "@attempted", state.AttemptedUtc.ToString("O"));
+        AddParameter(command, "@synced", state.SyncedUtc?.ToString("O"));
+        await command.ExecuteNonQueryAsync(cancellationToken);
+    }
+
     // ---------------------------------------------------------------- reading
     private Task<DbConnection> OpenAsync(CancellationToken cancellationToken)
         => databaseConnectionFactory.OpenConnectionAsync(DelunoDatabaseNames.Platform, cancellationToken).AsTask();
@@ -528,7 +579,10 @@ public sealed class SqliteRetentionRepository(
                 DateTimeOffset.Parse(reader.GetString(12)),
                 reader.GetString(13),
                 reader.IsDBNull(14) ? null : reader.GetString(14),
-                DateTimeOffset.Parse(reader.GetString(15))));
+                DateTimeOffset.Parse(reader.GetString(15)))
+            {
+                ServerItems = JsonSerializer.Deserialize<RetentionServerItem[]>(reader.GetString(16)) ?? []
+            });
         }
 
         return marks;

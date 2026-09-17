@@ -138,6 +138,7 @@ public sealed class RetentionService(
                 var wasHeld = existing.State == RetentionMarkStates.Held;
                 var refreshed = existing with
                 {
+                    ServerItems = ServerItems(candidate),
                     Title = candidate.Title,
                     SizeBytes = candidate.SizeBytes,
                     Reasons = candidate.Reasons,
@@ -154,7 +155,10 @@ public sealed class RetentionService(
             var mark = new RetentionMark(
                 rule.Id, rule.Name, candidate.EntityId, rule.Level, candidate.Unit.ShowId, candidate.Unit.SeasonNumber,
                 candidate.Unit.Part?.EpisodeIds ?? [], candidate.Title, candidate.Year, candidate.SizeBytes, candidate.Reasons,
-                started, started.AddDays(rule.WaitDays), RetentionMarkStates.Leaving, null, started);
+                started, started.AddDays(rule.WaitDays), RetentionMarkStates.Leaving, null, started)
+            {
+                ServerItems = ServerItems(candidate)
+            };
             await repository.UpsertMarkAsync(mark, cancellationToken);
             marks[candidate.EntityId] = mark;
             newlyMarked.Add(mark);
@@ -588,6 +592,12 @@ public sealed class RetentionService(
 
         return run;
     }
+
+    /// <summary>What the title was matched to on each server, for the Leaving soon collections (#521).</summary>
+    private static IReadOnlyList<RetentionServerItem> ServerItems(RetentionCandidate candidate)
+        => candidate.ServerItems
+            .Select(match => new RetentionServerItem(match.Server.Id, match.Item.ServerItemId, match.Item.Level, match.Item.SectionId))
+            .ToArray();
 
     private static string Summary(int marked, int cleared, int removed, long freed, int ready, int held, int failed, int leaving)
     {

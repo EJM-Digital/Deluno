@@ -46,6 +46,10 @@ public sealed class RetentionPersistenceTests
         var read = Assert.Single(await repository.ListMarksAsync(null, CancellationToken.None));
         Assert.Equal((Now, RetentionMarkStates.Ready, "Watched"), (read.FirstMatchedUtc, read.State, read.RuleName));
         Assert.Equal(["again"], read.Reasons);
+        Assert.Empty(read.ServerItems);
+
+        await repository.UpsertMarkAsync(read with { ServerItems = [new RetentionServerItem("server-1", "p1", "movie", "3")] }, CancellationToken.None);
+        Assert.Equal([new RetentionServerItem("server-1", "p1", "movie", "3")], Assert.Single(await repository.ListMarksAsync(null, CancellationToken.None)).ServerItems);
 
         await repository.DeleteRuleAsync(rule.Id, CancellationToken.None);
         Assert.Empty(await repository.ListMarksAsync(null, CancellationToken.None));
@@ -79,6 +83,19 @@ public sealed class RetentionPersistenceTests
         Assert.Equal("Watched seasons", Assert.Single(await repository.ListEpisodeRemovalsAsync("s1", CancellationToken.None)).RuleName);
         Assert.NotNull(await repository.DeleteEpisodeRemovalAsync("e1", CancellationToken.None));
         Assert.Empty(await repository.ListEpisodeRemovalsAsync("s1", CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task A_collection_failure_keeps_when_it_last_worked()
+    {
+        using var storage = TestStorage.Create();
+        var repository = await RepositoryAsync(storage);
+
+        await repository.SaveCollectionStateAsync(new RetentionCollectionState("server-1", "movies", 2, 0, null, Now, Now), CancellationToken.None);
+        await repository.SaveCollectionStateAsync(new RetentionCollectionState("server-1", "movies", 3, 1, "Deluno could not reach Rig lab Emby.", Now.AddHours(8), null), CancellationToken.None);
+
+        var state = Assert.Single(await repository.ListCollectionStatesAsync(CancellationToken.None));
+        Assert.Equal((3, 1, "Deluno could not reach Rig lab Emby.", Now.AddHours(8), (DateTimeOffset?)Now), (state.Members, state.Skipped, state.Problem, state.AttemptedUtc, state.SyncedUtc));
     }
 
     private static async Task<SqliteRetentionRepository> RepositoryAsync(TestStorage storage)

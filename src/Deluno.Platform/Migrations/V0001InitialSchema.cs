@@ -67,7 +67,8 @@ public static class PlatformDatabaseMigrations
         new V0059RetentionRules(),
         new V0060CompanionToolLogins(),
         new V0061RetentionSteps(),
-        new V0062RetentionLeavingSoon()
+        new V0062RetentionLeavingSoon(),
+        new V0063RetentionCollections()
     ];
 
     private sealed class V0001InitialSchema : SqliteSqlMigration
