@@ -114,6 +114,42 @@ public sealed class AcquisitionOverrideServiceTests
         Assert.Equal(clientForgets ? ["dispatch-1"] : [], archived);
     }
 
+    /// <summary>
+    /// The blocker says Force un-refuses a blocked release; it now does, so the
+    /// search it starts can use that release again (rig, #497).
+    /// </summary>
+    [Fact]
+    public async Task A_force_un_refuses_the_titles_blocked_releases()
+    {
+        var unblocked = new List<string>();
+        var blocked = DispatchProxy.Create<IBlockedReleaseRepository, UnblockRecorder>();
+        ((UnblockRecorder)(object)blocked).Unblocked = unblocked;
+        var service = new AcquisitionOverrideService(new FakeProcessors(), new FakeExclusions(), new FakeClients(), NullLogger<AcquisitionOverrideService>.Instance, null, blocked);
+
+        var result = await service.ForceAsync(
+            new AcquisitionOverrideRequest("movie-1", "The Terror", BlockedReleaseIdsOrNull: ["blocked-1"]),
+            CancellationToken.None);
+
+        Assert.Equal(["blocked-1"], unblocked);
+        Assert.Contains("Un-refused the release, so searches can use it again.", result.Cleared);
+    }
+
+    public class UnblockRecorder : DispatchProxy
+    {
+        public List<string> Unblocked { get; set; } = [];
+
+        protected override object? Invoke(MethodInfo? targetMethod, object?[]? args)
+        {
+            if (targetMethod?.Name == nameof(IBlockedReleaseRepository.UnblockAsync))
+            {
+                Unblocked.Add((string)args![0]!);
+                return Task.FromResult(true);
+            }
+
+            throw new NotSupportedException(targetMethod?.Name);
+        }
+    }
+
     public class ArchiveRecorder : DispatchProxy
     {
         public List<string> Archived { get; set; } = [];

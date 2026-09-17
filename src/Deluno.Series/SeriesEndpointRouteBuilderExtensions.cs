@@ -580,6 +580,7 @@ public static class SeriesEndpointRouteBuilderExtensions
             TimeProvider timeProvider,
             IMediaTagStore tagStore,
             IReleasePreferencePlanRepository releasePreferencePlanRepository,
+            IBlockedReleaseRepository blockedReleaseRepository,
             CancellationToken cancellationToken) =>
         {
             var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
@@ -618,7 +619,8 @@ public static class SeriesEndpointRouteBuilderExtensions
                     held.DownloadClientName ?? fetchedBefore?.ClientName,
                     held.QueueItemId ?? fetchedBefore?.QueueItemId,
                     exclusionIds,
-                    held.DispatchId),
+                    held.DispatchId,
+                    (await blockedReleaseRepository.ListForAsync("tv", id, cancellationToken)).Select(release => release.Id).ToArray()),
                 cancellationToken);
 
             // And then actually look for it. Clearing the obstacles and stopping
