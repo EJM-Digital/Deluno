@@ -582,10 +582,8 @@ public static class AutomationEndpointRouteBuilderExtensions
         BulkCatalogueAddItem item,
         IReadOnlyList<Deluno.Libraries.Contracts.LibraryItem> libraries,
         string mediaType)
-        => libraries.Where(library =>
-            string.Equals(library.MediaType, mediaType, StringComparison.OrdinalIgnoreCase)
-            && (string.IsNullOrWhiteSpace(item.LibraryId)
-                || string.Equals(library.Id, item.LibraryId.Trim(), StringComparison.OrdinalIgnoreCase)));
+        // The named library, or the first of the type: never every library (#530).
+        => Deluno.Libraries.Contracts.LibraryMembership.Targets(libraries, mediaType, item.LibraryId, []);
 
     private static async Task<JobQueueItem> EnqueueRefreshAsync(
         IJobScheduler jobScheduler,

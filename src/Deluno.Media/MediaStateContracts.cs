@@ -160,6 +160,10 @@ public sealed record MediaRatingFact(string Source, double? Score, int? Votes);
 /// </summary>
 public sealed record ProbedFileFacts(string? VideoCodec, string? AudioCodec, string? AudioChannels);
 
+/// <summary>A tracked file another tool said it changed.</summary>
+/// <param name="LibraryId">The library holding it, where Deluno knows.</param>
+public sealed record ChangedLibraryFile(string MediaId, string? LibraryId, string FilePath);
+
 /// <summary>One file the media probe still owes an answer for.</summary>
 /// <param name="FileSizeBytes">
 /// Recorded with the answer, so the next pass can tell a file that was repacked
@@ -445,6 +449,33 @@ public interface IMediaStateRepository
         int take,
         CancellationToken cancellationToken,
         IReadOnlyList<MediaPreferencePlanExpectation>? preferencePlans = null);
+
+    /// <summary>
+    /// Another tool changed a library file in place (#528): its size is taken
+    /// as it is now and its streams are owed a fresh read. Nothing is searched,
+    /// upgraded, renamed or imported. Matches the exact path, ignoring case.
+    /// </summary>
+    /// <returns>The titles holding that file; empty when Deluno does not track it.</returns>
+    /// <summary>
+    /// Takes a title out of one library it holds no file in, while it stays in
+    /// at least one other (#530). A copy that exists is removed through Remove,
+    /// with its files, not here.
+    /// </summary>
+    /// <returns>False when it is not in that library, holds a file there, or is in no other.</returns>
+    Task<bool> RemoveFromLibraryAsync(MediaKind kind, string mediaId, string libraryId, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Moves a title from one library to another, when it holds no file in the
+    /// first and is not already in the second (#530). A show's episodes move
+    /// with it.
+    /// </summary>
+    Task<bool> MoveToLibraryAsync(MediaKind kind, string mediaId, string fromLibraryId, string toLibraryId, CancellationToken cancellationToken);
+
+    Task<IReadOnlyList<ChangedLibraryFile>> MarkFileChangedAsync(
+        MediaKind kind,
+        string filePath,
+        long sizeBytes,
+        CancellationToken cancellationToken);
 
     Task UpdateProbedFileFactsAsync(
         MediaKind kind,

@@ -81,6 +81,8 @@ public static class DelunoApplicationEndpointMapping
         endpoints.MapDelunoSubtitleProviders();
         endpoints.MapDelunoMediaServers();
         endpoints.MapDelunoSeerr();
+        endpoints.MapDelunoExternalFileChanged();
+        endpoints.MapDelunoMediaLibraryMembership();
         endpoints.MapDelunoRetention();
         endpoints.MapDelunoCompanions();
         writeEndpoints.MapDelunoLibraries();

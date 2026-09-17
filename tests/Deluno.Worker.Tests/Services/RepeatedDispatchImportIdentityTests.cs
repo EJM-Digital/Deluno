@@ -20,15 +20,32 @@ public sealed class RepeatedDispatchImportIdentityTests
             newDispatch));
     }
 
+    /// <summary>
+    /// An import that gave up keeps its file until the file changes: otherwise
+    /// every pass queued the same broken file again (rig). A file written after
+    /// the failure is a new attempt.
+    /// </summary>
     [Fact]
-    public void Dead_letter_does_not_reserve_a_dispatch_but_unscoped_imports_keep_source_dedupe()
+    public void Dead_letter_reserves_its_file_until_the_file_changes_and_unscoped_imports_keep_source_dedupe()
     {
         var dispatch = new DispatchCatalogueLink("dispatch-new", "movie", "movie-1");
 
+        Assert.True(WorkPlanner.HasImportReservation(
+            [ImportJob("dead-letter", "dispatch-new")],
+            "C:/completed/Release",
+            dispatch,
+            _ => DateTimeOffset.UnixEpoch.AddHours(-1)));
         Assert.False(WorkPlanner.HasImportReservation(
             [ImportJob("dead-letter", "dispatch-new")],
             "C:/completed/Release",
-            dispatch));
+            dispatch,
+            _ => DateTimeOffset.UnixEpoch.AddHours(1)));
+        // A source that cannot be read has not been shown to change.
+        Assert.True(WorkPlanner.HasImportReservation(
+            [ImportJob("dead-letter", "dispatch-new")],
+            "C:/completed/Release",
+            dispatch,
+            _ => null));
         Assert.True(WorkPlanner.HasImportReservation(
             [ImportJob("completed", null)],
             "C:/completed/Release",

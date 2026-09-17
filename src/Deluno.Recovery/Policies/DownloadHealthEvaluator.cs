@@ -79,7 +79,10 @@ public sealed class DownloadHealthEvaluator : IRecoveryHealthEvaluator
                 CanSafelyRemove: false));
         }
 
-        if (item.EtaSeconds > ExcessiveEta.TotalSeconds)
+        // Only a download still downloading has a completion time. qBittorrent
+        // reports 8640000 seconds, its "never", for one that is finished and
+        // seeding, and every finished torrent was flagged (#523).
+        if (item.Status == "downloading" && item.EtaSeconds > ExcessiveEta.TotalSeconds)
         {
             findings.Add(new(
                 Severity: "warning",

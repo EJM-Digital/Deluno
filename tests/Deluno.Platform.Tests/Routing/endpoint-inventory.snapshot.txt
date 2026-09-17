@@ -22,6 +22,7 @@ DELETE /api/media-servers/{id}
 DELETE /api/metadata/cache
 DELETE /api/movies/import-recovery/{id}
 DELETE /api/movies/{id}
+DELETE /api/movies/{id}/libraries/{libraryId}
 DELETE /api/notification-webhooks/{id}
 DELETE /api/notifications/
 DELETE /api/notifications/{notificationId}
@@ -35,6 +36,7 @@ DELETE /api/retention/rules/{id}
 DELETE /api/seerr-servers/{id}
 DELETE /api/series/import-recovery/{id}
 DELETE /api/series/{id}
+DELETE /api/series/{id}/libraries/{libraryId}
 DELETE /api/setup/draft
 DELETE /api/subtitle-providers/{key}
 DELETE /api/tags/{id}
@@ -128,6 +130,7 @@ GET /api/movies/wanted
 GET /api/movies/{id}
 GET /api/movies/{id}/acquisition-blockers
 GET /api/movies/{id}/copy
+GET /api/movies/{id}/libraries/
 GET /api/movies/{id}/metadata/issue
 GET /api/movies/{id}/preference-evaluation
 GET /api/movies/{id}/removal-preview
@@ -176,6 +179,7 @@ GET /api/series/wanted
 GET /api/series/{id}
 GET /api/series/{id}/acquisition-blockers
 GET /api/series/{id}/inventory
+GET /api/series/{id}/libraries/
 GET /api/series/{id}/metadata/issue
 GET /api/series/{id}/monitored-missing
 GET /api/series/{id}/numbering
@@ -256,6 +260,7 @@ POST /api/intake-sources/{id}/approve-preview
 POST /api/intake-sources/{id}/exclude-preview
 POST /api/intake-sources/{id}/preview
 POST /api/intake-sources/{id}/sync
+POST /api/integrations/external/file-changed
 POST /api/integrations/external/import-preview
 POST /api/integrations/external/trigger-refresh
 POST /api/integrations/processors/connections
@@ -302,6 +307,7 @@ POST /api/movies/{id}/automation/skip-once
 POST /api/movies/{id}/evaluate-candidate
 POST /api/movies/{id}/force-redownload
 POST /api/movies/{id}/grab
+POST /api/movies/{id}/libraries/
 POST /api/movies/{id}/metadata/issue/acknowledge
 POST /api/movies/{id}/metadata/jobs
 POST /api/movies/{id}/metadata/link
@@ -350,6 +356,7 @@ POST /api/series/{id}/automation/skip-once
 POST /api/series/{id}/episodes/search
 POST /api/series/{id}/force-redownload
 POST /api/series/{id}/grab
+POST /api/series/{id}/libraries/
 POST /api/series/{id}/metadata/issue/acknowledge
 POST /api/series/{id}/metadata/jobs
 POST /api/series/{id}/metadata/link
@@ -398,6 +405,7 @@ PUT /api/media-servers/{id}
 PUT /api/movie-collections/{id}
 PUT /api/movie-collections/{id}/members/{providerId}/exclusion
 PUT /api/movies/monitoring
+PUT /api/movies/{id}/libraries/{libraryId}
 PUT /api/movies/{id}/metadata/override
 PUT /api/movies/{id}/replacement-protection
 PUT /api/notification-preferences/
@@ -412,6 +420,7 @@ PUT /api/retention/rules/{id}
 PUT /api/seerr-servers/{id}
 PUT /api/series/episodes/monitoring
 PUT /api/series/monitoring
+PUT /api/series/{id}/libraries/{libraryId}
 PUT /api/series/{id}/metadata/override
 PUT /api/series/{id}/numbering
 PUT /api/series/{id}/replacement-protection

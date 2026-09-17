@@ -439,10 +439,13 @@ public sealed class OutboundNotificationService(
             return true;
         }
 
+        // "all" is what the settings screen stores for All events; it is not a
+        // prefix of any category, so those webhooks never fired (#524).
         var filters = eventFilters.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
         return filters.Any(filter =>
             eventCategory.StartsWith(filter, StringComparison.OrdinalIgnoreCase) ||
-            string.Equals(filter, "*", StringComparison.Ordinal));
+            string.Equals(filter, "*", StringComparison.Ordinal) ||
+            string.Equals(filter, "all", StringComparison.OrdinalIgnoreCase));
     }
 
     private static int GetDiscordColor(string eventCategory) => eventCategory switch

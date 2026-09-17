@@ -6,6 +6,9 @@ public static class MediaSearchReasons
 {
     public const string Ok = "ok";
     public const string NoIndexers = "no_indexers";
+
+    /// <summary>The title is in more than one library and the search did not say which (#530).</summary>
+    public const string ChooseLibrary = "choose_library";
     public const string AllIndexersFailed = "all_indexers_failed";
     public const string CircuitOpen = "circuit_open";
     public const string NoResults = "no_results";

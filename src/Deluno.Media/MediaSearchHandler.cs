@@ -50,7 +50,8 @@ public static class MediaSearchHandler
         RecordMediaSearchAttemptAsync recordSearchAttemptAsync,
         CancellationToken cancellationToken,
         IMediaTagStore? mediaTagStore = null,
-        IReleasePreferencePlanRepository? releasePreferencePlanRepository = null)
+        IReleasePreferencePlanRepository? releasePreferencePlanRepository = null,
+        string? libraryId = null)
     {
         var item = await mediaStateRepository.GetByIdAsync(kind, id, cancellationToken);
         if (item is null)
@@ -60,16 +61,16 @@ public static class MediaSearchHandler
 
         var entityType = kind == MediaKind.Movie ? "movie" : "series";
         var mediaType = kind == MediaKind.Movie ? "movies" : "tv";
-        var wantedItem = (await mediaStateRepository.ListWantedByIdsAsync(kind, [id], cancellationToken))
-            .FirstOrDefault(candidate => candidate.Id == id);
-        if (wantedItem is null || string.IsNullOrWhiteSpace(wantedItem.LibraryId))
+        var libraries = await librariesRepository.ListLibrariesAsync(cancellationToken);
+        var rows = (await mediaStateRepository.ListWantedByIdsAsync(kind, [id], cancellationToken))
+            .Where(candidate => candidate.Id == id)
+            .ToArray();
+        var (wantedItem, choiceProblem) = MediaLibraryChoice.Pick(rows, libraryId, libraries, entityType);
+        if (wantedItem is null)
         {
-            return BlockedResult(
-                $"This {entityType} is not currently linked to a searchable library.",
-                MediaSearchReasons.NotSearchable);
+            return BlockedResult(choiceProblem!, rows.Length > 1 && string.IsNullOrWhiteSpace(libraryId) ? MediaSearchReasons.ChooseLibrary : MediaSearchReasons.NotSearchable);
         }
 
-        var libraries = await librariesRepository.ListLibrariesAsync(cancellationToken);
         var library = libraries.FirstOrDefault(candidate => candidate.Id == wantedItem.LibraryId);
         if (library is null)
         {

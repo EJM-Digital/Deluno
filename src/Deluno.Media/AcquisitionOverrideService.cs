@@ -1,5 +1,6 @@
 using Deluno.Contracts;
 using Deluno.Integrations.DownloadClients;
+using Deluno.Jobs.Data;
 using Deluno.Platform.Contracts;
 using Deluno.Platform.Data;
 using Microsoft.Extensions.Logging;
@@ -33,7 +34,8 @@ public sealed class AcquisitionOverrideService(
     IProcessorRepository processorRepository,
     IUnifiedExclusionRepository exclusions,
     IDownloadClientTelemetryService downloadClients,
-    ILogger<AcquisitionOverrideService> logger)
+    ILogger<AcquisitionOverrideService> logger,
+    IDownloadDispatchesRepository? dispatches = null)
 {
     public async Task<AcquisitionOverrideResponse> ForceAsync(
         AcquisitionOverrideRequest request,
@@ -234,6 +236,14 @@ public sealed class AcquisitionOverrideService(
             if (result.Succeeded)
             {
                 cleared.Add($"Made {request.DownloadClientName ?? "the download client"} forget the release, so it will accept it again.");
+                // The open dispatch is what says a client is holding this. Left
+                // open, "already has a download" stayed on the title after the
+                // client had forgotten it (seen on the rig).
+                if (dispatches is not null && request.DispatchId is { Length: > 0 } dispatchId)
+                {
+                    await dispatches.ArchiveDispatchAsync(dispatchId, "Forgotten at the download client by a forced re-download.", cancellationToken);
+                }
+
                 return;
             }
 
@@ -331,7 +341,8 @@ public sealed record AcquisitionOverrideRequest(
     string? DownloadClientId = null,
     string? DownloadClientName = null,
     string? QueueItemId = null,
-    IReadOnlyList<string>? ExclusionIdsOrNull = null)
+    IReadOnlyList<string>? ExclusionIdsOrNull = null,
+    string? DispatchId = null)
 {
     public IReadOnlyList<string> ExclusionIds => ExclusionIdsOrNull ?? [];
 }

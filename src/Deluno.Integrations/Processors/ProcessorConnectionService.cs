@@ -301,17 +301,19 @@ public sealed class ProcessorConnectionService(IHttpClientFactory httpClientFact
     /// Deluno sent is missing or wrong (Weir #480). Said as that, because
     /// "forbidden" gives nobody anything to do.
     /// </summary>
-    private static async Task<string> ForbiddenMessageAsync(
+    /// <remarks>
+    /// Said once. The processor's own words were added in brackets, and for a
+    /// refused secret they are the same instruction again: on the rig the Queue
+    /// read "Set a webhook secret in Weir proof… (A webhook secret is
+    /// required.)". The status code already says which of the two it is.
+    /// </remarks>
+    private static Task<string> ForbiddenMessageAsync(
         HttpResponseMessage response,
         ProcessorConnectionItem connection,
         CancellationToken cancellationToken)
-    {
-        var explanation = await ReadRefusalAsync(response, cancellationToken);
-        var advice = response.StatusCode == System.Net.HttpStatusCode.Unauthorized
+        => Task.FromResult(response.StatusCode == System.Net.HttpStatusCode.Unauthorized
             ? $"{connection.Name} refused the webhook secret on this processor connection. Copy {connection.Name}'s secret for Deluno into the connection, so Deluno can ask about hand-offs."
-            : $"Set a webhook secret in {connection.Name} and the same secret on this processor connection in Deluno, so Deluno can ask about hand-offs.";
-        return explanation is null ? advice : $"{advice} ({explanation})";
-    }
+            : $"Set a webhook secret in {connection.Name} and the same secret on this processor connection in Deluno, so Deluno can ask about hand-offs.");
 
     private static async Task<HashSet<string>> ReadCapabilitiesAsync(HttpResponseMessage response, CancellationToken cancellationToken)
     {

@@ -1382,15 +1382,20 @@ public sealed class WorkPlanner(
         }
     }
 
+    /// <param name="lastWrittenUtc">
+    /// When the source was last written; null when it cannot be read. Defaults
+    /// to the file system.
+    /// </param>
     internal static bool HasImportReservation(
         IEnumerable<JobQueueItem> jobs,
         string normalizedSourcePath,
-        DispatchCatalogueLink? dispatch)
+        DispatchCatalogueLink? dispatch,
+        Func<string, DateTimeOffset?>? lastWrittenUtc = null)
     {
         foreach (var job in jobs)
         {
             if (!string.Equals(job.JobType, "filesystem.import.execute", StringComparison.OrdinalIgnoreCase)
-                || string.Equals(job.Status, "dead-letter", StringComparison.OrdinalIgnoreCase)
+                || (string.Equals(job.Status, "dead-letter", StringComparison.OrdinalIgnoreCase) && SourceChangedSince(job, lastWrittenUtc ?? LastWrittenUtc))
                 || !string.Equals(
                     NormalizeSourceKey(TryReadImportSourcePath(job.PayloadJson) ?? string.Empty),
                     normalizedSourcePath,
@@ -1416,6 +1421,37 @@ public sealed class WorkPlanner(
         }
 
         return false;
+    }
+
+    /// <summary>
+    /// An import that gave up still holds its file, until the file changes.
+    ///
+    /// <para>A dead-lettered import used to reserve nothing, so the next pass
+    /// queued the same broken file again, it failed the same way, and the Queue
+    /// showed the retry revived for ever (the corrupt refined copy of The Terror
+    /// on the rig). Retrying it unchanged is a person's choice, from Queue; a
+    /// file that has been written since - repaired, refined again, replaced - is
+    /// a new attempt worth making by itself.</para>
+    /// </summary>
+    private static bool SourceChangedSince(JobQueueItem job, Func<string, DateTimeOffset?> lastWrittenUtc)
+    {
+        var source = TryReadImportSourcePath(job.PayloadJson);
+        var failedAt = job.LastAttemptUtc ?? job.CompletedUtc ?? job.CreatedUtc;
+        return source is not null && lastWrittenUtc(source) is { } written && written > failedAt;
+    }
+
+    private static DateTimeOffset? LastWrittenUtc(string path)
+    {
+        try
+        {
+            return File.Exists(path) ? File.GetLastWriteTimeUtc(path)
+                : Directory.Exists(path) ? Directory.GetLastWriteTimeUtc(path)
+                : null;
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            return null;
+        }
     }
 
     private static string? TryReadImportDispatchId(string? payloadJson)

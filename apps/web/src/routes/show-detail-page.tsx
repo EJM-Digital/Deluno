@@ -40,6 +40,7 @@ import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { Card, CardContent } from "../components/ui/card";
 import { AcquisitionBlockersCard } from "../components/app/acquisition-blockers-card";
+import { LibraryMembershipCard, type LibraryMembership } from "../components/app/library-membership-card";
 import { RetentionTitleCard } from "../components/app/retention-title-card";
 import { RemoveMediaDialog, type MediaRemovalPreview, type RemoveMediaOptions } from "../components/app/remove-media-dialog";
 import { CreditsRow, readStoredCredits } from "../components/app/credits-row";
@@ -82,6 +83,7 @@ interface ShowDetailLoaderData {
   importRecovery: SeriesImportRecoverySummary;
   inventory: SeriesInventoryDetail;
   libraries: LibraryItem[];
+  memberships: LibraryMembership[];
   origins: IntakeTitleOriginItem[];
   removalPreview: MediaRemovalPreview;
   searchHistory: SeriesSearchHistoryItem[];
@@ -110,7 +112,7 @@ export async function showDetailLoader({
   params: { id?: string };
 }): Promise<ShowDetailLoaderData> {
   const id = params.id!;
-  const [series, metadataIssue, searchHistory, dispatches, importRecovery, inventory, activity, decisions, libraries, origins, removalPreview, acquisitionBlockers] =
+  const [series, metadataIssue, searchHistory, dispatches, importRecovery, inventory, activity, decisions, libraries, origins, removalPreview, acquisitionBlockers, memberships] =
     await Promise.all([
       fetchJson<SeriesListItem>(`/api/series/${id}`),
       fetchJson<MetadataProviderIssue | null>(`/api/series/${id}/metadata/issue`).catch(() => null),
@@ -132,15 +134,17 @@ export async function showDetailLoader({
       // Caught rather than awaited into the failure: a page that will not open
       // because it could not find out why a download is stuck is worse than a
       // page that simply does not mention it.
-      fetchJson<AcquisitionBlockersResponse>(`/api/series/${id}/acquisition-blockers`).catch(() => null)
+      fetchJson<AcquisitionBlockersResponse>(`/api/series/${id}/acquisition-blockers`).catch(() => null),
+      // The library this show is in, as a person chose it (#530).
+      fetchJson<LibraryMembership[]>(`/api/series/${id}/libraries/`).catch(() => [] as LibraryMembership[])
     ]);
 
-  return { acquisitionBlockers, activity, decisions, importRecovery, inventory, libraries, metadataIssue, origins, removalPreview, searchHistory, series, dispatches };
+  return { acquisitionBlockers, activity, decisions, importRecovery, inventory, libraries, memberships, metadataIssue, origins, removalPreview, searchHistory, series, dispatches };
 }
 
 export function ShowDetailPage() {
   const loaderData = useLoaderData() as ShowDetailLoaderData;
-  const { acquisitionBlockers, activity, decisions, dispatches, importRecovery, inventory, libraries, metadataIssue, origins, removalPreview, searchHistory, series } = loaderData;
+  const { acquisitionBlockers, activity, decisions, dispatches, importRecovery, inventory, libraries, memberships, metadataIssue, origins, removalPreview, searchHistory, series } = loaderData;
   const navigate = useNavigate();
   const revalidator = useRevalidator();
   const { preferences } = useDisplayPreferences();
@@ -184,7 +188,14 @@ export function ShowDetailPage() {
         qualityCutoffMet: series.qualityCutoffMet ?? false
       }
     : null;
-  const library = wantedItem ? libraries.find((item) => item.id === wantedItem.libraryId) ?? null : null;
+  // Which of its libraries the page's actions go through (#530). A show made
+  // wanted everywhere by the old add may still be in more than one.
+  const [chosenLibraryId, setChosenLibraryId] = useState<string | null>(null);
+  const actingLibraryId = memberships.some((item) => item.libraryId === chosenLibraryId)
+    ? chosenLibraryId
+    : memberships.find((item) => item.libraryId === wantedItem?.libraryId)?.libraryId ?? memberships[0]?.libraryId ?? wantedItem?.libraryId ?? null;
+  const libraryQuery = memberships.length > 1 && actingLibraryId ? `libraryId=${encodeURIComponent(actingLibraryId)}` : "";
+  const library = actingLibraryId ? libraries.find((item) => item.id === actingLibraryId) ?? null : null;
   const seriesSearches = searchHistory.filter((item) => item.seriesId === series.id);
   const seriesDispatches = dispatches.filter((item) => item.entityId === series.id);
   const importCases = importRecovery.recentCases.filter(
@@ -343,7 +354,7 @@ export function ShowDetailPage() {
       const response = await authedFetch(`/api/series/${series.id}/automation/defer`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ libraryId: wantedItem.libraryId, hours: 24 })
+        body: JSON.stringify({ libraryId: actingLibraryId ?? wantedItem.libraryId, hours: 24 })
       });
       if (!response.ok) throw new Error("series-defer-failed");
       toast.success("Deferred for 24 hours. Manual searches still work.");
@@ -362,7 +373,7 @@ export function ShowDetailPage() {
       const response = await authedFetch(`/api/series/${series.id}/automation/skip-once`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ libraryId: wantedItem.libraryId })
+        body: JSON.stringify({ libraryId: actingLibraryId ?? wantedItem.libraryId })
       });
       if (!response.ok) throw new Error("series-skip-once-failed");
       toast.success("The next scheduled search will be skipped.");
@@ -469,7 +480,8 @@ export function ShowDetailPage() {
     let searchResponse: Response | null = null;
 
     try {
-      searchResponse = await authedFetch(`/api/series/${series.id}/search${mode === "interactive" ? "?mode=preview" : ""}`, { method: "POST" });
+      const query = [mode === "interactive" ? "mode=preview" : "", libraryQuery].filter(Boolean).join("&");
+      searchResponse = await authedFetch(`/api/series/${series.id}/search${query ? `?${query}` : ""}`, { method: "POST" });
       if (!searchResponse.ok) throw new Error("series-search-failed");
       const response = searchResponse;
 
@@ -535,7 +547,7 @@ export function ShowDetailPage() {
     let grabResponse: Response | null = null;
 
     try {
-      const response = await authedFetch(`/api/series/${series.id}/grab`, {
+      const response = await authedFetch(`/api/series/${series.id}/grab${libraryQuery ? `?${libraryQuery}` : ""}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -961,6 +973,7 @@ export function ShowDetailPage() {
       */}
       <AcquisitionBlockersCard
         blockers={acquisitionBlockers}
+        libraryId={libraryQuery ? actingLibraryId : null}
         route="/api/series"
         mediaId={series.id}
         disabled={busyAction !== null}
@@ -1201,6 +1214,19 @@ export function ShowDetailPage() {
               </ListRow>
             </ListTable>
           </ListCard>
+
+          {memberships.length > 0 ? (
+            <LibraryMembershipCard
+              route="/api/series"
+              mediaId={series.id}
+              noun="show"
+              libraries={libraries.filter((item) => item.mediaType === "tv")}
+              memberships={memberships}
+              selectedLibraryId={actingLibraryId}
+              onSelect={setChosenLibraryId}
+              onChanged={() => revalidator.revalidate()}
+            />
+          ) : null}
 
           <ListCard title="Routing and destination" count={library?.name ?? "No library linked"}>
             <ListTable chevron={false} columns={[{ label: "Setting" }, { label: "Value", width: "minmax(0,2fr)", mobile: true }]}>

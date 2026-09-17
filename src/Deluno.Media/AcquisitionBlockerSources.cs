@@ -21,7 +21,8 @@ public static class AcquisitionBlockerSources
         string? DownloadClientName,
         string? QueueItemId,
         string? HandoffId,
-        string? ProcessorName);
+        string? ProcessorName,
+        string? DispatchId = null);
 
     /// <summary>
     /// A download Deluno completed for this title in the past.
@@ -80,7 +81,8 @@ public static class AcquisitionBlockerSources
             open.DownloadClientName,
             open.TorrentHashOrItemId,
             handoff?.Id,
-            handoff?.ProcessorName);
+            handoff?.ProcessorName,
+            open.Id);
     }
 
     /// <summary>

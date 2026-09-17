@@ -50,6 +50,27 @@ public sealed class ProcessorHandoffQueueStatusTests
             ProcessorHandoffQueueStatus.Resolve(Handoff(status), Jobs(), DownloadQueueStatuses.ImportReady));
     }
 
+    [Theory]
+    [InlineData("rejected")]
+    [InlineData("timed-out")]
+    [InlineData("stalled")]
+    [InlineData("lost")]
+    [InlineData("cancelled")]
+    public void A_hand_off_nothing_is_coming_back_for_is_not_still_waiting(string status)
+    {
+        Assert.Equal(
+            DownloadQueueStatuses.ProcessingFailed,
+            ProcessorHandoffQueueStatus.Resolve(Handoff(status), Jobs(), DownloadQueueStatuses.ImportReady));
+    }
+
+    [Fact]
+    public void A_released_hand_off_follows_the_ordinary_import()
+    {
+        Assert.Equal(
+            DownloadQueueStatuses.ImportReady,
+            ProcessorHandoffQueueStatus.Resolve(Handoff("released"), Jobs(), DownloadQueueStatuses.ImportReady));
+    }
+
     [Fact]
     public void A_failed_hand_off_reads_as_a_processing_failure()
     {

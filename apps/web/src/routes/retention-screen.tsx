@@ -566,9 +566,27 @@ export function RetentionPage() {
             </p>
           ) : null}
           {trial && trial.unmanaged.length > 0 ? (
-            <p className="text-[length:var(--type-caption)] text-muted-foreground">
-              {trial.unmanaged.length} on your servers but not in Deluno. They are never touched.
-            </p>
+            <details className="text-[length:var(--type-caption)] text-muted-foreground">
+              <summary className="cursor-pointer">
+                {trial.unmanaged.length} on your servers but not in Deluno. They are never touched.
+              </summary>
+              <ul className="mt-2 grid gap-1">
+                {trial.unmanaged.slice(0, 50).map((item) => (
+                  <li key={`${item.server}:${item.title}:${item.year ?? ""}`} className="flex items-center justify-between gap-2">
+                    <span className="text-foreground">
+                      {item.title}
+                      {item.year ? ` (${item.year})` : ""} <span className="text-muted-foreground">· {item.server}</span>
+                    </span>
+                    <a
+                      className="shrink-0 text-primary hover:underline"
+                      href={`${form.level === "movie" ? "/movies" : "/tv"}?add=true&title=${encodeURIComponent(item.year ? `${item.title} ${item.year}` : item.title)}`}
+                    >
+                      Bring it in
+                    </a>
+                  </li>
+                ))}
+              </ul>
+            </details>
           ) : null}
         </DrawerSection>
 

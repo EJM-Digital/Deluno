@@ -76,7 +76,8 @@ public static class MediaGrabHandler
         RecordMediaSearchAttemptAsync recordSearchAttemptAsync,
         CancellationToken cancellationToken,
         IGuidePackageStore? guidePackageStore = null,
-        IReleasePreferencePlanRepository? releasePreferencePlanRepository = null)
+        IReleasePreferencePlanRepository? releasePreferencePlanRepository = null,
+        string? libraryId = null)
     {
         var item = await mediaStateRepository.GetByIdAsync(kind, id, cancellationToken);
         if (item is null)
@@ -90,19 +91,21 @@ public static class MediaGrabHandler
             return MediaGrabResult.ValidationResult(validation);
         }
 
-        var wantedItem = (await mediaStateRepository.ListWantedByIdsAsync(kind, [id], cancellationToken))
-            .FirstOrDefault(candidate => candidate.Id == id);
         var entityType = kind == MediaKind.Movie ? "movie" : "series";
         var mediaType = kind == MediaKind.Movie ? "movies" : "tv";
-        if (wantedItem is null || string.IsNullOrWhiteSpace(wantedItem.LibraryId))
+        var libraries = await librariesRepository.ListLibrariesAsync(cancellationToken);
+        var rows = (await mediaStateRepository.ListWantedByIdsAsync(kind, [id], cancellationToken))
+            .Where(candidate => candidate.Id == id)
+            .ToArray();
+        var (wantedItem, choiceProblem) = MediaLibraryChoice.Pick(rows, libraryId, libraries, entityType);
+        if (wantedItem is null)
         {
             return MediaGrabResult.ValidationResult(new Dictionary<string, string[]>
             {
-                [$"{entityType}Id"] = [$"This {entityType} is not currently linked to a searchable library."]
+                ["libraryId"] = [choiceProblem!]
             });
         }
 
-        var libraries = await librariesRepository.ListLibrariesAsync(cancellationToken);
         var library = libraries.FirstOrDefault(candidate => candidate.Id == wantedItem.LibraryId);
         if (library is null)
         {

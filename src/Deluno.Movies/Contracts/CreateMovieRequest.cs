@@ -14,4 +14,5 @@ public sealed record CreateMovieRequest(
     double? Rating = null,
     string? Genres = null,
     string? ExternalUrl = null,
-    string? MetadataJson = null);
+    string? MetadataJson = null,
+    string? LibraryId = null);

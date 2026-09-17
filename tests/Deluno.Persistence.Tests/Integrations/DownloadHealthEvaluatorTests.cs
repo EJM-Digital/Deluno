@@ -93,6 +93,20 @@ public sealed class DownloadHealthEvaluatorTests
         Assert.Contains("manual action", preview.ProposedAction, StringComparison.OrdinalIgnoreCase);
     }
 
+    [Theory]
+    [InlineData(DownloadQueueStatuses.Downloading, true)]
+    [InlineData(DownloadQueueStatuses.Completed, false)]
+    [InlineData(DownloadQueueStatuses.ImportReady, false)]
+    [InlineData(DownloadQueueStatuses.WaitingForProcessor, false)]
+    [InlineData(DownloadQueueStatuses.Imported, false)]
+    public void An_unusually_long_completion_time_is_only_a_finding_while_downloading(string status, bool flagged)
+    {
+        // qBittorrent's "never": what it reports for a finished torrent that is seeding (#523).
+        var findings = Evaluate(CreateItem(status: status, etaSeconds: 8_640_000, speedMbps: 1));
+
+        Assert.Equal(flagged, findings.Any(finding => finding.Kind == "excessive-eta"));
+    }
+
     private static DownloadQueueItem CreateItem(
         string status = DownloadQueueStatuses.Downloading,
         string releaseName = "Example.Movie.2026.1080p.mkv",
