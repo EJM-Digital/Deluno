@@ -40,6 +40,11 @@ public sealed class ProcessorOutputImportQueue(
         CancellationToken cancellationToken)
     {
         var dispatch = await jobQueueRepository.FindRecentDispatchLinkAsync(handoff.ClientId, handoff.ReleaseName, cancellationToken);
+        if (await CatalogueImportNaming.RemovedSinceGrabAsync(dispatch, null, movieCatalogRepository, seriesCatalogRepository, cancellationToken) is { } removed)
+        {
+            return new ProcessorOutputImport(null, dispatch?.DispatchId, dispatch?.EntityId, removed);
+        }
+
         var catalogue = await CatalogueImportNaming.ResolveAsync(dispatch, movieCatalogRepository, seriesCatalogRepository, cancellationToken);
 
         var importRequest = new ImportExecuteRequest(
@@ -134,6 +139,60 @@ internal static class CatalogueImportNaming
                 ReadMetadataText(movie.MetadataJson, "Studio", "studio"),
                 null,
                 SplitCsv(movie.Genres));
+    }
+
+    /// <summary>
+    /// Why a grab must not be imported automatically any more, or null when it
+    /// can be: its title, or the library that grabbed it, was removed from Deluno
+    /// after the grab.
+    ///
+    /// <para>Without this a finished download outlived its title. The planner
+    /// fell back to the first library of its type and the import, with no
+    /// catalogue entry to name it from, created a new title named after the
+    /// release - "Dementia 13 1963 1080p WEB DL DDP5 1 H 264 DELUNO" - a minute
+    /// after the film had been removed on purpose (seen on the rig).</para>
+    /// </summary>
+    /// <param name="libraries">Every library Deluno has, not only the usable ones: a paused library was not removed. Null skips the library check, for a caller that already holds the library.</param>
+    public static async Task<string?> RemovedSinceGrabAsync(
+        DispatchCatalogueLink? dispatch,
+        IReadOnlyList<LibraryItem>? libraries,
+        IMovieCatalogRepository movieCatalogRepository,
+        ISeriesCatalogRepository seriesCatalogRepository,
+        CancellationToken cancellationToken)
+    {
+        if (dispatch is null)
+        {
+            return null;
+        }
+
+        if (libraries is not null &&
+            !string.IsNullOrWhiteSpace(dispatch.LibraryId) &&
+            !libraries.Any(library => string.Equals(library.Id, dispatch.LibraryId, StringComparison.OrdinalIgnoreCase)))
+        {
+            return "the library that grabbed it was removed from Deluno";
+        }
+
+        if (string.IsNullOrWhiteSpace(dispatch.EntityId))
+        {
+            return null;
+        }
+
+        // Only the entity kinds whose ids name a catalogue title; an episode's id does not.
+        if (string.Equals(dispatch.EntityType, "movie", StringComparison.OrdinalIgnoreCase))
+        {
+            return await movieCatalogRepository.GetByIdAsync(dispatch.EntityId, cancellationToken) is null
+                ? "the film was removed from Deluno"
+                : null;
+        }
+
+        if (string.Equals(dispatch.EntityType, "series", StringComparison.OrdinalIgnoreCase))
+        {
+            return await seriesCatalogRepository.GetByIdAsync(dispatch.EntityId, cancellationToken) is null
+                ? "the show was removed from Deluno"
+                : null;
+        }
+
+        return null;
     }
 
     public static int? InferYear(string value) => ReleaseNameParser.InferYear(value);

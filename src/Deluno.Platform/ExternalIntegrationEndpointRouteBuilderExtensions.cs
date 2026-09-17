@@ -746,18 +746,21 @@ public static class ExternalIntegrationEndpointRouteBuilderExtensions
                 var resolvedMediaType = library.MediaType;
                 var outputPath = request.OutputPath.Trim();
                 importJob = await outputImports.QueueAsync(library, handoff, outputPath, "processor", cancellationToken);
+                var notImported = importJob.NotImportedBecause is { } removed
+                    ? $"{processorName} produced a cleaned file, but {removed}, so Deluno did not import it. The file is still at {outputPath}."
+                    : null;
 
                 await repository.UpdateProcessorHandoffAsync(
                     handoff.Id,
                     "completed",
                     outputPath,
                     importJob.JobId,
-                    null,
+                    notImported,
                     cancellationToken);
 
                 await activityFeed.RecordActivityAsync(
-                    "processing.completed.import-queued",
-                    $"{processorName} produced a cleaned file; Deluno queued it for import.",
+                    notImported is null ? "processing.completed.import-queued" : "filesystem.import.not-imported",
+                    notImported ?? $"{processorName} produced a cleaned file; Deluno queued it for import.",
                     JsonSerializer.Serialize(new
                     {
                         request.LibraryId,

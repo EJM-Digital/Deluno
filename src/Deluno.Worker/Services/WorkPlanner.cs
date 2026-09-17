@@ -790,6 +790,15 @@ public sealed class WorkPlanner(
                 continue;
             }
 
+            // A download whose title or library was removed after the grab is left
+            // for a person: importing it would bring back, under the release name,
+            // a title someone removed on purpose.
+            if (await CatalogueImportNaming.RemovedSinceGrabAsync(dispatch, allLibraries, movieCatalogRepository, seriesCatalogRepository, cancellationToken) is { } removed)
+            {
+                await TellNotImportedOnceAsync(activityFeedRepository, dispatch!.DispatchId, $"{item.Title} finished in {item.ClientName}, but {removed}, so Deluno did not import it. Remove it from {item.ClientName}, or import it by hand if you still want it.", item, cancellationToken);
+                continue;
+            }
+
             var library = ResolveLibraryForQueueItem(item, libraries, routeCategoriesByLibrary);
             if (library is null)
             {
@@ -960,6 +969,36 @@ public sealed class WorkPlanner(
         }
             },
             "Import automation planning failed.",
+            cancellationToken);
+    }
+
+    internal const string NotImportedCategory = "filesystem.import.not-imported";
+
+    /// <summary>
+    /// Says once, against the grab, that a finished download was not imported.
+    /// The planner looks at it again every pass; the activity feed is where it is
+    /// remembered that the person was already told.
+    /// </summary>
+    private static async Task TellNotImportedOnceAsync(
+        IActivityFeedRepository activityFeedRepository,
+        string dispatchId,
+        string message,
+        DownloadQueueItem item,
+        CancellationToken cancellationToken)
+    {
+        var told = await activityFeedRepository.ListActivityAsync(20, "download-dispatch", dispatchId, cancellationToken);
+        if (told.Any(activity => activity.Category == NotImportedCategory))
+        {
+            return;
+        }
+
+        await activityFeedRepository.RecordActivityAsync(
+            NotImportedCategory,
+            message,
+            JsonSerializer.Serialize(new { DispatchId = dispatchId, item.ClientId, item.ClientName, item.ReleaseName, item.SourcePath }, PayloadJsonOptions),
+            null,
+            "download-dispatch",
+            dispatchId,
             cancellationToken);
     }
 
@@ -1135,6 +1174,21 @@ public sealed class WorkPlanner(
             var outputPath = candidates[0];
             var importJob = await new ProcessorOutputImportQueue(jobQueueRepository, jobScheduler, movieCatalogRepository, seriesCatalogRepository)
                 .QueueAsync(library, handoff, outputPath, "processor-output-watch", cancellationToken);
+            if (importJob.NotImportedBecause is { } removed)
+            {
+                var message = $"{handoff.ReleaseName} was processed, but {removed}, so Deluno did not import it. The processed file is still at {outputPath}.";
+                await processorRepository.UpdateProcessorHandoffAsync(handoff.Id, "completed", outputPath, null, message, cancellationToken);
+                queuedThisPass.Add(NormalizeSourceKey(outputPath));
+                await activityFeedRepository.RecordActivityAsync(
+                    NotImportedCategory,
+                    message,
+                    JsonSerializer.Serialize(new { importJob.DispatchId, handoff.ReleaseName, HandoffId = handoff.Id, OutputPath = outputPath }, PayloadJsonOptions),
+                    null,
+                    "processor-handoff",
+                    handoff.Id,
+                    cancellationToken);
+                continue;
+            }
 
             await processorRepository.UpdateProcessorHandoffAsync(
                 handoff.Id,

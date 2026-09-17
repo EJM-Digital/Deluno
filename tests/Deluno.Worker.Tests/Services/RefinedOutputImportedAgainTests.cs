@@ -127,7 +127,10 @@ public sealed class RefinedOutputImportedAgainTests : IDisposable
             Mock.Of<IDownloadClientTelemetryService>(),
             Mock.Of<IProcessorConnectionService>(),
             Mock.Of<IActivityFeedRepository>(),
-            Mock.Of<IMovieCatalogRepository>(),
+            // The film the release was grabbed for is still in Deluno: one that
+            // was removed is not imported at all (RemovedTitleDownloadTests).
+            Mock.Of<IMovieCatalogRepository>(repository => repository.GetByIdAsync("movie-1", It.IsAny<CancellationToken>())
+                == Task.FromResult<Deluno.Movies.Contracts.MovieListItem?>((Deluno.Movies.Contracts.MovieListItem)System.Runtime.CompilerServices.RuntimeHelpers.GetUninitializedObject(typeof(Deluno.Movies.Contracts.MovieListItem)))),
             Mock.Of<ISeriesCatalogRepository>(),
             TimeProvider.System,
             CancellationToken.None);
