@@ -216,6 +216,78 @@ public sealed class DispatchAlertsSettleThemselvesTests
         return (poller, alerts, recovery);
     }
 
+    /// <summary>
+    /// #537: dismissing an import issue settles the alert recorded beside it. On
+    /// the rig four grab-timeout alerts for removed proof films stayed open after
+    /// their issues were dismissed, with no screen to close them - and an older
+    /// issue names only the client and release, while that release had been
+    /// grabbed twice.
+    /// </summary>
+    [Fact]
+    public async Task Dismissing_an_older_issue_closes_the_alerts_on_every_grab_of_its_release_and_no_others()
+    {
+        using var storage = TestStorage.Create();
+        var clock = new FixedTimeProvider(Start);
+        await InitializeAsync(storage, clock);
+        const string release = "Dementia.13.1963.1080p.WEB-DL.DDP5.1.H.264-DELUNO";
+        await InsertDispatchAsync(storage.Factory, "first-grab", TimeSpan.FromHours(9), clock, release: release);
+        await InsertDispatchAsync(storage.Factory, "second-grab", TimeSpan.FromHours(6), clock, release: release);
+        await InsertDispatchAsync(storage.Factory, "other", TimeSpan.FromHours(6), clock);
+        var alerts = new SqliteDispatchAlertRepository(storage.Factory, clock);
+        foreach (var dispatch in new[] { "first-grab", "second-grab", "other" })
+        {
+            await alerts.CreateAlertAsync(dispatch, dispatch, "Download not detected in qBittorrent", "grab-timeout", "warning", null, CancellationToken.None);
+        }
+
+        var closed = await RecoveryCaseAlerts.AcknowledgeAsync(
+            $$"""{"DownloadClientId":"qbittorrent-main","DownloadClientName":"qBittorrent","ReleaseName":"{{release}}","MediaType":"movies"}""",
+            alerts,
+            CancellationToken.None);
+
+        Assert.Equal(2, closed);
+        var open = Assert.Single(await alerts.GetOpenAlertsAsync(null, 100, CancellationToken.None));
+        Assert.Equal("other", open.DispatchId);
+    }
+
+    [Fact]
+    public async Task Dismissing_an_issue_that_names_its_grab_closes_only_that_grabs_alerts()
+    {
+        using var storage = TestStorage.Create();
+        var clock = new FixedTimeProvider(Start);
+        await InitializeAsync(storage, clock);
+        const string release = "Dementia.13.1963.1080p.WEB-DL.DDP5.1.H.264-DELUNO";
+        await InsertDispatchAsync(storage.Factory, "first-grab", TimeSpan.FromHours(9), clock, release: release);
+        await InsertDispatchAsync(storage.Factory, "second-grab", TimeSpan.FromHours(6), clock, release: release);
+        var alerts = new SqliteDispatchAlertRepository(storage.Factory, clock);
+        await alerts.CreateAlertAsync("first-grab", release, "Download not detected in qBittorrent", "grab-timeout", "warning", null, CancellationToken.None);
+        await alerts.CreateAlertAsync("second-grab", release, "Download not detected in qBittorrent", "grab-timeout", "warning", null, CancellationToken.None);
+
+        var closed = await RecoveryCaseAlerts.AcknowledgeAsync(
+            $$"""{"DispatchId":"second-grab","DownloadClientId":"qbittorrent-main","ReleaseName":"{{release}}"}""",
+            alerts,
+            CancellationToken.None);
+
+        Assert.Equal(1, closed);
+        Assert.Equal("first-grab", Assert.Single(await alerts.GetOpenAlertsAsync(null, 100, CancellationToken.None)).DispatchId);
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("not json")]
+    [InlineData("""{"MediaType":"movies"}""")]
+    public async Task An_issue_that_names_no_download_closes_nothing(string? detailsJson)
+    {
+        using var storage = TestStorage.Create();
+        var clock = new FixedTimeProvider(Start);
+        await InitializeAsync(storage, clock);
+        await InsertDispatchAsync(storage.Factory, "stuck", TimeSpan.FromHours(6), clock);
+        var alerts = new SqliteDispatchAlertRepository(storage.Factory, clock);
+        await alerts.CreateAlertAsync("stuck", "stuck", "Download not detected in qBittorrent", "grab-timeout", "warning", null, CancellationToken.None);
+
+        Assert.Equal(0, await RecoveryCaseAlerts.AcknowledgeAsync(detailsJson, alerts, CancellationToken.None));
+        Assert.Single(await alerts.GetOpenAlertsAsync(null, 100, CancellationToken.None));
+    }
+
     private static async Task InitializeAsync(TestStorage storage, TimeProvider clock)
         => await new JobsSchemaInitializer(
             storage.Factory,
@@ -229,7 +301,8 @@ public sealed class DispatchAlertsSettleThemselvesTests
         FixedTimeProvider clock,
         string status = "sent",
         string? importStatus = null,
-        TimeSpan? importCompletedAgo = null)
+        TimeSpan? importCompletedAgo = null,
+        string? release = null)
     {
         var now = clock.GetUtcNow();
         return ExecuteAsync(factory,
@@ -245,7 +318,7 @@ public sealed class DispatchAlertsSettleThemselvesTests
             )
             """,
             ("@id", id),
-            ("@release", $"{id}.2010.1080p.WEB-DL-DELUNO"),
+            ("@release", release ?? $"{id}.2010.1080p.WEB-DL-DELUNO"),
             ("@status", status),
             ("@grabbed", now.Subtract(grabbedAgo).ToString("O")),
             ("@importStatus", importStatus),

@@ -18,6 +18,23 @@ public interface IDispatchAlertRepository
 
     Task<bool> AcknowledgeAlertAsync(string alertId, CancellationToken cancellationToken);
 
+    /// <summary>
+    /// Acknowledges every open alert on one download, and returns how many.
+    ///
+    /// <para>Each alert is recorded beside an import-recovery case describing the
+    /// same problem, and the case is what people see and dismiss. Dismissing the
+    /// case left its alert open with no screen to close it, still counted by
+    /// monitoring (#537), so settling the case settles the alert.</para>
+    /// </summary>
+    Task<int> AcknowledgeAlertsForDispatchAsync(string dispatchId, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Acknowledges the open alerts on every download of one release sent to one
+    /// client, and returns how many: for a case recorded before it kept its
+    /// download's id, which cannot say which of a release's grabs it was about.
+    /// </summary>
+    Task<int> AcknowledgeAlertsForReleaseAsync(string downloadClientId, string releaseName, CancellationToken cancellationToken);
+
     Task<int> GetOpenAlertCountBySeverityAsync(CancellationToken cancellationToken);
 
     /// <summary>

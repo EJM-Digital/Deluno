@@ -48,7 +48,8 @@ public sealed class TitleRemovalService(
     IIntakeRepository intakeRepository,
     IJobQueueRepository jobQueueRepository,
     IActivityFeedRepository activityFeedRepository,
-    IRecycleBinService recycleBinService)
+    IRecycleBinService recycleBinService,
+    IDownloadDispatchesRepository? dispatchesRepository = null)
 {
     public async Task<Dictionary<string, string?>> RemoveAsync(
         TitleToRemove title,
@@ -114,6 +115,8 @@ public sealed class TitleRemovalService(
             throw new InvalidOperationException(title.EntityType == "series" ? "TV show was not removed from Deluno." : "Movie was not removed from Deluno.");
         }
 
+        metadata["archivedGrabCount"] = (await ArchiveGrabsAsync(title, cancellationToken)).ToString();
+
         var message = options.Reason is { Length: > 0 } reason
             ? $"{title.Title} was removed from Deluno: {reason}"
             : $"{title.Title} was removed from Deluno.{(options.DeleteFiles ? " Imported library files were also selected for deletion." : string.Empty)}";
@@ -127,5 +130,40 @@ public sealed class TitleRemovalService(
             cancellationToken);
 
         return metadata;
+    }
+
+    /// <summary>
+    /// Archives the removed title's grabs that are still open.
+    ///
+    /// <para>A grab that stalled before the title was removed kept its alert open
+    /// for good: alerts close when their grab settles or is archived, a removed
+    /// title's grab never settles, and nothing in the app acknowledges one. On the
+    /// rig, four grab-timeout alerts for two removed proof films stayed open
+    /// (#537).</para>
+    /// </summary>
+    private async Task<int> ArchiveGrabsAsync(TitleToRemove title, CancellationToken cancellationToken)
+    {
+        if (dispatchesRepository is null)
+        {
+            return 0;
+        }
+
+        var archived = 0;
+        var filter = new DispatchQueryFilter { EntityType = title.EntityType, EntityId = title.Id };
+        var pagination = new DispatchPaginationOptions { PageSize = 200 };
+        do
+        {
+            var (items, next) = await dispatchesRepository.QueryDispatchesAsync(filter, pagination, cancellationToken);
+            foreach (var dispatch in items)
+            {
+                await dispatchesRepository.ArchiveDispatchAsync(dispatch.Id, $"{title.Title} was removed from Deluno.", cancellationToken);
+                archived++;
+            }
+
+            pagination = new DispatchPaginationOptions { PageSize = 200, PageToken = next };
+        }
+        while (pagination.PageToken is not null);
+
+        return archived;
     }
 }

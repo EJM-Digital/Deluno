@@ -63,6 +63,29 @@ public sealed class InMemoryDispatchAlertRepository : IDispatchAlertRepository
         return await Task.FromResult(true);
     }
 
+    public Task<int> AcknowledgeAlertsForDispatchAsync(string dispatchId, CancellationToken cancellationToken)
+    {
+        var open = _alerts.Where(a => !a.Acknowledged && a.DispatchId == dispatchId).ToList();
+        foreach (var alert in open)
+        {
+            _alerts[_alerts.IndexOf(alert)] = alert with { Acknowledged = true, AcknowledgedUtc = _timeProvider.GetUtcNow() };
+        }
+
+        return Task.FromResult(open.Count);
+    }
+
+    /// <summary>This store knows no downloads, so it matches the release by the alert's title, which is the release name.</summary>
+    public Task<int> AcknowledgeAlertsForReleaseAsync(string downloadClientId, string releaseName, CancellationToken cancellationToken)
+    {
+        var open = _alerts.Where(a => !a.Acknowledged && a.Title == releaseName).ToList();
+        foreach (var alert in open)
+        {
+            _alerts[_alerts.IndexOf(alert)] = alert with { Acknowledged = true, AcknowledgedUtc = _timeProvider.GetUtcNow() };
+        }
+
+        return Task.FromResult(open.Count);
+    }
+
     public async Task<int> GetOpenAlertCountBySeverityAsync(CancellationToken cancellationToken)
     {
         await Task.CompletedTask;

@@ -363,6 +363,7 @@ public static class MoviesEndpointRouteBuilderExtensions
             string id,
             HttpContext httpContext,
             IMovieCatalogRepository repository,
+            IDispatchAlertRepository alertRepository,
             CancellationToken cancellationToken) =>
         {
             var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
@@ -377,6 +378,9 @@ public static class MoviesEndpointRouteBuilderExtensions
                 return Results.NotFound();
             }
 
+            // The alert recorded beside this case settles with it (#537).
+            await RecoveryCaseAlerts.AcknowledgeAsync(updated.DetailsJson, alertRepository, cancellationToken);
+
             await repository.AddImportRecoveryEventAsync(id, "case_resolved", "Case marked resolved by user.", null, cancellationToken);
             return Results.Ok(updated);
         });
@@ -385,6 +389,7 @@ public static class MoviesEndpointRouteBuilderExtensions
             string id,
             HttpContext httpContext,
             IMovieCatalogRepository repository,
+            IDispatchAlertRepository alertRepository,
             CancellationToken cancellationToken) =>
         {
             var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
@@ -399,6 +404,9 @@ public static class MoviesEndpointRouteBuilderExtensions
                 return Results.NotFound();
             }
 
+            // The alert recorded beside this case settles with it (#537).
+            await RecoveryCaseAlerts.AcknowledgeAsync(updated.DetailsJson, alertRepository, cancellationToken);
+
             await repository.AddImportRecoveryEventAsync(id, "case_dismissed", "Case dismissed by user.", null, cancellationToken);
             return Results.Ok(updated);
         });
@@ -407,12 +415,19 @@ public static class MoviesEndpointRouteBuilderExtensions
             string id,
             HttpContext httpContext,
             IMovieCatalogRepository repository,
+            IDispatchAlertRepository alertRepository,
             CancellationToken cancellationToken) =>
         {
             var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
             if (denied is not null)
             {
                 return denied;
+            }
+
+            // Read the case's details before the row goes, so its alert settles too (#537).
+            if (await repository.ResolveImportRecoveryCaseAsync(id, "dismissed", cancellationToken) is { } dismissed)
+            {
+                await RecoveryCaseAlerts.AcknowledgeAsync(dismissed.DetailsJson, alertRepository, cancellationToken);
             }
 
             var removed = await repository.DeleteImportRecoveryCaseAsync(id, cancellationToken);
