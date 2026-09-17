@@ -251,12 +251,21 @@ public sealed class SqliteProcessorRepository(
         //
         // Seen on the lab: a film removed and re-acquired downloaded, refined,
         // and then sat in the refined folder for ever.
+        //
+        // The new cycle also gets a new id. The id is what the processor keys
+        // its record on, so resubmitting under the old one asked the processor
+        // about a file it had already finished: Weir answered "completed"
+        // from the earlier run within a minute, wrote nothing, and Deluno
+        // waited for an output that was never coming (seen on the rig with a
+        // re-grabbed film, #526). A person's Retry keeps the id on purpose;
+        // that is the same cycle, tried again.
         using (var restart = connection.CreateCommand())
         {
             restart.CommandText =
                 """
                 UPDATE processor_handoffs
-                SET queue_item_id = @queueItemId,
+                SET id = @newId,
+                    queue_item_id = @queueItemId,
                     media_type = @mediaType,
                     client_id = @clientId,
                     release_name = @releaseName,
@@ -288,6 +297,7 @@ public sealed class SqliteProcessorRepository(
                     OR (status IN ('failed', 'rejected', 'timed-out', 'stalled', 'lost', 'cancelled', 'released')
                         AND queue_item_id <> @queueItemId));
                 """;
+            AddParameter(restart, "@newId", Guid.CreateVersion7().ToString("N"));
             AddParameter(restart, "@libraryId", request.LibraryId.Trim());
             AddParameter(restart, "@sourceKey", sourceKey);
             AddParameter(restart, "@queueItemId", request.QueueItemId.Trim());

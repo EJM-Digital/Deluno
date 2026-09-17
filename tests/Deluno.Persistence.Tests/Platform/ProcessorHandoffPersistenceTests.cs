@@ -87,6 +87,10 @@ public sealed class ProcessorHandoffPersistenceTests
 
         Assert.Equal("waiting", second.Status);
         Assert.Equal("queue-2", second.QueueItemId);
+        // A new id, so the processor does not answer from its record of the
+        // last cycle (#526).
+        Assert.NotEqual(first.Id, second.Id);
+        Assert.Null(await repository.GetProcessorHandoffAsync(first.Id, CancellationToken.None));
         // The previous cycle's results must not be inherited by this one.
         Assert.Null(second.OutputPath);
         Assert.Null(second.ImportJobId);
