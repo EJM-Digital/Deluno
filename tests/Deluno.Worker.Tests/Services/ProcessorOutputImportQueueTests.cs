@@ -58,4 +58,28 @@ public sealed class ProcessorOutputImportQueueTests
         Assert.Equal("dispatch-9", request.DispatchId);
         Assert.Equal(output, request.Preview.SourcePath);
     }
+
+    /// <summary>
+    /// A film removed from Deluno while its release was being processed is not
+    /// brought back under the output file's name when the processed file arrives.
+    /// </summary>
+    [Fact]
+    public async Task A_processed_file_for_a_removed_film_is_not_imported()
+    {
+        var jobs = new Mock<IJobQueueRepository>();
+        jobs.Setup(repository => repository.FindRecentDispatchLinkAsync("client-1", "Dementia.13.1963.1080p.WEB-DL.DDP5.1.H.264-DELUNO", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new DispatchCatalogueLink("dispatch-9", "movie", "movie-13", LibraryId: "proof-library"));
+        var scheduler = new Mock<IJobScheduler>(MockBehavior.Strict);
+        var library = (LibraryItem)RuntimeHelpers.GetUninitializedObject(typeof(LibraryItem)) with { Id = "proof-library", MediaType = "movies" };
+        var handoff = new ProcessorHandoffItem(
+            "handoff-1", "proof-library", "movies", "client-1", "queue-1", "Dementia.13.1963.1080p.WEB-DL.DDP5.1.H.264-DELUNO",
+            @"C:\Proof\Downloads\Dementia.13.1963.1080p.WEB-DL.DDP5.1.H.264-DELUNO", "Weir proof", "submitted", null, null, null,
+            DateTimeOffset.UnixEpoch, DateTimeOffset.UnixEpoch);
+
+        var result = await new ProcessorOutputImportQueue(jobs.Object, scheduler.Object, Mock.Of<IMovieCatalogRepository>(), Mock.Of<ISeriesCatalogRepository>())
+            .QueueAsync(library, handoff, @"C:\Proof\Refined\Dementia.13.mkv", "processor", CancellationToken.None);
+
+        Assert.Null(result.JobId);
+        Assert.Equal("the film was removed from Deluno", result.NotImportedBecause);
+    }
 }
