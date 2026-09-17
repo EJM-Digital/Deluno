@@ -155,6 +155,26 @@ public sealed record MediaServerLibrary(IReadOnlyList<MediaServerItem> Items, IR
 /// <summary>What removing an item from a server did.</summary>
 public sealed record MediaServerRemoval(string Message);
 
+/// <summary>An item that belongs in a collection Deluno keeps on a server.</summary>
+/// <param name="SectionId">Plex's library section; a Plex collection lives in one section.</param>
+public sealed record MediaServerCollectionMember(string ItemId, string Level, string? SectionId = null);
+
+/// <summary>
+/// A collection Deluno owns on a server, and exactly what should be in it (#521).
+/// No members means the collection should not exist.
+/// </summary>
+/// <param name="PromoteToHome">Plex only: show it on the home screen.</param>
+public sealed record MediaServerCollectionRequest(
+    string MediaType,
+    string Name,
+    string Description,
+    IReadOnlyList<MediaServerCollectionMember> Members,
+    bool PromoteToHome = false);
+
+/// <summary>What bringing a collection into line did.</summary>
+/// <param name="Skipped">Members this server cannot hold in a collection of this kind.</param>
+public sealed record MediaServerCollectionSync(int Added, int Removed, int Members, int Skipped, bool Deleted);
+
 /// <summary>
 /// One implementation per kind of server. Plex, Jellyfin and Emby differ enough
 /// - in how they authenticate, what "watched" means and how an item leaves the
@@ -190,6 +210,17 @@ public interface IMediaServerClient
     Task<MediaServerAnswer<MediaServerRemoval>> RemoveAsync(
         MediaServerConnection connection,
         MediaServerItem item,
+        CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Makes the named collection hold exactly the requested members: creates
+    /// it, adds what is missing, takes out what should not be there (including
+    /// anything a person added by hand), and deletes it when nothing is left.
+    /// Only ever the collection itself - never an item in it.
+    /// </summary>
+    Task<MediaServerAnswer<MediaServerCollectionSync>> SyncCollectionAsync(
+        MediaServerConnection connection,
+        MediaServerCollectionRequest request,
         CancellationToken cancellationToken);
 }
 

@@ -82,6 +82,7 @@ public sealed class PlexMediaServerClient(IHttpClientFactory httpClientFactory) 
         // Movies are type 1; shows, seasons and episodes 2, 3 and 4.
         var types = mediaType == "tv" ? new[] { 2, 3, 4 } : [1];
         var items = new List<MediaServerItem>();
+        string? grouped = null;
         foreach (var directory in directories.EnumerateArray())
         {
             if (!string.Equals(String(directory, "type"), sectionType, StringComparison.OrdinalIgnoreCase) ||
@@ -97,15 +98,23 @@ public sealed class PlexMediaServerClient(IHttpClientFactory httpClientFactory) 
                     $"/library/sections/{Uri.EscapeDataString(key)}/all?type={type}&includeGuids=1",
                     entry =>
                     {
+                        // A section set to hide what is in collections lists the
+                        // collection instead; that listing is not the library (#521).
+                        if (string.Equals(String(entry, "type"), "collection", StringComparison.OrdinalIgnoreCase))
+                        {
+                            grouped ??= $"{connection.Name} listed the collection \u201c{String(entry, "title")}\u201d in place of the titles in it, so its library could not be read in full. Turn off hiding items in collections for that library.";
+                            return;
+                        }
+
                         if (ToItem(entry, mediaType, key, account) is { } item)
                         {
                             items.Add(item);
                         }
                     },
                     cancellationToken);
-                if (problem is not null)
+                if (problem is not null || grouped is not null)
                 {
-                    return Unreachable(problem);
+                    return Unreachable(problem ?? grouped!);
                 }
             }
         }
@@ -314,6 +323,203 @@ public sealed class PlexMediaServerClient(IHttpClientFactory httpClientFactory) 
         return emptied.Ok
             ? new MediaServerAnswer<MediaServerRemoval>.Reported(new MediaServerRemoval($"{connection.Name} rescanned where {item.Title} was and emptied its trash."))
             : new MediaServerAnswer<MediaServerRemoval>.Unreachable(emptied.Problem!);
+    }
+
+    public async Task<MediaServerAnswer<MediaServerCollectionSync>> SyncCollectionAsync(
+        MediaServerConnection connection,
+        MediaServerCollectionRequest request,
+        CancellationToken cancellationToken)
+    {
+        // A Plex collection lives in one library section and holds one kind of
+        // item, so there is one per section: films in a movie section, shows in
+        // a show section. A season or episode cannot sit in a show collection.
+        var sectionType = request.MediaType == "tv" ? "show" : "movie";
+        var itemLevel = request.MediaType == "tv" ? MediaServerItemLevels.Show : MediaServerItemLevels.Movie;
+        var collectionType = request.MediaType == "tv" ? 2 : 1;
+        var usable = request.Members.Where(member => member.Level == itemLevel && !string.IsNullOrWhiteSpace(member.SectionId)).ToArray();
+        var skipped = request.Members.Count - usable.Length;
+
+        var root = await GetAsync(connection, "/", cancellationToken);
+        using var rootDocument = root.Ok ? TryParse(root.Body) : null;
+        if (Container(rootDocument) is not { } rootContainer || String(rootContainer, "machineIdentifier") is not { Length: > 0 } machine)
+        {
+            return new MediaServerAnswer<MediaServerCollectionSync>.Unreachable(root.Problem ?? $"{connection.Name} did not say which server it is.");
+        }
+
+        var sectionsCall = await GetAsync(connection, "/library/sections", cancellationToken);
+        using var sectionsDocument = sectionsCall.Ok ? TryParse(sectionsCall.Body) : null;
+        if (Container(sectionsDocument) is not { } sections ||
+            !sections.TryGetProperty("Directory", out var directories) ||
+            directories.ValueKind != JsonValueKind.Array)
+        {
+            return new MediaServerAnswer<MediaServerCollectionSync>.Unreachable(sectionsCall.Problem ?? $"{connection.Name} did not list its libraries.");
+        }
+
+        var sectionKeys = directories.EnumerateArray()
+            .Where(directory => string.Equals(String(directory, "type"), sectionType, StringComparison.OrdinalIgnoreCase))
+            .Select(directory => String(directory, "key"))
+            .OfType<string>()
+            .ToArray();
+
+        string MetadataUri(IEnumerable<string> keys)
+            => Uri.EscapeDataString($"server://{machine}/com.plexapp.plugins.library/library/metadata/{string.Join(',', keys)}");
+
+        int added = 0, removed = 0, members = 0;
+        var deleted = false;
+        foreach (var section in sectionKeys)
+        {
+            var wanted = usable.Where(member => member.SectionId == section).Select(member => member.ItemId).Distinct(StringComparer.Ordinal).ToArray();
+            var existing = new List<string>();
+            var listed = await PageAsync(
+                connection,
+                $"/library/sections/{Uri.EscapeDataString(section)}/collections?includeGuids=0",
+                entry =>
+                {
+                    if (string.Equals(String(entry, "title"), request.Name, StringComparison.OrdinalIgnoreCase) && String(entry, "ratingKey") is { } key)
+                    {
+                        existing.Add(key);
+                    }
+                },
+                cancellationToken);
+            if (listed is not null)
+            {
+                return new MediaServerAnswer<MediaServerCollectionSync>.Unreachable(listed);
+            }
+
+            if (wanted.Length == 0)
+            {
+                foreach (var key in existing)
+                {
+                    var gone = await SendAsync(httpClientFactory, HttpMethod.Delete, Address(connection, $"/library/collections/{Uri.EscapeDataString(key)}"), Headers(connection), connection.Name, cancellationToken);
+                    if (!gone.Ok)
+                    {
+                        return new MediaServerAnswer<MediaServerCollectionSync>.Unreachable(gone.Problem!);
+                    }
+
+                    deleted = true;
+                }
+
+                continue;
+            }
+
+            members += wanted.Length;
+            var collection = existing.FirstOrDefault();
+            if (collection is null)
+            {
+                var created = await SendAsync(
+                    httpClientFactory,
+                    HttpMethod.Post,
+                    Address(connection, $"/library/collections?type={collectionType}&title={Uri.EscapeDataString(request.Name)}&smart=0&sectionId={Uri.EscapeDataString(section)}&uri={MetadataUri(wanted)}"),
+                    Headers(connection),
+                    connection.Name,
+                    cancellationToken);
+                using var createdDocument = created.Ok ? TryParse(created.Body) : null;
+                if (Container(createdDocument) is not { } createdContainer ||
+                    !createdContainer.TryGetProperty("Metadata", out var createdMetadata) ||
+                    createdMetadata.ValueKind != JsonValueKind.Array ||
+                    createdMetadata.GetArrayLength() == 0 ||
+                    String(createdMetadata[0], "ratingKey") is not { } createdKey)
+                {
+                    return new MediaServerAnswer<MediaServerCollectionSync>.Unreachable(created.Problem ?? $"{connection.Name} did not say which collection it created.");
+                }
+
+                collection = createdKey;
+                added += wanted.Length;
+                // Best effort: a collection without its summary still works.
+                await SendAsync(
+                    httpClientFactory,
+                    HttpMethod.Put,
+                    Address(connection, $"/library/sections/{Uri.EscapeDataString(section)}/all?type=18&id={Uri.EscapeDataString(collection)}&summary.value={Uri.EscapeDataString(request.Description)}&summary.locked=1"),
+                    Headers(connection),
+                    connection.Name,
+                    cancellationToken);
+            }
+            else
+            {
+                var current = new HashSet<string>(StringComparer.Ordinal);
+                var read = await PageAsync(
+                    connection,
+                    $"/library/collections/{Uri.EscapeDataString(collection)}/children?excludeAllLeaves=1",
+                    entry =>
+                    {
+                        if (String(entry, "ratingKey") is { } key) current.Add(key);
+                    },
+                    cancellationToken);
+                if (read is not null)
+                {
+                    return new MediaServerAnswer<MediaServerCollectionSync>.Unreachable(read);
+                }
+
+                var add = wanted.Where(key => !current.Contains(key)).ToArray();
+                if (add.Length > 0)
+                {
+                    var put = await SendAsync(httpClientFactory, HttpMethod.Put, Address(connection, $"/library/collections/{Uri.EscapeDataString(collection)}/items?uri={MetadataUri(add)}"), Headers(connection), connection.Name, cancellationToken);
+                    if (!put.Ok)
+                    {
+                        return new MediaServerAnswer<MediaServerCollectionSync>.Unreachable(put.Problem!);
+                    }
+
+                    added += add.Length;
+                }
+
+                foreach (var key in current.Where(key => !wanted.Contains(key, StringComparer.Ordinal)))
+                {
+                    var taken = await SendAsync(httpClientFactory, HttpMethod.Delete, Address(connection, $"/library/collections/{Uri.EscapeDataString(collection)}/items/{Uri.EscapeDataString(key)}"), Headers(connection), connection.Name, cancellationToken);
+                    if (!taken.Ok)
+                    {
+                        return new MediaServerAnswer<MediaServerCollectionSync>.Unreachable(taken.Problem!);
+                    }
+
+                    removed++;
+                }
+            }
+
+            var home = await PromoteAsync(connection, section, collection, request.PromoteToHome, cancellationToken);
+            if (home is not null)
+            {
+                return new MediaServerAnswer<MediaServerCollectionSync>.Unreachable(home);
+            }
+        }
+
+        return new MediaServerAnswer<MediaServerCollectionSync>.Reported(new MediaServerCollectionSync(added, removed, members, skipped, deleted));
+    }
+
+    /// <summary>
+    /// Shows the collection on home, or stops showing it, to match the server's
+    /// setting. Asked first, so an unchanged setting sends nothing.
+    /// </summary>
+    /// <returns>Null when done; otherwise why not.</returns>
+    private async Task<string?> PromoteAsync(MediaServerConnection connection, string section, string collection, bool promote, CancellationToken cancellationToken)
+    {
+        var manage = await GetAsync(connection, $"/hubs/sections/{Uri.EscapeDataString(section)}/manage?metadataItemId={Uri.EscapeDataString(collection)}", cancellationToken);
+        using var document = manage.Ok ? TryParse(manage.Body) : null;
+        if (Container(document) is not { } container)
+        {
+            return manage.Problem ?? $"{connection.Name} did not say where its collections are shown.";
+        }
+
+        string? identifier = null;
+        var promoted = false;
+        if (container.TryGetProperty("Hub", out var hubs) && hubs.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var hub in hubs.EnumerateArray())
+            {
+                identifier = String(hub, "identifier") ?? identifier;
+                promoted |= Bool(hub, "promotedToOwnHome");
+            }
+        }
+
+        if (promote == promoted)
+        {
+            return null;
+        }
+
+        MediaServerCallResult? result = promote
+            ? await SendAsync(httpClientFactory, HttpMethod.Post, Address(connection, $"/hubs/sections/{Uri.EscapeDataString(section)}/manage?metadataItemId={Uri.EscapeDataString(collection)}&promotedToRecommended=1&promotedToOwnHome=1&promotedToSharedHome=1"), Headers(connection), connection.Name, cancellationToken)
+            : identifier is null
+                ? null
+                : await SendAsync(httpClientFactory, HttpMethod.Delete, Address(connection, $"/hubs/sections/{Uri.EscapeDataString(section)}/manage/{Uri.EscapeDataString(identifier)}"), Headers(connection), connection.Name, cancellationToken);
+        return result is null || result.Ok ? null : result.Problem;
     }
 
     internal static string FolderOf(string path)

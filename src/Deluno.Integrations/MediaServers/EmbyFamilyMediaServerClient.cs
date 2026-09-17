@@ -94,15 +94,33 @@ public abstract class EmbyFamilyMediaServerClient(IHttpClientFactory httpClientF
             .Where(user => !string.IsNullOrWhiteSpace(user.Id))
             .ToArray();
 
+        // CollapseBoxSetItems=false on every listing: Jellyfin otherwise answers
+        // a film that is in a collection with the collection, even when asked
+        // for films. On the rig a title in "Leaving soon" vanished from the
+        // listing, so the rule read it as not on Jellyfin, heard "nobody
+        // watched it" from Emby, and cleared it (#521) - the same slip would
+        // let "watched by nobody" match a film somebody had watched.
         var items = new Dictionary<string, MediaServerItem>(StringComparer.OrdinalIgnoreCase);
+        var wanted = itemTypes.Split(',');
+        string? grouped = null;
         var catalogue = await PageAsync(
             connection,
-            $"/Items?Recursive=true&IncludeItemTypes={itemTypes}&Fields={CatalogueFields}",
-            item => items[String(item, "Id")!] = ToItem(item, mediaType),
+            $"/Items?Recursive=true&IncludeItemTypes={itemTypes}&CollapseBoxSetItems=false&Fields={CatalogueFields}",
+            item =>
+            {
+                // Should grouping happen anyway, the listing is not the library.
+                if (String(item, "Type") is { } type && !wanted.Contains(type, StringComparer.OrdinalIgnoreCase))
+                {
+                    grouped ??= $"{connection.Name} listed \u201c{String(item, "Name")}\u201d in place of the titles in it, so its library could not be read in full.";
+                    return;
+                }
+
+                items[String(item, "Id")!] = ToItem(item, mediaType);
+            },
             cancellationToken);
-        if (catalogue is not null)
+        if (catalogue is not null || grouped is not null)
         {
-            return Unreachable(catalogue);
+            return Unreachable(catalogue ?? grouped!);
         }
 
         // What each person has done: finished, favourited, or started and left.
@@ -114,7 +132,7 @@ public abstract class EmbyFamilyMediaServerClient(IHttpClientFactory httpClientF
             {
                 var answered = await PageAsync(
                     connection,
-                    $"/Users/{Uri.EscapeDataString(user.Id!)}/Items?Recursive=true&IncludeItemTypes={itemTypes}&{filter}&Fields=UserData",
+                    $"/Users/{Uri.EscapeDataString(user.Id!)}/Items?Recursive=true&IncludeItemTypes={itemTypes}&CollapseBoxSetItems=false&{filter}&Fields=UserData",
                     item =>
                     {
                         if (!item.TryGetProperty("UserData", out var data))
@@ -216,7 +234,7 @@ public abstract class EmbyFamilyMediaServerClient(IHttpClientFactory httpClientF
         var containers = new List<(string Id, string Name)>();
         var listed = await PageAsync(
             connection,
-            $"/Users/{user}/Items?Recursive=true&IncludeItemTypes={containerType}",
+            $"/Users/{user}/Items?Recursive=true&IncludeItemTypes={containerType}&CollapseBoxSetItems=false",
             item => containers.Add((String(item, "Id")!, String(item, "Name") ?? containerType)),
             cancellationToken);
         if (listed is not null)
@@ -228,7 +246,7 @@ public abstract class EmbyFamilyMediaServerClient(IHttpClientFactory httpClientF
         {
             var members = await PageAsync(
                 connection,
-                $"/Users/{user}/Items?ParentId={Uri.EscapeDataString(container.Id)}",
+                $"/Users/{user}/Items?ParentId={Uri.EscapeDataString(container.Id)}&CollapseBoxSetItems=false",
                 item =>
                 {
                     var id = String(item, "Id")!;
@@ -270,6 +288,159 @@ public abstract class EmbyFamilyMediaServerClient(IHttpClientFactory httpClientF
         return result.Ok
             ? new MediaServerAnswer<MediaServerRemoval>.Reported(new MediaServerRemoval($"{connection.Name} was told {item.Title} is gone and will drop it from its library."))
             : new MediaServerAnswer<MediaServerRemoval>.Unreachable(result.Problem!);
+    }
+
+    public async Task<MediaServerAnswer<MediaServerCollectionSync>> SyncCollectionAsync(
+        MediaServerConnection connection,
+        MediaServerCollectionRequest request,
+        CancellationToken cancellationToken)
+    {
+        // Found by name among collections only (BoxSet), so the id that may be
+        // deleted below can only ever be a collection.
+        var existing = new List<string>();
+        string? overview = null;
+        var listed = await PageAsync(
+            connection,
+            $"/Items?Recursive=true&IncludeItemTypes=BoxSet&SearchTerm={Uri.EscapeDataString(request.Name)}&Fields=Overview",
+            item =>
+            {
+                if (string.Equals(String(item, "Name"), request.Name, StringComparison.OrdinalIgnoreCase) &&
+                    string.Equals(String(item, "Type"), "BoxSet", StringComparison.OrdinalIgnoreCase))
+                {
+                    if (existing.Count == 0) overview = String(item, "Overview");
+                    existing.Add(String(item, "Id")!);
+                }
+            },
+            cancellationToken);
+        if (listed is not null)
+        {
+            return new MediaServerAnswer<MediaServerCollectionSync>.Unreachable(listed);
+        }
+
+        var wanted = request.Members.Select(member => member.ItemId).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+        var collectionId = existing.FirstOrDefault();
+
+        if (wanted.Length == 0)
+        {
+            foreach (var id in existing)
+            {
+                var deleted = await SendAsync(httpClientFactory, HttpMethod.Delete, Address(connection, $"/Items/{Uri.EscapeDataString(id)}"), Headers(connection), connection.Name, cancellationToken);
+                if (!deleted.Ok)
+                {
+                    return new MediaServerAnswer<MediaServerCollectionSync>.Unreachable(deleted.Problem!);
+                }
+            }
+
+            return new MediaServerAnswer<MediaServerCollectionSync>.Reported(new MediaServerCollectionSync(0, 0, 0, 0, existing.Count > 0));
+        }
+
+        if (collectionId is null)
+        {
+            var created = await SendAsync(
+                httpClientFactory,
+                HttpMethod.Post,
+                Address(connection, $"/Collections?Name={Uri.EscapeDataString(request.Name)}&Ids={Uri.EscapeDataString(string.Join(',', wanted))}"),
+                Headers(connection),
+                connection.Name,
+                cancellationToken);
+            if (!created.Ok)
+            {
+                return new MediaServerAnswer<MediaServerCollectionSync>.Unreachable(created.Problem!);
+            }
+
+            using var document = TryParse(created.Body);
+            collectionId = document is null ? null : String(document.RootElement, "Id");
+            if (collectionId is null)
+            {
+                return new MediaServerAnswer<MediaServerCollectionSync>.Unreachable($"{connection.Name} did not say which collection it created.");
+            }
+
+            await DescribeAsync(connection, collectionId, request.Description, cancellationToken);
+            return new MediaServerAnswer<MediaServerCollectionSync>.Reported(new MediaServerCollectionSync(wanted.Length, 0, wanted.Length, 0, false));
+        }
+
+        // Read as a user: asked without one, Jellyfin answered an empty
+        // collection, so a title added by hand was never taken out (#521, rig).
+        var usersCall = await GetAsync(connection, "/Users", cancellationToken);
+        using var usersDocument = usersCall.Ok ? TryParse(usersCall.Body) : null;
+        var userId = usersDocument?.RootElement.ValueKind == JsonValueKind.Array
+            ? usersDocument.RootElement.EnumerateArray().Select(user => String(user, "Id")).FirstOrDefault(id => !string.IsNullOrWhiteSpace(id))
+            : null;
+        if (userId is null)
+        {
+            return new MediaServerAnswer<MediaServerCollectionSync>.Unreachable(usersCall.Problem ?? $"{connection.Name} did not list its users, so its collection could not be read.");
+        }
+
+        var members = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var read = await PageAsync(
+            connection,
+            $"/Users/{Uri.EscapeDataString(userId)}/Items?ParentId={Uri.EscapeDataString(collectionId)}&CollapseBoxSetItems=false",
+            item => members.Add(String(item, "Id")!),
+            cancellationToken);
+        if (read is not null)
+        {
+            return new MediaServerAnswer<MediaServerCollectionSync>.Unreachable(read);
+        }
+
+        var add = wanted.Where(id => !members.Contains(id)).ToArray();
+        var remove = members.Where(id => !wanted.Contains(id, StringComparer.OrdinalIgnoreCase)).ToArray();
+        foreach (var (method, ids) in new[] { (HttpMethod.Post, add), (HttpMethod.Delete, remove) })
+        {
+            if (ids.Length == 0)
+            {
+                continue;
+            }
+
+            var changed = await SendAsync(
+                httpClientFactory,
+                method,
+                Address(connection, $"/Collections/{Uri.EscapeDataString(collectionId)}/Items?Ids={Uri.EscapeDataString(string.Join(',', ids))}"),
+                Headers(connection),
+                connection.Name,
+                cancellationToken);
+            if (!changed.Ok)
+            {
+                return new MediaServerAnswer<MediaServerCollectionSync>.Unreachable(changed.Problem!);
+            }
+        }
+
+        // A server can take the collection before it will take its description
+        // (Jellyfin on the rig), so a missing or changed one is set again.
+        if (!string.Equals(overview, request.Description, StringComparison.Ordinal))
+        {
+            await DescribeAsync(connection, collectionId, request.Description, cancellationToken);
+        }
+
+        return new MediaServerAnswer<MediaServerCollectionSync>.Reported(new MediaServerCollectionSync(add.Length, remove.Length, wanted.Length, 0, false));
+    }
+
+    /// <summary>
+    /// Says what the collection is. Best effort: the item is read and written
+    /// back whole with its overview set, and a server that will not take it
+    /// still has a working collection.
+    /// </summary>
+    private async Task DescribeAsync(MediaServerConnection connection, string collectionId, string description, CancellationToken cancellationToken)
+    {
+        var read = await GetAsync(connection, $"/Items?Ids={Uri.EscapeDataString(collectionId)}&Fields=Overview,Tags,Genres,ProviderIds,People,Studios", cancellationToken);
+        using var document = read.Ok ? TryParse(read.Body) : null;
+        if (document is null ||
+            !document.RootElement.TryGetProperty("Items", out var items) ||
+            items.ValueKind != JsonValueKind.Array ||
+            items.GetArrayLength() == 0)
+        {
+            return;
+        }
+
+        var item = System.Text.Json.Nodes.JsonNode.Parse(items[0].GetRawText())!.AsObject();
+        item["Overview"] = description;
+        await SendAsync(
+            httpClientFactory,
+            HttpMethod.Post,
+            Address(connection, $"/Items/{Uri.EscapeDataString(collectionId)}"),
+            Headers(connection),
+            connection.Name,
+            cancellationToken,
+            new StringContent(item.ToJsonString(), System.Text.Encoding.UTF8, "application/json"));
     }
 
     // The names as the servers document them. Jellyfin reads either case;

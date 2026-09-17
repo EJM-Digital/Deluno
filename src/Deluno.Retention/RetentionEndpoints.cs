@@ -24,6 +24,7 @@ public static class RetentionModule
         services.AddScoped<RetentionUnitReader>();
         services.AddScoped<RetentionEvaluator>();
         services.AddScoped<RetentionService>();
+        services.AddScoped<RetentionCollectionService>();
         services.AddHostedService<RetentionScheduleHostedService>();
         return services;
     }
@@ -78,6 +79,7 @@ public static class RetentionModule
             [FromBody] SaveRetentionRuleRequest request,
             [FromServices] IRetentionRepository repository,
             [FromServices] IMediaServerRepository mediaServers,
+            [FromServices] RetentionCollectionService collections,
             CancellationToken cancellationToken) =>
         {
             var problems = RetentionEvaluator.Validate(request, await mediaServers.ListAsync(cancellationToken));
@@ -87,11 +89,26 @@ public static class RetentionModule
             }
 
             var saved = await repository.SaveRuleAsync(id, request, cancellationToken);
-            return saved is null ? Results.NotFound() : Results.Ok(saved);
+            if (saved is null)
+            {
+                return Results.NotFound();
+            }
+
+            // Turning a rule off or changing its servers changes what the collections hold.
+            await collections.TrySyncAsync(cancellationToken);
+            return Results.Ok(saved);
         });
 
-        group.MapDelete("rules/{id}", async (string id, [FromServices] IRetentionRepository repository, CancellationToken cancellationToken)
-            => await repository.DeleteRuleAsync(id, cancellationToken) ? Results.NoContent() : Results.NotFound());
+        group.MapDelete("rules/{id}", async (string id, [FromServices] IRetentionRepository repository, [FromServices] RetentionCollectionService collections, CancellationToken cancellationToken) =>
+        {
+            if (!await repository.DeleteRuleAsync(id, cancellationToken))
+            {
+                return Results.NotFound();
+            }
+
+            await collections.TrySyncAsync(cancellationToken);
+            return Results.NoContent();
+        });
 
         // The builder's live counts: what the rule as drawn would select now.
         // Nothing is saved, and server listings may be a few minutes old.
@@ -130,10 +147,18 @@ public static class RetentionModule
             string id,
             [FromServices] IRetentionRepository repository,
             [FromServices] RetentionService service,
+            [FromServices] RetentionCollectionService collections,
             CancellationToken cancellationToken) =>
         {
             var rule = await repository.GetRuleAsync(id, cancellationToken);
-            return rule is null ? Results.NotFound() : Results.Ok(await service.CheckAsync(rule, "person", cancellationToken));
+            if (rule is null)
+            {
+                return Results.NotFound();
+            }
+
+            var run = await service.CheckAsync(rule, "person", cancellationToken);
+            await collections.TrySyncAsync(cancellationToken);
+            return Results.Ok(run);
         });
 
         group.MapGet("rules/{id}/runs", async (string id, int? take, [FromServices] IRetentionRepository repository, CancellationToken cancellationToken)
@@ -150,6 +175,7 @@ public static class RetentionModule
             [FromBody] RetentionConfirmRequest request,
             [FromServices] IRetentionRepository repository,
             [FromServices] RetentionService service,
+            [FromServices] RetentionCollectionService collections,
             CancellationToken cancellationToken) =>
         {
             var rule = string.IsNullOrWhiteSpace(request.RuleId) ? null : await repository.GetRuleAsync(request.RuleId, cancellationToken);
@@ -158,22 +184,34 @@ public static class RetentionModule
                 return Results.NotFound();
             }
 
-            return Results.Ok(await service.ConfirmAsync(rule, request.EntityIds ?? [], cancellationToken));
+            var run = await service.ConfirmAsync(rule, request.EntityIds ?? [], cancellationToken);
+            await collections.TrySyncAsync(cancellationToken);
+            return Results.Ok(run);
         });
 
         group.MapGet("keeps", async ([FromServices] IRetentionRepository repository, CancellationToken cancellationToken)
             => Results.Ok(await repository.ListKeepsAsync(cancellationToken)));
 
-        group.MapPost("keeps", async ([FromBody] SaveRetentionKeepRequest request, [FromServices] RetentionService service, CancellationToken cancellationToken) =>
+        group.MapPost("keeps", async ([FromBody] SaveRetentionKeepRequest request, [FromServices] RetentionService service, [FromServices] RetentionCollectionService collections, CancellationToken cancellationToken) =>
         {
             var kept = await service.KeepAsync(request, cancellationToken);
-            return kept is null
-                ? Results.ValidationProblem(new Dictionary<string, string[]> { ["keep"] = ["Choose a title to keep."] })
-                : Results.Ok(kept);
+            if (kept is null)
+            {
+                return Results.ValidationProblem(new Dictionary<string, string[]> { ["keep"] = ["Choose a title to keep."] });
+            }
+
+            // A kept title leaves the Leaving soon collections now, not at the next check.
+            await collections.TrySyncAsync(cancellationToken);
+            return Results.Ok(kept);
         });
 
+        // Undoing a keep does not mark the title again; the rule's next check does.
         group.MapDelete("keeps/{id}", async (string id, [FromServices] IRetentionRepository repository, CancellationToken cancellationToken)
             => await repository.DeleteKeepAsync(id, cancellationToken) is null ? Results.NotFound() : Results.NoContent());
+
+        // Each server's Leaving soon collections, and why the last update failed if it did.
+        group.MapGet("collections", async ([FromServices] IRetentionRepository repository, CancellationToken cancellationToken)
+            => Results.Ok(await repository.ListCollectionStatesAsync(cancellationToken)));
 
         group.MapGet("titles/{entityId}", async (string entityId, [FromServices] RetentionService service, CancellationToken cancellationToken)
             => Results.Ok(await service.TitleStatusAsync(entityId, cancellationToken)));
@@ -227,12 +265,15 @@ public sealed class RetentionScheduleHostedService(
         var repository = scope.ServiceProvider.GetRequiredService<IRetentionRepository>();
         var service = scope.ServiceProvider.GetRequiredService<RetentionService>();
         var now = timeProvider.GetUtcNow();
+        var checkedAny = false;
         foreach (var rule in await repository.ListRulesAsync(cancellationToken))
         {
             if (rule.NextCheckUtc is not { } due || due > now)
             {
                 continue;
             }
+
+            checkedAny = true;
 
             try
             {
@@ -243,6 +284,13 @@ public sealed class RetentionScheduleHostedService(
                 // One rule's failure does not stop the others being checked.
                 logger.LogWarning(exception, "Retention rule {Rule} could not be checked.", rule.Name);
             }
+        }
+
+        // After the checks, so the collections show what they decided; a server
+        // that failed last time is caught up here.
+        if (checkedAny)
+        {
+            await scope.ServiceProvider.GetRequiredService<RetentionCollectionService>().TrySyncAsync(cancellationToken);
         }
     }
 }

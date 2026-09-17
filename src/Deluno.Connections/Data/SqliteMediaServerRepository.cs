@@ -45,7 +45,7 @@ public sealed class SqliteMediaServerRepository(
         """
             id, kind, name, base_url, token, is_enabled, health_status, last_health_message,
             last_health_latency_ms, last_health_test_utc, server_name, server_id, created_utc, updated_utc,
-            last_health_failure_json
+            last_health_failure_json, leaving_soon_on_home
         """;
 
     public async Task<IReadOnlyList<MediaServerConnection>> ListAsync(CancellationToken cancellationToken)
@@ -95,8 +95,8 @@ public sealed class SqliteMediaServerRepository(
         using var command = connection.CreateCommand();
         command.CommandText = existing is null
             ? """
-              INSERT INTO media_servers (id, kind, name, base_url, token, is_enabled, health_status, created_utc, updated_utc)
-              VALUES (@id, @kind, @name, @baseUrl, @token, @isEnabled, 'untested', @now, @now);
+              INSERT INTO media_servers (id, kind, name, base_url, token, is_enabled, health_status, created_utc, updated_utc, leaving_soon_on_home)
+              VALUES (@id, @kind, @name, @baseUrl, @token, @isEnabled, 'untested', @now, @now, COALESCE(@onHome, 0));
               """
             : """
               UPDATE media_servers
@@ -105,6 +105,7 @@ public sealed class SqliteMediaServerRepository(
                   base_url = @baseUrl,
                   token = @token,
                   is_enabled = @isEnabled,
+                  leaving_soon_on_home = COALESCE(@onHome, leaving_soon_on_home),
                   health_status = CASE WHEN @addressChanged = 1 THEN 'untested' ELSE health_status END,
                   server_name = CASE WHEN @addressChanged = 1 THEN NULL ELSE server_name END,
                   server_id = CASE WHEN @addressChanged = 1 THEN NULL ELSE server_id END,
@@ -118,6 +119,7 @@ public sealed class SqliteMediaServerRepository(
         AddParameter(command, "@baseUrl", NormalizeBaseUrl(request.BaseUrl));
         AddParameter(command, "@token", string.IsNullOrWhiteSpace(token) ? null : secretProtector.Protect(TokenPurpose, token));
         AddParameter(command, "@isEnabled", request.IsEnabled ? 1 : 0);
+        AddParameter(command, "@onHome", request.LeavingSoonOnHome is null ? null : request.LeavingSoonOnHome.Value ? 1 : 0);
         AddParameter(command, "@addressChanged", addressChanged ? 1 : 0);
         AddParameter(command, "@now", now.ToString("O"));
         await command.ExecuteNonQueryAsync(cancellationToken);
@@ -181,7 +183,8 @@ public sealed class SqliteMediaServerRepository(
             CreatedUtc: DateTimeOffset.Parse(reader.GetString(12)),
             UpdatedUtc: DateTimeOffset.Parse(reader.GetString(13)))
         {
-            LastHealthFailure = reader.IsDBNull(14) ? null : DeserializeFailure(reader.GetString(14))
+            LastHealthFailure = reader.IsDBNull(14) ? null : DeserializeFailure(reader.GetString(14)),
+            LeavingSoonOnHome = reader.GetInt32(15) == 1
         };
 
     private static IntegrationFailure? DeserializeFailure(string json)

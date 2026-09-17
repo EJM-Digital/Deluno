@@ -100,4 +100,18 @@ internal sealed class InMemoryRetentionRepository : IRetentionRepository
 
     public Task<RetentionEpisodeRemoval?> DeleteEpisodeRemovalAsync(string episodeId, CancellationToken cancellationToken)
         => Task.FromResult(_episodes.Remove(episodeId, out var removal) ? removal : null);
+
+    private readonly Dictionary<(string, string), RetentionCollectionState> _collections = new();
+
+    public IReadOnlyDictionary<(string ServerId, string MediaType), RetentionCollectionState> Collections => _collections;
+
+    public Task<IReadOnlyList<RetentionCollectionState>> ListCollectionStatesAsync(CancellationToken cancellationToken)
+        => Task.FromResult<IReadOnlyList<RetentionCollectionState>>(_collections.Values.ToArray());
+
+    public Task SaveCollectionStateAsync(RetentionCollectionState state, CancellationToken cancellationToken)
+    {
+        var previous = _collections.GetValueOrDefault((state.ServerId, state.MediaType));
+        _collections[(state.ServerId, state.MediaType)] = state with { SyncedUtc = state.SyncedUtc ?? previous?.SyncedUtc };
+        return Task.CompletedTask;
+    }
 }
