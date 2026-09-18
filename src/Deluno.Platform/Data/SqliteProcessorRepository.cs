@@ -293,10 +293,19 @@ public sealed class SqliteProcessorRepository(
                   -- every pass once processors' final failure reports began to
                   -- land (#511). Retrying the same download is a person's
                   -- choice, from Queue.
+                  --
+                  -- A torrent's queue id is its content hash, so the same release
+                  -- fetched again - a force re-download after the processor
+                  -- rejected it, say - arrives with the old id. It is still a new
+                  -- download when the client took it after the hand-off ended
+                  -- (seen on the rig, #497: the re-fetched file sat in the client
+                  -- and was never handed to Weir).
                   AND (status = 'completed'
                     OR (status IN ('failed', 'rejected', 'timed-out', 'stalled', 'lost', 'cancelled', 'released')
-                        AND queue_item_id <> @queueItemId));
+                        AND (queue_item_id <> @queueItemId
+                          OR (@downloadAddedUtc IS NOT NULL AND @downloadAddedUtc > updated_utc))));
                 """;
+            AddParameter(restart, "@downloadAddedUtc", request.DownloadAddedUtc is { } added && added > DateTimeOffset.UnixEpoch ? added.ToUniversalTime().ToString("O") : null);
             AddParameter(restart, "@newId", Guid.CreateVersion7().ToString("N"));
             AddParameter(restart, "@libraryId", request.LibraryId.Trim());
             AddParameter(restart, "@sourceKey", sourceKey);

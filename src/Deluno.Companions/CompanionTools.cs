@@ -260,6 +260,9 @@ public sealed class WeirCompanion(
 {
     private const string AdminName = "deluno-admin";
 
+    /// <summary>Weir's own default port (W-E-I-R on a phone keypad).</summary>
+    private const int WeirDefaultPort = 9347;
+
     public string Id => CompanionToolIds.Weir;
 
     public string Name => "Weir";
@@ -283,16 +286,15 @@ public sealed class WeirCompanion(
             return;
         }
 
+        string? firstStart = null;
+        // Another Weir running on this computer is no reason not to install one
+        // for this account. Weir's installer stopped every copy on the
+        // computer; Weir's stops only its own (Weir #618), and Weir chooses its
+        // port once and keeps it. The rig runs two Weir servers of its own and
+        // refusing beside them was wrong. If this account's Weir shares a home
+        // that already has an administrator, the sign-in below says so.
         if (!IsInstalled())
         {
-            // Weir's installer stops every Weir running on the computer,
-            // whoever started it, and the new copy shares their settings in
-            // ProgramData (seen on the rig: it stopped two). One already running
-            // is connected, not installed over.
-            if (system.IsRunningOnThisComputer("WeirServer"))
-            {
-                throw new CompanionStepException($"{Name} is already running on this computer, and installing it again would stop that copy. Connect it under Media Management → Processor connections.");
-            }
 
             var artifact = await LatestReleaseAsync(context, cancellationToken);
             context.Progress.Report("download", $"Downloading {Name} {artifact.FileName} and checking it against the checksum its release publishes.");
@@ -303,6 +305,12 @@ public sealed class WeirCompanion(
             {
                 throw new CompanionStepException($"The {Name} installer finished with code {result.ExitCode}.");
             }
+
+            // A silent install does not start Weir, and Weir's first start on a
+            // desktop asks which port to use. Its unattended answer is --port,
+            // which it saves: Deluno gives it its own default, or the first free
+            // port above it.
+            firstStart = $"--port {CompanionConfigFiles.FreePort(system, WeirDefaultPort)}";
         }
         else
         {
@@ -310,7 +318,7 @@ public sealed class WeirCompanion(
         }
 
         context.Progress.Report("start", $"Waiting for {Name} to start.");
-        var baseUrl = await FindRunningAsync(cancellationToken)
+        var baseUrl = await FindRunningAsync(firstStart, cancellationToken)
             ?? throw new CompanionStepException($"{Name} is installed but did not start answering. Start it from the Start menu and run this again.");
 
         using var cookies = new HttpClientHandler { CookieContainer = new CookieContainer(), UseCookies = true };
@@ -395,13 +403,14 @@ public sealed class WeirCompanion(
     /// <summary>
     /// The Weir this account installed, answering.
     ///
-    /// <para>Found by the process that owns the port, not by the first port
-    /// between 8788 and 8807 that answers like Weir: another copy running on
+    /// <para>Found by the process that owns the port, whatever port Weir chose,
+    /// not by the first port that answers like Weir: another copy running on
     /// the same computer - a portable one, or someone else's - answered first,
     /// and Deluno would have set itself up against that one (seen on the rig).
     /// An installed copy that is not running is started.</para>
     /// </summary>
-    private async Task<string?> FindRunningAsync(CancellationToken cancellationToken)
+    /// <param name="firstStart">Arguments for the first start of a copy Deluno just installed, which is started at once; null for one already installed, which is started only if it is not answering.</param>
+    private async Task<string?> FindRunningAsync(string? firstStart, CancellationToken cancellationToken)
     {
         using var probe = new HttpClient { Timeout = TimeSpan.FromSeconds(3) };
         var installFolder = Path.Combine(system.LocalAppData, "Weir");
@@ -409,12 +418,12 @@ public sealed class WeirCompanion(
         for (var attempt = 0; attempt < 40; attempt++)
         {
             var ports = system.ListeningPortsOf(installFolder);
-            if (ports.Count == 0 && !started && attempt >= 3)
+            if (ports.Count == 0 && !started && (firstStart is not null || attempt >= 3))
             {
                 var executable = system.FileExists(Path.Combine(installFolder, "current", "Weir.exe"))
                     ? Path.Combine(installFolder, "current", "Weir.exe")
                     : Executable;
-                system.Start(executable, string.Empty);
+                system.Start(executable, firstStart ?? string.Empty);
                 started = true;
             }
 

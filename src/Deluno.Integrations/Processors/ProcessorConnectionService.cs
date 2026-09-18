@@ -39,7 +39,7 @@ public sealed class ProcessorConnectionService(IHttpClientFactory httpClientFact
             //
             // Everything else is inconclusive rather than bad. Processors answer a HEAD
             // on a POST-only route in whichever way their framework happens to: 405 is
-            // the letter of the spec, but FastAPI — which Weir and plenty of others
+            // the letter of the spec, but FastAPI — which Weir was built on as Weir, and plenty of others
             // are built on — returns 404, and treating that as "unreachable" reported a
             // working processor as broken.
             return response.StatusCode switch
@@ -298,7 +298,7 @@ public sealed class ProcessorConnectionService(IHttpClientFactory httpClientFact
     /// <summary>
     /// A refusal here is one of two things, and each has one fix. Weir
     /// answers 403 when no webhook secret is set anywhere, and 401 when the one
-    /// Deluno sent is missing or wrong (Weir #480). Said as that, because
+    /// Deluno sent is missing or wrong (Weir #480, filed when it was Weir). Said as that, because
     /// "forbidden" gives nobody anything to do.
     /// </summary>
     /// <remarks>

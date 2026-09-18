@@ -23,6 +23,11 @@ public sealed record ProcessorHandoffItem(
     DateTimeOffset UpdatedUtc,
     ProcessorHandoffObservation? Processor = null);
 
+/// <param name="DownloadAddedUtc">
+/// When the download client took this download, when it says. A torrent's queue
+/// id is its content hash, so fetching the same release again reuses the id;
+/// this is what tells the new download from the old one.
+/// </param>
 public sealed record CreateProcessorHandoffRequest(
     string LibraryId,
     string MediaType,
@@ -30,4 +35,5 @@ public sealed record CreateProcessorHandoffRequest(
     string QueueItemId,
     string ReleaseName,
     string SourcePath,
-    string? ProcessorName);
+    string? ProcessorName,
+    DateTimeOffset? DownloadAddedUtc = null);

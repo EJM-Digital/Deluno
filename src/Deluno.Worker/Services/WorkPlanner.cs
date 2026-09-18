@@ -825,7 +825,8 @@ public sealed class WorkPlanner(
                         item.Id,
                         item.ReleaseName,
                         item.SourcePath,
-                        library.ProcessorName),
+                        library.ProcessorName,
+                        item.AddedUtc),
                     cancellationToken);
                 var currentHandoff = handoff;
                 ProcessorSubmissionResult? submission = null;
