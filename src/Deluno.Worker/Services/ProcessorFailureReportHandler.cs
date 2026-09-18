@@ -94,6 +94,19 @@ public sealed class ProcessorFailureReportHandler(
             logger.LogInformation(exception, "{Client} will be told to forget {ReleaseName} on the next clean-up.", dispatch.DownloadClientName, dispatch.ReleaseName);
         }
 
+        // The grab is over: refused, and the client told to forget it. Left open
+        // it read as "qBittorrent already has a download for The Terror" after
+        // qBittorrent had dropped it (seen on the rig, #497). The refusal carries
+        // the client and item, so the scheduled clean-up can still reach it.
+        try
+        {
+            await dispatches.ArchiveDispatchAsync(dispatch.Id, $"Rejected by {report.ProcessorName}; the release was refused.", cancellationToken);
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            logger.LogWarning(exception, "Could not close the download of {ReleaseName} after {Processor} rejected it.", dispatch.ReleaseName, report.ProcessorName);
+        }
+
         var search = await jobScheduler.EnqueueAsync(
             new EnqueueJobRequest(
                 LibrarySearchJobTypes.For(dispatch.MediaType),

@@ -102,30 +102,6 @@ public sealed class CompanionToolTests : IDisposable
         Assert.Equal(0, system.Elevated);
     }
 
-    /// <summary>Weir's installer stops every running Weir, so one already running is connected, never installed over.</summary>
-    [Fact]
-    public async Task Weir_is_not_installed_over_a_copy_already_running_on_the_computer()
-    {
-        var processors = new Mock<Deluno.Platform.Data.IProcessorRepository>();
-        processors.Setup(repo => repo.ListProcessorConnectionsAsync(It.IsAny<CancellationToken>())).ReturnsAsync([]);
-        var system = new FakeSystem(installed: false);
-        system.RunningElsewhere.Add("WeirServer");
-        var downloads = new Mock<ICompanionDownloader>(MockBehavior.Strict);
-        var tool = new WeirCompanion(
-            system,
-            processors.Object,
-            Mock.Of<Deluno.Platform.Contracts.IProcessorConnectionService>(),
-            Mock.Of<Deluno.Security.Data.ISecurityRepository>(),
-            Mock.Of<ICompanionLoginStore>(),
-            downloads.Object,
-            Mock.Of<IHttpClientFactory>(MockBehavior.Strict));
-
-        var failure = await Assert.ThrowsAsync<CompanionStepException>(() => tool.RunAsync(Context(), CancellationToken.None));
-
-        Assert.Contains("already running on this computer", failure.Message, StringComparison.Ordinal);
-        downloads.VerifyNoOtherCalls();
-    }
-
     private CompanionRunContext Context() =>new("http://127.0.0.1:7879", _folder, new RecordingProgress());
 
     private static IConnectionsRepository NoClients()
@@ -184,8 +160,6 @@ public sealed class CompanionToolTests : IDisposable
         }
 
         public bool IsProcessRunning(string processName) => false;
-        public HashSet<string> RunningElsewhere { get; } = new(StringComparer.OrdinalIgnoreCase);
-        public bool IsRunningOnThisComputer(string processName) => RunningElsewhere.Contains(processName);
         public bool IsPortInUse(int port) => false;
         public IReadOnlyList<int> ListeningPortsOf(string folder) => [];
 

@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { Loader2, RefreshCw, Wifi } from "lucide-react";
 import type { IndexerItem, OutboundThrottleHostState, PlatformSettingsSnapshot } from "../../lib/api";
 import { Button } from "../../components/ui/button";
@@ -50,6 +51,17 @@ export function IndexerDrawerBody({
 }) {
   const preset = INDEXER_PRESETS.find((item) => item.protocol === form.protocol)!;
   const chip = editing ? healthChip(editing) : null;
+  // Category ids are Newznab/Torznab numbers (2000 movies, 5000 TV...). Deluno
+  // fills them from the protocol and what the indexer is used for, so they stay
+  // folded away and are described in words; only an indexer with non-standard
+  // numbers needs them opened.
+  const [categoriesOpen, setCategoriesOpen] = useState(false);
+  const standardCategories = sameCategories(form.categories, preset.defaultCategories(form.scope));
+  const scopeWords = form.scope === "movies" ? "Movies" : form.scope === "tv" ? "TV" : "Movies and TV";
+  const categoryCount = form.categories.split(",").map((item) => item.trim()).filter(Boolean).length;
+  const categoriesSummary = standardCategories
+    ? `The standard ${scopeWords} categories for ${preset.label}.`
+    : `Custom: ${categoryCount} ${categoryCount === 1 ? "category" : "categories"} chosen for this indexer.`;
 
   function chooseProtocol(protocol: IndexerProtocol) {
     const next = INDEXER_PRESETS.find((item) => item.protocol === protocol)!;
@@ -117,10 +129,17 @@ export function IndexerDrawerBody({
         </p>
       </DrawerSection>
 
-      <DrawerSection title="Categories" aside={form.categories ? `${form.categories.split(",").filter(Boolean).length} selected` : undefined}>
-        <Field label="Category ids" help="Filled from the protocol and media type. Change only if your indexer uses non-standard ids.">
-          <Input value={form.categories} onChange={(event) => setForm((current) => ({ ...current, categories: event.target.value }))} className="font-mono text-[length:var(--type-caption)]" placeholder="2000,2040,5000,5040" />
-        </Field>
+      <DrawerSection title="Search details">
+        <Disclosure title="Categories" summary={categoriesSummary} open={categoriesOpen} onOpenChange={setCategoriesOpen}>
+          <Field label="Category ids" help="The numbers this indexer uses for movies and TV. Change them only if your indexer uses non-standard ones.">
+            <Input value={form.categories} onChange={(event) => setForm((current) => ({ ...current, categories: event.target.value }))} className="font-mono text-[length:var(--type-caption)]" placeholder="2000,2040,5000,5040" />
+          </Field>
+          {standardCategories ? null : (
+            <Button type="button" variant="outline" size="sm" onClick={() => setForm((current) => ({ ...current, categories: preset.defaultCategories(current.scope) }))}>
+              Use the standard {scopeWords} categories
+            </Button>
+          )}
+        </Disclosure>
         <Disclosure title="Fine-tune" summary="Use Deluno's safe 2-second default, or follow this indexer's published limit." open={fineTuneOpen} onOpenChange={setFineTuneOpen}>
           <Field label="Request interval" error={errors.requestIntervalSeconds} help="Deluno will not query this indexer more often than this. Private trackers usually publish a limit; leave this alone if you are not sure.">
             <div className="flex items-center gap-2">
@@ -219,4 +238,10 @@ export function IndexerDrawerBody({
       ) : null}
     </>
   );
+}
+
+/** The same category ids, whatever the order or spacing. */
+function sameCategories(left: string, right: string): boolean {
+  const ids = (value: string) => value.split(",").map((item) => item.trim()).filter(Boolean).sort().join(",");
+  return ids(left) === ids(right);
 }

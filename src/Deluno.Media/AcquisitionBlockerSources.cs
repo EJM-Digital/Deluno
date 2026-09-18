@@ -86,8 +86,13 @@ public static class AcquisitionBlockerSources
     }
 
     /// <summary>
-    /// A hand-off for this release that has not finished. A finished one is not
-    /// in the way — it is the record of a completed cycle.
+    /// A hand-off for this release that is still with the processor. Any ending
+    /// is not in the way - it is the record of a finished cycle.
+    ///
+    /// <para>This used to be its own rule, "not completed and not failed", so a
+    /// hand-off the processor rejected read as "Weir still has this file" after
+    /// Weir had deleted it (seen on the rig, #497). The hand-off statuses say
+    /// once what "with the processor" means; this asks them.</para>
     /// </summary>
     private static async Task<ProcessorHandoffItem?> FindOpenHandoffAsync(
         IProcessorRepository processors,
@@ -98,8 +103,7 @@ public static class AcquisitionBlockerSources
         var handoffs = await processors.ListProcessorHandoffsAsync(libraryId, 50, cancellationToken);
         return handoffs.FirstOrDefault(handoff =>
             string.Equals(handoff.ReleaseName, releaseName, StringComparison.OrdinalIgnoreCase) &&
-            !string.Equals(handoff.Status, "completed", StringComparison.OrdinalIgnoreCase) &&
-            !string.Equals(handoff.Status, "failed", StringComparison.OrdinalIgnoreCase));
+            ProcessorHandoffStatuses.IsWithProcessor(handoff.Status));
     }
 
     /// <summary>

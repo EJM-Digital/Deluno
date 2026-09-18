@@ -110,6 +110,13 @@ public static class ProcessorHandoffStatuses
         => status is Submitted or Accepted or Started;
 
     /// <summary>
+    /// The file is with the processor or about to be: open, or waiting to be
+    /// sent. Every other status is an ending.
+    /// </summary>
+    public static bool IsWithProcessor(string? status)
+        => status is Waiting || IsOpen(status);
+
+    /// <summary>
     /// Endings after which a processed file can still turn up and should still
     /// be imported: the processor may have delivered after Deluno stopped
     /// waiting. Not <see cref="Released"/> — the original is already on its way

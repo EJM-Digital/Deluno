@@ -59,6 +59,9 @@ public sealed class ProcessorFailureReportHandlerTests
 
         _cleanup.Verify(service => service.CleanUpOneAsync("blocked-1", It.IsAny<CancellationToken>()), Times.Once);
 
+        // The grab is closed, so nothing reads it as still downloading (#497, rig).
+        _dispatches.Verify(repo => repo.ArchiveDispatchAsync(It.IsAny<string>(), It.Is<string>(reason => reason.Contains("Rejected by", StringComparison.Ordinal)), It.IsAny<CancellationToken>()), Times.Once);
+
         Assert.NotNull(search);
         Assert.Equal(LibrarySearchJobTypes.Movies, search!.JobType);
         Assert.Equal("processor-rejected:handoff-1", search.IdempotencyKey);

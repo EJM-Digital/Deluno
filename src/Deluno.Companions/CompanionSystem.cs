@@ -30,9 +30,6 @@ public interface ICompanionSystem
     /// </summary>
     bool IsProcessRunning(string processName);
 
-    /// <summary>Running anywhere on this computer, under any account.</summary>
-    bool IsRunningOnThisComputer(string processName);
-
     bool IsPortInUse(int port);
 
     /// <summary>
@@ -94,17 +91,6 @@ public sealed class WindowsCompanionSystem : ICompanionSystem
                 process.Dispose();
             }
         }
-    }
-
-    public bool IsRunningOnThisComputer(string processName)
-    {
-        var processes = Process.GetProcessesByName(processName);
-        foreach (var process in processes)
-        {
-            process.Dispose();
-        }
-
-        return processes.Length > 0;
     }
 
     public bool IsPortInUse(int port)

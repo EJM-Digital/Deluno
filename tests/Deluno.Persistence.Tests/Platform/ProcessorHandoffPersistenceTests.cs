@@ -175,6 +175,41 @@ public sealed class ProcessorHandoffPersistenceTests
         Assert.Null(newDownload.Processor);
     }
 
+    /// <summary>
+    /// #497, seen on the rig: Weir rejected The Terror, a person forced a
+    /// re-download of the same release, and qBittorrent fetched it again under
+    /// the same content hash. That is a new download - taken after the hand-off
+    /// ended - and gets a new cycle; the same download sitting in the client
+    /// since before the ending still does not.
+    /// </summary>
+    [Fact]
+    public async Task The_same_release_downloaded_again_after_an_ending_starts_a_new_cycle()
+    {
+        using var storage = TestStorage.Create();
+        var clock = new FixedTimeProvider(DateTimeOffset.Parse("2026-09-18T11:25:00Z"));
+        await new PlatformSchemaInitializer(
+            storage.Factory,
+            new SqliteDatabaseMigrator(storage.Factory, clock),
+            NullLogger<PlatformSchemaInitializer>.Instance).StartAsync(CancellationToken.None);
+        var repository = new SqliteProcessorRepository(storage.Factory, clock, TestSecretProtection.Create(storage));
+        var firstDownload = new CreateProcessorHandoffRequest(
+            "library-1", "movies", "client-1", "torrent-hash", "The.Terror.1963.1080p", "/downloads/terror", "Weir",
+            DateTimeOffset.Parse("2026-09-18T11:25:30Z"));
+
+        var first = await repository.EnsureProcessorHandoffAsync(firstDownload, CancellationToken.None);
+        clock.Advance(TimeSpan.FromMinutes(1));
+        await repository.UpdateProcessorHandoffAsync(first.Id, "rejected", null, null, "unreadable", CancellationToken.None);
+
+        clock.Advance(TimeSpan.FromMinutes(25));
+        var stillThere = await repository.EnsureProcessorHandoffAsync(firstDownload, CancellationToken.None);
+        Assert.Equal("rejected", stillThere.Status);
+
+        var fetchedAgain = await repository.EnsureProcessorHandoffAsync(
+            firstDownload with { DownloadAddedUtc = clock.GetUtcNow() }, CancellationToken.None);
+        Assert.Equal("waiting", fetchedAgain.Status);
+        Assert.NotEqual(first.Id, fetchedAgain.Id);
+    }
+
     [Fact]
     public async Task What_the_processor_said_is_kept_and_does_not_count_as_a_change()
     {
