@@ -691,32 +691,9 @@ public static class MoviesEndpointRouteBuilderExtensions
                 return Results.NotFound();
             }
 
-            var held = await AcquisitionBlockerSources.FindAsync(
-                dispatches, processors, "movies", id, cancellationToken);
-            var exclusionIds = await AcquisitionBlockerSources.ExclusionIdsAsync(
-                exclusions, "movies", item.Title, item.ImdbId, cancellationToken);
-
-            // Nothing in flight is the case this feature exists for: the
-            // download finished, the file has gone, and the client is still
-            // refusing the release on the strength of remembering it. Fall
-            // back to that completed dispatch so the force has something to
-            // ask the client to forget.
-            var fetchedBefore = held.DownloadClientId is { Length: > 0 }
-                ? null
-                : await AcquisitionBlockerSources.FindPreviousFetchAsync(
-                    dispatches, "movies", id, cancellationToken);
-
             var result = await overrides.ForceAsync(
-                new AcquisitionOverrideRequest(
-                    id,
-                    item.Title,
-                    held.HandoffId,
-                    held.DownloadClientId ?? fetchedBefore?.ClientId,
-                    held.DownloadClientName ?? fetchedBefore?.ClientName,
-                    held.QueueItemId ?? fetchedBefore?.QueueItemId,
-                    exclusionIds,
-                    held.DispatchId,
-                    (await blockedReleaseRepository.ListForAsync("movies", id, cancellationToken)).Select(release => release.Id).ToArray()),
+                await AcquisitionBlockerSources.OverrideRequestAsync(
+                    "movies", id, item.Title, item.ImdbId, dispatches, processors, exclusions, blockedReleaseRepository, cancellationToken),
                 cancellationToken);
 
             // And then actually look for it. Clearing the obstacles and stopping

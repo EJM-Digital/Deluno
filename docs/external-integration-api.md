@@ -208,6 +208,7 @@ queue, activity, and history records preserve the failure through restart.
 - `POST /api/integrations/external/import-preview` runs the same destination-rule/import preview engine used by Deluno's queue UI.
 - `POST /api/integrations/external/trigger-refresh` requests library search refreshes by media type.
 - `POST /api/integrations/external/file-changed` tells Deluno a tool changed one library file in place, so Deluno re-reads it. See [A library file changed](#a-library-file-changed).
+- `POST /api/integrations/external/redownload` asks Deluno to download a title again: the file goes to the recycle bin and the title is searched for. See [Download a title again](#download-a-title-again).
 - `POST /api/integrations/processors/events` reports generic processor status for refine-before-import workflows.
 - `POST /api/intake-sources/{id}/sync` queues an immediate watchlist/intake sync for a configured source.
 - `GET /api/intake-sources/{id}/diagnostics?pageSize=50&pageToken=…` returns one explicit page of recent sync diagnostics and skip reasons for that source.
@@ -227,7 +228,7 @@ queue, activity, and history records preserve the failure through restart.
 API key scopes:
 
 - `read` can call health, manifest, queue, and activity endpoints.
-- `imports` can call import preview and report a changed library file.
+- `imports` can call import preview, report a changed library file, and ask for a title to be downloaded again.
 - `imports` can list processor hand-offs and report processor events.
 - `queue` can trigger refreshes and queue-related actions.
 - `all` can call everything.
@@ -269,6 +270,56 @@ The manifest advertises this as the `external-file-changed` capability.
 
 Not `trigger-refresh`: that asks for library searches, which can download
 things.
+
+### Download a title again
+
+A tool that removes things from library files, such as Weir removing audio
+tracks, cannot put them back: a removal is final. When someone later wants a
+removed track back ("start keeping Japanese audio"), only a new download brings
+it, and a search alone finds nothing because the library already holds the
+title. So the file has to go first.
+
+```http
+POST /api/integrations/external/redownload
+X-Api-Key: <key with the imports scope>
+Content-Type: application/json
+
+{ "path": "D:\Media\Movies\Blade Runner 2049 (2017)\Blade Runner 2049.mkv",
+  "reason": "Keep Japanese audio (removed earlier by Weir)",
+  "tool": "Weir" }
+```
+
+In order, and nothing further once a step fails:
+
+1. `path` must be a library file Deluno tracks, matched exactly (ignoring case
+   on Windows).
+2. The file goes to Deluno's recycle bin, its normal delete, and can be put
+   back while the bin keeps it. If it cannot be moved, nothing else happens.
+3. The title (or episode) is marked missing.
+4. Whatever would stop the new download is cleared, as a person's
+   **Force a re-download** clears it. Above all, the download client is told to
+   forget the finished download it still remembers and would otherwise quietly
+   refuse.
+5. One search for that title is queued. The new copy comes in through the
+   library's usual workflow, including processing (for example by Weir with its
+   current rules) when the library waits for processing. A copy below the
+   profile's cutoff is held for a person, as it is for every search.
+
+Activity records "Weir asked Deluno to download Blade Runner 2049 again: Keep
+Japanese audio (removed earlier by Weir). The file is in the recycle bin and a
+search has started."
+
+Responses:
+
+| Status | Meaning |
+|---|---|
+| `202` | Done. `{ "titleId", "mediaKind" ("movie" or "series"), "searchJobId", "fileRemoved": true, "message" }`. `searchJobId` is `null` if the file was removed but the search could not be queued; `message` says so, and the title can be searched from its page. |
+| `400` | `path` is empty. |
+| `404` | Deluno does not track a library file at `path`. Nothing changed. |
+| `409` | The file could not be moved to the recycle bin (in use, permissions). Nothing changed and nothing was searched. |
+
+The manifest advertises this as the `external-redownload` capability. A tool
+should offer the action only when it is present.
 
 ## Refine Before Import
 

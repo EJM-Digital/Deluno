@@ -141,6 +141,51 @@ public static class AcquisitionBlockerSources
                 completed.ImportCompletedUtc ?? completed.CreatedUtc);
     }
 
+    /// <summary>
+    /// Everything in the way of fetching this title again, as one override: what
+    /// holds it now, or - when nothing does - the download Deluno finished before,
+    /// which a client still remembers and would quietly refuse; its exclusions;
+    /// and its refused releases.
+    ///
+    /// <para>One builder for the three places that force a fetch - a person's
+    /// Force a re-download on a film or a show, and a tool's re-download (#540) -
+    /// so what is cleared cannot drift between them.</para>
+    /// </summary>
+    /// <param name="mediaType"><c>movies</c> or <c>tv</c>.</param>
+    public static async Task<AcquisitionOverrideRequest> OverrideRequestAsync(
+        string mediaType,
+        string id,
+        string title,
+        string? imdbId,
+        IDownloadDispatchesRepository dispatches,
+        IProcessorRepository processors,
+        IUnifiedExclusionRepository exclusions,
+        IBlockedReleaseRepository blockedReleases,
+        CancellationToken cancellationToken)
+    {
+        var held = await FindAsync(dispatches, processors, mediaType, id, cancellationToken);
+        var exclusionIds = await ExclusionIdsAsync(exclusions, mediaType, title, imdbId, cancellationToken);
+
+        // Nothing in flight is the case this exists for: the download finished,
+        // the file has gone, and the client is still refusing the release on the
+        // strength of remembering it. Fall back to that completed dispatch so the
+        // force has something to ask the client to forget.
+        var fetchedBefore = held.DownloadClientId is { Length: > 0 }
+            ? null
+            : await FindPreviousFetchAsync(dispatches, mediaType, id, cancellationToken);
+
+        return new AcquisitionOverrideRequest(
+            id,
+            title,
+            held.HandoffId,
+            held.DownloadClientId ?? fetchedBefore?.ClientId,
+            held.DownloadClientName ?? fetchedBefore?.ClientName,
+            held.QueueItemId ?? fetchedBefore?.QueueItemId,
+            exclusionIds,
+            held.DispatchId,
+            (await blockedReleases.ListForAsync(mediaType, id, cancellationToken)).Select(release => release.Id).ToArray());
+    }
+
     public static async Task<bool> IsExcludedAsync(
         IUnifiedExclusionRepository exclusions,
         string mediaType,

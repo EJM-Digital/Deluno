@@ -262,6 +262,7 @@ POST /api/intake-sources/{id}/preview
 POST /api/intake-sources/{id}/sync
 POST /api/integrations/external/file-changed
 POST /api/integrations/external/import-preview
+POST /api/integrations/external/redownload
 POST /api/integrations/external/trigger-refresh
 POST /api/integrations/processors/connections
 POST /api/integrations/processors/connections/{id}/test
