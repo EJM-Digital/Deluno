@@ -76,7 +76,7 @@ public sealed class DownloadDispatchPollingService(
             if (dispatch.GrabStatus == "succeeded" && dispatch.DetectedUtc is null)
             {
                 var age = now - dispatch.GrabAttemptedUtc;
-                if (age > GrabTimeout && !await alertRepository.HasOpenAlertAsync(dispatch.Id, "grab-timeout", cancellationToken))
+                if (age > GrabTimeout && !await alertRepository.HasUnresolvedAlertAsync(dispatch.Id, "grab-timeout", cancellationToken))
                 {
                     await RecordGrabTimeoutRecoveryAsync(
                         dispatch,
@@ -90,7 +90,7 @@ public sealed class DownloadDispatchPollingService(
             else if (dispatch.DetectedUtc is not null && dispatch.ImportStatus is null)
             {
                 var age = now - dispatch.DetectedUtc.Value;
-                if (age > DetectionTimeout && !await alertRepository.HasOpenAlertAsync(dispatch.Id, "detection-timeout", cancellationToken))
+                if (age > DetectionTimeout && !await alertRepository.HasUnresolvedAlertAsync(dispatch.Id, "detection-timeout", cancellationToken))
                 {
                     await RecordDetectionTimeoutRecoveryAsync(
                         dispatch,
@@ -104,7 +104,7 @@ public sealed class DownloadDispatchPollingService(
             else if (dispatch.ImportStatus == "pending" && dispatch.ImportDetectedUtc is not null)
             {
                 var age = now - dispatch.ImportDetectedUtc.Value;
-                if (age > ImportTimeout && !await alertRepository.HasOpenAlertAsync(dispatch.Id, "import-timeout", cancellationToken))
+                if (age > ImportTimeout && !await alertRepository.HasUnresolvedAlertAsync(dispatch.Id, "import-timeout", cancellationToken))
                 {
                     await RecordImportTimeoutRecoveryAsync(
                         dispatch,
@@ -117,7 +117,7 @@ public sealed class DownloadDispatchPollingService(
             }
             else if (dispatch.ImportStatus == "failed"
                 && !string.IsNullOrWhiteSpace(dispatch.ImportFailureCode)
-                && !await alertRepository.HasOpenAlertAsync(dispatch.Id, "import-failed", cancellationToken))
+                && !await alertRepository.HasUnresolvedAlertAsync(dispatch.Id, "import-failed", cancellationToken))
             {
                 await RecordImportFailureRecoveryAsync(
                     dispatch,

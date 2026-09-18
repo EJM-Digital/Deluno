@@ -186,7 +186,7 @@ public sealed class SqliteDispatchAlertRepository(
         return result is long count ? (int)count : 0;
     }
 
-    public async Task<bool> HasOpenAlertAsync(string dispatchId, string alertKind, CancellationToken cancellationToken)
+    public async Task<bool> HasUnresolvedAlertAsync(string dispatchId, string alertKind, CancellationToken cancellationToken)
     {
         await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
             DelunoDatabaseNames.Jobs,
@@ -197,7 +197,7 @@ public sealed class SqliteDispatchAlertRepository(
             $"""
             SELECT EXISTS (
                 SELECT 1 FROM dispatch_alerts
-                WHERE dispatch_id = @dispatchId AND alert_kind = @alertKind AND {OpenPredicate}
+                WHERE dispatch_id = @dispatchId AND alert_kind = @alertKind AND resolved_utc IS NULL
             )
             """;
         AddParameter(command, "@dispatchId", dispatchId);

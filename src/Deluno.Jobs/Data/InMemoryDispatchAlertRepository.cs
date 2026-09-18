@@ -92,8 +92,8 @@ public sealed class InMemoryDispatchAlertRepository : IDispatchAlertRepository
         return _alerts.Count(a => !a.Acknowledged);
     }
 
-    public Task<bool> HasOpenAlertAsync(string dispatchId, string alertKind, CancellationToken cancellationToken)
-        => Task.FromResult(_alerts.Any(a => !a.Acknowledged && a.DispatchId == dispatchId && a.AlertKind == alertKind));
+    public Task<bool> HasUnresolvedAlertAsync(string dispatchId, string alertKind, CancellationToken cancellationToken)
+        => Task.FromResult(_alerts.Any(a => a.DispatchId == dispatchId && a.AlertKind == alertKind));
 
     /// <summary>
     /// This store holds alerts and nothing about the downloads they describe,

@@ -91,6 +91,35 @@ public sealed class DispatchAlertsSettleThemselvesTests
         Assert.Equal(1, recovery.GrabTimeouts);
     }
 
+    /// <summary>
+    /// #537, seen on the rig: a person acknowledged a stuck download's alert,
+    /// and at the next hourly poll it was raised again, with a new import
+    /// issue, because only open alerts counted as already known.
+    /// </summary>
+    [Fact]
+    public async Task A_stuck_download_a_person_acknowledged_is_not_reported_again()
+    {
+        using var storage = TestStorage.Create();
+        var clock = new FixedTimeProvider(Start);
+        await InitializeAsync(storage, clock);
+        await InsertDispatchAsync(storage.Factory, "stuck", grabbedAgo: TimeSpan.FromHours(6), clock: clock);
+        var (poller, alerts, recovery) = CreatePoller(storage, clock);
+
+        await poller.PollAsync(CancellationToken.None);
+        var alert = Assert.Single(await alerts.GetOpenAlertsAsync(null, 100, CancellationToken.None));
+        Assert.True(await alerts.AcknowledgeAlertAsync(alert.Id, CancellationToken.None));
+
+        clock.Advance(TimeSpan.FromHours(1));
+        var next = await poller.PollAsync(CancellationToken.None);
+        clock.Advance(TimeSpan.FromHours(1));
+        var after = await poller.PollAsync(CancellationToken.None);
+
+        Assert.Equal(0, next.GrabTimeoutsDetected);
+        Assert.Equal(0, after.GrabTimeoutsDetected);
+        Assert.Empty(await alerts.GetOpenAlertsAsync(null, 100, CancellationToken.None));
+        Assert.Equal(1, recovery.GrabTimeouts);
+    }
+
     [Fact]
     public async Task An_alert_closes_itself_when_the_download_moves_on()
     {

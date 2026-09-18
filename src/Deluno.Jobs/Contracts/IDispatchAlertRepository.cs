@@ -38,15 +38,21 @@ public interface IDispatchAlertRepository
     Task<int> GetOpenAlertCountBySeverityAsync(CancellationToken cancellationToken);
 
     /// <summary>
-    /// Whether this dispatch already has an open alert of this kind.
+    /// Whether this dispatch already has an alert of this kind that has not
+    /// been resolved - open, or acknowledged by a person.
     ///
     /// <para>The poller runs hourly and used to record the same failure every
     /// time it looked: a new alert, a new activity entry and a new recovery
-    /// case each pass, for as long as the condition held. One open alert per
-    /// dispatch and kind is the marker that the failure is already being
-    /// handled.</para>
+    /// case each pass, for as long as the condition held. One alert per
+    /// dispatch and kind is the marker that the failure is already known.</para>
+    ///
+    /// <para>Acknowledged counts. Asking only for open alerts meant a person who
+    /// dismissed the problem got it back, with a new import issue, at the next
+    /// poll - a download stuck for good was reported again every hour (seen on
+    /// the rig, #537). A download that moves on resolves its alert; if it then
+    /// sticks again, that is a new alert.</para>
     /// </summary>
-    Task<bool> HasOpenAlertAsync(string dispatchId, string alertKind, CancellationToken cancellationToken);
+    Task<bool> HasUnresolvedAlertAsync(string dispatchId, string alertKind, CancellationToken cancellationToken);
 
     /// <summary>
     /// Closes every open alert whose download has moved past the problem it
