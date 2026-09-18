@@ -106,6 +106,8 @@ public static class ExternalIntegrationEndpointRouteBuilderExtensions
                     "metadata",
                     "media-probing",
                     "external-file-changed",
+                    // A tool may ask Deluno to download a title again (#540).
+                    "external-redownload",
                     "pre-import-processing",
                     ProcessorCapabilities.RejectRegrab,
                     "activity-feed",
