@@ -168,6 +168,125 @@ public sealed class ReferenceSearchFlowTests
         Assert.Equal("configured-movies", fallbackPlan.DispatchRequest!.Category);
     }
 
+    /// <summary>
+    /// Seen on the rig before the soak, the first time a library was routed to
+    /// both kinds of client. The client was chosen before the search, by
+    /// priority alone, so a torrent went to SABnzbd. SABnzbd accepted the
+    /// address, read the .torrent as an NZB every thirty seconds for five
+    /// minutes and gave up, and Deluno recorded the grab as succeeded.
+    /// </summary>
+    [Fact]
+    public async Task A_torrent_goes_to_the_torrent_client_even_when_a_usenet_client_is_first_in_line()
+    {
+        using var storage = TestStorage.Create();
+        var time = new FixedTimeProvider(DateTimeOffset.Parse("2026-09-19T00:00:00Z"));
+        var (pipeline, connections, handler) = await CreatePipelineAsync(storage, time);
+        var indexer = await HealthyIndexerAsync(connections, "Torznab fixture", "torznab");
+        var usenet = await HealthyClientAsync(connections, "SABnzbd", "sabnzbd");
+        var torrent = await HealthyClientAsync(connections, "qBittorrent", "qbittorrent");
+
+        var plan = await pipeline.PlanAsync(Request(time, [indexer], [(usenet, 1), (torrent, 2)]), CancellationToken.None);
+
+        Assert.True(plan.ShouldDispatch);
+        Assert.Equal(torrent.Id, plan.SelectedDownloadClient?.DownloadClientId);
+        Assert.Equal(1, handler.RequestCount);
+    }
+
+    /// <summary>
+    /// Its best release would win the search and have nowhere to go, so the
+    /// source is not asked, and the reason given is the real one.
+    /// </summary>
+    [Fact]
+    public async Task A_source_no_routed_client_can_take_releases_from_is_not_searched()
+    {
+        using var storage = TestStorage.Create();
+        var time = new FixedTimeProvider(DateTimeOffset.Parse("2026-09-19T00:00:00Z"));
+        var (pipeline, connections, handler) = await CreatePipelineAsync(storage, time);
+        var indexer = await HealthyIndexerAsync(connections, "Torznab fixture", "torznab");
+        var usenet = await HealthyClientAsync(connections, "SABnzbd", "sabnzbd");
+
+        var plan = await pipeline.PlanAsync(Request(time, [indexer], [(usenet, 1)]), CancellationToken.None);
+
+        Assert.Equal(0, handler.RequestCount);
+        Assert.False(plan.ShouldDispatch);
+        Assert.Contains("can take what its search sources offer", plan.SearchPlan.Summary);
+    }
+
+    [Fact]
+    public async Task A_release_picked_by_hand_is_matched_to_a_client_the_same_way()
+    {
+        using var storage = TestStorage.Create();
+        var time = new FixedTimeProvider(DateTimeOffset.Parse("2026-09-19T00:00:00Z"));
+        var (pipeline, connections, _) = await CreatePipelineAsync(storage, time);
+        var torznab = await HealthyIndexerAsync(connections, "Torznab fixture", "torznab");
+        var newznab = await HealthyIndexerAsync(connections, "Newznab fixture", "newznab");
+        var usenet = await HealthyClientAsync(connections, "SABnzbd", "sabnzbd");
+        var torrent = await HealthyClientAsync(connections, "qBittorrent", "qbittorrent");
+        var both = Request(time, [torznab], [(usenet, 1), (torrent, 2)]).DownloadClients;
+        var usenetOnly = Request(time, [torznab], [(usenet, 1)]).DownloadClients;
+
+        Assert.Equal(torrent.Id, (await pipeline.ChooseDownloadClientAsync(torznab.Id, both))?.DownloadClientId);
+        Assert.Equal(usenet.Id, (await pipeline.ChooseDownloadClientAsync(newznab.Id, both))?.DownloadClientId);
+        Assert.Null(await pipeline.ChooseDownloadClientAsync(torznab.Id, usenetOnly));
+    }
+
+    private static async Task<(AcquisitionDecisionPipeline Pipeline, SqliteConnectionsRepository Connections, TorznabFixtureHandler Handler)> CreatePipelineAsync(
+        TestStorage storage,
+        FixedTimeProvider time)
+    {
+        await new PlatformSchemaInitializer(
+            storage.Factory,
+            new SqliteDatabaseMigrator(storage.Factory, time),
+            NullLogger<PlatformSchemaInitializer>.Instance).StartAsync(CancellationToken.None);
+        var connections = new SqliteConnectionsRepository(storage.Factory, time, TestSecretProtection.Create(storage));
+        var handler = new TorznabFixtureHandler();
+        var planner = new FeedMediaSearchPlanner(
+            new SqlitePlatformSettingsRepository(storage.Factory, time, TestSecretProtection.Create(storage)),
+            connections,
+            new SingleClientFactory(handler),
+            new PassthroughResiliencePolicy(),
+            new QualityModelService(storage.Factory, time),
+            new DisabledRankingModelService(),
+            new OutboundRequestThrottle(time, NullLogger<OutboundRequestThrottle>.Instance),
+            NullLogger<FeedMediaSearchPlanner>.Instance);
+        return (new AcquisitionDecisionPipeline(planner, connectionsRepository: connections), connections, handler);
+    }
+
+    private static async Task<IndexerItem> HealthyIndexerAsync(SqliteConnectionsRepository connections, string name, string protocol)
+    {
+        var indexer = await connections.CreateIndexerAsync(new CreateIndexerRequest(
+            name, protocol, "public", $"https://fixture.invalid/{protocol}/api", null,
+            1, "2000", null, "movies", true), CancellationToken.None);
+        await connections.UpdateIndexerHealthAsync(indexer.Id, "healthy", "Fixture verified.", null, 1, CancellationToken.None);
+        return indexer;
+    }
+
+    private static async Task<DownloadClientItem> HealthyClientAsync(SqliteConnectionsRepository connections, string name, string protocol)
+    {
+        var client = await connections.CreateDownloadClientAsync(new CreateDownloadClientRequest(
+            name, protocol, "localhost", 8080, null, null,
+            @"C:\Downloads", "configured-movies", "configured-tv", null, 1, true), CancellationToken.None);
+        await connections.UpdateDownloadClientHealthAsync(client.Id, "healthy", "Fixture verified.", null, 1, CancellationToken.None);
+        return client;
+    }
+
+    private static AcquisitionDecisionRequest Request(
+        FixedTimeProvider time,
+        IReadOnlyList<IndexerItem> indexers,
+        IReadOnlyList<(DownloadClientItem Client, int Priority)> clients)
+        => new(
+            "Dune Part Two",
+            2024,
+            "movies",
+            CurrentQuality: null,
+            TargetQuality: "WEB 1080p",
+            Sources: indexers
+                .Select(indexer => new LibrarySourceLinkItem($"source-{indexer.Id}", "reference-library", indexer.Id, indexer.Name, 1, "", "", time.GetUtcNow(), time.GetUtcNow()))
+                .ToArray(),
+            DownloadClients: clients
+                .Select(entry => new LibraryDownloadClientLinkItem($"link-{entry.Client.Id}", "reference-library", entry.Client.Id, entry.Client.Name, entry.Priority, time.GetUtcNow(), time.GetUtcNow()))
+                .ToArray());
+
     private sealed class SingleClientFactory(HttpMessageHandler handler) : IHttpClientFactory
     {
         public HttpClient CreateClient(string name) => new(handler, disposeHandler: false);

@@ -33,4 +33,25 @@ public static class DownloadProtocols
     /// </summary>
     public static bool HasSharingPhase(string? protocol)
         => string.IsNullOrWhiteSpace(protocol) || !WithoutSharingPhase.Contains(protocol.Trim());
+
+    public const string Usenet = "usenet";
+    public const string Torrent = "torrent";
+
+    /// <summary>
+    /// What a download client can be handed: <c>usenet</c> (an NZB) or
+    /// <c>torrent</c>. The same split as <see cref="HasSharingPhase"/>, asked
+    /// from the other end.
+    ///
+    /// <para>Nothing used to ask. A library's client was chosen before its
+    /// search ran, by priority alone, so a library routed to both qBittorrent
+    /// and SABnzbd sent a torrent to SABnzbd. SABnzbd accepted the address, read
+    /// the .torrent as an NZB every thirty seconds for five minutes and gave up,
+    /// and Deluno recorded the grab as succeeded.</para>
+    /// </summary>
+    public static string ClientKind(string? clientProtocol)
+        => HasSharingPhase(clientProtocol) ? Torrent : Usenet;
+
+    /// <summary>What a search source offers: Newznab is Usenet, everything else is torrents.</summary>
+    public static string SourceKind(string? indexerProtocol)
+        => string.Equals(indexerProtocol?.Trim(), "newznab", StringComparison.OrdinalIgnoreCase) ? Usenet : Torrent;
 }

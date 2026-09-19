@@ -2926,6 +2926,31 @@ public sealed partial class ImportPipelineService(
         }
     }
 
+    /// <summary>
+    /// Whether this file is a processor's output for the library: under its
+    /// processor output folder, and not under the folder its downloads land in.
+    /// The second half is what keeps a library whose two folders overlap from
+    /// having a client's file deleted from underneath it.
+    /// </summary>
+    public static bool IsProcessorOutput(string? sourcePath, LibraryItem? library)
+        => library is not null
+            && string.Equals(library.ImportWorkflow, "refine-before-import", StringComparison.OrdinalIgnoreCase)
+            && IsUnder(sourcePath, library.ProcessorOutputPath)
+            && !IsUnder(sourcePath, library.DownloadsPath);
+
+    private static bool IsUnder(string? path, string? folder)
+    {
+        if (string.IsNullOrWhiteSpace(path) || string.IsNullOrWhiteSpace(folder))
+        {
+            return false;
+        }
+
+        // Compared as text so a Windows path means the same thing on the Linux
+        // build agents as it does where it is used.
+        static string Normalize(string value) => value.Trim().Replace('\\', '/').TrimEnd('/');
+        return Normalize(path).StartsWith(Normalize(folder) + "/", StringComparison.OrdinalIgnoreCase);
+    }
+
     private WorkflowCleanupResult ApplyWorkflowCleanup(string sourcePath, LibraryItem? library, bool stillSharedByClient)
     {
         if (library is null || !string.Equals(library.CleanupMode, "remove-source-after-import", StringComparison.OrdinalIgnoreCase))
@@ -2937,7 +2962,14 @@ public sealed partial class ImportPipelineService(
         // release came from expects it to be shared, and it removes it through
         // the client rather than behind its back (#288). Two settings deleting
         // the same file on different schedules is how the seeding bug happened.
-        if (stillSharedByClient)
+        //
+        // That is about the client's own file. A processor's output is a second
+        // copy the client has never heard of: it shares the download, not this.
+        // Treating it as shared left every processed torrent's output, at full
+        // size, in the processor's folder for good, because the sharing rule
+        // removes through the client and the client cannot remove what it does
+        // not hold.
+        if (stillSharedByClient && !IsProcessorOutput(sourcePath, library))
         {
             return new WorkflowCleanupResult(
                 "share-then-remove",

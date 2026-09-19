@@ -2456,27 +2456,16 @@ public sealed class SqliteJobStore(
             await InsertJobAsync(connection, transaction, job, cancellationToken);
             queuedAny = true;
 
-            var nextEligibleSearchUtc = now.AddDays(1);
-            using (var update = connection.CreateCommand())
-            {
-                update.Transaction = transaction;
-                update.CommandText =
-                    """
-                    UPDATE episode_wanted_state
-                    SET
-                        last_search_utc = @lastSearchUtc,
-                        next_eligible_search_utc = @nextEligibleSearchUtc,
-                        updated_utc = @updatedUtc
-                    WHERE episode_id = @episodeId AND library_id = @libraryId;
-                    """;
-
-                AddParameter(update, "@episodeId", episode.EpisodeId);
-                AddParameter(update, "@libraryId", libraryId);
-                AddParameter(update, "@lastSearchUtc", now.ToString("O"));
-                AddParameter(update, "@nextEligibleSearchUtc", nextEligibleSearchUtc.ToString("O"));
-                AddParameter(update, "@updatedUtc", now.ToString("O"));
-                await update.ExecuteNonQueryAsync(cancellationToken);
-            }
+            // Nothing is written to episode_wanted_state here. That table is in
+            // the series database and this is a connection to the jobs one, so
+            // the UPDATE that used to sit here failed with "no such table" every
+            // time there was an episode to plan. It took the transaction with
+            // it: no episode search was ever queued from a scheduled cycle, and
+            // the library search that called this failed three times and gave
+            // up (seen on the rig on 16 and 19 September). It was never needed:
+            // the dedupe key above stops an episode being planned twice, and the
+            // episode search records its own search time, in the right database,
+            // when it runs.
 
             await InsertActivityAsync(
                 connection,

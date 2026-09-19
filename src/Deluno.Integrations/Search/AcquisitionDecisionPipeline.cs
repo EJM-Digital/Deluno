@@ -21,6 +21,17 @@ public interface IAcquisitionDecisionPipeline
         CancellationToken cancellationToken = default);
 
     AcquisitionSelectedReleaseDecision EvaluateSelectedRelease(AcquisitionSelectedReleaseRequest request);
+
+    /// <summary>
+    /// The routed client a release a person picked by hand goes to: the first by
+    /// priority that can take what its source offers. <c>null</c> when the
+    /// library has no client of that kind, which the caller says out loud
+    /// rather than sending a torrent to a Usenet client.
+    /// </summary>
+    Task<LibraryDownloadClientLinkItem?> ChooseDownloadClientAsync(
+        string? indexerId,
+        IReadOnlyList<LibraryDownloadClientLinkItem> routedClients,
+        CancellationToken cancellationToken = default);
 }
 
 public sealed class AcquisitionDecisionPipeline : IAcquisitionDecisionPipeline
@@ -53,7 +64,6 @@ public sealed class AcquisitionDecisionPipeline : IAcquisitionDecisionPipeline
         var readyConnections = await ResolveReadyConnectionsAsync(request, cancellationToken);
         var sourceCount = readyConnections.Sources.Count;
         var clientCount = readyConnections.DownloadClients.Count;
-        var selectedClient = await SelectDownloadClientAsync(readyConnections.DownloadClients, cancellationToken);
         var currentCustomFormatScore = request.CurrentCustomFormatScore;
         if (currentCustomFormatScore is null && !string.IsNullOrWhiteSpace(request.CurrentReleaseName))
         {
@@ -70,7 +80,9 @@ public sealed class AcquisitionDecisionPipeline : IAcquisitionDecisionPipeline
                 Summary: sourceCount == 0
                     ? request.Sources.Count == 0
                         ? "No indexers are linked to this library yet."
-                        : "No linked search source is ready. Test a source successfully before Deluno searches or dispatches releases."
+                        : readyConnections.NoClientForAnySource
+                            ? "None of this library's download clients can take what its search sources offer. Link a torrent client for torrent sources, or a Usenet client for Usenet sources, in Library Routing."
+                            : "No linked search source is ready. Test a source successfully before Deluno searches or dispatches releases."
                     : request.DownloadClients.Count == 0
                         ? "No download client is linked to this library yet."
                         : "No linked download client is ready. Test a client successfully before Deluno dispatches releases.")
@@ -107,6 +119,11 @@ public sealed class AcquisitionDecisionPipeline : IAcquisitionDecisionPipeline
         searchPlan = await SkipBlockedReleasesAsync(searchPlan, cancellationToken);
 
         var bestCandidate = searchPlan.BestCandidate;
+        // The client is chosen for the release that won, not before the search:
+        // a torrent goes to a torrent client and an NZB to a Usenet one.
+        var selectedClient = await SelectDownloadClientAsync(
+            readyConnections.ClientsFor(bestCandidate?.IndexerId),
+            cancellationToken);
         var outcome = sourceCount == 0 || clientCount == 0
             ? "blocked"
             : bestCandidate is null
@@ -132,6 +149,32 @@ public sealed class AcquisitionDecisionPipeline : IAcquisitionDecisionPipeline
                     DispatchCategory(request.MediaType, selectedClient, readyConnections.DownloadClientDetails),
                     selectedClient),
             Alternatives: BuildDecisionAlternatives(searchPlan));
+    }
+
+    public async Task<LibraryDownloadClientLinkItem?> ChooseDownloadClientAsync(
+        string? indexerId,
+        IReadOnlyList<LibraryDownloadClientLinkItem> routedClients,
+        CancellationToken cancellationToken = default)
+    {
+        var byPriority = routedClients.OrderBy(client => client.Priority).ToArray();
+        if (connectionsRepository is null || string.IsNullOrWhiteSpace(indexerId))
+        {
+            return byPriority.FirstOrDefault();
+        }
+
+        var source = (await connectionsRepository.ListIndexersAsync(cancellationToken))
+            .FirstOrDefault(item => string.Equals(item.Id, indexerId, StringComparison.OrdinalIgnoreCase));
+        if (source is null)
+        {
+            return byPriority.FirstOrDefault();
+        }
+
+        var kind = DownloadProtocols.SourceKind(source.Protocol);
+        var clients = (await connectionsRepository.ListDownloadClientsAsync(cancellationToken))
+            .ToDictionary(item => item.Id, StringComparer.OrdinalIgnoreCase);
+        return byPriority.FirstOrDefault(client =>
+            clients.TryGetValue(client.DownloadClientId, out var detail)
+            && string.Equals(DownloadProtocols.ClientKind(detail.Protocol), kind, StringComparison.OrdinalIgnoreCase));
     }
 
     public AcquisitionSelectedReleaseDecision EvaluateSelectedRelease(AcquisitionSelectedReleaseRequest request)
@@ -429,7 +472,8 @@ public sealed class AcquisitionDecisionPipeline : IAcquisitionDecisionPipeline
             return new ReadyConnections(
                 request.Sources,
                 request.DownloadClients,
-                new Dictionary<string, DownloadClientItem>(StringComparer.OrdinalIgnoreCase));
+                new Dictionary<string, DownloadClientItem>(StringComparer.OrdinalIgnoreCase),
+                new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase));
         }
 
         var indexers = await connectionsRepository.ListIndexersAsync(cancellationToken);
@@ -442,10 +486,29 @@ public sealed class AcquisitionDecisionPipeline : IAcquisitionDecisionPipeline
             .Where(item => item.IsEnabled && IsReadyDownloadClient(item))
             .ToDictionary(item => item.Id, StringComparer.OrdinalIgnoreCase);
 
+        var readyClients = request.DownloadClients.Where(client => readyClientDetails.ContainsKey(client.DownloadClientId)).ToArray();
+        var clientKinds = readyClients
+            .Select(client => DownloadProtocols.ClientKind(readyClientDetails[client.DownloadClientId].Protocol))
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var sourceKinds = indexers.ToDictionary(
+            item => item.Id,
+            item => DownloadProtocols.SourceKind(item.Protocol),
+            StringComparer.OrdinalIgnoreCase);
+
+        // A source whose releases no ready client can take is not searched. Its
+        // best release would otherwise win the search and have nowhere to go.
+        var readySources = request.Sources.Where(source => readyIndexerIds.Contains(source.IndexerId)).ToArray();
+        var usableSources = readySources
+            .Where(source => readyClients.Length == 0
+                || !sourceKinds.TryGetValue(source.IndexerId, out var kind)
+                || clientKinds.Contains(kind))
+            .ToArray();
         return new ReadyConnections(
-            request.Sources.Where(source => readyIndexerIds.Contains(source.IndexerId)).ToArray(),
-            request.DownloadClients.Where(client => readyClientDetails.ContainsKey(client.DownloadClientId)).ToArray(),
-            readyClientDetails);
+            usableSources,
+            readyClients,
+            readyClientDetails,
+            sourceKinds,
+            NoClientForAnySource: readySources.Length > 0 && usableSources.Length == 0);
     }
 
     private static bool IsReadyDownloadClient(DownloadClientItem client)
@@ -454,7 +517,28 @@ public sealed class AcquisitionDecisionPipeline : IAcquisitionDecisionPipeline
     private sealed record ReadyConnections(
         IReadOnlyList<LibrarySourceLinkItem> Sources,
         IReadOnlyList<LibraryDownloadClientLinkItem> DownloadClients,
-        IReadOnlyDictionary<string, DownloadClientItem> DownloadClientDetails);
+        IReadOnlyDictionary<string, DownloadClientItem> DownloadClientDetails,
+        IReadOnlyDictionary<string, string> SourceKinds,
+        bool NoClientForAnySource = false)
+    {
+        /// <summary>
+        /// The ready clients that can take a release from this source. When the
+        /// source or a client is not known here (a planner built without a
+        /// connections store), every client stays eligible, as before.
+        /// </summary>
+        public IReadOnlyList<LibraryDownloadClientLinkItem> ClientsFor(string? indexerId)
+        {
+            if (string.IsNullOrWhiteSpace(indexerId) || !SourceKinds.TryGetValue(indexerId, out var kind))
+            {
+                return DownloadClients;
+            }
+
+            return DownloadClients
+                .Where(client => !DownloadClientDetails.TryGetValue(client.DownloadClientId, out var detail)
+                    || string.Equals(DownloadProtocols.ClientKind(detail.Protocol), kind, StringComparison.OrdinalIgnoreCase))
+                .ToArray();
+        }
+    }
 
     private sealed class DisabledReleaseRankingService : IReleaseRankingModelService
     {

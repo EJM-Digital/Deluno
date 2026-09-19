@@ -116,12 +116,23 @@ public static class MediaGrabHandler
         }
 
         var routing = await librariesRepository.GetLibraryRoutingAsync(library.Id, cancellationToken);
-        var downloadClient = routing?.DownloadClients.OrderBy(candidate => candidate.Priority).FirstOrDefault();
-        if (downloadClient is null)
+        if (routing is null || routing.DownloadClients.Count == 0)
         {
             return MediaGrabResult.ValidationResult(new Dictionary<string, string[]>
             {
                 ["downloadClient"] = ["Link a download client to this library before grabbing a release."]
+            });
+        }
+
+        // The first routed client used to be taken whatever it was, so a torrent
+        // picked here could be handed to a Usenet client, which accepts the
+        // address and then cannot read what is at it.
+        var downloadClient = await acquisitionPipeline.ChooseDownloadClientAsync(request.IndexerId, routing.DownloadClients, cancellationToken);
+        if (downloadClient is null)
+        {
+            return MediaGrabResult.ValidationResult(new Dictionary<string, string[]>
+            {
+                ["downloadClient"] = [$"{library.Name} has no download client that can take a release from {request.IndexerName ?? "this source"}. Link a matching torrent or Usenet client in Library Routing."]
             });
         }
 
