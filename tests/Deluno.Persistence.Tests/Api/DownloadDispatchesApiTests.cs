@@ -45,6 +45,8 @@ public sealed class DownloadDispatchesApiTests : IAsyncDisposable
                         services.AddSingleton<IJobScheduler, TestJobScheduler>();
                         services.AddSingleton<IDownloadDispatchesRepository>(
                             new SqliteDownloadDispatchesRepository(_storage.Factory, timeProvider));
+                        services.AddSingleton<IDispatchAlertRepository>(
+                            new SqliteDispatchAlertRepository(_storage.Factory, timeProvider));
                         services.AddSingleton<IMachineTelemetryRepository>(
                             new SqliteMachineTelemetryRepository(_storage.Factory));
                     })
@@ -264,6 +266,30 @@ public sealed class DownloadDispatchesApiTests : IAsyncDisposable
         // Verify it's archived
         var getResponse = await _client.GetAsync($"/api/v1/download-dispatches/{dispatchId}");
         Assert.Equal(HttpStatusCode.NotFound, getResponse.StatusCode);
+    }
+
+    /// <summary>
+    /// Transfers' Dismiss on a failed download archives it. The alerts raised
+    /// about that download are listed on no screen, so they settle with it
+    /// rather than staying a count nothing can bring down (#537). Alerts about
+    /// other downloads are left alone.
+    /// </summary>
+    [Fact]
+    public async Task Archiving_a_download_settles_the_alerts_raised_about_it_and_no_others()
+    {
+        var dismissed = Guid.CreateVersion7().ToString("N");
+        var other = Guid.CreateVersion7().ToString("N");
+        await InsertDispatchAsync(dismissed, "movies-main", "123", "The.Terror.1963.1080p");
+        await InsertDispatchAsync(other, "movies-main", "456", "Nosferatu.1922.1080p");
+        var alerts = _services.GetRequiredService<IDispatchAlertRepository>();
+        await alerts.CreateAlertAsync(dismissed, "The.Terror.1963.1080p", "Import failed", "import-failed", "warning", null, CancellationToken.None);
+        await alerts.CreateAlertAsync(other, "Nosferatu.1922.1080p", "Download not detected", "grab-timeout", "warning", null, CancellationToken.None);
+
+        var response = await _client.DeleteAsync($"/api/v1/download-dispatches/{dismissed}?reason=dismissed");
+
+        Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
+        var open = Assert.Single(await alerts.GetOpenAlertsAsync(null, 100, CancellationToken.None));
+        Assert.Equal(other, open.DispatchId);
     }
 
     [Fact]
