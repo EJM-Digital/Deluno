@@ -347,6 +347,39 @@ public sealed class DeleteLifecycleTests
             (await app.Client.DeleteAsync($"/api/recycle-bin/{stored.Id}")).StatusCode);
     }
 
+    /// <summary>
+    /// Before the soak the rig's dashboard read "186 failed to import" beside
+    /// 15 grabs. A recovery case is written for every attempt, so one stuck file
+    /// retried twelve times was twelve, and a download the client never showed
+    /// was counted as a failed import too.
+    /// </summary>
+    [Fact]
+    public async Task The_dashboard_counts_a_title_that_failed_to_import_once_a_day_however_often_it_was_retried()
+    {
+        await using var app = await ApplicationTestHost.StartAsync();
+        var movies = app.Services.GetRequiredService<IMovieCatalogRepository>();
+        foreach (var attempt in Enumerable.Range(1, 12))
+        {
+            await movies.AddImportRecoveryCaseAsync(
+                new CreateMovieImportRecoveryCaseRequest("The Terror", "import-failed", $"Attempt {attempt}: not a readable video.", "Try another release"),
+                CancellationToken.None);
+        }
+
+        await movies.AddImportRecoveryCaseAsync(
+            new CreateMovieImportRecoveryCaseRequest("Nosferatu", "corrupt", "The file is truncated.", "Try another release"),
+            CancellationToken.None);
+        // Never reached an import at all.
+        var neverShown = await movies.AddImportRecoveryCaseAsync(
+            new CreateMovieImportRecoveryCaseRequest("Dementia 13", "grab-timeout", "Sent to qBittorrent and never appeared.", "Check the client"),
+            CancellationToken.None);
+
+        var today = DateOnly.FromDateTime(DateTime.UtcNow);
+        var metrics = await movies.GetDailyMetricsAsync(today.AddDays(-1), today.AddDays(1), CancellationToken.None);
+
+        Assert.Equal(2, metrics.ImportFailures.Values.Sum());
+        Assert.Equal("downloadFailed", neverShown.FailureKind);
+    }
+
     [Fact]
     public async Task Dismissing_a_movie_import_recovery_case_removes_it_for_good()
     {

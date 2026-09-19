@@ -76,6 +76,17 @@ public sealed class DownloadDispatchPollingService(
             if (dispatch.GrabStatus == "succeeded" && dispatch.DetectedUtc is null)
             {
                 var age = now - dispatch.GrabAttemptedUtc;
+                if (age > GrabTimeout)
+                {
+                    // Whatever has been said about it already, the download
+                    // itself ends here, so it stops reading "Sent" and a person
+                    // can dismiss it. A late detection brings it back.
+                    await downloadDispatchesRepository.MarkNeverDetectedAsync(
+                        dispatch.Id,
+                        $"{dispatch.DownloadClientName} accepted this download and then never showed it.",
+                        cancellationToken);
+                }
+
                 if (age > GrabTimeout && !await alertRepository.HasUnresolvedAlertAsync(dispatch.Id, "grab-timeout", cancellationToken))
                 {
                     await RecordGrabTimeoutRecoveryAsync(

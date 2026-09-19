@@ -588,9 +588,15 @@ export function DashboardPage() {
   return (
     <div className="flex flex-col gap-[var(--page-gap)]">
       {/* The guided prompt is the action-oriented entry point. The ladder below
-          it is authoritative and can be used after the prompt is dismissed. */}
+          it is authoritative and can be used after the prompt is dismissed.
+
+          An install the ladder calls complete is set up, whichever way it got
+          there. The prompt used to ask only whether the guide had been finished
+          or skipped, so an install configured through Settings was invited to
+          "build your media library" for good, pointing at a ladder that had
+          already taken itself off the page. */}
       <OnboardingBanner
-        isSetupSuppressed={setupProgress.isSkipped || setupProgress.isCompleted}
+        isSetupSuppressed={setupProgress.isSkipped || setupProgress.isCompleted || data.setupStatus.isComplete}
         onDismiss={dismissOnboarding}
       />
       <SetupProgressLadder status={data.setupStatus} />

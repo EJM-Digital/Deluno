@@ -98,6 +98,9 @@ public sealed class NullDownloadDispatchesRepository : IDownloadDispatchesReposi
         CancellationToken cancellationToken) =>
         throw new NotImplementedException("Test only - should not be called");
 
+    public Task<bool> MarkNeverDetectedAsync(string dispatchId, string message, CancellationToken cancellationToken) =>
+        Task.FromResult(false);
+
     public Task ArchiveDispatchAsync(
         string dispatchId,
         string reason,

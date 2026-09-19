@@ -14,7 +14,6 @@ public sealed class DispatchCleanupService(
     : IDispatchCleanupService
 {
     private static readonly TimeSpan StaleFailedAge = TimeSpan.FromDays(7);
-    private static readonly TimeSpan StaleUnresolvedAge = TimeSpan.FromDays(14);
     private static readonly TimeSpan IndexerQueryStatsRetention = TimeSpan.FromDays(30);
 
     /// <summary>

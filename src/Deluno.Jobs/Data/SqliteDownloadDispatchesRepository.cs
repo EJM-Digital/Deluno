@@ -139,7 +139,13 @@ public sealed class SqliteDownloadDispatchesRepository(
                 SET
                     detected_utc = @detectedUtc,
                     torrent_hash_or_item_id = @torrentHashOrItemId,
-                    downloaded_bytes = @downloadedBytes
+                    downloaded_bytes = @downloadedBytes,
+                    -- A client that was down for longer than the detection
+                    -- limit shows the download late. That undoes the ending
+                    -- MarkNeverDetectedAsync gave it; any other failure stands.
+                    status = CASE WHEN status = 'failed' AND grab_failure_code = 'not_found' THEN 'sent' ELSE status END,
+                    grab_message = CASE WHEN grab_failure_code = 'not_found' THEN NULL ELSE grab_message END,
+                    grab_failure_code = CASE WHEN grab_failure_code = 'not_found' THEN NULL ELSE grab_failure_code END
                 WHERE id = @dispatchId
                 """;
 
@@ -970,6 +976,46 @@ public sealed class SqliteDownloadDispatchesRepository(
         AddParameter(command, "@id", dispatchId);
         var result = await command.ExecuteScalarAsync(cancellationToken);
         return result is long count ? (int)count : 0;
+    }
+
+    public async Task<bool> MarkNeverDetectedAsync(string dispatchId, string message, CancellationToken cancellationToken)
+    {
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Jobs, cancellationToken);
+        await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+
+        using (var command = connection.CreateCommand())
+        {
+            command.Transaction = transaction;
+            // grab_status stays 'succeeded': the client did accept it, and the
+            // grab retry and the indexer scoreboard both read that column.
+            command.CommandText =
+                """
+                UPDATE download_dispatches
+                SET status = 'failed', grab_failure_code = 'not_found', grab_message = @message
+                WHERE id = @id
+                  AND detected_utc IS NULL
+                  AND COALESCE(status, '') NOT IN ('failed', 'archived');
+                """;
+            AddParameter(command, "@id", dispatchId);
+            AddParameter(command, "@message", message);
+            if (await command.ExecuteNonQueryAsync(cancellationToken) == 0)
+            {
+                await transaction.CommitAsync(cancellationToken);
+                return false;
+            }
+        }
+
+        await RecordTimelineEventInternalAsync(
+            connection,
+            transaction,
+            dispatchId,
+            "never_detected",
+            JsonSerializer.Serialize(new { message }),
+            cancellationToken);
+
+        await transaction.CommitAsync(cancellationToken);
+        return true;
     }
 
     public async Task MarkDispatchFailedAsync(string dispatchId, CancellationToken cancellationToken)
