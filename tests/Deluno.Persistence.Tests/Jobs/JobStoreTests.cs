@@ -948,6 +948,40 @@ public sealed class JobStoreTests
         Assert.Contains(waiting.Id, left);
     }
 
+    /// <summary>
+    /// A scheduled TV search plans a search for each wanted episode. Planning
+    /// used to end with an UPDATE of <c>episode_wanted_state</c>, a table in the
+    /// series database, over a connection to the jobs database: "no such table",
+    /// every time there was an episode to plan. The transaction rolled back, so
+    /// no episode search was ever queued from a cycle, and the library search
+    /// that asked failed three times and gave up. The rig did it on 16 and 19
+    /// September. Every test of the caller mocked this method, so nothing had
+    /// ever run it against a real jobs database; this one does.
+    /// </summary>
+    [Fact]
+    public async Task Planning_episode_searches_queues_them_and_touches_no_other_database()
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-09-19T08:14:00Z"));
+        await InitializeJobsAsync(storage, timeProvider);
+        var store = new SqliteJobStore(storage.Factory, timeProvider, new NullRealtimeEventPublisher(), new NullDownloadDispatchesRepository());
+        EpisodeSearchPlanItem[] episodes =
+        [
+            new("episode-1", "series-1", 1, 1, "Pilot"),
+            new("episode-2", "series-1", 1, 2, "Cat's in the Bag...")
+        ];
+
+        await store.PlanEpisodeSearchesAsync("library-tv", episodes, CancellationToken.None);
+        // A cycle that runs again while those are still waiting adds nothing.
+        await store.PlanEpisodeSearchesAsync("library-tv", episodes, CancellationToken.None);
+
+        var queued = (await store.ListAsync(10, CancellationToken.None)).Where(job => job.JobType == "episode.search").ToArray();
+        Assert.Equal(2, queued.Length);
+        Assert.All(queued, job => Assert.Equal("queued", job.Status));
+        Assert.Contains(queued, job => job.RelatedEntityId == "episode-1");
+        Assert.Contains(queued, job => job.RelatedEntityId == "episode-2");
+    }
+
     private static async Task InitializeJobsAsync(TestStorage storage, TimeProvider timeProvider)
     {
         await new JobsSchemaInitializer(

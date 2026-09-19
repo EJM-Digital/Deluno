@@ -64,6 +64,9 @@ public sealed class ProcessorHandoffPersistenceTests
     [Theory]
     [InlineData("completed")]
     [InlineData("failed")]
+    // Dismissing a hand-off that ended badly must not stop the release ever
+    // being processed again. It did, on the rig, the first time it was tried.
+    [InlineData("dismissed")]
     public async Task A_finished_handoff_restarts_when_the_same_release_arrives_again(string finishedStatus)
     {
         using var storage = TestStorage.Create();
@@ -98,6 +101,39 @@ public sealed class ProcessorHandoffPersistenceTests
         // Still one row: this is the same source path, restarted, not a second
         // hand-off competing with the first.
         Assert.Single(await repository.ListProcessorHandoffsAsync("library-1", 10, CancellationToken.None));
+    }
+
+    /// <summary>
+    /// Found by the pre-soak hand-off proof, the first Usenet download the rig
+    /// put through a processor. SABnzbd's history lists a finished download as
+    /// "completed" on every planning pass, and a completed hand-off restarted for
+    /// whoever asked. One film went to Weir once a minute: processed again each
+    /// round, imported again each round, and failing with "the destination file
+    /// already exists" over the copy already in the library.
+    /// </summary>
+    [Fact]
+    public async Task A_completed_handoff_is_not_restarted_by_the_same_download_still_listed_by_the_client()
+    {
+        using var storage = TestStorage.Create();
+        var clock = new FixedTimeProvider(DateTimeOffset.Parse("2026-09-19T14:46:00Z"));
+        await new PlatformSchemaInitializer(
+            storage.Factory,
+            new SqliteDatabaseMigrator(storage.Factory, clock),
+            NullLogger<PlatformSchemaInitializer>.Instance).StartAsync(CancellationToken.None);
+        var repository = new SqliteProcessorRepository(storage.Factory, clock, TestSecretProtection.Create(storage));
+        // A history item carries the time the download finished, which is before its hand-off ended.
+        var request = new CreateProcessorHandoffRequest(
+            "library-1", "movies", "sabnzbd", "nzo-1", "Tears.of.Steel.2012.1080p", "/downloads/tears", "Weir",
+            DownloadAddedUtc: clock.GetUtcNow().AddMinutes(-1));
+
+        var first = await repository.EnsureProcessorHandoffAsync(request, CancellationToken.None);
+        await repository.UpdateProcessorHandoffAsync(first.Id, "completed", "/refined/tears.mkv", "import-job-1", null, CancellationToken.None);
+
+        var again = await repository.EnsureProcessorHandoffAsync(request, CancellationToken.None);
+
+        Assert.Equal(first.Id, again.Id);
+        Assert.Equal("completed", again.Status);
+        Assert.Equal("/refined/tears.mkv", again.OutputPath);
     }
 
     /// <summary>

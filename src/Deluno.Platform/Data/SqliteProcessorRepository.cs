@@ -300,10 +300,22 @@ public sealed class SqliteProcessorRepository(
                   -- download when the client took it after the hand-off ended
                   -- (seen on the rig, #497: the re-fetched file sat in the client
                   -- and was never handed to Weir).
-                  AND (status = 'completed'
-                    OR (status IN ('failed', 'rejected', 'timed-out', 'stalled', 'lost', 'cancelled', 'released')
-                        AND (queue_item_id <> @queueItemId
-                          OR (@downloadAddedUtc IS NOT NULL AND @downloadAddedUtc > updated_utc))));
+                  --
+                  -- 'completed' used to restart whoever asked, on the grounds that
+                  -- nobody asks about a finished download. A Usenet client's
+                  -- history does: it lists the finished download as "completed" on
+                  -- every pass, with nothing to say it was handed off already. On
+                  -- the rig one film went to Weir once a minute, each round
+                  -- processed again and failing to import over the copy already in
+                  -- the library. A completed hand-off now restarts on the same
+                  -- evidence as any other ending.
+                  -- 'dismissed' is an ending too. Left out, a release whose failed
+                  -- hand-off a person had dismissed could never be processed
+                  -- again: fetched a second time, it found that row, was not
+                  -- handed over, and sat in the client (seen on the rig).
+                  AND status IN ('completed', 'failed', 'rejected', 'timed-out', 'stalled', 'lost', 'cancelled', 'released', 'dismissed')
+                  AND (queue_item_id <> @queueItemId
+                    OR (@downloadAddedUtc IS NOT NULL AND @downloadAddedUtc > updated_utc));
                 """;
             AddParameter(restart, "@downloadAddedUtc", request.DownloadAddedUtc is { } added && added > DateTimeOffset.UnixEpoch ? added.ToUniversalTime().ToString("O") : null);
             AddParameter(restart, "@newId", Guid.CreateVersion7().ToString("N"));
