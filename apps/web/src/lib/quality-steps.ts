@@ -162,25 +162,35 @@ export function customFormatsOutsideGuide(
 export function describeAnswer(
   step: QualityStep,
   chosen: readonly string[],
-  formats: readonly CustomFormatItem[]
+  formats: readonly CustomFormatItem[],
+  formatIntents: Readonly<Record<string, string>> = {}
 ): string {
+  // Only rules that are on are named. A rule that is in the profile and off
+  // does nothing, and "Never x265" beside a rule that is off would be untrue.
+  const isOn = (id: string) => (formatIntents[id] ?? "neutral") !== "neutral";
+  // Only rules that still exist: one deleted while a profile names it is not
+  // "off", it is gone, and must not be counted on the checklist.
+  const off = chosen.filter((id) => !isOn(id) && formats.some((format) => format.id === id)).length;
   const names = chosen
+    .filter(isOn)
     .map((id) => formats.find((format) => format.id === id)?.name)
     .filter((name): name is string => Boolean(name));
 
   if (names.length === 0) {
-    return step.id === "never" ? "Nothing refused outright" : "No preference — anything is fine";
+    const nothing = step.id === "never" ? "Nothing refused outright" : "No preference — anything is fine";
+    return off ? `${nothing} · ${off} ${off === 1 ? "rule is" : "rules are"} off` : nothing;
   }
 
+  const alsoOff = off ? ` · ${off} off` : "";
   if (names.length <= 3) {
-    return step.id === "never" ? `Never ${joinNames(names)}` : joinNames(names);
+    return `${step.id === "never" ? `Never ${joinNames(names)}` : joinNames(names)}${alsoOff}`;
   }
 
   // Commas, not "and", once the list is cut short: "HDR10 and x265, and 2
   // more" reads as though the sentence restarted.
   const shown = names.slice(0, 2).join(", ");
   const rest = `${shown}, and ${names.length - 2} more`;
-  return step.id === "never" ? `Never ${rest}` : rest;
+  return `${step.id === "never" ? `Never ${rest}` : rest}${alsoOff}`;
 }
 
 function joinNames(names: readonly string[]): string {

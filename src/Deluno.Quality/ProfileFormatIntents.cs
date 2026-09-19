@@ -22,6 +22,13 @@ public static class ProfileFormatIntents
     public const string MustNotHave = "blocked";
     public const string Avoid = "avoid";
     public const string DoNotCare = "neutral";
+
+    /// <summary>
+    /// A rule that is in the profile and does nothing: it does not block, rank,
+    /// hold or justify an upgrade. Every rule starts here, and it is the same
+    /// stored value as <see cref="DoNotCare"/>; "off" is the word a person reads.
+    /// </summary>
+    public const string Off = DoNotCare;
     public const string Prefer = "prefer";
     public const string StronglyPrefer = "strong-prefer";
 
@@ -63,8 +70,20 @@ public static class ProfileFormatIntents
     }
 
     /// <summary>
-    /// What the guide's own score means, so a profile that has said nothing
-    /// starts from the recommendation rather than from "do not care".
+    /// What the guide would suggest for a rule: <c>Never</c> for one it files
+    /// under "unwanted" or "safety", otherwise what its score means. A
+    /// suggestion is shown, and adopted with one click; it never acts by itself.
+    /// </summary>
+    public static string SuggestionFor(int guideScore, string? guideCategory)
+        => string.Equals(guideCategory?.Trim(), "unwanted", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(guideCategory?.Trim(), "safety", StringComparison.OrdinalIgnoreCase)
+            ? MustNotHave
+            : FromGuideScore(guideScore);
+
+    /// <summary>
+    /// What the guide's own score means. This is the guide's suggestion and what
+    /// a preset writes into a profile when a person chooses it; a rule nobody
+    /// has turned on is <see cref="Off"/> whatever its score.
     ///
     /// <para>The thresholds are the ones the rules list already reads scores by,
     /// named once here so the list and the profile cannot disagree about what

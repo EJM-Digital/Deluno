@@ -29,7 +29,7 @@ import { Select } from "../components/ui/select";
 import { SwitchRow } from "../components/ui/switch";
 import { toast } from "../components/shell/toaster";
 import { configurationNavAreas } from "../components/app/settings-shell";
-import { QualityBuildSteps } from "../components/app/quality-build-steps";
+import { QualityBuildSteps, guideIntentFor } from "../components/app/quality-build-steps";
 import { ProfileSizeSteps } from "../components/app/profile-size-steps";
 import { QUALITY_STEPS, type QualityStep } from "../lib/quality-steps";
 import { createRuleFromGuide, guideFormatAppliesTo } from "../lib/guide-formats";
@@ -210,6 +210,33 @@ export function SettingsProfilesPage() {
     setPlanError(null);
     setAdvancedPlanOpen(false);
   }
+  /**
+   * A copy to change, leaving the original as it is.
+   *
+   * Opens as a new profile filled in from this one - tiers, sizes, rules and
+   * every answer - and nothing exists until it is saved, so closing it leaves
+   * no half-made profile behind. The starter's recommended rules are not added
+   * again: the copy already has exactly the rules the original has.
+   */
+  function openDuplicate(profile: QualityProfileItem) {
+    const taken = new Set(qualityProfiles.map((item) => item.name.trim().toLowerCase()));
+    let name = `Copy of ${profile.name}`;
+    for (let n = 2; taken.has(name.toLowerCase()); n += 1) name = `Copy of ${profile.name} (${n})`;
+    const next = { ...formFrom(profile), name };
+    setMode({ kind: "create" });
+    setForm(next);
+    // Against an empty form, so the copy reads as unsaved and Save is offered at once.
+    setInitialForm(emptyForm());
+    setStarterId("");
+    setAddRecommended(false);
+    setFineTuneOpen(false);
+    setSaveState(undefined);
+    setErrors({});
+    setPlanCompilation(null);
+    setPlanError(null);
+    setAdvancedPlanOpen(false);
+  }
+
   function closeDrawer() {
     setMode({ kind: "closed" });
     setConfirmDiscard(false);
@@ -299,8 +326,14 @@ export function SettingsProfilesPage() {
     setBusy(true);
     setSaveState("saving");
     try {
-      const starterFormatIds = mode.kind === "create" && addRecommended ? await ensureRecommendedFormats(starterId, form.mediaType, customFormats, guide) : [];
+      const starterFormats = mode.kind === "create" && addRecommended ? await ensureRecommendedFormats(starterId, form.mediaType, customFormats, guide) : [];
+      const starterFormatIds = starterFormats.map((format) => format.id);
       const formatIds = [...new Set([...form.customFormatIds, ...starterFormatIds])];
+      // Choosing a starter with its recommended rules is choosing its answers,
+      // so they are saved as the profile's own, where they can be seen and
+      // changed. A rule with no saved answer is off, and nothing infers one
+      // later, so these would otherwise arrive switched off.
+      const starterIntents = Object.fromEntries(starterFormats.map((format) => [format.id, guideIntentFor(format.score)]));
       const payload = {
         name: form.name.trim(),
         mediaType: form.mediaType,
@@ -324,7 +357,7 @@ export function SettingsProfilesPage() {
         // Only for preferences still selected, so deselecting one takes its
         // answer with it rather than leaving an orphan.
         formatIntents: Object.fromEntries(
-          Object.entries(form.formatIntents).filter(([id]) => formatIds.includes(id))),
+          Object.entries({ ...starterIntents, ...form.formatIntents }).filter(([id]) => formatIds.includes(id))),
         acquisition: form.acquisition
       };
       const response = await authedFetch(mode.kind === "edit" ? `/api/quality-profiles/${mode.id}` : "/api/quality-profiles", { method: mode.kind === "edit" ? "PUT" : "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
@@ -824,6 +857,18 @@ export function SettingsProfilesPage() {
         ) : null}
 
         {editing ? (
+          <DrawerSection title="Make your own version">
+            <div className="flex min-h-[52px] items-center justify-between gap-[var(--grid-gap)] rounded-[10px] border border-hairline px-[var(--field-pad-x)] py-2">
+              <div className="min-w-0">
+                <p className="text-[length:var(--type-body-sm)] font-medium text-foreground">Duplicate this profile</p>
+                <p className="mt-0.5 text-[length:var(--type-caption)] text-muted-foreground">Opens a copy with the same tiers, sizes, rules and answers for you to change. This one stays as it is.</p>
+              </div>
+              <Button type="button" variant="outline" size="sm" onClick={() => openDuplicate(editing)} disabled={busy || dirty} title={dirty ? "Save or discard your changes first." : undefined}>Duplicate</Button>
+            </div>
+          </DrawerSection>
+        ) : null}
+
+        {editing ? (
           <DrawerSection>
           <DrawerDanger title="Delete this Quality Profile" description="Library Profiles using it need another Quality Profile." action={<Button type="button" variant="destructive" size="sm" onClick={() => setConfirmRemove(true)} disabled={busy}>Delete</Button>} />
           </DrawerSection>
@@ -1017,12 +1062,12 @@ async function ensureRecommendedFormats(starterId: string, mediaType: "movies" |
   // Only this media type's rules: a Deluno extra serves movies and TV under one
   // id, and a TV profile used to attach the movie rule it found first.
   const byTrashId = new Map(existing.filter((format) => format.trashId && format.mediaType === mediaType).map((format) => [format.trashId!, format]));
-  const ids: string[] = [];
+  const ids: { id: string; score: number }[] = [];
 
   for (const { trashId, score } of recommended) {
     const match = byTrashId.get(trashId);
     if (match) {
-      ids.push(match.id);
+      ids.push({ id: match.id, score });
       continue;
     }
     const bundled = guide.customFormats.find((format) => format.trashId === trashId);
@@ -1033,7 +1078,7 @@ async function ensureRecommendedFormats(starterId: string, mediaType: "movies" |
     } catch (error) {
       throw new Error(`Could not create the “${friendlyRuleName(bundled.name)}” format: ${error instanceof Error ? error.message : "unknown error"}`);
     }
-    ids.push(created.id);
+    ids.push({ id: created.id, score });
     byTrashId.set(trashId, created);
   }
   return ids;
@@ -1047,7 +1092,7 @@ function profileFormatIntentLabel(intent: string) {
   switch (intent) {
     case "blocked": return "Must not have";
     case "avoid": return "Avoid";
-    case "neutral": return "Do not care";
+    case "neutral": return "Off";
     case "prefer": return "Prefer";
     case "strong-prefer": return "Strongly prefer";
     default: return intent;

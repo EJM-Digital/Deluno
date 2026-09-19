@@ -223,13 +223,20 @@ public static class ReleasePreferencePlanFactory
 
             guideFormats.TryGetValue(format.TrashId ?? string.Empty, out var guideFormat);
             var hasReviewedMapping = guideFormat?.MappingStatus == GuideMappingStatus.Reviewed;
+            // A rule is off until a person turns it on (the owner, 2026-09-19, #550).
+            //
+            // It used to take the guide's score as its answer when the profile
+            // had none: 500 or more became "Strongly prefer", -10000 became
+            // "Never", and a guide sync that moved a score changed what every
+            // such profile did. On the rig that is how "WEB Tier 02" came to
+            // hold every episode for review without anyone having chosen it.
+            // Rules the guide files under "unwanted" or "safety" were forced to
+            // "Never" even over an answer the person had given. The guide's view
+            // is a suggestion the profile screen shows beside the rule
+            // (ProfileFormatIntents.SuggestionFor); only a stated answer acts.
             var answer = formatIntents is not null && formatIntents.TryGetValue(format.Id, out var stated)
                 ? ProfileFormatIntents.Normalize(stated)
-                : ProfileFormatIntents.FromGuideScore(format.Score);
-            if (hasReviewedMapping && IsForbiddenCategory(guideFormat!.Category))
-            {
-                answer = ProfileFormatIntents.MustNotHave;
-            }
+                : ProfileFormatIntents.Off;
 
             var matchedTrait = CustomFormatPreferenceTraits.Matched(format.Id);
             var notMatchedTrait = CustomFormatPreferenceTraits.NotMatched(format.Id);
@@ -396,10 +403,6 @@ public static class ReleasePreferencePlanFactory
             .Where(item => ids.Contains(item.Id, StringComparer.OrdinalIgnoreCase))
             .ToArray();
     }
-
-    private static bool IsForbiddenCategory(string? category)
-        => string.Equals(category?.Trim(), "unwanted", StringComparison.OrdinalIgnoreCase)
-            || string.Equals(category?.Trim(), "safety", StringComparison.OrdinalIgnoreCase);
 
     private static IReadOnlyList<string> Split(string? value)
         => (value ?? string.Empty)

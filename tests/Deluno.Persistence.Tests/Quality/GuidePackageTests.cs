@@ -238,7 +238,12 @@ public sealed class GuidePackageTests
             null,
             false,
             timestamp,
-            timestamp);
+            timestamp)
+        {
+            // The profile's own answer. The rule's score, however large, no
+            // longer stands in for one: a rule nobody has turned on is off (#550).
+            FormatIntents = new Dictionary<string, string> { [format.Id] = ProfileFormatIntents.StronglyPrefer }
+        };
 
         var plan = Deluno.Quality.ReleasePreferences.ReleasePreferencePlanFactory.CreateQualityPlan(profile, [format]);
         var audio = Assert.Single(plan.Families, family => family.Dimension == "audio.format");
@@ -258,8 +263,14 @@ public sealed class GuidePackageTests
             && source.ProfileIntent == ProfileFormatIntents.StronglyPrefer);
     }
 
+    /// <summary>
+    /// #550: a rule is off until a person turns it on. A rule the guide files
+    /// under "unwanted" used to be forced to "Never" in any profile that held
+    /// it, even over an answer the person had given. The guide's view is now
+    /// the suggestion, and the profile's own answer is what acts.
+    /// </summary>
     [Fact]
-    public void Reviewed_unwanted_guide_mapping_becomes_a_forbidden_gate()
+    public void An_unwanted_guide_rule_is_a_forbidden_gate_once_the_profile_says_never_and_off_until_then()
     {
         var guideFormat = Assert.Single(GuidePackageCatalog.Current.CustomFormats,
             format => format.MappingStatus == GuideMappingStatus.Reviewed
@@ -308,6 +319,18 @@ public sealed class GuidePackageTests
             timestamp,
             timestamp);
 
+        // In the profile, with no answer: off. It forbids nothing, and the guide only suggests.
+        var offPlan = Deluno.Quality.ReleasePreferences.ReleasePreferencePlanFactory.CreateQualityPlan(
+            qualityProfile,
+            [customFormat]);
+        Assert.DoesNotContain(Deluno.Quality.ReleasePreferences.CustomFormatPreferenceTraits.Matched(customFormat.Id), offPlan.ForbiddenTraitIds ?? []);
+        Assert.Equal(ProfileFormatIntents.Off, Assert.Single(offPlan.Sources!, source => source.RuleId == customFormat.Id).ProfileIntent);
+        Assert.Equal(ProfileFormatIntents.MustNotHave, ProfileFormatIntents.SuggestionFor(guideFormat.OriginalScore, guideFormat.Category));
+
+        qualityProfile = qualityProfile with
+        {
+            FormatIntents = new Dictionary<string, string> { [customFormat.Id] = ProfileFormatIntents.MustNotHave }
+        };
         var runtimePlan = Deluno.Quality.ReleasePreferences.ReleasePreferencePlanFactory.CreateQualityPlan(
             qualityProfile,
             [customFormat]);
