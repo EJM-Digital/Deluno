@@ -119,14 +119,21 @@ function StepRow({
       ? describeQualityAnswer(props.allowed, props.cutoff)
       : step.id === "size"
         ? describeSizeAnswer(props.allowed.length)
-        : describeAnswer(step, chosen, offered);
+        : describeAnswer(step, chosen, offered, props.formatIntents);
 
   function toggle(id: string) {
+    const adding = !props.customFormatIds.includes(id);
     props.onCustomFormatIdsChange(
-      props.customFormatIds.includes(id)
-        ? props.customFormatIds.filter((current) => current !== id)
-        : [...props.customFormatIds, id]
+      adding ? [...props.customFormatIds, id] : props.customFormatIds.filter((current) => current !== id)
     );
+    // Ticking a rule is the person deciding to use it, so its answer is saved
+    // now, where they can see and change it: "Never" in the step that asks what
+    // they never want, the guide's suggestion anywhere else. Nothing infers it
+    // afterwards, so a guide sync cannot change what the profile does.
+    const format = offered.find((candidate) => candidate.id === id);
+    if (adding && format && props.formatIntents[id] === undefined) {
+      props.onFormatIntentChange(id, step.id === "never" ? "blocked" : guideIntentFor(format.score));
+    }
   }
 
   return (
@@ -234,15 +241,19 @@ function CustomRulesRow({
     .map((id) => rules.find((format) => format.id === id)?.name)
     .filter((name): name is string => Boolean(name));
   const answer = chosenNames.length === 0
-    ? "No custom rules active"
+    ? "No custom rules chosen"
     : chosenNames.length <= 2 ? chosenNames.join(" and ") : `${chosenNames.slice(0, 2).join(", ")}, and ${chosenNames.length - 2} more`;
 
   function toggle(id: string) {
+    const adding = !props.customFormatIds.includes(id);
     props.onCustomFormatIdsChange(
-      props.customFormatIds.includes(id)
-        ? props.customFormatIds.filter((current) => current !== id)
-        : [...props.customFormatIds, id]
+      adding ? [...props.customFormatIds, id] : props.customFormatIds.filter((current) => current !== id)
     );
+    // As in the steps above: ticking it is choosing it, and the answer is saved now.
+    const format = props.customFormats.find((candidate) => candidate.id === id);
+    if (adding && format && props.formatIntents[id] === undefined) {
+      props.onFormatIntentChange(id, guideIntentFor(format.score));
+    }
   }
 
   return (
@@ -321,10 +332,28 @@ function RuleIntentPicker({
       {chosen.map((formatId) => {
         const format = offered.find((candidate) => candidate.id === formatId);
         if (!format) return null;
-        const intent = formatIntents[formatId] ?? guideIntentFor(format.score);
+        // A rule is off until a person turns it on. It used to show, and act
+        // on, the guide's score as if it had been chosen: "Trusted WEB groups"
+        // read "Strongly prefer" on a profile nobody had set it on, and held
+        // every episode for review. The guide's view is now a suggestion.
+        const intent = formatIntents[formatId] ?? OFF;
+        const suggestion = guideIntentFor(format.score);
+        const suggested = INTENT_CHOICES.find((choice) => choice.value === suggestion);
         return (
           <li key={formatId} className="flex flex-wrap items-center justify-between gap-2">
-            <span className="text-[length:var(--type-caption)]">{friendlyRuleName(format.name)}</span>
+            <span className="flex min-w-0 flex-wrap items-baseline gap-x-2 text-[length:var(--type-caption)]">
+              {friendlyRuleName(format.name)}
+              {intent === OFF && suggestion !== OFF && suggested ? (
+                <button
+                  type="button"
+                  onClick={() => onFormatIntentChange(formatId, suggestion)}
+                  className="text-muted-foreground underline decoration-dotted underline-offset-2 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  aria-label={`Use the guide's suggestion for ${friendlyRuleName(format.name)}: ${suggested.label}`}
+                >
+                  Guide suggests {suggested.label}
+                </button>
+              ) : null}
+            </span>
             <div role="radiogroup" aria-label={`How much this profile wants ${friendlyRuleName(format.name)}`} className="flex gap-1">
               {INTENT_CHOICES.map((choice) => (
                 <button
@@ -510,19 +539,20 @@ export function verdictTone(status: string | undefined): "ok" | "warn" | "bad" |
  * The same five words the release-rules list uses, so somebody who has read one
  * of these screens has read both.
  */
+/** A rule that is in the profile and does nothing. Every rule starts here. */
+const OFF = "neutral";
+
 const INTENT_CHOICES = [
+  { value: OFF, label: "Off", help: "This rule does nothing in this profile. Every rule starts here until you turn it on." },
   { value: "blocked", label: "Never", help: "Deluno will never take a release that matches this." },
   { value: "avoid", label: "Avoid", help: "Taken only when nothing better is available." },
-  { value: "neutral", label: "Don't mind", help: "Makes no difference to which release Deluno picks." },
   { value: "prefer", label: "Prefer", help: "Tips a close call towards releases that match." },
   { value: "strong-prefer", label: "Strongly prefer", help: "Ranks the match first and can justify replacing a file you already have." }
 ];
 
 /**
- * What the guide recommends for a preference this profile has not answered for.
- *
- * <p>The same thresholds the backend reads, because a profile showing "Prefer"
- * while the engine treats it as "Must have" is worse than showing nothing.</p>
+ * What the guide suggests for a rule, from its score. A suggestion only: a rule
+ * nobody has turned on is off, here and in the engine, whatever it scores.
  */
 export function guideIntentFor(score: number): string {
   if (score <= -10000) return "blocked";

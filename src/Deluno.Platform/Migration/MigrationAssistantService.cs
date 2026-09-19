@@ -8,6 +8,7 @@ using Deluno.Intake.Data;
 using Deluno.Libraries.Contracts;
 using Deluno.Libraries.Data;
 using Deluno.Platform.Data;
+using Deluno.Quality;
 using Deluno.Quality.Contracts;
 using Deluno.Quality.Data;
 using Deluno.Quality.Guides;
@@ -257,7 +258,10 @@ public sealed class MigrationAssistantService(
                             CustomFormatIds: customFormatIds,
                             UpgradeUntilCutoff: ParseBool(GetData(operation, "upgradeUntilCutoff"), defaultValue: true),
                             UpgradeUnknownItems: ParseBool(GetData(operation, "upgradeUnknownItems"), defaultValue: false),
-                            ReleasePreferencePlan: releasePreferencePlan),
+                            ReleasePreferencePlan: releasePreferencePlan,
+                            // Under the ids the rules were given here, so the
+                            // profile screen shows the answers the plan acts on.
+                            FormatIntents: RemapImportedAnswers(GetData(operation, "formatIntents"), importedCustomFormatIds)),
                         cancellationToken);
                     applied.Add(new MigrationAppliedItem(operation.Id, operation.TargetType, operation.Name, created.Id, "created"));
                     break;
@@ -503,6 +507,13 @@ public sealed class MigrationAssistantService(
             // migration cannot silently make two profiles equivalent.
             var importedCustomFormats = ReadImportedCustomFormats(context, item);
 
+            // Those scores are answers the person gave in the app they are
+            // leaving, so they arrive as answers they have given here. A rule
+            // with no stated answer is off (#550), and a migration that switched
+            // off every preference somebody had set would not be a migration.
+            var importedAnswers = ImportedFormatAnswers(data["customFormatIds"], importedCustomFormats);
+            data["formatIntents"] = importedAnswers.Count == 0 ? null : JsonSerializer.Serialize(importedAnswers);
+
             var nameKey = MakeKey(mediaType, name);
             if (existing.QualityProfilesByKey.TryGetValue(nameKey, out var existingProfile) &&
                 (!string.Equals(existingProfile.CutoffQuality, cutoffQuality, StringComparison.OrdinalIgnoreCase) ||
@@ -535,7 +546,7 @@ public sealed class MigrationAssistantService(
                 name,
                 cutoffQuality,
                 allowedQualities,
-                data["customFormatIds"] ?? string.Empty);
+                data["customFormatIds"] ?? string.Empty) with { FormatIntents = importedAnswers };
             var translation = CompileImportedProfile(importedProfile, item.GetRawText(), importedCustomFormats, guidePackage);
             var serializedPlan = ReleasePreferencePlanCodec.Serialize(translation.Plan);
             var planKey = MakeKey(translation.Plan.Id, translation.Plan.Version);
@@ -1908,6 +1919,38 @@ public sealed class MigrationAssistantService(
     private static string? GetData(MigrationReportOperation operation, string key)
     {
         return operation.Data.TryGetValue(key, out var value) ? value : null;
+    }
+
+    /// <summary>The source profile's score for each of its rules, as the answer it means.</summary>
+    private static IReadOnlyDictionary<string, string> ImportedFormatAnswers(
+        string? sourceIds,
+        IReadOnlyList<CustomFormatItem> importedCustomFormats)
+    {
+        var selected = (sourceIds ?? string.Empty)
+            .Split([',', '\r', '\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        return importedCustomFormats
+            .Where(format => selected.Contains(format.Id))
+            .GroupBy(format => format.Id, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(
+                group => group.Key,
+                group => ProfileFormatIntents.FromGuideScore(group.First().Score),
+                StringComparer.OrdinalIgnoreCase);
+    }
+
+    private static IReadOnlyDictionary<string, string>? RemapImportedAnswers(
+        string? answersJson,
+        IReadOnlyDictionary<string, string> importedIds)
+    {
+        if (string.IsNullOrWhiteSpace(answersJson))
+        {
+            return null;
+        }
+
+        var answers = JsonSerializer.Deserialize<Dictionary<string, string>>(answersJson) ?? [];
+        return answers
+            .Where(answer => importedIds.ContainsKey(answer.Key))
+            .ToDictionary(answer => importedIds[answer.Key], answer => answer.Value, StringComparer.OrdinalIgnoreCase);
     }
 
     private static string? ResolveImportedCustomFormatIds(

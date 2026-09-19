@@ -433,14 +433,26 @@ public static partial class ReleaseDecisionEngine
             }
             else
             {
+                // Nothing is on disk, so there is nothing to compare against.
+                // Only the quality cutoff can hold a release for a title you
+                // have none of (James, 2026-09-19, #550): a preference it
+                // misses still ranks it below a candidate that has it, and can
+                // still justify an upgrade once there is a file. Holding here
+                // for any missed target meant a release from outside a
+                // strongly-preferred group was never downloaded at all.
+                var takenAtCutoff = preferenceEvaluation.Status == PreferenceEvaluationStatus.BelowGoal && meetsCutoff;
                 status = preferenceEvaluation.Status switch
                 {
                     PreferenceEvaluationStatus.MeetsPlan => "preferred",
-                    PreferenceEvaluationStatus.BelowGoal => "eligible",
+                    PreferenceEvaluationStatus.BelowGoal => takenAtCutoff ? "preferred" : "eligible",
                     PreferenceEvaluationStatus.NeedsReview => "held",
                     _ => "rejected"
                 };
                 reasons.AddRange(preferenceEvaluation.Reasons);
+                if (takenAtCutoff)
+                {
+                    reasons.Add("Nothing is on disk yet and this meets the quality cutoff, so it is taken; the preferences it misses can still justify an upgrade later.");
+                }
             }
 
             // The legacy total is retained only for compatibility with old

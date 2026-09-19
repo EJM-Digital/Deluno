@@ -89,9 +89,24 @@ describe("which formats a step offers", () => {
 });
 
 describe("what a step's answer reads as", () => {
+  // Every rule here has been turned on, which is what these lines describe.
+  const on = { hdr10: "prefer", x265: "prefer", truehd: "prefer", cam: "blocked" };
+
   it("is a sentence rather than a count", () => {
-    expect(describeAnswer(step("picture"), ["hdr10"], formats)).toBe("HDR10");
-    expect(describeAnswer(step("picture"), ["hdr10", "x265"], formats)).toBe("HDR10 and x265");
+    expect(describeAnswer(step("picture"), ["hdr10"], formats, on)).toBe("HDR10");
+    expect(describeAnswer(step("picture"), ["hdr10", "x265"], formats, on)).toBe("HDR10 and x265");
+  });
+
+  /**
+   * #550: a rule is off until a person turns it on, and a rule that is off does
+   * nothing. The checklist used to name every rule in the profile, so "Never
+   * x265" could stand beside a rule that blocked nothing.
+   */
+  it("names only the rules that are on, and says how many are off", () => {
+    expect(describeAnswer(step("picture"), ["hdr10", "x265"], formats, { hdr10: "prefer" })).toBe("HDR10 · 1 off");
+    expect(describeAnswer(step("picture"), ["hdr10", "x265"], formats, { hdr10: "prefer", x265: "neutral" })).toBe("HDR10 · 1 off");
+    expect(describeAnswer(step("never"), ["cam"], formats, {})).toBe("Nothing refused outright · 1 rule is off");
+    expect(describeAnswer(step("picture"), ["hdr10", "x265"], formats)).toBe("No preference — anything is fine · 2 rules are off");
   });
 
   it("says what an unanswered step means, not that it is empty", () => {
@@ -100,18 +115,18 @@ describe("what a step's answer reads as", () => {
   });
 
   it("reads refusal as a refusal", () => {
-    expect(describeAnswer(step("never"), ["cam"], formats)).toBe("Never CAM");
+    expect(describeAnswer(step("never"), ["cam"], formats, on)).toBe("Never CAM");
   });
 
   it("stops naming after three and says how many are left", () => {
     const many = ["hdr10", "x265", "truehd", "cam"];
-    expect(describeAnswer(step("picture"), many, formats)).toBe("HDR10, x265, and 2 more");
+    expect(describeAnswer(step("picture"), many, formats, on)).toBe("HDR10, x265, and 2 more");
   });
 
   it("ignores an id that no longer matches a format", () => {
     // A format deleted while a profile still names it must not render as
     // "undefined" on the checklist.
-    expect(describeAnswer(step("picture"), ["hdr10", "gone"], formats)).toBe("HDR10");
+    expect(describeAnswer(step("picture"), ["hdr10", "gone"], formats, on)).toBe("HDR10");
   });
 });
 

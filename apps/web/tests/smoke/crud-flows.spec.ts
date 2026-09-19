@@ -556,7 +556,11 @@ test.describe("indexer and download client CRUD", () => {
         allowedQualities: tier,
         customFormatIds: `${format.id},${mapped.id}`,
         upgradeUntilCutoff: true,
-        upgradeUnknownItems: false
+        upgradeUnknownItems: false,
+        // The profile's own answers. A rule nobody has turned on is off,
+        // whatever the guide scores it (#550), so the answer this test reads
+        // back has to have been given.
+        formatIntents: { [format.id]: "strong-prefer", [mapped.id]: "strong-prefer" }
       },
       headers: authHeaders()
     });
