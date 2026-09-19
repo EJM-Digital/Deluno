@@ -47,41 +47,59 @@ export async function ensureBootstrapped(request: APIRequestContext) {
   }
 }
 
-export async function authenticateAndNavigate(page: Page, targetUrl: string) {
-  // Bootstrap if needed
-  await ensureBootstrapped(page.context().request);
+/** What the login API answers, and what the app keeps in sessionStorage. */
+interface SignedIn {
+  accessToken: string;
+  user: unknown;
+}
 
-  // Navigate to login
-  await page.goto("/login");
-
-  // Perform login
+/**
+ * Signs in through the API, bootstrapping the test account first when the
+ * install is fresh.
+ */
+async function signInThroughApi(request: APIRequestContext): Promise<SignedIn> {
+  await ensureBootstrapped(request);
   const credentials = process.env.DELUNO_E2E_USERNAME
-    ? {
-        username: process.env.DELUNO_E2E_USERNAME,
-        password: process.env.DELUNO_E2E_PASSWORD!
-      }
+    ? { username: process.env.DELUNO_E2E_USERNAME, password: process.env.DELUNO_E2E_PASSWORD! }
     : fallbackCredentials;
+  const login = await request.post("/api/auth/login", { data: credentials });
+  if (!login.ok()) {
+    throw new Error(`Could not sign in as ${credentials.username}: HTTP ${login.status()}`);
+  }
 
-  // Wait for the form, not just the document.
-  //
-  // `goto` resolves when the document loads; the login form is rendered by the
-  // app afterwards. With four workers running and the mobile project emulating
-  // a slower device, that cold first paint can take longer than Playwright's
-  // 30s default - and this helper is where every spec pays it once. The result
-  // was a `locator.fill` timeout that moved between specs run to run and always
-  // passed in isolation, which is the worst shape a gate failure can have:
-  // it teaches you to ignore red.
-  const username = page.getByLabel(/username/i);
-  await username.waitFor({ state: "visible", timeout: 90_000 });
-  await username.fill(credentials.username);
-  await page.getByLabel("Password", { exact: true }).fill(credentials.password);
-  await page.getByRole("button", { name: /sign in/i }).click();
+  return (await login.json()) as SignedIn;
+}
 
-  // Wait for navigation away from login
-  await expect(page).not.toHaveURL(/\/login/);
+/**
+ * Opens a page as a signed-in user.
+ *
+ * Signs in through the API and hands the page that session, the way the app
+ * keeps one (sessionStorage), then opens the target directly. It used to sign
+ * in through the login form. That cost every spec a cold render of /login,
+ * whose loader waits on /api/auth/bootstrap-status before the form exists, and
+ * under load that wait outran the test: "Test timeout of 30000ms exceeded,
+ * waiting for getByLabel(/username/i)", passing on every re-run. The 90-second
+ * wait meant to absorb it never could, because the test's own 30-second budget
+ * ended first. None of the specs that use this helper is about signing in; the
+ * login form is proved in setup-login.spec.ts and authenticated.spec.ts.
+ *
+ * The session is written once per tab, marked, so a spec that signs out stays
+ * signed out on its next navigation rather than being signed back in.
+ */
+export async function authenticateAndNavigate(page: Page, targetUrl: string) {
+  const session = await signInThroughApi(page.context().request);
+  await page.addInitScript(({ token, user }) => {
+    if (sessionStorage.getItem("deluno-e2e-session-seeded")) {
+      return;
+    }
 
-  // Navigate to target
+    sessionStorage.setItem("deluno-auth-token", token);
+    sessionStorage.setItem("deluno-auth-user", JSON.stringify(user));
+    sessionStorage.setItem("deluno-e2e-session-seeded", "1");
+  }, { token: session.accessToken, user: session.user });
+
   await page.goto(targetUrl);
+  await expect(page).not.toHaveURL(/\/(login|setup)(\?|$)/);
 
   // Verify no errors
   await expect(page.getByText("Unexpected Application Error")).toHaveCount(0);
