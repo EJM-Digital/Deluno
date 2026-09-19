@@ -1,13 +1,17 @@
 import { useCallback, useEffect, useState } from "react";
 import {
-  fetchAllPages, fetchJson,
+  fetchJson,
   type IndexerItem,
-  type JobQueueItem,
   type MovieWantedSummary,
   type SeriesWantedSummary
 } from "./api";
 import { useVisibleInterval } from "../hooks/use-visible-interval";
-import { isJobDeadLettered, isJobFailed, type JobStatus } from "./job-status-constants";
+import { fetchFailedJobs } from "./failed-jobs";
+import { isJobDeadLettered, type JobStatus } from "./job-status-constants";
+import { RealtimeGroups, useSignalREvent } from "./use-signalr";
+
+/** The activity categories that move the failed-job count. */
+const FAILED_JOB_CATEGORIES = new Set(["job.failed", "job.dead-letter", "job.retry", "job.revived", "job.dismissed"]);
 
 export interface AttentionSnapshot {
   failedJobs: number;
@@ -42,15 +46,15 @@ export function useAttention(pollMs = 45000) {
   const load = useCallback(async () => {
     setSnapshot((s) => ({ ...s, loading: true }));
     try {
-      const [jobs, indexers, movieWanted, seriesWanted] = await Promise.all([
-        fetchAllPages<JobQueueItem>("/api/jobs?pageSize=80").catch(() => []),
+      const [failed, indexers, movieWanted, seriesWanted] = await Promise.all([
+        fetchFailedJobs().catch(() => []),
         fetchJson<IndexerItem[]>("/api/indexers").catch(() => []),
         fetchJson<MovieWantedSummary>("/api/movies/wanted").catch(() => null),
         fetchJson<SeriesWantedSummary>("/api/series/wanted").catch(() => null)
       ]);
 
-      const failedJobs = jobs.filter((job) => isJobFailed(job.status as JobStatus)).length;
-      const deadLetteredJobs = jobs.filter((job) => isJobDeadLettered(job.status as JobStatus)).length;
+      const failedJobs = failed.length;
+      const deadLetteredJobs = failed.filter((job) => isJobDeadLettered(job.status as JobStatus)).length;
       const indexerAlerts = indexers.filter((i) => i.isEnabled && i.healthStatus !== "healthy").length;
 
       setSnapshot({
@@ -71,6 +75,13 @@ export function useAttention(pollMs = 45000) {
   }, [load]);
 
   useVisibleInterval(() => void load(), pollMs);
+
+  // A job failing, being retried or being dismissed changes the count now, not
+  // at the next poll: dismissing the last failure beside a pill still saying
+  // "1 failed job" reads as the dismissal not having worked.
+  useSignalREvent("ActivityEventAdded", RealtimeGroups.Activity, (event) => {
+    if (FAILED_JOB_CATEGORIES.has(event.category)) void load();
+  });
 
   return { ...snapshot, refresh: load };
 }

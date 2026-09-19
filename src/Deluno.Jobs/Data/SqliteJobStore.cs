@@ -231,7 +231,7 @@ public sealed class SqliteJobStore(
         return jobs;
     }
 
-    public async Task<Page<JobQueueItem>> ListPageAsync(PageRequest request, CancellationToken cancellationToken)
+    public async Task<Page<JobQueueItem>> ListPageAsync(PageRequest request, bool failedOnly, CancellationToken cancellationToken)
     {
         var pageSize = request.BoundedPageSize;
         var token = DelunoPageToken.Decode(request.PageToken, 2);
@@ -250,10 +250,12 @@ public sealed class SqliteJobStore(
                 idempotency_key, dedupe_key, max_attempts, last_attempt_utc, next_attempt_utc
             FROM job_queue
             WHERE (@createdUtc IS NULL OR created_utc < @createdUtc OR (created_utc = @createdUtc AND id < @id))
+              AND (@failedOnly = 0 OR status IN ('failed', 'dead-letter'))
             ORDER BY created_utc DESC, id DESC
             LIMIT @take;
             """;
 
+        AddParameter(command, "@failedOnly", failedOnly ? 1 : 0);
         AddParameter(command, "@createdUtc", token?[0]);
         AddParameter(command, "@id", token?[1]);
         AddParameter(command, "@take", pageSize + 1);
@@ -459,6 +461,121 @@ public sealed class SqliteJobStore(
 
         DelunoObservability.JobRetries.Add(requeued);
         return requeued;
+    }
+
+    public async Task<JobQueueItem?> DismissFailedAsync(string jobId, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(jobId)) return null;
+
+        var now = timeProvider.GetUtcNow();
+        JobQueueItem? job = null;
+
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Jobs,
+            cancellationToken);
+
+        await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+
+        using (var select = connection.CreateCommand())
+        {
+            select.Transaction = transaction;
+            select.CommandText =
+                """
+                SELECT
+                    id, job_type, source, status, payload_json, attempts, created_utc, scheduled_utc,
+                    started_utc, completed_utc, leased_until_utc, worker_id, last_error, related_entity_type, related_entity_id,
+                    idempotency_key, dedupe_key, max_attempts, last_attempt_utc, next_attempt_utc
+                FROM job_queue
+                WHERE id = @id
+                  AND status IN ('failed', 'dead-letter');
+                """;
+            AddParameter(select, "@id", jobId);
+
+            using var reader = await select.ExecuteReaderAsync(cancellationToken);
+            if (await reader.ReadAsync(cancellationToken))
+            {
+                job = ReadJob(reader);
+            }
+        }
+
+        if (job is null)
+        {
+            await transaction.CommitAsync(cancellationToken);
+            return null;
+        }
+
+        using (var delete = connection.CreateCommand())
+        {
+            delete.Transaction = transaction;
+            // The status is checked again so a job a worker picked back up
+            // between the read and here is left running.
+            delete.CommandText =
+                """
+                DELETE FROM job_queue
+                WHERE id = @id
+                  AND status IN ('failed', 'dead-letter');
+                """;
+            AddParameter(delete, "@id", jobId);
+            if (await delete.ExecuteNonQueryAsync(cancellationToken) == 0)
+            {
+                await transaction.CommitAsync(cancellationToken);
+                return null;
+            }
+        }
+
+        // The row goes, so the feed is where what it was and why it failed
+        // stays readable. It is filed under the title or library it was for,
+        // not under the job id, which no longer exists.
+        var message = $"Dismissed {job.JobType}, which had failed.";
+        await InsertActivityAsync(
+            connection,
+            transaction,
+            category: "job.dismissed",
+            message: message,
+            detailsJson: JsonSerializer.Serialize(new Dictionary<string, string?>
+            {
+                ["jobId"] = job.Id,
+                ["jobType"] = job.JobType,
+                ["source"] = job.Source,
+                ["status"] = job.Status,
+                ["attempts"] = job.Attempts.ToString(CultureInfo.InvariantCulture),
+                ["lastError"] = job.LastError
+            }),
+            relatedJobId: null,
+            relatedEntityType: job.RelatedEntityType,
+            relatedEntityId: job.RelatedEntityId,
+            createdUtc: now,
+            cancellationToken: cancellationToken);
+
+        await transaction.CommitAsync(cancellationToken);
+
+        await realtimeEventPublisher.PublishActivityEventAddedAsync(
+            Guid.CreateVersion7().ToString("N"),
+            message,
+            "job.dismissed",
+            SeverityForCategory("job.dismissed"),
+            now.ToString("O"),
+            cancellationToken);
+
+        return job;
+    }
+
+    public async Task<int> PruneCompletedAsync(DateTimeOffset olderThan, CancellationToken cancellationToken)
+    {
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Jobs,
+            cancellationToken);
+
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            """
+            DELETE FROM job_queue
+            WHERE status = 'completed'
+              AND completed_utc IS NOT NULL
+              AND completed_utc < @olderThan;
+            """;
+        AddParameter(command, "@olderThan", olderThan.ToString("O"));
+        return await command.ExecuteNonQueryAsync(cancellationToken);
     }
 
     public async Task<int> CancelPendingForRelatedEntityAsync(
@@ -1559,12 +1676,14 @@ public sealed class SqliteJobStore(
     public async Task<IReadOnlyList<DownloadDispatchItem>> ListDownloadDispatchesAsync(
         int take,
         string? mediaType,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool includeArchived = false)
     {
         var (items, _) = await downloadDispatchesRepository.QueryDispatchesAsync(
             new DispatchQueryFilter
             {
-                MediaType = string.IsNullOrWhiteSpace(mediaType) ? null : mediaType.Trim().ToLowerInvariant()
+                MediaType = string.IsNullOrWhiteSpace(mediaType) ? null : mediaType.Trim().ToLowerInvariant(),
+                IncludeArchived = includeArchived
             },
             new DispatchPaginationOptions { PageSize = take },
             cancellationToken);

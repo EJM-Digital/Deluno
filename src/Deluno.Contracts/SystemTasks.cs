@@ -157,7 +157,7 @@ public static class SystemTasks
             TimeSpan.FromHours(6),
             IsConfigurable: true),
         new(DispatchCleanup, "Housekeeping",
-            "Clears finished dispatch records that nothing needs any more.",
+            "Clears finished download records and year-old completed jobs that nothing needs any more.",
             TimeSpan.FromHours(6))
     ];
 

@@ -68,6 +68,41 @@ public sealed class ANewFetchDoesNotInheritAnOldOutcomeTests
             Handoff(Yesterday), QueueItem(), [other]));
     }
 
+    /// <summary>
+    /// The mirror case, measured on the rig before the soak. Sintel was imported,
+    /// its library was switched to refine-before-import days later, and the
+    /// torrent was still seeding. With nothing left to say otherwise it read
+    /// "Waiting for processor" for ever, because that is what the library's
+    /// current workflow does with a finished download. The record of the fetch
+    /// says what happened to this one.
+    /// </summary>
+    [Fact]
+    public void A_download_whose_latest_fetch_was_imported_is_not_waiting_for_anything()
+    {
+        var imported = Dispatch(Yesterday) with { Status = "archived", ImportStatus = "imported" };
+
+        Assert.True(DownloadClientTelemetryService.WasAlreadyImported(QueueItem(), [imported]));
+    }
+
+    /// <summary>Fetching it again is a new attempt, and that one has not been imported.</summary>
+    [Fact]
+    public void A_newer_fetch_that_has_not_been_imported_outranks_an_older_one_that_was()
+    {
+        var imported = Dispatch(Yesterday) with { Status = "archived", ImportStatus = "imported" };
+        var again = Dispatch(Today) with { Id = "dispatch-2" };
+
+        Assert.False(DownloadClientTelemetryService.WasAlreadyImported(QueueItem(), [imported, again]));
+    }
+
+    [Fact]
+    public void A_download_with_no_record_of_a_fetch_is_not_assumed_imported()
+    {
+        var other = Dispatch(Today) with { ReleaseName = "Something.Else.2020.1080p", ImportStatus = "imported" };
+
+        Assert.False(DownloadClientTelemetryService.WasAlreadyImported(QueueItem(), [other]));
+        Assert.False(DownloadClientTelemetryService.WasAlreadyImported(QueueItem(), []));
+    }
+
     private static ProcessorHandoffItem Handoff(DateTimeOffset createdUtc)
         => new(
             "handoff-1",

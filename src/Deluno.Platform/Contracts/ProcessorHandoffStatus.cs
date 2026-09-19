@@ -100,9 +100,16 @@ public static class ProcessorHandoffStatuses
     /// </summary>
     public const string Released = "released";
 
+    /// <summary>
+    /// A person looked at a hand-off that ended badly and decided nothing more
+    /// needs doing about it. It stays as history and stops being counted as
+    /// something that needs them.
+    /// </summary>
+    public const string Dismissed = "dismissed";
+
     public static readonly IReadOnlySet<string> All = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
     {
-        Waiting, Submitted, Accepted, Started, Completed, Failed, Rejected, TimedOut, Stalled, Lost, Cancelled, Released
+        Waiting, Submitted, Accepted, Started, Completed, Failed, Rejected, TimedOut, Stalled, Lost, Cancelled, Released, Dismissed
     };
 
     /// <summary>With the processor, as far as Deluno knows.</summary>
@@ -128,6 +135,14 @@ public static class ProcessorHandoffStatuses
     /// <summary>Where a person can choose to import the original instead.</summary>
     public static bool CanReleaseOriginal(string? status)
         => status is Failed or TimedOut or Stalled or Lost or Cancelled;
+
+    /// <summary>
+    /// Every ending that was not a success. Wider than
+    /// <see cref="CanReleaseOriginal"/> because a rejected hand-off offers no
+    /// other action at all: without this it could never leave the screen.
+    /// </summary>
+    public static bool CanDismiss(string? status)
+        => status is Rejected || CanReleaseOriginal(status);
 }
 
 /// <summary>

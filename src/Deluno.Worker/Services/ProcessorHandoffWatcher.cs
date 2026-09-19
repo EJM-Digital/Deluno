@@ -55,23 +55,54 @@ public sealed class ProcessorHandoffWatcher(
     /// <summary>How long a processor can be unreachable before Deluno says so.</summary>
     public static readonly TimeSpan UnreachableNoticeAfter = TimeSpan.FromHours(1);
 
+    /// <param name="libraries">The libraries that can be worked on right now.</param>
+    /// <param name="allLibraries">
+    /// Every library that exists, reachable or not. A hand-off is orphaned only
+    /// when its library is gone from here or no longer processes before import;
+    /// a library whose folder is merely unreachable keeps its hand-offs.
+    /// </param>
     public async Task WatchAsync(
         IReadOnlyList<LibraryItem> libraries,
         DateTimeOffset now,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        IReadOnlyList<LibraryItem>? allLibraries = null)
     {
         var handoffs = await processorRepository.ListProcessorHandoffsAsync(null, HandoffsPerPass, cancellationToken);
         var connections = new Dictionary<string, ProcessorConnectionItem?>(StringComparer.OrdinalIgnoreCase);
         var support = new Dictionary<string, ProcessorStatusSupport>(StringComparer.OrdinalIgnoreCase);
         var connectionsNoticed = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
-        foreach (var handoff in handoffs.Where(item => ProcessorHandoffStatuses.IsOpen(item.Status)))
+        foreach (var handoff in handoffs.Where(item => ProcessorHandoffStatuses.IsWithProcessor(item.Status)))
         {
+            // Nothing is waiting for this hand-off any more. It used to be
+            // skipped here, which left it open for ever: no limit applied, no
+            // screen could close it, and Transfers went on counting it as work
+            // in progress. Seen on the rig after a proof library was removed.
+            var owner = (allLibraries ?? libraries).FirstOrDefault(item =>
+                string.Equals(item.Id, handoff.LibraryId, StringComparison.OrdinalIgnoreCase));
+            if (owner is null || !string.Equals(owner.ImportWorkflow, "refine-before-import", StringComparison.OrdinalIgnoreCase))
+            {
+                await EndAsync(
+                    handoff,
+                    ProcessorHandoffStatuses.Cancelled,
+                    owner is null
+                        ? $"The library {handoff.ReleaseName} was downloaded for has been removed, so nothing is waiting for a processed copy."
+                        : $"{owner.Name} no longer processes downloads before importing them, so nothing is waiting for a processed copy.",
+                    cancellationToken);
+                continue;
+            }
+
+            // A hand-off still waiting to be sent is the planner's to send.
+            if (!ProcessorHandoffStatuses.IsOpen(handoff.Status))
+            {
+                continue;
+            }
+
             var library = libraries.FirstOrDefault(item =>
-                string.Equals(item.Id, handoff.LibraryId, StringComparison.OrdinalIgnoreCase) &&
-                string.Equals(item.ImportWorkflow, "refine-before-import", StringComparison.OrdinalIgnoreCase));
+                string.Equals(item.Id, handoff.LibraryId, StringComparison.OrdinalIgnoreCase));
             if (library is null)
             {
+                // Its folder cannot be reached right now. That is not an ending.
                 continue;
             }
 

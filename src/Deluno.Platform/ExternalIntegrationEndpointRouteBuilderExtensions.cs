@@ -440,6 +440,62 @@ public static class ExternalIntegrationEndpointRouteBuilderExtensions
             return Results.Accepted($"/api/integrations/processors/handoffs?libraryId={Uri.EscapeDataString(handoff.LibraryId)}", retried);
         });
 
+        // A hand-off that ended badly stays on Transfers as something needing a
+        // person until they say otherwise. Retry and Import original both need
+        // something still to exist - a connection, a library, a file - and on the
+        // rig a removed processor's hand-offs had none of them, so they could
+        // never be cleared.
+        integrations.MapPost("/processors/handoffs/{id}/dismiss", async (
+            string id,
+            HttpContext httpContext,
+            IProcessorRepository repository,
+            IActivityFeedRepository activityFeed,
+            CancellationToken cancellationToken) =>
+        {
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
+            if (denied is not null) return denied;
+            var scopeDenied = UserAuthorization.RequireApiScope(httpContext, "imports");
+            if (scopeDenied is not null) return scopeDenied;
+
+            var handoff = await repository.GetProcessorHandoffAsync(id, cancellationToken);
+            if (handoff is null) return Results.NotFound();
+            if (!ProcessorHandoffStatuses.CanDismiss(handoff.Status))
+            {
+                return Results.Conflict(new
+                {
+                    message = "Only a hand-off that ended without a processed file can be dismissed. This one is still with the processor or has already finished."
+                });
+            }
+
+            // The reason it ended stays on the record: dismissing says it needs
+            // nobody, not that it did not happen.
+            var dismissed = await repository.UpdateProcessorHandoffAsync(
+                handoff.Id,
+                ProcessorHandoffStatuses.Dismissed,
+                null,
+                null,
+                handoff.FailureMessage,
+                cancellationToken);
+            if (dismissed is null) return Results.NotFound();
+
+            await activityFeed.RecordActivityAsync(
+                "processing.dismissed",
+                $"{handoff.ReleaseName}'s hand-off to {handoff.ProcessorName ?? "the processor"} was dismissed.",
+                JsonSerializer.Serialize(new
+                {
+                    HandoffId = handoff.Id,
+                    handoff.LibraryId,
+                    PreviousStatus = handoff.Status,
+                    handoff.FailureMessage
+                }),
+                null,
+                "processor-handoff",
+                handoff.Id,
+                cancellationToken);
+
+            return Results.Ok(dismissed);
+        });
+
         // Import the untouched download instead of waiting for a processed copy
         // (#511). Offered wherever the processor did not finish: it failed, went
         // quiet, stalled, lost the hand-off or was told to stop.

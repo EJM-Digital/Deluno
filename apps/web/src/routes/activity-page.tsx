@@ -6,9 +6,14 @@
  * rather than printing it inline, because an error string or a payload is worth
  * reading in full and worth nothing squeezed into a cell.
  *
- * Contracts: GET /api/jobs, /api/activity, /api/download-dispatches,
- * /api/movies/import-recovery, /api/series/import-recovery;
- * POST /api/jobs/retry-failed.
+ * A failed job is listed however old it is. It used to be found only among the
+ * latest 24, and recurring work buries one within hours: the sidebar went on
+ * counting it while this screen said "none failing" and offered nothing to press.
+ *
+ * Contracts: GET /api/jobs, /api/jobs?failed=true, /api/activity,
+ * /api/download-dispatches, /api/movies/import-recovery,
+ * /api/series/import-recovery; POST /api/jobs/retry-failed,
+ * /api/jobs/{id}/dismiss.
  */
 import type { Tone } from "../lib/status-tones";
 import { useMemo, useRef, useState } from "react";
@@ -23,10 +28,11 @@ import {
   type SeriesImportRecoverySummary
 } from "../lib/api";
 import { getJobStatusTone, JOB_STATUS, isJobActive, isJobFailed, isJobInProgress, isJobSuccessful, type JobStatus } from "../lib/job-status-constants";
+import { dismissFailedJob, fetchFailedJobs } from "../lib/failed-jobs";
 import { authedFetch } from "../lib/use-auth";
 import { Button } from "../components/ui/button";
 import { Chip } from "../components/ui/chip";
-import { Drawer, DrawerFacts, DrawerFooter, DrawerSection } from "../components/ui/drawer";
+import { Drawer, DrawerDanger, DrawerFacts, DrawerFooter, DrawerSection } from "../components/ui/drawer";
 import {
   LIST_TRACK,
   ListCard,
@@ -48,6 +54,7 @@ import { formatDateTime as formatPreferenceDateTime, useDisplayPreferences } fro
 interface ActivityLoaderData {
   activity: ActivityEventItem[];
   dispatches: DownloadDispatchItem[];
+  failedJobs: JobQueueItem[];
   jobs: JobQueueItem[];
   movieRecovery: MovieImportRecoverySummary;
   seriesRecovery: SeriesImportRecoverySummary;
@@ -56,15 +63,16 @@ interface ActivityLoaderData {
 type Section = "jobs" | "events" | "imports";
 
 export async function activityLoader(): Promise<ActivityLoaderData> {
-  const [jobs, activity, dispatches, movieRecovery, seriesRecovery] = await Promise.all([
+  const [jobs, failedJobs, activity, dispatches, movieRecovery, seriesRecovery] = await Promise.all([
     fetchPageItems<JobQueueItem>("/api/jobs?pageSize=24"),
+    fetchFailedJobs(),
     fetchPageItems<ActivityEventItem>("/api/activity?pageSize=40"),
     fetchPageItems<DownloadDispatchItem>("/api/download-dispatches?pageSize=20"),
     fetchJson<MovieImportRecoverySummary>("/api/movies/import-recovery"),
     fetchJson<SeriesImportRecoverySummary>("/api/series/import-recovery")
   ]);
 
-  return { activity, dispatches, jobs, movieRecovery, seriesRecovery };
+  return { activity, dispatches, failedJobs, jobs, movieRecovery, seriesRecovery };
 }
 
 export function ActivityPage() {
@@ -91,12 +99,14 @@ export function ActivityPage() {
   useSignalREvent("DispatchDetected", RealtimeGroups.Queue, scheduleDispatchRefresh);
   useSignalREvent("DispatchImportCompleted", RealtimeGroups.Queue, scheduleDispatchRefresh);
 
-  const { activity, dispatches, jobs, movieRecovery, seriesRecovery } = loaderData;
+  const { activity, dispatches, failedJobs: failed, movieRecovery, seriesRecovery } = loaderData;
+  // A failed job has its own card, so it is not listed again among the latest.
+  const jobs = useMemo(() => loaderData.jobs.filter((job) => !isJobFailed(job.status as JobStatus)), [loaderData.jobs]);
 
   const runningJobs = jobs.filter((job) => isJobInProgress(job.status as JobStatus)).length;
   const queuedJobs = jobs.filter((job) => isJobActive(job.status as JobStatus)).length - runningJobs;
   const completedJobs = jobs.filter((job) => isJobSuccessful(job.status as JobStatus)).length;
-  const failedJobs = jobs.filter((job) => isJobFailed(job.status as JobStatus)).length;
+  const failedJobs = failed.length;
   const openRecovery = movieRecovery.openCount + seriesRecovery.openCount;
 
   const importCases = useMemo(
@@ -107,7 +117,7 @@ export function ActivityPage() {
     [movieRecovery.recentCases, seriesRecovery.recentCases]
   );
 
-  const openJob = jobs.find((job) => job.id === openJobId) ?? null;
+  const openJob = failed.find((job) => job.id === openJobId) ?? jobs.find((job) => job.id === openJobId) ?? null;
   const openDispatch = dispatches.find((dispatch) => dispatch.id === openDispatchId) ?? null;
   const openEvent = activity.find((event) => event.id === openEventId) ?? null;
 
@@ -121,6 +131,20 @@ export function ActivityPage() {
       revalidator.revalidate();
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Retry failed.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleDismissJob(job: JobQueueItem) {
+    setBusy(true);
+    try {
+      await dismissFailedJob(job.id);
+      toast.success(`${formatJobType(job.jobType)} dismissed`);
+      setOpenJobId(null);
+      revalidator.revalidate();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "That job could not be dismissed.");
     } finally {
       setBusy(false);
     }
@@ -167,6 +191,32 @@ export function ActivityPage() {
 
       {section === "jobs" ? (
         <>
+          {failed.length > 0 ? (
+            <ListCard title="Failed jobs" count={`${failed.length} stopped`}>
+              <ListTable
+                columns={[
+                  { label: "Job" },
+                  { label: "Source", mobile: true },
+                  { label: "Attempts", align: "end" },
+                  { label: "When" },
+                  { label: "Status", width: LIST_TRACK.status }
+                ]}
+              >
+                {failed.map((job) => (
+                  <ListRow key={job.id} onClick={() => setOpenJobId(job.id)} selected={openJobId === job.id}>
+                    <ListNameCell name={formatJobType(job.jobType)} sub={job.lastError ?? job.workerId ?? "—"} />
+                    <ListCell primary={job.source} mobile />
+                    <ListCell primary={job.attempts} align="end" numeric />
+                    <ListCell primary={formatPreferenceDateTime(job.completedUtc ?? job.startedUtc ?? job.scheduledUtc, preferences)} />
+                    <ListCell>
+                      <Chip tone={jobTone(job.status)}>{formatJobStatus(job.status)}</Chip>
+                    </ListCell>
+                  </ListRow>
+                ))}
+              </ListTable>
+            </ListCard>
+          ) : null}
+
           <ListCard title="Job queue" count={jobs.length ? `Latest ${jobs.length}` : undefined}>
             {jobs.length === 0 ? (
               <ListEmpty title="Nothing queued" description="Scheduled searches, metadata refreshes and imports appear here as they run." />
@@ -322,6 +372,20 @@ export function ActivityPage() {
                 <pre className="overflow-x-auto rounded-[10px] border border-hairline bg-surface-1 p-3 font-mono text-[length:var(--type-caption)] text-muted-foreground">
                   {prettyJson(openJob.payloadJson)}
                 </pre>
+              </DrawerSection>
+            ) : null}
+
+            {isJobFailed(openJob.status as JobStatus) ? (
+              <DrawerSection title="If it does not need doing">
+                <DrawerDanger
+                  title="Dismiss this job"
+                  description="Deluno stops counting it as failed. What it was and why it failed stays in Events."
+                  action={
+                    <Button type="button" variant="outline" size="sm" onClick={() => void handleDismissJob(openJob)} disabled={busy}>
+                      Dismiss
+                    </Button>
+                  }
+                />
               </DrawerSection>
             ) : null}
           </>

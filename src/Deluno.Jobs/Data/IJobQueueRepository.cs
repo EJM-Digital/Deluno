@@ -7,9 +7,30 @@ public interface IJobQueueRepository
 {
     Task<IReadOnlyList<JobQueueItem>> ListAsync(int take, CancellationToken cancellationToken);
 
-    Task<Page<JobQueueItem>> ListPageAsync(PageRequest request, CancellationToken cancellationToken);
+    /// <summary>
+    /// Jobs newest first. <paramref name="failedOnly"/> keeps only the ones that
+    /// need a person (failed or dead-lettered), wherever they sit in the list:
+    /// recurring work buries a failure under newer rows within hours, and a
+    /// screen that reads "the latest few" then counts none of them.
+    /// </summary>
+    Task<Page<JobQueueItem>> ListPageAsync(PageRequest request, bool failedOnly, CancellationToken cancellationToken);
 
     Task<int> RetryFailedAsync(CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Takes one failed or dead-lettered job off the queue because a person has
+    /// decided it does not need doing. Returns the job that was dismissed, or
+    /// <c>null</c> when no failed job has that id. What it was stays in the
+    /// activity feed.
+    /// </summary>
+    Task<JobQueueItem?> DismissFailedAsync(string jobId, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Deletes completed jobs that finished before <paramref name="olderThan"/>
+    /// and returns how many went. Only completed rows: a failed one is waiting
+    /// for a person, and a queued or running one is work.
+    /// </summary>
+    Task<int> PruneCompletedAsync(DateTimeOffset olderThan, CancellationToken cancellationToken);
 
     /// <summary>
     /// Removes work that has not started for a title which is no longer managed.
@@ -156,10 +177,15 @@ public interface IJobQueueRepository
         string? libraryId,
         CancellationToken cancellationToken);
 
+    /// <param name="includeArchived">
+    /// Archived records too. Archiving is housekeeping, not an outcome: an
+    /// archived record still says whether its download was imported.
+    /// </param>
     Task<IReadOnlyList<DownloadDispatchItem>> ListDownloadDispatchesAsync(
         int take,
         string? mediaType,
-        CancellationToken cancellationToken);
+        CancellationToken cancellationToken,
+        bool includeArchived = false);
 
     /// <param name="includeArchived">
     /// A history view asks for archived rows too. Every successful import
