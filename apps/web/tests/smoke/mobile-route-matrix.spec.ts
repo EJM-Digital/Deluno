@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { authenticateAndNavigate } from "../helpers/auth-helper";
+import { trackDataRequests } from "../helpers/data-settled";
 
 /**
  * #341: every owner workflow reachable on desktop is reachable on mobile, with
@@ -51,11 +52,12 @@ test.describe("mobile route matrix", () => {
 
   test("no owner route scrolls the page sideways", async ({ page }) => {
     await authenticateAndNavigate(page, "/movies");
+    const data = trackDataRequests(page);
 
     const offenders: string[] = [];
     for (const route of OWNER_ROUTES) {
       await page.goto(route);
-      await page.waitForLoadState("networkidle");
+      await data.settled();
 
       const overflow = await page.evaluate(() => {
         const doc = document.documentElement;
@@ -93,10 +95,11 @@ test.describe("mobile route matrix", () => {
     // The settings screens are where the wide tables live, so they are where
     // the rule has to hold.
     await authenticateAndNavigate(page, "/settings/quality");
+    const data = trackDataRequests(page);
 
     for (const route of ["/settings/quality", "/settings/custom-formats", "/settings/policy-sets", "/queue"]) {
       await page.goto(route);
-      await page.waitForLoadState("networkidle");
+      await data.settled();
 
       const bodyScrolls = await page.evaluate(() =>
         document.documentElement.scrollWidth - document.documentElement.clientWidth > 1);
