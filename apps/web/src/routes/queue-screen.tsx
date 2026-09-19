@@ -46,12 +46,13 @@ import { authedFetch } from "../lib/use-auth";
 import { formatBytes } from "../lib/utils";
 import { resolveImportSourcePath } from "../lib/import-source";
 import { fileProvenanceFromTimeline } from "../lib/dispatch-provenance";
+import { dismissFailedJob, fetchFailedJobs } from "../lib/failed-jobs";
 import { JOB_STATUS, isJobActive, isJobDeadLettered, isJobFailed, type JobStatus } from "../lib/job-status-constants";
 import { downloadQueueStatuses, isImportReadyStatus, isProcessingStatus, queueStatusLabel } from "../lib/download-telemetry";
 import { Button } from "../components/ui/button";
 import { Chip, type ChipProps } from "../components/ui/chip";
 import { ConfirmDialog } from "../components/ui/confirm-dialog";
-import { Drawer, DrawerFooter, DrawerSection } from "../components/ui/drawer";
+import { Drawer, DrawerDanger, DrawerFooter, DrawerSection } from "../components/ui/drawer";
 import { Field, FieldRow } from "../components/ui/field";
 import { Input } from "../components/ui/input";
 import { ListCard, ListCell, ListEmpty, ListNameCell, ListRow, ListTable, LIST_TRACK } from "../components/ui/list-card";
@@ -85,6 +86,7 @@ interface QueueLoaderData {
   libraries: LibraryItem[];
   settings: PlatformSettingsSnapshot;
   jobs: JobQueueItem[];
+  failedJobs: JobQueueItem[];
   healthRecords: DownloadHealthRecord[];
   processorConnections: ProcessorConnectionItem[];
   processorHandoffs: ProcessorHandoffItem[];
@@ -92,7 +94,7 @@ interface QueueLoaderData {
 }
 
 export async function queueLoader(): Promise<QueueLoaderData> {
-  const [telemetry, dispatches, movieRecovery, seriesRecovery, libraries, settings, jobs, healthRecords, processorConnections, processorHandoffs, activityEvents] = await Promise.all([
+  const [telemetry, dispatches, movieRecovery, seriesRecovery, libraries, settings, jobs, failedJobs, healthRecords, processorConnections, processorHandoffs, activityEvents] = await Promise.all([
     fetchJson<DownloadTelemetryOverview>("/api/download-clients/telemetry"),
     fetchPageItems<DownloadDispatchItem>("/api/download-dispatches?pageSize=60"),
     fetchJson<MovieImportRecoverySummary>("/api/movies/import-recovery"),
@@ -100,6 +102,7 @@ export async function queueLoader(): Promise<QueueLoaderData> {
     fetchJson<LibraryItem[]>("/api/libraries"),
     fetchJson<PlatformSettingsSnapshot>("/api/settings"),
     fetchPageItems<JobQueueItem>("/api/jobs?pageSize=80"),
+    fetchFailedJobs(),
     fetchPageItems<DownloadHealthRecord>("/api/download-health?pageSize=30"),
     fetchJson<ProcessorConnectionItem[]>("/api/integrations/processors/connections").catch((error) => {
       if (error instanceof ApiRequestError && error.status === 404) return [];
@@ -113,7 +116,7 @@ export async function queueLoader(): Promise<QueueLoaderData> {
     }),
     fetchPageItems<ActivityEventItem>("/api/activity?pageSize=80&relatedEntityType=download_dispatch")
   ]);
-  return { telemetry, dispatches, movieRecovery, seriesRecovery, libraries, settings, jobs, healthRecords, processorConnections, processorHandoffs, activityEvents };
+  return { telemetry, dispatches, movieRecovery, seriesRecovery, libraries, settings, jobs, failedJobs, healthRecords, processorConnections, processorHandoffs, activityEvents };
 }
 
 /** One row shape for every kind of thing that has already happened. */
@@ -132,7 +135,7 @@ interface ActivityEntry {
 type DrawerMode = { kind: "queue"; id: string } | { kind: "manual" } | { kind: "activity"; id: string } | { kind: "dispatch"; id: string } | null;
 
 export function QueuePage() {
-  const { telemetry, dispatches, movieRecovery, seriesRecovery, libraries, settings, jobs, healthRecords, processorConnections, processorHandoffs, activityEvents } =
+  const { telemetry, dispatches, movieRecovery, seriesRecovery, libraries, settings, jobs, failedJobs, healthRecords, processorConnections, processorHandoffs, activityEvents } =
     useLoaderData() as QueueLoaderData;
   const revalidator = useRevalidator();
   const lastDispatchRefresh = useRef(0);
@@ -188,11 +191,13 @@ export function QueuePage() {
     (item) => item.status === downloadQueueStatuses.stalled || Boolean(item.errorMessage) || Boolean(item.healthFindings?.length)
   );
   // Dead-lettered jobs are failed and out of retries: they are exactly what
-  // "Retry N failed" exists for, and were previously excluded (#249).
-  const failedImportJobs = importJobs.filter((job) => isJobFailed(job.status as JobStatus));
+  // "Retry N failed" exists for, and were previously excluded (#249). They are
+  // asked for by name rather than looked for among the latest jobs, which a
+  // failed import drops out of within hours.
+  const failedImportJobs = useMemo(() => failedJobs.filter((job) => job.jobType === "filesystem.import.execute"), [failedJobs]);
   const activeImportJobs = importJobs.filter((job) => isJobActive(job.status as never)).length;
-  const activeProcessorHandoffs = processorHandoffs.filter((handoff) => !isProcessorTerminal(handoff.status));
-  const failedProcessorHandoffs = processorHandoffs.filter((handoff) => isProcessorFailure(handoff.status) || Boolean(handoff.failureMessage));
+  const activeProcessorHandoffs = processorHandoffs.filter((handoff) => isWithProcessor(handoff.status));
+  const failedProcessorHandoffs = processorHandoffs.filter(handoffNeedsPerson);
   const failedDispatches = dispatches.filter(isDispatchFailure);
   const blockedQueueItems = queue.filter((item) => item.healthFindings?.some((finding) => finding.candidateBlocked));
   const healthyClients = telemetry.clients.filter((client) => isHealthyClient(client.healthStatus)).length;
@@ -332,6 +337,10 @@ export function QueuePage() {
     );
   }
 
+  async function dismissFailedImport(job: JobQueueItem) {
+    await run(`job:dismiss:${job.id}`, () => dismissFailedJob(job.id), `${jobTitle(job)} dismissed`);
+  }
+
   async function dismissRecovery(item: (typeof recoveryCases)[number]) {
     const collection = item.mediaType === "movie" ? "movies" : "series";
     await run(
@@ -356,6 +365,21 @@ export function QueuePage() {
       },
       `${handoff.releaseName} will be imported unprocessed`
     );
+  }
+
+  async function dismissHandoff(handoff: ProcessorHandoffItem) {
+    const done = await run(
+      `handoff:dismiss:${handoff.id}`,
+      async () => {
+        const response = await authedFetch(`/api/integrations/processors/handoffs/${handoff.id}/dismiss`, { method: "POST" });
+        if (!response.ok) {
+          const body = (await response.json().catch(() => null)) as { message?: string } | null;
+          throw new Error(body?.message || "That hand-off could not be dismissed.");
+        }
+      },
+      `${handoff.releaseName} dismissed`
+    );
+    if (done) setDrawer(null);
   }
 
   async function retryHandoff(handoff: ProcessorHandoffItem) {
@@ -626,15 +650,19 @@ export function QueuePage() {
                 <ListNameCell name={jobTitle(job)} sub="Import job" />
                 <ListCell primary={job.lastError ?? "The import failed."} secondary={`Attempt ${job.attempts}`} />
                 <ListCell mobile align="end">
-                  <span className="text-[length:var(--type-caption)] text-muted-foreground">Use Retry above</span>
+                  <span className="flex justify-end gap-2">
+                    <Button type="button" variant="outline" size="sm" onClick={() => void dismissFailedImport(job)} disabled={busyKey !== null}>
+                      Dismiss
+                    </Button>
+                  </span>
                 </ListCell>
-                </ListRow>
+              </ListRow>
             ))}
             {failedProcessorHandoffs.map((handoff) => (
               <ListRow key={`processor-failure:${handoff.id}`} onClick={() => setDrawer({ kind: "activity", id: `processor:${handoff.id}` })}>
                 <ListNameCell name={handoff.releaseName} sub={handoff.processorName ?? "Processing connector"} />
                 <ListCell primary={handoff.failureMessage ?? `Processor reported ${processorStatusLabel(handoff.status)}.`} secondary={handoff.sourcePath} />
-                <ListCell mobile align="end"><span className="text-[length:var(--type-caption)] text-muted-foreground">Open to retry</span></ListCell>
+                <ListCell mobile align="end"><span className="text-[length:var(--type-caption)] text-muted-foreground">Open to fix</span></ListCell>
               </ListRow>
             ))}
             {failedDispatches.map((dispatch) => (
@@ -1008,7 +1036,9 @@ export function QueuePage() {
         title={openActivity?.name ?? "Activity"}
         description={openActivity ? `${openActivity.sub} · ${openActivity.status}` : undefined}
         footer={
-          openActivity?.kind === "processor" ? (
+          // Try again is offered where the API will accept it. It used to sit on
+          // every hand-off, so on a rejected or still-submitted one it could only fail.
+          openActivity?.kind === "processor" && openHandoff && canImportOriginal(openHandoff.status) ? (
             <DrawerFooter
               state="clean"
               saveType="button"
@@ -1045,6 +1075,20 @@ export function QueuePage() {
                 Import original
               </Button>
             </div>
+          </DrawerSection>
+        ) : null}
+        {openHandoff && handoffNeedsPerson(openHandoff) && isProcessorFailure(openHandoff.status) ? (
+          <DrawerSection title="If nothing more needs doing">
+            <DrawerDanger
+              title="Dismiss this hand-off"
+              description="Deluno stops counting it as needing you. What happened to it stays here and in Activity."
+              action={
+                <Button type="button" variant="outline" size="sm" onClick={() => void dismissHandoff(openHandoff)} disabled={busyKey !== null}>
+                  {busyKey === `handoff:dismiss:${openHandoff.id}` ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
+                  Dismiss
+                </Button>
+              }
+            />
           </DrawerSection>
         ) : null}
       </Drawer>
@@ -1262,6 +1306,21 @@ function isProcessorTerminal(status: string) {
   return ["completed", "released"].includes(status.toLowerCase());
 }
 
+/**
+ * Mirrors `ProcessorHandoffStatuses.IsWithProcessor`. "Active" used to mean
+ * "not completed", which counted every failed, rejected and lost hand-off as
+ * work in progress for ever, as well as listing it under Needs attention.
+ */
+function isWithProcessor(status: string) {
+  return ["waiting", "submitted", "accepted", "started"].includes(status.toLowerCase());
+}
+
+/** A hand-off a person has dismissed is history: it keeps its reason and needs nobody. */
+function handoffNeedsPerson(handoff: ProcessorHandoffItem) {
+  if (handoff.status.toLowerCase() === "dismissed") return false;
+  return isProcessorFailure(handoff.status) || Boolean(handoff.failureMessage);
+}
+
 function isProcessorFailure(status: string) {
   return ["failed", "rejected", "timed-out", "timeout", "stalled", "lost", "cancelled"].includes(status.toLowerCase());
 }
@@ -1329,6 +1388,8 @@ function processorStageLabel(status: string) {
       return "Cancelled";
     case "released":
       return "Importing the original";
+    case "dismissed":
+      return "Dismissed";
     default:
       return status || "Waiting";
   }
@@ -1340,7 +1401,7 @@ function processorStatusLabel(status: string) {
 }
 
 function processorTone(handoff: ProcessorHandoffItem): NonNullable<ChipProps["tone"]> {
-  if (isProcessorFailure(handoff.status) || handoff.failureMessage) return "bad";
+  if (handoffNeedsPerson(handoff)) return "bad";
   if (isProcessorTerminal(handoff.status)) return "ok";
   return "info";
 }
@@ -1497,7 +1558,7 @@ function buildActivity({
       sub: handoff.processorName ?? "Processor",
       detail: handoff.failureMessage ?? (handoff.outputPath ? "Processed output confirmed" : `Hand-off ${handoff.status}`),
       extra: handoff.outputPath ?? handoff.sourcePath,
-      tone: handoff.failureMessage ? "bad" : handoff.outputPath ? "ok" : "info",
+      tone: handoffNeedsPerson(handoff) ? "bad" : handoff.outputPath ? "ok" : "info",
       status: handoff.status,
       whenUtc: handoff.updatedUtc
     });

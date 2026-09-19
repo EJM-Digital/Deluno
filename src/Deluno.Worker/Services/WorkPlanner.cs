@@ -738,7 +738,7 @@ public sealed class WorkPlanner(
                 activityFeedRepository,
                 movieCatalogRepository,
                 seriesCatalogRepository)
-            .WatchAsync(libraries, now, cancellationToken);
+            .WatchAsync(libraries, now, cancellationToken, allLibraries);
 
         var recentWaitingKeys = recentWaiting
             .Where(item => item.Category == "processing.waiting" && item.CreatedUtc > now.AddHours(-6))

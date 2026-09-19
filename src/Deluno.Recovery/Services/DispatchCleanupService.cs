@@ -9,12 +9,20 @@ public sealed class DispatchCleanupService(
     IDownloadDispatchesRepository dispatchesRepository,
     TimeProvider timeProvider,
     ILogger<DispatchCleanupService> logger,
-    IIndexerQueryStatsRepository? indexerQueryStatsRepository = null)
+    IIndexerQueryStatsRepository? indexerQueryStatsRepository = null,
+    IJobQueueRepository? jobQueueRepository = null)
     : IDispatchCleanupService
 {
     private static readonly TimeSpan StaleFailedAge = TimeSpan.FromDays(7);
     private static readonly TimeSpan StaleUnresolvedAge = TimeSpan.FromDays(14);
     private static readonly TimeSpan IndexerQueryStatsRetention = TimeSpan.FromDays(30);
+
+    /// <summary>
+    /// A year, because that is the longest window the dashboard charts finished
+    /// jobs over. Nothing else reads a completed job, and nothing used to delete
+    /// one: the media read alone adds about 35,000 rows a year.
+    /// </summary>
+    private static readonly TimeSpan CompletedJobRetention = TimeSpan.FromDays(365);
     private const int BatchLimit = 50;
 
     public async Task<DispatchCleanupResult> RunCleanupPassAsync(CancellationToken cancellationToken)
@@ -85,6 +93,28 @@ public sealed class DispatchCleanupService(
             {
                 // Diagnostics retention must not prevent dispatch recovery.
                 logger.LogWarning(ex, "Indexer query telemetry housekeeping failed.");
+            }
+        }
+
+        if (jobQueueRepository is not null)
+        {
+            try
+            {
+                var prunedJobs = await jobQueueRepository.PruneCompletedAsync(
+                    timeProvider.GetUtcNow() - CompletedJobRetention,
+                    cancellationToken);
+                if (prunedJobs > 0)
+                {
+                    logger.LogInformation(
+                        "Job housekeeping removed {PrunedCount} completed job(s) older than {RetentionDays} days.",
+                        prunedJobs,
+                        CompletedJobRetention.TotalDays);
+                }
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                // Job retention must not prevent dispatch recovery.
+                logger.LogWarning(ex, "Completed job housekeeping failed.");
             }
         }
 

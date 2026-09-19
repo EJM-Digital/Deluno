@@ -45,10 +45,20 @@ public static class JobsEndpointRouteBuilderExtensions
         endpoints.MapGet("/api/jobs", async (
             int? pageSize,
             string? pageToken,
+            bool? failed,
             IJobQueueRepository repository,
             CancellationToken cancellationToken) =>
         {
-            return Results.Ok(await repository.ListPageAsync(new PageRequest(pageSize ?? 25, pageToken), cancellationToken));
+            return Results.Ok(await repository.ListPageAsync(new PageRequest(pageSize ?? 25, pageToken), failed == true, cancellationToken));
+        });
+
+        endpoints.MapPost("/api/jobs/{id}/dismiss", async (
+            string id,
+            IJobQueueRepository repository,
+            CancellationToken cancellationToken) =>
+        {
+            var dismissed = await repository.DismissFailedAsync(id, cancellationToken);
+            return dismissed is null ? Results.NotFound() : Results.Ok(dismissed);
         });
 
         endpoints.MapPost("/api/jobs/retry-failed", async (

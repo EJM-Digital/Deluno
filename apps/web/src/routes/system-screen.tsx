@@ -33,6 +33,7 @@ import {
   type DownloadClientItem,
   type IndexerItem,
   type JobQueueItem,
+  type LibraryItem,
   type LibraryAutomationStateItem,
   type MonitoringDashboardSnapshot,
   type PlatformSettingsSnapshot,
@@ -69,6 +70,7 @@ interface SystemLoaderData {
   downloadClients: DownloadClientItem[];
   indexers: IndexerItem[];
   jobs: JobQueueItem[];
+  libraries: LibraryItem[];
   settings: PlatformSettingsSnapshot;
   backups: BackupItem[];
   backupSettings: BackupSettingsSnapshot;
@@ -83,8 +85,9 @@ interface SystemLoaderData {
 }
 
 export async function systemLoader(): Promise<SystemLoaderData> {
-  const [settings, jobs, activity, indexers, downloadClients, backups, backupSettings, updateStatus, automation, searchCycles, retryWindows, monitoring, systemTasks, recycleBin, recycleBinSettings] = await Promise.all([
+  const [settings, libraries, jobs, activity, indexers, downloadClients, backups, backupSettings, updateStatus, automation, searchCycles, retryWindows, monitoring, systemTasks, recycleBin, recycleBinSettings] = await Promise.all([
     fetchJson<PlatformSettingsSnapshot>("/api/settings"),
+    fetchJson<LibraryItem[]>("/api/libraries"),
     fetchPageItems<JobQueueItem>("/api/jobs?pageSize=25"),
     fetchPageItems<ActivityEventItem>("/api/activity?pageSize=200"),
     fetchJson<IndexerItem[]>("/api/indexers"),
@@ -101,14 +104,18 @@ export async function systemLoader(): Promise<SystemLoaderData> {
     fetchJson<RecycleBinSettings>("/api/recycle-bin/settings")
   ]);
 
-  return { activity, automation, backupSettings, backups, downloadClients, indexers, jobs, monitoring, recycleBin, recycleBinSettings, retryWindows, searchCycles, settings, systemTasks, updateStatus };
+  return { activity, automation, backupSettings, backups, downloadClients, indexers, jobs, libraries, monitoring, recycleBin, recycleBinSettings, retryWindows, searchCycles, settings, systemTasks, updateStatus };
 }
 
 export function SystemPage() {
   const location = useLocation();
   const revalidator = useRevalidator();
   const loaderData = useLoaderData() as SystemLoaderData;
-  const { activity, automation, backupSettings, backups, downloadClients, indexers, jobs, monitoring, recycleBin, recycleBinSettings, retryWindows, searchCycles, settings, systemTasks, updateStatus } = loaderData;
+  const { activity, automation, backupSettings, backups, downloadClients, indexers, jobs, libraries, monitoring, recycleBin, recycleBinSettings, retryWindows, searchCycles, settings, systemTasks, updateStatus } = loaderData;
+  // The folders Deluno writes to are its libraries' folders. This used to count
+  // the two paths the setup guide asks for, which a library made in Settings
+  // never fills in: two libraries on a NAS read "0".
+  const mediaRoots = new Set(libraries.map((library) => library.rootPath?.trim().toLowerCase()).filter(Boolean)).size;
   const { preferences } = useDisplayPreferences();
 
   const activeJobs = jobs.filter((job) => isJobActive(job.status as JobStatus)).length;
@@ -253,7 +260,7 @@ export function SystemPage() {
           { label: "Search sources", value: `${healthyIndexers}/${indexers.length}`, help: healthyIndexers === indexers.length ? "all responding" : "one is not responding", tone: indexers.length && healthyIndexers < indexers.length ? "warning" : undefined },
           { label: "Download clients", value: `${healthyClients}/${downloadClients.length}`, help: healthyClients === downloadClients.length ? "all responding" : "one is not responding", tone: downloadClients.length && healthyClients < downloadClients.length ? "warning" : undefined },
           { label: "Alerts", value: String(monitoring.alerts.length), help: monitoring.alerts.length ? "need a look" : "nothing raised", tone: monitoring.alerts.length ? "danger" : undefined },
-          { label: "Media roots", value: String([settings.movieRootPath, settings.seriesRootPath].filter(Boolean).length), help: "folders Deluno writes to" }
+          { label: "Media roots", value: String(mediaRoots), help: "folders Deluno writes to" }
         ]}
       />
 

@@ -451,7 +451,7 @@ public sealed class JobStoreTests
         var second = await store.EnqueueAsync(new EnqueueJobRequest(LibrarySearchJobTypes.Movies, "test", "{}", RelatedEntityType: "library", RelatedEntityId: "two"), CancellationToken.None);
         var third = await store.EnqueueAsync(new EnqueueJobRequest(LibrarySearchJobTypes.Movies, "test", "{}", RelatedEntityType: "library", RelatedEntityId: "three"), CancellationToken.None);
 
-        var pageOne = await store.ListPageAsync(new PageRequest(2), CancellationToken.None);
+        var pageOne = await store.ListPageAsync(new PageRequest(2), failedOnly: false, CancellationToken.None);
         Assert.True(pageOne.HasMore);
         Assert.NotNull(pageOne.NextPageToken);
         Assert.Equal(2, pageOne.Items.Count);
@@ -459,7 +459,7 @@ public sealed class JobStoreTests
         timeProvider.Advance(TimeSpan.FromSeconds(1));
         var insertedAfterPageOne = await store.EnqueueAsync(new EnqueueJobRequest(LibrarySearchJobTypes.Movies, "test", "{}", RelatedEntityType: "library", RelatedEntityId: "four"), CancellationToken.None);
 
-        var pageTwo = await store.ListPageAsync(new PageRequest(2, pageOne.NextPageToken), CancellationToken.None);
+        var pageTwo = await store.ListPageAsync(new PageRequest(2, pageOne.NextPageToken), failedOnly: false, CancellationToken.None);
         Assert.False(pageTwo.HasMore);
         var returnedIds = pageOne.Items.Concat(pageTwo.Items).Select(job => job.Id).ToArray();
         Assert.Equal(3, returnedIds.Distinct(StringComparer.Ordinal).Count());
@@ -902,6 +902,50 @@ public sealed class JobStoreTests
 
         // A different key is independent of "dispatch.cleanup"'s schedule.
         Assert.True(await store.TryClaimScheduledPassAsync("intake.automation", TimeSpan.FromMinutes(5), CancellationToken.None));
+    }
+
+    /// <summary>
+    /// Nothing used to delete a completed job, and the media read alone adds two
+    /// every half hour: the table grew for as long as Deluno ran. Housekeeping
+    /// now prunes them, and must take only what is both finished and old.
+    /// </summary>
+    [Fact]
+    public async Task Pruning_takes_old_completed_jobs_and_leaves_recent_failed_and_waiting_ones()
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new MutableTimeProvider(DateTimeOffset.Parse("2025-01-01T00:00:00Z"));
+        await InitializeJobsAsync(storage, timeProvider);
+        var store = new SqliteJobStore(storage.Factory, timeProvider, new NullRealtimeEventPublisher(), new NullDownloadDispatchesRepository());
+
+        async Task<JobQueueItem> FinishedAsync(string key)
+        {
+            await store.EnqueueAsync(new EnqueueJobRequest(LibrarySearchJobTypes.Movies, "test", "{}", RelatedEntityType: "library", RelatedEntityId: key), CancellationToken.None);
+            var leased = await store.LeaseNextAsync("worker-a", TimeSpan.FromMinutes(5), [LibrarySearchJobTypes.Movies], CancellationToken.None);
+            Assert.NotNull(leased);
+            await store.CompleteAsync(leased.Id, "worker-a", "Done.", CancellationToken.None);
+            return leased;
+        }
+
+        var oldCompleted = await FinishedAsync("old-completed");
+
+        // An old failure is waiting for a person however long it has waited.
+        await store.EnqueueAsync(new EnqueueJobRequest(LibrarySearchJobTypes.Movies, "test", "{}", RelatedEntityType: "library", RelatedEntityId: "old-failed", MaxAttempts: 1), CancellationToken.None);
+        var oldFailed = await store.LeaseNextAsync("worker-a", TimeSpan.FromMinutes(5), [LibrarySearchJobTypes.Movies], CancellationToken.None);
+        Assert.NotNull(oldFailed);
+        await store.FailAsync(oldFailed.Id, "worker-a", "The indexer refused.", CancellationToken.None);
+
+        timeProvider.Advance(TimeSpan.FromDays(400));
+        var recentCompleted = await FinishedAsync("recent-completed");
+        var waiting = await store.EnqueueAsync(new EnqueueJobRequest(LibrarySearchJobTypes.Movies, "test", "{}", RelatedEntityType: "library", RelatedEntityId: "waiting"), CancellationToken.None);
+
+        var pruned = await store.PruneCompletedAsync(timeProvider.GetUtcNow() - TimeSpan.FromDays(365), CancellationToken.None);
+
+        Assert.Equal(1, pruned);
+        var left = (await store.ListAsync(10, CancellationToken.None)).Select(job => job.Id).ToArray();
+        Assert.DoesNotContain(oldCompleted.Id, left);
+        Assert.Contains(oldFailed.Id, left);
+        Assert.Contains(recentCompleted.Id, left);
+        Assert.Contains(waiting.Id, left);
     }
 
     private static async Task InitializeJobsAsync(TestStorage storage, TimeProvider timeProvider)

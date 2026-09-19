@@ -45,6 +45,13 @@ public sealed class DownloadClientTelemetryService(
             DownloadClientTelemetryLimits.HistoryWindow,
             null,
             cancellationToken);
+        // Housekeeping archives a finished record after a week, while the
+        // torrent it describes can go on seeding for far longer.
+        var settledDispatches = await jobQueueRepository.ListDownloadDispatchesAsync(
+            DownloadClientTelemetryLimits.HistoryWindow,
+            null,
+            cancellationToken,
+            includeArchived: true);
         var importJobs = await jobQueueRepository.ListAsync(200, cancellationToken);
         // The hand-off is the only thing that knows a download in
         // C:\...\Downloads-Complete and a refined file in C:\...\Refined are
@@ -75,6 +82,7 @@ public sealed class DownloadClientTelemetryService(
                             capturedUtc),
                         libraries,
                         clientDispatches,
+                        settledDispatches,
                         importJobs,
                         handoffs,
                         routeCategoriesByLibrary)));
@@ -731,6 +739,7 @@ public sealed class DownloadClientTelemetryService(
         DownloadClientTelemetrySnapshot snapshot,
         IReadOnlyList<LibraryItem> libraries,
         IReadOnlyList<DownloadDispatchItem> dispatches,
+        IReadOnlyList<DownloadDispatchItem> settledDispatches,
         IReadOnlyList<JobQueueItem> importJobs,
         IReadOnlyList<ProcessorHandoffItem> handoffs,
         IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>> routeCategoriesByLibrary)
@@ -816,6 +825,18 @@ public sealed class DownloadClientTelemetryService(
             if (handoff is not null)
             {
                 return resolvedItem with { Status = ProcessorHandoffQueueStatus.Resolve(handoff, jobsById, resolvedItem.Status) };
+            }
+
+            // The library's workflow says what happens to a new download, not
+            // what happened to this one. On the rig Sintel was imported, its
+            // library was switched to refine-before-import days later, and the
+            // torrent was still seeding: with its import job aged out of the
+            // window above, no hand-off (none was ever needed) and its record
+            // archived, it read "Waiting for processor" for ever and held the
+            // Processing count at one.
+            if (WasAlreadyImported(item, settledDispatches))
+            {
+                return resolvedItem with { Status = DownloadQueueStatuses.Imported };
             }
 
             if (library is not null && string.Equals(library.ImportWorkflow, "refine-before-import", StringComparison.OrdinalIgnoreCase))
@@ -1145,6 +1166,29 @@ public sealed class DownloadClientTelemetryService(
             .FirstOrDefault();
 
         return latestDispatch is not null && handoff.CreatedUtc < latestDispatch.CreatedUtc;
+    }
+
+    /// <summary>
+    /// Whether the latest fetch of this release from this client was imported.
+    ///
+    /// <para>The latest, because fetching a release again is a new attempt: a
+    /// newer record that has not been imported outranks an older one that was.
+    /// Archived records count, because archiving is housekeeping and says
+    /// nothing about the outcome.</para>
+    /// </summary>
+    internal static bool WasAlreadyImported(
+        DownloadQueueItem item,
+        IReadOnlyList<DownloadDispatchItem> dispatchesIncludingArchived)
+    {
+        var latestDispatch = dispatchesIncludingArchived
+            .Where(dispatch =>
+                string.Equals(dispatch.DownloadClientId, item.ClientId, StringComparison.OrdinalIgnoreCase)
+                && string.Equals(dispatch.ReleaseName, item.ReleaseName, StringComparison.OrdinalIgnoreCase))
+            .OrderByDescending(dispatch => dispatch.CreatedUtc)
+            .FirstOrDefault();
+
+        return latestDispatch is not null
+            && string.Equals(latestDispatch.ImportStatus, "imported", StringComparison.OrdinalIgnoreCase);
     }
 
     internal static bool ShouldApplyImportJobState(

@@ -257,6 +257,54 @@ public sealed class ProcessorHandoffWatcherTests
         Assert.Empty(_updates);
     }
 
+    /// <summary>
+    /// Seen on the rig before the soak: a proof library was removed with two
+    /// hand-offs still submitted. The watcher skipped any hand-off whose library
+    /// it could not find, so no limit ever applied to them, no screen could
+    /// close them, and Transfers counted them as work in progress for good.
+    /// </summary>
+    [Fact]
+    public async Task A_hand_off_whose_library_was_removed_is_closed_rather_than_left_open_for_ever()
+    {
+        GivenHandoff(updated: Now.AddHours(-1), previous: null);
+
+        await Watcher().WatchAsync([], Now, CancellationToken.None, allLibraries: []);
+
+        var update = Assert.Single(_updates);
+        Assert.Equal(ProcessorHandoffStatuses.Cancelled, update.Status);
+        Assert.Contains("has been removed", update.Message);
+    }
+
+    [Fact]
+    public async Task A_hand_off_whose_library_stopped_processing_before_import_is_closed()
+    {
+        GivenHandoff(updated: Now.AddHours(-1), previous: null);
+        var switched = Library(_mode, _stallMinutes) with { ImportWorkflow = "standard" };
+
+        await Watcher().WatchAsync([switched], Now, CancellationToken.None, allLibraries: [switched]);
+
+        var update = Assert.Single(_updates);
+        Assert.Equal(ProcessorHandoffStatuses.Cancelled, update.Status);
+        Assert.Contains("no longer processes downloads", update.Message);
+    }
+
+    /// <summary>
+    /// A NAS that is switched off is not a removed library. Closing its hand-offs
+    /// would throw away work the processor is still doing.
+    /// </summary>
+    [Fact]
+    public async Task A_library_whose_folder_cannot_be_reached_right_now_keeps_its_hand_offs()
+    {
+        GivenHandoff(updated: Now.AddHours(-1), previous: null);
+
+        await Watcher().WatchAsync([], Now, CancellationToken.None, allLibraries: [Library(_mode, _stallMinutes)]);
+
+        Assert.Empty(_updates);
+    }
+
+    private ProcessorHandoffWatcher Watcher()
+        => new(_repository.Object, _processor.Object, _activity.Object, _movies.Object, _series.Object);
+
     private Task Watch()
         => new ProcessorHandoffWatcher(_repository.Object, _processor.Object, _activity.Object, _movies.Object, _series.Object)
             .WatchAsync([Library(_mode, _stallMinutes)], Now, CancellationToken.None);
