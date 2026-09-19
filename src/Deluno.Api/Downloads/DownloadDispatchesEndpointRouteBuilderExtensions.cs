@@ -239,6 +239,7 @@ public static class DownloadDispatchesEndpointRouteBuilderExtensions
     private static async Task<IResult> ArchiveDispatch(
         string dispatchId,
         IDownloadDispatchesRepository repository,
+        [FromServices] IDispatchAlertRepository alertRepository,
         string? reason = null,
         CancellationToken cancellationToken = default)
     {
@@ -249,6 +250,10 @@ public static class DownloadDispatchesEndpointRouteBuilderExtensions
         }
 
         await repository.ArchiveDispatchAsync(dispatchId, reason ?? "manual_cleanup", cancellationToken);
+
+        // The alerts raised about this download settle with it. No screen lists
+        // them, so left open they are a count nothing can bring down (#537).
+        await alertRepository.AcknowledgeAlertsForDispatchAsync(dispatchId, cancellationToken);
         return Results.NoContent();
     }
 

@@ -367,6 +367,18 @@ export function QueuePage() {
     );
   }
 
+  async function dismissDispatch(dispatch: DownloadDispatchItem) {
+    const done = await run(
+      `dispatch:dismiss:${dispatch.id}`,
+      async () => {
+        const response = await authedFetch(`/api/v1/download-dispatches/${encodeURIComponent(dispatch.id)}?reason=dismissed`, { method: "DELETE" });
+        if (!response.ok && response.status !== 404) throw new Error("That download could not be dismissed.");
+      },
+      `${dispatch.releaseName} dismissed`
+    );
+    if (done) setDrawer(null);
+  }
+
   async function dismissHandoff(handoff: ProcessorHandoffItem) {
     const done = await run(
       `handoff:dismiss:${handoff.id}`,
@@ -972,6 +984,21 @@ export function QueuePage() {
                   {openDispatchDetail.dispatch.importFailureMessage ? <Fact label="Import issue" value={openDispatchDetail.dispatch.importFailureMessage} /> : null}
                   {openDispatchDetail.dispatch.nextRetryEligibleUtc ? <Fact label="Next retry" value={formatPreferenceDateTime(openDispatchDetail.dispatch.nextRetryEligibleUtc, preferences)} /> : null}
                 </div>
+              </DrawerSection>
+            ) : null}
+
+            {isDispatchFailure(openDispatchDetail.dispatch) ? (
+              <DrawerSection title="If nothing more needs doing">
+                <DrawerDanger
+                  title="Dismiss this download"
+                  description="Deluno stops counting it as needing you. Its journey stays on record, and the title is still searched for as usual."
+                  action={
+                    <Button type="button" variant="outline" size="sm" onClick={() => void dismissDispatch(openDispatchDetail.dispatch)} disabled={busyKey !== null}>
+                      {busyKey === `dispatch:dismiss:${openDispatchDetail.dispatch.id}` ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
+                      Dismiss
+                    </Button>
+                  }
+                />
               </DrawerSection>
             ) : null}
 
