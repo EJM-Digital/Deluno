@@ -347,7 +347,10 @@ export function SetupGuidePage() {
   function moveToStep(nextStep: number) {
     const boundedStep = Math.min(STEPS.length - 1, Math.max(0, nextStep));
     setStepIndex(boundedStep);
-    void saveProgress(boundedStep).catch(() => undefined);
+    // Moving between steps says nothing about whether the guide was skipped or
+    // finished. Saving both as false here un-dismissed the dashboard's prompt
+    // for anyone who opened the guide again to look something up.
+    void saveProgress(boundedStep, data.progress.isSkipped, data.progress.isCompleted).catch(() => undefined);
   }
 
   function skipWizard() {

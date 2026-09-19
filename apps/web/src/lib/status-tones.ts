@@ -88,6 +88,9 @@ export const STATUS_PRESENTATION = {
   "connection.unhealthy": { tone: "bad", label: "Unhealthy" },
   "connection.untested": { tone: "idle", label: "Untested" },
   "connection.off": { tone: "idle", label: "Off" },
+  // Healthy, switched on, and listed by no library's routing: it needs a person,
+  // because nothing will ever search it or send to it until one routes it.
+  "connection.notRouted": { tone: "warn", label: "Not routed" },
   // Deluno backed off deliberately and resumes on its own. Nothing to do.
   "connection.rateLimited": { tone: "info", label: "Rate-limited" },
   // A configuration fact, not motion.

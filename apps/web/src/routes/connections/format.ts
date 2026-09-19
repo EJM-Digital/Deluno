@@ -2,6 +2,21 @@ import type { ChipProps } from "../../components/ui/chip";
 import { statusPresentation } from "../../lib/status-tones";
 import { CLIENT_PRESETS, INDEXER_PRESETS } from "./presets";
 
+/**
+ * A source or client that is switched on and used by no library.
+ *
+ * Each library searches only the sources, and sends only to the clients, that
+ * Library Routing lists for it, and adding a connection routes it nowhere. The
+ * rig's Usenet source and SABnzbd read "Healthy" for three days while no library
+ * used either: 56 of the soak's 73 expected grabs could not have happened.
+ * "Healthy" beside something nothing uses reads as working.
+ */
+export function unusedChip(item: { isEnabled: boolean; healthStatus: string }, usedByCount: number, libraryCount: number): { tone: NonNullable<ChipProps["tone"]>; label: string } | null {
+  // Only over "Healthy": a connection that is failing should say so first.
+  if (!item.isEnabled || item.healthStatus !== "healthy" || libraryCount === 0 || usedByCount > 0) return null;
+  return statusPresentation("connection.notRouted");
+}
+
 export function healthChip(item: { isEnabled: boolean; healthStatus: string; rateLimitedUntilUtc?: string | null }): { tone: NonNullable<ChipProps["tone"]>; label: string } {
   if (!item.isEnabled) return statusPresentation("connection.off");
   // Deluno backed off deliberately and resumes on its own, so this is motion,

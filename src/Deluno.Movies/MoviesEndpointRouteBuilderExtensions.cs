@@ -364,6 +364,7 @@ public static class MoviesEndpointRouteBuilderExtensions
             HttpContext httpContext,
             IMovieCatalogRepository repository,
             IDispatchAlertRepository alertRepository,
+            IDownloadDispatchesRepository dispatchesRepository,
             CancellationToken cancellationToken) =>
         {
             var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
@@ -379,7 +380,7 @@ public static class MoviesEndpointRouteBuilderExtensions
             }
 
             // The alert recorded beside this case settles with it (#537).
-            await RecoveryCaseAlerts.AcknowledgeAsync(updated.DetailsJson, alertRepository, cancellationToken);
+            await RecoveryCaseAlerts.AcknowledgeAsync(updated.DetailsJson, alertRepository, cancellationToken, dispatchesRepository);
 
             await repository.AddImportRecoveryEventAsync(id, "case_resolved", "Case marked resolved by user.", null, cancellationToken);
             return Results.Ok(updated);
@@ -390,6 +391,7 @@ public static class MoviesEndpointRouteBuilderExtensions
             HttpContext httpContext,
             IMovieCatalogRepository repository,
             IDispatchAlertRepository alertRepository,
+            IDownloadDispatchesRepository dispatchesRepository,
             CancellationToken cancellationToken) =>
         {
             var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
@@ -405,7 +407,7 @@ public static class MoviesEndpointRouteBuilderExtensions
             }
 
             // The alert recorded beside this case settles with it (#537).
-            await RecoveryCaseAlerts.AcknowledgeAsync(updated.DetailsJson, alertRepository, cancellationToken);
+            await RecoveryCaseAlerts.AcknowledgeAsync(updated.DetailsJson, alertRepository, cancellationToken, dispatchesRepository);
 
             await repository.AddImportRecoveryEventAsync(id, "case_dismissed", "Case dismissed by user.", null, cancellationToken);
             return Results.Ok(updated);
@@ -416,6 +418,7 @@ public static class MoviesEndpointRouteBuilderExtensions
             HttpContext httpContext,
             IMovieCatalogRepository repository,
             IDispatchAlertRepository alertRepository,
+            IDownloadDispatchesRepository dispatchesRepository,
             CancellationToken cancellationToken) =>
         {
             var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
@@ -427,7 +430,7 @@ public static class MoviesEndpointRouteBuilderExtensions
             // Read the case's details before the row goes, so its alert settles too (#537).
             if (await repository.ResolveImportRecoveryCaseAsync(id, "dismissed", cancellationToken) is { } dismissed)
             {
-                await RecoveryCaseAlerts.AcknowledgeAsync(dismissed.DetailsJson, alertRepository, cancellationToken);
+                await RecoveryCaseAlerts.AcknowledgeAsync(dismissed.DetailsJson, alertRepository, cancellationToken, dispatchesRepository);
             }
 
             var removed = await repository.DeleteImportRecoveryCaseAsync(id, cancellationToken);

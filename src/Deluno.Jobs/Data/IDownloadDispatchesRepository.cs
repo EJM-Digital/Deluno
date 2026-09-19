@@ -113,6 +113,18 @@ public interface IDownloadDispatchesRepository
         CancellationToken cancellationToken);
 
     /// <summary>
+    /// Ends a download the client accepted and then never showed. Returns
+    /// <c>true</c> when this call ended it, <c>false</c> when it had already
+    /// ended, been detected or been archived.
+    ///
+    /// <para>It used to stay "sent" for ever: the poller raised an alert and an
+    /// import issue about it and left the download itself alone, so it read as a
+    /// green "Sent" on every screen, no screen offered anything to do with it,
+    /// and nothing ever archived it.</para>
+    /// </summary>
+    Task<bool> MarkNeverDetectedAsync(string dispatchId, string message, CancellationToken cancellationToken);
+
+    /// <summary>
     /// Archive/delete a dispatch (soft delete).
     /// </summary>
     Task ArchiveDispatchAsync(

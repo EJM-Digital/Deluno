@@ -18,6 +18,21 @@ public static class DailyCounts
     public static string GroupBy(string column) =>
         string.Format(CultureInfo.InvariantCulture, GroupExpression, column);
 
+    /// <summary>
+    /// How many titles failed to import on each day, from a recovery-case table.
+    ///
+    /// <para>The dashboard's "failed to import" used to be <c>COUNT(*)</c> of
+    /// that table, and a recovery case is written for every attempt: one stuck
+    /// file retried twelve times was twelve. It also counted cases that never
+    /// reached an import at all (a download the client never showed). The rig
+    /// read "186 failed to import" beside 15 grabs. A title is counted once per
+    /// day, and only for kinds that are an import going wrong.</para>
+    /// </summary>
+    public static string ImportFailuresByDay(string recoveryTable) =>
+        $"SELECT {GroupBy("detected_utc")} AS day, COUNT(DISTINCT lower(title)) FROM {recoveryTable} " +
+        "WHERE detected_utc >= @from AND detected_utc < @to " +
+        "AND failure_kind <> 'downloadFailed' GROUP BY day;";
+
     public static IReadOnlyList<MetricPoint> Fill(
         IReadOnlyDictionary<string, int> counts,
         DateOnly from,

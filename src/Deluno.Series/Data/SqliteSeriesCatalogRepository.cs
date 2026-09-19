@@ -4646,7 +4646,7 @@ public sealed class SqliteSeriesCatalogRepository(
 
         var importFailures = await ReadDailyAsync(
             connection,
-            $"SELECT {DailyCounts.GroupBy("detected_utc")} AS day, COUNT(*) FROM series_import_recovery_cases WHERE detected_utc >= @from AND detected_utc < @to GROUP BY day;",
+            DailyCounts.ImportFailuresByDay("series_import_recovery_cases"),
             from, toExclusive, cancellationToken);
 
         return new MediaDailyMetrics(before, added, matched, unmatched, importFailures);
@@ -4910,6 +4910,11 @@ public sealed class SqliteSeriesCatalogRepository(
             "corrupt" => "corrupt",
             "downloadfailed" => "downloadFailed",
             "download failed" => "downloadFailed",
+            // A download the client never showed, or showed and never
+            // finished, did not reach an import. These fell through to
+            // "importFailed" and were counted and labelled as failed imports.
+            "grab-timeout" => "downloadFailed",
+            "detection-timeout" => "downloadFailed",
             "importfailed" => "importFailed",
             "import failed" => "importFailed",
             _ => "importFailed"

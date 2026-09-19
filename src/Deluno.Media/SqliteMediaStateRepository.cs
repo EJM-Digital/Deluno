@@ -3,6 +3,7 @@ using System.Globalization;
 using System.Text.Json;
 using Deluno.Contracts;
 using Deluno.Infrastructure.Storage;
+using Deluno.Platform.Data;
 using Deluno.Quality;
 using Deluno.Quality.ReleasePreferences;
 using static Deluno.Infrastructure.Storage.SqliteRecordHelpers;
@@ -1818,7 +1819,7 @@ public sealed class SqliteMediaStateRepository(
             cancellationToken);
         var failures = await ReadDailyAsync(
             connection,
-            $"SELECT substr(detected_utc, 1, 10), COUNT(*) FROM {map.RecoveryTable} WHERE detected_utc >= @from AND detected_utc < @to GROUP BY substr(detected_utc, 1, 10);",
+            DailyCounts.ImportFailuresByDay(map.RecoveryTable),
             from,
             toExclusive,
             cancellationToken);

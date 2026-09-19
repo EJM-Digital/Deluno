@@ -47,6 +47,9 @@ describe("the one status table", () => {
     expect(amber).toEqual([
       // Failed and out of retries. Nothing happens until someone looks.
       "connection.degraded",
+      // Healthy, and no library's routing lists it: nothing will ever use it
+      // until someone routes it.
+      "connection.notRouted",
       "job.deadLetter",
       // A rule that asks first: nothing is removed until someone confirms.
       "retention.ready",
