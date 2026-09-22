@@ -324,41 +324,6 @@ public sealed class PlatformSettingsPersistenceTests
     }
 
     [Fact]
-    public async Task DownloadHealth_observations_are_durable_rate_limited_and_can_be_temporarily_ignored()
-    {
-        using var storage = TestStorage.Create();
-        var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-08-13T01:00:00Z"));
-        await new PlatformSchemaInitializer(
-            storage.Factory,
-            new SqliteDatabaseMigrator(storage.Factory, timeProvider),
-            NullLogger<PlatformSchemaInitializer>.Instance).StartAsync(CancellationToken.None);
-
-        var repository = new SqliteDownloadHealthRepository(storage.Factory, timeProvider);
-        var observation = new DownloadHealthObservation("client-1", "queue-1", "Example.Movie.2026.1080p", "no-throughput", "warning", "0 MB/s");
-
-        var first = Assert.Single(await repository.RecordDownloadHealthObservationsAsync([observation], CancellationToken.None));
-        var repeatedSnapshot = Assert.Single(await repository.RecordDownloadHealthObservationsAsync([observation], CancellationToken.None));
-
-        Assert.Equal(1, first.StrikeCount);
-        Assert.Equal(1, repeatedSnapshot.StrikeCount);
-        Assert.False(await repository.IsDownloadReleaseBlockedAsync("client-1", "Example Movie 2026 1080p", CancellationToken.None));
-
-        timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-08-13T01:31:00Z"));
-        repository = new SqliteDownloadHealthRepository(storage.Factory, timeProvider);
-        await repository.RecordDownloadHealthObservationsAsync([observation], CancellationToken.None);
-        timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-08-13T02:02:00Z"));
-        repository = new SqliteDownloadHealthRepository(storage.Factory, timeProvider);
-        var third = Assert.Single(await repository.RecordDownloadHealthObservationsAsync([observation], CancellationToken.None));
-
-        Assert.Equal(3, third.StrikeCount);
-        Assert.True(await repository.IsDownloadReleaseBlockedAsync("client-1", "Example.Movie.2026.1080p", CancellationToken.None));
-
-        var ignored = await repository.IgnoreDownloadHealthFindingAsync("client-1", "queue-1", "no-throughput", 7, CancellationToken.None);
-        Assert.NotNull(ignored);
-        Assert.False(await repository.IsDownloadReleaseBlockedAsync("client-1", "Example.Movie.2026.1080p", CancellationToken.None));
-    }
-
-    [Fact]
     public async Task Intake_list_exclusions_are_durable_scoped_to_the_list_and_can_be_restored()
     {
         using var storage = TestStorage.Create();

@@ -130,7 +130,7 @@ public static class AcquisitionBlockerReader
                 blockedReleaseCount == 1
                     ? $"One release for {title} has been refused, so searches have one fewer option."
                     : $"{blockedReleaseCount} releases for {title} have been refused, so searches have fewer options.",
-                "Refused after a failed import. If every copy anyone offers has been refused, a search will find nothing and report exactly that.",
+                "Refused after it failed to download, process or import. If every copy anyone offers has been refused, a search will find nothing and report exactly that.",
                 CanClear: true,
                 ClearEffect: blockedReleaseCount == 1
                     ? "Un-refuses that release, so searches can use it again."

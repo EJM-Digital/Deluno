@@ -50,6 +50,11 @@ public abstract class LibrarySearchJobHandler(
         }
 
         var now = timeProvider.GetUtcNow();
+        if (IsTargeted(payload))
+        {
+            await ReleaseStaleDownloadingMarkAsync(payload, now, cancellationToken);
+        }
+
         var routing = await librariesRepository.GetLibraryRoutingAsync(payload.LibraryId, cancellationToken);
         var configuredSources = routing?.Sources.Count ?? 0;
         var configuredClients = routing?.DownloadClients.Count ?? 0;
@@ -322,6 +327,39 @@ public abstract class LibrarySearchJobHandler(
 
     private static bool IsTargeted(JobPayloads.LibrarySearchPayload payload)
         => !string.IsNullOrWhiteSpace(payload.TargetEntityId);
+
+    /// <summary>
+    /// A search aimed at one title usually follows the end of its download:
+    /// refused after it stalled, rejected by the processor, or retried from a
+    /// recovery case. The title is still marked downloading at that point, and
+    /// a title marked downloading is not a candidate. The reconciler clears the
+    /// mark within a minute, but this search can start first, find nothing to
+    /// do, and leave the title waiting for its next routine search (#560). If
+    /// nothing is in flight for the title, the mark is already stale.
+    /// </summary>
+    private async Task ReleaseStaleDownloadingMarkAsync(
+        JobPayloads.LibrarySearchPayload payload,
+        DateTimeOffset now,
+        CancellationToken cancellationToken)
+    {
+        if (mediaStateRepository is null)
+        {
+            return;
+        }
+
+        var inFlight = await jobQueueRepository.ListDownloadsInFlightAsync(DispatchLiveDownloadLookup.Limit, cancellationToken);
+        if (inFlight.Any(download => string.Equals(download.EntityId, payload.TargetEntityId, StringComparison.Ordinal)))
+        {
+            return;
+        }
+
+        await mediaStateRepository.SetDownloadingAsync(
+            payload.MediaType == "movies" ? MediaKind.Movie : MediaKind.Series,
+            payload.TargetEntityId!,
+            downloading: false,
+            now,
+            cancellationToken);
+    }
 
     /// <summary>
     /// A search aimed at one title was asked for because something just

@@ -30,7 +30,8 @@ public sealed class DownloadClientTelemetryService(
     IDownloadDispatchesRepository dispatchesRepository,
     IActivityFeedRepository activityFeedRepository,
     IRecoveryHealthEvaluator healthEvaluator,
-    IProcessorRepository processorRepository)
+    IProcessorRepository processorRepository,
+    IBlockedReleaseRepository? blockedReleases = null)
     : IDownloadClientTelemetryService
 {
     public async Task<DownloadTelemetryOverview> GetOverviewAsync(CancellationToken cancellationToken)
@@ -414,7 +415,11 @@ public sealed class DownloadClientTelemetryService(
             .SelectMany(entry => entry.Findings.Select(finding => new DownloadHealthObservation(
                 entry.Item.ClientId, entry.Item.Id, entry.Item.ReleaseName, finding.Kind, finding.Severity, finding.Evidence)))
             .ToArray();
-        var records = await healthRepository.RecordDownloadHealthObservationsAsync(observations, cancellationToken);
+        var records = await healthRepository.RecordDownloadHealthObservationsAsync(
+            snapshot.ClientId,
+            snapshot.Queue.Select(item => item.Id).ToArray(),
+            observations,
+            cancellationToken);
         var recordsByFinding = records.ToDictionary(
             record => $"{record.ClientId}\u001f{record.QueueItemId}\u001f{record.Kind}",
             StringComparer.OrdinalIgnoreCase);
@@ -462,7 +467,9 @@ public sealed class DownloadClientTelemetryService(
         CancellationToken cancellationToken)
     {
         var settings = await platformRepository.GetAsync(cancellationToken);
-        if (!settings.CleanupQueueReplacementAfterThreshold &&
+        var refuseRelease = settings.CleanupBlockReleaseAfterThreshold && blockedReleases is not null;
+        if (!refuseRelease &&
+            !settings.CleanupQueueReplacementAfterThreshold &&
             !settings.CleanupRemoveClientEntryAfterThreshold &&
             !settings.CleanupPurgePayloadAfterThreshold)
         {
@@ -473,6 +480,7 @@ public sealed class DownloadClientTelemetryService(
         var routeCategoriesByLibrary = await LoadRouteCategoriesAsync(libraries, cancellationToken);
         var notes = new List<string>();
         var evaluated = 0;
+        var refused = 0;
         var replacements = 0;
         var removed = 0;
         var purged = 0;
@@ -486,9 +494,13 @@ public sealed class DownloadClientTelemetryService(
 
             foreach (var item in snapshot.Queue)
             {
-                if (!(item.HealthFindings ?? []).Any(finding =>
-                        finding.StrikeCount >= settings.DownloadHealthStrikeThreshold &&
-                        (finding.IgnoredUntilUtc is null || finding.IgnoredUntilUtc <= overview.CapturedUtc)))
+                // Only a download that has stopped is struck (#560): a failed
+                // import or processing run has its own rules about the release.
+                var struck = (item.HealthFindings ?? []).FirstOrDefault(finding =>
+                    DownloadHealthStrikes.Counts(finding.Kind) &&
+                    finding.StrikeCount >= settings.DownloadHealthStrikeThreshold &&
+                    (finding.IgnoredUntilUtc is null || finding.IgnoredUntilUtc <= overview.CapturedUtc));
+                if (struck is null)
                 {
                     continue;
                 }
@@ -509,6 +521,34 @@ public sealed class DownloadClientTelemetryService(
                 var categoryOwned = IsDelunoCategory(client, item.Category, dispatch.MediaType, routeCategory);
                 var payloadOwned = library is not null && IsPathWithinApprovedDownloadRoot(item.SourcePath, library.DownloadsPath);
                 var applied = new List<string>();
+
+                // "Do not select the same failed release again": on the one
+                // blocklist, which searches skip, the title page counts, and the
+                // blocklist screen lists and lifts. It used to be a separate list
+                // only the grab checked, so the search kept choosing the release
+                // and nothing on screen said why (#560). Refused before the
+                // replacement is queued, so that search already skips it.
+                if (refuseRelease)
+                {
+                    await blockedReleases!.BlockAsync(
+                        new BlockedRelease(
+                            Guid.NewGuid().ToString("n"),
+                            BlockedReleaseKeys.For(dispatch.ReleaseName, dispatch.IndexerName),
+                            dispatch.ReleaseName,
+                            dispatch.IndexerName,
+                            dispatch.MediaType,
+                            dispatch.EntityId,
+                            item.Title,
+                            ImportFailurePolicy.DownloadStalled,
+                            StalledReason(struck, client.Name),
+                            dispatch.TorrentHashOrItemId ?? item.Id,
+                            client.Id,
+                            client.Name,
+                            DateTimeOffset.MinValue),
+                        cancellationToken);
+                    refused++;
+                    applied.Add("release refused");
+                }
 
                 if (settings.CleanupQueueReplacementAfterThreshold &&
                     dispatch.EntityType is "movie" or "series")
@@ -603,7 +643,30 @@ public sealed class DownloadClientTelemetryService(
             }
         }
 
-        return new DownloadHealthRemediationReport(evaluated, replacements, removed, purged, skipped, notes);
+        return new DownloadHealthRemediationReport(evaluated, replacements, removed, purged, skipped, notes, refused);
+    }
+
+    /// <summary>
+    /// Why the release was refused, for the blocklist row. The strikes say how
+    /// long it went on, because "stalled" on its own reads like a moment.
+    /// </summary>
+    internal static string StalledReason(DownloadHealthFinding finding, string clientName)
+    {
+        // "Nothing arriving" is only a finding once it has gone on for half an
+        // hour, so that half hour came before the first strike.
+        var nothingArriving = string.Equals(finding.Kind, DownloadHealthStrikes.NoThroughput, StringComparison.OrdinalIgnoreCase);
+        var lasted = DownloadHealthStrikes.Window * (Math.Max(0, finding.StrikeCount - 1) + (nothingArriving ? 1 : 0));
+        var forHowLong = lasted.TotalMinutes switch
+        {
+            <= 0 => string.Empty,
+            < 60 => $" for {lasted.TotalMinutes:0} minutes",
+            60 => " for an hour",
+            _ => $" for {lasted.TotalHours:0.#} hours"
+        };
+        var what = nothingArriving
+            ? $"Nothing arrived in {clientName}{forHowLong}"
+            : $"{clientName} showed it stalled or in error{forHowLong}";
+        return $"{what}, so Deluno stopped waiting for it and will not pick it again.";
     }
 
     private async Task QueueReplacementSearchAsync(

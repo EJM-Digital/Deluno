@@ -128,7 +128,7 @@ public sealed class QbittorrentDownloadClient(Func<HttpMessageHandler>? handlerF
             DownloadClientHelpers.InferMediaType(client, item.Category), DownloadClientHelpers.CleanReleaseTitle(item.Name ?? "Unknown qBittorrent item"),
             item.Name ?? "Unknown qBittorrent item", item.Category ?? string.Empty, NormalizeStatus(item.State, item.Progress),
             Math.Clamp(Math.Round((item.Progress ?? 0) * 100, 1), 0, 100), Math.Round((item.DownloadSpeed ?? 0) / 1_000_000d, 1),
-            Convert.ToInt32(Math.Clamp(item.Eta ?? 0, 0, int.MaxValue)), item.Size ?? 0, item.Downloaded ?? 0, item.NumSeeds ?? 0,
+            EtaSeconds(item.Eta), item.Size ?? 0, item.Downloaded ?? 0, item.NumSeeds ?? 0,
             "qBittorrent", item.State?.Contains("error", StringComparison.OrdinalIgnoreCase) == true ? item.State : null,
             DownloadClientHelpers.FromUnix(item.AddedOn), DownloadClientHelpers.ChoosePath(item.ContentPath, item.SavePath),
             LibraryId: null,
@@ -272,6 +272,17 @@ public sealed class QbittorrentDownloadClient(Func<HttpMessageHandler>? handlerF
                     lastResponse?.StatusCode);
         }
     }
+
+    /// <summary>
+    /// qBittorrent's "no estimate" is 8640000 seconds, exactly 100 days. It sends
+    /// that whenever nothing is arriving, including the first seconds of every
+    /// torrent. Read as a real estimate, it raised "unusually long" findings
+    /// reading "Client ETA: 100.00:00:00" (#560). Zero is Deluno's "unknown".
+    /// </summary>
+    internal const long NoEstimateSeconds = 8_640_000;
+
+    internal static int EtaSeconds(long? eta)
+        => eta is null or <= 0 or >= NoEstimateSeconds ? 0 : (int)Math.Min(eta.Value, int.MaxValue);
 
     public override string NormalizeStatus(string? nativeStatus, double? progress, int? errorCode = null, string? errorMessage = null)
     {

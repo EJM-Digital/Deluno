@@ -15,7 +15,6 @@ using Deluno.Connections.Data;
 namespace Deluno.Integrations.DownloadClients;
 
 public sealed class DownloadClientGrabService(
-    IDownloadHealthRepository platformRepository,
     IConnectionsRepository connectionsRepository,
     IDownloadClientRegistry downloadClientRegistry,
     IIntegrationResiliencePolicy resiliencePolicy,
@@ -42,15 +41,6 @@ public sealed class DownloadClientGrabService(
         if (!client.IsEnabled)
         {
             return Failed(client.Id, request, "paused", "Download client is disabled.");
-        }
-
-        if (await platformRepository.IsDownloadReleaseBlockedAsync(client.Id, request.ReleaseName, cancellationToken))
-        {
-            return Failed(
-                client.Id,
-                request,
-                "blocked",
-                "This exact release has repeatedly failed download-health checks. Review or temporarily ignore its health finding before trying it again.");
         }
 
         // A normal acquisition must never dispatch to a client that was only
