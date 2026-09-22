@@ -1,19 +1,21 @@
 name: CI
 
 on:
-  push:
-    branches:
-      - main
+  # Not on a push to main. Pull requests merge one at a time and up to date, so
+  # main receives exactly the tree its pull request run already tested, and
+  # running it again was a third of all the Actions minutes Deluno used
+  # (22 Sep 2026). "Run workflow" re-checks main by hand when that is wanted.
   pull_request:
     branches:
       - main
+  workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
   # Use the PR number rather than the merge ref so successive pushes to the
-  # same PR always cancel the superseded run. Main remains non-cancellable.
+  # same PR always cancel the superseded run. A run started by hand is not.
   group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
@@ -98,22 +100,21 @@ jobs:
         run: npm run test:unit:web
 
   frontend-smoke:
-    name: Frontend smoke (${{ matrix.shard_id }}/4)
+    # Two shards, not four: each shard repeats about 75 seconds of setup, and
+    # the suite is two-thirds of a pull request's minutes. A run takes a few
+    # minutes longer for it.
+    name: Frontend smoke (${{ matrix.shard_id }}/2)
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     strategy:
       fail-fast: false
-      max-parallel: 4
+      max-parallel: 2
       matrix:
         include:
           - shard_id: 1
-            shard: "1/4"
+            shard: "1/2"
           - shard_id: 2
-            shard: "2/4"
-          - shard_id: 3
-            shard: "3/4"
-          - shard_id: 4
-            shard: "4/4"
+            shard: "2/2"
 
     steps:
       - name: Checkout
