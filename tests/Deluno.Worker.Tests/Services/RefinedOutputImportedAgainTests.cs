@@ -107,6 +107,37 @@ public sealed class RefinedOutputImportedAgainTests : IDisposable
             Times.Once);
     }
 
+    /// <summary>
+    /// Handed over a moment ago and not asked yet: the watcher asks every pass,
+    /// so one more pass costs a minute and saves a failed attempt (#562).
+    /// </summary>
+    [Fact]
+    public async Task A_file_just_handed_over_waits_for_the_processor_to_answer()
+    {
+        var scheduler = Scheduler();
+
+        await Run(scheduler, completedImportBelongsTo: "dispatch-from-yesterday", handedOver: true, handedOverUtc: DateTimeOffset.UtcNow);
+
+        scheduler.Verify(
+            instance => instance.EnqueueAsync(It.IsAny<EnqueueJobRequest>(), It.IsAny<CancellationToken>()),
+            Times.Never);
+    }
+
+    /// <summary>A processor that never answers does not hold the output for ever.</summary>
+    [Fact]
+    public async Task An_output_is_taken_on_the_files_own_evidence_when_no_answer_comes()
+    {
+        var scheduler = Scheduler();
+
+        await Run(scheduler, completedImportBelongsTo: "dispatch-from-yesterday", handedOver: true, handedOverUtc: DateTimeOffset.UtcNow.AddMinutes(-10));
+
+        scheduler.Verify(
+            instance => instance.EnqueueAsync(
+                It.Is<EnqueueJobRequest>(request => request.JobType == "filesystem.import.execute"),
+                It.IsAny<CancellationToken>()),
+            Times.Once);
+    }
+
     public void Dispose()
     {
         if (Directory.Exists(_root))
@@ -117,7 +148,7 @@ public sealed class RefinedOutputImportedAgainTests : IDisposable
 
     // ------------------------------------------------------------------ helpers
 
-    private async Task Run(Mock<IJobScheduler> scheduler, string completedImportBelongsTo, string? processorSays = null)
+    private async Task Run(Mock<IJobScheduler> scheduler, string completedImportBelongsTo, string? processorSays = null, bool handedOver = false, DateTimeOffset? handedOverUtc = null)
     {
         var outputRoot = Path.Combine(_root, "Refined", "Movies");
         var refinedFile = Path.Combine(outputRoot, ReleaseName, ReleaseName + ".mkv");
@@ -141,7 +172,7 @@ public sealed class RefinedOutputImportedAgainTests : IDisposable
         var processors = new Mock<IProcessorRepository>();
         processors.Setup(repository => repository.ListProcessorHandoffsAsync(
                 It.IsAny<string?>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync([Waiting(processorSays)]);
+            .ReturnsAsync([Waiting(processorSays, handedOver, handedOverUtc)]);
 
         var planner = new WorkPlanner(
             NullLogger<WorkPlanner>.Instance,
@@ -182,7 +213,7 @@ public sealed class RefinedOutputImportedAgainTests : IDisposable
         return scheduler;
     }
 
-    private ProcessorHandoffItem Waiting(string? processorSays = null)
+    private ProcessorHandoffItem Waiting(string? processorSays = null, bool handedOver = false, DateTimeOffset? handedOverUtc = null)
         => new(
             Id: "handoff-1",
             LibraryId: "library-1",
@@ -192,12 +223,12 @@ public sealed class RefinedOutputImportedAgainTests : IDisposable
             ReleaseName: ReleaseName,
             SourcePath: Path.Combine(_root, "Downloads-Complete", "Movies", ReleaseName),
             ProcessorName: "Weir",
-            Status: processorSays is null ? "waiting" : "submitted",
+            Status: processorSays is null && !handedOver ? "waiting" : "submitted",
             OutputPath: null,
             ImportJobId: null,
             FailureMessage: null,
             CreatedUtc: DateTimeOffset.UnixEpoch,
-            UpdatedUtc: DateTimeOffset.UnixEpoch,
+            UpdatedUtc: handedOverUtc ?? DateTimeOffset.UnixEpoch,
             Processor: processorSays is null
                 ? null
                 : new ProcessorHandoffObservation(processorSays, null, null, null, DateTimeOffset.UnixEpoch, DateTimeOffset.UnixEpoch, null, DateTimeOffset.UnixEpoch));
