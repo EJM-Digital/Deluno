@@ -113,6 +113,37 @@ public sealed class ProcessorHandoffWatcherTests
     }
 
     [Fact]
+    public async Task A_file_the_processor_finished_that_never_arrived_ends_at_the_limit()
+    {
+        // #561: finished more than two days ago, and neither its report nor its
+        // output closed the hand-off. The answering streak restarted an hour
+        // ago, when the processor was upgraded; the processor's own finish time
+        // is what counts.
+        GivenHandoff(updated: Now.AddDays(-3), previous: Answering(since: Now.AddHours(-1)), mode: "block");
+        Answers(ProcessorHandoffStates.Completed, lastChanged: Now.AddHours(-49));
+
+        await Watch();
+
+        var (status, message) = Assert.Single(_updates);
+        Assert.Equal(ProcessorHandoffStatuses.TimedOut, status);
+        Assert.Contains("Weir finished Sintel.2010.1080p 2 days ago, but no processed file arrived", message, StringComparison.Ordinal);
+        Assert.Equal("processor-timeout", Assert.Single(_cases).FailureKind);
+    }
+
+    [Theory]
+    [InlineData(ProcessorHandoffStates.Completed)]
+    [InlineData(ProcessorHandoffStates.PassedThrough)]
+    public async Task A_file_the_processor_has_just_finished_is_left_for_its_output(string state)
+    {
+        GivenHandoff(updated: Now.AddHours(-2), previous: Answering(since: Now.AddHours(-2)), mode: "block");
+        Answers(state, lastChanged: Now.AddMinutes(-10));
+
+        await Watch();
+
+        Assert.Empty(_updates);
+    }
+
+    [Fact]
     public async Task A_limit_set_on_the_library_is_the_limit_used()
     {
         GivenHandoff(updated: Now.AddDays(-3), previous: Answering(since: Now.AddDays(-3)), stallMinutes: 24 * 60);
