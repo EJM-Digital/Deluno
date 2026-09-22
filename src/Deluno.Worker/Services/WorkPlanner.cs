@@ -1125,11 +1125,33 @@ public sealed class WorkPlanner(
     /// cannot be asked never says anything, and a hand-off Deluno stopped
     /// waiting for is a late delivery to take as it is (#511).</para>
     /// </summary>
-    internal static bool ProcessorHasNotFinished(ProcessorHandoffItem handoff)
-        => ProcessorHandoffStatuses.IsWithProcessor(handoff.Status) &&
-           handoff.Processor?.State is ProcessorHandoffStates.Queued
-               or ProcessorHandoffStates.Scheduled
-               or ProcessorHandoffStates.Working;
+    internal static bool ProcessorHasNotFinished(ProcessorHandoffItem handoff, DateTimeOffset now)
+    {
+        // Only a hand-off a processor was actually given. One that is merely
+        // waiting has nobody to ask — the library watches a folder — and its
+        // output is the only word there will ever be.
+        if (!ProcessorHandoffStatuses.IsOpen(handoff.Status))
+        {
+            return false;
+        }
+
+        return handoff.Processor?.State switch
+        {
+            ProcessorHandoffStates.Queued or ProcessorHandoffStates.Scheduled or ProcessorHandoffStates.Working => true,
+
+            // Handed over so recently that nobody has asked yet. The watcher
+            // asks every pass, so waiting for its answer costs a minute; past
+            // the grace the processor is one that does not answer, and the file
+            // is all Deluno has to go on.
+            null => now - handoff.UpdatedUtc < UnansweredGrace,
+
+            // It finished, passed the file through, or reported an ending.
+            _ => false
+        };
+    }
+
+    /// <summary>How long a hand-off waits for a first answer before its output is taken on the file's own evidence.</summary>
+    private static readonly TimeSpan UnansweredGrace = TimeSpan.FromMinutes(3);
 
     private async Task ReconcileMatchedProcessorOutputsAsync(
         IJobScheduler jobScheduler,
@@ -1156,7 +1178,7 @@ public sealed class WorkPlanner(
                 string.Equals(item.Id, handoff.LibraryId, StringComparison.OrdinalIgnoreCase) &&
                 string.Equals(item.ImportWorkflow, "refine-before-import", StringComparison.OrdinalIgnoreCase) &&
                 !string.IsNullOrWhiteSpace(item.ProcessorOutputPath));
-            if (library is null || ProcessorHasNotFinished(handoff))
+            if (library is null || ProcessorHasNotFinished(handoff, timeProvider.GetUtcNow()))
             {
                 continue;
             }
