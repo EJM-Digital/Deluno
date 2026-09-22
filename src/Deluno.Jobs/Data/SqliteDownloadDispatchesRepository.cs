@@ -536,7 +536,8 @@ public sealed class SqliteDownloadDispatchesRepository(
         // costs a delay, while not counting it costs a second download.
         command.CommandText =
             """
-            SELECT entity_type, entity_id, release_name
+            SELECT entity_type, entity_id, release_name,
+                   CASE WHEN status = 'failed' AND grab_failure_code = 'not_found' THEN 1 ELSE 0 END
             FROM download_dispatches
             WHERE grab_status = 'succeeded'
               AND archived_utc IS NULL
@@ -552,7 +553,7 @@ public sealed class SqliteDownloadDispatchesRepository(
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
         while (await reader.ReadAsync(cancellationToken))
         {
-            downloads.Add(new DownloadInFlight(reader.GetString(0), reader.GetString(1), reader.GetString(2)));
+            downloads.Add(new DownloadInFlight(reader.GetString(0), reader.GetString(1), reader.GetString(2), reader.GetInt64(3) == 1));
         }
 
         return downloads;

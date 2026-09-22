@@ -112,6 +112,42 @@ public sealed class AGrabIsNotSentTwiceTests
             It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()), Times.Once);
     }
 
+    /// <summary>
+    /// A download its client never showed is not on its way. Its record still
+    /// keeps the title off the work list for the reconciler, but when the title
+    /// is searched again, sending the release again is the retry.
+    /// </summary>
+    [Fact]
+    public async Task A_download_its_client_never_showed_does_not_stop_the_release_being_sent_again()
+    {
+        var world = new World(inFlight: [new DownloadInFlight("movie", "movie-1", Release, NeverShown: true)]);
+
+        await world.MoviesHandler().HandleAsync(LibraryJob("movies"), CancellationToken.None);
+
+        world.Grabs.Verify(grab => grab.GrabAsync("client-1", It.IsAny<DownloadClientGrabRequest>(), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    /// <summary>
+    /// The one step every grab path takes (manual, "search now", season search
+    /// and the automatic passes): only a release the client took puts its title
+    /// on its way.
+    /// </summary>
+    [Theory]
+    [InlineData("sent", true)]
+    [InlineData("failed", false)]
+    [InlineData("blocked", false)]
+    [InlineData("planned", false)]
+    public async Task Only_a_release_the_client_took_marks_its_title(string grabStatus, bool marked)
+    {
+        var mediaState = new Mock<IMediaStateRepository>();
+
+        await mediaState.Object.MarkDownloadingIfSentAsync(MediaKind.Series, "series-1", grabStatus, Now, CancellationToken.None);
+
+        mediaState.Verify(
+            state => state.SetDownloadingAsync(MediaKind.Series, "series-1", true, Now, It.IsAny<CancellationToken>()),
+            marked ? Times.Once() : Times.Never());
+    }
+
     [Fact]
     public async Task An_episode_with_nothing_on_its_way_is_grabbed()
     {
