@@ -205,6 +205,10 @@ public static class MediaSearchHandler
                 replacementAuthorized: wantedItem.HasFile,
                 replacementExpectedPath: wantedItem.FilePath,
                 clientExternalId: grabResult.ExternalId);
+
+            // "Search now" takes a release like any other grab, so its title is
+            // on its way too (#555).
+            await mediaStateRepository.MarkDownloadingIfSentAsync(kind, item.Id, grabResult.Status, now, cancellationToken);
         }
 
         await recordSearchAttemptAsync(

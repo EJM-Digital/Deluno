@@ -2458,6 +2458,9 @@ public static class SeriesEndpointRouteBuilderExtensions
                     replacementAuthorized: replacementDecision is { Authorized: true, Targets.Count: > 0 },
                     replacementTargets: replacementDecision?.Targets,
                     clientExternalId: grabResult.ExternalId);
+
+                // A season's release puts the show on its way, as any grab does (#555).
+                await mediaStateRepository.MarkDownloadingIfSentAsync(MediaKind.Series, seriesItem.Id, grabResult.Status, now, cancellationToken);
             }
 
             foreach (var episode in seasonEpisodes)

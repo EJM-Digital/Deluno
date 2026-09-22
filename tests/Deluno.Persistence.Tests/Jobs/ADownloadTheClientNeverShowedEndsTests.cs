@@ -251,6 +251,11 @@ public sealed class ADownloadTheClientNeverShowedEndsTests
         Assert.Contains("waiting", live);
         Assert.Contains("unseen", live);
         Assert.DoesNotContain("imported", live);
+
+        // The one its client never showed is marked, so a search may send it again.
+        var inFlight = await dispatches.ListDownloadsInFlightAsync(100, CancellationToken.None);
+        Assert.True(inFlight.Single(download => download.EntityId == "unseen").NeverShown);
+        Assert.False(inFlight.Single(download => download.EntityId == "waiting").NeverShown);
     }
 
     private static async Task SetImportStatusAsync(IDelunoDatabaseConnectionFactory factory, string id, string importStatus)

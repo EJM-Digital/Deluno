@@ -65,7 +65,8 @@ internal static class SearchExecutionSupport
         CancellationToken cancellationToken)
     {
         var inFlight = await jobQueueRepository.ListDownloadsInFlightAsync(InFlightLimit, cancellationToken) ?? [];
-        var same = inFlight.FirstOrDefault(download =>
+        // One its client never showed is not on its way; sending it again is the retry.
+        var same = inFlight.Where(download => !download.NeverShown).FirstOrDefault(download =>
             entityIds.Contains(download.EntityId, StringComparer.Ordinal)
             || string.Equals(download.ReleaseName, releaseName, StringComparison.OrdinalIgnoreCase));
 
