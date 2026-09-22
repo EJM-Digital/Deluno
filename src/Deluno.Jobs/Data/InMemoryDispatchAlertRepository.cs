@@ -100,5 +100,6 @@ public sealed class InMemoryDispatchAlertRepository : IDispatchAlertRepository
     /// so it cannot tell which have settled. Nothing is registered against it;
     /// the SQLite repository is the one that resolves.
     /// </summary>
-    public Task<int> ResolveSettledAlertsAsync(CancellationToken cancellationToken) => Task.FromResult(0);
+    public Task<IReadOnlyList<SettledDispatchAlert>> ResolveSettledAlertsAsync(CancellationToken cancellationToken)
+        => Task.FromResult<IReadOnlyList<SettledDispatchAlert>>([]);
 }

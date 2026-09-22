@@ -69,4 +69,12 @@ public sealed class CompositeDispatchRecoveryHandler(IEnumerable<IDispatchRecove
             await handler.HandleImportFailureAsync(title, mediaType, downloadClientId, downloadClientName, releaseName, entityId, importFailureCode, importFailureMessage, detailsJson, cancellationToken);
         }
     }
+
+    public async Task HandleDispatchSettledAsync(string dispatchId, string reason, CancellationToken cancellationToken)
+    {
+        foreach (var handler in handlers)
+        {
+            await handler.HandleDispatchSettledAsync(dispatchId, reason, cancellationToken);
+        }
+    }
 }

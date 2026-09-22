@@ -89,4 +89,8 @@ public sealed class SeriesDispatchRecoveryHandler(ISeriesCatalogRepository catal
             new CreateSeriesImportRecoveryCaseRequest(title, "import-failed", summary, recommended, detailsJson),
             cancellationToken);
     }
+
+    /// <summary>The download recovered, so the cases written about it close with the reason (#559).</summary>
+    public Task HandleDispatchSettledAsync(string dispatchId, string reason, CancellationToken cancellationToken)
+        => catalogRepository.SettleImportRecoveryCasesAsync(dispatchId, reason, cancellationToken);
 }

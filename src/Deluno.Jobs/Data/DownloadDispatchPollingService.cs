@@ -153,7 +153,15 @@ public sealed class DownloadDispatchPollingService(
         // After archiving, so a download archived on this pass closes its
         // alerts on this pass rather than an hour later.
         var resolved = await alertRepository.ResolveSettledAlertsAsync(cancellationToken);
-        report = report with { AlertsResolved = resolved };
+        report = report with { AlertsResolved = resolved.Count };
+
+        // The recovery case written beside each alert settles with it (#559),
+        // or it goes on saying "never appeared" about a download the client
+        // has since shown, and the screens go on counting it.
+        foreach (var settled in resolved.GroupBy(alert => alert.DispatchId, StringComparer.Ordinal))
+        {
+            await recoveryHandler.HandleDispatchSettledAsync(settled.Key, settled.First().Reason, cancellationToken);
+        }
 
         return report;
     }

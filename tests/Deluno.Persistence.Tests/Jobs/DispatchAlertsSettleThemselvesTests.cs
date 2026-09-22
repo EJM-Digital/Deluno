@@ -128,7 +128,7 @@ public sealed class DispatchAlertsSettleThemselvesTests
         await InitializeAsync(storage, clock);
 
         await InsertDispatchAsync(storage.Factory, "slow", grabbedAgo: TimeSpan.FromHours(6), clock: clock);
-        var (poller, alerts, _) = CreatePoller(storage, clock);
+        var (poller, alerts, recovery) = CreatePoller(storage, clock);
 
         await poller.PollAsync(CancellationToken.None);
         Assert.Single(await alerts.GetOpenAlertsAsync(null, 100, CancellationToken.None));
@@ -152,6 +152,10 @@ public sealed class DispatchAlertsSettleThemselvesTests
         Assert.Equal("The download client picked it up.", reason);
         // Resolved, not acknowledged: the record still says nobody looked.
         Assert.False(acknowledged);
+
+        // And the recovery case written beside it is told, so it stops saying
+        // "never appeared" about a download the client has shown (#559).
+        Assert.Equal(("slow", "The download client picked it up."), Assert.Single(recovery.Settled));
     }
 
     [Fact]
@@ -402,6 +406,14 @@ public sealed class DispatchAlertsSettleThemselvesTests
     private sealed class CountingRecoveryHandler : IDispatchRecoveryHandler
     {
         public int GrabTimeouts { get; private set; }
+
+        public List<(string DispatchId, string Reason)> Settled { get; } = [];
+
+        public Task HandleDispatchSettledAsync(string dispatchId, string reason, CancellationToken cancellationToken)
+        {
+            Settled.Add((dispatchId, reason));
+            return Task.CompletedTask;
+        }
 
         public Task HandleGrabTimeoutAsync(string title, string mediaType, string downloadClientId, string downloadClientName, string releaseName, string detailsJson, CancellationToken cancellationToken)
         {

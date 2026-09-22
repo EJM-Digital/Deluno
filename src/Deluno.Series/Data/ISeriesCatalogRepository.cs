@@ -340,6 +340,13 @@ public interface ISeriesCatalogRepository : ISeriesImportRecoveryRetentionReposi
 
     Task<SeriesImportRecoveryCase?> ResolveImportRecoveryCaseAsync(string id, string status, CancellationToken cancellationToken);
 
+    /// <summary>
+    /// Closes the open recovery cases written about one download, because it moved
+    /// past the problem they describe (#559), with the reason in each case's
+    /// history. Returns how many closed.
+    /// </summary>
+    Task<int> SettleImportRecoveryCasesAsync(string dispatchId, string reason, CancellationToken cancellationToken);
+
     Task AddImportRecoveryEventAsync(string caseId, string eventKind, string message, string? metadataJson, CancellationToken cancellationToken);
 
     Task<SeriesWantedItem?> GetSeriesWantedStateAsync(

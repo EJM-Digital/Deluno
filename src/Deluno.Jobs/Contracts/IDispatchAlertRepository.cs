@@ -56,7 +56,11 @@ public interface IDispatchAlertRepository
 
     /// <summary>
     /// Closes every open alert whose download has moved past the problem it
-    /// describes, and returns how many were closed.
+    /// describes, and returns the ones it closed, so the recovery cases written
+    /// beside them can settle too (#559).
     /// </summary>
-    Task<int> ResolveSettledAlertsAsync(CancellationToken cancellationToken);
+    Task<IReadOnlyList<SettledDispatchAlert>> ResolveSettledAlertsAsync(CancellationToken cancellationToken);
 }
+
+/// <summary>An alert the poller closed because its download moved on, and why.</summary>
+public sealed record SettledDispatchAlert(string DispatchId, string AlertKind, string Reason);
