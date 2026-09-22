@@ -419,7 +419,7 @@ public sealed class ImportPipelineServiceTests
     }
 
     [Fact]
-    public async Task ExecuteAsync_waits_for_a_source_file_to_be_stable_before_probing_or_importing()
+    public async Task ExecuteAsync_refuses_a_source_file_that_is_not_stable_yet()
     {
         using var storage = TestStorage.Create();
         var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-04-29T08:00:00Z"));
@@ -463,6 +463,56 @@ public sealed class ImportPipelineServiceTests
         Assert.Contains("still being written", result.Message, StringComparison.OrdinalIgnoreCase);
         Assert.True(File.Exists(sourcePath));
         Assert.Empty(await movies.ListAsync(CancellationToken.None));
+    }
+
+    /// <summary>
+    /// #562: a processor hands its output over and then finishes with it — Weir
+    /// moves its file into place and puts the original timestamps back after. The
+    /// import began in that moment and failed a second later, so every processed
+    /// import failed its first attempt. Seconds of waiting cost less than an attempt.
+    /// </summary>
+    [Fact]
+    public async Task ExecuteAsync_waits_the_few_seconds_a_source_file_needs_to_settle()
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-04-29T08:00:00Z"));
+        await InitializeAllAsync(storage, timeProvider);
+
+        var downloadsPath = Path.Combine(storage.DataRoot, "downloads");
+        var movieRootPath = Path.Combine(storage.DataRoot, "movies");
+        Directory.CreateDirectory(downloadsPath);
+        Directory.CreateDirectory(movieRootPath);
+        var sourcePath = Path.Combine(downloadsPath, "The.Matrix.1999.WEB.1080p.mkv");
+        await File.WriteAllBytesAsync(sourcePath, Enumerable.Range(0, 2048).Select(value => (byte)(value % 193)).ToArray());
+        File.SetLastWriteTimeUtc(sourcePath, DateTime.UtcNow);
+
+        var platform = CreatePlatformRepository(storage, timeProvider);
+        var libraries = CreateLibrariesRepository(storage, timeProvider);
+        await SaveSettingsAsync(platform, movieRootPath, downloadsPath);
+        await CreateMovieLibraryAsync(libraries, movieRootPath, downloadsPath);
+
+        var movies = new SqliteMovieCatalogRepository(storage.Factory, timeProvider);
+        var service = CreateService(storage, timeProvider, platform, libraries, movies, settleWindow: TimeSpan.FromSeconds(10));
+
+        var result = await service.ExecuteAsync(
+            new ImportExecuteRequest(
+                Preview: new ImportPreviewRequest(
+                    SourcePath: sourcePath,
+                    FileName: null,
+                    MediaType: "movies",
+                    Title: "The Matrix",
+                    Year: 1999,
+                    Genres: ["Science Fiction"],
+                    Tags: [],
+                    Studio: "Warner",
+                    OriginalLanguage: "en"),
+                TransferMode: "copy",
+                Overwrite: false,
+                AllowCopyFallback: true),
+            CancellationToken.None);
+
+        Assert.True(result.Succeeded);
+        Assert.Single(await movies.ListAsync(CancellationToken.None));
     }
 
     [Fact]
@@ -2216,7 +2266,8 @@ public sealed class ImportPipelineServiceTests
         IMediaProbeService? mediaProbeService = null,
         ISeriesCatalogRepository? seriesCatalogRepository = null,
         IQualityRepository? qualityRepository = null,
-        IDownloadDispatchesRepository? downloadDispatchesRepository = null)
+        IDownloadDispatchesRepository? downloadDispatchesRepository = null,
+        TimeSpan? settleWindow = null)
         => new(
             platform,
             librariesRepository,
@@ -2232,7 +2283,8 @@ public sealed class ImportPipelineServiceTests
             NullLogger<ImportPipelineService>.Instance,
             null,
             null,
-            qualityRepository);
+            qualityRepository,
+            settleWindow: settleWindow ?? TimeSpan.Zero);
 
     private static FilesystemReconciliationService CreateReconciliationService(
         TestStorage storage,

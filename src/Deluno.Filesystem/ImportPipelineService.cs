@@ -48,9 +48,13 @@ public sealed partial class ImportPipelineService(
     IGuidePackageStore? guidePackageStore = null,
     IReleasePreferencePlanRepository? releasePreferencePlanRepository = null,
     IBlockedReleaseRepository? blockedReleases = null,
-    IImportFailureRuleRepository? failureRules = null)
+    IImportFailureRuleRepository? failureRules = null,
+    // Only a test passes this, to say "do not wait" without waiting for it.
+    TimeSpan? settleWindow = null)
     : IImportPipelineService
 {
+    private readonly TimeSpan _settleWindow = settleWindow ?? ImportFileReadiness.SettleWindow;
+
     private static readonly HashSet<string> SupportedVideoExtensions = new(StringComparer.OrdinalIgnoreCase)
     {
         ".mkv", ".mp4", ".m4v", ".avi", ".mov", ".wmv", ".ts", ".m2ts"
@@ -108,14 +112,17 @@ public sealed partial class ImportPipelineService(
             cancellationToken);
         var resolvedPreview = await ResolveImportPreviewAsync(request.Preview, settings, rules, libraries, cancellationToken, decision);
 
-        if (resolvedPreview.SourceExists && !ImportFileReadiness.IsReady(resolvedPreview.SourcePath))
+        if (resolvedPreview.SourceExists &&
+            !await ImportFileReadiness.WaitUntilReadyAsync(resolvedPreview.SourcePath, _settleWindow, cancellationToken))
         {
             // Do not probe or copy a file while a download client or processor
-            // may still be writing it. Worker retries can safely try again on
-            // the next attempt without creating a false recovery failure.
+            // may still be writing it. A processor finishing with its own output
+            // takes a moment, which the wait above covers (#562); anything
+            // longer is somebody else's business, and the worker's retries can
+            // safely try again without creating a false recovery failure.
             return Failed(
                 ImportFileReadiness.RetryableStatusCode,
-                "The source file is still being written or is locked by another process. Deluno will retry when it is stable.");
+                $"The source file was still being written, or locked by another process, {_settleWindow.TotalSeconds:0} seconds after Deluno started importing it. Deluno will retry when it is stable.");
         }
 
         var preview = await EnrichPreviewWithMediaProbeAsync(resolvedPreview, cancellationToken);
