@@ -2475,6 +2475,57 @@ public sealed class SqliteMovieCatalogRepository(
         return null;
     }
 
+    public async Task<int> SettleImportRecoveryCasesAsync(string dispatchId, string reason, CancellationToken cancellationToken)
+    {
+        var now = timeProvider.GetUtcNow().ToString("O");
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Movies,
+            cancellationToken);
+        await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+
+        var settled = new List<string>();
+        using (var update = connection.CreateCommand())
+        {
+            update.Transaction = transaction;
+            // details_json is whatever the poller wrote; one that is not JSON
+            // simply matches nothing rather than failing the whole pass.
+            update.CommandText =
+                """
+                UPDATE movie_import_recovery_cases
+                SET status = 'resolved', resolved_utc = @now
+                WHERE status = 'open'
+                  AND CASE WHEN json_valid(details_json) THEN json_extract(details_json, '$.DispatchId') END = @dispatchId
+                RETURNING id;
+                """;
+            AddParameter(update, "@now", now);
+            AddParameter(update, "@dispatchId", dispatchId);
+            await using var reader = await update.ExecuteReaderAsync(cancellationToken);
+            while (await reader.ReadAsync(cancellationToken))
+            {
+                settled.Add(reader.GetString(0));
+            }
+        }
+
+        foreach (var caseId in settled)
+        {
+            using var insert = connection.CreateCommand();
+            insert.Transaction = transaction;
+            insert.CommandText =
+                """
+                INSERT INTO movie_import_recovery_events (id, case_id, event_kind, message, metadata_json, created_utc)
+                VALUES (@id, @caseId, 'case_settled', @message, NULL, @createdUtc);
+                """;
+            AddParameter(insert, "@id", Guid.CreateVersion7().ToString("N"));
+            AddParameter(insert, "@caseId", caseId);
+            AddParameter(insert, "@message", reason);
+            AddParameter(insert, "@createdUtc", now);
+            await insert.ExecuteNonQueryAsync(cancellationToken);
+        }
+
+        await transaction.CommitAsync(cancellationToken);
+        return settled.Count;
+    }
+
     public async Task AddImportRecoveryEventAsync(
         string caseId,
         string eventKind,

@@ -218,7 +218,7 @@ public sealed class SqliteDispatchAlertRepository(
     /// timeout by the import starting, an import timeout by the import no
     /// longer waiting, and an import failure by a retry that got further.</para>
     /// </summary>
-    public async Task<int> ResolveSettledAlertsAsync(CancellationToken cancellationToken)
+    public async Task<IReadOnlyList<SettledDispatchAlert>> ResolveSettledAlertsAsync(CancellationToken cancellationToken)
     {
         await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
             DelunoDatabaseNames.Jobs,
@@ -253,10 +253,18 @@ public sealed class SqliteDispatchAlertRepository(
                     AND NOT (dispatch_alerts.alert_kind = 'import-timeout' AND COALESCE(d.import_status, '') <> 'pending')
                     AND NOT (dispatch_alerts.alert_kind = 'import-failed' AND COALESCE(d.import_status, '') <> 'failed')
               )
+            RETURNING dispatch_id, alert_kind, resolved_reason
             """;
         AddParameter(command, "@now", timeProvider.GetUtcNow().ToString("O"));
 
-        return await command.ExecuteNonQueryAsync(cancellationToken);
+        var settled = new List<SettledDispatchAlert>();
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            settled.Add(new SettledDispatchAlert(reader.GetString(0), reader.GetString(1), reader.IsDBNull(2) ? "The download moved on." : reader.GetString(2)));
+        }
+
+        return settled;
     }
 
     /// <summary>
