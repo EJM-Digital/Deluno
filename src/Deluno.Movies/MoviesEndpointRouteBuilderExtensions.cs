@@ -413,6 +413,59 @@ public static class MoviesEndpointRouteBuilderExtensions
             return Results.Ok(updated);
         });
 
+        // Try again on a recovery case (#558): the case kind's own action, or
+        // why there is none yet. The button posted here for as long as it had
+        // been on screen, and until now nothing answered.
+        movies.MapPost("/import-recovery/{id}/retry", async (
+            string id,
+            HttpContext httpContext,
+            IMovieCatalogRepository repository,
+            IDispatchAlertRepository alertRepository,
+            IDownloadDispatchesRepository dispatchesRepository,
+            IJobQueueRepository jobQueueRepository,
+            IJobScheduler jobScheduler,
+            IMediaStateRepository mediaStateRepository,
+            ILibrariesRepository librariesRepository,
+            IProcessorRepository processorRepository,
+            TimeProvider timeProvider,
+            CancellationToken cancellationToken) =>
+        {
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
+            if (denied is not null)
+            {
+                return denied;
+            }
+
+            var recoveryCase = await repository.GetImportRecoveryCaseAsync(id, cancellationToken);
+            if (recoveryCase is null || !string.Equals(recoveryCase.Status, "open", StringComparison.OrdinalIgnoreCase))
+            {
+                return Results.NotFound();
+            }
+
+            var outcome = await RecoveryCaseRetry.RetryAsync(
+                recoveryCase.FailureKind,
+                recoveryCase.DetailsJson,
+                dispatchesRepository,
+                jobQueueRepository,
+                jobScheduler,
+                mediaStateRepository,
+                librariesRepository,
+                processorRepository,
+                timeProvider,
+                cancellationToken);
+            if (!outcome.Retried)
+            {
+                return Results.Conflict(new { message = outcome.Message });
+            }
+
+            await repository.ResolveImportRecoveryCaseAsync(id, "resolved", cancellationToken);
+            // Its alerts settle with it (#537). The download itself is left as the
+            // retry left it: an import being run again must still have its record.
+            await RecoveryCaseAlerts.AcknowledgeAsync(recoveryCase.DetailsJson, alertRepository, cancellationToken);
+            await repository.AddImportRecoveryEventAsync(id, "case_retried", outcome.Message, null, cancellationToken);
+            return Results.Ok(new { message = outcome.Message });
+        });
+
         movies.MapDelete("/import-recovery/{id}", async (
             string id,
             HttpContext httpContext,

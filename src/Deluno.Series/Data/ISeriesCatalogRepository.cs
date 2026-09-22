@@ -338,6 +338,8 @@ public interface ISeriesCatalogRepository : ISeriesImportRecoveryRetentionReposi
 
     Task<bool> DeleteImportRecoveryCaseAsync(string id, CancellationToken cancellationToken);
 
+    Task<SeriesImportRecoveryCase?> GetImportRecoveryCaseAsync(string id, CancellationToken cancellationToken);
+
     Task<SeriesImportRecoveryCase?> ResolveImportRecoveryCaseAsync(string id, string status, CancellationToken cancellationToken);
 
     /// <summary>

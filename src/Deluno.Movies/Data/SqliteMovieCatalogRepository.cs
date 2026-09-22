@@ -2429,6 +2429,24 @@ public sealed class SqliteMovieCatalogRepository(
         return await command.ExecuteNonQueryAsync(cancellationToken) > 0;
     }
 
+    public async Task<MovieImportRecoveryCase?> GetImportRecoveryCaseAsync(string id, CancellationToken cancellationToken)
+    {
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Movies,
+            cancellationToken);
+
+        using var select = connection.CreateCommand();
+        select.CommandText =
+            """
+            SELECT id, title, failure_kind, status, summary, recommended_action, details_json, detected_utc, resolved_utc
+            FROM movie_import_recovery_cases
+            WHERE id = @id;
+            """;
+        AddParameter(select, "@id", id);
+        using var reader = await select.ExecuteReaderAsync(cancellationToken);
+        return await reader.ReadAsync(cancellationToken) ? ReadImportRecoveryCase(reader) : null;
+    }
+
     public async Task<MovieImportRecoveryCase?> ResolveImportRecoveryCaseAsync(
         string id,
         string status,

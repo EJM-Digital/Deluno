@@ -25,6 +25,28 @@ public sealed class SqliteDownloadDispatchesRepository(
         "import_failure_message, import_failure_json, circuit_open_until_utc, next_retry_eligible_utc, attempt_count, " +
         "client_completed_utc";
 
+    public async Task<DownloadDispatchItem?> GetDispatchIncludingArchivedAsync(
+        string dispatchId,
+        CancellationToken cancellationToken)
+    {
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Jobs,
+            cancellationToken);
+
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            $"""
+            SELECT
+                {DispatchColumns}
+            FROM download_dispatches
+            WHERE id = @dispatchId
+            """;
+        AddParameter(command, "@dispatchId", dispatchId);
+
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        return await reader.ReadAsync(cancellationToken) ? ReadDispatch(reader) : null;
+    }
+
     public async Task<DownloadDispatchItem?> GetDispatchAsync(
         string dispatchId,
         CancellationToken cancellationToken)

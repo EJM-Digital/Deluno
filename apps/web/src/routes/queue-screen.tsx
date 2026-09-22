@@ -322,14 +322,14 @@ export function QueuePage() {
 
   async function retryRecovery(item: (typeof recoveryCases)[number]) {
     const collection = item.mediaType === "movie" ? "movies" : "series";
-    await run(
-      `recovery:retry:${item.id}`,
-      async () => {
-        const response = await authedFetch(`/api/${collection}/import-recovery/${item.id}/retry`, { method: "POST" });
-        if (!response.ok) throw new Error("That import could not be tried again.");
-      },
-      `${item.title} queued to try again`
-    );
+    await run(`recovery:retry:${item.id}`, async () => {
+      const response = await authedFetch(`/api/${collection}/import-recovery/${item.id}/retry`, { method: "POST" });
+      // The server says what it did for this kind of case, or why there is
+      // nothing to do yet (#558), and that is what the person needs to read.
+      if (!response.ok) throw new Error(await readErrorText(response, "That could not be tried again."));
+      const body = (await response.json().catch(() => null)) as { message?: string } | null;
+      toast.success(body?.message ?? `${item.title} is being tried again.`);
+    });
   }
 
   async function dismissFailedImport(job: JobQueueItem) {
@@ -629,10 +629,15 @@ export function QueuePage() {
                 <ListCell primary={item.summary} secondary={item.recommendedAction} />
                 <ListCell mobile align="end">
                   <span className="flex justify-end gap-2">
-                    <Button type="button" variant="outline" size="sm" onClick={() => void retryRecovery(item)} disabled={busyKey !== null}>
-                      {busyKey === `recovery:retry:${item.id}` ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
-                      Try again
-                    </Button>
+                    {/* Offered for the kinds Deluno can act on (#558): a download
+                        that failed or an import that did. A quality, unmatched or
+                        corrupt file needs a decision, not another attempt. */}
+                    {item.failureKind === "downloadFailed" || item.failureKind === "importFailed" ? (
+                      <Button type="button" variant="outline" size="sm" onClick={() => void retryRecovery(item)} disabled={busyKey !== null}>
+                        {busyKey === `recovery:retry:${item.id}` ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
+                        Try again
+                      </Button>
+                    ) : null}
                     <Button type="button" variant="outline" size="sm" onClick={() => void dismissRecovery(item)} disabled={busyKey !== null}>
                       Dismiss
                     </Button>
