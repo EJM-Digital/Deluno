@@ -3,6 +3,17 @@ name: Docker image
 on:
   pull_request:
     branches: [main]
+    # Every release tag builds the image and proves the upgrade, whatever
+    # changed. A pull request pays for that only when it can change the image
+    # or the upgrade path: it ran on every pull request, about 7 minutes each,
+    # a tenth of all the Actions minutes Deluno used (22 Sep 2026).
+    paths:
+      - Dockerfile
+      - .dockerignore
+      - compose.yaml
+      - scripts/test-docker-recovery.sh
+      - .github/workflows/docker.yml
+      - "src/**/Migrations/**"
   push:
     tags: ["v*"]
   workflow_dispatch:
