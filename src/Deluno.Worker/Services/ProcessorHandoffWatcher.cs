@@ -215,7 +215,26 @@ public sealed class ProcessorHandoffWatcher(
         switch (answer.State)
         {
             case ProcessorHandoffStates.Completed or ProcessorHandoffStates.PassedThrough:
-                // Its report or the output folder brings the file in.
+                // Its report or the output folder brings the file in, and either
+                // one closes the hand-off. If neither has by the library's limit,
+                // nothing will: the output went somewhere Deluno does not look,
+                // or an earlier download of the same release already imported
+                // it. Left open, the hand-off also claimed every later download
+                // into the same folder, and those never reached the processor
+                // (#561). The processor's own "finished at" is the clock:
+                // Deluno's answering streak restarts whenever the processor
+                // does, which would put the limit off every time.
+                var finishedFor = now - (answer.LastChangedUtc ?? answeringSince ?? handoff.UpdatedUtc);
+                if (finishedFor > limit)
+                {
+                    await GiveUpAsync(
+                        handoff,
+                        library,
+                        ProcessorHandoffStatuses.TimedOut,
+                        $"{connection.Name} finished {handoff.ReleaseName} {Describe(finishedFor)} ago, but no processed file arrived for Deluno to import.",
+                        cancellationToken);
+                }
+
                 return;
 
             case ProcessorHandoffStates.Queued or ProcessorHandoffStates.Scheduled or ProcessorHandoffStates.Working:
