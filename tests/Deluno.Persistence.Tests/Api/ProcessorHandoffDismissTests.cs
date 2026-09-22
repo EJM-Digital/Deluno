@@ -58,6 +58,27 @@ public sealed class ProcessorHandoffDismissTests
         Assert.Equal(status, stored?.Status);
     }
 
+    /// <summary>
+    /// Weir delivered after the film was removed, so the hand-off ended
+    /// <c>completed</c> carrying a reason. Transfers counts it, and what is
+    /// counted must be clearable (#570).
+    /// </summary>
+    [Fact]
+    public async Task A_hand_off_that_finished_with_something_to_say_can_be_dismissed()
+    {
+        await using var app = await ApplicationTestHost.StartAsync();
+        var handoff = await HandoffAsync(
+            app,
+            ProcessorHandoffStatuses.Completed,
+            "Weir produced a cleaned file, but the film was removed from Deluno, so Deluno did not import it.");
+
+        var response = await app.Client.PostAsJsonAsync($"/api/integrations/processors/handoffs/{handoff.Id}/dismiss", new { });
+
+        Assert.True(response.IsSuccessStatusCode, await response.Content.ReadAsStringAsync());
+        var stored = await Repository(app).GetProcessorHandoffAsync(handoff.Id, CancellationToken.None);
+        Assert.Equal(ProcessorHandoffStatuses.Dismissed, stored?.Status);
+    }
+
     [Fact]
     public async Task Dismissing_is_recorded_in_the_feed()
     {

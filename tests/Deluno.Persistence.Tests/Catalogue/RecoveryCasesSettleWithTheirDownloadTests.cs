@@ -1,3 +1,4 @@
+using Deluno.Contracts;
 using Deluno.Infrastructure.Storage.Migrations;
 using Deluno.Movies.Contracts;
 using Deluno.Movies.Data;
@@ -34,7 +35,7 @@ public sealed class RecoveryCasesSettleWithTheirDownloadTests
         var other = await AddCaseAsync(movies, """{"DispatchId":"d2"}""");
         var unreadable = await AddCaseAsync(movies, "not json");
 
-        var settled = await movies.SettleImportRecoveryCasesAsync("d1", Reason, CancellationToken.None);
+        var settled = await movies.SettleImportRecoveryCasesAsync(ImportRecoveryCaseScope.ForDispatch("d1"), Reason, CancellationToken.None);
 
         Assert.Equal(1, settled);
         var open = (await movies.GetImportRecoverySummaryAsync(CancellationToken.None)).RecentCases.Select(item => item.Id).ToArray();
@@ -42,7 +43,26 @@ public sealed class RecoveryCasesSettleWithTheirDownloadTests
         Assert.Contains(other.Id, open);
         Assert.Contains(unreadable.Id, open);
         // Settling twice finds nothing the second time.
-        Assert.Equal(0, await movies.SettleImportRecoveryCasesAsync("d1", Reason, CancellationToken.None));
+        Assert.Equal(0, await movies.SettleImportRecoveryCasesAsync(ImportRecoveryCaseScope.ForDispatch("d1"), Reason, CancellationToken.None));
+    }
+
+    /// <summary>
+    /// A download recovering says nothing about an import that failed, so the
+    /// case offering to retry that import stays open. Only a removed title takes
+    /// those (#563).
+    /// </summary>
+    [Fact]
+    public async Task A_recovered_download_leaves_the_failed_import_it_was_not_about()
+    {
+        using var storage = TestStorage.Create();
+        var clock = new FixedTimeProvider(Start);
+        await new MoviesSchemaInitializer(storage.Factory, new SqliteDatabaseMigrator(storage.Factory, clock), NullLogger<MoviesSchemaInitializer>.Instance)
+            .StartAsync(CancellationToken.None);
+        var movies = new SqliteMovieCatalogRepository(storage.Factory, clock);
+        var failedImport = await AddCaseAsync(movies, """{"RetryRequest":{"DispatchId":"d1"},"FileName":"Tears.of.Steel.mkv"}""");
+
+        Assert.Equal(0, await movies.SettleImportRecoveryCasesAsync(ImportRecoveryCaseScope.ForDispatch("d1"), Reason, CancellationToken.None));
+        Assert.Contains(failedImport.Id, (await movies.GetImportRecoverySummaryAsync(CancellationToken.None)).RecentCases.Select(item => item.Id));
     }
 
     [Fact]

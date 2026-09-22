@@ -643,6 +643,114 @@ public sealed class SqliteMediaStateRepository(
         return items;
     }
 
+    /// <summary>
+    /// Closes the open cases a scope covers, and writes on each one why.
+    ///
+    /// <para>A case is free-text details and nothing else — there is no column
+    /// saying which film or show it belongs to — so the scope carries the ways
+    /// in: the dispatch a case names, or the release it names. That is what lets
+    /// a removed title reach the cases its processor hand-offs raised, which
+    /// name a <c>releaseName</c> and a <c>handoffId</c> and no dispatch at all
+    /// (#563).</para>
+    /// </summary>
+    public async Task<int> SettleImportRecoveryCasesAsync(
+        MediaKind kind,
+        ImportRecoveryCaseScope scope,
+        string reason,
+        CancellationToken cancellationToken)
+    {
+        if (scope.IsEmpty)
+        {
+            return 0;
+        }
+
+        var map = MediaTableMap.For(kind);
+        var now = timeProvider.GetUtcNow().ToString("O");
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            map.DatabaseName,
+            cancellationToken);
+        await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+
+        var settled = new List<string>();
+        using (var update = connection.CreateCommand())
+        {
+            update.Transaction = transaction;
+            var matches = new List<string>();
+            if (scope.DispatchIds.Count > 0)
+            {
+                var names = Placeholders(update, "dispatch", scope.DispatchIds);
+                matches.Add($"json_extract(details_json, '$.DispatchId') IN ({names})");
+                if (scope.IncludingFailedImports)
+                {
+                    matches.Add($"json_extract(details_json, '$.RetryRequest.DispatchId') IN ({names})");
+                }
+            }
+
+            if (scope.ReleaseNames.Count > 0)
+            {
+                // The processor watcher writes its keys in camelCase and the
+                // download poller writes them capitalised. Both are release
+                // names for the same download.
+                var names = Placeholders(update, "release", scope.ReleaseNames);
+                matches.Add($"json_extract(details_json, '$.releaseName') IN ({names})");
+                matches.Add($"json_extract(details_json, '$.ReleaseName') IN ({names})");
+            }
+
+            // Details that are not JSON simply match nothing, rather than
+            // failing the whole pass.
+            update.CommandText = $"""
+                UPDATE {map.RecoveryTable}
+                SET status = 'resolved', resolved_utc = @now
+                WHERE status = 'open'
+                  AND json_valid(details_json)
+                  AND ({string.Join(" OR ", matches)})
+                RETURNING id;
+                """;
+            AddParameter(update, "@now", now);
+            await using var reader = await update.ExecuteReaderAsync(cancellationToken);
+            while (await reader.ReadAsync(cancellationToken))
+            {
+                settled.Add(reader.GetString(0));
+            }
+        }
+
+        foreach (var caseId in settled)
+        {
+            using var insert = connection.CreateCommand();
+            insert.Transaction = transaction;
+            insert.CommandText = $"""
+                INSERT INTO {map.RecoveryEventTable} (id, case_id, event_kind, message, metadata_json, created_utc)
+                VALUES (@id, @caseId, 'case_settled', @message, NULL, @createdUtc);
+                """;
+            AddParameter(insert, "@id", Guid.CreateVersion7().ToString("N"));
+            AddParameter(insert, "@caseId", caseId);
+            AddParameter(insert, "@message", reason);
+            AddParameter(insert, "@createdUtc", now);
+            await insert.ExecuteNonQueryAsync(cancellationToken);
+        }
+
+        await transaction.CommitAsync(cancellationToken);
+        return settled.Count;
+    }
+
+    /// <summary>
+    /// Binds each value to its own parameter and returns the list to put in an
+    /// <c>IN</c>, so no caller value is ever spelled into the SQL.
+    /// </summary>
+    private static string Placeholders(DbCommand command, string prefix, IReadOnlyCollection<string> values)
+    {
+        var names = new List<string>(values.Count);
+        var index = 0;
+        foreach (var value in values)
+        {
+            var name = $"@{prefix}{index++}";
+            AddParameter(command, name, value);
+            names.Add(name);
+        }
+
+        return string.Join(", ", names);
+    }
+
     public async Task<MediaImportRecoverySummary> GetImportRecoverySummaryAsync(
         MediaKind kind,
         CancellationToken cancellationToken)

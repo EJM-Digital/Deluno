@@ -406,4 +406,41 @@ public sealed class ProcessorHandoffPersistenceTests
         Assert.Equal(handoff.Id, repeated.Id);
         Assert.Single(await reloadedRepository.ListProcessorHandoffsAsync("library-1", 10, CancellationToken.None));
     }
+/// <summary>
+    /// Every hand-off still with a processor, however many have been and gone.
+    ///
+    /// <para>The newest-first listing is capped at 200 rows, so on a busy
+    /// install a removal looking for its title's open hand-off would not find
+    /// it behind that much history (#563).</para>
+    /// </summary>
+    [Fact]
+    public async Task Open_hand_offs_are_found_behind_any_amount_of_history()
+    {
+        using var storage = TestStorage.Create();
+        var clock = new FixedTimeProvider(DateTimeOffset.Parse("2026-09-23T00:00:00Z"));
+        await new PlatformSchemaInitializer(
+            storage.Factory,
+            new SqliteDatabaseMigrator(storage.Factory, clock),
+            NullLogger<PlatformSchemaInitializer>.Instance).StartAsync(CancellationToken.None);
+        var repository = new SqliteProcessorRepository(storage.Factory, clock, TestSecretProtection.Create(storage));
+
+        var stillWaiting = await repository.EnsureProcessorHandoffAsync(
+            new CreateProcessorHandoffRequest("library-1", "movies", "client-1", "queue-old", "Tears of Steel", "/downloads/tears", "Weir"),
+            CancellationToken.None);
+        await repository.UpdateProcessorHandoffAsync(stillWaiting.Id, ProcessorHandoffStatuses.Submitted, null, null, null, CancellationToken.None);
+        for (var index = 0; index < 250; index++)
+        {
+            var done = await repository.EnsureProcessorHandoffAsync(
+                new CreateProcessorHandoffRequest("library-1", "movies", "client-1", $"queue-{index}", $"Something {index}", $"/downloads/{index}", "Weir"),
+                CancellationToken.None);
+            await repository.UpdateProcessorHandoffAsync(done.Id, ProcessorHandoffStatuses.Completed, null, null, null, CancellationToken.None);
+        }
+
+        var open = await repository.ListOpenProcessorHandoffsAsync(CancellationToken.None);
+
+        Assert.Equal(stillWaiting.Id, Assert.Single(open).Id);
+        // The listing a removal used to read stops well short of the history it
+        // would have to look through, whatever it asks for.
+        Assert.Equal(200, (await repository.ListProcessorHandoffsAsync("library-1", 500, CancellationToken.None)).Count);
+    }
 }

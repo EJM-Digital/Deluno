@@ -343,11 +343,14 @@ public interface ISeriesCatalogRepository : ISeriesImportRecoveryRetentionReposi
     Task<SeriesImportRecoveryCase?> ResolveImportRecoveryCaseAsync(string id, string status, CancellationToken cancellationToken);
 
     /// <summary>
-    /// Closes the open recovery cases written about one download, because it moved
-    /// past the problem they describe (#559), with the reason in each case's
-    /// history. Returns how many closed.
+    /// Closes the open recovery cases a scope covers, with the reason in each
+    /// case's history. Returns how many closed.
+    ///
+    /// <para>One download that moved past the problem its cases describe is one
+    /// dispatch id (#559). A removed title is every dispatch it made and every
+    /// release they named (#563).</para>
     /// </summary>
-    Task<int> SettleImportRecoveryCasesAsync(string dispatchId, string reason, CancellationToken cancellationToken);
+    Task<int> SettleImportRecoveryCasesAsync(ImportRecoveryCaseScope scope, string reason, CancellationToken cancellationToken);
 
     Task AddImportRecoveryEventAsync(string caseId, string eventKind, string message, string? metadataJson, CancellationToken cancellationToken);
 

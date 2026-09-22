@@ -24,6 +24,12 @@ public sealed record MediaTableMap(
     string HistoryTable,
     string RecoveryTable,
     /// <summary>
+    /// What was done to a recovery case and when, written beside the case it is
+    /// about. Named here rather than derived from <see cref="RecoveryTable"/>,
+    /// so the shared SQL never spells a table name it was not given.
+    /// </summary>
+    string RecoveryEventTable,
+    /// <summary>
     /// The columns that say whether a title is out yet, joined onto its wanted
     /// state — three release dates and the availability rule for a movie, and for
     /// a show whether any episode has aired.
@@ -112,6 +118,7 @@ public sealed record MediaTableMap(
                 "movie_id",
                 "movie_search_history",
                 "movie_import_recovery_cases",
+                "movie_import_recovery_events",
                 "e.in_cinemas_date, e.digital_release_date, e.physical_release_date, e.minimum_availability, NULL",
                 "JOIN movie_entries e ON e.id = w.movie_id",
                 "movie_subtitle_state",
@@ -140,6 +147,7 @@ public sealed record MediaTableMap(
                 "series_id",
                 "series_search_history",
                 "series_import_recovery_cases",
+                "series_import_recovery_events",
                 // A show is out once any episode has aired. No catalogued
                 // episodes at all is not evidence it has not — an unsynced show
                 // would otherwise stop being searched for.

@@ -137,12 +137,30 @@ public static class ProcessorHandoffStatuses
         => status is Failed or TimedOut or Stalled or Lost or Cancelled;
 
     /// <summary>
-    /// Every ending that was not a success. Wider than
-    /// <see cref="CanReleaseOriginal"/> because a rejected hand-off offers no
-    /// other action at all: without this it could never leave the screen.
+    /// What Transfers asks a person about: an ending, not already dismissed,
+    /// that either failed or carries a reason.
+    ///
+    /// <para><c>handoffNeedsPerson</c> in <c>apps/web/src/lib/needs-action.ts</c>
+    /// is the same rule on the screen.</para>
     /// </summary>
-    public static bool CanDismiss(string? status)
-        => status is Rejected || CanReleaseOriginal(status);
+    public static bool NeedsPerson(string? status, string? failureMessage)
+        => status is not Dismissed
+           && !IsWithProcessor(status)
+           && (status is Rejected || CanReleaseOriginal(status) || !string.IsNullOrWhiteSpace(failureMessage));
+
+    /// <summary>
+    /// Anything a person is asked about, they can say they are finished with.
+    ///
+    /// <para>It was a hand-picked list of endings, and the list disagreed with
+    /// what Transfers counts. A hand-off that ended <see cref="Completed"/>
+    /// carrying a reason — the processor delivered after its title was removed —
+    /// was counted as needing a person and offered no way to end it, because
+    /// retry, import-original and dismiss each wanted a different status (#570).
+    /// A hand-off that finished well and has nothing to say is still not
+    /// dismissable: there is nothing to dismiss.</para>
+    /// </summary>
+    public static bool CanDismiss(string? status, string? failureMessage = null)
+        => NeedsPerson(status, failureMessage);
 }
 
 /// <summary>

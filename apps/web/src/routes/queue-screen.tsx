@@ -1143,7 +1143,10 @@ export function QueuePage() {
             </div>
           </DrawerSection>
         ) : null}
-        {openHandoff && handoffNeedsPerson(openHandoff) && isProcessorFailure(openHandoff.status) ? (
+        {/* Whatever Transfers counts as needing a person can be ended here: a
+            second rule about which endings qualify is how a counted row ends up
+            with no way off the screen (#570). */}
+        {openHandoff && handoffNeedsPerson(openHandoff) ? (
           <DrawerSection title="If nothing more needs doing">
             <DrawerDanger
               title="Dismiss this hand-off"
