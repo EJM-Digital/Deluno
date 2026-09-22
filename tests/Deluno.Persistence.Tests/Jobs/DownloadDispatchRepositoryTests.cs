@@ -769,6 +769,7 @@ public sealed class DownloadDispatchRepositoryTests
             dispatchId: dispatchId,
             torrentHashOrItemId: "abc123def456",
             downloadedBytes: 4700000000,
+            completed: true,
             cancellationToken: CancellationToken.None);
 
         var retrieved = await repository.GetDispatchAsync(dispatchId, CancellationToken.None);
@@ -897,6 +898,7 @@ public sealed class DownloadDispatchRepositoryTests
             dispatchId: resolvedId,
             torrentHashOrItemId: "hash",
             downloadedBytes: 1000000,
+            completed: true,
             cancellationToken: CancellationToken.None);
 
         var unresolvedList = await repository.FindUnresolvedDispatchesAsync(

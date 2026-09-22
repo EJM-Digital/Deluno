@@ -22,6 +22,11 @@ public sealed class NullDownloadDispatchesRepository : IDownloadDispatchesReposi
         CancellationToken cancellationToken) =>
         Task.FromResult<IReadOnlyList<DownloadDispatchItem>>(new List<DownloadDispatchItem>());
 
+    public Task<IReadOnlyList<DownloadInFlight>> ListDownloadsInFlightAsync(
+        int limit,
+        CancellationToken cancellationToken) =>
+        Task.FromResult<IReadOnlyList<DownloadInFlight>>([]);
+
     public Task<DownloadDispatchItem> RecordGrabAsync(
         string dispatchId,
         string grabStatus,
@@ -67,6 +72,7 @@ public sealed class NullDownloadDispatchesRepository : IDownloadDispatchesReposi
         string dispatchId,
         string? torrentHashOrItemId,
         long? downloadedBytes,
+        bool completed,
         CancellationToken cancellationToken) =>
         throw new NotImplementedException("Test only - should not be called");
 

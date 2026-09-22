@@ -37,16 +37,7 @@ public sealed class DispatchLiveDownloadLookup(IDownloadDispatchesRepository dis
     private const int Limit = 5_000;
 
     public async Task<IReadOnlyList<string>> ListEntityIdsStillDownloadingAsync(CancellationToken cancellationToken)
-    {
-        var unresolved = await dispatches.FindUnresolvedDispatchesAsync(
-            minAgeMinutes: 0,
-            clientId: null,
-            limit: Limit,
-            cancellationToken);
-
-        return [.. unresolved
-            .Select(dispatch => dispatch.EntityId)
-            .Where(id => !string.IsNullOrWhiteSpace(id))
+        => [.. (await dispatches.ListDownloadsInFlightAsync(Limit, cancellationToken))
+            .Select(download => download.EntityId)
             .Distinct(StringComparer.Ordinal)];
-    }
 }

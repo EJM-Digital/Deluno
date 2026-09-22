@@ -191,6 +191,15 @@ public abstract class LibrarySearchJobHandler(
             var searchPlan = decisionPlan.SearchPlan;
             var bestCandidate = searchPlan.BestCandidate;
             var outcome = decisionPlan.Outcome;
+            var searchResult = decisionPlan.SearchResult;
+            var onItsWay = decisionPlan.ShouldDispatch && bestCandidate is not null
+                ? await SearchExecutionSupport.AlreadyOnItsWayAsync(jobQueueRepository, bestCandidate.ReleaseName, [candidate.MovieId], cancellationToken)
+                : null;
+            if (onItsWay is not null)
+            {
+                outcome = "skipped";
+                searchResult = onItsWay;
+            }
 
             if (outcome == "matched")
             {
@@ -209,7 +218,7 @@ public abstract class LibrarySearchJobHandler(
                 checkedCount++;
             }
 
-            if (decisionPlan.ShouldDispatch && decisionPlan.SelectedDownloadClient is not null && decisionPlan.DispatchRequest is not null)
+            if (onItsWay is null && decisionPlan.ShouldDispatch && decisionPlan.SelectedDownloadClient is not null && decisionPlan.DispatchRequest is not null)
             {
                 var downloadClient = decisionPlan.SelectedDownloadClient;
                 var grabResult = await SearchExecutionSupport.GrabBestCandidateAsync(
@@ -218,6 +227,11 @@ public abstract class LibrarySearchJobHandler(
                     bestCandidate!,
                     decisionPlan.DispatchRequest,
                     cancellationToken);
+
+                if (mediaStateRepository is not null)
+                {
+                    await mediaStateRepository.MarkDownloadingIfSentAsync(MediaKind.Movie, candidate.MovieId, grabResult.Status, now, cancellationToken);
+                }
 
                 await jobQueueRepository.RecordDownloadDispatchAsync(
                     payload.LibraryId,
@@ -250,7 +264,7 @@ public abstract class LibrarySearchJobHandler(
                 outcome,
                 now,
                 now.AddHours(Math.Max(1, payload.RetryDelayHours)),
-                decisionPlan.SearchResult,
+                searchResult,
                 bestCandidate?.ReleaseName,
                 bestCandidate?.IndexerName,
                 SearchExecutionSupport.SerializeSearchPlan(searchPlan),
@@ -437,6 +451,15 @@ public abstract class LibrarySearchJobHandler(
             var searchPlan = decisionPlan.SearchPlan;
             var bestCandidate = searchPlan.BestCandidate;
             var outcome = decisionPlan.Outcome;
+            var searchResult = decisionPlan.SearchResult;
+            var onItsWay = decisionPlan.ShouldDispatch && bestCandidate is not null
+                ? await SearchExecutionSupport.AlreadyOnItsWayAsync(jobQueueRepository, bestCandidate.ReleaseName, [candidate.SeriesId], cancellationToken)
+                : null;
+            if (onItsWay is not null)
+            {
+                outcome = "skipped";
+                searchResult = onItsWay;
+            }
 
             if (outcome == "matched")
             {
@@ -455,7 +478,7 @@ public abstract class LibrarySearchJobHandler(
                 seriesCheckedCount++;
             }
 
-            if (decisionPlan.ShouldDispatch && decisionPlan.SelectedDownloadClient is not null && decisionPlan.DispatchRequest is not null)
+            if (onItsWay is null && decisionPlan.ShouldDispatch && decisionPlan.SelectedDownloadClient is not null && decisionPlan.DispatchRequest is not null)
             {
                 var downloadClient = decisionPlan.SelectedDownloadClient;
                 var grabResult = await SearchExecutionSupport.GrabBestCandidateAsync(
@@ -464,6 +487,11 @@ public abstract class LibrarySearchJobHandler(
                     bestCandidate!,
                     decisionPlan.DispatchRequest,
                     cancellationToken);
+
+                if (mediaStateRepository is not null)
+                {
+                    await mediaStateRepository.MarkDownloadingIfSentAsync(MediaKind.Series, candidate.SeriesId, grabResult.Status, now, cancellationToken);
+                }
 
                 await jobQueueRepository.RecordDownloadDispatchAsync(
                     payload.LibraryId,
@@ -497,7 +525,7 @@ public abstract class LibrarySearchJobHandler(
                 outcome,
                 now,
                 now.AddHours(Math.Max(1, payload.RetryDelayHours)),
-                decisionPlan.SearchResult,
+                searchResult,
                 bestCandidate?.ReleaseName,
                 bestCandidate?.IndexerName,
                 SearchExecutionSupport.SerializeSearchPlan(searchPlan),

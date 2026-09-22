@@ -74,6 +74,7 @@ public sealed class DownloadClientTelemetryService(
                 var clientDispatches = dispatches
                     .Where(dispatch => string.Equals(dispatch.DownloadClientId, client.Id, StringComparison.OrdinalIgnoreCase))
                     .ToArray();
+                await RecordWhatTheClientShowsAsync(liveSnapshot, clientDispatches, cancellationToken);
                 snapshots.Add(DownloadClientHelpers.NormalizeSnapshotFailures(
                     EnrichQueueImportState(
                         EnrichWithDispatchHistory(
@@ -695,6 +696,104 @@ public sealed class DownloadClientTelemetryService(
         {
             return false;
         }
+    }
+
+    /// <summary>
+    /// Tell each download record what its client is showing (#554).
+    ///
+    /// <para>Every pass read each client's queue and history, and nothing wrote
+    /// down that a download was there: only a client's completion webhook did.
+    /// Without one, a download was "never shown by the client" two hours after
+    /// its grab whatever the client said. On the rig, eight downloads SABnzbd had
+    /// completed, and Deluno had itself handed to Weir, were failed that way and
+    /// grabbed again.</para>
+    /// </summary>
+    private async Task RecordWhatTheClientShowsAsync(
+        DownloadClientTelemetrySnapshot live,
+        IReadOnlyList<DownloadDispatchItem> clientDispatches,
+        CancellationToken cancellationToken)
+    {
+        foreach (var sighting in ShownByClient(live, clientDispatches))
+        {
+            try
+            {
+                await dispatchesRepository.RecordDetectionAsync(
+                    sighting.Dispatch.Id,
+                    sighting.Dispatch.TorrentHashOrItemId,
+                    sighting.DownloadedBytes,
+                    sighting.Finished,
+                    cancellationToken);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                // The screen this pass feeds matters more than one record: the
+                // next pass tries again, and the grab timeout is still there.
+            }
+        }
+    }
+
+    internal sealed record ClientSighting(DownloadDispatchItem Dispatch, long? DownloadedBytes, bool Finished);
+
+    /// <summary>
+    /// The downloads this client shows that their records do not know about yet:
+    /// never seen, or seen and now finished.
+    ///
+    /// <para>Matched on the id the client gave when it took the download
+    /// (SABnzbd's nzo_id, the torrent's infohash), never on the release name, which
+    /// an earlier attempt at the same release shares.</para>
+    /// </summary>
+    internal static IReadOnlyList<ClientSighting> ShownByClient(
+        DownloadClientTelemetrySnapshot live,
+        IEnumerable<DownloadDispatchItem> clientDispatches)
+    {
+        var shown = new Dictionary<string, (long? Bytes, bool Finished)>(StringComparer.OrdinalIgnoreCase);
+
+        void Add(string? id, long? bytes, bool finished)
+        {
+            if (string.IsNullOrWhiteSpace(id))
+            {
+                return;
+            }
+
+            var key = id.Trim();
+            shown[key] = shown.TryGetValue(key, out var seen)
+                ? (bytes ?? seen.Bytes, finished || seen.Finished)
+                : (bytes, finished);
+        }
+
+        foreach (var item in live.Queue)
+        {
+            Add(item.Id, item.DownloadedBytes, item.Status is DownloadQueueStatuses.ImportReady or DownloadQueueStatuses.Completed);
+        }
+
+        foreach (var item in live.History)
+        {
+            // A failure counts as finished only in the client's own history. One
+            // derived from the queue is a torrent with an error message, which
+            // can still be downloading.
+            var finished = item.Outcome is DownloadQueueStatuses.Completed or DownloadQueueStatuses.ImportReady
+                || (item.Outcome == "failed" && item.HistorySource == "native");
+            var bytes = item.SizeBytes > 0 ? item.SizeBytes : (long?)null;
+            Add(item.Id, bytes, finished);
+            Add(item.ExternalId, bytes, finished);
+        }
+
+        var sightings = new List<ClientSighting>();
+        foreach (var dispatch in clientDispatches)
+        {
+            if (string.IsNullOrWhiteSpace(dispatch.TorrentHashOrItemId)
+                || !shown.TryGetValue(dispatch.TorrentHashOrItemId.Trim(), out var seen))
+            {
+                continue;
+            }
+
+            if (dispatch.DetectedUtc is null || (seen.Finished && dispatch.ClientCompletedUtc is null))
+            {
+                sightings.Add(new ClientSighting(dispatch, seen.Bytes, seen.Finished));
+            }
+        }
+
+        return sightings;
     }
 
     internal static DownloadClientTelemetrySnapshot EnrichWithDispatchHistory(

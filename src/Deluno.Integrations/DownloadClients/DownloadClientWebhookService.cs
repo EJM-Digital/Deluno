@@ -48,7 +48,9 @@ public sealed class DownloadClientWebhookService(
         DownloadClientWebhookRequest request,
         CancellationToken cancellationToken)
     {
-        if (dispatch.DetectedUtc is not null)
+        // Polling can have seen the download already (#554); only a completion
+        // recorded before this one makes the webhook a duplicate.
+        if (dispatch.ClientCompletedUtc is not null)
         {
             return new DownloadClientWebhookResult(true, dispatch.Id, "Dispatch already detected; skipped duplicate webhook.");
         }
@@ -57,6 +59,7 @@ public sealed class DownloadClientWebhookService(
             dispatch.Id,
             torrentHashOrItemId: request.Hash ?? dispatch.TorrentHashOrItemId,
             downloadedBytes: request.SizeBytes,
+            completed: true,
             cancellationToken);
 
         await dispatchesRepository.RecordTimelineEventAsync(

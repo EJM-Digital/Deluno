@@ -131,8 +131,21 @@ public sealed class EpisodeSearchJobHandler(
         var searchPlan = decisionPlan.SearchPlan;
         var bestCandidate = searchPlan.BestCandidate;
         var outcome = decisionPlan.Outcome;
+        var searchResult = decisionPlan.SearchResult;
 
-        if (decisionPlan.ShouldDispatch && decisionPlan.SelectedDownloadClient is not null && decisionPlan.DispatchRequest is not null)
+        // An episode has no downloading mark, so this is what stops it being
+        // grabbed again while its download is on its way. Its series counts too:
+        // a series-level grab can be this very episode, or a pack holding it.
+        var onItsWay = decisionPlan.ShouldDispatch && bestCandidate is not null
+            ? await SearchExecutionSupport.AlreadyOnItsWayAsync(jobQueueRepository, bestCandidate.ReleaseName, [payload.EpisodeId, payload.SeriesId], cancellationToken)
+            : null;
+        if (onItsWay is not null)
+        {
+            outcome = "skipped";
+            searchResult = onItsWay;
+        }
+
+        if (onItsWay is null && decisionPlan.ShouldDispatch && decisionPlan.SelectedDownloadClient is not null && decisionPlan.DispatchRequest is not null)
         {
             var downloadClient = decisionPlan.SelectedDownloadClient;
             var grabResult = await SearchExecutionSupport.GrabBestCandidateAsync(
@@ -170,7 +183,7 @@ public sealed class EpisodeSearchJobHandler(
             outcome,
             now,
             now.AddDays(1),
-            decisionPlan.SearchResult,
+            searchResult,
             bestCandidate?.ReleaseName,
             bestCandidate?.IndexerName,
             SearchExecutionSupport.SerializeSearchPlan(searchPlan),

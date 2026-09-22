@@ -38,7 +38,7 @@ public sealed class MovieDispatchRecoveryHandler(IMovieCatalogRepository catalog
         if (DelunoValueNormalizers.NormalizeMediaType(mediaType) != "movies")
             return;
 
-        var summary = $"Download was detected but import was not attempted after 4 hours.";
+        var summary = "The download finished 4 hours ago and has not been imported.";
         var recommended = "The file may have been corrupted, moved, or deleted. Check the download folder and retry if the file is still present.";
         await catalogRepository.AddImportRecoveryCaseAsync(
             new CreateMovieImportRecoveryCaseRequest(title, "detection-timeout", summary, recommended, detailsJson),

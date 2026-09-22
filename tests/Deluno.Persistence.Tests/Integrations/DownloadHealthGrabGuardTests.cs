@@ -92,7 +92,7 @@ public sealed class DownloadHealthGrabGuardTests
         var dispatchId = await jobs.RecordDownloadDispatchAsync(
             library.Id, "movies", "movie", "movie-arrival", "Arrival.2016.1080p.WEB", "Fixture", client.Id, client.Name, "sent", null,
             cancellationToken: CancellationToken.None);
-        await dispatches.RecordDetectionAsync(dispatchId, "queue-arrival", 1024, CancellationToken.None);
+        await dispatches.RecordDetectionAsync(dispatchId, "queue-arrival", 1024, completed: false, CancellationToken.None);
 
         var service = new DownloadClientTelemetryService(
             settingsRepository, healthRepository, librariesRepository, connectionsRepository, null!, null!, time, null!, jobs, dispatches, jobs, new DownloadHealthEvaluator(), null!);

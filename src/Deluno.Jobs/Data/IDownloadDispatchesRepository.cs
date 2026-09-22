@@ -27,12 +27,17 @@ public interface IDownloadDispatchesRepository
         string? externalId = null);
 
     /// <summary>
-    /// Record detection of a download in the client queue (from polling).
+    /// Record that the download client has shown this download, from polling or
+    /// its completion webhook (#554). The first sighting sets the detection time
+    /// and undoes a "never shown" ending; <paramref name="completed"/> says the
+    /// client has finished with it, which starts the wait for an import. Each is
+    /// written once, however often the client reports the download.
     /// </summary>
     Task<DownloadDispatchItem> RecordDetectionAsync(
         string dispatchId,
         string? torrentHashOrItemId,
         long? downloadedBytes,
+        bool completed,
         CancellationToken cancellationToken);
 
     /// <summary>
@@ -61,6 +66,15 @@ public interface IDownloadDispatchesRepository
     Task<IReadOnlyList<DownloadDispatchItem>> FindUnresolvedDispatchesAsync(
         int minAgeMinutes,
         string? clientId,
+        int limit,
+        CancellationToken cancellationToken);
+
+    /// <summary>
+    /// The downloads still on their way: sent to a client and not yet imported,
+    /// refused at import, or archived, whether or not the client has shown them
+    /// yet (#554, #555).
+    /// </summary>
+    Task<IReadOnlyList<DownloadInFlight>> ListDownloadsInFlightAsync(
         int limit,
         CancellationToken cancellationToken);
 

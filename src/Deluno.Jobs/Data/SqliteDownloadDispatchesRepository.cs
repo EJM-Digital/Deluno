@@ -11,6 +11,20 @@ public sealed class SqliteDownloadDispatchesRepository(
     TimeProvider timeProvider)
     : IDownloadDispatchesRepository, IDownloadDispatchRepository
 {
+    /// <summary>
+    /// Every column <see cref="ReadDispatch"/> reads, in the order it reads them. Eight queries used to spell this
+    /// list out separately, so adding a column meant eight edits that had to agree.
+    /// </summary>
+    private const string DispatchColumns =
+        "id, library_id, media_type, entity_type, entity_id, release_name, " +
+        "indexer_name, download_client_id, download_client_name, status, notes_json, " +
+        "created_utc, grab_status, grab_attempted_utc, grab_response_code, " +
+        "grab_message, grab_failure_code, grab_response_json, grab_failure_json, detected_utc, " +
+        "torrent_hash_or_item_id, downloaded_bytes, import_status, import_detected_utc, " +
+        "import_completed_utc, imported_file_path, import_failure_code, " +
+        "import_failure_message, import_failure_json, circuit_open_until_utc, next_retry_eligible_utc, attempt_count, " +
+        "client_completed_utc";
+
     public async Task<DownloadDispatchItem?> GetDispatchAsync(
         string dispatchId,
         CancellationToken cancellationToken)
@@ -21,15 +35,9 @@ public sealed class SqliteDownloadDispatchesRepository(
 
         using var command = connection.CreateCommand();
         command.CommandText =
-            """
+            $"""
             SELECT
-                id, library_id, media_type, entity_type, entity_id, release_name,
-                indexer_name, download_client_id, download_client_name, status, notes_json,
-                created_utc, grab_status, grab_attempted_utc, grab_response_code,
-                grab_message, grab_failure_code, grab_response_json, grab_failure_json, detected_utc,
-                torrent_hash_or_item_id, downloaded_bytes, import_status, import_detected_utc,
-                import_completed_utc, imported_file_path, import_failure_code,
-                import_failure_message, import_failure_json, circuit_open_until_utc, next_retry_eligible_utc, attempt_count
+                {DispatchColumns}
             FROM download_dispatches
             WHERE id = @dispatchId AND status != 'archived'
             """;
@@ -120,6 +128,7 @@ public sealed class SqliteDownloadDispatchesRepository(
         string dispatchId,
         string? torrentHashOrItemId,
         long? downloadedBytes,
+        bool completed,
         CancellationToken cancellationToken)
     {
         var now = timeProvider.GetUtcNow();
@@ -130,44 +139,76 @@ public sealed class SqliteDownloadDispatchesRepository(
 
         await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
 
-        using (var command = connection.CreateCommand())
+        // Each fact is written once. Polling reports a download on every pass, and
+        // a second sighting must neither move the times nor add to the timeline.
+        bool alreadyDetected;
+        bool alreadyCompleted;
+        using (var read = connection.CreateCommand())
         {
-            command.Transaction = transaction;
-            command.CommandText =
+            read.Transaction = transaction;
+            read.CommandText =
                 """
-                UPDATE download_dispatches
-                SET
-                    detected_utc = @detectedUtc,
-                    torrent_hash_or_item_id = @torrentHashOrItemId,
-                    downloaded_bytes = @downloadedBytes,
-                    -- A client that was down for longer than the detection
-                    -- limit shows the download late. That undoes the ending
-                    -- MarkNeverDetectedAsync gave it; any other failure stands.
-                    status = CASE WHEN status = 'failed' AND grab_failure_code = 'not_found' THEN 'sent' ELSE status END,
-                    grab_message = CASE WHEN grab_failure_code = 'not_found' THEN NULL ELSE grab_message END,
-                    grab_failure_code = CASE WHEN grab_failure_code = 'not_found' THEN NULL ELSE grab_failure_code END
+                SELECT detected_utc IS NOT NULL, client_completed_utc IS NOT NULL
+                FROM download_dispatches
                 WHERE id = @dispatchId
                 """;
+            AddParameter(read, "@dispatchId", dispatchId);
+            await using var reader = await read.ExecuteReaderAsync(cancellationToken);
+            if (!await reader.ReadAsync(cancellationToken))
+            {
+                throw new InvalidOperationException($"Dispatch {dispatchId} not found for detection");
+            }
 
-            AddParameter(command, "@dispatchId", dispatchId);
-            AddParameter(command, "@detectedUtc", now.ToString("O"));
-            AddParameter(command, "@torrentHashOrItemId", torrentHashOrItemId);
-            AddParameter(command, "@downloadedBytes", downloadedBytes);
-
-            await command.ExecuteNonQueryAsync(cancellationToken);
+            alreadyDetected = reader.GetBoolean(0);
+            alreadyCompleted = reader.GetBoolean(1);
         }
 
-        await RecordTimelineEventInternalAsync(
-            connection,
-            transaction,
-            dispatchId,
-            "detection_succeeded",
-            JsonSerializer.Serialize(new
+        var firstSighting = !alreadyDetected;
+        var firstCompletion = completed && !alreadyCompleted;
+        if (firstSighting || firstCompletion)
+        {
+            using (var command = connection.CreateCommand())
             {
-                torrentHashOrItemId,
-                downloadedBytes
-            }),
-            cancellationToken);
+                command.Transaction = transaction;
+                command.CommandText =
+                    """
+                    UPDATE download_dispatches
+                    SET
+                        detected_utc = COALESCE(detected_utc, @now),
+                        client_completed_utc = CASE WHEN @completed = 1 THEN COALESCE(client_completed_utc, @now) ELSE client_completed_utc END,
+                        torrent_hash_or_item_id = COALESCE(@torrentHashOrItemId, torrent_hash_or_item_id),
+                        downloaded_bytes = COALESCE(@downloadedBytes, downloaded_bytes),
+                        -- A client that was down for longer than the detection
+                        -- limit shows the download late. That undoes the ending
+                        -- MarkNeverDetectedAsync gave it; any other failure stands.
+                        status = CASE WHEN status = 'failed' AND grab_failure_code = 'not_found' THEN 'sent' ELSE status END,
+                        grab_message = CASE WHEN grab_failure_code = 'not_found' THEN NULL ELSE grab_message END,
+                        grab_failure_code = CASE WHEN grab_failure_code = 'not_found' THEN NULL ELSE grab_failure_code END
+                    WHERE id = @dispatchId
+                    """;
+
+                AddParameter(command, "@dispatchId", dispatchId);
+                AddParameter(command, "@now", now.ToString("O"));
+                AddParameter(command, "@completed", completed ? 1 : 0);
+                AddParameter(command, "@torrentHashOrItemId", torrentHashOrItemId);
+                AddParameter(command, "@downloadedBytes", downloadedBytes);
+
+                await command.ExecuteNonQueryAsync(cancellationToken);
+            }
+
+            await RecordTimelineEventInternalAsync(
+                connection,
+                transaction,
+                dispatchId,
+                firstSighting ? "detection_succeeded" : "client_completed",
+                JsonSerializer.Serialize(new
+                {
+                    torrentHashOrItemId,
+                    downloadedBytes,
+                    completed
+                }),
+                cancellationToken);
+        }
 
         await transaction.CommitAsync(cancellationToken);
 
@@ -390,13 +431,7 @@ public sealed class SqliteDownloadDispatchesRepository(
         command.CommandText =
             $$"""
             SELECT
-                id, library_id, media_type, entity_type, entity_id, release_name,
-                indexer_name, download_client_id, download_client_name, status, notes_json,
-                created_utc, grab_status, grab_attempted_utc, grab_response_code,
-                grab_message, grab_failure_code, grab_response_json, grab_failure_json, detected_utc,
-                torrent_hash_or_item_id, downloaded_bytes, import_status, import_detected_utc,
-                import_completed_utc, imported_file_path, import_failure_code,
-                import_failure_message, import_failure_json, circuit_open_until_utc, next_retry_eligible_utc, attempt_count
+                {{DispatchColumns}}
             FROM download_dispatches
             WHERE {{whereClause}}
             ORDER BY COALESCE(grab_attempted_utc, created_utc) DESC, id DESC
@@ -446,15 +481,9 @@ public sealed class SqliteDownloadDispatchesRepository(
 
         using var command = connection.CreateCommand();
         command.CommandText =
-            """
+            $"""
             SELECT
-                id, library_id, media_type, entity_type, entity_id, release_name,
-                indexer_name, download_client_id, download_client_name, status, notes_json,
-                created_utc, grab_status, grab_attempted_utc, grab_response_code,
-                grab_message, grab_failure_code, grab_response_json, grab_failure_json, detected_utc,
-                torrent_hash_or_item_id, downloaded_bytes, import_status, import_detected_utc,
-                import_completed_utc, imported_file_path, import_failure_code,
-                import_failure_message, import_failure_json, circuit_open_until_utc, next_retry_eligible_utc, attempt_count
+                {DispatchColumns}
             FROM download_dispatches
             WHERE
                 grab_status = 'succeeded'
@@ -487,6 +516,46 @@ public sealed class SqliteDownloadDispatchesRepository(
         }
 
         return items;
+    }
+
+    public async Task<IReadOnlyList<DownloadInFlight>> ListDownloadsInFlightAsync(
+        int limit,
+        CancellationToken cancellationToken)
+    {
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Jobs,
+            cancellationToken);
+
+        using var command = connection.CreateCommand();
+        // Not FindUnresolvedDispatchesAsync, which this used to be: that asks
+        // which grabs the client never showed, so a download the client had
+        // shown and that was waiting for its import, or sitting with a
+        // processor, did not count as happening, and its title went back on the
+        // work list to be grabbed again. A download the client never showed
+        // still counts: its client may only be unreachable, and counting it
+        // costs a delay, while not counting it costs a second download.
+        command.CommandText =
+            """
+            SELECT entity_type, entity_id, release_name
+            FROM download_dispatches
+            WHERE grab_status = 'succeeded'
+              AND archived_utc IS NULL
+              AND COALESCE(status, '') <> 'archived'
+              AND COALESCE(import_status, '') NOT IN ('imported', 'failed')
+              AND entity_id IS NOT NULL AND entity_id <> ''
+            ORDER BY grab_attempted_utc DESC
+            LIMIT @limit
+            """;
+        AddParameter(command, "@limit", limit);
+
+        var downloads = new List<DownloadInFlight>();
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            downloads.Add(new DownloadInFlight(reader.GetString(0), reader.GetString(1), reader.GetString(2)));
+        }
+
+        return downloads;
     }
 
     public async Task<IReadOnlyList<DispatchTimelineEvent>> GetDispatchTimelineAsync(
@@ -658,15 +727,9 @@ public sealed class SqliteDownloadDispatchesRepository(
 
         using var command = connection.CreateCommand();
         command.CommandText =
-            """
+            $"""
             SELECT
-                id, library_id, media_type, entity_type, entity_id, release_name,
-                indexer_name, download_client_id, download_client_name, status, notes_json,
-                created_utc, grab_status, grab_attempted_utc, grab_response_code,
-                grab_message, grab_failure_code, grab_response_json, grab_failure_json, detected_utc,
-                torrent_hash_or_item_id, downloaded_bytes, import_status, import_detected_utc,
-                import_completed_utc, imported_file_path, import_failure_code,
-                import_failure_message, import_failure_json, circuit_open_until_utc, next_retry_eligible_utc, attempt_count
+                {DispatchColumns}
             FROM download_dispatches
             WHERE status = 'failed'
               AND grab_attempted_utc < @cutoff
@@ -698,15 +761,9 @@ public sealed class SqliteDownloadDispatchesRepository(
 
         using var command = connection.CreateCommand();
         command.CommandText =
-            """
+            $"""
             SELECT
-                id, library_id, media_type, entity_type, entity_id, release_name,
-                indexer_name, download_client_id, download_client_name, status, notes_json,
-                created_utc, grab_status, grab_attempted_utc, grab_response_code,
-                grab_message, grab_failure_code, grab_response_json, grab_failure_json, detected_utc,
-                torrent_hash_or_item_id, downloaded_bytes, import_status, import_detected_utc,
-                import_completed_utc, imported_file_path, import_failure_code,
-                import_failure_message, import_failure_json, circuit_open_until_utc, next_retry_eligible_utc, attempt_count
+                {DispatchColumns}
             FROM download_dispatches
             WHERE download_client_id = @clientId
               AND torrent_hash_or_item_id = @hash
@@ -732,15 +789,9 @@ public sealed class SqliteDownloadDispatchesRepository(
 
         using var command = connection.CreateCommand();
         command.CommandText =
-            """
+            $"""
             SELECT
-                id, library_id, media_type, entity_type, entity_id, release_name,
-                indexer_name, download_client_id, download_client_name, status, notes_json,
-                created_utc, grab_status, grab_attempted_utc, grab_response_code,
-                grab_message, grab_failure_code, grab_response_json, grab_failure_json, detected_utc,
-                torrent_hash_or_item_id, downloaded_bytes, import_status, import_detected_utc,
-                import_completed_utc, imported_file_path, import_failure_code,
-                import_failure_message, import_failure_json, circuit_open_until_utc, next_retry_eligible_utc, attempt_count
+                {DispatchColumns}
             FROM download_dispatches
             WHERE download_client_id = @clientId
               AND release_name = @releaseName
@@ -789,7 +840,8 @@ public sealed class SqliteDownloadDispatchesRepository(
             ImportFailureMessage: reader.IsDBNull(27) ? null : reader.GetString(27),
             CircuitOpenUntilUtc: reader.IsDBNull(29) ? null : DateTimeOffset.Parse(reader.GetString(29)),
             NextRetryEligibleUtc: reader.IsDBNull(30) ? null : DateTimeOffset.Parse(reader.GetString(30)),
-            AttemptCount: reader.IsDBNull(31) ? null : reader.GetInt32(31));
+            AttemptCount: reader.IsDBNull(31) ? null : reader.GetInt32(31),
+            ClientCompletedUtc: reader.IsDBNull(32) ? null : DateTimeOffset.Parse(reader.GetString(32)));
 
         return dispatch with
         {
@@ -1047,15 +1099,9 @@ public sealed class SqliteDownloadDispatchesRepository(
 
         using var command = connection.CreateCommand();
         command.CommandText =
-            """
+            $"""
             SELECT
-                id, library_id, media_type, entity_type, entity_id, release_name,
-                indexer_name, download_client_id, download_client_name, status, notes_json,
-                created_utc, grab_status, grab_attempted_utc, grab_response_code,
-                grab_message, grab_failure_code, grab_response_json, grab_failure_json, detected_utc,
-                torrent_hash_or_item_id, downloaded_bytes, import_status, import_detected_utc,
-                import_completed_utc, imported_file_path, import_failure_code,
-                import_failure_message, import_failure_json, circuit_open_until_utc, next_retry_eligible_utc, attempt_count
+                {DispatchColumns}
             FROM download_dispatches
             WHERE status != 'archived'
               AND created_utc < @cutoff
@@ -1120,15 +1166,9 @@ public sealed class SqliteDownloadDispatchesRepository(
 
         using var command = connection.CreateCommand();
         command.CommandText =
-            """
+            $"""
             SELECT
-                id, library_id, media_type, entity_type, entity_id, release_name,
-                indexer_name, download_client_id, download_client_name, status, notes_json,
-                created_utc, grab_status, grab_attempted_utc, grab_response_code,
-                grab_message, grab_failure_code, grab_response_json, grab_failure_json, detected_utc,
-                torrent_hash_or_item_id, downloaded_bytes, import_status, import_detected_utc,
-                import_completed_utc, imported_file_path, import_failure_code,
-                import_failure_message, import_failure_json, circuit_open_until_utc, next_retry_eligible_utc, attempt_count
+                {DispatchColumns}
             FROM download_dispatches
             WHERE status != 'archived'
               AND next_retry_eligible_utc IS NOT NULL
