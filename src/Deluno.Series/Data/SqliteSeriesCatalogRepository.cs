@@ -3838,6 +3838,24 @@ public sealed class SqliteSeriesCatalogRepository(
         return await command.ExecuteNonQueryAsync(cancellationToken) > 0;
     }
 
+    public async Task<SeriesImportRecoveryCase?> GetImportRecoveryCaseAsync(string id, CancellationToken cancellationToken)
+    {
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Series,
+            cancellationToken);
+
+        using var select = connection.CreateCommand();
+        select.CommandText =
+            """
+            SELECT id, title, failure_kind, status, summary, recommended_action, details_json, detected_utc, resolved_utc
+            FROM series_import_recovery_cases
+            WHERE id = @id;
+            """;
+        AddParameter(select, "@id", id);
+        using var reader = await select.ExecuteReaderAsync(cancellationToken);
+        return await reader.ReadAsync(cancellationToken) ? ReadImportRecoveryCase(reader) : null;
+    }
+
     public async Task<SeriesImportRecoveryCase?> ResolveImportRecoveryCaseAsync(
         string id,
         string status,

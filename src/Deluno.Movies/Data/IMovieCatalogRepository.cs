@@ -280,6 +280,8 @@ public interface IMovieCatalogRepository : IMovieImportRecoveryRetentionReposito
 
     Task<bool> DeleteImportRecoveryCaseAsync(string id, CancellationToken cancellationToken);
 
+    Task<MovieImportRecoveryCase?> GetImportRecoveryCaseAsync(string id, CancellationToken cancellationToken);
+
     Task<MovieImportRecoveryCase?> ResolveImportRecoveryCaseAsync(string id, string status, CancellationToken cancellationToken);
 
     /// <summary>

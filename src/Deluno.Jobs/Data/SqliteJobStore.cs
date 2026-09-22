@@ -288,8 +288,21 @@ public sealed class SqliteJobStore(
             : $"{requeued} failed {jobs} requeued, {duplicates} duplicate{(duplicates == 1 ? string.Empty : "s")} left alone.";
     }
 
-    public async Task<int> RetryFailedAsync(CancellationToken cancellationToken)
+    public Task<int> RetryFailedAsync(CancellationToken cancellationToken)
+        => RetryFailedCoreAsync(importForDispatchId: null, cancellationToken);
+
+    public Task<int> RetryFailedImportAsync(string dispatchId, CancellationToken cancellationToken)
+        => RetryFailedCoreAsync(dispatchId, cancellationToken);
+
+    /// <param name="importForDispatchId">
+    /// Only the failed import of that download: what Try again on its recovery
+    /// case means (#558), rather than every failed job.
+    /// </param>
+    private async Task<int> RetryFailedCoreAsync(string? importForDispatchId, CancellationToken cancellationToken)
     {
+        var scope = importForDispatchId is null
+            ? string.Empty
+            : " AND job_type = 'filesystem.import.execute' AND CASE WHEN json_valid(payload_json) THEN json_extract(payload_json, '$.DispatchId') END = @dispatchId";
         var now = timeProvider.GetUtcNow();
         var failedJobs = new List<JobQueueItem>();
         var requeued = 0;
@@ -304,15 +317,19 @@ public sealed class SqliteJobStore(
         {
             select.Transaction = transaction;
             select.CommandText =
-                """
+                $"""
                 SELECT
                     id, job_type, source, status, payload_json, attempts, created_utc, scheduled_utc,
                     started_utc, completed_utc, leased_until_utc, worker_id, last_error, related_entity_type, related_entity_id,
                     idempotency_key, dedupe_key, max_attempts, last_attempt_utc, next_attempt_utc
                 FROM job_queue
-                WHERE status IN ('failed', 'dead-letter')
+                WHERE status IN ('failed', 'dead-letter'){scope}
                 ORDER BY completed_utc DESC, created_utc DESC;
                 """;
+            if (importForDispatchId is not null)
+            {
+                AddParameter(select, "@dispatchId", importForDispatchId);
+            }
 
             using var reader = await select.ExecuteReaderAsync(cancellationToken);
             while (await reader.ReadAsync(cancellationToken))
@@ -331,7 +348,7 @@ public sealed class SqliteJobStore(
         {
             update.Transaction = transaction;
             update.CommandText =
-                """
+                $"""
                 UPDATE job_queue
                 SET
                     status = 'queued',
@@ -343,7 +360,7 @@ public sealed class SqliteJobStore(
                     worker_id = NULL,
                     last_error = NULL,
                     next_attempt_utc = @scheduledUtc
-                WHERE status IN ('failed', 'dead-letter')
+                WHERE status IN ('failed', 'dead-letter'){scope}
                   -- One row per dedupe key, or this violates
                   -- ux_job_queue_active_dedupe the moment it commits.
                   --
@@ -369,6 +386,11 @@ public sealed class SqliteJobStore(
                 """;
 
             AddParameter(update, "@scheduledUtc", now.ToString("O"));
+            if (importForDispatchId is not null)
+            {
+                AddParameter(update, "@dispatchId", importForDispatchId);
+            }
+
             // What the statement actually requeued, which is not the same as
             // what was selected: duplicates sharing a dedupe key stay put.
             requeued = await update.ExecuteNonQueryAsync(cancellationToken);

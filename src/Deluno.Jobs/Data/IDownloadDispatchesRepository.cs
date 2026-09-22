@@ -13,6 +13,14 @@ public interface IDownloadDispatchesRepository
         CancellationToken cancellationToken);
 
     /// <summary>
+    /// A dispatch whether or not it has been archived: a recovery case can outlive
+    /// its download, and still has to say which title it was about (#558).
+    /// </summary>
+    Task<DownloadDispatchItem?> GetDispatchIncludingArchivedAsync(
+        string dispatchId,
+        CancellationToken cancellationToken);
+
+    /// <summary>
     /// Record a grab outcome (called after DownloadClientGrabService.GrabAsync).
     /// </summary>
     Task<DownloadDispatchItem> RecordGrabAsync(
