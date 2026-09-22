@@ -49,6 +49,7 @@ import { fileProvenanceFromTimeline } from "../lib/dispatch-provenance";
 import { dismissFailedJob, fetchFailedJobs } from "../lib/failed-jobs";
 import { JOB_STATUS, isJobActive, isJobDeadLettered, isJobFailed, type JobStatus } from "../lib/job-status-constants";
 import { downloadQueueStatuses, isImportReadyStatus, isProcessingStatus, queueStatusLabel } from "../lib/download-telemetry";
+import { handoffNeedsPerson, isDispatchFailure, isProcessorFailure, isWithProcessor, needsAction } from "../lib/needs-action";
 import { Button } from "../components/ui/button";
 import { Chip, type ChipProps } from "../components/ui/chip";
 import { ConfirmDialog } from "../components/ui/confirm-dialog";
@@ -187,29 +188,23 @@ export function QueuePage() {
   const importJobs = useMemo(() => jobs.filter((job) => job.jobType === "filesystem.import.execute"), [jobs]);
   const importReady = queue.filter((item) => isImportReadyStatus(item.status));
   const processing = queue.filter((item) => isProcessingStatus(item.status));
-  const queueAttention = queue.filter(
-    (item) => item.status === downloadQueueStatuses.stalled || Boolean(item.errorMessage) || Boolean(item.healthFindings?.length)
-  );
   // Dead-lettered jobs are failed and out of retries: they are exactly what
   // "Retry N failed" exists for, and were previously excluded (#249). They are
   // asked for by name rather than looked for among the latest jobs, which a
   // failed import drops out of within hours.
-  const failedImportJobs = useMemo(() => failedJobs.filter((job) => job.jobType === "filesystem.import.execute"), [failedJobs]);
+  //
+  // What needs a person is worked out once, with the sidebar (#556), one row
+  // per problem rather than one per record (#557).
+  const attention = useMemo(
+    () => needsAction({ movieRecovery, seriesRecovery, telemetry, failedJobs, handoffs: processorHandoffs, dispatches }),
+    [movieRecovery, seriesRecovery, telemetry, failedJobs, processorHandoffs, dispatches]
+  );
+  const { recoveryCases, queueAttention, failedImportJobs, failedHandoffs: failedProcessorHandoffs, failedDownloads } = attention;
   const activeImportJobs = importJobs.filter((job) => isJobActive(job.status as never)).length;
   const activeProcessorHandoffs = processorHandoffs.filter((handoff) => isWithProcessor(handoff.status));
-  const failedProcessorHandoffs = processorHandoffs.filter(handoffNeedsPerson);
-  const failedDispatches = dispatches.filter(isDispatchFailure);
   const blockedQueueItems = queue.filter((item) => item.healthFindings?.some((finding) => finding.candidateBlocked));
   const healthyClients = telemetry.clients.filter((client) => isHealthyClient(client.healthStatus)).length;
-  const recoveryCases = useMemo(
-    () => [
-      ...movieRecovery.recentCases.map((item) => ({ ...item, mediaType: "movie" as const })),
-      ...seriesRecovery.recentCases.map((item) => ({ ...item, mediaType: "series" as const }))
-    ],
-    [movieRecovery.recentCases, seriesRecovery.recentCases]
-  );
-  const openRecovery = movieRecovery.openCount + seriesRecovery.openCount;
-  const needsAction = openRecovery + queueAttention.length + failedImportJobs.length + failedProcessorHandoffs.length + failedDispatches.length;
+  const needsActionCount = attention.total;
 
   const activity = useMemo(
     () => buildActivity({ importJobs, processorHandoffs, dispatches, telemetry, healthRecords, activityEvents }),
@@ -486,7 +481,7 @@ export function QueuePage() {
           // Automation picks these up on its next pass; "waiting on you" asked
           // for something the user does not need to do (#263).
           { label: "Ready to import", value: String(importReady.length), help: importReady.length ? "Deluno imports these next" : "nothing waiting" },
-          { label: "Needs action", value: String(needsAction), help: blockedQueueItems.length ? `${blockedQueueItems.length} release${blockedQueueItems.length === 1 ? "" : "s"} blocked` : needsAction ? "see below" : "all clear", tone: needsAction ? "warning" : undefined },
+          { label: "Needs action", value: String(needsActionCount), help: blockedQueueItems.length ? `${blockedQueueItems.length} release${blockedQueueItems.length === 1 ? "" : "s"} blocked` : needsActionCount ? "see below" : "all clear", tone: needsActionCount ? "warning" : undefined },
           { label: "Clients", value: `${healthyClients}/${telemetry.clients.length}`, help: healthyClients === telemetry.clients.length ? "all responding" : "one is not responding", tone: healthyClients < telemetry.clients.length ? "danger" : undefined }
         ]}
       />
@@ -611,10 +606,10 @@ export function QueuePage() {
         </ListCard>
       ) : null}
 
-      {needsAction > 0 ? (
+      {needsActionCount > 0 ? (
         <ListCard
           title="Needs attention"
-          count={`${needsAction} ${needsAction === 1 ? "thing" : "things"} Deluno could not finish on its own`}
+          count={`${needsActionCount} ${needsActionCount === 1 ? "thing" : "things"} Deluno could not finish on its own`}
           actions={
             failedImportJobs.length ? (
               <Button type="button" variant="outline" size="sm" onClick={() => void retryFailedJobs()} disabled={busyKey !== null}>
@@ -677,10 +672,13 @@ export function QueuePage() {
                 <ListCell mobile align="end"><span className="text-[length:var(--type-caption)] text-muted-foreground">Open to fix</span></ListCell>
               </ListRow>
             ))}
-            {failedDispatches.map((dispatch) => (
+            {failedDownloads.map(({ dispatch, attempts }) => (
               <ListRow key={`dispatch-failure:${dispatch.id}`} onClick={() => void showDispatch(dispatch)} selected={openDispatchSummary?.id === dispatch.id}>
                 <ListNameCell name={dispatch.releaseName} sub={dispatch.mediaType === "tv" ? "TV" : "Movies"} />
-                <ListCell primary={dispatchActivityDetail(dispatch)} secondary={dispatchFailureDetail(dispatch)} />
+                <ListCell
+                  primary={dispatchActivityDetail(dispatch)}
+                  secondary={attempts > 1 ? `${attempts} attempts · ${dispatchFailureDetail(dispatch)}` : dispatchFailureDetail(dispatch)}
+                />
                 <ListCell mobile align="end"><span className="text-[length:var(--type-caption)] text-muted-foreground">Open transfer details</span></ListCell>
               </ListRow>
             ))}
@@ -1333,25 +1331,6 @@ function isProcessorTerminal(status: string) {
   return ["completed", "released"].includes(status.toLowerCase());
 }
 
-/**
- * Mirrors `ProcessorHandoffStatuses.IsWithProcessor`. "Active" used to mean
- * "not completed", which counted every failed, rejected and lost hand-off as
- * work in progress for ever, as well as listing it under Needs attention.
- */
-function isWithProcessor(status: string) {
-  return ["waiting", "submitted", "accepted", "started"].includes(status.toLowerCase());
-}
-
-/** A hand-off a person has dismissed is history: it keeps its reason and needs nobody. */
-function handoffNeedsPerson(handoff: ProcessorHandoffItem) {
-  if (handoff.status.toLowerCase() === "dismissed") return false;
-  return isProcessorFailure(handoff.status) || Boolean(handoff.failureMessage);
-}
-
-function isProcessorFailure(status: string) {
-  return ["failed", "rejected", "timed-out", "timeout", "stalled", "lost", "cancelled"].includes(status.toLowerCase());
-}
-
 /** Mirrors `ProcessorHandoffStatuses.CanReleaseOriginal`: the processor stopped without delivering. */
 function canImportOriginal(status: string) {
   return ["failed", "timed-out", "stalled", "lost", "cancelled"].includes(status.toLowerCase());
@@ -1443,13 +1422,6 @@ function processorConnectionTone(connection: ProcessorConnectionItem): NonNullab
   if (connection.healthStatus === "degraded") return "warn";
   if (connection.healthStatus === "healthy") return "ok";
   return "idle";
-}
-
-function isDispatchFailure(dispatch: DownloadDispatchItem) {
-  return [dispatch.status, dispatch.grabStatus, dispatch.importStatus, dispatch.grabFailureCode, dispatch.importFailureCode]
-    .filter((value): value is string => Boolean(value))
-    .some((value) => ["failed", "blocked", "rejected", "unresolved", "error", "not_found", "circuit_open", "paused"].includes(value.toLowerCase()))
-    || dispatch.failure !== null && dispatch.failure !== undefined;
 }
 
 function dispatchStageLabel(dispatch: DownloadDispatchItem) {

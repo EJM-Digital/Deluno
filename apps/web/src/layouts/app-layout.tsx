@@ -86,7 +86,7 @@ const libraryNav = [
 ] as const;
 
 const operationsNav = [
-  { to: "/queue", label: "Transfers", icon: "transfers", end: false, attention: "activity" as const },
+  { to: "/queue", label: "Transfers", icon: "transfers", end: false, attention: "transfers" as const },
   { to: "/activity", label: "Activity", icon: "activity", end: false, attention: "activity" as const }
 ] as const;
 
@@ -416,9 +416,20 @@ function DesktopSidebar({
             {needsAttention > 0 ? "Needs a look" : "All good"}
           </span>
         </div>
-        <p className="mt-2 text-[length:var(--shell-subtle-size)] text-muted-foreground">
-          {needsAttention > 0 ? attentionSummary(attention) : "Nothing needs you"}
-        </p>
+        {attention.downloadsNeedingAction > 0 ? (
+          // Downloads that need someone are fixed on Transfers, so the verdict
+          // takes you there (#556).
+          <NavLink
+            to="/queue"
+            className="mt-2 block text-[length:var(--shell-subtle-size)] text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
+          >
+            {attentionSummary(attention)}
+          </NavLink>
+        ) : (
+          <p className="mt-2 text-[length:var(--shell-subtle-size)] text-muted-foreground">
+            {needsAttention > 0 ? attentionSummary(attention) : "Nothing needs you"}
+          </p>
+        )}
       </div>
 
       <div className="group relative z-50 mt-3">
@@ -897,11 +908,16 @@ function attentionSummary(attention: AttentionSnapshot): string {
   if (attention.indexerAlerts > 0) {
     parts.push(`${attention.indexerAlerts} search source${attention.indexerAlerts === 1 ? "" : "s"} unhealthy`);
   }
+  if (attention.downloadsNeedingAction > 0) {
+    parts.push(`${attention.downloadsNeedingAction} download${attention.downloadsNeedingAction === 1 ? " needs" : "s need"} you`);
+  }
   return parts.join(" · ");
 }
 
-function attentionCount(attention: ReturnType<typeof useAttention>, key: "none" | "movies" | "tv" | "indexers" | "activity") {
+function attentionCount(attention: ReturnType<typeof useAttention>, key: "none" | "movies" | "tv" | "indexers" | "activity" | "transfers") {
   if (key === "movies") return attention.movieWanted;
+  // What Transfers lists under Needs attention (#556).
+  if (key === "transfers") return attention.downloadsNeedingAction + attention.failedImportJobs;
   if (key === "tv") return attention.tvWanted;
   if (key === "indexers") return attention.indexerAlerts;
   if (key === "activity") return attention.failedJobs;
