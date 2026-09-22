@@ -187,6 +187,14 @@ public interface IJobQueueRepository
         CancellationToken cancellationToken,
         bool includeArchived = false);
 
+    /// <summary>
+    /// The downloads still on their way, so a search does not send a title or a
+    /// release a second time (#555).
+    /// </summary>
+    Task<IReadOnlyList<DownloadInFlight>> ListDownloadsInFlightAsync(
+        int limit,
+        CancellationToken cancellationToken);
+
     /// <param name="includeArchived">
     /// A history view asks for archived rows too. Every successful import
     /// archives its dispatch immediately, so leaving them out answers "what

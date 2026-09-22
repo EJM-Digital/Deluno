@@ -1691,6 +1691,11 @@ public sealed class SqliteJobStore(
         return items;
     }
 
+    public Task<IReadOnlyList<DownloadInFlight>> ListDownloadsInFlightAsync(
+        int limit,
+        CancellationToken cancellationToken)
+        => downloadDispatchesRepository.ListDownloadsInFlightAsync(limit, cancellationToken);
+
     public async Task<Page<DownloadDispatchItem>> ListDownloadDispatchesPageAsync(
         PageRequest request,
         string? mediaType,

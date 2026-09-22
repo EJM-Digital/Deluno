@@ -2,6 +2,7 @@ using System.Text.Json;
 using Deluno.Contracts;
 using Deluno.Integrations.DownloadClients;
 using Deluno.Integrations.Search;
+using Deluno.Jobs.Data;
 using Deluno.Quality.Contracts;
 using Deluno.Quality.Data;
 
@@ -46,6 +47,40 @@ internal static class SearchExecutionSupport
             request,
             cancellationToken);
     }
+
+    /// <summary>
+    /// Why a release the search chose is not sent, when this title or that exact
+    /// release already has a download on its way; null when nothing is (#555).
+    ///
+    /// <para>The downloading mark keeps a movie or a series off the work list
+    /// once a grab is sent. This covers what the mark cannot: an episode, which
+    /// has no such mark; the series and episode passes reaching the same release
+    /// from their two sides; and titles grabbed before automatic grabs set the
+    /// mark at all.</para>
+    /// </summary>
+    internal static async Task<string?> AlreadyOnItsWayAsync(
+        IJobQueueRepository jobQueueRepository,
+        string releaseName,
+        IReadOnlyCollection<string> entityIds,
+        CancellationToken cancellationToken)
+    {
+        var inFlight = await jobQueueRepository.ListDownloadsInFlightAsync(InFlightLimit, cancellationToken) ?? [];
+        var same = inFlight.FirstOrDefault(download =>
+            entityIds.Contains(download.EntityId, StringComparer.Ordinal)
+            || string.Equals(download.ReleaseName, releaseName, StringComparison.OrdinalIgnoreCase));
+
+        return same is null
+            ? null
+            : string.Equals(same.ReleaseName, releaseName, StringComparison.OrdinalIgnoreCase)
+                ? $"Not sent again: {releaseName} is already on its way."
+                : $"Not sent: {same.ReleaseName} is already on its way for this.";
+    }
+
+    /// <summary>
+    /// Generous for the same reason as the reconciler's lookup: missing a live
+    /// download from this list costs a second download.
+    /// </summary>
+    private const int InFlightLimit = 5_000;
 
     internal static string? SerializeSearchPlan(MediaSearchPlan plan, DownloadClientGrabResult? grabResult = null)
     {

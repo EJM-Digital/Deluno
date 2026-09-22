@@ -100,7 +100,10 @@ public sealed class DownloadDispatchPollingService(
             }
             else if (dispatch.DetectedUtc is not null && dispatch.ImportStatus is null)
             {
-                var age = now - dispatch.DetectedUtc.Value;
+                // Measured from when the client finished, not from when it first
+                // showed the download (#554): a download can be on screen and
+                // progressing for many hours, and none of that is overdue.
+                var age = dispatch.ClientCompletedUtc is { } completedUtc ? now - completedUtc : TimeSpan.Zero;
                 if (age > DetectionTimeout && !await alertRepository.HasUnresolvedAlertAsync(dispatch.Id, "detection-timeout", cancellationToken))
                 {
                     await RecordDetectionTimeoutRecoveryAsync(
@@ -167,7 +170,8 @@ public sealed class DownloadDispatchPollingService(
             SELECT
                 id, library_id, media_type, entity_type, entity_id, release_name,
                 download_client_id, download_client_name, grab_status, grab_attempted_utc,
-                detected_utc, import_status, import_detected_utc, import_failure_code, import_failure_message
+                detected_utc, import_status, import_detected_utc, import_failure_code, import_failure_message,
+                client_completed_utc
             FROM download_dispatches
             -- A download that was imported or archived is finished, whatever an
             -- earlier stage recorded. The import can complete through a
@@ -204,7 +208,8 @@ public sealed class DownloadDispatchPollingService(
                 ImportStatus: reader.IsDBNull(11) ? null : reader.GetString(11),
                 ImportDetectedUtc: reader.IsDBNull(12) ? null : DateTimeOffset.Parse(reader.GetString(12)),
                 ImportFailureCode: reader.IsDBNull(13) ? null : reader.GetString(13),
-                ImportFailureMessage: reader.IsDBNull(14) ? null : reader.GetString(14)));
+                ImportFailureMessage: reader.IsDBNull(14) ? null : reader.GetString(14),
+                ClientCompletedUtc: reader.IsDBNull(15) ? null : DateTimeOffset.Parse(reader.GetString(15))));
         }
 
         return items;
@@ -283,7 +288,7 @@ public sealed class DownloadDispatchPollingService(
 
         recoveryActivities.Add(CreateRecoveryActivity(
             "download.detection.timeout",
-            $"{title} was detected but never imported after {DetectionTimeout.TotalHours:F0} hours.",
+            $"{title} finished downloading but was not imported within {DetectionTimeout.TotalHours:F0} hours.",
             detailsJson,
             "download",
             dispatch.Id));
@@ -291,7 +296,7 @@ public sealed class DownloadDispatchPollingService(
         await alertRepository.CreateAlertAsync(
             dispatch.Id,
             title,
-            "Download detected but import did not complete",
+            "Downloaded but not imported",
             "detection-timeout",
             "warning",
             new Dictionary<string, string> { { "mediaType", dispatch.MediaType } },
@@ -459,5 +464,6 @@ public sealed class DownloadDispatchPollingService(
         string? ImportStatus,
         DateTimeOffset? ImportDetectedUtc,
         string? ImportFailureCode,
-        string? ImportFailureMessage);
+        string? ImportFailureMessage,
+        DateTimeOffset? ClientCompletedUtc);
 }

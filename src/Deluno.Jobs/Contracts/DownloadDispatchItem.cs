@@ -47,4 +47,9 @@ public sealed record DownloadDispatchItem(
     // Normalised failure surfaced by the dispatch read model. This is derived
     // from the typed grab response when present, with a legacy-column fallback
     // for older rows.
-    IntegrationFailure? Failure = null);
+    IntegrationFailure? Failure = null,
+
+    // When the client said it had finished with the download, successfully or
+    // not. DetectedUtc is when the client first showed it (#554); the wait for
+    // an import is measured from here, so a long download is not an overdue one.
+    DateTimeOffset? ClientCompletedUtc = null);
