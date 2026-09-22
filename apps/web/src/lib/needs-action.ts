@@ -116,6 +116,16 @@ export function needsAction(sources: NeedsActionSources): NeedsAction {
   };
 }
 
+/**
+ * Whether Try again can do anything for this case (#558). The server acts on a
+ * failed download or a failed import, through the download the case names. A
+ * case raised about a processor failure names a hand-off, not a download, so
+ * the button could only say "dismiss it". It is not offered there.
+ */
+export function canTryAgain(item: Pick<RecoveryCase, "failureKind" | "detailsJson">): boolean {
+  return (item.failureKind === "downloadFailed" || item.failureKind === "importFailed") && dispatchIdIn(item.detailsJson) !== null;
+}
+
 /** The download a recovery case is about, from the details the poller wrote with it. */
 function dispatchIdIn(detailsJson: string | null | undefined): string | null {
   if (!detailsJson) return null;

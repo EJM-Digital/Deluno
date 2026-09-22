@@ -49,7 +49,7 @@ import { fileProvenanceFromTimeline } from "../lib/dispatch-provenance";
 import { dismissFailedJob, fetchFailedJobs } from "../lib/failed-jobs";
 import { JOB_STATUS, isJobActive, isJobDeadLettered, isJobFailed, type JobStatus } from "../lib/job-status-constants";
 import { downloadQueueStatuses, isImportReadyStatus, isProcessingStatus, queueStatusLabel } from "../lib/download-telemetry";
-import { handoffNeedsPerson, isDispatchFailure, isProcessorFailure, isWithProcessor, needsAction } from "../lib/needs-action";
+import { canTryAgain, handoffNeedsPerson, isDispatchFailure, isProcessorFailure, isWithProcessor, needsAction } from "../lib/needs-action";
 import { Button } from "../components/ui/button";
 import { Chip, type ChipProps } from "../components/ui/chip";
 import { ConfirmDialog } from "../components/ui/confirm-dialog";
@@ -629,10 +629,10 @@ export function QueuePage() {
                 <ListCell primary={item.summary} secondary={item.recommendedAction} />
                 <ListCell mobile align="end">
                   <span className="flex justify-end gap-2">
-                    {/* Offered for the kinds Deluno can act on (#558): a download
-                        that failed or an import that did. A quality, unmatched or
-                        corrupt file needs a decision, not another attempt. */}
-                    {item.failureKind === "downloadFailed" || item.failureKind === "importFailed" ? (
+                    {/* Offered where Deluno can act (#558): a failed download or
+                        import, named by the download it is about. A quality,
+                        unmatched or corrupt file needs a decision instead. */}
+                    {canTryAgain(item) ? (
                       <Button type="button" variant="outline" size="sm" onClick={() => void retryRecovery(item)} disabled={busyKey !== null}>
                         {busyKey === `recovery:retry:${item.id}` ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
                         Try again
