@@ -271,6 +271,15 @@ public sealed class WeirCompanion(
 
     private string Executable => Path.Combine(system.LocalAppData, "Weir", "Weir.exe");
 
+    /// <summary>
+    /// What Deluno starts Weir with (#553). Never the browser: Deluno connects to
+    /// Weir through its API, and the computer Deluno runs on may have nobody at
+    /// it, so a window there would only be left behind. The port only on the
+    /// first start of a copy Deluno just installed; Weir saves it.
+    /// </summary>
+    public static string StartArguments(int? port) =>
+        port is { } chosen ? $"--port {chosen} --no-browser" : "--no-browser";
+
     public bool IsInstalled() => system.FileExists(Executable) || system.FileExists(Path.Combine(system.LocalAppData, "Weir", "current", "Weir.exe"));
 
     public async Task<string?> ConnectionNameAsync(CancellationToken cancellationToken)
@@ -310,7 +319,7 @@ public sealed class WeirCompanion(
             // desktop asks which port to use. Its unattended answer is --port,
             // which it saves: Deluno gives it its own default, or the first free
             // port above it.
-            firstStart = $"--port {CompanionConfigFiles.FreePort(system, WeirDefaultPort)}";
+            firstStart = StartArguments(CompanionConfigFiles.FreePort(system, WeirDefaultPort));
         }
         else
         {
@@ -423,7 +432,7 @@ public sealed class WeirCompanion(
                 var executable = system.FileExists(Path.Combine(installFolder, "current", "Weir.exe"))
                     ? Path.Combine(installFolder, "current", "Weir.exe")
                     : Executable;
-                system.Start(executable, firstStart ?? string.Empty);
+                system.Start(executable, firstStart ?? StartArguments(port: null));
                 started = true;
             }
 
