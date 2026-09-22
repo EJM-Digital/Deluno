@@ -47,8 +47,9 @@ import { formatBytes } from "../lib/utils";
 import { resolveImportSourcePath } from "../lib/import-source";
 import { fileProvenanceFromTimeline } from "../lib/dispatch-provenance";
 import { dismissFailedJob, fetchFailedJobs } from "../lib/failed-jobs";
-import { JOB_STATUS, isJobActive, isJobDeadLettered, isJobFailed, type JobStatus } from "../lib/job-status-constants";
+import { JOB_STATUS, isJobActive, isJobDeadLettered, isJobFailed, isJobRetrying, type JobStatus } from "../lib/job-status-constants";
 import { downloadQueueStatuses, isImportReadyStatus, isProcessingStatus, queueStatusLabel } from "../lib/download-telemetry";
+import { parseImportJobPayload } from "../lib/import-job-payload";
 import { canTryAgain, handoffNeedsPerson, isDispatchFailure, isProcessorFailure, isWithProcessor, needsAction } from "../lib/needs-action";
 import { Button } from "../components/ui/button";
 import { Chip, type ChipProps } from "../components/ui/chip";
@@ -593,12 +594,18 @@ export function QueuePage() {
           <ListTable columns={[{ label: "Media" }, { label: "Source / destination", width: "minmax(0,2fr)" }, { label: "Stage" }, { label: "Status", width: LIST_TRACK.status, mobile: true }]}>
             {importJobs.map((job) => {
               const info = parseImportJobPayload(job.payloadJson);
+              // The destination is not in the payload: naming decides it as the
+              // file moves, and the download it belongs to then knows where it
+              // landed (#564).
+              const landed = info?.dispatchId
+                ? dispatches.find((dispatch) => dispatch.id === info.dispatchId)?.importedFilePath ?? null
+                : null;
               return (
                 <ListRow key={job.id} onClick={() => setDrawer({ kind: "activity", id: `import:${job.id}` })} selected={openActivity?.id === `import:${job.id}`}>
                   <ListNameCell name={info?.title || info?.fileName || jobTitle(job)} sub={info?.fileName || "Filesystem import"} />
-                  <ListCell primary={info?.destinationPath || "Destination not resolved yet"} secondary={info?.sourcePath ? `From ${info.sourcePath}` : "Source path not recorded"} />
+                  <ListCell primary={info?.destinationPath || landed || "Named as it imports"} secondary={info?.sourcePath ? `From ${info.sourcePath}` : "Source path not recorded"} />
                   <ListCell primary={importJobStage(job)} secondary={job.attempts > 1 ? `Attempt ${job.attempts}` : undefined} />
-                  <ListCell mobile><Chip tone={importJobTone(job)}>{job.status}</Chip></ListCell>
+                  <ListCell mobile><Chip tone={importJobTone(job)}>{isJobRetrying(job) ? "retrying" : job.status}</Chip></ListCell>
                 </ListRow>
               );
             })}
@@ -1246,6 +1253,9 @@ function queueChip(item: DownloadQueueItem): { tone: NonNullable<ChipProps["tone
 
 function importJobStage(job: JobQueueItem) {
   if (isJobDeadLettered(job.status as JobStatus)) return "Import gave up";
+  // An attempt that failed with another one coming is not a failed import: the
+  // file was still being written, and the next attempt imports it (#562).
+  if (isJobRetrying(job)) return "Waiting for the file to settle";
   if (isJobFailed(job.status as JobStatus)) return "Import failed";
   if (job.status === JOB_STATUS.COMPLETED) return "Imported and named";
   if (job.status === JOB_STATUS.RUNNING) return "Writing to library";
@@ -1253,6 +1263,7 @@ function importJobStage(job: JobQueueItem) {
 }
 
 function importJobTone(job: JobQueueItem): NonNullable<ChipProps["tone"]> {
+  if (isJobRetrying(job)) return "info";
   if (isJobFailed(job.status as JobStatus)) return "bad";
   if (isJobActive(job.status as never)) return "info";
   return "ok";
@@ -1669,35 +1680,6 @@ function historySourceLabel(source: string | undefined) {
 function jobTitle(job: JobQueueItem) {
   const parsed = parseImportJobPayload(job.payloadJson);
   return parsed?.title || parsed?.fileName || `Job ${job.id.slice(0, 8)}`;
-}
-
-interface ImportJobInfo {
-  title: string | null;
-  fileName: string | null;
-  sourcePath: string | null;
-  destinationPath: string | null;
-}
-
-function parseImportJobPayload(payloadJson: string | null): ImportJobInfo | null {
-  if (!payloadJson) return null;
-  try {
-    const parsed = JSON.parse(payloadJson) as {
-      preview?: { title?: string; fileName?: string; sourcePath?: string; destinationPath?: string };
-      title?: string;
-      fileName?: string;
-      sourcePath?: string;
-      destinationPath?: string;
-    };
-    const preview = parsed.preview;
-    return {
-      title: preview?.title ?? parsed.title ?? null,
-      fileName: preview?.fileName ?? parsed.fileName ?? null,
-      sourcePath: preview?.sourcePath ?? parsed.sourcePath ?? null,
-      destinationPath: preview?.destinationPath ?? parsed.destinationPath ?? null
-    };
-  } catch {
-    return null;
-  }
 }
 
 function activityEventTitle(event: ActivityEventItem) {

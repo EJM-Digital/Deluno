@@ -27,7 +27,7 @@ import {
   type MovieImportRecoverySummary,
   type SeriesImportRecoverySummary
 } from "../lib/api";
-import { getJobStatusTone, JOB_STATUS, isJobActive, isJobFailed, isJobInProgress, isJobSuccessful, type JobStatus } from "../lib/job-status-constants";
+import { getJobStatusTone, JOB_STATUS, isJobActive, isJobFailed, isJobInProgress, isJobRetrying, isJobSuccessful, type JobStatus } from "../lib/job-status-constants";
 import { dismissFailedJob, fetchFailedJobs } from "../lib/failed-jobs";
 import { authedFetch } from "../lib/use-auth";
 import { Button } from "../components/ui/button";
@@ -67,7 +67,7 @@ export async function activityLoader(): Promise<ActivityLoaderData> {
     fetchPageItems<JobQueueItem>("/api/jobs?pageSize=24"),
     fetchFailedJobs(),
     fetchPageItems<ActivityEventItem>("/api/activity?pageSize=40"),
-    fetchPageItems<DownloadDispatchItem>("/api/download-dispatches?pageSize=20"),
+    fetchPageItems<DownloadDispatchItem>("/api/download-dispatches?pageSize=20&includeArchived=true"),
     fetchJson<MovieImportRecoverySummary>("/api/movies/import-recovery"),
     fetchJson<SeriesImportRecoverySummary>("/api/series/import-recovery")
   ]);
@@ -101,12 +101,18 @@ export function ActivityPage() {
 
   const { activity, dispatches, failedJobs: failed, movieRecovery, seriesRecovery } = loaderData;
   // A failed job has its own card, so it is not listed again among the latest.
-  const jobs = useMemo(() => loaderData.jobs.filter((job) => !isJobFailed(job.status as JobStatus)), [loaderData.jobs]);
+  // A job with another attempt coming belongs with the work in flight, not
+  // with the ones that stopped and need a person (#562).
+  const jobs = useMemo(
+    () => loaderData.jobs.filter((job) => !isJobFailed(job.status as JobStatus) || isJobRetrying(job)),
+    [loaderData.jobs]
+  );
+  const stopped = useMemo(() => failed.filter((job) => !isJobRetrying(job)), [failed]);
 
   const runningJobs = jobs.filter((job) => isJobInProgress(job.status as JobStatus)).length;
-  const queuedJobs = jobs.filter((job) => isJobActive(job.status as JobStatus)).length - runningJobs;
+  const queuedJobs = jobs.filter((job) => isJobActive(job.status as JobStatus) || isJobRetrying(job)).length - runningJobs;
   const completedJobs = jobs.filter((job) => isJobSuccessful(job.status as JobStatus)).length;
-  const failedJobs = failed.length;
+  const failedJobs = stopped.length;
   const openRecovery = movieRecovery.openCount + seriesRecovery.openCount;
 
   const importCases = useMemo(
@@ -191,8 +197,8 @@ export function ActivityPage() {
 
       {section === "jobs" ? (
         <>
-          {failed.length > 0 ? (
-            <ListCard title="Failed jobs" count={`${failed.length} stopped`}>
+          {stopped.length > 0 ? (
+            <ListCard title="Failed jobs" count={`${stopped.length} stopped`}>
               <ListTable
                 columns={[
                   { label: "Job" },
@@ -202,7 +208,7 @@ export function ActivityPage() {
                   { label: "Status", width: LIST_TRACK.status }
                 ]}
               >
-                {failed.map((job) => (
+                {stopped.map((job) => (
                   <ListRow key={job.id} onClick={() => setOpenJobId(job.id)} selected={openJobId === job.id}>
                     <ListNameCell name={formatJobType(job.jobType)} sub={job.lastError ?? job.workerId ?? "—"} />
                     <ListCell primary={job.source} mobile />
@@ -237,7 +243,7 @@ export function ActivityPage() {
                     <ListCell primary={job.attempts} align="end" numeric />
                     <ListCell primary={formatPreferenceDateTime(job.completedUtc ?? job.startedUtc ?? job.scheduledUtc, preferences)} />
                     <ListCell>
-                      <Chip tone={jobTone(job.status)}>{formatJobStatus(job.status)}</Chip>
+                      <Chip tone={isJobRetrying(job) ? "info" : jobTone(job.status)}>{isJobRetrying(job) ? "Retrying" : formatJobStatus(job.status)}</Chip>
                     </ListCell>
                   </ListRow>
                 ))}

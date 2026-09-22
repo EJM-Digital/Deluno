@@ -1111,6 +1111,26 @@ public sealed class WorkPlanner(
     /// one stable path component lets Deluno match the output to a durable
     /// hand-off without guessing from a release title.
     /// </summary>
+    /// <summary>
+    /// Whether a processor that answers for itself is still working on this file.
+    ///
+    /// <para>A finished output appears in the folder before the processor has
+    /// let go of it: Weir moves its file into place and then puts the original's
+    /// timestamps back on it. Importing on the file's own evidence alone caught
+    /// it mid-tidy, so every processed import failed its first attempt and read
+    /// as failed until the retry (#562). A processor that says "queued",
+    /// "scheduled" or "working" has not finished, and waiting costs one pass.</para>
+    ///
+    /// <para>Only what the processor says about this cycle counts. One that
+    /// cannot be asked never says anything, and a hand-off Deluno stopped
+    /// waiting for is a late delivery to take as it is (#511).</para>
+    /// </summary>
+    internal static bool ProcessorHasNotFinished(ProcessorHandoffItem handoff)
+        => ProcessorHandoffStatuses.IsWithProcessor(handoff.Status) &&
+           handoff.Processor?.State is ProcessorHandoffStates.Queued
+               or ProcessorHandoffStates.Scheduled
+               or ProcessorHandoffStates.Working;
+
     private async Task ReconcileMatchedProcessorOutputsAsync(
         IJobScheduler jobScheduler,
         IProcessorRepository processorRepository,
@@ -1136,7 +1156,7 @@ public sealed class WorkPlanner(
                 string.Equals(item.Id, handoff.LibraryId, StringComparison.OrdinalIgnoreCase) &&
                 string.Equals(item.ImportWorkflow, "refine-before-import", StringComparison.OrdinalIgnoreCase) &&
                 !string.IsNullOrWhiteSpace(item.ProcessorOutputPath));
-            if (library is null)
+            if (library is null || ProcessorHasNotFinished(handoff))
             {
                 continue;
             }

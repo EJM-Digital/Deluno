@@ -13,7 +13,7 @@ import {
 } from "./api";
 import { useVisibleInterval } from "../hooks/use-visible-interval";
 import { fetchFailedJobs } from "./failed-jobs";
-import { isJobDeadLettered, type JobStatus } from "./job-status-constants";
+import { isJobDeadLettered, isJobRetrying, type JobStatus } from "./job-status-constants";
 import { needsAction } from "./needs-action";
 import { RealtimeGroups, useSignalREvent } from "./use-signalr";
 
@@ -76,8 +76,11 @@ export function useAttention(pollMs = 45000) {
         fetchJson<DownloadTelemetryOverview>("/api/download-clients/telemetry").catch(() => null)
       ]);
 
-      const failedJobs = failed.length;
-      const deadLetteredJobs = failed.filter((job) => isJobDeadLettered(job.status as JobStatus)).length;
+      // A job Deluno will try again on its own is not one the pill should
+      // count: every processed import failed once, then imported (#562).
+      const stopped = failed.filter((job) => !isJobRetrying(job));
+      const failedJobs = stopped.length;
+      const deadLetteredJobs = stopped.filter((job) => isJobDeadLettered(job.status as JobStatus)).length;
       const indexerAlerts = indexers.filter((i) => i.isEnabled && i.healthStatus !== "healthy").length;
       const downloadsNeedingAction = needsAction({ movieRecovery, seriesRecovery, telemetry, handoffs, dispatches }).total;
 
@@ -86,7 +89,7 @@ export function useAttention(pollMs = 45000) {
         deadLetteredJobs,
         indexerAlerts,
         downloadsNeedingAction,
-        failedImportJobs: failed.filter((job) => job.jobType === "filesystem.import.execute").length,
+        failedImportJobs: stopped.filter((job) => job.jobType === "filesystem.import.execute").length,
         movieWanted: movieWanted?.totalWanted ?? 0,
         tvWanted: seriesWanted?.totalWanted ?? 0,
         loading: false
