@@ -62,7 +62,13 @@ public static class AcquisitionBlockerSources
             new DispatchPaginationOptions { PageSize = 10 },
             cancellationToken);
 
+        // A client holds only what it took. A grab that was refused or never
+        // sent left nothing there: on the rig the page said "qBittorrent
+        // already has a download for Big Buck Bunny" about a grab Deluno itself
+        // had blocked, and offered to clear it from qBittorrent (#560). Rows
+        // from before grabs were tracked have no grab status, and were sent.
         var open = recent.Items
+            .Where(dispatch => dispatch.GrabStatus is null || string.Equals(dispatch.GrabStatus, "succeeded", StringComparison.OrdinalIgnoreCase))
             .Where(dispatch => !string.Equals(dispatch.ImportStatus, "imported", StringComparison.OrdinalIgnoreCase))
             .OrderByDescending(dispatch => dispatch.CreatedUtc)
             .FirstOrDefault();
