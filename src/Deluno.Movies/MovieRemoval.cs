@@ -16,7 +16,8 @@ public static class MovieRemoval
             movie.ReleaseYear,
             movie.ImdbId,
             (libraryId, cancellationToken) => FilesOf(movie.Id, libraryId, repository, cancellationToken),
-            cancellationToken => repository.DeleteAsync(movie.Id, cancellationToken));
+            cancellationToken => repository.DeleteAsync(movie.Id, cancellationToken),
+            (scope, reason, cancellationToken) => repository.SettleImportRecoveryCasesAsync(scope, reason, cancellationToken));
 
     private static async IAsyncEnumerable<string> FilesOf(
         string movieId,

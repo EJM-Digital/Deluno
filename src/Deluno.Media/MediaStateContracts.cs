@@ -419,6 +419,16 @@ public interface IMediaStateRepository
         CancellationToken cancellationToken);
 
     /// <summary>
+    /// Closes the open recovery cases a scope covers, writing <c>case_settled</c>
+    /// on each with the reason. Returns how many were closed.
+    /// </summary>
+    Task<int> SettleImportRecoveryCasesAsync(
+        MediaKind kind,
+        ImportRecoveryCaseScope scope,
+        string reason,
+        CancellationToken cancellationToken);
+
+    /// <summary>
     /// What a probe read out of the file, onto the wanted-state row that holds
     /// it.
     ///

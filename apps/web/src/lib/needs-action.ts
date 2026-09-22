@@ -34,7 +34,13 @@ export function isProcessorFailure(status: string) {
   return ["failed", "rejected", "timed-out", "timeout", "stalled", "lost", "cancelled"].includes(status.toLowerCase());
 }
 
-/** A hand-off a person has dismissed is history: it keeps its reason and needs nobody. */
+/**
+ * A hand-off a person has dismissed is history: it keeps its reason and needs
+ * nobody.
+ *
+ * `ProcessorHandoffStatuses.NeedsPerson` is this rule on the server, and
+ * dismissal is defined as it — so anything counted here can be cleared (#570).
+ */
 export function handoffNeedsPerson(handoff: ProcessorHandoffItem) {
   if (handoff.status.toLowerCase() === "dismissed") return false;
   return isProcessorFailure(handoff.status) || Boolean(handoff.failureMessage);

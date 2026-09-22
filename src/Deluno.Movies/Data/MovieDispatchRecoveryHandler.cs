@@ -92,5 +92,5 @@ public sealed class MovieDispatchRecoveryHandler(IMovieCatalogRepository catalog
 
     /// <summary>The download recovered, so the cases written about it close with the reason (#559).</summary>
     public Task HandleDispatchSettledAsync(string dispatchId, string reason, CancellationToken cancellationToken)
-        => catalogRepository.SettleImportRecoveryCasesAsync(dispatchId, reason, cancellationToken);
+        => catalogRepository.SettleImportRecoveryCasesAsync(ImportRecoveryCaseScope.ForDispatch(dispatchId), reason, cancellationToken);
 }

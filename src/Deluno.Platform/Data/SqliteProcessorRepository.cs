@@ -457,6 +457,24 @@ public sealed class SqliteProcessorRepository(
         return items;
     }
 
+    public async Task<IReadOnlyList<ProcessorHandoffItem>> ListOpenProcessorHandoffsAsync(CancellationToken cancellationToken)
+    {
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Platform,
+            cancellationToken);
+        using var command = connection.CreateCommand();
+        command.CommandText = HandoffSelect
+            + " WHERE status IN (@waiting, @submitted, @accepted, @started) ORDER BY updated_utc DESC;";
+        AddParameter(command, "@waiting", ProcessorHandoffStatuses.Waiting);
+        AddParameter(command, "@submitted", ProcessorHandoffStatuses.Submitted);
+        AddParameter(command, "@accepted", ProcessorHandoffStatuses.Accepted);
+        AddParameter(command, "@started", ProcessorHandoffStatuses.Started);
+        var items = new List<ProcessorHandoffItem>();
+        using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken)) items.Add(ReadProcessorHandoff(reader));
+        return items;
+    }
+
     /// <summary>One column list for every hand-off read, so a new column cannot reach some reads and miss others.</summary>
     private const string HandoffSelect =
         "SELECT id, library_id, media_type, client_id, queue_item_id, release_name, source_path, processor_name, status, output_path, import_job_id, failure_message, created_utc, updated_utc, "

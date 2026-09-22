@@ -406,6 +406,8 @@ public sealed class AcquisitionOverrideServiceTests
             => Task.FromResult(Handoff);
         public Task<IReadOnlyList<ProcessorHandoffItem>> ListProcessorHandoffsAsync(string? libraryId, int take, CancellationToken cancellationToken)
             => throw new NotSupportedException();
+        public Task<IReadOnlyList<ProcessorHandoffItem>> ListOpenProcessorHandoffsAsync(CancellationToken cancellationToken)
+            => throw new NotSupportedException();
         public Task<IReadOnlyList<ProcessorConnectionItem>> ListProcessorConnectionsAsync(CancellationToken cancellationToken)
             => throw new NotSupportedException();
         public Task<ProcessorConnectionItem?> GetProcessorConnectionAsync(string id, CancellationToken cancellationToken)

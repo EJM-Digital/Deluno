@@ -16,7 +16,8 @@ public static class SeriesRemoval
             series.StartYear,
             series.ImdbId,
             (libraryId, cancellationToken) => FilesOf(series.Id, libraryId, repository, cancellationToken),
-            cancellationToken => repository.DeleteAsync(series.Id, cancellationToken));
+            cancellationToken => repository.DeleteAsync(series.Id, cancellationToken),
+            (scope, reason, cancellationToken) => repository.SettleImportRecoveryCasesAsync(scope, reason, cancellationToken));
 
     private static async IAsyncEnumerable<string> FilesOf(
         string seriesId,

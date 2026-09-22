@@ -472,56 +472,20 @@ public static class ExternalIntegrationEndpointRouteBuilderExtensions
                 });
             }
 
-            // What the processor was told, said plainly, because it decides what
-            // is left where. Unreachable is not a reason to keep waiting: the
-            // person has said to stop, and the record says the processor was not
-            // told. Busy is: a processor mid-run must not be interrupted, or the
-            // same file can be imported twice.
-            var connection = await repository.FindProcessorConnectionByNameAsync(handoff.ProcessorName, cancellationToken);
-            var told = connection is { IsEnabled: true }
-                ? await processorConnections.CancelHandoffAsync(connection, handoff.Id, cancellationToken)
-                : null;
-            if (told?.Answer == ProcessorAnswer.Busy)
-            {
-                return Results.Conflict(new
-                {
-                    message = $"{connection!.Name} has started work on {handoff.ReleaseName}, so Deluno will not interrupt it. {told.Message}".TrimEnd()
-                });
-            }
-
-            var processorName = connection?.Name ?? handoff.ProcessorName ?? "the processor";
-            var summary = told?.Answer == ProcessorAnswer.Answered
-                ? $"You stopped waiting for {processorName}, and it was asked to drop {handoff.ReleaseName}."
-                : $"You stopped waiting for {processorName}. It could not be told, so it may still have {handoff.ReleaseName}.";
-
-            var ended = await repository.UpdateProcessorHandoffAsync(
-                handoff.Id,
-                ProcessorHandoffStatuses.Cancelled,
-                null,
-                null,
-                summary,
+            // What the processor was told is decided in one place, because
+            // removing a title stops these waits too (#563) and the two must not
+            // drift apart.
+            var stopped = await ProcessorHandoffCancellation.StopWaitingAsync(
+                repository,
+                processorConnections,
+                activityFeed,
+                handoff,
+                processorName => $"You stopped waiting for {processorName}",
                 cancellationToken);
-            if (ended is null) return Results.NotFound();
+            if (stopped.Busy) return Results.Conflict(new { message = stopped.Message });
+            if (stopped.Ended is null) return Results.NotFound();
 
-            await activityFeed.RecordActivityAsync(
-                "processing.cancelled",
-                summary,
-                JsonSerializer.Serialize(new
-                {
-                    HandoffId = handoff.Id,
-                    handoff.LibraryId,
-                    handoff.ReleaseName,
-                    handoff.SourcePath,
-                    PreviousStatus = handoff.Status,
-                    ProcessorTold = told?.Answer.ToString() ?? "no connection",
-                    ProcessorSaid = told?.Message
-                }),
-                null,
-                "processor-handoff",
-                handoff.Id,
-                cancellationToken);
-
-            return Results.Ok(new { message = summary, handoff = ended });
+            return Results.Ok(new { message = stopped.Message, handoff = stopped.Ended });
         });
 
         // A hand-off that ended badly stays on Transfers as something needing a
@@ -543,7 +507,7 @@ public static class ExternalIntegrationEndpointRouteBuilderExtensions
 
             var handoff = await repository.GetProcessorHandoffAsync(id, cancellationToken);
             if (handoff is null) return Results.NotFound();
-            if (!ProcessorHandoffStatuses.CanDismiss(handoff.Status))
+            if (!ProcessorHandoffStatuses.CanDismiss(handoff.Status, handoff.FailureMessage))
             {
                 return Results.Conflict(new
                 {
