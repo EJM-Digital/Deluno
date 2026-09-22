@@ -34,8 +34,11 @@ public static class DownloadCleanupPreviewBuilder
         var queueReplacement = settings?.CleanupQueueReplacementAfterThreshold == true;
         var removeClientEntry = settings?.CleanupRemoveClientEntryAfterThreshold == true;
         var purgePayload = settings?.CleanupPurgePayloadAfterThreshold == true;
-        var finding = item.HealthFindings?.FirstOrDefault();
-        var thresholdReached = finding is not null && finding.StrikeCount >= strikeThreshold;
+        // The policy acts on a download that has stopped (#560); a finding that
+        // is not a strike is still the one to explain when there is nothing else.
+        var struck = item.HealthFindings?.FirstOrDefault(candidate => DownloadHealthStrikes.Counts(candidate.Kind));
+        var finding = struck ?? item.HealthFindings?.FirstOrDefault();
+        var thresholdReached = struck is not null && struck.StrikeCount >= strikeThreshold;
         var configuredActions = new List<string>();
         if (blockRelease) configuredActions.Add("block the exact release");
         if (queueReplacement) configuredActions.Add("queue one bounded replacement search");

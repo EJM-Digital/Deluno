@@ -13,15 +13,19 @@ public sealed class SqliteDownloadHealthRepository(
     TimeProvider timeProvider)
     : IDownloadHealthRepository
 {
-    private const string DownloadHealthRecordsSettingKey = "download-health.records.v1";
-    private static readonly TimeSpan DownloadHealthStrikeWindow = TimeSpan.FromMinutes(30);
+    // v2 since #560. Records written under the first strike rule counted
+    // sightings rather than time, so their strikes and start times cannot be
+    // trusted; V0066 removes the v1 key rather than carry them forward.
+    private const string DownloadHealthRecordsSettingKey = "download-health.records.v2";
     private static readonly TimeSpan DownloadHealthRetention = TimeSpan.FromDays(90);
 
     public async Task<IReadOnlyList<DownloadHealthRecord>> RecordDownloadHealthObservationsAsync(
+        string clientId,
+        IReadOnlyCollection<string> listedQueueItemIds,
         IReadOnlyList<DownloadHealthObservation> observations,
         CancellationToken cancellationToken)
     {
-        if (observations.Count == 0)
+        if (string.IsNullOrWhiteSpace(clientId) || (observations.Count == 0 && listedQueueItemIds.Count == 0))
         {
             return [];
         }
@@ -33,9 +37,20 @@ public sealed class SqliteDownloadHealthRepository(
         var records = ReadDownloadHealthRecords(settings).Where(record => now - record.LastObservedUtc <= DownloadHealthRetention).ToList();
         var touched = new List<DownloadHealthRecord>();
 
+        // Listed now without a finding it had: that problem is over.
+        var listed = listedQueueItemIds.ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var stillSeen = observations
+            .Select(observation => $"{observation.QueueItemId}{observation.Kind}")
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var ended = records.RemoveAll(record =>
+            string.Equals(record.ClientId, clientId, StringComparison.OrdinalIgnoreCase) &&
+            listed.Contains(record.QueueItemId) &&
+            !stillSeen.Contains($"{record.QueueItemId}{record.Kind}"));
+
         foreach (var observation in observations)
         {
-            if (string.IsNullOrWhiteSpace(observation.ClientId) || string.IsNullOrWhiteSpace(observation.QueueItemId) ||
+            if (!string.Equals(observation.ClientId, clientId, StringComparison.OrdinalIgnoreCase) ||
+                string.IsNullOrWhiteSpace(observation.QueueItemId) ||
                 string.IsNullOrWhiteSpace(observation.ReleaseName) || string.IsNullOrWhiteSpace(observation.Kind))
             {
                 continue;
@@ -47,14 +62,25 @@ public sealed class SqliteDownloadHealthRepository(
                 string.Equals(record.QueueItemId, observation.QueueItemId, StringComparison.OrdinalIgnoreCase) &&
                 string.Equals(record.Kind, observation.Kind, StringComparison.OrdinalIgnoreCase));
             var record = index >= 0 ? records[index] : null;
-            var strikes = record is null ? 1 : record.LastObservedUtc <= now - DownloadHealthStrikeWindow ? record.StrikeCount + 1 : record.StrikeCount;
+
+            // Seen again after a gap longer than a strike, Deluno was not
+            // watching in between and cannot say the problem lasted, so the
+            // spell starts again. That gap is also what separates two downloads
+            // of the same torrent: its infohash is the queue item id.
+            var continuing = record is not null && now - record.LastObservedUtc <= DownloadHealthStrikes.Window;
+            var since = continuing ? record!.FirstObservedUtc : now;
             var updated = new DownloadHealthRecord(
                 observation.ClientId.Trim(), observation.QueueItemId.Trim(), observation.ReleaseName.Trim(), releaseKey,
                 observation.Kind.Trim(), observation.Severity.Trim(), SanitizeDownloadHealthEvidence(observation.Evidence),
-                record?.FirstObservedUtc ?? now, now, strikes, record?.IgnoredUntilUtc);
+                since, now, DownloadHealthStrikes.For(since, now), record?.IgnoredUntilUtc);
 
             if (index >= 0) records[index] = updated; else records.Add(updated);
             touched.Add(updated);
+        }
+
+        if (touched.Count == 0 && ended == 0)
+        {
+            return [];
         }
 
         await UpsertSettingAsync(connection, transaction, DownloadHealthRecordsSettingKey, JsonSerializer.Serialize(records), now, cancellationToken);
@@ -107,26 +133,6 @@ public sealed class SqliteDownloadHealthRepository(
         return Page<DownloadHealthRecord>.Of(records, nextPageToken);
     }
 
-    public async Task<bool> IsDownloadReleaseBlockedAsync(string clientId, string releaseName, CancellationToken cancellationToken)
-    {
-        if (string.IsNullOrWhiteSpace(clientId) || string.IsNullOrWhiteSpace(releaseName)) return false;
-
-        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(DelunoDatabaseNames.Platform, cancellationToken);
-        var settings = await ReadSettingsAsync(connection, cancellationToken);
-        var records = ReadDownloadHealthRecords(settings);
-        var releaseKey = NormalizeDownloadReleaseKey(releaseName);
-        var now = timeProvider.GetUtcNow();
-        var threshold = ReadDownloadHealthStrikeThreshold(settings);
-        if (string.Equals(GetValue(settings, "cleanup.blockReleaseAfterThreshold"), "false", StringComparison.OrdinalIgnoreCase))
-        {
-            return false;
-        }
-        return records.Any(record =>
-            string.Equals(record.ClientId, clientId, StringComparison.OrdinalIgnoreCase) &&
-            string.Equals(record.ReleaseKey, releaseKey, StringComparison.Ordinal) &&
-            record.BlocksCandidate(now, threshold));
-    }
-
     public async Task<DownloadHealthRecord?> IgnoreDownloadHealthFindingAsync(
         string clientId,
         string queueItemId,
@@ -151,11 +157,6 @@ public sealed class SqliteDownloadHealthRepository(
         await transaction.CommitAsync(cancellationToken);
         return updated;
     }
-
-    private static int ReadDownloadHealthStrikeThreshold(IReadOnlyDictionary<string, string> settings)
-        => int.TryParse(GetValue(settings, "cleanup.strikeThreshold"), NumberStyles.Integer, CultureInfo.InvariantCulture, out var threshold)
-            ? Math.Clamp(threshold, 1, 20)
-            : 3;
 
     private static async Task<IReadOnlyDictionary<string, string>> ReadSettingsAsync(
         System.Data.Common.DbConnection connection,

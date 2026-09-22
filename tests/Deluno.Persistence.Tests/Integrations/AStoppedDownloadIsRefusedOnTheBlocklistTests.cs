@@ -1,0 +1,173 @@
+using Deluno.Connections.Contracts;
+using Deluno.Connections.Data;
+using Deluno.Contracts;
+using Deluno.Infrastructure.Storage.Migrations;
+using Deluno.Integrations.DownloadClients;
+using Deluno.Integrations.DownloadClients.Clients;
+using Deluno.Jobs.Data;
+using Deluno.Libraries.Contracts;
+using Deluno.Libraries.Data;
+using Deluno.Persistence.Tests.Support;
+using Deluno.Platform.Contracts;
+using Deluno.Platform.Data;
+using Deluno.Recovery.Policies;
+using Microsoft.Extensions.Logging.Abstractions;
+
+namespace Deluno.Persistence.Tests.Integrations;
+
+/// <summary>
+/// #560: "Block this release: Do not select the same failed release again".
+///
+/// <para>The strike policy used to keep its own list, checked only when a grab
+/// was sent. The search did not know about it, so it kept choosing the blocked
+/// release, and no screen showed the block or could lift it. Now a download
+/// that stopped long enough is refused on the one blocklist: searches skip it,
+/// the title page counts it, and the blocklist screen lifts it.</para>
+/// </summary>
+public sealed class AStoppedDownloadIsRefusedOnTheBlocklistTests
+{
+    private const string Release = "Arrival.2016.1080p.WEB";
+
+    [Fact]
+    public async Task A_download_stopped_past_the_threshold_is_refused_where_searches_and_people_see_it()
+    {
+        using var world = await World.CreateAsync();
+
+        var report = await world.RemediateAsync(DownloadHealthStrikes.ClientStalled, strikes: 3);
+
+        Assert.Equal(1, report.ReleasesRefused);
+        var refused = Assert.Single(await world.Blocklist.ListAsync(CancellationToken.None));
+        Assert.Equal(ImportFailurePolicy.DownloadStalled, refused.ReasonCode);
+        Assert.Equal(BlockedReleaseStates.Refused, refused.State);
+        Assert.Equal("movie-arrival", refused.EntityId);
+        Assert.Equal("External qBittorrent showed it stalled or in error for an hour, so Deluno stopped waiting for it and will not pick it again.", refused.Reason);
+        Assert.Contains(BlockedReleaseKeys.For(Release, "Fixture"), await world.Blocklist.ListKeysAsync(CancellationToken.None));
+        // Nothing was imported, so nothing says the copy is junk: it stays in the client.
+        Assert.Empty(await world.Blocklist.ListAwaitingCleanupAsync(CancellationToken.None));
+        Assert.Equal(1, report.ReplacementSearchesQueued);
+    }
+
+    [Fact]
+    public async Task A_release_is_refused_once_however_often_the_pass_runs()
+    {
+        using var world = await World.CreateAsync();
+
+        await world.RemediateAsync(DownloadHealthStrikes.ClientStalled, strikes: 3);
+        var again = await world.RemediateAsync(DownloadHealthStrikes.ClientStalled, strikes: 4);
+
+        Assert.Equal(0, again.ReleasesRefused);
+        Assert.Single(await world.Blocklist.ListAsync(CancellationToken.None));
+        Assert.Single(await world.Jobs.ListAsync(10, CancellationToken.None));
+    }
+
+    [Theory]
+    [InlineData("import-failed")]
+    [InlineData("post-processing-failed")]
+    [InlineData("excessive-eta")]
+    public async Task A_finding_that_is_not_a_stopped_download_refuses_nothing(string kind)
+    {
+        using var world = await World.CreateAsync();
+
+        var report = await world.RemediateAsync(kind, strikes: 5);
+
+        Assert.Equal(0, report.Evaluated);
+        Assert.Empty(await world.Blocklist.ListAsync(CancellationToken.None));
+        Assert.Empty(await world.Jobs.ListAsync(10, CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task Below_the_threshold_it_is_still_waited_for()
+    {
+        using var world = await World.CreateAsync();
+
+        var report = await world.RemediateAsync(DownloadHealthStrikes.NoThroughput, strikes: 2);
+
+        Assert.Equal(0, report.Evaluated);
+        Assert.Empty(await world.Blocklist.ListAsync(CancellationToken.None));
+    }
+
+    [Theory]
+    [InlineData(DownloadHealthStrikes.ClientStalled, 1, "qBittorrent showed it stalled or in error, so Deluno")]
+    [InlineData(DownloadHealthStrikes.ClientStalled, 2, "qBittorrent showed it stalled or in error for 30 minutes, so Deluno")]
+    [InlineData(DownloadHealthStrikes.ClientStalled, 3, "qBittorrent showed it stalled or in error for an hour, so Deluno")]
+    [InlineData(DownloadHealthStrikes.ClientStalled, 5, "qBittorrent showed it stalled or in error for 2 hours, so Deluno")]
+    // "Nothing arriving" is a finding only after half an hour of it.
+    [InlineData(DownloadHealthStrikes.NoThroughput, 3, "Nothing arrived in qBittorrent for 1.5 hours, so Deluno")]
+    public void The_reason_says_how_long_it_went_on(string kind, int strikes, string says)
+        => Assert.StartsWith(says, DownloadClientTelemetryService.StalledReason(Finding(kind, strikes), "qBittorrent"), StringComparison.Ordinal);
+
+    [Theory]
+    [InlineData(8_640_000L, 0)]
+    [InlineData(9_000_000L, 0)]
+    [InlineData(null, 0)]
+    [InlineData(-1L, 0)]
+    [InlineData(3_600L, 3_600)]
+    public void qBittorrent_saying_it_has_no_estimate_is_an_unknown_estimate(long? eta, int seconds)
+        => Assert.Equal(seconds, QbittorrentDownloadClient.EtaSeconds(eta));
+
+    private static DownloadHealthFinding Finding(string kind, int strikes)
+        => new("critical", kind, "Stopped", "Queue status: stalled.", "Review", false, false, StrikeCount: strikes);
+
+    private sealed class World : IDisposable
+    {
+        private readonly TestStorage _storage;
+        private readonly FixedTimeProvider _time;
+        private readonly DownloadClientTelemetryService _service;
+        private readonly DownloadClientItem _client;
+
+        private World(TestStorage storage, FixedTimeProvider time, DownloadClientTelemetryService service, DownloadClientItem client, SqliteJobStore jobs, SqliteBlockedReleaseRepository blocklist)
+        {
+            _storage = storage;
+            _time = time;
+            _service = service;
+            _client = client;
+            Jobs = jobs;
+            Blocklist = blocklist;
+        }
+
+        public SqliteJobStore Jobs { get; }
+
+        public SqliteBlockedReleaseRepository Blocklist { get; }
+
+        public static async Task<World> CreateAsync()
+        {
+            var storage = TestStorage.Create();
+            var time = new FixedTimeProvider(DateTimeOffset.Parse("2026-09-22T10:00:00Z"));
+            var migrator = new SqliteDatabaseMigrator(storage.Factory, time);
+            await new PlatformSchemaInitializer(storage.Factory, migrator, NullLogger<PlatformSchemaInitializer>.Instance).StartAsync(CancellationToken.None);
+            await new JobsSchemaInitializer(storage.Factory, migrator, NullLogger<JobsSchemaInitializer>.Instance).StartAsync(CancellationToken.None);
+            var settings = new SqlitePlatformSettingsRepository(storage.Factory, time, TestSecretProtection.Create(storage));
+            var connections = new SqliteConnectionsRepository(storage.Factory, time, TestSecretProtection.Create(storage));
+            var libraries = new SqliteLibrariesRepository(storage.Factory, time);
+            var library = await libraries.CreateLibraryAsync(new CreateLibraryRequest(
+                "Movies", "movies", "library", Path.Combine(storage.DataRoot, "movies"), Path.Combine(storage.DataRoot, "downloads"), null,
+                "direct-import", null, null, null, null, true, true, true, 12, 24, 25), CancellationToken.None);
+            var client = await connections.CreateDownloadClientAsync(new CreateDownloadClientRequest(
+                "External qBittorrent", "qbittorrent", "localhost", 8080, null, null, null, "deluno-movies", "deluno-tv", null, 1, true), CancellationToken.None);
+            var dispatches = new SqliteDownloadDispatchesRepository(storage.Factory, time);
+            var jobs = new SqliteJobStore(storage.Factory, time, new NullRealtimeEventPublisher(), dispatches);
+            var dispatchId = await jobs.RecordDownloadDispatchAsync(
+                library.Id, "movies", "movie", "movie-arrival", Release, "Fixture", client.Id, client.Name, "sent", null,
+                cancellationToken: CancellationToken.None);
+            await dispatches.RecordDetectionAsync(dispatchId, "queue-arrival", 1024, completed: false, CancellationToken.None);
+            var blocklist = new SqliteBlockedReleaseRepository(storage.Factory, time);
+            var service = new DownloadClientTelemetryService(
+                settings, new SqliteDownloadHealthRepository(storage.Factory, time), libraries, connections, null!, null!, time, null!,
+                jobs, dispatches, jobs, new DownloadHealthEvaluator(), null!, blocklist);
+            return new World(storage, time, service, client, jobs, blocklist);
+        }
+
+        public Task<DownloadHealthRemediationReport> RemediateAsync(string kind, int strikes)
+        {
+            var item = new DownloadQueueItem("queue-arrival", _client.Id, _client.Name, _client.Protocol, "movies", "Arrival", Release,
+                "deluno-movies", DownloadQueueStatuses.Stalled, 15, 0, 0, 1024, 128, 0, "Fixture", null, _time.GetUtcNow(), HealthFindings: [Finding(kind, strikes)]);
+            var snapshot = new DownloadClientTelemetrySnapshot(_client.Id, _client.Name, _client.Protocol, null, "healthy", null,
+                new DownloadClientTelemetryCapabilities(true, true, true, true, true, true, "none"),
+                new DownloadTelemetrySummary(0, 0, 0, 1, 0, 0, 0), [item], [], _time.GetUtcNow());
+            return _service.RunConfiguredHealthRemediationAsync(
+                new DownloadTelemetryOverview(snapshot.Summary, [snapshot], _time.GetUtcNow()), CancellationToken.None);
+        }
+
+        public void Dispose() => _storage.Dispose();
+    }
+}

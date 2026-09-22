@@ -218,4 +218,5 @@ public sealed record DownloadHealthRemediationReport(
     int ClientEntriesRemoved,
     int PayloadsPurged,
     int Skipped,
-    IReadOnlyList<string> Notes);
+    IReadOnlyList<string> Notes,
+    int ReleasesRefused = 0);

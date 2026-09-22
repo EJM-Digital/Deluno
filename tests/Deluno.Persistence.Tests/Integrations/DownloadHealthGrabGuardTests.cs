@@ -41,36 +41,6 @@ public sealed class DownloadHealthGrabGuardTests
     }
 
     [Fact]
-    public async Task Repeatedly_unhealthy_exact_release_is_refused_before_a_client_grab()
-    {
-        using var storage = TestStorage.Create();
-        var time = new FixedTimeProvider(DateTimeOffset.Parse("2026-08-13T00:00:00Z"));
-        await new PlatformSchemaInitializer(storage.Factory, new SqliteDatabaseMigrator(storage.Factory, time), NullLogger<PlatformSchemaInitializer>.Instance).StartAsync(CancellationToken.None);
-        var healthRepository = new SqliteDownloadHealthRepository(storage.Factory, time);
-        var connectionsRepository = new SqliteConnectionsRepository(storage.Factory, time, TestSecretProtection.Create(storage));
-        var client = await connectionsRepository.CreateDownloadClientAsync(new CreateDownloadClientRequest(
-            "External qBittorrent", "qbittorrent", "localhost", 8080, null, null, "C:\\Downloads", "movies", "tv", null, 1, true), CancellationToken.None);
-        var observation = new DownloadHealthObservation(client.Id, "queue-1", "Example.Movie.2026.1080p", "client-stalled", "critical", "Client failure.");
-
-        await healthRepository.RecordDownloadHealthObservationsAsync([observation], CancellationToken.None);
-        time = new FixedTimeProvider(DateTimeOffset.Parse("2026-08-13T00:31:00Z"));
-        healthRepository = new SqliteDownloadHealthRepository(storage.Factory, time);
-        await healthRepository.RecordDownloadHealthObservationsAsync([observation], CancellationToken.None);
-        time = new FixedTimeProvider(DateTimeOffset.Parse("2026-08-13T01:02:00Z"));
-        healthRepository = new SqliteDownloadHealthRepository(storage.Factory, time);
-        await healthRepository.RecordDownloadHealthObservationsAsync([observation], CancellationToken.None);
-
-        var service = new DownloadClientGrabService(
-            healthRepository, connectionsRepository, null!, null!, null!, null!, null!, null!, time, new RetryPolicyCatalog());
-        var result = await service.GrabAsync(client.Id, new DownloadClientGrabRequest(
-            "Example Movie 2026 1080p", "https://fixture.invalid/release", "movies", "movies", "Fixture source"), CancellationToken.None);
-
-        Assert.False(result.Succeeded);
-        Assert.Equal("blocked", result.Status);
-        Assert.Contains("repeatedly failed", result.Message, StringComparison.OrdinalIgnoreCase);
-    }
-
-    [Fact]
     public async Task Health_policy_queues_one_exact_replacement_for_a_proven_dispatch()
     {
         using var storage = TestStorage.Create();
@@ -121,12 +91,11 @@ public sealed class DownloadHealthGrabGuardTests
         using var storage = TestStorage.Create();
         var time = new FixedTimeProvider(DateTimeOffset.Parse("2026-08-14T00:00:00Z"));
         await new PlatformSchemaInitializer(storage.Factory, new SqliteDatabaseMigrator(storage.Factory, time), NullLogger<PlatformSchemaInitializer>.Instance).StartAsync(CancellationToken.None);
-        var healthRepository = new SqliteDownloadHealthRepository(storage.Factory, time);
         var connectionsRepository = new SqliteConnectionsRepository(storage.Factory, time, TestSecretProtection.Create(storage));
         var client = await connectionsRepository.CreateDownloadClientAsync(new CreateDownloadClientRequest(
             "Untested qBittorrent", "qbittorrent", "localhost", 8080, null, null, null, "movies", "tv", null, 1, true), CancellationToken.None);
         var service = new DownloadClientGrabService(
-            healthRepository, connectionsRepository, null!, null!, null!, null!, null!, null!, time, new RetryPolicyCatalog());
+            connectionsRepository, null!, null!, null!, null!, null!, null!, time, new RetryPolicyCatalog());
 
         var result = await service.GrabAsync(client.Id, new DownloadClientGrabRequest(
             "Example Movie 2026 1080p", "https://fixture.invalid/release", "movies", "movies", "Fixture source"), CancellationToken.None);

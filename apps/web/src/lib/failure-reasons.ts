@@ -39,7 +39,8 @@ const REASON_WORDS: Record<string, string> = {
   samePath: "It was already where it belongs",
   conflict: "Something else is already using that name",
   replacementOwnershipMismatch: "That file belongs to a different title",
-  processorRejected: "The processor could not use it and removed it"
+  processorRejected: "The processor could not use it and removed it",
+  downloadStalled: "It stopped downloading and never recovered"
 };
 
 export function reasonWords(reasonCode: string): string {

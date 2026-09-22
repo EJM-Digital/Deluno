@@ -110,6 +110,18 @@ public static class ImportFailurePolicy
     /// </summary>
     public const string ProcessorRejected = "processorRejected";
 
+    /// <summary>
+    /// The download stopped: stalled, in error, or nothing arriving, for long
+    /// enough to reach the strike threshold (#560).
+    ///
+    /// <para>Not in <see cref="KnownReasons"/> for the same reason as
+    /// <see cref="ProcessorRejected"/>: the person answered it already, with
+    /// "Block this release" under Failed downloads. Nothing was imported, so
+    /// Deluno cannot say whether the swarm, the tracker or the client was at
+    /// fault, and the copy is left in the client.</para>
+    /// </summary>
+    public const string DownloadStalled = "downloadStalled";
+
     /// <summary>Every reason this table has an answer for.</summary>
     public static readonly IReadOnlyList<string> KnownReasons =
     [
@@ -177,7 +189,7 @@ public static class ImportFailurePolicy
     {
         NoVideoStream or LikelySample or UnsupportedFile or MediaProbeRejected or ProcessorRejected => FailureCategories.BadFile,
         ReplacementRejected => FailureCategories.NotAFailure,
-        Unmatched or ImportFailed or MediaProbeUnreadable => FailureCategories.CannotSay,
+        Unmatched or ImportFailed or MediaProbeUnreadable or DownloadStalled => FailureCategories.CannotSay,
         _ => FailureCategories.YourSetup
     };
 

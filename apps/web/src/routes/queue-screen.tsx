@@ -1281,7 +1281,7 @@ function pipelineDetail(item: DownloadQueueItem) {
 
 function attentionReason(item: DownloadQueueItem) {
   const blocked = item.healthFindings?.find((finding) => finding.candidateBlocked);
-  if (blocked) return "Release blocked after repeated health failures";
+  if (blocked) return "Release refused: it stopped downloading";
   return item.failure?.summary ?? item.errorMessage ?? item.healthFindings?.[0]?.summary ?? "This download has stalled.";
 }
 

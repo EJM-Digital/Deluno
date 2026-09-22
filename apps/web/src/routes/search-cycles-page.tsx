@@ -536,7 +536,7 @@ export function SearchCyclesPage() {
 
       {view === "failed" ? <ListCard title="Failed downloads" count={`After ${cleanup.strikeThreshold || 3} strikes on the same release`}>
         <div className="grid gap-[var(--grid-gap)] p-[var(--card-pad-x)]">
-          <Field label="Act after this many strikes" help="A strike is one failed health check on the same release." className="max-w-[16rem]">
+          <Field label="Act after this many strikes" help="A strike is each half hour a download stays stalled or has nothing arriving. It starts again once the download moves." className="max-w-[16rem]">
             <PresetField
               inputType="number"
               value={cleanup.strikeThreshold}
@@ -551,7 +551,7 @@ export function SearchCyclesPage() {
             />
           </Field>
           <div className="grid gap-[var(--grid-gap)] sm:grid-cols-2">
-            <SwitchRow label="Block this release" description="Do not select the same failed release again." checked={cleanup.blockRelease} onCheckedChange={(checked) => setCleanup((current) => ({ ...current, blockRelease: checked }))} />
+            <SwitchRow label="Block this release" description="Refuse it on the blocklist, so searches pick another release. It can be lifted there." checked={cleanup.blockRelease} onCheckedChange={(checked) => setCleanup((current) => ({ ...current, blockRelease: checked }))} />
             <SwitchRow label="Search for a replacement" description="Queue one bounded replacement search using the normal budget." checked={cleanup.queueReplacement} onCheckedChange={(checked) => setCleanup((current) => ({ ...current, queueReplacement: checked }))} className="sm:border-l sm:border-hairline sm:pl-[var(--grid-gap)]" />
             <SwitchRow label="Remove the client entry" description="Remove the failed item from its download client when the client supports it." checked={cleanup.removeClientEntry} onCheckedChange={(checked) => setCleanup((current) => ({ ...current, removeClientEntry: checked }))} />
             <SwitchRow label="Purge residual files" description="Delete the failed payload, only inside paths Deluno can prove it owns." checked={cleanup.purgePayload} onCheckedChange={(checked) => setCleanup((current) => ({ ...current, purgePayload: checked }))} className="sm:border-l sm:border-hairline sm:pl-[var(--grid-gap)]" />

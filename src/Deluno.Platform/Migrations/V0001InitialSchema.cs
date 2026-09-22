@@ -70,7 +70,8 @@ public static class PlatformDatabaseMigrations
         new V0062RetentionLeavingSoon(),
         new V0063RetentionCollections(),
         new V0064SeerrServers(),
-        new V0065CompanionToolWeir()
+        new V0065CompanionToolWeir(),
+        new V0066DownloadHealthStrikesV2()
     ];
 
     private sealed class V0001InitialSchema : SqliteSqlMigration

@@ -34,7 +34,7 @@ public sealed class DispatchLiveDownloadLookup(IDownloadDispatchesRepository dis
     /// Deliberately generous, for the reason above: bounding this too tightly
     /// causes duplicate grabs rather than a slow pass.
     /// </summary>
-    private const int Limit = 5_000;
+    public const int Limit = 5_000;
 
     public async Task<IReadOnlyList<string>> ListEntityIdsStillDownloadingAsync(CancellationToken cancellationToken)
         => [.. (await dispatches.ListDownloadsInFlightAsync(Limit, cancellationToken))
