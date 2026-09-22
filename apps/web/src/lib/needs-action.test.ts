@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { DownloadDispatchItem, MovieImportRecoverySummary, SeriesImportRecoverySummary } from "./api";
-import { needsAction } from "./needs-action";
+import { canTryAgain, needsAction } from "./needs-action";
 
 function dispatch(overrides: Partial<DownloadDispatchItem> & Pick<DownloadDispatchItem, "id">): DownloadDispatchItem {
   return {
@@ -96,5 +96,24 @@ describe("needsAction", () => {
 
     expect(result.total).toBe(rows);
     expect(result.total).toBe(3);
+  });
+});
+
+describe("canTryAgain", () => {
+  const named = JSON.stringify({ DispatchId: "dispatch-1" });
+
+  it("offers Try again for a failed download or import that names its download", () => {
+    expect(canTryAgain({ failureKind: "downloadFailed", detailsJson: named })).toBe(true);
+    expect(canTryAgain({ failureKind: "importFailed", detailsJson: named })).toBe(true);
+  });
+
+  // Seen on the rig: a processor failure names a hand-off, and Try again could only say "dismiss it".
+  it("does not offer it for a case that names no download", () => {
+    expect(canTryAgain({ failureKind: "importFailed", detailsJson: JSON.stringify({ HandoffId: "handoff-1" }) })).toBe(false);
+    expect(canTryAgain({ failureKind: "downloadFailed", detailsJson: null })).toBe(false);
+  });
+
+  it("does not offer it where a decision is needed", () => {
+    expect(canTryAgain({ failureKind: "quality", detailsJson: named })).toBe(false);
   });
 });
