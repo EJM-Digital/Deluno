@@ -102,6 +102,14 @@ public sealed class CompanionToolTests : IDisposable
         Assert.Equal(0, system.Elevated);
     }
 
+    /// <summary>#553: Deluno starting Weir never opens a browser window on the computer Deluno runs on.</summary>
+    [Fact]
+    public void Weir_is_started_without_opening_a_browser()
+    {
+        Assert.Equal("--port 9347 --no-browser", WeirCompanion.StartArguments(9347));
+        Assert.Equal("--no-browser", WeirCompanion.StartArguments(port: null));
+    }
+
     private CompanionRunContext Context() =>new("http://127.0.0.1:7879", _folder, new RecordingProgress());
 
     private static IConnectionsRepository NoClients()
