@@ -39,6 +39,24 @@ export const isJobFailed = (status: JobStatus): boolean =>
 export const isJobDeadLettered = (status: JobStatus): boolean =>
   status === JOB_STATUS.DEAD_LETTER;
 
+/**
+ * A job that failed an attempt and has another one coming is retrying, not
+ * failed: Deluno tries it again on its own, and nobody needs to do anything.
+ *
+ * <p>The backend writes "failed" for both, with the next attempt's time beside
+ * it. Every import of a processed file failed once, because its first attempt
+ * found the processor still finishing with the file, so Transfers, Activity and
+ * the sidebar each counted a failure for half a minute on an import that then
+ * succeeded (#562).</p>
+ */
+export const isJobRetrying = (job: {
+  status: string;
+  attempts: number;
+  maxAttempts: number;
+  nextAttemptUtc: string | null;
+}): boolean =>
+  job.status === JOB_STATUS.FAILED && job.nextAttemptUtc !== null && job.attempts < job.maxAttempts;
+
 // UI-friendly status labels
 export const getJobStatusLabel = (status: JobStatus): string => {
   const labels: Record<JobStatus, string> = {

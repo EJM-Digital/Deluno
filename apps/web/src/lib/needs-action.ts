@@ -8,6 +8,7 @@ import type {
   SeriesImportRecoverySummary
 } from "./api";
 import { downloadQueueStatuses } from "./download-telemetry";
+import { isJobRetrying } from "./job-status-constants";
 
 /**
  * What needs a person about downloads, defined once (#556, #557).
@@ -86,7 +87,9 @@ export function needsAction(sources: NeedsActionSources): NeedsAction {
     ...(sources.seriesRecovery?.recentCases ?? []).map((item) => ({ ...item, mediaType: "series" as const }))
   ];
   const queueAttention = (sources.telemetry?.clients ?? []).flatMap((client) => client.queue).filter(queueItemNeedsAttention);
-  const failedImportJobs = (sources.failedJobs ?? []).filter((job) => job.jobType === "filesystem.import.execute");
+  // A job with another attempt coming is retrying, not waiting on a person (#562).
+  const failedImportJobs = (sources.failedJobs ?? [])
+    .filter((job) => job.jobType === "filesystem.import.execute" && !isJobRetrying(job));
   const failedHandoffs = (sources.handoffs ?? []).filter(handoffNeedsPerson);
 
   // A download a recovery case is about is shown once, as that case, which is

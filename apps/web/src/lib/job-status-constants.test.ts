@@ -6,6 +6,7 @@ import {
   isJobDeadLettered,
   isJobDone,
   isJobFailed,
+  isJobRetrying,
   isJobSuccessful
 } from "./job-status-constants";
 
@@ -36,5 +37,27 @@ describe("job status", () => {
     expect(isJobActive(JOB_STATUS.QUEUED)).toBe(true);
     expect(isJobActive(JOB_STATUS.RUNNING)).toBe(true);
     expect(isJobFailed(JOB_STATUS.COMPLETED)).toBe(false);
+  });
+});
+
+describe("a job that will try again", () => {
+  const attempt = { status: JOB_STATUS.FAILED, attempts: 1, maxAttempts: 3, nextAttemptUtc: "2026-09-22T10:14:20Z" };
+
+  // Every import of a processed file failed once, because its first attempt found
+  // the processor still finishing with the file. Counting that as a failure put a
+  // red number on three screens for half a minute, on an import that succeeded (#562).
+  it("is retrying, not failed", () => {
+    expect(isJobRetrying(attempt)).toBe(true);
+  });
+
+  it("is failed once nothing more is scheduled", () => {
+    expect(isJobRetrying({ ...attempt, nextAttemptUtc: null })).toBe(false);
+    expect(isJobRetrying({ ...attempt, attempts: 3 })).toBe(false);
+    expect(isJobRetrying({ ...attempt, status: JOB_STATUS.DEAD_LETTER })).toBe(false);
+  });
+
+  it("says nothing about a job that has not failed", () => {
+    expect(isJobRetrying({ ...attempt, status: JOB_STATUS.RUNNING })).toBe(false);
+    expect(isJobRetrying({ ...attempt, status: JOB_STATUS.COMPLETED })).toBe(false);
   });
 });

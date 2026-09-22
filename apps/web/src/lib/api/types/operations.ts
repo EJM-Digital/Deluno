@@ -16,6 +16,13 @@ export interface JobQueueItem {
   lastError: string | null;
   relatedEntityType: string | null;
   relatedEntityId: string | null;
+  idempotencyKey: string | null;
+  dedupeKey: string | null;
+  // The retry facts the API has always sent and this type did not name, so the
+  // screens could not tell a job that will try again from one that stopped (#562).
+  maxAttempts: number;
+  lastAttemptUtc: string | null;
+  nextAttemptUtc: string | null;
 }
 
 export interface SystemTaskItem {

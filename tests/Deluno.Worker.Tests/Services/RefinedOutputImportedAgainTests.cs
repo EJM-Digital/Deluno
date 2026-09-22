@@ -70,6 +70,43 @@ public sealed class RefinedOutputImportedAgainTests : IDisposable
             Times.Never);
     }
 
+    /// <summary>
+    /// #562: the output is in the folder before the processor has let go of it.
+    /// Weir moves its file into place and then puts the original timestamps back,
+    /// so an import queued on the file alone failed its first attempt every time,
+    /// and read as failed until the retry.
+    /// </summary>
+    [Theory]
+    [InlineData(ProcessorHandoffStates.Queued)]
+    [InlineData(ProcessorHandoffStates.Scheduled)]
+    [InlineData(ProcessorHandoffStates.Working)]
+    public async Task An_output_is_left_alone_while_the_processor_says_it_is_still_on_it(string says)
+    {
+        var scheduler = Scheduler();
+
+        await Run(scheduler, completedImportBelongsTo: "dispatch-from-yesterday", processorSays: says);
+
+        scheduler.Verify(
+            instance => instance.EnqueueAsync(It.IsAny<EnqueueJobRequest>(), It.IsAny<CancellationToken>()),
+            Times.Never);
+    }
+
+    [Theory]
+    [InlineData(ProcessorHandoffStates.Completed)]
+    [InlineData(ProcessorHandoffStates.PassedThrough)]
+    public async Task An_output_is_imported_once_the_processor_has_finished_with_it(string says)
+    {
+        var scheduler = Scheduler();
+
+        await Run(scheduler, completedImportBelongsTo: "dispatch-from-yesterday", processorSays: says);
+
+        scheduler.Verify(
+            instance => instance.EnqueueAsync(
+                It.Is<EnqueueJobRequest>(request => request.JobType == "filesystem.import.execute"),
+                It.IsAny<CancellationToken>()),
+            Times.Once);
+    }
+
     public void Dispose()
     {
         if (Directory.Exists(_root))
@@ -80,7 +117,7 @@ public sealed class RefinedOutputImportedAgainTests : IDisposable
 
     // ------------------------------------------------------------------ helpers
 
-    private async Task Run(Mock<IJobScheduler> scheduler, string completedImportBelongsTo)
+    private async Task Run(Mock<IJobScheduler> scheduler, string completedImportBelongsTo, string? processorSays = null)
     {
         var outputRoot = Path.Combine(_root, "Refined", "Movies");
         var refinedFile = Path.Combine(outputRoot, ReleaseName, ReleaseName + ".mkv");
@@ -104,7 +141,7 @@ public sealed class RefinedOutputImportedAgainTests : IDisposable
         var processors = new Mock<IProcessorRepository>();
         processors.Setup(repository => repository.ListProcessorHandoffsAsync(
                 It.IsAny<string?>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync([Waiting()]);
+            .ReturnsAsync([Waiting(processorSays)]);
 
         var planner = new WorkPlanner(
             NullLogger<WorkPlanner>.Instance,
@@ -145,7 +182,7 @@ public sealed class RefinedOutputImportedAgainTests : IDisposable
         return scheduler;
     }
 
-    private ProcessorHandoffItem Waiting()
+    private ProcessorHandoffItem Waiting(string? processorSays = null)
         => new(
             Id: "handoff-1",
             LibraryId: "library-1",
@@ -155,12 +192,15 @@ public sealed class RefinedOutputImportedAgainTests : IDisposable
             ReleaseName: ReleaseName,
             SourcePath: Path.Combine(_root, "Downloads-Complete", "Movies", ReleaseName),
             ProcessorName: "Weir",
-            Status: "waiting",
+            Status: processorSays is null ? "waiting" : "submitted",
             OutputPath: null,
             ImportJobId: null,
             FailureMessage: null,
             CreatedUtc: DateTimeOffset.UnixEpoch,
-            UpdatedUtc: DateTimeOffset.UnixEpoch);
+            UpdatedUtc: DateTimeOffset.UnixEpoch,
+            Processor: processorSays is null
+                ? null
+                : new ProcessorHandoffObservation(processorSays, null, null, null, DateTimeOffset.UnixEpoch, DateTimeOffset.UnixEpoch, null, DateTimeOffset.UnixEpoch));
 
     private static JobQueueItem CompletedImportOf(string sourcePath, string dispatchId)
         => Job(
