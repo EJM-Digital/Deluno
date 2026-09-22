@@ -304,6 +304,7 @@ POST /api/movies/bulk/tags
 POST /api/movies/import-recovery
 POST /api/movies/import-recovery/{id}/dismiss
 POST /api/movies/import-recovery/{id}/resolve
+POST /api/movies/import-recovery/{id}/retry
 POST /api/movies/metadata/jobs
 POST /api/movies/{id}/automation/defer
 POST /api/movies/{id}/automation/skip-once
@@ -353,6 +354,7 @@ POST /api/series/bulk/tags
 POST /api/series/import-recovery
 POST /api/series/import-recovery/{id}/dismiss
 POST /api/series/import-recovery/{id}/resolve
+POST /api/series/import-recovery/{id}/retry
 POST /api/series/metadata/jobs
 POST /api/series/{id}/automation/defer
 POST /api/series/{id}/automation/skip-once

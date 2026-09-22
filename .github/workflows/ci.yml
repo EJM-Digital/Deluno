@@ -1,10 +1,15 @@
 name: CI
 
 on:
-  # Not on a push to main. Pull requests merge one at a time and up to date, so
-  # main receives exactly the tree its pull request run already tested, and
-  # running it again was a third of all the Actions minutes Deluno used
-  # (22 Sep 2026). "Run workflow" re-checks main by hand when that is wanted.
+  # Work lands on main directly (the owner, 22 Sep 2026: one person works on
+  # Deluno, so no feature branches), which makes each push to main the one
+  # run. Before, a change ran on its pull request and again on the merge to
+  # main, and the second run was a third of all the Actions minutes. A pull
+  # request, if one is ever opened, is still checked; "Run workflow" re-runs by
+  # hand.
+  push:
+    branches:
+      - main
   pull_request:
     branches:
       - main
@@ -14,10 +19,9 @@ permissions:
   contents: read
 
 concurrency:
-  # Use the PR number rather than the merge ref so successive pushes to the
-  # same PR always cancel the superseded run. A run started by hand is not.
+  # A newer push supersedes a run still going: its tree contains the older one.
   group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  cancel-in-progress: true
 
 jobs:
   agent-readiness:

@@ -1,12 +1,14 @@
 name: Docker image
 
 on:
-  pull_request:
+  # Every release tag builds the image and proves the upgrade, whatever
+  # changed: GitHub does not apply path filters to a tag push. A push to main
+  # pays for it only when it can change the image or the upgrade path. It ran
+  # on every pull request, about 7 minutes each, a tenth of all the Actions
+  # minutes Deluno used (22 Sep 2026).
+  push:
     branches: [main]
-    # Every release tag builds the image and proves the upgrade, whatever
-    # changed. A pull request pays for that only when it can change the image
-    # or the upgrade path: it ran on every pull request, about 7 minutes each,
-    # a tenth of all the Actions minutes Deluno used (22 Sep 2026).
+    tags: ["v*"]
     paths:
       - Dockerfile
       - .dockerignore
@@ -14,8 +16,15 @@ on:
       - scripts/test-docker-recovery.sh
       - .github/workflows/docker.yml
       - "src/**/Migrations/**"
-  push:
-    tags: ["v*"]
+  pull_request:
+    branches: [main]
+    paths:
+      - Dockerfile
+      - .dockerignore
+      - compose.yaml
+      - scripts/test-docker-recovery.sh
+      - .github/workflows/docker.yml
+      - "src/**/Migrations/**"
   workflow_dispatch:
 
 concurrency:
