@@ -10,9 +10,10 @@ This file is the small entry point for agent work. It is a map, not the full man
 - Use `rg` for search.
 - Use `apply_patch` for manual edits.
 - Stage explicit paths only.
-- Branch from current `main` with a purpose prefix (`fix/`, `lab/`, `docs/`),
-  never `codex/`. Delete the branch locally and on GitHub once its PR merges,
-  and confirm `git branch -r` shows nothing left behind.
+- Work on `main` itself: no feature branches and no pull requests. One person
+  works on Deluno (the owner, 22 September 2026), so commit to `main`, run the
+  gates, and push. A branch found lying around is a mistake: fold it into
+  `main` or delete it, locally and on GitHub.
 
 ## Source Of Truth
 
@@ -47,24 +48,21 @@ Run the smallest relevant checks while working. Before every push, run the CI ga
 npm run ci:check
 ```
 
-Before merging, also run the full test suite:
+Before every push, also run the full test suite:
 
 ```powershell
 dotnet test Deluno.slnx --configuration Release
 npm run test:web
 ```
 
-Changes reach `main` through a pull request. Wait for every required GitHub
-check to pass, then manually squash-merge; never use auto-merge. **Nothing on
-GitHub enforces this today.** The repository is private on a personal Free
-plan, where branch protection and rulesets are unavailable: the protection API
-answers "Upgrade to GitHub Pro or make this repository public". Collaborators on
-a personal private repository can only hold Write access, so any collaborator
-could push to `main` or push a `v*` tag, and a tag publishes a public container
-image and GitHub release. Hold the pull-request rule by discipline. This
-paragraph has now been wrong twice, once in each direction; check the
-protection API before trusting it. A local pre-push hook is available; enable
-it once with:
+Changes land on `main` directly, and each push runs CI once (`ci.yml`). Every
+run costs Actions minutes, so batch the work: push once, after the local gates
+and, for anything the rig can show, the rig proof. Nothing on GitHub guards
+`main`: the repository is private on a personal Free plan, where branch
+protection and rulesets are unavailable. Collaborators on a personal private
+repository can only hold Write access, so any collaborator could push to
+`main` or push a `v*` tag, and a tag publishes a public container image and
+GitHub release. A local pre-push hook is available; enable it once with:
 
 ```powershell
 git config core.hooksPath .githooks
