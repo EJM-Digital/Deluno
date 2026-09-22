@@ -440,6 +440,90 @@ public static class ExternalIntegrationEndpointRouteBuilderExtensions
             return Results.Accepted($"/api/integrations/processors/handoffs?libraryId={Uri.EscapeDataString(handoff.LibraryId)}", retried);
         });
 
+        // Waiting is the processor's to end, until a person says otherwise (#566).
+        //
+        // Deluno waits while a processor says it is queued, scheduled or working,
+        // however long that takes, and gives up only after the library's limit
+        // measured from the last change or from the processor answering again -
+        // so restarting the processor starts that wait over. On the rig four
+        // hand-offs sat at "queued" for two days for work Weir no longer had,
+        // and no screen could end one, because retry, import-original and
+        // dismiss are all offered only once a hand-off has ended.
+        integrations.MapPost("/processors/handoffs/{id}/stop-waiting", async (
+            string id,
+            HttpContext httpContext,
+            IProcessorRepository repository,
+            IProcessorConnectionService processorConnections,
+            IActivityFeedRepository activityFeed,
+            CancellationToken cancellationToken) =>
+        {
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
+            if (denied is not null) return denied;
+            var scopeDenied = UserAuthorization.RequireApiScope(httpContext, "imports");
+            if (scopeDenied is not null) return scopeDenied;
+
+            var handoff = await repository.GetProcessorHandoffAsync(id, cancellationToken);
+            if (handoff is null) return Results.NotFound();
+            if (!ProcessorHandoffStatuses.IsWithProcessor(handoff.Status))
+            {
+                return Results.Conflict(new
+                {
+                    message = "This hand-off has already ended, so there is nothing left to wait for."
+                });
+            }
+
+            // What the processor was told, said plainly, because it decides what
+            // is left where. Unreachable is not a reason to keep waiting: the
+            // person has said to stop, and the record says the processor was not
+            // told. Busy is: a processor mid-run must not be interrupted, or the
+            // same file can be imported twice.
+            var connection = await repository.FindProcessorConnectionByNameAsync(handoff.ProcessorName, cancellationToken);
+            var told = connection is { IsEnabled: true }
+                ? await processorConnections.CancelHandoffAsync(connection, handoff.Id, cancellationToken)
+                : null;
+            if (told?.Answer == ProcessorAnswer.Busy)
+            {
+                return Results.Conflict(new
+                {
+                    message = $"{connection!.Name} has started work on {handoff.ReleaseName}, so Deluno will not interrupt it. {told.Message}".TrimEnd()
+                });
+            }
+
+            var processorName = connection?.Name ?? handoff.ProcessorName ?? "the processor";
+            var summary = told?.Answer == ProcessorAnswer.Answered
+                ? $"You stopped waiting for {processorName}, and it was asked to drop {handoff.ReleaseName}."
+                : $"You stopped waiting for {processorName}. It could not be told, so it may still have {handoff.ReleaseName}.";
+
+            var ended = await repository.UpdateProcessorHandoffAsync(
+                handoff.Id,
+                ProcessorHandoffStatuses.Cancelled,
+                null,
+                null,
+                summary,
+                cancellationToken);
+            if (ended is null) return Results.NotFound();
+
+            await activityFeed.RecordActivityAsync(
+                "processing.cancelled",
+                summary,
+                JsonSerializer.Serialize(new
+                {
+                    HandoffId = handoff.Id,
+                    handoff.LibraryId,
+                    handoff.ReleaseName,
+                    handoff.SourcePath,
+                    PreviousStatus = handoff.Status,
+                    ProcessorTold = told?.Answer.ToString() ?? "no connection",
+                    ProcessorSaid = told?.Message
+                }),
+                null,
+                "processor-handoff",
+                handoff.Id,
+                cancellationToken);
+
+            return Results.Ok(new { message = summary, handoff = ended });
+        });
+
         // A hand-off that ended badly stays on Transfers as something needing a
         // person until they say otherwise. Retry and Import original both need
         // something still to exist - a connection, a library, a file - and on the

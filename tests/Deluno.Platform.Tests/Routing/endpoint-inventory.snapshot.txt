@@ -270,6 +270,7 @@ POST /api/integrations/processors/events
 POST /api/integrations/processors/handoffs/{id}/dismiss
 POST /api/integrations/processors/handoffs/{id}/import-original
 POST /api/integrations/processors/handoffs/{id}/retry
+POST /api/integrations/processors/handoffs/{id}/stop-waiting
 POST /api/intelligent-routing/recommend-release
 POST /api/jobs/retry-failed
 POST /api/jobs/{id}/dismiss

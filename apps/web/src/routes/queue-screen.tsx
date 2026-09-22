@@ -404,6 +404,20 @@ export function QueuePage() {
     );
   }
 
+  /**
+   * Stop waiting for a processor that is never going to finish this one (#566).
+   * The server asks it to drop the file and ends the hand-off, so it can then be
+   * dismissed or the original imported like any other ending.
+   */
+  async function stopWaiting(handoff: ProcessorHandoffItem) {
+    await run(`handoff:stop:${handoff.id}`, async () => {
+      const response = await authedFetch(`/api/integrations/processors/handoffs/${handoff.id}/stop-waiting`, { method: "POST" });
+      const body = (await response.json().catch(() => null)) as { message?: string } | null;
+      if (!response.ok) throw new Error(body?.message || "Deluno could not stop waiting for this hand-off.");
+      toast.success(body?.message ?? `Deluno stopped waiting for ${handoff.releaseName}.`);
+    });
+  }
+
   function manualRequest(): ImportPreviewRequest {
     return {
       sourcePath: manualImport.sourcePath.trim(),
@@ -1099,6 +1113,21 @@ export function QueuePage() {
               <Fact label="When" value={formatPreferenceDateTime(openActivity.whenUtc, preferences)} />
               <Fact label="Kind" value={activityKindLabel(openActivity.kind)} />
             </div>
+          </DrawerSection>
+        ) : null}
+        {/* Waiting is the processor's to end, until a person says otherwise (#566). */}
+        {openHandoff && isWithProcessor(openHandoff.status) ? (
+          <DrawerSection title="Still with the processor" aside={processorStageLabel(openHandoff.status)}>
+            <DrawerDanger
+              title={`Stop waiting for ${openHandoff.processorName ?? "the processor"}`}
+              description="Deluno asks it to drop this file and stops waiting. The download stays where it is, and this hand-off can then be dismissed or its original imported."
+              action={
+                <Button type="button" variant="outline" size="sm" onClick={() => void stopWaiting(openHandoff)} disabled={busyKey !== null}>
+                  {busyKey === `handoff:stop:${openHandoff.id}` ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
+                  Stop waiting
+                </Button>
+              }
+            />
           </DrawerSection>
         ) : null}
         {openHandoff && canImportOriginal(openHandoff.status) ? (
