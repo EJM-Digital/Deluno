@@ -41,6 +41,46 @@ public static class ImportFileReadiness
     /// </param>
     public static bool IsReady(string path) => IsReady(path, TimeProvider.System);
 
+    /// <summary>
+    /// How long an import waits for a file to settle before it gives the job
+    /// back to be tried again.
+    ///
+    /// <para>A processor hands its output over and then finishes with it: Weir
+    /// moves its file into place and puts the original's timestamps back
+    /// afterwards. The import started in that moment and failed a second later,
+    /// so every processed import failed its first attempt and read as failed
+    /// until the retry (#562). Seconds of waiting are cheaper than an attempt,
+    /// and nothing else is waiting on this worker.</para>
+    /// </summary>
+    public static readonly TimeSpan SettleWindow = TimeSpan.FromSeconds(20);
+
+    /// <summary>
+    /// Waits, briefly, for a file that is nearly ready. Answers as soon as it is.
+    /// </summary>
+    public static async Task<bool> WaitUntilReadyAsync(
+        string path,
+        TimeSpan window,
+        CancellationToken cancellationToken,
+        TimeProvider? timeProvider = null)
+    {
+        var clock = timeProvider ?? TimeProvider.System;
+        var giveUpAt = clock.GetUtcNow() + window;
+        while (true)
+        {
+            if (IsReady(path, clock))
+            {
+                return true;
+            }
+
+            if (clock.GetUtcNow() >= giveUpAt)
+            {
+                return false;
+            }
+
+            await Task.Delay(TimeSpan.FromSeconds(1), clock, cancellationToken).ConfigureAwait(false);
+        }
+    }
+
     public static bool IsReady(string path, TimeProvider? timeProvider)
     {
         try
