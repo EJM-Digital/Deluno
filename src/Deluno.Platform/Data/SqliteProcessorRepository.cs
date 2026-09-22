@@ -313,12 +313,21 @@ public sealed class SqliteProcessorRepository(
                   -- hand-off a person had dismissed could never be processed
                   -- again: fetched a second time, it found that row, was not
                   -- handed over, and sat in the client (seen on the rig).
-                  AND status IN ('completed', 'failed', 'rejected', 'timed-out', 'stalled', 'lost', 'cancelled', 'released', 'dismissed')
+                  AND (status IN ('completed', 'failed', 'rejected', 'timed-out', 'stalled', 'lost', 'cancelled', 'released', 'dismissed')
+                    -- The processor said it finished this cycle, but nothing
+                    -- closed it, because its output had already been imported
+                    -- for an earlier download of the same release. That cycle
+                    -- is over for a new download even though its status is not.
+                    -- Left open, it claimed every later download into the
+                    -- folder, and none reached the processor (#561).
+                    OR processor_state IN (@finishedState, @passedThroughState))
                   AND (queue_item_id <> @queueItemId
                     OR (@downloadAddedUtc IS NOT NULL AND @downloadAddedUtc > updated_utc));
                 """;
             AddParameter(restart, "@downloadAddedUtc", request.DownloadAddedUtc is { } added && added > DateTimeOffset.UnixEpoch ? added.ToUniversalTime().ToString("O") : null);
             AddParameter(restart, "@newId", Guid.CreateVersion7().ToString("N"));
+            AddParameter(restart, "@finishedState", ProcessorHandoffStates.Completed);
+            AddParameter(restart, "@passedThroughState", ProcessorHandoffStates.PassedThrough);
             AddParameter(restart, "@libraryId", request.LibraryId.Trim());
             AddParameter(restart, "@sourceKey", sourceKey);
             AddParameter(restart, "@queueItemId", request.QueueItemId.Trim());

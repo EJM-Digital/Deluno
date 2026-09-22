@@ -246,6 +246,51 @@ public sealed class ProcessorHandoffPersistenceTests
         Assert.NotEqual(first.Id, fetchedAgain.Id);
     }
 
+    /// <summary>
+    /// #561, seen on the rig. Weir finished Pioneer One and said so, but its
+    /// output had already been imported for an earlier download, so nothing
+    /// closed the hand-off. The next download into the same folder was
+    /// attached to it and never reached Weir. Once the processor has finished
+    /// a cycle, a new download starts a new one, whatever the old status says.
+    /// The same download listed again is still the old cycle.
+    /// </summary>
+    [Theory]
+    [InlineData(ProcessorHandoffStates.Completed)]
+    [InlineData(ProcessorHandoffStates.PassedThrough)]
+    public async Task A_new_download_into_a_folder_the_processor_already_finished_gets_its_own_handoff(string finished)
+    {
+        using var storage = TestStorage.Create();
+        var clock = new FixedTimeProvider(DateTimeOffset.Parse("2026-09-22T09:00:00Z"));
+        await new PlatformSchemaInitializer(
+            storage.Factory,
+            new SqliteDatabaseMigrator(storage.Factory, clock),
+            NullLogger<PlatformSchemaInitializer>.Instance).StartAsync(CancellationToken.None);
+        var repository = new SqliteProcessorRepository(storage.Factory, clock, TestSecretProtection.Create(storage));
+        var request = new CreateProcessorHandoffRequest(
+            "library-tv", "tv", "sabnzbd", "nzo-1", "Pioneer.One.S01E01.1080p", "/downloads/tv/Pioneer.One.S01E01.1080p", "Weir",
+            DateTimeOffset.Parse("2026-09-22T08:50:00Z"));
+
+        var first = await repository.EnsureProcessorHandoffAsync(request, CancellationToken.None);
+        await repository.UpdateProcessorHandoffAsync(first.Id, "submitted", null, null, null, CancellationToken.None);
+        clock.Advance(TimeSpan.FromMinutes(20));
+        await repository.RecordProcessorObservationAsync(
+            first.Id,
+            new ProcessorHandoffObservation(finished, "Finished processing this file.", null, null, clock.GetUtcNow(), clock.GetUtcNow(), null, clock.GetUtcNow()),
+            CancellationToken.None);
+
+        var sameDownload = await repository.EnsureProcessorHandoffAsync(request, CancellationToken.None);
+        Assert.Equal(first.Id, sameDownload.Id);
+        Assert.Equal("submitted", sameDownload.Status);
+
+        clock.Advance(TimeSpan.FromMinutes(30));
+        var newDownload = await repository.EnsureProcessorHandoffAsync(
+            request with { QueueItemId = "nzo-2", DownloadAddedUtc = clock.GetUtcNow() }, CancellationToken.None);
+        Assert.NotEqual(first.Id, newDownload.Id);
+        Assert.Equal("waiting", newDownload.Status);
+        Assert.Equal("nzo-2", newDownload.QueueItemId);
+        Assert.Null(newDownload.Processor);
+    }
+
     [Fact]
     public async Task What_the_processor_said_is_kept_and_does_not_count_as_a_change()
     {
