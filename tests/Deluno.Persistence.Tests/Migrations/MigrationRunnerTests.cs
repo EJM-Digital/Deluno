@@ -194,7 +194,7 @@ public sealed class MigrationRunnerTests
         Assert.Equal("notification_webhook_failure_details", await ReadScalarAsync<string>(platformConnection, "SELECT name FROM schema_migrations WHERE version = 46;"));
 
         await using var jobsConnection = await storage.Factory.OpenConnectionAsync(DelunoDatabaseNames.Jobs);
-        Assert.Equal(31, await ReadScalarAsync<int>(jobsConnection, "SELECT COUNT(*) FROM schema_migrations;"));
+        Assert.Equal(32, await ReadScalarAsync<int>(jobsConnection, "SELECT COUNT(*) FROM schema_migrations;"));
         Assert.Equal("initial_schema", await ReadScalarAsync<string>(jobsConnection, "SELECT name FROM schema_migrations WHERE version = 1;"));
         Assert.Equal("job_integrity", await ReadScalarAsync<string>(jobsConnection, "SELECT name FROM schema_migrations WHERE version = 2;"));
         Assert.Equal("download_outcome_tracking", await ReadScalarAsync<string>(jobsConnection, "SELECT name FROM schema_migrations WHERE version = 3;"));
@@ -229,6 +229,47 @@ public sealed class MigrationRunnerTests
         Assert.Equal("proposed_refusals", await ReadScalarAsync<string>(jobsConnection, "SELECT name FROM schema_migrations WHERE version = 29;"));
         Assert.Equal("schedule_interval_used", await ReadScalarAsync<string>(jobsConnection, "SELECT name FROM schema_migrations WHERE version = 30;"));
         Assert.Equal("dispatch_alert_resolution", await ReadScalarAsync<string>(jobsConnection, "SELECT name FROM schema_migrations WHERE version = 31;"));
+        Assert.Equal("dispatch_client_completed", await ReadScalarAsync<string>(jobsConnection, "SELECT name FROM schema_migrations WHERE version = 32;"));
+    }
+
+    /// <summary>
+    /// #554. Only the client's completion webhook ever wrote detected_utc, so on
+    /// a database from before V0032 each one is a completion and carries across.
+    /// </summary>
+    [Fact]
+    public async Task Existing_download_records_keep_their_detection_as_the_completion()
+    {
+        using var storage = TestStorage.Create();
+        var migrator = new SqliteDatabaseMigrator(
+            storage.Factory,
+            new FixedTimeProvider(DateTimeOffset.Parse("2026-09-22T00:00:00Z")));
+        await migrator.ApplyAsync(
+            DelunoDatabaseNames.Jobs,
+            Deluno.Jobs.Migrations.JobsDatabaseMigrations.All.Where(migration => migration.Version < 32).ToArray(),
+            CancellationToken.None);
+
+        await using (var before = await storage.Factory.OpenConnectionAsync(DelunoDatabaseNames.Jobs))
+        {
+            await using var insert = before.CreateCommand();
+            insert.CommandText =
+                """
+                INSERT INTO download_dispatches (
+                    id, library_id, media_type, entity_type, entity_id, release_name, indexer_name,
+                    download_client_id, download_client_name, status, created_utc, grab_status, grab_attempted_utc, detected_utc
+                ) VALUES
+                    ('hooked', 'movies', 'movies', 'movie', 'movie-1', 'A.2010.1080p', 'Fixture', 'client', 'qBittorrent', 'sent',
+                     '2026-09-20T00:00:00Z', 'succeeded', '2026-09-20T00:00:00Z', '2026-09-20T01:00:00Z'),
+                    ('unseen', 'movies', 'movies', 'movie', 'movie-2', 'B.2010.1080p', 'Fixture', 'client', 'qBittorrent', 'sent',
+                     '2026-09-20T00:00:00Z', 'succeeded', '2026-09-20T00:00:00Z', NULL);
+                """;
+            await insert.ExecuteNonQueryAsync();
+        }
+
+        await migrator.ApplyAsync(DelunoDatabaseNames.Jobs, Deluno.Jobs.Migrations.JobsDatabaseMigrations.All, CancellationToken.None);
+
+        await using var after = await storage.Factory.OpenConnectionAsync(DelunoDatabaseNames.Jobs);
+        Assert.Equal("2026-09-20T01:00:00Z", await ReadScalarAsync<string>(after, "SELECT client_completed_utc FROM download_dispatches WHERE id = 'hooked';"));
+        Assert.Equal(0, await ReadScalarAsync<int>(after, "SELECT COUNT(*) FROM download_dispatches WHERE id = 'unseen' AND client_completed_utc IS NOT NULL;"));
     }
 
     [Fact]
