@@ -13,6 +13,27 @@ param(
 
 $ErrorActionPreference = "Stop"
 
+# Runs a native command and stops on its exit code, not on its stderr (#582).
+#
+# Windows PowerShell turns every stderr line from a native command into an
+# ErrorRecord when the output is captured, and under "Stop" the first one ends
+# the script: Vite's plugin-timing note failed a publish that had worked. And
+# nothing read the exit code, so a web build or publish that did fail carried
+# on and printed "Published". The same shape #579 fixed in ci-check.ps1.
+function Invoke-Native([string]$Name, [scriptblock]$Command) {
+    $wasErrorAction = $ErrorActionPreference
+    $ErrorActionPreference = "Continue"
+    try {
+        & $Command
+        $exitCode = $LASTEXITCODE
+    } finally {
+        $ErrorActionPreference = $wasErrorAction
+    }
+    if ($exitCode -ne 0) {
+        throw "$Name failed with exit code $exitCode."
+    }
+}
+
 $root = Split-Path -Parent $PSScriptRoot
 $artifacts = Join-Path $root "artifacts\publish\$RuntimeIdentifier"
 
@@ -28,7 +49,7 @@ try {
         Remove-Item -Path $artifacts -Recurse -Force
     }
 
-    npm.cmd run build:web
+    Invoke-Native "npm run build:web" { npm.cmd run build:web }
 
     # A repo-local SDK if one has been pinned here, otherwise whatever `dotnet`
     # is on PATH. This used to name `.\.dotnet\dotnet.exe` outright, which does
@@ -43,14 +64,14 @@ try {
         Write-Host "Fast lab build: no single-file bundle, no ReadyToRun."
     }
 
-    & $dotnet publish .\src\Deluno.Host\Deluno.Host.csproj `
+    Invoke-Native "dotnet publish" { & $dotnet publish .\src\Deluno.Host\Deluno.Host.csproj `
         -c $Configuration `
         -r $RuntimeIdentifier `
         --self-contained true `
         -p:PublishSingleFile=$singleFile `
         -p:PublishReadyToRun=$readyToRun `
         -p:IncludeNativeLibrariesForSelfExtract=true `
-        -o $artifacts
+        -o $artifacts }
 
     # FFmpeg travels with the publish. Three features are dark without it —
     # stream validation on import, the embedded-subtitle half of the library
