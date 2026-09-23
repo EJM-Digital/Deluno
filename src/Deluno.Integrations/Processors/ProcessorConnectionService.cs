@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Net.Http.Json;
+using System.Text.Json;
 using Deluno.Platform.Contracts;
 
 namespace Deluno.Integrations.Processors;
@@ -215,7 +216,10 @@ public sealed class ProcessorConnectionService(IHttpClientFactory httpClientFact
                 ProcessorAnswer.Answered,
                 capabilities.Contains("handoff-status"),
                 capabilities.Contains("handoff-cancel"),
-                null);
+                null)
+            {
+                CanBeToldTheOutcome = capabilities.Contains("handoff-outcome")
+            };
         }
         catch (Exception exception) when (!cancellationToken.IsCancellationRequested && (exception is HttpRequestException or TaskCanceledException))
         {
@@ -292,6 +296,69 @@ public sealed class ProcessorConnectionService(IHttpClientFactory httpClientFact
         catch (Exception exception) when (!cancellationToken.IsCancellationRequested && (exception is HttpRequestException or TaskCanceledException))
         {
             return new ProcessorHandoffCancelResult(ProcessorAnswer.Unreachable, $"Deluno could not reach {connection.Name}.");
+        }
+    }
+
+    public async Task<ProcessorOutcomeResult> ReportOutcomeAsync(
+        ProcessorConnectionItem connection,
+        string handoffId,
+        ProcessorHandoffOutcome outcome,
+        string? importedPath,
+        string? reason,
+        CancellationToken cancellationToken)
+    {
+        if (!ProcessorStatusEndpoints.TryDerive(connection.SubmissionUrl, out var endpoints))
+        {
+            return new ProcessorOutcomeResult(ProcessorAnswer.Unsupported, false, null);
+        }
+
+        try
+        {
+            using var request = new HttpRequestMessage(HttpMethod.Post, endpoints.HandoffOutcome(handoffId))
+            {
+                Content = JsonContent.Create(new
+                {
+                    outcome = outcome == ProcessorHandoffOutcome.Imported ? "imported" : "not-imported",
+                    occurredUtc = DateTimeOffset.UtcNow,
+                    importedPath = outcome == ProcessorHandoffOutcome.Imported ? importedPath : null,
+                    reason = outcome == ProcessorHandoffOutcome.NotImported ? reason : null
+                })
+            };
+            ApplyAuthentication(request, connection);
+            using var response = await httpClientFactory.CreateClient("processor-connections").SendAsync(request, cancellationToken);
+
+            // A processor disagreeing about its own bookkeeping must never fail
+            // an import that has already happened, so every answer here is
+            // recorded rather than thrown.
+            return response.StatusCode switch
+            {
+                _ when response.IsSuccessStatusCode => await ReadReleaseAsync(response, cancellationToken),
+                System.Net.HttpStatusCode.NotFound => new ProcessorOutcomeResult(ProcessorAnswer.NotFound, false, $"{connection.Name} has no record of this hand-off."),
+                System.Net.HttpStatusCode.Forbidden or System.Net.HttpStatusCode.Unauthorized =>
+                    new ProcessorOutcomeResult(ProcessorAnswer.Forbidden, false, await ForbiddenMessageAsync(response, connection, cancellationToken)),
+                _ => new ProcessorOutcomeResult(ProcessorAnswer.Unreachable, false, await ReadRefusalAsync(response, cancellationToken))
+            };
+        }
+        catch (Exception exception) when (!cancellationToken.IsCancellationRequested && (exception is HttpRequestException or TaskCanceledException))
+        {
+            return new ProcessorOutcomeResult(ProcessorAnswer.Unreachable, false, $"Deluno could not reach {connection.Name}.");
+        }
+    }
+
+    private static async Task<ProcessorOutcomeResult> ReadReleaseAsync(HttpResponseMessage response, CancellationToken cancellationToken)
+    {
+        try
+        {
+            using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync(cancellationToken));
+            var released = document.RootElement.TryGetProperty("released", out var value) &&
+                           value.ValueKind == JsonValueKind.True;
+            var message = document.RootElement.TryGetProperty("message", out var said) ? said.GetString() : null;
+            return new ProcessorOutcomeResult(ProcessorAnswer.Answered, released, message);
+        }
+        catch (JsonException)
+        {
+            // It accepted the answer, which is the part that matters.
+            return new ProcessorOutcomeResult(ProcessorAnswer.Answered, false, null);
         }
     }
 

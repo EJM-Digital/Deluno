@@ -17,6 +17,9 @@ public sealed partial record ProcessorStatusEndpoints(Uri Capabilities, string H
 {
     public Uri Handoff(string handoffId) => new($"{HandoffPrefix}/{Uri.EscapeDataString(handoffId)}");
 
+    /// <summary>Where to tell a processor what became of the file it handed back (#578).</summary>
+    public Uri HandoffOutcome(string handoffId) => new($"{Handoff(handoffId)}/outcome");
+
     public static bool TryDerive(string? submissionUrl, out ProcessorStatusEndpoints endpoints)
     {
         endpoints = null!;

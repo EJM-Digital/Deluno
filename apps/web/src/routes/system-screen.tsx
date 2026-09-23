@@ -181,6 +181,17 @@ export function SystemPage() {
               </ListCell>
             </ListRow>
           ))}
+          {processors.map((processor) => (
+            <ListRow key={`processor:${processor.id}`}>
+              <ListNameCell name={processor.name} sub="Processor" />
+              <ListCell primary={processor.provider} />
+              <ListCell mobile>
+                <Chip tone={processor.isEnabled ? healthTone(processor.healthStatus) : "idle"}>
+                  {processor.isEnabled ? processor.healthStatus : "off"}
+                </Chip>
+              </ListCell>
+            </ListRow>
+          ))}
         </ListTable>
       )}
       <ProviderHealthDrawer selection={selectedProvider} onClose={() => setSelectedProvider(null)} />

@@ -1,10 +1,14 @@
 using System.Text.Json;
 using Deluno.Filesystem;
 using Deluno.Jobs.Contracts;
+using Deluno.Platform.Contracts;
+using Deluno.Worker.Services;
 
 namespace Deluno.Worker.Jobs;
 
-public sealed class FilesystemImportExecuteJobHandler(IImportPipelineService importPipelineService) : IJobHandler
+public sealed class FilesystemImportExecuteJobHandler(
+    IImportPipelineService importPipelineService,
+    ProcessorOutcomeReporter? processorOutcomes = null) : IJobHandler
 {
     public string JobType => "filesystem.import.execute";
 
@@ -19,7 +23,32 @@ public sealed class FilesystemImportExecuteJobHandler(IImportPipelineService imp
         var result = await importPipelineService.ExecuteAsync(payload, cancellationToken);
         if (!result.Succeeded)
         {
+            // Only when Deluno is finished trying. A processor takes "not
+            // imported" as permission to remove its copy, and a retry of a
+            // transient failure would then find nothing left to import (#578).
+            if (payload.HandoffId is { Length: > 0 } handoff &&
+                processorOutcomes is not null &&
+                ProcessorOutcomeReporter.WillNotTryAgain(result, job))
+            {
+                await processorOutcomes.ReportAsync(
+                    handoff,
+                    ProcessorHandoffOutcome.NotImported,
+                    null,
+                    result.Message,
+                    cancellationToken);
+            }
+
             throw new InvalidOperationException(result.Message);
+        }
+
+        if (payload.HandoffId is { Length: > 0 } imported && processorOutcomes is not null)
+        {
+            await processorOutcomes.ReportAsync(
+                imported,
+                ProcessorHandoffOutcome.Imported,
+                result.Response?.Preview.DestinationPath,
+                null,
+                cancellationToken);
         }
 
         return result.Response?.Message ?? "Import completed.";

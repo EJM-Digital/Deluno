@@ -75,7 +75,8 @@ public sealed class ProcessorOutputImportQueue(
             ReplacementTargets: dispatch?.ReplacementTargets,
             // What the processor was given, so the import can compare what it
             // handed back against it (#574).
-            ProcessedFromPath: handoff.SourcePath);
+            ProcessedFromPath: handoff.SourcePath,
+            HandoffId: handoff.Id);
 
         var job = await jobScheduler.EnqueueAsync(
             new EnqueueJobRequest(

@@ -83,4 +83,22 @@ public interface IProcessorConnectionService
         ProcessorConnectionItem connection,
         string handoffId,
         CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Tells the processor what became of the file it handed back, so it can
+    /// let go of its own copy (#578).
+    ///
+    /// <para>A processor cannot know: Deluno's answer to a completed report
+    /// only says an import was queued, and a queued import can still fail. So
+    /// its copy is kept until this says otherwise, or until its own retention
+    /// reclaims it — which is what has to work when the media manager on the
+    /// other end says nothing at all.</para>
+    /// </summary>
+    Task<ProcessorOutcomeResult> ReportOutcomeAsync(
+        ProcessorConnectionItem connection,
+        string handoffId,
+        ProcessorHandoffOutcome outcome,
+        string? importedPath,
+        string? reason,
+        CancellationToken cancellationToken);
 }
