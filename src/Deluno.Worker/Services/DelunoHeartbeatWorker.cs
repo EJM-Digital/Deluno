@@ -463,6 +463,13 @@ public sealed class DelunoHeartbeatWorker(
             // Shutting down. Leave the lease to expire and be recovered on the
             // next start rather than recording a failure the job did not have.
         }
+        catch (JobDeferredException deferred)
+        {
+            // Not a failure (#598): the job could not do its work yet and runs
+            // again later, with its attempt handed back.
+            logger.LogInformation("Deferred job {JobId} of type {JobType} by {Delay}: {Reason}", job.Id, job.JobType, deferred.Delay, deferred.Message);
+            await jobQueueRepository.DeferAsync(job.Id, workerId, timeProvider.GetUtcNow().Add(deferred.Delay), CancellationToken.None);
+        }
         catch (Exception ex)
         {
             logger.LogError(ex, "Worker {WorkerId} lane {LaneName} failed processing job {JobId}.", _workerId, lane.Name, job.Id);

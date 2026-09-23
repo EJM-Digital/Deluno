@@ -166,6 +166,13 @@ export function describeSearchReason(reason: string | undefined, fallback: strin
         title: "No matching releases were returned",
         description: "The linked indexers answered, but none returned a release for this title."
       };
+    // Nobody was asked (#598): not an empty search, and nothing is wrong
+    // with the indexers. Saying "no results" here blamed them for a queue.
+    case "indexers_busy":
+      return {
+        title: "The indexers were busy",
+        description: "Each indexer was still working through other searches, so none was asked for this title. Try again in a few minutes."
+      };
     // Found, compared, and waiting on a person. This used to report as
     // "no_results", so a search that returned three candidates told the owner
     // the indexers had returned none.

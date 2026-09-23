@@ -164,6 +164,29 @@ public sealed class FeedMediaSearchPlannerReasonTests
             message.Text.Contains("could not read", StringComparison.OrdinalIgnoreCase));
     }
 
+    /// <summary>
+    /// #598: when every indexer was still inside its request interval, nobody
+    /// was asked. That used to read as an empty search ("no results… check
+    /// indexer health") and cost the title a whole retry window.
+    /// </summary>
+    [Fact]
+    public async Task A_search_no_indexer_had_time_for_says_the_indexers_were_busy()
+    {
+        var indexer = CreateIndexer("busy-indexer", "Busy indexer");
+        var plan = await CreatePlanner(CreateConnections(indexer).Object, indexersBusy: true).BuildPlanAsync(
+            "Cleaner",
+            2007,
+            "movies",
+            null,
+            "WEB 1080p",
+            [CreateSource(indexer)],
+            cancellationToken: CancellationToken.None);
+
+        Assert.Equal(MediaSearchReasons.IndexersBusy, plan.Reason);
+        Assert.Empty(plan.Candidates);
+        Assert.Contains("No indexer was asked", plan.Summary, StringComparison.Ordinal);
+    }
+
     [Fact]
     public async Task Empty_feed_returns_no_results_reason()
     {
@@ -485,7 +508,8 @@ public sealed class FeedMediaSearchPlannerReasonTests
         HttpMessageHandler? handler = null,
         ILogger<FeedMediaSearchPlanner>? logger = null,
         IGuidePackageStore? guidePackageStore = null,
-        IIntegrationResiliencePolicy? resiliencePolicy = null)
+        IIntegrationResiliencePolicy? resiliencePolicy = null,
+        bool indexersBusy = false)
     {
         var platform = new Mock<IPlatformSettingsRepository>();
         platform
@@ -508,7 +532,7 @@ public sealed class FeedMediaSearchPlannerReasonTests
                 It.IsAny<OutboundRate>(),
                 It.IsAny<TimeSpan>(),
                 It.IsAny<CancellationToken>()))
-            .Returns(new ValueTask<TimeSpan?>(TimeSpan.Zero));
+            .Returns(new ValueTask<TimeSpan?>(indexersBusy ? null : TimeSpan.Zero));
 
         return new FeedMediaSearchPlanner(
             platform.Object,

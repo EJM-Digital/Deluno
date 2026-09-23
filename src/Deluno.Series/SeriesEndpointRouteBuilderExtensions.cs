@@ -1381,8 +1381,7 @@ public static class SeriesEndpointRouteBuilderExtensions
             var now = timeProvider.GetUtcNow();
             var nextEligibleSearchUtc = now.AddHours(Math.Max(1, library.RetryDelayHours));
             var customFormats = await ResolveCustomFormatsAsync(qualityRepository, library.QualityProfileId, cancellationToken);
-            var allowedQualities = await QualityProfileResolver.ResolveAllowedQualitiesAsync(qualityRepository, library.QualityProfileId, cancellationToken);
-            var upgradeUntilCutoff = await QualityProfileResolver.ResolveUpgradeUntilCutoffAsync(qualityRepository, library.QualityProfileId, cancellationToken);
+            var profileRules = await QualityProfileResolver.ResolveSearchRulesAsync(qualityRepository, library.QualityProfileId, cancellationToken);
             var preferencePlan = await QualityProfileResolver.ResolveReleasePreferencePlanAsync(
                 qualityRepository,
                 releasePreferencePlanRepository,
@@ -1473,20 +1472,18 @@ public static class SeriesEndpointRouteBuilderExtensions
                         customFormats,
                         SeasonNumber: episode.SeasonNumber,
                         EpisodeNumber: episode.EpisodeNumber,
-                        AllowedQualities: allowedQualities,
                         TagNames: tagNames,
                         SearchKind: AcquisitionSearchKinds.Interactive,
                         AvailableUtc: wantedItem.AvailableUtc,
                         CurrentFilePresent: !string.IsNullOrWhiteSpace(baseline.FilePath),
                         CurrentReleaseName: baseline.FilePath,
-                        UpgradeUntilCutoff: upgradeUntilCutoff,
                         NumberingScheme: seriesItem.NumberingScheme,
                         AbsoluteNumber: episode.AbsoluteNumber,
                         AirDate: episode.AirDate,
                         SceneSeasonNumber: episode.SceneSeasonNumber,
                         SceneEpisodeNumber: episode.SceneEpisodeNumber,
                         CurrentPreferenceEvaluation: baseline.PreferenceEvaluation,
-                        PreferencePlan: preferencePlan),
+                        PreferencePlan: preferencePlan).WithProfile(profileRules),
                     cancellationToken);
                 var searchPlan = decisionPlan.SearchPlan;
                 var bestCandidate = searchPlan.BestCandidate;
@@ -2284,8 +2281,7 @@ public static class SeriesEndpointRouteBuilderExtensions
             var now = timeProvider.GetUtcNow();
             var nextEligibleSearchUtc = now.AddHours(Math.Max(1, library.RetryDelayHours));
             var customFormats = await ResolveCustomFormatsAsync(qualityRepository, library.QualityProfileId, cancellationToken);
-            var allowedQualities = await QualityProfileResolver.ResolveAllowedQualitiesAsync(qualityRepository, library.QualityProfileId, cancellationToken);
-            var upgradeUntilCutoff = await QualityProfileResolver.ResolveUpgradeUntilCutoffAsync(qualityRepository, library.QualityProfileId, cancellationToken);
+            var profileRules = await QualityProfileResolver.ResolveSearchRulesAsync(qualityRepository, library.QualityProfileId, cancellationToken);
             var preferencePlan = await QualityProfileResolver.ResolveReleasePreferencePlanAsync(
                 qualityRepository,
                 releasePreferencePlanRepository,
@@ -2469,13 +2465,11 @@ public static class SeriesEndpointRouteBuilderExtensions
                     routing?.DownloadClients ?? [],
                     customFormats,
                     SeasonNumber: seasonNumber,
-                    AllowedQualities: allowedQualities,
                     TagNames: tagNames,
                     SearchKind: AcquisitionSearchKinds.Interactive,
                     AvailableUtc: wantedItem.AvailableUtc,
-                    UpgradeUntilCutoff: upgradeUntilCutoff,
                     NumberingScheme: seriesItem.NumberingScheme,
-                    PreferencePlan: preferencePlan),
+                    PreferencePlan: preferencePlan).WithProfile(profileRules),
                 cancellationToken);
             var searchPlan = decisionPlan.SearchPlan;
             var bestCandidate = searchPlan.BestCandidate;

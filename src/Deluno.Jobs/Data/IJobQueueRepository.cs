@@ -98,6 +98,12 @@ public interface IJobQueueRepository
 
     Task FailAsync(string jobId, string workerId, string errorMessage, CancellationToken cancellationToken);
 
+    /// <summary>
+    /// Puts a running job back in the queue to run again at <paramref name="runAtUtc"/>,
+    /// returning the attempt its lease took (#598). Not a failure: nothing went
+    /// wrong, the job just could not do its work yet.
+    /// </summary>
+    Task DeferAsync(string jobId, string workerId, DateTimeOffset runAtUtc, CancellationToken cancellationToken);
     Task HeartbeatAsync(string workerId, CancellationToken cancellationToken);
 
     /// <summary>

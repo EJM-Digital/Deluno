@@ -16,6 +16,27 @@ namespace Deluno.Worker.Jobs;
 /// </summary>
 internal static class SearchExecutionSupport
 {
+    /// <summary>How long a search whose indexers were all busy waits before it runs again (#598).</summary>
+    internal static readonly TimeSpan IndexersBusyDelay = TimeSpan.FromMinutes(3);
+
+    /// <summary>Whether no indexer was asked because each was still busy pacing other searches (#598).</summary>
+    internal static bool IndexersWereBusy(MediaSearchPlan plan)
+        => string.Equals(plan.Reason, MediaSearchReasons.IndexersBusy, StringComparison.Ordinal);
+
+    /// <summary>
+    /// A search that asked nobody is not a search (#598). Sixty episode searches
+    /// queued together share each indexer's pace, and the ones that waited too
+    /// long used to record "searched, nothing found" and wait a whole retry
+    /// window. The job runs again shortly instead, with nothing recorded.
+    /// </summary>
+    internal static void DeferIfIndexersWereBusy(MediaSearchPlan plan)
+    {
+        if (IndexersWereBusy(plan))
+        {
+            throw new Deluno.Jobs.Contracts.JobDeferredException(IndexersBusyDelay, plan.Summary);
+        }
+    }
+
     internal static async Task<DownloadClientGrabResult> GrabBestCandidateAsync(
         IDownloadClientGrabService downloadClientGrabService,
         string downloadClientId,

@@ -67,11 +67,7 @@ public abstract class LibrarySearchJobHandler(
             qualityRepository,
             library?.QualityProfileId,
             cancellationToken);
-        var allowedQualities = await QualityProfileResolver.ResolveAllowedQualitiesAsync(
-            qualityRepository,
-            library?.QualityProfileId,
-            cancellationToken);
-        var upgradeUntilCutoff = await QualityProfileResolver.ResolveUpgradeUntilCutoffAsync(
+        var profileRules = await QualityProfileResolver.ResolveSearchRulesAsync(
             qualityRepository,
             library?.QualityProfileId,
             cancellationToken);
@@ -84,10 +80,10 @@ public abstract class LibrarySearchJobHandler(
 
         if (payload.MediaType == "movies")
         {
-            return await SearchMoviesAsync(job, payload, searchStatus, scopeFilters, routing, customFormats, allowedQualities, upgradeUntilCutoff, preferencePlan, configuredSources, configuredClients, now, cancellationToken);
+            return await SearchMoviesAsync(job, payload, searchStatus, scopeFilters, routing, customFormats, profileRules, preferencePlan, configuredSources, configuredClients, now, cancellationToken);
         }
 
-        return await SearchSeriesAsync(job, payload, searchStatus, scopeFilters, routing, customFormats, allowedQualities, upgradeUntilCutoff, preferencePlan, configuredSources, configuredClients, now, cancellationToken);
+        return await SearchSeriesAsync(job, payload, searchStatus, scopeFilters, routing, customFormats, profileRules, preferencePlan, configuredSources, configuredClients, now, cancellationToken);
     }
 
     private async Task<string> SearchMoviesAsync(
@@ -97,8 +93,7 @@ public abstract class LibrarySearchJobHandler(
         CatalogueFilters? scopeFilters,
         LibraryRoutingSnapshot? routing,
         IReadOnlyList<Deluno.Quality.Contracts.CustomFormatItem> customFormats,
-        IReadOnlyList<string> allowedQualities,
-        bool upgradeUntilCutoff,
+        ProfileSearchRules profileRules,
         ReleasePreferencePlan? preferencePlan,
         int configuredSources,
         int configuredClients,
@@ -208,7 +203,6 @@ public abstract class LibrarySearchJobHandler(
                     routing?.Sources ?? [],
                     routing?.DownloadClients ?? [],
                     customFormats,
-                    AllowedQualities: allowedQualities,
                     TagNames: mediaTagStore is null
                         ? []
                      : (await mediaTagStore.ListAsync(MediaKind.Movie, candidate.MovieId, cancellationToken)).Select(tag => tag.Name).ToArray(),
@@ -216,15 +210,26 @@ public abstract class LibrarySearchJobHandler(
                      AvailableUtc: candidate.AvailableUtc,
                      CurrentFilePresent: candidate.HasFile,
                      CurrentReleaseName: candidate.FilePath,
-                     UpgradeUntilCutoff: upgradeUntilCutoff,
                      PreferencePlan: preferencePlan,
-                     CurrentPreferenceEvaluation: currentPreferenceEvaluation),
+                     CurrentPreferenceEvaluation: currentPreferenceEvaluation).WithProfile(profileRules),
                 cancellationToken);
             if (decisionPlan.SourceCount > 0 && decisionPlan.DownloadClientCount > 0)
             {
                 apiCallCount += decisionPlan.SourceCount;
             }
             var searchPlan = decisionPlan.SearchPlan;
+            // Nobody was asked (#598): a search for one title runs again
+            // shortly; in a pass over many, this one stays eligible for the
+            // next pass rather than recording a search that never happened.
+            if (SearchExecutionSupport.IndexersWereBusy(searchPlan))
+            {
+                if (IsTargeted(payload))
+                {
+                    SearchExecutionSupport.DeferIfIndexersWereBusy(searchPlan);
+                }
+
+                continue;
+            }
             var bestCandidate = searchPlan.BestCandidate;
             var outcome = decisionPlan.Outcome;
             var searchResult = decisionPlan.SearchResult;
@@ -445,8 +450,7 @@ public abstract class LibrarySearchJobHandler(
         CatalogueFilters? scopeFilters,
         LibraryRoutingSnapshot? routing,
         IReadOnlyList<Deluno.Quality.Contracts.CustomFormatItem> customFormats,
-        IReadOnlyList<string> allowedQualities,
-        bool upgradeUntilCutoff,
+        ProfileSearchRules profileRules,
         ReleasePreferencePlan? preferencePlan,
         int configuredSources,
         int configuredClients,
@@ -558,7 +562,6 @@ public abstract class LibrarySearchJobHandler(
                     routing?.Sources ?? [],
                     routing?.DownloadClients ?? [],
                     customFormats,
-                    AllowedQualities: allowedQualities,
                     TagNames: mediaTagStore is null
                         ? []
                      : (await mediaTagStore.ListAsync(MediaKind.Series, candidate.SeriesId, cancellationToken)).Select(tag => tag.Name).ToArray(),
@@ -566,15 +569,26 @@ public abstract class LibrarySearchJobHandler(
                      AvailableUtc: candidate.AvailableUtc,
                      CurrentFilePresent: candidate.HasFile,
                      CurrentReleaseName: candidate.FilePath,
-                     UpgradeUntilCutoff: upgradeUntilCutoff,
                      PreferencePlan: preferencePlan,
-                     CurrentPreferenceEvaluation: currentPreferenceEvaluation),
+                     CurrentPreferenceEvaluation: currentPreferenceEvaluation).WithProfile(profileRules),
                 cancellationToken);
             if (decisionPlan.SourceCount > 0 && decisionPlan.DownloadClientCount > 0)
             {
                 seriesApiCallCount += decisionPlan.SourceCount;
             }
             var searchPlan = decisionPlan.SearchPlan;
+            // Nobody was asked (#598): a search for one title runs again
+            // shortly; in a pass over many, this one stays eligible for the
+            // next pass rather than recording a search that never happened.
+            if (SearchExecutionSupport.IndexersWereBusy(searchPlan))
+            {
+                if (IsTargeted(payload))
+                {
+                    SearchExecutionSupport.DeferIfIndexersWereBusy(searchPlan);
+                }
+
+                continue;
+            }
             var bestCandidate = searchPlan.BestCandidate;
             var outcome = decisionPlan.Outcome;
             var searchResult = decisionPlan.SearchResult;
