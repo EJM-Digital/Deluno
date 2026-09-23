@@ -1,5 +1,5 @@
 import type { LoaderFunction } from "react-router-dom";
-import { createBrowserRouter, Navigate, redirect, useLoaderData, useParams } from "react-router-dom";
+import { createBrowserRouter, Navigate, redirect, useLoaderData, useLocation, useParams } from "react-router-dom";
 import type { ComponentType } from "react";
 import { RouteErrorBoundary } from "./components/shell/route-error-boundary";
 import { ConfigurationWorkspaceLayout, SettingsWorkspaceLayout, SystemWorkspaceLayout } from "./components/app/settings-shell";
@@ -9,6 +9,16 @@ import { LoginPage } from "./routes/login-page";
 import { SetupPage } from "./routes/setup-page";
 import { RoutePending, RouteSkeleton } from "./components/shell/skeleton";
 import { readStored } from "./lib/use-auth";
+
+/**
+ * The old Automation address keeps its query on the way to its new home, so
+ * a link or bookmark naming a library still opens that library's schedule
+ * (#589).
+ */
+function SearchCyclesRedirect() {
+  const { search } = useLocation();
+  return <Navigate to={`/search-cycles${search}`} replace />;
+}
 
 function LegacyShowDetailRedirect() {
   const { id } = useParams();
@@ -480,7 +490,7 @@ export const router = createBrowserRouter([
           },
           {
             path: "automation",
-            element: <Navigate to="/search-cycles" replace />
+            element: <SearchCyclesRedirect />
           },
           {
             path: "migration",
