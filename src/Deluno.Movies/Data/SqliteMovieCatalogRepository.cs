@@ -2378,6 +2378,38 @@ public sealed class SqliteMovieCatalogRepository(
             DelunoDatabaseNames.Movies,
             cancellationToken);
 
+        // The same failure again is the same case (#596). One import retried
+        // three times opened three identical cases, and a person had to
+        // dismiss one fact three times. A retry sends the same request, so the
+        // details match too; another download of the same release does not,
+        // and keeps its own case to settle with it.
+        using (var open = connection.CreateCommand())
+        {
+            open.CommandText =
+                """
+                SELECT id FROM movie_import_recovery_cases
+                WHERE status = 'open' AND title = @title AND failure_kind = @failureKind AND summary = @summary AND details_json IS @detailsJson
+                ORDER BY detected_utc DESC
+                LIMIT 1;
+                """;
+            AddParameter(open, "@title", item.Title);
+            AddParameter(open, "@failureKind", item.FailureKind);
+            AddParameter(open, "@summary", item.Summary);
+            AddParameter(open, "@detailsJson", item.DetailsJson);
+            if (await open.ExecuteScalarAsync(cancellationToken) is string openId)
+            {
+                using var refresh = connection.CreateCommand();
+                refresh.CommandText =
+                    "UPDATE movie_import_recovery_cases SET recommended_action = @recommendedAction, detected_utc = @detectedUtc WHERE id = @id;";
+                AddParameter(refresh, "@id", openId);
+                AddParameter(refresh, "@recommendedAction", item.RecommendedAction);
+                AddParameter(refresh, "@detectedUtc", item.DetectedUtc.ToString("O"));
+                await refresh.ExecuteNonQueryAsync(cancellationToken);
+                await AddImportRecoveryEventAsync(openId, "case_refreshed", "The same import failed again.", null, cancellationToken);
+                return item with { Id = openId };
+            }
+        }
+
         using var command = connection.CreateCommand();
         command.CommandText =
             """
