@@ -59,8 +59,8 @@ public sealed class SkippingBlockedReleasesTests
     }
 
     /// <summary>
-    /// The same release from a different indexer is a different offer, and
-    /// Deluno has said nothing about it.
+    /// A refusal about one indexer's copy — a stalled download, a failure
+    /// Deluno cannot place — says nothing about another indexer's.
     /// </summary>
     [Fact]
     public void Blocking_one_indexers_copy_leaves_anothers_alone()
@@ -70,6 +70,23 @@ public sealed class SkippingBlockedReleasesTests
         var result = AcquisitionDecisionPipeline.ApplyBlocklist(plan, Keys("Arrival.2016.2160p", "Nebula"));
 
         Assert.Equal("Orbit", result.BestCandidate!.IndexerName);
+    }
+
+    /// <summary>
+    /// #585: a refusal about the file itself holds the release whichever
+    /// indexer offers it. On the rig both soak indexers list the same names,
+    /// one as a torrent and one as Usenet.
+    /// </summary>
+    [Fact]
+    public void A_release_refused_for_its_content_is_skipped_from_every_indexer()
+    {
+        var plan = Plan(Candidate("Arrival.2016.2160p", "Orbit"), Candidate("Arrival.2016.1080p", "Orbit"));
+
+        var result = AcquisitionDecisionPipeline.ApplyBlocklist(
+            plan,
+            new HashSet<string>(StringComparer.Ordinal) { BlockedReleaseKeys.ForEveryIndexer("Arrival.2016.2160p") });
+
+        Assert.Equal("Arrival.2016.1080p", result.BestCandidate!.ReleaseName);
     }
 
     /// <summary>

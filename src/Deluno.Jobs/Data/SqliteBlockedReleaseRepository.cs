@@ -106,13 +106,21 @@ public sealed class SqliteBlockedReleaseRepository(
         // decided, and a search that quietly skipped an undecided release
         // would be making the decision by omission — the exact thing the
         // option exists to prevent.
-        command.CommandText = "SELECT release_key FROM blocked_releases WHERE state = 'refused';";
+        command.CommandText = "SELECT release_key, release_name, reason_code FROM blocked_releases WHERE state = 'refused';";
 
         var keys = new HashSet<string>(StringComparer.Ordinal);
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
         while (await reader.ReadAsync(cancellationToken))
         {
             keys.Add(reader.GetString(0));
+
+            // A refusal about the file itself holds whichever indexer offers
+            // the release next (#585). Derived from the reason on the row, so
+            // no stored key changes and nothing needs migrating.
+            if (ImportFailurePolicy.RefusesEveryCopy(reader.GetString(2)))
+            {
+                keys.Add(BlockedReleaseKeys.ForEveryIndexer(reader.GetString(1)));
+            }
         }
 
         return keys;

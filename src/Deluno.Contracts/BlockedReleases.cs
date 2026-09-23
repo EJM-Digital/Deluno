@@ -39,7 +39,15 @@ public sealed record BlockedRelease(
     string? DownloadClientId,
     string? DownloadClientName,
     DateTimeOffset BlockedUtc,
-    string State = BlockedReleaseStates.Refused);
+    string State = BlockedReleaseStates.Refused)
+{
+    /// <summary>
+    /// Whether searches skip this release from every indexer rather than only
+    /// the one it came from (#585). Sent so the blocklist can say so without a
+    /// second copy of the rule.
+    /// </summary>
+    public bool EveryIndexer => ImportFailurePolicy.RefusesEveryCopy(ReasonCode);
+}
 
 /// <summary>
 /// A blocklist entry is either a decision Deluno made or a question it is
@@ -74,4 +82,15 @@ public static class BlockedReleaseKeys
     /// </summary>
     public static string For(string releaseName, string? indexerName)
         => $"{releaseName.Trim().ToLowerInvariant()}|{(indexerName ?? string.Empty).Trim().ToLowerInvariant()}";
+
+    /// <summary>
+    /// The key that matches this release from any indexer (#585).
+    ///
+    /// <para>Never stored: it is added when the blocklist is read, for a
+    /// refusal whose reason is about the file itself
+    /// (<see cref="ImportFailurePolicy.RefusesEveryCopy"/>). <c>*</c> stands in
+    /// for the indexer, which no real indexer is named.</para>
+    /// </summary>
+    public static string ForEveryIndexer(string releaseName)
+        => For(releaseName, "*");
 }

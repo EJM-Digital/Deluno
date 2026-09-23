@@ -71,6 +71,11 @@ export interface BlockedRelease {
    * it changes nothing about what searches do until somebody answers it.
    */
   state: string;
+  /**
+   * Searches skip this release from every indexer, not only the one it came
+   * from, because the refusal was about the file itself (#585).
+   */
+  everyIndexer?: boolean;
 }
 
 export interface AcquisitionOverrideResponse {

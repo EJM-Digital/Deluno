@@ -51,6 +51,15 @@ export interface BlockedReleasesConsoleProps {
   onChanged: () => void;
 }
 
+/**
+ * Which indexers a refusal holds. A refusal about the file itself holds the
+ * release from all of them, and saying only the one it came from would tell
+ * the reader it could still arrive from another (#585).
+ */
+function whereItIsRefused(release: BlockedRelease) {
+  return release.everyIndexer ? `every indexer (found on ${release.indexerName})` : release.indexerName;
+}
+
 export function BlockedReleasesConsole({
   releases,
   rules,
@@ -138,7 +147,7 @@ export function BlockedReleasesConsole({
               <ListRow key={release.id}>
                 <ListNameCell
                   name={release.releaseName}
-                  sub={`${release.title ?? "Unknown title"} · ${release.indexerName}`}
+                  sub={`${release.title ?? "Unknown title"} · ${whereItIsRefused(release)}`}
                 />
                 <div role="cell">
                   <Chip tone="warn">{reasonWords(release.reasonCode)}</Chip>
@@ -194,7 +203,7 @@ export function BlockedReleasesConsole({
               <ListRow key={release.id}>
                 <ListNameCell
                   name={release.releaseName}
-                  sub={`${release.title ?? "Unknown title"} · ${release.indexerName}`}
+                  sub={`${release.title ?? "Unknown title"} · ${whereItIsRefused(release)}`}
                 />
                 <div role="cell">
                   <Chip tone="idle">{reasonWords(release.reasonCode)}</Chip>
