@@ -1,0 +1,292 @@
+using System.Text.Json;
+using Deluno.Jobs.Data;
+using Deluno.Platform.Contracts;
+using Deluno.Platform.Data;
+
+namespace Deluno.Platform;
+
+/// <summary>
+/// Telling a processor what became of a file it handed back, until it has
+/// heard (#578, #580).
+///
+/// <para><b>Why this is more than one call.</b> The outcome exists so a
+/// processor can let go of its copy. Sent once, one blip at the wrong moment
+/// lost it for good: a processor restarting in the seconds after an import, a
+/// dropped request, or an answer Deluno read as final that was not — Weir 3.2.0
+/// refused one for a hand-off it had itself just completed. Each is a copy the
+/// processor keeps until its own retention reclaims it, which is the leak #578
+/// was opened to close. So what is owed is written down first, and said again
+/// until it is acknowledged or saying it again is provably pointless.</para>
+///
+/// <para>Three callers — the import that just finished, the scheduled pass that
+/// says it again, and a person asking from the hand-off's drawer — and one body,
+/// because what counts as heard is the part a second copy would get subtly
+/// different.</para>
+/// </summary>
+public static class ProcessorOutcomeDelivery
+{
+    /// <summary>
+    /// How long the scheduled pass leaves a report that is being sent right now.
+    /// Longer than one attempt takes, so the pass does not send it a second time
+    /// alongside the first; short enough that a crash mid-attempt is caught.
+    /// </summary>
+    public static readonly TimeSpan InFlightGrace = TimeSpan.FromMinutes(5);
+
+    /// <summary>
+    /// Writes down what the processor is owed, then says it.
+    ///
+    /// <para>Nothing is recorded when the hand-off has no processor connection
+    /// by that name: there is nobody to owe.</para>
+    ///
+    /// <para>Never throws for the processor's sake: a processor disagreeing
+    /// about its own bookkeeping is not a reason to undo work that has already
+    /// happened.</para>
+    /// </summary>
+    public static async Task<ProcessorOutcomeRecord?> RecordAndSendAsync(
+        IProcessorRepository repository,
+        IProcessorConnectionService processorConnections,
+        IActivityFeedRepository activityFeed,
+        ProcessorHandoffItem handoff,
+        ProcessorHandoffOutcome outcome,
+        string? importedPath,
+        string? reason,
+        DateTimeOffset nowUtc,
+        CancellationToken cancellationToken)
+    {
+        var connection = await repository.FindProcessorConnectionByNameAsync(handoff.ProcessorName, cancellationToken);
+        if (connection is null) return null;
+
+        var record = new ProcessorOutcomeRecord(
+            handoff.Id,
+            connection.Name,
+            handoff.LibraryId,
+            handoff.ReleaseName,
+            ProcessorOutcomeRecord.Word(outcome),
+            outcome == ProcessorHandoffOutcome.Imported ? importedPath : null,
+            outcome == ProcessorHandoffOutcome.NotImported ? reason : null,
+            nowUtc,
+            ProcessorOutcomeDeliveries.Pending,
+            0,
+            null,
+            nowUtc + InFlightGrace,
+            false,
+            null,
+            nowUtc);
+        await repository.SaveProcessorOutcomeAsync(record, cancellationToken);
+        return await SendAsync(repository, processorConnections, activityFeed, record, nowUtc, cancellationToken);
+    }
+
+    /// <summary>
+    /// Says it again from the start, because a person asked: the attempt count
+    /// and the week before Deluno gives up both begin again. The report itself —
+    /// what happened and when — does not change.
+    /// </summary>
+    public static Task<ProcessorOutcomeRecord> SendAgainAsync(
+        IProcessorRepository repository,
+        IProcessorConnectionService processorConnections,
+        IActivityFeedRepository activityFeed,
+        ProcessorOutcomeRecord record,
+        DateTimeOffset nowUtc,
+        CancellationToken cancellationToken)
+        => SendAsync(
+            repository,
+            processorConnections,
+            activityFeed,
+            record with
+            {
+                Delivery = ProcessorOutcomeDeliveries.Pending,
+                Attempts = 0,
+                NextAttemptUtc = nowUtc + InFlightGrace,
+                RecordedUtc = nowUtc
+            },
+            nowUtc,
+            cancellationToken);
+
+    /// <summary>One attempt, and what it leaves the record as.</summary>
+    public static async Task<ProcessorOutcomeRecord> SendAsync(
+        IProcessorRepository repository,
+        IProcessorConnectionService processorConnections,
+        IActivityFeedRepository activityFeed,
+        ProcessorOutcomeRecord record,
+        DateTimeOffset nowUtc,
+        CancellationToken cancellationToken)
+    {
+        var connection = await repository.FindProcessorConnectionByNameAsync(record.ProcessorName, cancellationToken);
+        if (connection is null)
+        {
+            return await SettleAsync(
+                repository,
+                activityFeed,
+                record with
+                {
+                    Delivery = ProcessorOutcomeDeliveries.GivenUp,
+                    NextAttemptUtc = null,
+                    ProcessorSaid = $"The connection to {record.ProcessorName} was removed, so there is nobody left to tell."
+                },
+                announce: true,
+                cancellationToken);
+        }
+
+        if (!connection.IsEnabled)
+        {
+            // Switched off in Deluno is a person's choice, and not talking to it
+            // is what that means. It is not an attempt, but the week still runs.
+            return await PendingOrGivenUpAsync(
+                repository,
+                activityFeed,
+                record,
+                record.Attempts,
+                $"{connection.Name} is switched off in Deluno, so it has not been told yet.",
+                nowUtc,
+                announce: false,
+                cancellationToken);
+        }
+
+        var support = await processorConnections.GetStatusSupportAsync(connection, cancellationToken);
+        if (support.Answer is not (ProcessorAnswer.Unreachable or ProcessorAnswer.Forbidden) && !support.CanBeToldTheOutcome)
+        {
+            // It answered, and does not ask to be told. That is how it works
+            // with every media manager that says nothing, and it is not a
+            // failure. Written down so the drawer can say so; not announced.
+            return await SettleAsync(
+                repository,
+                activityFeed,
+                record with
+                {
+                    Delivery = ProcessorOutcomeDeliveries.GivenUp,
+                    NextAttemptUtc = null,
+                    LastAttemptUtc = nowUtc,
+                    ProcessorSaid = $"{connection.Name} does not ask to be told what became of its files, so it keeps its copy until its own retention reclaims it."
+                },
+                announce: false,
+                cancellationToken);
+        }
+
+        var told = support.Answer is ProcessorAnswer.Unreachable or ProcessorAnswer.Forbidden
+            ? new ProcessorOutcomeResult(support.Answer, false, support.Message ?? $"Deluno could not reach {connection.Name}.")
+            : await processorConnections.ReportOutcomeAsync(
+                connection,
+                record.HandoffId,
+                record.AsOutcome(),
+                record.ImportedPath,
+                record.Reason,
+                record.OccurredUtc,
+                cancellationToken);
+        var attempts = record.Attempts + 1;
+        var delivery = ProcessorOutcomeDeliveries.After(told.Answer);
+        var attempted = record with { Attempts = attempts, LastAttemptUtc = nowUtc, Released = told.Released };
+
+        if (delivery == ProcessorOutcomeDeliveries.Pending)
+        {
+            // Said once, on the first miss, and again only when it ends: a
+            // processor down for a day would otherwise write a line an hour.
+            return await PendingOrGivenUpAsync(
+                repository,
+                activityFeed,
+                attempted,
+                attempts,
+                told.Message ?? $"{connection.Name} did not acknowledge it.",
+                nowUtc,
+                announce: attempts == 1,
+                cancellationToken);
+        }
+
+        return await SettleAsync(
+            repository,
+            activityFeed,
+            attempted with { Delivery = delivery, NextAttemptUtc = null, ProcessorSaid = told.Message },
+            announce: true,
+            cancellationToken);
+    }
+
+    private static Task<ProcessorOutcomeRecord> PendingOrGivenUpAsync(
+        IProcessorRepository repository,
+        IActivityFeedRepository activityFeed,
+        ProcessorOutcomeRecord record,
+        int attempts,
+        string said,
+        DateTimeOffset nowUtc,
+        bool announce,
+        CancellationToken cancellationToken)
+    {
+        if (nowUtc - record.RecordedUtc >= ProcessorOutcomeDeliveries.GiveUpAfter)
+        {
+            return SettleAsync(
+                repository,
+                activityFeed,
+                record with
+                {
+                    Delivery = ProcessorOutcomeDeliveries.GivenUp,
+                    NextAttemptUtc = null,
+                    ProcessorSaid = $"Nobody acknowledged it in {ProcessorOutcomeDeliveries.GiveUpAfter.TotalDays:0} days, so Deluno stopped trying. Last time: {said}"
+                },
+                announce: true,
+                cancellationToken);
+        }
+
+        return SettleAsync(
+            repository,
+            activityFeed,
+            record with
+            {
+                Delivery = ProcessorOutcomeDeliveries.Pending,
+                NextAttemptUtc = nowUtc + ProcessorOutcomeDeliveries.WaitAfter(Math.Max(attempts, 1)),
+                ProcessorSaid = said
+            },
+            announce,
+            cancellationToken);
+    }
+
+    private static async Task<ProcessorOutcomeRecord> SettleAsync(
+        IProcessorRepository repository,
+        IActivityFeedRepository activityFeed,
+        ProcessorOutcomeRecord record,
+        bool announce,
+        CancellationToken cancellationToken)
+    {
+        await repository.SaveProcessorOutcomeAsync(record, cancellationToken);
+        if (!announce) return record;
+
+        var (kind, message) = Describe(record);
+        await activityFeed.RecordActivityAsync(
+            kind,
+            message,
+            JsonSerializer.Serialize(new
+            {
+                record.HandoffId,
+                record.LibraryId,
+                record.ReleaseName,
+                record.Outcome,
+                record.Delivery,
+                record.Attempts,
+                record.Released,
+                record.ProcessorSaid
+            }),
+            null,
+            "processor-handoff",
+            record.HandoffId,
+            cancellationToken);
+        return record;
+    }
+
+    /// <summary>What a person reads in Activity, in one sentence per ending.</summary>
+    public static (string Kind, string Message) Describe(ProcessorOutcomeRecord record)
+    {
+        var said = record.Outcome == ProcessorOutcomeRecord.Imported
+            ? $"Deluno told {record.ProcessorName} it has {record.ReleaseName}"
+            : $"Deluno told {record.ProcessorName} it will not import {record.ReleaseName}: {record.Reason}";
+        var tries = record.Attempts > 1 ? $" on attempt {record.Attempts}" : "";
+        return record.Delivery switch
+        {
+            ProcessorOutcomeDeliveries.Delivered => (
+                "processing.outcome-reported",
+                $"{said}{tries}. {(record.Released ? "It released its copy." : record.ProcessorSaid ?? "It kept its copy.")}".TrimEnd()),
+            ProcessorOutcomeDeliveries.Pending => (
+                "processing.outcome-delayed",
+                $"Deluno could not tell {record.ProcessorName} what became of {record.ReleaseName} yet, and will keep trying. {record.ProcessorSaid}".TrimEnd()),
+            _ => (
+                "processing.outcome-not-reported",
+                $"Deluno could not tell {record.ProcessorName} what became of {record.ReleaseName}. {record.ProcessorSaid}".TrimEnd())
+        };
+    }
+}

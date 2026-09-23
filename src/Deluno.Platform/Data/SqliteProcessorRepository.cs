@@ -546,6 +546,139 @@ public sealed class SqliteProcessorRepository(
         await update.ExecuteNonQueryAsync(cancellationToken);
     }
 
+    public async Task<ProcessorOutcomeRecord?> GetProcessorOutcomeAsync(string handoffId, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(handoffId))
+        {
+            return null;
+        }
+
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Platform,
+            cancellationToken);
+        using var command = connection.CreateCommand();
+        command.CommandText = OutcomeSelect + " WHERE handoff_id = @handoffId LIMIT 1;";
+        AddParameter(command, "@handoffId", handoffId.Trim());
+        using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        return await reader.ReadAsync(cancellationToken) ? ReadProcessorOutcome(reader) : null;
+    }
+
+    public async Task SaveProcessorOutcomeAsync(ProcessorOutcomeRecord record, CancellationToken cancellationToken)
+    {
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Platform,
+            cancellationToken);
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            """
+            INSERT INTO processor_handoff_outcomes (
+                handoff_id, processor_name, library_id, release_name, outcome, imported_path, reason, occurred_utc,
+                delivery, attempts, last_attempt_utc, next_attempt_utc, released, processor_said, recorded_utc
+            ) VALUES (
+                @handoffId, @processorName, @libraryId, @releaseName, @outcome, @importedPath, @reason, @occurredUtc,
+                @delivery, @attempts, @lastAttemptUtc, @nextAttemptUtc, @released, @processorSaid, @recordedUtc
+            )
+            ON CONFLICT(handoff_id) DO UPDATE SET
+                processor_name = excluded.processor_name,
+                library_id = excluded.library_id,
+                release_name = excluded.release_name,
+                outcome = excluded.outcome,
+                imported_path = excluded.imported_path,
+                reason = excluded.reason,
+                occurred_utc = excluded.occurred_utc,
+                delivery = excluded.delivery,
+                attempts = excluded.attempts,
+                last_attempt_utc = excluded.last_attempt_utc,
+                next_attempt_utc = excluded.next_attempt_utc,
+                released = excluded.released,
+                processor_said = excluded.processor_said,
+                recorded_utc = excluded.recorded_utc;
+            """;
+        AddParameter(command, "@handoffId", record.HandoffId.Trim());
+        AddParameter(command, "@processorName", record.ProcessorName);
+        AddParameter(command, "@libraryId", record.LibraryId);
+        AddParameter(command, "@releaseName", record.ReleaseName);
+        AddParameter(command, "@outcome", record.Outcome);
+        AddParameter(command, "@importedPath", record.ImportedPath);
+        AddParameter(command, "@reason", record.Reason);
+        AddParameter(command, "@occurredUtc", record.OccurredUtc.ToString("O"));
+        AddParameter(command, "@delivery", record.Delivery);
+        AddParameter(command, "@attempts", record.Attempts);
+        AddParameter(command, "@lastAttemptUtc", record.LastAttemptUtc?.ToString("O"));
+        AddParameter(command, "@nextAttemptUtc", record.NextAttemptUtc?.ToString("O"));
+        AddParameter(command, "@released", record.Released ? 1 : 0);
+        AddParameter(command, "@processorSaid", record.ProcessorSaid);
+        AddParameter(command, "@recordedUtc", record.RecordedUtc.ToString("O"));
+        await command.ExecuteNonQueryAsync(cancellationToken);
+    }
+
+    public async Task<IReadOnlyList<ProcessorOutcomeRecord>> ListDueProcessorOutcomesAsync(
+        DateTimeOffset nowUtc,
+        CancellationToken cancellationToken)
+    {
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Platform,
+            cancellationToken);
+        using var command = connection.CreateCommand();
+        // Timestamps are written as round-trip UTC strings, so they order as text.
+        command.CommandText = OutcomeSelect
+            + " WHERE delivery = @pending AND (next_attempt_utc IS NULL OR next_attempt_utc <= @now) ORDER BY next_attempt_utc;";
+        AddParameter(command, "@pending", ProcessorOutcomeDeliveries.Pending);
+        AddParameter(command, "@now", nowUtc.ToUniversalTime().ToString("O"));
+        var items = new List<ProcessorOutcomeRecord>();
+        using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken)) items.Add(ReadProcessorOutcome(reader));
+        return items;
+    }
+
+    public async Task<IReadOnlyList<ProcessorOutcomeRecord>> ListProcessorOutcomesAsync(
+        IReadOnlyCollection<string> handoffIds,
+        CancellationToken cancellationToken)
+    {
+        if (handoffIds.Count == 0) return [];
+
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Platform,
+            cancellationToken);
+        using var command = connection.CreateCommand();
+        var names = new List<string>(handoffIds.Count);
+        foreach (var id in handoffIds)
+        {
+            var name = $"@id{names.Count}";
+            AddParameter(command, name, id.Trim());
+            names.Add(name);
+        }
+
+        command.CommandText = OutcomeSelect + $" WHERE handoff_id IN ({string.Join(", ", names)});";
+        var items = new List<ProcessorOutcomeRecord>();
+        using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken)) items.Add(ReadProcessorOutcome(reader));
+        return items;
+    }
+
+    private const string OutcomeSelect =
+        "SELECT handoff_id, processor_name, library_id, release_name, outcome, imported_path, reason, occurred_utc, "
+        + "delivery, attempts, last_attempt_utc, next_attempt_utc, released, processor_said, recorded_utc "
+        + "FROM processor_handoff_outcomes";
+
+    private static ProcessorOutcomeRecord ReadProcessorOutcome(System.Data.Common.DbDataReader reader)
+        => new(
+            reader.GetString(0),
+            reader.GetString(1),
+            reader.GetString(2),
+            reader.GetString(3),
+            reader.GetString(4),
+            reader.IsDBNull(5) ? null : reader.GetString(5),
+            reader.IsDBNull(6) ? null : reader.GetString(6),
+            ParseTimestamp(reader.GetString(7)),
+            reader.GetString(8),
+            reader.GetInt32(9),
+            ReadOptionalTimestamp(reader, 10),
+            ReadOptionalTimestamp(reader, 11),
+            reader.GetInt64(12) == 1,
+            reader.IsDBNull(13) ? null : reader.GetString(13),
+            ParseTimestamp(reader.GetString(14)));
+
     private ProcessorConnectionItem ReadProcessorConnection(System.Data.Common.DbDataReader reader)
     {
         var id = reader.GetString(0);

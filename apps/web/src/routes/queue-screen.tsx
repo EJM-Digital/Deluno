@@ -41,6 +41,7 @@ import {
   type PlatformSettingsSnapshot,
   type ProcessorConnectionItem,
   type ProcessorHandoffItem,
+  type ProcessorOutcomeRecord,
   type SeriesImportRecoverySummary, readErrorText } from "../lib/api";
 import { authedFetch } from "../lib/use-auth";
 import { formatBytes } from "../lib/utils";
@@ -51,6 +52,7 @@ import { JOB_STATUS, isJobActive, isJobDeadLettered, isJobFailed, isJobRetrying,
 import { downloadQueueStatuses, isImportReadyStatus, isProcessingStatus, queueStatusLabel } from "../lib/download-telemetry";
 import { parseImportJobPayload } from "../lib/import-job-payload";
 import { canTryAgain, handoffNeedsPerson, isDispatchFailure, isProcessorFailure, isWithProcessor, needsAction } from "../lib/needs-action";
+import { processorOutcomeSummary } from "../lib/processor-outcome";
 import { Button } from "../components/ui/button";
 import { Chip, type ChipProps } from "../components/ui/chip";
 import { ConfirmDialog } from "../components/ui/confirm-dialog";
@@ -402,6 +404,16 @@ export function QueuePage() {
       },
       "Hand-off queued to try again with the same ID"
     );
+  }
+
+  /** Say again what became of the file, from the start (#580). */
+  async function sendOutcomeAgain(handoff: ProcessorHandoffItem) {
+    await run(`handoff:outcome:${handoff.id}`, async () => {
+      const response = await authedFetch(`/api/integrations/processors/handoffs/${handoff.id}/outcome/send-again`, { method: "POST" });
+      const body = (await response.json().catch(() => null)) as { message?: string } | null;
+      if (!response.ok) throw new Error(body?.message || "Deluno could not say it again.");
+      toast.success(body?.message ?? `Deluno told ${handoff.processorName ?? "the processor"} again.`);
+    });
   }
 
   /**
@@ -1115,6 +1127,18 @@ export function QueuePage() {
             </div>
           </DrawerSection>
         ) : null}
+        {/* Whether the processor heard what became of its file, so it can let go
+            of its copy — and a way to say it again (#580). */}
+        {openHandoff?.outcome ? (
+          <ProcessorOutcomeSection
+            handoff={openHandoff}
+            outcome={openHandoff.outcome}
+            formatWhen={(utc) => formatPreferenceDateTime(utc, preferences)}
+            busy={busyKey !== null}
+            sending={busyKey === `handoff:outcome:${openHandoff.id}`}
+            onSendAgain={() => void sendOutcomeAgain(openHandoff)}
+          />
+        ) : null}
         {/* Waiting is the processor's to end, until a person says otherwise (#566). */}
         {openHandoff && isWithProcessor(openHandoff.status) ? (
           <DrawerSection title="Still with the processor" aside={processorStageLabel(openHandoff.status)}>
@@ -1194,6 +1218,42 @@ function ProgressBar({ value }: { value: number }) {
     <span aria-hidden className="block h-1.5 w-full overflow-hidden rounded-full bg-surface-3">
       <span className="block h-full rounded-full bg-primary transition-[width] duration-300" style={{ width: `${clamped}%` }} />
     </span>
+  );
+}
+
+function ProcessorOutcomeSection({
+  handoff,
+  outcome,
+  formatWhen,
+  busy,
+  sending,
+  onSendAgain
+}: {
+  handoff: ProcessorHandoffItem;
+  outcome: ProcessorOutcomeRecord;
+  formatWhen: (utc: string) => string;
+  busy: boolean;
+  sending: boolean;
+  onSendAgain: () => void;
+}) {
+  const processor = handoff.processorName ?? outcome.processorName;
+  const summary = processorOutcomeSummary(outcome, formatWhen);
+  return (
+    <DrawerSection title={`What ${processor} was told`}>
+      <div className="grid gap-1.5">
+        <Fact label="Deluno said" value={summary.said} />
+        <Fact label="Heard" value={summary.heard} />
+      </div>
+      {summary.detail ? <p className="text-[length:var(--type-caption)] text-muted-foreground">{summary.detail}</p> : null}
+      {summary.canSendAgain ? (
+        <div className="flex flex-wrap gap-2">
+          <Button type="button" variant="outline" size="sm" onClick={onSendAgain} disabled={busy}>
+            {sending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
+            Tell {processor} again
+          </Button>
+        </div>
+      ) : null}
+    </DrawerSection>
   );
 }
 

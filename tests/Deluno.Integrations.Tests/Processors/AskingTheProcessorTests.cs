@@ -137,6 +137,64 @@ public sealed class AskingTheProcessorTests
         Assert.Equal("http://weir:8788/api/v1/intake/handoffs/deluno/h-1", sent.RequestUri!.ToString());
     }
 
+    /// <summary>
+    /// A processor that is starting up or failing has not said what it
+    /// supports. Read as "supports nothing" its files were judged as if it
+    /// could not be asked, health read healthy, and outcomes were dropped (#580).
+    /// </summary>
+    [Theory]
+    [InlineData(HttpStatusCode.ServiceUnavailable)]
+    [InlineData(HttpStatusCode.InternalServerError)]
+    [InlineData(HttpStatusCode.TooManyRequests)]
+    public async Task A_failing_capabilities_answer_is_could_not_ask_not_supports_nothing(HttpStatusCode code)
+    {
+        var support = await Service(_ => new HttpResponseMessage(code)).GetStatusSupportAsync(Weir, CancellationToken.None);
+
+        Assert.Equal(ProcessorAnswer.Unreachable, support.Answer);
+    }
+
+    /// <summary>
+    /// Which outcome answers are worth sending again is plain HTTP, never one
+    /// processor's wording (#580).
+    /// </summary>
+    [Theory]
+    [InlineData(HttpStatusCode.OK, ProcessorAnswer.Answered)]
+    [InlineData(HttpStatusCode.NotFound, ProcessorAnswer.NotFound)]
+    [InlineData(HttpStatusCode.UnprocessableEntity, ProcessorAnswer.Refused)]
+    [InlineData(HttpStatusCode.BadRequest, ProcessorAnswer.Refused)]
+    [InlineData(HttpStatusCode.Conflict, ProcessorAnswer.Busy)]
+    [InlineData(HttpStatusCode.Unauthorized, ProcessorAnswer.Forbidden)]
+    [InlineData(HttpStatusCode.Forbidden, ProcessorAnswer.Forbidden)]
+    [InlineData(HttpStatusCode.InternalServerError, ProcessorAnswer.Unreachable)]
+    [InlineData(HttpStatusCode.BadGateway, ProcessorAnswer.Unreachable)]
+    [InlineData(HttpStatusCode.RequestTimeout, ProcessorAnswer.Unreachable)]
+    public async Task An_outcome_answer_is_read_by_its_status_code(HttpStatusCode code, ProcessorAnswer expected)
+    {
+        var told = await Service(_ => Json(code, """{ "released": false, "detail": "said" }"""))
+            .ReportOutcomeAsync(Weir, "h-1", ProcessorHandoffOutcome.Imported, "x", null, DateTimeOffset.UnixEpoch, CancellationToken.None);
+
+        Assert.Equal(expected, told.Answer);
+    }
+
+    /// <summary>
+    /// The same report sent again must be the same report: it carries when the
+    /// import happened, not when it is being said (#580).
+    /// </summary>
+    [Fact]
+    public async Task An_outcome_says_when_it_happened_not_when_it_was_sent()
+    {
+        string? body = null;
+        var occurred = DateTimeOffset.Parse("2026-09-23T07:46:41Z");
+        await Service(request =>
+        {
+            body = request.Content!.ReadAsStringAsync().GetAwaiter().GetResult();
+            return Json(HttpStatusCode.OK, """{ "released": true }""");
+        }).ReportOutcomeAsync(Weir, "h-1", ProcessorHandoffOutcome.Imported, "x", null, occurred, CancellationToken.None);
+
+        using var sent = System.Text.Json.JsonDocument.Parse(body!);
+        Assert.Equal(occurred, sent.RootElement.GetProperty("occurredUtc").GetDateTimeOffset());
+    }
+
     private static ProcessorConnectionService Service(Func<HttpRequestMessage, HttpResponseMessage> send)
         => new(new StubHttpClientFactory(new HttpClient(new StubHandler(send))));
 

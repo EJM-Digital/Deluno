@@ -144,6 +144,20 @@ public sealed class WorkPlanner(
             "Processor health pass failed.",
             cancellationToken);
 
+    /// <summary>
+    /// Says again what a processor did not hear about the files it handed back
+    /// (#580). Deluno said each one once and gave up, while Weir retries its own
+    /// reports to Deluno on a heartbeat: reliable in one direction only.
+    /// </summary>
+    public Task RunProcessorOutcomePassAsync(
+        ProcessorOutcomeReporter reporter,
+        CancellationToken cancellationToken)
+        => RunScheduledPassAsync(
+            SystemTasks.ProcessorOutcomes,
+            () => reporter.SendDueAsync(cancellationToken),
+            "Processor outcome pass failed.",
+            cancellationToken);
+
     public Task RunDispatchRetryPassAsync(
         IDownloadRetryService downloadRetryService,
         CancellationToken cancellationToken)

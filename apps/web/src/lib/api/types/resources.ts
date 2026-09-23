@@ -863,6 +863,29 @@ export interface ProcessorHandoffItem {
   updatedUtc: string;
   /** What the processor last said about this hand-off, when it can be asked (#511). */
   processor?: ProcessorHandoffObservation | null;
+  /** What Deluno told the processor became of the file, and whether it heard (#580). */
+  outcome?: ProcessorOutcomeRecord | null;
+}
+
+/** Mirrors `Deluno.Platform.Contracts.ProcessorOutcomeRecord`. */
+export interface ProcessorOutcomeRecord {
+  handoffId: string;
+  processorName: string;
+  libraryId: string;
+  releaseName: string;
+  /** `imported` or `not-imported`. */
+  outcome: string;
+  importedPath: string | null;
+  reason: string | null;
+  occurredUtc: string;
+  /** `pending`, `delivered`, `refused` or `given-up`. */
+  delivery: string;
+  attempts: number;
+  lastAttemptUtc: string | null;
+  nextAttemptUtc: string | null;
+  released: boolean;
+  processorSaid: string | null;
+  recordedUtc: string;
 }
 
 /** Mirrors `Deluno.Platform.Contracts.ProcessorHandoffObservation`. */

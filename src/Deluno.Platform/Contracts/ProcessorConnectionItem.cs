@@ -94,11 +94,16 @@ public interface IProcessorConnectionService
     /// reclaims it — which is what has to work when the media manager on the
     /// other end says nothing at all.</para>
     /// </summary>
+    /// <param name="occurredUtc">
+    /// When it happened, not when it is being said: a report sent again must be
+    /// the same report (#580).
+    /// </param>
     Task<ProcessorOutcomeResult> ReportOutcomeAsync(
         ProcessorConnectionItem connection,
         string handoffId,
         ProcessorHandoffOutcome outcome,
         string? importedPath,
         string? reason,
+        DateTimeOffset occurredUtc,
         CancellationToken cancellationToken);
 }

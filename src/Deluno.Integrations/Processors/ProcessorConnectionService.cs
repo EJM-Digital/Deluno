@@ -204,6 +204,18 @@ public sealed class ProcessorConnectionService(IHttpClientFactory httpClientFact
                 return new ProcessorStatusSupport(ProcessorAnswer.Forbidden, false, false, await ForbiddenMessageAsync(response, connection, cancellationToken));
             }
 
+            if (IsWorthAskingAgain(response.StatusCode))
+            {
+                // A processor that is starting up or failing has not said what
+                // it supports. Read as "nothing", it had its files judged as if
+                // it could not be asked, and its outcome reports dropped (#580).
+                return new ProcessorStatusSupport(
+                    ProcessorAnswer.Unreachable,
+                    false,
+                    false,
+                    $"{connection.Name} answered HTTP {(int)response.StatusCode}. {await ReadRefusalAsync(response, cancellationToken)}".TrimEnd());
+            }
+
             if (!response.IsSuccessStatusCode)
             {
                 // Absent or refused: this processor does not answer questions,
@@ -305,6 +317,7 @@ public sealed class ProcessorConnectionService(IHttpClientFactory httpClientFact
         ProcessorHandoffOutcome outcome,
         string? importedPath,
         string? reason,
+        DateTimeOffset occurredUtc,
         CancellationToken cancellationToken)
     {
         if (!ProcessorStatusEndpoints.TryDerive(connection.SubmissionUrl, out var endpoints))
@@ -319,7 +332,7 @@ public sealed class ProcessorConnectionService(IHttpClientFactory httpClientFact
                 Content = JsonContent.Create(new
                 {
                     outcome = outcome == ProcessorHandoffOutcome.Imported ? "imported" : "not-imported",
-                    occurredUtc = DateTimeOffset.UtcNow,
+                    occurredUtc = occurredUtc.ToUniversalTime(),
                     importedPath = outcome == ProcessorHandoffOutcome.Imported ? importedPath : null,
                     reason = outcome == ProcessorHandoffOutcome.NotImported ? reason : null
                 })
@@ -330,13 +343,25 @@ public sealed class ProcessorConnectionService(IHttpClientFactory httpClientFact
             // A processor disagreeing about its own bookkeeping must never fail
             // an import that has already happened, so every answer here is
             // recorded rather than thrown.
+            //
+            // Which answers are worth sending again is plain HTTP, not any one
+            // processor's wording (#580): the same report again gets the same
+            // answer from a processor that has it, so repeating is safe, and
+            // only an answer no repeat can change ends it.
             return response.StatusCode switch
             {
                 _ when response.IsSuccessStatusCode => await ReadReleaseAsync(response, cancellationToken),
                 System.Net.HttpStatusCode.NotFound => new ProcessorOutcomeResult(ProcessorAnswer.NotFound, false, $"{connection.Name} has no record of this hand-off."),
                 System.Net.HttpStatusCode.Forbidden or System.Net.HttpStatusCode.Unauthorized =>
                     new ProcessorOutcomeResult(ProcessorAnswer.Forbidden, false, await ForbiddenMessageAsync(response, connection, cancellationToken)),
-                _ => new ProcessorOutcomeResult(ProcessorAnswer.Unreachable, false, await ReadRefusalAsync(response, cancellationToken))
+                // Not finished yet, or ended in a state it may still correct.
+                System.Net.HttpStatusCode.Conflict =>
+                    new ProcessorOutcomeResult(ProcessorAnswer.Busy, false, await ReadRefusalAsync(response, cancellationToken) ?? $"{connection.Name} answered HTTP 409."),
+                var code when IsWorthAskingAgain(code) =>
+                    new ProcessorOutcomeResult(ProcessorAnswer.Unreachable, false, await ReadRefusalAsync(response, cancellationToken) ?? $"{connection.Name} answered HTTP {(int)code}."),
+                // 400, 422 and the rest: the report itself was wrong, and
+                // sending the same report again would be wrong again.
+                var code => new ProcessorOutcomeResult(ProcessorAnswer.Refused, false, await ReadRefusalAsync(response, cancellationToken) ?? $"{connection.Name} answered HTTP {(int)code}.")
             };
         }
         catch (Exception exception) when (!cancellationToken.IsCancellationRequested && (exception is HttpRequestException or TaskCanceledException))
@@ -344,6 +369,14 @@ public sealed class ProcessorConnectionService(IHttpClientFactory httpClientFact
             return new ProcessorOutcomeResult(ProcessorAnswer.Unreachable, false, $"Deluno could not reach {connection.Name}.");
         }
     }
+
+    /// <summary>
+    /// Answers that say "not now" rather than "no": the processor is failing,
+    /// overloaded or slow. Asking again later can get a different answer.
+    /// </summary>
+    private static bool IsWorthAskingAgain(System.Net.HttpStatusCode code)
+        => (int)code >= 500
+           || code is System.Net.HttpStatusCode.RequestTimeout or System.Net.HttpStatusCode.TooManyRequests;
 
     private static async Task<ProcessorOutcomeResult> ReadReleaseAsync(HttpResponseMessage response, CancellationToken cancellationToken)
     {
