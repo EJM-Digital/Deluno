@@ -72,7 +72,8 @@ public static class PlatformDatabaseMigrations
         new V0064SeerrServers(),
         new V0065CompanionToolWeir(),
         new V0066DownloadHealthStrikesV2(),
-        new V0067ProcessorHandoffOutcomes()
+        new V0067ProcessorHandoffOutcomes(),
+        new V0068IndexerTrackerDefinition()
     ];
 
     private sealed class V0001InitialSchema : SqliteSqlMigration

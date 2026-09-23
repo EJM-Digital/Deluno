@@ -40,10 +40,18 @@ export interface IndexerForm {
   rssEnabled: boolean;
   automaticSearchEnabled: boolean;
   interactiveSearchEnabled: boolean;
+  /** The built-in tracker, for a "tracker" indexer (#606). */
+  definitionId: string;
+  /** Its settings that are not secret. */
+  trackerSettings: Record<string, string>;
+  /** Secrets typed in this session. Blank means keep the saved one: the screen never has it to show. */
+  trackerSecrets: Record<string, string>;
 }
-export function emptyIndexerForm(): IndexerForm { return { name: "", protocol: "newznab", scope: "both", baseUrl: "", apiKey: "", priority: "10", requestIntervalSeconds: "", categories: INDEXER_PRESETS[1]!.defaultCategories("both"), isEnabled: true, sharingRule: "inherit", minimumAgeMinutes: "", retentionDays: "", maximumSizeMb: "", preferIndexerFlags: "", availabilityDelayDays: "", rssEnabled: true, automaticSearchEnabled: true, interactiveSearchEnabled: true }; }
-export function indexerFormFrom(item: IndexerItem): IndexerForm { return { name: item.name, protocol: (["torznab", "newznab", "rss", "custom"].includes(item.protocol) ? item.protocol : "custom") as IndexerProtocol, scope: item.mediaScope ?? "both", baseUrl: item.baseUrl, apiKey: "", priority: String(item.priority), requestIntervalSeconds: item.requestIntervalSeconds == null ? "" : String(item.requestIntervalSeconds), categories: item.categories, isEnabled: item.isEnabled, sharingRule: sharingRuleFrom(item), minimumAgeMinutes: item.minimumAgeMinutes == null ? "" : String(item.minimumAgeMinutes), retentionDays: item.retentionDays == null ? "" : String(item.retentionDays), maximumSizeMb: item.maximumSizeMb == null ? "" : String(item.maximumSizeMb), preferIndexerFlags: item.preferIndexerFlags ?? "", availabilityDelayDays: item.availabilityDelayDays == null ? "" : String(item.availabilityDelayDays), rssEnabled: item.rssEnabled !== false, automaticSearchEnabled: item.automaticSearchEnabled !== false, interactiveSearchEnabled: item.interactiveSearchEnabled !== false }; }
-export function sameIndexer(a: IndexerForm, b: IndexerForm) { return (Object.keys(a) as (keyof IndexerForm)[]).every((key) => a[key] === b[key]); }
+export function emptyIndexerForm(): IndexerForm { return { name: "", protocol: "newznab", scope: "both", baseUrl: "", apiKey: "", priority: "10", requestIntervalSeconds: "", categories: INDEXER_PRESETS.find((preset) => preset.protocol === "newznab")!.defaultCategories("both"), isEnabled: true, sharingRule: "inherit", minimumAgeMinutes: "", retentionDays: "", maximumSizeMb: "", preferIndexerFlags: "", availabilityDelayDays: "", rssEnabled: true, automaticSearchEnabled: true, interactiveSearchEnabled: true, definitionId: "", trackerSettings: {}, trackerSecrets: {} }; }
+export function indexerFormFrom(item: IndexerItem): IndexerForm { return { name: item.name, protocol: (["tracker", "torznab", "newznab", "rss", "custom"].includes(item.protocol) ? item.protocol : "custom") as IndexerProtocol, scope: item.mediaScope ?? "both", baseUrl: item.baseUrl, apiKey: "", priority: String(item.priority), requestIntervalSeconds: item.requestIntervalSeconds == null ? "" : String(item.requestIntervalSeconds), categories: item.categories, isEnabled: item.isEnabled, sharingRule: sharingRuleFrom(item), minimumAgeMinutes: item.minimumAgeMinutes == null ? "" : String(item.minimumAgeMinutes), retentionDays: item.retentionDays == null ? "" : String(item.retentionDays), maximumSizeMb: item.maximumSizeMb == null ? "" : String(item.maximumSizeMb), preferIndexerFlags: item.preferIndexerFlags ?? "", availabilityDelayDays: item.availabilityDelayDays == null ? "" : String(item.availabilityDelayDays), rssEnabled: item.rssEnabled !== false, automaticSearchEnabled: item.automaticSearchEnabled !== false, interactiveSearchEnabled: item.interactiveSearchEnabled !== false, definitionId: item.definitionId ?? "", trackerSettings: { ...(item.definitionSettings ?? {}) }, trackerSecrets: {} }; }
+export function sameIndexer(a: IndexerForm, b: IndexerForm) { return (Object.keys(a) as (keyof IndexerForm)[]).every((key) => typeof a[key] === "object" ? sameRecord(a[key] as Record<string, string>, b[key] as Record<string, string>) : a[key] === b[key]); }
+/** The same values, ignoring keys that are blank on one side and missing on the other. */
+function sameRecord(a: Record<string, string>, b: Record<string, string>) { return [...new Set([...Object.keys(a), ...Object.keys(b)])].every((key) => (a[key] ?? "") === (b[key] ?? "")); }
 
 export interface ClientForm { name: string; protocol: string; host: string; port: string; username: string; password: string; moviesCategory: string; tvCategory: string; priority: string; isEnabled: boolean; }
 export function emptyClientForm(): ClientForm { const preset = CLIENT_PRESETS[0]!; return { name: preset.label, protocol: preset.protocol, host: "localhost", port: String(preset.defaultPort), username: "", password: "", moviesCategory: preset.defaultMoviesCategory, tvCategory: preset.defaultTvCategory, priority: "1", isEnabled: true }; }
@@ -73,6 +81,7 @@ export function indexerFormErrors(form: IndexerForm, creating: boolean): Record<
   const errors: Record<string, string> = {};
   if (!form.name.trim()) errors.name = "Give this indexer a name.";
   if (!form.baseUrl.trim()) errors.baseUrl = "Enter the indexer URL.";
+  if (form.protocol === "tracker" && !form.definitionId) errors.definitionId = "Choose which tracker this is.";
   const preset = INDEXER_PRESETS.find((item) => item.protocol === form.protocol);
   if (creating && preset?.requiresApiKey && !form.apiKey.trim()) errors.apiKey = "This indexer needs an API key.";
   for (const [key, label] of [["minimumAgeMinutes", "Minimum age"], ["retentionDays", "Retention"], ["maximumSizeMb", "Maximum size"], ["availabilityDelayDays", "Availability delay"]] as const) {

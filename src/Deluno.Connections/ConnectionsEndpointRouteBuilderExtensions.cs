@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using Deluno.Infrastructure.Http;
 using System.Net;
 using System.Net.Http;
 using System.Net.Http.Headers;
@@ -18,6 +19,7 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Routing;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace Deluno.Connections;
 
@@ -92,7 +94,7 @@ public static class ConnectionsEndpointRouteBuilderExtensions
             var draft = new IndexerItem(
                 "draft",
                 request.Name?.Trim() ?? "Draft indexer",
-                NormalizeIndexerProtocol(request.Protocol),
+                IndexerProtocols.Normalize(request.Protocol),
                 IndexerPrivacy.Normalize(request.Privacy),
                 request.BaseUrl?.Trim() ?? string.Empty,
                 request.ApiKey,
@@ -120,11 +122,14 @@ public static class ConnectionsEndpointRouteBuilderExtensions
                 AvailabilityDelayDays = request.AvailabilityDelayDays,
                 RssEnabled = request.RssEnabled,
                 AutomaticSearchEnabled = request.AutomaticSearchEnabled,
-                InteractiveSearchEnabled = request.InteractiveSearchEnabled
+                InteractiveSearchEnabled = request.InteractiveSearchEnabled,
+                DefinitionId = request.DefinitionId,
+                DefinitionSettings = request.DefinitionSettings,
+                DefinitionSecrets = request.DefinitionSecrets
             };
 
             var started = Stopwatch.GetTimestamp();
-            var health = await TestIndexerWithResilienceAsync(draft, resiliencePolicy, cancellationToken);
+            var health = await TestIndexerWithResilienceAsync(draft, resiliencePolicy, httpContext.RequestServices.GetService<ITrackerIndexerTester>(), cancellationToken);
             await RecordAuthTelemetryAsync(statsRepository, draft, health, ElapsedMilliseconds(started), cancellationToken);
             return Results.Ok(new
             {
@@ -211,7 +216,7 @@ public static class ConnectionsEndpointRouteBuilderExtensions
             }
 
             var started = Stopwatch.GetTimestamp();
-            var health = await TestIndexerWithResilienceAsync(item, resiliencePolicy, cancellationToken);
+            var health = await TestIndexerWithResilienceAsync(item, resiliencePolicy, httpContext.RequestServices.GetService<ITrackerIndexerTester>(), cancellationToken);
             await RecordAuthTelemetryAsync(statsRepository, item, health, ElapsedMilliseconds(started), cancellationToken);
             var result = await repository.UpdateIndexerHealthAsync(
                 id,
@@ -621,6 +626,11 @@ public static class ConnectionsEndpointRouteBuilderExtensions
             errors["baseUrl"] = ["Add the address Deluno should use for this indexer."];
         }
 
+        if (IndexerProtocols.IsTracker(request.Protocol) && string.IsNullOrWhiteSpace(request.DefinitionId))
+        {
+            errors["definitionId"] = ["Choose which tracker this is."];
+        }
+
         AddRequestIntervalError(errors, request.RequestIntervalSeconds, clearRequested: false);
         AddAcquisitionSettingsErrors(
             errors,
@@ -710,14 +720,6 @@ public static class ConnectionsEndpointRouteBuilderExtensions
         return;
     }
 
-    private static string NormalizeIndexerProtocol(string? value)
-        => value?.Trim().ToLowerInvariant() switch
-        {
-            "newznab" => "newznab",
-            "rss" => "rss",
-            _ => "torznab"
-        };
-
     private static string NormalizeMediaScope(string? value)
         => value?.Trim().ToLowerInvariant() switch
         {
@@ -735,6 +737,7 @@ public static class ConnectionsEndpointRouteBuilderExtensions
     private static async Task<IntegrationHealthCheckResult> TestIndexerWithResilienceAsync(
         IndexerItem item,
         IIntegrationResiliencePolicy resiliencePolicy,
+        ITrackerIndexerTester? trackerTester,
         CancellationToken cancellationToken)
     {
         var result = await resiliencePolicy.ExecuteAsync(
@@ -754,7 +757,7 @@ public static class ConnectionsEndpointRouteBuilderExtensions
                 ServiceName: item.Name),
             async token =>
             {
-                var (healthStatus, message, failureCategory) = await TestIndexerAsync(item, token);
+                var (healthStatus, message, failureCategory) = await TestIndexerAsync(item, trackerTester, token);
                 return HealthResult("indexer", item.Id, item.Name, "health-test", healthStatus, message, failureCategory);
             },
             ClassifyIntegrationHealth,
@@ -862,11 +865,19 @@ public static class ConnectionsEndpointRouteBuilderExtensions
 
     private static async Task<(string healthStatus, string message, string? failureCategory)> TestIndexerAsync(
         IndexerItem item,
+        ITrackerIndexerTester? trackerTester,
         CancellationToken cancellationToken)
     {
         if (!item.IsEnabled)
         {
             return ("disabled", "Disabled until you turn it on.", null);
+        }
+
+        if (IndexerProtocols.IsTracker(item.Protocol))
+        {
+            return trackerTester is null
+                ? ("degraded", "This Deluno cannot search trackers.", "configuration")
+                : await trackerTester.TestAsync(item, cancellationToken);
         }
 
         var testUrl = BuildIndexerTestUrl(item);
@@ -1128,7 +1139,7 @@ public static class ConnectionsEndpointRouteBuilderExtensions
         var endpoint = new Uri(uri, "transmission/rpc");
         using var request = new HttpRequestMessage(HttpMethod.Post, endpoint)
         {
-            Content = JsonContent.Create(new TransmissionRequest("session-get", new Dictionary<string, object>()))
+            Content = SizedJson.Create(new TransmissionRequest("session-get", new Dictionary<string, object>()))
         };
         using var response = await client.SendAsync(request, cancellationToken);
         if (response.StatusCode == HttpStatusCode.Conflict && response.Headers.TryGetValues("X-Transmission-Session-Id", out var values))
@@ -1136,7 +1147,7 @@ public static class ConnectionsEndpointRouteBuilderExtensions
             request.Headers.TryAddWithoutValidation("X-Transmission-Session-Id", values.FirstOrDefault());
             using var retry = await client.SendAsync(new HttpRequestMessage(HttpMethod.Post, endpoint)
             {
-                Content = JsonContent.Create(new TransmissionRequest("session-get", new Dictionary<string, object>())),
+                Content = SizedJson.Create(new TransmissionRequest("session-get", new Dictionary<string, object>())),
                 Headers = { { "X-Transmission-Session-Id", values.FirstOrDefault() ?? string.Empty } }
             }, cancellationToken);
             return retry.IsSuccessStatusCode
@@ -1153,7 +1164,7 @@ public static class ConnectionsEndpointRouteBuilderExtensions
     {
         using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(8) };
         var login = new DelugeRequest("auth.login", [item.Secret ?? string.Empty]);
-        using var response = await client.PostAsJsonAsync(new Uri(uri, "json"), login, cancellationToken);
+        using var response = await client.PostSizedJsonAsync(new Uri(uri, "json"), login, cancellationToken);
         if (!response.IsSuccessStatusCode)
         {
             return HealthFromStatusCode("Deluge", response.StatusCode);
@@ -1169,7 +1180,7 @@ public static class ConnectionsEndpointRouteBuilderExtensions
     {
         using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(8) };
         AddBasicAuth(client, item);
-        using var response = await client.PostAsJsonAsync(
+        using var response = await client.PostSizedJsonAsync(
             new Uri(uri, "jsonrpc"),
             new NzbGetRequest("version", []),
             cancellationToken);

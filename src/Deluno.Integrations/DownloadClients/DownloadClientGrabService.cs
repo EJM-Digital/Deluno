@@ -23,7 +23,8 @@ public sealed class DownloadClientGrabService(
     IDownloadDispatchesRepository dispatchesRepository,
     IRealtimeEventPublisher realtimeEventPublisher,
     TimeProvider timeProvider,
-    IRetryPolicyCatalog retryPolicyCatalog)
+    IRetryPolicyCatalog retryPolicyCatalog,
+    Deluno.Integrations.Search.Trackers.TrackerIndexers? trackerIndexers = null)
     : IDownloadClientGrabService
 {
     public async Task<DownloadClientGrabResult> GrabAsync(
@@ -58,6 +59,16 @@ public sealed class DownloadClientGrabService(
         {
             return Failed(client.Id, request, "planned", "No downloadable URL was available for this release.");
         }
+
+        // Before the client's circuit: a tracker that will not hand over a
+        // release says nothing about the client.
+        var resolved = await ResolveTrackerReleaseAsync(request, cancellationToken);
+        if (resolved.Problem is { } problem)
+        {
+            return Failed(client.Id, request, "unavailable", problem, category: "indexer");
+        }
+
+        request = resolved.Request;
 
         await realtimeEventPublisher.PublishDispatchGrabAttemptAsync(
             request.DispatchId ?? "unknown",
@@ -236,6 +247,43 @@ public sealed class DownloadClientGrabService(
                     "grab",
                     exception,
                     retryScheduled: true));
+        }
+    }
+
+    /// <summary>
+    /// A native tracker's link made into something a client can take (#606): a
+    /// details page followed to its magnet, or a .torrent fetched with the
+    /// tracker's sign-in. Every other indexer's link goes to the client as it is.
+    /// </summary>
+    private async Task<(DownloadClientGrabRequest Request, string? Problem)> ResolveTrackerReleaseAsync(
+        DownloadClientGrabRequest request,
+        CancellationToken cancellationToken)
+    {
+        if (trackerIndexers is null
+            || request.TorrentFile is not null
+            || string.IsNullOrWhiteSpace(request.IndexerId)
+            || request.DownloadUrl.StartsWith("magnet:", StringComparison.OrdinalIgnoreCase))
+        {
+            return (request, null);
+        }
+
+        var indexer = (await connectionsRepository.ListIndexersAsync(cancellationToken))
+            .FirstOrDefault(item => string.Equals(item.Id, request.IndexerId, StringComparison.OrdinalIgnoreCase));
+        if (indexer is null || !IndexerProtocols.IsTracker(indexer.Protocol))
+        {
+            return (request, null);
+        }
+
+        try
+        {
+            var grab = await trackerIndexers.ResolveAsync(indexer, request.DownloadUrl, cancellationToken);
+            return grab.MagnetUrl is { } magnet
+                ? (request with { DownloadUrl = magnet }, null)
+                : (request with { TorrentFile = grab.TorrentFile }, null);
+        }
+        catch (Deluno.Integrations.Search.Trackers.TrackerException exception)
+        {
+            return (request, $"{indexer.Name} would not hand over this release: {exception.Message}");
         }
     }
 

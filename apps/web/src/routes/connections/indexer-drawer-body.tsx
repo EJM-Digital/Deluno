@@ -15,6 +15,7 @@ import { INDEXER_PRESETS, PRIORITY_OPTIONS, type IndexerProtocol, type MediaScop
 import type { IndexerForm, SharingRule } from "./forms";
 import { describeGlobalSharingRule, describeStrictSharingRule } from "../../lib/sharing-rule";
 import { formatSeconds, healthChip, relative } from "./format";
+import { TrackerFields } from "./tracker-fields";
 export function IndexerDrawerBody({
   form,
   setForm,
@@ -82,6 +83,10 @@ export function IndexerDrawerBody({
             <Select value={form.protocol} disabled={Boolean(editing)} onChange={(event) => chooseProtocol(event.target.value as IndexerProtocol)} options={INDEXER_PRESETS.map((item) => ({ value: item.protocol, label: item.label }))} />
           </Field>
         </FieldRow>
+        {form.protocol === "tracker" ? (
+          <TrackerFields form={form} setForm={setForm} editing={editing} errors={errors} clearError={clearError} />
+        ) : (
+        <>
         <Field label={form.protocol === "torznab" ? "Torznab URL" : form.protocol === "newznab" ? "Newznab URL" : "URL"} error={errors.baseUrl}>
           <Input value={form.baseUrl} onChange={(event) => { clearError("baseUrl"); setForm((current) => ({ ...current, baseUrl: event.target.value })); }} placeholder={preset.placeholder} className="font-mono text-[length:var(--type-caption)]" autoComplete="off" spellCheck={false} />
         </Field>
@@ -95,6 +100,8 @@ export function IndexerDrawerBody({
             </span>
           </Field>
         ) : null}
+        </>
+        )}
         <FieldRow>
           <Field label="Used for">
             <SegmentedControl<MediaScope> value={form.scope} onValueChange={chooseScope} options={[{ value: "both", label: "Both" }, { value: "movies", label: "Movies" }, { value: "tv", label: "TV" }]} />

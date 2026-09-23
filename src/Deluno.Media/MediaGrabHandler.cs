@@ -223,7 +223,8 @@ public static class MediaGrabHandler
                 request.DownloadUrl.Trim(),
                 mediaType,
                 category,
-                indexerName),
+                indexerName,
+                IndexerId: request.IndexerId?.Trim()),
             cancellationToken);
 
         var auditPayload = new

@@ -1,6 +1,7 @@
 using System.Xml.Linq;
 using Deluno.Connections.Contracts;
 using Deluno.Infrastructure.Resilience;
+using Deluno.Integrations.Search.Trackers;
 using Microsoft.Extensions.Logging;
 
 namespace Deluno.Integrations.Search;
@@ -29,13 +30,16 @@ public sealed class IndexerFeedReader(
     IHttpClientFactory httpClientFactory,
     IIntegrationResiliencePolicy resiliencePolicy,
     IOutboundRequestThrottle outboundRequestThrottle,
-    ILogger<IndexerFeedReader> logger) : IIndexerFeedReader
+    ILogger<IndexerFeedReader> logger,
+    TrackerIndexers? trackerIndexers = null) : IIndexerFeedReader
 {
     private static readonly TimeSpan MaxThrottleWait = TimeSpan.FromSeconds(20);
 
     public async Task<IndexerFeedResult> ReadRecentAsync(IndexerItem indexer, CancellationToken cancellationToken)
     {
-        if (!Uri.TryCreate(FeedMediaSearchPlanner.BuildFeedUrl(indexer), UriKind.Absolute, out var uri))
+        // A tracker's newest releases are a search with no words (#606).
+        var isTracker = IndexerProtocols.IsTracker(indexer.Protocol);
+        if (!Uri.TryCreate(isTracker ? indexer.BaseUrl : FeedMediaSearchPlanner.BuildFeedUrl(indexer), UriKind.Absolute, out var uri))
         {
             return new IndexerFeedResult(false, [], $"{indexer.Name} has no usable address.");
         }
@@ -62,6 +66,24 @@ public sealed class IndexerFeedReader(
                 ServiceName: indexer.Name),
             async token =>
             {
+                if (isTracker)
+                {
+                    if (trackerIndexers is null)
+                    {
+                        return new IndexerFeedResult(false, [], "This Deluno cannot search trackers.");
+                    }
+
+                    try
+                    {
+                        var feed = await trackerIndexers.SearchAsync(indexer, new TrackerQuery(string.Empty, Categories: TrackerCategories.Parse(indexer.Categories)), token);
+                        return new IndexerFeedResult(true, ReadReleases(feed));
+                    }
+                    catch (TrackerException exception)
+                    {
+                        return new IndexerFeedResult(false, [], exception.Message);
+                    }
+                }
+
                 var http = httpClientFactory.CreateClient("indexers");
                 using var response = await http.GetAsync(uri, token);
                 if (!response.IsSuccessStatusCode)
@@ -79,13 +101,7 @@ public sealed class IndexerFeedReader(
 
                 await using var stream = await response.Content.ReadAsStreamAsync(token);
                 var document = await XDocument.LoadAsync(stream, LoadOptions.None, token);
-                var releases = document.Descendants("item")
-                    .Select(item => new IndexerFeedRelease(
-                        FeedMediaSearchPlanner.ReadReleaseTitle(item),
-                        FeedMediaSearchPlanner.ReadPublishedUtc(item)))
-                    .Where(release => !string.IsNullOrWhiteSpace(release.ReleaseName))
-                    .ToArray();
-                return new IndexerFeedResult(true, releases);
+                return new IndexerFeedResult(true, ReadReleases(document));
             },
             _ => IntegrationResilienceOutcome.Success,
             cancellationToken);
@@ -103,4 +119,12 @@ public sealed class IndexerFeedReader(
                 ? $"{indexer.Name} is resting after repeated failures."
                 : result.FailureMessage ?? $"{indexer.Name} did not answer.");
     }
+
+    private static IndexerFeedRelease[] ReadReleases(XDocument document)
+        => document.Descendants("item")
+            .Select(item => new IndexerFeedRelease(
+                FeedMediaSearchPlanner.ReadReleaseTitle(item),
+                FeedMediaSearchPlanner.ReadPublishedUtc(item)))
+            .Where(release => !string.IsNullOrWhiteSpace(release.ReleaseName))
+            .ToArray();
 }

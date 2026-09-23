@@ -72,4 +72,17 @@ public sealed record IndexerItem(
 
     /// <summary>Last typed health failure, when the source did not pass its most recent test.</summary>
     public IntegrationFailure? LastHealthFailure { get; init; }
+
+    /// <summary>The built-in tracker a native tracker indexer runs (#606); null for Newznab, Torznab and RSS.</summary>
+    public string? DefinitionId { get; init; }
+
+    /// <summary>A tracker's settings that are not secret (sort order, filters), by setting name.</summary>
+    public IReadOnlyDictionary<string, string>? DefinitionSettings { get; init; }
+
+    /// <summary>A tracker's secrets (password, cookie, key). Never serialized; <see cref="DefinitionSecretsSet"/> says which are there.</summary>
+    [JsonIgnore]
+    public IReadOnlyDictionary<string, string>? DefinitionSecrets { get; init; }
+
+    /// <summary>Which secrets are saved, so the screen can say "saved" without seeing them.</summary>
+    public IReadOnlyList<string> DefinitionSecretsSet => DefinitionSecrets?.Keys.Order(StringComparer.Ordinal).ToArray() ?? [];
 }

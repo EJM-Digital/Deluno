@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { CLIENT_PRESETS } from "./presets";
-import { clientFormErrors, emptyClientForm, emptyIndexerForm, indexerFormErrors } from "./forms";
+import type { IndexerItem } from "../../lib/api";
+import { clientFormErrors, emptyClientForm, emptyIndexerForm, indexerFormErrors, indexerFormFrom, sameIndexer } from "./forms";
 
 /**
  * #293 — a create form opens with values the user is entitled to accept as-is.
@@ -33,6 +34,39 @@ describe("create form defaults", () => {
       .toEqual(["maximumSizeMb", "minimumAgeMinutes", "retentionDays"]);
   });
 });
+
+// #606: a built-in tracker is chosen from Deluno's list, not typed as a URL.
+describe("built-in trackers", () => {
+  const tracker = { ...emptyIndexerForm(), protocol: "tracker" as const, name: "YTS", baseUrl: "https://yts.gg/" };
+
+  it("needs to know which tracker it is, and no API key", () => {
+    expect(indexerFormErrors(tracker, true)).toEqual({ definitionId: "Choose which tracker this is." });
+    expect(indexerFormErrors({ ...tracker, definitionId: "yts" }, true)).toEqual({});
+  });
+
+  it("reads a saved tracker back with its settings and no secrets", () => {
+    const form = indexerFormFrom({ ...savedIndexer(), protocol: "tracker", definitionId: "torrentleech", definitionSettings: { sort: "seeders" }, definitionSecretsSet: ["password"] });
+    expect(form.protocol).toBe("tracker");
+    expect(form.definitionId).toBe("torrentleech");
+    expect(form.trackerSettings).toEqual({ sort: "seeders" });
+    expect(form.trackerSecrets).toEqual({});
+  });
+
+  it("counts a typed secret or a changed setting as a change, and an untouched blank as none", () => {
+    const saved = { ...tracker, definitionId: "torrentleech", trackerSettings: { sort: "seeders" } };
+    expect(sameIndexer(saved, { ...saved, trackerSettings: { sort: "seeders" }, trackerSecrets: { password: "" } })).toBe(true);
+    expect(sameIndexer(saved, { ...saved, trackerSecrets: { password: "hunter2" } })).toBe(false);
+    expect(sameIndexer(saved, { ...saved, trackerSettings: { sort: "time" } })).toBe(false);
+  });
+});
+
+function savedIndexer(): IndexerItem {
+  return {
+    id: "1", name: "TorrentLeech", protocol: "torznab", privacy: "private", baseUrl: "https://www.torrentleech.org/", priority: 10, categories: "2000", tags: "",
+    isEnabled: true, healthStatus: "healthy", lastHealthMessage: null, consecutiveFailures: 0, rateLimitedUntilUtc: null, disabledReason: null,
+    createdUtc: "2026-09-24T00:00:00Z", updatedUtc: "2026-09-24T00:00:00Z"
+  };
+}
 
 describe("client validation", () => {
   /**

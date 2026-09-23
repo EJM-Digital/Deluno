@@ -41,11 +41,19 @@ public sealed class QbittorrentDownloadClient(Func<HttpMessageHandler>? handlerF
         using var handler = this.handlerFactory();
         using var http = new HttpClient(handler) { BaseAddress = baseUri, Timeout = TimeSpan.FromSeconds(10) };
         await LoginAsync(http, client, cancellationToken);
-        using var body = new FormUrlEncodedContent(
-        [
-            new KeyValuePair<string, string>("urls", request.DownloadUrl),
-            new KeyValuePair<string, string>("category", DownloadClientHelpers.ResolveCategory(client, request))
-        ]);
+        // A .torrent Deluno fetched with a tracker's sign-in goes up as a file;
+        // qBittorrent could not fetch it by URL itself (#606).
+        using HttpContent body = request.TorrentFile is { } file
+            ? new MultipartFormDataContent
+            {
+                { new ByteArrayContent(file), "torrents", "release.torrent" },
+                { new StringContent(DownloadClientHelpers.ResolveCategory(client, request)), "category" }
+            }
+            : new FormUrlEncodedContent(
+            [
+                new KeyValuePair<string, string>("urls", request.DownloadUrl),
+                new KeyValuePair<string, string>("category", DownloadClientHelpers.ResolveCategory(client, request))
+            ]);
         // What was there before, so the answer below can be about what actually
         // happened rather than about what was asked.
         var before = await ListHashesAsync(http, cancellationToken);

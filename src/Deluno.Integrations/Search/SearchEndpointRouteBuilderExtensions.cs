@@ -23,6 +23,11 @@ public static class SearchEndpointRouteBuilderExtensions
     /// </summary>
     public static IEndpointRouteBuilder MapDelunoSearchEndpoints(this IEndpointRouteBuilder endpoints)
     {
+        // Every tracker Deluno can search itself (#606), for the picker. Ones
+        // the engine cannot run are listed with the reason, so a tracker the
+        // user looks for is never simply missing.
+        endpoints.MapGet("/api/trackers", (Trackers.ITrackerDefinitionCatalog catalog) => Results.Ok(catalog.List()));
+
         var indexerScoreboard = endpoints.MapGroup("/api/indexers");
 
         indexerScoreboard.MapGet("scoreboard", async (
