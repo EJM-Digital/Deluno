@@ -83,6 +83,19 @@ describe("needsAction", () => {
     expect(result.failedDownloads).toHaveLength(3);
   });
 
+  it("shows a failed download once when its import issue names it inside the retry (#602)", () => {
+    const series = {
+      ...recovery([]),
+      recentCases: [{ ...recovery([{ id: "case-1", dispatchId: null }]).recentCases[0], detailsJson: JSON.stringify({ RetryRequest: { DispatchId: "d1" } }) }]
+    };
+
+    const result = needsAction({ seriesRecovery: series, dispatches: [dispatch({ id: "d1" })] });
+
+    expect(result.recoveryCases).toHaveLength(1);
+    expect(result.failedDownloads).toHaveLength(0);
+    expect(result.total).toBe(1);
+  });
+
   it("counts each orphaned download folder once, beside everything else (#588)", () => {
     const orphan = {
       path: "C:\\Deluno\\Downloads-Complete\\TV\\Breaking.Bad.S01E01.1080p.WEB-DL.x264-DELUNO.1",

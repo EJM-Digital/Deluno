@@ -46,7 +46,8 @@ public static class RecoveryCaseAlerts
                 return 0;
             }
 
-            if (Text(root, "DispatchId") is { } dispatchId)
+            // At the top, or inside the retry an import case keeps (#602).
+            if ((Text(root, "DispatchId") ?? (root.TryGetProperty("RetryRequest", out var retry) && retry.ValueKind == JsonValueKind.Object ? Text(retry, "DispatchId") : null)) is { } dispatchId)
             {
                 if (dispatches is not null
                     && await dispatches.GetDispatchAsync(dispatchId, cancellationToken) is { } dispatch

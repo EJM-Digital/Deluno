@@ -304,6 +304,31 @@ public sealed class DispatchAlertsSettleThemselvesTests
         Assert.Equal("first-grab", Assert.Single(await alerts.GetOpenAlertsAsync(null, 100, CancellationToken.None)).DispatchId);
     }
 
+    /// <summary>
+    /// #602: an import issue keeps its grab inside the retry it offers. Read only
+    /// at the top, dismissing it settled nothing, and the poller raised the same
+    /// failure again under another name two hours later (seen on the soak rig).
+    /// </summary>
+    [Fact]
+    public async Task Dismissing_an_import_issue_closes_the_alerts_on_the_grab_its_retry_names()
+    {
+        using var storage = TestStorage.Create();
+        var clock = new FixedTimeProvider(Start);
+        await InitializeAsync(storage, clock);
+        const string release = "Breaking.Bad.S01E02.1080p.WEB-DL.DDP5.1.H.264-UPGRADE";
+        await InsertDispatchAsync(storage.Factory, "duplicate-grab", TimeSpan.FromHours(2), clock, release: release);
+        var alerts = new SqliteDispatchAlertRepository(storage.Factory, clock);
+        await alerts.CreateAlertAsync("duplicate-grab", release, "Import failed: The destination file already exists.", "import-failed", "error", null, CancellationToken.None);
+
+        var closed = await RecoveryCaseAlerts.AcknowledgeAsync(
+            """{"RetryRequest":{"Preview":{"SourcePath":"C:\\Refined\\x.mkv"},"DispatchId":"duplicate-grab"},"SourcePath":"C:\\Refined\\x.mkv"}""",
+            alerts,
+            CancellationToken.None);
+
+        Assert.Equal(1, closed);
+        Assert.Empty(await alerts.GetOpenAlertsAsync(null, 100, CancellationToken.None));
+    }
+
     [Theory]
     [InlineData(null)]
     [InlineData("not json")]
