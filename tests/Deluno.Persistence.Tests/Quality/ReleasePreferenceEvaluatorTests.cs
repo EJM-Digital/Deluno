@@ -124,6 +124,29 @@ public sealed class ReleasePreferenceEvaluatorTests
         Assert.False(comparison.PersistentImprovement);
     }
 
+    /// <summary>
+    /// #597: an installed file that fails the profile where its facts cannot
+    /// show it (below the size floor) is repaired by a candidate that passes,
+    /// even one whose facts are otherwise the same.
+    /// </summary>
+    [Fact]
+    public void An_installed_file_below_the_size_floor_is_replaced_by_a_candidate_that_passes()
+    {
+        var plan = Plan();
+        PreferenceFact[] facts =
+        [
+            new PreferenceFact("quality.bluray-1080p", PreferenceFactState.Present),
+            new PreferenceFact("audio.format.truehd", PreferenceFactState.Present)
+        ];
+
+        var comparison = ReleasePreferenceEvaluator.Compare(plan, facts, facts, "Your file is 0.7 GB, below the 1.5 GB minimum for Bluray 1080p.");
+
+        Assert.Equal(PreferenceCandidateStatus.Upgrade, comparison.Status);
+        Assert.False(comparison.Current.HardGatesPassed);
+        Assert.Contains("Your file is 0.7 GB, below the 1.5 GB minimum for Bluray 1080p.", comparison.Current.Reasons);
+        Assert.Contains("Your file is 0.7 GB, below the 1.5 GB minimum for Bluray 1080p. This release repairs it.", comparison.Reasons);
+    }
+
     [Fact]
     public void A_file_that_fails_a_hard_gate_is_not_treated_as_settled_when_targets_are_met()
     {

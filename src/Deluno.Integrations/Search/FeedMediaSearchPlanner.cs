@@ -503,7 +503,8 @@ public sealed class FeedMediaSearchPlanner(
                         preferencePlan,
                         currentFilePresent,
                         sizeRules: sizeRules,
-                        upgradeStop: upgradeStop);
+                        upgradeStop: upgradeStop,
+                        mediaType: mediaType);
                     return new IndexerSearchOutcome(
                         parsed.Candidates,
                         parsed.CandidatesTruncatedByIndexer,
@@ -713,7 +714,8 @@ public sealed class FeedMediaSearchPlanner(
         bool currentFilePresent = false,
         int requestedLimit = IndexerResultLimit,
         IReadOnlyList<ProfileSizeRule>? sizeRules = null,
-        QualityUpgradeStopPolicy? upgradeStop = null)
+        QualityUpgradeStopPolicy? upgradeStop = null,
+        string? mediaType = null)
     {
         XNamespace torznab = "http://torznab.com/schemas/2015/feed";
         XNamespace newznab = "http://www.newznab.com/DTD/2010/feeds/attributes/";
@@ -788,7 +790,8 @@ public sealed class FeedMediaSearchPlanner(
                  PreferencePlan: preferencePlan,
                  CurrentReleaseName: currentReleaseName,
                  CurrentPreferenceEvaluation: currentPreferenceEvaluation,
-                 CurrentFilePresent: currentFilePresent));
+                 CurrentFilePresent: currentFilePresent,
+                 MediaType: mediaType));
 
             var boost = rankingModelService.Score(new ReleaseRankingFeatures(
                 Seeders: seeders,

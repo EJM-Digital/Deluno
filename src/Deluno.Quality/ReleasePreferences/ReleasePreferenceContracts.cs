@@ -325,6 +325,15 @@ public sealed record PreferenceEvaluation
     public bool TargetsMet { get; init; }
     public IReadOnlyList<PreferenceFamilyEvaluation> Families { get; init; }
     public IReadOnlyList<string> Reasons { get; init; }
+
+    /// <summary>
+    /// Why the installed file fails the profile for a reason its facts cannot
+    /// show, such as being below the size floor (#597). Carried from the search
+    /// to the comparison and never stored: the facts are re-evaluated on every
+    /// comparison, and this is what they cannot say.
+    /// </summary>
+    [JsonIgnore]
+    public string? InstalledFileViolation { get; init; }
 }
 
 /// <summary>

@@ -171,12 +171,27 @@ public static class ReleasePreferenceEvaluator
             parameterName);
     }
 
+    /// <param name="installedFileViolation">
+    /// Why the installed file fails the profile where its facts cannot show it,
+    /// such as a file below the size floor (#597). It fails a hard gate, so a
+    /// candidate that passes them replaces it.
+    /// </param>
     public static PreferenceComparison Compare(
         ReleasePreferencePlan plan,
         IEnumerable<PreferenceFact>? currentFacts,
-        IEnumerable<PreferenceFact>? candidateFacts)
+        IEnumerable<PreferenceFact>? candidateFacts,
+        string? installedFileViolation = null)
     {
         var current = Evaluate(plan, currentFacts);
+        if (installedFileViolation is not null && current.HardGatesPassed)
+        {
+            current = current with
+            {
+                Status = PreferenceEvaluationStatus.BelowGoal,
+                HardGatesPassed = false,
+                Reasons = [.. current.Reasons, installedFileViolation]
+            };
+        }
         var candidate = Evaluate(plan, candidateFacts);
         var reasons = new List<string>();
 
@@ -345,7 +360,9 @@ public static class ReleasePreferenceEvaluator
 
         if (!current.HardGatesPassed)
         {
-            reasons.Add("Installed file fails one or more hard gates; the candidate repairs the plan violation.");
+            reasons.Add(installedFileViolation is null
+                ? "Installed file fails one or more hard gates; the candidate repairs the plan violation."
+                : $"{installedFileViolation} This release repairs it.");
             return Result(PreferenceCandidateStatus.Upgrade, false, false, false, decisive, reasons, current, candidate, persistentImprovementFamilyId);
         }
 
