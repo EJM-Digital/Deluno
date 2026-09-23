@@ -701,7 +701,7 @@ public sealed class FeedMediaSearchPlanner(
         var feedItems = document.Descendants("item").ToArray();
         foreach (var item in feedItems)
         {
-            var releaseName = WebUtility.HtmlDecode(item.Element("title")?.Value?.Trim() ?? string.Empty);
+            var releaseName = ReadReleaseTitle(item);
             if (string.IsNullOrWhiteSpace(releaseName))
             {
                 continue;
@@ -866,8 +866,28 @@ public sealed class FeedMediaSearchPlanner(
             query["q"] = BuildQueryText(title, year, seasonNumber, episodeNumber, numberingScheme, absoluteNumber, airDate, sceneSeasonNumber, sceneEpisodeNumber);
         }
 
+        return FinishIndexerUrl(builder, query, indexer, isTv ? "5000" : "2000");
+    }
+
+    /// <summary>
+    /// An indexer's recent-releases feed: the same address as a search, with
+    /// no search term (#587). Newznab and Torznab answer that with their newest
+    /// releases, which is what RSS sync reads.
+    /// </summary>
+    internal static string BuildFeedUrl(IndexerItem indexer)
+    {
+        var builder = new UriBuilder(EnsureApiEndpoint(indexer.BaseUrl));
+        var query = ParseQuery(builder.Query);
+        query["t"] = "search";
+        query.Remove("q");
+        return FinishIndexerUrl(builder, query, indexer, "2000,5000");
+    }
+
+    /// <summary>Categories, limit and key: the same for a search and a feed read.</summary>
+    private static string FinishIndexerUrl(UriBuilder builder, Dictionary<string, string> query, IndexerItem indexer, string defaultCategories)
+    {
         query["cat"] = string.IsNullOrWhiteSpace(indexer.Categories)
-            ? isTv ? "5000" : "2000"
+            ? defaultCategories
             : indexer.Categories.Replace(" ", string.Empty, StringComparison.Ordinal);
 
         if (!query.ContainsKey("limit"))
@@ -884,6 +904,20 @@ public sealed class FeedMediaSearchPlanner(
         return builder.Uri.ToString();
     }
 
+    /// <summary>A feed item's release name, as a search and RSS sync both read it.</summary>
+    internal static string ReadReleaseTitle(XElement item)
+        => WebUtility.HtmlDecode(item.Element("title")?.Value?.Trim() ?? string.Empty);
+
+    /// <summary>When the indexer says a release was published, if it says.</summary>
+    internal static DateTimeOffset? ReadPublishedUtc(XElement item)
+    {
+        var raw = item.Element("pubDate")?.Value?.Trim();
+        return !string.IsNullOrWhiteSpace(raw)
+               && DateTimeOffset.TryParse(raw, CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal, out var published)
+            ? published.ToUniversalTime()
+            : null;
+    }
+
     private static string EnsureApiEndpoint(string baseUrl)
     {
         var trimmed = baseUrl.Trim();
@@ -897,7 +931,7 @@ public sealed class FeedMediaSearchPlanner(
         return trimmed.TrimEnd('/') + "/api";
     }
 
-    private static string SanitizeAddress(string value)
+    internal static string SanitizeAddress(string value)
     {
         if (Uri.TryCreate(value, UriKind.Absolute, out var uri))
         {
@@ -993,21 +1027,9 @@ public sealed class FeedMediaSearchPlanner(
     }
 
     private static double? ReadReleaseAgeHours(XElement item)
-    {
-        var raw = item.Element("pubDate")?.Value?.Trim();
-        if (string.IsNullOrWhiteSpace(raw))
-        {
-            return null;
-        }
-
-        if (!DateTimeOffset.TryParse(raw, CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal, out var published))
-        {
-            return null;
-        }
-
-        var age = DateTimeOffset.UtcNow - published.ToUniversalTime();
-        return Math.Max(0, age.TotalHours);
-    }
+        => ReadPublishedUtc(item) is { } published
+            ? Math.Max(0, (DateTimeOffset.UtcNow - published).TotalHours)
+            : null;
 
     private static long? ReadLongAttr(IEnumerable<XElement> attrs, string name)
         => ReadLong(attrs.FirstOrDefault(attr => string.Equals(attr.Attribute("name")?.Value, name, StringComparison.OrdinalIgnoreCase))?.Attribute("value")?.Value);

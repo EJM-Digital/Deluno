@@ -17,6 +17,7 @@ public static class PlatformServiceCollectionExtensions
         services.AddSingleton<IRecycleBinService, RecycleBinService>();
         services.AddSingleton<IDownloadHealthRepository, SqliteDownloadHealthRepository>();
         services.AddSingleton<IDownloadSharingRepository, SqliteDownloadSharingRepository>();
+        services.AddSingleton<IRssSyncStateRepository, SqliteRssSyncStateRepository>();
         services.AddSingleton<IProcessorRepository, SqliteProcessorRepository>();
         services.AddSingleton<IMigrationAuditRepository, SqliteMigrationAuditRepository>();
         services.AddSingleton<IMigrationAssistantService, MigrationAssistantService>();

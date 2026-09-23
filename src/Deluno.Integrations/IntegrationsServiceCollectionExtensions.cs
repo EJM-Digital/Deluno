@@ -19,6 +19,7 @@ public static class IntegrationsServiceCollectionExtensions
         services.AddHostedService<RankingModelTrainingHostedService>();
         services.AddSingleton<IIntelligentRoutingService, IntelligentRoutingService>();
         services.AddScoped<IMediaSearchPlanner, FeedMediaSearchPlanner>();
+        services.AddScoped<IIndexerFeedReader, IndexerFeedReader>();
         services.AddScoped<IAcquisitionDecisionPipeline, AcquisitionDecisionPipeline>();
         services.AddHttpClient("indexers", client => client.Timeout = TimeSpan.FromSeconds(10));
         services.AddHttpClient("download-clients", client => client.Timeout = TimeSpan.FromSeconds(8));
