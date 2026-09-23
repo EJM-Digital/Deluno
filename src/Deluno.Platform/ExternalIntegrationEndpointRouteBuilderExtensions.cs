@@ -770,7 +770,7 @@ public static class ExternalIntegrationEndpointRouteBuilderExtensions
                 });
             }
 
-            if (!string.Equals(library.ImportWorkflow, "refine-before-import", StringComparison.OrdinalIgnoreCase))
+            if (!ImportWorkflows.HandsToProcessor(library.ImportWorkflow))
             {
                 return Results.Conflict(new
                 {

@@ -2362,7 +2362,7 @@ public sealed partial class ImportPipelineService(
             DestinationRuleId: destinationRuleId,
             DestinationRuleName: destinationRuleName,
             ImportWorkflow: library?.ImportWorkflow,
-            ProcessorName: string.Equals(library?.ImportWorkflow, "refine-before-import", StringComparison.OrdinalIgnoreCase)
+            ProcessorName: ImportWorkflows.HandsToProcessor(library?.ImportWorkflow)
                 ? library?.ProcessorName
                 : null,
             PreferencePlanId: evaluation?.PlanId,
@@ -3039,7 +3039,7 @@ public sealed partial class ImportPipelineService(
     /// </summary>
     public static bool IsProcessorOutput(string? sourcePath, LibraryItem? library)
         => library is not null
-            && string.Equals(library.ImportWorkflow, "refine-before-import", StringComparison.OrdinalIgnoreCase)
+            && ImportWorkflows.HandsToProcessor(library.ImportWorkflow)
             && IsUnder(sourcePath, library.ProcessorOutputPath)
             && !IsUnder(sourcePath, library.DownloadsPath);
 

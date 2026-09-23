@@ -89,7 +89,7 @@ public sealed class ProcessorHandoffWatcher(
             // in progress. Seen on the rig after a proof library was removed.
             var owner = (allLibraries ?? libraries).FirstOrDefault(item =>
                 string.Equals(item.Id, handoff.LibraryId, StringComparison.OrdinalIgnoreCase));
-            if (owner is null || !string.Equals(owner.ImportWorkflow, "refine-before-import", StringComparison.OrdinalIgnoreCase))
+            if (owner is null || !ImportWorkflows.HandsToProcessor(owner.ImportWorkflow))
             {
                 await EndAsync(
                     handoff,

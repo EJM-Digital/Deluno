@@ -1001,7 +1001,7 @@ public sealed class DownloadClientTelemetryService(
                 return resolvedItem with { Status = DownloadQueueStatuses.Imported };
             }
 
-            if (library is not null && string.Equals(library.ImportWorkflow, "refine-before-import", StringComparison.OrdinalIgnoreCase))
+            if (library is not null && ImportWorkflows.HandsToProcessor(library.ImportWorkflow))
             {
                 return resolvedItem with { Status = DownloadQueueStatuses.WaitingForProcessor };
             }
