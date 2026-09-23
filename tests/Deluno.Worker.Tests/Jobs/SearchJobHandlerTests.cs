@@ -58,7 +58,7 @@ public sealed class SearchJobHandlerTests
             .ReturnsAsync((LibraryRoutingSnapshot?)null);
         librariesRepository
             .Setup(repository => repository.ListLibrariesAsync(It.IsAny<CancellationToken>()))
-            .ReturnsAsync([]);
+            .ReturnsAsync([((LibraryItem)System.Runtime.CompilerServices.RuntimeHelpers.GetUninitializedObject(typeof(LibraryItem))) with { Id = "library-tv", RetryDelayHours = 3 }]);
         seriesCatalogRepository
             .Setup(repository => repository.GetEpisodeTargetQualityAsync("episode-1", "library-tv", It.IsAny<CancellationToken>()))
             .ReturnsAsync((string?)null);
@@ -109,6 +109,7 @@ public sealed class SearchJobHandlerTests
                     [])));
 
         AcquisitionDecisionRequest? capturedRequest = null;
+        TimeSpan? retryGap = null;
         acquisitionPipeline
             .Setup(pipeline => pipeline.PlanAsync(It.IsAny<AcquisitionDecisionRequest>(), It.IsAny<CancellationToken>()))
             .Callback<AcquisitionDecisionRequest, CancellationToken>((request, _) => capturedRequest = request)
@@ -131,12 +132,14 @@ public sealed class SearchJobHandlerTests
                 "automatic",
                 "checked",
                 It.IsAny<DateTimeOffset>(),
-                It.IsAny<DateTimeOffset>(),
+                It.IsAny<DateTimeOffset?>(),
                 It.IsAny<string>(),
                 null,
                 null,
                 It.IsAny<string?>(),
                 It.IsAny<CancellationToken>()))
+            .Callback<string, string?, string, string, string, DateTimeOffset, DateTimeOffset?, string?, string?, string?, string?, CancellationToken>(
+                (_, _, _, _, _, searched, next, _, _, _, _, _) => retryGap = next - searched)
             .Returns(Task.CompletedTask);
         activityFeedRepository
             .Setup(repository => repository.RecordActivityAsync(
@@ -172,7 +175,12 @@ public sealed class SearchJobHandlerTests
         await handler.HandleAsync(TestJobs.Create("episode.search", payloadJson: payload), CancellationToken.None);
 
         Assert.NotNull(capturedRequest);
-        Assert.Equal(SeriesNumberingSchemes.Absolute, capturedRequest!.NumberingScheme);
+        // #590: an indexer reads a TV search's query as the show. Searching by
+        // the episode's title ("Pilot") could never match a release.
+        Assert.Equal("Anime Example", capturedRequest!.Title);
+        // #592: the library's own Retry after, not a fixed day.
+        Assert.Equal(TimeSpan.FromHours(3), retryGap);
+        Assert.Equal(SeriesNumberingSchemes.Absolute, capturedRequest.NumberingScheme);
         Assert.Equal(101, capturedRequest.AbsoluteNumber);
         Assert.Null(capturedRequest.AirDate);
         Assert.Null(capturedRequest.SceneSeasonNumber);

@@ -124,7 +124,7 @@ public sealed class ATitleTheProcessorKeepsRefusingIsNotFetchedAgainTests
     {
         Refused("tv", "episode-1", 5);
         var handler = new EpisodeSearchJobHandler(
-            Mock.Of<ILibrariesRepository>(),
+            NoLibraries(),
             Mock.Of<IQualityRepository>(),
             _series.Object,
             Mock.Of<IJobQueueRepository>(),
@@ -188,12 +188,17 @@ public sealed class ATitleTheProcessorKeepsRefusingIsNotFetchedAgainTests
         return blocklist.Object;
     }
 
-    private Task<string> SearchMoviesAsync(string triggeredBy)
+    private static ILibrariesRepository NoLibraries()
     {
         var libraries = new Mock<ILibrariesRepository>();
         libraries.Setup(repository => repository.ListLibrariesAsync(It.IsAny<CancellationToken>())).ReturnsAsync([]);
+        return libraries.Object;
+    }
+
+    private Task<string> SearchMoviesAsync(string triggeredBy)
+    {
         var handler = new MoviesLibrarySearchJobHandler(
-            libraries.Object,
+            NoLibraries(),
             Mock.Of<IQualityRepository>(),
             Mock.Of<IJobQueueRepository>(),
             _movies.Object,
