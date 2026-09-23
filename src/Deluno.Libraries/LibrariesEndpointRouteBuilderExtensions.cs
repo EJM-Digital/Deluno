@@ -495,12 +495,18 @@ public static class LibrariesEndpointRouteBuilderExtensions
             return Results.Ok(item);
         });
 
+        // Deleting a library takes what it was doing with it (#569).
+        //
+        // Its downloads were still polled although nothing could import them,
+        // its hand-offs still waited for a processor, and both went on raising
+        // recovery cases about a library nobody had any more.
         libraries.MapDelete("{id}", async (
             string id,
             HttpContext httpContext,
             [FromServices] ILibrariesRepository repository,
             [FromServices] IJobQueueRepository jobs,
             [FromServices] IRealtimeEventPublisher realtimeEventPublisher,
+            [FromServices] IDeletedThingCleanup cleanup,
             CancellationToken cancellationToken) =>
         {
             var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
@@ -509,12 +515,16 @@ public static class LibrariesEndpointRouteBuilderExtensions
                 return denied;
             }
 
+            // Read before it goes, so what is said names the library.
+            var library = (await repository.ListLibrariesAsync(cancellationToken))
+                .FirstOrDefault(item => string.Equals(item.Id, id, StringComparison.OrdinalIgnoreCase));
             var removed = await repository.DeleteLibraryAsync(id, cancellationToken);
             if (!removed)
             {
                 return Results.NotFound();
             }
 
+            await cleanup.LibraryDeletedAsync(id, library?.Name ?? string.Empty, cancellationToken);
             await jobs.RemoveLibraryAutomationStateAsync(id, cancellationToken);
             await realtimeEventPublisher.PublishEntityChangedAsync("AutomationState", id, cancellationToken);
             await realtimeEventPublisher.PublishEntityChangedAsync("Library", id, cancellationToken);

@@ -93,4 +93,8 @@ public sealed class SeriesDispatchRecoveryHandler(ISeriesCatalogRepository catal
     /// <summary>The download recovered, so the cases written about it close with the reason (#559).</summary>
     public Task HandleDispatchSettledAsync(string dispatchId, string reason, CancellationToken cancellationToken)
         => catalogRepository.SettleImportRecoveryCasesAsync(ImportRecoveryCaseScope.ForDispatch(dispatchId), reason, cancellationToken);
+
+    /// <summary>What a deletion named is gone, so the cases about it close with the reason (#567, #568, #569).</summary>
+    public Task<int> HandleScopeSettledAsync(ImportRecoveryCaseScope scope, string reason, CancellationToken cancellationToken)
+        => catalogRepository.SettleImportRecoveryCasesAsync(scope, reason, cancellationToken);
 }

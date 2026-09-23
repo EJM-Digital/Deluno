@@ -28,6 +28,16 @@ public interface IDownloadHealthRepository
         PageRequest request,
         CancellationToken cancellationToken);
 
+    /// <summary>
+    /// Forgets everything recorded about one download client's downloads.
+    ///
+    /// <para>A record ends when the client lists the download again and the
+    /// finding is gone. A deleted client is never asked again, so its records
+    /// would sit until the 90-day retention with no screen able to clear them
+    /// (#568).</para>
+    /// </summary>
+    Task<int> ForgetDownloadClientAsync(string clientId, CancellationToken cancellationToken);
+
     Task<DownloadHealthRecord?> IgnoreDownloadHealthFindingAsync(
         string clientId,
         string queueItemId,

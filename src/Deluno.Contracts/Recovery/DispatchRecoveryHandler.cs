@@ -52,6 +52,21 @@ public interface IDispatchRecoveryHandler
         string dispatchId,
         string reason,
         CancellationToken cancellationToken) => Task.CompletedTask;
+
+    /// <summary>
+    /// The thing those cases were about is gone — a library, download client or
+    /// processor was deleted — so they no longer say anything a person can act
+    /// on (#567, #568, #569).
+    ///
+    /// <para>Cases are held by the two catalogues, which nothing outside them
+    /// can reach; this is how a deletion asks both to settle what it named
+    /// without knowing either of them.</para>
+    /// </summary>
+    /// <returns>How many cases closed.</returns>
+    Task<int> HandleScopeSettledAsync(
+        ImportRecoveryCaseScope scope,
+        string reason,
+        CancellationToken cancellationToken) => Task.FromResult(0);
 }
 
 public interface IDispatchRecoveryHandlerComponent : IDispatchRecoveryHandler

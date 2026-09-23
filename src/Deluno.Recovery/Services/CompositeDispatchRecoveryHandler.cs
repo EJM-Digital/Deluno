@@ -77,4 +77,19 @@ public sealed class CompositeDispatchRecoveryHandler(IEnumerable<IDispatchRecove
             await handler.HandleDispatchSettledAsync(dispatchId, reason, cancellationToken);
         }
     }
+
+    /// <summary>
+    /// A case says a release name and never which catalogue it belongs to, so
+    /// both are asked and the answer is how many closed between them.
+    /// </summary>
+    public async Task<int> HandleScopeSettledAsync(ImportRecoveryCaseScope scope, string reason, CancellationToken cancellationToken)
+    {
+        var settled = 0;
+        foreach (var handler in handlers)
+        {
+            settled += await handler.HandleScopeSettledAsync(scope, reason, cancellationToken);
+        }
+
+        return settled;
+    }
 }

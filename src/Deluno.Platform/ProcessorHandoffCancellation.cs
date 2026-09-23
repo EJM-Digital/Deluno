@@ -100,4 +100,10 @@ public static class ProcessorHandoffCancellation
 
         return new ProcessorHandoffStopped(ended, Busy: false, summary);
     }
+
 }
+
+/// <summary>The hand-offs one sweep ended, and the releases they were about.</summary>
+public sealed record ProcessorHandoffsEnded(
+    IReadOnlyCollection<string> HandoffIds,
+    IReadOnlyCollection<string> ReleaseNames);

@@ -418,11 +418,18 @@ public static class ConnectionsEndpointRouteBuilderExtensions
             });
         });
 
+        // Deleting a download client takes its downloads with it (#568).
+        //
+        // The poller has no idea a client has gone: it went on working through
+        // that client's downloads, which can never be detected now, and raising
+        // a case for each reading "SABnzbd accepted this download and then never
+        // showed it" about a client nobody has any more.
         downloadClients.MapDelete("{id}", async (
             string id,
             HttpContext httpContext,
             [FromServices] IConnectionsRepository repository,
             [FromServices] IRealtimeEventPublisher realtimeEventPublisher,
+            [FromServices] IDeletedThingCleanup cleanup,
             CancellationToken cancellationToken) =>
         {
             var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
@@ -431,9 +438,13 @@ public static class ConnectionsEndpointRouteBuilderExtensions
                 return denied;
             }
 
+            // Read before it goes, so what is said names the client.
+            var client = (await repository.ListDownloadClientsAsync(cancellationToken))
+                .FirstOrDefault(item => string.Equals(item.Id, id, StringComparison.OrdinalIgnoreCase));
             var removed = await repository.DeleteDownloadClientAsync(id, cancellationToken);
             if (removed)
             {
+                await cleanup.DownloadClientDeletedAsync(id, client?.Name ?? string.Empty, cancellationToken);
                 await realtimeEventPublisher.PublishEntityChangedAsync("DownloadClient", id, cancellationToken);
             }
             return removed ? Results.NoContent() : Results.NotFound();

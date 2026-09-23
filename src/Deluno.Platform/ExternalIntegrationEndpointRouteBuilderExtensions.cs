@@ -628,14 +628,30 @@ public static class ExternalIntegrationEndpointRouteBuilderExtensions
             return updated is null ? Results.NotFound() : Results.Ok(updated);
         });
 
+        // Deleting a processor takes the waiting with it (#567).
+        //
+        // A hand-off finds its processor by name, so a deleted connection means
+        // "cannot be asked" - and after the library's limit, six hours by
+        // default, every file still with it both times out and raises a case
+        // naming the processor that was deliberately deleted. The files are
+        // dropped first, while there is still something to ask, and the cases
+        // about them settle with the connection.
         integrations.MapDelete("/processors/connections/{id}", async (
             string id,
             HttpContext httpContext,
             IProcessorRepository repository,
+            IDeletedThingCleanup cleanup,
             CancellationToken cancellationToken) =>
         {
             var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
             if (denied is not null) return denied;
+
+            var connection = await repository.GetProcessorConnectionAsync(id, cancellationToken);
+            if (connection is null) return Results.NotFound();
+
+            // Before the row goes, while there is still something to ask.
+            await cleanup.ProcessorDeletedAsync(connection.Name, cancellationToken);
+
             return await repository.DeleteProcessorConnectionAsync(id, cancellationToken)
                 ? Results.NoContent()
                 : Results.NotFound();
