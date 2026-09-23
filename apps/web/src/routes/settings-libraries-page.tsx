@@ -308,10 +308,10 @@ export function SettingsLibrariesPage() {
                     secondary={
                       hasSearchSelection ? (
                         <>
-                          {library.autoSearchEnabled ? `Every ${library.searchIntervalHours} h` : "Paused"} · <Link to={`/settings/automation?libraryId=${encodeURIComponent(library.id)}`} onClick={(event) => event.stopPropagation()} className="text-info hover:underline">Manage</Link>
+                          {library.autoSearchEnabled ? `Every ${library.searchIntervalHours} h` : "Paused"} · <Link to={`/search-cycles?libraryId=${encodeURIComponent(library.id)}`} onClick={(event) => event.stopPropagation()} className="text-info hover:underline">Manage</Link>
                         </>
                       ) : (
-                        <Link to={`/settings/automation?libraryId=${encodeURIComponent(library.id)}`} onClick={(event) => event.stopPropagation()} className="text-info hover:underline">Configure searches</Link>
+                        <Link to={`/search-cycles?libraryId=${encodeURIComponent(library.id)}`} onClick={(event) => event.stopPropagation()} className="text-info hover:underline">Configure searches</Link>
                       )
                     }
                   />

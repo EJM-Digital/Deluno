@@ -676,6 +676,31 @@ test.describe("library editing", () => {
     }
   });
 
+  // #589: the link went to /settings/automation, whose redirect dropped the
+  // library it named, so it opened the whole Automation page instead.
+  test("a library's link to its searches opens that library's schedule", async ({ page }, testInfo) => {
+    // The Libraries table keeps its schedule column for wider screens.
+    test.skip(testInfo.project.name === "mobile", "The schedule column is not shown on a phone.");
+    const { name, library } = await seedLibrary(page);
+    try {
+      await page.goto("/settings/libraries");
+      await page.getByRole("row").filter({ hasText: name }).getByRole("link", { name: /^(Manage|Configure searches)$/ }).first().click();
+      await expect(page.getByRole("dialog", { name })).toBeVisible();
+    } finally {
+      await page.request.delete(`/api/libraries/${library.id}`, { headers: authHeaders() });
+    }
+  });
+
+  test("the old automation address still opens the library it names", async ({ page }) => {
+    const { name, library } = await seedLibrary(page);
+    try {
+      await page.goto(`/settings/automation?libraryId=${library.id}`);
+      await expect(page.getByRole("dialog", { name })).toBeVisible();
+    } finally {
+      await page.request.delete(`/api/libraries/${library.id}`, { headers: authHeaders() });
+    }
+  });
+
   test("closes the library drawer after creating a library", async ({ page }) => {
     const name = `Smoke-UI-Library-${Date.now()}`;
     const rootPath = path.join(seededRoot, "ui-created");
