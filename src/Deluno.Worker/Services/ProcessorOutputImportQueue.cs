@@ -84,7 +84,7 @@ public sealed class ProcessorOutputImportQueue(
                 Source: source,
                 PayloadJson: JsonSerializer.Serialize(importRequest, PayloadJsonOptions),
                 RelatedEntityType: library.MediaType == "tv" ? "series" : "movie",
-                RelatedEntityId: dispatch?.EntityId,
+                RelatedEntityId: catalogue.SeriesId ?? dispatch?.EntityId,
                 IdempotencyKey: $"processor-output:{library.Id}:{Path.GetFullPath(outputPath).ToLowerInvariant()}"),
             cancellationToken);
 
@@ -114,9 +114,10 @@ internal static class CatalogueImportNaming
             return CatalogueNaming.Empty;
         }
 
-        if (string.Equals(dispatch.EntityType, "series", StringComparison.OrdinalIgnoreCase))
+        if (IsShowGrab(dispatch))
         {
-            var series = await seriesCatalogRepository.GetByIdAsync(dispatch.EntityId, cancellationToken);
+            var seriesId = await SeriesIdOfAsync(dispatch, seriesCatalogRepository, cancellationToken);
+            var series = seriesId is null ? null : await seriesCatalogRepository.GetByIdAsync(seriesId, cancellationToken);
             return series is null
                 ? CatalogueNaming.Empty
                 : new CatalogueNaming(
@@ -127,7 +128,7 @@ internal static class CatalogueImportNaming
                     null,
                     ReadMetadataText(series.MetadataJson, "Network", "network"),
                     SplitCsv(series.Genres),
-                    dispatch.EntityId,
+                    series.Id,
                     series.SeriesType,
                     series.NumberingScheme);
         }
@@ -181,7 +182,6 @@ internal static class CatalogueImportNaming
             return null;
         }
 
-        // Only the entity kinds whose ids name a catalogue title; an episode's id does not.
         if (string.Equals(dispatch.EntityType, "movie", StringComparison.OrdinalIgnoreCase))
         {
             return await movieCatalogRepository.GetByIdAsync(dispatch.EntityId, cancellationToken) is null
@@ -189,15 +189,46 @@ internal static class CatalogueImportNaming
                 : null;
         }
 
-        if (string.Equals(dispatch.EntityType, "series", StringComparison.OrdinalIgnoreCase))
+        if (IsShowGrab(dispatch))
         {
-            return await seriesCatalogRepository.GetByIdAsync(dispatch.EntityId, cancellationToken) is null
+            var seriesId = await SeriesIdOfAsync(dispatch, seriesCatalogRepository, cancellationToken);
+            if (seriesId is null)
+            {
+                return "the episode was removed from Deluno";
+            }
+
+            return await seriesCatalogRepository.GetByIdAsync(seriesId, cancellationToken) is null
                 ? "the show was removed from Deluno"
                 : null;
         }
 
         return null;
     }
+
+    /// <summary>
+    /// A grab for a show: the series pass records the show, an episode search
+    /// records the episode (#595).
+    /// </summary>
+    public static bool IsShowGrab(DispatchCatalogueLink dispatch)
+        => string.Equals(dispatch.EntityType, "series", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(dispatch.EntityType, "episode", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// The show a grab belongs to, or null when there is none any more.
+    ///
+    /// <para>An episode search's grab names the episode, and only a show's id
+    /// was ever read here. The episode's grab fell through to the film lookup,
+    /// found nothing, and was imported as a new show named after the release:
+    /// six Breaking Bad episodes on the soak rig in fourteen minutes, while the
+    /// real show still read them as missing and fetched one again.</para>
+    /// </summary>
+    public static async Task<string?> SeriesIdOfAsync(
+        DispatchCatalogueLink dispatch,
+        ISeriesCatalogRepository seriesCatalogRepository,
+        CancellationToken cancellationToken)
+        => string.Equals(dispatch.EntityType, "episode", StringComparison.OrdinalIgnoreCase)
+            ? await seriesCatalogRepository.GetEpisodeSeriesIdAsync(dispatch.EntityId, cancellationToken)
+            : IsShowGrab(dispatch) ? dispatch.EntityId : null;
 
     public static int? InferYear(string value) => ReleaseNameParser.InferYear(value);
 

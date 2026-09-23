@@ -386,6 +386,9 @@ public interface ISeriesCatalogRepository : ISeriesImportRecoveryRetentionReposi
     /// </summary>
     Task<DateTimeOffset?> GetEpisodeUpdatedUtcAsync(string episodeId, CancellationToken cancellationToken);
 
+    /// <summary>The show an episode belongs to, or <c>null</c> if there is no such episode (#595).</summary>
+    Task<string?> GetEpisodeSeriesIdAsync(string episodeId, CancellationToken cancellationToken);
+
     Task<IReadOnlyList<SeriesEpisodeInventoryItem>> ListMonitoredMissingEpisodesAsync(
         string seriesId,
         string libraryId,

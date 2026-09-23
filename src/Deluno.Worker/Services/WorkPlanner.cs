@@ -722,9 +722,10 @@ public sealed class WorkPlanner(
                 return string.IsNullOrWhiteSpace(movie?.Title) ? fallback : movie.Title;
             }
 
-            if (string.Equals(dispatch.EntityType, "series", StringComparison.OrdinalIgnoreCase))
+            if (CatalogueImportNaming.IsShowGrab(dispatch))
             {
-                var series = await seriesCatalogRepository.GetByIdAsync(dispatch.EntityId, cancellationToken);
+                var seriesId = await CatalogueImportNaming.SeriesIdOfAsync(dispatch, seriesCatalogRepository, cancellationToken);
+                var series = seriesId is null ? null : await seriesCatalogRepository.GetByIdAsync(seriesId, cancellationToken);
                 return string.IsNullOrWhiteSpace(series?.Title) ? fallback : series.Title;
             }
         }
@@ -1046,7 +1047,7 @@ public sealed class WorkPlanner(
                     RelatedEntityType: library.MediaType == "tv" ? "series" : "movie",
                     // The catalogue item this import belongs to, when the grab
                     // is known — so the job is traceable to the title.
-                    RelatedEntityId: dispatch?.EntityId),
+                    RelatedEntityId: catalogue.SeriesId ?? dispatch?.EntityId),
                 cancellationToken);
 
             knownImportSources.Add(sourceKey);
