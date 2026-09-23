@@ -49,6 +49,7 @@ public sealed partial class ImportPipelineService(
     IReleasePreferencePlanRepository? releasePreferencePlanRepository = null,
     IBlockedReleaseRepository? blockedReleases = null,
     IImportFailureRuleRepository? failureRules = null,
+    IDispatchAlertRepository? dispatchAlerts = null,
     // Only a test passes this, to say "do not wait" without waiting for it.
     TimeSpan? settleWindow = null)
     : IImportPipelineService
@@ -2080,6 +2081,24 @@ public sealed partial class ImportPipelineService(
             }
         }
 
+        // The download is marked failed above, and the poller opens a case for
+        // every failed download it has not been told about (#602). This case is
+        // that telling: the alert beside it is what the poller checks, and
+        // dismissing the case settles both.
+        if (dispatchAlerts is not null
+            && !string.IsNullOrEmpty(executeRequest.DispatchId)
+            && !await dispatchAlerts.HasUnresolvedAlertAsync(executeRequest.DispatchId, "import-failed", cancellationToken))
+        {
+            await dispatchAlerts.CreateAlertAsync(
+                executeRequest.DispatchId,
+                title,
+                $"Import failed: {summary}",
+                "import-failed",
+                "error",
+                new Dictionary<string, string> { ["failureCode"] = failureKind, ["failureMessage"] = summary },
+                cancellationToken);
+        }
+
         if (mediaType == "tv")
         {
             await seriesCatalogRepository.AddImportRecoveryCaseAsync(
@@ -2225,6 +2244,9 @@ public sealed partial class ImportPipelineService(
         => JsonSerializer.Serialize(new
         {
             RetryRequest = request,
+            // At the top as well (#602): dismissing a case settles the download it
+            // names by this, and nested it named none, so a dismissed failure came back.
+            request.DispatchId,
             request.Preview.SourcePath,
             request.Preview.FileName,
             request.Preview.MediaType,

@@ -146,7 +146,9 @@ function dispatchIdIn(detailsJson: string | null | undefined): string | null {
   if (!detailsJson) return null;
   try {
     const details = JSON.parse(detailsJson) as Record<string, unknown>;
-    const id = details.DispatchId ?? details.dispatchId;
+    // At the top, or inside the retry an import case keeps (#602).
+    const retry = (details.RetryRequest ?? details.retryRequest) as Record<string, unknown> | undefined;
+    const id = details.DispatchId ?? details.dispatchId ?? retry?.DispatchId ?? retry?.dispatchId;
     return typeof id === "string" && id.length > 0 ? id : null;
   } catch {
     return null;
