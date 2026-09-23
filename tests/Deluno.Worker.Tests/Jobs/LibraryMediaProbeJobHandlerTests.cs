@@ -19,9 +19,37 @@ public sealed class LibraryMediaProbeJobHandlerTests
     [Fact]
     public async Task HandleAsync_scopes_probe_writes_to_the_library_and_persists_measured_preference_facts()
     {
-        var path = @"D:\Media\Movie.2020.1080p.WEB-DL.x264.DTS.2.0-GROUP.mkv";
+        var saved = await ProbeAsync(importWorkflow: "direct");
+
+        Assert.Equal("library-1", saved.LibraryId);
+        Assert.Equal(1_000, saved.FileSizeBytes);
+        Assert.Contains(saved.Facts, fact =>
+            fact.TraitId.Equals("video.codec.hevc", StringComparison.OrdinalIgnoreCase)
+            && fact.Evidence?.Source == "media-probe");
+        Assert.Contains(saved.Facts, fact => fact.TraitId.Equals("audio.format.truehd", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(saved.Facts, fact => fact.TraitId.Equals("audio.channels.5-1", StringComparison.OrdinalIgnoreCase));
+    }
+
+    /// <summary>
+    /// #584: in a library that hands downloads to a processor, what the probe
+    /// reads is the processor's work. The name the file was made from still
+    /// describes it; the probe's reading is recorded on the title all the same.
+    /// </summary>
+    [Fact]
+    public async Task In_a_library_with_a_processor_the_release_describes_the_file_and_the_probe_fills_gaps()
+    {
+        var saved = await ProbeAsync(importWorkflow: ImportWorkflows.RefineBeforeImport);
+
+        Assert.Contains(saved.Facts, fact => fact.TraitId.Equals("audio.format.dts", StringComparison.OrdinalIgnoreCase));
+        Assert.DoesNotContain(saved.Facts, fact => fact.TraitId.Equals("audio.format.truehd", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(saved.Facts, fact => fact.TraitId.Equals("audio.channels.2-0", StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static async Task<PreferenceEvaluationSnapshot> ProbeAsync(string importWorkflow)
+    {
+        var path = Path.Combine(Path.GetTempPath(), "Media", "Movie.2020.1080p.WEB-DL.x264.DTS.2.0-GROUP.mkv");
         var now = DateTimeOffset.Parse("2026-09-01T00:00:00Z");
-        var library = Library("library-1", "profile-1");
+        var library = Library("library-1", "profile-1") with { ImportWorkflow = importWorkflow };
         var profile = Profile("profile-1");
         var wanted = new MediaWantedItem(
             Id: "movie-1",
@@ -135,15 +163,8 @@ public sealed class LibraryMediaProbeJobHandlerTests
             CancellationToken.None);
 
         Assert.Equal("Read 1 file.", result);
-        Assert.NotNull(saved);
-        Assert.Equal(library.Id, saved!.LibraryId);
-        Assert.Equal(1_000, saved.FileSizeBytes);
-        Assert.Contains(saved.Facts, fact =>
-            fact.TraitId.Equals("video.codec.hevc", StringComparison.OrdinalIgnoreCase)
-            && fact.Evidence?.Source == "media-probe");
-        Assert.Contains(saved.Facts, fact => fact.TraitId.Equals("audio.format.truehd", StringComparison.OrdinalIgnoreCase));
-        Assert.Contains(saved.Facts, fact => fact.TraitId.Equals("audio.channels.5-1", StringComparison.OrdinalIgnoreCase));
         mediaState.VerifyAll();
+        return saved!;
     }
 
     private static LibraryItem Library(string id, string profileId)
