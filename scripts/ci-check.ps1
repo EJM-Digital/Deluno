@@ -49,10 +49,19 @@ function Invoke-LoggedCommand {
         # Direct invocation preserves the real exit code and waits for the
         # complete command tree before we read its captured output.
         Push-Location $Root
+        # Windows PowerShell turns every stderr line from a native command into
+        # an ErrorRecord, and under "Stop" the first one ends the script. A tool
+        # writing a note to stderr is not a tool failing: Vite prints a build
+        # timing warning when a build is slow enough, and the gate failed on it
+        # at random while the build itself succeeded (#579). The exit code is
+        # what says whether the command failed, and it is read below.
+        $wasErrorAction = $ErrorActionPreference
+        $ErrorActionPreference = "Continue"
         try {
             & $FilePath @Arguments 1> $stdoutPath 2> $stderrPath
             $exitCode = $LASTEXITCODE
         } finally {
+            $ErrorActionPreference = $wasErrorAction
             Pop-Location
         }
     } finally {
