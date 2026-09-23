@@ -24,6 +24,14 @@ describe("create form defaults", () => {
   it("stops asking for the API key once the indexer exists", () => {
     expect(indexerFormErrors({ ...emptyIndexerForm(), name: "NZBGeek", baseUrl: "https://api.nzbgeek.info" }, false)).toEqual({});
   });
+
+  // #607: a double-escaped \d refused every number typed into these.
+  it("accepts whole numbers for the indexer's limits and refuses anything else", () => {
+    const base = { ...emptyIndexerForm(), name: "NZBGeek", baseUrl: "https://api.nzbgeek.info" };
+    expect(indexerFormErrors({ ...base, minimumAgeMinutes: "30", retentionDays: "3500", maximumSizeMb: "60000", availabilityDelayDays: "0" }, false)).toEqual({});
+    expect(Object.keys(indexerFormErrors({ ...base, minimumAgeMinutes: "3.5", retentionDays: "-1", maximumSizeMb: "big" }, false)).sort())
+      .toEqual(["maximumSizeMb", "minimumAgeMinutes", "retentionDays"]);
+  });
 });
 
 describe("client validation", () => {

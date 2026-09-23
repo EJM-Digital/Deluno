@@ -1,4 +1,5 @@
 using System.Globalization;
+using Deluno.Infrastructure.Http;
 using System.Net.Http.Json;
 using System.Text.Json.Serialization;
 using Deluno.Connections.Contracts;
@@ -83,12 +84,12 @@ public sealed class TransmissionDownloadClient(IHttpClientFactory httpClientFact
         http.Timeout = TimeSpan.FromSeconds(8);
         DownloadClientHelpers.AddBasicAuth(http, client);
         var uri = new Uri(baseUri, "transmission/rpc");
-        using var first = await http.PostAsJsonAsync(uri, payload, cancellationToken);
+        using var first = await http.PostSizedJsonAsync(uri, payload, cancellationToken);
         if ((int)first.StatusCode == 409 && first.Headers.TryGetValues("X-Transmission-Session-Id", out var values))
         {
             http.DefaultRequestHeaders.Remove("X-Transmission-Session-Id");
             http.DefaultRequestHeaders.Add("X-Transmission-Session-Id", values.First());
-            using var second = await http.PostAsJsonAsync(uri, payload, cancellationToken);
+            using var second = await http.PostSizedJsonAsync(uri, payload, cancellationToken);
             second.EnsureSuccessStatusCode();
             return await second.Content.ReadFromJsonAsync<TransmissionResponse>(cancellationToken) ?? new(null);
         }

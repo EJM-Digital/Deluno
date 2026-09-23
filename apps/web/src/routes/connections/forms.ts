@@ -77,7 +77,9 @@ export function indexerFormErrors(form: IndexerForm, creating: boolean): Record<
   if (creating && preset?.requiresApiKey && !form.apiKey.trim()) errors.apiKey = "This indexer needs an API key.";
   for (const [key, label] of [["minimumAgeMinutes", "Minimum age"], ["retentionDays", "Retention"], ["maximumSizeMb", "Maximum size"], ["availabilityDelayDays", "Availability delay"]] as const) {
     const value = form[key];
-    if (value.trim() && (!/^\\d+$/.test(value.trim()) || Number(value) < 0)) errors[key] = `${label} must be a non-negative whole number.`;
+    // One backslash (#607): `\\d` in a regex literal matches a literal backslash,
+    // and every number typed here was refused.
+    if (value.trim() && (!/^\d+$/.test(value.trim()) || Number(value) < 0)) errors[key] = `${label} must be a non-negative whole number.`;
   }
   if (form.preferIndexerFlags.length > 500) errors.preferIndexerFlags = "Preferred flags must be 500 characters or fewer.";
   return errors;

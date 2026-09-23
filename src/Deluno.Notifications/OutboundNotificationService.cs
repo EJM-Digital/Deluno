@@ -1,4 +1,5 @@
 using System.Net;
+using Deluno.Infrastructure.Http;
 using System.Net.Http.Json;
 using System.Text.Json;
 using Deluno.Contracts;
@@ -420,7 +421,7 @@ public sealed class OutboundNotificationService(
             };
         }
 
-        using var response = await client.PostAsJsonAsync(url, payload, cancellationToken);
+        using var response = await client.PostSizedJsonAsync(url, payload, cancellationToken);
         if (!response.IsSuccessStatusCode)
         {
             throw new HttpRequestException(
