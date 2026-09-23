@@ -2174,8 +2174,8 @@ public sealed partial class ImportPipelineService(
     {
         // Attributed to the title, so the file's own journey is readable from
         // the title's History rather than only from the whole-system feed.
-        var entityId = (await ResolveDispatchAsync(request.DispatchId, cancellationToken))?.EntityId
-            ?? request.Preview.SeriesId;
+        var entityId = request.Preview.SeriesId
+            ?? (await ResolveDispatchAsync(request.DispatchId, cancellationToken))?.EntityId;
 
         await activityFeedRepository.RecordActivityAsync(
             "filesystem.import.started",
@@ -2527,7 +2527,9 @@ public sealed partial class ImportPipelineService(
                 CatalogUpdated = catalogUpdated,
                 CatalogId = catalogUpdated ? catalogId : null,
                 Dispatch = dispatch,
-                EntityId = dispatch?.EntityId ?? request.SeriesId,
+                // The show, not the grab: an episode search's grab names the episode,
+                // and the show's History is where this import belongs (#595).
+                EntityId = request.SeriesId ?? dispatch?.EntityId,
                 ReleaseNameEvidence = dispatchReleaseName ?? preview.SourcePath,
                 PreferenceEvaluations = preferenceEvaluations,
                 MatchedRuleNames = ResolveMatchedRuleNames(preferenceEvaluations, customFormats, preferencePlan)

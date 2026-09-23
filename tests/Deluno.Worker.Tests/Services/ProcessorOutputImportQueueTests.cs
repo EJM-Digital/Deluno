@@ -7,6 +7,7 @@ using Deluno.Libraries.Contracts;
 using Deluno.Movies.Contracts;
 using Deluno.Movies.Data;
 using Deluno.Platform.Contracts;
+using Deluno.Series.Contracts;
 using Deluno.Series.Data;
 using Deluno.Worker.Services;
 using Moq;
@@ -82,4 +83,60 @@ public sealed class ProcessorOutputImportQueueTests
         Assert.Null(result.JobId);
         Assert.Equal("the film was removed from Deluno", result.NotImportedBecause);
     }
+
+    /// <summary>
+    /// #595: an episode search's grab names the episode, and it is imported
+    /// under the episode's show. It used to become a new show named after the
+    /// release - six Breaking Bad episodes on the soak rig.
+    /// </summary>
+    [Fact]
+    public async Task A_processed_episode_is_imported_under_its_show()
+    {
+        const string release = "Breaking.Bad.S01E04.1080p.WEB-DL.DDP5.1.H.264-DELUNO";
+        var jobs = new Mock<IJobQueueRepository>();
+        jobs.Setup(repository => repository.FindRecentDispatchLinkAsync("client-1", release, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new DispatchCatalogueLink("dispatch-4", "episode", "episode-104", LibraryId: "tv-library"));
+        var series = new Mock<ISeriesCatalogRepository>();
+        series.Setup(repository => repository.GetEpisodeSeriesIdAsync("episode-104", It.IsAny<CancellationToken>())).ReturnsAsync("series-bb");
+        series.Setup(repository => repository.GetByIdAsync("series-bb", It.IsAny<CancellationToken>()))
+            .ReturnsAsync((SeriesListItem)RuntimeHelpers.GetUninitializedObject(typeof(SeriesListItem)) with { Id = "series-bb", Title = "Breaking Bad", StartYear = 2008 });
+        EnqueueJobRequest? queued = null;
+        var scheduler = new Mock<IJobScheduler>();
+        scheduler.Setup(instance => instance.EnqueueAsync(It.IsAny<EnqueueJobRequest>(), It.IsAny<CancellationToken>()))
+            .Callback<EnqueueJobRequest, CancellationToken>((request, _) => queued = request)
+            .ReturnsAsync((EnqueueJobRequest request, CancellationToken _) => (JobQueueItem)RuntimeHelpers.GetUninitializedObject(typeof(JobQueueItem)) with { Id = "job-4" });
+
+        await new ProcessorOutputImportQueue(jobs.Object, scheduler.Object, Mock.Of<IMovieCatalogRepository>(), series.Object)
+            .QueueAsync(TvLibrary(), Handoff(release), $@"C:\Refined\TV\{release}\{release}.mkv", "processor", CancellationToken.None);
+
+        var request = JsonSerializer.Deserialize<ImportExecuteRequest>(queued!.PayloadJson!, new JsonSerializerOptions { PropertyNameCaseInsensitive = true })!;
+        Assert.Equal("Breaking Bad", request.Preview.Title);
+        Assert.Equal("series-bb", request.Preview.SeriesId);
+        Assert.Equal(2008, request.Preview.Year);
+        Assert.Equal("series-bb", queued.RelatedEntityId);
+    }
+
+    [Fact]
+    public async Task A_processed_episode_removed_since_the_grab_is_not_imported()
+    {
+        const string release = "Breaking.Bad.S01E04.1080p.WEB-DL.DDP5.1.H.264-DELUNO";
+        var jobs = new Mock<IJobQueueRepository>();
+        jobs.Setup(repository => repository.FindRecentDispatchLinkAsync("client-1", release, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new DispatchCatalogueLink("dispatch-4", "episode", "episode-104", LibraryId: "tv-library"));
+
+        var result = await new ProcessorOutputImportQueue(jobs.Object, new Mock<IJobScheduler>(MockBehavior.Strict).Object, Mock.Of<IMovieCatalogRepository>(), Mock.Of<ISeriesCatalogRepository>())
+            .QueueAsync(TvLibrary(), Handoff(release), $@"C:\Refined\TV\{release}.mkv", "processor", CancellationToken.None);
+
+        Assert.Null(result.JobId);
+        Assert.Equal("the episode was removed from Deluno", result.NotImportedBecause);
+    }
+
+    private static LibraryItem TvLibrary()
+        => (LibraryItem)RuntimeHelpers.GetUninitializedObject(typeof(LibraryItem)) with { Id = "tv-library", MediaType = "tv" };
+
+    private static ProcessorHandoffItem Handoff(string release)
+        => new(
+            "handoff-4", "tv-library", "tv", "client-1", "queue-4", release,
+            $@"C:\Downloads\TV\{release}", "Weir", "submitted", null, null, null,
+            DateTimeOffset.UnixEpoch, DateTimeOffset.UnixEpoch);
 }

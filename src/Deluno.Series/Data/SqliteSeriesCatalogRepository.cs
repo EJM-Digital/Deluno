@@ -5086,6 +5086,19 @@ public sealed class SqliteSeriesCatalogRepository(
             : null;
     }
 
+    public async Task<string?> GetEpisodeSeriesIdAsync(string episodeId, CancellationToken cancellationToken)
+    {
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Series,
+            cancellationToken);
+
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT series_id FROM episode_entries WHERE id = @episodeId LIMIT 1;";
+        AddParameter(command, "@episodeId", episodeId);
+
+        return await command.ExecuteScalarAsync(cancellationToken) as string;
+    }
+
     public async Task<IReadOnlyList<SeriesEpisodeInventoryItem>> ListMonitoredMissingEpisodesAsync(
         string seriesId,
         string libraryId,
