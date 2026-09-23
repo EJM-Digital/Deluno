@@ -4130,11 +4130,20 @@ public sealed class SqliteSeriesCatalogRepository(
             cancellationToken);
 
         using var command = connection.CreateCommand();
+        // The episode's own quality (#591). This read the show's, so in a show
+        // with some episodes held every missing one was judged as holding that
+        // quality: its release was refused as a downgrade or held for review,
+        // and the gaps in a partly-held show were never filled. The show's
+        // quality stands in only for an episode that holds a file with no
+        // quality recorded against it.
         command.CommandText =
             """
-            SELECT sws.current_quality
+            SELECT COALESCE(
+                ews.current_quality,
+                CASE WHEN e.has_file = 1 THEN sws.current_quality END)
             FROM episode_wanted_state ews
-            INNER JOIN series_wanted_state sws ON sws.series_id = ews.series_id AND sws.library_id = ews.library_id
+            INNER JOIN episode_entries e ON e.id = ews.episode_id
+            LEFT JOIN series_wanted_state sws ON sws.series_id = ews.series_id AND sws.library_id = ews.library_id
             WHERE ews.episode_id = @episodeId
             LIMIT 1;
             """;
