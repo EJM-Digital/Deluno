@@ -39,6 +39,11 @@ public sealed class EpisodeSearchJobHandler(
         }
 
         var now = timeProvider.GetUtcNow();
+        var libraries = await librariesRepository.ListLibrariesAsync(cancellationToken);
+        var library = libraries.FirstOrDefault(item => item.Id == payload.LibraryId);
+        // The library's own Retry after, as film and series searches use. This
+        // was a fixed day, whatever the library said (#592).
+        var nextEligibleUtc = now.AddHours(Math.Max(1, library?.RetryDelayHours ?? 24));
 
         // Episode searches are queued by the TV library's own cycle, so this is
         // the routine search #583 holds once the processor has refused enough
@@ -55,7 +60,7 @@ public sealed class EpisodeSearchJobHandler(
                     "automatic",
                     "held",
                     now,
-                    now.AddDays(1),
+                    nextEligibleUtc,
                     ProcessorRefusals.WhySearchIsHeld(refused),
                     null,
                     null,
@@ -66,8 +71,6 @@ public sealed class EpisodeSearchJobHandler(
         }
 
         var routing = await librariesRepository.GetLibraryRoutingAsync(payload.LibraryId, cancellationToken);
-        var libraries = await librariesRepository.ListLibrariesAsync(cancellationToken);
-        var library = libraries.FirstOrDefault(item => item.Id == payload.LibraryId);
         var customFormats = await SearchExecutionSupport.ResolveCustomFormatsAsync(
             qualityRepository,
             library?.QualityProfileId,
@@ -127,7 +130,10 @@ public sealed class EpisodeSearchJobHandler(
 
         var decisionPlan = await acquisitionPipeline.PlanAsync(
             new AcquisitionDecisionRequest(
-                Title: payload.Title,
+                // The show, not the episode: an indexer reads a TV search's
+                // query as the series. The payload's title is the episode's,
+                // kept for Activity, and searching by it found nothing (#590).
+                Title: inventory?.Title ?? payload.Title,
                 Year: null,
                 MediaType: "tv",
                 CurrentQuality: currentQuality,
@@ -209,7 +215,7 @@ public sealed class EpisodeSearchJobHandler(
             "automatic",
             outcome,
             now,
-            now.AddDays(1),
+            nextEligibleUtc,
             searchResult,
             bestCandidate?.ReleaseName,
             bestCandidate?.IndexerName,
