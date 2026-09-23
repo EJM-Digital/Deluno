@@ -117,6 +117,7 @@ public sealed class AcquisitionDecisionPipeline : IAcquisitionDecisionPipeline
                 request.ProfileAcquisition);
 
         searchPlan = await SkipBlockedReleasesAsync(searchPlan, cancellationToken);
+        searchPlan = LeaveEpisodesToTheirOwnSearch(searchPlan, request);
 
         var bestCandidate = searchPlan.BestCandidate;
         // The client is chosen for the release that won, not before the search:
@@ -354,6 +355,51 @@ public sealed class AcquisitionDecisionPipeline : IAcquisitionDecisionPipeline
             Summary = best is null
                 ? $"{note} Nothing else was offered."
                 : $"{plan.Summary} {note}",
+            Reason = best is null ? MediaSearchReasons.NoUsableRelease : plan.Reason
+        };
+    }
+
+    /// <summary>
+    /// A search for a whole show does not take one episode (#593).
+    ///
+    /// <para>A show-level query names no season or episode, so an indexer answers
+    /// with whatever it has, single episodes included, and the plan weighed each
+    /// against the show's quality. On the soak rig Breaking Bad held two episodes
+    /// at WEB 1080p, so a show search held a missing episode as "equivalent to the
+    /// installed file" and asked for none of the 67 that were missing. A single
+    /// episode is the episode search's to judge, against that episode's own file
+    /// (#591). Season packs and releases that name no episode stay here. A person
+    /// choosing from the preview list still sees everything.</para>
+    /// </summary>
+    public static MediaSearchPlan LeaveEpisodesToTheirOwnSearch(MediaSearchPlan plan, AcquisitionDecisionRequest request)
+    {
+        if (request.PreviewOnly
+            || !string.Equals(request.MediaType, "tv", StringComparison.OrdinalIgnoreCase)
+            || request.SeasonNumber is not null
+            || request.EpisodeNumber is not null
+            || request.AbsoluteNumber is not null
+            || request.AirDate is not null
+            || plan.Candidates.Count == 0)
+        {
+            return plan;
+        }
+
+        var kept = plan.Candidates
+            .Where(candidate => !SeasonPackDetector.Classify(candidate.ReleaseName).IsEpisode)
+            .ToArray();
+        if (kept.Length == plan.Candidates.Count)
+        {
+            return plan;
+        }
+
+        var best = kept.FirstOrDefault();
+        return plan with
+        {
+            BestCandidate = best,
+            Candidates = kept,
+            Summary = best is null
+                ? "Only single episodes were offered. Each missing episode is searched for on its own."
+                : plan.Summary,
             Reason = best is null ? MediaSearchReasons.NoUsableRelease : plan.Reason
         };
     }
