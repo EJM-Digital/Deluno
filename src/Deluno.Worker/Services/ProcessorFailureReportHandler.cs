@@ -121,27 +121,8 @@ public sealed class ProcessorFailureReportHandler(
             return new ProcessorRejectionOutcome(true, enough, blocked.Id, null);
         }
 
-        var search = await jobScheduler.EnqueueAsync(
-            new EnqueueJobRequest(
-                LibrarySearchJobTypes.For(dispatch.MediaType),
-                "processor-rejected",
-                JsonSerializer.Serialize(new
-                {
-                    libraryId = dispatch.LibraryId,
-                    libraryName = report.Library.Name,
-                    mediaType = dispatch.MediaType,
-                    checkMissing = true,
-                    checkUpgrades = true,
-                    maxItems = 1,
-                    retryDelayHours = 24,
-                    triggeredBy = "processor-rejected",
-                    targetEntityId = dispatch.EntityId
-                }),
-                "download_dispatch",
-                dispatch.Id,
-                IdempotencyKey: $"processor-rejected:{handoff.Id}",
-                DedupeKey: $"processor-rejected:{handoff.Id}"),
-            cancellationToken);
+        var search = await AnotherCopySearch.EnqueueAsync(
+            jobScheduler, dispatch, report.Library.Name, "processor-rejected", handoff.Id, cancellationToken);
 
         return new ProcessorRejectionOutcome(
             true,
