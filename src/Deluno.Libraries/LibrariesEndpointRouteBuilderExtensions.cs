@@ -765,7 +765,7 @@ public static class LibrariesEndpointRouteBuilderExtensions
         var errors = new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase);
         var workflow = NormalizeImportWorkflow(request.ImportWorkflow);
 
-        if (workflow == "refine-before-import" && string.IsNullOrWhiteSpace(request.ProcessorOutputPath))
+        if (workflow == ImportWorkflows.RefineBeforeImport && string.IsNullOrWhiteSpace(request.ProcessorOutputPath))
         {
             errors["processorOutputPath"] = ["Choose where the processor will write cleaned files before Deluno imports them."];
         }
@@ -783,7 +783,7 @@ public static class LibrariesEndpointRouteBuilderExtensions
     private static string NormalizeImportWorkflow(string? value)
         => value?.Trim().ToLowerInvariant() switch
         {
-            "refine-before-import" or "refine" or "processor" or "processing" => "refine-before-import",
+            ImportWorkflows.RefineBeforeImport or "refine" or "processor" or "processing" => ImportWorkflows.RefineBeforeImport,
             _ => "standard"
         };
 

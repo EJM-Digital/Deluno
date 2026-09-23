@@ -1185,7 +1185,7 @@ public sealed class SqliteLibrariesRepository(
         var normalized = value?.Trim().ToLowerInvariant();
         return normalized switch
         {
-            "refine-before-import" or "refine" or "processor" or "processing" => "refine-before-import",
+            ImportWorkflows.RefineBeforeImport or "refine" or "processor" or "processing" => ImportWorkflows.RefineBeforeImport,
             _ => "standard"
         };
     }

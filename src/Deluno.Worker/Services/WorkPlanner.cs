@@ -880,7 +880,7 @@ public sealed class WorkPlanner(
             // the same catalogue naming as any other (#511).
             var released = false;
             ProcessorHandoffItem? existing = null;
-            if (string.Equals(library.ImportWorkflow, "refine-before-import", StringComparison.OrdinalIgnoreCase))
+            if (ImportWorkflows.HandsToProcessor(library.ImportWorkflow))
             {
                 existing = await processorRepository.FindProcessorHandoffAsync(library.Id, null, item.SourcePath, cancellationToken);
                 released = existing?.Status == ProcessorHandoffStatuses.Released;
@@ -895,14 +895,14 @@ public sealed class WorkPlanner(
             // A slow processor filled the disk (#575). What is not sent this
             // pass is sent the next one.
             if (!released &&
-                string.Equals(library.ImportWorkflow, "refine-before-import", StringComparison.OrdinalIgnoreCase) &&
+                ImportWorkflows.HandsToProcessor(library.ImportWorkflow) &&
                 existing is null &&
                 inFlightByProcessor.GetValueOrDefault(library.ProcessorName ?? string.Empty) >= MostFilesWithOneProcessor)
             {
                 continue;
             }
 
-            if (!released && string.Equals(library.ImportWorkflow, "refine-before-import", StringComparison.OrdinalIgnoreCase))
+            if (!released && ImportWorkflows.HandsToProcessor(library.ImportWorkflow))
             {
                 var handoff = await processorRepository.EnsureProcessorHandoffAsync(
                     new CreateProcessorHandoffRequest(
@@ -1106,7 +1106,7 @@ public sealed class WorkPlanner(
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
         var refineLibraries = libraries
             .Where(library =>
-                string.Equals(library.ImportWorkflow, "refine-before-import", StringComparison.OrdinalIgnoreCase) &&
+                ImportWorkflows.HandsToProcessor(library.ImportWorkflow) &&
                 !string.IsNullOrWhiteSpace(library.ProcessorOutputPath) &&
                 Directory.Exists(library.ProcessorOutputPath))
             .ToArray();
@@ -1267,7 +1267,7 @@ public sealed class WorkPlanner(
         {
             var library = libraries.FirstOrDefault(item =>
                 string.Equals(item.Id, handoff.LibraryId, StringComparison.OrdinalIgnoreCase) &&
-                string.Equals(item.ImportWorkflow, "refine-before-import", StringComparison.OrdinalIgnoreCase) &&
+                ImportWorkflows.HandsToProcessor(item.ImportWorkflow) &&
                 !string.IsNullOrWhiteSpace(item.ProcessorOutputPath));
             if (library is null || ProcessorHasNotFinished(handoff, timeProvider.GetUtcNow()))
             {
