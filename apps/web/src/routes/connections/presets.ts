@@ -1,7 +1,9 @@
-export type IndexerProtocol = "torznab" | "newznab" | "rss" | "custom";
+export type IndexerProtocol = "tracker" | "torznab" | "newznab" | "rss" | "custom";
 export type MediaScope = "movies" | "tv" | "both";
 
 export const INDEXER_PRESETS: { protocol: IndexerProtocol; label: string; hint: string; requiresApiKey: boolean; placeholder: string; defaultCategories: (scope: MediaScope) => string }[] = [
+  // #606: Deluno searches these itself, from the same definitions Prowlarr uses; no Prowlarr or Jackett in between.
+  { protocol: "tracker", label: "Tracker (built in)", hint: "A torrent site Deluno searches itself. No Prowlarr or Jackett needed.", requiresApiKey: false, placeholder: "https://tracker.example/", defaultCategories: (scope) => (scope === "movies" ? "2000,2010,2020,2030,2040,2045,2050,2060,2070" : scope === "tv" ? "5000,5010,5020,5030,5040,5045,5050,5060,5070" : "2000,2010,2020,2030,2040,2045,2050,2060,5000,5010,5020,5030,5040,5045,5050") },
   { protocol: "torznab", label: "Torznab", hint: "Any Torznab-compatible tracker or private site.", requiresApiKey: true, placeholder: "http://localhost:9117/api/v2.0/indexers/XXX/results/torznab/", defaultCategories: (scope) => (scope === "movies" ? "2000,2010,2020,2030,2040,2045,2050,2060,2070" : scope === "tv" ? "5000,5010,5020,5030,5040,5045,5050,5060,5070" : "2000,2010,2020,2030,2040,2045,2050,2060,5000,5010,5020,5030,5040,5045,5050") },
   { protocol: "newznab", label: "Newznab", hint: "NZBGeek, DrunkenSlug, NZBCat, or any Newznab-compatible Usenet indexer.", requiresApiKey: true, placeholder: "https://api.nzbgeek.info", defaultCategories: (scope) => (scope === "movies" ? "2000,2010,2020,2030,2040,2045,2050,2060,2070" : scope === "tv" ? "5000,5010,5020,5030,5040,5045,5050,5060,5070" : "2000,2010,2020,2030,2040,2045,2050,2060,5000,5010,5020,5030,5040,5045,5050") },
   { protocol: "rss", label: "RSS feed", hint: "Plain RSS feed without authentication.", requiresApiKey: false, placeholder: "https://example.com/feed.rss", defaultCategories: () => "" },

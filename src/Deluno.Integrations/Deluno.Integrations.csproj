@@ -11,7 +11,14 @@
     <ProjectReference Include="..\Deluno.Quality\Deluno.Quality.csproj" />
   </ItemGroup>
   <ItemGroup>
+    <PackageReference Include="AngleSharp" Version="1.8.2" />
+    <PackageReference Include="AngleSharp.Xml" Version="1.2.0" />
     <PackageReference Include="Microsoft.ML" Version="4.0.1" />
     <PackageReference Include="Microsoft.ML.FastTree" Version="4.0.1" />
+    <PackageReference Include="YamlDotNet" Version="18.1.0" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- Tracker definitions (#606), read by TrackerDefinitionCatalog. -->
+    <EmbeddedResource Include="Search\Trackers\Definitions\*.yml" LogicalName="Deluno.Trackers.%(Filename)%(Extension)" />
   </ItemGroup>
 </Project>

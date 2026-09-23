@@ -75,7 +75,7 @@ public sealed class SqliteConnectionsRepository(
                 sharing_mode, sharing_for_hours, sharing_until_ratio, sharing_stuck_action, sharing_stuck_after_days,
                 minimum_age_minutes, retention_days, maximum_size_mb, prefer_indexer_flags, availability_delay_days,
                 rss_enabled, automatic_search_enabled, interactive_search_enabled,
-                last_health_failure_json
+                last_health_failure_json, definition_id, definition_settings_json, definition_secrets
             FROM indexer_sources
             ORDER BY priority ASC, name ASC;
             """;
@@ -122,7 +122,10 @@ public sealed class SqliteConnectionsRepository(
                 RssEnabled = reader.IsDBNull(32) || reader.GetInt64(32) == 1,
                 AutomaticSearchEnabled = reader.IsDBNull(33) || reader.GetInt64(33) == 1,
                 InteractiveSearchEnabled = reader.IsDBNull(34) || reader.GetInt64(34) == 1,
-                LastHealthFailure = reader.IsDBNull(35) ? null : DeserializeFailure(reader.GetString(35))
+                LastHealthFailure = reader.IsDBNull(35) ? null : DeserializeFailure(reader.GetString(35)),
+                DefinitionId = reader.IsDBNull(36) ? null : reader.GetString(36),
+                DefinitionSettings = reader.IsDBNull(37) ? null : ReadStringMap(reader.GetString(37)),
+                DefinitionSecrets = reader.IsDBNull(38) ? null : ReadStringMap(secretProtector.Unprotect("indexer:tracker-secrets", reader.GetString(38)))
             });
         }
 
@@ -234,7 +237,7 @@ public sealed class SqliteConnectionsRepository(
         var item = new IndexerItem(
             Id: Guid.CreateVersion7().ToString("N"),
             Name: NormalizeName(request.Name) ?? "New indexer",
-            Protocol: NormalizeIndexerProtocol(request.Protocol),
+            Protocol: IndexerProtocols.Normalize(request.Protocol),
             Privacy: IndexerPrivacy.Normalize(request.Privacy),
             BaseUrl: NormalizePath(request.BaseUrl) ?? string.Empty,
             ApiKey: NormalizeName(request.ApiKey),
@@ -267,7 +270,10 @@ public sealed class SqliteConnectionsRepository(
             AvailabilityDelayDays = request.AvailabilityDelayDays,
             RssEnabled = request.RssEnabled,
             AutomaticSearchEnabled = request.AutomaticSearchEnabled,
-            InteractiveSearchEnabled = request.InteractiveSearchEnabled
+            InteractiveSearchEnabled = request.InteractiveSearchEnabled,
+            DefinitionId = string.IsNullOrWhiteSpace(request.DefinitionId) ? null : request.DefinitionId.Trim().ToLowerInvariant(),
+            DefinitionSettings = WithoutBlanks(request.DefinitionSettings),
+            DefinitionSecrets = WithoutBlanks(request.DefinitionSecrets)
         };
 
         await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
@@ -282,14 +288,16 @@ public sealed class SqliteConnectionsRepository(
                 media_scope, is_enabled, health_status, last_health_message, request_interval_seconds, created_utc, updated_utc,
                 sharing_mode, sharing_for_hours, sharing_until_ratio, sharing_stuck_action, sharing_stuck_after_days,
                 minimum_age_minutes, retention_days, maximum_size_mb, prefer_indexer_flags, availability_delay_days,
-                rss_enabled, automatic_search_enabled, interactive_search_enabled
+                rss_enabled, automatic_search_enabled, interactive_search_enabled, definition_id,
+                definition_settings_json, definition_secrets
             )
             VALUES (
                 @id, @name, @protocol, @privacy, @baseUrl, @apiKey, @priority, @categories, @tags,
                 @mediaScope, @isEnabled, @healthStatus, @lastHealthMessage, @requestIntervalSeconds, @createdUtc, @updatedUtc,
                 @sharingMode, @sharingForHours, @sharingUntilRatio, @sharingStuckAction, @sharingStuckAfterDays,
                 @minimumAgeMinutes, @retentionDays, @maximumSizeMb, @preferIndexerFlags, @availabilityDelayDays,
-                @rssEnabled, @automaticSearchEnabled, @interactiveSearchEnabled
+                @rssEnabled, @automaticSearchEnabled, @interactiveSearchEnabled, @definitionId,
+                @definitionSettings, @definitionSecrets
             );
             """;
 
@@ -307,6 +315,8 @@ public sealed class SqliteConnectionsRepository(
         AddParameter(command, "@rssEnabled", item.RssEnabled ? 1 : 0);
         AddParameter(command, "@automaticSearchEnabled", item.AutomaticSearchEnabled ? 1 : 0);
         AddParameter(command, "@interactiveSearchEnabled", item.InteractiveSearchEnabled ? 1 : 0);
+        AddParameter(command, "@definitionId", item.DefinitionId);
+        AddDefinitionParameters(command, item.DefinitionSettings, item.DefinitionSecrets);
         AddParameter(command, "@name", item.Name);
         AddParameter(command, "@protocol", item.Protocol);
         AddParameter(command, "@privacy", item.Privacy);
@@ -349,7 +359,7 @@ public sealed class SqliteConnectionsRepository(
         if (existing is null) return null;
 
         var newName     = NormalizeName(request.Name) ?? existing.Name;
-        var newProtocol = request.Protocol is not null ? NormalizeIndexerProtocol(request.Protocol) : existing.Protocol;
+        var newProtocol = request.Protocol is not null ? IndexerProtocols.Normalize(request.Protocol) : existing.Protocol;
         var newPrivacy  = request.Privacy is not null ? IndexerPrivacy.Normalize(request.Privacy) : existing.Privacy;
         var newBaseUrl  = NormalizePath(request.BaseUrl) ?? existing.BaseUrl;
         var newApiKey   = request.ApiKey is not null ? NormalizeName(request.ApiKey) : existing.ApiKey;
@@ -383,6 +393,8 @@ public sealed class SqliteConnectionsRepository(
         var newRssEnabled = request.RssEnabled ?? existing.RssEnabled;
         var newAutomaticSearchEnabled = request.AutomaticSearchEnabled ?? existing.AutomaticSearchEnabled;
         var newInteractiveSearchEnabled = request.InteractiveSearchEnabled ?? existing.InteractiveSearchEnabled;
+        var newDefinitionSettings = request.DefinitionSettings is not null ? WithoutBlanks(request.DefinitionSettings) : existing.DefinitionSettings;
+        var newDefinitionSecrets = MergeSecrets(existing.DefinitionSecrets, request.DefinitionSecrets);
 
         // If enabling a previously-disabled indexer, reset health status so the UI prompts a test
         var newHealth = newEnabled && !existing.IsEnabled ? "untested" : existing.HealthStatus;
@@ -416,6 +428,8 @@ public sealed class SqliteConnectionsRepository(
                 rss_enabled = @rssEnabled,
                 automatic_search_enabled = @automaticSearchEnabled,
                 interactive_search_enabled = @interactiveSearchEnabled,
+                definition_settings_json = @definitionSettings,
+                definition_secrets = @definitionSecrets,
                 is_enabled = @isEnabled,
                 health_status = @healthStatus,
                 last_health_message = @lastHealthMessage,
@@ -452,6 +466,7 @@ public sealed class SqliteConnectionsRepository(
         AddParameter(command, "@rssEnabled", newRssEnabled ? 1 : 0);
         AddParameter(command, "@automaticSearchEnabled", newAutomaticSearchEnabled ? 1 : 0);
         AddParameter(command, "@interactiveSearchEnabled", newInteractiveSearchEnabled ? 1 : 0);
+        AddDefinitionParameters(command, newDefinitionSettings, newDefinitionSecrets);
         AddParameter(command, "@isEnabled", newEnabled ? 1 : 0);
         AddParameter(command, "@healthStatus", newHealth);
         AddParameter(command, "@lastHealthMessage", newMsg);
@@ -484,6 +499,8 @@ public sealed class SqliteConnectionsRepository(
             RssEnabled = newRssEnabled,
             AutomaticSearchEnabled = newAutomaticSearchEnabled,
             InteractiveSearchEnabled = newInteractiveSearchEnabled,
+            DefinitionSettings = newDefinitionSettings,
+            DefinitionSecrets = newDefinitionSecrets,
             IsEnabled  = newEnabled,
             HealthStatus = newHealth,
             LastHealthMessage = newMsg,
@@ -934,6 +951,60 @@ public sealed class SqliteConnectionsRepository(
         };
     }
 
+    /// <summary>A tracker's settings or secrets, stored as a JSON object of strings (#606).</summary>
+    private static IReadOnlyDictionary<string, string>? ReadStringMap(string? json)
+    {
+        if (string.IsNullOrWhiteSpace(json))
+        {
+            return null;
+        }
+
+        try
+        {
+            return JsonSerializer.Deserialize<Dictionary<string, string>>(json);
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+    }
+
+    private static IReadOnlyDictionary<string, string>? WithoutBlanks(IReadOnlyDictionary<string, string>? values)
+    {
+        var kept = values?.Where(pair => pair.Key.Length > 0 && !string.IsNullOrEmpty(pair.Value)).ToDictionary(pair => pair.Key.Trim(), pair => pair.Value, StringComparer.Ordinal);
+        return kept is { Count: > 0 } ? kept : null;
+    }
+
+    /// <summary>Secrets named in an update change; an empty value removes one; the rest stay.</summary>
+    private static IReadOnlyDictionary<string, string>? MergeSecrets(IReadOnlyDictionary<string, string>? existing, IReadOnlyDictionary<string, string>? changes)
+    {
+        if (changes is null)
+        {
+            return existing;
+        }
+
+        var merged = new Dictionary<string, string>(existing ?? new Dictionary<string, string>(), StringComparer.Ordinal);
+        foreach (var (name, value) in changes)
+        {
+            if (string.IsNullOrEmpty(value))
+            {
+                merged.Remove(name);
+            }
+            else
+            {
+                merged[name] = value;
+            }
+        }
+
+        return merged.Count > 0 ? merged : null;
+    }
+
+    private void AddDefinitionParameters(System.Data.Common.DbCommand command, IReadOnlyDictionary<string, string>? settings, IReadOnlyDictionary<string, string>? secrets)
+    {
+        AddParameter(command, "@definitionSettings", settings is null ? null : JsonSerializer.Serialize(settings));
+        AddParameter(command, "@definitionSecrets", secrets is null ? null : secretProtector.Protect("indexer:tracker-secrets", JsonSerializer.Serialize(secrets)));
+    }
+
     private static IntegrationFailure? DeserializeFailure(string json)
     {
         try
@@ -994,20 +1065,6 @@ public sealed class SqliteConnectionsRepository(
             "mediaserver" => "mediaServer",
             "media server" => "mediaServer",
             _ => "indexer"
-        };
-    }
-
-    private static string NormalizeIndexerProtocol(string? value)
-    {
-        var normalized = value?.Trim().ToLowerInvariant();
-        return normalized switch
-        {
-            "newznab" => "newznab",
-            "torznab" => "torznab",
-            "rss" => "rss",
-            "usenet" => "newznab",
-            "torrent" => "torznab",
-            _ => "torznab"
         };
     }
 

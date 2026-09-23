@@ -196,6 +196,7 @@ GET /api/subtitle-providers/
 GET /api/system/tasks
 GET /api/tags/
 GET /api/tags/usage
+GET /api/trackers
 GET /api/updates/preferences
 GET /api/updates/status
 GET /api/v1/dispatch-alerts/

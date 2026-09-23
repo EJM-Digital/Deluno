@@ -15,6 +15,7 @@ using Deluno.Quality.Guides;
 using Deluno.Connections.Contracts;
 using Deluno.Connections.Data;
 using Deluno.Quality.ReleasePreferences;
+using Deluno.Integrations.Search.Trackers;
 
 namespace Deluno.Integrations.Search;
 
@@ -29,7 +30,8 @@ public sealed class FeedMediaSearchPlanner(
     ILogger<FeedMediaSearchPlanner> logger,
     IIndexerQueryStatsRepository? indexerQueryStatsRepository = null,
     IReleaseProfileRepository? releaseProfileRepository = null,
-    IGuidePackageStore? guidePackageStore = null)
+    IGuidePackageStore? guidePackageStore = null,
+    TrackerIndexers? trackerIndexers = null)
     : IMediaSearchPlanner
 {
     private const int IndexerResultLimit = 100;
@@ -367,7 +369,14 @@ public sealed class FeedMediaSearchPlanner(
             ? "rss"
             : "search";
 
-        if (!Uri.TryCreate(BuildSearchUrl(indexer, title, year, mediaType, seasonNumber, episodeNumber, numberingScheme, absoluteNumber, airDate, sceneSeasonNumber, sceneEpisodeNumber), UriKind.Absolute, out var uri))
+        // A tracker is searched by the engine from its own address (#606); its
+        // host is what the throttle and circuit below are keyed on, as for any
+        // other indexer.
+        var isTracker = IndexerProtocols.IsTracker(indexer.Protocol);
+        var searchAddress = isTracker
+            ? indexer.BaseUrl
+            : BuildSearchUrl(indexer, title, year, mediaType, seasonNumber, episodeNumber, numberingScheme, absoluteNumber, airDate, sceneSeasonNumber, sceneEpisodeNumber);
+        if (!Uri.TryCreate(searchAddress, UriKind.Absolute, out var uri))
         {
             logger.LogWarning(
                 "Indexer {IndexerName} ({IndexerId}) has an unusable search URL; skipping.",
@@ -444,6 +453,20 @@ public sealed class FeedMediaSearchPlanner(
             {
                 try
                 {
+                    if (isTracker)
+                    {
+                        if (trackerIndexers is null)
+                        {
+                            throw new InvalidOperationException("This Deluno cannot search trackers.");
+                        }
+
+                        var trackerDocument = await trackerIndexers.SearchAsync(
+                            indexer,
+                            TrackerQueryFor(indexer, queryText, mediaType, year, seasonNumber, episodeNumber),
+                            token);
+                        return await ReadCandidatesAsync(trackerDocument, token);
+                    }
+
                     var http = httpClientFactory.CreateClient("indexers");
                     http.Timeout = TimeSpan.FromSeconds(12);
                     using var response = await http.GetAsync(uri, token);
@@ -481,6 +504,34 @@ public sealed class FeedMediaSearchPlanner(
 
                     await using var stream = await response.Content.ReadAsStreamAsync(token);
                     var document = await XDocument.LoadAsync(stream, LoadOptions.None, token);
+                    return await ReadCandidatesAsync(document, token);
+                }
+                catch (Exception exception) when (exception is not HttpRequestException and not TaskCanceledException and not IOException)
+                {
+                    logger.LogWarning(
+                        exception,
+                        "Indexer {IndexerName} ({IndexerId}) returned a response Deluno could not read.",
+                        indexer.Name,
+                        indexer.Id);
+                    return new IndexerSearchOutcome(
+                        [],
+                        CandidatesTruncatedByIndexer: false,
+                        Failed: true,
+                        CircuitOpen: false,
+                        Outcome: "failed",
+                        ErrorMessage: exception.Message,
+                        Failure: IntegrationFailureFactory.FromException(
+                            "indexer",
+                            indexer.Id,
+                            indexer.Name,
+                            "search",
+                            exception));
+                }
+
+                // The same reading for a Torznab or Newznab feed and for a
+                // tracker's results, which the engine hands back as one.
+                async Task<IndexerSearchOutcome> ReadCandidatesAsync(XDocument document, CancellationToken token)
+                {
                     var qualityModel = await qualityModelService.GetAsync(token);
                     var parsed = ParseCandidates(
                         document,
@@ -511,27 +562,6 @@ public sealed class FeedMediaSearchPlanner(
                         Failed: false,
                         CircuitOpen: false,
                         Outcome: parsed.Candidates.Count == 0 ? "no_results" : "matched");
-                }
-                catch (Exception exception) when (exception is not HttpRequestException and not TaskCanceledException and not IOException)
-                {
-                    logger.LogWarning(
-                        exception,
-                        "Indexer {IndexerName} ({IndexerId}) returned a response Deluno could not read.",
-                        indexer.Name,
-                        indexer.Id);
-                    return new IndexerSearchOutcome(
-                        [],
-                        CandidatesTruncatedByIndexer: false,
-                        Failed: true,
-                        CircuitOpen: false,
-                        Outcome: "failed",
-                        ErrorMessage: exception.Message,
-                        Failure: IntegrationFailureFactory.FromException(
-                            "indexer",
-                            indexer.Id,
-                            indexer.Name,
-                            "search",
-                            exception));
                 }
             },
             _ => IntegrationResilienceOutcome.Success,
@@ -687,6 +717,25 @@ public sealed class FeedMediaSearchPlanner(
                 ? string.Empty
                 : $" S{seasonNumber.Value:D2}{(episodeNumber is null ? string.Empty : $"E{episodeNumber.Value:D2}")}";
         return $"{title.Trim()}{suffix}";
+    }
+
+    /// <summary>
+    /// A search as a tracker takes it (#606): the same text Newznab gets, the
+    /// episode as numbers too, and only the indexer's categories for this kind
+    /// of media, since a tracker files films and series apart.
+    /// </summary>
+    private static TrackerQuery TrackerQueryFor(IndexerItem indexer, string queryText, string mediaType, int? year, int? seasonNumber, int? episodeNumber)
+    {
+        var isTv = string.Equals(mediaType, "tv", StringComparison.OrdinalIgnoreCase);
+        var family = isTv ? 5 : 2;
+        var categories = TrackerCategories.Parse(indexer.Categories).Where(category => category / 1000 == family).ToArray();
+        return new TrackerQuery(
+            queryText,
+            isTv ? "tvsearch" : "movie",
+            Season: isTv ? seasonNumber : null,
+            Episode: isTv ? episodeNumber : null,
+            Year: year,
+            Categories: categories.Length > 0 ? categories : [family * 1000]);
     }
 
     private static int ElapsedMilliseconds(long startedTimestamp)

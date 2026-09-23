@@ -37,4 +37,10 @@ public sealed record UpdateIndexerRequest(
     bool? ClearAvailabilityDelay = null,
     bool? RssEnabled = null,
     bool? AutomaticSearchEnabled = null,
-    bool? InteractiveSearchEnabled = null);
+    bool? InteractiveSearchEnabled = null,
+    // A tracker's settings replace the saved ones when given (#606). Secrets
+    // merge instead: a name given sets that secret, an empty value removes
+    // it, and a secret not named is left as it was, because the screen never
+    // has it to send back.
+    IReadOnlyDictionary<string, string>? DefinitionSettings = null,
+    IReadOnlyDictionary<string, string>? DefinitionSecrets = null);

@@ -602,6 +602,40 @@ export interface IndexerItem {
   rssEnabled?: boolean;
   automaticSearchEnabled?: boolean;
   interactiveSearchEnabled?: boolean;
+  /** The built-in tracker a "tracker" indexer runs (#606). */
+  definitionId?: string | null;
+  /** That tracker's settings that are not secret, by setting name. */
+  definitionSettings?: Record<string, string> | null;
+  /** Which of its secrets (password, cookie, key) are saved. The values never leave Deluno. */
+  definitionSecretsSet?: string[];
+}
+
+/** One tracker Deluno can search itself, from GET /api/trackers (#606). */
+export interface TrackerDefinitionSummary {
+  id: string;
+  name: string;
+  description: string;
+  language: string;
+  /** public, semi-private or private. */
+  privacy: string;
+  links: string[];
+  movies: boolean;
+  tv: boolean;
+  loginMethod: string | null;
+  settings: TrackerSettingSummary[];
+  mayNeedCloudflareHelp: boolean;
+  /** Why the engine cannot run it, or null when it can. */
+  unsupported: string | null;
+}
+
+export interface TrackerSettingSummary {
+  name: string;
+  /** text, password, checkbox, select, multi-select or info. */
+  type: string;
+  label: string;
+  default: string | null;
+  secret: boolean;
+  options: { key: string; value: string }[];
 }
 
 export interface ReleaseTermScore {

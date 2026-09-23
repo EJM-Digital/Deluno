@@ -25,4 +25,7 @@ public sealed record CreateIndexerRequest(
     int? AvailabilityDelayDays = null,
     bool RssEnabled = true,
     bool AutomaticSearchEnabled = true,
-    bool InteractiveSearchEnabled = true);
+    bool InteractiveSearchEnabled = true,
+    string? DefinitionId = null,
+    IReadOnlyDictionary<string, string>? DefinitionSettings = null,
+    IReadOnlyDictionary<string, string>? DefinitionSecrets = null);

@@ -8,7 +8,18 @@ public sealed record DownloadClientGrabRequest(
     string MediaType,
     string? Category,
     string? IndexerName,
-    string? DispatchId = null);
+    string? DispatchId = null,
+    // The indexer the release came from. A native tracker's link is a page or
+    // a signed-in download, so the grab service resolves it first (#606).
+    string? IndexerId = null)
+{
+    /// <summary>
+    /// A .torrent file's bytes, when the release had to be fetched by Deluno
+    /// (a tracker that needs its sign-in to download). A client given these
+    /// uploads them instead of adding <see cref="DownloadUrl"/>.
+    /// </summary>
+    public byte[]? TorrentFile { get; init; }
+}
 
 public sealed record DownloadClientGrabResult(
     string ClientId,

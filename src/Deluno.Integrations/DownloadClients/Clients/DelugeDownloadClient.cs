@@ -1,4 +1,5 @@
 using System.Net.Http.Json;
+using System.Text.Json;
 using System.Text.Json.Serialization;
 using Deluno.Connections.Contracts;
 
@@ -15,8 +16,23 @@ public sealed class DelugeDownloadClient(IHttpClientFactory httpClientFactory) :
         if (baseUri is null) return DownloadClientHelpers.GrabFailure(client, request, "Download client address is missing.");
         var http = CreateHttp();
         await LoginAsync(http, baseUri, client, cancellationToken);
-        await DownloadClientHelpers.PostJsonAsync<DelugeResponse<object>>(http, new Uri(baseUri, "json"), new DelugeRequest("core.add_torrent_url", [request.DownloadUrl, new Dictionary<string, object>()], 2), cancellationToken);
-        return DownloadClientHelpers.GrabSuccess(client, request, "Release URL sent to Deluge.");
+        // Deluge has a call for each kind of release: add_torrent_url fetches a
+        // .torrent itself and cannot take a magnet, so a magnet sent there was
+        // lost (#606).
+        var options = new Dictionary<string, object>();
+        var add = request.TorrentFile is { } file
+            ? new DelugeRequest("core.add_torrent_file", [SafeFileName(request.ReleaseName) + ".torrent", Convert.ToBase64String(file), options], 2)
+            : request.DownloadUrl.StartsWith("magnet:", StringComparison.OrdinalIgnoreCase)
+                ? new DelugeRequest("core.add_torrent_magnet", [request.DownloadUrl, options], 2)
+                : new DelugeRequest("core.add_torrent_url", [request.DownloadUrl, options], 2);
+        var added = await DownloadClientHelpers.PostJsonAsync<DelugeResponse<string>>(http, new Uri(baseUri, "json"), add, cancellationToken);
+        if (string.IsNullOrWhiteSpace(added?.Result))
+        {
+            return DownloadClientHelpers.GrabFailure(client, request, $"Deluge did not add the release: {added?.Error?.Message ?? "it may already hold it"}.");
+        }
+
+        await TryLabelAsync(http, baseUri, added.Result, DownloadClientHelpers.ResolveCategory(client, request), cancellationToken);
+        return DownloadClientHelpers.GrabSuccess(client, request, request.TorrentFile is null ? "Release sent to Deluge." : "Torrent file sent to Deluge.");
     }
 
     public override async Task<DownloadClientTelemetrySnapshot?> GetSnapshotAsync(DownloadClientItem client, DateTimeOffset capturedUtc, CancellationToken cancellationToken)
@@ -84,14 +100,74 @@ public sealed class DelugeDownloadClient(IHttpClientFactory httpClientFactory) :
         return http;
     }
 
+    /// <summary>
+    /// Signs in to the web UI and makes sure it is connected to a daemon. An
+    /// empty password is still a sign-in: skipping it left every later call
+    /// unauthenticated. And the web UI answers with no daemon behind it, so a
+    /// Deluge that is up but not connected took nothing (#606).
+    /// </summary>
     private static async Task LoginAsync(HttpClient http, Uri baseUri, DownloadClientItem client, CancellationToken cancellationToken)
     {
-        if (string.IsNullOrWhiteSpace(client.Secret)) return;
-        await DownloadClientHelpers.PostJsonAsync<DelugeResponse<object>>(http, new Uri(baseUri, "json"), new DelugeRequest("auth.login", [client.Secret], 1), cancellationToken);
+        var json = new Uri(baseUri, "json");
+        var login = await DownloadClientHelpers.PostJsonAsync<DelugeResponse<bool>>(http, json, new DelugeRequest("auth.login", [client.Secret ?? string.Empty], 1), cancellationToken);
+        if (login?.Result != true)
+        {
+            throw new InvalidOperationException("Deluge refused the password.");
+        }
+
+        var connected = await DownloadClientHelpers.PostJsonAsync<DelugeResponse<bool>>(http, json, new DelugeRequest("web.connected", [], 2), cancellationToken);
+        if (connected?.Result == true)
+        {
+            return;
+        }
+
+        var hosts = await DownloadClientHelpers.PostJsonAsync<DelugeResponse<JsonElement>>(http, json, new DelugeRequest("web.get_hosts", [], 3), cancellationToken);
+        if (hosts?.Result is not { ValueKind: JsonValueKind.Array } list || list.GetArrayLength() == 0)
+        {
+            throw new InvalidOperationException("Deluge's web UI has no daemon to connect to.");
+        }
+
+        var hostId = list[0][0].GetString()!;
+        await DownloadClientHelpers.PostJsonAsync<DelugeResponse<object>>(http, json, new DelugeRequest("web.connect", [hostId], 4), cancellationToken);
     }
 
+    /// <summary>The category as a label, when the Label plugin is on; a Deluge without it still downloads.</summary>
+    private static async Task TryLabelAsync(HttpClient http, Uri baseUri, string torrentId, string category, CancellationToken cancellationToken)
+    {
+        var label = category.Trim().ToLowerInvariant();
+        if (label.Length == 0)
+        {
+            return;
+        }
+
+        var json = new Uri(baseUri, "json");
+        try
+        {
+            var labels = await DownloadClientHelpers.PostJsonAsync<DelugeResponse<string[]>>(http, json, new DelugeRequest("label.get_labels", [], 5), cancellationToken);
+            if (labels?.Result is null)
+            {
+                return;
+            }
+
+            if (!labels.Result.Contains(label, StringComparer.OrdinalIgnoreCase))
+            {
+                await DownloadClientHelpers.PostJsonAsync<DelugeResponse<object>>(http, json, new DelugeRequest("label.add", [label], 6), cancellationToken);
+            }
+
+            await DownloadClientHelpers.PostJsonAsync<DelugeResponse<object>>(http, json, new DelugeRequest("label.set_torrent", [torrentId, label], 7), cancellationToken);
+        }
+        catch (Exception exception) when (exception is HttpRequestException or JsonException or NotSupportedException)
+        {
+            // No Label plugin: the torrent is added, just unlabelled.
+        }
+    }
+
+    private static string SafeFileName(string name)
+        => string.Concat(name.Select(c => Path.GetInvalidFileNameChars().Contains(c) ? '_' : c));
+
     private sealed record DelugeRequest([property: JsonPropertyName("method")] string Method, [property: JsonPropertyName("params")] object[] Params, [property: JsonPropertyName("id")] int Id);
-    private sealed record DelugeResponse<T>([property: JsonPropertyName("result")] T? Result);
+    private sealed record DelugeResponse<T>([property: JsonPropertyName("result")] T? Result, [property: JsonPropertyName("error")] DelugeError? Error = null);
+    private sealed record DelugeError([property: JsonPropertyName("message")] string? Message);
     private sealed record DelugeUpdateResult([property: JsonPropertyName("torrents")] IReadOnlyDictionary<string, DelugeTorrent>? Torrents);
     private sealed record DelugeTorrent([property: JsonPropertyName("name")] string? Name, [property: JsonPropertyName("state")] string? State, [property: JsonPropertyName("progress")] double? Progress, [property: JsonPropertyName("download_payload_rate")] double? DownloadPayloadRate, [property: JsonPropertyName("upload_payload_rate")] double? UploadPayloadRate, [property: JsonPropertyName("eta")] double? Eta, [property: JsonPropertyName("total_size")] double? TotalSize, [property: JsonPropertyName("total_done")] double? TotalDone, [property: JsonPropertyName("num_peers")] int? NumPeers, [property: JsonPropertyName("time_added")] double? TimeAdded, [property: JsonPropertyName("label")] string? Label, [property: JsonPropertyName("message")] string? Message, [property: JsonPropertyName("save_path")] string? SavePath);
 }

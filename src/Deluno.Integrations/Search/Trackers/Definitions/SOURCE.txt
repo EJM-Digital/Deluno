@@ -1,0 +1,2 @@
+Prowlarr/Indexers definitions/v11 at 0339aa920bb468cce384a2c4b5ed2932fcfe4b73 (23 September 2026).
+Deluno reads these itself (#606); see TrackerDefinitionCatalog.

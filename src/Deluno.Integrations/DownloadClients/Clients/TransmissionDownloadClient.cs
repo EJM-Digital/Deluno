@@ -15,8 +15,34 @@ public sealed class TransmissionDownloadClient(IHttpClientFactory httpClientFact
     {
         var baseUri = DownloadClientHelpers.ResolveEndpoint(client);
         if (baseUri is null) return DownloadClientHelpers.GrabFailure(client, request, "Download client address is missing.");
-        await SendAsync(client, baseUri, new TransmissionRequest("torrent-add", new() { ["filename"] = request.DownloadUrl }), cancellationToken);
-        return DownloadClientHelpers.GrabSuccess(client, request, "Release URL sent to Transmission.");
+        // A .torrent Deluno fetched goes as metainfo; a URL or magnet as a
+        // filename. The label is the category, which is how the queue and
+        // import tell a film from an episode (#606).
+        var arguments = new Dictionary<string, object>();
+        if (request.TorrentFile is { } file)
+        {
+            arguments["metainfo"] = Convert.ToBase64String(file);
+        }
+        else
+        {
+            arguments["filename"] = request.DownloadUrl;
+        }
+
+        if (DownloadClientHelpers.ResolveCategory(client, request) is { Length: > 0 } label)
+        {
+            arguments["labels"] = new[] { label };
+        }
+
+        var response = await SendAsync(client, baseUri, new TransmissionRequest("torrent-add", arguments), cancellationToken);
+        // The legacy protocol answers "success" or a reason in words; only a
+        // reason is a refusal.
+        if (response.Result is { ValueKind: System.Text.Json.JsonValueKind.String } result
+            && !string.Equals(result.GetString(), "success", StringComparison.OrdinalIgnoreCase))
+        {
+            return DownloadClientHelpers.GrabFailure(client, request, $"Transmission did not add the release: {result.GetString()}.");
+        }
+
+        return DownloadClientHelpers.GrabSuccess(client, request, request.TorrentFile is null ? "Release URL sent to Transmission." : "Torrent file sent to Transmission.");
     }
 
     public override async Task<DownloadClientTelemetrySnapshot?> GetSnapshotAsync(DownloadClientItem client, DateTimeOffset capturedUtc, CancellationToken cancellationToken)
@@ -98,7 +124,7 @@ public sealed class TransmissionDownloadClient(IHttpClientFactory httpClientFact
     }
 
     private sealed record TransmissionRequest([property: JsonPropertyName("method")] string Method, [property: JsonPropertyName("arguments")] Dictionary<string, object> Arguments);
-    private sealed record TransmissionResponse([property: JsonPropertyName("arguments")] TransmissionArguments? Arguments);
+    private sealed record TransmissionResponse([property: JsonPropertyName("arguments")] TransmissionArguments? Arguments, [property: JsonPropertyName("result")] System.Text.Json.JsonElement? Result = null);
     private sealed record TransmissionArguments([property: JsonPropertyName("torrents")] IReadOnlyList<TransmissionTorrent>? Torrents);
     private sealed record TransmissionTorrent([property: JsonPropertyName("id")] int? Id, [property: JsonPropertyName("name")] string? Name, [property: JsonPropertyName("status")] int? Status, [property: JsonPropertyName("percentDone")] double? PercentDone, [property: JsonPropertyName("rateDownload")] long? RateDownload, [property: JsonPropertyName("rateUpload")] long? RateUpload, [property: JsonPropertyName("eta")] int? Eta, [property: JsonPropertyName("totalSize")] long? TotalSize, [property: JsonPropertyName("downloadedEver")] long? DownloadedEver, [property: JsonPropertyName("peersConnected")] int? PeersConnected, [property: JsonPropertyName("addedDate")] long? AddedDate, [property: JsonPropertyName("downloadDir")] string? DownloadDir, [property: JsonPropertyName("labels")] IReadOnlyList<string>? Labels, [property: JsonPropertyName("error")] int? Error, [property: JsonPropertyName("errorString")] string? ErrorString);
 }

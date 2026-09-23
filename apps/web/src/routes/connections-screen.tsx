@@ -298,6 +298,15 @@ export function IndexersPage() {
           rssEnabled: indexerForm.rssEnabled,
           automaticSearchEnabled: indexerForm.automaticSearchEnabled,
           interactiveSearchEnabled: indexerForm.interactiveSearchEnabled,
+          // A built-in tracker (#606): which one, its settings, and only the
+          // secrets typed now; a blank one keeps what is saved.
+          ...(indexerForm.protocol === "tracker"
+            ? {
+                definitionId: indexerForm.definitionId,
+                definitionSettings: indexerForm.trackerSettings,
+                definitionSecrets: Object.fromEntries(Object.entries(indexerForm.trackerSecrets).filter(([, value]) => value.trim()))
+              }
+            : {}),
           categories: indexerForm.categories,
           tags: "",
           mediaScope: indexerForm.scope,
@@ -321,7 +330,7 @@ export function IndexersPage() {
         };
         if (drawer.id) {
           await send(`/api/indexers/${drawer.id}`, "PUT", payload, "Indexer could not be saved.");
-          const settled = { ...indexerForm, apiKey: "" };
+          const settled = { ...indexerForm, apiKey: "", trackerSecrets: {} };
           setIndexerForm(settled);
           setIndexerInitial(settled);
           setSaveMessage("Saved just now");

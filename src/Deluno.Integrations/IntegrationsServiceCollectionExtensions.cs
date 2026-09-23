@@ -20,6 +20,13 @@ public static class IntegrationsServiceCollectionExtensions
         services.AddSingleton<IIntelligentRoutingService, IntelligentRoutingService>();
         services.AddScoped<IMediaSearchPlanner, FeedMediaSearchPlanner>();
         services.AddScoped<IIndexerFeedReader, IndexerFeedReader>();
+
+        // Native trackers (#606): the definitions, one engine holding every
+        // tracker's cookies and pace, and the indexer-facing side of both.
+        services.AddSingleton<Search.Trackers.ITrackerDefinitionCatalog, Search.Trackers.TrackerDefinitionCatalog>();
+        services.AddSingleton<Search.Trackers.ITrackerEngine, Search.Trackers.TrackerEngine>();
+        services.AddSingleton<Search.Trackers.TrackerIndexers>();
+        services.AddSingleton<Deluno.Connections.Contracts.ITrackerIndexerTester>(provider => provider.GetRequiredService<Search.Trackers.TrackerIndexers>());
         services.AddScoped<IAcquisitionDecisionPipeline, AcquisitionDecisionPipeline>();
         services.AddHttpClient("indexers", client => client.Timeout = TimeSpan.FromSeconds(10));
         services.AddHttpClient("download-clients", client => client.Timeout = TimeSpan.FromSeconds(8));

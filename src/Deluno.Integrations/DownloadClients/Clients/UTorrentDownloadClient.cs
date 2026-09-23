@@ -35,6 +35,15 @@ public sealed class UTorrentDownloadClient(Func<HttpMessageHandler>? handlerFact
         if (baseUri is null) return DownloadClientHelpers.GrabFailure(client, request, "Download client address is missing.");
         using var http = CreateHttp(client, baseUri, TimeSpan.FromSeconds(10));
         var token = await DownloadClientHelpers.GetUTorrentTokenAsync(http, cancellationToken);
+        if (request.TorrentFile is { } file)
+        {
+            // A .torrent Deluno fetched with a tracker's sign-in (#606).
+            using var upload = new MultipartFormDataContent { { new ByteArrayContent(file), "torrent_file", "release.torrent" } };
+            using var uploaded = await http.PostAsync($"gui/?token={Uri.EscapeDataString(token)}&action=add-file", upload, cancellationToken);
+            uploaded.EnsureSuccessStatusCode();
+            return DownloadClientHelpers.GrabSuccess(client, request, "Torrent file sent to uTorrent.");
+        }
+
         using var response = await http.GetAsync($"gui/?token={Uri.EscapeDataString(token)}&action=add-url&s={Uri.EscapeDataString(request.DownloadUrl)}", cancellationToken);
         response.EnsureSuccessStatusCode();
         return DownloadClientHelpers.GrabSuccess(client, request, "Release URL sent to uTorrent.");
