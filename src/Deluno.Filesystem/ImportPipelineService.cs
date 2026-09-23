@@ -272,6 +272,22 @@ public sealed partial class ImportPipelineService(
             return Failed(StatusCodes.Status400BadRequest, message);
         }
 
+        // Every guard above is absolute, and a processor's failures are
+        // relative: a botched remux yields a valid file that is simply less
+        // than what went in (#574).
+        var lost = await WhatTheProcessorLostAsync(request, preview, cancellationToken);
+        if (lost is not null)
+        {
+            await RecordImportFailureAsync(
+                request,
+                request.Preview,
+                ImportFailurePolicy.ProcessedFileIsLess,
+                lost,
+                "Check the processor, then either fix it and try again or import the original download instead.",
+                cancellationToken);
+            return Failed(StatusCodes.Status400BadRequest, lost);
+        }
+
         if (preview.MediaProbe?.DurationSeconds is > 0 and < 120)
         {
             const string message = "The detected runtime is under two minutes, so Deluno is treating this as a likely sample.";
@@ -1540,12 +1556,94 @@ public sealed partial class ImportPipelineService(
         return $"Probe: ffprobe detected {duration}, {videoSummary}, {probe.AudioStreams.Count} audio stream(s), and {probe.SubtitleStreams.Count} subtitle stream(s).";
     }
 
+    /// <summary>
+    /// What a processor gave back, measured against what it was given, or null
+    /// when there is nothing to complain about.
+    ///
+    /// <para>Only losses that cannot be intended are refused. A processor may
+    /// legitimately transcode a file far smaller, or keep one audio track out
+    /// of five, so neither size nor a reduced track count is evidence of
+    /// anything. A file that is materially shorter than the one that went in
+    /// is: that is a remux that stopped early, and it is the failure that
+    /// otherwise reaches the library looking perfectly valid (#574).</para>
+    /// </summary>
+    private async Task<string?> WhatTheProcessorLostAsync(
+        ImportExecuteRequest request,
+        ImportPreviewResponse preview,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(request.ProcessedFromPath)) return null;
+
+        var source = ResolveProcessedSourceFile(request.ProcessedFromPath);
+        if (source is null) return null;
+
+        var before = await mediaProbeService.ProbeAsync(source, cancellationToken);
+        var after = preview.MediaProbe;
+        // Nothing to compare with is not evidence of a problem. It is recorded
+        // on the import's decision trail either way, so an install that cannot
+        // probe can still see that nothing was checked.
+        if (before.Status != "succeeded" || after?.Status != "succeeded") return null;
+
+        if (before.DurationSeconds is > 0 and var wasSeconds &&
+            after.DurationSeconds is > 0 and var nowSeconds &&
+            nowSeconds < wasSeconds * 0.9)
+        {
+            return $"The processed file runs {Describe(nowSeconds)}, and the download it was made from runs {Describe(wasSeconds)}. Deluno did not import it.";
+        }
+
+        if (before.AudioStreams.Count > 0 && after.AudioStreams.Count == 0)
+        {
+            return "The processed file has no audio, and the download it was made from does. Deluno did not import it.";
+        }
+
+        if (before.VideoStreams.Count > 0 && after.VideoStreams.Count == 0)
+        {
+            return "The processed file has no video, and the download it was made from does. Deluno did not import it.";
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// The file a processor was handed. A download is usually a folder, so the
+    /// biggest video file inside it is the one that was the media.
+    /// </summary>
+    private static string? ResolveProcessedSourceFile(string processedFrom)
+    {
+        try
+        {
+            if (File.Exists(processedFrom)) return processedFrom;
+            if (!Directory.Exists(processedFrom)) return null;
+
+            return Directory.EnumerateFiles(processedFrom, "*.*", SearchOption.AllDirectories)
+                .Where(path => Path.GetExtension(path).ToLowerInvariant() is ".mkv" or ".mp4" or ".avi" or ".mov" or ".m4v" or ".ts")
+                .OrderByDescending(path => new FileInfo(path).Length)
+                .FirstOrDefault();
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException)
+        {
+            return null;
+        }
+    }
+
+    private static string Describe(double seconds)
+    {
+        var span = TimeSpan.FromSeconds(seconds);
+        return span.TotalHours >= 1
+            ? $"{(int)span.TotalHours}h {span.Minutes}m"
+            : $"{span.Minutes}m {span.Seconds}s";
+    }
+
     private async Task<string?> ValidateReplacementAsync(
         ImportExecuteRequest request,
         ImportPreviewResponse preview,
         CancellationToken cancellationToken)
     {
-        if (!request.Overwrite || request.ForceReplacement || !File.Exists(preview.DestinationPath))
+        // Force was authorised against the release Deluno chose to grab, before
+        // a processor touched it. It does not carry over to whatever the
+        // processor handed back, which nobody has looked at (#574).
+        var forced = request.ForceReplacement && string.IsNullOrWhiteSpace(request.ProcessedFromPath);
+        if (!request.Overwrite || forced || !File.Exists(preview.DestinationPath))
         {
             return null;
         }

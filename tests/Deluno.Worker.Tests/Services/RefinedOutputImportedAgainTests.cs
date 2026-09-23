@@ -170,8 +170,8 @@ public sealed class RefinedOutputImportedAgainTests : IDisposable
             .ReturnsAsync(new DispatchCatalogueLink("dispatch-now", "movie", "movie-1"));
 
         var processors = new Mock<IProcessorRepository>();
-        processors.Setup(repository => repository.ListProcessorHandoffsAsync(
-                It.IsAny<string?>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
+        processors.Setup(repository => repository.ListProcessorHandoffsWithStatusAsync(
+                It.IsAny<IReadOnlyList<string>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync([Waiting(processorSays, handedOver, handedOverUtc)]);
 
         var planner = new WorkPlanner(

@@ -132,6 +132,17 @@ public static class ProcessorHandoffStatuses
     public static bool AcceptsLateOutput(string? status)
         => IsOpen(status) || status is Waiting or TimedOut or Stalled or Lost;
 
+    /// <summary>
+    /// The statuses <see cref="IsWithProcessor"/> and
+    /// <see cref="AcceptsLateOutput"/> answer true for, so a query can ask the
+    /// database for exactly those rather than reading a page of history and
+    /// filtering it (#571).
+    /// </summary>
+    public static readonly IReadOnlyList<string> WithProcessor = [Waiting, Submitted, Accepted, Started];
+
+    public static readonly IReadOnlyList<string> AcceptingLateOutput =
+        [Waiting, Submitted, Accepted, Started, TimedOut, Stalled, Lost];
+
     /// <summary>Where a person can choose to import the original instead.</summary>
     public static bool CanReleaseOriginal(string? status)
         => status is Failed or TimedOut or Stalled or Lost or Cancelled;

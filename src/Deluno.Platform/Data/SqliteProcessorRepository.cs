@@ -457,18 +457,28 @@ public sealed class SqliteProcessorRepository(
         return items;
     }
 
-    public async Task<IReadOnlyList<ProcessorHandoffItem>> ListOpenProcessorHandoffsAsync(CancellationToken cancellationToken)
+    public Task<IReadOnlyList<ProcessorHandoffItem>> ListOpenProcessorHandoffsAsync(CancellationToken cancellationToken)
+        => ListProcessorHandoffsWithStatusAsync(ProcessorHandoffStatuses.WithProcessor, cancellationToken);
+
+    public async Task<IReadOnlyList<ProcessorHandoffItem>> ListProcessorHandoffsWithStatusAsync(
+        IReadOnlyList<string> statuses,
+        CancellationToken cancellationToken)
     {
+        if (statuses.Count == 0) return [];
+
         await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
             DelunoDatabaseNames.Platform,
             cancellationToken);
         using var command = connection.CreateCommand();
-        command.CommandText = HandoffSelect
-            + " WHERE status IN (@waiting, @submitted, @accepted, @started) ORDER BY updated_utc DESC;";
-        AddParameter(command, "@waiting", ProcessorHandoffStatuses.Waiting);
-        AddParameter(command, "@submitted", ProcessorHandoffStatuses.Submitted);
-        AddParameter(command, "@accepted", ProcessorHandoffStatuses.Accepted);
-        AddParameter(command, "@started", ProcessorHandoffStatuses.Started);
+        var names = new List<string>(statuses.Count);
+        for (var index = 0; index < statuses.Count; index++)
+        {
+            var name = $"@status{index}";
+            AddParameter(command, name, statuses[index]);
+            names.Add(name);
+        }
+
+        command.CommandText = HandoffSelect + $" WHERE status IN ({string.Join(", ", names)}) ORDER BY updated_utc DESC;";
         var items = new List<ProcessorHandoffItem>();
         using var reader = await command.ExecuteReaderAsync(cancellationToken);
         while (await reader.ReadAsync(cancellationToken)) items.Add(ReadProcessorHandoff(reader));

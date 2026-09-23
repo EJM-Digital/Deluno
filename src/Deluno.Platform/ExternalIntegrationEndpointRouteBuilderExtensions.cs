@@ -711,7 +711,8 @@ public static class ExternalIntegrationEndpointRouteBuilderExtensions
                 return Results.ValidationProblem(errors);
             }
 
-            var status = NormalizeProcessorStatus(request.Status);
+            // Validation above refuses a status Deluno does not understand.
+            var status = NormalizeProcessorStatus(request.Status)!;
             var libraries = await librariesRepository.ListLibrariesAsync(cancellationToken);
             var library = !string.IsNullOrWhiteSpace(request.LibraryId)
                 ? libraries.FirstOrDefault(item => string.Equals(item.Id, request.LibraryId, StringComparison.OrdinalIgnoreCase))
@@ -767,6 +768,54 @@ public static class ExternalIntegrationEndpointRouteBuilderExtensions
                 return Results.ValidationProblem(new Dictionary<string, string[]>
                 {
                     ["sourcePath"] = ["The supplied source path does not match the processor hand-off. Deluno did not queue an import."]
+                });
+            }
+
+            // The event names the hand-off and the file as two separate claims,
+            // and being inside the output folder only says the processor wrote
+            // where it was told. A file that is recognisably another download's
+            // is refused rather than imported under this one's title (#573).
+            if (status == "completed" &&
+                !ProcessorOutputPathPolicy.IsOutputAbout(request.OutputPath, library.ProcessorOutputPath, handoff.SourcePath))
+            {
+                var claimedBy = (await repository.ListProcessorHandoffsAsync(library.Id, 200, cancellationToken))
+                    .FirstOrDefault(other => other.Id != handoff.Id &&
+                        ProcessorOutputPathPolicy.IsOutputAbout(request.OutputPath, library.ProcessorOutputPath, other.SourcePath));
+                if (claimedBy is not null)
+                {
+                    return Results.ValidationProblem(new Dictionary<string, string[]>
+                    {
+                        ["outputPath"] = [$"That file is {claimedBy.ReleaseName}, not {handoff.ReleaseName}. Deluno did not queue an import."]
+                    });
+                }
+            }
+
+            // A report already acted on is answered the same way and does
+            // nothing new, so a processor that repeats itself - or a worker that
+            // restarts mid-send - does not import the same file twice. The job
+            // queue cannot answer this on its own: its duplicate rule
+            // deliberately ignores completed jobs, so that a release can be
+            // imported again later on purpose.
+            if (status == "completed" &&
+                string.Equals(handoff.Status, ProcessorHandoffStatuses.Completed, StringComparison.OrdinalIgnoreCase) &&
+                handoff.ImportJobId is { Length: > 0 } &&
+                string.Equals(NormalizeProcessorPath(handoff.OutputPath ?? string.Empty), NormalizeProcessorPath(request.OutputPath ?? string.Empty), StringComparison.OrdinalIgnoreCase))
+            {
+                return Results.Json(
+                    new { status = "completed", handoffId = handoff.Id, alreadyHandled = true, importJobId = handoff.ImportJobId },
+                    statusCode: StatusCodes.Status202Accepted);
+            }
+
+            // An ending is an ending. Deluno stopped waiting for this file, or a
+            // person did, and a report arriving afterwards must not quietly
+            // start an import for a hand-off that has been closed and cleared.
+            if (status == "completed" && !ProcessorHandoffStatuses.IsWithProcessor(handoff.Status))
+            {
+                return Results.Conflict(new
+                {
+                    message = $"Deluno stopped waiting for {handoff.ReleaseName}, which ended {handoff.Status}, so this report is too late. No import was queued.",
+                    handoffId = handoff.Id,
+                    handoff.Status
                 });
             }
 
@@ -912,6 +961,12 @@ public static class ExternalIntegrationEndpointRouteBuilderExtensions
         var errors = new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase);
         var status = NormalizeProcessorStatus(request.Status);
 
+        if (status is null)
+        {
+            errors["status"] = ["Deluno did not understand that status. Report accepted, started, completed or failed."];
+            return errors;
+        }
+
         if (status == "completed" && string.IsNullOrWhiteSpace(request.OutputPath))
         {
             errors["outputPath"] = ["Completed processor events must include the cleaned output path."];
@@ -974,14 +1029,22 @@ public static class ExternalIntegrationEndpointRouteBuilderExtensions
             _ => "both"
         };
 
-    private static string NormalizeProcessorStatus(string? value)
+    /// <summary>
+    /// The statuses a processor may report, and nothing else.
+    ///
+    /// <para>An unrecognised word used to be read as <c>accepted</c>, so a
+    /// processor reporting something Deluno did not understand was recorded as
+    /// having taken the file. Guessing on a processor's behalf is how a wrong
+    /// answer becomes a wrong state (#573); an unknown word is refused instead.</para>
+    /// </summary>
+    private static string? NormalizeProcessorStatus(string? value)
         => value?.Trim().ToLowerInvariant() switch
         {
             "accepted" => "accepted",
             "started" or "processing" => "started",
             "completed" or "processed" or "ready" => "completed",
             "failed" or "error" => "failed",
-            _ => "accepted"
+            _ => null
         };
 
     /// <summary>

@@ -656,7 +656,14 @@ public sealed record ImportExecuteRequest(
     bool ForceReplacement = false,
     string? DispatchId = null,
     string? ExpectedExistingPath = null,
-    IReadOnlyList<DispatchReplacementTarget>? ReplacementTargets = null);
+    IReadOnlyList<DispatchReplacementTarget>? ReplacementTargets = null,
+    /// <summary>
+    /// The download a processor was given, when this file is what it handed
+    /// back. Deluno compares the two before importing, because every other
+    /// check it makes is absolute — a failed remux that yields a valid
+    /// three-minute stub of a two-hour film passes all of them (#574).
+    /// </summary>
+    string? ProcessedFromPath = null);
 
 public sealed record ImportExecuteResponse(
     ImportPreviewResponse Preview,

@@ -31,6 +31,7 @@ import {
   type BackupItem,
   type BackupSettingsSnapshot,
   type DownloadClientItem,
+  type ProcessorConnectionItem,
   type IndexerItem,
   type JobQueueItem,
   type LibraryItem,
@@ -68,6 +69,7 @@ import { resolveDrawerSaveState, shouldClearSaveState } from "../lib/drawer-save
 interface SystemLoaderData {
   activity: ActivityEventItem[];
   downloadClients: DownloadClientItem[];
+  processors: ProcessorConnectionItem[];
   indexers: IndexerItem[];
   jobs: JobQueueItem[];
   libraries: LibraryItem[];
@@ -85,13 +87,16 @@ interface SystemLoaderData {
 }
 
 export async function systemLoader(): Promise<SystemLoaderData> {
-  const [settings, libraries, jobs, activity, indexers, downloadClients, backups, backupSettings, updateStatus, automation, searchCycles, retryWindows, monitoring, systemTasks, recycleBin, recycleBinSettings] = await Promise.all([
+  const [settings, libraries, jobs, activity, indexers, downloadClients, processors, backups, backupSettings, updateStatus, automation, searchCycles, retryWindows, monitoring, systemTasks, recycleBin, recycleBinSettings] = await Promise.all([
     fetchJson<PlatformSettingsSnapshot>("/api/settings"),
     fetchJson<LibraryItem[]>("/api/libraries"),
     fetchPageItems<JobQueueItem>("/api/jobs?pageSize=25"),
     fetchPageItems<ActivityEventItem>("/api/activity?pageSize=200"),
     fetchJson<IndexerItem[]>("/api/indexers"),
     fetchJson<DownloadClientItem[]>("/api/download-clients"),
+    // A processor holds every file mid-import, and its health used to show on
+    // one settings chip and nowhere else (#577).
+    fetchJson<ProcessorConnectionItem[]>("/api/integrations/processors/connections"),
     fetchJson<BackupItem[]>("/api/backups"),
     fetchJson<BackupSettingsSnapshot>("/api/backups/settings"),
     fetchJson<UpdateStatusResponse>("/api/updates/status"),
@@ -104,14 +109,14 @@ export async function systemLoader(): Promise<SystemLoaderData> {
     fetchJson<RecycleBinSettings>("/api/recycle-bin/settings")
   ]);
 
-  return { activity, automation, backupSettings, backups, downloadClients, indexers, jobs, libraries, monitoring, recycleBin, recycleBinSettings, retryWindows, searchCycles, settings, systemTasks, updateStatus };
+  return { activity, automation, backupSettings, backups, downloadClients, indexers, jobs, libraries, monitoring, processors, recycleBin, recycleBinSettings, retryWindows, searchCycles, settings, systemTasks, updateStatus };
 }
 
 export function SystemPage() {
   const location = useLocation();
   const revalidator = useRevalidator();
   const loaderData = useLoaderData() as SystemLoaderData;
-  const { activity, automation, backupSettings, backups, downloadClients, indexers, jobs, libraries, monitoring, recycleBin, recycleBinSettings, retryWindows, searchCycles, settings, systemTasks, updateStatus } = loaderData;
+  const { activity, automation, backupSettings, backups, downloadClients, indexers, jobs, libraries, monitoring, processors, recycleBin, recycleBinSettings, retryWindows, searchCycles, settings, systemTasks, updateStatus } = loaderData;
   // The folders Deluno writes to are its libraries' folders. This used to count
   // the two paths the setup guide asks for, which a library made in Settings
   // never fills in: two libraries on a NAS read "0".
@@ -121,6 +126,8 @@ export function SystemPage() {
   const activeJobs = jobs.filter((job) => isJobActive(job.status as JobStatus)).length;
   const healthyIndexers = indexers.filter((item) => item.healthStatus === "healthy").length;
   const healthyClients = downloadClients.filter((item) => item.healthStatus === "healthy").length;
+  const enabledProcessors = processors.filter((item) => item.isEnabled);
+  const healthyProcessors = enabledProcessors.filter((item) => item.healthStatus === "healthy").length;
   const [selectedProvider, setSelectedProvider] = useState<ProviderHealthSelection | null>(null);
 
   /* Live events prepended from WebSocket */
@@ -152,7 +159,7 @@ export function SystemPage() {
 
   const providerCard = (
     <ListCard title="Providers" count={`${healthyIndexers + healthyClients} of ${indexers.length + downloadClients.length} responding`}>
-      {indexers.length + downloadClients.length === 0 ? (
+      {indexers.length + downloadClients.length + processors.length === 0 ? (
         <ListEmpty title="Nothing connected yet" description="Add a search source or a download client under Find & Download and its health shows up here." />
       ) : (
         <ListTable columns={[{ label: "Provider" }, { label: "Kind", width: "minmax(0,1fr)" }, { label: "Status", width: LIST_TRACK.status, mobile: true }]}>
@@ -259,6 +266,9 @@ export function SystemPage() {
           { label: "Running jobs", value: String(liveActiveJobs), help: liveActiveJobs ? "queued or working" : "nothing queued" },
           { label: "Search sources", value: `${healthyIndexers}/${indexers.length}`, help: healthyIndexers === indexers.length ? "all responding" : "one is not responding", tone: indexers.length && healthyIndexers < indexers.length ? "warning" : undefined },
           { label: "Download clients", value: `${healthyClients}/${downloadClients.length}`, help: healthyClients === downloadClients.length ? "all responding" : "one is not responding", tone: downloadClients.length && healthyClients < downloadClients.length ? "warning" : undefined },
+          ...(enabledProcessors.length
+            ? [{ label: "Processors", value: `${healthyProcessors}/${enabledProcessors.length}`, help: healthyProcessors === enabledProcessors.length ? "all answering" : "one is not answering", tone: healthyProcessors < enabledProcessors.length ? "warning" as const : undefined }]
+            : []),
           { label: "Alerts", value: String(monitoring.alerts.length), help: monitoring.alerts.length ? "need a look" : "nothing raised", tone: monitoring.alerts.length ? "danger" : undefined },
           { label: "Media roots", value: String(mediaRoots), help: "folders Deluno writes to" }
         ]}

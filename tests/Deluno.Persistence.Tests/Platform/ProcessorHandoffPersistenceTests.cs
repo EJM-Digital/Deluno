@@ -436,7 +436,7 @@ public sealed class ProcessorHandoffPersistenceTests
             await repository.UpdateProcessorHandoffAsync(done.Id, ProcessorHandoffStatuses.Completed, null, null, null, CancellationToken.None);
         }
 
-        var open = await repository.ListOpenProcessorHandoffsAsync(CancellationToken.None);
+        var open = await repository.ListProcessorHandoffsWithStatusAsync(ProcessorHandoffStatuses.WithProcessor, CancellationToken.None);
 
         Assert.Equal(stillWaiting.Id, Assert.Single(open).Id);
         // The listing a removal used to read stops well short of the history it

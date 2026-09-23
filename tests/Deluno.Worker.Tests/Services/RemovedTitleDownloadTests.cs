@@ -132,7 +132,7 @@ public sealed class RemovedTitleDownloadTests : IDisposable
         await new WorkPlanner(new FailingLogger(), jobs.Object, new ConfigurationBuilder().Build(), TimeProvider.System)
             .PlanImportAutomationAsync(
                 scheduler.Object,
-                Mock.Of<IProcessorRepository>(repository => repository.ListProcessorHandoffsAsync(It.IsAny<string?>(), It.IsAny<int>(), It.IsAny<CancellationToken>())
+                Mock.Of<IProcessorRepository>(repository => repository.ListProcessorHandoffsWithStatusAsync(It.IsAny<IReadOnlyList<string>>(), It.IsAny<CancellationToken>())
                     == Task.FromResult<IReadOnlyList<ProcessorHandoffItem>>(Array.Empty<ProcessorHandoffItem>())),
                 libraries.Object,
                 new LibraryAvailabilityService(Mock.Of<IActivityFeedRepository>(), TimeProvider.System, NullLogger<LibraryAvailabilityService>.Instance),

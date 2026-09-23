@@ -310,6 +310,7 @@ public sealed class DelunoHeartbeatWorker(
             var downloadRetryService = services.GetRequiredService<IDownloadRetryService>();
             await workPlanner.RunDispatchCleanupAsync(cleanupService, stoppingToken);
             await workPlanner.RunDispatchRetryPassAsync(downloadRetryService, stoppingToken);
+            await workPlanner.RunProcessorHealthPassAsync(processorRepository, processorConnectionService, stoppingToken);
             await workPlanner.RunDownloadStateReconcileAsync(
                 services.GetRequiredService<IDownloadStateReconciler>(),
                 stoppingToken);

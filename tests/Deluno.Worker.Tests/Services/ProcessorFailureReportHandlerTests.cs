@@ -30,6 +30,12 @@ public sealed class ProcessorFailureReportHandlerTests
     private readonly Mock<IMovieCatalogRepository> _movies = new();
     private readonly Mock<ISeriesCatalogRepository> _series = new();
 
+    public ProcessorFailureReportHandlerTests()
+        // Nothing refused for this title yet, which is what the cap on repeated
+        // refusals reads (#576).
+        => _blocked.Setup(repo => repo.ListForAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync([]);
+
     [Fact]
     public async Task A_rejected_download_is_refused_forgotten_and_searched_for_again()
     {
@@ -142,6 +148,63 @@ public sealed class ProcessorFailureReportHandlerTests
         _movies.Object,
         _series.Object,
         NullLogger<ProcessorFailureReportHandler>.Instance);
+
+    /// <summary>
+    /// #576. A rejection puts the release on the blocklist and starts a search
+    /// for another copy. A processor that refuses everything therefore walks
+    /// the whole result list — reject, block, search, grab, download, submit,
+    /// reject — with nothing counting the cycles and every one of them costing
+    /// a full download. Over a fortnight that is a slow, unbounded grab storm.
+    /// </summary>
+    [Fact]
+    public async Task A_title_a_processor_keeps_refusing_is_not_searched_for_again()
+    {
+        GivenTheDispatch();
+        _blocked.Setup(repo => repo.BlockAsync(It.IsAny<BlockedRelease>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((BlockedRelease release, CancellationToken _) => release with { Id = "blocked-6" });
+        _blocked.Setup(repo => repo.ListForAsync("movies", "movie-1", It.IsAny<CancellationToken>()))
+            .ReturnsAsync([.. Enumerable.Range(0, 5).Select(index => Refused($"blocked-{index}"))]);
+        CreateMovieImportRecoveryCaseRequest? raised = null;
+        _movies.Setup(repo => repo.AddImportRecoveryCaseAsync(It.IsAny<CreateMovieImportRecoveryCaseRequest>(), It.IsAny<CancellationToken>()))
+            .Callback<CreateMovieImportRecoveryCaseRequest, CancellationToken>((request, _) => raised = request)
+            .ReturnsAsync((MovieImportRecoveryCase)null!);
+
+        var outcome = await Handler().HandleRejectedAsync(Report("movies"), CancellationToken.None);
+
+        Assert.True(outcome.Acted);
+        Assert.Null(outcome.SearchJobId);
+        Assert.Contains("refused 5 copies", outcome.Message);
+        _scheduler.Verify(scheduler => scheduler.EnqueueAsync(It.IsAny<EnqueueJobRequest>(), It.IsAny<CancellationToken>()), Times.Never);
+        // And a person is told, so the title does not simply go quiet.
+        Assert.NotNull(raised);
+        Assert.Equal("processor-refuses-every-copy", raised!.FailureKind);
+    }
+
+    /// <summary>A bad release or two must not stop the title arriving.</summary>
+    [Fact]
+    public async Task A_title_refused_a_few_times_is_still_searched_for()
+    {
+        GivenTheDispatch();
+        _blocked.Setup(repo => repo.BlockAsync(It.IsAny<BlockedRelease>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((BlockedRelease release, CancellationToken _) => release with { Id = "blocked-3" });
+        _blocked.Setup(repo => repo.ListForAsync("movies", "movie-1", It.IsAny<CancellationToken>()))
+            .ReturnsAsync([.. Enumerable.Range(0, 2).Select(index => Refused($"blocked-{index}"))]);
+        _scheduler.Setup(scheduler => scheduler.EnqueueAsync(It.IsAny<EnqueueJobRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Job("search-1"));
+
+        var outcome = await Handler().HandleRejectedAsync(Report("movies"), CancellationToken.None);
+
+        Assert.Equal("search-1", outcome.SearchJobId);
+    }
+
+    private static BlockedRelease Refused(string id)
+        => ((BlockedRelease)System.Runtime.CompilerServices.RuntimeHelpers.GetUninitializedObject(typeof(BlockedRelease))) with
+        {
+            Id = id,
+            ReasonCode = ImportFailurePolicy.ProcessorRejected,
+            MediaType = "movies",
+            EntityId = "movie-1"
+        };
 
     private void GivenTheDispatch()
     {

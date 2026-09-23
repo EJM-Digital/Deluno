@@ -234,7 +234,7 @@ public sealed class TitleRemovalService(
         }
 
         var stopped = 0;
-        var open = await processorRepository.ListOpenProcessorHandoffsAsync(cancellationToken);
+        var open = await processorRepository.ListProcessorHandoffsWithStatusAsync(ProcessorHandoffStatuses.WithProcessor, cancellationToken);
         foreach (var handoff in open.Where(item => grabs.ReleaseNames.Contains(item.ReleaseName)))
         {
             var result = await ProcessorHandoffCancellation.StopWaitingAsync(

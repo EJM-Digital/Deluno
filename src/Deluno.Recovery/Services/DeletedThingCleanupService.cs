@@ -148,7 +148,7 @@ public sealed class DeletedThingCleanupService(
     {
         var handoffIds = new List<string>();
         var releaseNames = new HashSet<string>(StringComparer.Ordinal);
-        foreach (var handoff in await processors.ListOpenProcessorHandoffsAsync(cancellationToken))
+        foreach (var handoff in await processors.ListProcessorHandoffsWithStatusAsync(ProcessorHandoffStatuses.WithProcessor, cancellationToken))
         {
             if (!concerns(handoff)) continue;
             var result = await ProcessorHandoffCancellation.StopWaitingAsync(
