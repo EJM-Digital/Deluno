@@ -82,6 +82,7 @@ public static class SystemTasks
     public const string RecycleBinCleanup = "recycle.bin.cleanup";
     public const string LibraryFileCheck = "library.file.check";
     public const string BlockedReleaseCleanup = "blocked.release.cleanup";
+    public const string ProcessorHealth = "processor.health";
 
     /// <summary>
     /// Ordered as somebody reading the screen would want them: the things that
@@ -158,7 +159,10 @@ public static class SystemTasks
             IsConfigurable: true),
         new(DispatchCleanup, "Housekeeping",
             "Clears finished download records and year-old completed jobs that nothing needs any more.",
-            TimeSpan.FromHours(6))
+            TimeSpan.FromHours(6)),
+        new(ProcessorHealth, "Check the processor",
+            "Asks each processor whether it is answering, so one that stops is noticed before a file is stuck behind it.",
+            TimeSpan.FromMinutes(5))
     ];
 
     /// <summary>

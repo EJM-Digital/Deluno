@@ -2226,6 +2226,164 @@ public sealed class ImportPipelineServiceTests
         Assert.Equal(incoming, await File.ReadAllBytesAsync(preview.DestinationPath));
     }
 
+    /// <summary>
+    /// A processor's failures are relative, and every other check Deluno makes
+    /// is absolute (#574).
+    ///
+    /// <para>A remux that stops early yields a perfectly valid file: readable,
+    /// with a video stream, well over two minutes. It passes every guard and
+    /// lands in the library as three minutes of a two-hour film. The only way
+    /// to see it is to compare what came back with what went in.</para>
+    /// </summary>
+    [Fact]
+    public async Task A_processed_file_far_shorter_than_its_download_is_not_imported()
+    {
+        var scene = await ProcessedSceneAsync(processedSeconds: 180);
+
+        var result = await scene.ImportAsync();
+
+        Assert.False(result.Succeeded);
+        Assert.Contains("3m 0s", result.Message);
+        Assert.Contains("2h 0m", result.Message);
+        Assert.False(File.Exists(scene.DestinationPath));
+    }
+
+    [Fact]
+    public async Task A_processed_file_the_same_length_as_its_download_is_imported()
+    {
+        var scene = await ProcessedSceneAsync(processedSeconds: 7200);
+
+        var result = await scene.ImportAsync();
+
+        Assert.True(result.Succeeded, result.Message);
+    }
+
+    /// <summary>
+    /// A processor may legitimately transcode a file far smaller, or keep one
+    /// audio track out of five. Neither is evidence of anything, so neither is
+    /// refused — only losing all of something is.
+    /// </summary>
+    [Fact]
+    public async Task A_processed_file_that_is_merely_smaller_is_imported()
+    {
+        var scene = await ProcessedSceneAsync(processedSeconds: 7200, processedAudioTracks: 1, sourceAudioTracks: 5);
+
+        var result = await scene.ImportAsync();
+
+        Assert.True(result.Succeeded, result.Message);
+    }
+
+    [Fact]
+    public async Task A_processed_file_with_no_audio_at_all_is_not_imported()
+    {
+        var scene = await ProcessedSceneAsync(processedSeconds: 7200, processedAudioTracks: 0, sourceAudioTracks: 2);
+
+        var result = await scene.ImportAsync();
+
+        Assert.False(result.Succeeded);
+        Assert.Contains("no audio", result.Message);
+    }
+
+    private sealed record ProcessedScene(
+        Func<Task<ImportPipelineResult>> Import,
+        string DestinationPath)
+    {
+        public Task<ImportPipelineResult> ImportAsync() => Import();
+    }
+
+    private static async Task<ProcessedScene> ProcessedSceneAsync(
+        double processedSeconds,
+        int processedAudioTracks = 2,
+        int sourceAudioTracks = 2)
+    {
+        var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-09-23T08:00:00Z"));
+        await InitializeAllAsync(storage, timeProvider);
+
+        var downloadsPath = Path.Combine(storage.DataRoot, "downloads");
+        var movieRootPath = Path.Combine(storage.DataRoot, "movies");
+        var refinedPath = Path.Combine(storage.DataRoot, "refined");
+        Directory.CreateDirectory(movieRootPath);
+
+        // The download the processor was given: a folder, as they usually are.
+        var download = Directory.CreateDirectory(Path.Combine(downloadsPath, "Interstellar.2014.WEB.1080p-DELUNO")).FullName;
+        var sourceFile = Path.Combine(download, "Interstellar.2014.WEB.1080p-DELUNO.mkv");
+        await File.WriteAllBytesAsync(sourceFile, new byte[8192]);
+
+        // What it handed back.
+        var processed = Path.Combine(Directory.CreateDirectory(Path.Combine(refinedPath, "Interstellar.2014.WEB.1080p-DELUNO")).FullName, "Interstellar.2014.WEB.1080p-DELUNO.mkv");
+        await File.WriteAllBytesAsync(processed, new byte[4096]);
+        File.SetLastWriteTimeUtc(processed, DateTime.UtcNow.AddMinutes(-1));
+
+        var platform = CreatePlatformRepository(storage, timeProvider);
+        var libraries = CreateLibrariesRepository(storage, timeProvider);
+        await SaveSettingsAsync(platform, movieRootPath, downloadsPath);
+        await CreateMovieLibraryAsync(libraries, movieRootPath, downloadsPath);
+
+        var probe = new ProcessedProbeService(sourceFile, processed, processedSeconds, processedAudioTracks, sourceAudioTracks);
+        var service = new ImportPipelineService(
+            platform, libraries,
+            new SqliteMovieCatalogRepository(storage.Factory, timeProvider),
+            new SqliteSeriesCatalogRepository(storage.Factory, timeProvider),
+            new SqliteJobStore(storage.Factory, timeProvider, new NullRealtimeEventPublisher(), new NullDownloadDispatchesRepository()),
+            probe,
+            new MediaDecisionService(new VersionedMediaPolicyEngine()),
+            null,
+            new NullImportResolutionsRepository(),
+            new SqliteDownloadDispatchesRepository(storage.Factory, timeProvider),
+            new SqliteConnectionsRepository(storage.Factory, timeProvider, TestSecretProtection.Create(storage)),
+            NullLogger<ImportPipelineService>.Instance,
+            null);
+
+        var destination = Path.Combine(movieRootPath, "Interstellar (2014)", "Interstellar (2014).mkv");
+        return new ProcessedScene(
+            () => service.ExecuteAsync(
+                new ImportExecuteRequest(
+                    Preview: new ImportPreviewRequest(
+                        SourcePath: processed, FileName: null, MediaType: "movies",
+                        Title: "Interstellar", Year: 2014, Genres: null, Tags: null,
+                        Studio: null, OriginalLanguage: null),
+                    TransferMode: "copy", Overwrite: false, AllowCopyFallback: true,
+                    ProcessedFromPath: download),
+                CancellationToken.None),
+            destination);
+    }
+
+    /// <summary>Answers for two named files, so a comparison has two sides.</summary>
+    private sealed class ProcessedProbeService(
+        string sourceFile,
+        string processedFile,
+        double processedSeconds,
+        int processedAudioTracks,
+        int sourceAudioTracks) : IMediaProbeService
+    {
+        public Task<MediaProbeInfo> ProbeAsync(string path, CancellationToken cancellationToken)
+        {
+            var isProcessed = string.Equals(Path.GetFullPath(path), Path.GetFullPath(processedFile), StringComparison.OrdinalIgnoreCase);
+            var isSource = string.Equals(Path.GetFullPath(path), Path.GetFullPath(sourceFile), StringComparison.OrdinalIgnoreCase);
+            if (!isProcessed && !isSource)
+            {
+                return Task.FromResult(new MediaProbeInfo("unavailable", "test", "Not one of the two files.", null, null, null, [], [], []));
+            }
+
+            return Task.FromResult(new MediaProbeInfo(
+                Status: "succeeded",
+                Tool: "test",
+                Message: null,
+                DurationSeconds: isProcessed ? processedSeconds : 7200,
+                Container: "matroska",
+                Bitrate: 12_000_000,
+                VideoStreams:
+                [
+                    new MediaVideoStreamInfo(0, "h264", "High", 1920, 1080, "yuv420p", 23.976, 10_000_000, "eng")
+                ],
+                AudioStreams: Enumerable.Range(0, isProcessed ? processedAudioTracks : sourceAudioTracks)
+                    .Select(index => new MediaAudioStreamInfo(index + 1, "eac3", null, 6, "5.1", 48_000, 640_000, "eng"))
+                    .ToArray(),
+                SubtitleStreams: []));
+        }
+    }
+
     private static async Task InitializeAllAsync(TestStorage storage, TimeProvider timeProvider)
     {
         var migrator = new SqliteDatabaseMigrator(storage.Factory, timeProvider);

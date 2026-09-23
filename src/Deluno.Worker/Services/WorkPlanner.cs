@@ -64,6 +64,17 @@ public sealed class WorkPlanner(
     /// </summary>
     private static readonly TimeSpan ArtworkCacheGrace = TimeSpan.FromHours(24);
 
+    /// <summary>
+    /// How many files one processor may be holding before Deluno stops handing
+    /// it more (#575).
+    ///
+    /// <para>A processor keeps each source at full size in the download client
+    /// until it is finished with it, so an unbounded queue is an unbounded
+    /// disk. What is not sent this pass is sent the next one, which is how a
+    /// slow processor slows Deluno down instead of filling the disk.</para>
+    /// </summary>
+    private const int MostFilesWithOneProcessor = 20;
+
     public Task RunDispatchCleanupAsync(
         IDispatchCleanupService cleanupService,
         CancellationToken cancellationToken)
@@ -94,6 +105,43 @@ public sealed class WorkPlanner(
             SystemTasks.DownloadState,
             () => reconciler.ReconcileAsync(cancellationToken),
             "Download state reconciliation failed.",
+            cancellationToken);
+
+    /// <summary>
+    /// Asks each processor whether it is answering (#577).
+    ///
+    /// <para>Indexers and download clients have been checked on a schedule for
+    /// a long time; processors were checked only when a file was handed to one,
+    /// or when somebody pressed Test. So a processor that stopped between
+    /// submissions was not noticed until a file was already stuck behind it,
+    /// and — worse — health could be set to unreachable by the watcher and
+    /// never set back, so after one outage the answer on screen was stale for
+    /// good.</para>
+    /// </summary>
+    public Task RunProcessorHealthPassAsync(
+        IProcessorRepository processorRepository,
+        IProcessorConnectionService processorConnections,
+        CancellationToken cancellationToken)
+        => RunScheduledPassAsync(
+            SystemTasks.ProcessorHealth,
+            async () =>
+            {
+                foreach (var connection in await processorRepository.ListProcessorConnectionsAsync(cancellationToken))
+                {
+                    if (!connection.IsEnabled) continue;
+
+                    var support = await processorConnections.GetStatusSupportAsync(connection, cancellationToken);
+                    var healthy = support.Answer is not (ProcessorAnswer.Unreachable or ProcessorAnswer.Forbidden);
+                    await processorRepository.RecordProcessorConnectionHealthAsync(
+                        connection.Id,
+                        healthy ? "healthy" : support.Answer == ProcessorAnswer.Forbidden ? "degraded" : "unreachable",
+                        healthy
+                            ? null
+                            : support.Message ?? $"{connection.Name} did not answer.",
+                        cancellationToken);
+                }
+            },
+            "Processor health pass failed.",
             cancellationToken);
 
     public Task RunDispatchRetryPassAsync(
@@ -714,6 +762,14 @@ public sealed class WorkPlanner(
             .Select(source => NormalizeSourceKey(source!))
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
+        // How much each processor is already holding, so this pass can stop
+        // before it buries one (#575).
+        var inFlightByProcessor = (await processorRepository.ListProcessorHandoffsWithStatusAsync(
+                ProcessorHandoffStatuses.WithProcessor,
+                cancellationToken))
+            .GroupBy(handoff => handoff.ProcessorName ?? string.Empty, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(group => group.Key, group => group.Count(), StringComparer.OrdinalIgnoreCase);
+
         var recentWaiting = await activityFeedRepository.ListActivityAsync(150, null, null, cancellationToken);
         await ReconcileMatchedProcessorOutputsAsync(
             jobScheduler,
@@ -809,10 +865,27 @@ public sealed class WorkPlanner(
             // of it: the download goes through the ordinary import below, with
             // the same catalogue naming as any other (#511).
             var released = false;
+            ProcessorHandoffItem? existing = null;
             if (string.Equals(library.ImportWorkflow, "refine-before-import", StringComparison.OrdinalIgnoreCase))
             {
-                var existing = await processorRepository.FindProcessorHandoffAsync(library.Id, null, item.SourcePath, cancellationToken);
+                existing = await processorRepository.FindProcessorHandoffAsync(library.Id, null, item.SourcePath, cancellationToken);
                 released = existing?.Status == ProcessorHandoffStatuses.Released;
+            }
+
+            // A processor is given what it can hold, not everything at once.
+            //
+            // This loop used to create and submit a hand-off for every finished
+            // download in the pass: five hundred completed downloads were five
+            // hundred submissions, and every one of their sources stayed at
+            // full size in the download client until the processor got to it.
+            // A slow processor filled the disk (#575). What is not sent this
+            // pass is sent the next one.
+            if (!released &&
+                string.Equals(library.ImportWorkflow, "refine-before-import", StringComparison.OrdinalIgnoreCase) &&
+                existing is null &&
+                inFlightByProcessor.GetValueOrDefault(library.ProcessorName ?? string.Empty) >= MostFilesWithOneProcessor)
+            {
+                continue;
             }
 
             if (!released && string.Equals(library.ImportWorkflow, "refine-before-import", StringComparison.OrdinalIgnoreCase))
@@ -1163,7 +1236,11 @@ public sealed class WorkPlanner(
         IReadOnlyList<JobQueueItem> existingJobs,
         CancellationToken cancellationToken)
     {
-        var handoffs = await processorRepository.ListProcessorHandoffsAsync(null, 250, cancellationToken);
+        // Every hand-off an output could still belong to, however much history
+        // sits in front of them (#571).
+        var handoffs = await processorRepository.ListProcessorHandoffsWithStatusAsync(
+            ProcessorHandoffStatuses.AcceptingLateOutput,
+            cancellationToken);
 
         // Outputs this pass has already queued. The reservation rule reads the
         // jobs that existed when the pass started, so without this two hand-offs

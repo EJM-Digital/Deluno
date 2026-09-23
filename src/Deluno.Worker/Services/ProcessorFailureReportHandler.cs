@@ -107,6 +107,22 @@ public sealed class ProcessorFailureReportHandler(
             logger.LogWarning(exception, "Could not close the download of {ReleaseName} after {Processor} rejected it.", dispatch.ReleaseName, report.ProcessorName);
         }
 
+        // A processor that refuses everything walks the whole result list:
+        // reject, block, search, grab, download, submit, reject — each cycle a
+        // full download's bandwidth and disk, and nothing anywhere says "this
+        // title has been refused five times, stop" (#576). The blocklist
+        // already counts them, so the count is read rather than stored again.
+        var refusedBefore = (await blockedReleases.ListForAsync(dispatch.MediaType, dispatch.EntityId, cancellationToken))
+            .Count(release => string.Equals(release.ReasonCode, ImportFailurePolicy.ProcessorRejected, StringComparison.OrdinalIgnoreCase));
+        if (refusedBefore >= MostRefusalsBeforeGivingUp)
+        {
+            var enough = $"{report.ProcessorName} has refused {refusedBefore} copies of this title. Deluno stopped looking for another.";
+            await RaiseRecoveryCaseAsync(report, "processor-refuses-every-copy", enough,
+                $"Check {report.ProcessorName}. You can import a refused copy as it is from the blocklist, or unblock one to try again.",
+                cancellationToken);
+            return new ProcessorRejectionOutcome(true, enough, blocked.Id, null);
+        }
+
         var search = await jobScheduler.EnqueueAsync(
             new EnqueueJobRequest(
                 LibrarySearchJobTypes.For(dispatch.MediaType),
@@ -136,13 +152,22 @@ public sealed class ProcessorFailureReportHandler(
             search.Id);
     }
 
-    public async Task HandleHeldAsync(
+    /// <summary>
+    /// How many copies of one title a processor may refuse before Deluno stops
+    /// fetching more (#576). Enough that a genuinely bad release or two does
+    /// not stop the title arriving; few enough that a processor refusing
+    /// everything cannot spend a fortnight downloading the whole result list.
+    /// </summary>
+    private const int MostRefusalsBeforeGivingUp = 5;
+
+    private async Task RaiseRecoveryCaseAsync(
         ProcessorFailureReport report,
+        string kind,
+        string summary,
+        string recommended,
         CancellationToken cancellationToken)
     {
         var handoff = report.Handoff;
-        var summary = $"{report.ProcessorName} could not process {handoff.ReleaseName} and is keeping the original: {report.Message}";
-        const string recommended = "Retry or release the file in the processor, or import the original from the download folder if it is acceptable.";
         var details = JsonSerializer.Serialize(new
         {
             libraryId = handoff.LibraryId,
@@ -155,14 +180,26 @@ public sealed class ProcessorFailureReportHandler(
         if (DelunoValueNormalizers.NormalizeMediaType(report.Library.MediaType) == "tv")
         {
             await seriesCatalogRepository.AddImportRecoveryCaseAsync(
-                new CreateSeriesImportRecoveryCaseRequest(handoff.ReleaseName, "processor-held", summary, recommended, details),
+                new CreateSeriesImportRecoveryCaseRequest(handoff.ReleaseName, kind, summary, recommended, details),
                 cancellationToken);
         }
         else
         {
             await movieCatalogRepository.AddImportRecoveryCaseAsync(
-                new CreateMovieImportRecoveryCaseRequest(handoff.ReleaseName, "processor-held", summary, recommended, details),
+                new CreateMovieImportRecoveryCaseRequest(handoff.ReleaseName, kind, summary, recommended, details),
                 cancellationToken);
         }
+    }
+
+    public async Task HandleHeldAsync(
+        ProcessorFailureReport report,
+        CancellationToken cancellationToken)
+    {
+        await RaiseRecoveryCaseAsync(
+            report,
+            "processor-held",
+            $"{report.ProcessorName} could not process {report.Handoff.ReleaseName} and is keeping the original: {report.Message}",
+            "Retry or release the file in the processor, or import the original from the download folder if it is acceptable.",
+            cancellationToken);
     }
 }

@@ -61,6 +61,83 @@ public sealed class ProcessorHandoffWatcherTests
         Assert.Equal(Now, seen.CheckedUtc);
     }
 
+    /// <summary>
+    /// #572. Every other rule measures from the processor's own last change, or
+    /// from it answering again after being unreachable — so a processor that
+    /// goes quiet for one pass and comes back sets the clock to zero. One blip
+    /// every other day held a file for a whole fourteen-day run, and because a
+    /// hand-off still with a processor is deliberately not counted, nothing on
+    /// any screen said so.
+    /// </summary>
+    [Fact]
+    public async Task A_processor_that_keeps_resetting_the_clock_is_still_given_up_on_in_the_end()
+    {
+        GivenHandoff(
+            updated: Now.AddMinutes(-5),
+            previous: Answering(since: Now.AddMinutes(-5)),
+            mode: "block",
+            created: Now.AddDays(-9));
+        Answers(ProcessorHandoffStates.Queued, lastChanged: Now.AddMinutes(-5), queuePosition: 2);
+
+        await Watch();
+
+        var (status, message) = Assert.Single(_updates);
+        Assert.Equal(ProcessorHandoffStatuses.TimedOut, status);
+        Assert.Contains("has had Sintel.2010.1080p for 9 days", message);
+    }
+
+    /// <summary>It says it is working, and has said so for over a week.</summary>
+    [Fact]
+    public async Task A_processor_that_says_it_is_working_for_ever_is_still_given_up_on()
+    {
+        GivenHandoff(
+            updated: Now.AddDays(-9),
+            previous: Answering(since: Now.AddDays(-9)),
+            mode: "block",
+            created: Now.AddDays(-9));
+        Answers(ProcessorHandoffStates.Working, lastChanged: Now.AddDays(-9));
+
+        await Watch();
+
+        var (status, _) = Assert.Single(_updates);
+        Assert.Equal(ProcessorHandoffStatuses.TimedOut, status);
+    }
+
+    /// <summary>A run always scheduled for tomorrow is a run that never comes.</summary>
+    [Fact]
+    public async Task A_run_always_scheduled_ahead_is_still_given_up_on()
+    {
+        GivenHandoff(
+            updated: Now.AddDays(-9),
+            previous: Answering(since: Now.AddDays(-9)),
+            mode: "block",
+            created: Now.AddDays(-9));
+        Answers(ProcessorHandoffStates.Scheduled, lastChanged: Now.AddHours(-1), scheduledFor: Now.AddHours(13));
+
+        await Watch();
+
+        var (status, _) = Assert.Single(_updates);
+        Assert.Equal(ProcessorHandoffStatuses.TimedOut, status);
+    }
+
+    /// <summary>
+    /// The backstop is generous on purpose: the library's limit is what the
+    /// person chose, and a processor working within it is not a problem.
+    /// </summary>
+    [Fact]
+    public async Task A_file_held_for_less_than_the_backstop_is_left_alone()
+    {
+        GivenHandoff(
+            updated: Now.AddMinutes(-5),
+            previous: Answering(since: Now.AddMinutes(-5)),
+            created: Now.AddDays(-5));
+        Answers(ProcessorHandoffStates.Queued, lastChanged: Now.AddMinutes(-5), queuePosition: 2);
+
+        await Watch();
+
+        Assert.Empty(_updates);
+    }
+
     [Fact]
     public async Task A_run_scheduled_ahead_is_never_a_stall()
     {
@@ -343,16 +420,21 @@ public sealed class ProcessorHandoffWatcherTests
     private string _mode = "import-original";
     private int _stallMinutes = ProcessorStallLimits.DefaultMinutes;
 
-    private void GivenHandoff(DateTimeOffset updated, ProcessorHandoffObservation? previous, string mode = "import-original", int stallMinutes = ProcessorStallLimits.DefaultMinutes)
+    private void GivenHandoff(
+        DateTimeOffset updated,
+        ProcessorHandoffObservation? previous,
+        string mode = "import-original",
+        int stallMinutes = ProcessorStallLimits.DefaultMinutes,
+        DateTimeOffset? created = null)
     {
         _mode = mode;
         _stallMinutes = stallMinutes;
-        _repository.Setup(repo => repo.ListProcessorHandoffsAsync(null, It.IsAny<int>(), It.IsAny<CancellationToken>()))
+        _repository.Setup(repo => repo.ListProcessorHandoffsWithStatusAsync(It.IsAny<IReadOnlyList<string>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync([
                 new ProcessorHandoffItem(
                     "handoff-1", "library-1", "movies", "qbittorrent", "hash-1", "Sintel.2010.1080p",
                     @"D:\Downloads\Sintel.2010.1080p", "Weir", ProcessorHandoffStatuses.Started, null, null, null,
-                    updated.AddHours(-1), updated, previous)
+                    created ?? updated.AddHours(-1), updated, previous)
             ]);
     }
 

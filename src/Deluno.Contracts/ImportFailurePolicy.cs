@@ -77,6 +77,16 @@ public static class ImportFailurePolicy
     /// <summary>Deluno compared the two and kept the one already held.</summary>
     public const string ReplacementRejected = "replacementRejected";
 
+    /// <summary>
+    /// What the processor handed back is materially less than what it was given
+    /// — much shorter, or missing all its audio or video (#574).
+    ///
+    /// <para>Nothing about the release: the download was fine and a fresh copy
+    /// of it would be fine too. It is the processor that needs looking at, so
+    /// this never refuses the release.</para>
+    /// </summary>
+    public const string ProcessedFileIsLess = "processedFileIsLess";
+
     /// <summary>The environment, not the release.</summary>
     public const string MissingLibraryRoot = "missingLibraryRoot";
 
@@ -130,7 +140,7 @@ public static class ImportFailurePolicy
         Unmatched, ImportFailed, ReplacementRejected,
         MissingLibraryRoot, MissingSource, Permission, IoError,
         HardlinkUnavailable, HardlinkFailed, SamePath, Conflict,
-        ReplacementOwnershipMismatch
+        ReplacementOwnershipMismatch, ProcessedFileIsLess
     ];
 
     /// <summary>
@@ -149,6 +159,11 @@ public static class ImportFailurePolicy
 
         // Deluno cannot say whose fault it was, so it proves it twice.
         ImportFailed or MediaProbeUnreadable => BlockDecision.AfterOneRetry,
+
+        // The download was fine and a fresh copy of it would be too. What went
+        // wrong is downstream of the release, so refusing it would blocklist
+        // something for a processor's mistake.
+        ProcessedFileIsLess => BlockDecision.Never,
 
         // Everything else says something about this installation rather than
         // about the release. Refusing here is how a blocklist fills with things

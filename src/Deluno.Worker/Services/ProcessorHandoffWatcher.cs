@@ -43,9 +43,6 @@ public sealed class ProcessorHandoffWatcher(
     IMovieCatalogRepository movieCatalogRepository,
     ISeriesCatalogRepository seriesCatalogRepository)
 {
-    /// <summary>How many hand-offs one pass looks at. Far more than are ever open at once.</summary>
-    private const int HandoffsPerPass = 500;
-
     /// <summary>
     /// A processor that has just accepted a hand-off may not have written it
     /// down yet. A "never heard of it" inside this window is not believed.
@@ -54,6 +51,14 @@ public sealed class ProcessorHandoffWatcher(
 
     /// <summary>How long a processor can be unreachable before Deluno says so.</summary>
     public static readonly TimeSpan UnreachableNoticeAfter = TimeSpan.FromHours(1);
+
+    /// <summary>
+    /// How many times the library's limit a processor may hold a file before
+    /// Deluno stops waiting whatever it says (#572). Generous, because the
+    /// limit is what the person chose and this is only the backstop for a
+    /// processor whose answers keep the ordinary rules from ever applying.
+    /// </summary>
+    private const int HeldTooLongMultiplier = 3;
 
     /// <param name="libraries">The libraries that can be worked on right now.</param>
     /// <param name="allLibraries">
@@ -67,7 +72,11 @@ public sealed class ProcessorHandoffWatcher(
         CancellationToken cancellationToken,
         IReadOnlyList<LibraryItem>? allLibraries = null)
     {
-        var handoffs = await processorRepository.ListProcessorHandoffsAsync(null, HandoffsPerPass, cancellationToken);
+        // Exactly the hand-offs a processor still has, however much history sits
+        // in front of them (#571).
+        var handoffs = await processorRepository.ListProcessorHandoffsWithStatusAsync(
+            ProcessorHandoffStatuses.WithProcessor,
+            cancellationToken);
         var connections = new Dictionary<string, ProcessorConnectionItem?>(StringComparer.OrdinalIgnoreCase);
         var support = new Dictionary<string, ProcessorStatusSupport>(StringComparer.OrdinalIgnoreCase);
         var connectionsNoticed = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -260,6 +269,29 @@ public sealed class ProcessorHandoffWatcher(
                     "Open Queue to import the original download, or retry the hand-off once the processor problem is fixed.",
                     cancellationToken);
                 return;
+        }
+
+        // However politely a processor is behaving, a file it has held for days
+        // is a problem for a person (#572).
+        //
+        // Every rule below measures from the processor's own last change, or
+        // from it answering again after being unreachable - so a processor that
+        // goes quiet for one pass and comes back resets the clock to zero, and
+        // one that keeps rescheduling, keeps saying "working", or attaches a
+        // note to "queued" is exempt from the rules entirely. Each of those
+        // holds a file for the whole of a long run with nothing on any screen
+        // saying so, because a hand-off still with a processor is deliberately
+        // not counted. This is the one measurement none of that can move.
+        var heldFor = now - handoff.CreatedUtc;
+        if (heldFor > TimeSpan.FromTicks(limit.Ticks * HeldTooLongMultiplier))
+        {
+            await GiveUpAsync(
+                handoff,
+                library,
+                ProcessorHandoffStatuses.TimedOut,
+                $"{connection.Name} has had {handoff.ReleaseName} for {Describe(heldFor)} and still says {Say(answer)}. Deluno stopped waiting.",
+                cancellationToken);
+            return;
         }
 
         if (answer.State == ProcessorHandoffStates.Scheduled && answer.ScheduledForUtc > now)

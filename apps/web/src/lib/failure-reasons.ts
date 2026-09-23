@@ -30,6 +30,7 @@ const REASON_WORDS: Record<string, string> = {
   unmatched: "Deluno could not tell which title it is",
   importFailed: "Failed, with no reason recorded",
   replacementRejected: "Worse than the copy you already had",
+  processedFileIsLess: "The processor gave back less than it was given",
   missingLibraryRoot: "The library folder was not there",
   missingSource: "The client said done, and the file was gone",
   permission: "Deluno was not allowed to write there",
