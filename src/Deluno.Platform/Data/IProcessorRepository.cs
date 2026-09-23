@@ -55,6 +55,22 @@ public interface IProcessorRepository
     Task<IReadOnlyList<ProcessorHandoffItem>> ListOpenProcessorHandoffsAsync(CancellationToken cancellationToken)
         => ListProcessorHandoffsWithStatusAsync(ProcessorHandoffStatuses.WithProcessor, cancellationToken);
 
+    /// <summary>What Deluno owes a processor about one hand-off, if anything (#580).</summary>
+    Task<ProcessorOutcomeRecord?> GetProcessorOutcomeAsync(string handoffId, CancellationToken cancellationToken);
+
+    /// <summary>Writes the whole record, creating it or replacing it.</summary>
+    Task SaveProcessorOutcomeAsync(ProcessorOutcomeRecord record, CancellationToken cancellationToken);
+
+    /// <summary>Every outcome still owed whose next attempt is due by <paramref name="nowUtc"/>.</summary>
+    Task<IReadOnlyList<ProcessorOutcomeRecord>> ListDueProcessorOutcomesAsync(
+        DateTimeOffset nowUtc,
+        CancellationToken cancellationToken);
+
+    /// <summary>The outcome records for these hand-offs, for showing beside them.</summary>
+    Task<IReadOnlyList<ProcessorOutcomeRecord>> ListProcessorOutcomesAsync(
+        IReadOnlyCollection<string> handoffIds,
+        CancellationToken cancellationToken);
+
     Task<IReadOnlyList<ProcessorConnectionItem>> ListProcessorConnectionsAsync(CancellationToken cancellationToken);
     Task<ProcessorConnectionItem?> GetProcessorConnectionAsync(string id, CancellationToken cancellationToken);
     Task<ProcessorConnectionItem?> FindProcessorConnectionByNameAsync(string? name, CancellationToken cancellationToken);

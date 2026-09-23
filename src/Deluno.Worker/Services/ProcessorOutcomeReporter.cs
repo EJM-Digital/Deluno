@@ -1,6 +1,7 @@
 using Deluno.Filesystem;
 using Deluno.Jobs.Contracts;
 using Deluno.Jobs.Data;
+using Deluno.Platform;
 using Deluno.Platform.Contracts;
 using Deluno.Platform.Data;
 using Microsoft.Extensions.Logging;
@@ -24,11 +25,17 @@ public sealed class ProcessorOutcomeReporter(
     IProcessorRepository processorRepository,
     IProcessorConnectionService processorConnections,
     IActivityFeedRepository activityFeed,
+    TimeProvider timeProvider,
     ILogger<ProcessorOutcomeReporter> logger)
 {
     /// <summary>
-    /// Says what happened, when there is a processor to say it to and it wants
-    /// to be told.
+    /// Writes down what the processor is owed and says it (#580). What is not
+    /// heard now is said again by <see cref="SendDueAsync"/>.
+    ///
+    /// <para>A processor that does not advertise it is told nothing, and keeps
+    /// its copy until its own retention reclaims it. That is the path that has
+    /// to work for every other media manager, so Deluno must not assume it is
+    /// being listened to — but one that could not be asked is still owed.</para>
     ///
     /// <para>Never throws and never fails an import: a processor disagreeing
     /// about its own bookkeeping is not a reason to undo work that has already
@@ -46,49 +53,48 @@ public sealed class ProcessorOutcomeReporter(
             var handoff = await processorRepository.GetProcessorHandoffAsync(handoffId, cancellationToken);
             if (handoff is null) return;
 
-            var connection = await processorRepository.FindProcessorConnectionByNameAsync(handoff.ProcessorName, cancellationToken);
-            if (connection is not { IsEnabled: true }) return;
-
-            // A processor that does not advertise it is told nothing, and keeps
-            // its copy until its own retention reclaims it. That is the path
-            // that has to work for every other media manager, so Deluno must
-            // not assume it is being listened to.
-            var support = await processorConnections.GetStatusSupportAsync(connection, cancellationToken);
-            if (!support.CanBeToldTheOutcome) return;
-
-            var told = await processorConnections.ReportOutcomeAsync(
-                connection,
-                handoff.Id,
+            await ProcessorOutcomeDelivery.RecordAndSendAsync(
+                processorRepository,
+                processorConnections,
+                activityFeed,
+                handoff,
                 outcome,
                 importedPath,
                 reason,
-                cancellationToken);
-
-            var said = outcome == ProcessorHandoffOutcome.Imported
-                ? $"Deluno told {connection.Name} it has {handoff.ReleaseName}."
-                : $"Deluno told {connection.Name} it will not import {handoff.ReleaseName}: {reason}";
-            await activityFeed.RecordActivityAsync(
-                told.Answer == ProcessorAnswer.Answered ? "processing.outcome-reported" : "processing.outcome-not-reported",
-                told.Answer == ProcessorAnswer.Answered
-                    ? $"{said} {(told.Released ? "It released its copy." : told.Message ?? "It kept its copy.")}".TrimEnd()
-                    : $"Deluno could not tell {connection.Name} what became of {handoff.ReleaseName}. {told.Message}".TrimEnd(),
-                System.Text.Json.JsonSerializer.Serialize(new
-                {
-                    HandoffId = handoff.Id,
-                    handoff.LibraryId,
-                    handoff.ReleaseName,
-                    Outcome = outcome.ToString(),
-                    told.Released,
-                    ProcessorSaid = told.Message
-                }),
-                null,
-                "processor-handoff",
-                handoff.Id,
+                timeProvider.GetUtcNow(),
                 cancellationToken);
         }
         catch (Exception exception) when (exception is not OperationCanceledException)
         {
             logger.LogWarning(exception, "Could not tell the processor what became of hand-off {HandoffId}.", handoffId);
+        }
+    }
+
+    /// <summary>
+    /// Says again every outcome still owed whose next attempt is due (#580).
+    ///
+    /// <para>One failure does not stop the rest: each report is its own
+    /// processor's business.</para>
+    /// </summary>
+    public async Task SendDueAsync(CancellationToken cancellationToken)
+    {
+        var now = timeProvider.GetUtcNow();
+        foreach (var record in await processorRepository.ListDueProcessorOutcomesAsync(now, cancellationToken))
+        {
+            try
+            {
+                await ProcessorOutcomeDelivery.SendAsync(
+                    processorRepository,
+                    processorConnections,
+                    activityFeed,
+                    record,
+                    timeProvider.GetUtcNow(),
+                    cancellationToken);
+            }
+            catch (Exception exception) when (exception is not OperationCanceledException)
+            {
+                logger.LogWarning(exception, "Could not tell the processor what became of hand-off {HandoffId}.", record.HandoffId);
+            }
         }
     }
 

@@ -16,7 +16,14 @@ public enum ProcessorAnswer
     Forbidden,
     Busy,
     Unreachable,
-    Unsupported
+    Unsupported,
+
+    /// <summary>
+    /// It answered, and said no in a way that saying the same thing again will
+    /// not change: the request itself was wrong. Only an outcome report can be
+    /// refused this way (#580).
+    /// </summary>
+    Refused
 }
 
 /// <summary>What the processor can be asked, read from its capabilities endpoint.</summary>
@@ -56,6 +63,117 @@ public enum ProcessorHandoffOutcome
 
 /// <param name="Released">Whether the processor let go of its copy.</param>
 public sealed record ProcessorOutcomeResult(ProcessorAnswer Answer, bool Released, string? Message);
+
+/// <summary>
+/// What Deluno has to tell a processor about one hand-off, and how far it has
+/// got with telling it (#580).
+///
+/// <para>Written down before the first attempt rather than after, so an answer
+/// that does not land is still owed. The outcome exists so a processor can let
+/// go of its copy; one that is lost to a restart or a dropped request is a copy
+/// the processor keeps for ever, and no screen counted it.</para>
+///
+/// <para>Keyed by the hand-off's id and kept apart from the hand-off row,
+/// because a new download of the same release restarts that row under a new id
+/// and the processor still keys the old outcome on the old one.</para>
+/// </summary>
+/// <param name="Outcome"><c>imported</c> or <c>not-imported</c>, as it is sent.</param>
+/// <param name="OccurredUtc">
+/// When it happened, sent unchanged on every attempt: the same report again
+/// must be the same report.
+/// </param>
+/// <param name="Delivery">One of <see cref="ProcessorOutcomeDeliveries"/>.</param>
+/// <param name="NextAttemptUtc">When the next attempt is due, while it is still owed.</param>
+/// <param name="ProcessorSaid">The processor's last words about it, or why it could not be asked.</param>
+public sealed record ProcessorOutcomeRecord(
+    string HandoffId,
+    string ProcessorName,
+    string LibraryId,
+    string ReleaseName,
+    string Outcome,
+    string? ImportedPath,
+    string? Reason,
+    DateTimeOffset OccurredUtc,
+    string Delivery,
+    int Attempts,
+    DateTimeOffset? LastAttemptUtc,
+    DateTimeOffset? NextAttemptUtc,
+    bool Released,
+    string? ProcessorSaid,
+    DateTimeOffset RecordedUtc)
+{
+    public const string Imported = "imported";
+    public const string NotImported = "not-imported";
+
+    public static string Word(ProcessorHandoffOutcome outcome)
+        => outcome == ProcessorHandoffOutcome.Imported ? Imported : NotImported;
+
+    public ProcessorHandoffOutcome AsOutcome()
+        => Outcome == Imported ? ProcessorHandoffOutcome.Imported : ProcessorHandoffOutcome.NotImported;
+}
+
+/// <summary>How far telling a processor an outcome has got (#580).</summary>
+public static class ProcessorOutcomeDeliveries
+{
+    /// <summary>Not yet acknowledged. Deluno will try again.</summary>
+    public const string Pending = "pending";
+
+    /// <summary>The processor acknowledged it.</summary>
+    public const string Delivered = "delivered";
+
+    /// <summary>
+    /// The processor answered in a way no repeat will change: it has no record
+    /// of the hand-off, or it could not read the report.
+    /// </summary>
+    public const string Refused = "refused";
+
+    /// <summary>
+    /// Nobody acknowledged it within <see cref="GiveUpAfter"/>, or the
+    /// processor it was for is no longer connected or no longer listening.
+    /// </summary>
+    public const string GivenUp = "given-up";
+
+    /// <summary>
+    /// A week. Long enough that a processor switched off for a long weekend,
+    /// or waiting on a fixed secret, still hears; short enough that a
+    /// processor which is gone for good is not asked every hour for ever.
+    /// </summary>
+    public static readonly TimeSpan GiveUpAfter = TimeSpan.FromDays(7);
+
+    private static readonly TimeSpan LongestWait = TimeSpan.FromHours(1);
+
+    /// <summary>
+    /// Where an answer leaves the report. Only a true answer ends it: a
+    /// processor that could not be reached, is still finishing, or refused the
+    /// secret may say yes next time.
+    /// </summary>
+    /// <remarks>
+    /// A 409 stays owed even when a processor means "a different outcome is
+    /// already recorded". Telling that apart would mean reading one
+    /// processor's wording, and Deluno does not write code for one processor.
+    /// It costs a few needless attempts before <see cref="GiveUpAfter"/>, and
+    /// Deluno only ever sends one outcome per hand-off.
+    /// </remarks>
+    public static string After(ProcessorAnswer answer)
+        => answer switch
+        {
+            ProcessorAnswer.Answered => Delivered,
+            ProcessorAnswer.NotFound or ProcessorAnswer.Refused or ProcessorAnswer.Unsupported => Refused,
+            _ => Pending
+        };
+
+    /// <summary>
+    /// A minute after the first failure, doubling to an hour. A restart is
+    /// over within the first few; an outage is not asked about every minute.
+    /// </summary>
+    public static TimeSpan WaitAfter(int attempts)
+    {
+        var minutes = Math.Pow(2, Math.Clamp(attempts - 1, 0, 10));
+        return TimeSpan.FromMinutes(Math.Min(minutes, LongestWait.TotalMinutes));
+    }
+
+    public static bool IsOwed(string? delivery) => delivery == Pending;
+}
 
 /// <summary>
 /// The processor's own account of one hand-off.

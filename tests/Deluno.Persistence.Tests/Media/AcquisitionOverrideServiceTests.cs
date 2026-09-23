@@ -422,6 +422,14 @@ public sealed class AcquisitionOverrideServiceTests
             => throw new NotSupportedException();
         public Task<ProcessorConnectionItem?> RecordProcessorConnectionHealthAsync(string id, string status, string? message, CancellationToken cancellationToken)
             => throw new NotSupportedException();
+        public Task<ProcessorOutcomeRecord?> GetProcessorOutcomeAsync(string handoffId, CancellationToken cancellationToken)
+            => throw new NotSupportedException();
+        public Task SaveProcessorOutcomeAsync(ProcessorOutcomeRecord record, CancellationToken cancellationToken)
+            => throw new NotSupportedException();
+        public Task<IReadOnlyList<ProcessorOutcomeRecord>> ListDueProcessorOutcomesAsync(DateTimeOffset nowUtc, CancellationToken cancellationToken)
+            => throw new NotSupportedException();
+        public Task<IReadOnlyList<ProcessorOutcomeRecord>> ListProcessorOutcomesAsync(IReadOnlyCollection<string> handoffIds, CancellationToken cancellationToken)
+            => throw new NotSupportedException();
     }
 
     private sealed class FakeClients : IDownloadClientTelemetryService

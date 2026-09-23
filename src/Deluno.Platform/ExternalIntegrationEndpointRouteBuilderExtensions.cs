@@ -377,7 +377,52 @@ public static class ExternalIntegrationEndpointRouteBuilderExtensions
             if (denied is not null) return denied;
             var scopeDenied = UserAuthorization.RequireApiScope(httpContext, "imports");
             if (scopeDenied is not null) return scopeDenied;
-            return Results.Ok(await repository.ListProcessorHandoffsAsync(libraryId, take ?? 50, cancellationToken));
+            var handoffs = await repository.ListProcessorHandoffsAsync(libraryId, take ?? 50, cancellationToken);
+
+            // Beside each hand-off, whether its processor has heard what became
+            // of the file (#580), so a person can see which are still owed.
+            var outcomes = (await repository.ListProcessorOutcomesAsync(handoffs.Select(item => item.Id).ToArray(), cancellationToken))
+                .ToDictionary(item => item.HandoffId, StringComparer.OrdinalIgnoreCase);
+            return Results.Ok(handoffs
+                .Select(item => outcomes.TryGetValue(item.Id, out var outcome) ? item with { Outcome = outcome } : item)
+                .ToArray());
+        });
+
+        // Say again what became of the file, from the start (#580). The
+        // scheduled pass already does this for anything still owed; this is for
+        // a person who has fixed what stopped it — a secret, a processor that was
+        // off for longer than a week — or who wants to see it heard now.
+        integrations.MapPost("/processors/handoffs/{id}/outcome/send-again", async (
+            string id,
+            HttpContext httpContext,
+            IProcessorRepository repository,
+            IProcessorConnectionService processorConnections,
+            IActivityFeedRepository activityFeed,
+            TimeProvider timeProvider,
+            CancellationToken cancellationToken) =>
+        {
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
+            if (denied is not null) return denied;
+            var scopeDenied = UserAuthorization.RequireApiScope(httpContext, "imports");
+            if (scopeDenied is not null) return scopeDenied;
+
+            var record = await repository.GetProcessorOutcomeAsync(id, cancellationToken);
+            if (record is null)
+            {
+                return Results.NotFound(new
+                {
+                    message = "Deluno has nothing recorded to tell the processor about this hand-off. An outcome is recorded when its import finishes."
+                });
+            }
+
+            var sent = await ProcessorOutcomeDelivery.SendAgainAsync(
+                repository,
+                processorConnections,
+                activityFeed,
+                record,
+                timeProvider.GetUtcNow(),
+                cancellationToken);
+            return Results.Ok(new { message = ProcessorOutcomeDelivery.Describe(sent).Message, outcome = sent });
         });
 
         integrations.MapPost("/processors/handoffs/{id}/retry", async (

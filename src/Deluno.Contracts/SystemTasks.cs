@@ -83,6 +83,7 @@ public static class SystemTasks
     public const string LibraryFileCheck = "library.file.check";
     public const string BlockedReleaseCleanup = "blocked.release.cleanup";
     public const string ProcessorHealth = "processor.health";
+    public const string ProcessorOutcomes = "processor.outcomes";
 
     /// <summary>
     /// Ordered as somebody reading the screen would want them: the things that
@@ -162,7 +163,13 @@ public static class SystemTasks
             TimeSpan.FromHours(6)),
         new(ProcessorHealth, "Check the processor",
             "Asks each processor whether it is answering, so one that stops is noticed before a file is stuck behind it.",
-            TimeSpan.FromMinutes(5))
+            TimeSpan.FromMinutes(5)),
+        // A minute, because each report carries its own next attempt and the
+        // pass sends only what is due. A settled install sends nothing, so the
+        // pass costs a query (#580).
+        new(ProcessorOutcomes, "Tell the processor what became of its files",
+            "Says again what became of a processed file when the processor did not hear it the first time, so it can let go of its copy.",
+            TimeSpan.FromMinutes(1))
     ];
 
     /// <summary>

@@ -420,6 +420,27 @@ Deluno does not give a processor a fixed time to finish. When the connection's s
 
 `POST /api/integrations/processors/handoffs/{id}/import-original` imports the untouched download for a hand-off the processor did not finish.
 
+#### Telling the processor what became of the file
+
+If `…/intake/capabilities` lists `handoff-outcome`, Deluno tells the processor what became of each file it handed back, so the processor can let go of its copy:
+
+```http
+POST …/intake/handoffs/{source}/{handoffId}/outcome
+{ "outcome": "imported | not-imported", "occurredUtc": "…", "importedPath": "…", "reason": "…" }
+```
+
+`not-imported` is final and is sent only when Deluno will not try the import again. `occurredUtc` is when the import finished, so every repeat of a report is the same report.
+
+Deluno keeps an outcome until the processor hears it:
+
+- `2xx` is acknowledged. `released: true` in the body means the processor let go of its copy.
+- `404`, and any other `4xx` except those below, are final. Repeating the same report would get the same answer.
+- `409`, `401`, `403`, `408`, `429`, `5xx` and a processor that cannot be reached are all tried again. The first retry comes after a minute, and the wait doubles each time up to an hour.
+- Deluno gives up after seven days without an acknowledgement, or when the processor connection is removed.
+- A processor that answers but does not list `handoff-outcome` is not told, and keeps its copy until its own retention reclaims it.
+
+Each hand-off in `GET /api/integrations/processors/handoffs` carries an `outcome` record: what was said, whether it was heard (`pending`, `delivered`, `refused` or `given-up`), how many attempts there have been, when the next is due, and the processor's last words. `POST /api/integrations/processors/handoffs/{id}/outcome/send-again` starts the report over, with a new count of attempts and a new week.
+
 ### Completion safety boundary
 
 Deluno accepts a completed event only when all of these are true:

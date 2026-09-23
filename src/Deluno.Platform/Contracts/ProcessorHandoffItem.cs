@@ -21,7 +21,8 @@ public sealed record ProcessorHandoffItem(
     string? FailureMessage,
     DateTimeOffset CreatedUtc,
     DateTimeOffset UpdatedUtc,
-    ProcessorHandoffObservation? Processor = null);
+    ProcessorHandoffObservation? Processor = null,
+    ProcessorOutcomeRecord? Outcome = null);
 
 /// <param name="DownloadAddedUtc">
 /// When the download client took this download, when it says. A torrent's queue
