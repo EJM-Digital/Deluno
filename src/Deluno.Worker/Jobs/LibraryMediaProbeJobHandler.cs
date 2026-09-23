@@ -220,7 +220,12 @@ public sealed class LibraryMediaProbeJobHandler(
                     probedAudioCodec: facts.AudioCodec,
                     probedAudioChannels: facts.AudioChannels,
                     releaseNameEvidence: previous?.ReleaseNameEvidence,
-                    acquisition: previous?.Acquisition);
+                    acquisition: previous?.Acquisition,
+                    // What this probe reads in such a library is the processor's
+                    // work, not the release, and every candidate is judged by its
+                    // release (#584). The probe's own facts are still recorded
+                    // above, for what the file actually holds.
+                    describedByReleaseName: ImportWorkflows.HandsToProcessor(library.ImportWorkflow));
 
                 if (snapshot is not null)
                 {

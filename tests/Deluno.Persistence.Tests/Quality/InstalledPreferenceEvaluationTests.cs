@@ -184,6 +184,88 @@ public sealed class InstalledPreferenceEvaluationTests
         Assert.Contains(reevaluated.Facts, fact => fact.TraitId.Equals("release-group.unclassified", StringComparison.OrdinalIgnoreCase));
     }
 
+    /// <summary>
+    /// #584: a file a processor made keeps the release's facts. The processor
+    /// stripped the TrueHD track and left AC3; judged by the probe, the same
+    /// release offered again would look like an upgrade, be fetched, and be
+    /// stripped the same way.
+    /// </summary>
+    [Fact]
+    public void A_processed_file_is_described_by_its_release_not_by_what_the_processor_left()
+    {
+        var now = DateTimeOffset.Parse("2026-09-23T00:00:00Z");
+        var profile = HomeTheatre(now);
+        const string release = "Movie.2020.1080p.BluRay.x264.TrueHD.7.1-GROUP";
+        var imported = InstalledPreferenceEvaluationFactory.Create(
+            profile, "movie-1", "library-1", "Movie (2020) [Bluray-1080p].mkv", 1_000, "Bluray-1080p", now, "import",
+            releaseNameEvidence: release);
+
+        var probed = InstalledPreferenceEvaluationFactory.Create(
+            profile, "movie-1", "library-1", "Movie (2020) [Bluray-1080p].mkv", 1_000, "Bluray-1080p", now.AddMinutes(1), "library-media-probe",
+            baselineFacts: imported!.Facts,
+            probedVideoCodec: "H264",
+            probedAudioCodec: "AC3",
+            probedAudioChannels: "2.0",
+            releaseNameEvidence: release,
+            describedByReleaseName: true);
+
+        Assert.Contains(probed!.Facts, fact => fact.TraitId.Equals("audio.format.truehd", StringComparison.OrdinalIgnoreCase)
+            && fact.Evidence?.Source == "release-title");
+        Assert.DoesNotContain(probed.Facts, fact => fact.TraitId.Equals("audio.format.ac3", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(probed.Facts, fact => fact.TraitId.Equals("audio.channels.7-1", StringComparison.OrdinalIgnoreCase));
+    }
+
+    /// <summary>What the release name does not say, the probe still does.</summary>
+    [Fact]
+    public void A_processed_file_takes_from_the_probe_only_what_its_release_does_not_say()
+    {
+        var now = DateTimeOffset.Parse("2026-09-23T00:00:00Z");
+        var profile = HomeTheatre(now);
+        const string release = "Movie.2020.1080p.WEB-DL-GROUP";
+        var imported = InstalledPreferenceEvaluationFactory.Create(
+            profile, "movie-1", "library-1", "Movie (2020).mkv", 1_000, "WEB 1080p", now, "import", releaseNameEvidence: release);
+
+        var probed = InstalledPreferenceEvaluationFactory.Create(
+            profile, "movie-1", "library-1", "Movie (2020).mkv", 1_000, "WEB 1080p", now.AddMinutes(1), "library-media-probe",
+            baselineFacts: imported!.Facts,
+            probedVideoCodec: "HEVC",
+            probedAudioCodec: "EAC3",
+            probedAudioChannels: "5.1",
+            releaseNameEvidence: release,
+            describedByReleaseName: true);
+
+        Assert.Contains(probed!.Facts, fact => fact.TraitId.Equals("video.codec.hevc", StringComparison.OrdinalIgnoreCase)
+            && fact.Evidence?.Source == "media-probe");
+    }
+
+    /// <summary>
+    /// A file an earlier probe already rewrote is put right on its next read,
+    /// not kept as it was: the fix has to reach files probed before it.
+    /// </summary>
+    [Fact]
+    public void A_processed_file_an_earlier_probe_rewrote_is_put_right()
+    {
+        var now = DateTimeOffset.Parse("2026-09-23T00:00:00Z");
+        var profile = HomeTheatre(now);
+        const string release = "Movie.2020.1080p.BluRay.x264.TrueHD.7.1-GROUP";
+        var imported = InstalledPreferenceEvaluationFactory.Create(
+            profile, "movie-1", "library-1", "Movie (2020).mkv", 1_000, "Bluray-1080p", now, "import", releaseNameEvidence: release);
+        var rewrittenBefore = InstalledPreferenceEvaluationFactory.Create(
+            profile, "movie-1", "library-1", "Movie (2020).mkv", 1_000, "Bluray-1080p", now.AddMinutes(1), "library-media-probe",
+            baselineFacts: imported!.Facts, probedAudioCodec: "AC3", releaseNameEvidence: release);
+        Assert.Contains(rewrittenBefore!.Facts, fact => fact.TraitId.Equals("audio.format.ac3", StringComparison.OrdinalIgnoreCase));
+
+        var putRight = InstalledPreferenceEvaluationFactory.Create(
+            profile, "movie-1", "library-1", "Movie (2020).mkv", 1_000, "Bluray-1080p", now.AddMinutes(2), "library-media-probe",
+            baselineFacts: rewrittenBefore.Facts, probedAudioCodec: "AC3", releaseNameEvidence: release, describedByReleaseName: true);
+
+        Assert.Contains(putRight!.Facts, fact => fact.TraitId.Equals("audio.format.truehd", StringComparison.OrdinalIgnoreCase));
+        Assert.DoesNotContain(putRight.Facts, fact => fact.TraitId.Equals("audio.format.ac3", StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static QualityProfileItem HomeTheatre(DateTimeOffset now)
+        => new("profile-1", "Home theatre", "movies", "WEB 1080p", "WEB 1080p", string.Empty, true, true, false, null, null, false, now, now);
+
     [Theory]
     [InlineData("Movie.2026.1080p.NF.WEB-DL-GROUP", "service.netflix")]
     [InlineData("Movie.2026.1080p.AMZN.WEB-DL-GROUP", "service.amazon")]

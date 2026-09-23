@@ -30,7 +30,8 @@ public static class InstalledPreferenceEvaluationFactory
         string? probedAudioCodec = null,
         string? probedAudioChannels = null,
         string? releaseNameEvidence = null,
-        ReleaseAcquisition? acquisition = null)
+        ReleaseAcquisition? acquisition = null,
+        bool describedByReleaseName = false)
     {
         ArgumentNullException.ThrowIfNull(profile);
         if (string.IsNullOrWhiteSpace(filePath))
@@ -105,11 +106,25 @@ public static class InstalledPreferenceEvaluationFactory
                     fact.Evidence?.Source,
                     "custom-format-matcher",
                     StringComparison.OrdinalIgnoreCase));
-            ApplyProbedFacts(
-                facts,
-                probedVideoCodec,
-                probedAudioCodec,
-                probedAudioChannels);
+            if (describedByReleaseName)
+            {
+                // Rebuilt from the name every time, so a baseline an earlier
+                // probe already rewrote is put right, not kept.
+                foreach (var dimension in (string[])["video.codec", "audio.format", "audio.object", "audio.channels"])
+                {
+                    RemoveDimensionFacts(facts, dimension);
+                }
+
+                AddMediaFacts(facts, MediaFileNameFacts.Parse(effectiveReleaseNameEvidence), nameEvidenceSource, probedVideoCodec, probedAudioCodec, probedAudioChannels, nameFirst: true);
+            }
+            else
+            {
+                ApplyProbedFacts(
+                    facts,
+                    probedVideoCodec,
+                    probedAudioCodec,
+                    probedAudioChannels);
+            }
         }
         else
         {
@@ -119,7 +134,8 @@ public static class InstalledPreferenceEvaluationFactory
                 nameEvidenceSource,
                 probedVideoCodec,
                 probedAudioCodec,
-                probedAudioChannels);
+                probedAudioChannels,
+                nameFirst: describedByReleaseName);
         }
 
         var formatEvaluations = ReleasePreferenceFormatEvidenceFactory.Evaluate(
@@ -204,15 +220,40 @@ public static class InstalledPreferenceEvaluationFactory
         string nameEvidenceSource,
         string? probedVideoCodec,
         string? probedAudioCodec,
-        string? probedAudioChannels)
+        string? probedAudioChannels,
+        bool nameFirst)
     {
         var parsed = MediaFileNameFacts.Parse(nameEvidence);
-        var videoSource = string.IsNullOrWhiteSpace(probedVideoCodec) ? nameEvidenceSource : "media-probe";
-        var audioSource = string.IsNullOrWhiteSpace(probedAudioCodec) ? nameEvidenceSource : "media-probe";
-        var channelsSource = string.IsNullOrWhiteSpace(probedAudioChannels) ? nameEvidenceSource : "media-probe";
-        Add(facts, "video.codec", probedVideoCodec ?? parsed.VideoCodec, videoSource);
+        AddMediaFacts(facts, parsed, nameEvidenceSource, probedVideoCodec, probedAudioCodec, probedAudioChannels, nameFirst);
+        Add(facts, "source", parsed.Source, nameEvidenceSource);
+        Add(facts, "release-group", parsed.ReleaseGroup, nameEvidenceSource);
+    }
 
-        var audioCodec = probedAudioCodec ?? parsed.AudioCodec;
+    /// <summary>
+    /// Codec, audio and channels, from the name or from the probe.
+    ///
+    /// <para>Normally the probe wins: it read the container, and a release name
+    /// can be wrong. Not for a file a processor made from the release (#584).
+    /// A processor strips tracks and remuxes on purpose, so the probe describes
+    /// what the processor left, while every candidate a search compares against
+    /// is described by its release name, before processing. Measured that way a
+    /// release that offered TrueHD Atmos, kept as AC3, loses to the same release
+    /// offered again, which the processor then strips the same way. For those
+    /// files the name wins, and the probe only says what the name does not.</para>
+    /// </summary>
+    private static void AddMediaFacts(
+        ICollection<PreferenceFact> facts,
+        MediaFileFacts parsed,
+        string nameEvidenceSource,
+        string? probedVideoCodec,
+        string? probedAudioCodec,
+        string? probedAudioChannels,
+        bool nameFirst)
+    {
+        var (videoCodec, videoSource) = Pick(parsed.VideoCodec, probedVideoCodec, nameEvidenceSource, nameFirst);
+        var (audioCodec, audioSource) = Pick(parsed.AudioCodec, probedAudioCodec, nameEvidenceSource, nameFirst);
+        var (audioChannels, channelsSource) = Pick(parsed.AudioChannels, probedAudioChannels, nameEvidenceSource, nameFirst);
+        Add(facts, "video.codec", videoCodec, videoSource);
         if (string.Equals(audioCodec, "Atmos", StringComparison.OrdinalIgnoreCase))
         {
             Add(facts, "audio.object", audioCodec, audioSource);
@@ -221,9 +262,15 @@ public static class InstalledPreferenceEvaluationFactory
         {
             Add(facts, "audio.format", audioCodec, audioSource);
         }
-        Add(facts, "audio.channels", probedAudioChannels ?? parsed.AudioChannels, channelsSource);
-        Add(facts, "source", parsed.Source, nameEvidenceSource);
-        Add(facts, "release-group", parsed.ReleaseGroup, nameEvidenceSource);
+        Add(facts, "audio.channels", audioChannels, channelsSource);
+    }
+
+    private static (string? Value, string Source) Pick(string? fromName, string? fromProbe, string nameEvidenceSource, bool nameFirst)
+    {
+        var useName = nameFirst
+            ? !string.IsNullOrWhiteSpace(fromName)
+            : string.IsNullOrWhiteSpace(fromProbe);
+        return useName ? (fromName, nameEvidenceSource) : (fromProbe, "media-probe");
     }
 
     private static void ApplyProbedFacts(
