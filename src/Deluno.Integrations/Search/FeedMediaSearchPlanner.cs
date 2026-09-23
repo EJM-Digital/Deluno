@@ -186,6 +186,19 @@ public sealed class FeedMediaSearchPlanner(
 
         if (liveCandidates.Count == 0)
         {
+            // Nobody was asked (#598). Every indexer was still inside its
+            // request interval when this search's wait ran out. That is not an
+            // empty search, and reporting it as one sent the title a whole
+            // retry window away without a single indexer having been asked.
+            if (searchResults.Length > 0 && searchResults.All(result => result.Outcome == "throttled"))
+            {
+                return new MediaSearchPlan(
+                    BestCandidate: null,
+                    Candidates: [],
+                    Summary: $"No indexer was asked for {title}: each was still busy with other searches. Deluno will ask again in a few minutes.",
+                    Reason: MediaSearchReasons.IndexersBusy);
+            }
+
             var failedCount = searchResults.Count(result => result.Failed);
             var reason = searchResults.All(result => result.CircuitOpen)
                 ? MediaSearchReasons.CircuitOpen
@@ -307,6 +320,15 @@ public sealed class FeedMediaSearchPlanner(
             .Split(' ', StringSplitOptions.RemoveEmptyEntries));
     }
 
+    /// <summary>
+    /// The service an indexer's requests are paced against: host and port
+    /// (#598). Keyed on the host alone, two services on one machine shared one
+    /// pace. On the soak rig a Torznab indexer on :9117 and a Newznab one on
+    /// :9118 waited for each other, and sixty queued episode searches mostly
+    /// never reached either.
+    /// </summary>
+    public static string ThrottleKey(Uri uri) => uri.Authority.ToLowerInvariant();
+
     private async Task<IndexerSearchOutcome> TrySearchIndexerAsync(
         IndexerItem indexer,
         LibrarySourceLinkItem source,
@@ -374,11 +396,11 @@ public sealed class FeedMediaSearchPlanner(
         }
 
         // Paced before the request, not after the indexer complains. Keyed on
-        // the host rather than the indexer id, because two indexer entries can
-        // point at the same tracker and it is the tracker that does the
+        // the service rather than the indexer id, because two indexer entries
+        // can point at the same tracker and it is the tracker that does the
         // counting.
         var waited = await outboundRequestThrottle.TryAcquireAsync(
-            uri.Host,
+            ThrottleKey(uri),
             indexer.RequestIntervalSeconds is { } interval
                 ? OutboundRate.FromInterval(TimeSpan.FromSeconds(Math.Max(2, interval)))
                 : OutboundRate.PerIndexerDefault,

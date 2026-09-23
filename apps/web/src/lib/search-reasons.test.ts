@@ -3,6 +3,12 @@ import { describe, expect, it } from "vitest";
 import { describeSearchNow, describeSearchReason } from "./search-reasons";
 
 describe("describeSearchReason", () => {
+  it("says the indexers were busy rather than that they had nothing (#598)", () => {
+    const explained = describeSearchReason("indexers_busy", "fallback");
+    expect(explained.title).toBe("The indexers were busy");
+    expect(explained.description).toMatch(/none was asked/);
+  });
+
   it("explains why a partly installed season pack is held", () => {
     expect(describeSearchReason(
       "season_pack_replacement_requires_episode_scope",

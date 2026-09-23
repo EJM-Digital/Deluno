@@ -113,11 +113,7 @@ public sealed class EpisodeSearchJobHandler(
                  cancellationToken,
                  filePath: currentFilePath,
                  fileSizeBytes: currentFileSizeBytes);
-        var allowedQualities = await QualityProfileResolver.ResolveAllowedQualitiesAsync(
-            qualityRepository,
-            library?.QualityProfileId,
-            cancellationToken);
-        var upgradeUntilCutoff = await QualityProfileResolver.ResolveUpgradeUntilCutoffAsync(
+        var profileRules = await QualityProfileResolver.ResolveSearchRulesAsync(
             qualityRepository,
             library?.QualityProfileId,
             cancellationToken);
@@ -143,7 +139,6 @@ public sealed class EpisodeSearchJobHandler(
                 CustomFormats: customFormats,
                 SeasonNumber: payload.SeasonNumber,
                 EpisodeNumber: payload.EpisodeNumber,
-                AllowedQualities: allowedQualities,
                 TagNames: mediaTagStore is null
                     ? []
                     : (await mediaTagStore.ListAsync(MediaKind.Series, payload.SeriesId, cancellationToken)).Select(tag => tag.Name).ToArray(),
@@ -151,17 +146,17 @@ public sealed class EpisodeSearchJobHandler(
                 AvailableUtc: null,
                 CurrentFilePresent: !string.IsNullOrWhiteSpace(currentFilePath),
                 CurrentReleaseName: currentFilePath,
-                UpgradeUntilCutoff: upgradeUntilCutoff,
                 PreferencePlan: preferencePlan,
                 NumberingScheme: numberingScheme,
                 AbsoluteNumber: targetEpisode?.AbsoluteNumber,
                 AirDate: targetEpisode?.AirDate,
                 SceneSeasonNumber: targetEpisode?.SceneSeasonNumber,
                 SceneEpisodeNumber: targetEpisode?.SceneEpisodeNumber,
-                CurrentPreferenceEvaluation: currentPreferenceEvaluation),
+                CurrentPreferenceEvaluation: currentPreferenceEvaluation).WithProfile(profileRules),
             cancellationToken);
 
         var searchPlan = decisionPlan.SearchPlan;
+        SearchExecutionSupport.DeferIfIndexersWereBusy(searchPlan);
         var bestCandidate = searchPlan.BestCandidate;
         var outcome = decisionPlan.Outcome;
         var searchResult = decisionPlan.SearchResult;

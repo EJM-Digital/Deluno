@@ -12,6 +12,9 @@ public static class MediaSearchReasons
     public const string AllIndexersFailed = "all_indexers_failed";
     public const string CircuitOpen = "circuit_open";
     public const string NoResults = "no_results";
+
+    /// <summary>Every indexer was skipped for pacing, so none was asked (#598). Not an empty search: it runs again shortly.</summary>
+    public const string IndexersBusy = "indexers_busy";
     public const string NoUsableRelease = "no_usable_release";
 
     /// <summary>

@@ -85,26 +85,9 @@ public static class MediaSearchHandler
             qualityRepository,
             library.QualityProfileId,
             cancellationToken);
-        var allowedQualities = await QualityProfileResolver.ResolveAllowedQualitiesAsync(
-            qualityRepository,
-            library.QualityProfileId,
-            cancellationToken);
-        // Read beside the allowed tiers, from the same profile, at the same
-        // moment. Two answers to one question read apart are two answers that
-        // eventually disagree.
-        var sizeRules = await QualityProfileResolver.ResolveSizeRulesAsync(
-            qualityRepository,
-            library.QualityProfileId,
-            cancellationToken);
-        var profileAcquisition = await QualityProfileResolver.ResolveAcquisitionAsync(
-            qualityRepository,
-            library.QualityProfileId,
-            cancellationToken);
-        var upgradeStop = await QualityProfileResolver.ResolveUpgradeStopAsync(
-            qualityRepository,
-            library.QualityProfileId,
-            cancellationToken);
-        var upgradeUntilCutoff = await QualityProfileResolver.ResolveUpgradeUntilCutoffAsync(
+        // Everything the profile says, read once (#599). Two answers to one
+        // question read apart are two answers that eventually disagree.
+        var profileRules = await QualityProfileResolver.ResolveSearchRulesAsync(
             qualityRepository,
             library.QualityProfileId,
             cancellationToken);
@@ -140,18 +123,13 @@ public static class MediaSearchHandler
                 routing?.DownloadClients ?? [],
                 customFormats,
                 PreviewOnly: string.Equals(mode, "preview", StringComparison.OrdinalIgnoreCase),
-                AllowedQualities: allowedQualities,
-                SizeRules: sizeRules,
-                UpgradeStop: upgradeStop,
-                ProfileAcquisition: profileAcquisition,
                 TagNames: tagNames,
                 SearchKind: AcquisitionSearchKinds.Interactive,
                 AvailableUtc: item.AvailableUtc,
                 CurrentFilePresent: wantedItem.HasFile,
                 CurrentReleaseName: wantedItem.FilePath,
-                UpgradeUntilCutoff: upgradeUntilCutoff,
                 PreferencePlan: preferencePlan,
-                CurrentPreferenceEvaluation: currentPreferenceEvaluation),
+                CurrentPreferenceEvaluation: currentPreferenceEvaluation).WithProfile(profileRules),
             cancellationToken);
         var searchPlan = decisionPlan.SearchPlan;
         var bestCandidate = searchPlan.BestCandidate;
@@ -211,18 +189,24 @@ public static class MediaSearchHandler
             await mediaStateRepository.MarkDownloadingIfSentAsync(kind, item.Id, grabResult.Status, now, cancellationToken);
         }
 
-        await recordSearchAttemptAsync(
-            item.Id,
-            library.Id,
-            "manual",
-            outcome,
-            now,
-            now.AddHours(Math.Max(1, library.RetryDelayHours)),
-            decisionPlan.SearchResult,
-            bestCandidate?.ReleaseName,
-            bestCandidate?.IndexerName,
-            searchPlan.Candidates.Count == 0 ? null : JsonSerializer.Serialize(searchPlan),
-            cancellationToken);
+        // A search no indexer answered because each was busy is not recorded
+        // (#598): the title keeps its place, and the person is told to try
+        // again in a few minutes.
+        if (!string.Equals(searchPlan.Reason, MediaSearchReasons.IndexersBusy, StringComparison.Ordinal))
+        {
+            await recordSearchAttemptAsync(
+                item.Id,
+                library.Id,
+                "manual",
+                outcome,
+                now,
+                now.AddHours(Math.Max(1, library.RetryDelayHours)),
+                decisionPlan.SearchResult,
+                bestCandidate?.ReleaseName,
+                bestCandidate?.IndexerName,
+                searchPlan.Candidates.Count == 0 ? null : JsonSerializer.Serialize(searchPlan),
+                cancellationToken);
+        }
 
         await activityFeedRepository.RecordDecisionAsync(
             new DecisionExplanationPayload(

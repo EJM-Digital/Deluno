@@ -41,7 +41,7 @@ public sealed class IndexerFeedReader(
         }
 
         var waited = await outboundRequestThrottle.TryAcquireAsync(
-            uri.Host,
+            FeedMediaSearchPlanner.ThrottleKey(uri),
             indexer.RequestIntervalSeconds is { } interval
                 ? OutboundRate.FromInterval(TimeSpan.FromSeconds(Math.Max(2, interval)))
                 : OutboundRate.PerIndexerDefault,

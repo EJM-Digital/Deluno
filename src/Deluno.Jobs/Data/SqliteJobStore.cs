@@ -1094,6 +1094,34 @@ public sealed class SqliteJobStore(
         DelunoObservability.JobsCompleted.Add(1, new("job.type", job.JobType), new("source", job.Source));
     }
 
+    public async Task DeferAsync(string jobId, string workerId, DateTimeOffset runAtUtc, CancellationToken cancellationToken)
+    {
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Jobs,
+            cancellationToken);
+
+        using var update = connection.CreateCommand();
+        // Only the lease that is being handed back: a job another worker has
+        // since taken, or one already finished, is left as it is.
+        update.CommandText =
+            """
+            UPDATE job_queue
+            SET
+                status = 'queued',
+                attempts = MAX(attempts - 1, 0),
+                scheduled_utc = @runAtUtc,
+                leased_until_utc = NULL,
+                worker_id = NULL,
+                next_attempt_utc = NULL,
+                last_error = NULL
+            WHERE id = @id AND status = 'running' AND worker_id = @workerId;
+            """;
+        AddParameter(update, "@id", jobId);
+        AddParameter(update, "@workerId", workerId);
+        AddParameter(update, "@runAtUtc", runAtUtc.ToString("O"));
+        await update.ExecuteNonQueryAsync(cancellationToken);
+    }
+
     public async Task FailAsync(string jobId, string workerId, string errorMessage, CancellationToken cancellationToken)
     {
         var now = timeProvider.GetUtcNow();

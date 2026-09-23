@@ -75,106 +75,38 @@ public static class QualityProfileResolver
     }
 
     /// <summary>
-    /// The permitted tiers for a profile, or an empty list when the profile is
-    /// absent or does not constrain tiers. Empty means "the cutoff decides",
-    /// never "nothing is allowed".
-    /// </summary>
-    public static async Task<IReadOnlyList<string>> ResolveAllowedQualitiesAsync(
-        IQualityRepository repository,
-        string? qualityProfileId,
-        CancellationToken cancellationToken)
-    {
-        if (string.IsNullOrWhiteSpace(qualityProfileId))
-        {
-            return [];
-        }
-
-        var profiles = await repository.ListQualityProfilesAsync(cancellationToken);
-        var profile = profiles.FirstOrDefault(item => item.Id == qualityProfileId);
-        return ParseAllowedQualities(profile?.AllowedQualities);
-    }
-
-    /// <summary>
-    /// How big a file of each tier should be, according to this profile.
+    /// Everything a profile says about a search, read from the profile once
+    /// (#599).
     ///
-    /// <para>Resolved the same way and at the same moment as the allowed tiers,
-    /// because they are two answers to the same question about the same profile
-    /// and reading them apart is how they come to disagree.</para>
+    /// <para>Every search path used to ask for these one at a time, and the
+    /// copies drifted: a person's Search now judged by the profile's size
+    /// rules, upgrade stop and acquisition rules, while every automatic search
+    /// left all three out. One answer, taken whole, cannot be taken in part.</para>
     /// </summary>
-    public static async Task<IReadOnlyList<ProfileSizeRule>> ResolveSizeRulesAsync(
+    public static async Task<ProfileSearchRules> ResolveSearchRulesAsync(
         IQualityRepository repository,
         string? qualityProfileId,
         CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(qualityProfileId))
         {
-            return [];
+            return ProfileSearchRules.None;
         }
 
-        var profiles = await repository.ListQualityProfilesAsync(cancellationToken);
-        return profiles.FirstOrDefault(item => item.Id == qualityProfileId)?.SizeRules ?? [];
-    }
-
-    /// <summary>
-    /// This profile's own acquisition answers, or null when it has none.
-    ///
-    /// <para>Returned as the profile's own type. Shaping it into the rule the
-    /// search combines happens in <c>Deluno.Integrations</c>, which is the
-    /// layer that can see both — putting it here would mean this project
-    /// referencing the platform contracts to describe one of its own fields.</para>
-    /// </summary>
-    public static async Task<ProfileAcquisitionRules?> ResolveAcquisitionAsync(
-        IQualityRepository repository,
-        string? qualityProfileId,
-        CancellationToken cancellationToken)
-    {
-        if (string.IsNullOrWhiteSpace(qualityProfileId))
+        var profile = (await repository.ListQualityProfilesAsync(cancellationToken))
+            .FirstOrDefault(item => item.Id == qualityProfileId);
+        if (profile is null)
         {
-            return null;
+            return ProfileSearchRules.None;
         }
 
-        var profiles = await repository.ListQualityProfilesAsync(cancellationToken);
-        var acquisition = profiles.FirstOrDefault(item => item.Id == qualityProfileId)?.Acquisition?.Normalize();
-        return acquisition is null || acquisition.IsEmpty ? null : acquisition;
-    }
-
-    /// <summary>
-    /// When this profile stops looking for something better.
-    ///
-    /// <para>Resolved beside the allowed tiers and the size answers, from the
-    /// same profile at the same moment, for the same reason.</para>
-    /// </summary>
-    public static async Task<QualityUpgradeStopPolicy?> ResolveUpgradeStopAsync(
-        IQualityRepository repository,
-        string? qualityProfileId,
-        CancellationToken cancellationToken)
-    {
-        if (string.IsNullOrWhiteSpace(qualityProfileId))
-        {
-            return null;
-        }
-
-        var profiles = await repository.ListQualityProfilesAsync(cancellationToken);
-        return profiles.FirstOrDefault(item => item.Id == qualityProfileId)?.UpgradeStop;
-    }
-
-    /// <summary>
-    /// Reads the profile's stop-when-target behaviour for acquisition. A missing
-    /// profile uses the safe historical default: keep upgrading until the
-    /// requested cutoff is met.
-    /// </summary>
-    public static async Task<bool> ResolveUpgradeUntilCutoffAsync(
-        IQualityRepository repository,
-        string? qualityProfileId,
-        CancellationToken cancellationToken)
-    {
-        if (string.IsNullOrWhiteSpace(qualityProfileId))
-        {
-            return true;
-        }
-
-        var profiles = await repository.ListQualityProfilesAsync(cancellationToken);
-        return profiles.FirstOrDefault(item => item.Id == qualityProfileId)?.UpgradeUntilCutoff ?? true;
+        var acquisition = profile.Acquisition?.Normalize();
+        return new ProfileSearchRules(
+            ParseAllowedQualities(profile.AllowedQualities),
+            profile.UpgradeUntilCutoff,
+            profile.SizeRules ?? [],
+            acquisition is null || acquisition.IsEmpty ? null : acquisition,
+            profile.UpgradeStop);
     }
 
     /// <summary>Splits the stored comma-separated tier list.</summary>
@@ -182,4 +114,16 @@ public static class QualityProfileResolver
         => string.IsNullOrWhiteSpace(allowedQualities)
             ? []
             : allowedQualities.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
+}
+
+/// <summary>What one profile says about a search (#599). See <see cref="QualityProfileResolver.ResolveSearchRulesAsync"/>.</summary>
+public sealed record ProfileSearchRules(
+    IReadOnlyList<string> AllowedQualities,
+    bool UpgradeUntilCutoff,
+    IReadOnlyList<ProfileSizeRule> SizeRules,
+    ProfileAcquisitionRules? Acquisition,
+    QualityUpgradeStopPolicy? UpgradeStop)
+{
+    /// <summary>No profile: every tier allowed, keep upgrading to the cutoff, no size, acquisition or stop opinion.</summary>
+    public static readonly ProfileSearchRules None = new([], true, [], null, null);
 }
