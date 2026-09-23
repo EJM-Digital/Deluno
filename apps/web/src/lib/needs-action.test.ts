@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { DownloadDispatchItem, MovieImportRecoverySummary, SeriesImportRecoverySummary } from "./api";
+import type { DownloadDispatchItem, DownloadTelemetryOverview, MovieImportRecoverySummary, SeriesImportRecoverySummary } from "./api";
 import { canTryAgain, needsAction } from "./needs-action";
 
 function dispatch(overrides: Partial<DownloadDispatchItem> & Pick<DownloadDispatchItem, "id">): DownloadDispatchItem {
@@ -94,6 +94,21 @@ describe("needsAction", () => {
     expect(result.recoveryCases).toHaveLength(1);
     expect(result.failedDownloads).toHaveLength(0);
     expect(result.total).toBe(1);
+  });
+
+  it("shows the client's copy of a download its case is about only as that case (#603)", () => {
+    const refused = { id: "hash-1", clientId: "qbit", releaseName: "The.Cabinet.of.Dr.Caligari.1920.1080p.WEB-DL-CLIPPED", status: "importFailed", errorMessage: "The download client reported queue status 'importFailed'." };
+    const other = { ...refused, id: "hash-2", releaseName: "Something.Else.2020.1080p" };
+    const telemetry = { clients: [{ queue: [refused, other] }] } as unknown as DownloadTelemetryOverview;
+
+    const result = needsAction({
+      movieRecovery: recovery([{ id: "case-1", dispatchId: "d1" }]),
+      dispatches: [dispatch({ id: "d1", downloadClientId: "qbit", torrentHashOrItemId: "HASH-1" })],
+      telemetry
+    });
+
+    expect(result.queueAttention.map((item) => item.id)).toEqual(["hash-2"]);
+    expect(result.total).toBe(2);
   });
 
   it("counts each orphaned download folder once, beside everything else (#588)", () => {

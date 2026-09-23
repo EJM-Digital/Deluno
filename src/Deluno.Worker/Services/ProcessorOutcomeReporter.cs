@@ -113,5 +113,8 @@ public sealed class ProcessorOutcomeReporter(
     /// exact shape of the data loss this rule exists to prevent.</para>
     /// </summary>
     public static bool WillNotTryAgain(ImportPipelineResult result, JobQueueItem job)
-        => result.StatusCode == 400 || job.Attempts >= job.MaxAttempts;
+        => IsRefusal(result) || job.Attempts >= job.MaxAttempts;
+
+    /// <summary>A refusal of the import itself: final, because trying again reads the same bytes (#603).</summary>
+    public static bool IsRefusal(ImportPipelineResult result) => result.StatusCode == 400;
 }
