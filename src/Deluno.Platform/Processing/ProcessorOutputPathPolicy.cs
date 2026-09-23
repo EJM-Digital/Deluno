@@ -69,8 +69,12 @@ public static class ProcessorOutputPathPolicy
 
             // Every folder it sits in below the output root, and its own name
             // with and without the extension the processor gave it.
+            //
+            // Split on both separators whatever this machine calls its own: the
+            // path was written by a processor, which may not be running on the
+            // same kind of machine as Deluno.
             var segments = relative
-                .Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar, StringSplitOptions.RemoveEmptyEntries)
+                .Split(['/', '\\'], StringSplitOptions.RemoveEmptyEntries)
                 .SelectMany(segment => new[] { segment, Path.GetFileNameWithoutExtension(segment) });
 
             return segments.Any(segment => names.Contains(segment, StringComparer.OrdinalIgnoreCase));
