@@ -25,7 +25,8 @@ public sealed class EpisodeSearchJobHandler(
     TimeProvider timeProvider,
     IMediaTagStore? mediaTagStore = null,
     IMediaStateRepository? mediaStateRepository = null,
-    IReleasePreferencePlanRepository? releasePreferencePlanRepository = null) : IJobHandler
+    IReleasePreferencePlanRepository? releasePreferencePlanRepository = null,
+    IBlockedReleaseRepository? blockedReleases = null) : IJobHandler
 {
     public string JobType => "episode.search";
 
@@ -38,6 +39,32 @@ public sealed class EpisodeSearchJobHandler(
         }
 
         var now = timeProvider.GetUtcNow();
+
+        // Episode searches are queued by the TV library's own cycle, so this is
+        // the routine search #583 holds once the processor has refused enough
+        // copies of the episode. Checked before any indexer is asked.
+        if (blockedReleases is not null)
+        {
+            var refused = ProcessorRefusals.Count(await blockedReleases.ListForAsync("tv", payload.EpisodeId, cancellationToken));
+            if (ProcessorRefusals.StopSearching(refused))
+            {
+                await seriesCatalogRepository.RecordSearchAttemptAsync(
+                    payload.SeriesId,
+                    payload.EpisodeId,
+                    payload.LibraryId,
+                    "automatic",
+                    "held",
+                    now,
+                    now.AddDays(1),
+                    ProcessorRefusals.WhySearchIsHeld(refused),
+                    null,
+                    null,
+                    null,
+                    cancellationToken);
+                return $"Held the search for episode S{payload.SeasonNumber:D2}E{payload.EpisodeNumber:D2}: the processor has refused {refused} copies.";
+            }
+        }
+
         var routing = await librariesRepository.GetLibraryRoutingAsync(payload.LibraryId, cancellationToken);
         var libraries = await librariesRepository.ListLibrariesAsync(cancellationToken);
         var library = libraries.FirstOrDefault(item => item.Id == payload.LibraryId);

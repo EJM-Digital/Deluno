@@ -27,7 +27,8 @@ public abstract class LibrarySearchJobHandler(
     TimeProvider timeProvider,
     IMediaTagStore? mediaTagStore = null,
     IMediaStateRepository? mediaStateRepository = null,
-    IReleasePreferencePlanRepository? releasePreferencePlanRepository = null) : IJobHandler
+    IReleasePreferencePlanRepository? releasePreferencePlanRepository = null,
+    IBlockedReleaseRepository? blockedReleases = null) : IJobHandler
 {
     /// <summary>
     /// Both catalogues run the same handler; only the lane differs.
@@ -119,6 +120,7 @@ public abstract class LibrarySearchJobHandler(
             scopeFilters))
             .Where(candidate => MatchesTarget(payload, candidate.MovieId))
             .ToArray();
+        IReadOnlyList<BlockedRelease> refusals = ignoreRetryWindow ? [] : await ListRefusalsAsync(cancellationToken);
         var matchedCount = 0;
         var blockedCount = 0;
         var checkedCount = 0;
@@ -155,6 +157,35 @@ public abstract class LibrarySearchJobHandler(
                     skippedNextEligibleUtc,
                     now,
                     "skipped",
+                    cancellationToken);
+                continue;
+            }
+
+            if (!ignoreRetryWindow && RefusedTooOften(refusals, "movies", candidate.MovieId) is { } movieRefusals)
+            {
+                heldCount++;
+                var heldNextEligibleUtc = now.AddHours(Math.Max(1, payload.RetryDelayHours));
+                await movieCatalogRepository.RecordSearchAttemptAsync(
+                    candidate.MovieId,
+                    payload.LibraryId,
+                    payload.TriggeredBy,
+                    "held",
+                    now,
+                    heldNextEligibleUtc,
+                    ProcessorRefusals.WhySearchIsHeld(movieRefusals),
+                    null,
+                    null,
+                    null,
+                    cancellationToken);
+                await jobQueueRepository.RecordSearchRetryWindowAsync(
+                    "movie",
+                    candidate.MovieId,
+                    payload.LibraryId,
+                    "movies",
+                    SearchExecutionSupport.NormalizeActionKind(candidate.WantedStatus),
+                    heldNextEligibleUtc,
+                    now,
+                    "held",
                     cancellationToken);
                 continue;
             }
@@ -325,6 +356,25 @@ public abstract class LibrarySearchJobHandler(
     /// </summary>
     private const int TargetedCandidateLimit = 100_000;
 
+    /// <summary>
+    /// How many copies the processor has refused, when that is enough to stop
+    /// fetching another (#583); null otherwise. Routine searching only: a
+    /// search a person or a just-refused release asked for is theirs to make.
+    /// The skip is recorded like any other search, so the title moves to the
+    /// back of the queue instead of taking the run's budget every time.
+    /// </summary>
+    private static int? RefusedTooOften(IReadOnlyList<BlockedRelease> refusals, string mediaType, string entityId)
+    {
+        var refused = ProcessorRefusals.Count(refusals.Where(release =>
+            string.Equals(release.MediaType, mediaType, StringComparison.OrdinalIgnoreCase)
+            && string.Equals(release.EntityId, entityId, StringComparison.OrdinalIgnoreCase)));
+        return ProcessorRefusals.StopSearching(refused) ? refused : null;
+    }
+
+    /// <summary>The blocklist, read once per run rather than once per title.</summary>
+    private async Task<IReadOnlyList<BlockedRelease>> ListRefusalsAsync(CancellationToken cancellationToken)
+        => blockedReleases is null ? [] : await blockedReleases.ListAsync(cancellationToken);
+
     private static bool IsTargeted(JobPayloads.LibrarySearchPayload payload)
         => !string.IsNullOrWhiteSpace(payload.TargetEntityId);
 
@@ -411,6 +461,7 @@ public abstract class LibrarySearchJobHandler(
         var seriesRetryDelayed = seriesIgnoreRetryWindow
             ? 0
             : await seriesCatalogRepository.CountRetryDelayedWantedAsync(payload.LibraryId, now, cancellationToken, searchStatus);
+        IReadOnlyList<BlockedRelease> seriesRefusals = seriesIgnoreRetryWindow ? [] : await ListRefusalsAsync(cancellationToken);
         var seriesMatchedCount = 0;
         var seriesBlockedCount = 0;
         var seriesCheckedCount = 0;
@@ -448,6 +499,36 @@ public abstract class LibrarySearchJobHandler(
                     skippedNextEligibleUtc,
                     now,
                     "skipped",
+                    cancellationToken);
+                continue;
+            }
+
+            if (!seriesIgnoreRetryWindow && RefusedTooOften(seriesRefusals, "tv", candidate.SeriesId) is { } seriesRefusedCount)
+            {
+                seriesHeldCount++;
+                var heldNextEligibleUtc = now.AddHours(Math.Max(1, payload.RetryDelayHours));
+                await seriesCatalogRepository.RecordSearchAttemptAsync(
+                    candidate.SeriesId,
+                    null,
+                    payload.LibraryId,
+                    payload.TriggeredBy,
+                    "held",
+                    now,
+                    heldNextEligibleUtc,
+                    ProcessorRefusals.WhySearchIsHeld(seriesRefusedCount),
+                    null,
+                    null,
+                    null,
+                    cancellationToken);
+                await jobQueueRepository.RecordSearchRetryWindowAsync(
+                    "series",
+                    candidate.SeriesId,
+                    payload.LibraryId,
+                    "tv",
+                    SearchExecutionSupport.NormalizeActionKind(candidate.WantedStatus),
+                    heldNextEligibleUtc,
+                    now,
+                    "held",
                     cancellationToken);
                 continue;
             }

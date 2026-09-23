@@ -202,6 +202,7 @@ public sealed class ProcessorFailureReportHandlerTests
         {
             Id = id,
             ReasonCode = ImportFailurePolicy.ProcessorRejected,
+            State = BlockedReleaseStates.Refused,
             MediaType = "movies",
             EntityId = "movie-1"
         };
