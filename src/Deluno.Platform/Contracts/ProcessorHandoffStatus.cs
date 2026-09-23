@@ -26,8 +26,36 @@ public sealed record ProcessorStatusSupport(
     bool CanCancel,
     string? Message)
 {
+    /// <summary>
+    /// Whether the processor wants to be told what became of a file it handed
+    /// back (#578). A processor that does not advertise this is told nothing
+    /// and keeps its copy until its own retention reclaims it, which is how it
+    /// works with a media manager that says nothing at all.
+    /// </summary>
+    public bool CanBeToldTheOutcome { get; init; }
+
     public static readonly ProcessorStatusSupport None = new(ProcessorAnswer.Unsupported, false, false, null);
 }
+
+/// <summary>What became of a file a processor handed back (#578).</summary>
+public enum ProcessorHandoffOutcome
+{
+    /// <summary>Deluno has the file. The processor's copy is no longer needed.</summary>
+    Imported,
+
+    /// <summary>
+    /// It will not be imported, by any route, ever.
+    ///
+    /// <para>Final, and only sent when it is: a terminal refusal, or attempts
+    /// exhausted, or the title it was for is gone. A failure Deluno will try
+    /// again is not reported at all, because a processor that dropped its copy
+    /// on one of those would leave the retry nothing to import.</para>
+    /// </summary>
+    NotImported
+}
+
+/// <param name="Released">Whether the processor let go of its copy.</param>
+public sealed record ProcessorOutcomeResult(ProcessorAnswer Answer, bool Released, string? Message);
 
 /// <summary>
 /// The processor's own account of one hand-off.

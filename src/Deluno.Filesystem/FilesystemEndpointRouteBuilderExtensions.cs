@@ -663,7 +663,12 @@ public sealed record ImportExecuteRequest(
     /// check it makes is absolute — a failed remux that yields a valid
     /// three-minute stub of a two-hour film passes all of them (#574).
     /// </summary>
-    string? ProcessedFromPath = null);
+    string? ProcessedFromPath = null,
+    /// <summary>
+    /// The hand-off this file came back from, so the processor can be told what
+    /// became of it and let go of its own copy (#578).
+    /// </summary>
+    string? HandoffId = null);
 
 public sealed record ImportExecuteResponse(
     ImportPreviewResponse Preview,
