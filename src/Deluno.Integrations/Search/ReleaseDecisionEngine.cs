@@ -286,7 +286,7 @@ public static partial class ReleaseDecisionEngine
         }
 
         var seederScore = ScoreSeeders(input.Seeders, risks, reasons);
-        var sizeScore = ScoreSize(input.SizeBytes, normalizedCandidate, input.SizeRules, risks, reasons, out var estimatedBitrate, out var sizeOutOfRange);
+        var sizeScore = ScoreSize(input.SizeBytes, normalizedCandidate, input.SizeRules, IsSingleEpisode(input.MediaType, input.ReleaseName), risks, reasons, out var estimatedBitrate, out var sizeOutOfRange);
         if (sizeOutOfRange)
         {
             hardReject = true;
@@ -377,10 +377,13 @@ public static partial class ReleaseDecisionEngine
                 : null;
             if (currentFacts is not null)
             {
+                // The facts are re-evaluated here, and a file below the size
+                // floor is not something they can show (#597).
                 preferenceComparison = ReleasePreferenceEvaluator.Compare(
                     preferencePlan,
                     currentFacts,
-                    candidateFacts);
+                    candidateFacts,
+                    input.CurrentPreferenceEvaluation!.Evaluation.InstalledFileViolation);
             }
 
             var installedFilePresent = input.CurrentFilePresent
@@ -567,56 +570,13 @@ public static partial class ReleaseDecisionEngine
         return score;
     }
 
-    private static int ScoreSize(
-        long? sizeBytes,
-        string quality,
-        IReadOnlyList<ProfileSizeRule>? sizeRules,
-        ICollection<string> risks,
-        ICollection<string> reasons,
-        out double? estimatedBitrate,
-        out bool outOfRange)
-    {
-        estimatedBitrate = null;
-        outOfRange = false;
-        if (sizeBytes is null or <= 0)
-        {
-            // An unreported size is not a size violation. Rejecting here would
-            // block every indexer that omits the field.
-            risks.Add("Indexer did not report release size.");
-            return -50;
-        }
-
-        var sizeGb = sizeBytes.Value / 1_073_741_824d;
-        estimatedBitrate = Math.Round(sizeBytes.Value * 8d / (2.0 * 60 * 60) / 1_000_000, 1);
-        var (min, max) = ExpectedSizeRangeGb(quality, sizeRules);
-
-        // Size Rules is described in the UI as "the final check that rejects a
-        // release as implausibly small or large", and a minimum in GB reads to a
-        // user as a floor. It used to be a score penalty only: one risk flag was
-        // not enough to reach "risky" (which needs three) let alone "rejected",
-        // so a 0.06 GB file passed a 7 GB floor and was grabbed. The penalty also
-        // could not discriminate when every candidate was equally wrong.
-        //
-        // 0 and 0 remains the documented "no limit" convention, handled by
-        // ExpectedSizeRangeGb returning a zero bound.
-        if (min > 0 && sizeGb < min)
-        {
-            outOfRange = true;
-            risks.Add($"Size {sizeGb:0.0} GB is below the {min:0.#} GB minimum configured for {quality}.");
-            return -180;
-        }
-
-        // max <= 0 is the "unlimited" convention from the quality model.
-        if (max > 0 && sizeGb > max)
-        {
-            outOfRange = true;
-            risks.Add($"Size {sizeGb:0.0} GB is above the {max:0.#} GB maximum configured for {quality}.");
-            return -80;
-        }
-
-        reasons.Add($"Size {sizeGb:0.0} GB is within the expected range for {quality}.");
-        return 80;
-    }
+    /// <summary>
+    /// Whether a release is one TV episode, sized in MB against the episode
+    /// band (#600). Season packs and films keep the film band.
+    /// </summary>
+    public static bool IsSingleEpisode(string? mediaType, string releaseName)
+        => string.Equals(mediaType, "tv", StringComparison.OrdinalIgnoreCase)
+            && SeasonPackDetector.Classify(releaseName).IsEpisode;
 
     /// <summary>
     /// The size band this decision judges against.
@@ -634,17 +594,99 @@ public static partial class ReleaseDecisionEngine
     /// physical fact the quality model already held. Two copies drift, and the
     /// one nobody looks at is the one that decides whether a release is
     /// refused.</para>
+    ///
+    /// <para>#600: the band is in bytes. A single episode reads the profile's
+    /// episode band (MB), anything else the film band (GB). With
+    /// <paramref name="typicalWhenUnset"/> false, a tier the profile says
+    /// nothing about has no band at all.</para>
     /// </summary>
-    private static (double Min, double Max) ExpectedSizeRangeGb(
-        string quality,
-        IReadOnlyList<ProfileSizeRule>? sizeRules)
+    public static (double MinBytes, double MaxBytes, bool Episode)? SizeBand(
+        string? quality,
+        IReadOnlyList<ProfileSizeRule>? sizeRules,
+        bool episode,
+        bool typicalWhenUnset)
     {
+        const double Gb = 1_073_741_824d;
+        const double Mb = 1_048_576d;
         if (ProfileSizeRulesCodec.For(sizeRules, quality) is { } rule)
         {
-            return (rule.MinGb, rule.MaxGb);
+            return episode ? (rule.MinMb * Mb, rule.MaxMb * Mb, true) : (rule.MinGb * Gb, rule.MaxGb * Gb, false);
         }
 
-        return QualityTypicalSizes.FilmSizeGb(quality);
+        if (!typicalWhenUnset || string.IsNullOrWhiteSpace(quality))
+        {
+            return null;
+        }
+
+        if (episode)
+        {
+            var (minMb, maxMb) = QualityTypicalSizes.EpisodeSizeMb(quality);
+            return (minMb * Mb, maxMb * Mb, true);
+        }
+
+        var (minGb, maxGb) = QualityTypicalSizes.FilmSizeGb(quality);
+        return (minGb * Gb, maxGb * Gb, false);
+    }
+
+    /// <summary>A size spoken of in the unit its band uses: MB for an episode, GB otherwise.</summary>
+    public static string DescribeSize(double bytes, bool episode)
+        => episode ? $"{bytes / 1_048_576d:0} MB" : $"{bytes / 1_073_741_824d:0.0} GB";
+
+    private static string DescribeLimit(double bytes, bool episode)
+        => episode ? $"{bytes / 1_048_576d:0} MB" : $"{bytes / 1_073_741_824d:0.#} GB";
+
+    private static int ScoreSize(
+        long? sizeBytes,
+        string quality,
+        IReadOnlyList<ProfileSizeRule>? sizeRules,
+        bool episode,
+        ICollection<string> risks,
+        ICollection<string> reasons,
+        out double? estimatedBitrate,
+        out bool outOfRange)
+    {
+        estimatedBitrate = null;
+        outOfRange = false;
+        if (sizeBytes is null or <= 0)
+        {
+            // An unreported size is not a size violation. Rejecting here would
+            // block every indexer that omits the field.
+            risks.Add("Indexer did not report release size.");
+            return -50;
+        }
+
+        // An episode runs about 45 minutes, a film about two hours (#600).
+        var runtimeSeconds = episode ? 45.0 * 60 : 2.0 * 60 * 60;
+        estimatedBitrate = Math.Round(sizeBytes.Value * 8d / runtimeSeconds / 1_000_000, 1);
+        var (min, max, _) = SizeBand(quality, sizeRules, episode, typicalWhenUnset: true)!.Value;
+        var size = DescribeSize(sizeBytes.Value, episode);
+
+        // Size Rules is described in the UI as "the final check that rejects a
+        // release as implausibly small or large", and a minimum in GB reads to a
+        // user as a floor. It used to be a score penalty only: one risk flag was
+        // not enough to reach "risky" (which needs three) let alone "rejected",
+        // so a 0.06 GB file passed a 7 GB floor and was grabbed. The penalty also
+        // could not discriminate when every candidate was equally wrong.
+        //
+        // 0 and 0 remains the documented "no limit" convention, handled by
+        // SizeBand returning a zero bound.
+        if (min > 0 && sizeBytes.Value < min)
+        {
+            outOfRange = true;
+            risks.Add($"Size {size} is below the {DescribeLimit(min, episode)} minimum configured for {quality}.");
+            return -180;
+        }
+
+        // max <= 0 is the "unlimited" convention from the quality model.
+        if (max > 0 && sizeBytes.Value > max)
+        {
+            outOfRange = true;
+            risks.Add($"Size {size} is above the {DescribeLimit(max, episode)} maximum configured for {quality}.");
+            return -80;
+        }
+
+        reasons.Add($"Size {size} is within the expected range for {quality}.");
+        return 80;
     }
 
     private static int ScoreCodecAndHdr(string releaseName, ICollection<string> reasons, ICollection<string> risks)
@@ -799,4 +841,9 @@ public sealed record ReleaseDecisionInput(
     /// This prevents an upgrade sweep from treating an unbaselined file as a
     /// missing title.
     /// </summary>
-    bool CurrentFilePresent = false);
+    bool CurrentFilePresent = false,
+    /// <summary>
+    /// "movies" or "tv". A single TV episode is sized against the episode
+    /// band, not the film one (#600). Null keeps the film band.
+    /// </summary>
+    string? MediaType = null);

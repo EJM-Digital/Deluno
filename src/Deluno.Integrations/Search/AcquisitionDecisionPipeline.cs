@@ -109,7 +109,7 @@ public sealed class AcquisitionDecisionPipeline : IAcquisitionDecisionPipeline
                 request.AirDate,
                 request.SceneSeasonNumber,
                 request.SceneEpisodeNumber,
-                request.CurrentPreferenceEvaluation,
+                WithInstalledSizeFloor(request.CurrentPreferenceEvaluation, request.CurrentQuality, request.SizeRules, request.MediaType, request.EpisodeNumber is not null || request.AbsoluteNumber is not null || request.AirDate is not null),
                 request.PreferencePlan,
                 request.CurrentFilePresent,
                 request.SizeRules,
@@ -211,8 +211,9 @@ public sealed class AcquisitionDecisionPipeline : IAcquisitionDecisionPipeline
             UpgradeStop: request.UpgradeStop,
             PreferencePlan: preferencePlan,
             CurrentReleaseName: request.CurrentReleaseName,
-            CurrentPreferenceEvaluation: request.CurrentPreferenceEvaluation,
-            CurrentFilePresent: request.CurrentFilePresent));
+            CurrentPreferenceEvaluation: WithInstalledSizeFloor(request.CurrentPreferenceEvaluation, request.CurrentQuality, request.SizeRules, request.MediaType, episodeScope: false),
+            CurrentFilePresent: request.CurrentFilePresent,
+            MediaType: request.MediaType));
         var boost = rankingModelService.Score(new ReleaseRankingFeatures(
             Seeders: request.Seeders,
             SizeBytes: request.SizeBytes,
@@ -401,6 +402,49 @@ public sealed class AcquisitionDecisionPipeline : IAcquisitionDecisionPipeline
                 ? "Only single episodes were offered. Each missing episode is searched for on its own."
                 : plan.Summary,
             Reason = best is null ? MediaSearchReasons.NoUsableRelease : plan.Reason
+        };
+    }
+
+    /// <summary>
+    /// A held file below its tier's size floor fails the profile (#597).
+    ///
+    /// <para>The floor was only ever applied to releases on offer. Cleaner was
+    /// held as a WEB 1080p below the profile's WEB 1080p floor, so a release
+    /// that size would have been turned down, yet the file itself counted as
+    /// meeting every target and an 18 GB Bluray was held as "equivalent". The
+    /// evaluator already replaces a file that fails a hard gate; the floor
+    /// just never reached it.</para>
+    ///
+    /// <para>Only the profile's own rule counts here. A tier the profile says
+    /// nothing about has no floor for a file already in the library.</para>
+    /// </summary>
+    /// <param name="episodeScope">True when the search is for one episode, whose file is one episode (#600).</param>
+    public static PreferenceEvaluationSnapshot? WithInstalledSizeFloor(
+        PreferenceEvaluationSnapshot? current,
+        string? currentQuality,
+        IReadOnlyList<ProfileSizeRule>? sizeRules,
+        string? mediaType,
+        bool episodeScope)
+    {
+        var tv = string.Equals(mediaType, "tv", StringComparison.OrdinalIgnoreCase);
+        // A show or a season has no one file to measure.
+        if (current is not { FileSizeBytes: > 0 } || !current.Evaluation.HardGatesPassed || (tv && !episodeScope)
+            || ReleaseDecisionEngine.SizeBand(currentQuality, sizeRules, episode: tv, typicalWhenUnset: false) is not { MinBytes: > 0 } band
+            || current.FileSizeBytes.Value >= band.MinBytes)
+        {
+            return current;
+        }
+
+        var violation = $"Your file is {ReleaseDecisionEngine.DescribeSize(current.FileSizeBytes.Value, band.Episode)}, below the {ReleaseDecisionEngine.DescribeSize(band.MinBytes, band.Episode)} minimum for {currentQuality}.";
+        return current with
+        {
+            Evaluation = current.Evaluation with
+            {
+                Status = PreferenceEvaluationStatus.BelowGoal,
+                HardGatesPassed = false,
+                Reasons = [.. current.Evaluation.Reasons, violation],
+                InstalledFileViolation = violation
+            }
         };
     }
 
