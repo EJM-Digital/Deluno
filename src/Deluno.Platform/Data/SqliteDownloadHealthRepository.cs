@@ -133,6 +133,22 @@ public sealed class SqliteDownloadHealthRepository(
         return Page<DownloadHealthRecord>.Of(records, nextPageToken);
     }
 
+    public async Task<int> ForgetDownloadClientAsync(string clientId, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(clientId)) return 0;
+        var now = timeProvider.GetUtcNow();
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(DelunoDatabaseNames.Platform, cancellationToken);
+        await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+        var settings = await ReadSettingsAsync(connection, cancellationToken);
+        var records = ReadDownloadHealthRecords(settings).ToList();
+        var forgotten = records.RemoveAll(record => string.Equals(record.ClientId, clientId, StringComparison.OrdinalIgnoreCase));
+        if (forgotten == 0) return 0;
+
+        await UpsertSettingAsync(connection, transaction, DownloadHealthRecordsSettingKey, JsonSerializer.Serialize(records), now, cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+        return forgotten;
+    }
+
     public async Task<DownloadHealthRecord?> IgnoreDownloadHealthFindingAsync(
         string clientId,
         string queueItemId,
