@@ -11,14 +11,37 @@ public sealed class DownloadDispatchPollingHostedService(
     TimeProvider timeProvider)
     : BackgroundService
 {
-    private static readonly TimeSpan PollingInterval = TimeSpan.FromHours(1);
+    /// <summary>
+    /// How often the pass is considered, not how often it runs (#601). It runs
+    /// when its persisted interval says it is due, so a short tick costs one
+    /// read. It was an hour-long timer whose first tick came an hour after
+    /// start: on the soak rig Deluno was redeployed about ten times in a day,
+    /// each within the hour, and the pass that archives imported downloads and
+    /// finds stuck ones never ran.
+    /// </summary>
+    internal static readonly TimeSpan CheckInterval = TimeSpan.FromMinutes(5);
+
+    /// <summary>A moment after start, so the first check does not race the rest of startup.</summary>
+    internal static readonly TimeSpan StartupDelay = TimeSpan.FromSeconds(30);
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        logger.LogInformation("Download dispatch polling service started with interval {Interval}.", PollingInterval);
+        logger.LogInformation(
+            "Download dispatch polling service started; it runs every {Interval}, checked every {Check}.",
+            SystemTasks.IntervalFor(SystemTasks.DownloadDispatchPolling),
+            CheckInterval);
 
-        using var timer = new PeriodicTimer(PollingInterval);
-        while (await timer.WaitForNextTickAsync(stoppingToken))
+        try
+        {
+            await Task.Delay(StartupDelay, timeProvider, stoppingToken);
+        }
+        catch (OperationCanceledException)
+        {
+            return;
+        }
+
+        using var timer = new PeriodicTimer(CheckInterval, timeProvider);
+        do
         {
             try
             {
@@ -60,6 +83,7 @@ public sealed class DownloadDispatchPollingHostedService(
                 logger.LogError(ex, "Error occurred while scheduling download dispatch polling.");
             }
         }
+        while (await timer.WaitForNextTickAsync(stoppingToken));
     }
 
     private async Task RecordOutcomeAsync(
