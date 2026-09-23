@@ -774,6 +774,29 @@ public static class SeriesEndpointRouteBuilderExtensions
                 return Results.NotFound();
             }
 
+            // The show-level query takes season packs; each missing episode is
+            // asked for on its own, judged against its own file (#593).
+            var plannedEpisodes = 0;
+            if (!string.Equals(mode, "preview", StringComparison.OrdinalIgnoreCase)
+                && !string.Equals(result.Outcome, "blocked", StringComparison.OrdinalIgnoreCase))
+            {
+                var inventory = await repository.GetInventoryDetailAsync(id, cancellationToken);
+                var rows = (await mediaStateRepository.ListWantedByIdsAsync(MediaKind.Series, [id], cancellationToken))
+                    .Where(row => row.Id == id)
+                    .ToArray();
+                var (wanted, _) = MediaLibraryChoice.Pick(
+                    rows,
+                    libraryId,
+                    await platformSettingsRepository.ListLibrariesAsync(cancellationToken),
+                    "series");
+                if (inventory is not null && wanted?.LibraryId is { Length: > 0 } searchLibraryId)
+                {
+                    var episodes = MissingEpisodeSearches.For(id, inventory.Episodes, timeProvider.GetUtcNow());
+                    await jobQueueRepository.PlanEpisodeSearchesAsync(searchLibraryId, episodes, cancellationToken);
+                    plannedEpisodes = episodes.Count;
+                }
+            }
+
             return Results.Ok(new
             {
                 result.Outcome,
@@ -783,6 +806,7 @@ public static class SeriesEndpointRouteBuilderExtensions
                 result.IndexerName,
                 result.DispatchStatus,
                 result.DispatchMessage,
+                plannedEpisodes,
                 failures = result.Failures ?? [],
                 candidates = MediaSearchCandidateView.ForAll(result.Candidates)
             });

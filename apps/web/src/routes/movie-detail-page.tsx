@@ -38,7 +38,7 @@ import { TitleTagsEditor } from "../components/app/title-tags-editor";
 import { authedFetch } from "../lib/use-auth";
 import { cn } from "../lib/utils";
 import { friendlyRuleName } from "../lib/guide-names";
-import { describeSearchReason, describeRequestFailure, formatSearchFailureNotice } from "../lib/search-reasons";
+import { describeSearchNow, describeSearchReason, describeRequestFailure, formatGrabMessage, formatSearchFailureNotice } from "../lib/search-reasons";
 import { candidateLabel, candidateTone, canWinSearch, isTypedCandidate, likesCandidate } from "../lib/release-candidate-status";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
@@ -451,8 +451,10 @@ export function MovieDetailPage() {
           });
         }
       } else {
-        if (best) {
-          toast.success(`Deluno selected ${best} using this movie's Library Profile.`, failureNotice ? { description: failureNotice } : undefined);
+        const notice = describeSearchNow(payload);
+        if (notice) {
+          const description = [notice.description, failureNotice].filter(Boolean).join(" ");
+          toast[notice.tone](notice.title, description ? { description } : undefined);
         } else {
           const explained = describeSearchReason(payload.reason, "Search finished with no accepted release.");
           const action = explained.action;
@@ -1453,23 +1455,6 @@ function formatFailureKind(value: string) {
       return "Import failed";
     default:
       return "Needs review";
-  }
-}
-
-function formatGrabMessage(
-  best: string,
-  payload: { forceOverride?: boolean; dispatchStatus?: string; dispatchMessage?: string }
-) {
-  const prefix = payload.forceOverride ? "Forced" : "Sent";
-  switch (payload.dispatchStatus) {
-    case "sent":
-      return `${prefix} ${best} to the download client.`;
-    case "planned":
-      return `Matched ${best}, but no downloadable URL was available yet.`;
-    case "failed":
-      return `Matched ${best}, but the download client rejected it${payload.dispatchMessage ? `: ${payload.dispatchMessage}` : "."}`;
-    default:
-      return `Matched ${best}.`;
   }
 }
 

@@ -210,3 +210,68 @@ export function describeSearchReason(reason: string | undefined, fallback: strin
       return { title: fallback };
   }
 }
+
+export function formatGrabMessage(
+  best: string,
+  payload: { forceOverride?: boolean; dispatchStatus?: string | null; dispatchMessage?: string | null }
+) {
+  const prefix = payload.forceOverride ? "Forced" : "Sent";
+  switch (payload.dispatchStatus) {
+    case "sent":
+      return `${prefix} ${best} to the download client.`;
+    case "planned":
+      return `Matched ${best}, but no downloadable URL was available yet.`;
+    case "failed":
+      return `Matched ${best}, but the download client rejected it${payload.dispatchMessage ? `: ${payload.dispatchMessage}` : "."}`;
+    default:
+      return `Matched ${best}.`;
+  }
+}
+
+export interface SearchNowNotice {
+  tone: "success" | "info" | "error";
+  title: string;
+  description?: string;
+}
+
+/**
+ * What a movie's or show's **Search now** tells a person (#594).
+ *
+ * It used to say "Deluno selected <release>" whenever the answer named a
+ * release, and the release had been held: nothing was sent. The words now
+ * follow what happened. A release is sent only when a client took it, a held
+ * one is held with Deluno's reason, and a show's episodes searched one by one
+ * (#593) are counted. Null means nothing was found or asked for, which the
+ * caller explains from the search reason.
+ */
+export function describeSearchNow(payload: {
+  outcome?: string | null;
+  summary?: string | null;
+  releaseName?: string | null;
+  indexerName?: string | null;
+  dispatchStatus?: string | null;
+  dispatchMessage?: string | null;
+  plannedEpisodes?: number;
+}): SearchNowNotice | null {
+  const planned = payload.plannedEpisodes ?? 0;
+  const episodes = planned > 0 ? `Searching for ${planned} missing episode${planned === 1 ? "" : "s"}, each on its own.` : null;
+  const best = payload.releaseName ? `${payload.releaseName}${payload.indexerName ? ` via ${payload.indexerName}` : ""}` : null;
+
+  if (best && payload.dispatchStatus) {
+    return {
+      tone: payload.dispatchStatus === "sent" ? "success" : payload.dispatchStatus === "failed" ? "error" : "info",
+      title: formatGrabMessage(best, payload),
+      description: episodes ?? undefined
+    };
+  }
+
+  if (best) {
+    return {
+      tone: "info",
+      title: payload.outcome === "held" ? `Held ${best} for review. Nothing was sent.` : `Found ${best}. Nothing was sent.`,
+      description: [payload.summary, episodes].filter(Boolean).join(" ") || undefined
+    };
+  }
+
+  return episodes ? { tone: "info", title: episodes } : null;
+}
