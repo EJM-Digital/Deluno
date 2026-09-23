@@ -1,4 +1,5 @@
 using System.Net.Http.Json;
+using Deluno.Infrastructure.Http;
 using System.Text.Json.Serialization;
 
 namespace Deluno.Integrations.Subtitles.Providers;
@@ -118,7 +119,7 @@ public sealed class OpenSubtitlesSubtitleProvider(IHttpClientFactory httpClientF
 
         var request = new HttpRequestMessage(HttpMethod.Post, $"{BaseUrl}/download")
         {
-            Content = JsonContent.Create(new { file_id = int.Parse(candidate.DownloadToken) })
+            Content = SizedJson.Create(new { file_id = int.Parse(candidate.DownloadToken) })
         };
 
         var response = await SubtitleProviderHttp.SendJsonAsync<OpenSubtitlesDownload>(client, request, Key, cancellationToken);
@@ -145,7 +146,7 @@ public sealed class OpenSubtitlesSubtitleProvider(IHttpClientFactory httpClientF
 
         var request = new HttpRequestMessage(HttpMethod.Post, $"{BaseUrl}/login")
         {
-            Content = JsonContent.Create(new
+            Content = SizedJson.Create(new
             {
                 username = credentials.Username.Trim(),
                 password = credentials.Password

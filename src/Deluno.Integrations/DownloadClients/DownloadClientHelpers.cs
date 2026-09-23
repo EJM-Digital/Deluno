@@ -1,4 +1,5 @@
 using System.Globalization;
+using Deluno.Infrastructure.Http;
 using System.Net;
 using System.Net.Http.Json;
 using System.Text;
@@ -75,7 +76,7 @@ internal static class DownloadClientHelpers
 
     internal static async Task<T?> PostJsonAsync<T>(HttpClient http, Uri uri, object payload, CancellationToken cancellationToken)
     {
-        using var response = await http.PostAsJsonAsync(uri, payload, cancellationToken);
+        using var response = await http.PostSizedJsonAsync(uri, payload, cancellationToken);
         response.EnsureSuccessStatusCode();
         return await response.Content.ReadFromJsonAsync<T>(cancellationToken);
     }

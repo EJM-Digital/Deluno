@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using Deluno.Infrastructure.Http;
 using System.Net.Http.Json;
 using System.Text.Json;
 using Deluno.Platform.Contracts;
@@ -66,7 +67,7 @@ public sealed class ProcessorConnectionService(IHttpClientFactory httpClientFact
         {
             using var request = new HttpRequestMessage(HttpMethod.Post, connection.SubmissionUrl)
             {
-                Content = JsonContent.Create(new
+                Content = SizedJson.Create(new
                 {
                     eventType = "deluno.processor-handoff",
                     handoffId = handoff.Id,
@@ -329,7 +330,7 @@ public sealed class ProcessorConnectionService(IHttpClientFactory httpClientFact
         {
             using var request = new HttpRequestMessage(HttpMethod.Post, endpoints.HandoffOutcome(handoffId))
             {
-                Content = JsonContent.Create(new
+                Content = SizedJson.Create(new
                 {
                     outcome = outcome == ProcessorHandoffOutcome.Imported ? "imported" : "not-imported",
                     occurredUtc = occurredUtc.ToUniversalTime(),

@@ -1,4 +1,5 @@
 using System.Net;
+using Deluno.Infrastructure.Http;
 using System.Net.Http.Json;
 using System.Text.Json;
 using Deluno.Connections;
@@ -460,7 +461,7 @@ public sealed class WeirCompanion(
     private static async Task<JsonElement> PostAsync(HttpClient http, string path, Func<string, object> body, CancellationToken cancellationToken)
     {
         var csrf = (await http.GetFromJsonAsync<JsonElement>("/api/v1/auth/csrf", cancellationToken)).GetProperty("csrf_token").GetString()!;
-        using var response = await http.PostAsJsonAsync(path, body(csrf), cancellationToken);
+        using var response = await http.PostSizedJsonAsync(path, body(csrf), cancellationToken);
         var text = await response.Content.ReadAsStringAsync(cancellationToken);
         if (!response.IsSuccessStatusCode)
         {

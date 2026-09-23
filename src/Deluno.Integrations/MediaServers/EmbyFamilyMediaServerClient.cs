@@ -1,4 +1,5 @@
 using System.Net.Http.Json;
+using Deluno.Infrastructure.Http;
 using System.Text.Json;
 using Deluno.Connections.Contracts;
 using static Deluno.Integrations.MediaServers.MediaServerHttp;
@@ -280,7 +281,7 @@ public abstract class EmbyFamilyMediaServerClient(IHttpClientFactory httpClientF
             Headers(connection),
             connection.Name,
             cancellationToken,
-            JsonContent.Create(new
+            SizedJson.Create(new
             {
                 Updates = item.Paths.Select(path => new { Path = path, UpdateType = "Deleted" }).ToArray()
             }, options: DocumentedNames));
