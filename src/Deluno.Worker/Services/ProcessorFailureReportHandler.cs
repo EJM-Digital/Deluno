@@ -107,14 +107,12 @@ public sealed class ProcessorFailureReportHandler(
             logger.LogWarning(exception, "Could not close the download of {ReleaseName} after {Processor} rejected it.", dispatch.ReleaseName, report.ProcessorName);
         }
 
-        // A processor that refuses everything walks the whole result list:
-        // reject, block, search, grab, download, submit, reject — each cycle a
-        // full download's bandwidth and disk, and nothing anywhere says "this
-        // title has been refused five times, stop" (#576). The blocklist
-        // already counts them, so the count is read rather than stored again.
-        var refusedBefore = (await blockedReleases.ListForAsync(dispatch.MediaType, dispatch.EntityId, cancellationToken))
-            .Count(release => string.Equals(release.ReasonCode, ImportFailurePolicy.ProcessorRejected, StringComparison.OrdinalIgnoreCase));
-        if (refusedBefore >= MostRefusalsBeforeGivingUp)
+        // A processor that refuses everything walks the whole result list
+        // (#576). The scheduled search asks the same question, so stopping here
+        // and saying so is true (#583).
+        var refusedBefore = ProcessorRefusals.Count(
+            await blockedReleases.ListForAsync(dispatch.MediaType, dispatch.EntityId, cancellationToken));
+        if (ProcessorRefusals.StopSearching(refusedBefore))
         {
             var enough = $"{report.ProcessorName} has refused {refusedBefore} copies of this title. Deluno stopped looking for another.";
             await RaiseRecoveryCaseAsync(report, "processor-refuses-every-copy", enough,
@@ -151,14 +149,6 @@ public sealed class ProcessorFailureReportHandler(
             blocked.Id,
             search.Id);
     }
-
-    /// <summary>
-    /// How many copies of one title a processor may refuse before Deluno stops
-    /// fetching more (#576). Enough that a genuinely bad release or two does
-    /// not stop the title arriving; few enough that a processor refusing
-    /// everything cannot spend a fortnight downloading the whole result list.
-    /// </summary>
-    private const int MostRefusalsBeforeGivingUp = 5;
 
     private async Task RaiseRecoveryCaseAsync(
         ProcessorFailureReport report,

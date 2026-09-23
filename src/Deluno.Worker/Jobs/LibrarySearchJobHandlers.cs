@@ -36,7 +36,8 @@ public sealed class MoviesLibrarySearchJobHandler(
     TimeProvider timeProvider,
     IMediaTagStore? mediaTagStore = null,
     IMediaStateRepository? mediaStateRepository = null,
-    IReleasePreferencePlanRepository? releasePreferencePlanRepository = null) : LibrarySearchJobHandler(
+    IReleasePreferencePlanRepository? releasePreferencePlanRepository = null,
+    IBlockedReleaseRepository? blockedReleases = null) : LibrarySearchJobHandler(
         librariesRepository,
         qualityRepository,
         jobQueueRepository,
@@ -48,7 +49,8 @@ public sealed class MoviesLibrarySearchJobHandler(
         timeProvider,
         mediaTagStore,
         mediaStateRepository,
-        releasePreferencePlanRepository)
+        releasePreferencePlanRepository,
+        blockedReleases)
 {
     public override string JobType => LibrarySearchJobTypes.Movies;
 }
@@ -66,7 +68,8 @@ public sealed class TvLibrarySearchJobHandler(
     TimeProvider timeProvider,
     IMediaTagStore? mediaTagStore = null,
     IMediaStateRepository? mediaStateRepository = null,
-    IReleasePreferencePlanRepository? releasePreferencePlanRepository = null) : LibrarySearchJobHandler(
+    IReleasePreferencePlanRepository? releasePreferencePlanRepository = null,
+    IBlockedReleaseRepository? blockedReleases = null) : LibrarySearchJobHandler(
         librariesRepository,
         qualityRepository,
         jobQueueRepository,
@@ -78,7 +81,8 @@ public sealed class TvLibrarySearchJobHandler(
         timeProvider,
         mediaTagStore,
         mediaStateRepository,
-        releasePreferencePlanRepository)
+        releasePreferencePlanRepository,
+        blockedReleases)
 {
     public override string JobType => LibrarySearchJobTypes.Tv;
 }
