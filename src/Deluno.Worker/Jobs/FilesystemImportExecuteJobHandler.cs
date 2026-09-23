@@ -1,6 +1,9 @@
 using System.Text.Json;
 using Deluno.Filesystem;
+using Deluno.Contracts;
 using Deluno.Jobs.Contracts;
+using Deluno.Jobs.Data;
+using Deluno.Libraries.Data;
 using Deluno.Platform.Contracts;
 using Deluno.Worker.Services;
 
@@ -8,7 +11,11 @@ namespace Deluno.Worker.Jobs;
 
 public sealed class FilesystemImportExecuteJobHandler(
     IImportPipelineService importPipelineService,
-    ProcessorOutcomeReporter? processorOutcomes = null) : IJobHandler
+    ProcessorOutcomeReporter? processorOutcomes = null,
+    IDownloadDispatchesRepository? dispatches = null,
+    IBlockedReleaseRepository? blockedReleases = null,
+    IJobScheduler? jobScheduler = null,
+    ILibrariesRepository? libraries = null) : IJobHandler
 {
     public string JobType => "filesystem.import.execute";
 
@@ -44,7 +51,9 @@ public sealed class FilesystemImportExecuteJobHandler(
             // two more times and being counted a third time as a failed job.
             if (ProcessorOutcomeReporter.IsRefusal(result))
             {
-                return $"Not imported: {result.Message}";
+                return await SearchForAnotherCopyAsync(payload, cancellationToken)
+                    ? $"Not imported: {result.Message} Deluno is searching for another copy."
+                    : $"Not imported: {result.Message}";
             }
 
             throw new InvalidOperationException(result.Message);
@@ -61,6 +70,40 @@ public sealed class FilesystemImportExecuteJobHandler(
         }
 
         return result.Response?.Message ?? "Import completed.";
+    }
+
+    /// <summary>
+    /// When the refusal put the release on the blocklist, look for another copy
+    /// of the title now (#604) - the same search a processor's refusal queues.
+    /// A refusal that blocked nothing, a destination conflict say, queues none.
+    /// </summary>
+    private async Task<bool> SearchForAnotherCopyAsync(ImportExecuteRequest payload, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(payload.DispatchId)
+            || dispatches is null || blockedReleases is null || jobScheduler is null)
+        {
+            return false;
+        }
+
+        var dispatch = await dispatches.GetDispatchAsync(payload.DispatchId, cancellationToken);
+        if (dispatch is null || string.IsNullOrWhiteSpace(dispatch.EntityId))
+        {
+            return false;
+        }
+
+        var refused = (await blockedReleases.ListForAsync(dispatch.MediaType, dispatch.EntityId, cancellationToken))
+            .Any(block => string.Equals(block.State, BlockedReleaseStates.Refused, StringComparison.OrdinalIgnoreCase)
+                && string.Equals(block.ReleaseName, dispatch.ReleaseName, StringComparison.OrdinalIgnoreCase));
+        if (!refused)
+        {
+            return false;
+        }
+
+        var libraryName = libraries is null
+            ? dispatch.MediaType
+            : (await libraries.ListLibrariesAsync(cancellationToken)).FirstOrDefault(library => library.Id == dispatch.LibraryId)?.Name ?? dispatch.MediaType;
+        await AnotherCopySearch.EnqueueAsync(jobScheduler, dispatch, libraryName, "import-refused", dispatch.Id, cancellationToken);
+        return true;
     }
 
     private static ImportExecuteRequest? ParseImportPayload(string? payloadJson)
