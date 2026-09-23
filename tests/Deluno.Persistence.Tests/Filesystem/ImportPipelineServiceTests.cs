@@ -354,7 +354,9 @@ public sealed class ImportPipelineServiceTests
             CancellationToken.None);
 
         Assert.False(result.Succeeded);
-        Assert.Equal(400, result.StatusCode);
+        // The move threw; that can clear by itself, so it is retried rather than
+        // treated as a refusal that tells a processor to remove its copy (#603).
+        Assert.Equal(503, result.StatusCode);
         Assert.True(File.Exists(sourcePath));
         Assert.True(Directory.Exists(blockedDestinationPath));
         Assert.Empty(Directory.GetFiles(destinationFolder, "*.deluno-*"));

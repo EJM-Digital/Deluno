@@ -631,7 +631,10 @@ public sealed partial class ImportPipelineService(
                 ioException.Message,
                 "Check whether the file is still downloading, locked by another process, or on an unavailable network path.",
                 cancellationToken);
-            return Failed(StatusCodes.Status400BadRequest, ioException.Message);
+            // Not a refusal (#603). A lock, a file still arriving or a path that went
+            // away can clear by itself, so this is retried, and the processor is not
+            // told "not imported" - which it would take as leave to remove its copy.
+            return Failed(StatusCodes.Status503ServiceUnavailable, ioException.Message);
         }
         catch (Exception exception) when (exception is not OperationCanceledException)
         {

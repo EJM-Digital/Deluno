@@ -38,6 +38,15 @@ public sealed class FilesystemImportExecuteJobHandler(
                     cancellationToken);
             }
 
+            // A refusal is final on the first attempt (#603): a second reads the
+            // same bytes. It is recorded - a recovery case and, for the file
+            // itself, the blocklist - so the job ends here rather than failing
+            // two more times and being counted a third time as a failed job.
+            if (ProcessorOutcomeReporter.IsRefusal(result))
+            {
+                return $"Not imported: {result.Message}";
+            }
+
             throw new InvalidOperationException(result.Message);
         }
 

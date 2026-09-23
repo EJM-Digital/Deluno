@@ -23,19 +23,39 @@ public sealed class FilesystemImportExecuteJobHandlerTests
         await Assert.ThrowsAsync<InvalidOperationException>(() => handler.HandleAsync(job, CancellationToken.None));
     }
 
+    /// <summary>
+    /// #603: a refusal is final, so the job ends with it rather than failing
+    /// twice more and being counted as a failed job beside its recovery case.
+    /// </summary>
     [Fact]
-    public async Task HandleAsync_failed_import_throws_with_the_pipeline_message()
+    public async Task HandleAsync_refused_import_ends_the_job_with_the_pipeline_message()
     {
         var importPipelineService = new Mock<IImportPipelineService>();
         importPipelineService
             .Setup(service => service.ExecuteAsync(It.IsAny<ImportExecuteRequest>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new ImportPipelineResult(false, 400, null, "Destination already exists."));
+            .ReturnsAsync(new ImportPipelineResult(false, 400, null, "The detected runtime is under two minutes, so Deluno is treating this as a likely sample."));
+        var handler = new FilesystemImportExecuteJobHandler(importPipelineService.Object);
+
+        var job = TestJobs.Create("filesystem.import.execute", payloadJson: ValidPayload);
+
+        var message = await handler.HandleAsync(job, CancellationToken.None);
+        Assert.Equal("Not imported: The detected runtime is under two minutes, so Deluno is treating this as a likely sample.", message);
+    }
+
+    /// <summary>A failure that can clear by itself - a lock, a file still arriving - is retried.</summary>
+    [Fact]
+    public async Task HandleAsync_failure_that_can_clear_throws_so_it_is_retried()
+    {
+        var importPipelineService = new Mock<IImportPipelineService>();
+        importPipelineService
+            .Setup(service => service.ExecuteAsync(It.IsAny<ImportExecuteRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ImportPipelineResult(false, 503, null, "The file is being used by another process."));
         var handler = new FilesystemImportExecuteJobHandler(importPipelineService.Object);
 
         var job = TestJobs.Create("filesystem.import.execute", payloadJson: ValidPayload);
 
         var exception = await Assert.ThrowsAsync<InvalidOperationException>(() => handler.HandleAsync(job, CancellationToken.None));
-        Assert.Equal("Destination already exists.", exception.Message);
+        Assert.Equal("The file is being used by another process.", exception.Message);
     }
 
     [Fact]

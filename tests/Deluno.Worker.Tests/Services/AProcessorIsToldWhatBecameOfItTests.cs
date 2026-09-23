@@ -299,6 +299,8 @@ public sealed class AProcessorIsToldWhatBecameOfItTests
     [InlineData(400, 1, 3, true)]
     // Transient, with attempts left.
     [InlineData(500, 1, 3, false)]
+    // A lock or a file still arriving (#603): I/O is not a refusal.
+    [InlineData(503, 1, 3, false)]
     [InlineData(409, 2, 3, false)]
     // Transient, and this is the last attempt, so nothing more is coming.
     [InlineData(500, 3, 3, true)]

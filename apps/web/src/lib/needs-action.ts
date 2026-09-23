@@ -96,7 +96,7 @@ export function needsAction(sources: NeedsActionSources): NeedsAction {
     ...(sources.movieRecovery?.recentCases ?? []).map((item) => ({ ...item, mediaType: "movie" as const })),
     ...(sources.seriesRecovery?.recentCases ?? []).map((item) => ({ ...item, mediaType: "series" as const }))
   ];
-  const queueAttention = (sources.telemetry?.clients ?? []).flatMap((client) => client.queue).filter(queueItemNeedsAttention);
+  const unfilteredQueueAttention = (sources.telemetry?.clients ?? []).flatMap((client) => client.queue).filter(queueItemNeedsAttention);
   // A job with another attempt coming is retrying, not waiting on a person (#562).
   const failedImportJobs = (sources.failedJobs ?? [])
     .filter((job) => job.jobType === "filesystem.import.execute" && !isJobRetrying(job));
@@ -105,6 +105,15 @@ export function needsAction(sources: NeedsActionSources): NeedsAction {
   // A download a recovery case is about is shown once, as that case, which is
   // the row that carries Try again and Dismiss.
   const coveredByCase = new Set(recoveryCases.map((item) => dispatchIdIn(item.detailsJson)).filter((id): id is string => Boolean(id)));
+  // The client's copy of a download a case is about is the same problem too
+  // (#603): a refused sample was listed as its case, its failed job and its
+  // queue item. The case is the row that can act on it.
+  const coveredClientItems = new Set(
+    (sources.dispatches ?? [])
+      .filter((dispatch) => coveredByCase.has(dispatch.id) && dispatch.torrentHashOrItemId)
+      .map((dispatch) => `${dispatch.downloadClientId}:${dispatch.torrentHashOrItemId}`.toLowerCase())
+  );
+  const queueAttention = unfilteredQueueAttention.filter((item) => !coveredClientItems.has(`${item.clientId}:${item.id}`.toLowerCase()));
   const byTitleAndRelease = new Map<string, FailedDownloadRow>();
   for (const dispatch of (sources.dispatches ?? []).filter(isDispatchFailure)) {
     if (coveredByCase.has(dispatch.id)) continue;
