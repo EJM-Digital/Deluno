@@ -38,6 +38,7 @@ import {
   type JobQueueItem,
   type LibraryItem,
   type MovieImportRecoverySummary,
+  type OrphanedDownloadItem,
   type PlatformSettingsSnapshot,
   type ProcessorConnectionItem,
   type ProcessorHandoffItem,
@@ -95,10 +96,11 @@ interface QueueLoaderData {
   processorConnections: ProcessorConnectionItem[];
   processorHandoffs: ProcessorHandoffItem[];
   activityEvents: ActivityEventItem[];
+  orphans: OrphanedDownloadItem[];
 }
 
 export async function queueLoader(): Promise<QueueLoaderData> {
-  const [telemetry, dispatches, movieRecovery, seriesRecovery, libraries, settings, jobs, failedJobs, healthRecords, processorConnections, processorHandoffs, activityEvents] = await Promise.all([
+  const [telemetry, dispatches, movieRecovery, seriesRecovery, libraries, settings, jobs, failedJobs, healthRecords, processorConnections, processorHandoffs, activityEvents, orphans] = await Promise.all([
     fetchJson<DownloadTelemetryOverview>("/api/download-clients/telemetry"),
     fetchPageItems<DownloadDispatchItem>("/api/download-dispatches?pageSize=60"),
     fetchJson<MovieImportRecoverySummary>("/api/movies/import-recovery"),
@@ -118,9 +120,11 @@ export async function queueLoader(): Promise<QueueLoaderData> {
       if (error instanceof ApiRequestError && error.status === 404) return [];
       throw error;
     }),
-    fetchPageItems<ActivityEventItem>("/api/activity?pageSize=80&relatedEntityType=download_dispatch")
+    fetchPageItems<ActivityEventItem>("/api/activity?pageSize=80&relatedEntityType=download_dispatch"),
+    // Orphaned download folders (#588). An older API without the endpoint shows none.
+    fetchJson<OrphanedDownloadItem[]>("/api/download-clients/orphans").catch(() => [])
   ]);
-  return { telemetry, dispatches, movieRecovery, seriesRecovery, libraries, settings, jobs, failedJobs, healthRecords, processorConnections, processorHandoffs, activityEvents };
+  return { telemetry, dispatches, movieRecovery, seriesRecovery, libraries, settings, jobs, failedJobs, healthRecords, processorConnections, processorHandoffs, activityEvents, orphans };
 }
 
 /** One row shape for every kind of thing that has already happened. */
@@ -139,7 +143,7 @@ interface ActivityEntry {
 type DrawerMode = { kind: "queue"; id: string } | { kind: "manual" } | { kind: "activity"; id: string } | { kind: "dispatch"; id: string } | null;
 
 export function QueuePage() {
-  const { telemetry, dispatches, movieRecovery, seriesRecovery, libraries, settings, jobs, failedJobs, healthRecords, processorConnections, processorHandoffs, activityEvents } =
+  const { telemetry, dispatches, movieRecovery, seriesRecovery, libraries, settings, jobs, failedJobs, healthRecords, processorConnections, processorHandoffs, activityEvents, orphans } =
     useLoaderData() as QueueLoaderData;
   const revalidator = useRevalidator();
   const lastDispatchRefresh = useRef(0);
@@ -199,10 +203,10 @@ export function QueuePage() {
   // What needs a person is worked out once, with the sidebar (#556), one row
   // per problem rather than one per record (#557).
   const attention = useMemo(
-    () => needsAction({ movieRecovery, seriesRecovery, telemetry, failedJobs, handoffs: processorHandoffs, dispatches }),
-    [movieRecovery, seriesRecovery, telemetry, failedJobs, processorHandoffs, dispatches]
+    () => needsAction({ movieRecovery, seriesRecovery, telemetry, failedJobs, handoffs: processorHandoffs, dispatches, orphans }),
+    [movieRecovery, seriesRecovery, telemetry, failedJobs, processorHandoffs, dispatches, orphans]
   );
-  const { recoveryCases, queueAttention, failedImportJobs, failedHandoffs: failedProcessorHandoffs, failedDownloads } = attention;
+  const { recoveryCases, queueAttention, failedImportJobs, failedHandoffs: failedProcessorHandoffs, failedDownloads, orphanedDownloads } = attention;
   const activeImportJobs = importJobs.filter((job) => isJobActive(job.status as never)).length;
   const activeProcessorHandoffs = processorHandoffs.filter((handoff) => isWithProcessor(handoff.status));
   const blockedQueueItems = queue.filter((item) => item.healthFindings?.some((finding) => finding.candidateBlocked));
@@ -332,6 +336,20 @@ export function QueuePage() {
       if (!response.ok) throw new Error(await readErrorText(response, "That could not be tried again."));
       const body = (await response.json().catch(() => null)) as { message?: string } | null;
       toast.success(body?.message ?? `${item.title} is being tried again.`);
+    });
+  }
+
+  /** Keep or remove one orphaned download folder (#588). Removing is only offered for what Deluno downloaded. */
+  async function actOnOrphan(orphan: OrphanedDownloadItem, action: "keep" | "remove") {
+    await run(`orphan:${action}:${orphan.path}`, async () => {
+      const response = await authedFetch(`/api/download-clients/orphans/${action}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ path: orphan.path })
+      });
+      const body = (await response.json().catch(() => null)) as { message?: string } | null;
+      if (!response.ok) throw new Error(body?.message || "That could not be done.");
+      toast.success(body?.message ?? (action === "keep" ? `Kept ${orphan.name}.` : `Removed ${orphan.name}.`));
     });
   }
 
@@ -718,6 +736,29 @@ export function QueuePage() {
                   secondary={attempts > 1 ? `${attempts} attempts · ${dispatchFailureDetail(dispatch)}` : dispatchFailureDetail(dispatch)}
                 />
                 <ListCell mobile align="end"><span className="text-[length:var(--type-caption)] text-muted-foreground">Open transfer details</span></ListCell>
+              </ListRow>
+            ))}
+            {orphanedDownloads.map((orphan) => (
+              <ListRow key={`orphan:${orphan.path}`}>
+                <ListNameCell name={orphan.name} sub={`${orphan.libraryName} download folder`} />
+                <ListCell
+                  primary={orphan.delunoGrabbedIt
+                    ? "Left in the download folder. No client, import or hand-off is using it."
+                    : "In the download folder, but Deluno did not download it."}
+                  secondary={`${formatBytes(orphan.sizeBytes)} · ${orphan.path}`}
+                />
+                <ListCell mobile align="end">
+                  <span className="flex justify-end gap-2">
+                    {orphan.delunoGrabbedIt ? (
+                      <Button type="button" variant="outline" size="sm" aria-label={`Remove ${orphan.name}`} onClick={() => void actOnOrphan(orphan, "remove")} disabled={busyKey !== null}>
+                        Remove
+                      </Button>
+                    ) : null}
+                    <Button type="button" variant="outline" size="sm" aria-label={`Keep ${orphan.name}`} onClick={() => void actOnOrphan(orphan, "keep")} disabled={busyKey !== null}>
+                      Keep
+                    </Button>
+                  </span>
+                </ListCell>
               </ListRow>
             ))}
           </ListTable>

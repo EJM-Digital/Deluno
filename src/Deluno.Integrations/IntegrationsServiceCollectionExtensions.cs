@@ -38,6 +38,7 @@ public static class IntegrationsServiceCollectionExtensions
         services.AddSingleton<IDownloadClient, UTorrentDownloadClient>();
         services.AddSingleton<IDownloadClientRegistry, DownloadClientRegistry>();
         services.AddScoped<IDownloadClientTelemetryService, DownloadClientTelemetryService>();
+        services.AddScoped<IOrphanedDownloadService, OrphanedDownloadService>();
         services.AddScoped<IDownloadClientGrabService, DownloadClientGrabService>();
         // Scoped, because the telemetry service it drives is. The schedule and
         // the "clean up now" button resolve the same registration.

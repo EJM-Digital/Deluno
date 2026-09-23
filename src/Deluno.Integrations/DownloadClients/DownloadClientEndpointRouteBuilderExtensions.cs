@@ -27,6 +27,50 @@ public static class DownloadClientEndpointRouteBuilderExtensions
                 new PageRequest(pageSize ?? 30, pageToken), cancellationToken));
         });
 
+        // Orphaned download folders (#588): what sits in a library's completed
+        // folder that nothing claims. Counted in Needs attention; each is kept
+        // or, when Deluno can prove it downloaded it, removed - by a person.
+        endpoints.MapGet("/api/download-clients/orphans", async (
+            HttpContext httpContext,
+            IOrphanedDownloadService orphans,
+            CancellationToken cancellationToken) =>
+        {
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
+            return denied ?? Results.Ok(await orphans.ListAsync(cancellationToken));
+        });
+
+        endpoints.MapPost("/api/download-clients/orphans/keep", async (
+            HttpContext httpContext,
+            [FromBody] OrphanedDownloadRequest request,
+            IOrphanedDownloadService orphans,
+            CancellationToken cancellationToken) =>
+        {
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
+            if (denied is not null)
+            {
+                return denied;
+            }
+
+            var result = await orphans.KeepAsync(request.Path, cancellationToken);
+            return result.Done ? Results.Ok(result) : Results.Conflict(result);
+        });
+
+        endpoints.MapPost("/api/download-clients/orphans/remove", async (
+            HttpContext httpContext,
+            [FromBody] OrphanedDownloadRequest request,
+            IOrphanedDownloadService orphans,
+            CancellationToken cancellationToken) =>
+        {
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
+            if (denied is not null)
+            {
+                return denied;
+            }
+
+            var result = await orphans.RemoveAsync(request.Path, cancellationToken);
+            return result.Done ? Results.Ok(result) : Results.Conflict(result);
+        });
+
         endpoints.MapGet("/api/download-clients/telemetry", async (
             IDownloadClientTelemetryService telemetryService,
             CancellationToken cancellationToken) =>

@@ -1102,7 +1102,7 @@ public sealed class DownloadClientTelemetryService(
         return routeCategoriesByLibrary;
     }
 
-    private static string? TryReadImportSourcePath(string? payloadJson)
+    internal static string? TryReadImportSourcePath(string? payloadJson)
     {
         if (string.IsNullOrWhiteSpace(payloadJson))
         {

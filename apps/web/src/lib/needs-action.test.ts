@@ -83,6 +83,23 @@ describe("needsAction", () => {
     expect(result.failedDownloads).toHaveLength(3);
   });
 
+  it("counts each orphaned download folder once, beside everything else (#588)", () => {
+    const orphan = {
+      path: "C:\\Deluno\\Downloads-Complete\\TV\\Breaking.Bad.S01E01.1080p.WEB-DL.x264-DELUNO.1",
+      name: "Breaking.Bad.S01E01.1080p.WEB-DL.x264-DELUNO.1",
+      libraryId: "library-tv",
+      libraryName: "TV",
+      sizeBytes: 2_800_000_000,
+      lastWrittenUtc: "2026-09-15T23:10:00Z",
+      delunoGrabbedIt: true
+    };
+
+    const result = needsAction({ orphans: [orphan] });
+
+    expect(result.orphanedDownloads).toEqual([orphan]);
+    expect(result.total).toBe(1);
+  });
+
   it("counts one per row, and nothing when nothing needs a person", () => {
     expect(needsAction({}).total).toBe(0);
     expect(needsAction({ dispatches: [dispatch({ id: "fine", status: "sent", grabFailureCode: null })] }).total).toBe(0);
