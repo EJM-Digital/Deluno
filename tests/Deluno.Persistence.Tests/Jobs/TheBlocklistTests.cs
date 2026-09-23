@@ -50,8 +50,9 @@ public sealed class TheBlocklistTests
     }
 
     /// <summary>
-    /// The same name from another indexer is a different offer, and Deluno has
-    /// said nothing about it.
+    /// The same name from another indexer is its own entry, with its own reason
+    /// and its own download to clear up. Whether a search skips it is decided
+    /// from the reason, below.
     /// </summary>
     [Fact]
     public async Task The_same_name_from_another_indexer_is_a_separate_entry()
@@ -76,6 +77,31 @@ public sealed class TheBlocklistTests
         var keys = await blocklist.ListKeysAsync(CancellationToken.None);
         Assert.Contains(BlockedReleaseKeys.For("Arrival.2016.2160p", "Nebula"), keys);
         Assert.DoesNotContain(BlockedReleaseKeys.For("Arrival.2016.2160p", "Orbit"), keys);
+    }
+
+    /// <summary>
+    /// #585: a refusal about the file itself also holds the release from every
+    /// other indexer; one about the download holds only that indexer's copy.
+    /// </summary>
+    [Theory]
+    [InlineData(ImportFailurePolicy.ProcessorRejected, true)]
+    [InlineData(ImportFailurePolicy.NoVideoStream, true)]
+    [InlineData(ImportFailurePolicy.LikelySample, true)]
+    [InlineData(ImportFailurePolicy.MediaProbeRejected, true)]
+    [InlineData(ImportFailurePolicy.ReplacementRejected, true)]
+    [InlineData(ImportFailurePolicy.DownloadStalled, false)]
+    [InlineData(ImportFailurePolicy.ImportFailed, false)]
+    [InlineData(ImportFailurePolicy.MediaProbeUnreadable, false)]
+    public async Task A_refusal_about_the_file_holds_the_release_from_every_indexer(string reasonCode, bool everyIndexer)
+    {
+        using var storage = await StorageAsync();
+        var blocklist = new SqliteBlockedReleaseRepository(storage.Factory, Clock);
+
+        await blocklist.BlockAsync(Release("Arrival.2016.2160p", "Nebula", reasonCode), CancellationToken.None);
+
+        var keys = await blocklist.ListKeysAsync(CancellationToken.None);
+        Assert.Contains(BlockedReleaseKeys.For("Arrival.2016.2160p", "Nebula"), keys);
+        Assert.Equal(everyIndexer, keys.Contains(BlockedReleaseKeys.ForEveryIndexer("Arrival.2016.2160p")));
     }
 
     /// <summary>
