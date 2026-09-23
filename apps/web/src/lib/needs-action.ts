@@ -4,6 +4,7 @@ import type {
   DownloadTelemetryOverview,
   JobQueueItem,
   MovieImportRecoverySummary,
+  OrphanedDownloadItem,
   ProcessorHandoffItem,
   SeriesImportRecoverySummary
 } from "./api";
@@ -74,6 +75,8 @@ export interface NeedsAction {
   failedImportJobs: JobQueueItem[];
   failedHandoffs: ProcessorHandoffItem[];
   failedDownloads: FailedDownloadRow[];
+  /** Folders in a completed-download folder that nothing claims (#588). */
+  orphanedDownloads: OrphanedDownloadItem[];
   /** One per row above, so the number and the list under it cannot disagree. */
   total: number;
 }
@@ -85,6 +88,7 @@ export interface NeedsActionSources {
   failedJobs?: JobQueueItem[];
   handoffs?: ProcessorHandoffItem[];
   dispatches?: DownloadDispatchItem[];
+  orphans?: OrphanedDownloadItem[];
 }
 
 export function needsAction(sources: NeedsActionSources): NeedsAction {
@@ -114,6 +118,7 @@ export function needsAction(sources: NeedsActionSources): NeedsAction {
     }
   }
   const failedDownloads = [...byTitleAndRelease.values()];
+  const orphanedDownloads = sources.orphans ?? [];
 
   return {
     recoveryCases,
@@ -121,7 +126,8 @@ export function needsAction(sources: NeedsActionSources): NeedsAction {
     failedImportJobs,
     failedHandoffs,
     failedDownloads,
-    total: recoveryCases.length + queueAttention.length + failedImportJobs.length + failedHandoffs.length + failedDownloads.length
+    orphanedDownloads,
+    total: recoveryCases.length + queueAttention.length + failedImportJobs.length + failedHandoffs.length + failedDownloads.length + orphanedDownloads.length
   };
 }
 

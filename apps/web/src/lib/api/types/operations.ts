@@ -316,6 +316,20 @@ export interface MonitoringDashboardSnapshot {
   machine: MachineTelemetrySample | null;
 }
 
+/**
+ * Something in a library's completed-download folder that nothing claims
+ * (#588). `delunoGrabbedIt` says whether Deluno can prove it downloaded it,
+ * which is the only case in which it will remove it for you.
+ */
+export interface OrphanedDownloadItem {
+  path: string;
+  name: string;
+  libraryId: string;
+  libraryName: string;
+  sizeBytes: number;
+  lastWrittenUtc: string;
+  delunoGrabbedIt: boolean;
+}
 export interface DownloadDispatchItem {
   id: string;
   libraryId: string;

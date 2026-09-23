@@ -1,0 +1,281 @@
+using Deluno.Jobs.Data;
+using Deluno.Libraries.Data;
+using Deluno.Platform.Data;
+using Microsoft.Extensions.Logging;
+
+namespace Deluno.Integrations.DownloadClients;
+
+/// <summary>
+/// Finds, keeps and removes orphaned download folders (#588). Cleanuparr
+/// removes orphaned and unlinked download files; Deluno notices them, counts
+/// them where a person can see them, and removes one only when asked and only
+/// when it can prove it downloaded it.
+/// </summary>
+public interface IOrphanedDownloadService
+{
+    Task<IReadOnlyList<OrphanedDownloadItem>> ListAsync(CancellationToken cancellationToken);
+
+    Task<OrphanedDownloadAction> KeepAsync(string path, CancellationToken cancellationToken);
+
+    Task<OrphanedDownloadAction> RemoveAsync(string path, CancellationToken cancellationToken);
+}
+
+/// <summary>What happened when a person acted on an orphaned download.</summary>
+public sealed record OrphanedDownloadAction(bool Done, string Message);
+
+public sealed class OrphanedDownloadService(
+    ILibrariesRepository librariesRepository,
+    IPlatformSettingsRepository platformSettingsRepository,
+    IDownloadClientTelemetryService telemetryService,
+    IJobQueueRepository jobQueueRepository,
+    IProcessorRepository processorRepository,
+    IKeptDownloadsRepository keptDownloadsRepository,
+    IActivityFeedRepository activityFeedRepository,
+    TimeProvider timeProvider,
+    ILogger<OrphanedDownloadService> logger)
+    : IOrphanedDownloadService
+{
+    public async Task<IReadOnlyList<OrphanedDownloadItem>> ListAsync(CancellationToken cancellationToken)
+    {
+        var libraries = await librariesRepository.ListLibrariesAsync(cancellationToken);
+        var telemetry = await telemetryService.GetOverviewAsync(cancellationToken);
+        var scans = DownloadFolders(libraries, telemetry)
+            .Select(folder => new DownloadFolderScan(folder.LibraryId, folder.LibraryName, folder.Path, ReadTopLevel(folder.Path)))
+            .ToArray();
+        if (scans.All(scan => scan.Entries.Count == 0))
+        {
+            return [];
+        }
+
+        var settings = await platformSettingsRepository.GetAsync(cancellationToken);
+        var jobs = await jobQueueRepository.ListAsync(600, cancellationToken);
+        var handoffs = await processorRepository.ListProcessorHandoffsAsync(null, 500, cancellationToken);
+        var dispatches = await jobQueueRepository.ListDownloadDispatchesAsync(1000, null, cancellationToken, includeArchived: true);
+
+        var claimed = new List<string>();
+        foreach (var client in telemetry.Clients)
+        {
+            claimed.AddRange(client.Queue.Select(item => item.SourcePath ?? string.Empty));
+            claimed.AddRange(client.History.Select(item => item.SourcePath ?? string.Empty));
+        }
+
+        claimed.AddRange(jobs
+            .Where(job => string.Equals(job.JobType, "filesystem.import.execute", StringComparison.OrdinalIgnoreCase))
+            .Select(job => DownloadClientTelemetryService.TryReadImportSourcePath(job.PayloadJson) ?? string.Empty));
+        claimed.AddRange(handoffs.SelectMany(handoff => new[] { handoff.SourcePath, handoff.OutputPath ?? string.Empty }));
+        // The folders Deluno was configured with are never orphans, whatever
+        // they hold: libraries, processor outputs, other libraries' downloads.
+        claimed.AddRange(libraries.SelectMany(library => new[] { library.RootPath, library.ProcessorOutputPath ?? string.Empty, library.DownloadsPath ?? string.Empty }));
+        claimed.Add(settings.IncompleteDownloadsPath ?? string.Empty);
+
+        var found = OrphanedDownloads.Find(
+            scans,
+            claimed,
+            dispatches.Select(dispatch => dispatch.ReleaseName),
+            await keptDownloadsRepository.ListAsync(cancellationToken),
+            timeProvider.GetUtcNow());
+
+        // Sized only once found: a completed folder can hold hundreds of
+        // seeding torrents, and walking every one of them to report none is
+        // the expensive way to say nothing.
+        return found.Select(item => item with { SizeBytes = SizeOf(item.Path) }).ToArray();
+    }
+
+    public async Task<OrphanedDownloadAction> KeepAsync(string path, CancellationToken cancellationToken)
+    {
+        var item = await FindAsync(path, cancellationToken);
+        if (item is null)
+        {
+            return new OrphanedDownloadAction(false, "That is not an orphaned download any more.");
+        }
+
+        await keptDownloadsRepository.KeepAsync(item.Path, cancellationToken);
+        await activityFeedRepository.RecordActivityAsync(
+            "download.orphan.kept",
+            $"{item.Name} was kept in {item.LibraryName}'s download folder. Deluno will not count it again.",
+            null,
+            null,
+            "library",
+            item.LibraryId,
+            cancellationToken);
+        return new OrphanedDownloadAction(true, $"Kept {item.Name}.");
+    }
+
+    public async Task<OrphanedDownloadAction> RemoveAsync(string path, CancellationToken cancellationToken)
+    {
+        var item = await FindAsync(path, cancellationToken);
+        if (item is null)
+        {
+            return new OrphanedDownloadAction(false, "That is not an orphaned download any more.");
+        }
+
+        if (!item.DelunoGrabbedIt)
+        {
+            return new OrphanedDownloadAction(false, $"Deluno cannot show it downloaded {item.Name}, so it will not remove it. Keep it, or remove it yourself.");
+        }
+
+        // Never inside a library, whatever else is true: a download folder
+        // configured inside a library root must not let this reach media.
+        var libraries = await librariesRepository.ListLibrariesAsync(cancellationToken);
+        var key = OrphanedDownloads.Key(item.Path);
+        if (libraries.Any(library => !string.IsNullOrWhiteSpace(library.RootPath)
+            && key.StartsWith(OrphanedDownloads.Key(library.RootPath) + "/", StringComparison.OrdinalIgnoreCase)))
+        {
+            return new OrphanedDownloadAction(false, $"{item.Name} is inside a library, so Deluno will not remove it.");
+        }
+
+        try
+        {
+            if (Directory.Exists(item.Path))
+            {
+                Directory.Delete(item.Path, recursive: true);
+            }
+            else if (File.Exists(item.Path))
+            {
+                File.Delete(item.Path);
+            }
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            logger.LogWarning(exception, "Could not remove orphaned download {Path}.", item.Path);
+            return new OrphanedDownloadAction(false, $"Deluno could not remove {item.Name}: {exception.Message}");
+        }
+
+        await activityFeedRepository.RecordActivityAsync(
+            "download.orphan.removed",
+            $"{item.Name} was removed from {item.LibraryName}'s download folder ({FormatSize(item.SizeBytes)}). No client, import or hand-off was using it.",
+            null,
+            null,
+            "library",
+            item.LibraryId,
+            cancellationToken);
+        return new OrphanedDownloadAction(true, $"Removed {item.Name}.");
+    }
+
+    private async Task<OrphanedDownloadItem?> FindAsync(string path, CancellationToken cancellationToken)
+    {
+        var key = OrphanedDownloads.Key(path ?? string.Empty);
+        return (await ListAsync(cancellationToken))
+            .FirstOrDefault(item => string.Equals(OrphanedDownloads.Key(item.Path), key, StringComparison.OrdinalIgnoreCase));
+    }
+
+    /// <summary>
+    /// The folders completed downloads land in: each library's own download
+    /// folder when it has one, and every folder the clients report saving into
+    /// (the parent of each item they list). Most libraries set no download
+    /// folder, so the clients' own paths are how Deluno knows where to look.
+    /// A folder inside a library or a processor's output is never scanned:
+    /// everything in it would look unclaimed, and it is media.
+    /// </summary>
+    internal static IReadOnlyList<(string Path, string LibraryId, string LibraryName)> DownloadFolders(
+        IReadOnlyList<Deluno.Libraries.Contracts.LibraryItem> libraries,
+        DownloadTelemetryOverview telemetry)
+    {
+        var protectedRoots = libraries
+            .SelectMany(library => new[] { library.RootPath, library.ProcessorOutputPath ?? string.Empty })
+            .Where(path => !string.IsNullOrWhiteSpace(path))
+            .Select(OrphanedDownloads.Key)
+            .ToArray();
+        var folders = new Dictionary<string, (string Path, string LibraryId, string LibraryName)>(StringComparer.OrdinalIgnoreCase);
+
+        void Add(string? path, Deluno.Libraries.Contracts.LibraryItem? library)
+        {
+            if (string.IsNullOrWhiteSpace(path) || library is null)
+            {
+                return;
+            }
+
+            var key = OrphanedDownloads.Key(path);
+            if (key.Length == 0 || folders.ContainsKey(key)
+                || protectedRoots.Any(root => string.Equals(key, root, StringComparison.OrdinalIgnoreCase)
+                    || key.StartsWith(root + "/", StringComparison.OrdinalIgnoreCase)
+                    || root.StartsWith(key + "/", StringComparison.OrdinalIgnoreCase)))
+            {
+                return;
+            }
+
+            folders[key] = (path.TrimEnd('\\', '/'), library.Id, library.Name);
+        }
+
+        foreach (var library in libraries)
+        {
+            Add(library.DownloadsPath, library);
+        }
+
+        foreach (var client in telemetry.Clients)
+        {
+            var items = client.Queue.Select(item => (item.SourcePath, item.LibraryId, item.MediaType))
+                .Concat(client.History.Select(item => (item.SourcePath, LibraryId: (string?)null, item.MediaType)));
+            foreach (var (sourcePath, libraryId, mediaType) in items)
+            {
+                if (string.IsNullOrWhiteSpace(sourcePath))
+                {
+                    continue;
+                }
+
+                var key = OrphanedDownloads.Key(sourcePath);
+                var slash = key.LastIndexOf('/');
+                if (slash <= 0)
+                {
+                    continue;
+                }
+
+                var library = libraries.FirstOrDefault(item => string.Equals(item.Id, libraryId, StringComparison.OrdinalIgnoreCase));
+                if (library is null)
+                {
+                    var ofType = libraries.Where(item => string.Equals(item.MediaType, mediaType, StringComparison.OrdinalIgnoreCase)).ToArray();
+                    library = ofType.Length == 1 ? ofType[0] : null;
+                }
+
+                // Parent in the client's own separators, so the path read is the one it wrote.
+                var raw = sourcePath.TrimEnd('\\', '/');
+                var cut = Math.Max(raw.LastIndexOf('\\'), raw.LastIndexOf('/'));
+                Add(cut > 0 ? raw[..cut] : null, library);
+            }
+        }
+
+        return folders.Values.ToArray();
+    }
+
+    private IReadOnlyList<DownloadFolderEntry> ReadTopLevel(string downloadsPath)
+    {
+        try
+        {
+            if (!Directory.Exists(downloadsPath))
+            {
+                return [];
+            }
+
+            return new DirectoryInfo(downloadsPath)
+                .EnumerateFileSystemInfos()
+                .Select(info => new DownloadFolderEntry(
+                    info.FullName,
+                    info is DirectoryInfo,
+                    0,
+                    new DateTimeOffset(info.LastWriteTimeUtc, TimeSpan.Zero)))
+                .ToArray();
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            logger.LogWarning(exception, "Could not read download folder {Path}.", downloadsPath);
+            return [];
+        }
+    }
+
+    private static long SizeOf(string path)
+    {
+        try
+        {
+            return Directory.Exists(path)
+                ? new DirectoryInfo(path).EnumerateFiles("*", SearchOption.AllDirectories).Sum(file => file.Length)
+                : File.Exists(path) ? new FileInfo(path).Length : 0;
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            return 0;
+        }
+    }
+
+    private static string FormatSize(long bytes)
+        => bytes >= 1_073_741_824 ? $"{bytes / 1_073_741_824d:0.0} GB" : $"{bytes / 1_048_576d:0} MB";
+}

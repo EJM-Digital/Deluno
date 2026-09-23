@@ -7,6 +7,7 @@ import {
   type IndexerItem,
   type MovieImportRecoverySummary,
   type MovieWantedSummary,
+  type OrphanedDownloadItem,
   type ProcessorHandoffItem,
   type SeriesImportRecoverySummary,
   type SeriesWantedSummary
@@ -63,7 +64,7 @@ export function useAttention(pollMs = 45000) {
   const load = useCallback(async () => {
     setSnapshot((s) => ({ ...s, loading: true }));
     try {
-      const [failed, indexers, movieWanted, seriesWanted, movieRecovery, seriesRecovery, dispatches, handoffs, telemetry] = await Promise.all([
+      const [failed, indexers, movieWanted, seriesWanted, movieRecovery, seriesRecovery, dispatches, handoffs, telemetry, orphans] = await Promise.all([
         fetchFailedJobs().catch(() => []),
         fetchJson<IndexerItem[]>("/api/indexers").catch(() => []),
         fetchJson<MovieWantedSummary>("/api/movies/wanted").catch(() => null),
@@ -73,7 +74,8 @@ export function useAttention(pollMs = 45000) {
         fetchJson<SeriesImportRecoverySummary>("/api/series/import-recovery").catch(() => null),
         fetchPageItems<DownloadDispatchItem>("/api/download-dispatches?pageSize=60").catch(() => []),
         fetchJson<ProcessorHandoffItem[]>("/api/integrations/processors/handoffs?take=30").catch(() => []),
-        fetchJson<DownloadTelemetryOverview>("/api/download-clients/telemetry").catch(() => null)
+        fetchJson<DownloadTelemetryOverview>("/api/download-clients/telemetry").catch(() => null),
+        fetchJson<OrphanedDownloadItem[]>("/api/download-clients/orphans").catch(() => [])
       ]);
 
       // A job Deluno will try again on its own is not one the pill should
@@ -82,7 +84,7 @@ export function useAttention(pollMs = 45000) {
       const failedJobs = stopped.length;
       const deadLetteredJobs = stopped.filter((job) => isJobDeadLettered(job.status as JobStatus)).length;
       const indexerAlerts = indexers.filter((i) => i.isEnabled && i.healthStatus !== "healthy").length;
-      const downloadsNeedingAction = needsAction({ movieRecovery, seriesRecovery, telemetry, handoffs, dispatches }).total;
+      const downloadsNeedingAction = needsAction({ movieRecovery, seriesRecovery, telemetry, handoffs, dispatches, orphans }).total;
 
       setSnapshot({
         failedJobs,
