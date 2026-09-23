@@ -143,7 +143,7 @@ export function DrawerFacts({ items }: { items: Array<{ label: React.ReactNode; 
   return (
     <dl className="grid gap-1.5">
       {items.map((item, index) => (
-        <div key={index} className="flex items-baseline justify-between gap-3 border-b border-hairline py-1.5 last:border-b-0">
+        <div key={index} className="flex min-w-0 items-baseline justify-between gap-3 border-b border-hairline py-1.5 last:border-b-0">
           <dt className="shrink-0 text-[length:var(--type-caption)] text-muted-foreground">{item.label}</dt>
           <dd
             className={cn(

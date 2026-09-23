@@ -432,7 +432,7 @@ export function SettingsMigrationPage() {
                   {Object.entries(openOperation.data)
                     .filter(([, value]) => value)
                     .map(([key, value]) => (
-                      <div key={key} className="flex items-baseline justify-between gap-3 border-b border-hairline py-1.5 last:border-b-0">
+                      <div key={key} className="flex min-w-0 items-baseline justify-between gap-3 border-b border-hairline py-1.5 last:border-b-0">
                         <span className="shrink-0 text-[length:var(--type-caption)] text-muted-foreground">{key}</span>
                         <span className="min-w-0 truncate text-right font-mono text-[length:var(--type-caption)] text-foreground" title={value ?? undefined}>
                           {value}

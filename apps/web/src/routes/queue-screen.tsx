@@ -1259,7 +1259,7 @@ function ProcessorOutcomeSection({
 
 function Fact({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
   return (
-    <div className="flex items-baseline justify-between gap-3 border-b border-hairline py-1.5 last:border-b-0">
+    <div className="flex min-w-0 items-baseline justify-between gap-3 border-b border-hairline py-1.5 last:border-b-0">
       <span className="shrink-0 text-[length:var(--type-caption)] text-muted-foreground">{label}</span>
       <span className={`min-w-0 truncate text-right text-[length:var(--type-caption)] text-foreground ${mono ? "font-mono" : ""}`} title={value}>
         {value}

@@ -65,3 +65,27 @@ test("a report the processor did not take can be said again from the hand-off's 
   await expect(page.getByText("Nothing for Weir to remove.")).toBeVisible();
   expect(posted).toEqual([`/api/integrations/processors/handoffs/${handoff.id}/outcome/send-again`]);
 });
+
+// #581. A processor's output path is long, and it set the width of the whole
+// drawer: a horizontal scrollbar, and the short facts beside it pushed off the
+// right edge so they read as empty.
+test("a long path in a hand-off's drawer is cut short rather than widening the drawer", async ({ page }) => {
+  await authenticateAndNavigate(page, "/");
+  const longPath = `C:\\Deluno\\Weir3\\Refined\\Movies\\${handoff.releaseName}\\${handoff.releaseName}.mkv`;
+  await page.route("**/api/integrations/processors/handoffs?**", async (route) => {
+    await route.fulfill({ contentType: "application/json", body: JSON.stringify([{ ...handoff, outputPath: longPath }]) });
+  });
+
+  await page.goto("/queue");
+  await page.getByRole("row").filter({ hasText: handoff.releaseName }).first().click();
+  const drawer = page.getByRole("dialog").last();
+  await expect(drawer.getByText("What Weir was told")).toBeVisible();
+
+  const scrollsSideways = await drawer.evaluate((root) =>
+    [root, ...root.querySelectorAll("*")].some((element) => {
+      const style = getComputedStyle(element);
+      return /(auto|scroll)/.test(style.overflowX) && element.scrollWidth > element.clientWidth + 1;
+    })
+  );
+  expect(scrollsSideways).toBe(false);
+});
