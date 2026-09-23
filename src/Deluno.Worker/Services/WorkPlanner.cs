@@ -158,6 +158,20 @@ public sealed class WorkPlanner(
             "Processor outcome pass failed.",
             cancellationToken);
 
+    /// <summary>
+    /// Reads each indexer's newest releases and searches for any wanted title
+    /// they are for (#587). Rides the automation lane with the search planner,
+    /// because it is searching.
+    /// </summary>
+    public Task RunRssSyncPassAsync(
+        RssSyncService rssSync,
+        CancellationToken cancellationToken)
+        => RunScheduledPassAsync(
+            SystemTasks.RssSync,
+            () => rssSync.SyncAsync(cancellationToken),
+            "RSS sync pass failed.",
+            cancellationToken);
+
     public Task RunDispatchRetryPassAsync(
         IDownloadRetryService downloadRetryService,
         CancellationToken cancellationToken)

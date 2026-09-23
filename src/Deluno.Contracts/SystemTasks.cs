@@ -84,6 +84,7 @@ public static class SystemTasks
     public const string BlockedReleaseCleanup = "blocked.release.cleanup";
     public const string ProcessorHealth = "processor.health";
     public const string ProcessorOutcomes = "processor.outcomes";
+    public const string RssSync = "rss.sync";
 
     /// <summary>
     /// Ordered as somebody reading the screen would want them: the things that
@@ -92,6 +93,12 @@ public static class SystemTasks
     /// </summary>
     public static readonly IReadOnlyList<SystemTask> All =
     [
+        // Fifteen minutes, as Radarr and Sonarr read feeds. A feed read costs
+        // one request per indexer and finds a new release the moment it is
+        // listed, where the search cycle finds it on the title's turn (#587).
+        new(RssSync, "Watch indexers for new releases",
+            "Reads each indexer's newest releases and searches straight away for any title you want, instead of waiting for its turn in the search cycle.",
+            TimeSpan.FromMinutes(15)),
         new(ImportAutomation, "Import finished downloads",
             "Moves anything a download client has finished into your library.",
             TimeSpan.FromSeconds(15)),

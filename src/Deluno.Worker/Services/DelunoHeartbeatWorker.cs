@@ -261,6 +261,7 @@ public sealed class DelunoHeartbeatWorker(
                 .ToArray();
 
             await jobQueueRepository.PlanLibrarySearchesAsync(automationPlans, stoppingToken);
+            await workPlanner.RunRssSyncPassAsync(services.GetRequiredService<RssSyncService>(), stoppingToken);
             await workPlanner.PlanMovieCollectionSyncAsync(
                 jobScheduler,
                 movieCollectionsRepository,

@@ -120,7 +120,7 @@ public abstract class LibrarySearchJobHandler(
             scopeFilters))
             .Where(candidate => MatchesTarget(payload, candidate.MovieId))
             .ToArray();
-        IReadOnlyList<BlockedRelease> refusals = ignoreRetryWindow ? [] : await ListRefusalsAsync(cancellationToken);
+        IReadOnlyList<BlockedRelease> refusals = PersonAsked(payload) ? [] : await ListRefusalsAsync(cancellationToken);
         var matchedCount = 0;
         var blockedCount = 0;
         var checkedCount = 0;
@@ -161,7 +161,7 @@ public abstract class LibrarySearchJobHandler(
                 continue;
             }
 
-            if (!ignoreRetryWindow && RefusedTooOften(refusals, "movies", candidate.MovieId) is { } movieRefusals)
+            if (RefusedTooOften(refusals, "movies", candidate.MovieId) is { } movieRefusals)
             {
                 heldCount++;
                 var heldNextEligibleUtc = now.AddHours(Math.Max(1, payload.RetryDelayHours));
@@ -358,9 +358,8 @@ public abstract class LibrarySearchJobHandler(
 
     /// <summary>
     /// How many copies the processor has refused, when that is enough to stop
-    /// fetching another (#583); null otherwise. Routine searching only: a
-    /// search a person or a just-refused release asked for is theirs to make.
-    /// The skip is recorded like any other search, so the title moves to the
+    /// fetching another (#583); null otherwise. Every search but a person's
+    /// (see <see cref="PersonAsked"/>). The skip is recorded like any other search, so the title moves to the
     /// back of the queue instead of taking the run's budget every time.
     /// </summary>
     private static int? RefusedTooOften(IReadOnlyList<BlockedRelease> refusals, string mediaType, string entityId)
@@ -370,6 +369,14 @@ public abstract class LibrarySearchJobHandler(
             && string.Equals(release.EntityId, entityId, StringComparison.OrdinalIgnoreCase)));
         return ProcessorRefusals.StopSearching(refused) ? refused : null;
     }
+
+    /// <summary>
+    /// Whether a person asked for this search. Theirs to make whatever the
+    /// processor has refused; every other search - the schedule, RSS sync, a
+    /// follow-up to a refusal - is held (#583, #587).
+    /// </summary>
+    private static bool PersonAsked(JobPayloads.LibrarySearchPayload payload)
+        => string.Equals(payload.TriggeredBy, "manual", StringComparison.OrdinalIgnoreCase);
 
     /// <summary>The blocklist, read once per run rather than once per title.</summary>
     private async Task<IReadOnlyList<BlockedRelease>> ListRefusalsAsync(CancellationToken cancellationToken)
@@ -461,7 +468,7 @@ public abstract class LibrarySearchJobHandler(
         var seriesRetryDelayed = seriesIgnoreRetryWindow
             ? 0
             : await seriesCatalogRepository.CountRetryDelayedWantedAsync(payload.LibraryId, now, cancellationToken, searchStatus);
-        IReadOnlyList<BlockedRelease> seriesRefusals = seriesIgnoreRetryWindow ? [] : await ListRefusalsAsync(cancellationToken);
+        IReadOnlyList<BlockedRelease> seriesRefusals = PersonAsked(payload) ? [] : await ListRefusalsAsync(cancellationToken);
         var seriesMatchedCount = 0;
         var seriesBlockedCount = 0;
         var seriesCheckedCount = 0;
@@ -503,7 +510,7 @@ public abstract class LibrarySearchJobHandler(
                 continue;
             }
 
-            if (!seriesIgnoreRetryWindow && RefusedTooOften(seriesRefusals, "tv", candidate.SeriesId) is { } seriesRefusedCount)
+            if (RefusedTooOften(seriesRefusals, "tv", candidate.SeriesId) is { } seriesRefusedCount)
             {
                 seriesHeldCount++;
                 var heldNextEligibleUtc = now.AddHours(Math.Max(1, payload.RetryDelayHours));
