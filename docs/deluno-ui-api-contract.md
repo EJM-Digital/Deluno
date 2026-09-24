@@ -44,6 +44,7 @@ Implemented REST endpoints:
 - `GET /api/system/logs`
 - `GET /api/system/jobs`
 - `GET /api/system/lan-access`: whether other devices on the network can reach Deluno (`open`, `blocked`, or `notChecked` on a host with no firewall for Deluno to manage)
+- `GET /api/libraries/{libraryId}/folder-chain`: the library's folders checked end to end. For each routed download client it shows the category Deluno sends, whether the client has it, the folder the client really saves it to (read from the client, through path mappings), and whether that is the library's downloads folder. Then come the downloads folder, the processor's ready folder when a processor is used, and the library root. Each link is `ok`, `problem` or `unknown`, with a message that says what to change.
 - `POST /api/trackers/cloudflare-helper/test` with `{ url }`: whether a FlareSolverr-compatible Cloudflare helper answers at that address. The address itself is the `cloudflareHelperUrl` platform setting, and the tracker engine uses it only for a tracker that answers with a Cloudflare check.
 - `POST /api/system/lan-access/allow`: adds Deluno's Windows Firewall rule for its port on every network profile. If Deluno lacks administrator rights, Windows asks for permission on the computer it runs on.
 - `GET /api/monitoring/dashboard`

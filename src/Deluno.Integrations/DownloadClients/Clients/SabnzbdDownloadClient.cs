@@ -129,7 +129,7 @@ public sealed class SabnzbdDownloadClient(IHttpClientFactory httpClientFactory) 
             // a name existing is not what makes a download land where Deluno is
             // watching. This one carries each category's folder.
             using var response = await http.GetAsync(
-                new Uri(baseUri, $"api?mode=get_config&section=categories&output=json&apikey={Uri.EscapeDataString(apiKey)}"),
+                new Uri(baseUri, $"api?mode=get_config&output=json&apikey={Uri.EscapeDataString(apiKey)}"),
                 cancellationToken);
             if (!response.IsSuccessStatusCode)
             {
@@ -144,13 +144,18 @@ public sealed class SabnzbdDownloadClient(IHttpClientFactory httpClientFactory) 
 
             if (found)
             {
+                // A category's folder is usually relative ("Movies"): SABnzbd
+                // puts it inside its completed folder. The full path is the one
+                // that has to match the library's (#616).
+                var completeDir = ReadCompleteDir(document.RootElement);
+                var folder = ClientPaths.ClientFolder(completeDir, entry.Directory);
                 return string.IsNullOrWhiteSpace(entry.Directory)
                     ? new(client.Id, client.Name, normalizedCategory, DownloadClientCategoryStatuses.Configuration,
-                        $"SABnzbd has a category named {normalizedCategory}, but it has no folder, so downloads will go to SABnzbd's default completed folder rather than one Deluno watches. Set a folder on the category in SABnzbd.",
-                        Supported: true, Found: true, SavePath: null)
+                        $"SABnzbd has a category named {normalizedCategory}, but it has no folder, so its downloads go straight into SABnzbd's completed folder{(folder is null ? string.Empty : $" ({folder})")} with everything else. Set a folder on the category in SABnzbd.",
+                        Supported: true, Found: true, SavePath: folder)
                     : new(client.Id, client.Name, normalizedCategory, DownloadClientCategoryStatuses.Ready,
-                        $"SABnzbd has a category named {normalizedCategory}, saving to {entry.Directory}.",
-                        Supported: true, Found: true, SavePath: entry.Directory);
+                        $"SABnzbd has a category named {normalizedCategory}, saving to {folder ?? entry.Directory}.",
+                        Supported: true, Found: true, SavePath: folder ?? entry.Directory);
             }
             return new(
                 client.Id,
@@ -378,6 +383,15 @@ public sealed class SabnzbdDownloadClient(IHttpClientFactory httpClientFactory) 
     /// Each configured category with the folder it writes to, from
     /// <c>mode=get_config&amp;section=categories</c>.
     /// </summary>
+    private static string? ReadCompleteDir(JsonElement root)
+        => root.ValueKind == JsonValueKind.Object
+           && root.TryGetProperty("config", out var config)
+           && config.TryGetProperty("misc", out var misc)
+           && misc.TryGetProperty("complete_dir", out var dir)
+           && dir.ValueKind == JsonValueKind.String
+            ? dir.GetString()
+            : null;
+
     private static IEnumerable<(string? Name, string? Directory)> ReadCategoryEntries(JsonElement root)
     {
         if (root.ValueKind != JsonValueKind.Object ||

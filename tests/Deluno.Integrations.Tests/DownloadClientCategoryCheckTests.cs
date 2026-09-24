@@ -45,9 +45,10 @@ public sealed class DownloadClientCategoryCheckTests
     {
         var handler = new StubHandler(request =>
         {
+            // The whole config: a category's folder is relative to the
+            // completed folder, which lives under misc (#616).
             Assert.Contains("mode=get_config", request.RequestUri?.Query, StringComparison.OrdinalIgnoreCase);
-            Assert.Contains("section=categories", request.RequestUri?.Query, StringComparison.OrdinalIgnoreCase);
-            return JsonResponse("{\"config\":{\"categories\":[{\"name\":\"movies\",\"dir\":\"films\"},{\"name\":\"anime\",\"dir\":\"anime-in\"}]}}");
+            return JsonResponse("{\"config\":{\"misc\":{\"complete_dir\":\"C:\\\\Downloads\\\\Completed\"},\"categories\":[{\"name\":\"movies\",\"dir\":\"films\"},{\"name\":\"anime\",\"dir\":\"anime-in\"}]}}");
         });
         var client = CreateClient("sabnzbd");
 
@@ -57,8 +58,8 @@ public sealed class DownloadClientCategoryCheckTests
         Assert.True(result.Supported);
         Assert.True(result.Found);
         Assert.Equal(DownloadClientCategoryStatuses.Ready, result.Status);
-        Assert.Equal("anime-in", result.SavePath);
-        Assert.Contains("anime-in", result.Message);
+        Assert.Equal(@"C:\Downloads\Completed\anime-in", result.SavePath);
+        Assert.Contains(@"C:\Downloads\Completed\anime-in", result.Message);
     }
 
     /// <summary>
