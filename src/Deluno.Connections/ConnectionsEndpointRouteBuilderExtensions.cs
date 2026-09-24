@@ -894,6 +894,8 @@ public static class ConnectionsEndpointRouteBuilderExtensions
             };
 
             using var request = new HttpRequestMessage(HttpMethod.Get, uri);
+            // As searches identify themselves; NZBGeek refuses a request that does not (#625).
+            request.Headers.UserAgent.ParseAdd(IndexerApiEndpoint.UserAgent);
             using var response = await client.SendAsync(request, cancellationToken);
 
             if ((int)response.StatusCode >= 200 && (int)response.StatusCode < 400)

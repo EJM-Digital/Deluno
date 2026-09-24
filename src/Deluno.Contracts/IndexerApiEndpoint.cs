@@ -12,6 +12,13 @@ namespace Deluno.Contracts;
 public static class IndexerApiEndpoint
 {
     /// <summary>
+    /// What Deluno calls itself to an indexer (#625). NZBGeek refuses a request
+    /// with no User-Agent ("Invalid User Agent"), and neither searches nor the
+    /// connection test sent one.
+    /// </summary>
+    public const string UserAgent = "Deluno/1.0 (+https://github.com/jampat000/Deluno)";
+
+    /// <summary>
     /// The base URL with <c>/api</c> on the end, unless it already has it or
     /// carries its own query, which means someone gave the full endpoint.
     /// </summary>

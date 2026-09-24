@@ -1,3 +1,4 @@
+using Deluno.Contracts;
 using Microsoft.Extensions.DependencyInjection;
 using Deluno.Integrations.DownloadClients;
 using Deluno.Integrations.DownloadClients.Clients;
@@ -28,7 +29,11 @@ public static class IntegrationsServiceCollectionExtensions
         services.AddSingleton<Search.Trackers.TrackerIndexers>();
         services.AddSingleton<Deluno.Connections.Contracts.ITrackerIndexerTester>(provider => provider.GetRequiredService<Search.Trackers.TrackerIndexers>());
         services.AddScoped<IAcquisitionDecisionPipeline, AcquisitionDecisionPipeline>();
-        services.AddHttpClient("indexers", client => client.Timeout = TimeSpan.FromSeconds(10));
+        services.AddHttpClient("indexers", client =>
+        {
+            client.Timeout = TimeSpan.FromSeconds(10);
+            client.DefaultRequestHeaders.UserAgent.ParseAdd(IndexerApiEndpoint.UserAgent);
+        });
         services.AddHttpClient("download-clients", client => client.Timeout = TimeSpan.FromSeconds(8));
         services.AddHttpClient("processor-connections", client => client.Timeout = TimeSpan.FromSeconds(10));
         // Longer than an indexer's ten seconds on purpose: two of the subtitle

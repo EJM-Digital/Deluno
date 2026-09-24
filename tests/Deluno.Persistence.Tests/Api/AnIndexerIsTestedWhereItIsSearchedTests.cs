@@ -48,6 +48,18 @@ public sealed class AnIndexerIsTestedWhereItIsSearchedTests
         var body = await response.Content.ReadFromJsonAsync<JsonElement>();
         Assert.Equal("healthy", body.GetProperty("healthStatus").GetString());
         Assert.StartsWith("/api", server.LastPath);
+        Assert.Equal(IndexerApiEndpoint.UserAgent, server.LastUserAgent);
+    }
+
+    /// <summary>#625: NZBGeek refuses a request with no User-Agent, so searches send Deluno's.</summary>
+    [Fact]
+    public async Task Searches_tell_the_indexer_they_are_Deluno()
+    {
+        await using var app = await ApplicationTestHost.StartAsync();
+
+        var http = app.Services.GetRequiredService<IHttpClientFactory>().CreateClient("indexers");
+
+        Assert.Equal(IndexerApiEndpoint.UserAgent, http.DefaultRequestHeaders.UserAgent.ToString());
     }
 
     private sealed class FakeServer(WebApplication app, string baseUrl) : IAsyncDisposable
@@ -55,6 +67,8 @@ public sealed class AnIndexerIsTestedWhereItIsSearchedTests
         public string BaseUrl => baseUrl;
 
         public string? LastPath { get; set; }
+
+        public string? LastUserAgent { get; set; }
 
         public ValueTask DisposeAsync() => app.DisposeAsync();
     }
@@ -69,6 +83,7 @@ public sealed class AnIndexerIsTestedWhereItIsSearchedTests
         app.Run(async context =>
         {
             server!.LastPath = context.Request.Path.Value;
+            server.LastUserAgent = context.Request.Headers.UserAgent.ToString();
             if (context.Request.Path.StartsWithSegments("/api"))
             {
                 context.Response.ContentType = "application/rss+xml";
