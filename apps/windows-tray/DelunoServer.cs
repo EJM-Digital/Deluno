@@ -1,4 +1,5 @@
 using Deluno.Api;
+using Deluno.Api.Network;
 using Deluno.Api.Backup;
 using Deluno.Api.Updates;
 using Deluno.Filesystem;
@@ -29,7 +30,10 @@ public sealed class DelunoServer : IDisposable
     private CancellationTokenSource? _cts;
     public int? ListeningPort { get; private set; }
     public IReadOnlyList<string> ReachableUrls { get; private set; } = Array.Empty<string>();
-    public FirewallRuleStatus? FirewallStatus { get; private set; }
+    public LanAccessStatus? LanAccess { get; private set; }
+
+    /// <summary>Deluno's firewall rule for the port it is listening on (#623).</summary>
+    public WindowsFirewallLanAccess? Firewall { get; private set; }
 
     /// <summary>Optional port override (from --port CLI arg). Takes precedence over AppSettings.Port.</summary>
     public static int? PortOverride { get; set; }
@@ -55,6 +59,8 @@ public sealed class DelunoServer : IDisposable
         // ListenAnyIP() above is sufficient.
 
         builder.Services.AddSingleton<IUpdateOrchestrator, VelopackUpdateOrchestrator>();
+        Firewall = new WindowsFirewallLanAccess(port);
+        builder.Services.AddSingleton<ILanAccess>(Firewall);
         builder.Services.AddHostedService<TrayUpdateBackgroundService>();
         builder.Services.AddDelunoInfrastructure(builder.Configuration);
         builder.Services.AddDelunoApplicationModules();
@@ -165,20 +171,21 @@ public sealed class DelunoServer : IDisposable
     }
 
     /// <summary>
-    /// Best-effort: add a Windows Firewall inbound allow rule for the listen
-    /// port, then write a startup-log entry with all reachable URLs so the
-    /// user can see at a glance what address to type into a remote browser.
-    /// Failures here never fail the start — server is already running.
+    /// Reads whether the firewall lets other devices reach Deluno, then writes a
+    /// startup-log entry with every address Deluno answers on. It only looks:
+    /// adding the rule asks Windows for permission, which happens once after
+    /// install and from the tray menu or System, never on its own at startup.
+    /// Failures here never fail the start: the server is already running.
     /// </summary>
     private async Task EnsureFirewallRuleAndLogAsync(int port, string dataRoot, CancellationToken ct)
     {
         try
         {
-            FirewallStatus = await WindowsFirewallService.EnsureInboundAllowAsync(port, ct).ConfigureAwait(false);
+            LanAccess = await Firewall!.GetStatusAsync(ct).ConfigureAwait(false);
         }
-        catch
+        catch (Exception ex)
         {
-            FirewallStatus = new FirewallRuleStatus(FirewallRuleState.Failed, $"Deluno (port {port})", "exception during netsh");
+            LanAccess = new LanAccessStatus(LanAccessStates.Blocked, port, WindowsFirewallLanAccess.RuleNameFor(port), ex.Message, CanAllow: true);
         }
 
         try
@@ -194,17 +201,7 @@ public sealed class DelunoServer : IDisposable
             sb.AppendLine("  Reachable at:");
             foreach (var url in ReachableUrls) sb.AppendLine($"    {url}");
             sb.Append("  Firewall: ");
-            sb.AppendLine(FirewallStatus?.State switch
-            {
-                FirewallRuleState.AlreadyExists => $"{FirewallStatus.RuleName} already exists",
-                FirewallRuleState.Created => $"{FirewallStatus.RuleName} created (LAN access allowed)",
-                FirewallRuleState.RequiresElevation =>
-                    $"{FirewallStatus.RuleName} could not be created — needs admin. " +
-                    "Right-click the tray icon and choose 'Run as administrator' once, or add the rule manually: " +
-                    $"netsh advfirewall firewall add rule name=\"{FirewallStatus.RuleName}\" dir=in action=allow protocol=TCP localport={port}",
-                FirewallRuleState.Failed => $"{FirewallStatus.RuleName} failed: {FirewallStatus.Message}",
-                _ => "(no status)"
-            });
+            sb.AppendLine(LanAccess is null ? "(not checked)" : $"{LanAccess.State}: {LanAccess.Message}");
             sb.AppendLine();
             File.AppendAllText(logPath, sb.ToString());
         }

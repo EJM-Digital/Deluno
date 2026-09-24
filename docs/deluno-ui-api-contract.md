@@ -43,6 +43,8 @@ Implemented REST endpoints:
 - `GET /api/system/health`
 - `GET /api/system/logs`
 - `GET /api/system/jobs`
+- `GET /api/system/lan-access`: whether other devices on the network can reach Deluno (`open`, `blocked`, or `notChecked` on a host with no firewall for Deluno to manage)
+- `POST /api/system/lan-access/allow`: adds Deluno's Windows Firewall rule for its port on every network profile. If Deluno lacks administrator rights, Windows asks for permission on the computer it runs on.
 - `GET /api/monitoring/dashboard`
 - `GET /api/monitoring/alerts`
 - `GET /api/monitoring/diagnostics?query=&category=&severity=&sinceUtc=&pageSize=&pageToken=`

@@ -4,6 +4,7 @@ using Deluno.Api;
 using Deluno.Api.Backup;
 using Deluno.Api.Downloads;
 using Deluno.Api.Monitoring;
+using Deluno.Api.Network;
 using Deluno.Contracts;
 using Deluno.Filesystem;
 using Deluno.Infrastructure;
@@ -56,6 +57,13 @@ builder.WebHost.ConfigureKestrel(options =>
         options.ListenLocalhost(listenPort);
     }
 });
+
+// A Deluno open to the network on Windows looks after its firewall rule, and
+// System says when other devices are turned away (#623).
+if (allowLan && OperatingSystem.IsWindows())
+{
+    builder.Services.AddSingleton<ILanAccess>(new WindowsFirewallLanAccess(listenPort));
+}
 
 builder.Services.AddDelunoInfrastructure(builder.Configuration);
 // Login is the one endpoint an unauthenticated caller can hit repeatedly, and
