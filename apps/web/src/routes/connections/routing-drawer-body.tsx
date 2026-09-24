@@ -6,6 +6,7 @@ import { Input } from "../../components/ui/input";
 import { Switch } from "../../components/ui/switch";
 import type { DownloadClientCategoryCheckResult } from "../../lib/api";
 import { healthChip, protocolLabel } from "./format";
+import { FolderChainSection } from "./folder-chain-section";
 export function RoutingDrawerBody({
   library,
   indexers,
@@ -18,7 +19,8 @@ export function RoutingDrawerBody({
   onToggleClient,
   onCategoryChange,
   onCheckCategory,
-  busy
+  busy,
+  folderCheckKey
 }: {
   library: LibraryItem;
   indexers: IndexerItem[];
@@ -32,6 +34,8 @@ export function RoutingDrawerBody({
   onCategoryChange: (id: string, value: string) => void;
   onCheckCategory: (id: string) => void;
   busy: string | null;
+  /** Changes when the routing is saved, so the folder check reads it again. */
+  folderCheckKey?: unknown;
 }) {
   const isTv = library.mediaType === "tv";
   const relevantIndexers = indexers.filter((item) => (item.mediaScope ?? "both") === "both" || (item.mediaScope ?? "both") === (isTv ? "tv" : "movies"));
@@ -137,6 +141,7 @@ export function RoutingDrawerBody({
         )}
         {targets.length === 0 && sources.length > 0 && clients.length ? <p className="text-[length:var(--type-caption)] text-warning">No download client selected — approved releases have nowhere to go.</p> : null}
       </DrawerSection>
+      <FolderChainSection libraryId={library.id} refreshKey={folderCheckKey} />
     </>
   );
 }

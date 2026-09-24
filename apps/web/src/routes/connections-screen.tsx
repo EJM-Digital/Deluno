@@ -757,6 +757,7 @@ export function IndexersPage() {
         {drawer.kind === "routing" && routingLibrary ? (
           <RoutingDrawerBody
             library={routingLibrary}
+            folderCheckKey={JSON.stringify(routeInitial)}
             indexers={indexers}
             clients={clients}
             sources={routeSources}
