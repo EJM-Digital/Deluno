@@ -194,7 +194,7 @@ public sealed class MigrationRunnerTests
         Assert.Equal("notification_webhook_failure_details", await ReadScalarAsync<string>(platformConnection, "SELECT name FROM schema_migrations WHERE version = 46;"));
 
         await using var jobsConnection = await storage.Factory.OpenConnectionAsync(DelunoDatabaseNames.Jobs);
-        Assert.Equal(32, await ReadScalarAsync<int>(jobsConnection, "SELECT COUNT(*) FROM schema_migrations;"));
+        Assert.Equal(33, await ReadScalarAsync<int>(jobsConnection, "SELECT COUNT(*) FROM schema_migrations;"));
         Assert.Equal("initial_schema", await ReadScalarAsync<string>(jobsConnection, "SELECT name FROM schema_migrations WHERE version = 1;"));
         Assert.Equal("job_integrity", await ReadScalarAsync<string>(jobsConnection, "SELECT name FROM schema_migrations WHERE version = 2;"));
         Assert.Equal("download_outcome_tracking", await ReadScalarAsync<string>(jobsConnection, "SELECT name FROM schema_migrations WHERE version = 3;"));
@@ -270,6 +270,65 @@ public sealed class MigrationRunnerTests
         await using var after = await storage.Factory.OpenConnectionAsync(DelunoDatabaseNames.Jobs);
         Assert.Equal("2026-09-20T01:00:00Z", await ReadScalarAsync<string>(after, "SELECT client_completed_utc FROM download_dispatches WHERE id = 'hooked';"));
         Assert.Equal(0, await ReadScalarAsync<int>(after, "SELECT COUNT(*) FROM download_dispatches WHERE id = 'unseen' AND client_completed_utc IS NOT NULL;"));
+    }
+
+    /// <summary>
+    /// #620: a grab retry job nothing would ever run is cleared, and every other
+    /// job stays where it was.
+    /// </summary>
+    [Fact]
+    public async Task Queued_grab_retries_no_lane_would_run_are_cleared()
+    {
+        using var storage = TestStorage.Create();
+        var migrator = new SqliteDatabaseMigrator(
+            storage.Factory,
+            new FixedTimeProvider(DateTimeOffset.Parse("2026-09-24T00:00:00Z")));
+        await migrator.ApplyAsync(
+            DelunoDatabaseNames.Jobs,
+            Deluno.Jobs.Migrations.JobsDatabaseMigrations.All.Where(migration => migration.Version < 33).ToArray(),
+            CancellationToken.None);
+
+        await using (var before = await storage.Factory.OpenConnectionAsync(DelunoDatabaseNames.Jobs))
+        {
+            await using var insert = before.CreateCommand();
+            insert.CommandText =
+                """
+                INSERT INTO job_queue (id, job_type, source, status, payload_json, attempts, created_utc, scheduled_utc, dedupe_key)
+                VALUES
+                    ('orphan', 'download.grab.retry', 'download-client', 'queued', '{"downloadUrl":"https://indexer.invalid/get?apikey=secret"}', 0,
+                     '2026-09-20T00:00:00Z', '2026-09-20T00:30:00Z', 'download.grab.retry:dispatch-1'),
+                    ('search', 'movies.search', 'schedule', 'queued', NULL, 0,
+                     '2026-09-20T00:00:00Z', '2026-09-20T00:00:00Z', NULL);
+
+                INSERT INTO download_dispatches (
+                    id, library_id, media_type, entity_type, entity_id, release_name, indexer_name,
+                    download_client_id, download_client_name, status, created_utc, grab_status, grab_failure_json
+                ) VALUES
+                    ('timed-out', 'movies', 'movies', 'movie', 'movie-1', 'A.2010.1080p', 'Fixture', 'client', 'Deluge', 'failed',
+                     '2026-09-20T00:00:00Z', 'failed',
+                     '{"Kind":"Timeout","RetryState":"RetryScheduled","RetryAfterUtc":"2026-09-20T00:30:00+00:00","Message":"No answer."}'),
+                    ('slowed', 'movies', 'movies', 'movie', 'movie-2', 'B.2010.1080p', 'Fixture', 'client', 'Deluge', 'failed',
+                     '2026-09-20T00:00:00Z', 'failed',
+                     '{"Kind":"RateLimit","RetryState":"RetryScheduled","RetryAfterUtc":"2026-09-20T00:10:00+00:00","Message":"Slow down."}'),
+                    ('refused', 'movies', 'movies', 'movie', 'movie-3', 'C.2010.1080p', 'Fixture', 'client', 'Deluge', 'failed',
+                     '2026-09-20T00:00:00Z', 'failed',
+                     '{"Kind":"Authentication","RetryState":"ManualAction","RetryAfterUtc":null,"Message":"Wrong password."}');
+                """;
+            await insert.ExecuteNonQueryAsync();
+        }
+
+        await migrator.ApplyAsync(DelunoDatabaseNames.Jobs, Deluno.Jobs.Migrations.JobsDatabaseMigrations.All, CancellationToken.None);
+
+        await using var after = await storage.Factory.OpenConnectionAsync(DelunoDatabaseNames.Jobs);
+        Assert.Equal(0, await ReadScalarAsync<int>(after, "SELECT COUNT(*) FROM job_queue WHERE job_type = 'download.grab.retry';"));
+        Assert.Equal(1, await ReadScalarAsync<int>(after, "SELECT COUNT(*) FROM job_queue WHERE id = 'search';"));
+
+        // A grab that already failed stops saying a retry is coming.
+        Assert.Equal("NotRetryable", await ReadScalarAsync<string>(after, "SELECT json_extract(grab_failure_json, '$.RetryState') FROM download_dispatches WHERE id = 'timed-out';"));
+        Assert.Equal(1, await ReadScalarAsync<int>(after, "SELECT COUNT(*) FROM download_dispatches WHERE id = 'timed-out' AND json_extract(grab_failure_json, '$.RetryAfterUtc') IS NULL;"));
+        Assert.Equal("NotRetryable", await ReadScalarAsync<string>(after, "SELECT json_extract(grab_failure_json, '$.RetryState') FROM download_dispatches WHERE id = 'slowed';"));
+        Assert.Equal("2026-09-20T00:10:00+00:00", await ReadScalarAsync<string>(after, "SELECT json_extract(grab_failure_json, '$.RetryAfterUtc') FROM download_dispatches WHERE id = 'slowed';"));
+        Assert.Equal("ManualAction", await ReadScalarAsync<string>(after, "SELECT json_extract(grab_failure_json, '$.RetryState') FROM download_dispatches WHERE id = 'refused';"));
     }
 
     [Fact]

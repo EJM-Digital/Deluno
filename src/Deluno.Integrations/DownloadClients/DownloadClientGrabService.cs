@@ -18,12 +18,8 @@ public sealed class DownloadClientGrabService(
     IConnectionsRepository connectionsRepository,
     IDownloadClientRegistry downloadClientRegistry,
     IIntegrationResiliencePolicy resiliencePolicy,
-    IJobScheduler jobScheduler,
-    IDownloadDispatchRepository dispatchRepository,
     IDownloadDispatchesRepository dispatchesRepository,
     IRealtimeEventPublisher realtimeEventPublisher,
-    TimeProvider timeProvider,
-    IRetryPolicyCatalog retryPolicyCatalog,
     Deluno.Integrations.Search.Trackers.TrackerIndexers? trackerIndexers = null)
     : IDownloadClientGrabService
 {
@@ -131,21 +127,7 @@ public sealed class DownloadClientGrabService(
             };
         }
 
-        if (!grabResult.Succeeded && !string.IsNullOrWhiteSpace(request.DispatchId))
-        {
-            var retryAfterUtc = await ScheduleGrabRetryAsync(request.DispatchId, client.Id, request, cancellationToken);
-            if (retryAfterUtc is not null && grabResult.Failure is not null)
-            {
-                grabResult = grabResult with
-                {
-                    Failure = grabResult.Failure with
-                    {
-                        RetryState = IntegrationRetryState.RetryScheduled,
-                        RetryAfterUtc = retryAfterUtc
-                    }
-                };
-            }
-        }
+        grabResult = WithoutARetryPromise(grabResult);
 
         if (!string.IsNullOrWhiteSpace(request.DispatchId))
         {
@@ -172,47 +154,30 @@ public sealed class DownloadClientGrabService(
         return grabResult;
     }
 
-    private async Task<DateTimeOffset?> ScheduleGrabRetryAsync(
-        string dispatchId,
-        string clientId,
-        DownloadClientGrabRequest request,
-        CancellationToken cancellationToken)
-    {
-        var policy = retryPolicyCatalog.GrabTimeout;
-        var attemptCount = await dispatchRepository.IncrementAttemptCountAsync(dispatchId, cancellationToken);
-        var delay = retryPolicyCatalog.CalculateNextRetryDelay(attemptCount, policy);
-
-        if (delay == TimeSpan.Zero)
-        {
-            await dispatchRepository.MarkDispatchFailedAsync(dispatchId, cancellationToken);
-            return null;
-        }
-
-        var scheduledAt = timeProvider.GetUtcNow().Add(delay);
-        var payload = JsonSerializer.Serialize(new
-        {
-            dispatchId,
-            clientId,
-            releaseName = request.ReleaseName,
-            downloadUrl = request.DownloadUrl,
-            mediaType = request.MediaType,
-            category = request.Category,
-            indexerName = request.IndexerName,
-            attemptCount
-        });
-
-        await jobScheduler.EnqueueAsync(
-            new EnqueueJobRequest(
-                JobType: "download.grab.retry",
-                Source: "download-client",
-                PayloadJson: payload,
-                RelatedEntityType: "download_dispatch",
-                RelatedEntityId: dispatchId,
-                ScheduledUtc: scheduledAt,
-                DedupeKey: $"download.grab.retry:{dispatchId}"),
-            cancellationToken);
-        return scheduledAt;
-    }
+    /// <summary>
+    /// A grab that failed is not sent again by itself (#620), so it must not
+    /// say it will be.
+    ///
+    /// <para>A timeout or an unreachable client is classed as retryable, and
+    /// Queue and the provider drawer read that as "Retry scheduled". The retry
+    /// was a <c>download.grab.retry</c> job that no handler and no lane ever
+    /// picked up: it sat queued for good, and nothing was sent. Resending one
+    /// release unattended is not something Deluno wants either, because it can
+    /// grab a title a second time after the search cycle has already fetched it
+    /// again. A paused client and a failure that needs a person keep their own
+    /// states, because both are true.</para>
+    /// </summary>
+    public static DownloadClientGrabResult WithoutARetryPromise(DownloadClientGrabResult result)
+        => result is { Succeeded: false, Failure: { RetryState: IntegrationRetryState.Retrying or IntegrationRetryState.RetryScheduled } failure }
+            ? result with
+            {
+                Failure = failure with
+                {
+                    RetryState = IntegrationRetryState.NotRetryable,
+                    RetryAfterUtc = failure.Kind == IntegrationFailureKind.RateLimit ? failure.RetryAfterUtc : null
+                }
+            }
+            : result;
 
     private async Task<DownloadClientGrabResult> GrabCoreAsync(
         DownloadClientItem client,
@@ -306,7 +271,7 @@ public sealed class DownloadClientGrabService(
         string message,
         IntegrationFailure? failure = null,
         string? category = null)
-        => new(clientId, request.ReleaseName, false, status, message, FailureCode: failure?.Code)
+        => WithoutARetryPromise(new(clientId, request.ReleaseName, false, status, message, FailureCode: failure?.Code)
         {
             Failure = failure ?? IntegrationFailureFactory.FromLegacy(
                 "download-client",
@@ -315,5 +280,5 @@ public sealed class DownloadClientGrabService(
                 "grab",
                 category ?? status,
                 message)
-        };
+        });
 }

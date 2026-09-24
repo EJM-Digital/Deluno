@@ -89,7 +89,7 @@ public sealed record IntegrationFailure(
             ? $"Wait until {until.ToLocalTime():HH:mm} before trying again."
             : "Wait for the provider's rate limit window before trying again.",
         IntegrationFailureKind.Timeout or IntegrationFailureKind.Unavailable
-            when RetryState == IntegrationRetryState.ManualAction
+            when RetryState is IntegrationRetryState.ManualAction or IntegrationRetryState.NotRetryable
             => "Check the service and network, then replay or try the action again.",
         IntegrationFailureKind.Timeout or IntegrationFailureKind.Unavailable => "Check the service and network. Deluno will retry when the retry window allows.",
         IntegrationFailureKind.Protocol or IntegrationFailureKind.MalformedResponse => "Check the service URL, protocol, and provider version before retrying.",

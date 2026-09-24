@@ -9,7 +9,7 @@ namespace Deluno.Jobs.Data;
 public sealed class SqliteDownloadDispatchesRepository(
     IDelunoDatabaseConnectionFactory databaseConnectionFactory,
     TimeProvider timeProvider)
-    : IDownloadDispatchesRepository, IDownloadDispatchRepository
+    : IDownloadDispatchesRepository
 {
     /// <summary>
     /// Every column <see cref="ReadDispatch"/> reads, in the order it reads them. Eight queries used to spell this
@@ -1035,24 +1035,6 @@ public sealed class SqliteDownloadDispatchesRepository(
         }
     }
 
-    public async Task<int> IncrementAttemptCountAsync(string dispatchId, CancellationToken cancellationToken)
-    {
-        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
-            DelunoDatabaseNames.Jobs, cancellationToken);
-
-        using var command = connection.CreateCommand();
-        command.CommandText =
-            """
-            UPDATE download_dispatches
-            SET attempt_count = attempt_count + 1
-            WHERE id = @id;
-            SELECT attempt_count FROM download_dispatches WHERE id = @id;
-            """;
-        AddParameter(command, "@id", dispatchId);
-        var result = await command.ExecuteScalarAsync(cancellationToken);
-        return result is long count ? (int)count : 0;
-    }
-
     public async Task<bool> MarkNeverDetectedAsync(string dispatchId, string message, CancellationToken cancellationToken)
     {
         await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
@@ -1063,7 +1045,7 @@ public sealed class SqliteDownloadDispatchesRepository(
         {
             command.Transaction = transaction;
             // grab_status stays 'succeeded': the client did accept it, and the
-            // grab retry and the indexer scoreboard both read that column.
+            // indexer scoreboard reads that column.
             command.CommandText =
                 """
                 UPDATE download_dispatches
@@ -1091,22 +1073,6 @@ public sealed class SqliteDownloadDispatchesRepository(
 
         await transaction.CommitAsync(cancellationToken);
         return true;
-    }
-
-    public async Task MarkDispatchFailedAsync(string dispatchId, CancellationToken cancellationToken)
-    {
-        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
-            DelunoDatabaseNames.Jobs, cancellationToken);
-
-        using var command = connection.CreateCommand();
-        command.CommandText =
-            """
-            UPDATE download_dispatches
-            SET status = 'failed', grab_status = 'failed', grab_failure_code = 'max-retries-exceeded'
-            WHERE id = @id;
-            """;
-        AddParameter(command, "@id", dispatchId);
-        await command.ExecuteNonQueryAsync(cancellationToken);
     }
 
     public async Task<IReadOnlyList<DownloadDispatchItem>> FindOldUnresolvedDispatchesAsync(

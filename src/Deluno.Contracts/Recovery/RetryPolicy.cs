@@ -14,8 +14,6 @@ public sealed record RetryPolicy(
 /// </summary>
 public interface IRetryPolicyCatalog
 {
-    RetryPolicy GrabTimeout { get; }
-
     RetryPolicy GetPolicyForKind(string failureKind);
 
     TimeSpan CalculateNextRetryDelay(int attemptNumber, RetryPolicy policy);
