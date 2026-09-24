@@ -33,7 +33,13 @@ public sealed record MediaWantedItem(
     /// replacement written in place cannot inherit the previous file's
     /// preference evidence while the next probe pass is still pending.
     /// </summary>
-    long? FileSizeBytes = null);
+    long? FileSizeBytes = null,
+    /// <summary>
+    /// The title's real runtime in minutes, so an automatic search can scale
+    /// Size Rules against it instead of a fixed reference runtime (#630,
+    /// #638).
+    /// </summary>
+    int? RuntimeMinutes = null);
 
 public sealed record MediaWantedSummary(
     int TotalWanted,
