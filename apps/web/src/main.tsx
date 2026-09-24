@@ -6,7 +6,10 @@ import { TooltipProvider } from "./components/ui/tooltip";
 import { AuthProvider } from "./lib/use-auth";
 import { ColorModeProvider } from "./lib/use-color-mode";
 import { router } from "./router";
+import { installStaleBuildRecovery } from "./lib/stale-build";
 import "./index.css";
+
+installStaleBuildRecovery();
 
 // Register PWA service worker (production only)
 if ("serviceWorker" in navigator && import.meta.env.PROD) {
