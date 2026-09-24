@@ -918,6 +918,10 @@ public sealed class SqliteDownloadDispatchesRepository(
             }
         }
 
+        // next_retry_eligible_utc is not a retry time. Nothing retries a failed
+        // grab on a clock, and the only writer left stamped the moment somebody
+        // pressed Retry, which read back as "Retry scheduled" at a time already
+        // gone (#621). The title comes back on the library's own schedule.
         if (IsFailedGrab(dispatch))
         {
             return IntegrationFailureFactory.FromLegacy(
@@ -928,7 +932,6 @@ public sealed class SqliteDownloadDispatchesRepository(
                 dispatch.GrabFailureCode ?? dispatch.GrabStatus,
                 dispatch.GrabMessage ?? "The download client did not accept the release.",
                 dispatch.GrabResponseCode,
-                retryAfterUtc: dispatch.NextRetryEligibleUtc,
                 code: dispatch.GrabFailureCode);
         }
 
@@ -1101,72 +1104,6 @@ public sealed class SqliteDownloadDispatchesRepository(
             """;
 
         AddParameter(command, "@cutoff", cutoff.ToString("O"));
-        AddParameter(command, "@limit", limit);
-
-        var results = new List<DownloadDispatchItem>();
-        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
-        while (await reader.ReadAsync(cancellationToken))
-        {
-            results.Add(ReadDispatch(reader));
-        }
-
-        return results;
-    }
-
-    public async Task<DownloadDispatchItem> UpdateFailureRetryWindowAsync(
-        string dispatchId,
-        DateTimeOffset nextRetryEligibleUtc,
-        int retryCount,
-        CancellationToken cancellationToken)
-    {
-        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
-            DelunoDatabaseNames.Jobs,
-            cancellationToken);
-
-        using var command = connection.CreateCommand();
-        command.CommandText =
-            """
-            UPDATE download_dispatches
-            SET
-                next_retry_eligible_utc = @nextRetryEligibleUtc,
-                attempt_count = @attemptCount
-            WHERE id = @dispatchId
-            """;
-
-        AddParameter(command, "@dispatchId", dispatchId);
-        AddParameter(command, "@nextRetryEligibleUtc", nextRetryEligibleUtc.ToString("O"));
-        AddParameter(command, "@attemptCount", retryCount);
-
-        await command.ExecuteNonQueryAsync(cancellationToken);
-
-        var result = await GetDispatchAsync(dispatchId, cancellationToken);
-        return result ?? throw new InvalidOperationException($"Dispatch {dispatchId} not found after retry window update");
-    }
-
-    public async Task<IReadOnlyList<DownloadDispatchItem>> FindDispatchesEligibleForRetryAsync(
-        int limit,
-        CancellationToken cancellationToken)
-    {
-        var now = timeProvider.GetUtcNow();
-
-        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
-            DelunoDatabaseNames.Jobs,
-            cancellationToken);
-
-        using var command = connection.CreateCommand();
-        command.CommandText =
-            $"""
-            SELECT
-                {DispatchColumns}
-            FROM download_dispatches
-            WHERE status != 'archived'
-              AND next_retry_eligible_utc IS NOT NULL
-              AND next_retry_eligible_utc <= @now
-            ORDER BY next_retry_eligible_utc ASC
-            LIMIT @limit
-            """;
-
-        AddParameter(command, "@now", now.ToString("O"));
         AddParameter(command, "@limit", limit);
 
         var results = new List<DownloadDispatchItem>();

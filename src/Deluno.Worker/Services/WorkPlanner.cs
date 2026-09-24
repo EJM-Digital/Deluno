@@ -174,15 +174,6 @@ public sealed class WorkPlanner(
             "RSS sync pass failed.",
             cancellationToken);
 
-    public Task RunDispatchRetryPassAsync(
-        IDownloadRetryService downloadRetryService,
-        CancellationToken cancellationToken)
-        => RunScheduledPassAsync(
-            SystemTasks.DispatchRetry,
-            () => downloadRetryService.RunRetryPassAsync(cancellationToken),
-            "Dispatch retry pass failed.",
-            cancellationToken);
-
     public Task PlanMetadataRefreshAutomationAsync(
         IJobScheduler jobScheduler,
         IMovieCatalogRepository movieCatalogRepository,

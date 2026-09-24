@@ -359,7 +359,6 @@ export interface DownloadDispatchItem {
   importFailureCode?: string | null;
   importFailureMessage?: string | null;
   circuitOpenUntilUtc?: string | null;
-  nextRetryEligibleUtc?: string | null;
   attemptCount?: number | null;
   failure?: IntegrationFailure | null;
 }

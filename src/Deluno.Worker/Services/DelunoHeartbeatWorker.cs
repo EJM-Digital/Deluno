@@ -308,9 +308,7 @@ public sealed class DelunoHeartbeatWorker(
         if (lane.PlanMaintenance)
         {
             var cleanupService = services.GetRequiredService<IDispatchCleanupService>();
-            var downloadRetryService = services.GetRequiredService<IDownloadRetryService>();
             await workPlanner.RunDispatchCleanupAsync(cleanupService, stoppingToken);
-            await workPlanner.RunDispatchRetryPassAsync(downloadRetryService, stoppingToken);
             await workPlanner.RunProcessorHealthPassAsync(processorRepository, processorConnectionService, stoppingToken);
             await workPlanner.RunProcessorOutcomePassAsync(
                 services.GetRequiredService<ProcessorOutcomeReporter>(),

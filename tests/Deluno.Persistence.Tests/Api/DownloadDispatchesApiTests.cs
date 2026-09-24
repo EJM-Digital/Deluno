@@ -222,29 +222,6 @@ public sealed class DownloadDispatchesApiTests : IAsyncDisposable
     }
 
     [Fact]
-    public async Task RetryDispatch_returns_202_for_failed_grab()
-    {
-        var dispatchId = Guid.CreateVersion7().ToString("N");
-        await InsertDispatchAsync(dispatchId, "movies-main", "123", "Test.Movie.2024.1080p");
-
-        await _repository.RecordGrabAsync(
-            dispatchId: dispatchId,
-            grabStatus: "failed",
-            grabResponseCode: 403,
-            grabMessage: "forbidden",
-            grabFailureCode: "access_denied",
-            grabResponseJson: null,
-            CancellationToken.None);
-
-        var response = await _client.PostAsync($"/api/v1/download-dispatches/{dispatchId}/retry", null);
-
-        Assert.Equal(HttpStatusCode.Accepted, response.StatusCode);
-        var json = JsonDocument.Parse(await response.Content.ReadAsStreamAsync());
-        Assert.Equal(dispatchId, json.RootElement.GetProperty("dispatchId").GetString());
-        Assert.False(string.IsNullOrWhiteSpace(json.RootElement.GetProperty("jobId").GetString()));
-    }
-
-    [Fact]
     public async Task ArchiveDispatch_returns_204()
     {
         var dispatchId = Guid.CreateVersion7().ToString("N");

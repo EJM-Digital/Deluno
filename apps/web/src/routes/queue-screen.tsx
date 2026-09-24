@@ -1082,7 +1082,6 @@ export function QueuePage() {
                   {openDispatchDetail.dispatch.downloadedBytes ? <Fact label="Downloaded" value={formatBytes(openDispatchDetail.dispatch.downloadedBytes)} /> : null}
                   {openDispatchDetail.dispatch.grabFailureCode ? <Fact label="Grab issue" value={openDispatchDetail.dispatch.grabFailureCode} /> : null}
                   {openDispatchDetail.dispatch.importFailureMessage ? <Fact label="Import issue" value={openDispatchDetail.dispatch.importFailureMessage} /> : null}
-                  {openDispatchDetail.dispatch.nextRetryEligibleUtc ? <Fact label="Next retry" value={formatPreferenceDateTime(openDispatchDetail.dispatch.nextRetryEligibleUtc, preferences)} /> : null}
                 </div>
               </DrawerSection>
             ) : null}
