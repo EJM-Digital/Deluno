@@ -37,7 +37,7 @@ public sealed class ADownloadTheClientNeverShowedEndsTests
         Assert.Equal("failed", gone?.Status);
         Assert.Equal("not_found", gone?.GrabFailureCode);
         Assert.Contains("never showed it", gone?.GrabMessage);
-        // The client did accept it: the grab retry and the indexer scoreboard read this column.
+        // The client did accept it: the indexer scoreboard reads this column.
         Assert.Equal("succeeded", gone?.GrabStatus);
         Assert.Equal("sent", (await dispatches.GetDispatchAsync("fresh", CancellationToken.None))?.Status);
     }

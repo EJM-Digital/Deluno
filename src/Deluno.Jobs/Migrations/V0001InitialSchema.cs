@@ -37,7 +37,8 @@ public static class JobsDatabaseMigrations
         new V0029ProposedRefusals(),
         new V0030ScheduleIntervalUsed(),
         new V0031DispatchAlertResolution(),
-        new V0032DispatchClientCompleted()
+        new V0032DispatchClientCompleted(),
+        new V0033OrphanGrabRetryJobs()
     ];
 
     private sealed class V0001InitialSchema : SqliteSqlMigration

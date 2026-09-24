@@ -4,7 +4,7 @@ namespace Deluno.Recovery.Policies;
 
 public sealed class RetryPolicyCatalog : IRetryPolicyCatalog
 {
-    public RetryPolicy GrabTimeout { get; } = new(
+    private RetryPolicy GrabTimeout { get; } = new(
         FailureKind: "grab-timeout",
         MaxRetries: 3,
         InitialDelay: TimeSpan.FromMinutes(30),

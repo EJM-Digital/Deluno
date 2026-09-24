@@ -95,7 +95,7 @@ public sealed class DownloadHealthGrabGuardTests
         var client = await connectionsRepository.CreateDownloadClientAsync(new CreateDownloadClientRequest(
             "Untested qBittorrent", "qbittorrent", "localhost", 8080, null, null, null, "movies", "tv", null, 1, true), CancellationToken.None);
         var service = new DownloadClientGrabService(
-            connectionsRepository, null!, null!, null!, null!, null!, null!, time, new RetryPolicyCatalog());
+            connectionsRepository, null!, null!, null!, null!);
 
         var result = await service.GrabAsync(client.Id, new DownloadClientGrabRequest(
             "Example Movie 2026 1080p", "https://fixture.invalid/release", "movies", "movies", "Fixture source"), CancellationToken.None);
