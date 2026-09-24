@@ -56,4 +56,5 @@ public sealed record UpdatePlatformSettingsRequest(
     string? LongDateFormat = null,
     string? TimeFormat = null,
     bool? ShowRelativeDates = null,
-    int? LibraryFileCheckHours = null);
+    int? LibraryFileCheckHours = null,
+    string? CloudflareHelperUrl = null);

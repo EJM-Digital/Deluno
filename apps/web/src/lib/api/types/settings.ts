@@ -39,6 +39,8 @@ export interface PlatformSettingsSnapshot {
   hostBindAddress: string;
   hostPort: number;
   urlBase: string;
+  /** A FlareSolverr-compatible helper for trackers behind a Cloudflare check (#628). */
+  cloudflareHelperUrl?: string | null;
   requireAuthentication: boolean;
   uiTheme: string;
   uiDensity: string;
@@ -155,6 +157,7 @@ export const emptyPlatformSettingsSnapshot: PlatformSettingsSnapshot = {
   hostBindAddress: "127.0.0.1",
   hostPort: 5099,
   urlBase: "",
+  cloudflareHelperUrl: null,
   requireAuthentication: true,
   uiTheme: "system",
   uiDensity: "comfortable",

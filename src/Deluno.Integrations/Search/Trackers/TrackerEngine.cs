@@ -62,6 +62,7 @@ public sealed class TrackerEngine : ITrackerEngine
     private readonly Func<CookieContainer, HttpMessageHandler> handlerFactory;
     private readonly TimeProvider timeProvider;
     private readonly ILogger<TrackerEngine> logger;
+    private readonly ICloudflareHelper? cloudflareHelper;
 
     static TrackerEngine()
     {
@@ -69,16 +70,21 @@ public sealed class TrackerEngine : ITrackerEngine
         Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
     }
 
-    public TrackerEngine(ILogger<TrackerEngine> logger)
-        : this(DefaultHandler, TimeProvider.System, logger)
+    public TrackerEngine(ILogger<TrackerEngine> logger, ICloudflareHelper? cloudflareHelper = null)
+        : this(DefaultHandler, TimeProvider.System, logger, cloudflareHelper)
     {
     }
 
-    public TrackerEngine(Func<CookieContainer, HttpMessageHandler> handlerFactory, TimeProvider timeProvider, ILogger<TrackerEngine> logger)
+    public TrackerEngine(
+        Func<CookieContainer, HttpMessageHandler> handlerFactory,
+        TimeProvider timeProvider,
+        ILogger<TrackerEngine> logger,
+        ICloudflareHelper? cloudflareHelper = null)
     {
         this.handlerFactory = handlerFactory;
         this.timeProvider = timeProvider;
         this.logger = logger;
+        this.cloudflareHelper = cloudflareHelper;
     }
 
     private static HttpMessageHandler DefaultHandler(CookieContainer cookies) => new SocketsHttpHandler
@@ -343,11 +349,45 @@ public sealed class TrackerEngine : ITrackerEngine
             .Where(header => header.Value.Length > 0)
             .ToArray();
 
+    /// <summary>
+    /// One request, and, when the tracker answers it with a Cloudflare check and
+    /// a helper is set up, the way past it (#628). The helper fetches the page;
+    /// its clearance cookies and User-Agent go into this tracker's session, and
+    /// the request is tried again directly, so later ones need no helper until
+    /// the clearance runs out. Cloudflare can still recognise a connection that
+    /// is not a browser, and then the page the helper fetched is used.
+    /// </summary>
     private async Task<TrackerPage> SendAsync(TrackerSession session, TrackerRequest request, CancellationToken cancellationToken)
+    {
+        var page = await SendOnceAsync(session, request, cancellationToken);
+        if (!IsCloudflare(page) || cloudflareHelper is null || request.Method != HttpMethod.Get)
+        {
+            return page;
+        }
+
+        var solved = await cloudflareHelper.FetchAsync(request.Uri, cancellationToken);
+        if (solved is null || IsCloudflareBody(solved.Html))
+        {
+            logger.LogInformation("The Cloudflare helper could not get past {Host}.", request.Uri.Host);
+            return page;
+        }
+
+        session.AcceptClearance(solved.Cookies, solved.UserAgent);
+        var retried = await SendOnceAsync(session, request, cancellationToken);
+        if (!IsCloudflare(retried))
+        {
+            return retried;
+        }
+
+        return new TrackerPage(solved.Status, solved.Url, solved.Html, Encoding.UTF8.GetBytes(solved.Html), null, "text/html");
+    }
+
+    private async Task<TrackerPage> SendOnceAsync(TrackerSession session, TrackerRequest request, CancellationToken cancellationToken)
     {
         await session.PaceAsync(timeProvider, cancellationToken);
         using var message = new HttpRequestMessage(request.Method, request.Uri) { Content = request.Content };
-        message.Headers.TryAddWithoutValidation("User-Agent", BrowserUserAgent);
+        // The helper's own when it cleared a Cloudflare check: the clearance holds for that one only.
+        message.Headers.TryAddWithoutValidation("User-Agent", session.UserAgent ?? BrowserUserAgent);
         message.Headers.TryAddWithoutValidation("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,application/json;q=0.8,*/*;q=0.7");
         message.Headers.TryAddWithoutValidation("Accept-Language", "en-US,en;q=0.8");
         foreach (var (name, value) in request.Headers)
@@ -584,7 +624,7 @@ public sealed class TrackerEngine : ITrackerEngine
     {
         if (IsCloudflare(page))
         {
-            throw new TrackerBlockedException($"{page.FinalUri.Host} is behind a Cloudflare check that turns automated searches away.");
+            throw new TrackerBlockedException($"{page.FinalUri.Host} is behind a Cloudflare check that turns automated searches away. A Cloudflare helper (FlareSolverr or Byparr), set in Settings, gets Deluno past it; if one is set, it could not get through either.");
         }
 
         var status = (int)page.Status;
@@ -600,11 +640,13 @@ public sealed class TrackerEngine : ITrackerEngine
     }
 
     private static bool IsCloudflare(TrackerPage page)
-        => (int)page.Status is 403 or 503 or 429
-           && (page.Body.Contains("cf-chl", StringComparison.Ordinal)
-               || page.Body.Contains("challenge-platform", StringComparison.Ordinal)
-               || page.Body.Contains("<title>Just a moment", StringComparison.OrdinalIgnoreCase)
-               || page.Body.Contains("Attention Required! | Cloudflare", StringComparison.Ordinal));
+        => (int)page.Status is 403 or 503 or 429 && IsCloudflareBody(page.Body);
+
+    private static bool IsCloudflareBody(string body)
+        => body.Contains("cf-chl", StringComparison.Ordinal)
+           || body.Contains("challenge-platform", StringComparison.Ordinal)
+           || body.Contains("<title>Just a moment", StringComparison.OrdinalIgnoreCase)
+           || body.Contains("Attention Required! | Cloudflare", StringComparison.Ordinal);
 
     private static bool IsMirrorFailure(Exception exception)
         => exception is HttpRequestException or TrackerBlockedException or TaskCanceledException;
@@ -716,6 +758,30 @@ internal sealed class TrackerSession
     /// <summary>The mirror that answered last first, then the rest in order.</summary>
     public IEnumerable<string> CandidateLinks()
         => ActiveLink is null ? links : new[] { ActiveLink }.Concat(links.Where(link => link != ActiveLink));
+
+    /// <summary>The User-Agent a Cloudflare clearance was earned with, once there is one (#628).</summary>
+    public string? UserAgent { get; private set; }
+
+    /// <summary>A Cloudflare helper's clearance: its cookies, and the User-Agent they hold for.</summary>
+    public void AcceptClearance(IEnumerable<Cookie> cleared, string? userAgent)
+    {
+        foreach (var cookie in cleared)
+        {
+            try
+            {
+                cookies.Add(cookie);
+            }
+            catch (CookieException)
+            {
+                // A cookie the container will not hold; the rest still count.
+            }
+        }
+
+        if (!string.IsNullOrWhiteSpace(userAgent))
+        {
+            UserAgent = userAgent;
+        }
+    }
 
     public void SetCookies(Uri site, string cookieHeader)
     {
