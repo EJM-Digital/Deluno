@@ -219,6 +219,12 @@ export function QueuePage() {
   );
   const visibleActivity = activityKind === "all" ? activity : activity.filter((entry) => entry.kind === activityKind);
   const openQueueItem = drawer?.kind === "queue" ? queue.find((item) => item.id === drawer.id) ?? null : null;
+  // The newest hand-off of this download, so its drawer can say what the processor said (#616).
+  const openQueueHandoff = openQueueItem
+    ? processorHandoffs
+      .filter((handoff) => handoff.clientId.toLowerCase() === openQueueItem.clientId.toLowerCase() && handoff.queueItemId.toLowerCase() === openQueueItem.id.toLowerCase())
+      .sort((left, right) => right.updatedUtc.localeCompare(left.updatedUtc))[0] ?? null
+    : null;
   const openActivity = drawer?.kind === "activity" ? activity.find((entry) => entry.id === drawer.id) ?? null : null;
   const openHandoff = openActivity?.kind === "processor" ? processorHandoffs.find((entry) => `processor:${entry.id}` === openActivity.id) ?? null : null;
   const openDispatchSummary = drawer?.kind === "dispatch" ? dispatches.find((item) => item.id === drawer.id) ?? null : null;
@@ -885,6 +891,23 @@ export function QueuePage() {
               title="Import"
               aside={isImportReadyStatus(openQueueItem.status) ? "ready" : queueStatusLabel(openQueueItem.status)}
             >
+              {/* The processor's own reason and the way out, where the failure
+                  is shown (#616): the hand-off drawer had both, this one had
+                  neither, and Queue import is closed to a failed hand-off. */}
+              {openQueueHandoff && openQueueItem.status === downloadQueueStatuses.processingFailed ? (
+                <div className="grid gap-2 rounded-[10px] border border-destructive/30 bg-destructive/5 p-3">
+                  <p className="text-[length:var(--type-body-sm)] text-foreground">
+                    {openQueueHandoff.failureMessage ?? `${openQueueHandoff.processorName ?? "The processor"} did not finish this download.`}
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    <Button type="button" size="sm" onClick={() => void importOriginal(openQueueHandoff)} disabled={busyKey !== null}>
+                      {busyKey === `original:${openQueueHandoff.id}` ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
+                      Import original
+                    </Button>
+                  </div>
+                  <p className="text-[length:var(--type-caption)] text-muted-foreground">Brings the download in as it is, without processing.</p>
+                </div>
+              ) : null}
               {importPreviews[openQueueItem.id] ? (
                 <ImportPreviewFacts preview={importPreviews[openQueueItem.id]!} />
               ) : (
@@ -1860,6 +1883,8 @@ export function buildImportRequest(
     tags: null,
     studio: null,
     originalLanguage: null,
+    // So the preview names it as the import will: as the title grabbed (#617).
+    dispatchId: dispatch?.id ?? null,
     seriesId: item.mediaType === "tv" && dispatch?.entityType.toLowerCase() === "series"
       ? dispatch.entityId
       : null
@@ -1876,8 +1901,17 @@ export function findDispatchForQueueItem(
   return clientDispatches.find((dispatch) =>
     dispatch.torrentHashOrItemId?.toLowerCase() === item.id.toLowerCase()
   ) ?? clientDispatches.find((dispatch) =>
-    dispatch.releaseName.toLowerCase() === item.releaseName.toLowerCase()
+    comparableReleaseName(dispatch.releaseName) === comparableReleaseName(item.releaseName)
   ) ?? null;
+}
+
+/**
+ * A release name with its case and punctuation gone (#617). A client reports
+ * the torrent's own name ("house.on.-haunted.-hill.-1959…") where the grab kept
+ * the indexer's, and an exact match imported the film under the release name.
+ */
+export function comparableReleaseName(name: string) {
+  return name.toLowerCase().replace(/[^\p{L}\p{N}]/gu, "");
 }
 
 function inferImportFileName(item: DownloadQueueItem) {

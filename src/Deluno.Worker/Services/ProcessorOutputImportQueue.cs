@@ -39,7 +39,7 @@ public sealed class ProcessorOutputImportQueue(
         string source,
         CancellationToken cancellationToken)
     {
-        var dispatch = await jobQueueRepository.FindRecentDispatchLinkAsync(handoff.ClientId, handoff.ReleaseName, cancellationToken);
+        var dispatch = await jobQueueRepository.FindDispatchLinkForDownloadAsync(handoff.ClientId, handoff.QueueItemId, handoff.ReleaseName, cancellationToken);
         if (await CatalogueImportNaming.RemovedSinceGrabAsync(dispatch, null, movieCatalogRepository, seriesCatalogRepository, cancellationToken) is { } removed)
         {
             return new ProcessorOutputImport(null, dispatch?.DispatchId, dispatch?.EntityId, removed);
@@ -52,7 +52,11 @@ public sealed class ProcessorOutputImportQueue(
                 SourcePath: outputPath,
                 FileName: Path.GetFileName(outputPath),
                 MediaType: library.MediaType,
-                Title: catalogue.Title ?? Path.GetFileNameWithoutExtension(outputPath),
+                // Only the title of the grab. The output file's own name is not a
+                // title: with no grab found it made a new film called "The Kid
+                // 1921 CC 1080p BluRay x264-nikt0" (#617). No title sends the file
+                // to import recovery, which says so.
+                Title: catalogue.Title,
                 Year: catalogue.Year ?? CatalogueImportNaming.InferYear(handoff.ReleaseName),
                 Genres: catalogue.Genres,
                 Tags: ["processed"],

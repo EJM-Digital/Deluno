@@ -247,7 +247,7 @@ export function IndexersPage() {
     const library = libraries.find((item) => item.id === libraryId);
     if (!library) return;
     openRouting(library);
-    navigate("/connections/library-routing", { replace: true });
+    navigate("/indexers/library-routing", { replace: true });
   }, [drawer.kind, libraries, location.search, navigate, openRouting, section]);
   function closeDrawer() {
     setDrawer({ kind: "closed" });

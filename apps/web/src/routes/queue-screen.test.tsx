@@ -91,4 +91,13 @@ describe("season-pack import preview", () => {
     expect(matched?.id).toBe("dispatch-1");
     expect(request.seriesId).toBe("series-42");
   });
+
+  // #617: Deluge's name for the torrent, and the indexer's for the release, as seen on the rig.
+  it("finds the grab behind a download whose name differs only in case and punctuation", () => {
+    const queueItem = { id: "deluge-hash", clientId: "deluge", releaseName: "house.on.-haunted.-hill.-1959.1080p.-blu-ray.-x-264-amiable" } as DownloadQueueItem;
+    const grab = { id: "dispatch-house", downloadClientId: "deluge", torrentHashOrItemId: null, releaseName: "House On Haunted Hill 1959 1080p Blu-Ray x264-AMIABLE" } as DownloadDispatchItem;
+    const other = { id: "dispatch-other", downloadClientId: "deluge", torrentHashOrItemId: null, releaseName: "House On Haunted Hill 1999 1080p BluRay x264" } as DownloadDispatchItem;
+
+    expect(findDispatchForQueueItem(queueItem, [other, grab])?.id).toBe("dispatch-house");
+  });
 });

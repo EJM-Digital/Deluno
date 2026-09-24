@@ -61,6 +61,66 @@ public sealed class ProcessorOutputImportQueueTests
     }
 
     /// <summary>
+    /// #617: found by its torrent's hash, the grab names the import even when
+    /// the client's name for the release differs from the indexer's.
+    /// </summary>
+    [Fact]
+    public async Task A_processed_file_whose_name_differs_is_found_by_its_torrent_hash()
+    {
+        var jobs = new Mock<IJobQueueRepository>();
+        jobs.Setup(repository => repository.FindDispatchLinkByClientItemAsync("client-1", "queue-1", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new DispatchCatalogueLink("dispatch-kid", "movie", "movie-kid", LibraryId: "proof-library"));
+        var movie = (MovieListItem)RuntimeHelpers.GetUninitializedObject(typeof(MovieListItem));
+        var movies = new Mock<IMovieCatalogRepository>();
+        movies.Setup(repository => repository.GetByIdAsync("movie-kid", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(movie with { Id = "movie-kid", Title = "The Kid", ReleaseYear = 1921 });
+        var (scheduler, queued) = CapturingScheduler();
+        var library = (LibraryItem)RuntimeHelpers.GetUninitializedObject(typeof(LibraryItem)) with { Id = "proof-library", MediaType = "movies" };
+        var handoff = new ProcessorHandoffItem(
+            "handoff-1", "proof-library", "movies", "client-1", "queue-1", "The Kid 1921 CC 1080p BluRay x264-nikt0",
+            @"C:\Downloads\Movies\The Kid 1921 CC 1080p BluRay x264-nikt0", "Weir", "submitted", null, null, null,
+            DateTimeOffset.UnixEpoch, DateTimeOffset.UnixEpoch);
+
+        await new ProcessorOutputImportQueue(jobs.Object, scheduler.Object, movies.Object, Mock.Of<ISeriesCatalogRepository>())
+            .QueueAsync(library, handoff, @"C:\Refined\Movies\The Kid 1921 CC 1080p BluRay x264-nikt0\The Kid 1921 CC 1080p BluRay x264-nikt0.mkv", "processor", CancellationToken.None);
+
+        var request = JsonSerializer.Deserialize<ImportExecuteRequest>(queued()!.PayloadJson!, new JsonSerializerOptions { PropertyNameCaseInsensitive = true })!;
+        Assert.Equal("The Kid", request.Preview.Title);
+        Assert.Equal("dispatch-kid", request.DispatchId);
+    }
+
+    /// <summary>
+    /// #617: with no grab found at all, the output file's name is not made
+    /// into a title. No title sends the file to import recovery (#417).
+    /// </summary>
+    [Fact]
+    public async Task A_processed_file_with_no_grab_found_is_given_no_title_of_its_own()
+    {
+        var (scheduler, queued) = CapturingScheduler();
+        var library = (LibraryItem)RuntimeHelpers.GetUninitializedObject(typeof(LibraryItem)) with { Id = "proof-library", MediaType = "movies" };
+        var handoff = new ProcessorHandoffItem(
+            "handoff-1", "proof-library", "movies", "client-1", "queue-1", "The Kid 1921 CC 1080p BluRay x264-nikt0",
+            @"C:\Downloads\Movies\The Kid 1921 CC 1080p BluRay x264-nikt0", "Weir", "submitted", null, null, null,
+            DateTimeOffset.UnixEpoch, DateTimeOffset.UnixEpoch);
+
+        await new ProcessorOutputImportQueue(Mock.Of<IJobQueueRepository>(), scheduler.Object, Mock.Of<IMovieCatalogRepository>(), Mock.Of<ISeriesCatalogRepository>())
+            .QueueAsync(library, handoff, @"C:\Refined\Movies\The Kid 1921 CC 1080p BluRay x264-nikt0\The Kid 1921 CC 1080p BluRay x264-nikt0.mkv", "processor", CancellationToken.None);
+
+        var request = JsonSerializer.Deserialize<ImportExecuteRequest>(queued()!.PayloadJson!, new JsonSerializerOptions { PropertyNameCaseInsensitive = true })!;
+        Assert.Null(request.Preview.Title);
+    }
+
+    private static (Mock<IJobScheduler> Scheduler, Func<EnqueueJobRequest?> Queued) CapturingScheduler()
+    {
+        EnqueueJobRequest? queued = null;
+        var scheduler = new Mock<IJobScheduler>();
+        scheduler.Setup(instance => instance.EnqueueAsync(It.IsAny<EnqueueJobRequest>(), It.IsAny<CancellationToken>()))
+            .Callback<EnqueueJobRequest, CancellationToken>((request, _) => queued = request)
+            .ReturnsAsync((EnqueueJobRequest request, CancellationToken _) => (JobQueueItem)RuntimeHelpers.GetUninitializedObject(typeof(JobQueueItem)) with { Id = "job-1" });
+        return (scheduler, () => queued);
+    }
+
+    /// <summary>
     /// A film removed from Deluno while its release was being processed is not
     /// brought back under the output file's name when the processed file arrives.
     /// </summary>

@@ -180,9 +180,8 @@ public sealed class AcquisitionDecisionPipeline : IAcquisitionDecisionPipeline
 
     public AcquisitionSelectedReleaseDecision EvaluateSelectedRelease(AcquisitionSelectedReleaseRequest request)
     {
-        var quality = request.CandidateQuality
-            ?? Deluno.Quality.LibraryQualityDecider.DetectQuality(request.ReleaseName)
-            ?? "WEB 1080p";
+        // The same reading a search gives it; never a guess of WEB 1080p (#610).
+        var quality = request.CandidateQuality ?? Deluno.Quality.ReleaseNameQuality.Read(request.ReleaseName);
         // A selected release must be judged by the same immutable profile plan
         // as automatic search.  Manual selection is still an acquisition path,
         // not a licence to silently recompile a migrated profile against the

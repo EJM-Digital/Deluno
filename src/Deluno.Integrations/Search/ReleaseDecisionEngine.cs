@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text.RegularExpressions;
+using Deluno.Contracts;
 using Deluno.Platform.Contracts;
 using Deluno.Quality;
 using Deluno.Quality.ReleasePreferences;
@@ -31,6 +32,15 @@ public static partial class ReleaseDecisionEngine
         var reasons = new List<string>();
         var risks = new List<string>();
         var hardReject = false;
+        // The first gate that refused the release, so its summary names what
+        // actually stopped it rather than whichever risk was noted first (#611).
+        string? rejectionGate = null;
+        void Refuse(string reason)
+        {
+            hardReject = true;
+            risks.Add(reason);
+            rejectionGate ??= reason;
+        }
         var delayed = false;
         var profileRules = ReleaseProfileRuleEvaluator.Combine(
             input.ReleaseProfiles,
@@ -41,24 +51,26 @@ public static partial class ReleaseDecisionEngine
             risks.Add("No downloadable URL was returned by the indexer.");
         }
 
+        if (!string.IsNullOrWhiteSpace(input.TitleMismatch))
+        {
+            Refuse(input.TitleMismatch);
+        }
+
         if (LooksLikeSample(input.ReleaseName))
         {
-            hardReject = true;
-            risks.Add("Release name looks like a sample, trailer, proof, or extras file.");
+            Refuse("Release name looks like a sample, trailer, proof, or extras file.");
         }
 
         if (ContainsBlockedToken(input.ReleaseName))
         {
-            hardReject = true;
-            risks.Add("Release name contains a blocked token such as CAM, Telesync, workprint, or screener.");
+            Refuse("Release name contains a blocked token such as CAM, Telesync, workprint, or screener.");
         }
 
         foreach (var term in profileRules.MustContain)
         {
             if (!ReleaseProfileRuleEvaluator.ContainsTerm(input.ReleaseName, term))
             {
-                hardReject = true;
-                risks.Add($"Release name is missing required term '{term}'.");
+                Refuse($"Release name is missing required term '{term}'.");
             }
         }
 
@@ -66,8 +78,7 @@ public static partial class ReleaseDecisionEngine
         {
             if (ReleaseProfileRuleEvaluator.ContainsTerm(input.ReleaseName, term))
             {
-                hardReject = true;
-                risks.Add($"Release name contains excluded term '{term}'.");
+                Refuse($"Release name contains excluded term '{term}'.");
             }
         }
 
@@ -126,13 +137,11 @@ public static partial class ReleaseDecisionEngine
         {
             if (input.ReleaseAgeHours is null)
             {
-                hardReject = true;
-                risks.Add($"Release age is unavailable, so the {input.RetentionDays}-day retention limit cannot be verified.");
+                Refuse($"Release age is unavailable, so the {input.RetentionDays}-day retention limit cannot be verified.");
             }
             else if (input.ReleaseAgeHours.Value > input.RetentionDays.Value * 24d)
             {
-                hardReject = true;
-                risks.Add($"Release is older than this indexer's {input.RetentionDays}-day retention window.");
+                Refuse($"Release is older than this indexer's {input.RetentionDays}-day retention window.");
             }
         }
 
@@ -161,8 +170,7 @@ public static partial class ReleaseDecisionEngine
         if (input.MaximumSizeMb is > 0 && input.SizeBytes is > 0 &&
             input.SizeBytes.Value > input.MaximumSizeMb.Value * 1_000_000L)
         {
-            hardReject = true;
-            risks.Add($"Release size exceeds this indexer's {input.MaximumSizeMb} MB maximum.");
+            Refuse($"Release size exceeds this indexer's {input.MaximumSizeMb} MB maximum.");
         }
 
         var preferredFlagScore = input.PreferencePlan is null
@@ -172,8 +180,7 @@ public static partial class ReleaseDecisionEngine
         var matchedNeverGrab = MatchNeverGrabPattern(input.ReleaseName, input.NeverGrabPatterns);
         if (!string.IsNullOrWhiteSpace(matchedNeverGrab))
         {
-            hardReject = true;
-            risks.Add($"Release name matched the never-grab pattern '{matchedNeverGrab}'.");
+            Refuse($"Release name matched the never-grab pattern '{matchedNeverGrab}'.");
         }
 
         // The profile's allowed tiers are a gate, not a preference. Without this
@@ -185,8 +192,7 @@ public static partial class ReleaseDecisionEngine
         if (input.AllowedQualities is { Count: > 0 } allowed
             && !AllowedQualityGate.Accepts(allowed, normalizedCandidate))
         {
-            hardReject = true;
-            risks.Add(AllowedQualityGate.Refusal(allowed, normalizedCandidate));
+            Refuse(AllowedQualityGate.Refusal(allowed, normalizedCandidate));
         }
 
         reasons.Add(meetsCutoff
@@ -255,8 +261,7 @@ public static partial class ReleaseDecisionEngine
             var currentScore = input.CurrentCustomFormatScore.GetValueOrDefault();
             if (!requiresGain || (hasCurrentFormatEvaluation && input.CustomFormatScore <= currentScore))
             {
-                hardReject = true;
-                risks.Add(hasCurrentFormatEvaluation
+                Refuse(hasCurrentFormatEvaluation
                     ? "Upgrade stop policy blocked this release because the current file already meets cutoff and the candidate does not improve the custom-format score."
                     : "Upgrade stop policy could not compare custom formats because the installed file evaluation is unknown.");
             }
@@ -281,15 +286,23 @@ public static partial class ReleaseDecisionEngine
             qualityDelta <= 0 &&
             input.CustomFormatScore <= input.CurrentCustomFormatScore.Value)
         {
-            hardReject = true;
-            risks.Add("Equivalent replacement blocked: the installed file already meets cutoff and this candidate does not improve its upgrade-driving custom formats.");
+            Refuse("Equivalent replacement blocked: the installed file already meets cutoff and this candidate does not improve its upgrade-driving custom formats.");
         }
 
         var seederScore = ScoreSeeders(input.Seeders, risks, reasons);
+        // A torrent nobody seeds never downloads (#611). It stays in a manual
+        // search with this reason, where a person can still force it.
+        if (input.Seeders == 0 && DownloadProtocols.SourceKind(input.IndexerProtocol) == DownloadProtocols.Torrent)
+        {
+            hardReject = true;
+            rejectionGate ??= "No one is seeding this torrent, so it cannot download.";
+        }
+
         var sizeScore = ScoreSize(input.SizeBytes, normalizedCandidate, input.SizeRules, IsSingleEpisode(input.MediaType, input.ReleaseName), risks, reasons, out var estimatedBitrate, out var sizeOutOfRange);
         if (sizeOutOfRange)
         {
             hardReject = true;
+            rejectionGate ??= risks[^1];
         }
         var releaseGroup = InferReleaseGroup(input.ReleaseName);
         if (!string.IsNullOrWhiteSpace(releaseGroup))
@@ -466,7 +479,7 @@ public static partial class ReleaseDecisionEngine
 
         var summary = input.PreferencePlan is null
             ? BuildSummary(status, normalizedCandidate, normalizedTarget, input.CustomFormatScore, input.Seeders, risks.Count, risks)
-            : BuildTypedSummary(status, preferenceComparison, preferenceEvaluation, risks);
+            : BuildTypedSummary(status, preferenceComparison, preferenceEvaluation, rejectionGate);
         return new ReleaseDecision(
             effectivePolicyVersion,
             status,
@@ -489,18 +502,20 @@ public static partial class ReleaseDecisionEngine
         string status,
         PreferenceComparison? comparison,
         PreferenceEvaluation? evaluation,
-        IReadOnlyList<string> risks)
+        string? rejectionGate)
     {
         // Section 10: a rejection names the gate that failed. The typed
         // comparison's reasons describe the preference outcome, which for a
         // rejected release is the wrong sentence - it explained a release
         // the profile's allowed tiers had refused as "your file is better",
         // naming a comparison instead of the rule that actually stopped it.
-        // The gate's own wording lives in the risk flags.
+        // It is the gate that refused, not the first risk noted (#611): a
+        // release under the size floor with one seeder was said to have been
+        // refused for its seed count.
         if (string.Equals(status, ReleaseDecisionStatuses.Rejected, StringComparison.Ordinal)
-            && risks.FirstOrDefault(risk => !string.IsNullOrWhiteSpace(risk)) is { } gate)
+            && !string.IsNullOrWhiteSpace(rejectionGate))
         {
-            return $"Rejected by the typed release plan. {gate}";
+            return $"Rejected by the typed release plan. {rejectionGate}";
         }
 
         var reasons = comparison?.Reasons ?? evaluation?.Reasons ?? [];
@@ -782,7 +797,7 @@ public static partial class ReleaseDecisionEngine
     [GeneratedRegex(@"(^|[.\s_-])(sample|trailer|extras?|proof)([.\s_-]|$)", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
     private static partial Regex SampleTokenRegex();
 
-    [GeneratedRegex(@"(^|[.\s_-])(cam|camrip|ts|telesync|tc|telecine|wp|workprint|scr|screener)([.\s_-]|$)", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
+    [GeneratedRegex(@"(^|[.\s_-])(cam|hdcam|hd-cam|camrip|ts|hdts|hd-ts|telesync|tc|telecine|wp|workprint|scr|screener)([.\s_-]|$)", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
     private static partial Regex BlockedTokenRegex();
 
     [GeneratedRegex(@"-(?<group>[A-Za-z0-9]{2,20})$")]
@@ -846,4 +861,9 @@ public sealed record ReleaseDecisionInput(
     /// "movies" or "tv". A single TV episode is sized against the episode
     /// band, not the film one (#600). Null keeps the film band.
     /// </summary>
-    string? MediaType = null);
+    string? MediaType = null,
+    /// <summary>
+    /// Why the release's name is not for what was searched, or null when it is
+    /// (#613). A search by words can answer with anything sharing a word.
+    /// </summary>
+    string? TitleMismatch = null);

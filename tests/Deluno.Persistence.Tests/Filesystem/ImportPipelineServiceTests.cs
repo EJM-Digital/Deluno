@@ -1286,6 +1286,58 @@ public sealed class ImportPipelineServiceTests
     /// the title, name the release that was taken, and record the rename as
     /// its own step.
     /// </summary>
+    /// <summary>
+    /// #617, live on the rig: The Kid (1921) was imported as a new film called
+    /// "The Kid 1921 CC 1080p BluRay x264-nikt0" while the film grabbed stayed
+    /// wanted. An import that knows its grab lands on the grab's film, named as
+    /// that film, whatever title it was queued with.
+    /// </summary>
+    [Fact]
+    public async Task An_import_lands_on_the_film_it_was_grabbed_for_whatever_it_was_queued_as()
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.UtcNow);
+        await InitializeAllAsync(storage, timeProvider);
+        var downloadsPath = Path.Combine(storage.DataRoot, "downloads");
+        var movieRootPath = Path.Combine(storage.DataRoot, "movies");
+        Directory.CreateDirectory(downloadsPath);
+        Directory.CreateDirectory(movieRootPath);
+        const string release = "The Kid 1921 CC 1080p BluRay x264-nikt0";
+        var sourcePath = Path.Combine(downloadsPath, release + ".mkv");
+        await File.WriteAllBytesAsync(sourcePath, Enumerable.Repeat((byte)0x21, 4096).ToArray());
+        File.SetLastWriteTimeUtc(sourcePath, DateTime.UtcNow.AddMinutes(-1));
+
+        var platform = CreatePlatformRepository(storage, timeProvider);
+        var libraries = CreateLibrariesRepository(storage, timeProvider);
+        await SaveSettingsAsync(platform, movieRootPath, downloadsPath);
+        await CreateMovieLibraryAsync(libraries, movieRootPath, downloadsPath);
+        var library = Assert.Single(await libraries.ListLibrariesAsync(CancellationToken.None));
+        var movies = new SqliteMovieCatalogRepository(storage.Factory, timeProvider);
+        var kid = await movies.AddAsync(new CreateMovieRequest("The Kid", 1921, null), CancellationToken.None);
+
+        var jobStore = new SqliteJobStore(storage.Factory, timeProvider, new NullRealtimeEventPublisher(), new NullDownloadDispatchesRepository());
+        var dispatchId = await jobStore.RecordDownloadDispatchAsync(
+            library.Id, "movies", "movie", kid.Id, "The Kid 1921 CC 1080p BluRay x264 nikt0", "LimeTorrents", "client-1", "qBittorrent", "sent",
+            notesJson: null, cancellationToken: CancellationToken.None);
+
+        var service = CreateService(storage, timeProvider, platform, libraries, movies, downloadDispatchesRepository: new SqliteDownloadDispatchesRepository(storage.Factory, timeProvider));
+        var result = await service.ExecuteAsync(
+            new ImportExecuteRequest(
+                // As Transfers queued it: titled with the release's name.
+                new ImportPreviewRequest(sourcePath, null, "movies", "the kid 1921 cc 1080p bluray x264 nikt0", 1921, [], [], null, null),
+                "copy",
+                Overwrite: false,
+                AllowCopyFallback: true,
+                DispatchId: dispatchId),
+            CancellationToken.None);
+
+        Assert.True(result.Succeeded, result.Message);
+        Assert.StartsWith(Path.Combine(movieRootPath, "The Kid (1921)"), result.Response!.Preview.DestinationPath, StringComparison.Ordinal);
+        var only = Assert.Single(await movies.ListAsync(CancellationToken.None));
+        Assert.Equal(kid.Id, only.Id);
+        Assert.True(only.HasFile);
+    }
+
     [Fact]
     public async Task Where_a_copy_came_from_outlives_the_dispatch_that_brought_it()
     {

@@ -49,7 +49,7 @@ public sealed class QueueActionSafetyTests
 
         Assert.Equal(HttpStatusCode.BadRequest, refused.Status);
         Assert.False(refused.Succeeded);
-        Assert.Contains("queue removal is disabled", refused.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Allow removing client queue entries\" under Find & Download > Download Clients", refused.Message, StringComparison.Ordinal);
 
         // And the refusal names the setting rather than leaving somebody
         // hunting for it.
@@ -74,7 +74,7 @@ public sealed class QueueActionSafetyTests
         var attempt = await ActOnQueueAsync(app, clientId, action: "remove", queueItemId: "SABnzbd_nzo_abc");
 
         Assert.False(attempt.Succeeded);
-        Assert.DoesNotContain("queue removal is disabled", attempt.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("Allow removing client queue entries", attempt.Message, StringComparison.Ordinal);
     }
 
     [Theory]

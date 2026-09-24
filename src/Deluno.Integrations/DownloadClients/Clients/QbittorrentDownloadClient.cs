@@ -95,10 +95,19 @@ public sealed class QbittorrentDownloadClient(Func<HttpMessageHandler>? handlerF
         var after = await WaitForNewHashAsync(http, before, cancellationToken);
         if (before is not null && after is not null && !after.Except(before).Any())
         {
+            // No new torrent is also what a link qBittorrent could not read
+            // looks like: it logs "Failed to add torrent" and still answered
+            // Ok. Only a hash Deluno knows, already in the list, is a duplicate.
+            var knownHash = Search.Trackers.TrackerMagnet.InfoHashOf(request.DownloadUrl);
+            var message = knownHash is { Length: 40 } && before.Contains(knownHash, StringComparer.OrdinalIgnoreCase)
+                ? "qBittorrent already holds this release. Remove it there, or force a re-download, before expecting this to start."
+                : knownHash is { Length: 40 }
+                    ? "qBittorrent accepted the magnet but added no torrent. Its log says why."
+                    : "qBittorrent accepted the request but added no torrent. Either it already holds this release (remove it there, or force a re-download), or it could not read what the link returned; its log says which.";
             return DownloadClientHelpers.GrabFailure(
                 client,
                 request,
-                "qBittorrent accepted the request but added no torrent, which means it already holds this release. Remove it there, or force a re-download, before expecting this to start.") with
+                message) with
             {
                 ResponseCode = (int)response.StatusCode,
                 ResponseJson = payload

@@ -288,6 +288,16 @@ public interface IJobQueueRepository
         string releaseName,
         CancellationToken cancellationToken);
 
+    /// <summary>
+    /// The grab behind a download by the id its client gave it (a torrent's
+    /// hash), which a name that differs in punctuation cannot defeat (#617).
+    /// </summary>
+    Task<DispatchCatalogueLink?> FindDispatchLinkByClientItemAsync(
+        string downloadClientId,
+        string clientItemId,
+        CancellationToken cancellationToken)
+        => Task.FromResult<DispatchCatalogueLink?>(null);
+
     /// <summary>Per-day job and dispatch counts for the dashboard.</summary>
     Task<JobDailyMetrics> GetDailyMetricsAsync(
         DateOnly fromDate,

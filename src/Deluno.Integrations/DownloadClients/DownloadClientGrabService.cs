@@ -231,7 +231,15 @@ public sealed class DownloadClientGrabService(
                     category: "configuration");
             }
 
-            return await implementation.GrabAsync(client, request, cancellationToken);
+            var sent = await implementation.GrabAsync(client, request, cancellationToken);
+
+            // A magnet names its torrent's hash, the id every torrent client
+            // files it under, so the grab can be found by it whatever name the
+            // client gives the download (#617).
+            return sent.Succeeded && string.IsNullOrWhiteSpace(sent.ExternalId)
+                   && Search.Trackers.TrackerMagnet.InfoHashOf(request.DownloadUrl) is { Length: 40 } hash
+                ? sent with { ExternalId = hash.ToLowerInvariant() }
+                : sent;
         }
         catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException or InvalidOperationException or IOException)
         {
@@ -261,14 +269,18 @@ public sealed class DownloadClientGrabService(
     {
         if (trackerIndexers is null
             || request.TorrentFile is not null
-            || string.IsNullOrWhiteSpace(request.IndexerId)
+            || string.IsNullOrWhiteSpace(request.IndexerId) && string.IsNullOrWhiteSpace(request.IndexerName)
             || request.DownloadUrl.StartsWith("magnet:", StringComparison.OrdinalIgnoreCase))
         {
             return (request, null);
         }
 
-        var indexer = (await connectionsRepository.ListIndexersAsync(cancellationToken))
-            .FirstOrDefault(item => string.Equals(item.Id, request.IndexerId, StringComparison.OrdinalIgnoreCase));
+        // By id; by name when a grab arrives without one (#609), since a
+        // tracker's page sent to a client as it is can never download.
+        var indexers = await connectionsRepository.ListIndexersAsync(cancellationToken);
+        var indexer = string.IsNullOrWhiteSpace(request.IndexerId)
+            ? indexers.FirstOrDefault(item => IndexerProtocols.IsTracker(item.Protocol) && string.Equals(item.Name, request.IndexerName, StringComparison.OrdinalIgnoreCase))
+            : indexers.FirstOrDefault(item => string.Equals(item.Id, request.IndexerId, StringComparison.OrdinalIgnoreCase));
         if (indexer is null || !IndexerProtocols.IsTracker(indexer.Protocol))
         {
             return (request, null);
@@ -281,7 +293,7 @@ public sealed class DownloadClientGrabService(
                 ? (request with { DownloadUrl = magnet }, null)
                 : (request with { TorrentFile = grab.TorrentFile }, null);
         }
-        catch (Deluno.Integrations.Search.Trackers.TrackerException exception)
+        catch (Exception exception) when (exception is Deluno.Integrations.Search.Trackers.TrackerException or HttpRequestException or Deluno.Integrations.Search.Trackers.TrackerFieldException or FormatException || exception is TaskCanceledException && !cancellationToken.IsCancellationRequested)
         {
             return (request, $"{indexer.Name} would not hand over this release: {exception.Message}");
         }

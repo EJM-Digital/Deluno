@@ -555,7 +555,8 @@ public sealed class FeedMediaSearchPlanner(
                         currentFilePresent,
                         sizeRules: sizeRules,
                         upgradeStop: upgradeStop,
-                        mediaType: mediaType);
+                        mediaType: mediaType,
+                        expectation: TitleExpectation(title, year, mediaType, seasonNumber, episodeNumber, numberingScheme, absoluteNumber, airDate, sceneSeasonNumber, sceneEpisodeNumber));
                     return new IndexerSearchOutcome(
                         parsed.Candidates,
                         parsed.CandidatesTruncatedByIndexer,
@@ -738,6 +739,20 @@ public sealed class FeedMediaSearchPlanner(
             Categories: categories.Length > 0 ? categories : [family * 1000]);
     }
 
+    /// <summary>What a release's name has to be for (#613), numbered the way the search asked.</summary>
+    private static ReleaseTitleExpectation TitleExpectation(string title, int? year, string mediaType, int? seasonNumber, int? episodeNumber, string? numberingScheme, int? absoluteNumber, DateOnly? airDate, int? sceneSeasonNumber, int? sceneEpisodeNumber)
+    {
+        var scheme = numberingScheme?.Trim().ToLowerInvariant();
+        var isTv = string.Equals(mediaType, "tv", StringComparison.OrdinalIgnoreCase);
+        return scheme switch
+        {
+            "absolute" when absoluteNumber is not null => new ReleaseTitleExpectation(title, year, isTv, AbsoluteNumber: absoluteNumber),
+            "airdate" when airDate is not null => new ReleaseTitleExpectation(title, year, isTv, AirDate: airDate),
+            "scene" when sceneSeasonNumber is not null => new ReleaseTitleExpectation(title, year, isTv, sceneSeasonNumber, sceneEpisodeNumber),
+            _ => new ReleaseTitleExpectation(title, year, isTv, seasonNumber, episodeNumber)
+        };
+    }
+
     private static int ElapsedMilliseconds(long startedTimestamp)
         => (int)Math.Clamp(Stopwatch.GetElapsedTime(startedTimestamp).TotalMilliseconds, 0, int.MaxValue);
 
@@ -764,7 +779,8 @@ public sealed class FeedMediaSearchPlanner(
         int requestedLimit = IndexerResultLimit,
         IReadOnlyList<ProfileSizeRule>? sizeRules = null,
         QualityUpgradeStopPolicy? upgradeStop = null,
-        string? mediaType = null)
+        string? mediaType = null,
+        ReleaseTitleExpectation? expectation = null)
     {
         XNamespace torznab = "http://torznab.com/schemas/2015/feed";
         XNamespace newznab = "http://www.newznab.com/DTD/2010/feeds/attributes/";
@@ -840,7 +856,8 @@ public sealed class FeedMediaSearchPlanner(
                  CurrentReleaseName: currentReleaseName,
                  CurrentPreferenceEvaluation: currentPreferenceEvaluation,
                  CurrentFilePresent: currentFilePresent,
-                 MediaType: mediaType));
+                 MediaType: mediaType,
+                 TitleMismatch: expectation is null ? null : ReleaseTitleMatch.Mismatch(releaseName, expectation)));
 
             var boost = rankingModelService.Score(new ReleaseRankingFeatures(
                 Seeders: seeders,
@@ -1064,19 +1081,8 @@ public sealed class FeedMediaSearchPlanner(
             : indexer.AutomaticSearchEnabled;
     }
 
-    private static string InferQuality(string releaseName)
-    {
-        var normalized = releaseName.ToLowerInvariant();
-        var source = normalized.Contains("remux") ? "Remux" :
-            normalized.Contains("bluray") || normalized.Contains("blu-ray") ? "Bluray" :
-            normalized.Contains("web") ? "WEB" :
-            normalized.Contains("hdtv") ? "HDTV" :
-            "WEB";
-        var resolution = normalized.Contains("2160") || normalized.Contains("4k") ? "2160p" :
-            normalized.Contains("720") ? "720p" :
-            "1080p";
-        return $"{source} {resolution}";
-    }
+    /// <summary>What a release name says its quality is, and Unknown when it says nothing (#610).</summary>
+    private static string InferQuality(string releaseName) => ReleaseNameQuality.Read(releaseName);
 
     private static string BuildSummary(
         ReleaseDecision decision,

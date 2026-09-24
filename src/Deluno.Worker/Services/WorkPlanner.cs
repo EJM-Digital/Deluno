@@ -23,6 +23,8 @@ using Deluno.Worker.Intake;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 
+using Deluno.Quality;
+
 namespace Deluno.Worker.Services;
 
 /// <summary>
@@ -616,7 +618,7 @@ public sealed class WorkPlanner(
             // Only items Deluno itself dispatched. Something a user added by
             // hand is theirs, and reclaiming it would be Deluno deleting a file
             // it was never asked to manage.
-            var dispatch = await jobQueueRepository.FindRecentDispatchLinkAsync(item.ClientId, item.ReleaseName, cancellationToken);
+            var dispatch = await jobQueueRepository.FindDispatchLinkForDownloadAsync(item.ClientId, item.Id, item.ReleaseName, cancellationToken);
             if (dispatch is null)
             {
                 continue;
@@ -865,8 +867,9 @@ public sealed class WorkPlanner(
             }
 
             var sourceKey = NormalizeSourceKey(item.SourcePath);
-            var dispatch = await jobQueueRepository.FindRecentDispatchLinkAsync(
+            var dispatch = await jobQueueRepository.FindDispatchLinkForDownloadAsync(
                 item.ClientId,
+                item.Id,
                 item.ReleaseName,
                 cancellationToken);
 
@@ -1017,8 +1020,10 @@ public sealed class WorkPlanner(
                     SourcePath: item.SourcePath,
                     FileName: InferImportFileName(item),
                     MediaType: item.MediaType,
-                    Title: catalogue.Title ?? item.Title,
-                    Year: catalogue.Year ?? CatalogueImportNaming.InferYear(item.ReleaseName),
+                    // With no grab to name it by, the title and year the name gives,
+                    // not the whole name: "The Kid 1921 CC 1080p…" is The Kid (#617).
+                    Title: catalogue.Title ?? ReleaseTitleMatch.ParseTitleAndYear(item.ReleaseName).Title,
+                    Year: catalogue.Year ?? ReleaseTitleMatch.ParseTitleAndYear(item.ReleaseName).Year ?? CatalogueImportNaming.InferYear(item.ReleaseName),
                     Genres: catalogue.Genres,
                     Tags: string.IsNullOrWhiteSpace(item.Category) ? [] : [item.Category],
                     Studio: catalogue.Studio,
@@ -1305,8 +1310,9 @@ public sealed class WorkPlanner(
             //
             // Which dispatch this hand-off belongs to decides whether the output
             // is already spoken for; the import queue reads it again to name it.
-            var dispatch = await jobQueueRepository.FindRecentDispatchLinkAsync(
+            var dispatch = await jobQueueRepository.FindDispatchLinkForDownloadAsync(
                 handoff.ClientId,
+                handoff.QueueItemId,
                 handoff.ReleaseName,
                 cancellationToken);
 

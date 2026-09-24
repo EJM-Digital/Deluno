@@ -63,6 +63,12 @@ public sealed partial class ImportPipelineService(
 
     public async Task<ImportPreviewResponse> PreviewAsync(ImportPreviewRequest request, CancellationToken cancellationToken)
     {
+        // Named as the import will be named, from its grab (#617).
+        if (await GrabbedTitleAsync(await ResolveDispatchAsync(request.DispatchId, cancellationToken), NormalizeMediaType(request.MediaType), cancellationToken) is { } grabbed)
+        {
+            request = request with { Title = grabbed.Title, Year = grabbed.Year ?? request.Year };
+        }
+
         var tvDirectoryFiles = NormalizeMediaType(request.MediaType) == "tv"
             ? TryListImportableVideoFiles(request.SourcePath)
             : null;
@@ -93,6 +99,14 @@ public sealed partial class ImportPipelineService(
     public async Task<ImportPipelineResult> ExecuteAsync(ImportExecuteRequest request, CancellationToken cancellationToken)
     {
         var mediaType = NormalizeMediaType(request.Preview.MediaType);
+
+        // Named from its grab before anything else, so the folder, the file
+        // and the catalogue entry agree (#617). An import queued from Transfers
+        // arrived titled with the release's name.
+        if (await GrabbedTitleAsync(await ResolveDispatchAsync(request.DispatchId, cancellationToken), mediaType, cancellationToken) is { } grabbed)
+        {
+            request = request with { Preview = request.Preview with { Title = grabbed.Title, Year = grabbed.Year ?? request.Preview.Year } };
+        }
         var tvDirectoryFiles = mediaType == "tv"
             ? TryListImportableVideoFiles(request.Preview.SourcePath)
             : null;
@@ -2444,6 +2458,17 @@ public sealed partial class ImportPipelineService(
             CutoffQuality: library.CutoffQuality,
             UpgradeUntilCutoff: library.UpgradeUntilCutoff,
             UpgradeUnknownItems: library.UpgradeUnknownItems));
+        var dispatch = await ResolveDispatchAsync(dispatchId, cancellationToken);
+
+        // A grab says which title this file is for, and the file goes there,
+        // whatever name it arrived under (#617): matched by the release's own
+        // name, a real film landed as a new title called "The Kid 1921 CC 1080p
+        // BluRay x264-nikt0" while the film grabbed stayed wanted.
+        if (await GrabbedTitleAsync(dispatch, mediaType, cancellationToken) is { } grabbed)
+        {
+            request = request with { Title = grabbed.Title, Year = grabbed.Year ?? request.Year };
+        }
+
         var title = TitleForActivity(request);
         var catalogId = $"{title.ToLowerInvariant().Replace(" ", "-")}-{request.Year ?? 0}".Substring(0, Math.Min(64, $"{title.ToLowerInvariant().Replace(" ", "-")}-{request.Year ?? 0}".Length));
         var preferenceProfile = await ResolvePreferenceProfileAsync(library, mediaType, cancellationToken);
@@ -2461,7 +2486,6 @@ public sealed partial class ImportPipelineService(
         var guidePackage = preferenceProfile is null || preferencePlan is not null || guidePackageStore is null
             ? null
             : (await guidePackageStore.GetCurrentAsync(cancellationToken)).Package;
-        var dispatch = await ResolveDispatchAsync(dispatchId, cancellationToken);
         var dispatchReleaseName = string.IsNullOrWhiteSpace(dispatch?.ReleaseName)
             ? null
             : dispatch.ReleaseName.Trim();
@@ -2501,6 +2525,35 @@ public sealed partial class ImportPipelineService(
                 .OfType<PreferenceEvaluationSnapshot>()
                 .ToArray();
         var preferenceEvaluation = preferenceEvaluations.FirstOrDefault();
+
+        if (mediaType == "tv"
+            && string.IsNullOrWhiteSpace(request.Title)
+            && string.IsNullOrWhiteSpace(request.SeriesId)
+            && request.TvDbId is null)
+        {
+            // The TV side of #417, and #617: with no grab found and no title,
+            // the only name left is the file's, and a show made from it holds
+            // the episode under something that is not a show at all.
+            await seriesCatalogRepository.AddImportRecoveryCaseAsync(
+                new CreateSeriesImportRecoveryCaseRequest(
+                    title,
+                    "unmatched",
+                    $"Deluno imported the file but could not tell which show it belongs to, so it has not been added to the library. The only name available was the file's own: {title}",
+                    "Open this case and choose the show, or add the show first and import again.",
+                    null),
+                cancellationToken);
+
+            return new CatalogImportResult
+            {
+                CatalogUpdated = false,
+                CatalogId = null,
+                Dispatch = dispatch,
+                EntityId = dispatch?.EntityId,
+                ReleaseNameEvidence = dispatchReleaseName ?? preview.SourcePath,
+                PreferenceEvaluations = preferenceEvaluations,
+                MatchedRuleNames = ResolveMatchedRuleNames(preferenceEvaluations, customFormats, preferencePlan)
+            };
+        }
 
         if (mediaType == "tv")
         {
@@ -2620,6 +2673,29 @@ public sealed partial class ImportPipelineService(
             PreferenceEvaluations = preferenceEvaluations,
             MatchedRuleNames = ResolveMatchedRuleNames(preferenceEvaluations, customFormats, preferencePlan)
         };
+    }
+
+    /// <summary>The title and year of what a grab was for: its film, or its show.</summary>
+    private async Task<(string Title, int? Year)?> GrabbedTitleAsync(DownloadDispatchItem? dispatch, string mediaType, CancellationToken cancellationToken)
+    {
+        if (dispatch is null || string.IsNullOrWhiteSpace(dispatch.EntityId))
+        {
+            return null;
+        }
+
+        if (mediaType == "movies" && string.Equals(dispatch.EntityType, "movie", StringComparison.OrdinalIgnoreCase)
+            && await movieCatalogRepository.GetByIdAsync(dispatch.EntityId, cancellationToken) is { } movie)
+        {
+            return (movie.Title, movie.ReleaseYear);
+        }
+
+        if (mediaType == "tv" && string.Equals(dispatch.EntityType, "series", StringComparison.OrdinalIgnoreCase)
+            && await seriesCatalogRepository.GetByIdAsync(dispatch.EntityId, cancellationToken) is { } series)
+        {
+            return (series.Title, series.StartYear);
+        }
+
+        return null;
     }
 
     private async Task<DownloadDispatchItem?> ResolveDispatchAsync(

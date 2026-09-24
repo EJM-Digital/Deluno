@@ -223,7 +223,8 @@ public sealed class ReleaseDecisionEngineTests
     [Fact]
     public void Decide_returns_risky_when_three_or_more_risk_flags()
     {
-        // Three risks: downgrade (-delta), no seeders, unreported size.
+        // Three risks: downgrade (-delta), a very low seed count, unreported
+        // size. Not zero seeders: a torrent nobody seeds is refused (#611).
         // Target is 2160p so the current 1080p file doesn't meet it — the
         // downgrade becomes a risk flag rather than a hard reject.
         //
@@ -237,7 +238,7 @@ public sealed class ReleaseDecisionEngineTests
             currentQuality: "WEB 1080p",
             targetQuality: "WEB 2160p",
             sizeBytes: null,
-            seeders: 0));
+            seeders: 1));
 
         Assert.Equal("risky", decision.Status);
         Assert.True(decision.RiskFlags.Count >= 3);

@@ -611,7 +611,12 @@ public sealed record ImportPreviewRequest(
     /// there, not into the first library of its media type. A destination rule
     /// still wins; a manual import without it keeps choosing as before.
     /// </summary>
-    string? LibraryId = null);
+    string? LibraryId = null,
+    /// <summary>
+    /// The grab behind the file, so a preview names it as the import will: as
+    /// the title grabbed, not the release (#617).
+    /// </summary>
+    string? DispatchId = null);
 
 public sealed record ImportPreviewResponse(
     string SourcePath,

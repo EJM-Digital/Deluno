@@ -41,6 +41,19 @@ public class MediaSearchCandidateViewTests
     }
 
     /// <summary>
+    /// #609: the screens send a hand-picked candidate's indexer back on the
+    /// grab. Without it a tracker's page went to the client unresolved and
+    /// per-indexer client routing had nothing to route on.
+    /// </summary>
+    [Fact]
+    public void A_candidate_says_which_indexer_it_came_from()
+    {
+        var json = JsonSerializer.SerializeToElement(MediaSearchCandidateView.For(Candidate()));
+
+        Assert.Equal("indexer-1", json.GetProperty("IndexerId").GetString());
+    }
+
+    /// <summary>
     /// The legacy score fields describe the old score-based decision. Returning
     /// both invites a reader to add up numbers from two different systems.
     /// </summary>

@@ -1780,6 +1780,20 @@ public sealed class SqliteJobStore(
     /// only to keep the scan off very old rows; the client id and release name
     /// together are specific enough, and the newest match wins.
     /// </summary>
+    private const string DispatchLinkColumns =
+        """
+        id, entity_type, entity_id, indexer_name, library_id,
+        replacement_authorized, force_replacement_authorized, replacement_expected_path,
+        replacement_targets_json
+        """;
+
+    /// <summary>
+    /// The grab behind a download, by name (#617). The exact name first; then
+    /// the same name whatever its case and punctuation, because a client
+    /// reports the torrent's own name ("…x264-nikt0") where the grab kept the
+    /// indexer's ("…x264 nikt0"), and an exact match made the first real film
+    /// import as a new title named after its file.
+    /// </summary>
     public async Task<DispatchCatalogueLink?> FindRecentDispatchLinkAsync(
         string downloadClientId,
         string releaseName,
@@ -1789,42 +1803,128 @@ public sealed class SqliteJobStore(
             DelunoDatabaseNames.Jobs,
             cancellationToken);
 
-        using var command = connection.CreateCommand();
-        command.CommandText =
-            """
-            SELECT id, entity_type, entity_id, indexer_name, library_id,
-                   replacement_authorized, force_replacement_authorized, replacement_expected_path,
-                   replacement_targets_json
+        using (var exact = connection.CreateCommand())
+        {
+            exact.CommandText =
+                $"""
+                SELECT {DispatchLinkColumns}
+                FROM download_dispatches
+                WHERE download_client_id = @downloadClientId
+                  AND release_name = @releaseName
+                  AND created_utc > datetime('now', '-90 days')
+                ORDER BY created_utc DESC
+                LIMIT 1;
+                """;
+            AddParameter(exact, "@downloadClientId", downloadClientId);
+            AddParameter(exact, "@releaseName", releaseName);
+            using var reader = await exact.ExecuteReaderAsync(cancellationToken);
+            if (await reader.ReadAsync(cancellationToken))
+            {
+                return ReadDispatchLink(reader);
+            }
+        }
+
+        var wanted = ComparableReleaseName(releaseName);
+        if (wanted.Length == 0)
+        {
+            return null;
+        }
+
+        using var loose = connection.CreateCommand();
+        loose.CommandText =
+            $"""
+            SELECT {DispatchLinkColumns}, release_name
             FROM download_dispatches
             WHERE download_client_id = @downloadClientId
-              AND release_name = @releaseName
               AND created_utc > datetime('now', '-90 days')
+            ORDER BY created_utc DESC
+            LIMIT 500;
+            """;
+        AddParameter(loose, "@downloadClientId", downloadClientId);
+        // Last, the title and year each name gives: a tracker lists "House on
+        // Haunted Hill (1959) [P&M] 1080p Blu-Ray (6.6GB)" for a torrent named
+        // "house.on.-haunted.-hill.-1959.1080p…", and only a hash, which an
+        // older grab did not keep, could otherwise tie the two (#617).
+        var (wantedTitle, wantedYear) = ReleaseTitleMatch.ParseTitleAndYear(releaseName);
+        var wantedKey = wantedYear is null ? null : ReleaseTitleMatch.Clean(wantedTitle);
+        DispatchCatalogueLink? sameTitleAndYear = null;
+        using var candidates = await loose.ExecuteReaderAsync(cancellationToken);
+        while (await candidates.ReadAsync(cancellationToken))
+        {
+            if (candidates.IsDBNull(9))
+            {
+                continue;
+            }
+
+            var candidateName = candidates.GetString(9);
+            if (ComparableReleaseName(candidateName) == wanted)
+            {
+                return ReadDispatchLink(candidates);
+            }
+
+            if (sameTitleAndYear is null && wantedKey is { Length: > 0 })
+            {
+                var (title, year) = ReleaseTitleMatch.ParseTitleAndYear(candidateName);
+                if (year == wantedYear && ReleaseTitleMatch.Clean(title) == wantedKey)
+                {
+                    sameTitleAndYear = ReadDispatchLink(candidates);
+                }
+            }
+        }
+
+        return sameTitleAndYear;
+    }
+
+    /// <summary>
+    /// The grab behind a download, by the id its client gave it: a torrent's
+    /// hash, a Transmission id (#617). Names can differ; this cannot.
+    /// </summary>
+    public async Task<DispatchCatalogueLink?> FindDispatchLinkByClientItemAsync(
+        string downloadClientId,
+        string clientItemId,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(clientItemId))
+        {
+            return null;
+        }
+
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Jobs,
+            cancellationToken);
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            $"""
+            SELECT {DispatchLinkColumns}
+            FROM download_dispatches
+            WHERE download_client_id = @downloadClientId
+              AND lower(torrent_hash_or_item_id) = lower(@clientItemId)
             ORDER BY created_utc DESC
             LIMIT 1;
             """;
-
         AddParameter(command, "@downloadClientId", downloadClientId);
-        AddParameter(command, "@releaseName", releaseName);
-
+        AddParameter(command, "@clientItemId", clientItemId.Trim());
         using var reader = await command.ExecuteReaderAsync(cancellationToken);
-        if (await reader.ReadAsync(cancellationToken))
-        {
-            return new DispatchCatalogueLink(
-                reader.GetString(0),
-                reader.IsDBNull(1) ? string.Empty : reader.GetString(1),
-                reader.IsDBNull(2) ? string.Empty : reader.GetString(2),
-                reader.IsDBNull(3) ? string.Empty : reader.GetString(3),
-                reader.IsDBNull(4) ? string.Empty : reader.GetString(4),
-                !reader.IsDBNull(5) && reader.GetInt32(5) != 0,
-                !reader.IsDBNull(6) && reader.GetInt32(6) != 0,
-                reader.IsDBNull(7) ? null : reader.GetString(7),
-                reader.IsDBNull(8)
-                    ? []
-                    : DeserializeReplacementTargets(reader.GetString(8)));
-        }
-
-        return null;
+        return await reader.ReadAsync(cancellationToken) ? ReadDispatchLink(reader) : null;
     }
+
+    /// <summary>A release name with its case and every non-letter, non-digit gone.</summary>
+    internal static string ComparableReleaseName(string? releaseName)
+        => new((releaseName ?? string.Empty).Where(char.IsLetterOrDigit).Select(char.ToLowerInvariant).ToArray());
+
+    private DispatchCatalogueLink ReadDispatchLink(System.Data.Common.DbDataReader reader)
+        => new(
+            reader.GetString(0),
+            reader.IsDBNull(1) ? string.Empty : reader.GetString(1),
+            reader.IsDBNull(2) ? string.Empty : reader.GetString(2),
+            reader.IsDBNull(3) ? string.Empty : reader.GetString(3),
+            reader.IsDBNull(4) ? string.Empty : reader.GetString(4),
+            !reader.IsDBNull(5) && reader.GetInt32(5) != 0,
+            !reader.IsDBNull(6) && reader.GetInt32(6) != 0,
+            reader.IsDBNull(7) ? null : reader.GetString(7),
+            reader.IsDBNull(8)
+                ? []
+                : DeserializeReplacementTargets(reader.GetString(8)));
 
     public async Task<bool> RequestLibrarySearchAsync(
         LibraryAutomationPlanItem library,
