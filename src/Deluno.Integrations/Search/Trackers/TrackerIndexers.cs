@@ -10,7 +10,11 @@ namespace Deluno.Integrations.Search.Trackers;
 /// Torznab feed every other indexer's results already arrive as, so the
 /// planner, RSS sync and decision engine read them the same way.
 /// </summary>
-public sealed class TrackerIndexers(ITrackerDefinitionCatalog catalog, ITrackerEngine engine, ICloudflareHelper? cloudflareHelper = null) : ITrackerIndexerTester
+public sealed class TrackerIndexers(
+    ITrackerDefinitionCatalog catalog,
+    ITrackerEngine engine,
+    ICloudflareHelper? cloudflareHelper = null,
+    TimeSpan? budget = null) : ITrackerIndexerTester
 {
     public TrackerConnection Connect(IndexerItem indexer)
     {
@@ -39,6 +43,18 @@ public sealed class TrackerIndexers(ITrackerDefinitionCatalog catalog, ITrackerE
         var baseUrl = string.IsNullOrWhiteSpace(indexer.BaseUrl) ? definition.Links.FirstOrDefault() ?? string.Empty : indexer.BaseUrl;
         return new TrackerConnection(indexer.Id, definition, baseUrl, settings);
     }
+
+    /// <summary>
+    /// How long one tracker gets to answer a search or a test (#634, #628).
+    /// Longer with a Cloudflare helper, which can take most of a minute to clear
+    /// a check: 49 seconds for 1337x on the rig.
+    /// </summary>
+    public async Task<TimeSpan> BudgetAsync(CancellationToken cancellationToken)
+        => budget is { } fixedBudget
+            ? fixedBudget
+            : cloudflareHelper is not null && await cloudflareHelper.IsConfiguredAsync(cancellationToken)
+            ? TimeSpan.FromSeconds(150)
+            : TimeSpan.FromSeconds(45);
 
     public async Task<XDocument> SearchAsync(IndexerItem indexer, TrackerQuery query, CancellationToken cancellationToken)
     {
@@ -74,9 +90,7 @@ public sealed class TrackerIndexers(ITrackerDefinitionCatalog catalog, ITrackerE
 
         // A Cloudflare helper can take most of a minute to clear a check: 49
         // seconds for 1337x on the rig, against the 45 a test used to get (#628).
-        var budget = cloudflareHelper is not null && await cloudflareHelper.IsConfiguredAsync(cancellationToken)
-            ? TimeSpan.FromSeconds(150)
-            : TimeSpan.FromSeconds(45);
+        var budget = await BudgetAsync(cancellationToken);
         try
         {
             using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);

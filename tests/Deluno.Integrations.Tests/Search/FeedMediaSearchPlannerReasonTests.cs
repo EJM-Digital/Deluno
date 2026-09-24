@@ -509,7 +509,8 @@ public sealed class FeedMediaSearchPlannerReasonTests
         ILogger<FeedMediaSearchPlanner>? logger = null,
         IGuidePackageStore? guidePackageStore = null,
         IIntegrationResiliencePolicy? resiliencePolicy = null,
-        bool indexersBusy = false)
+        bool indexersBusy = false,
+        Deluno.Integrations.Search.Trackers.TrackerIndexers? trackerIndexers = null)
     {
         var platform = new Mock<IPlatformSettingsRepository>();
         platform
@@ -543,7 +544,8 @@ public sealed class FeedMediaSearchPlannerReasonTests
             new DisabledRankingModelService(),
             throttle.Object,
             logger ?? NullLogger<FeedMediaSearchPlanner>.Instance,
-            guidePackageStore: guidePackageStore);
+            guidePackageStore: guidePackageStore,
+            trackerIndexers: trackerIndexers);
     }
 
     private static Mock<IConnectionsRepository> CreateConnections(IndexerItem indexer)
@@ -553,6 +555,43 @@ public sealed class FeedMediaSearchPlannerReasonTests
             .Setup(repository => repository.ListIndexersAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync([indexer]);
         return connections;
+    }
+
+    /// <summary>
+    /// #634: a dead tracker took every search down with it for minutes. It gets
+    /// a budget, and when that runs out the search goes on without it.
+    /// </summary>
+    [Fact]
+    public async Task A_tracker_that_does_not_answer_in_time_is_left_behind_rather_than_waited_for()
+    {
+        var tracker = CreateIndexer("tracker-1", "Dead Tracker") with { Protocol = "tracker", BaseUrl = "https://yts.mx/" };
+        tracker = tracker with { DefinitionId = "yts" };
+        var trackers = new Deluno.Integrations.Search.Trackers.TrackerIndexers(
+            new Deluno.Integrations.Search.Trackers.TrackerDefinitionCatalog(overrideDirectory: null, NullLogger<Deluno.Integrations.Search.Trackers.TrackerDefinitionCatalog>.Instance),
+            new SilentTrackerEngine(),
+            budget: TimeSpan.FromMilliseconds(300));
+        var started = System.Diagnostics.Stopwatch.StartNew();
+
+        var plan = await CreatePlanner(CreateConnections(tracker).Object, trackerIndexers: trackers).BuildPlanAsync(
+            "Example Release", 2026, "movies", null, "WEB 1080p", [CreateSource(tracker)], cancellationToken: CancellationToken.None);
+
+        Assert.True(started.Elapsed < TimeSpan.FromSeconds(10), $"the search waited {started.Elapsed}");
+        var failure = Assert.Single(plan.Failures ?? []);
+        Assert.Contains("did not answer within", failure.Message, StringComparison.Ordinal);
+        Assert.Contains("went on without it", failure.Message, StringComparison.Ordinal);
+    }
+
+    private sealed class SilentTrackerEngine : Deluno.Integrations.Search.Trackers.ITrackerEngine
+    {
+        public async Task<Deluno.Integrations.Search.Trackers.TrackerSearchResult> SearchAsync(
+            Deluno.Integrations.Search.Trackers.TrackerConnection connection, Deluno.Integrations.Search.Trackers.TrackerQuery query, CancellationToken cancellationToken)
+        {
+            await Task.Delay(Timeout.Infinite, cancellationToken);
+            throw new InvalidOperationException("unreachable");
+        }
+
+        public Task<Deluno.Integrations.Search.Trackers.TrackerGrab> ResolveDownloadAsync(
+            Deluno.Integrations.Search.Trackers.TrackerConnection connection, string link, CancellationToken cancellationToken) => throw new NotSupportedException();
     }
 
     private static IndexerItem CreateIndexer(string id, string name, string mediaScope = "movies")
