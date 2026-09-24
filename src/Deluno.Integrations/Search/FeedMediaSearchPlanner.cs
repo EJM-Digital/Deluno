@@ -930,7 +930,7 @@ public sealed class FeedMediaSearchPlanner(
         int? sceneSeasonNumber = null,
         int? sceneEpisodeNumber = null)
     {
-        var builder = new UriBuilder(EnsureApiEndpoint(indexer.BaseUrl));
+        var builder = new UriBuilder(IndexerApiEndpoint.For(indexer.BaseUrl));
         var query = ParseQuery(builder.Query);
 
         var isTv = string.Equals(mediaType, "tv", StringComparison.OrdinalIgnoreCase);
@@ -967,7 +967,7 @@ public sealed class FeedMediaSearchPlanner(
     /// </summary>
     internal static string BuildFeedUrl(IndexerItem indexer)
     {
-        var builder = new UriBuilder(EnsureApiEndpoint(indexer.BaseUrl));
+        var builder = new UriBuilder(IndexerApiEndpoint.For(indexer.BaseUrl));
         var query = ParseQuery(builder.Query);
         query["t"] = "search";
         query.Remove("q");
@@ -1007,19 +1007,6 @@ public sealed class FeedMediaSearchPlanner(
                && DateTimeOffset.TryParse(raw, CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal, out var published)
             ? published.ToUniversalTime()
             : null;
-    }
-
-    private static string EnsureApiEndpoint(string baseUrl)
-    {
-        var trimmed = baseUrl.Trim();
-        if (trimmed.Contains("?", StringComparison.Ordinal) ||
-            trimmed.EndsWith("/api", StringComparison.OrdinalIgnoreCase) ||
-            trimmed.Contains("/api?", StringComparison.OrdinalIgnoreCase))
-        {
-            return trimmed;
-        }
-
-        return trimmed.TrimEnd('/') + "/api";
     }
 
     internal static string SanitizeAddress(string value)

@@ -939,6 +939,9 @@ public static class ConnectionsEndpointRouteBuilderExtensions
             return uri.ToString();
         }
 
+        // The same /api the searches use (#624).
+        uri = new Uri(IndexerApiEndpoint.For(item.BaseUrl));
+
         var separator = string.IsNullOrWhiteSpace(uri.Query) ? "?" : "&";
         var apiKey = string.IsNullOrWhiteSpace(item.ApiKey) ? string.Empty : $"&apikey={Uri.EscapeDataString(item.ApiKey)}";
 
