@@ -460,10 +460,35 @@ public sealed class FeedMediaSearchPlanner(
                             throw new InvalidOperationException("This Deluno cannot search trackers.");
                         }
 
-                        var trackerDocument = await trackerIndexers.SearchAsync(
-                            indexer,
-                            TrackerQueryFor(indexer, queryText, mediaType, year, seasonNumber, episodeNumber),
-                            token);
+                        // A budget for the whole tracker search (#634). Without one, a
+                        // dead tracker tried each mirror for 30 seconds, then the
+                        // timeout was retried as transient, and every search waited
+                        // minutes for it. Out of time, it is reported and the search
+                        // goes on without it.
+                        var budget = await trackerIndexers.BudgetAsync(token);
+                        using var trackerTime = CancellationTokenSource.CreateLinkedTokenSource(token);
+                        trackerTime.CancelAfter(budget);
+                        XDocument trackerDocument;
+                        try
+                        {
+                            trackerDocument = await trackerIndexers.SearchAsync(
+                                indexer,
+                                TrackerQueryFor(indexer, queryText, mediaType, year, seasonNumber, episodeNumber),
+                                trackerTime.Token);
+                        }
+                        catch (OperationCanceledException) when (!token.IsCancellationRequested)
+                        {
+                            var message = $"{indexer.Name} did not answer within {budget.TotalSeconds:0} seconds, so this search went on without it.";
+                            return new IndexerSearchOutcome(
+                                [],
+                                CandidatesTruncatedByIndexer: false,
+                                Failed: true,
+                                CircuitOpen: false,
+                                Outcome: "failed",
+                                ErrorMessage: message,
+                                Failure: IntegrationFailureFactory.FromLegacy("indexer", indexer.Id, indexer.Name, "search", "timeout", message));
+                        }
+
                         return await ReadCandidatesAsync(trackerDocument, token);
                     }
 
