@@ -39,6 +39,7 @@ public sealed class ProcessorOutputImportQueue(
         string source,
         CancellationToken cancellationToken)
     {
+        outputPath = ImportPathFor(outputPath, library.MediaType);
         var dispatch = await jobQueueRepository.FindDispatchLinkForDownloadAsync(handoff.ClientId, handoff.QueueItemId, handoff.ReleaseName, cancellationToken);
         if (await CatalogueImportNaming.RemovedSinceGrabAsync(dispatch, null, movieCatalogRepository, seriesCatalogRepository, cancellationToken) is { } removed)
         {
@@ -93,6 +94,30 @@ public sealed class ProcessorOutputImportQueue(
             cancellationToken);
 
         return new ProcessorOutputImport(job.Id, dispatch?.DispatchId, dispatch?.EntityId);
+    }
+
+    /// <summary>
+    /// What to import when a processor hands back a folder (#619): a film is its
+    /// one real video, the largest that is not a sample; an episode's folder with
+    /// one video is that video; a folder of several episodes is imported whole,
+    /// as the season pack it is. A file is imported as it is.
+    /// </summary>
+    public static string ImportPathFor(string outputPath, string mediaType)
+    {
+        if (!Directory.Exists(outputPath))
+        {
+            return outputPath;
+        }
+
+        var videos = ImportPipelineService.ListImportableVideoFiles(outputPath);
+        if (videos.Count == 0)
+        {
+            return outputPath;
+        }
+
+        return string.Equals(mediaType, "tv", StringComparison.OrdinalIgnoreCase)
+            ? videos.Count == 1 ? videos[0] : outputPath
+            : videos.OrderByDescending(video => new FileInfo(video).Length).First();
     }
 }
 

@@ -1747,6 +1747,13 @@ public sealed partial class ImportPipelineService(
         return request with { SourcePath = resolved, FileName = fileName };
     }
 
+    /// <summary>
+    /// The videos in a folder an import would take: supported extensions, no
+    /// samples. One definition, so a processor's hand-back folder is read the way
+    /// a download folder is (#619).
+    /// </summary>
+    public static IReadOnlyList<string> ListImportableVideoFiles(string folder) => TryListImportableVideoFiles(folder) ?? [];
+
     private static IReadOnlyList<string>? TryListImportableVideoFiles(string? sourcePath)
     {
         if (string.IsNullOrWhiteSpace(sourcePath) || !Directory.Exists(sourcePath))
