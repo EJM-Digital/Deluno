@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
@@ -36,6 +37,11 @@ public sealed class FlareSolverrCloudflareHelper(IHttpClientFactory httpClientFa
     // needed it has already waited for the first answer.
     private static readonly TimeSpan SolveBudget = TimeSpan.FromSeconds(60);
 
+    // One helper browser session per site (#628). A fresh one solves the check
+    // from scratch each time, which took 49 seconds for 1337x on the rig; a kept
+    // one still holds its clearance, and the next page comes back in seconds.
+    private readonly ConcurrentDictionary<string, bool> sessions = new(StringComparer.OrdinalIgnoreCase);
+
     public async Task<bool> IsConfiguredAsync(CancellationToken cancellationToken)
         => !string.IsNullOrWhiteSpace((await settings.GetAsync(cancellationToken)).CloudflareHelperUrl);
 
@@ -49,17 +55,43 @@ public sealed class FlareSolverrCloudflareHelper(IHttpClientFactory httpClientFa
 
         var endpoint = baseUrl.TrimEnd('/').EndsWith("/v1", StringComparison.OrdinalIgnoreCase) ? baseUrl.TrimEnd('/') : baseUrl.TrimEnd('/') + "/v1";
         var http = httpClientFactory.CreateClient(HttpClientName);
-        using var response = await http.PostAsJsonAsync(
-            endpoint,
-            new { cmd = "request.get", url = url.ToString(), maxTimeout = (int)SolveBudget.TotalMilliseconds },
-            cancellationToken);
-        if (!response.IsSuccessStatusCode)
+        var session = "deluno-" + url.Host;
+        if (!sessions.ContainsKey(session))
         {
-            return null;
+            // An error here usually means the session is already there, which is fine.
+            using var created = await http.PostAsJsonAsync(endpoint, new { cmd = "sessions.create", session }, cancellationToken);
+            sessions[session] = true;
         }
 
-        var answer = await response.Content.ReadFromJsonAsync<Answer>(cancellationToken);
+        var answer = await GetAsync(http, endpoint, url, session, cancellationToken);
+        if (answer?.Status is not null && !string.Equals(answer.Status, "ok", StringComparison.OrdinalIgnoreCase)
+            && answer.Message?.Contains("session", StringComparison.OrdinalIgnoreCase) == true)
+        {
+            // The helper restarted and lost its sessions: start this one again.
+            sessions.TryRemove(session, out _);
+            using var recreated = await http.PostAsJsonAsync(endpoint, new { cmd = "sessions.create", session }, cancellationToken);
+            sessions[session] = true;
+            answer = await GetAsync(http, endpoint, url, session, cancellationToken);
+        }
+
         return Read(answer, url);
+    }
+
+    private static async Task<Answer?> GetAsync(HttpClient http, string endpoint, Uri url, string session, CancellationToken cancellationToken)
+    {
+        using var response = await http.PostAsJsonAsync(
+            endpoint,
+            new { cmd = "request.get", url = url.ToString(), session, maxTimeout = (int)SolveBudget.TotalMilliseconds },
+            cancellationToken);
+        try
+        {
+            return await response.Content.ReadFromJsonAsync<Answer>(cancellationToken);
+        }
+        catch (JsonException)
+        {
+            // Not the helper's API at all, or an error page: nothing to use.
+            return null;
+        }
     }
 
     /// <summary>A helper's answer, read; null unless it says it got the page.</summary>

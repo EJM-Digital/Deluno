@@ -10,7 +10,7 @@ namespace Deluno.Integrations.Search.Trackers;
 /// Torznab feed every other indexer's results already arrive as, so the
 /// planner, RSS sync and decision engine read them the same way.
 /// </summary>
-public sealed class TrackerIndexers(ITrackerDefinitionCatalog catalog, ITrackerEngine engine) : ITrackerIndexerTester
+public sealed class TrackerIndexers(ITrackerDefinitionCatalog catalog, ITrackerEngine engine, ICloudflareHelper? cloudflareHelper = null) : ITrackerIndexerTester
 {
     public TrackerConnection Connect(IndexerItem indexer)
     {
@@ -72,10 +72,15 @@ public sealed class TrackerIndexers(ITrackerDefinitionCatalog catalog, ITrackerE
             return ("degraded", $"{connection.Definition.Name} needs {string.Join(" and ", missing)} before Deluno can search it.", "auth");
         }
 
+        // A Cloudflare helper can take most of a minute to clear a check: 49
+        // seconds for 1337x on the rig, against the 45 a test used to get (#628).
+        var budget = cloudflareHelper is not null && await cloudflareHelper.IsConfiguredAsync(cancellationToken)
+            ? TimeSpan.FromSeconds(150)
+            : TimeSpan.FromSeconds(45);
         try
         {
             using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-            timeout.CancelAfter(TimeSpan.FromSeconds(45));
+            timeout.CancelAfter(budget);
             var result = await engine.SearchAsync(connection, new TrackerQuery(string.Empty, Categories: TrackerCategories.Parse(indexer.Categories)), timeout.Token);
             var host = new Uri(connection.BaseUrl).Host;
             if (result.Releases.Count == 0 && result.RowsSkipped > 0)
@@ -95,7 +100,7 @@ public sealed class TrackerIndexers(ITrackerDefinitionCatalog catalog, ITrackerE
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
-            return ("unreachable", $"{connection.Definition.Name} did not answer within 45 seconds.", "connectivity");
+            return ("unreachable", $"{connection.Definition.Name} did not answer within {budget.TotalSeconds:0} seconds.", "connectivity");
         }
     }
 }
