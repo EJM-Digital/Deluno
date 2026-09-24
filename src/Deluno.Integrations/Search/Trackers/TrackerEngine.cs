@@ -3,6 +3,7 @@ using System.Globalization;
 using System.Net;
 using System.Net.Http.Headers;
 using System.Text;
+using System.Text.RegularExpressions;
 using System.Web;
 using AngleSharp.Dom;
 using AngleSharp.Html.Parser;
@@ -54,7 +55,7 @@ public sealed class TrackerException(string message, Exception? inner = null) : 
 /// signed in, which mirror answered last, and when it was last asked, so the
 /// definition's request delay holds across searches.</para>
 /// </summary>
-public sealed class TrackerEngine : ITrackerEngine
+public sealed partial class TrackerEngine : ITrackerEngine
 {
     private const string BrowserUserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36";
 
@@ -401,7 +402,7 @@ public sealed class TrackerEngine : ITrackerEngine
 
         using var response = await session.Http.SendAsync(message, HttpCompletionOption.ResponseContentRead, cancellationToken);
         var bytes = await response.Content.ReadAsByteArrayAsync(cancellationToken);
-        var encoding = session.Encoding;
+        var encoding = ResponseEncoding(response.Content.Headers.ContentType?.CharSet, bytes, session.Encoding);
         return new TrackerPage(
             response.StatusCode,
             response.RequestMessage?.RequestUri ?? request.Uri,
@@ -673,6 +674,57 @@ public sealed class TrackerEngine : ITrackerEngine
             return Encoding.UTF8;
         }
     }
+
+    /// <summary>
+    /// What a response's own bytes say to decode them as (#632). A response
+    /// that declares its charset, in the Content-Type header or an HTML meta
+    /// charset, is decoded as that; a tracker definition's configured
+    /// encoding is only a fallback for a response that declares neither.
+    /// LimeTorrents' pages, and its Cardigann definition, both already say
+    /// UTF-8 — the bug was the engine forcing the definition's encoding onto
+    /// every response regardless, which mangles Cyrillic (and anything else
+    /// outside ASCII) the moment a definition's configured encoding stops
+    /// matching what a mirror actually sends.
+    /// </summary>
+    private static Encoding ResponseEncoding(string? headerCharset, byte[] bytes, Encoding fallback)
+        => TryGetEncoding(headerCharset) ?? TryGetEncoding(SniffMetaCharset(bytes)) ?? fallback;
+
+    private static Encoding? TryGetEncoding(string? name)
+    {
+        if (string.IsNullOrWhiteSpace(name))
+        {
+            return null;
+        }
+
+        try
+        {
+            return Encoding.GetEncoding(name.Trim().Trim('"', '\''));
+        }
+        catch (ArgumentException)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// The charset an HTML meta tag declares, sniffed the way a browser
+    /// does it: read a prefix as Latin-1, which maps every byte straight to
+    /// one char and so never throws and never disturbs the tag's all-ASCII
+    /// markup, whatever the body's real encoding turns out to be, and look
+    /// for a "charset=" inside a meta tag. That covers both the dedicated
+    /// meta-charset tag and the older http-equiv Content-Type form, since
+    /// both end up with "charset=..." somewhere between "&lt;meta" and the
+    /// tag's closing "&gt;".
+    /// </summary>
+    private static string? SniffMetaCharset(byte[] bytes)
+    {
+        var prefix = Encoding.Latin1.GetString(bytes, 0, Math.Min(bytes.Length, 2048));
+        var match = MetaCharsetPattern().Match(prefix);
+        return match.Success ? match.Groups[1].Value : null;
+    }
+
+    [GeneratedRegex(@"<meta[^>]+charset\s*=\s*[""']?([A-Za-z0-9_\-]+)", RegexOptions.IgnoreCase)]
+    private static partial Regex MetaCharsetPattern();
 
     /// <summary>The same release from two search pages, once. By its link: one details page can list several copies (YTS lists each quality).</summary>
     private static List<TrackerRelease> Deduplicate(List<TrackerRelease> releases)
