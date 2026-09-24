@@ -28,14 +28,15 @@ export function isStaleBuildError(error: unknown): boolean {
 
 type Reloadable = {
   sessionStorage: Pick<Storage, "getItem" | "setItem">;
-  location: Pick<Location, "reload">;
+  location: Pick<Location, "reload" | "assign">;
 };
 
 /**
  * Reloads onto the new build unless this tab already did so in the last
- * minute. Returns whether it reloaded.
+ * minute. Returns whether it reloaded. With a destination, the page that was
+ * being opened, it loads that instead of the page the click came from.
  */
-export function reloadOntoNewBuild(target: Reloadable = window, now: number = Date.now()): boolean {
+export function reloadOntoNewBuild(target: Reloadable = window, now: number = Date.now(), destination?: string | null): boolean {
   try {
     const last = Number(target.sessionStorage.getItem(RELOADED_AT_KEY));
     if (Number.isFinite(last) && last > 0 && now - last < STALE_BUILD_RELOAD_WINDOW_MS) {
@@ -47,7 +48,11 @@ export function reloadOntoNewBuild(target: Reloadable = window, now: number = Da
     return false;
   }
 
-  target.location.reload();
+  if (destination) {
+    target.location.assign(destination);
+  } else {
+    target.location.reload();
+  }
   return true;
 }
 
@@ -56,9 +61,14 @@ export function reloadOntoNewBuild(target: Reloadable = window, now: number = Da
  * before the import rejects. Reloading there means the error screen is never
  * seen.
  */
-export function installStaleBuildRecovery(target: EventTarget & Reloadable = window): void {
+export function installStaleBuildRecovery(
+  target: EventTarget & Reloadable = window,
+  pendingDestination: () => string | null = () => null
+): void {
   target.addEventListener("vite:preloadError", (event) => {
-    if (reloadOntoNewBuild(target)) {
+    // Seen on the rig: a click on Media Management reloaded onto the page the
+    // click came from, because the screen being opened was the one that failed.
+    if (reloadOntoNewBuild(target, Date.now(), pendingDestination())) {
       event.preventDefault();
     }
   });

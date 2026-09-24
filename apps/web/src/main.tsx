@@ -9,7 +9,12 @@ import { router } from "./router";
 import { installStaleBuildRecovery } from "./lib/stale-build";
 import "./index.css";
 
-installStaleBuildRecovery();
+// A screen that fails because the tab predates an update is the page being
+// opened, so the reload lands there (#622).
+installStaleBuildRecovery(window, () => {
+  const pending = router.state.navigation.location;
+  return pending ? pending.pathname + pending.search + pending.hash : null;
+});
 
 // Register PWA service worker (production only)
 if ("serviceWorker" in navigator && import.meta.env.PROD) {

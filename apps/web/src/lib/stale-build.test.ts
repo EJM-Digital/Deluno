@@ -11,13 +11,14 @@ function tab(stored: Record<string, string> = {}) {
   return {
     store,
     reload: vi.fn(),
+    assign: vi.fn(),
     get target() {
       return {
         sessionStorage: {
           getItem: (key: string) => store[key] ?? null,
           setItem: (key: string, value: string) => { store[key] = value; }
         },
-        location: { reload: this.reload }
+        location: { reload: this.reload, assign: this.assign }
       };
     }
   };
@@ -66,11 +67,22 @@ describe("a tab running an older build (#622)", () => {
         getItem: () => { throw new Error("blocked"); },
         setItem: () => { throw new Error("blocked"); }
       },
-      location: { reload }
+      location: { reload, assign: vi.fn() }
     };
 
     expect(reloadOntoNewBuild(target)).toBe(false);
     expect(reload).not.toHaveBeenCalled();
+  });
+
+  it("loads the page being opened, not the one the click came from", () => {
+    const current = tab();
+    const target = Object.assign(new EventTarget(), current.target);
+    installStaleBuildRecovery(target, () => "/settings/libraries");
+
+    target.dispatchEvent(new Event("vite:preloadError", { cancelable: true }));
+
+    expect(current.assign).toHaveBeenCalledWith("/settings/libraries");
+    expect(current.reload).not.toHaveBeenCalled();
   });
 
   it("reloads when Vite reports a screen's file failed, before the error screen shows", () => {
