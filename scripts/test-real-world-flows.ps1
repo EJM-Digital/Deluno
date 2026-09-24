@@ -5,7 +5,7 @@ param(
 
 $ErrorActionPreference = 'Stop'
 $repoRoot = Split-Path -Parent $PSScriptRoot
-$flowFilter = 'FullyQualifiedName~ReferenceSearchFlowTests|FullyQualifiedName~MediaAcquisitionFlowTests|FullyQualifiedName~ImportPipelineServiceTests|FullyQualifiedName~DownloadDispatchesApiTests|FullyQualifiedName~DownloadRetryServiceTests'
+$flowFilter = 'FullyQualifiedName~ReferenceSearchFlowTests|FullyQualifiedName~MediaAcquisitionFlowTests|FullyQualifiedName~ImportPipelineServiceTests|FullyQualifiedName~DownloadDispatchesApiTests'
 
 Push-Location $repoRoot
 try {

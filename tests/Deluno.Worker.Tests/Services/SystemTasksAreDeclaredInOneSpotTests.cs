@@ -136,6 +136,19 @@ public sealed class SystemTasksAreDeclaredInOneSpotTests
         }
     }
 
+    /// <summary>
+    /// "Retry failed grabs" was claimed every two minutes and never retried
+    /// anything: it waited for a retry window nothing opened (#621). A title
+    /// whose grab failed is searched again on its library's schedule, so no
+    /// pass on this screen may promise a retry of its own.
+    /// </summary>
+    [Fact]
+    public void No_task_promises_to_retry_failed_grabs()
+    {
+        Assert.DoesNotContain(SystemTasks.All, task => task.Key == "dispatch.retry");
+        Assert.DoesNotContain(SystemTasks.All, task => task.Name.Contains("failed grab", StringComparison.OrdinalIgnoreCase));
+    }
+
     [Fact]
     public void A_pass_that_was_never_declared_is_refused_rather_than_given_a_default()
     {

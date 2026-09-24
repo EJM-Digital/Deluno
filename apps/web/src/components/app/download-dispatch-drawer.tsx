@@ -112,5 +112,5 @@ function integrationRetryLabel(retryState: string) {
 }
 
 function dispatchNextEligibleUtc(dispatch: DownloadDispatchItem) {
-  return dispatch.failure?.retryAfterUtc ?? dispatch.nextRetryEligibleUtc ?? dispatch.circuitOpenUntilUtc ?? null;
+  return dispatch.failure?.retryAfterUtc ?? dispatch.circuitOpenUntilUtc ?? null;
 }

@@ -1,6 +1,7 @@
 using Deluno.Jobs.Contracts;
 using Deluno.Jobs.Data;
 using Deluno.Contracts;
+using Deluno.Libraries.Data;
 using System.Text.Json;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Builder;
@@ -169,6 +170,7 @@ public static class DownloadDispatchesEndpointRouteBuilderExtensions
         string dispatchId,
         IDownloadDispatchesRepository repository,
         IJobScheduler jobScheduler,
+        [FromServices] ILibrariesRepository libraries,
         TimeProvider timeProvider,
         CancellationToken cancellationToken)
     {
@@ -187,20 +189,38 @@ public static class DownloadDispatchesEndpointRouteBuilderExtensions
             });
         }
 
+        var library = (await libraries.ListLibrariesAsync(cancellationToken))
+            .FirstOrDefault(item => string.Equals(item.Id, dispatch.LibraryId, StringComparison.Ordinal));
+        if (library is null)
+        {
+            return Results.BadRequest(new
+            {
+                code = "LIBRARY_NOT_FOUND",
+                message = "The library this download was for no longer exists, so there is no title to search for."
+            });
+        }
+
+        // A search aimed at this title. The payload used to carry no target, so
+        // with one item per run the search took whichever wanted title came
+        // first in the library - rarely the one whose grab failed (#621).
         var scheduledUtc = timeProvider.GetUtcNow();
+        var jobType = LibrarySearchJobTypes.For(dispatch.MediaType);
         var payload = JsonSerializer.Serialize(new
         {
-            libraryId = dispatch.LibraryId,
-            libraryName = dispatch.LibraryId,
-            mediaType = string.IsNullOrWhiteSpace(dispatch.MediaType) ? "movies" : dispatch.MediaType,
+            libraryId = library.Id,
+            libraryName = library.Name,
+            mediaType = jobType == LibrarySearchJobTypes.Tv ? "tv" : "movies",
+            checkMissing = true,
+            checkUpgrades = true,
             maxItems = 1,
-            retryDelayHours = 24,
-            triggeredBy = "manual"
+            retryDelayHours = library.RetryDelayHours,
+            triggeredBy = "manual",
+            targetEntityId = dispatch.EntityId
         });
 
         var job = await jobScheduler.EnqueueAsync(
             new EnqueueJobRequest(
-                JobType: LibrarySearchJobTypes.For(dispatch.MediaType),
+                JobType: jobType,
                 Source: "download_dispatch.retry",
                 PayloadJson: payload,
                 RelatedEntityType: "download_dispatch",
@@ -209,11 +229,6 @@ public static class DownloadDispatchesEndpointRouteBuilderExtensions
                 IdempotencyKey: $"dispatch-retry:{dispatch.Id}:{scheduledUtc:yyyyMMddHHmmss}"),
             cancellationToken);
 
-        await repository.UpdateFailureRetryWindowAsync(
-            dispatch.Id,
-            scheduledUtc,
-            dispatch.AttemptCount ?? 0,
-            cancellationToken);
         await repository.RecordTimelineEventAsync(
             dispatch.Id,
             "manual_retry_requested",
@@ -229,8 +244,7 @@ public static class DownloadDispatchesEndpointRouteBuilderExtensions
         {
             dispatchId,
             jobId = job.Id,
-            nextRetryEligibleUtc = scheduledUtc,
-            message = $"Retry queued as library.search job {job.Id}. It will run on the next worker cycle."
+            message = $"Deluno is searching again for the title {dispatch.ReleaseName} was for."
         };
 
         return Results.Json(response, statusCode: StatusCodes.Status202Accepted);

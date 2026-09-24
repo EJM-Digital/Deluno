@@ -139,16 +139,4 @@ public sealed class NullDownloadDispatchesRepository : IDownloadDispatchesReposi
         int limit,
         CancellationToken cancellationToken) =>
         Task.FromResult<IReadOnlyList<DownloadDispatchItem>>(new List<DownloadDispatchItem>());
-
-    public Task<DownloadDispatchItem> UpdateFailureRetryWindowAsync(
-        string dispatchId,
-        DateTimeOffset nextRetryEligibleUtc,
-        int retryCount,
-        CancellationToken cancellationToken) =>
-        throw new NotImplementedException("Test only - should not be called");
-
-    public Task<IReadOnlyList<DownloadDispatchItem>> FindDispatchesEligibleForRetryAsync(
-        int limit,
-        CancellationToken cancellationToken) =>
-        Task.FromResult<IReadOnlyList<DownloadDispatchItem>>(new List<DownloadDispatchItem>());
 }

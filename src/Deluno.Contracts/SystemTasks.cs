@@ -67,7 +67,6 @@ public static class SystemTasks
 {
     public const string DispatchCleanup = "dispatch.cleanup";
     public const string DownloadState = "download.state";
-    public const string DispatchRetry = "dispatch.retry";
     public const string MetadataRefresh = "metadata.refresh";
     public const string IntakeAutomation = "intake.automation";
     public const string LibraryImportResume = "library.import.resume";
@@ -116,9 +115,9 @@ public static class SystemTasks
         new(MetadataRefresh, "Refresh metadata",
             "Tops up artwork, ratings and details for titles whose information has gone stale.",
             TimeSpan.FromMinutes(1)),
-        new(DispatchRetry, "Retry failed grabs",
-            "Tries again on releases that failed to reach a download client.",
-            TimeSpan.FromMinutes(2)),
+        // No "Retry failed grabs" pass. One stood here and never retried
+        // anything: nothing opened the window it waited for. A title whose
+        // grab failed is searched again on its library's schedule (#621).
         // Cannot happen at the moment of blocking: the sharing rule may still
         // own that copy, and it is the thing that knows how long the site
         // expects you to keep seeding. DESIGN-007 decisions 16 and 17.
