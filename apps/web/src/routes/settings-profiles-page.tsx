@@ -217,12 +217,21 @@ export function SettingsProfilesPage() {
    * every answer - and nothing exists until it is saved, so closing it leaves
    * no half-made profile behind. The starter's recommended rules are not added
    * again: the copy already has exactly the rules the original has.
+   *
+   * Takes the drawer's own form, not `editing` (the loader's copy of this
+   * profile). Save writes the freshly-saved answers into `form` synchronously,
+   * but only starts `revalidator.revalidate()` for `qualityProfiles` without
+   * awaiting it, and the Duplicate button re-enables as soon as `busy` clears -
+   * before that background refetch lands. Reading `editing` here raced it: rare
+   * with nothing else competing for the network, routine under a full suite,
+   * where the loader's four requests lose to one click, and the copy opened
+   * with the answers from before the save.
    */
-  function openDuplicate(profile: QualityProfileItem) {
+  function openDuplicate(current: ProfileForm) {
     const taken = new Set(qualityProfiles.map((item) => item.name.trim().toLowerCase()));
-    let name = `Copy of ${profile.name}`;
-    for (let n = 2; taken.has(name.toLowerCase()); n += 1) name = `Copy of ${profile.name} (${n})`;
-    const next = { ...formFrom(profile), name };
+    let name = `Copy of ${current.name}`;
+    for (let n = 2; taken.has(name.toLowerCase()); n += 1) name = `Copy of ${current.name} (${n})`;
+    const next = { ...current, name };
     setMode({ kind: "create" });
     setForm(next);
     // Against an empty form, so the copy reads as unsaved and Save is offered at once.
@@ -863,7 +872,7 @@ export function SettingsProfilesPage() {
                 <p className="text-[length:var(--type-body-sm)] font-medium text-foreground">Duplicate this profile</p>
                 <p className="mt-0.5 text-[length:var(--type-caption)] text-muted-foreground">Opens a copy with the same tiers, sizes, rules and answers for you to change. This one stays as it is.</p>
               </div>
-              <Button type="button" variant="outline" size="sm" onClick={() => openDuplicate(editing)} disabled={busy || dirty} title={dirty ? "Save or discard your changes first." : undefined}>Duplicate</Button>
+              <Button type="button" variant="outline" size="sm" onClick={() => openDuplicate(form)} disabled={busy || dirty} title={dirty ? "Save or discard your changes first." : undefined}>Duplicate</Button>
             </div>
           </DrawerSection>
         ) : null}
