@@ -253,7 +253,7 @@ test.describe("dashboard workflow", () => {
    */
   test("uses lifecycle status, not monitoring, for movie and TV poster markers", async ({ page }) => {
     await authenticateAndNavigate(page, "/movies");
-    const token = await page.evaluate(() => sessionStorage.getItem("deluno-auth-token"));
+    const token = await page.evaluate(() => localStorage.getItem("deluno-auth-token"));
     const headers = token ? { Authorization: `Bearer ${token}` } : {};
     const api = await playwrightRequest.newContext({
       baseURL: process.env.DELUNO_API_ORIGIN ?? "http://127.0.0.1:5199",

@@ -2,7 +2,7 @@
  * CRUD flow smoke tests.
  *
  * These tests use page.request (authenticated via Bearer token extracted from
- * sessionStorage after browser login) to set up data via the API, then verify
+ * localStorage after browser login) to set up data via the API, then verify
  * the UI renders and responds correctly.
  * This is more reliable than testing form submission directly, which is brittle
  * against label/placeholder changes.
@@ -58,9 +58,9 @@ test.describe("indexer and download client CRUD", () => {
     await page.getByRole("button", { name: /sign in/i }).click();
     await expect(page).not.toHaveURL(/\/login/);
 
-    // The app stores auth in sessionStorage (not cookies), so page.request calls
+    // The app stores auth in localStorage (not cookies), so page.request calls
     // need an explicit Authorization header. Extract the token here for test use.
-    authToken = await page.evaluate(() => sessionStorage.getItem("deluno-auth-token"));
+    authToken = await page.evaluate(() => localStorage.getItem("deluno-auth-token"));
   });
 
   function authHeaders(): Record<string, string> {
@@ -655,7 +655,7 @@ test.describe("library editing", () => {
     await page.getByLabel("Password", { exact: true }).fill(credentials!.password);
     await page.getByRole("button", { name: /sign in/i }).click();
     await expect(page).not.toHaveURL(/\/login/);
-    authToken = await page.evaluate(() => sessionStorage.getItem("deluno-auth-token"));
+    authToken = await page.evaluate(() => localStorage.getItem("deluno-auth-token"));
   });
 
   function authHeaders(): Record<string, string> {

@@ -25,7 +25,7 @@ test.describe("release preference flows", () => {
   test("opens a quality profile and reads its plan by keyboard", async ({ page }) => {
     const name = `Smoke-Keyboard-Profile-${Date.now()}`;
     await authenticateAndNavigate(page, "/settings/profiles");
-    const token = await page.evaluate(() => sessionStorage.getItem("deluno-auth-token"));
+    const token = await page.evaluate(() => localStorage.getItem("deluno-auth-token"));
     const headers = authHeaders(token);
 
     const qualityModel = await page.request.get("/api/quality-model", { headers });

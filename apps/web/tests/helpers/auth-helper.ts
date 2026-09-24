@@ -47,7 +47,7 @@ export async function ensureBootstrapped(request: APIRequestContext) {
   }
 }
 
-/** What the login API answers, and what the app keeps in sessionStorage. */
+/** What the login API answers, and what the app keeps in localStorage. */
 interface SignedIn {
   accessToken: string;
   user: unknown;
@@ -74,7 +74,7 @@ async function signInThroughApi(request: APIRequestContext): Promise<SignedIn> {
  * Opens a page as a signed-in user.
  *
  * Signs in through the API and hands the page that session, the way the app
- * keeps one (sessionStorage), then opens the target directly. It used to sign
+ * keeps one (localStorage), then opens the target directly. It used to sign
  * in through the login form. That cost every spec a cold render of /login,
  * whose loader waits on /api/auth/bootstrap-status before the form exists, and
  * under load that wait outran the test: "Test timeout of 30000ms exceeded,
@@ -83,8 +83,10 @@ async function signInThroughApi(request: APIRequestContext): Promise<SignedIn> {
  * ended first. None of the specs that use this helper is about signing in; the
  * login form is proved in setup-login.spec.ts and authenticated.spec.ts.
  *
- * The session is written once per tab, marked, so a spec that signs out stays
- * signed out on its next navigation rather than being signed back in.
+ * The session is written once per tab, marked in sessionStorage (a flag
+ * scoped to this test's own tab lifetime, deliberately not moved to
+ * localStorage with the real auth keys below), so a spec that signs out
+ * stays signed out on its next navigation rather than being signed back in.
  */
 export async function authenticateAndNavigate(page: Page, targetUrl: string) {
   const session = await signInThroughApi(page.context().request);
@@ -93,8 +95,8 @@ export async function authenticateAndNavigate(page: Page, targetUrl: string) {
       return;
     }
 
-    sessionStorage.setItem("deluno-auth-token", token);
-    sessionStorage.setItem("deluno-auth-user", JSON.stringify(user));
+    localStorage.setItem("deluno-auth-token", token);
+    localStorage.setItem("deluno-auth-user", JSON.stringify(user));
     sessionStorage.setItem("deluno-e2e-session-seeded", "1");
   }, { token: session.accessToken, user: session.user });
 
