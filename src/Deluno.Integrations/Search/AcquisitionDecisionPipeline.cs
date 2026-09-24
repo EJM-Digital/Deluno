@@ -114,7 +114,8 @@ public sealed class AcquisitionDecisionPipeline : IAcquisitionDecisionPipeline
                 request.CurrentFilePresent,
                 request.SizeRules,
                 request.UpgradeStop,
-                request.ProfileAcquisition);
+                request.ProfileAcquisition,
+                request.RuntimeMinutes);
 
         searchPlan = await SkipBlockedReleasesAsync(searchPlan, cancellationToken);
         searchPlan = LeaveEpisodesToTheirOwnSearch(searchPlan, request);
@@ -212,7 +213,8 @@ public sealed class AcquisitionDecisionPipeline : IAcquisitionDecisionPipeline
             CurrentReleaseName: request.CurrentReleaseName,
             CurrentPreferenceEvaluation: WithInstalledSizeFloor(request.CurrentPreferenceEvaluation, request.CurrentQuality, request.SizeRules, request.MediaType, episodeScope: false),
             CurrentFilePresent: request.CurrentFilePresent,
-            MediaType: request.MediaType));
+            MediaType: request.MediaType,
+            RuntimeMinutes: request.RuntimeMinutes));
         var boost = rankingModelService.Score(new ReleaseRankingFeatures(
             Seeders: request.Seeders,
             SizeBytes: request.SizeBytes,
@@ -694,7 +696,14 @@ public sealed record AcquisitionDecisionRequest(
     /// </summary>
     PreferenceEvaluationSnapshot? CurrentPreferenceEvaluation = null,
     ReleasePreferencePlan? PreferencePlan = null,
-    bool CurrentFilePresent = false);
+    bool CurrentFilePresent = false,
+    /// <summary>
+    /// The title's real runtime in minutes, when metadata supplies one. Scales
+    /// the Size Rules floor/ceiling against the title's actual length instead
+    /// of the fixed reference runtime the profile is configured against
+    /// (#630).
+    /// </summary>
+    int? RuntimeMinutes = null);
 
 public sealed record AcquisitionDecisionPlan(
     MediaSearchPlan SearchPlan,
@@ -741,7 +750,13 @@ public sealed record AcquisitionSelectedReleaseRequest(
     /// When this profile stops looking, so a release chosen by hand is judged
     /// by the same answer an automatic search would have used.
     /// </summary>
-    QualityUpgradeStopPolicy? UpgradeStop = null);
+    QualityUpgradeStopPolicy? UpgradeStop = null,
+    /// <summary>
+    /// The title's real runtime in minutes, so a release picked by hand is
+    /// judged against the same runtime-scaled Size Rules an automatic search
+    /// would have used (#630).
+    /// </summary>
+    int? RuntimeMinutes = null);
 
 public sealed record AcquisitionSelectedReleaseDecision(
     MediaSearchCandidate Candidate,
