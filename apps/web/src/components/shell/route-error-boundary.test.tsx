@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { cleanup, render, screen } from "@testing-library/react";
 import { RouterProvider, createMemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { RouteErrorBoundary } from "./route-error-boundary";
@@ -29,6 +29,7 @@ function failWith(error: Error) {
 
 describe("the route error screen", () => {
   afterEach(() => {
+    cleanup();
     reload.mockReset();
   });
 
@@ -38,7 +39,9 @@ describe("the route error screen", () => {
     expect(await screen.findByRole("heading", { name: "Deluno was updated" })).toBeTruthy();
     expect(screen.queryByText(/dynamically imported module/)).toBeNull();
     expect(screen.getByText("route:stale-build")).toBeTruthy();
-    expect(reload).toHaveBeenCalledTimes(1);
+    // The reload happens in an effect after the screen renders; waiting for it
+    // here keeps a slow run from counting it in the next test instead.
+    await vi.waitFor(() => expect(reload).toHaveBeenCalledTimes(1));
   });
 
   it("still names any other failure as it is", async () => {
