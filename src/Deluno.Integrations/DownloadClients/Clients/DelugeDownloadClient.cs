@@ -112,6 +112,69 @@ public sealed class DelugeDownloadClient(IHttpClientFactory httpClientFactory) :
               // separator, not by this host's rules (CI runs Linux, Deluge Windows).
               && !string.Equals((item.SavePath ?? string.Empty).TrimEnd('\\', '/'), item.MoveCompletedPath.TrimEnd('\\', '/'), StringComparison.OrdinalIgnoreCase);
 
+    /// <summary>
+    /// Whether Deluge has the label and which folder a finished download of it
+    /// ends up in (#616). A label only has its own folder when it is set to
+    /// move finished downloads; otherwise Deluge's own completed folder applies,
+    /// or its download folder when Deluge moves nothing.
+    /// </summary>
+    public override async Task<DownloadClientCategoryCheckResult> CheckCategoryAsync(DownloadClientItem client, string category, CancellationToken cancellationToken)
+    {
+        var label = category.Trim().ToLowerInvariant();
+        var baseUri = DownloadClientHelpers.ResolveEndpoint(client);
+        if (label.Length == 0 || baseUri is null)
+        {
+            return new(client.Id, client.Name, label, DownloadClientCategoryStatuses.Configuration,
+                label.Length == 0 ? "Enter a category before checking it." : "Add the Deluge address before checking a category.", Supported: true, Found: false);
+        }
+
+        try
+        {
+            var http = CreateHttp();
+            await LoginAsync(http, baseUri, client, cancellationToken);
+            var json = new Uri(baseUri, "json");
+            var core = await DownloadClientHelpers.PostJsonAsync<DelugeResponse<JsonElement>>(
+                http, json, new DelugeRequest("core.get_config_values", [new[] { "download_location", "move_completed", "move_completed_path" }], 10), cancellationToken);
+            var coreConfig = core?.Result ?? default;
+            string? CoreText(string key) => coreConfig.ValueKind == JsonValueKind.Object && coreConfig.TryGetProperty(key, out var value) && value.ValueKind == JsonValueKind.String ? value.GetString() : null;
+            var coreMoves = coreConfig.ValueKind == JsonValueKind.Object && coreConfig.TryGetProperty("move_completed", out var moves) && moves.ValueKind == JsonValueKind.True;
+            var coreFolder = coreMoves ? CoreText("move_completed_path") : CoreText("download_location");
+
+            var labels = await DownloadClientHelpers.PostJsonAsync<DelugeResponse<string[]>>(http, json, new DelugeRequest("label.get_labels", [], 11), cancellationToken);
+            if (labels?.Error is not null || labels?.Result is null)
+            {
+                return new(client.Id, client.Name, label, DownloadClientCategoryStatuses.Unsupported,
+                    $"Deluge's Label plugin is off, so every download goes to {coreFolder} whatever its category. Turn on the Label plugin in Deluge, Preferences, Plugins.",
+                    Supported: false, Found: false, SavePath: coreFolder);
+            }
+
+            if (!labels.Result.Contains(label, StringComparer.OrdinalIgnoreCase))
+            {
+                return new(client.Id, client.Name, label, DownloadClientCategoryStatuses.Missing,
+                    $"Deluge has no label named {label}. Deluno adds it on the first grab, but a new label has no folder, so its downloads go to {coreFolder}. Add the label in Deluge and set its completed folder.",
+                    Supported: true, Found: false, SavePath: coreFolder);
+            }
+
+            var options = await DownloadClientHelpers.PostJsonAsync<DelugeResponse<JsonElement>>(http, json, new DelugeRequest("label.get_options", [label], 12), cancellationToken);
+            var own = options?.Result ?? default;
+            bool Flag(string key) => own.ValueKind == JsonValueKind.Object && own.TryGetProperty(key, out var value) && value.ValueKind == JsonValueKind.True;
+            var ownPath = own.ValueKind == JsonValueKind.Object && own.TryGetProperty("move_completed_path", out var path) && path.ValueKind == JsonValueKind.String ? path.GetString() : null;
+            var labelMoves = Flag("apply_move_completed") && Flag("move_completed") && !string.IsNullOrWhiteSpace(ownPath);
+            var folder = labelMoves ? ownPath : coreFolder;
+            return labelMoves
+                ? new(client.Id, client.Name, label, DownloadClientCategoryStatuses.Ready,
+                    $"Deluge's {label} label moves finished downloads to {folder}.", Supported: true, Found: true, SavePath: folder)
+                : new(client.Id, client.Name, label, DownloadClientCategoryStatuses.Configuration,
+                    $"Deluge has a {label} label, but it has no completed folder of its own, so its downloads end up in {folder} with everything else. Set \"Move completed to\" on the label in Deluge.",
+                    Supported: true, Found: true, SavePath: folder);
+        }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or IOException or JsonException or InvalidOperationException)
+        {
+            return new(client.Id, client.Name, label, DownloadClientCategoryStatuses.Unreachable,
+                $"Deluno could not read Deluge's labels: {ex.Message}", Supported: true, Found: false);
+        }
+    }
+
     public override string NormalizeStatus(string? nativeStatus, double? progress, int? errorCode = null, string? errorMessage = null)
         => DownloadClientHelpers.NormalizeTextStatus(nativeStatus, progress);
 

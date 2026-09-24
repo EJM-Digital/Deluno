@@ -98,6 +98,7 @@ GET /api/libraries/{id}/import-existing
 GET /api/libraries/{id}/import-existing/issues
 GET /api/libraries/{id}/import-existing/preview
 GET /api/libraries/{id}/routing
+GET /api/libraries/{libraryId}/folder-chain
 GET /api/library-automation
 GET /api/library-views/
 GET /api/manifest

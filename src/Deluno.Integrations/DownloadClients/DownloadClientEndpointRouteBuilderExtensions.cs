@@ -158,6 +158,21 @@ public static class DownloadClientEndpointRouteBuilderExtensions
             return record is null ? Results.NotFound() : Results.Ok(record);
         });
 
+        // Each routed client's real category folder beside the library's
+        // folders, link by link (#616).
+        endpoints.MapGet("/api/libraries/{libraryId}/folder-chain", async (
+            string libraryId,
+            HttpContext httpContext,
+            IFolderChainService folderChain,
+            CancellationToken cancellationToken) =>
+        {
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
+            if (denied is not null) return denied;
+
+            var report = await folderChain.CheckAsync(libraryId, cancellationToken);
+            return report is null ? Results.NotFound() : Results.Ok(report);
+        });
+
         endpoints.MapPost("/api/download-clients/{clientId}/grab", async (
             string clientId,
             HttpContext httpContext,

@@ -222,6 +222,15 @@ public sealed class QbittorrentDownloadClient(Func<HttpMessageHandler>? handlerF
                 ? savePathValue.GetString()
                 : null;
 
+            // A relative save path sits inside qBittorrent's default one: the
+            // full folder is what has to match the library's (#616).
+            if (!string.IsNullOrWhiteSpace(savePath) && !ClientPaths.IsFullClientPath(savePath))
+            {
+                using var defaultResponse = await http.GetAsync("api/v2/app/defaultSavePath", cancellationToken);
+                var defaultSavePath = defaultResponse.IsSuccessStatusCode ? (await defaultResponse.Content.ReadAsStringAsync(cancellationToken)).Trim() : null;
+                savePath = ClientPaths.ClientFolder(defaultSavePath, savePath) ?? savePath;
+            }
+
             return string.IsNullOrWhiteSpace(savePath)
                 ? new(client.Id, client.Name, normalizedCategory, DownloadClientCategoryStatuses.Configuration,
                     $"qBittorrent has a category named {normalizedCategory}, but it has no save path, so downloads will go wherever qBittorrent defaults to rather than a folder Deluno watches. Set a save path on the category in qBittorrent.",

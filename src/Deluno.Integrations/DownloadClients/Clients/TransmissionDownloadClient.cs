@@ -112,6 +112,39 @@ public sealed class TransmissionDownloadClient(IHttpClientFactory httpClientFact
         return DownloadClientHelpers.ActionSuccess(client, queueItemId, action, "Transmission action sent.");
     }
 
+    /// <summary>
+    /// Transmission has no categories of its own. Deluno names each grab's
+    /// folder (#629), so the folder a category saves to is Transmission's
+    /// download folder plus the category (#616).
+    /// </summary>
+    public override async Task<DownloadClientCategoryCheckResult> CheckCategoryAsync(DownloadClientItem client, string category, CancellationToken cancellationToken)
+    {
+        var name = category.Trim();
+        var baseUri = DownloadClientHelpers.ResolveEndpoint(client);
+        if (name.Length == 0 || baseUri is null)
+        {
+            return new(client.Id, client.Name, name, DownloadClientCategoryStatuses.Configuration,
+                name.Length == 0 ? "Enter a category before checking it." : "Add the Transmission address before checking a category.", Supported: true, Found: false);
+        }
+
+        try
+        {
+            var session = await SendAsync(client, baseUri, new TransmissionRequest("session-get", new() { ["fields"] = new[] { "download-dir" } }), cancellationToken);
+            var folder = CategoryFolder(session.Arguments?.DownloadDir, name);
+            return folder is null
+                ? new(client.Id, client.Name, name, DownloadClientCategoryStatuses.Configuration,
+                    "Transmission did not say where it saves downloads.", Supported: true, Found: false)
+                : new(client.Id, client.Name, name, DownloadClientCategoryStatuses.Ready,
+                    $"Transmission has no categories of its own; Deluno sends each {name} download to {folder}, inside Transmission's download folder.",
+                    Supported: true, Found: true, SavePath: folder);
+        }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or IOException or System.Text.Json.JsonException)
+        {
+            return new(client.Id, client.Name, name, DownloadClientCategoryStatuses.Unreachable,
+                $"Deluno could not read Transmission's download folder: {ex.Message}", Supported: true, Found: false);
+        }
+    }
+
     public override string NormalizeStatus(string? nativeStatus, double? progress, int? errorCode = null, string? errorMessage = null)
     {
         if (errorCode is > 0 || !string.IsNullOrWhiteSpace(errorMessage)) return DownloadQueueStatuses.Stalled;

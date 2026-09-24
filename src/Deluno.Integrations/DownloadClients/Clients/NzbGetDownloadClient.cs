@@ -67,7 +67,7 @@ public sealed class NzbGetDownloadClient(IHttpClientFactory httpClientFactory) :
             return new DownloadQueueItem(item.NzbId.ToString(CultureInfo.InvariantCulture), client.Id, client.Name, client.Protocol,
                 DownloadClientHelpers.InferMediaType(client, item.Category), DownloadClientHelpers.CleanReleaseTitle(item.NzbName ?? "Unknown NZBGet item"), item.NzbName ?? "Unknown NZBGet item",
                 item.Category ?? string.Empty, NormalizeStatus(item.Status, progress), progress, Math.Round((status?.DownloadRate ?? 0) / 1_000_000d, 1),
-                CalculateEta(remaining, status?.DownloadRate), size, downloaded, 0, "NZBGet", QueueError(item.Status), capturedUtc, DownloadClientHelpers.ResolveDownloadPath(item.DestDir, item.NzbName));
+                CalculateEta(remaining, status?.DownloadRate), size, downloaded, 0, "NZBGet", QueueError(item.Status), capturedUtc, JobFolder(item.DestDir));
         }).ToArray();
         var history = await GetHistoryCoreAsync(http, client, baseUri, capturedUtc, cancellationToken);
         return CreateSnapshot(client, queue, capturedUtc, "healthy", $"Connected to NZBGet at {baseUri.Host}:{baseUri.Port}.", history.Count > 0 ? history : null);
@@ -158,6 +158,59 @@ public sealed class NzbGetDownloadClient(IHttpClientFactory httpClientFactory) :
     private static DownloadClientActionResult Sent(DownloadClientItem client, string queueItemId, string action, string message)
         => DownloadClientHelpers.ActionSuccess(client, queueItemId, action, message);
 
+    /// <summary>
+    /// Whether NZBGet has the category and which folder it saves it to (#616):
+    /// the category's DestDir, or NZBGet's DestDir with the category appended
+    /// when AppendCategoryDir is on, or DestDir itself.
+    /// </summary>
+    public override async Task<DownloadClientCategoryCheckResult> CheckCategoryAsync(DownloadClientItem client, string category, CancellationToken cancellationToken)
+    {
+        var name = category.Trim();
+        var baseUri = DownloadClientHelpers.ResolveEndpoint(client);
+        if (name.Length == 0 || baseUri is null)
+        {
+            return new(client.Id, client.Name, name, DownloadClientCategoryStatuses.Configuration,
+                name.Length == 0 ? "Enter a category before checking it." : "Add the NZBGet address before checking a category.", Supported: true, Found: false);
+        }
+
+        try
+        {
+            var response = await DownloadClientHelpers.PostJsonAsync<NzbGetResponse<IReadOnlyList<NzbGetOption>>>(
+                CreateHttp(client), new Uri(baseUri, "jsonrpc"), new NzbGetRequest("config", []), cancellationToken);
+            var options = (response?.Result ?? []).Where(option => option.Name is not null)
+                .GroupBy(option => option.Name!, StringComparer.OrdinalIgnoreCase)
+                .ToDictionary(group => group.Key, group => group.Last().Value ?? string.Empty, StringComparer.OrdinalIgnoreCase);
+            string Resolve(string value) => System.Text.RegularExpressions.Regex.Replace(
+                value, @"\$\{(\w+)\}", match => options.TryGetValue(match.Groups[1].Value, out var inner) ? inner : match.Value);
+            var destDir = Resolve(options.GetValueOrDefault("DestDir") ?? string.Empty);
+
+            var index = options.Keys
+                .Where(key => key.StartsWith("Category", StringComparison.OrdinalIgnoreCase) && key.EndsWith(".Name", StringComparison.OrdinalIgnoreCase))
+                .FirstOrDefault(key => string.Equals(options[key], name, StringComparison.OrdinalIgnoreCase))?[..^".Name".Length];
+            if (index is null)
+            {
+                return new(client.Id, client.Name, name, DownloadClientCategoryStatuses.Missing,
+                    $"NZBGet has no category named {name}, so its downloads go to NZBGet's DestDir ({destDir}). Add the category in NZBGet, Settings, Categories.",
+                    Supported: true, Found: false, SavePath: ClientPaths.ClientFolder(destDir, null));
+            }
+
+            var ownDir = Resolve(options.GetValueOrDefault(index + ".DestDir") ?? string.Empty);
+            var appends = !string.Equals(options.GetValueOrDefault("AppendCategoryDir"), "no", StringComparison.OrdinalIgnoreCase);
+            var folder = !string.IsNullOrWhiteSpace(ownDir)
+                ? ClientPaths.ClientFolder(destDir, ownDir)
+                : ClientPaths.ClientFolder(destDir, appends ? name : null);
+            return new(client.Id, client.Name, name, DownloadClientCategoryStatuses.Ready,
+                $"NZBGet has a category named {name}, saving to {folder}.", Supported: true, Found: true, SavePath: folder);
+        }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or IOException or System.Text.Json.JsonException)
+        {
+            return new(client.Id, client.Name, name, DownloadClientCategoryStatuses.Unreachable,
+                $"Deluno could not read NZBGet's categories: {ex.Message}", Supported: true, Found: false);
+        }
+    }
+
+    private sealed record NzbGetOption([property: JsonPropertyName("Name")] string? Name, [property: JsonPropertyName("Value")] string? Value);
+
     public override string NormalizeStatus(string? nativeStatus, double? progress, int? errorCode = null, string? errorMessage = null) => DownloadClientHelpers.NormalizeTextStatus(nativeStatus, progress);
 
     private HttpClient CreateHttp(DownloadClientItem client)
@@ -173,7 +226,7 @@ public sealed class NzbGetDownloadClient(IHttpClientFactory httpClientFactory) :
         var response = await DownloadClientHelpers.PostJsonAsync<NzbGetResponse<IReadOnlyList<NzbGetHistoryItem>>>(http, new Uri(baseUri, "jsonrpc"), new NzbGetRequest("history", []), cancellationToken);
         return (response?.Result ?? []).Select(item => new DownloadClientHistoryItem(item.NzbId.ToString(CultureInfo.InvariantCulture), client.Id, client.Name, client.Protocol,
             DownloadClientHelpers.InferMediaType(client, item.Category), DownloadClientHelpers.CleanReleaseTitle(item.NzbName ?? item.Name ?? "Unknown NZBGet history item"), item.NzbName ?? item.Name ?? "Unknown NZBGet history item",
-            item.Category ?? string.Empty, NormalizeOutcome(item.Status ?? string.Empty), "NZBGet", item.FileSizeHi * 1_000_000L, DownloadClientHelpers.FromUnix(item.HistoryTime), QueueError(item.Status), DownloadClientHelpers.ResolveDownloadPath(item.DestDir, item.NzbName ?? item.Name),
+            item.Category ?? string.Empty, NormalizeOutcome(item.Status ?? string.Empty), "NZBGet", item.FileSizeHi * 1_000_000L, DownloadClientHelpers.FromUnix(item.HistoryTime), QueueError(item.Status), JobFolder(item.DestDir),
             HistorySource: "native",
             ExternalId: item.NzbId.ToString(CultureInfo.InvariantCulture))).ToArray();
     }
@@ -185,7 +238,30 @@ public sealed class NzbGetDownloadClient(IHttpClientFactory httpClientFactory) :
 
     private static int CalculateEta(long remainingBytes, long? bytesPerSecond) => remainingBytes <= 0 || bytesPerSecond is null or <= 0 ? 0 : Convert.ToInt32(Math.Clamp(remainingBytes / (double)bytesPerSecond.Value, 0, int.MaxValue));
     private static string? QueueError(string? status) => string.IsNullOrWhiteSpace(status) ? null : status.Contains("fail", StringComparison.OrdinalIgnoreCase) || status.Contains("error", StringComparison.OrdinalIgnoreCase) || status.Contains("stall", StringComparison.OrdinalIgnoreCase) ? status : null;
-    private static string NormalizeOutcome(string value) => value.Equals("completed", StringComparison.OrdinalIgnoreCase) || value.Equals("succeeded", StringComparison.OrdinalIgnoreCase) || value.Equals("success", StringComparison.OrdinalIgnoreCase) ? DownloadQueueStatuses.Completed : value.Contains("fail", StringComparison.OrdinalIgnoreCase) || value.Contains("error", StringComparison.OrdinalIgnoreCase) ? "failed" : value.Contains("import", StringComparison.OrdinalIgnoreCase) ? DownloadQueueStatuses.ImportReady : value.Length == 0 ? "unknown" : value.Trim().ToLowerInvariant();
+    /// <summary>
+    /// NZBGet's history status is MAIN/DETAIL: SUCCESS/UNPACK, FAILURE/PAR,
+    /// WARNING/SCRIPT, DELETED/MANUAL and so on (#635). Only bare words were
+    /// read, so "success/unpack" was never completed and no NZBGet download was
+    /// ever handed on. WARNING/SCRIPT is a finished download whose script
+    /// complained; every other WARNING, FAILURE and DELETED is not usable.
+    /// </summary>
+    internal static string NormalizeOutcome(string value)
+    {
+        var status = value.Trim();
+        var main = status.Split('/', 2)[0].ToUpperInvariant();
+        return main switch
+        {
+            "SUCCESS" or "COMPLETED" or "SUCCEEDED" => DownloadQueueStatuses.Completed,
+            "WARNING" when status.EndsWith("/SCRIPT", StringComparison.OrdinalIgnoreCase) => DownloadQueueStatuses.Completed,
+            "WARNING" or "FAILURE" or "DELETED" => "failed",
+            _ when status.Contains("fail", StringComparison.OrdinalIgnoreCase) || status.Contains("error", StringComparison.OrdinalIgnoreCase) => "failed",
+            _ when status.Contains("import", StringComparison.OrdinalIgnoreCase) => DownloadQueueStatuses.ImportReady,
+            _ => status.Length == 0 ? "unknown" : status.ToLowerInvariant()
+        };
+    }
+
+    /// <summary>NZBGet's DestDir is already the job's own folder; adding the job name again named a folder that does not exist (#635).</summary>
+    private static string? JobFolder(string? destDir) => string.IsNullOrWhiteSpace(destDir) ? null : destDir.Trim().TrimEnd('/', '\\');
 
     private sealed record NzbGetRequest([property: JsonPropertyName("method")] string Method, [property: JsonPropertyName("params")] object[] Params);
     private sealed record NzbGetResponse<T>([property: JsonPropertyName("result")] T? Result, [property: JsonPropertyName("error")] NzbGetError? Error = null);
