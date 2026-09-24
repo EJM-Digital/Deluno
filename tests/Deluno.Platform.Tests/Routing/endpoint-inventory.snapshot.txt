@@ -193,6 +193,7 @@ GET /api/setup/draft
 GET /api/setup/progress
 GET /api/subtitle-languages
 GET /api/subtitle-providers/
+GET /api/system/lan-access
 GET /api/system/tasks
 GET /api/tags/
 GET /api/tags/usage
@@ -377,6 +378,7 @@ POST /api/series/{id}/search
 POST /api/series/{id}/seasons/{seasonNumber:int}/search
 POST /api/setup/completed
 POST /api/subtitle-providers/{key}/test
+POST /api/system/lan-access/allow
 POST /api/tags/
 POST /api/updates/apply-on-restart
 POST /api/updates/check

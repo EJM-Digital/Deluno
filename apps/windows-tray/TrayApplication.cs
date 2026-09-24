@@ -1,3 +1,4 @@
+using Deluno.Api.Network;
 using System.Diagnostics;
 using System.Reflection;
 
@@ -21,6 +22,7 @@ public sealed class TrayApplication : ApplicationContext
     private readonly ToolStripMenuItem _restartItem;
     private readonly ToolStripMenuItem _startStopItem;
     private readonly ToolStripMenuItem _serviceModeItem;
+    private readonly ToolStripMenuItem _allowLanItem;
     private readonly DelunoServer _server;
     private TrayState _state = TrayState.Starting;
 
@@ -33,6 +35,7 @@ public sealed class TrayApplication : ApplicationContext
         _restartItem = new ToolStripMenuItem("Restart", null, OnRestart) { Enabled = false };
         _startStopItem = new ToolStripMenuItem("Stop", null, OnStartStop) { Enabled = false };
         _serviceModeItem = new ToolStripMenuItem("Run as Service...", null, OnServiceMode);
+        _allowLanItem = new ToolStripMenuItem("Allow other devices on your network...", null, OnAllowLan) { Visible = false };
 
         var version = Assembly.GetEntryAssembly()?.GetName().Version;
         var aboutItem = new ToolStripMenuItem($"Deluno v{version?.ToString(3) ?? "0.1.0"}") { Enabled = false };
@@ -41,6 +44,7 @@ public sealed class TrayApplication : ApplicationContext
         menu.Items.AddRange([
             _openItem,
             _openUpdatesItem,
+            _allowLanItem,
             new ToolStripSeparator(),
             _restartItem,
             _startStopItem,
@@ -111,6 +115,7 @@ public sealed class TrayApplication : ApplicationContext
             InvokeOnUiThread(() =>
             {
                 SetState(TrayState.Running);
+                _allowLanItem.Visible = _server.LanAccess?.CanAllow == true;
                 ShowReachableUrlsBalloon();
             });
         }
@@ -138,12 +143,37 @@ public sealed class TrayApplication : ApplicationContext
             ? $"Local only: {urls[0]}"
             : $"LAN: {lanUrls[0]}{(lanUrls.Count > 1 ? $" (+{lanUrls.Count - 1} more)" : string.Empty)}";
 
-        // If the firewall rule wasn't created (no admin), include a clear hint.
-        if (_server.FirewallStatus?.State == FirewallRuleState.RequiresElevation)
+        // Other devices are turned away until the firewall lets them in (#623).
+        if (_server.LanAccess?.State == LanAccessStates.Blocked)
         {
-            body += "  - Firewall rule not added (no admin). Other PCs may not reach this URL.";
+            body += "  - Windows Firewall blocks other devices. Right-click the Deluno icon and choose Allow other devices.";
         }
         _notify.ShowBalloonTip(10000, title, body, ToolTipIcon.Info);
+    }
+
+    /// <summary>
+    /// Asks Windows, through its permission prompt, to let other devices reach
+    /// Deluno, and says what happened (#623).
+    /// </summary>
+    private async void OnAllowLan(object? sender, EventArgs e)
+    {
+        if (_server.Firewall is null)
+        {
+            return;
+        }
+
+        _allowLanItem.Enabled = false;
+        var status = await _server.Firewall.AllowAsync(CancellationToken.None);
+        InvokeOnUiThread(() =>
+        {
+            _allowLanItem.Enabled = true;
+            _allowLanItem.Visible = status.CanAllow;
+            _notify.ShowBalloonTip(
+                10000,
+                status.State == LanAccessStates.Open ? "Other devices can reach Deluno" : "Other devices still cannot reach Deluno",
+                status.Message,
+                status.State == LanAccessStates.Open ? ToolTipIcon.Info : ToolTipIcon.Warning);
+        });
     }
 
     private static void TryWriteStartupLog(Exception ex)

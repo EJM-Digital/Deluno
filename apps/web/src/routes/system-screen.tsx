@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import { JOB_STATUS, type JobStatus, isJobActive, isJobFailed, isJobSuccessful } from "../lib/job-status-constants";
 import { SystemShell } from "../components/app/settings-shell";
+import { LanAccessNotice } from "../components/app/lan-access-notice";
 import { MetadataMaintenanceCard } from "../components/app/metadata-maintenance-card";
 import { ProviderHealthDrawer, type ProviderHealthSelection } from "../components/app/provider-health-drawer";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card";
@@ -285,6 +286,7 @@ export function SystemPage() {
         ]}
       />
 
+      <LanAccessNotice />
       {monitoring.alerts.length ? <MonitoringCard monitoring={monitoring} /> : null}
       {providerCard}
       <SystemTasksCard tasks={systemTasks} />

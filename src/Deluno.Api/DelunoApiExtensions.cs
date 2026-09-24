@@ -4,6 +4,7 @@ using Deluno.Api.Backup;
 using Deluno.Api.Downloads;
 using Deluno.Api.Health;
 using Deluno.Api.Monitoring;
+using Deluno.Api.Network;
 using Deluno.Api.Updates;
 using Deluno.Infrastructure.Storage;
 using Deluno.Security;
@@ -30,6 +31,7 @@ public static class DelunoApiExtensions
         services.AddSingleton<IApiLatencyTracker, InMemoryApiLatencyTracker>();
         services.AddSingleton<IMonitoringService, MonitoringService>();
         services.TryAddSingleton<IUpdateOrchestrator, DefaultUpdateOrchestrator>();
+        services.TryAddSingleton<ILanAccess, UncheckedLanAccess>();
         return services;
     }
 
@@ -77,6 +79,7 @@ public static class DelunoApiExtensions
         }))
             .RequireAuthorization(DelunoAuthorizationPolicies.Read);
         api.MapDelunoMonitoringEndpoints();
+        api.MapDelunoLanAccessEndpoints();
 
         if (includeOperationalEndpoints)
         {

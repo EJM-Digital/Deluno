@@ -23,15 +23,18 @@ internal static class Program
     [STAThread]
     private static int Main(string[] args)
     {
-        // Hooks below run from elevated Setup.exe / Update.exe contexts;
-        // they're the right place to make machine-wide changes (firewall
-        // rule, etc.) the unprivileged tray cannot. The hooks exit the
-        // process when fired, so nothing after this runs on install.
+        // Setup.exe and Update.exe run these per user, without administrator
+        // rights, and kill them after 30 seconds (15 on uninstall). So the
+        // firewall rule (#623) is only added here when the rights are already
+        // there. The Windows permission prompt comes on the first run instead.
+        // The install hooks exit the process when fired, so nothing after
+        // this runs on install.
         VelopackApp.Build()
             .SetAutoApplyOnStartup(false)
             .OnAfterInstallFastCallback(_ => InstallHooks.OnAfterInstall())
             .OnAfterUpdateFastCallback(_ => InstallHooks.OnAfterInstall())
             .OnBeforeUninstallFastCallback(_ => InstallHooks.OnBeforeUninstall())
+            .OnFirstRun(_ => InstallHooks.OnFirstRun())
             .Run();
 
         try

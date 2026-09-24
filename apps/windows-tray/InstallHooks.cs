@@ -1,112 +1,89 @@
-using System.Diagnostics;
+using Deluno.Api.Network;
 
 namespace Deluno.Tray;
 
 /// <summary>
-/// Velopack install/uninstall lifecycle callbacks. These run from inside
-/// <c>Setup.exe</c> (or <c>Update.exe</c>) — both of which are elevated by
-/// the installer's UAC prompt — so they're the right place to make
-/// machine-wide changes that the unprivileged tray cannot.
+/// Velopack install lifecycle callbacks, and the one machine-wide change
+/// Deluno makes: a Windows Firewall rule so other devices on the network can
+/// reach it (#623).
 ///
-/// Right now there's one such change: a Windows Firewall inbound allow
-/// rule for the default port, so LAN devices can reach Deluno's UI
-/// immediately after install without the user having to run any commands.
+/// <para>These used to add the rule from the after-install callback on the
+/// belief that Setup.exe runs elevated. It does not: Velopack installs per
+/// user, without administrator rights, so netsh refused every time, and the
+/// only record was a line in install-hook.log. Other devices simply could not
+/// connect.</para>
+///
+/// <para>Velopack's install, update and uninstall callbacks must finish within
+/// 30 seconds (15 for uninstall) and are not meant to show anything, so they
+/// only act when they already have the rights. The Windows permission prompt
+/// comes on the first run after install, which Velopack runs once as the app
+/// itself. If that prompt is declined, the tray menu and System keep offering
+/// the same step.</para>
 /// </summary>
 internal static class InstallHooks
 {
-    /// <summary>
-    /// Called by Velopack after a fresh install or after an update is
-    /// applied. Adds an idempotent firewall allow rule for the default port.
-    /// If the user has changed the port in <c>deluno.json</c>, the running
-    /// tray will also try to add a rule for the configured port (see
-    /// <see cref="DelunoServer"/>) — this hook only guarantees the default
-    /// port works out of the box.
-    /// </summary>
+    /// <summary>Uninstall's limit is 15 seconds; leave room to exit cleanly.</summary>
+    private static readonly TimeSpan UninstallBudget = TimeSpan.FromSeconds(12);
+
+    /// <summary>After install or update: adds the rule only when this process may already do so.</summary>
     public static void OnAfterInstall()
     {
-        try
+        var firewall = Firewall();
+        if (!new NetshFirewallCommandRunner().IsElevated)
         {
-            EnsureFirewallRule(new AppSettings().Port); // default port from class initializer
-        }
-        catch
-        {
-            // The installer should never crash because of a firewall rule
-            // failure. Worst case the user runs the netsh command manually.
-        }
-    }
-
-    /// <summary>
-    /// Called by Velopack just before uninstall removes the install
-    /// directory. Cleans up the firewall rule we added so we don't leave
-    /// orphan rules behind.
-    /// </summary>
-    public static void OnBeforeUninstall()
-    {
-        try
-        {
-            RemoveFirewallRule(new AppSettings().Port);
-        }
-        catch
-        {
-            // Best-effort cleanup.
-        }
-    }
-
-    private static void EnsureFirewallRule(int port)
-    {
-        var ruleName = $"Deluno (port {port})";
-
-        // Idempotent: if a rule with this name already exists, skip.
-        var probe = RunNetsh($"advfirewall firewall show rule name=\"{ruleName}\"");
-        if (probe.ExitCode == 0)
-        {
-            LogHook($"firewall rule '{ruleName}' already exists; skipping add.");
+            LogHook($"'{firewall.RuleName}': not elevated here; the first run asks Windows for permission.");
             return;
         }
 
-        var add = RunNetsh($"advfirewall firewall add rule name=\"{ruleName}\" dir=in action=allow protocol=TCP localport={port}");
-        if (add.ExitCode == 0)
-            LogHook($"firewall rule '{ruleName}' added for port {port}.");
-        else
-            LogHook($"firewall rule add failed (exit {add.ExitCode}): {add.Output}");
+        Run(() => firewall.AllowAsync(CancellationToken.None), "after install");
     }
 
-    private static void RemoveFirewallRule(int port)
-    {
-        var ruleName = $"Deluno (port {port})";
-        var del = RunNetsh($"advfirewall firewall delete rule name=\"{ruleName}\"");
-        LogHook($"firewall rule '{ruleName}' delete exit={del.ExitCode}.");
-    }
+    /// <summary>First run after install: asks Windows, once, to let other devices reach Deluno.</summary>
+    public static void OnFirstRun() => Run(() => Firewall().AllowAsync(CancellationToken.None), "first run");
 
-    private static (int ExitCode, string Output) RunNetsh(string args)
+    /// <summary>Before uninstall: removes the rule Deluno added, so nothing is left behind.</summary>
+    public static void OnBeforeUninstall()
     {
-        var psi = new ProcessStartInfo
-        {
-            FileName = "netsh",
-            Arguments = args,
-            UseShellExecute = false,
-            CreateNoWindow = true,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-        };
+        var firewall = Firewall();
         try
         {
-            using var proc = Process.Start(psi);
-            if (proc is null) return (-1, "Failed to launch netsh.");
-            var output = proc.StandardOutput.ReadToEnd() + proc.StandardError.ReadToEnd();
-            proc.WaitForExit(15000);
-            return (proc.ExitCode, output);
+            using var budget = new CancellationTokenSource(UninstallBudget);
+            if (firewall.GetStatusAsync(budget.Token).GetAwaiter().GetResult().State != LanAccessStates.Open)
+            {
+                return;
+            }
+
+            var removed = firewall.RemoveAsync(budget.Token).GetAwaiter().GetResult();
+            LogHook($"'{firewall.RuleName}' delete exit={removed.ExitCode}{(removed.Declined ? " (permission declined)" : string.Empty)}.");
         }
         catch (Exception ex)
         {
-            return (-1, ex.Message);
+            LogHook($"'{firewall.RuleName}' delete failed: {ex.Message}");
+        }
+    }
+
+    private static WindowsFirewallLanAccess Firewall()
+        => new(DelunoServer.PortOverride ?? AppSettings.Load().Port);
+
+    private static void Run(Func<Task<LanAccessStatus>> step, string when)
+    {
+        try
+        {
+            var status = step().GetAwaiter().GetResult();
+            LogHook($"{when}: {status.State}: {status.Message}");
+        }
+        catch (Exception ex)
+        {
+            // An install must never fail over a firewall rule; the tray and
+            // System still offer the step.
+            LogHook($"{when}: firewall rule failed: {ex.Message}");
         }
     }
 
     /// <summary>
-    /// Install hooks run before the tray's normal logging is set up.
-    /// Append directly to the install-hook log so a packaging issue is
-    /// at least traceable after the fact.
+    /// Install hooks run before the tray's normal logging is set up. Append
+    /// directly to the install-hook log so a packaging issue is at least
+    /// traceable after the fact.
     /// </summary>
     private static void LogHook(string message)
     {
