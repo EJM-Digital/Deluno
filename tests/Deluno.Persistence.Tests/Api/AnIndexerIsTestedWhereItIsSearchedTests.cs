@@ -30,6 +30,8 @@ public sealed class AnIndexerIsTestedWhereItIsSearchedTests
     [InlineData("https://api.nzbgeek.info/api/", "https://api.nzbgeek.info/api/")]
     [InlineData("http://127.0.0.1:9117/api/v2.0/indexers/all/results/torznab/api", "http://127.0.0.1:9117/api/v2.0/indexers/all/results/torznab/api")]
     [InlineData("https://indexer.example/custom?t=search", "https://indexer.example/custom?t=search")]
+    [InlineData("api.nzbplanet.net", "https://api.nzbplanet.net/api")]
+    [InlineData(" api.nzbplanet.net/ ", "https://api.nzbplanet.net/api")]
     public void The_api_endpoint_is_the_base_url_with_api_unless_it_already_names_one(string baseUrl, string endpoint)
         => Assert.Equal(endpoint, IndexerApiEndpoint.For(baseUrl));
 
@@ -51,6 +53,47 @@ public sealed class AnIndexerIsTestedWhereItIsSearchedTests
         Assert.Equal(IndexerApiEndpoint.UserAgent, server.LastUserAgent);
     }
 
+    /// <summary>
+    /// #627: NZBPlanet was saved as "api.nzbplanet.net" and then tested only as
+    /// "The address is not valid yet". A typed host means https, as in a
+    /// browser, and an address that is still not one is refused at save.
+    /// </summary>
+    [Fact]
+    public async Task An_address_typed_without_https_is_saved_as_https_and_junk_is_refused()
+    {
+        await using var app = await ApplicationTestHost.StartAsync();
+
+        var saved = await app.Client.PostAsJsonAsync("/api/indexers", new { name = "Planet", protocol = "newznab", baseUrl = "api.nzbplanet.net", apiKey = "k", mediaScope = "both", isEnabled = true });
+        var junk = await app.Client.PostAsJsonAsync("/api/indexers", new { name = "Junk", protocol = "newznab", baseUrl = "not a web address", apiKey = "k", mediaScope = "both", isEnabled = true });
+
+        Assert.True(saved.IsSuccessStatusCode, await saved.Content.ReadAsStringAsync());
+        Assert.Equal("https://api.nzbplanet.net", (await saved.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("baseUrl").GetString());
+        Assert.Equal(System.Net.HttpStatusCode.BadRequest, junk.StatusCode);
+        Assert.Contains("not a web address", await junk.Content.ReadAsStringAsync());
+    }
+
+    /// <summary>
+    /// #626: testing an edit before saving it. The drawer sends no key when it
+    /// is left blank, which means "keep the saved one", so the test uses it.
+    /// </summary>
+    [Fact]
+    public async Task Testing_an_unsaved_edit_uses_the_saved_key_when_none_is_typed()
+    {
+        await using var server = await NewznabServerAsync();
+        await using var app = await ApplicationTestHost.StartAsync();
+        var indexer = await app.Services.GetRequiredService<IConnectionsRepository>().CreateIndexerAsync(
+            new CreateIndexerRequest("Saved", "newznab", "private", "https://moved.invalid", "saved-key", 10, "2000", "", "both", true),
+            CancellationToken.None);
+
+        var response = await app.Client.PostAsJsonAsync(
+            $"/api/indexers/test?id={indexer.Id}",
+            new { name = "Saved", protocol = "newznab", baseUrl = server.BaseUrl, mediaScope = "both", isEnabled = true });
+
+        Assert.True(response.IsSuccessStatusCode, await response.Content.ReadAsStringAsync());
+        Assert.Equal("healthy", (await response.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("healthStatus").GetString());
+        Assert.Contains("apikey=saved-key", server.LastQuery);
+    }
+
     /// <summary>#625: NZBGeek refuses a request with no User-Agent, so searches send Deluno's.</summary>
     [Fact]
     public async Task Searches_tell_the_indexer_they_are_Deluno()
@@ -70,6 +113,8 @@ public sealed class AnIndexerIsTestedWhereItIsSearchedTests
 
         public string? LastUserAgent { get; set; }
 
+        public string? LastQuery { get; set; }
+
         public ValueTask DisposeAsync() => app.DisposeAsync();
     }
 
@@ -84,6 +129,7 @@ public sealed class AnIndexerIsTestedWhereItIsSearchedTests
         {
             server!.LastPath = context.Request.Path.Value;
             server.LastUserAgent = context.Request.Headers.UserAgent.ToString();
+            server.LastQuery = context.Request.QueryString.Value;
             if (context.Request.Path.StartsWithSegments("/api"))
             {
                 context.Response.ContentType = "application/rss+xml";

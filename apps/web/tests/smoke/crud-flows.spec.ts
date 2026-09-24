@@ -147,6 +147,32 @@ test.describe("indexer and download client CRUD", () => {
     await expect(protocol.locator("option", { hasText: "RSS feed" })).toHaveCount(1);
   });
 
+  // #626: a new indexer can be tested before it is saved, and the result is
+  // shown in the drawer next to the form it tested.
+  test("a new indexer is tested with what the form holds, before saving", async ({ page }) => {
+    let sent: Record<string, unknown> | null = null;
+    await page.route("**/api/indexers/test", async (route) => {
+      sent = route.request().postDataJSON() as Record<string, unknown>;
+      await route.fulfill({ json: { healthStatus: "healthy", message: "Reached api.example.test and received a valid Newznab response.", latencyMs: 12 } });
+    });
+
+    await page.goto("/indexers/indexers");
+    await page.getByRole("button", { name: "New indexer" }).first().click();
+    // The drawer takes the name typed into it as its title.
+    const drawer = page.getByRole("dialog");
+    await drawer.getByLabel("Protocol").selectOption("newznab");
+    await drawer.getByLabel("Name").fill("Smoke draft test");
+    await drawer.getByLabel("Newznab URL").fill("https://api.example.test");
+    await drawer.getByLabel("API key").fill("draft-key");
+
+    await expect(drawer.getByRole("button", { name: "Test", exact: true })).toHaveCount(1);
+    await drawer.getByRole("button", { name: "Test", exact: true }).click();
+
+    await expect(drawer.getByText("Reached api.example.test and received a valid Newznab response.")).toBeVisible();
+    expect(sent).toMatchObject({ name: "Smoke draft test", protocol: "newznab", baseUrl: "https://api.example.test", apiKey: "draft-key" });
+    await page.keyboard.press("Escape");
+  });
+
   test("indexer drawer shows URL and scope fields for the chosen protocol", async ({ page }) => {
     await page.goto("/indexers/indexers");
     await page.getByRole("button", { name: "New indexer" }).first().click();

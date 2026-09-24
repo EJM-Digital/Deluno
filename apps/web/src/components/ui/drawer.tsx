@@ -206,7 +206,8 @@ export function DrawerFooter({
   saveType = "submit",
   disabled,
   saveEnabled,
-  readOnly = false
+  readOnly = false,
+  extraAction
 }: {
   state: DrawerSaveState;
   message?: string | null;
@@ -222,6 +223,8 @@ export function DrawerFooter({
    * Cancel and a disabled Save mean the same thing on a read-only surface.
    */
   readOnly?: boolean;
+  /** One more action beside Cancel and Save, such as Test (#626). */
+  extraAction?: React.ReactNode;
 }) {
   const statuses: Record<DrawerSaveState, FooterStatus | null> = {
     // A tool-style surface has no dirty state but still has something to say.
@@ -253,6 +256,7 @@ export function DrawerFooter({
           </Button>
         ) : (
           <>
+            {extraAction}
             <Button type="button" variant="outline" onClick={onCancel} disabled={saving}>
               Cancel
             </Button>

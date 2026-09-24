@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Loader2, Plus, Trash2, Wifi } from "lucide-react";
+import { Loader2, Plus, Trash2 } from "lucide-react";
 import type { DownloadClientItem, DownloadClientPathMappingItem } from "../../lib/api";
 import { Button } from "../../components/ui/button";
 import { Chip } from "../../components/ui/chip";
@@ -26,7 +26,6 @@ export function ClientDrawerBody({
   onAddMapping,
   onRemoveMapping,
   onTestMapping,
-  onTest,
   onRemove
 }: {
   form: ClientForm;
@@ -41,7 +40,6 @@ export function ClientDrawerBody({
   onAddMapping: () => void;
   onRemoveMapping: (mappingId: string) => void;
   onTestMapping: (mappingId: string) => void;
-  onTest: () => void;
   onRemove: () => void;
 }) {
   const [pathMappingOpen, setPathMappingOpen] = useState(false);
@@ -182,10 +180,6 @@ export function ClientDrawerBody({
               </>
             ) : null}
           </dl>
-          <Button type="button" variant="outline" size="sm" className="w-max" onClick={onTest} disabled={busy !== null}>
-            {busy === `test:${editing.id}` ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Wifi className="h-3.5 w-3.5" />}
-            Test connection
-          </Button>
         </DrawerSection>
       ) : null}
 

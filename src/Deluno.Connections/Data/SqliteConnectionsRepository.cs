@@ -239,7 +239,7 @@ public sealed class SqliteConnectionsRepository(
             Name: NormalizeName(request.Name) ?? "New indexer",
             Protocol: IndexerProtocols.Normalize(request.Protocol),
             Privacy: IndexerPrivacy.Normalize(request.Privacy),
-            BaseUrl: NormalizePath(request.BaseUrl) ?? string.Empty,
+            BaseUrl: IndexerApiEndpoint.NormalizeBaseUrl(NormalizePath(request.BaseUrl)) ?? string.Empty,
             ApiKey: NormalizeName(request.ApiKey),
             Priority: request.Priority is >= 1 ? request.Priority.Value : 100,
             Categories: NormalizeCsv(request.Categories),
@@ -361,7 +361,7 @@ public sealed class SqliteConnectionsRepository(
         var newName     = NormalizeName(request.Name) ?? existing.Name;
         var newProtocol = request.Protocol is not null ? IndexerProtocols.Normalize(request.Protocol) : existing.Protocol;
         var newPrivacy  = request.Privacy is not null ? IndexerPrivacy.Normalize(request.Privacy) : existing.Privacy;
-        var newBaseUrl  = NormalizePath(request.BaseUrl) ?? existing.BaseUrl;
+        var newBaseUrl  = IndexerApiEndpoint.NormalizeBaseUrl(NormalizePath(request.BaseUrl)) ?? existing.BaseUrl;
         var newApiKey   = request.ApiKey is not null ? NormalizeName(request.ApiKey) : existing.ApiKey;
         var newPriority = request.Priority is >= 1 ? request.Priority.Value : existing.Priority;
         var newCats     = request.Categories is not null ? NormalizeCsv(request.Categories) : existing.Categories;

@@ -24,7 +24,7 @@ public static class IndexerApiEndpoint
     /// </summary>
     public static string For(string baseUrl)
     {
-        var trimmed = baseUrl.Trim();
+        var trimmed = NormalizeBaseUrl(baseUrl) ?? string.Empty;
         if (trimmed.Contains('?', StringComparison.Ordinal) ||
             trimmed.TrimEnd('/').EndsWith("/api", StringComparison.OrdinalIgnoreCase))
         {
@@ -33,4 +33,28 @@ public static class IndexerApiEndpoint
 
         return trimmed.TrimEnd('/') + "/api";
     }
+
+    /// <summary>
+    /// An indexer address the way a browser reads what is typed into its bar
+    /// (#627): <c>api.nzbplanet.net</c> means <c>https://api.nzbplanet.net</c>.
+    /// Saved without a scheme, it was kept as typed and then never worked,
+    /// tested only as "The address is not valid yet". Null for a blank one.
+    /// </summary>
+    public static string? NormalizeBaseUrl(string? baseUrl)
+    {
+        if (string.IsNullOrWhiteSpace(baseUrl))
+        {
+            return null;
+        }
+
+        var trimmed = baseUrl.Trim();
+        return trimmed.Contains("://", StringComparison.Ordinal) ? trimmed : "https://" + trimmed.TrimStart('/');
+    }
+
+    /// <summary>Whether a normalised address is one Deluno can send a request to.</summary>
+    public static bool IsUsable(string? baseUrl)
+        => NormalizeBaseUrl(baseUrl) is { } normalized &&
+           Uri.TryCreate(normalized, UriKind.Absolute, out var uri) &&
+           (uri.Scheme == Uri.UriSchemeHttps || uri.Scheme == Uri.UriSchemeHttp) &&
+           !string.IsNullOrWhiteSpace(uri.Host);
 }
