@@ -31,6 +31,16 @@ public sealed class TransmissionDownloadClient(IHttpClientFactory httpClientFact
         if (DownloadClientHelpers.ResolveCategory(client, request) is { Length: > 0 } label)
         {
             arguments["labels"] = new[] { label };
+
+            // Transmission has no folder per label, so a label alone put films and
+            // TV in one folder that no processor watched (#629). Each grab names
+            // its own: Transmission's download folder plus the category, the way
+            // Radarr and Sonarr do it.
+            var session = await SendAsync(client, baseUri, new TransmissionRequest("session-get", new() { ["fields"] = new[] { "download-dir" } }), cancellationToken);
+            if (CategoryFolder(session.Arguments?.DownloadDir, label) is { } folder)
+            {
+                arguments["download-dir"] = folder;
+            }
         }
 
         var response = await SendAsync(client, baseUri, new TransmissionRequest("torrent-add", arguments), cancellationToken);
@@ -128,12 +138,33 @@ public sealed class TransmissionDownloadClient(IHttpClientFactory httpClientFact
         return await first.Content.ReadFromJsonAsync<TransmissionResponse>(cancellationToken) ?? new(null);
     }
 
+    /// <summary>
+    /// The category's folder inside Transmission's download folder, written the
+    /// way that folder is written: a Windows path for a Windows daemon, a POSIX
+    /// one for a Linux or Docker one. Null with no download folder to build on.
+    /// </summary>
+    public static string? CategoryFolder(string? downloadDir, string category)
+    {
+        if (string.IsNullOrWhiteSpace(downloadDir) || string.IsNullOrWhiteSpace(category))
+        {
+            return null;
+        }
+
+        var posix = downloadDir.Contains('/') && !downloadDir.Contains('\\');
+        var separator = posix ? '/' : '\\';
+        var trimmed = downloadDir.TrimEnd('/', '\\');
+        var last = trimmed[(trimmed.LastIndexOfAny(['/', '\\']) + 1)..];
+        // Already the category's folder: someone pointed Transmission at it.
+        return string.Equals(last, category, StringComparison.OrdinalIgnoreCase) ? trimmed : trimmed + separator + category;
+    }
+
     private sealed record TransmissionRequest([property: JsonPropertyName("method")] string Method, [property: JsonPropertyName("arguments")] Dictionary<string, object> Arguments);
     private sealed record TransmissionResponse([property: JsonPropertyName("arguments")] TransmissionArguments? Arguments, [property: JsonPropertyName("result")] System.Text.Json.JsonElement? Result = null);
     private sealed record TransmissionArguments(
         [property: JsonPropertyName("torrents")] IReadOnlyList<TransmissionTorrent>? Torrents,
         [property: JsonPropertyName("torrent-added")] TransmissionAdded? Added = null,
-        [property: JsonPropertyName("torrent-duplicate")] TransmissionAdded? Duplicate = null);
+        [property: JsonPropertyName("torrent-duplicate")] TransmissionAdded? Duplicate = null,
+        [property: JsonPropertyName("download-dir")] string? DownloadDir = null);
     private sealed record TransmissionAdded([property: JsonPropertyName("id")] int? Id, [property: JsonPropertyName("hashString")] string? HashString);
     private sealed record TransmissionTorrent([property: JsonPropertyName("id")] int? Id, [property: JsonPropertyName("name")] string? Name, [property: JsonPropertyName("status")] int? Status, [property: JsonPropertyName("percentDone")] double? PercentDone, [property: JsonPropertyName("rateDownload")] long? RateDownload, [property: JsonPropertyName("rateUpload")] long? RateUpload, [property: JsonPropertyName("eta")] int? Eta, [property: JsonPropertyName("totalSize")] long? TotalSize, [property: JsonPropertyName("downloadedEver")] long? DownloadedEver, [property: JsonPropertyName("peersConnected")] int? PeersConnected, [property: JsonPropertyName("addedDate")] long? AddedDate, [property: JsonPropertyName("downloadDir")] string? DownloadDir, [property: JsonPropertyName("labels")] IReadOnlyList<string>? Labels, [property: JsonPropertyName("error")] int? Error, [property: JsonPropertyName("errorString")] string? ErrorString);
 }
