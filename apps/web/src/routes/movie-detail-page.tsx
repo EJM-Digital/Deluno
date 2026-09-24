@@ -213,6 +213,21 @@ export function MovieDetailPage() {
   const { cast, crew } = readStoredCredits(movie.metadataJson);
   const openSearch = movieSearches.find((item) => item.id === openSearchId) ?? null;
   const openDispatch = movieDispatches.find((item) => item.id === openDispatchId) ?? null;
+  /*
+    #612: the grab endpoint re-derives this exact decision server-side
+    (`AcquisitionDecisionPipeline.IsSafeForAutomaticDispatch`) and refuses
+    anything that is not Deluno's own preferred, cutoff-met, non-downgrade
+    pick with a 400 unless `force` is set — so an Eligible, Acceptable or
+    Equivalent candidate's blue "Send to downloads" was a button that could
+    never work, and the person only learned that after clicking it. The
+    preview response already carries `decisionStatus`, `meetsCutoff` and
+    `qualityDelta` per candidate, so the drawer can know this before the
+    click and open with Force already in view instead.
+  */
+  const openCandidateNeedsForce = openCandidate ? candidateRequiresForce(openCandidate) : false;
+  const forceRequiredNotice = openCandidate && openCandidateNeedsForce
+    ? `Deluno did not pick this release automatically (${candidateLabel(openCandidate)}). Force it below to send anyway.`
+    : null;
 
   /*
     The metadata Deluno already stores, and nothing was reading.
@@ -924,7 +939,14 @@ export function MovieDetailPage() {
                 {releaseCandidates.map((candidate, index) => (
                   <ListRow
                     key={`${candidate.indexerName}:${candidate.releaseName}`}
-                    onClick={() => setOpenCandidate(candidate)}
+                    onClick={() => {
+                      setOpenCandidate(candidate);
+                      // Open with Force already expanded when the plain send
+                      // cannot work, the same default reason the Force
+                      // button itself fills in — never a collapsed toggle
+                      // the person has to find after a failed click first.
+                      setForceReason(candidateRequiresForce(candidate) && candidate.downloadUrl ? (candidate.summary ?? "") : null);
+                    }}
                     selected={openCandidate?.releaseName === candidate.releaseName}
                   >
                     <ListNameCell
@@ -1194,11 +1216,15 @@ export function MovieDetailPage() {
         description={openCandidate ? `${openCandidate.indexerName} · ${candidateLabel(openCandidate)}` : undefined}
         footer={
           <DrawerFooter
-            state={openCandidate?.downloadUrl ? "clean" : "error"}
-            message={openCandidate?.downloadUrl ? openCandidate.summary : "This candidate has no downloadable URL yet"}
+            state={openCandidate?.downloadUrl ? (forceRequiredNotice ? "error" : "clean") : "error"}
+            message={
+              openCandidate?.downloadUrl
+                ? (forceRequiredNotice ?? openCandidate.summary)
+                : "This candidate has no downloadable URL yet"
+            }
             saveType="button"
             saveLabel="Send to downloads"
-            saveEnabled={Boolean(openCandidate?.downloadUrl) && busyAction === null}
+            saveEnabled={Boolean(openCandidate?.downloadUrl) && busyAction === null && !openCandidateNeedsForce}
             onSave={() => openCandidate && void handleGrabCandidate(openCandidate, false)}
             onCancel={() => setOpenCandidate(null)}
           />
@@ -1399,6 +1425,21 @@ interface SearchPlanCandidate {
   estimatedBitrateMbps?: number | null;
   preferenceEvaluation?: unknown;
   preferenceComparison?: unknown;
+}
+
+/**
+ * Whether the grab endpoint will refuse this candidate with a 400 unless
+ * `force` is set. Mirrors `IsSafeForAutomaticDispatch` in
+ * `AcquisitionDecisionPipeline.cs` exactly: only a release that is Deluno's
+ * own preferred pick, meets the cutoff, and is not a quality downgrade can
+ * be sent with a plain "Send to downloads". Everything else — Acceptable,
+ * Eligible, Equivalent, held, a downgrade — runs into the same decision
+ * again on the server and comes back "requires force override" (#612).
+ */
+function candidateRequiresForce(candidate: SearchPlanCandidate): boolean {
+  const isPreferred = (candidate.decisionStatus ?? "").toLowerCase() === "preferred";
+  const safe = isPreferred && candidate.meetsCutoff && (candidate.qualityDelta ?? 0) >= 0;
+  return !safe;
 }
 
 function parseSearchCandidates(detailsJson: string | null): SearchPlanCandidate[] {
