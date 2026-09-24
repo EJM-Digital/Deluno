@@ -146,9 +146,11 @@ function Sab([string] $query) {
 
 $config = (Sab 'mode=get_config').config
 
-if ($config.misc.complete_dir -ne 'C:\Deluno\Downloads-Complete') {
-    Sab 'mode=set_config&section=misc&keyword=complete_dir&value=C:\Deluno\Downloads-Complete' | Out-Null
-    Sab 'mode=set_config&section=misc&keyword=download_dir&value=C:\Deluno\Downloads-Incomplete' | Out-Null
+# James's layout (24 Sep 2026): finished downloads in C:\Downloads\Completed,
+# SABnzbd's own downloading in D:\Incomplete\SABnzbd.
+if ($config.misc.complete_dir -ne 'C:\Downloads\Completed') {
+    Sab 'mode=set_config&section=misc&keyword=complete_dir&value=C:\Downloads\Completed' | Out-Null
+    Sab 'mode=set_config&section=misc&keyword=download_dir&value=D:\Incomplete\SABnzbd' | Out-Null
     Step 'set absolute complete/incomplete folders'
 } else {
     Step 'folders already absolute'
@@ -246,7 +248,7 @@ Sab "mode=history&name=delete&value=$nzoId&del_files=1" | Out-Null
 $completed = $entry.storage
 Invoke-Command -ComputerName $ComputerName -Credential $credential -ArgumentList $completed -ScriptBlock {
     param($path)
-    $root = 'C:\Deluno\Downloads-Complete'
+    $root = 'C:\Downloads\Completed'
     if (-not $path) { return 'SABnzbd reported no storage path; nothing removed.' }
     $full = [System.IO.Path]::GetFullPath($path)
     if (-not $full.StartsWith($root + [System.IO.Path]::DirectorySeparatorChar, [StringComparison]::OrdinalIgnoreCase)) {

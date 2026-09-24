@@ -293,10 +293,14 @@ if (Should 'folders') {
         param($Account)
         $paths = @(
             'C:\Deluno\App', 'C:\Deluno\Data', 'C:\Deluno\Setup',
-            'C:\Deluno\Downloads-Complete\Movies', 'C:\Deluno\Downloads-Complete\TV',
-            'C:\Deluno\Downloads-Incomplete',
-            'C:\Deluno\Refined\Movies', 'C:\Deluno\Refined\TV',
-            'C:\Deluno\Work\Movies', 'C:\Deluno\Work\TV',
+            # James's layout (24 Sep 2026): each client finishes into
+            # C:\Downloads\Completed\<category>, downloads into
+            # D:\Incomplete\<client>, and Weir works in E:\Weir\Temp and
+            # writes to E:\Weir\Ready.
+            'C:\Downloads\Completed\Movies', 'C:\Downloads\Completed\TV',
+            'D:\Incomplete\SABnzbd', 'D:\Incomplete\NZBGet', 'D:\Incomplete\Deluge', 'D:\Incomplete\Transmission', 'D:\Incomplete\qBittorrent',
+            'E:\Weir\Ready\Movies', 'E:\Weir\Ready\TV',
+            'E:\Weir\Temp\Movies', 'E:\Weir\Temp\TV',
             'C:\Deluno\qbt-profile', 'C:\Deluno\Weir'
         )
         foreach ($p in $paths) { New-Item -ItemType Directory -Force $p | Out-Null }
@@ -376,15 +380,15 @@ if (Should 'configure') {
         # disposable lab credential.
         @'
 [BitTorrent]
-Session\DefaultSavePath=C:/Deluno/Downloads-Complete
-Session\TempPath=C:/Deluno/Downloads-Incomplete
+Session\DefaultSavePath=C:/Downloads/Completed
+Session\TempPath=D:/Incomplete/qBittorrent
 Session\TempPathEnabled=true
 Session\DisableAutoTMMTriggers\CategorySavePathChanged=false
 Session\DisableAutoTMMTriggers\DefaultSavePathChanged=false
 
 [Preferences]
-Downloads\SavePath=C:/Deluno/Downloads-Complete
-Downloads\TempPath=C:/Deluno/Downloads-Incomplete
+Downloads\SavePath=C:/Downloads/Completed
+Downloads\TempPath=D:/Incomplete/qBittorrent
 Downloads\TempPathEnabled=true
 WebUI\Enabled=true
 WebUI\Address=*
@@ -399,10 +403,10 @@ WebUI\AuthSubnetWhitelistEnabled=true
         @'
 {
     "deluno-movies": {
-        "save_path": "C:/Deluno/Downloads-Complete/Movies"
+        "save_path": "C:/Downloads/Completed/Movies"
     },
     "deluno-tv": {
-        "save_path": "C:/Deluno/Downloads-Complete/TV"
+        "save_path": "C:/Downloads/Completed/TV"
     }
 }
 '@ | Set-Content (Join-Path $profile 'categories.json') -Encoding utf8
