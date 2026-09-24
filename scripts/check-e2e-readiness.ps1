@@ -29,16 +29,18 @@ $queue = (Invoke-RestMethod -Uri "$b/api/download-clients/telemetry" -Headers $h
 $cred = Get-RigCredential -Rig $rig
 $folders = Invoke-Command -ComputerName $rig.host -Credential $cred -ScriptBlock {
     [pscustomobject]@{
-        Downloads = (Get-ChildItem 'C:\Deluno\Downloads-Complete\Movies' -ErrorAction SilentlyContinue).Count
-        Refined   = (Get-ChildItem 'C:\Deluno\Refined\Movies' -ErrorAction SilentlyContinue).Count
+        # The rig's layout since 24 Sep 2026: clients finish into
+        # C:\Downloads\Completed, Weir writes to E:\Weir\Ready.
+        Downloads = (Get-ChildItem 'C:\Downloads\Completed\Movies' -ErrorAction SilentlyContinue).Count
+        Refined   = (Get-ChildItem 'E:\Weir\Ready\Movies' -ErrorAction SilentlyContinue).Count
         Library   = (Get-ChildItem 'C:\Deluno\Library\Movies' -ErrorAction SilentlyContinue).Count
     }
 }
 
 "grab          : dispatch=$($dispatch.status) queueItem='$($dispatch.torrentHashOrItemId)'"
 "client        : $($queue.Count) item(s), status=$($queue.status -join ',')"
-"downloaded    : $($folders.Downloads) in Downloads-Complete\Movies"
-"refined       : $($folders.Refined) in Refined\Movies"
+"downloaded    : $($folders.Downloads) in C:\Downloads\Completed\Movies"
+"refined       : $($folders.Refined) in E:\Weir\Ready\Movies"
 "library       : $($folders.Library) in Library\Movies"
 "catalogue     : hasFile=$($movie.hasFile) wanted=$($movie.wantedStatus)"
 "import status : '$($dispatch.importStatus)'"
