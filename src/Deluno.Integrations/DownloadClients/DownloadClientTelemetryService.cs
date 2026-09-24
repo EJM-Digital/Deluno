@@ -897,7 +897,7 @@ public sealed class DownloadClientTelemetryService(
         };
     }
 
-    private static DownloadClientTelemetrySnapshot EnrichQueueImportState(
+    internal static DownloadClientTelemetrySnapshot EnrichQueueImportState(
         DownloadClientTelemetrySnapshot snapshot,
         IReadOnlyList<LibraryItem> libraries,
         IReadOnlyList<DownloadDispatchItem> dispatches,
@@ -986,7 +986,20 @@ public sealed class DownloadClientTelemetryService(
 
             if (handoff is not null)
             {
-                return resolvedItem with { Status = ProcessorHandoffQueueStatus.Resolve(handoff, jobsById, resolvedItem.Status) };
+                var queueStatus = ProcessorHandoffQueueStatus.Resolve(handoff, jobsById, resolvedItem.Status);
+                return resolvedItem with
+                {
+                    Status = queueStatus,
+                    // The hand-off is the only record holding the processor's own
+                    // reason (#616). The client itself never saw a failure - it
+                    // downloaded the file fine - so resolvedItem.ErrorMessage is
+                    // empty here, and without this the row and its health finding
+                    // fall back to a generic "the processor did not produce an
+                    // import-ready output", leaving nothing to actually read.
+                    ErrorMessage = queueStatus == DownloadQueueStatuses.ProcessingFailed
+                        ? resolvedItem.ErrorMessage ?? handoff.FailureMessage
+                        : resolvedItem.ErrorMessage
+                };
             }
 
             // The library's workflow says what happens to a new download, not
