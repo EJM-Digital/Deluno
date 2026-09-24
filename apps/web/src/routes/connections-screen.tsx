@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { useLoaderData, useLocation, useNavigate, useRevalidator } from "react-router-dom";
-import { Plus } from "lucide-react";
+import { Loader2, Plus, Wifi } from "lucide-react";
 import {
   fetchJson,
   readValidationProblem,
@@ -23,6 +23,7 @@ import { authedFetch } from "../lib/use-auth";
 import { RealtimeGroups, useSignalREvent } from "../lib/use-signalr";
 import { configurationNavAreas } from "../components/app/settings-shell";
 import { Button } from "../components/ui/button";
+import { ConnectionTestResult, type ConnectionTestOutcome } from "./connections/connection-test-result";
 import { Chip } from "../components/ui/chip";
 import { ConfirmDialog } from "../components/ui/confirm-dialog";
 import { Drawer, DrawerFooter, type DrawerSaveState } from "../components/ui/drawer";
@@ -169,6 +170,10 @@ export function IndexersPage() {
   const [routeInitial, setRouteInitial] = useState<{ sources: string[]; clients: string[]; categories: RouteCategories }>({ sources: [], clients: [], categories: {} });
   const [saveState, setSaveState] = useState<Exclude<DrawerSaveState, "clean" | "dirty">>();
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
+  const [testResult, setTestResult] = useState<ConnectionTestOutcome | null>(null);
+  // A result belongs to the drawer it was run in.
+  const drawerKey = JSON.stringify(drawer);
+  useEffect(() => setTestResult(null), [drawerKey]);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [confirmRemove, setConfirmRemove] = useState(false);
   const [confirmDiscard, setConfirmDiscard] = useState(false);
@@ -258,6 +263,116 @@ export function IndexersPage() {
     else closeDrawer();
   }
 
+  // What Save sends is what Test tries (#626).
+  function indexerPayload() {
+    const editing = drawer.kind === "indexer" && Boolean(drawer.id);
+    return {
+      name: indexerForm.name.trim(),
+      protocol: indexerForm.protocol,
+      // Privacy is not sent at all. Deluno branches on none of it, nobody
+      // can set it here, and guessing "private" for every hand-added source
+      // was inventing provenance. It stays a fact a migration imports from
+      // the app you came from, where it seeds the sharing rule that does
+      // change behaviour.
+      baseUrl: indexerForm.baseUrl.trim(),
+      apiKey: indexerForm.apiKey.trim() || undefined,
+      priority: Number(indexerForm.priority || 10),
+      requestIntervalSeconds: indexerForm.requestIntervalSeconds.trim() ? Number(indexerForm.requestIntervalSeconds) : null,
+      clearRequestInterval: editing && !indexerForm.requestIntervalSeconds.trim(),
+      minimumAgeMinutes: indexerForm.minimumAgeMinutes.trim() ? Number(indexerForm.minimumAgeMinutes) : null,
+      clearMinimumAge: editing && !indexerForm.minimumAgeMinutes.trim(),
+      retentionDays: indexerForm.retentionDays.trim() ? Number(indexerForm.retentionDays) : null,
+      clearRetention: editing && !indexerForm.retentionDays.trim(),
+      maximumSizeMb: indexerForm.maximumSizeMb.trim() ? Number(indexerForm.maximumSizeMb) : null,
+      clearMaximumSize: editing && !indexerForm.maximumSizeMb.trim(),
+      preferIndexerFlags: indexerForm.preferIndexerFlags.trim() || null,
+      clearPreferIndexerFlags: editing && !indexerForm.preferIndexerFlags.trim(),
+      availabilityDelayDays: indexerForm.availabilityDelayDays.trim() ? Number(indexerForm.availabilityDelayDays) : null,
+      clearAvailabilityDelay: editing && !indexerForm.availabilityDelayDays.trim(),
+      rssEnabled: indexerForm.rssEnabled,
+      automaticSearchEnabled: indexerForm.automaticSearchEnabled,
+      interactiveSearchEnabled: indexerForm.interactiveSearchEnabled,
+      // A built-in tracker (#606): which one, its settings, and only the
+      // secrets typed now; a blank one keeps what is saved.
+      ...(indexerForm.protocol === "tracker"
+        ? {
+            definitionId: indexerForm.definitionId,
+            definitionSettings: indexerForm.trackerSettings,
+            definitionSecrets: Object.fromEntries(Object.entries(indexerForm.trackerSecrets).filter(([, value]) => value.trim()))
+          }
+        : {}),
+      categories: indexerForm.categories,
+      tags: "",
+      mediaScope: indexerForm.scope,
+      isEnabled: indexerForm.isEnabled,
+      // Only written when the user actually answered the question
+      // differently. A source may carry a hand-tuned rule this one control
+      // cannot express, and saving an unrelated field should not flatten it
+      // back to the canned one (#288).
+      ...(indexerForm.sharingRule === indexerInitial.sharingRule
+        ? {}
+        : indexerForm.sharingRule === "strict"
+          ? {
+              sharingMode: "share-then-tidy",
+              sharingForHours: STRICT_SHARING.forHours,
+              sharingUntilRatio: STRICT_SHARING.untilRatio,
+              sharingStuckAction: "keep-waiting",
+              sharingStuckAfterDays: STRICT_SHARING.stuckAfterDays,
+              clearSharingPolicy: false
+            }
+          : { clearSharingPolicy: true })
+    };
+  }
+
+  function clientPayload() {
+    const preset = CLIENT_PRESETS.find((item) => item.protocol === clientForm.protocol);
+    const port = Number(clientForm.port || preset?.defaultPort || 8080);
+    return {
+      name: clientForm.name.trim(),
+      protocol: clientForm.protocol,
+      host: clientForm.host.trim(),
+      port,
+      username: clientForm.username || undefined,
+      password: clientForm.password || undefined,
+      endpointUrl: `http://${clientForm.host.trim()}:${port}`,
+      moviesCategory: clientForm.moviesCategory,
+      tvCategory: clientForm.tvCategory,
+      categoryTemplate: clientForm.moviesCategory,
+      priority: Number(clientForm.priority || 1),
+      isEnabled: clientForm.isEnabled
+    };
+  }
+
+  /**
+   * Tests what the drawer holds, before or without saving it (#626). A saved
+   * item with nothing changed takes the saved test, which records its health.
+   * Anything else, a new item or unsaved edits, is tried as a draft. Blank
+   * secrets on an edit mean "keep what is saved", and the server fills them in.
+   */
+  async function testForm() {
+    if (drawer.kind !== "indexer" && drawer.kind !== "client") return;
+    const isIndexer = drawer.kind === "indexer";
+    const errors = isIndexer ? indexerFormErrors(indexerForm, !drawer.id) : clientFormErrors(clientForm);
+    setFieldErrors(errors);
+    if (Object.keys(errors).length) return;
+    const base = isIndexer ? "/api/indexers" : "/api/download-clients";
+    const savedAndUnchanged = Boolean(drawer.id) && !dirty;
+    setBusy("test:form");
+    setTestResult(null);
+    try {
+      const response = savedAndUnchanged
+        ? await send(`${base}/${drawer.id}/test`, "POST", undefined, "Test failed.")
+        : await send(`${base}/test${drawer.id ? `?id=${encodeURIComponent(drawer.id)}` : ""}`, "POST", isIndexer ? indexerPayload() : clientPayload(), "Test failed.");
+      const body = (await response.json()) as { healthStatus?: string; message?: string; lastHealthMessage?: string };
+      setTestResult({ healthStatus: body.healthStatus ?? "unknown", message: body.message ?? body.lastHealthMessage ?? "" });
+      if (savedAndUnchanged) revalidator.revalidate();
+    } catch (error) {
+      setTestResult({ healthStatus: "unreachable", message: error instanceof Error ? error.message : "Test failed." });
+    } finally {
+      setBusy(null);
+    }
+  }
+
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (busy) return;
@@ -272,62 +387,7 @@ export function IndexersPage() {
     setSaveState("saving");
     try {
       if (drawer.kind === "indexer") {
-        const payload = {
-          name: indexerForm.name.trim(),
-          protocol: indexerForm.protocol,
-          // Privacy is not sent at all. Deluno branches on none of it, nobody
-          // can set it here, and guessing "private" for every hand-added source
-          // was inventing provenance. It stays a fact a migration imports from
-          // the app you came from, where it seeds the sharing rule that does
-          // change behaviour.
-          baseUrl: indexerForm.baseUrl.trim(),
-          apiKey: indexerForm.apiKey.trim() || undefined,
-          priority: Number(indexerForm.priority || 10),
-          requestIntervalSeconds: indexerForm.requestIntervalSeconds.trim() ? Number(indexerForm.requestIntervalSeconds) : null,
-          clearRequestInterval: Boolean(drawer.id) && !indexerForm.requestIntervalSeconds.trim(),
-          minimumAgeMinutes: indexerForm.minimumAgeMinutes.trim() ? Number(indexerForm.minimumAgeMinutes) : null,
-          clearMinimumAge: Boolean(drawer.id) && !indexerForm.minimumAgeMinutes.trim(),
-          retentionDays: indexerForm.retentionDays.trim() ? Number(indexerForm.retentionDays) : null,
-          clearRetention: Boolean(drawer.id) && !indexerForm.retentionDays.trim(),
-          maximumSizeMb: indexerForm.maximumSizeMb.trim() ? Number(indexerForm.maximumSizeMb) : null,
-          clearMaximumSize: Boolean(drawer.id) && !indexerForm.maximumSizeMb.trim(),
-          preferIndexerFlags: indexerForm.preferIndexerFlags.trim() || null,
-          clearPreferIndexerFlags: Boolean(drawer.id) && !indexerForm.preferIndexerFlags.trim(),
-          availabilityDelayDays: indexerForm.availabilityDelayDays.trim() ? Number(indexerForm.availabilityDelayDays) : null,
-          clearAvailabilityDelay: Boolean(drawer.id) && !indexerForm.availabilityDelayDays.trim(),
-          rssEnabled: indexerForm.rssEnabled,
-          automaticSearchEnabled: indexerForm.automaticSearchEnabled,
-          interactiveSearchEnabled: indexerForm.interactiveSearchEnabled,
-          // A built-in tracker (#606): which one, its settings, and only the
-          // secrets typed now; a blank one keeps what is saved.
-          ...(indexerForm.protocol === "tracker"
-            ? {
-                definitionId: indexerForm.definitionId,
-                definitionSettings: indexerForm.trackerSettings,
-                definitionSecrets: Object.fromEntries(Object.entries(indexerForm.trackerSecrets).filter(([, value]) => value.trim()))
-              }
-            : {}),
-          categories: indexerForm.categories,
-          tags: "",
-          mediaScope: indexerForm.scope,
-          isEnabled: indexerForm.isEnabled,
-          // Only written when the user actually answered the question
-          // differently. A source may carry a hand-tuned rule this one control
-          // cannot express, and saving an unrelated field should not flatten it
-          // back to the canned one (#288).
-          ...(indexerForm.sharingRule === indexerInitial.sharingRule
-            ? {}
-            : indexerForm.sharingRule === "strict"
-              ? {
-                  sharingMode: "share-then-tidy",
-                  sharingForHours: STRICT_SHARING.forHours,
-                  sharingUntilRatio: STRICT_SHARING.untilRatio,
-                  sharingStuckAction: "keep-waiting",
-                  sharingStuckAfterDays: STRICT_SHARING.stuckAfterDays,
-                  clearSharingPolicy: false
-                }
-              : { clearSharingPolicy: true })
-        };
+        const payload = indexerPayload();
         if (drawer.id) {
           await send(`/api/indexers/${drawer.id}`, "PUT", payload, "Indexer could not be saved.");
           const settled = { ...indexerForm, apiKey: "", trackerSecrets: {} };
@@ -344,22 +404,7 @@ export function IndexersPage() {
           setSaveMessage("Indexer added");
         }
       } else if (drawer.kind === "client") {
-        const preset = CLIENT_PRESETS.find((item) => item.protocol === clientForm.protocol);
-        const port = Number(clientForm.port || preset?.defaultPort || 8080);
-        const payload = {
-          name: clientForm.name.trim(),
-          protocol: clientForm.protocol,
-          host: clientForm.host.trim(),
-          port,
-          username: clientForm.username || undefined,
-          password: clientForm.password || undefined,
-          endpointUrl: `http://${clientForm.host.trim()}:${port}`,
-          moviesCategory: clientForm.moviesCategory,
-          tvCategory: clientForm.tvCategory,
-          categoryTemplate: clientForm.moviesCategory,
-          priority: Number(clientForm.priority || 1),
-          isEnabled: clientForm.isEnabled
-        };
+        const payload = clientPayload();
         if (drawer.id) {
           await send(`/api/download-clients/${drawer.id}`, "PUT", payload, "Download client could not be saved.");
           const settled = { ...clientForm, password: "" };
@@ -429,12 +474,6 @@ export function IndexersPage() {
     }
   }
 
-  async function testIndexer(id: string) {
-    await run(`test:${id}`, () => send(`/api/indexers/${id}/test`, "POST", undefined, "Test failed."));
-  }
-  async function testClient(id: string) {
-    await run(`test:${id}`, () => send(`/api/download-clients/${id}/test`, "POST", undefined, "Test failed."));
-  }
   async function toggleIndexer(item: IndexerItem, isEnabled: boolean) {
     await run(`toggle:${item.id}`, () => send(`/api/indexers/${item.id}`, "PUT", { isEnabled }, `Could not ${isEnabled ? "enable" : "pause"} ${item.name}.`));
     if (drawer.kind === "indexer" && drawer.id === item.id && !dirty) {
@@ -668,11 +707,18 @@ export function IndexersPage() {
             message={saveMessage}
             saveLabel={drawer.kind === "routing" ? "Save routing" : drawer.kind === "client" ? (drawer.id ? "Save client" : "Add client") : drawer.kind === "indexer" && drawer.id ? "Save indexer" : "Add indexer"}
             onCancel={requestClose}
+            extraAction={drawer.kind === "indexer" || drawer.kind === "client" ? (
+              <Button type="button" variant="outline" onClick={() => void testForm()} disabled={busy !== null}>
+                {busy === "test:form" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wifi className="h-4 w-4" />}
+                Test
+              </Button>
+            ) : undefined}
             saveEnabled={creating ? true : undefined}
             disabled={busy !== null}
           />
         }
       >
+        {(drawer.kind === "indexer" || drawer.kind === "client") && testResult ? <ConnectionTestResult result={testResult} /> : null}
         {drawer.kind === "indexer" ? (
           <IndexerDrawerBody
             form={indexerForm}
@@ -687,7 +733,6 @@ export function IndexersPage() {
             fineTuneOpen={fineTuneOpen}
             setFineTuneOpen={setFineTuneOpen}
             busy={busy}
-            onTest={() => editingIndexer && void testIndexer(editingIndexer.id)}
             onReset={() => editingIndexer && void run(`reset:${editingIndexer.id}`, () => send(`/api/indexers/${editingIndexer.id}/reset-circuit`, "POST", undefined, "Could not reset."), `Circuit reset for ${editingIndexer.name}`)}
             onRemove={() => setConfirmRemove(true)}
           />
@@ -706,7 +751,6 @@ export function IndexersPage() {
             onAddMapping={() => editingClient && void addMapping(editingClient.id)}
             onRemoveMapping={(mappingId) => editingClient && void run(`mapping:remove:${mappingId}`, () => send(`/api/download-clients/${editingClient.id}/path-mappings/${mappingId}`, "DELETE", undefined, "File location link could not be removed."), "File location link removed")}
             onTestMapping={(mappingId) => editingClient && void testMapping(editingClient.id, mappingId)}
-            onTest={() => editingClient && void testClient(editingClient.id)}
             onRemove={() => setConfirmRemove(true)}
           />
         ) : null}

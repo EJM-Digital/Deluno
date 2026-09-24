@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Loader2, RefreshCw, Wifi } from "lucide-react";
+import { Loader2, RefreshCw } from "lucide-react";
 import type { IndexerItem, OutboundThrottleHostState, PlatformSettingsSnapshot } from "../../lib/api";
 import { Button } from "../../components/ui/button";
 import { Chip } from "../../components/ui/chip";
@@ -29,7 +29,6 @@ export function IndexerDrawerBody({
   fineTuneOpen,
   setFineTuneOpen,
   busy,
-  onTest,
   onReset,
   onRemove
 }: {
@@ -46,7 +45,6 @@ export function IndexerDrawerBody({
   fineTuneOpen: boolean;
   setFineTuneOpen: (value: boolean) => void;
   busy: string | null;
-  onTest: () => void;
   onReset: () => void;
   onRemove: () => void;
 }) {
@@ -224,10 +222,6 @@ export function IndexerDrawerBody({
             {editing.consecutiveFailures > 0 ? (<><dt className="text-muted-foreground">Failures</dt><dd className="text-warning">{editing.consecutiveFailures} in a row{editing.disabledReason ? ` — ${editing.disabledReason}` : ""}</dd></>) : null}
           </dl>
           <div className="flex flex-wrap gap-2">
-            <Button type="button" variant="outline" size="sm" onClick={onTest} disabled={busy !== null || !editing.isEnabled}>
-              {busy === `test:${editing.id}` ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Wifi className="h-3.5 w-3.5" />}
-              Test connection
-            </Button>
             {editing.consecutiveFailures > 0 ? (
               <Button type="button" variant="outline" size="sm" onClick={onReset} disabled={busy !== null}>
                 {busy === `reset:${editing.id}` ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}

@@ -74,6 +74,8 @@ public static class ConnectionsEndpointRouteBuilderExtensions
         indexers.MapPost("test", async (
             HttpContext httpContext,
             [FromBody] CreateIndexerRequest request,
+            [FromQuery] string? id,
+            [FromServices] IConnectionsRepository repository,
             [FromServices] IIntegrationResiliencePolicy resiliencePolicy,
             [FromServices] IIndexerQueryStatsRepository statsRepository,
             CancellationToken cancellationToken) =>
@@ -88,6 +90,20 @@ public static class ConnectionsEndpointRouteBuilderExtensions
             if (errors.Count > 0)
             {
                 return Results.ValidationProblem(errors);
+            }
+
+            // Testing an edit before saving it (#626): a blank secret means
+            // "keep the saved one", as it does on save, so the test uses it.
+            var saved = string.IsNullOrWhiteSpace(id)
+                ? null
+                : (await repository.ListIndexersAsync(cancellationToken)).FirstOrDefault(item => string.Equals(item.Id, id, StringComparison.OrdinalIgnoreCase));
+            if (saved is not null)
+            {
+                request = request with
+                {
+                    ApiKey = string.IsNullOrWhiteSpace(request.ApiKey) ? saved.ApiKey : request.ApiKey,
+                    DefinitionSecrets = MergeSecrets(saved.DefinitionSecrets, request.DefinitionSecrets)
+                };
             }
 
             var now = DateTimeOffset.UtcNow;
@@ -373,6 +389,8 @@ public static class ConnectionsEndpointRouteBuilderExtensions
         downloadClients.MapPost("test", async (
             HttpContext httpContext,
             [FromBody] CreateDownloadClientRequest request,
+            [FromQuery] string? id,
+            [FromServices] IConnectionsRepository repository,
             [FromServices] IIntegrationResiliencePolicy resiliencePolicy,
             CancellationToken cancellationToken) =>
         {
@@ -386,6 +404,18 @@ public static class ConnectionsEndpointRouteBuilderExtensions
             if (errors.Count > 0)
             {
                 return Results.ValidationProblem(errors);
+            }
+
+            // Testing an edit before saving it (#626): a blank password means
+            // "keep the saved one", as it does on save.
+            if (!string.IsNullOrWhiteSpace(id) && string.IsNullOrWhiteSpace(request.Password))
+            {
+                var saved = (await repository.ListDownloadClientsAsync(cancellationToken))
+                    .FirstOrDefault(item => string.Equals(item.Id, id, StringComparison.OrdinalIgnoreCase));
+                if (saved is not null)
+                {
+                    request = request with { Password = saved.Secret };
+                }
             }
 
             var now = DateTimeOffset.UtcNow;
@@ -612,6 +642,27 @@ public static class ConnectionsEndpointRouteBuilderExtensions
         return errors;
     }
 
+    private static IReadOnlyDictionary<string, string>? MergeSecrets(
+        IReadOnlyDictionary<string, string>? saved,
+        IReadOnlyDictionary<string, string>? typed)
+    {
+        if (saved is null || saved.Count == 0)
+        {
+            return typed;
+        }
+
+        var merged = new Dictionary<string, string>(saved, StringComparer.OrdinalIgnoreCase);
+        foreach (var (key, value) in typed ?? new Dictionary<string, string>())
+        {
+            if (!string.IsNullOrWhiteSpace(value))
+            {
+                merged[key] = value;
+            }
+        }
+
+        return merged;
+    }
+
     private static Dictionary<string, string[]> ValidateIndexer(CreateIndexerRequest request)
     {
         var errors = new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase);
@@ -624,6 +675,11 @@ public static class ConnectionsEndpointRouteBuilderExtensions
         if (string.IsNullOrWhiteSpace(request.BaseUrl))
         {
             errors["baseUrl"] = ["Add the address Deluno should use for this indexer."];
+        }
+        else if (!IndexerApiEndpoint.IsUsable(request.BaseUrl))
+        {
+            // Refused here rather than saved and then marked degraded (#627).
+            errors["baseUrl"] = ["That is not a web address Deluno can use. It should look like https://api.example.com."];
         }
 
         if (IndexerProtocols.IsTracker(request.Protocol) && string.IsNullOrWhiteSpace(request.DefinitionId))
@@ -931,9 +987,11 @@ public static class ConnectionsEndpointRouteBuilderExtensions
 
     private static string BuildIndexerTestUrl(IndexerItem item)
     {
-        if (!Uri.TryCreate(item.BaseUrl, UriKind.Absolute, out var uri))
+        // An address saved without https:// still works (#627).
+        var baseUrl = IndexerApiEndpoint.NormalizeBaseUrl(item.BaseUrl) ?? item.BaseUrl;
+        if (!Uri.TryCreate(baseUrl, UriKind.Absolute, out var uri))
         {
-            return item.BaseUrl;
+            return baseUrl;
         }
 
         if (string.Equals(item.Protocol, "rss", StringComparison.OrdinalIgnoreCase))
