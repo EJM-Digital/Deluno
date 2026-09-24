@@ -503,6 +503,55 @@ public sealed class FeedMediaSearchPlannerReasonTests
         Assert.Equal($"{activePackage.Version}:{activePackage.Source.UpstreamRevision}", evaluation.PlanVersion);
     }
 
+    /// <summary>
+    /// #630: <c>ASizeFloorScalesWithRuntimeTests</c> proves the scaling math in
+    /// <c>ScoreSize</c> itself; this proves the value actually arrives there
+    /// through the real path production uses -
+    /// <c>AcquisitionDecisionPipeline.PlanAsync</c> passes
+    /// <c>AcquisitionDecisionRequest.RuntimeMinutes</c> into this same
+    /// <c>BuildPlanAsync</c> parameter, which crosses two more private method
+    /// boundaries (<c>TrySearchIndexerAsync</c>, <c>ParseCandidates</c>)
+    /// before reaching <c>ReleaseDecisionInput</c>. A dropped parameter
+    /// anywhere in that chain is a silent regression - the build still
+    /// succeeds, and the release is judged against the wrong runtime again.
+    /// </summary>
+    [Fact]
+    public async Task Runtime_minutes_passed_into_build_plan_reaches_the_parsed_candidates_size_decision()
+    {
+        var indexer = CreateIndexer("short-film-indexer", "Short Film Indexer");
+        var feed = new FixedFeedHandler(
+            """
+            <rss><channel>
+              <item><title>Tears.of.Steel.2012.1080p.WEB-DL.DD5.1.H.264-GRP</title><link>https://fixture.invalid/tears-of-steel</link><torznab:attr xmlns:torznab="http://torznab.com/schemas/2015/feed" name="size" value="200000000" /></item>
+            </channel></rss>
+            """);
+        var sizeRules = new[] { new ProfileSizeRule("WEB 1080p", 1.5, 25.0, 420, 3800) };
+
+        var withoutRuntime = await CreatePlanner(CreateConnections(indexer).Object, feed).BuildPlanAsync(
+            "Tears of Steel",
+            2012,
+            "movies",
+            null,
+            "WEB 1080p",
+            [CreateSource(indexer)],
+            sizeRules: sizeRules,
+            cancellationToken: CancellationToken.None);
+
+        var withRuntime = await CreatePlanner(CreateConnections(indexer).Object, feed).BuildPlanAsync(
+            "Tears of Steel",
+            2012,
+            "movies",
+            null,
+            "WEB 1080p",
+            [CreateSource(indexer)],
+            sizeRules: sizeRules,
+            runtimeMinutes: 12,
+            cancellationToken: CancellationToken.None);
+
+        Assert.Equal(ReleaseDecisionStatuses.Rejected, Assert.Single(withoutRuntime.Candidates).DecisionStatus);
+        Assert.Equal("preferred", Assert.Single(withRuntime.Candidates).DecisionStatus);
+    }
+
     private static FeedMediaSearchPlanner CreatePlanner(
         IConnectionsRepository connections,
         HttpMessageHandler? handler = null,

@@ -86,7 +86,8 @@ public sealed class FeedMediaSearchPlanner(
         bool currentFilePresent = false,
         IReadOnlyList<ProfileSizeRule>? sizeRules = null,
         QualityUpgradeStopPolicy? upgradeStop = null,
-        ProfileAcquisitionRules? profileAcquisition = null)
+        ProfileAcquisitionRules? profileAcquisition = null,
+        int? runtimeMinutes = null)
     {
         var indexers = await connectionsRepository.ListIndexersAsync(cancellationToken);
         var normalizedSearchKind = AcquisitionSearchKinds.Normalize(searchKind);
@@ -173,7 +174,7 @@ public sealed class FeedMediaSearchPlanner(
                     customFormats, neverGrabPatterns, scoringMode, seasonNumber, episodeNumber, allowedQualities,
                      applicableProfiles, normalizedSearchKind, availableUtc, currentCustomFormatScore, currentReleaseName, upgradeUntilCutoff,
                      numberingScheme, absoluteNumber, airDate, sceneSeasonNumber, sceneEpisodeNumber,
-                     currentPreferenceEvaluation, preferencePlan, currentFilePresent, sizeRules, upgradeStop, token);
+                     currentPreferenceEvaluation, preferencePlan, currentFilePresent, sizeRules, upgradeStop, runtimeMinutes, token);
             });
 
         await RecordQueryTelemetryAsync(searchResults, cancellationToken);
@@ -361,6 +362,7 @@ public sealed class FeedMediaSearchPlanner(
         bool currentFilePresent,
         IReadOnlyList<ProfileSizeRule>? sizeRules,
         QualityUpgradeStopPolicy? upgradeStop,
+        int? runtimeMinutes,
         CancellationToken cancellationToken)
     {
         var startedTimestamp = Stopwatch.GetTimestamp();
@@ -581,7 +583,8 @@ public sealed class FeedMediaSearchPlanner(
                         sizeRules: sizeRules,
                         upgradeStop: upgradeStop,
                         mediaType: mediaType,
-                        expectation: TitleExpectation(title, year, mediaType, seasonNumber, episodeNumber, numberingScheme, absoluteNumber, airDate, sceneSeasonNumber, sceneEpisodeNumber));
+                        expectation: TitleExpectation(title, year, mediaType, seasonNumber, episodeNumber, numberingScheme, absoluteNumber, airDate, sceneSeasonNumber, sceneEpisodeNumber),
+                        runtimeMinutes: runtimeMinutes);
                     return new IndexerSearchOutcome(
                         parsed.Candidates,
                         parsed.CandidatesTruncatedByIndexer,
@@ -805,7 +808,8 @@ public sealed class FeedMediaSearchPlanner(
         IReadOnlyList<ProfileSizeRule>? sizeRules = null,
         QualityUpgradeStopPolicy? upgradeStop = null,
         string? mediaType = null,
-        ReleaseTitleExpectation? expectation = null)
+        ReleaseTitleExpectation? expectation = null,
+        int? runtimeMinutes = null)
     {
         XNamespace torznab = "http://torznab.com/schemas/2015/feed";
         XNamespace newznab = "http://www.newznab.com/DTD/2010/feeds/attributes/";
@@ -882,7 +886,8 @@ public sealed class FeedMediaSearchPlanner(
                  CurrentPreferenceEvaluation: currentPreferenceEvaluation,
                  CurrentFilePresent: currentFilePresent,
                  MediaType: mediaType,
-                 TitleMismatch: expectation is null ? null : ReleaseTitleMatch.Mismatch(releaseName, expectation)));
+                 TitleMismatch: expectation is null ? null : ReleaseTitleMatch.Mismatch(releaseName, expectation),
+                 RuntimeMinutes: runtimeMinutes));
 
             var boost = rankingModelService.Score(new ReleaseRankingFeatures(
                 Seeders: seeders,

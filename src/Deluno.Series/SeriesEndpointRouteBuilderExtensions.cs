@@ -1483,7 +1483,8 @@ public static class SeriesEndpointRouteBuilderExtensions
                         SceneSeasonNumber: episode.SceneSeasonNumber,
                         SceneEpisodeNumber: episode.SceneEpisodeNumber,
                         CurrentPreferenceEvaluation: baseline.PreferenceEvaluation,
-                        PreferencePlan: preferencePlan).WithProfile(profileRules),
+                        PreferencePlan: preferencePlan,
+                        RuntimeMinutes: seriesItem.RuntimeMinutes).WithProfile(profileRules),
                     cancellationToken);
                 var searchPlan = decisionPlan.SearchPlan;
                 var bestCandidate = searchPlan.BestCandidate;
@@ -2469,7 +2470,8 @@ public static class SeriesEndpointRouteBuilderExtensions
                     SearchKind: AcquisitionSearchKinds.Interactive,
                     AvailableUtc: wantedItem.AvailableUtc,
                     NumberingScheme: seriesItem.NumberingScheme,
-                    PreferencePlan: preferencePlan).WithProfile(profileRules),
+                    PreferencePlan: preferencePlan,
+                    RuntimeMinutes: seriesItem.RuntimeMinutes).WithProfile(profileRules),
                 cancellationToken);
             var searchPlan = decisionPlan.SearchPlan;
             var bestCandidate = searchPlan.BestCandidate;

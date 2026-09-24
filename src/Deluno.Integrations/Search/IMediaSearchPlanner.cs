@@ -41,5 +41,6 @@ public interface IMediaSearchPlanner
         bool currentFilePresent = false,
         IReadOnlyList<ProfileSizeRule>? sizeRules = null,
         QualityUpgradeStopPolicy? upgradeStop = null,
-        ProfileAcquisitionRules? profileAcquisition = null);
+        ProfileAcquisitionRules? profileAcquisition = null,
+        int? runtimeMinutes = null);
 }

@@ -298,7 +298,7 @@ public static partial class ReleaseDecisionEngine
             rejectionGate ??= "No one is seeding this torrent, so it cannot download.";
         }
 
-        var sizeScore = ScoreSize(input.SizeBytes, normalizedCandidate, input.SizeRules, IsSingleEpisode(input.MediaType, input.ReleaseName), risks, reasons, out var estimatedBitrate, out var sizeOutOfRange);
+        var sizeScore = ScoreSize(input.SizeBytes, normalizedCandidate, input.SizeRules, IsSingleEpisode(input.MediaType, input.ReleaseName), input.RuntimeMinutes, risks, reasons, out var estimatedBitrate, out var sizeOutOfRange);
         if (sizeOutOfRange)
         {
             hardReject = true;
@@ -650,11 +650,35 @@ public static partial class ReleaseDecisionEngine
     private static string DescribeLimit(double bytes, bool episode)
         => episode ? $"{bytes / 1_048_576d:0} MB" : $"{bytes / 1_073_741_824d:0.#} GB";
 
+    /// <summary>
+    /// The runtime Size Rules assumes for a title when none is known: about 45
+    /// minutes for an episode, two hours for a film (#600). #630: this is now
+    /// only the reference runtime the configured band is scaled from - the
+    /// fallback used when a title's real runtime is unavailable, not the
+    /// runtime every title is judged against.
+    /// </summary>
+    private const double EpisodeReferenceRuntimeMinutes = 45.0;
+
+    private const double FilmReferenceRuntimeMinutes = 120.0;
+
+    /// <summary>A runtime named the way a person would say it - whole hours in
+    /// hours, everything else in minutes - so a rejection can say "for a
+    /// 12-minute runtime" or "for a 2-hour runtime" and a person can tell
+    /// which threshold applied (#630).</summary>
+    private static string DescribeRuntimeSpan(double minutes)
+    {
+        var rounded = Math.Max(1, (int)Math.Round(minutes, MidpointRounding.AwayFromZero));
+        return rounded % 60 == 0
+            ? $"{rounded / 60}-hour"
+            : $"{rounded}-minute";
+    }
+
     private static int ScoreSize(
         long? sizeBytes,
         string quality,
         IReadOnlyList<ProfileSizeRule>? sizeRules,
         bool episode,
+        int? runtimeMinutes,
         ICollection<string> risks,
         ICollection<string> reasons,
         out double? estimatedBitrate,
@@ -670,11 +694,25 @@ public static partial class ReleaseDecisionEngine
             return -50;
         }
 
-        // An episode runs about 45 minutes, a film about two hours (#600).
-        var runtimeSeconds = episode ? 45.0 * 60 : 2.0 * 60 * 60;
-        estimatedBitrate = Math.Round(sizeBytes.Value * 8d / runtimeSeconds / 1_000_000, 1);
-        var (min, max, _) = SizeBand(quality, sizeRules, episode, typicalWhenUnset: true)!.Value;
+        // #630: Tears of Steel (2012), a 12-minute short, had every real
+        // 1080p release refused as "below the 1.5 GB minimum configured for
+        // WEB 1080p" - a floor sized for a film ten times its length, because
+        // the band was judged against a fixed runtime for every title. Fixed
+        // it the way Radarr/Sonarr do: the configured band is a rate against
+        // the reference runtime above, scaled against the title's real
+        // runtime when metadata supplies one. With no runtime known there is
+        // nothing to scale by, so the reference runtime remains the
+        // assumption exactly as before.
+        var referenceRuntimeMinutes = episode ? EpisodeReferenceRuntimeMinutes : FilmReferenceRuntimeMinutes;
+        var actualRuntimeMinutes = runtimeMinutes is > 0 ? (double)runtimeMinutes.Value : (double?)null;
+        var effectiveRuntimeMinutes = actualRuntimeMinutes ?? referenceRuntimeMinutes;
+        estimatedBitrate = Math.Round(sizeBytes.Value * 8d / (effectiveRuntimeMinutes * 60) / 1_000_000, 1);
+        var (bandMin, bandMax, _) = SizeBand(quality, sizeRules, episode, typicalWhenUnset: true)!.Value;
+        var runtimeScale = actualRuntimeMinutes.HasValue ? actualRuntimeMinutes.Value / referenceRuntimeMinutes : 1.0;
+        var min = bandMin * runtimeScale;
+        var max = bandMax * runtimeScale;
         var size = DescribeSize(sizeBytes.Value, episode);
+        var runtimeDescription = DescribeRuntimeSpan(effectiveRuntimeMinutes);
 
         // Size Rules is described in the UI as "the final check that rejects a
         // release as implausibly small or large", and a minimum in GB reads to a
@@ -684,11 +722,12 @@ public static partial class ReleaseDecisionEngine
         // could not discriminate when every candidate was equally wrong.
         //
         // 0 and 0 remains the documented "no limit" convention, handled by
-        // SizeBand returning a zero bound.
+        // SizeBand returning a zero bound - scaling a zero bound by any runtime
+        // still leaves it zero, so "no limit" still means no limit.
         if (min > 0 && sizeBytes.Value < min)
         {
             outOfRange = true;
-            risks.Add($"Size {size} is below the {DescribeLimit(min, episode)} minimum configured for {quality}.");
+            risks.Add($"Size {size} is below the {DescribeLimit(min, episode)} minimum configured for {quality} for a {runtimeDescription} runtime.");
             return -180;
         }
 
@@ -696,7 +735,7 @@ public static partial class ReleaseDecisionEngine
         if (max > 0 && sizeBytes.Value > max)
         {
             outOfRange = true;
-            risks.Add($"Size {size} is above the {DescribeLimit(max, episode)} maximum configured for {quality}.");
+            risks.Add($"Size {size} is above the {DescribeLimit(max, episode)} maximum configured for {quality} for a {runtimeDescription} runtime.");
             return -80;
         }
 
@@ -866,4 +905,13 @@ public sealed record ReleaseDecisionInput(
     /// Why the release's name is not for what was searched, or null when it is
     /// (#613). A search by words can answer with anything sharing a word.
     /// </summary>
-    string? TitleMismatch = null);
+    string? TitleMismatch = null,
+    /// <summary>
+    /// The title's real runtime in minutes, when metadata supplies one. Size
+    /// Rules is configured against a reference runtime - two hours for a
+    /// film, 45 minutes for an episode (#600) - and is scaled against this
+    /// value so a release is not judged against a floor sized for a much
+    /// longer or shorter title (#630). Null or non-positive keeps the fixed
+    /// reference runtime as the assumption, exactly as before #630.
+    /// </summary>
+    int? RuntimeMinutes = null);

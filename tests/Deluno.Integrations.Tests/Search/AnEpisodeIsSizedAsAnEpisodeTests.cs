@@ -31,7 +31,9 @@ public sealed class AnEpisodeIsSizedAsAnEpisodeTests
         var decision = Decide("Breaking.Bad.S02E01.1080p.WEB-DL.DDP5.1.H.264-SHORTY", 0.3, "tv");
 
         Assert.Equal(ReleaseDecisionStatuses.Rejected, decision.Status);
-        Assert.Contains(decision.RiskFlags, flag => flag == "Size 307 MB is below the 420 MB minimum configured for WEB 1080p.");
+        // No runtime is known here, so the message names the fallback #600
+        // assumed for an episode rather than a real one (#630).
+        Assert.Contains(decision.RiskFlags, flag => flag == "Size 307 MB is below the 420 MB minimum configured for WEB 1080p for a 45-minute runtime.");
     }
 
     [Fact]

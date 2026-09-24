@@ -195,6 +195,7 @@ public static class MediaGrabHandler
                  PreferencePlan: preferencePlan,
                  CurrentPreferenceEvaluation: currentPreferenceEvaluation,
                  CurrentFilePresent: wantedItem.HasFile,
+                 RuntimeMinutes: item.RuntimeMinutes,
                  // A profile-pinned plan is the immutable source of truth for
                  // manual selection. Do not require the mutable guide store
                  // when that plan is available; a guide refresh or an
