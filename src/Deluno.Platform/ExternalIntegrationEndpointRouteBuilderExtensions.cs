@@ -858,7 +858,12 @@ public static class ExternalIntegrationEndpointRouteBuilderExtensions
             {
                 return Results.Conflict(new
                 {
-                    message = $"Deluno stopped waiting for {handoff.ReleaseName}, which ended {handoff.Status}, so this report is too late. No import was queued.",
+                    // A second completion of one already completed is not a late
+                    // report: it is a processor reporting file by file, and saying
+                    // so is what lets it be put right (#619).
+                    message = string.Equals(handoff.Status, ProcessorHandoffStatuses.Completed, StringComparison.OrdinalIgnoreCase)
+                        ? $"{handoff.ReleaseName} was already completed with {handoff.OutputPath}, so this second completion was not acted on. A hand-off is completed once, naming every output (OutputPath the folder, OutputFiles each file)."
+                        : $"Deluno stopped waiting for {handoff.ReleaseName}, which ended {handoff.Status}, so this report is too late. No import was queued.",
                     handoffId = handoff.Id,
                     handoff.Status
                 });
@@ -962,9 +967,15 @@ public static class ExternalIntegrationEndpointRouteBuilderExtensions
                 var resolvedMediaType = library.MediaType;
                 var outputPath = request.OutputPath.Trim();
                 importJob = await outputImports.QueueAsync(library, handoff, outputPath, "processor", cancellationToken);
+
+                // Every file the processor says it made has to be there to be
+                // imported; one that is not is said, not passed over (#619).
+                var missing = (request.OutputFiles ?? []).Where(file => !string.IsNullOrWhiteSpace(file) && !File.Exists(file.Trim())).Select(file => file.Trim()).ToArray();
                 var notImported = importJob.NotImportedBecause is { } removed
                     ? $"{processorName} produced a cleaned file, but {removed}, so Deluno did not import it. The file is still at {outputPath}."
-                    : null;
+                    : missing.Length > 0
+                        ? $"{processorName} named {missing.Length} of its {request.OutputFiles!.Count} output files that Deluno cannot find: {string.Join(", ", missing.Select(Path.GetFileName))}. Deluno imported what is there."
+                        : null;
 
                 await repository.UpdateProcessorHandoffAsync(
                     handoff.Id,
@@ -975,7 +986,7 @@ public static class ExternalIntegrationEndpointRouteBuilderExtensions
                     cancellationToken);
 
                 await activityFeed.RecordActivityAsync(
-                    notImported is null ? "processing.completed.import-queued" : "filesystem.import.not-imported",
+                    importJob.NotImportedBecause is not null ? "filesystem.import.not-imported" : notImported is not null ? "processing.outputs-missing" : "processing.completed.import-queued",
                     notImported ?? $"{processorName} produced a cleaned file; Deluno queued it for import.",
                     JsonSerializer.Serialize(new
                     {

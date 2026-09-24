@@ -13,4 +13,7 @@ public sealed record ProcessorEventRequest(
     string? HandoffId = null,
     string? Disposition = null,
     bool? SourceRemoved = null,
-    string? FailureClass = null);
+    string? FailureClass = null,
+    // Every file a folder hand-off produced (#619), with OutputPath the folder
+    // holding them. A processor sends one completion per hand-off.
+    IReadOnlyList<string>? OutputFiles = null);

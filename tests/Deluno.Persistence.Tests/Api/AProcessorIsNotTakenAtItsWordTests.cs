@@ -101,6 +101,52 @@ public sealed class AProcessorIsNotTakenAtItsWordTests
         Assert.Contains("alreadyHandled", await second.Content.ReadAsStringAsync());
     }
 
+    /// <summary>
+    /// #619, live on the rig: Weir reported each episode of a pack as its own
+    /// completion of one hand-off. The second is refused, and says why in a way
+    /// a processor author can act on.
+    /// </summary>
+    [Fact]
+    public async Task A_second_completion_of_a_completed_hand_off_is_refused_and_says_so()
+    {
+        await using var app = await ApplicationTestHost.StartAsync();
+        var scene = await SceneAsync(app);
+        Assert.True((await ReportAsync(app, scene, Ours, "completed", Path.Combine(scene.Output, Ours, $"{Ours}.mkv"))).IsSuccessStatusCode);
+
+        var second = await ReportAsync(app, scene, Ours, "completed", Path.Combine(scene.Output, Ours, $"{Ours}.part2.mkv"));
+
+        Assert.Equal(HttpStatusCode.Conflict, second.StatusCode);
+        var body = await second.Content.ReadAsStringAsync();
+        Assert.Contains("already completed", body);
+        Assert.Contains("OutputFiles", body);
+    }
+
+    /// <summary>#619: a file the processor names that Deluno cannot find is said, not passed over.</summary>
+    [Fact]
+    public async Task Output_files_the_processor_names_but_are_not_there_are_reported()
+    {
+        await using var app = await ApplicationTestHost.StartAsync();
+        var scene = await SceneAsync(app);
+        var folder = Directory.CreateDirectory(Path.Combine(scene.Output, Ours)).FullName;
+        var present = Path.Combine(folder, $"{Ours}.mkv");
+        await File.WriteAllBytesAsync(present, new byte[1024]);
+        var handoff = await HandoffAsync(app, scene, Ours);
+
+        var response = await app.Client.PostAsJsonAsync("/api/integrations/processors/events", new
+        {
+            libraryId = scene.LibraryId,
+            handoffId = handoff.Id,
+            status = "completed",
+            outputPath = folder,
+            outputFiles = new[] { present, Path.Combine(folder, $"{Ours}.extra.mkv") }
+        });
+
+        Assert.True(response.IsSuccessStatusCode, await response.Content.ReadAsStringAsync());
+        var stored = await Repository(app).GetProcessorHandoffAsync(handoff.Id, CancellationToken.None);
+        Assert.Contains("1 of its 2 output files", stored?.FailureMessage);
+        Assert.Contains($"{Ours}.extra.mkv", stored?.FailureMessage);
+    }
+
     [Fact]
     public async Task A_status_Deluno_does_not_understand_is_refused_rather_than_read_as_accepted()
     {

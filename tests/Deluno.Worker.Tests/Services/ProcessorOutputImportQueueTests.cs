@@ -110,6 +110,41 @@ public sealed class ProcessorOutputImportQueueTests
         Assert.Null(request.Preview.Title);
     }
 
+    /// <summary>
+    /// #619: a processor hands a folder back. A film is its one real video; an
+    /// episode folder with one video is that video; several episodes are the
+    /// season pack, imported whole.
+    /// </summary>
+    [Fact]
+    public void A_handed_back_folder_is_imported_as_what_it_holds()
+    {
+        var root = Directory.CreateTempSubdirectory("deluno-handback-");
+        try
+        {
+            var film = Directory.CreateDirectory(Path.Combine(root.FullName, "The Kid 1921"));
+            File.WriteAllBytes(Path.Combine(film.FullName, "The Kid 1921.mkv"), new byte[4096]);
+            File.WriteAllBytes(Path.Combine(film.FullName, "The Kid 1921-sample.mkv"), new byte[8192]);
+            File.WriteAllBytes(Path.Combine(film.FullName, "The Kid 1921.nfo"), new byte[99999]);
+            Assert.Equal(Path.Combine(film.FullName, "The Kid 1921.mkv"), ProcessorOutputImportQueue.ImportPathFor(film.FullName, "movies"));
+
+            var episode = Directory.CreateDirectory(Path.Combine(root.FullName, "Pioneer One S01E01"));
+            File.WriteAllBytes(Path.Combine(episode.FullName, "Pioneer One - S01E01 - Earthfall.mkv"), new byte[64]);
+            Assert.Equal(Path.Combine(episode.FullName, "Pioneer One - S01E01 - Earthfall.mkv"), ProcessorOutputImportQueue.ImportPathFor(episode.FullName, "tv"));
+
+            var pack = Directory.CreateDirectory(Path.Combine(root.FullName, "Pioneer One Season 1"));
+            File.WriteAllBytes(Path.Combine(pack.FullName, "Pioneer One - S01E01 - Earthfall.mkv"), new byte[64]);
+            File.WriteAllBytes(Path.Combine(pack.FullName, "Pioneer One - S01E02 - The Man From Mars.mkv"), new byte[64]);
+            Assert.Equal(pack.FullName, ProcessorOutputImportQueue.ImportPathFor(pack.FullName, "tv"));
+
+            var file = Path.Combine(film.FullName, "The Kid 1921.mkv");
+            Assert.Equal(file, ProcessorOutputImportQueue.ImportPathFor(file, "movies"));
+        }
+        finally
+        {
+            root.Delete(recursive: true);
+        }
+    }
+
     private static (Mock<IJobScheduler> Scheduler, Func<EnqueueJobRequest?> Queued) CapturingScheduler()
     {
         EnqueueJobRequest? queued = null;

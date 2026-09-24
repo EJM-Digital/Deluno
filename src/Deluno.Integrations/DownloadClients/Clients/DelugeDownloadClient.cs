@@ -108,7 +108,9 @@ public sealed class DelugeDownloadClient(IHttpClientFactory httpClientFactory) :
     private static bool StillMoving(DelugeTorrent item)
         => string.Equals(item.State, "Moving", StringComparison.OrdinalIgnoreCase)
            || item.Progress >= 100 && item.MoveCompleted == true && !string.IsNullOrWhiteSpace(item.MoveCompletedPath)
-              && !string.Equals(Path.TrimEndingDirectorySeparator(item.SavePath ?? string.Empty), Path.TrimEndingDirectorySeparator(item.MoveCompletedPath), StringComparison.OrdinalIgnoreCase);
+              // Deluge's own paths, whichever system it runs on: trimmed of either
+              // separator, not by this host's rules (CI runs Linux, Deluge Windows).
+              && !string.Equals((item.SavePath ?? string.Empty).TrimEnd('\\', '/'), item.MoveCompletedPath.TrimEnd('\\', '/'), StringComparison.OrdinalIgnoreCase);
 
     public override string NormalizeStatus(string? nativeStatus, double? progress, int? errorCode = null, string? errorMessage = null)
         => DownloadClientHelpers.NormalizeTextStatus(nativeStatus, progress);
