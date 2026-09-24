@@ -42,7 +42,12 @@ public sealed class TransmissionDownloadClient(IHttpClientFactory httpClientFact
             return DownloadClientHelpers.GrabFailure(client, request, $"Transmission did not add the release: {result.GetString()}.");
         }
 
-        return DownloadClientHelpers.GrabSuccess(client, request, request.TorrentFile is null ? "Release URL sent to Transmission." : "Torrent file sent to Transmission.");
+        // Its id, as the queue reports it, so the import can find this grab by it (#617).
+        var added = response.Arguments?.Added ?? response.Arguments?.Duplicate;
+        return DownloadClientHelpers.GrabSuccess(client, request, request.TorrentFile is null ? "Release URL sent to Transmission." : "Torrent file sent to Transmission.") with
+        {
+            ExternalId = added?.Id?.ToString(CultureInfo.InvariantCulture)
+        };
     }
 
     public override async Task<DownloadClientTelemetrySnapshot?> GetSnapshotAsync(DownloadClientItem client, DateTimeOffset capturedUtc, CancellationToken cancellationToken)
@@ -125,6 +130,10 @@ public sealed class TransmissionDownloadClient(IHttpClientFactory httpClientFact
 
     private sealed record TransmissionRequest([property: JsonPropertyName("method")] string Method, [property: JsonPropertyName("arguments")] Dictionary<string, object> Arguments);
     private sealed record TransmissionResponse([property: JsonPropertyName("arguments")] TransmissionArguments? Arguments, [property: JsonPropertyName("result")] System.Text.Json.JsonElement? Result = null);
-    private sealed record TransmissionArguments([property: JsonPropertyName("torrents")] IReadOnlyList<TransmissionTorrent>? Torrents);
+    private sealed record TransmissionArguments(
+        [property: JsonPropertyName("torrents")] IReadOnlyList<TransmissionTorrent>? Torrents,
+        [property: JsonPropertyName("torrent-added")] TransmissionAdded? Added = null,
+        [property: JsonPropertyName("torrent-duplicate")] TransmissionAdded? Duplicate = null);
+    private sealed record TransmissionAdded([property: JsonPropertyName("id")] int? Id, [property: JsonPropertyName("hashString")] string? HashString);
     private sealed record TransmissionTorrent([property: JsonPropertyName("id")] int? Id, [property: JsonPropertyName("name")] string? Name, [property: JsonPropertyName("status")] int? Status, [property: JsonPropertyName("percentDone")] double? PercentDone, [property: JsonPropertyName("rateDownload")] long? RateDownload, [property: JsonPropertyName("rateUpload")] long? RateUpload, [property: JsonPropertyName("eta")] int? Eta, [property: JsonPropertyName("totalSize")] long? TotalSize, [property: JsonPropertyName("downloadedEver")] long? DownloadedEver, [property: JsonPropertyName("peersConnected")] int? PeersConnected, [property: JsonPropertyName("addedDate")] long? AddedDate, [property: JsonPropertyName("downloadDir")] string? DownloadDir, [property: JsonPropertyName("labels")] IReadOnlyList<string>? Labels, [property: JsonPropertyName("error")] int? Error, [property: JsonPropertyName("errorString")] string? ErrorString);
 }

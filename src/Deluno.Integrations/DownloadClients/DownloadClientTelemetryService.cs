@@ -175,7 +175,7 @@ public sealed class DownloadClientTelemetryService(
                 request.QueueItemId,
                 action,
                 false,
-                "External-client queue removal is disabled. Enable it in Library setup > Connections > Download clients before removing an item from Deluno.")
+                "Removing downloads from their client is turned off. Turn on \"Allow removing client queue entries\" under Find & Download > Download Clients to remove it from Deluno.")
             {
                 Failure = IntegrationFailureFactory.FromLegacy(
                     "download-client",

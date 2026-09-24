@@ -42,7 +42,7 @@ public sealed class ProcessorFailureReportHandler(
         CancellationToken cancellationToken)
     {
         var handoff = report.Handoff;
-        var link = await jobQueueRepository.FindRecentDispatchLinkAsync(handoff.ClientId, handoff.ReleaseName, cancellationToken);
+        var link = await jobQueueRepository.FindDispatchLinkForDownloadAsync(handoff.ClientId, handoff.QueueItemId, handoff.ReleaseName, cancellationToken);
         var dispatch = link is null ? null : await dispatches.GetDispatchAsync(link.DispatchId, cancellationToken);
         if (dispatch is null)
         {

@@ -25,6 +25,7 @@ public static class MediaSearchCandidateView
         return new
         {
             candidate.ReleaseName,
+            candidate.IndexerId,
             candidate.IndexerName,
             candidate.Quality,
             Score = typed ? null : (int?)candidate.Score,

@@ -300,6 +300,8 @@ export interface ImportPreviewRequest {
   seriesId?: string | null;
   seriesType?: string | null;
   numberingScheme?: string | null;
+  /** The grab behind the file, so the preview names it as the title grabbed (#617). */
+  dispatchId?: string | null;
 }
 
 export interface ImportPreviewResponse {

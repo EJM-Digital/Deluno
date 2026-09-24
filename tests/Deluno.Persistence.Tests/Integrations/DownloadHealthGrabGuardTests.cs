@@ -37,7 +37,7 @@ public sealed class DownloadHealthGrabGuardTests
             CancellationToken.None);
 
         Assert.False(result.Succeeded);
-        Assert.Contains("queue removal is disabled", result.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Allow removing client queue entries", result.Message, StringComparison.Ordinal);
     }
 
     [Fact]

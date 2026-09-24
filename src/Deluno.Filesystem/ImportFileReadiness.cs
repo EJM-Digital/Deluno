@@ -92,10 +92,13 @@ public static class ImportFileReadiness
                 return false;
             }
 
-            // An exclusive handle is the strongest signal that a download or
-            // processor still owns the file. FileShare.Read allows a normal
-            // read handle while still rejecting an active writer.
-            using (var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read))
+            // Shared with a writer's handle: qBittorrent and Deluge (libtorrent)
+            // hold a finished torrent's file open for writing while it seeds,
+            // so refusing to share with them meant a torrent imported without
+            // a processor was never ready while it seeded - found live, #606.
+            // An active writer is still caught, by the age and the size and
+            // write time staying put across the read.
+            using (var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete))
             {
                 if (stream.Length != before.Length)
                 {
