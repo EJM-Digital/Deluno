@@ -15,8 +15,40 @@ public sealed class NzbGetDownloadClient(IHttpClientFactory httpClientFactory) :
         var baseUri = DownloadClientHelpers.ResolveEndpoint(client);
         if (baseUri is null) return DownloadClientHelpers.GrabFailure(client, request, "Download client address is missing.");
         var http = CreateHttp(client);
-        await DownloadClientHelpers.PostJsonAsync<NzbGetResponse<object>>(http, new Uri(baseUri, "jsonrpc"), new NzbGetRequest("appendurl", [request.ReleaseName, request.DownloadUrl, DownloadClientHelpers.ResolveCategory(client, request), 0, false, false]), cancellationToken);
-        return DownloadClientHelpers.GrabSuccess(client, request, "Release URL sent to NZBGet.");
+        // append, not appendurl (#633). NZBGet 26 refuses appendurl as called
+        // here ("Invalid parameter (DupeKey)") with HTTP 200, and the reply was
+        // never read, so every grab was reported sent and none arrived. append
+        // takes the URL as its content, as Sonarr and Radarr send it, and
+        // answers with the new NZBID.
+        var response = await DownloadClientHelpers.PostJsonAsync<NzbGetResponse<long?>>(
+            http,
+            new Uri(baseUri, "jsonrpc"),
+            new NzbGetRequest("append", [
+                request.ReleaseName + ".nzb",
+                request.DownloadUrl,
+                DownloadClientHelpers.ResolveCategory(client, request) ?? string.Empty,
+                0,
+                false,
+                false,
+                string.Empty,
+                0,
+                "SCORE",
+                Array.Empty<object>()]),
+            cancellationToken);
+        if (response?.Error is { } error)
+        {
+            return DownloadClientHelpers.GrabFailure(client, request, $"NZBGet refused the release: {error.Message ?? "no reason given"}.");
+        }
+
+        if (response?.Result is not > 0)
+        {
+            return DownloadClientHelpers.GrabFailure(client, request, "NZBGet did not add the release.");
+        }
+
+        return DownloadClientHelpers.GrabSuccess(client, request, "Release URL sent to NZBGet.") with
+        {
+            ExternalId = response.Result.Value.ToString(System.Globalization.CultureInfo.InvariantCulture)
+        };
     }
 
     public override async Task<DownloadClientTelemetrySnapshot?> GetSnapshotAsync(DownloadClientItem client, DateTimeOffset capturedUtc, CancellationToken cancellationToken)
@@ -156,7 +188,8 @@ public sealed class NzbGetDownloadClient(IHttpClientFactory httpClientFactory) :
     private static string NormalizeOutcome(string value) => value.Equals("completed", StringComparison.OrdinalIgnoreCase) || value.Equals("succeeded", StringComparison.OrdinalIgnoreCase) || value.Equals("success", StringComparison.OrdinalIgnoreCase) ? DownloadQueueStatuses.Completed : value.Contains("fail", StringComparison.OrdinalIgnoreCase) || value.Contains("error", StringComparison.OrdinalIgnoreCase) ? "failed" : value.Contains("import", StringComparison.OrdinalIgnoreCase) ? DownloadQueueStatuses.ImportReady : value.Length == 0 ? "unknown" : value.Trim().ToLowerInvariant();
 
     private sealed record NzbGetRequest([property: JsonPropertyName("method")] string Method, [property: JsonPropertyName("params")] object[] Params);
-    private sealed record NzbGetResponse<T>([property: JsonPropertyName("result")] T? Result);
+    private sealed record NzbGetResponse<T>([property: JsonPropertyName("result")] T? Result, [property: JsonPropertyName("error")] NzbGetError? Error = null);
+    private sealed record NzbGetError([property: JsonPropertyName("code")] int? Code, [property: JsonPropertyName("message")] string? Message);
     private sealed record NzbGetQueueItem([property: JsonPropertyName("NZBID")] int NzbId, [property: JsonPropertyName("NZBName")] string? NzbName, [property: JsonPropertyName("Category")] string? Category, [property: JsonPropertyName("Status")] string? Status, [property: JsonPropertyName("FileSizeHi")] long FileSizeHi, [property: JsonPropertyName("RemainingSizeHi")] long RemainingSizeHi, [property: JsonPropertyName("DestDir")] string? DestDir);
     private sealed record NzbGetHistoryItem([property: JsonPropertyName("NZBID")] int NzbId, [property: JsonPropertyName("NZBName")] string? NzbName, [property: JsonPropertyName("Name")] string? Name, [property: JsonPropertyName("Category")] string? Category, [property: JsonPropertyName("Status")] string? Status, [property: JsonPropertyName("FileSizeHi")] long FileSizeHi, [property: JsonPropertyName("HistoryTime")] long? HistoryTime, [property: JsonPropertyName("DestDir")] string? DestDir);
     private sealed record NzbGetStatus([property: JsonPropertyName("DownloadRate")] long? DownloadRate);
