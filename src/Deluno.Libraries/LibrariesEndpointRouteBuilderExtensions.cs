@@ -765,9 +765,18 @@ public static class LibrariesEndpointRouteBuilderExtensions
         var errors = new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase);
         var workflow = NormalizeImportWorkflow(request.ImportWorkflow);
 
-        if (workflow == ImportWorkflows.RefineBeforeImport && string.IsNullOrWhiteSpace(request.ProcessorOutputPath))
+        if (workflow == ImportWorkflows.RefineBeforeImport)
         {
-            errors["processorOutputPath"] = ["Choose where the processor will write cleaned files before Deluno imports them."];
+            if (string.IsNullOrWhiteSpace(request.ProcessorOutputPath))
+            {
+                errors["processorOutputPath"] = ["Choose where the processor will write cleaned files before Deluno imports them."];
+            }
+
+            // A malformed path (e.g. "E:WeirReadyMovies" -- drive-relative, no
+            // separator) used to save happily here, and then the library
+            // refused every file the processor handed back, because none of
+            // them was ever "inside" that folder. #631.
+            RequireExistingFolder(errors, "processorOutputPath", request.ProcessorOutputPath, "your processor writes to");
         }
 
         if (request.ProcessorTimeoutMinutes is { } minutes &&
