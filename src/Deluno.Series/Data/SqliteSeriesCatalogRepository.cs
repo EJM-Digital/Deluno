@@ -2334,7 +2334,7 @@ public sealed class SqliteSeriesCatalogRepository(
                       w.library_id, w.wanted_status, w.wanted_reason, w.has_file, w.current_quality, w.target_quality, w.quality_cutoff_met,
                       w.prevent_lower_quality_replacements, w.quality_delta_last_decision,
                       w.missing_since_utc, w.last_search_utc, w.next_eligible_search_utc, w.last_search_result, w.updated_utc,
-                      NULL AS available_utc, w.file_path, w.file_size_bytes
+                      NULL AS available_utc, w.file_path, w.file_size_bytes, s.runtime_minutes
                   FROM series_wanted_state w
                   INNER JOIN series_entries s ON s.id = w.series_id
                   WHERE w.library_id = @libraryId
@@ -2352,7 +2352,7 @@ public sealed class SqliteSeriesCatalogRepository(
                       w.library_id, w.wanted_status, w.wanted_reason, w.has_file, w.current_quality, w.target_quality, w.quality_cutoff_met,
                       w.prevent_lower_quality_replacements, w.quality_delta_last_decision,
                       w.missing_since_utc, w.last_search_utc, w.next_eligible_search_utc, w.last_search_result, w.updated_utc,
-                      NULL AS available_utc, w.file_path, w.file_size_bytes
+                      NULL AS available_utc, w.file_path, w.file_size_bytes, s.runtime_minutes
                   FROM series_wanted_state w
                   INNER JOIN series_entries s ON s.id = w.series_id
                   WHERE w.library_id = @libraryId
@@ -4367,7 +4367,8 @@ public sealed class SqliteSeriesCatalogRepository(
             UpdatedUtc: ParseTimestamp(reader.GetString(17)),
             AvailableUtc: ReadOptionalAvailableUtc(reader),
             FilePath: reader.FieldCount > 19 ? (reader.IsDBNull(19) ? null : reader.GetString(19)) : null,
-            FileSizeBytes: reader.FieldCount > 20 && !reader.IsDBNull(20) ? reader.GetInt64(20) : null);
+            FileSizeBytes: reader.FieldCount > 20 && !reader.IsDBNull(20) ? reader.GetInt64(20) : null,
+            RuntimeMinutes: reader.FieldCount > 21 && !reader.IsDBNull(21) ? reader.GetInt32(21) : null);
     }
 
     private static DateTimeOffset? ReadOptionalAvailableUtc(System.Data.Common.DbDataReader reader)
@@ -5221,7 +5222,8 @@ public sealed class SqliteSeriesCatalogRepository(
             UpdatedUtc: item.UpdatedUtc,
             AvailableUtc: item.AvailableUtc,
             FilePath: item.FilePath,
-            FileSizeBytes: item.FileSizeBytes);
+            FileSizeBytes: item.FileSizeBytes,
+            RuntimeMinutes: item.RuntimeMinutes);
 
     private static SeriesSearchHistoryItem MapSearchHistory(MediaSearchHistoryItem item)
         => new(

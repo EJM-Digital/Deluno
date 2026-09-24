@@ -95,6 +95,9 @@ public sealed class EpisodeSearchJobHandler(
         var inventory = await seriesCatalogRepository.GetInventoryDetailAsync(
             payload.SeriesId,
             cancellationToken);
+        // The show's own runtime, not the episode's: TMDB (and this catalogue)
+        // carries episode runtime at series level, not per episode (#630, #638).
+        var seriesItem = await seriesCatalogRepository.GetByIdAsync(payload.SeriesId, cancellationToken);
         var targetEpisode = inventory?.Episodes.FirstOrDefault(
             episode => string.Equals(episode.EpisodeId, payload.EpisodeId, StringComparison.OrdinalIgnoreCase));
         var numberingScheme = inventory?.Numbering?.NumberingScheme;
@@ -152,7 +155,8 @@ public sealed class EpisodeSearchJobHandler(
                 AirDate: targetEpisode?.AirDate,
                 SceneSeasonNumber: targetEpisode?.SceneSeasonNumber,
                 SceneEpisodeNumber: targetEpisode?.SceneEpisodeNumber,
-                CurrentPreferenceEvaluation: currentPreferenceEvaluation).WithProfile(profileRules),
+                CurrentPreferenceEvaluation: currentPreferenceEvaluation,
+                RuntimeMinutes: seriesItem?.RuntimeMinutes).WithProfile(profileRules),
             cancellationToken);
 
         var searchPlan = decisionPlan.SearchPlan;

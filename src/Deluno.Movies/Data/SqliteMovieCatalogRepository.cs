@@ -1567,7 +1567,7 @@ public sealed class SqliteMovieCatalogRepository(
                       w.library_id, w.wanted_status, w.wanted_reason, w.has_file, w.current_quality, w.target_quality, w.quality_cutoff_met,
                       w.missing_since_utc, w.last_search_utc, w.next_eligible_search_utc, w.last_search_result, w.updated_utc,
                       w.prevent_lower_quality_replacements, w.quality_delta_last_decision,
-                      NULL AS available_utc, w.file_path, w.file_size_bytes
+                      NULL AS available_utc, w.file_path, w.file_size_bytes, m.runtime_minutes
                   FROM movie_wanted_state w
                   INNER JOIN movie_entries m ON m.id = w.movie_id
                   WHERE w.library_id = @libraryId
@@ -1585,7 +1585,7 @@ public sealed class SqliteMovieCatalogRepository(
                       w.library_id, w.wanted_status, w.wanted_reason, w.has_file, w.current_quality, w.target_quality, w.quality_cutoff_met,
                       w.missing_since_utc, w.last_search_utc, w.next_eligible_search_utc, w.last_search_result, w.updated_utc,
                       w.prevent_lower_quality_replacements, w.quality_delta_last_decision,
-                      NULL AS available_utc, w.file_path, w.file_size_bytes
+                      NULL AS available_utc, w.file_path, w.file_size_bytes, m.runtime_minutes
                   FROM movie_wanted_state w
                   INNER JOIN movie_entries m ON m.id = w.movie_id
                   WHERE w.library_id = @libraryId
@@ -3064,7 +3064,8 @@ public sealed class SqliteMovieCatalogRepository(
             LastQualityDeltaDecision: reader.IsDBNull(17) ? null : reader.GetInt32(17),
             AvailableUtc: ReadOptionalAvailableUtc(reader),
             FilePath: reader.FieldCount > 19 ? (reader.IsDBNull(19) ? null : reader.GetString(19)) : null,
-            FileSizeBytes: reader.FieldCount > 20 && !reader.IsDBNull(20) ? reader.GetInt64(20) : null);
+            FileSizeBytes: reader.FieldCount > 20 && !reader.IsDBNull(20) ? reader.GetInt64(20) : null,
+            RuntimeMinutes: reader.FieldCount > 21 && !reader.IsDBNull(21) ? reader.GetInt32(21) : null);
     }
 
     private static DateTimeOffset? ReadOptionalAvailableUtc(System.Data.Common.DbDataReader reader)
@@ -3451,7 +3452,8 @@ public sealed class SqliteMovieCatalogRepository(
             UpdatedUtc: item.UpdatedUtc,
             AvailableUtc: item.AvailableUtc,
             FilePath: item.FilePath,
-            FileSizeBytes: item.FileSizeBytes);
+            FileSizeBytes: item.FileSizeBytes,
+            RuntimeMinutes: item.RuntimeMinutes);
 
     private static MovieSearchHistoryItem MapSearchHistory(MediaSearchHistoryItem item)
         => new(

@@ -76,7 +76,7 @@ public sealed class SqliteMediaStateRepository(
                 w.quality_cutoff_met, w.missing_since_utc, w.last_search_utc, w.next_eligible_search_utc,
                 w.last_search_result, w.prevent_lower_quality_replacements, w.quality_delta_last_decision, w.updated_utc,
                 {availabilityColumn} AS available_utc,
-                w.file_path, w.file_size_bytes
+                w.file_path, w.file_size_bytes, {map.EntryAlias}.runtime_minutes
             FROM {map.WantedTable} w
             INNER JOIN {map.EntryTable} {map.EntryAlias} ON {map.EntryAlias}.id = w.{map.WantedMediaIdColumn}
             ORDER BY w.updated_utc DESC, {map.EntryAlias}.title ASC
@@ -211,7 +211,7 @@ public sealed class SqliteMediaStateRepository(
                 w.quality_cutoff_met, w.missing_since_utc, w.last_search_utc, w.next_eligible_search_utc,
                 w.last_search_result, w.prevent_lower_quality_replacements, w.quality_delta_last_decision, w.updated_utc,
                 {availabilityColumn} AS available_utc,
-                w.file_path, w.file_size_bytes
+                w.file_path, w.file_size_bytes, {map.EntryAlias}.runtime_minutes
             FROM {map.WantedTable} w
             INNER JOIN {map.EntryTable} {map.EntryAlias} ON {map.EntryAlias}.id = w.{map.WantedMediaIdColumn}
             WHERE w.library_id = @libraryId
@@ -1993,7 +1993,8 @@ public sealed class SqliteMediaStateRepository(
             ParseTimestamp(reader.GetString(17)),
             ReadAvailableUtc(reader, 18, null),
             reader.FieldCount > 19 ? ReadNullableString(reader, 19) : null,
-            reader.FieldCount > 20 && !reader.IsDBNull(20) ? reader.GetInt64(20) : null);
+            reader.FieldCount > 20 && !reader.IsDBNull(20) ? reader.GetInt64(20) : null,
+            reader.FieldCount > 21 && !reader.IsDBNull(21) ? reader.GetInt32(21) : null);
 
     private static string AvailabilityColumn(MediaKind kind, string alias)
         => kind == MediaKind.Movie

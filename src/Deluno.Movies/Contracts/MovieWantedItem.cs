@@ -21,4 +21,5 @@ public sealed record MovieWantedItem(
     DateTimeOffset UpdatedUtc,
     DateTimeOffset? AvailableUtc = null,
     string? FilePath = null,
-    long? FileSizeBytes = null);
+    long? FileSizeBytes = null,
+    int? RuntimeMinutes = null);
