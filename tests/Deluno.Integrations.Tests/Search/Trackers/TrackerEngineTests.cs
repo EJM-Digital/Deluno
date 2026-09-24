@@ -1,4 +1,5 @@
 using System.Net;
+using System.Net.Http.Headers;
 using System.Text;
 using Deluno.Integrations.Search.Trackers;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -201,6 +202,64 @@ public sealed class TrackerEngineTests
         Assert.Equal("magnet:?xt=urn:btih:ABC", grab.MagnetUrl);
     }
 
+    // #632: LimeTorrents' Cyrillic titles came through as UTF-8 bytes misread
+    // through the definition's configured encoding, the classic "Ð¡Ð»Ñ‘Ð·Ñ‹"
+    // mangling. The definition's own encoding (here windows-1251, standing
+    // in for whatever a definition configures) must never win over what the
+    // response itself declares.
+    private const string CyrillicTitle = "Слёзы стали Tears of Steel (2012) 4K DMRip";
+
+    private static string CyrillicRow(string title) => $"""
+        <table><tr class="row"><td><a class="name" href="/t/1">{title}</a><a class="mag" href="magnet:?xt=urn:btih:0123456789ABCDEF0123456789ABCDEF01234567">m</a></td><td class="size">1.5 GB</td><td class="seeders">3</td></tr></table>
+        """;
+
+    [Fact]
+    public async Task Decodes_cyrillic_by_the_responses_http_charset_even_when_the_definition_configures_another_one()
+    {
+        // Html() below uses StringContent(body, Encoding.UTF8, "text/html"), which stamps
+        // "Content-Type: text/html; charset=utf-8" on the response — the header a real
+        // LimeTorrents mirror sends. The definition still says windows-1251, and used to win.
+        var yaml = PublicTracker().Replace("encoding: UTF-8", "encoding: windows-1251");
+        var (engine, connection) = Connect(_ => Html(HttpStatusCode.OK, CyrillicRow(CyrillicTitle)), yaml, []);
+
+        var result = await engine.SearchAsync(connection, new TrackerQuery("tears of steel"), CancellationToken.None);
+
+        var release = Assert.Single(result.Releases);
+        Assert.Equal(CyrillicTitle, release.Title);
+    }
+
+    [Fact]
+    public async Task Decodes_cyrillic_by_an_html_meta_charset_when_the_header_declares_none()
+    {
+        var yaml = PublicTracker().Replace("encoding: UTF-8", "encoding: windows-1251");
+        var (engine, connection) = Connect(_ =>
+        {
+            var body = $"""<html><head><meta charset="utf-8"></head><body>{CyrillicRow(CyrillicTitle)}</body></html>""";
+            return RawHtml(HttpStatusCode.OK, Encoding.UTF8.GetBytes(body), "text/html");
+        }, yaml, []);
+
+        var result = await engine.SearchAsync(connection, new TrackerQuery("tears of steel"), CancellationToken.None);
+
+        var release = Assert.Single(result.Releases);
+        Assert.Equal(CyrillicTitle, release.Title);
+    }
+
+    [Fact]
+    public async Task Falls_back_to_the_definitions_encoding_when_the_response_declares_no_charset_at_all()
+    {
+        var yaml = PublicTracker().Replace("encoding: UTF-8", "encoding: windows-1251");
+        var (engine, connection) = Connect(_ =>
+            // Resolved lazily, after Connect() has built the TrackerEngine whose static
+            // constructor registers CodePagesEncodingProvider for "windows-1251" to resolve.
+            RawHtml(HttpStatusCode.OK, Encoding.GetEncoding("windows-1251").GetBytes(CyrillicRow(CyrillicTitle)), "text/html"),
+            yaml, []);
+
+        var result = await engine.SearchAsync(connection, new TrackerQuery("tears of steel"), CancellationToken.None);
+
+        var release = Assert.Single(result.Releases);
+        Assert.Equal(CyrillicTitle, release.Title);
+    }
+
     private static string PublicTracker() => """
         id: publictest
         name: Public Test
@@ -250,6 +309,14 @@ public sealed class TrackerEngineTests
 
     private static HttpResponseMessage Html(HttpStatusCode status, string body)
         => new(status) { Content = new StringContent(body, Encoding.UTF8, "text/html") };
+
+    /// <summary>A response built from raw bytes so the test controls the Content-Type charset (or its absence) directly, instead of Html()'s StringContent always declaring one.</summary>
+    private static HttpResponseMessage RawHtml(HttpStatusCode status, byte[] bytes, string contentType)
+    {
+        var response = new HttpResponseMessage(status) { Content = new ByteArrayContent(bytes) };
+        response.Content.Headers.ContentType = MediaTypeHeaderValue.Parse(contentType);
+        return response;
+    }
 
     private sealed class FakeHandler(Func<HttpRequestMessage, HttpResponseMessage> answer) : HttpMessageHandler
     {
