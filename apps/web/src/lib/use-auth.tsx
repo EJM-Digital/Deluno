@@ -38,8 +38,8 @@ const USER_KEY = "deluno-auth-user";
 
 export function readStored(): { token: string | null; user: UserProfile | null } {
   try {
-    const token = sessionStorage.getItem(TOKEN_KEY);
-    const raw = sessionStorage.getItem(USER_KEY);
+    const token = localStorage.getItem(TOKEN_KEY);
+    const raw = localStorage.getItem(USER_KEY);
     const user = raw ? (JSON.parse(raw) as UserProfile) : null;
     return { token, user };
   } catch {
@@ -49,8 +49,8 @@ export function readStored(): { token: string | null; user: UserProfile | null }
 
 function writeStored(token: string, user: UserProfile) {
   try {
-    sessionStorage.setItem(TOKEN_KEY, token);
-    sessionStorage.setItem(USER_KEY, JSON.stringify(user));
+    localStorage.setItem(TOKEN_KEY, token);
+    localStorage.setItem(USER_KEY, JSON.stringify(user));
   } catch {
     // noop
   }
@@ -68,8 +68,8 @@ function applyLoginPayload(
 
 export function clearStored() {
   try {
-    sessionStorage.removeItem(TOKEN_KEY);
-    sessionStorage.removeItem(USER_KEY);
+    localStorage.removeItem(TOKEN_KEY);
+    localStorage.removeItem(USER_KEY);
   } catch {
     // noop
   }

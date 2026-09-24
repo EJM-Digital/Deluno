@@ -21,7 +21,7 @@ interface RuleRow {
 }
 
 async function authHeaders(page: import("@playwright/test").Page) {
-  const token = await page.evaluate(() => sessionStorage.getItem("deluno-auth-token"));
+  const token = await page.evaluate(() => localStorage.getItem("deluno-auth-token"));
   return token ? { Authorization: `Bearer ${token}` } : {};
 }
 

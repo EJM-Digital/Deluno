@@ -14,7 +14,7 @@ test.describe("a profile's rules act only when chosen", () => {
     const ruleName = `Smoke Trusted Group ${stamp}`;
     const profileName = `Smoke-Rules-Off-${stamp}`;
     await authenticateAndNavigate(page, "/settings/profiles");
-    const headers = authHeaders(await page.evaluate(() => sessionStorage.getItem("deluno-auth-token")));
+    const headers = authHeaders(await page.evaluate(() => localStorage.getItem("deluno-auth-token")));
 
     const tier = ((await (await page.request.get("/api/quality-model", { headers })).json()) as { tiers: Array<{ name: string }> }).tiers[0]?.name;
     const rule = await page.request.post("/api/custom-formats", {
