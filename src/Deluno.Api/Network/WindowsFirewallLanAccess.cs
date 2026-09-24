@@ -5,19 +5,26 @@ using System.Security.Principal;
 namespace Deluno.Api.Network;
 
 /// <summary>
-/// Deluno's Windows Firewall rule: one inbound allow rule for its port, on
-/// every network profile (#623).
+/// Whether Windows Firewall lets other devices reach Deluno's port, and
+/// Deluno's own rule for when it does not (#623).
 ///
-/// <para>Every profile, because Windows files a home network it has not been
-/// told about as Public, and the rig's LAN is exactly that. A rule limited to
-/// Private networks would change nothing there.</para>
+/// <para>The question is whether the port is open, not whether Deluno's rule
+/// exists. The rig had an older rule, "Deluno E2E lab - Deluno Host", for the
+/// same port. Looking only for "Deluno (port 5099)" said other devices were
+/// turned away while one was using Deluno. So this reads every inbound rule and
+/// the firewall's own on/off state, the way Windows decides.</para>
+///
+/// <para>Deluno's rule covers every network profile. Windows files a home
+/// network it has not been told about as Public, and the rig's LAN is exactly
+/// that, so a rule limited to Private networks would change nothing.</para>
 ///
 /// <para>This is the one place that reads or writes the rule. The installer,
 /// the tray and the System screen all go through it.</para>
 /// </summary>
-public sealed class WindowsFirewallLanAccess(int port, IFirewallCommandRunner? runner = null) : ILanAccess
+public sealed class WindowsFirewallLanAccess(int port, IWindowsFirewall? firewall = null, string? programPath = null) : ILanAccess
 {
-    private readonly IFirewallCommandRunner _runner = runner ?? new NetshFirewallCommandRunner();
+    private readonly IWindowsFirewall _firewall = firewall ?? new WindowsFirewall();
+    private readonly string? _programPath = programPath ?? Environment.ProcessPath;
 
     public int Port => port;
 
@@ -25,17 +32,28 @@ public sealed class WindowsFirewallLanAccess(int port, IFirewallCommandRunner? r
 
     public static string RuleNameFor(int port) => $"Deluno (port {port})";
 
-    public async Task<LanAccessStatus> GetStatusAsync(CancellationToken cancellationToken)
+    public Task<LanAccessStatus> GetStatusAsync(CancellationToken cancellationToken)
     {
-        var probe = await _runner.RunAsync($"advfirewall firewall show rule name=\"{RuleName}\"", elevate: false, cancellationToken);
-        return probe.ExitCode == 0
+        var snapshot = _firewall.Read();
+        if (snapshot is null)
+        {
+            // Windows would not say; showing a warning on a guess would be worse.
+            return Task.FromResult(new LanAccessStatus(
+                LanAccessStates.NotChecked,
+                port,
+                RuleName,
+                "Deluno could not read Windows Firewall's rules.",
+                CanAllow: false));
+        }
+
+        return Task.FromResult(FirewallRules.LetsIn(snapshot, port, _programPath) is { } openedBy
             ? new LanAccessStatus(
                 LanAccessStates.Open,
                 port,
-                RuleName,
+                openedBy,
                 $"Windows Firewall lets other devices on your network reach Deluno on port {port}.",
                 CanAllow: false)
-            : Blocked(null);
+            : Blocked(null));
     }
 
     public async Task<LanAccessStatus> AllowAsync(CancellationToken cancellationToken)
@@ -46,9 +64,9 @@ public sealed class WindowsFirewallLanAccess(int port, IFirewallCommandRunner? r
             return current;
         }
 
-        var add = await _runner.RunAsync(
+        var add = await _firewall.RunNetshAsync(
             $"advfirewall firewall add rule name=\"{RuleName}\" dir=in action=allow protocol=TCP localport={port} profile=any",
-            elevate: !_runner.IsElevated,
+            elevate: !_firewall.IsElevated,
             cancellationToken);
 
         if (add.Declined)
@@ -64,33 +82,127 @@ public sealed class WindowsFirewallLanAccess(int port, IFirewallCommandRunner? r
                 : $"Windows did not add the firewall rule: {add.Output.Trim()}");
     }
 
-    /// <summary>Removes the rule. Run by the uninstaller, which leaves nothing behind.</summary>
+    /// <summary>Removes Deluno's own rule. Run by the uninstaller, which leaves nothing behind.</summary>
     public Task<FirewallCommandResult> RemoveAsync(CancellationToken cancellationToken)
-        => _runner.RunAsync($"advfirewall firewall delete rule name=\"{RuleName}\"", elevate: !_runner.IsElevated, cancellationToken);
+        => _firewall.RunNetshAsync($"advfirewall firewall delete rule name=\"{RuleName}\"", elevate: !_firewall.IsElevated, cancellationToken);
+
+    /// <summary>Whether Deluno's own rule is there, for the uninstaller to remove.</summary>
+    public bool HasOwnRule()
+        => _firewall.Read()?.Rules.Any(rule => string.Equals(rule.Name, RuleName, StringComparison.OrdinalIgnoreCase)) == true;
 
     private LanAccessStatus Blocked(string? why) => new(
         LanAccessStates.Blocked,
         port,
         RuleName,
-        why ?? $"Windows Firewall has no rule for Deluno's port {port}, so other devices on your network cannot open Deluno.",
+        why ?? $"Windows Firewall has no rule that lets other devices reach Deluno's port {port}, so they cannot open Deluno.",
         CanAllow: true);
+}
+
+/// <summary>What Windows Firewall holds, as far as an inbound connection is concerned.</summary>
+/// <param name="CurrentProfiles">The profiles of the networks connected now (1 domain, 2 private, 4 public).</param>
+/// <param name="FirewallOffFor">The current profiles whose firewall is switched off.</param>
+public sealed record FirewallSnapshot(int CurrentProfiles, int FirewallOffFor, IReadOnlyList<FirewallRule> Rules);
+
+/// <param name="Protocol">6 is TCP, 256 is any.</param>
+/// <param name="LocalPorts">"*", a port, a range, or a comma-separated list of either; null means any.</param>
+/// <param name="Program">The program the rule is limited to, or null for any.</param>
+public sealed record FirewallRule(
+    string Name,
+    bool Enabled,
+    bool Inbound,
+    bool Allow,
+    int Protocol,
+    string? LocalPorts,
+    int Profiles,
+    string? Program);
+
+public static class FirewallRules
+{
+    private const int Tcp = 6;
+    private const int AnyProtocol = 256;
+
+    /// <summary>
+    /// What lets an inbound TCP connection to <paramref name="port"/> through,
+    /// or null when nothing does: a firewall switched off for the network
+    /// Deluno is on, or an enabled inbound allow rule for that port, that
+    /// program and that network.
+    /// </summary>
+    public static string? LetsIn(FirewallSnapshot snapshot, int port, string? programPath)
+    {
+        if ((snapshot.FirewallOffFor & snapshot.CurrentProfiles) != 0)
+        {
+            return "Windows Firewall is off for this network";
+        }
+
+        return snapshot.Rules.FirstOrDefault(rule =>
+            rule.Enabled &&
+            rule.Inbound &&
+            rule.Allow &&
+            rule.Protocol is Tcp or AnyProtocol &&
+            (rule.Profiles & snapshot.CurrentProfiles) != 0 &&
+            CoversPort(rule.LocalPorts, port) &&
+            CoversProgram(rule.Program, programPath))?.Name;
+    }
+
+    internal static bool CoversPort(string? localPorts, int port)
+    {
+        if (string.IsNullOrWhiteSpace(localPorts) || localPorts.Trim() == "*")
+        {
+            return true;
+        }
+
+        foreach (var part in localPorts.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            var range = part.Split('-', 2, StringSplitOptions.TrimEntries);
+            if (range.Length == 2 && int.TryParse(range[0], out var low) && int.TryParse(range[1], out var high))
+            {
+                if (port >= low && port <= high)
+                {
+                    return true;
+                }
+            }
+            else if (int.TryParse(part, out var single) && single == port)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static bool CoversProgram(string? ruleProgram, string? programPath)
+        => string.IsNullOrWhiteSpace(ruleProgram) ||
+           (!string.IsNullOrWhiteSpace(programPath) &&
+            string.Equals(
+                Environment.ExpandEnvironmentVariables(ruleProgram.Trim()),
+                programPath,
+                StringComparison.OrdinalIgnoreCase));
 }
 
 public sealed record FirewallCommandResult(int ExitCode, string Output, bool Declined = false);
 
-public interface IFirewallCommandRunner
+public interface IWindowsFirewall
 {
     /// <summary>Whether this process can change the firewall without asking.</summary>
     bool IsElevated { get; }
 
-    Task<FirewallCommandResult> RunAsync(string netshArguments, bool elevate, CancellationToken cancellationToken);
+    /// <summary>The firewall's state and rules, or null when Windows will not say.</summary>
+    FirewallSnapshot? Read();
+
+    Task<FirewallCommandResult> RunNetshAsync(string netshArguments, bool elevate, CancellationToken cancellationToken);
 }
 
-/// <summary>Runs <c>netsh</c>, asking Windows for permission first when told to elevate.</summary>
-public sealed class NetshFirewallCommandRunner : IFirewallCommandRunner
+/// <summary>
+/// Reads Windows Firewall through its own API, HNetCfg.FwPolicy2, which needs
+/// no administrator rights and answers the same in every language. Changes go
+/// through netsh, asking Windows for permission first when told to elevate.
+/// </summary>
+public sealed class WindowsFirewall : IWindowsFirewall
 {
     // ERROR_CANCELLED: the person said no to the permission prompt.
     private const int PermissionDeclined = 1223;
+    private const int InboundDirection = 1;
+    private const int AllowAction = 1;
 
     public bool IsElevated
     {
@@ -106,14 +218,56 @@ public sealed class NetshFirewallCommandRunner : IFirewallCommandRunner
         }
     }
 
-    public async Task<FirewallCommandResult> RunAsync(string netshArguments, bool elevate, CancellationToken cancellationToken)
+    public FirewallSnapshot? Read()
+    {
+        if (!OperatingSystem.IsWindows() || Type.GetTypeFromProgID("HNetCfg.FwPolicy2") is not { } policyType)
+        {
+            return null;
+        }
+
+        try
+        {
+            dynamic policy = Activator.CreateInstance(policyType)!;
+            int current = policy.CurrentProfileTypes;
+            var off = 0;
+            foreach (var profile in new[] { 1, 2, 4 })
+            {
+                if ((current & profile) != 0 && !(bool)policy.FirewallEnabled[profile])
+                {
+                    off |= profile;
+                }
+            }
+
+            var rules = new List<FirewallRule>();
+            foreach (dynamic rule in policy.Rules)
+            {
+                rules.Add(new FirewallRule(
+                    (string)(rule.Name ?? string.Empty),
+                    (bool)rule.Enabled,
+                    (int)rule.Direction == InboundDirection,
+                    (int)rule.Action == AllowAction,
+                    (int)rule.Protocol,
+                    (string?)rule.LocalPorts,
+                    (int)rule.Profiles,
+                    (string?)rule.ApplicationName));
+            }
+
+            return new FirewallSnapshot(current, off, rules);
+        }
+        catch (Exception ex) when (ex is System.Runtime.InteropServices.COMException or InvalidCastException or Microsoft.CSharp.RuntimeBinder.RuntimeBinderException)
+        {
+            return null;
+        }
+    }
+
+    public async Task<FirewallCommandResult> RunNetshAsync(string netshArguments, bool elevate, CancellationToken cancellationToken)
     {
         try
         {
             if (elevate)
             {
                 // A permission prompt cannot be combined with reading the
-                // output, so the caller checks the rule afterwards instead.
+                // output, so the caller reads the rules afterwards instead.
                 using var elevated = Process.Start(new ProcessStartInfo("netsh", netshArguments)
                 {
                     UseShellExecute = true,

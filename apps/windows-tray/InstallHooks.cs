@@ -29,7 +29,7 @@ internal static class InstallHooks
     public static void OnAfterInstall()
     {
         var firewall = Firewall();
-        if (!new NetshFirewallCommandRunner().IsElevated)
+        if (!new WindowsFirewall().IsElevated)
         {
             LogHook($"'{firewall.RuleName}': not elevated here; the first run asks Windows for permission.");
             return;
@@ -48,7 +48,8 @@ internal static class InstallHooks
         try
         {
             using var budget = new CancellationTokenSource(UninstallBudget);
-            if (firewall.GetStatusAsync(budget.Token).GetAwaiter().GetResult().State != LanAccessStates.Open)
+            // Only Deluno's own rule: another rule for the same port is not ours to remove.
+            if (!firewall.HasOwnRule())
             {
                 return;
             }

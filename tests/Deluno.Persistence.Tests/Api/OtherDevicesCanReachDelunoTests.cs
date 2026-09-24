@@ -11,42 +11,89 @@ namespace Deluno.Persistence.Tests.Api;
 /// <para><b>Why this file exists.</b> The installer added the Windows Firewall
 /// rule from a callback it thought ran as an administrator. It does not, so the
 /// rule was never there. The failure went to a log file, and another PC on the
-/// LAN just could not connect.</para>
+/// LAN just could not connect. The first version of the fix then made the
+/// opposite mistake on the rig: it looked only for its own rule by name, and
+/// told James other devices were turned away while he was using Deluno from
+/// one, through an older rule for the same port.</para>
 /// </summary>
 public sealed class OtherDevicesCanReachDelunoTests
 {
+    private const int Public = 4;
+    private const int Private = 2;
+    private const int AllProfiles = 0x7FFFFFFF;
+    private const string Host = @"C:\Deluno\App\Deluno.Host.exe";
+
     [Fact]
     public async Task No_rule_for_the_port_is_reported_as_blocked_with_a_way_to_allow_it()
     {
-        var netsh = new FakeNetsh(ruleExists: false);
-
-        var status = await new WindowsFirewallLanAccess(5099, netsh).GetStatusAsync(CancellationToken.None);
+        var status = await Access(new FakeFirewall(Public)).GetStatusAsync(CancellationToken.None);
 
         Assert.Equal(LanAccessStates.Blocked, status.State);
         Assert.True(status.CanAllow);
         Assert.Contains("5099", status.Message);
-        Assert.Contains("show rule name=\"Deluno (port 5099)\"", netsh.Commands.Single());
     }
 
     [Fact]
-    public async Task A_rule_for_the_port_is_reported_as_open()
+    public async Task Any_rule_that_opens_the_port_counts_not_only_Delunos_own()
     {
-        var status = await new WindowsFirewallLanAccess(5099, new FakeNetsh(ruleExists: true)).GetStatusAsync(CancellationToken.None);
+        var firewall = new FakeFirewall(Public, Rule("Deluno E2E lab - Deluno Host", ports: "5099", profiles: AllProfiles));
+
+        var status = await Access(firewall).GetStatusAsync(CancellationToken.None);
 
         Assert.Equal(LanAccessStates.Open, status.State);
+        Assert.Equal("Deluno E2E lab - Deluno Host", status.RuleName);
+        Assert.False(status.CanAllow);
+    }
+
+    [Fact]
+    public async Task A_firewall_switched_off_for_this_network_lets_everything_in()
+    {
+        var status = await Access(new FakeFirewall(Public, firewallOffFor: Public)).GetStatusAsync(CancellationToken.None);
+
+        Assert.Equal(LanAccessStates.Open, status.State);
+    }
+
+    [Theory]
+    [InlineData("5099", AllProfiles, null, true, true, true)]
+    [InlineData("5000-6000", AllProfiles, null, true, true, true)]
+    [InlineData("80,443,5099", AllProfiles, null, true, true, true)]
+    [InlineData("*", AllProfiles, null, true, true, true)]
+    [InlineData("5098", AllProfiles, null, true, true, false)]
+    [InlineData("5099", Private, null, true, true, false)]
+    [InlineData("5099", AllProfiles, @"C:\Other\app.exe", true, true, false)]
+    [InlineData("5099", AllProfiles, Host, true, true, true)]
+    [InlineData("5099", AllProfiles, null, false, true, false)]
+    [InlineData("5099", AllProfiles, null, true, false, false)]
+    public async Task A_rule_opens_the_port_only_for_this_port_this_network_and_this_program(
+        string ports, int profiles, string? program, bool enabled, bool allow, bool open)
+    {
+        var firewall = new FakeFirewall(Public, Rule("Some rule", ports, profiles, program, enabled, allow));
+
+        var status = await Access(firewall).GetStatusAsync(CancellationToken.None);
+
+        Assert.Equal(open ? LanAccessStates.Open : LanAccessStates.Blocked, status.State);
+    }
+
+    [Fact]
+    public async Task A_firewall_Windows_will_not_describe_is_not_guessed_at()
+    {
+        var status = await Access(new FakeFirewall(Public) { Unreadable = true }).GetStatusAsync(CancellationToken.None);
+
+        Assert.Equal(LanAccessStates.NotChecked, status.State);
         Assert.False(status.CanAllow);
     }
 
     [Fact]
     public async Task Allowing_without_administrator_rights_asks_Windows_and_covers_every_network_profile()
     {
-        var netsh = new FakeNetsh(ruleExists: false, elevated: false);
+        var firewall = new FakeFirewall(Public);
 
-        var status = await new WindowsFirewallLanAccess(5099, netsh).AllowAsync(CancellationToken.None);
+        var status = await Access(firewall).AllowAsync(CancellationToken.None);
 
         Assert.Equal(LanAccessStates.Open, status.State);
-        var add = Assert.Single(netsh.Calls, call => call.Arguments.Contains("add rule"));
+        var add = Assert.Single(firewall.Calls, call => call.Arguments.Contains("add rule"));
         Assert.True(add.Elevate);
+        Assert.Contains("name=\"Deluno (port 5099)\"", add.Arguments);
         Assert.Contains("localport=5099", add.Arguments);
         Assert.Contains("profile=any", add.Arguments);
         Assert.Contains("dir=in action=allow protocol=TCP", add.Arguments);
@@ -55,19 +102,17 @@ public sealed class OtherDevicesCanReachDelunoTests
     [Fact]
     public async Task Allowing_as_an_administrator_adds_the_rule_without_a_prompt()
     {
-        var netsh = new FakeNetsh(ruleExists: false, elevated: true);
+        var firewall = new FakeFirewall(Public) { Elevated = true };
 
-        await new WindowsFirewallLanAccess(5099, netsh).AllowAsync(CancellationToken.None);
+        await Access(firewall).AllowAsync(CancellationToken.None);
 
-        Assert.False(Assert.Single(netsh.Calls, call => call.Arguments.Contains("add rule")).Elevate);
+        Assert.False(Assert.Single(firewall.Calls, call => call.Arguments.Contains("add rule")).Elevate);
     }
 
     [Fact]
     public async Task A_declined_permission_prompt_leaves_it_blocked_and_says_why()
     {
-        var netsh = new FakeNetsh(ruleExists: false, declineAdd: true);
-
-        var status = await new WindowsFirewallLanAccess(5099, netsh).AllowAsync(CancellationToken.None);
+        var status = await Access(new FakeFirewall(Public) { DeclineAdd = true }).AllowAsync(CancellationToken.None);
 
         Assert.Equal(LanAccessStates.Blocked, status.State);
         Assert.True(status.CanAllow);
@@ -75,24 +120,25 @@ public sealed class OtherDevicesCanReachDelunoTests
     }
 
     [Fact]
-    public async Task Allowing_when_the_rule_is_already_there_changes_nothing()
+    public async Task Allowing_when_the_port_is_already_open_adds_nothing()
     {
-        var netsh = new FakeNetsh(ruleExists: true);
+        var firewall = new FakeFirewall(Public, Rule("Deluno E2E lab - Deluno Host", "5099", AllProfiles));
 
-        var status = await new WindowsFirewallLanAccess(5099, netsh).AllowAsync(CancellationToken.None);
+        await Access(firewall).AllowAsync(CancellationToken.None);
 
-        Assert.Equal(LanAccessStates.Open, status.State);
-        Assert.DoesNotContain(netsh.Calls, call => call.Arguments.Contains("add rule"));
+        Assert.Empty(firewall.Calls);
     }
 
     [Fact]
-    public async Task Uninstalling_removes_the_rule_Deluno_added()
+    public async Task Uninstalling_removes_only_Delunos_own_rule()
     {
-        var netsh = new FakeNetsh(ruleExists: true);
+        var withOwn = new FakeFirewall(Public, Rule("Deluno (port 5099)", "5099", AllProfiles));
+        var withOther = new FakeFirewall(Public, Rule("Deluno E2E lab - Deluno Host", "5099", AllProfiles));
 
-        await new WindowsFirewallLanAccess(5099, netsh).RemoveAsync(CancellationToken.None);
-
-        Assert.Contains(netsh.Calls, call => call.Arguments.Contains("delete rule name=\"Deluno (port 5099)\""));
+        Assert.True(Access(withOwn).HasOwnRule());
+        Assert.False(Access(withOther).HasOwnRule());
+        await Access(withOwn).RemoveAsync(CancellationToken.None);
+        Assert.Contains(withOwn.Calls, call => call.Arguments.Contains("delete rule name=\"Deluno (port 5099)\""));
     }
 
     [Fact]
@@ -108,36 +154,47 @@ public sealed class OtherDevicesCanReachDelunoTests
         Assert.True(allowed.IsSuccessStatusCode);
     }
 
-    private sealed class FakeNetsh(bool ruleExists, bool elevated = false, bool declineAdd = false) : IFirewallCommandRunner
+    private static WindowsFirewallLanAccess Access(FakeFirewall firewall) => new(5099, firewall, Host);
+
+    private static FirewallRule Rule(string name, string ports, int profiles, string? program = null, bool enabled = true, bool allow = true)
+        => new(name, enabled, Inbound: true, allow, Protocol: 6, ports, profiles, program);
+
+    private sealed class FakeFirewall(int currentProfiles, params FirewallRule[] rules) : IWindowsFirewall
     {
-        private bool _ruleExists = ruleExists;
+        private readonly List<FirewallRule> _rules = [.. rules];
+
+        public int FirewallOffFor { get; init; }
+
+        public bool Elevated { get; init; }
+
+        public bool DeclineAdd { get; init; }
+
+        public bool Unreadable { get; init; }
 
         public List<(string Arguments, bool Elevate)> Calls { get; } = [];
 
-        public IEnumerable<string> Commands => Calls.Select(call => call.Arguments);
+        public bool IsElevated => Elevated;
 
-        public bool IsElevated => elevated;
+        public FakeFirewall(int currentProfiles, int firewallOffFor) : this(currentProfiles)
+            => FirewallOffFor = firewallOffFor;
 
-        public Task<FirewallCommandResult> RunAsync(string netshArguments, bool elevate, CancellationToken cancellationToken)
+        public FirewallSnapshot? Read() => Unreadable ? null : new FirewallSnapshot(currentProfiles, FirewallOffFor, _rules);
+
+        public Task<FirewallCommandResult> RunNetshAsync(string netshArguments, bool elevate, CancellationToken cancellationToken)
         {
             Calls.Add((netshArguments, elevate));
-            if (netshArguments.Contains("show rule"))
-            {
-                return Task.FromResult(new FirewallCommandResult(_ruleExists ? 0 : 1, _ruleExists ? "Rule Name: Deluno" : "No rules match the specified criteria."));
-            }
-
             if (netshArguments.Contains("add rule"))
             {
-                if (declineAdd)
+                if (DeclineAdd)
                 {
                     return Task.FromResult(new FirewallCommandResult(1223, "The operation was canceled by the user.", Declined: true));
                 }
 
-                _ruleExists = true;
+                _rules.Add(Rule("Deluno (port 5099)", "5099", AllProfiles));
                 return Task.FromResult(new FirewallCommandResult(0, "Ok."));
             }
 
-            _ruleExists = false;
+            _rules.RemoveAll(rule => rule.Name == "Deluno (port 5099)");
             return Task.FromResult(new FirewallCommandResult(0, "Deleted 1 rule(s)."));
         }
     }
