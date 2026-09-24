@@ -9,6 +9,7 @@ import { type FormEvent, useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { Eye, EyeOff, Loader2, LogIn } from "lucide-react";
 import { useAuth } from "../lib/use-auth";
+import { AppMark } from "../components/shell/app-mark";
 import { Button } from "../components/ui/button";
 import { Card } from "../components/ui/card";
 import { Input } from "../components/ui/input";
@@ -57,22 +58,7 @@ export function LoginPage() {
 
       <div className="w-full max-w-[400px]">
         <div className="mb-8 flex flex-col items-center gap-3">
-          <div
-            className="flex h-14 w-14 items-center justify-center rounded-2xl shadow-lg"
-            style={{
-              background: "linear-gradient(135deg, hsl(var(--primary)), hsl(var(--primary-2)))",
-              boxShadow: "0 8px 32px hsl(var(--primary-deep)/0.45)"
-            }}
-          >
-            <svg width="28" height="28" viewBox="0 0 30 30" fill="none" aria-hidden>
-              <rect x="4.5" y="7.5" width="21" height="15" rx="2.1" stroke="white" strokeWidth="1.5" fill="none" />
-              <rect x="2.7" y="10.8" width="3.6" height="2.7" rx="0.6" fill="white" />
-              <rect x="2.7" y="16.5" width="3.6" height="2.7" rx="0.6" fill="white" />
-              <rect x="23.7" y="10.8" width="3.6" height="2.7" rx="0.6" fill="white" />
-              <rect x="23.7" y="16.5" width="3.6" height="2.7" rx="0.6" fill="white" />
-              <polygon points="12.3,12 12.3,18 17.7,15" fill="white" />
-            </svg>
-          </div>
+          <AppMark size={56} />
           <div className="text-center">
             <h1 className="font-display text-2xl font-bold tracking-tight text-foreground">
               Sign in to Deluno
