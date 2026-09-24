@@ -44,6 +44,7 @@ Implemented REST endpoints:
 - `GET /api/system/logs`
 - `GET /api/system/jobs`
 - `GET /api/system/lan-access`: whether other devices on the network can reach Deluno (`open`, `blocked`, or `notChecked` on a host with no firewall for Deluno to manage)
+- `POST /api/trackers/cloudflare-helper/test` with `{ url }`: whether a FlareSolverr-compatible Cloudflare helper answers at that address. The address itself is the `cloudflareHelperUrl` platform setting, and the tracker engine uses it only for a tracker that answers with a Cloudflare check.
 - `POST /api/system/lan-access/allow`: adds Deluno's Windows Firewall rule for its port on every network profile. If Deluno lacks administrator rights, Windows asks for permission on the computer it runs on.
 - `GET /api/monitoring/dashboard`
 - `GET /api/monitoring/alerts`

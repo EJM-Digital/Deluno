@@ -18,6 +18,7 @@ export interface PlatformSettingsPatch {
   hostBindAddress?: string;
   hostPort?: number;
   urlBase?: string;
+  cloudflareHelperUrl?: string;
   requireAuthentication?: boolean;
   uiTheme?: string;
   uiDensity?: string;

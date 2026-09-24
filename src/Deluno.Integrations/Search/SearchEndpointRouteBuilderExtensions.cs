@@ -28,6 +28,34 @@ public static class SearchEndpointRouteBuilderExtensions
         // user looks for is never simply missing.
         endpoints.MapGet("/api/trackers", (Trackers.ITrackerDefinitionCatalog catalog) => Results.Ok(catalog.List()));
 
+        // Whether a Cloudflare helper answers at an address (#628), before it is saved.
+        endpoints.MapPost("/api/trackers/cloudflare-helper/test", async (
+            CloudflareHelperTestRequest request,
+            IHttpClientFactory httpClientFactory,
+            CancellationToken cancellationToken) =>
+        {
+            if (string.IsNullOrWhiteSpace(request.Url) || !Uri.TryCreate(request.Url.Trim(), UriKind.Absolute, out var address))
+            {
+                return Results.Ok(new { healthy = false, message = "Enter the helper's address, such as http://127.0.0.1:8191." });
+            }
+
+            try
+            {
+                var http = httpClientFactory.CreateClient(Trackers.FlareSolverrCloudflareHelper.HttpClientName);
+                using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+                timeout.CancelAfter(TimeSpan.FromSeconds(10));
+                using var response = await http.GetAsync(address, timeout.Token);
+                var body = await response.Content.ReadAsStringAsync(timeout.Token);
+                return response.IsSuccessStatusCode
+                    ? Results.Ok(new { healthy = true, message = body.Contains("FlareSolverr is ready", StringComparison.OrdinalIgnoreCase) ? $"FlareSolverr answered at {address.Authority}." : $"A helper answered at {address.Authority}." })
+                    : Results.Ok(new { healthy = false, message = $"{address.Authority} answered HTTP {(int)response.StatusCode}." });
+            }
+            catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
+            {
+                return Results.Ok(new { healthy = false, message = $"Nothing answered at {address.Authority}: {ex.Message}" });
+            }
+        });
+
         var indexerScoreboard = endpoints.MapGroup("/api/indexers");
 
         indexerScoreboard.MapGet("scoreboard", async (
@@ -609,3 +637,6 @@ file sealed record ReleaseExplainRequest(
     string? PreferIndexerFlags = null,
     DateTimeOffset? AvailableUtc = null,
     int? AvailabilityDelayDays = null);
+
+/// <summary>An address to check for a Cloudflare helper (#628).</summary>
+public sealed record CloudflareHelperTestRequest(string? Url);

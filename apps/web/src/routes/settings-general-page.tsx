@@ -10,6 +10,8 @@
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { useLoaderData } from "react-router-dom";
 import { Field, FieldRow } from "../components/ui/field";
+import { Loader2, Wifi } from "lucide-react";
+import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { ListCard } from "../components/ui/list-card";
 import { PageFooter } from "../components/ui/page-footer";
@@ -19,7 +21,7 @@ import { systemSettingsNavItems } from "../components/app/settings-shell";
 import { useUnsavedChanges } from "../hooks/use-unsaved-changes";
 import type { DrawerSaveState } from "../components/ui/drawer";
 import { settingsOverviewLoader } from "./settings-overview-page";
-import type { LibraryItem, PlatformSettingsSnapshot, QualityProfileItem } from "../lib/api";
+import { fetchJson, type LibraryItem, type PlatformSettingsSnapshot, type QualityProfileItem } from "../lib/api";
 import type { PlatformSettingsPatch } from "../lib/api/settings";
 import { useApiMutation } from "../lib/use-api-mutation";
 import { resolveDrawerSaveState, shouldClearSaveState } from "../lib/drawer-save-state";
@@ -37,6 +39,7 @@ interface GeneralForm {
   hostBindAddress: string;
   hostPort: string;
   urlBase: string;
+  cloudflareHelperUrl: string;
 }
 
 export function SettingsGeneralPage() {
@@ -65,6 +68,25 @@ export function SettingsGeneralPage() {
   /** Address and port only take effect on restart, so say so rather than imply a live change. */
   const hostChanged = form.hostBindAddress !== savedForm.hostBindAddress || form.hostPort !== savedForm.hostPort;
 
+  const [helperResult, setHelperResult] = useState<{ healthy: boolean; message: string } | null>(null);
+  const [helperBusy, setHelperBusy] = useState(false);
+
+  /** Whether the helper answers at the address typed, before it is saved (#628). */
+  async function testHelper() {
+    setHelperBusy(true);
+    try {
+      setHelperResult(await fetchJson<{ healthy: boolean; message: string }>("/api/trackers/cloudflare-helper/test", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url: form.cloudflareHelperUrl.trim() })
+      }));
+    } catch (error) {
+      setHelperResult({ healthy: false, message: error instanceof Error ? error.message : "The helper could not be checked." });
+    } finally {
+      setHelperBusy(false);
+    }
+  }
+
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (state === "saving") return;
@@ -74,7 +96,8 @@ export function SettingsGeneralPage() {
         appInstanceName: form.appInstanceName.trim(),
         hostBindAddress: form.hostBindAddress.trim(),
         hostPort: Number(form.hostPort || 5099),
-        urlBase: form.urlBase.trim()
+        urlBase: form.urlBase.trim(),
+        cloudflareHelperUrl: form.cloudflareHelperUrl.trim()
       });
       setSavedForm(form);
       setSaveState("saved");
@@ -151,6 +174,21 @@ export function SettingsGeneralPage() {
         </div>
       </ListCard>
 
+      <ListCard title="Cloudflare helper" count="For trackers behind a Cloudflare check">
+        <div className="grid gap-[var(--grid-gap)] p-[var(--card-pad-x)]">
+          <Field label="Helper address" optional help="Some trackers, such as 1337x, put a Cloudflare check in front of every page. Deluno does not solve those checks itself: run FlareSolverr or Byparr and give its address here, and Deluno asks it for a page only when a tracker is behind a check." error={settingsMutation.fieldErrors.cloudflareHelperUrl}>
+            <Input value={form.cloudflareHelperUrl} onChange={(event) => { setHelperResult(null); setForm((current) => ({ ...current, cloudflareHelperUrl: event.target.value })); }} placeholder="http://127.0.0.1:8191" className="font-mono" autoComplete="off" spellCheck={false} />
+          </Field>
+          <div className="flex flex-wrap items-center gap-3">
+            <Button type="button" variant="outline" size="sm" onClick={() => void testHelper()} disabled={helperBusy || !form.cloudflareHelperUrl.trim()}>
+              {helperBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Wifi className="h-3.5 w-3.5" />}
+              Test helper
+            </Button>
+            {helperResult ? <span role="status" className={helperResult.healthy ? "text-success" : "text-destructive"}>{helperResult.message}</span> : null}
+          </div>
+        </div>
+      </ListCard>
+
       <PageFooter state={state} message={message} saveLabel="Save general settings" />
     </form>
   );
@@ -167,6 +205,7 @@ function formFrom(settings: PlatformSettingsSnapshot): GeneralForm {
     appInstanceName: settings.appInstanceName,
     hostBindAddress: settings.hostBindAddress,
     hostPort: String(settings.hostPort),
-    urlBase: settings.urlBase
+    urlBase: settings.urlBase,
+    cloudflareHelperUrl: settings.cloudflareHelperUrl ?? ""
   };
 }

@@ -65,5 +65,6 @@ public static class PlatformSettingsPatchMerger
             ShortDateFormat: patch.ShortDateFormat ?? current.ShortDateFormat,
             LongDateFormat: patch.LongDateFormat ?? current.LongDateFormat,
             TimeFormat: patch.TimeFormat ?? current.TimeFormat,
-            ShowRelativeDates: patch.ShowRelativeDates ?? current.ShowRelativeDates);
+            ShowRelativeDates: patch.ShowRelativeDates ?? current.ShowRelativeDates,
+            CloudflareHelperUrl: patch.CloudflareHelperUrl ?? current.CloudflareHelperUrl);
 }

@@ -380,6 +380,7 @@ POST /api/setup/completed
 POST /api/subtitle-providers/{key}/test
 POST /api/system/lan-access/allow
 POST /api/tags/
+POST /api/trackers/cloudflare-helper/test
 POST /api/updates/apply-on-restart
 POST /api/updates/check
 POST /api/updates/download

@@ -191,6 +191,7 @@ public sealed class SqlitePlatformSettingsRepository(
         // so a value that survives being saved is a value the scheduler will
         // actually use. Two different bounds would mean the screen could show a
         // cadence Deluno never runs at.
+        await UpsertSettingAsync(connection, transaction, "search.cloudflareHelperUrl", NormalizeName(request.CloudflareHelperUrl)?.TrimEnd('/') ?? string.Empty, updatedUtc, cancellationToken);
         await UpsertSettingAsync(connection, transaction, "library.fileCheckHours", Math.Clamp(request.LibraryFileCheckHours ?? 6, 1, 168).ToString(CultureInfo.InvariantCulture), updatedUtc, cancellationToken);
         await UpsertSettingAsync(connection, transaction, "cleanup.strikeThreshold", Math.Clamp(request.DownloadHealthStrikeThreshold ?? 3, 1, 20).ToString(CultureInfo.InvariantCulture), updatedUtc, cancellationToken);
         await UpsertSettingAsync(connection, transaction, "cleanup.blockReleaseAfterThreshold", request.CleanupBlockReleaseAfterThreshold is false ? "false" : "true", updatedUtc, cancellationToken);
@@ -474,6 +475,7 @@ public sealed class SqlitePlatformSettingsRepository(
             SearchScoringMode: SearchScoringModes.Normalize(GetValue(settings, "search.scoringMode")),
             ImportRecoveryRetentionDays: int.TryParse(GetValue(settings, "media.importRecoveryRetentionDays"), NumberStyles.Integer, CultureInfo.InvariantCulture, out var retentionDays) && retentionDays > 0 ? retentionDays : 30,
             LibraryFileCheckHours: int.TryParse(GetValue(settings, "library.fileCheckHours"), NumberStyles.Integer, CultureInfo.InvariantCulture, out var fileCheckHours) && fileCheckHours > 0 ? Math.Clamp(fileCheckHours, 1, 168) : 6,
+            CloudflareHelperUrl: string.IsNullOrWhiteSpace(GetValue(settings, "search.cloudflareHelperUrl")) ? null : GetValue(settings, "search.cloudflareHelperUrl"),
             UpdatedUtc: DateTimeOffset.UtcNow,
             MdbListApiKeyConfigured: !string.IsNullOrWhiteSpace(GetValue(settings, "intake.mdblistApiKey")),
             DownloadHealthStrikeThreshold: ReadDownloadHealthStrikeThreshold(settings),

@@ -66,4 +66,7 @@ public sealed record PlatformSettingsSnapshot(
     // on disk. Configurable because the right answer depends on the disk: a
     // local pool can afford hourly; a NAS that spins up to answer should not be
     // woken every hour to be asked. DESIGN-007, the console's third section.
-    int LibraryFileCheckHours = 6);
+    int LibraryFileCheckHours = 6,
+    // A FlareSolverr-compatible service that gets trackers past a Cloudflare
+    // check (#628). Deluno does not solve those checks itself.
+    string? CloudflareHelperUrl = null);
