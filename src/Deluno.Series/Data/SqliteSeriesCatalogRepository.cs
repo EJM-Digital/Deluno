@@ -2298,7 +2298,8 @@ public sealed class SqliteSeriesCatalogRepository(
         bool ignoreRetryWindow,
         CancellationToken cancellationToken,
         string? wantedStatus = null,
-        CatalogueFilters? filters = null)
+        CatalogueFilters? filters = null,
+        bool requireMonitored = true)
     {
         if (sharedMediaStateRepository is not null)
         {
@@ -2310,7 +2311,8 @@ public sealed class SqliteSeriesCatalogRepository(
                 ignoreRetryWindow,
                 cancellationToken,
                 wantedStatus,
-                filters);
+                filters,
+                requireMonitored);
             return sharedItems.Select(MapWanted).ToArray();
         }
 
@@ -2325,47 +2327,37 @@ public sealed class SqliteSeriesCatalogRepository(
             DelunoDatabaseNames.Series,
             cancellationToken);
 
+        // requireMonitored is independent of ignoreRetryWindow: a person's own
+        // retry ignores both, but an automatic targeted search (add-triggered,
+        // health-replacement) ignores only the retry window and still must
+        // never reach an unmonitored series (#653).
+        var monitoredFilter = requireMonitored ? "AND s.monitored = 1" : string.Empty;
+        var retryFilter = ignoreRetryWindow
+            ? string.Empty
+            : "AND (w.next_eligible_search_utc IS NULL OR w.next_eligible_search_utc <= @now)";
+
         using var command = connection.CreateCommand();
         command.CommandText =
-            ignoreRetryWindow
-                ? $"""
-                  SELECT
-                      s.id, s.title, s.start_year, s.imdb_id,
-                      w.library_id, w.wanted_status, w.wanted_reason, w.has_file, w.current_quality, w.target_quality, w.quality_cutoff_met,
-                      w.prevent_lower_quality_replacements, w.quality_delta_last_decision,
-                      w.missing_since_utc, w.last_search_utc, w.next_eligible_search_utc, w.last_search_result, w.updated_utc,
-                      NULL AS available_utc, w.file_path, w.file_size_bytes, s.runtime_minutes
-                  FROM series_wanted_state w
-                  INNER JOIN series_entries s ON s.id = w.series_id
-                  WHERE w.library_id = @libraryId
-                    AND {statusFilter}
-                    {customFilter}
-                  ORDER BY
-                      CASE w.wanted_status WHEN 'missing' THEN 0 ELSE 1 END,
-                      COALESCE(w.last_search_utc, w.missing_since_utc, w.updated_utc) ASC,
-                      s.title ASC
-                  LIMIT @take;
-                  """
-                : $"""
-                  SELECT
-                      s.id, s.title, s.start_year, s.imdb_id,
-                      w.library_id, w.wanted_status, w.wanted_reason, w.has_file, w.current_quality, w.target_quality, w.quality_cutoff_met,
-                      w.prevent_lower_quality_replacements, w.quality_delta_last_decision,
-                      w.missing_since_utc, w.last_search_utc, w.next_eligible_search_utc, w.last_search_result, w.updated_utc,
-                      NULL AS available_utc, w.file_path, w.file_size_bytes, s.runtime_minutes
-                  FROM series_wanted_state w
-                  INNER JOIN series_entries s ON s.id = w.series_id
-                  WHERE w.library_id = @libraryId
-                    AND {statusFilter}
-                    {customFilter}
-                    AND s.monitored = 1
-                    AND (w.next_eligible_search_utc IS NULL OR w.next_eligible_search_utc <= @now)
-                  ORDER BY
-                      CASE w.wanted_status WHEN 'missing' THEN 0 ELSE 1 END,
-                      COALESCE(w.last_search_utc, w.missing_since_utc, w.updated_utc) ASC,
-                      s.title ASC
-                  LIMIT @take;
-                  """;
+            $"""
+              SELECT
+                  s.id, s.title, s.start_year, s.imdb_id,
+                  w.library_id, w.wanted_status, w.wanted_reason, w.has_file, w.current_quality, w.target_quality, w.quality_cutoff_met,
+                  w.prevent_lower_quality_replacements, w.quality_delta_last_decision,
+                  w.missing_since_utc, w.last_search_utc, w.next_eligible_search_utc, w.last_search_result, w.updated_utc,
+                  NULL AS available_utc, w.file_path, w.file_size_bytes, s.runtime_minutes
+              FROM series_wanted_state w
+              INNER JOIN series_entries s ON s.id = w.series_id
+              WHERE w.library_id = @libraryId
+                AND {statusFilter}
+                {customFilter}
+                {monitoredFilter}
+                {retryFilter}
+              ORDER BY
+                  CASE w.wanted_status WHEN 'missing' THEN 0 ELSE 1 END,
+                  COALESCE(w.last_search_utc, w.missing_since_utc, w.updated_utc) ASC,
+                  s.title ASC
+              LIMIT @take;
+              """;
 
         AddParameter(command, "@libraryId", libraryId);
         AddParameter(command, "@now", now.ToString("O"));
@@ -4100,11 +4092,18 @@ public sealed class SqliteSeriesCatalogRepository(
         bool ignoreRetryWindow,
         CancellationToken cancellationToken,
         string? wantedStatus = null,
-        CatalogueFilters? filters = null)
+        CatalogueFilters? filters = null,
+        bool requireMonitored = true)
     {
         var items = new List<EpisodeSearchEligibilityItem>();
         var customFilterSql = CatalogueKeyset.CustomFilters(filters, MediaKind.Series, "s", "start_year");
         var customFilter = string.IsNullOrWhiteSpace(customFilterSql) ? string.Empty : $"AND {customFilterSql}";
+        // requireMonitored is independent of ignoreRetryWindow: a person's own
+        // retry of one failed episode ignores both, but every automatic
+        // targeted search (add-triggered, health-replacement, the scheduled
+        // cycle) ignores at most the retry window and must never reach an
+        // episode whose series is unmonitored (#653).
+        var monitoredFilter = requireMonitored ? "AND s.monitored = 1" : string.Empty;
 
         await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
             DelunoDatabaseNames.Series,
@@ -4127,6 +4126,7 @@ public sealed class SqliteSeriesCatalogRepository(
               AND (@wantedStatus IS NULL OR ews.wanted_status = @wantedStatus)
               AND (@ignoreRetryWindow = 1 OR ews.next_eligible_search_utc IS NULL OR ews.next_eligible_search_utc <= @now)
               AND e.monitored = 1
+              {monitoredFilter}
               {customFilter}
             ORDER BY
                 CASE ews.wanted_status WHEN 'missing' THEN 0 ELSE 1 END,
@@ -4442,6 +4442,13 @@ public sealed class SqliteSeriesCatalogRepository(
 
         await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
 
+        // A show added or later marked unmonitored is a person saying "not
+        // this one" — a fresh episode the catalogue learns about afterwards
+        // is not wanted either, the same as Sonarr leaves it. Read once per
+        // sync rather than once per episode; the series' own flag does not
+        // change mid-transaction.
+        var seriesMonitored = await IsSeriesMonitoredAsync(connection, transaction, seriesId, cancellationToken);
+
         foreach (var seasonNumber in episodes.Select(item => item.SeasonNumber).Distinct().OrderBy(item => item))
         {
             var seasonId = await EnsureSeasonAsync(connection, transaction, seriesId, seasonNumber, stamp, cancellationToken);
@@ -4493,9 +4500,12 @@ public sealed class SqliteSeriesCatalogRepository(
                 // Season 0 is specials: extras, recaps and behind-the-scenes
                 // pieces most people do not want hunted. Sonarr leaves them
                 // unmonitored for this reason; monitoring them made a new show
-                // arrive with nine "missing" specials to chase (#243). Only the
-                // default differs — the per-episode switch still governs.
-                AddParameter(upsert, "@monitored", episode.SeasonNumber == 0 ? 0 : 1);
+                // arrive with nine "missing" specials to chase (#243). An
+                // unmonitored series is the same call, one level up: its
+                // episodes are never wanted until the series itself is
+                // monitored again (#653). Only the default differs — the
+                // per-episode switch still governs from here on.
+                AddParameter(upsert, "@monitored", episode.SeasonNumber == 0 || !seriesMonitored ? 0 : 1);
                 AddParameter(upsert, "@title", NormalizeText(episode.Title));
                 AddParameter(upsert, "@overview", NormalizeText(episode.Overview));
                 AddParameter(upsert, "@airDateUtc", episode.AirDateUtc?.ToString("O"));
@@ -4812,6 +4822,25 @@ public sealed class SqliteSeriesCatalogRepository(
         AddParameter(command, "@seasonNumber", episode.SeasonNumber);
         AddParameter(command, "@episodeNumber", episode.EpisodeNumber);
         return await command.ExecuteScalarAsync(cancellationToken) is not null;
+    }
+
+    /// <summary>
+    /// Whether the series itself is monitored right now — a missing series
+    /// (should never happen mid-sync, but a foreign key is not a guarantee)
+    /// defaults to unmonitored, the conservative reading.
+    /// </summary>
+    private static async Task<bool> IsSeriesMonitoredAsync(
+        System.Data.Common.DbConnection connection,
+        System.Data.Common.DbTransaction transaction,
+        string seriesId,
+        CancellationToken cancellationToken)
+    {
+        using var command = connection.CreateCommand();
+        command.Transaction = transaction;
+        command.CommandText = "SELECT monitored FROM series_entries WHERE id = @seriesId LIMIT 1;";
+        AddParameter(command, "@seriesId", seriesId);
+        var result = await command.ExecuteScalarAsync(cancellationToken);
+        return result is long value && value == 1;
     }
 
     private static async Task<string> EnsureSeasonAsync(

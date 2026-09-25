@@ -339,7 +339,16 @@ public interface IMediaStateRepository
         bool ignoreRetryWindow,
         CancellationToken cancellationToken,
         string? wantedStatus = null,
-        CatalogueFilters? filters = null);
+        CatalogueFilters? filters = null,
+        // A person's own retry (a "Retry" click on a failed dispatch) is the
+        // one caller that both ignores the retry window and still expects an
+        // unmonitored title to search — it asked. Every other caller that
+        // ignores the retry window (an add-triggered search, a
+        // health-replacement retry) does so because the title is a single
+        // target, not because monitoring stopped mattering; defaulting true
+        // keeps those automatic callers honest without having to remember to
+        // pass it (#653).
+        bool requireMonitored = true);
 
     Task<int> CountRetryDelayedWantedAsync(
         MediaKind kind,

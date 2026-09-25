@@ -1531,7 +1531,8 @@ public sealed class SqliteMovieCatalogRepository(
         bool ignoreRetryWindow,
         CancellationToken cancellationToken,
         string? wantedStatus = null,
-        CatalogueFilters? filters = null)
+        CatalogueFilters? filters = null,
+        bool requireMonitored = true)
     {
         if (sharedMediaStateRepository is not null)
         {
@@ -1543,7 +1544,8 @@ public sealed class SqliteMovieCatalogRepository(
                 ignoreRetryWindow,
                 cancellationToken,
                 wantedStatus,
-                filters);
+                filters,
+                requireMonitored);
             return sharedItems.Select(MapWanted).ToArray();
         }
 
@@ -1557,6 +1559,12 @@ public sealed class SqliteMovieCatalogRepository(
         await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
             DelunoDatabaseNames.Movies,
             cancellationToken);
+
+        // requireMonitored is independent of ignoreRetryWindow: a person's own
+        // retry ignores both, but an automatic targeted search (add-triggered,
+        // health-replacement) ignores only the retry window and still must
+        // never reach an unmonitored movie (#653).
+        var monitoredFilter = requireMonitored ? "AND m.monitored = 1" : string.Empty;
 
         using var command = connection.CreateCommand();
         command.CommandText =
@@ -1573,6 +1581,7 @@ public sealed class SqliteMovieCatalogRepository(
                   WHERE w.library_id = @libraryId
                     AND {statusFilter}
                     {customFilter}
+                    {monitoredFilter}
                   ORDER BY
                       CASE w.wanted_status WHEN 'missing' THEN 0 ELSE 1 END,
                       COALESCE(w.last_search_utc, w.missing_since_utc, w.updated_utc) ASC,
@@ -1591,7 +1600,7 @@ public sealed class SqliteMovieCatalogRepository(
                   WHERE w.library_id = @libraryId
                     AND {statusFilter}
                     {customFilter}
-                    AND m.monitored = 1
+                    {monitoredFilter}
                     AND (w.next_eligible_search_utc IS NULL OR w.next_eligible_search_utc <= @now)
                     -- Nothing to find before a movie is obtainable, so do not spend
                     -- a search cycle on one. 'announced' opts out of the wait.

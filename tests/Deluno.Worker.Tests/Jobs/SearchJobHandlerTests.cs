@@ -248,13 +248,13 @@ public sealed class SearchJobHandlerTests
         seriesCatalogRepository
             .Setup(repository => repository.ListEligibleWantedAsync(
                 It.IsAny<string>(), It.IsAny<int>(), It.IsAny<DateTimeOffset>(), It.IsAny<bool>(),
-                It.IsAny<CancellationToken>(), It.IsAny<string?>()))
+                It.IsAny<CancellationToken>(), It.IsAny<string?>(), It.IsAny<Deluno.Contracts.CatalogueFilters?>(), It.IsAny<bool>()))
             .ReturnsAsync([]);
 
         seriesCatalogRepository
             .Setup(repository => repository.ListEligibleWantedEpisodesAsync(
                 "library-tv", It.IsAny<int>(), It.IsAny<DateTimeOffset>(), false,
-                It.IsAny<CancellationToken>(), "missing"))
+                It.IsAny<CancellationToken>(), "missing", It.IsAny<Deluno.Contracts.CatalogueFilters?>(), It.IsAny<bool>()))
             .ReturnsAsync([
                 new EpisodeSearchEligibilityItem("episode-1", "series-1", 2, 4, "The Drop", null, null),
                 // No title yet. Still worth searching for — the plan names it by
@@ -323,7 +323,7 @@ public sealed class SearchJobHandlerTests
         seriesCatalogRepository
             .Setup(repository => repository.ListEligibleWantedAsync(
                 It.IsAny<string>(), It.IsAny<int>(), It.IsAny<DateTimeOffset>(), It.IsAny<bool>(),
-                It.IsAny<CancellationToken>(), It.IsAny<string?>()))
+                It.IsAny<CancellationToken>(), It.IsAny<string?>(), It.IsAny<Deluno.Contracts.CatalogueFilters?>(), It.IsAny<bool>()))
             .ReturnsAsync([]);
 
         int? limitAsked = null;
@@ -331,8 +331,8 @@ public sealed class SearchJobHandlerTests
         seriesCatalogRepository
             .Setup(repository => repository.ListEligibleWantedEpisodesAsync(
                 "library-tv", It.IsAny<int>(), It.IsAny<DateTimeOffset>(), It.IsAny<bool>(),
-                It.IsAny<CancellationToken>(), It.IsAny<string?>()))
-            .Callback<string, int, DateTimeOffset, bool, CancellationToken, string?, Deluno.Contracts.CatalogueFilters?>((_, limit, _, ignore, _, _, _) =>
+                It.IsAny<CancellationToken>(), It.IsAny<string?>(), It.IsAny<Deluno.Contracts.CatalogueFilters?>(), It.IsAny<bool>()))
+            .Callback<string, int, DateTimeOffset, bool, CancellationToken, string?, Deluno.Contracts.CatalogueFilters?, bool>((_, limit, _, ignore, _, _, _, _) =>
             {
                 limitAsked = limit;
                 retryWindowIgnored = ignore;

@@ -187,8 +187,15 @@ public sealed class SeriesWantedStatePersistenceTests
         Assert.Equal("tv-source", untouchedWanted.LibraryId);
     }
 
+    /// <summary>
+    /// A paused (unmonitored) series is skipped by every automatic path, even
+    /// one that is targeted at it and so ignores the retry window - an
+    /// add-triggered search or a health-replacement retry is still automatic,
+    /// not a person asking (#653). Only a person's own retry, which passes
+    /// <c>requireMonitored: false</c>, still reaches it.
+    /// </summary>
     [Fact]
-    public async Task Paused_series_is_skipped_by_background_automation_but_remains_available_to_manual_search()
+    public async Task Paused_series_is_skipped_by_every_automatic_path_but_remains_available_to_manual_search()
     {
         using var storage = TestStorage.Create();
         var now = DateTimeOffset.Parse("2026-08-13T00:00:00Z");
@@ -201,7 +208,12 @@ public sealed class SeriesWantedStatePersistenceTests
         await repository.UpdateMonitoredAsync([series.Id], monitored: false, CancellationToken.None);
 
         Assert.Empty(await repository.ListEligibleWantedAsync("series-main", 10, now, ignoreRetryWindow: false, CancellationToken.None));
-        Assert.Single(await repository.ListEligibleWantedAsync("series-main", 10, now, ignoreRetryWindow: true, CancellationToken.None));
+        // Targeted (ignoreRetryWindow: true) but still automatic - an
+        // add-triggered search or a health-replacement retry - must not reach
+        // an unmonitored series either.
+        Assert.Empty(await repository.ListEligibleWantedAsync("series-main", 10, now, ignoreRetryWindow: true, CancellationToken.None));
+        // Only a person's own retry, which asks not to require monitoring, still finds it.
+        Assert.Single(await repository.ListEligibleWantedAsync("series-main", 10, now, ignoreRetryWindow: true, CancellationToken.None, requireMonitored: false));
     }
 
     [Fact]

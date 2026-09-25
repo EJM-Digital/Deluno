@@ -155,7 +155,8 @@ public sealed class SqliteMediaStateRepository(
         bool ignoreRetryWindow,
         CancellationToken cancellationToken,
         string? wantedStatus = null,
-        CatalogueFilters? filters = null)
+        CatalogueFilters? filters = null,
+        bool requireMonitored = true)
     {
         var map = MediaTableMap.For(kind);
         var availabilityColumn = AvailabilityColumn(kind, map.EntryAlias);
@@ -176,7 +177,10 @@ public sealed class SqliteMediaStateRepository(
               )
               """
             : string.Empty;
-        var monitored = ignoreRetryWindow ? string.Empty : $"AND {map.EntryAlias}.monitored = 1";
+        // Only a person's own retry passes requireMonitored: false — see the
+        // parameter's doc comment. Unlike the retry window, this is never
+        // dropped just because the search is targeted at one title (#653).
+        var monitored = requireMonitored ? $"AND {map.EntryAlias}.monitored = 1" : string.Empty;
         var retry = ignoreRetryWindow
             ? string.Empty
             : "AND (w.next_eligible_search_utc IS NULL OR w.next_eligible_search_utc <= @now)";

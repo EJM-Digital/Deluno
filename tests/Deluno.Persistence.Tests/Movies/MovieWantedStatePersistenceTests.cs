@@ -96,8 +96,15 @@ public sealed class MovieWantedStatePersistenceTests
         Assert.NotNull(item.MissingSinceUtc);
     }
 
+    /// <summary>
+    /// A paused (unmonitored) movie is skipped by every automatic path, even
+    /// one targeted at it that ignores the retry window - an add-triggered
+    /// search or a health-replacement retry is still automatic (#653). Only a
+    /// person's own retry, which passes <c>requireMonitored: false</c>, still
+    /// reaches it.
+    /// </summary>
     [Fact]
-    public async Task Paused_movie_is_skipped_by_background_automation_but_remains_available_to_manual_search()
+    public async Task Paused_movie_is_skipped_by_every_automatic_path_but_remains_available_to_manual_search()
     {
         using var storage = TestStorage.Create();
         var now = DateTimeOffset.Parse("2026-08-13T00:00:00Z");
@@ -110,7 +117,8 @@ public sealed class MovieWantedStatePersistenceTests
         await repository.UpdateMonitoredAsync([movie.Id], monitored: false, CancellationToken.None);
 
         Assert.Empty(await repository.ListEligibleWantedAsync("movies-main", 10, now, ignoreRetryWindow: false, CancellationToken.None));
-        Assert.Single(await repository.ListEligibleWantedAsync("movies-main", 10, now, ignoreRetryWindow: true, CancellationToken.None));
+        Assert.Empty(await repository.ListEligibleWantedAsync("movies-main", 10, now, ignoreRetryWindow: true, CancellationToken.None));
+        Assert.Single(await repository.ListEligibleWantedAsync("movies-main", 10, now, ignoreRetryWindow: true, CancellationToken.None, requireMonitored: false));
     }
 
     [Fact]
