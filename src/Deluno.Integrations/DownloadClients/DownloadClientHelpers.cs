@@ -368,8 +368,67 @@ internal static class DownloadClientHelpers
             return DownloadQueueStatuses.Stalled;
         }
 
+        // NZBGet's post-processing stages (#663) — checked ahead of the
+        // "complete"/"queue" tests below, both of which would otherwise
+        // misread one: a download stuck verifying or repairing for hours sits
+        // at 100% progress, which would read as ImportReady, and
+        // "PP_QUEUED" contains the literal word "queue". Neither is what a
+        // person means by either state — this is past the transfer and short
+        // of the library, the same "processing" NZBGet's own dispatch handoff
+        // already uses for Deluno's cleanup step.
+        if (IsNzbGetPostProcessingStage(normalized))
+        {
+            return DownloadQueueStatuses.Processing;
+        }
+
         if ((progress ?? 0) >= 99.9 || normalized.Contains("complete") || normalized.Contains("seeding")) return DownloadQueueStatuses.ImportReady;
         if (normalized.Contains("pause") || normalized.Contains("queue")) return DownloadQueueStatuses.Queued;
         return DownloadQueueStatuses.Downloading;
     }
+
+    /// <summary>
+    /// NZBGet's queue <c>Status</c> during PP_QUEUED, LOADING_PARS,
+    /// VERIFYING_SOURCES, REPAIRING, VERIFYING_REPAIRED, RENAMING, UNPACKING
+    /// and EXECUTING_SCRIPT (#663) — real work happening after the transfer
+    /// finished, not a stalled or still-downloading item. Matched loosely
+    /// against the substrings NZBGet's own uppercase constants contain, since
+    /// this method only ever sees NZBGet's text on this path (see
+    /// <see cref="NzbGetDownloadClient.NormalizeStatus"/>) — <c>MOVING</c> is
+    /// the one word Deluge also uses, and Deluge never reaches this method
+    /// while its own state is "Moving" (<c>DelugeDownloadClient.StillMoving</c>
+    /// intercepts it first).
+    /// </summary>
+    private static bool IsNzbGetPostProcessingStage(string normalized) =>
+        normalized.Contains("pp_queued") || normalized.Contains("loading_pars") ||
+        normalized.Contains("verifying_sources") || normalized.Contains("verifying_repaired") ||
+        normalized.Contains("repairing") || normalized.Contains("renaming") ||
+        normalized.Contains("unpacking") || normalized.Contains("moving") ||
+        normalized.Contains("executing_script");
+
+    /// <summary>
+    /// Low free disk space, folded into a client's health the same way any
+    /// other degraded condition is (#663). Deliberately not its own alert
+    /// mechanism: the client's health snapshot is re-derived on every poll, so
+    /// this clears itself the moment space frees up, the same as a client
+    /// coming back online — nothing to dismiss, nothing that can go stale.
+    /// </summary>
+    internal static (string Health, string? Message) EvaluateDiskSpaceHealth(string baseMessage, long? freeBytes, long? totalBytes)
+    {
+        if (freeBytes is not > 0)
+        {
+            return ("healthy", baseMessage);
+        }
+
+        var lowByAbsolute = freeBytes < LowDiskSpaceThresholdBytes;
+        var lowByPercent = totalBytes is > 0 && (double)freeBytes.Value / totalBytes.Value < 0.05;
+        if (!lowByAbsolute && !lowByPercent)
+        {
+            return ("healthy", baseMessage);
+        }
+
+        var freeGb = Math.Round(freeBytes.Value / 1_000_000_000d, 1);
+        return ("degraded", $"{baseMessage} Only {freeGb.ToString(CultureInfo.InvariantCulture)} GB free — downloads will start failing once it runs out.");
+    }
+
+    private const long LowDiskSpaceThresholdBytes = 5_000_000_000L;
 }

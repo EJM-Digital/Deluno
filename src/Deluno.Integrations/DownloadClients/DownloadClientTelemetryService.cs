@@ -947,6 +947,10 @@ public sealed class DownloadClientTelemetryService(
                 {
                     await RecordClientReportedFailureAsync(sighting.Dispatch, sighting.FailureReason, cancellationToken);
                 }
+                else if (sighting.Duplicate)
+                {
+                    await RecordClientDuplicateAsync(sighting.Dispatch, sighting.DuplicateReason, cancellationToken);
+                }
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
@@ -1054,6 +1058,106 @@ public sealed class DownloadClientTelemetryService(
     }
 
     /// <summary>
+    /// The client's own duplicate check declined this release — NZBGet's
+    /// DELETED/DUPE, DELETED/COPY and DELETED/GOOD, read from a poll (#663).
+    ///
+    /// <para><b>Not a failure, so it takes none of the failure path's
+    /// consequences.</b> Nothing is blocklisted and nothing is searched for
+    /// again: the client already has this download, or a copy that satisfies
+    /// it, and treating that as an error is exactly the misread this method
+    /// exists to avoid ("NZBGet deleted it: it was a duplicate of one NZBGet
+    /// already held" used to file the release under `failed` and blocklist
+    /// it).</para>
+    ///
+    /// <para>Where a more recent dispatch for the same title already imported
+    /// successfully, this dispatch is resolved by following it — the same
+    /// content already reached the library, so there is nothing left for this
+    /// dispatch to do. Otherwise the dispatch is left without an import
+    /// outcome (recorded only in its timeline and the activity feed), because
+    /// there is no import to point it at, but it will not be reprocessed:
+    /// <see cref="RecordDetectionAsync"/> already marked it detected and
+    /// finished, which is what keeps <see cref="ShownByClient"/> from surfacing
+    /// the same sighting again next poll.</para>
+    /// </summary>
+    private async Task RecordClientDuplicateAsync(
+        DownloadDispatchItem dispatch,
+        string? reason,
+        CancellationToken cancellationToken)
+    {
+        if (dispatch.ImportStatus is not null)
+        {
+            return;
+        }
+
+        var message = string.IsNullOrWhiteSpace(reason)
+            ? $"{dispatch.DownloadClientName} already has this download."
+            : reason;
+
+        var existing = await FindExistingImportForSameEntityAsync(dispatch, cancellationToken);
+
+        if (existing is not null)
+        {
+            await dispatchesRepository.RecordImportOutcomeAsync(
+                dispatch.Id,
+                importStatus: "imported",
+                importedFilePath: existing.ImportedFilePath,
+                importFailureCode: null,
+                importFailureMessage: null,
+                cancellationToken);
+        }
+
+        await dispatchesRepository.RecordTimelineEventAsync(
+            dispatch.Id,
+            "client-reported-duplicate",
+            JsonSerializer.Serialize(new { reason = message, source = "history", followedDispatchId = existing?.Id }),
+            cancellationToken);
+
+        await activityFeedRepository.RecordActivityAsync(
+            "download.client.duplicate",
+            existing is not null
+                ? $"{dispatch.DownloadClientName} already had {dispatch.ReleaseName}; it matches an earlier import."
+                : $"{dispatch.DownloadClientName} already has {dispatch.ReleaseName}: {message}",
+            null,
+            null,
+            "download_dispatch",
+            dispatch.Id,
+            cancellationToken);
+    }
+
+    /// <summary>
+    /// "Follow the existing item" for a duplicate (#663): another dispatch for
+    /// the same title that has already imported, so this dispatch's release is
+    /// already on the shelf under a different id. Matched on entity rather than
+    /// release name, because a duplicate's own release name is often not the
+    /// name of the copy NZBGet kept.
+    /// </summary>
+    private async Task<DownloadDispatchItem?> FindExistingImportForSameEntityAsync(
+        DownloadDispatchItem dispatch,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(dispatch.EntityId))
+        {
+            return null;
+        }
+
+        var (items, _) = await dispatchesRepository.QueryDispatchesAsync(
+            new DispatchQueryFilter
+            {
+                EntityType = dispatch.EntityType,
+                EntityId = dispatch.EntityId,
+                ImportStatus = "imported",
+                IncludeArchived = true
+            },
+            new DispatchPaginationOptions { PageSize = 5 },
+            cancellationToken);
+
+        return items
+            .Where(item => !string.Equals(item.Id, dispatch.Id, StringComparison.Ordinal))
+            .OrderByDescending(item => item.ImportCompletedUtc ?? item.CreatedUtc)
+            .FirstOrDefault();
+    }
+
+    /// <summary>
     /// Whether <see cref="QueueReplacementSearchAsync"/> can act on this
     /// dispatch's entity type.
     ///
@@ -1072,7 +1176,15 @@ public sealed class DownloadClientTelemetryService(
         long? DownloadedBytes,
         bool Finished,
         bool Failed = false,
-        string? FailureReason = null);
+        string? FailureReason = null,
+        /// <summary>
+        /// The client's own duplicate check declined this release — it, or a
+        /// better copy of it, is already held (#663). Distinct from
+        /// <see cref="Failed"/>: nothing was lost, so nothing is blocklisted
+        /// and nothing is searched for again.
+        /// </summary>
+        bool Duplicate = false,
+        string? DuplicateReason = null);
 
     /// <summary>
     /// The downloads this client shows that their records do not know about yet:
@@ -1086,9 +1198,9 @@ public sealed class DownloadClientTelemetryService(
         DownloadClientTelemetrySnapshot live,
         IEnumerable<DownloadDispatchItem> clientDispatches)
     {
-        var shown = new Dictionary<string, (long? Bytes, bool Finished, bool Failed, string? Reason)>(StringComparer.OrdinalIgnoreCase);
+        var shown = new Dictionary<string, (long? Bytes, bool Finished, bool Failed, string? Reason, bool Duplicate, string? DuplicateReason)>(StringComparer.OrdinalIgnoreCase);
 
-        void Add(string? id, long? bytes, bool finished, bool failed, string? reason)
+        void Add(string? id, long? bytes, bool finished, bool failed, string? reason, bool duplicate, string? duplicateReason)
         {
             if (string.IsNullOrWhiteSpace(id))
             {
@@ -1097,13 +1209,13 @@ public sealed class DownloadClientTelemetryService(
 
             var key = id.Trim();
             shown[key] = shown.TryGetValue(key, out var seen)
-                ? (bytes ?? seen.Bytes, finished || seen.Finished, failed || seen.Failed, reason ?? seen.Reason)
-                : (bytes, finished, failed, reason);
+                ? (bytes ?? seen.Bytes, finished || seen.Finished, failed || seen.Failed, reason ?? seen.Reason, duplicate || seen.Duplicate, duplicateReason ?? seen.DuplicateReason)
+                : (bytes, finished, failed, reason, duplicate, duplicateReason);
         }
 
         foreach (var item in live.Queue)
         {
-            Add(item.Id, item.DownloadedBytes, item.Status is DownloadQueueStatuses.ImportReady or DownloadQueueStatuses.Completed, false, null);
+            Add(item.Id, item.DownloadedBytes, item.Status is DownloadQueueStatuses.ImportReady or DownloadQueueStatuses.Completed, false, null, false, null);
         }
 
         foreach (var item in live.History)
@@ -1114,11 +1226,16 @@ public sealed class DownloadClientTelemetryService(
             // downloading (#647: NZBGet's FAILURE/DELETED/WARNING statuses,
             // SABnzbd's Failed, land here).
             var failedByClient = item.Outcome == "failed" && item.HistorySource == "native";
-            var finished = item.Outcome is DownloadQueueStatuses.Completed or DownloadQueueStatuses.ImportReady || failedByClient;
+            // A duplicate the client itself declined (#663): NZBGet's
+            // DELETED/DUPE, DELETED/COPY and DELETED/GOOD. Also only trusted
+            // from the client's own history — never inferred from the queue.
+            var duplicateByClient = item.Outcome == DownloadClientHistoryOutcomes.Duplicate && item.HistorySource == "native";
+            var finished = item.Outcome is DownloadQueueStatuses.Completed or DownloadQueueStatuses.ImportReady || failedByClient || duplicateByClient;
             var bytes = item.SizeBytes > 0 ? item.SizeBytes : (long?)null;
             var reason = failedByClient ? item.ErrorMessage : null;
-            Add(item.Id, bytes, finished, failedByClient, reason);
-            Add(item.ExternalId, bytes, finished, failedByClient, reason);
+            var duplicateReason = duplicateByClient ? item.ErrorMessage : null;
+            Add(item.Id, bytes, finished, failedByClient, reason, duplicateByClient, duplicateReason);
+            Add(item.ExternalId, bytes, finished, failedByClient, reason, duplicateByClient, duplicateReason);
         }
 
         var sightings = new List<ClientSighting>();
@@ -1132,7 +1249,7 @@ public sealed class DownloadClientTelemetryService(
 
             if (dispatch.DetectedUtc is null || (seen.Finished && dispatch.ClientCompletedUtc is null))
             {
-                sightings.Add(new ClientSighting(dispatch, seen.Bytes, seen.Finished, seen.Failed, seen.Reason));
+                sightings.Add(new ClientSighting(dispatch, seen.Bytes, seen.Finished, seen.Failed, seen.Reason, seen.Duplicate, seen.DuplicateReason));
             }
         }
 

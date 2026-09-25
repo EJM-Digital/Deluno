@@ -27,13 +27,24 @@ public sealed class NzbGetDownloadClient(IHttpClientFactory httpClientFactory) :
                 request.ReleaseName + ".nzb",
                 request.DownloadUrl,
                 DownloadClientHelpers.ResolveCategory(client, request) ?? string.Empty,
-                0,
+                // #663: this used to be hard-coded to 0 (normal), so a release
+                // that should have jumped the queue — or stayed out of the way
+                // of one that should — got neither. NZBGet's own scale: negative
+                // is low, 0 normal, positive high.
+                request.Priority ?? 0,
                 false,
                 false,
                 string.Empty,
                 0,
                 "SCORE",
-                Array.Empty<object>()]),
+                // #663: NZBGet has no direct "password" parameter on append; a
+                // protected archive's password is set the same way a person sets
+                // it by hand, as a post-processing parameter override for the
+                // built-in Unpack script. Sent only when Deluno actually has one
+                // — never fabricated.
+                string.IsNullOrWhiteSpace(request.Password)
+                    ? Array.Empty<object>()
+                    : new object[] { new NzbGetPPParameter("*Unpack:Password", request.Password) }]),
             cancellationToken);
         if (response?.Error is { } error)
         {
@@ -70,7 +81,11 @@ public sealed class NzbGetDownloadClient(IHttpClientFactory httpClientFactory) :
                 CalculateEta(remaining, status?.DownloadRate), size, downloaded, 0, "NZBGet", QueueError(item.Status), capturedUtc, JobFolder(item.DestDir));
         }).ToArray();
         var history = await GetHistoryCoreAsync(http, client, baseUri, capturedUtc, cancellationToken);
-        return CreateSnapshot(client, queue, capturedUtc, "healthy", $"Connected to NZBGet at {baseUri.Host}:{baseUri.Port}.", history.Count > 0 ? history : null);
+        var (health, message) = DownloadClientHelpers.EvaluateDiskSpaceHealth(
+            $"Connected to NZBGet at {baseUri.Host}:{baseUri.Port}.",
+            status?.FreeDiskSpaceMB is > 0 ? status.FreeDiskSpaceMB.Value * 1_000_000L : null,
+            null);
+        return CreateSnapshot(client, queue, capturedUtc, health, message, history.Count > 0 ? history : null);
     }
 
     public override async Task<IReadOnlyList<DownloadClientHistoryItem>> GetHistoryAsync(DownloadClientItem client, DateTimeOffset capturedUtc, CancellationToken cancellationToken)
@@ -211,6 +226,14 @@ public sealed class NzbGetDownloadClient(IHttpClientFactory httpClientFactory) :
 
     private sealed record NzbGetOption([property: JsonPropertyName("Name")] string? Name, [property: JsonPropertyName("Value")] string? Value);
 
+    /// <summary>
+    /// A post-processing parameter override sent with <c>append</c> (#663) —
+    /// <c>Name</c>/<c>Value</c>, exactly cased, because the outbound JSON body
+    /// is serialized with web (camelCase) defaults everywhere else on this
+    /// call and NZBGet's own field names are not camelCase.
+    /// </summary>
+    private sealed record NzbGetPPParameter([property: JsonPropertyName("Name")] string Name, [property: JsonPropertyName("Value")] string Value);
+
     public override string NormalizeStatus(string? nativeStatus, double? progress, int? errorCode = null, string? errorMessage = null) => DownloadClientHelpers.NormalizeTextStatus(nativeStatus, progress);
 
     private HttpClient CreateHttp(DownloadClientItem client)
@@ -227,7 +250,9 @@ public sealed class NzbGetDownloadClient(IHttpClientFactory httpClientFactory) :
         return (response?.Result ?? []).Select(item =>
         {
             var outcome = NormalizeOutcome(item.Status ?? string.Empty);
-            var errorMessage = outcome == "failed" ? FailureReason(item.Status ?? string.Empty) : QueueError(item.Status);
+            var errorMessage = outcome == "failed" ? FailureReason(item.Status ?? string.Empty)
+                : outcome == DownloadClientHistoryOutcomes.Duplicate ? DuplicateReason(item.Status ?? string.Empty)
+                : QueueError(item.Status);
             return new DownloadClientHistoryItem(item.NzbId.ToString(CultureInfo.InvariantCulture), client.Id, client.Name, client.Protocol,
                 DownloadClientHelpers.InferMediaType(client, item.Category), DownloadClientHelpers.CleanReleaseTitle(item.NzbName ?? item.Name ?? "Unknown NZBGet history item"), item.NzbName ?? item.Name ?? "Unknown NZBGet history item",
                 item.Category ?? string.Empty, outcome, "NZBGet", item.FileSizeHi * 1_000_000L, DownloadClientHelpers.FromUnix(item.HistoryTime), errorMessage, JobFolder(item.DestDir),
@@ -248,13 +273,28 @@ public sealed class NzbGetDownloadClient(IHttpClientFactory httpClientFactory) :
     /// WARNING/SCRIPT, DELETED/MANUAL and so on (#635, #647). Only bare words
     /// were read, so "success/unpack" was never completed and no NZBGet
     /// download was ever handed on. WARNING/SCRIPT is a finished download
-    /// whose script complained; every other WARNING, FAILURE and DELETED is
-    /// not usable — DELETED included, because Deluno's own removal (the
-    /// health-remediation and "delete" paths) already records the dispatch's
-    /// outcome before NZBGet's history catches up, and
+    /// whose script complained; every other WARNING and FAILURE is not usable.
+    ///
+    /// <para><b>DELETED/DUPE, DELETED/COPY and DELETED/GOOD are not failures
+    /// (#663).</b> They mean NZBGet's own duplicate check correctly declined a
+    /// release it — or a better copy of it — already held, which is the system
+    /// working, not a download that went wrong. Reading them as "failed" used
+    /// to blocklist the release and search for it again over something NZBGet
+    /// had already handled ("NZBGet deleted it: it was a duplicate of one
+    /// NZBGet already held" read exactly like a real failure). They come back
+    /// as <see cref="DownloadClientHistoryOutcomes.Duplicate"/> instead, which
+    /// <see cref="DownloadClientTelemetryService.RecordWhatTheClientShowsAsync"/>
+    /// resolves without blocklisting or searching again.</para>
+    ///
+    /// <para>Every other DELETED reason — a failed health check, an unreadable
+    /// NZB, or someone outside Deluno removing it by hand — is still read as a
+    /// failure, because the release really is gone and nothing already holds
+    /// it. Deluno's own removals (the health-remediation and "delete" paths)
+    /// never reach here in the first place: they record the dispatch's outcome
+    /// before NZBGet's history catches up, and
     /// <see cref="DownloadClientTelemetryService.RecordWhatTheClientShowsAsync"/>
     /// only acts on a dispatch that has no outcome recorded yet — so a DELETED
-    /// row Deluno itself produced is not read as a failure twice.
+    /// row Deluno itself produced is not read as a failure twice.</para>
     /// </summary>
     internal static string NormalizeOutcome(string value)
     {
@@ -264,6 +304,7 @@ public sealed class NzbGetDownloadClient(IHttpClientFactory httpClientFactory) :
         {
             "SUCCESS" or "COMPLETED" or "SUCCEEDED" => DownloadQueueStatuses.Completed,
             "WARNING" when detail == "SCRIPT" => DownloadQueueStatuses.Completed,
+            "DELETED" when detail is "DUPE" or "COPY" or "GOOD" => DownloadClientHistoryOutcomes.Duplicate,
             "WARNING" or "FAILURE" or "DELETED" => "failed",
             _ when status.Contains("fail", StringComparison.OrdinalIgnoreCase) || status.Contains("error", StringComparison.OrdinalIgnoreCase) => "failed",
             _ when status.Contains("import", StringComparison.OrdinalIgnoreCase) => DownloadQueueStatuses.ImportReady,
@@ -286,6 +327,17 @@ public sealed class NzbGetDownloadClient(IHttpClientFactory httpClientFactory) :
             "DELETED" => $"NZBGet deleted it: {DeletedDetail(detail)}.",
             _ => $"NZBGet reported it as \"{value.Trim()}\"."
         };
+    }
+
+    /// <summary>
+    /// The words for a <see cref="DownloadClientHistoryOutcomes.Duplicate"/>
+    /// row (#663) — deliberately not "deleted", which reads as something went
+    /// wrong. Nothing did: NZBGet already has this download.
+    /// </summary>
+    internal static string DuplicateReason(string value)
+    {
+        var (_, detail) = SplitStatus(value.Trim());
+        return $"NZBGet already has this download: {DeletedDetail(detail)}.";
     }
 
     private static string FailureDetail(string detail) => detail switch
@@ -326,5 +378,8 @@ public sealed class NzbGetDownloadClient(IHttpClientFactory httpClientFactory) :
     private sealed record NzbGetError([property: JsonPropertyName("code")] int? Code, [property: JsonPropertyName("message")] string? Message);
     private sealed record NzbGetQueueItem([property: JsonPropertyName("NZBID")] int NzbId, [property: JsonPropertyName("NZBName")] string? NzbName, [property: JsonPropertyName("Category")] string? Category, [property: JsonPropertyName("Status")] string? Status, [property: JsonPropertyName("FileSizeHi")] long FileSizeHi, [property: JsonPropertyName("RemainingSizeHi")] long RemainingSizeHi, [property: JsonPropertyName("DestDir")] string? DestDir);
     private sealed record NzbGetHistoryItem([property: JsonPropertyName("NZBID")] int NzbId, [property: JsonPropertyName("NZBName")] string? NzbName, [property: JsonPropertyName("Name")] string? Name, [property: JsonPropertyName("Category")] string? Category, [property: JsonPropertyName("Status")] string? Status, [property: JsonPropertyName("FileSizeHi")] long FileSizeHi, [property: JsonPropertyName("HistoryTime")] long? HistoryTime, [property: JsonPropertyName("DestDir")] string? DestDir);
-    private sealed record NzbGetStatus([property: JsonPropertyName("DownloadRate")] long? DownloadRate);
+    // FreeDiskSpaceMB (#663): the one field the health check never read, so a
+    // client filling its disk stayed "healthy" right up until every download
+    // in the queue started failing.
+    private sealed record NzbGetStatus([property: JsonPropertyName("DownloadRate")] long? DownloadRate, [property: JsonPropertyName("FreeDiskSpaceMB")] long? FreeDiskSpaceMB);
 }

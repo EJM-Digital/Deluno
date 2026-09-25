@@ -52,6 +52,23 @@ public static class DownloadClientFailureCodes
     public const string ClientReported = "client-reported-failure";
 }
 
+/// <summary>
+/// Values a <see cref="DownloadClientHistoryItem.Outcome"/> can carry beyond
+/// the shared <see cref="DownloadQueueStatuses"/> and the literal
+/// <c>"failed"</c> every adapter already writes (#663).
+/// </summary>
+public static class DownloadClientHistoryOutcomes
+{
+    /// <summary>
+    /// The client's own duplicate check correctly declined this release — it,
+    /// or a better copy of it, is already held. Not a failure: nothing was
+    /// lost and nothing needs blocklisting or searching again. NZBGet's
+    /// history reports this as <c>DELETED/DUPE</c>, <c>DELETED/COPY</c> or
+    /// <c>DELETED/GOOD</c>.
+    /// </summary>
+    public const string Duplicate = "duplicate";
+}
+
 public static class DownloadQueueStatuses
 {
     public const string Downloading = "downloading";
