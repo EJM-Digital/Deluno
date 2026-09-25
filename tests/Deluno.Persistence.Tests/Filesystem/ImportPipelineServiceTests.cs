@@ -2977,6 +2977,387 @@ public sealed class ImportPipelineServiceTests
     }
 
     /// <summary>
+    /// The bug live on the rig (#656): The Wild Robot's scheduled upgrade
+    /// imported "The Wild Robot (2024) [Bluray 1080p].mkv" and pointed the
+    /// catalogue at it, but its "[WEB 720p]" predecessor - a different name,
+    /// because quality is part of the naming scheme - was never touched and
+    /// sat in the folder doubling disk use. An upgrade import must find and
+    /// remove the file it replaces even when the new file's name differs
+    /// from the old one.
+    /// </summary>
+    [Fact]
+    public async Task Movie_upgrade_with_a_different_name_removes_the_file_it_replaced()
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-09-25T06:00:00Z"));
+        await InitializeAllAsync(storage, timeProvider);
+
+        var downloadsPath = Path.Combine(storage.DataRoot, "downloads");
+        var movieRootPath = Path.Combine(storage.DataRoot, "movies");
+        Directory.CreateDirectory(downloadsPath);
+        Directory.CreateDirectory(movieRootPath);
+
+        var platform = CreatePlatformRepository(storage, timeProvider);
+        var libraries = CreateLibrariesRepository(storage, timeProvider);
+        await SaveSettingsAsync(platform, movieRootPath, downloadsPath);
+        await CreateMovieLibraryAsync(libraries, movieRootPath, downloadsPath);
+        var library = Assert.Single(await libraries.ListLibrariesAsync(CancellationToken.None));
+
+        var jobStore = new SqliteJobStore(storage.Factory, timeProvider, new NullRealtimeEventPublisher(), new NullDownloadDispatchesRepository());
+        var movies = new SqliteMovieCatalogRepository(storage.Factory, timeProvider);
+        var service = CreateService(
+            storage, timeProvider, platform, libraries, movies,
+            downloadDispatchesRepository: new SqliteDownloadDispatchesRepository(storage.Factory, timeProvider));
+
+        // Already catalogued, the way a title Deluno is tracking always is
+        // before its first grab.
+        var catalogued = await movies.AddAsync(new CreateMovieRequest("The Wild Robot", 2024, null), CancellationToken.None);
+
+        var firstSource = Path.Combine(downloadsPath, "The.Wild.Robot.2024.WEB.720p.mkv");
+        await File.WriteAllBytesAsync(firstSource, Enumerable.Repeat((byte)0x11, 4096).ToArray());
+        File.SetLastWriteTimeUtc(firstSource, DateTime.UtcNow.AddMinutes(-1));
+
+        var firstDispatchId = await jobStore.RecordDownloadDispatchAsync(
+            libraryId: library.Id, mediaType: "movies", entityType: "movie", entityId: catalogued.Id,
+            releaseName: "The Wild Robot 2024 WEB 720p", indexerName: "TestIndexer",
+            downloadClientId: "client-1", downloadClientName: "TestClient",
+            status: "sent", notesJson: null, cancellationToken: CancellationToken.None);
+        var firstRequest = new ImportPreviewRequest(
+            SourcePath: firstSource, FileName: null, MediaType: "movies",
+            Title: "The Wild Robot", Year: 2024, Genres: [], Tags: [], Studio: null, OriginalLanguage: null);
+        var firstResult = await service.ExecuteAsync(
+            new ImportExecuteRequest(firstRequest, "copy", Overwrite: false, AllowCopyFallback: true, DispatchId: firstDispatchId),
+            CancellationToken.None);
+        Assert.True(firstResult.Succeeded, firstResult.Message);
+
+        var trackedAfterFirst = new List<MovieTrackedFileItem>();
+        await foreach (var item in movies.StreamTrackedFilesAsync(library.Id, CancellationToken.None))
+        {
+            trackedAfterFirst.Add(item);
+        }
+        var afterFirst = Assert.Single(trackedAfterFirst);
+        var originalFilePath = afterFirst.FilePath;
+        Assert.EndsWith("[WEB 720p].mkv", originalFilePath, StringComparison.OrdinalIgnoreCase);
+        Assert.True(File.Exists(originalFilePath));
+
+        // The scheduled cycle grabbed a better release for the same, already
+        // catalogued film - the dispatch carries the film's real id, the way
+        // WorkPlanner's grab does.
+        var dispatchId = await jobStore.RecordDownloadDispatchAsync(
+            libraryId: library.Id, mediaType: "movies", entityType: "movie", entityId: catalogued.Id,
+            releaseName: "The Wild Robot 2024 REPACK 1080p BluRay DD 7 1 x264-playHD", indexerName: "TestIndexer",
+            downloadClientId: "client-1", downloadClientName: "TestClient",
+            status: "sent", notesJson: null, cancellationToken: CancellationToken.None);
+
+        var secondSource = Path.Combine(downloadsPath, "The.Wild.Robot.2024.REPACK.1080p.BluRay.mkv");
+        await File.WriteAllBytesAsync(secondSource, Enumerable.Repeat((byte)0x22, 8192).ToArray());
+        File.SetLastWriteTimeUtc(secondSource, DateTime.UtcNow.AddMinutes(-1));
+
+        var secondRequest = new ImportPreviewRequest(
+            SourcePath: secondSource, FileName: null, MediaType: "movies",
+            Title: "The Wild Robot", Year: 2024, Genres: [], Tags: [], Studio: null, OriginalLanguage: null);
+        var secondResult = await service.ExecuteAsync(
+            new ImportExecuteRequest(
+                secondRequest, "copy", Overwrite: true, AllowCopyFallback: true,
+                ForceReplacement: true, DispatchId: dispatchId),
+            CancellationToken.None);
+
+        Assert.True(secondResult.Succeeded, secondResult.Message);
+        var newFilePath = secondResult.Response!.Preview.DestinationPath;
+        Assert.EndsWith("[Bluray 1080p].mkv", newFilePath, StringComparison.OrdinalIgnoreCase);
+        Assert.NotEqual(originalFilePath, newFilePath, StringComparer.OrdinalIgnoreCase);
+
+        // Both files existed side by side before the fix; now only the new one does.
+        Assert.True(File.Exists(newFilePath));
+        Assert.False(File.Exists(originalFilePath));
+        Assert.Equal(
+            Directory.GetParent(originalFilePath)!.FullName,
+            Directory.GetParent(newFilePath)!.FullName,
+            ignoreCase: true);
+
+        // The activity message says what happened to the old file.
+        Assert.Contains("previous", secondResult.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("[WEB 720p].mkv", secondResult.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("replaced", secondResult.Message, StringComparison.OrdinalIgnoreCase);
+
+        var trackedAfterSecond = new List<MovieTrackedFileItem>();
+        await foreach (var item in movies.StreamTrackedFilesAsync(library.Id, CancellationToken.None))
+        {
+            trackedAfterSecond.Add(item);
+        }
+        var afterSecond = Assert.Single(trackedAfterSecond);
+        Assert.Equal(newFilePath, afterSecond.FilePath);
+    }
+
+    /// <summary>
+    /// The same scenario, but the new release renames to the exact path the
+    /// old file already occupied (#656's guard: never touch a path when old
+    /// and new are the same file). This is the pre-existing backup-then-
+    /// recycle path, and the new replaced-file cleanup must not also try to
+    /// act on a path that is simply the file just written.
+    /// </summary>
+    [Fact]
+    public async Task Movie_upgrade_onto_the_same_path_is_not_treated_as_a_second_replaced_file()
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-09-25T06:00:00Z"));
+        await InitializeAllAsync(storage, timeProvider);
+
+        var downloadsPath = Path.Combine(storage.DataRoot, "downloads");
+        var movieRootPath = Path.Combine(storage.DataRoot, "movies");
+        Directory.CreateDirectory(downloadsPath);
+        Directory.CreateDirectory(movieRootPath);
+
+        var platform = CreatePlatformRepository(storage, timeProvider);
+        var libraries = CreateLibrariesRepository(storage, timeProvider);
+        await SaveSettingsAsync(platform, movieRootPath, downloadsPath);
+        await CreateMovieLibraryAsync(libraries, movieRootPath, downloadsPath);
+        var library = Assert.Single(await libraries.ListLibrariesAsync(CancellationToken.None));
+
+        var jobStore = new SqliteJobStore(storage.Factory, timeProvider, new NullRealtimeEventPublisher(), new NullDownloadDispatchesRepository());
+        var movies = new SqliteMovieCatalogRepository(storage.Factory, timeProvider);
+        var service = CreateService(
+            storage, timeProvider, platform, libraries, movies,
+            downloadDispatchesRepository: new SqliteDownloadDispatchesRepository(storage.Factory, timeProvider));
+        var catalogued = await movies.AddAsync(new CreateMovieRequest("Sintel", 2010, null), CancellationToken.None);
+
+        var firstSource = Path.Combine(downloadsPath, "Sintel.2010.WEB.1080p.mkv");
+        await File.WriteAllBytesAsync(firstSource, Enumerable.Repeat((byte)0x33, 4096).ToArray());
+        File.SetLastWriteTimeUtc(firstSource, DateTime.UtcNow.AddMinutes(-1));
+        var request = new ImportPreviewRequest(
+            SourcePath: firstSource, FileName: null, MediaType: "movies",
+            Title: "Sintel", Year: 2010, Genres: [], Tags: [], Studio: null, OriginalLanguage: null);
+        var firstDispatchId = await jobStore.RecordDownloadDispatchAsync(
+            libraryId: library.Id, mediaType: "movies", entityType: "movie", entityId: catalogued.Id,
+            releaseName: "Sintel 2010 WEB 1080p", indexerName: "TestIndexer",
+            downloadClientId: "client-1", downloadClientName: "TestClient",
+            status: "sent", notesJson: null, cancellationToken: CancellationToken.None);
+        var firstResult = await service.ExecuteAsync(
+            new ImportExecuteRequest(request, "copy", Overwrite: false, AllowCopyFallback: true, DispatchId: firstDispatchId),
+            CancellationToken.None);
+        Assert.True(firstResult.Succeeded, firstResult.Message);
+        var destinationPath = firstResult.Response!.Preview.DestinationPath;
+
+        // A second copy of the very same release quality - the new file
+        // renames onto the exact path the old one already occupies.
+        var secondSource = Path.Combine(downloadsPath, "Sintel.2010.WEB.1080p.repack.mkv");
+        await File.WriteAllBytesAsync(secondSource, Enumerable.Repeat((byte)0x44, 4096).ToArray());
+        File.SetLastWriteTimeUtc(secondSource, DateTime.UtcNow.AddMinutes(-1));
+        var secondDispatchId = await jobStore.RecordDownloadDispatchAsync(
+            libraryId: library.Id, mediaType: "movies", entityType: "movie", entityId: catalogued.Id,
+            releaseName: "Sintel 2010 WEB 1080p REPACK", indexerName: "TestIndexer",
+            downloadClientId: "client-1", downloadClientName: "TestClient",
+            status: "sent", notesJson: null, cancellationToken: CancellationToken.None);
+        var secondRequest = request with { SourcePath = secondSource, FileName = null };
+        var secondResult = await service.ExecuteAsync(
+            new ImportExecuteRequest(
+                secondRequest, "copy", Overwrite: true, AllowCopyFallback: true,
+                ForceReplacement: true, DispatchId: secondDispatchId, ExpectedExistingPath: destinationPath),
+            CancellationToken.None);
+
+        Assert.True(secondResult.Succeeded, secondResult.Message);
+        Assert.Equal(destinationPath, secondResult.Response!.Preview.DestinationPath);
+        Assert.True(File.Exists(destinationPath));
+        // No second "file it replaced" cleanup line - the destination path
+        // and the only tracked prior path are one and the same file.
+        Assert.DoesNotContain("file it replaced", secondResult.Message, StringComparison.OrdinalIgnoreCase);
+
+        var tracked = new List<MovieTrackedFileItem>();
+        await foreach (var item in movies.StreamTrackedFilesAsync(library.Id, CancellationToken.None))
+        {
+            tracked.Add(item);
+        }
+        Assert.Single(tracked);
+        Assert.Single(Directory.GetFiles(Directory.GetParent(destinationPath)!.FullName, "*.mkv"));
+    }
+
+    /// <summary>
+    /// The episode mirror of #656: a single-file episode upgrade (not a
+    /// season pack) that renames to a different quality tag must find and
+    /// remove the episode file it replaces.
+    /// </summary>
+    [Fact]
+    public async Task Episode_upgrade_with_a_different_name_removes_the_file_it_replaced()
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-09-25T06:00:00Z"));
+        await InitializeAllAsync(storage, timeProvider);
+
+        var downloadsPath = Path.Combine(storage.DataRoot, "downloads");
+        var movieRootPath = Path.Combine(storage.DataRoot, "movies");
+        var seriesRootPath = Path.Combine(storage.DataRoot, "series");
+        Directory.CreateDirectory(downloadsPath);
+        Directory.CreateDirectory(movieRootPath);
+        Directory.CreateDirectory(seriesRootPath);
+
+        var platform = CreatePlatformRepository(storage, timeProvider);
+        var libraries = CreateLibrariesRepository(storage, timeProvider);
+        await SaveSettingsAsync(
+            platform,
+            movieRootPath,
+            downloadsPath,
+            seriesRootPath,
+            episodeFileFormat: "{Series Title} - S{season:00}E{episode:00} - {Episode Title} [{Quality}]");
+        await CreateTvLibraryAsync(libraries, seriesRootPath, downloadsPath);
+
+        var seriesRepository = new SqliteSeriesCatalogRepository(storage.Factory, timeProvider);
+        var series = await seriesRepository.AddAsync(
+            new CreateSeriesRequest("Test Show", 2024, null),
+            CancellationToken.None);
+        await seriesRepository.SyncEpisodeCatalogueAsync(
+            series.Id,
+            [new CatalogueEpisodeItem(1, 1, "Pilot", null, timeProvider.GetUtcNow().AddYears(-1))],
+            "provider",
+            CancellationToken.None);
+
+        var movies = new SqliteMovieCatalogRepository(storage.Factory, timeProvider);
+        var service = CreateService(storage, timeProvider, platform, libraries, movies, seriesCatalogRepository: seriesRepository);
+
+        var firstSource = Path.Combine(downloadsPath, "Test.Show.S01E01.WEB.720p.mkv");
+        await File.WriteAllBytesAsync(firstSource, Enumerable.Repeat((byte)0x55, 4096).ToArray());
+        File.SetLastWriteTimeUtc(firstSource, DateTime.UtcNow.AddMinutes(-1));
+        var firstRequest = new ImportPreviewRequest(
+            SourcePath: firstSource, FileName: null, MediaType: "tv",
+            Title: "Test Show", Year: 2024, Genres: [], Tags: [], Studio: null, OriginalLanguage: null,
+            SeriesId: series.Id);
+        var firstResult = await service.ExecuteAsync(
+            new ImportExecuteRequest(firstRequest, "copy", Overwrite: false, AllowCopyFallback: true),
+            CancellationToken.None);
+        Assert.True(firstResult.Succeeded, firstResult.Message);
+
+        var detailAfterFirst = await seriesRepository.GetInventoryDetailAsync(series.Id, CancellationToken.None);
+        var episodeAfterFirst = Assert.Single(detailAfterFirst!.Episodes, item => item.HasFile);
+        var originalFilePath = await seriesRepository.GetEpisodeFilePathAsync(episodeAfterFirst.EpisodeId, CancellationToken.None);
+        Assert.NotNull(originalFilePath);
+        Assert.EndsWith("[WEB 720p].mkv", originalFilePath, StringComparison.OrdinalIgnoreCase);
+        Assert.True(File.Exists(originalFilePath));
+
+        var secondSource = Path.Combine(downloadsPath, "Test.Show.S01E01.BluRay.1080p.mkv");
+        await File.WriteAllBytesAsync(secondSource, Enumerable.Repeat((byte)0x66, 8192).ToArray());
+        File.SetLastWriteTimeUtc(secondSource, DateTime.UtcNow.AddMinutes(-1));
+        var secondRequest = new ImportPreviewRequest(
+            SourcePath: secondSource, FileName: null, MediaType: "tv",
+            Title: "Test Show", Year: 2024, Genres: [], Tags: [], Studio: null, OriginalLanguage: null,
+            SeriesId: series.Id);
+        var secondResult = await service.ExecuteAsync(
+            new ImportExecuteRequest(
+                secondRequest, "copy", Overwrite: true, AllowCopyFallback: true, ForceReplacement: true),
+            CancellationToken.None);
+
+        Assert.True(secondResult.Succeeded, secondResult.Message);
+        var newFilePath = secondResult.Response!.Preview.DestinationPath;
+        Assert.EndsWith("[Bluray 1080p].mkv", newFilePath, StringComparison.OrdinalIgnoreCase);
+        Assert.NotEqual(originalFilePath, newFilePath, StringComparer.OrdinalIgnoreCase);
+
+        Assert.True(File.Exists(newFilePath));
+        Assert.False(File.Exists(originalFilePath!));
+        Assert.Contains("previous", secondResult.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("replaced", secondResult.Message, StringComparison.OrdinalIgnoreCase);
+
+        var detailAfterSecond = await seriesRepository.GetInventoryDetailAsync(series.Id, CancellationToken.None);
+        var episodeAfterSecond = Assert.Single(detailAfterSecond!.Episodes, item => item.HasFile);
+        Assert.Equal(newFilePath, await seriesRepository.GetEpisodeFilePathAsync(episodeAfterSecond.EpisodeId, CancellationToken.None));
+    }
+
+    /// <summary>
+    /// The processor hand-back path (#656): a refine-before-import upgrade
+    /// builds its ImportExecuteRequest the same way ProcessorOutputImportQueue
+    /// does - ProcessedFromPath set to the original download - and must
+    /// remove the differently-named file it replaces exactly like a direct
+    /// download upgrade does.
+    /// </summary>
+    [Fact]
+    public async Task Processor_handback_upgrade_with_a_different_name_removes_the_file_it_replaced()
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-09-25T06:00:00Z"));
+        await InitializeAllAsync(storage, timeProvider);
+
+        var downloadsPath = Path.Combine(storage.DataRoot, "downloads");
+        var movieRootPath = Path.Combine(storage.DataRoot, "movies");
+        var refinedPath = Path.Combine(storage.DataRoot, "refined");
+        Directory.CreateDirectory(downloadsPath);
+        Directory.CreateDirectory(movieRootPath);
+
+        var platform = CreatePlatformRepository(storage, timeProvider);
+        var libraries = CreateLibrariesRepository(storage, timeProvider);
+        await SaveSettingsAsync(platform, movieRootPath, downloadsPath);
+        await CreateMovieLibraryAsync(libraries, movieRootPath, downloadsPath);
+        var library = Assert.Single(await libraries.ListLibrariesAsync(CancellationToken.None));
+
+        var jobStore = new SqliteJobStore(storage.Factory, timeProvider, new NullRealtimeEventPublisher(), new NullDownloadDispatchesRepository());
+        var movies = new SqliteMovieCatalogRepository(storage.Factory, timeProvider);
+        var service = CreateService(
+            storage, timeProvider, platform, libraries, movies,
+            downloadDispatchesRepository: new SqliteDownloadDispatchesRepository(storage.Factory, timeProvider));
+        var catalogued = await movies.AddAsync(new CreateMovieRequest("Interstellar", 2014, null), CancellationToken.None);
+
+        var firstDownload = Directory.CreateDirectory(Path.Combine(downloadsPath, "Interstellar.2014.WEB.720p-DELUNO")).FullName;
+        var firstSource = Path.Combine(firstDownload, "Interstellar.2014.WEB.720p-DELUNO.mkv");
+        await File.WriteAllBytesAsync(firstSource, Enumerable.Repeat((byte)0x77, 4096).ToArray());
+        var firstProcessed = Path.Combine(
+            Directory.CreateDirectory(Path.Combine(refinedPath, "Interstellar.2014.WEB.720p-DELUNO")).FullName,
+            "Interstellar.2014.WEB.720p-DELUNO.mkv");
+        await File.WriteAllBytesAsync(firstProcessed, Enumerable.Repeat((byte)0x77, 4096).ToArray());
+        File.SetLastWriteTimeUtc(firstProcessed, DateTime.UtcNow.AddMinutes(-1));
+
+        var firstDispatchId = await jobStore.RecordDownloadDispatchAsync(
+            libraryId: library.Id, mediaType: "movies", entityType: "movie", entityId: catalogued.Id,
+            releaseName: "Interstellar.2014.WEB.720p-DELUNO", indexerName: "TestIndexer",
+            downloadClientId: "client-1", downloadClientName: "TestClient",
+            status: "sent", notesJson: null, cancellationToken: CancellationToken.None);
+        var firstRequest = new ImportPreviewRequest(
+            SourcePath: firstProcessed, FileName: null, MediaType: "movies",
+            Title: "Interstellar", Year: 2014, Genres: [], Tags: [], Studio: null, OriginalLanguage: null);
+        var firstResult = await service.ExecuteAsync(
+            new ImportExecuteRequest(
+                firstRequest, "copy", Overwrite: false, AllowCopyFallback: true,
+                DispatchId: firstDispatchId, ProcessedFromPath: firstDownload),
+            CancellationToken.None);
+        Assert.True(firstResult.Succeeded, firstResult.Message);
+
+        var trackedAfterFirst = new List<MovieTrackedFileItem>();
+        await foreach (var item in movies.StreamTrackedFilesAsync(library.Id, CancellationToken.None))
+        {
+            trackedAfterFirst.Add(item);
+        }
+        var afterFirst = Assert.Single(trackedAfterFirst);
+        var originalFilePath = afterFirst.FilePath;
+        Assert.EndsWith("[WEB 720p].mkv", originalFilePath, StringComparison.OrdinalIgnoreCase);
+
+        var dispatchId = await jobStore.RecordDownloadDispatchAsync(
+            libraryId: library.Id, mediaType: "movies", entityType: "movie", entityId: catalogued.Id,
+            releaseName: "Interstellar.2014.BluRay.1080p-DELUNO", indexerName: "TestIndexer",
+            downloadClientId: "client-1", downloadClientName: "TestClient",
+            status: "sent", notesJson: null, cancellationToken: CancellationToken.None);
+
+        var secondDownload = Directory.CreateDirectory(Path.Combine(downloadsPath, "Interstellar.2014.BluRay.1080p-DELUNO")).FullName;
+        var secondSource = Path.Combine(secondDownload, "Interstellar.2014.BluRay.1080p-DELUNO.mkv");
+        await File.WriteAllBytesAsync(secondSource, Enumerable.Repeat((byte)0x88, 8192).ToArray());
+        var secondProcessed = Path.Combine(
+            Directory.CreateDirectory(Path.Combine(refinedPath, "Interstellar.2014.BluRay.1080p-DELUNO")).FullName,
+            "Interstellar.2014.BluRay.1080p-DELUNO.mkv");
+        await File.WriteAllBytesAsync(secondProcessed, Enumerable.Repeat((byte)0x88, 8192).ToArray());
+        File.SetLastWriteTimeUtc(secondProcessed, DateTime.UtcNow.AddMinutes(-1));
+
+        var secondRequest = new ImportPreviewRequest(
+            SourcePath: secondProcessed, FileName: null, MediaType: "movies",
+            Title: "Interstellar", Year: 2014, Genres: [], Tags: [], Studio: null, OriginalLanguage: null);
+        var secondResult = await service.ExecuteAsync(
+            new ImportExecuteRequest(
+                secondRequest, "copy", Overwrite: true, AllowCopyFallback: true,
+                ForceReplacement: true, DispatchId: dispatchId, ProcessedFromPath: secondDownload),
+            CancellationToken.None);
+
+        Assert.True(secondResult.Succeeded, secondResult.Message);
+        var newFilePath = secondResult.Response!.Preview.DestinationPath;
+        Assert.EndsWith("[Bluray 1080p].mkv", newFilePath, StringComparison.OrdinalIgnoreCase);
+        Assert.True(File.Exists(newFilePath));
+        Assert.False(File.Exists(originalFilePath));
+        Assert.Contains("replaced", secondResult.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
     /// A processor's failures are relative, and every other check Deluno makes
     /// is absolute (#574).
     ///
