@@ -86,8 +86,12 @@ export function ActivityPage() {
   const [busy, setBusy] = useState(false);
   const { preferences } = useDisplayPreferences();
 
-  // Active work needs a short refresh, but hidden tabs must not contend with it.
-  useVisibleInterval(() => revalidator.revalidate(), 10_000);
+  // Active work needs a short refresh, but hidden tabs must not contend with
+  // it. The app-wide realtime resync (app-layout.tsx) already revalidates this
+  // route on return from hidden, so the catch-up call here is skipped to
+  // avoid firing that same revalidation twice (#641) -- the 10s tick while
+  // visible is unaffected.
+  useVisibleInterval(() => revalidator.revalidate(), 10_000, { skipImmediateCatchup: true });
 
   const scheduleDispatchRefresh = () => {
     const now = Date.now();

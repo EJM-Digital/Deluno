@@ -151,4 +151,54 @@ describe("useVisibleInterval", () => {
     setVisibility("visible");
     expect(callback).toHaveBeenCalledTimes(1);
   });
+
+  /**
+   * #641: a caller whose screen is also covered by the app-wide realtime
+   * resync (app-layout.tsx) passes `skipImmediateCatchup` so this hook's own
+   * on-return call does not fire a second, redundant revalidation alongside
+   * it. `search-cycles-page.tsx` and `activity-page.tsx` both do this.
+   */
+  describe("skipImmediateCatchup", () => {
+    it("does not call back immediately on return, but keeps ticking on the interval while visible", () => {
+      const callback = vi.fn();
+      renderHook(() => useVisibleInterval(callback, 30_000, { skipImmediateCatchup: true }));
+
+      setVisibility("hidden");
+      act(() => {
+        vi.advanceTimersByTime(120_000);
+      });
+      expect(callback).not.toHaveBeenCalled();
+
+      setVisibility("visible");
+      expect(callback).not.toHaveBeenCalled();
+
+      act(() => {
+        vi.advanceTimersByTime(30_000);
+      });
+      expect(callback).toHaveBeenCalledTimes(1);
+    });
+
+    it("together with a separately-firing app-wide resync, produces exactly one call on return, not two", () => {
+      // Stands in for a screen composed the way app-layout.tsx + a route
+      // page actually are: one call site is this hook's own catch-up, a
+      // second, independent call site is the app-wide resync subscriber
+      // (`useSignalRResync` in app-layout.tsx). Both would revalidate the
+      // same screen on the same visibilitychange if left uncoordinated.
+      const revalidate = vi.fn();
+      renderHook(() => useVisibleInterval(revalidate, 10_000, { skipImmediateCatchup: true }));
+
+      setVisibility("hidden");
+      act(() => {
+        vi.advanceTimersByTime(60_000);
+      });
+
+      setVisibility("visible");
+      // This hook's own catch-up is the one skipped...
+      expect(revalidate).not.toHaveBeenCalled();
+
+      // ...leaving the app-wide resync as the only thing that calls it, once.
+      revalidate();
+      expect(revalidate).toHaveBeenCalledTimes(1);
+    });
+  });
 });

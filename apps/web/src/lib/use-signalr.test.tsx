@@ -5,9 +5,10 @@ import type { SignalREventName, SignalREventPayload } from "./use-signalr";
 
 /**
  * Covers #641: while the Deluno tab is hidden, `useSignalREvent` subscribers
- * should not be hammered with every queued update the moment the tab is
- * looked at again. See the "hidden tab" paragraph in use-signalr.tsx's file
- * header for the design this proves.
+ * must not be called at all -- not live, and not on return either. Returning
+ * to the tab gets exactly one `useSignalRResync` call if anything was missed,
+ * never a replay of the missed events themselves. See the "hidden tab"
+ * paragraph in use-signalr.tsx's file header for the design this proves.
  *
  * `@microsoft/signalr` is replaced with a small fake connection so a test can
  * push envelopes directly through the same `"RealtimeEvent"` handler the real
@@ -62,7 +63,7 @@ vi.mock("@microsoft/signalr", () => {
   };
 });
 
-const { SignalRProvider, useSignalREvent, useIsTabVisible } = await import("./use-signalr");
+const { SignalRProvider, useSignalREvent, useSignalRResync, useIsTabVisible } = await import("./use-signalr");
 
 /** A named hook so `renderHook(() => useEventHarness(...))` reads as a normal hook call to eslint's rules-of-hooks, same shape already used by `../hooks/library-view-memory.test.ts`. */
 function useEventHarness<T extends SignalREventName>(
@@ -77,6 +78,17 @@ function useEventHarness<T extends SignalREventName>(
 function useQueueCounterHarness(onAdded: () => void, onRemoved: () => void) {
   useEventHarness("QueueItemAdded", "queue", onAdded);
   useEventHarness("QueueItemRemoved", "queue", onRemoved);
+}
+
+/** Mirrors a screen subscribed to both a live event and the app-wide resync (e.g. app-layout.tsx). */
+function useEventAndResyncHarness<T extends SignalREventName>(
+  event: T,
+  subject: string,
+  onEvent: (payload: SignalREventPayload<T>) => void,
+  onResync: () => void
+) {
+  useEventHarness(event, subject, onEvent);
+  useSignalRResync(onResync);
 }
 
 function wrapper({ children }: { children: ReactNode }) {
@@ -133,7 +145,7 @@ describe("realtime dispatch while the tab is hidden (#641)", () => {
     expect(handler).toHaveBeenLastCalledWith({ id: "a", progress: 40 });
   });
 
-  it("holds a same-entity burst while hidden and delivers only the latest value once, on return", async () => {
+  it("calls no handler at all for a same-entity burst while hidden, and none on return either", async () => {
     const handler = vi.fn();
     await mount(() => useEventHarness("DownloadProgress", "queue", handler));
 
@@ -141,16 +153,16 @@ describe("realtime dispatch while the tab is hidden (#641)", () => {
     send(nextEnvelope("DownloadProgress", "queue", { id: "a", progress: 10 }));
     send(nextEnvelope("DownloadProgress", "queue", { id: "a", progress: 45 }));
     send(nextEnvelope("DownloadProgress", "queue", { id: "a", progress: 91 }));
-    // Nothing painted while hidden, and nothing queued to replay either.
     expect(handler).not.toHaveBeenCalled();
 
     setVisibility("visible");
-    // One clean update with whatever is current, not a replay of all three.
-    expect(handler).toHaveBeenCalledTimes(1);
-    expect(handler).toHaveBeenCalledWith({ id: "a", progress: 91 });
+    // Not "one clean update with the latest value" -- the handler is never
+    // told about missed events at all. A resync subscriber, not this handler,
+    // is what brings the screen current (see the resync describe block below).
+    expect(handler).not.toHaveBeenCalled();
   });
 
-  it("does not drop distinct entities: each gets its own delivery on return, not one for the whole burst", async () => {
+  it("calls no handler for distinct entities missed while hidden either", async () => {
     const handler = vi.fn();
     await mount(() => useEventHarness("QueueItemAdded", "queue", handler));
 
@@ -160,12 +172,10 @@ describe("realtime dispatch while the tab is hidden (#641)", () => {
     expect(handler).not.toHaveBeenCalled();
 
     setVisibility("visible");
-    expect(handler).toHaveBeenCalledTimes(2);
-    const ids = handler.mock.calls.map((call) => (call[0] as { id: string }).id).sort();
-    expect(ids).toEqual(["a", "b"]);
+    expect(handler).not.toHaveBeenCalled();
   });
 
-  it("nets out correctly for a raw increment/decrement counter across an add-then-remove while hidden", async () => {
+  it("leaves a raw increment/decrement counter untouched by a burst missed while hidden", async () => {
     let count = 0;
     await mount(() => useQueueCounterHarness(
       () => { count += 1; },
@@ -178,12 +188,13 @@ describe("realtime dispatch while the tab is hidden (#641)", () => {
     send(nextEnvelope("QueueItemRemoved", "queue", { id: "a" }));
     setVisibility("visible");
 
-    // a: added then removed nets to 0; b: added and still present. Net +1,
-    // not the 0 a burst collapsed by event name alone would have produced.
-    expect(count).toBe(1);
+    // Neither add nor remove ever reached the counter -- it stays at its
+    // pre-hidden value. A resync (fetching the true count from REST) is what
+    // is expected to bring a counter like this back in line, not a replay.
+    expect(count).toBe(0);
   });
 
-  it("collapses a burst of one-shot events for the SAME entity to a single delivery (stands in for toast/animation spam)", async () => {
+  it("shows no toast/animation replay for a burst of one-shot events missed while hidden", async () => {
     const handler = vi.fn();
     await mount(() => useEventHarness("DispatchGrabAttempt", "queue", handler));
 
@@ -200,8 +211,7 @@ describe("realtime dispatch while the tab is hidden (#641)", () => {
     expect(handler).not.toHaveBeenCalled();
 
     setVisibility("visible");
-    expect(handler).toHaveBeenCalledTimes(1);
-    expect((handler.mock.calls[0][0] as { releaseName: string }).releaseName).toBe("Attempt 4");
+    expect(handler).not.toHaveBeenCalled();
   });
 
   it("still ignores a stale replay of an already-applied seq", async () => {
@@ -214,6 +224,62 @@ describe("realtime dispatch while the tab is hidden (#641)", () => {
 
     send(first);
     expect(handler).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("useSignalRResync on return from a hidden tab (#641)", () => {
+  it("fires exactly once when a burst of envelopes was missed while hidden", async () => {
+    const resync = vi.fn();
+    await mount(() => useSignalRResync(resync));
+
+    setVisibility("hidden");
+    send(nextEnvelope("DownloadProgress", "queue", { id: "a", progress: 10 }));
+    send(nextEnvelope("QueueItemAdded", "queue", { id: "b", title: "B", type: "movie", status: "queued" }));
+    send(nextEnvelope("DispatchGrabAttempt", "queue", {
+      dispatchId: "d1", releaseName: "R", clientId: "c1", clientName: "Client", timestamp: new Date().toISOString()
+    }));
+    expect(resync).not.toHaveBeenCalled();
+
+    setVisibility("visible");
+    expect(resync).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not fire when nothing arrived while hidden", async () => {
+    const resync = vi.fn();
+    await mount(() => useSignalRResync(resync));
+
+    setVisibility("hidden");
+    setVisibility("visible");
+    expect(resync).not.toHaveBeenCalled();
+  });
+
+  it("does not fire again on a later hidden/visible cycle with nothing new", async () => {
+    const resync = vi.fn();
+    await mount(() => useSignalRResync(resync));
+
+    setVisibility("hidden");
+    send(nextEnvelope("HealthChanged", "dashboard", { source: "indexer", status: "degraded", message: "slow" }));
+    setVisibility("visible");
+    expect(resync).toHaveBeenCalledTimes(1);
+
+    setVisibility("hidden");
+    setVisibility("visible");
+    expect(resync).toHaveBeenCalledTimes(1);
+  });
+
+  it("calls the resync subscriber, never the missed event's own handler, exactly once on return", async () => {
+    const onEvent = vi.fn();
+    const onResync = vi.fn();
+    await mount(() => useEventAndResyncHarness("DispatchImportCompleted", "queue", onEvent, onResync));
+
+    setVisibility("hidden");
+    send(nextEnvelope("DispatchImportCompleted", "queue", {
+      dispatchId: "d1", releaseName: "Movie", succeeded: true, importedPath: "/x", failureReason: null, timestamp: new Date().toISOString()
+    }));
+    setVisibility("visible");
+
+    expect(onEvent).not.toHaveBeenCalled();
+    expect(onResync).toHaveBeenCalledTimes(1);
   });
 });
 
