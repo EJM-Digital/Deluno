@@ -178,7 +178,7 @@ const FORMAT_GOALS = {
     label: "Anime",
     bundleId: "anime-balanced",
     copy: "Anime-specific release groups, dual-audio preference, uncensored boost, and raw-release blocking.",
-    bestFor: "Anime libraries where normal Sonarr-style scoring is not enough."
+    bestFor: "Anime TV libraries where normal Sonarr-style scoring is not enough. Films in the same setup use Balanced."
   },
 } as const;
 
@@ -1493,13 +1493,16 @@ function getFormatBundle(guide: GuidePackage, goal: SelectedFormatGoal): GuideFo
   return guide.bundles.find((bundle) => bundle.id === FORMAT_GOALS[goal].bundleId);
 }
 
-function getEffectiveFormatGoal(_mediaType: "movies" | "tv", form: GuideForm): SelectedFormatGoal | null {
+export function getEffectiveFormatGoal(mediaType: "movies" | "tv", form: GuideForm): SelectedFormatGoal | null {
   if (!form.formatGoal) return null;
+  // The anime bundle is TV-only; films in an anime setup get Balanced rather
+  // than a profile with no release rules in it.
+  if (form.formatGoal === "anime" && mediaType === "movies") return "balanced";
   return form.formatGoal;
 }
 
-function getEffectiveFormatBundle(guide: GuidePackage, _mediaType: "movies" | "tv", form: GuideForm): GuideFormatBundle | undefined {
-  const goal = getEffectiveFormatGoal(_mediaType, form);
+function getEffectiveFormatBundle(guide: GuidePackage, mediaType: "movies" | "tv", form: GuideForm): GuideFormatBundle | undefined {
+  const goal = getEffectiveFormatGoal(mediaType, form);
   return goal ? getFormatBundle(guide, goal) : undefined;
 }
 
