@@ -23,6 +23,22 @@ internal static class Program
     [STAThread]
     private static int Main(string[] args)
     {
+        // Must run before the first Win32Window (Form) is created anywhere in
+        // the process, not just before TrayApplication's own. On first run,
+        // OnFirstRun below shows ComponentPickerDialog (#640) -- a Form --
+        // before RunAsync ever gets to its own Application setup. These calls
+        // used to live in RunAsync, after that dialog could already exist,
+        // and SetCompatibleTextRenderingDefault throws
+        // InvalidOperationException the moment that happens: "must be called
+        // before the first IWin32Window object is created in the
+        // application." That crashed Deluno.exe on every fresh install that
+        // showed the picker -- which is every fresh install, by design --
+        // right after first run finished, before the app ever served a
+        // request.
+        Application.EnableVisualStyles();
+        Application.SetCompatibleTextRenderingDefault(false);
+        Application.SetHighDpiMode(HighDpiMode.SystemAware);
+
         // Setup.exe and Update.exe run these per user, without administrator
         // rights, and kill them after 30 seconds (15 on uninstall). So the
         // firewall rule (#623) is only added here when the rights are already
@@ -87,9 +103,9 @@ internal static class Program
                 return;
             }
 
-            Application.EnableVisualStyles();
-            Application.SetCompatibleTextRenderingDefault(false);
-            Application.SetHighDpiMode(HighDpiMode.SystemAware);
+            // EnableVisualStyles/SetCompatibleTextRenderingDefault/SetHighDpiMode
+            // already ran at the top of Main, before VelopackApp could show
+            // the first-run component picker.
             Application.Run(new TrayApplication());
         }
     }
