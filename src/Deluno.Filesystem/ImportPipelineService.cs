@@ -2562,6 +2562,56 @@ public sealed partial class ImportPipelineService(
             };
         }
 
+        if (mediaType == "tv"
+            && string.IsNullOrWhiteSpace(request.SeriesId)
+            && request.TvDbId is null
+            && string.IsNullOrWhiteSpace(request.ImdbId)
+            && await seriesCatalogRepository.FindExistingIdAsync(title, request.Year, request.ImdbId, null, null, cancellationToken) is null)
+        {
+            // #643, live on the rig: two separate "Say Yes to the Dress" shows
+            // existed in one library. Text-matching (CatalogueImportNaming or
+            // similar) had found the TEXT "Say Yes to the Dress" -- plausibly
+            // from a release filename -- so Title was non-empty and the guard
+            // above did not fire, but nothing had confirmed that text against
+            // TMDB: no SeriesId, no TvDbId, no ImdbId. ImportExistingAsync
+            // below does its own title+year lookup and, on a miss, creates a
+            // new show from whatever Title it was given -- and a guessed
+            // title is a word, a punctuation mark, or a year away from the
+            // real, already-catalogued show's own title, so that lookup is a
+            // coincidence away from missing. It missed here: the real show
+            // (tmdbId "31306") stayed untouched while a phantom with the same
+            // guessed name grew 97 episodes across 8 seasons, every episode
+            // title null, because there was no real metadata behind any of
+            // it.
+            //
+            // FindExistingIdAsync just above runs the same match ImportExisting
+            // would, ahead of time: if it finds nothing, this Title does not
+            // yet name anything Deluno has, and inventing a show from the
+            // guess is exactly how the phantom happened. Route it to recovery
+            // instead. A Title that DOES land on an existing show by name is
+            // unaffected -- FindExistingIdAsync finds it, this guard does not
+            // fire, and ImportExistingAsync matches onto it exactly as today.
+            await seriesCatalogRepository.AddImportRecoveryCaseAsync(
+                new CreateSeriesImportRecoveryCaseRequest(
+                    title,
+                    "unmatched",
+                    $"Deluno matched the file to \"{title}\" but could not confirm that against a metadata provider, and no show already in the library has that name, so it has not been added. Adding it now would risk a second, unconfirmed entry for a show Deluno cannot tell apart from a real one.",
+                    "Open this case and choose the show, or add the show first and import again.",
+                    null),
+                cancellationToken);
+
+            return new CatalogImportResult
+            {
+                CatalogUpdated = false,
+                CatalogId = null,
+                Dispatch = dispatch,
+                EntityId = dispatch?.EntityId,
+                ReleaseNameEvidence = dispatchReleaseName ?? preview.SourcePath,
+                PreferenceEvaluations = preferenceEvaluations,
+                MatchedRuleNames = ResolveMatchedRuleNames(preferenceEvaluations, customFormats, preferencePlan)
+            };
+        }
+
         if (mediaType == "tv")
         {
             // Parse the source name, not the renamed destination. A Daily or
@@ -2640,6 +2690,43 @@ public sealed partial class ImportPipelineService(
                     title,
                     "unmatched",
                     $"Deluno imported the file but could not tell which film it is, so it has not been added to the library. The only name available was the file's own: {title}",
+                    "Open this case and choose the film, or add the film first and import again.",
+                    null),
+                cancellationToken);
+
+            return new CatalogImportResult
+            {
+                CatalogUpdated = false,
+                CatalogId = null,
+                Dispatch = dispatch,
+                EntityId = dispatch?.EntityId ?? request.SeriesId,
+                ReleaseNameEvidence = dispatchReleaseName ?? preview.SourcePath,
+                PreferenceEvaluations = preferenceEvaluations,
+                MatchedRuleNames = ResolveMatchedRuleNames(preferenceEvaluations, customFormats, preferencePlan)
+            };
+        }
+
+        // #643's movie mirror: the guard above only catches a Title that is
+        // completely empty. A present-but-unconfirmed Title -- text-matched
+        // from a release filename, never checked against a metadata provider
+        // -- sailed through it, and ImportExistingAsync below would do its
+        // own title+year lookup and, on a miss, insert a brand-new film from
+        // whatever Title it was given: the exact shape that gave "Say Yes to
+        // the Dress" a phantom duplicate on the TV side. FindExistingIdAsync
+        // runs that same lookup ahead of time; if it finds nothing, this
+        // Title does not yet name a film Deluno has and is not confirmed
+        // against a provider either, so it is not safe to invent one. A
+        // Title that lands on an existing film by name is unaffected --
+        // FindExistingIdAsync finds it, this guard does not fire, and
+        // ImportExistingAsync matches onto it exactly as before.
+        if (string.IsNullOrWhiteSpace(request.ImdbId)
+            && await movieCatalogRepository.FindExistingIdAsync(title, request.Year, request.ImdbId, null, null, cancellationToken) is null)
+        {
+            await movieCatalogRepository.AddImportRecoveryCaseAsync(
+                new CreateMovieImportRecoveryCaseRequest(
+                    title,
+                    "unmatched",
+                    $"Deluno matched the file to \"{title}\" but could not confirm that against a metadata provider, and no film already in the library has that name, so it has not been added. Adding it now would risk a second, unconfirmed entry for a film Deluno cannot tell apart from a real one.",
                     "Open this case and choose the film, or add the film first and import again.",
                     null),
                 cancellationToken);

@@ -81,7 +81,12 @@ public sealed class ImportPipelineServiceTests
                     Genres: ["Drama", "Science Fiction"],
                     Tags: [],
                     Studio: "Paramount",
-                    OriginalLanguage: "en"),
+                    OriginalLanguage: "en",
+                    // This is the baseline happy-path test, not a test of
+                    // identity resolution: a confirmed id clears the "no
+                    // confirmed metadata match" guard (#643) so the import
+                    // reaches the catalogue-update logic under test.
+                    ImdbId: "tt2543164"),
                 TransferMode: "copy",
                 Overwrite: false,
                 AllowCopyFallback: true),
@@ -191,6 +196,279 @@ public sealed class ImportPipelineServiceTests
         Assert.Equal("unmatched", recovery.FailureKind);
         Assert.Equal(1, summary.UnmatchedCount);
         Assert.Contains("could not tell which film it is", recovery.Summary);
+    }
+
+    /// <summary>
+    /// #643, live on the rig: two separate "Say Yes to the Dress" shows
+    /// existed in one library. Text-matching (release-filename inference)
+    /// found the TEXT "Say Yes to the Dress" and passed it through as
+    /// <c>Title</c> — non-empty, so the #417 guard above did not fire — but
+    /// nothing had confirmed that text against TMDB: no SeriesId, no TvDbId,
+    /// no ImdbId, and no show by that name was catalogued yet either. The
+    /// old code let that sail into <c>ImportExistingAsync</c>, which did its
+    /// own title+year lookup, missed, and invented a new show from bare
+    /// text. It then imported 97 episodes onto that invented show, every
+    /// episode title null, because there was no real metadata behind any of
+    /// it.
+    /// </summary>
+    [Fact]
+    public async Task ExecuteAsync_sends_an_unconfirmed_text_matched_film_to_recovery_rather_than_inventing_one()
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-04-29T08:00:00Z"));
+        await InitializeAllAsync(storage, timeProvider);
+
+        var downloadsPath = Path.Combine(storage.DataRoot, "downloads");
+        var movieRootPath = Path.Combine(storage.DataRoot, "movies");
+        Directory.CreateDirectory(downloadsPath);
+        Directory.CreateDirectory(movieRootPath);
+
+        var sourcePath = Path.Combine(downloadsPath, "Silver.Static.2019.1080p.WEB-DL.x264-DELUNO.mkv");
+        await File.WriteAllBytesAsync(sourcePath, Enumerable.Range(0, 4096).Select(value => (byte)(value % 251)).ToArray());
+        File.SetLastWriteTimeUtc(sourcePath, DateTime.UtcNow.AddMinutes(-1));
+
+        var platform = CreatePlatformRepository(storage, timeProvider);
+        var libraries = CreateLibrariesRepository(storage, timeProvider);
+        await SaveSettingsAsync(platform, movieRootPath, downloadsPath);
+        await CreateMovieLibraryAsync(libraries, movieRootPath, downloadsPath);
+
+        var movies = new SqliteMovieCatalogRepository(storage.Factory, timeProvider);
+        var service = CreateService(storage, timeProvider, platform, libraries, movies);
+
+        // Text-matching found a plausible title, but nothing confirmed it: no
+        // ImdbId, and no film called "Silver Static" is catalogued yet.
+        var result = await service.ExecuteAsync(
+            new ImportExecuteRequest(
+                Preview: new ImportPreviewRequest(
+                    SourcePath: sourcePath,
+                    FileName: null,
+                    MediaType: "movies",
+                    Title: "Silver Static",
+                    Year: 2019,
+                    Genres: [],
+                    Tags: [],
+                    Studio: null,
+                    OriginalLanguage: null),
+                TransferMode: "copy",
+                Overwrite: false,
+                AllowCopyFallback: true),
+            CancellationToken.None);
+
+        Assert.True(result.Succeeded);
+        Assert.NotNull(result.Response);
+
+        // No phantom film, under any name.
+        Assert.Empty(await movies.ListAsync(CancellationToken.None));
+        Assert.False(result.Response.CatalogUpdated);
+
+        var summary = await movies.GetImportRecoverySummaryAsync(CancellationToken.None);
+        Assert.Equal(1, summary.OpenCount);
+        var recovery = Assert.Single(summary.RecentCases);
+        Assert.Equal("unmatched", recovery.FailureKind);
+        Assert.Equal(1, summary.UnmatchedCount);
+        Assert.Contains("Silver Static", recovery.Summary);
+        Assert.Contains("could not confirm", recovery.Summary, StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// The TV mirror of #643. Same shape as the film case above: a Title
+    /// text-matched from a release filename, never confirmed against TMDB,
+    /// and not the name of anything already catalogued either.
+    /// </summary>
+    [Fact]
+    public async Task ExecuteAsync_sends_an_unconfirmed_text_matched_show_to_recovery_rather_than_inventing_one()
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-04-29T08:00:00Z"));
+        await InitializeAllAsync(storage, timeProvider);
+
+        var downloadsPath = Path.Combine(storage.DataRoot, "downloads");
+        var movieRootPath = Path.Combine(storage.DataRoot, "movies");
+        var seriesRootPath = Path.Combine(storage.DataRoot, "series");
+        Directory.CreateDirectory(downloadsPath);
+        Directory.CreateDirectory(movieRootPath);
+        Directory.CreateDirectory(seriesRootPath);
+
+        var sourcePath = Path.Combine(downloadsPath, "Say.Yes.to.the.Dress.S08E12.1080p.WEB-DL.x264-DELUNO.mkv");
+        await File.WriteAllBytesAsync(sourcePath, Enumerable.Range(0, 4096).Select(value => (byte)(value % 251)).ToArray());
+        File.SetLastWriteTimeUtc(sourcePath, DateTime.UtcNow.AddMinutes(-1));
+
+        var platform = CreatePlatformRepository(storage, timeProvider);
+        var libraries = CreateLibrariesRepository(storage, timeProvider);
+        await SaveSettingsAsync(platform, movieRootPath, downloadsPath, seriesRootPath);
+        await CreateTvLibraryAsync(libraries, seriesRootPath, downloadsPath);
+
+        var movies = new SqliteMovieCatalogRepository(storage.Factory, timeProvider);
+        var seriesRepository = new SqliteSeriesCatalogRepository(storage.Factory, timeProvider);
+        var service = CreateService(storage, timeProvider, platform, libraries, movies);
+
+        // Text-matching found a plausible show title, but nothing confirmed
+        // it: no SeriesId, no TvDbId, no ImdbId, and no show called "Say Yes
+        // to the Dress" is catalogued yet.
+        var result = await service.ExecuteAsync(
+            new ImportExecuteRequest(
+                Preview: new ImportPreviewRequest(
+                    SourcePath: sourcePath,
+                    FileName: null,
+                    MediaType: "tv",
+                    Title: "Say Yes to the Dress",
+                    Year: 2007,
+                    Genres: [],
+                    Tags: [],
+                    Studio: null,
+                    OriginalLanguage: null),
+                TransferMode: "copy",
+                Overwrite: false,
+                AllowCopyFallback: true),
+            CancellationToken.None);
+
+        Assert.True(result.Succeeded);
+        Assert.NotNull(result.Response);
+
+        // No phantom show, under any name — and no episodes filed against one.
+        Assert.Empty(await seriesRepository.ListAsync(CancellationToken.None));
+        Assert.False(result.Response.CatalogUpdated);
+
+        var summary = await seriesRepository.GetImportRecoverySummaryAsync(CancellationToken.None);
+        Assert.Equal(1, summary.OpenCount);
+        var recovery = Assert.Single(summary.RecentCases);
+        Assert.Equal("unmatched", recovery.FailureKind);
+        Assert.Equal(1, summary.UnmatchedCount);
+        Assert.Contains("Say Yes to the Dress", recovery.Summary);
+        Assert.Contains("could not confirm", recovery.Summary, StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// The #643 guard is only about inventing a NEW catalogue row. A Title
+    /// that lands on a film Deluno already has — by name and year, exactly
+    /// what <c>ImportExistingAsync</c> already matches on — must keep
+    /// importing onto it, with no confirmed id needed, same as before this
+    /// guard existed.
+    /// </summary>
+    [Fact]
+    public async Task ExecuteAsync_matches_an_unconfirmed_title_onto_an_existing_film_by_name_rather_than_recovery()
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-04-29T08:00:00Z"));
+        await InitializeAllAsync(storage, timeProvider);
+
+        var downloadsPath = Path.Combine(storage.DataRoot, "downloads");
+        var movieRootPath = Path.Combine(storage.DataRoot, "movies");
+        Directory.CreateDirectory(downloadsPath);
+        Directory.CreateDirectory(movieRootPath);
+
+        var sourcePath = Path.Combine(downloadsPath, "Silver.Static.2019.1080p.WEB-DL.x264-DELUNO.mkv");
+        await File.WriteAllBytesAsync(sourcePath, Enumerable.Range(0, 4096).Select(value => (byte)(value % 251)).ToArray());
+        File.SetLastWriteTimeUtc(sourcePath, DateTime.UtcNow.AddMinutes(-1));
+
+        var platform = CreatePlatformRepository(storage, timeProvider);
+        var libraries = CreateLibrariesRepository(storage, timeProvider);
+        await SaveSettingsAsync(platform, movieRootPath, downloadsPath);
+        await CreateMovieLibraryAsync(libraries, movieRootPath, downloadsPath);
+
+        var movies = new SqliteMovieCatalogRepository(storage.Factory, timeProvider);
+        // Already catalogued, by a prior confirmed import, under the very
+        // name text-matching will guess this time.
+        var existing = await movies.AddAsync(new CreateMovieRequest("Silver Static", 2019, null), CancellationToken.None);
+
+        var service = CreateService(storage, timeProvider, platform, libraries, movies);
+
+        var result = await service.ExecuteAsync(
+            new ImportExecuteRequest(
+                Preview: new ImportPreviewRequest(
+                    SourcePath: sourcePath,
+                    FileName: null,
+                    MediaType: "movies",
+                    Title: "Silver Static",
+                    Year: 2019,
+                    Genres: [],
+                    Tags: [],
+                    Studio: null,
+                    OriginalLanguage: null),
+                TransferMode: "copy",
+                Overwrite: false,
+                AllowCopyFallback: true),
+            CancellationToken.None);
+
+        Assert.True(result.Succeeded, result.Message);
+
+        // One film — the existing one — not a second, unconfirmed entry.
+        var only = Assert.Single(await movies.ListAsync(CancellationToken.None));
+        Assert.Equal(existing.Id, only.Id);
+        Assert.True(only.HasFile);
+
+        var summary = await movies.GetImportRecoverySummaryAsync(CancellationToken.None);
+        Assert.Equal(0, summary.OpenCount);
+    }
+
+    /// <summary>
+    /// The TV mirror of the regression check above: a Title that lands on a
+    /// show Deluno already has, by name and year, must keep importing onto
+    /// it — this is the "real" Say Yes to the Dress side of #643, which was
+    /// already working and must not break.
+    /// </summary>
+    [Fact]
+    public async Task ExecuteAsync_matches_an_unconfirmed_title_onto_an_existing_show_by_name_rather_than_recovery()
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-04-29T08:00:00Z"));
+        await InitializeAllAsync(storage, timeProvider);
+
+        var downloadsPath = Path.Combine(storage.DataRoot, "downloads");
+        var movieRootPath = Path.Combine(storage.DataRoot, "movies");
+        var seriesRootPath = Path.Combine(storage.DataRoot, "series");
+        Directory.CreateDirectory(downloadsPath);
+        Directory.CreateDirectory(movieRootPath);
+        Directory.CreateDirectory(seriesRootPath);
+
+        var sourcePath = Path.Combine(downloadsPath, "Say.Yes.to.the.Dress.S08E12.1080p.WEB-DL.x264-DELUNO.mkv");
+        await File.WriteAllBytesAsync(sourcePath, Enumerable.Range(0, 4096).Select(value => (byte)(value % 251)).ToArray());
+        File.SetLastWriteTimeUtc(sourcePath, DateTime.UtcNow.AddMinutes(-1));
+
+        var platform = CreatePlatformRepository(storage, timeProvider);
+        var libraries = CreateLibrariesRepository(storage, timeProvider);
+        await SaveSettingsAsync(platform, movieRootPath, downloadsPath, seriesRootPath);
+        await CreateTvLibraryAsync(libraries, seriesRootPath, downloadsPath);
+
+        var movies = new SqliteMovieCatalogRepository(storage.Factory, timeProvider);
+        var seriesRepository = new SqliteSeriesCatalogRepository(storage.Factory, timeProvider);
+        // Already catalogued and confirmed against TMDB, e.g. tmdbId "31306"
+        // on the rig — the real show.
+        var existing = await seriesRepository.AddAsync(
+            new CreateSeriesRequest("Say Yes to the Dress", 2007, null),
+            CancellationToken.None);
+
+        var service = CreateService(storage, timeProvider, platform, libraries, movies);
+
+        var result = await service.ExecuteAsync(
+            new ImportExecuteRequest(
+                Preview: new ImportPreviewRequest(
+                    SourcePath: sourcePath,
+                    FileName: null,
+                    MediaType: "tv",
+                    Title: "Say Yes to the Dress",
+                    Year: 2007,
+                    Genres: [],
+                    Tags: [],
+                    Studio: null,
+                    OriginalLanguage: null),
+                TransferMode: "copy",
+                Overwrite: false,
+                AllowCopyFallback: true),
+            CancellationToken.None);
+
+        Assert.True(result.Succeeded, result.Message);
+
+        // One show — the existing one — not a second, phantom entry.
+        var only = Assert.Single(await seriesRepository.ListAsync(CancellationToken.None));
+        Assert.Equal(existing.Id, only.Id);
+
+        var detail = await seriesRepository.GetInventoryDetailAsync(existing.Id, CancellationToken.None);
+        var episode = Assert.Single(detail!.Episodes);
+        Assert.True(episode.HasFile);
+
+        var summary = await seriesRepository.GetImportRecoverySummaryAsync(CancellationToken.None);
+        Assert.Equal(0, summary.OpenCount);
     }
 
     [Fact]
@@ -507,7 +785,12 @@ public sealed class ImportPipelineServiceTests
                     Genres: ["Science Fiction"],
                     Tags: [],
                     Studio: "Warner",
-                    OriginalLanguage: "en"),
+                    OriginalLanguage: "en",
+                    // This test is about the settle-window wait, not identity
+                    // resolution (#643): a confirmed id clears the "no
+                    // confirmed metadata match" guard so the import reaches
+                    // the settle-wait logic under test.
+                    ImdbId: "tt0133093"),
                 TransferMode: "copy",
                 Overwrite: false,
                 AllowCopyFallback: true),
@@ -592,7 +875,13 @@ public sealed class ImportPipelineServiceTests
                     Genres: ["Drama"],
                     Tags: [],
                     Studio: "Focus",
-                    OriginalLanguage: "en"),
+                    OriginalLanguage: "en",
+                    // This test is about reconciliation finding a missing
+                    // tracked file, which needs a real catalogue row to track
+                    // in the first place; a confirmed id clears the "no
+                    // confirmed metadata match" guard (#643) so the import
+                    // reaches the catalogue instead of import recovery.
+                    ImdbId: "tt20215234"),
                 TransferMode: "copy",
                 Overwrite: false,
                 AllowCopyFallback: true),
@@ -935,7 +1224,14 @@ public sealed class ImportPipelineServiceTests
                     Genres: ["Science Fiction"],
                     Tags: [],
                     Studio: "Paramount",
-                    OriginalLanguage: "en"),
+                    OriginalLanguage: "en",
+                    // The dispatch's EntityId above ("movie-123") is not a
+                    // real catalogued movie, so nothing anchors this import
+                    // except the Title text. This test is about dispatch
+                    // resolution recording, not identity resolution, so it
+                    // needs a confirmed id to clear the "no confirmed
+                    // metadata match" guard (#643).
+                    ImdbId: "tt0816692"),
                 TransferMode: "copy",
                 Overwrite: false,
                 AllowCopyFallback: true,
@@ -1131,7 +1427,14 @@ public sealed class ImportPipelineServiceTests
                     [],
                     [],
                     null,
-                    "en"),
+                    "en",
+                    // The dispatch's EntityId above ("movie-big-buck-bunny")
+                    // is not a real catalogued movie, so nothing anchors this
+                    // import except the Title text. This test is about
+                    // preference-evaluation and provenance recording, not
+                    // identity resolution, so it needs a confirmed id to
+                    // clear the "no confirmed metadata match" guard (#643).
+                    ImdbId: "tt1254207"),
                 "copy",
                 Overwrite: false,
                 AllowCopyFallback: true,
@@ -1244,7 +1547,13 @@ public sealed class ImportPipelineServiceTests
 
         var result = await service.ExecuteAsync(
             new ImportExecuteRequest(
-                new ImportPreviewRequest(sourcePath, null, "movies", "Sintel", 2010, [], [], null, "en"),
+                // The dispatch's EntityId above ("movie-sintel") is not a
+                // real catalogued movie, so nothing anchors this import
+                // except the Title text. This test is about naming/
+                // preference-evaluation, not identity resolution, so it
+                // needs a confirmed id to clear the "no confirmed metadata
+                // match" guard (#643).
+                new ImportPreviewRequest(sourcePath, null, "movies", "Sintel", 2010, [], [], null, "en", ImdbId: "tt1727587"),
                 "copy",
                 Overwrite: false,
                 AllowCopyFallback: true,
