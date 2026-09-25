@@ -9,6 +9,7 @@
  * Contracts: PATCH /api/settings.
  */
 import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { useTheme } from "next-themes";
 import { useLoaderData } from "react-router-dom";
 import { Field, FieldRow } from "../components/ui/field";
 import { ListCard } from "../components/ui/list-card";
@@ -64,6 +65,7 @@ export function SettingsUiPage() {
   const settingsMutation = useApiMutation<PlatformSettingsPatch, PlatformSettingsSnapshot>("/api/settings", "PATCH");
   const { density, setDensity } = useDensity();
   const { setColorMode } = useColorMode();
+  const { setTheme } = useTheme();
   const { replaceFromSettings } = useDisplayPreferences();
   const initialColorMode: ColorMode = isColorMode(settings.uiColorMode) ? settings.uiColorMode : "standard";
 
@@ -121,6 +123,11 @@ export function SettingsUiPage() {
       setSavedForm(form);
       setSavedColorMode(colorModeDraft);
       setColorMode(colorModeDraft);
+      // The saved theme used to go nowhere but the settings table: next-themes'
+      // own localStorage was the only thing actually driving light/dark/system
+      // (#736). Apply it here too, the same way density applies as you pick it
+      // and colour mode applies above.
+      setTheme(form.theme);
       replaceFromSettings(updated);
       setSaveState("saved");
       setMessage("Saved just now");

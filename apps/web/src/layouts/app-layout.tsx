@@ -11,7 +11,7 @@ import {
   SunMedium,
 } from "lucide-react";
 import { useTheme } from "next-themes";
-import { useEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { useHotkeys } from "react-hotkeys-hook";
 import { NavLink, useLocation, useNavigate, useRevalidator } from "react-router-dom";
@@ -26,7 +26,7 @@ import { Input } from "../components/ui/input";
 import { MenuSelect } from "../components/ui/menu-select";
 import { getGlobalShortcuts } from "../lib/command-registry";
 import { attentionTotal, type AttentionSnapshot, useAttention } from "../lib/use-attention";
-import { useAuth, type UserProfile } from "../lib/use-auth";
+import { authedFetch, useAuth, type UserProfile } from "../lib/use-auth";
 import { DENSITY_LABELS, DensityProvider, useDensity, type Density } from "../lib/use-density";
 import { RealtimeGroups, SignalRProvider, useSignalREvent, useSignalRResync } from "../lib/use-signalr";
 import { cn } from "../lib/utils";
@@ -179,6 +179,23 @@ function AppLayoutContent() {
   const attention = useAttention();
   const revalidator = useRevalidator();
 
+  /**
+   * The topbar toggle and the command palette's toggle both changed the theme
+   * without saving it, so the choice never survived a settings reload and
+   * could disagree with whatever Settings -> Interface still had saved
+   * (#736). Persisting from the one place both toggles call keeps the saved
+   * theme and the visible one from drifting apart; a failed save still
+   * leaves the theme applied for this session.
+   */
+  const setThemeAndSave = useCallback((theme: string) => {
+    setTheme(theme);
+    void authedFetch("/api/settings", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ uiTheme: theme })
+    }).catch(() => undefined);
+  }, [setTheme]);
+
   /*
     A reconnect whose gap is too large to replay means events were lost, so
     every screen has to fetch current state again. One route revalidation,
@@ -263,7 +280,7 @@ function AppLayoutContent() {
           Skip to content
         </a>
 
-        <CommandPalette open={commandOpen} onOpenChange={setCommandOpen} theme={resolvedTheme} onToggleTheme={() => setTheme(resolvedTheme === "dark" ? "light" : "dark")} />
+        <CommandPalette open={commandOpen} onOpenChange={setCommandOpen} theme={resolvedTheme} onToggleTheme={() => setThemeAndSave(resolvedTheme === "dark" ? "light" : "dark")} />
         <KeyboardHintOverlay open={helpOpen} onOpenChange={setHelpOpen} shortcuts={globalShortcuts.map((s) => ({ keys: s.keys, label: s.label, group: s.group }))} />
 
         <div className="min-h-dvh">
@@ -276,7 +293,7 @@ function AppLayoutContent() {
               ownsHeading={!isDetailRoute(location.pathname)}
               attention={attention}
               resolvedTheme={resolvedTheme}
-              setTheme={setTheme}
+              setTheme={setThemeAndSave}
               onOpenCommand={() => setCommandOpen(true)}
               onOpenHelp={() => setHelpOpen(true)}
               searchOpen={searchOpen}
