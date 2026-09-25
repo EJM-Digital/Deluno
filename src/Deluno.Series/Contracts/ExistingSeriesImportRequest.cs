@@ -26,4 +26,6 @@ public sealed record ExistingSeriesImportRequest(
     PreferenceEvaluationSnapshot? PreferenceEvaluation = null,
     IReadOnlyList<ImportedEpisodeNumberingItem>? AlternateEpisodes = null,
     IReadOnlyList<ImportedSeasonPackItem>? SeasonPacks = null,
-    IReadOnlyList<PreferenceEvaluationSnapshot>? PreferenceEvaluations = null);
+    IReadOnlyList<PreferenceEvaluationSnapshot>? PreferenceEvaluations = null,
+    /// <summary>The show this is already known to be, when it is; see <c>MediaExistingImportRequest.MediaId</c>.</summary>
+    string? SeriesId = null);

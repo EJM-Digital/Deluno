@@ -1752,7 +1752,8 @@ public sealed class SqliteMovieCatalogRepository(
         string? filePath,
         long? fileSizeBytes,
         CancellationToken cancellationToken,
-        PreferenceEvaluationSnapshot? preferenceEvaluation = null)
+        PreferenceEvaluationSnapshot? preferenceEvaluation = null,
+        string? movieId = null)
     {
         var created = await ImportExistingBatchAsync(
             libraryId,
@@ -1768,7 +1769,8 @@ public sealed class SqliteMovieCatalogRepository(
                     UnmonitorWhenCutoffMet: unmonitorWhenCutoffMet,
                     FilePath: filePath,
                     FileSizeBytes: fileSizeBytes,
-                    PreferenceEvaluation: preferenceEvaluation)
+                    PreferenceEvaluation: preferenceEvaluation,
+                    MovieId: movieId)
             ],
             cancellationToken);
 
@@ -1840,7 +1842,8 @@ public sealed class SqliteMovieCatalogRepository(
                     request.UnmonitorWhenCutoffMet,
                     request.FilePath,
                     request.FileSizeBytes,
-                    request.PreferenceEvaluation),
+                    request.PreferenceEvaluation,
+                    MediaId: request.MovieId),
                 connection,
                 transaction,
                 cancellationToken);
@@ -1853,10 +1856,20 @@ public sealed class SqliteMovieCatalogRepository(
         // call site so every path that records a file — an existing-library
         // import, a completed download — gets it, and gets it the same way.
         var fileFacts = MediaFileNameFacts.Parse(request.FilePath);
-        string? movieId;
+        string? movieId = null;
 
-        using (var lookup = connection.CreateCommand())
+        if (!string.IsNullOrWhiteSpace(request.MovieId))
         {
+            using var known = connection.CreateCommand();
+            known.Transaction = transaction;
+            known.CommandText = "SELECT id FROM movie_entries WHERE id = @id LIMIT 1;";
+            AddParameter(known, "@id", request.MovieId.Trim());
+            movieId = await known.ExecuteScalarAsync(cancellationToken) as string;
+        }
+
+        if (string.IsNullOrWhiteSpace(movieId))
+        {
+            using var lookup = connection.CreateCommand();
             lookup.Transaction = transaction;
             lookup.CommandText =
                 """

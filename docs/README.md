@@ -34,6 +34,7 @@ Deluno keeps product, architecture, and repo-state context in the repository so 
 ## Execution Plans
 
 - `exec-plans/active/`: checked-in plans for larger in-flight work.
+- `exec-plans/active/HANDOVER-CLAUDE-2026-09-25.md`: current handoff for live verification and the duplicate-series data repair.
 - `exec-plans/completed/`: completed plan history.
 - `exec-plans/templates/`: starting points for large feature work and post-merge cleanup.
 - `exec-plans/tech-debt-tracker.md`: recurring cleanup queue.

@@ -295,7 +295,15 @@ public sealed record MediaExistingImportRequest(
     /// season packs place more than one physical file while still updating one
     /// series record, so each file needs its own durable plan evidence.
     /// </summary>
-    IReadOnlyList<PreferenceEvaluationSnapshot>? PreferenceEvaluations = null);
+    IReadOnlyList<PreferenceEvaluationSnapshot>? PreferenceEvaluations = null,
+    /// <summary>
+    /// The title this file is already known to belong to — the show or film a
+    /// grab was made for. When it names an entry that exists, the file goes
+    /// there and the title and year are not consulted (#643): matched by name
+    /// instead, a grab for a show catalogued without a start year, arriving
+    /// as "Say Yes to the Dress 2007", missed it and created a second show.
+    /// </summary>
+    string? MediaId = null);
 
 public sealed record MediaImportResult(string Id, bool Created);
 

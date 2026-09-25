@@ -20,4 +20,6 @@ public sealed record ExistingMovieImportRequest(
     bool UnmonitorWhenCutoffMet,
     string? FilePath,
     long? FileSizeBytes,
-    PreferenceEvaluationSnapshot? PreferenceEvaluation = null);
+    PreferenceEvaluationSnapshot? PreferenceEvaluation = null,
+    /// <summary>The film this is already known to be, when it is; see <c>MediaExistingImportRequest.MediaId</c>.</summary>
+    string? MovieId = null);
