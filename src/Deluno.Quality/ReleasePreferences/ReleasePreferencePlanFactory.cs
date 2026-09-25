@@ -346,8 +346,22 @@ public static class ReleasePreferencePlanFactory
             .Concat(customFormatFamilies)
             .Concat(mappedFamilies)
             .ToArray();
+        // #646: a season search has no persistent family for "this is a whole
+        // season in one file", so a pack and a same-quality single episode
+        // scored identically on everything but size. Season-pack-ness is a
+        // fact about the release name, not a quality signal, so it belongs
+        // beside seeders as a transient tie-break - it decides between
+        // otherwise-comparable candidates and never outranks quality or a
+        // custom format. TV-only: a movie has no season to pack.
+        var transientFamilies = normalizedMediaType == "tv"
+            ? new[]
+              {
+                  CreateSeasonPackAvailabilityFamily(persistentFamilies.Length + 1),
+                  CreateSeederAvailabilityFamily(persistentFamilies.Length + 2)
+              }
+            : [CreateSeederAvailabilityFamily(persistentFamilies.Length + 1)];
         var allFamilies = persistentFamilies
-            .Concat([CreateSeederAvailabilityFamily(persistentFamilies.Length + 1)])
+            .Concat(transientFamilies)
             .ToArray();
         var effectiveVersion = version
             ?? (sources.Count > 0
@@ -384,6 +398,29 @@ public static class ReleasePreferencePlanFactory
             [
                 new PreferenceFamilyLevel("available", 0, ["transient.seeders.available"]),
                 new PreferenceFamilyLevel("none", 1, ["transient.seeders.none"])
+            ],
+            TargetLevelId: null,
+            UpgradeDriving: false,
+            Transient: true);
+
+    /// <summary>
+    /// #646: prefers a whole-season pack over a same-or-comparable-quality
+    /// single episode when both are offered by the same search. Placed ahead
+    /// of <see cref="CreateSeederAvailabilityFamily"/> so a search that could
+    /// hand one release to a download client instead of several does not lose
+    /// that choice to a coin-flip on seed count; a candidate with no seeders
+    /// is refused earlier regardless (ReleaseDecisionEngine.ScoreSeeders).
+    /// </summary>
+    public static PreferenceFamily CreateSeasonPackAvailabilityFamily(int order)
+        => new(
+            Id: "transient.season-pack",
+            Dimension: "Release scope · whole-season pack",
+            Order: order,
+            Intent: PreferenceIntent.TieBreak,
+            Levels:
+            [
+                new PreferenceFamilyLevel("whole", 0, ["transient.season-pack.whole"]),
+                new PreferenceFamilyLevel("episode", 1, ["transient.season-pack.episode"])
             ],
             TargetLevelId: null,
             UpgradeDriving: false,

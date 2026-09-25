@@ -14,52 +14,91 @@ public static class ReleasePreferenceFactFactory
     /// closed-world buckets; the raw count never becomes a public score or a
     /// weighted decision value.
     /// </summary>
+    /// <param name="isSeasonPack">
+    /// Whether the release name is a whole-season pack, when the search is
+    /// for TV (#646). Null when the signal was not computed, such as for a
+    /// movie search or a plan with no <c>transient.season-pack</c> family.
+    /// </param>
     public static IReadOnlyList<PreferenceFact> WithTransientSignals(
         ReleasePreferencePlan plan,
         IEnumerable<PreferenceFact>? facts,
-        int? seeders = null)
+        int? seeders = null,
+        bool? isSeasonPack = null)
     {
         ArgumentNullException.ThrowIfNull(plan);
         var result = (facts ?? []).ToList();
-        var family = plan.Families?.FirstOrDefault(item =>
-            string.Equals(item.Id, "transient.seeders", StringComparison.OrdinalIgnoreCase));
-        if (family is null || seeders is null)
+        ApplyClosedWorldBucket(
+            plan,
+            result,
+            "transient.seeders",
+            seeders is null ? null : seeders.Value > 0 ? "transient.seeders.available" : "transient.seeders.none",
+            "transient-seeder-bucket",
+            present => present
+                ? "The indexer reported the release as having seeder availability."
+                : "The closed-world seeder bucket did not match the reported value.");
+        ApplyClosedWorldBucket(
+            plan,
+            result,
+            "transient.season-pack",
+            isSeasonPack is null ? null : isSeasonPack.Value ? "transient.season-pack.whole" : "transient.season-pack.episode",
+            "transient-season-pack-bucket",
+            present => present
+                ? "The release name matches a whole-season pack."
+                : "The release name does not match a whole-season pack.");
+        return result;
+    }
+
+    /// <summary>
+    /// One closed-world transient family: present when <paramref name="selectedTraitId"/>
+    /// names one of the family's own trait ids, absent for the family's other
+    /// levels. A no-op when the plan has no family with this id (a media type
+    /// the signal does not apply to) or the signal was not computed.
+    /// </summary>
+    private static void ApplyClosedWorldBucket(
+        ReleasePreferencePlan plan,
+        List<PreferenceFact> facts,
+        string familyId,
+        string? selectedTraitId,
+        string detectionRule,
+        Func<bool, string> detail)
+    {
+        if (selectedTraitId is null)
         {
-            return result;
+            return;
+        }
+
+        var family = plan.Families?.FirstOrDefault(item =>
+            string.Equals(item.Id, familyId, StringComparison.OrdinalIgnoreCase));
+        if (family is null)
+        {
+            return;
         }
 
         var familyTraits = family.Levels
             .SelectMany(level => level.NormalizedTraitIds)
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
-        if (result.Any(fact => familyTraits.Contains(fact.NormalizedTraitId)))
+        if (facts.Any(fact => familyTraits.Contains(fact.NormalizedTraitId)))
         {
             // An owner/probe assertion wins over a derived indexer signal;
             // never introduce a second state that would manufacture a
             // conflict merely because a caller supplied richer evidence.
-            return result;
+            return;
         }
 
-        var selected = seeders.Value > 0
-            ? "transient.seeders.available"
-            : "transient.seeders.none";
         foreach (var traitId in familyTraits.OrderBy(id => id, StringComparer.OrdinalIgnoreCase))
         {
-            var present = string.Equals(traitId, selected, StringComparison.OrdinalIgnoreCase);
-            result.Add(new PreferenceFact(
+            var present = string.Equals(traitId, selectedTraitId, StringComparison.OrdinalIgnoreCase);
+            facts.Add(new PreferenceFact(
                 traitId,
                 present ? PreferenceFactState.Present : PreferenceFactState.Absent,
                 new PreferenceEvidence(
                     Source: "indexer-metadata",
                     Confidence: 1,
-                    Detail: present
-                        ? "The indexer reported the release as having seeder availability."
-                        : "The closed-world seeder bucket did not match the reported value.",
-                    DetectionRule: "transient-seeder-bucket",
+                    Detail: detail(present),
+                    DetectionRule: detectionRule,
                     DetectionVersion: "v1",
                     Model: PreferenceEvidenceModel.ClosedWorld)));
         }
-
-        return result;
     }
 
     public static IReadOnlyList<PreferenceFact> FromReleaseName(

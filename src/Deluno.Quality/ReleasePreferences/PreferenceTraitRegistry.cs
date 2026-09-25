@@ -482,6 +482,15 @@ public sealed class PreferenceTraitRegistry
         Add("transient.seeders.available", "acquisition-confidence", "Seeders available", transient: true, guideSource: null, guideVersion: null);
         Add("transient.seeders.none", "acquisition-confidence", "No seeders reported", transient: true, guideSource: null, guideVersion: null);
 
+        // #646: whether a release is a whole-season pack is a fact about the
+        // release, not a numeric score, and it is deliberately a tie-break
+        // rather than upgrade-driving: it never outranks a better quality or
+        // custom-format family, it only chooses between otherwise-comparable
+        // candidates in the same search.
+        Add("transient.season-pack", "release-scope", "Season pack", ["Season pack"], mediaTypes: ["tv"], transient: true, guideSource: null, guideVersion: null);
+        Add("transient.season-pack.whole", "release-scope", "Whole-season pack", mediaTypes: ["tv"], transient: true, guideSource: null, guideVersion: null);
+        Add("transient.season-pack.episode", "release-scope", "Single-episode release", mediaTypes: ["tv"], transient: true, guideSource: null, guideVersion: null);
+
         var relationships = new[]
         {
             new PreferenceRelationship("audio.format.truehd-atmos", "audio.format.truehd", PreferenceRelationshipKind.Implies),

@@ -355,13 +355,22 @@ public static partial class ReleaseDecisionEngine
         var effectiveCustomFormatScore = input.PreferencePlan is null ? input.CustomFormatScore : 0;
         if (input.PreferencePlan is { } preferencePlan)
         {
+            // #646: a fresh season search has no installed episode for
+            // SeasonPackReplacementDecision to compare against, so this is
+            // the only place season-pack-ness reaches typed selection - a
+            // transient tie-break, never upgrade-driving, so it cannot outrank
+            // a better quality or custom-format family.
+            var isSeasonPack = string.Equals(input.MediaType, "tv", StringComparison.OrdinalIgnoreCase)
+                ? SeasonPackDetector.Classify(input.ReleaseName).IsSeason
+                : (bool?)null;
             var candidateFacts = ReleasePreferenceFactFactory.WithTransientSignals(
                 preferencePlan,
                 ReleasePreferenceFactFactory.FromReleaseName(
                     preferencePlan,
                     input.ReleaseName,
                     normalizedCandidate),
-                input.Seeders);
+                input.Seeders,
+                isSeasonPack);
             preferenceEvaluation = ReleasePreferenceEvaluator.Evaluate(
                 preferencePlan,
                 candidateFacts);
