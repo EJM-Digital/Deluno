@@ -6,7 +6,10 @@
  *   PageFooter (pinned: status · Save)
  *
  * Global metadata checks and refresh jobs live under System. This page only
- * stores the metadata files and regional preferences used by the library.
+ * stores the language and ratings region used for title details. Both reach
+ * TMDb on the direct path only; Deluno's managed metadata service takes
+ * neither (docs/metadata-broker-contract.md), so the page says so when that
+ * service is in use rather than implying they apply (#736).
  */
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { useLoaderData, useRevalidator } from "react-router-dom";
@@ -22,6 +25,7 @@ import {
   fetchJson,
   type PlatformSettingsSnapshot
 } from "../lib/api";
+import type { MetadataProviderStatus } from "../lib/api/types/metadata";
 import type { PlatformSettingsPatch } from "../lib/api/settings";
 import { useApiMutation } from "../lib/use-api-mutation";
 import { resolveDrawerSaveState, shouldClearSaveState } from "../lib/drawer-save-state";
@@ -49,10 +53,23 @@ const LANGUAGE_OPTIONS = [
 
 interface LoaderData {
   settings: PlatformSettingsSnapshot;
+  metadataStatus: MetadataProviderStatus | null;
 }
 
 export async function settingsMetadataLoader(): Promise<LoaderData> {
-  return { settings: await fetchJson<PlatformSettingsSnapshot>("/api/settings") };
+  const [settings, metadataStatus] = await Promise.all([
+    fetchJson<PlatformSettingsSnapshot>("/api/settings"),
+    fetchJson<MetadataProviderStatus>("/api/metadata/status").catch(() => null)
+  ]);
+  return { settings, metadataStatus };
+}
+
+/** Status modes in which lookups go through Deluno's managed service, which takes no language or region. */
+const MANAGED_METADATA_MODES = new Set(["broker", "hybrid"]);
+
+/** True only when the status positively says the managed service answers lookups; an unknown status claims nothing. */
+export function metadataPreferencesIgnored(status: MetadataProviderStatus | null): boolean {
+  return status !== null && MANAGED_METADATA_MODES.has(status.mode);
 }
 
 interface MetadataForm {
@@ -61,7 +78,7 @@ interface MetadataForm {
 }
 
 export function SettingsMetadataPage() {
-  const { settings } = useLoaderData() as LoaderData;
+  const { settings, metadataStatus } = useLoaderData() as LoaderData;
   const revalidator = useRevalidator();
   const settingsMutation = useApiMutation<PlatformSettingsPatch, PlatformSettingsSnapshot>("/api/settings", "PATCH");
 
@@ -130,6 +147,12 @@ export function SettingsMetadataPage() {
               />
             </Field>
           </FieldRow>
+          {metadataPreferencesIgnored(metadataStatus) && (
+            <p className="text-[length:var(--type-body-sm)] text-muted-foreground">
+              These apply when Deluno looks titles up on TMDb directly. This install uses Deluno's managed metadata
+              service, which does not take a language or region, so changing them has no effect here.
+            </p>
+          )}
         </div>
       </ListCard>
 
