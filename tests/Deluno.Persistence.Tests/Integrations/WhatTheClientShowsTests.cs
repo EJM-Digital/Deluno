@@ -50,6 +50,39 @@ public sealed class WhatTheClientShowsTests
     }
 
     /// <summary>
+    /// #647: a failure in the client's own history is not only "finished" — it
+    /// is a failure the caller has to act on, carrying the client's own reason
+    /// so the caller does not have to go back to the history item for it. A
+    /// torrent with an error derived from the queue is neither: it may still
+    /// recover, so <c>ShownByClient</c> leaves it for the strike-based health
+    /// path rather than failing it outright.
+    /// </summary>
+    [Fact]
+    public void A_native_history_failure_is_reported_as_failed_with_its_reason()
+    {
+        var snapshot = Snapshot(history: [History("nzo-1", "failed", "native", errorMessage: "Unpacking failed, write error or disk is full?")]);
+
+        var sighting = Assert.Single(DownloadClientTelemetryService.ShownByClient(snapshot, [Dispatch("d1", "nzo-1")]));
+
+        Assert.True(sighting.Finished);
+        Assert.True(sighting.Failed);
+        Assert.Equal("Unpacking failed, write error or disk is full?", sighting.FailureReason);
+    }
+
+    [Fact]
+    public void A_queue_derived_failure_is_not_reported_as_a_failure_to_act_on()
+    {
+        var snapshot = Snapshot(
+            queue: [Queued("hash-1", DownloadQueueStatuses.Stalled)],
+            history: [History("hash-1", "failed", "queue-derived")]);
+
+        var sighting = Assert.Single(DownloadClientTelemetryService.ShownByClient(snapshot, [Dispatch("d1", "hash-1")]));
+
+        Assert.False(sighting.Failed);
+        Assert.Null(sighting.FailureReason);
+    }
+
+    /// <summary>
     /// An earlier attempt at the same release leaves an item with the same name
     /// in the client. Only the id the client gave this grab proves it arrived.
     /// </summary>
@@ -90,9 +123,9 @@ public sealed class WhatTheClientShowsTests
         => new(id, "client-1", "SABnzbd", "usenet", "movies", "Tears of Steel", "Tears.of.Steel.2012.1080p.WEB-DL-DELUNO",
             "movies", status, 50, 0, 0, 1024, downloadedBytes, 0, "Fixture", null, Now);
 
-    private static DownloadClientHistoryItem History(string id, string outcome, string source)
+    private static DownloadClientHistoryItem History(string id, string outcome, string source, string? errorMessage = null)
         => new(id, "client-1", "SABnzbd", "usenet", "movies", "Tears of Steel", "Tears.of.Steel.2012.1080p.WEB-DL-DELUNO",
-            "movies", outcome, "SABnzbd", 2048, Now, null, HistorySource: source, ExternalId: id);
+            "movies", outcome, "SABnzbd", 2048, Now, errorMessage, HistorySource: source, ExternalId: id);
 
     private static DownloadDispatchItem Dispatch(
         string id,

@@ -26,6 +26,7 @@ public sealed class TheImportFailureTableTests
     [InlineData(ImportFailurePolicy.UnsupportedFile)]
     [InlineData(ImportFailurePolicy.MediaProbeRejected)]
     [InlineData(ImportFailurePolicy.ReplacementRejected)]
+    [InlineData(ImportFailurePolicy.ClientReportedFailure)]
     public void A_release_Deluno_has_judged_is_refused_at_once(string reason)
     {
         Assert.Equal(BlockDecision.Immediately, ImportFailurePolicy.BlockFor(reason));
