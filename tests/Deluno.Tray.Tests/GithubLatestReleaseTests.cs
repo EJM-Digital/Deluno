@@ -24,4 +24,27 @@ public sealed class GithubLatestReleaseTests
 
         Assert.Null(hash);
     }
+
+    [Fact]
+    public void Does_not_match_a_line_whose_name_merely_ends_with_the_target_file_name()
+    {
+        // "OldWeir-win-Setup.exe" ends with "Weir-win-Setup.exe" but is not it.
+        // A pure EndsWith match would wrongly hand back this line's hash for a
+        // lookup of the real asset.
+        var sums = "deadbeef  OldWeir-win-Setup.exe\n";
+
+        var hash = GithubLatestRelease.ParseChecksum(sums, "Weir-win-Setup.exe");
+
+        Assert.Null(hash);
+    }
+
+    [Fact]
+    public void Matches_a_path_prefixed_entry_by_its_base_name()
+    {
+        var sums = "d34db33f  dist/Weir-win-Setup.exe\n";
+
+        var hash = GithubLatestRelease.ParseChecksum(sums, "Weir-win-Setup.exe");
+
+        Assert.Equal("d34db33f", hash);
+    }
 }

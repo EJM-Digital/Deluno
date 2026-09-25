@@ -75,8 +75,16 @@ public static class GithubLatestRelease
             if (trimmed.Length == 0) continue;
             var parts = trimmed.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries);
             if (parts.Length < 2) continue;
+            // Strip the optional leading "*" (binary-mode marker in a standard
+            // SHA256SUMS file) and any path prefix, then match the file name
+            // exactly. EndsWith alone would let "OldWeir-win-Setup.exe" satisfy
+            // a lookup for "Weir-win-Setup.exe" -- a real risk here, since Weir
+            // resolves and verifies whatever its latest GitHub release names,
+            // not a name pinned in this repo.
             var name = parts[^1].TrimStart('*');
-            if (name.EndsWith(fileName, StringComparison.OrdinalIgnoreCase))
+            var slash = name.LastIndexOfAny(['/', '\\']);
+            var baseName = slash >= 0 ? name[(slash + 1)..] : name;
+            if (string.Equals(baseName, fileName, StringComparison.OrdinalIgnoreCase))
             {
                 return parts[0];
             }

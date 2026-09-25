@@ -100,6 +100,26 @@ try {
     # Never reuse a previous payload. Packaging must not pick up a component the
     # build no longer produces - a removed DLL left behind here ships.
     Remove-Item -LiteralPath $payload -Recurse -Force -ErrorAction SilentlyContinue
+    # -p:Version is a global MSBuild property: it does not stop at
+    # Deluno.Tray.csproj, it applies to every project this publish builds,
+    # including its ProjectReferences (Deluno.Worker and the rest of src\*).
+    # Those projects' normal bin\ and obj\ are the SAME folders `dotnet build`,
+    # publish-windows.ps1 and the IDE use for every other workflow. Publishing
+    # this test/rc version into them once put a 0.0.1.0-stamped
+    # Deluno.Worker.dll in the shared output, a later `publish-windows.ps1
+    # -Fast` reused it unchanged (MSBuild saw its inputs as up to date), and
+    # the rig deployed a Deluno.Worker that would not start.
+    #
+    # -p:BaseOutputPath / -p:BaseIntermediateOutputPath are global properties
+    # too, so every project in the graph picks them up -- but given as
+    # RELATIVE paths (no drive, no leading slash) they resolve against each
+    # project's own directory the same way the SDK default "bin\"/"obj\" does,
+    # so Deluno.Worker still gets its own isolated folder, not one shared with
+    # Deluno.Tray or any other project. An absolute path here would instead
+    # point every project at the identical folder and mix their outputs
+    # together, which is the one thing this fix cannot do. Nesting them under
+    # "bin\" and "obj\" (rather than beside them) also means the repo's
+    # existing bin/ and obj/ .gitignore entries already cover them.
     Invoke-Native {
         dotnet publish (Join-Path $root "apps\windows-tray\Deluno.Tray.csproj") `
             -c Release `
@@ -108,6 +128,8 @@ try {
             -p:PublishSingleFile=false `
             -p:Version=$Version `
             -p:DelunoUpdateChannel=$Channel `
+            -p:BaseOutputPath=bin\installer-pack\ `
+            -p:BaseIntermediateOutputPath=obj\installer-pack\ `
             -o $payload
     } "publishing the tray payload"
 
