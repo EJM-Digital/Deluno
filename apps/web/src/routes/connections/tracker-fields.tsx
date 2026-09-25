@@ -117,7 +117,7 @@ function TrackerPicker({ trackers, error, onPick }: { trackers: TrackerDefinitio
   const runnable = trackers.filter((tracker) => !tracker.unsupported).length;
 
   return (
-    <Field label="Tracker" error={error} help={`${runnable} trackers Deluno searches itself, from the same definitions Prowlarr uses.`}>
+    <Field label="Tracker" error={error} help={`${runnable} trackers Deluno searches itself, from Deluno's own definitions.`}>
       <div className="flex flex-col gap-2">
         <div className="flex gap-2">
           <Input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search by name, e.g. YTS or TorrentLeech" aria-label="Search trackers" autoComplete="off" />

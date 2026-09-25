@@ -28,12 +28,14 @@ public sealed class TrackerDefinitionCatalogTests(ITestOutputHelper output)
             }
         }
 
-        Assert.True(count > 500, $"Only {count} definitions are built in.");
+        // The starter set (#606): a film, a TV and general trackers, each
+        // written from scratch from the site's own API or pages.
+        Assert.Equal(6, count);
         Assert.Empty(failures);
     }
 
     [Fact]
-    public void The_engine_can_run_nearly_every_definition()
+    public void The_engine_can_run_every_built_in_definition()
     {
         var catalog = new TrackerDefinitionCatalog(overrideDirectory: null, NullLogger<TrackerDefinitionCatalog>.Instance);
         var all = catalog.List();
@@ -43,11 +45,39 @@ public sealed class TrackerDefinitionCatalogTests(ITestOutputHelper output)
             output.WriteLine($"{summary.Id}: {summary.Unsupported}");
         }
 
-        // The captcha sign-ins need a person at the keyboard; nothing else may fail.
-        Assert.All(unsupported, summary => Assert.Contains("captcha", summary.Unsupported!, StringComparison.OrdinalIgnoreCase));
-        Assert.True(unsupported.Length <= all.Count / 10, $"{unsupported.Length} of {all.Count} definitions cannot run.");
+        // None of the starter set needs a captcha or anything else the engine lacks.
+        Assert.Empty(unsupported);
         Assert.NotNull(catalog.Find("yts"));
+        Assert.NotNull(catalog.Find("eztv"));
+        Assert.NotNull(catalog.Find("thepiratebay"));
+        Assert.NotNull(catalog.Find("limetorrents"));
         Assert.NotNull(catalog.Find("1337x"));
+        Assert.NotNull(catalog.Find("nyaasi"));
+    }
+
+    /// <summary>
+    /// #606: the starter set is written from scratch, not copied from an
+    /// indexer manager's Cardigann definitions — Deluno carries no licence
+    /// file that would allow bundling GPL content. A definition that still
+    /// carried a Jackett issue-number comment, or named Prowlarr or Jackett
+    /// as its source, would be exactly that mistake happening again.
+    /// </summary>
+    [Fact]
+    public void No_built_in_definition_carries_Jackett_or_Prowlarr_provenance()
+    {
+        var offenders = new List<string>();
+        foreach (var (id, yaml) in TrackerDefinitionCatalog.BuiltIn())
+        {
+            if (System.Text.RegularExpressions.Regex.IsMatch(yaml, @"#\s*#\d{3,6}", System.Text.RegularExpressions.RegexOptions.None)
+                || yaml.Contains("Jackett", StringComparison.OrdinalIgnoreCase)
+                || yaml.Contains("Prowlarr", StringComparison.OrdinalIgnoreCase)
+                || yaml.Contains("Cardigann", StringComparison.OrdinalIgnoreCase))
+            {
+                offenders.Add(id);
+            }
+        }
+
+        Assert.Empty(offenders);
     }
 
     [Fact]
