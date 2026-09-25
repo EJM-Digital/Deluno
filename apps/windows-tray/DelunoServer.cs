@@ -61,6 +61,15 @@ public sealed class DelunoServer : IDisposable
         builder.Services.AddSingleton<IUpdateOrchestrator, VelopackUpdateOrchestrator>();
         Firewall = new WindowsFirewallLanAccess(port);
         builder.Services.AddSingleton<ILanAccess>(Firewall);
+        // Without this, DelunoApiExtensions' TryAddSingleton default
+        // (UncheckedBundledComponentDetection) wins, and GET
+        // /api/system/bundled-components reports every component as neither
+        // installed nor reachable on every real Windows install -- the
+        // installer's whole "detected on this machine" pre-fill (#640) goes
+        // dark even when qBittorrent or Weir is sitting right there. Only
+        // Deluno.Host's separate entry point registered the Windows
+        // implementation; the tray's own server never did.
+        builder.Services.AddSingleton<IBundledComponentDetection, WindowsBundledComponentDetection>();
         builder.Services.AddHostedService<TrayUpdateBackgroundService>();
         builder.Services.AddDelunoInfrastructure(builder.Configuration);
         builder.Services.AddDelunoApplicationModules();
