@@ -166,11 +166,32 @@ public static class FirewallRules
             CoversPort(rule.LocalPorts, port) &&
             CoversProgram(rule.Program, programPath) &&
             CoversService(rule.Service) &&
-            !IsPackageScoped(rule.LocalAppPackageId))?.Name;
+            !IsPackageScoped(rule))?.Name;
     }
 
-    private static bool IsPackageScoped(string? localAppPackageId)
-        => !string.IsNullOrWhiteSpace(localAppPackageId);
+    /// <summary>
+    /// <see cref="FirewallRule.LocalAppPackageId"/> is the documented signal
+    /// for a package-scoped rule (INetFwRule3), but it reads empty on the
+    /// exact rules this exists to exclude -- confirmed by querying
+    /// HNetCfg.FwPolicy2 directly for "Desktop App Web Viewer" and the OOBE
+    /// package's rules on a real machine. Those are Windows' older,
+    /// auto-generated AppX capability rules: their restriction to that
+    /// package is enforced by Windows Filtering Platform against the calling
+    /// process's AppContainer token, a check with no property on the plain
+    /// rule object at all. What every one of them does carry is a <see
+    /// cref="FirewallRule.Name"/> in Windows' indirect resource-string
+    /// format -- <c>@{PackageFamilyName?ms-resource://...}</c> -- which a
+    /// hand-created rule (netsh, PowerShell, an installer, Deluno's own)
+    /// never produces. That format is the reliable signal here; a populated
+    /// LocalAppPackageId is kept as a second, belt-and-braces check for
+    /// whatever rule shape does carry it.
+    /// </summary>
+    private static bool IsPackageScoped(FirewallRule rule)
+        => !string.IsNullOrWhiteSpace(rule.LocalAppPackageId)
+           || LooksLikePackageResourceName(rule.Name);
+
+    private static bool LooksLikePackageResourceName(string name)
+        => name.StartsWith("@{", StringComparison.Ordinal) && name.Contains("ms-resource:", StringComparison.OrdinalIgnoreCase);
 
     /// <summary>
     /// Deluno never runs as a named Windows service for the purposes of this
