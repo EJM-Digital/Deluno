@@ -56,14 +56,18 @@ function initialListColumnOrder(variant: MediaVariant): LibraryListColumnKey[] {
  * and one of them is the default.
  *
  * An unrecognised stored value falls back rather than being trusted: this reads
- * a string a browser has been holding since some earlier version.
+ * a string a browser has been holding since some earlier version. Nothing
+ * stored at all is different from that — it means this browser has never
+ * remembered a view for this library, so it opens in Settings -> Interface's
+ * saved default movie/show view instead of a hardcoded grid (#736).
  */
-function initialView(variant: MediaVariant): ViewMode {
+function initialView(variant: MediaVariant, defaultView: ViewMode): ViewMode {
   try {
     const stored = localStorage.getItem(viewStorageKey(variant));
+    if (stored === null) return defaultView;
     return stored === "list" || stored === "overview" ? stored : "grid";
   } catch {
-    return "grid";
+    return defaultView;
   }
 }
 
@@ -82,14 +86,14 @@ const emptyControlSet = (variant: MediaVariant): LibraryControlSet => ({
   posterOptions: []
 });
 
-export function useLibraryFilters(variant: MediaVariant, urlFilter: string | null) {
+export function useLibraryFilters(variant: MediaVariant, urlFilter: string | null, defaultView: ViewMode = "grid") {
   const [query, setQuery] = useState("");
   const [libraryId, setLibraryId] = useState<string | null>(null);
   const [quickFilter, setQuickFilter] = useState<QuickFilter>("all");
   // The other axis. See `MonitoringFilter` — a state and an intent multiply,
   // so neither can be expressed as a value of the other.
   const [monitoring, setMonitoring] = useState<MonitoringFilter>("any");
-  const [view, setViewState] = useState<ViewMode>(() => initialView(variant));
+  const [view, setViewState] = useState<ViewMode>(() => initialView(variant, defaultView));
   const [sortField, setSortField] = useState<SortField>("title");
   const [sortDirection, setSortDirection] = useState<SortDirection>("asc");
   const [cardSize, setCardSize] = useState<CardSize>(() => initialCardSize(variant));
@@ -110,7 +114,7 @@ export function useLibraryFilters(variant: MediaVariant, urlFilter: string | nul
     setSortDirection("asc");
     setCardSize(initialCardSize(variant));
     setListColumnOrderState(initialListColumnOrder(variant));
-    setViewState(initialView(variant));
+    setViewState(initialView(variant, defaultView));
     // Movies and TV do not share a quality tier list or a genre list, and a
     // 4K-Remux filter carried across to the TV shelf would silently empty it.
     // They do not share a *field* list either now, so a movie-only condition
@@ -134,6 +138,11 @@ export function useLibraryFilters(variant: MediaVariant, urlFilter: string | nul
     });
 
     return () => { cancelled = true; };
+    // defaultView deliberately excluded: it only matters for the very first
+    // read of an unset localStorage key, done above in useState's initializer,
+    // and a settings reload should not silently discard a view someone has
+    // switched to for this session.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [variant]);
 
   useEffect(() => {
