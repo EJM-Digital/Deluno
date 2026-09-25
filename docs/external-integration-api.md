@@ -381,6 +381,34 @@ Pass its `id` back as `handoffId` in every processor event. `sourcePath` remains
 
 Supported statuses are `accepted`, `started`, `completed`, and `failed`. Completed events must include `outputPath`; failed events should include a user-readable `message`.
 
+#### Reporting every output file
+
+A hand-off gets one completion report, sent once every file in it is finished — not one report per file. `outputFiles` lists every file the processor produced for the hand-off, alongside `outputPath`:
+
+- For a **folder hand-off**, `outputPath` names the hand-back folder and `outputFiles` lists every file inside it that belongs in the library (samples are never included). Deluno imports the folder as one operation — the same season-pack import path an already-placed download folder uses — instead of treating each file as a completion of its own.
+- A **single-file hand-off** still carries `outputFiles`, with exactly one entry matching `outputPath`.
+- `outputFiles` is optional, for a processor that predates it: Deluno imports whatever `outputPath` names and does not check it against a file list.
+
+```json
+{
+  "libraryId": "library-id",
+  "handoffId": "handoff-id",
+  "status": "completed",
+  "outputPath": "D:\\Deluno\\Refined\\Pioneer.One.Season.1",
+  "outputFiles": [
+    "D:\\Deluno\\Refined\\Pioneer.One.Season.1\\Pioneer.One.S01E01.mkv",
+    "D:\\Deluno\\Refined\\Pioneer.One.Season.1\\Pioneer.One.S01E02.mkv"
+  ],
+  "processorName": "External Processor"
+}
+```
+
+Deluno checks `outputFiles` against what is actually there. A named file it cannot find is not passed over quietly: the hand-off records the problem, and it surfaces on the download in Transfers instead of being reported as a plain success.
+
+**Partial success.** When a processor only finishes some of a hand-off's files, it reports `status: "completed"` for the outputs it made when every file finished, or `status: "failed"` with a `message` giving the counts and `outputFiles` listing only the files that did succeed when some did not. Deluno still imports the files a failed report does name — a partial failure does not throw away the work the processor already did — and keeps the failure message so a person can see how many did not make it.
+
+A second completion for a hand-off Deluno has already completed is refused, not silently accepted: Deluno expects one completion report per hand-off, naming every output up front, not a stream of one-off updates.
+
 #### Failure dispositions
 
 A `failed` event may say what the processor did with the file:
