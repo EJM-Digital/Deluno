@@ -145,8 +145,11 @@ public sealed class QbittorrentDownloadClient(Func<HttpMessageHandler>? handlerF
             DownloadClientHelpers.InferMediaType(client, item.Category), DownloadClientHelpers.CleanReleaseTitle(item.Name ?? "Unknown qBittorrent item"),
             item.Name ?? "Unknown qBittorrent item", item.Category ?? string.Empty, NormalizeStatus(item.State, item.Progress),
             Math.Clamp(Math.Round((item.Progress ?? 0) * 100, 1), 0, 100), Math.Round((item.DownloadSpeed ?? 0) / 1_000_000d, 1),
-            EtaSeconds(item.Eta), item.Size ?? 0, item.Downloaded ?? 0, item.NumSeeds ?? 0,
-            "qBittorrent", item.State?.Contains("error", StringComparison.OrdinalIgnoreCase) == true ? item.State : null,
+            // Seeds alone undercounted a swarm with active leechers and no seeds
+            // yet, which the no-progress stall gate (#659) reads as "no peers at
+            // all" (#660).
+            EtaSeconds(item.Eta), item.Size ?? 0, item.Downloaded ?? 0, (item.NumSeeds ?? 0) + (item.NumLeechs ?? 0),
+            "qBittorrent", ErrorMessage(item.State),
             DownloadClientHelpers.FromUnix(item.AddedOn), DownloadClientHelpers.ChoosePath(item.ContentPath, item.SavePath),
             LibraryId: null,
             HealthFindings: null,
@@ -316,10 +319,36 @@ public sealed class QbittorrentDownloadClient(Func<HttpMessageHandler>? handlerF
     {
         var normalized = nativeStatus?.ToLowerInvariant() ?? string.Empty;
         if ((progress ?? 0) >= 1 || normalized.Contains("upload")) return DownloadQueueStatuses.ImportReady;
+        // The data on disk is gone and this torrent cannot progress on its own
+        // (#660, top priority): it used to match none of the checks below and
+        // fall through to Downloading, an invisible "healthy" transfer that
+        // never arrived.
+        if (normalized == "missingfiles") return DownloadQueueStatuses.Stalled;
+        // Verifying a hash or relocating finished files — no bytes are moving
+        // on the wire either way, so this is its own state rather than
+        // Downloading, which is what let the no-progress/speed rules (#659)
+        // reason about throughput a checking or moving torrent cannot have.
+        if (normalized.Contains("checking") || normalized == "moving") return DownloadQueueStatuses.NotTransferring;
+        // A person stopped this, incomplete, download — distinct from
+        // queuedDL, which is qBittorrent holding it back on its own.
+        if (normalized is "pauseddl" or "stoppeddl") return DownloadQueueStatuses.Paused;
         if (normalized.Contains("pause") || normalized.Contains("queued")) return DownloadQueueStatuses.Queued;
         if (normalized.Contains("error") || normalized.Contains("stalled")) return DownloadQueueStatuses.Stalled;
         return DownloadQueueStatuses.Downloading;
     }
+
+    /// <summary>
+    /// qBittorrent's own word for what is wrong, in the one case it says so in
+    /// the state string itself. <c>missingFiles</c> is the loudest of these —
+    /// the payload is gone from disk — so it gets its own sentence rather than
+    /// the raw state text.
+    /// </summary>
+    private static string? ErrorMessage(string? state)
+        => string.Equals(state, "missingFiles", StringComparison.OrdinalIgnoreCase)
+            ? "qBittorrent reports this torrent's data is missing from disk."
+            : state?.Contains("error", StringComparison.OrdinalIgnoreCase) == true
+                ? state
+                : null;
 
     private static async Task LoginAsync(HttpClient http, DownloadClientItem client, CancellationToken cancellationToken)
     {
@@ -409,6 +438,7 @@ public sealed class QbittorrentDownloadClient(Func<HttpMessageHandler>? handlerF
         [property: JsonPropertyName("size")] long? Size,
         [property: JsonPropertyName("downloaded")] long? Downloaded,
         [property: JsonPropertyName("num_seeds")] int? NumSeeds,
+        [property: JsonPropertyName("num_leechs")] int? NumLeechs,
         [property: JsonPropertyName("added_on")] long? AddedOn,
         [property: JsonPropertyName("save_path")] string? SavePath,
         [property: JsonPropertyName("content_path")] string? ContentPath,

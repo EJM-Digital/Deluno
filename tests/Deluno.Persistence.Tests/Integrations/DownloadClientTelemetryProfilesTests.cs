@@ -298,7 +298,10 @@ public sealed class DownloadClientTelemetryProfilesTests
     [InlineData("deluge", "Seeding", 100.0, null, null, DownloadQueueStatuses.ImportReady)]
     [InlineData("utorrent", "Queued", 12.0, null, null, DownloadQueueStatuses.Queued)]
     [InlineData("transmission", "4", 0.2, null, null, DownloadQueueStatuses.Downloading)]
-    [InlineData("transmission", "0", 0.0, null, null, DownloadQueueStatuses.Queued)]
+    // Status 0 is stopped: a person stopped this, incomplete, download by
+    // hand, distinct from being queued behind others (#661).
+    [InlineData("transmission", "0", 0.0, null, null, DownloadQueueStatuses.Paused)]
+    [InlineData("transmission", "1", 0.0, null, null, DownloadQueueStatuses.Queued)]
     [InlineData("transmission", "4", 1.0, null, null, DownloadQueueStatuses.ImportReady)]
     [InlineData("transmission", "4", 0.5, 3, "tracker error", DownloadQueueStatuses.Stalled)]
     public void NormalizeStatus_MapsClientStatesToCanonicalQueueStatus(
