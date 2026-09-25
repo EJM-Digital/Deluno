@@ -23,22 +23,6 @@ internal static class Program
     [STAThread]
     private static int Main(string[] args)
     {
-        // Must run before the first Win32Window (Form) is created anywhere in
-        // the process, not just before TrayApplication's own. On first run,
-        // OnFirstRun below shows ComponentPickerDialog (#640) -- a Form --
-        // before RunAsync ever gets to its own Application setup. These calls
-        // used to live in RunAsync, after that dialog could already exist,
-        // and SetCompatibleTextRenderingDefault throws
-        // InvalidOperationException the moment that happens: "must be called
-        // before the first IWin32Window object is created in the
-        // application." That crashed Deluno.exe on every fresh install that
-        // showed the picker -- which is every fresh install, by design --
-        // right after first run finished, before the app ever served a
-        // request.
-        Application.EnableVisualStyles();
-        Application.SetCompatibleTextRenderingDefault(false);
-        Application.SetHighDpiMode(HighDpiMode.SystemAware);
-
         // Setup.exe and Update.exe run these per user, without administrator
         // rights, and kill them after 30 seconds (15 on uninstall). So the
         // firewall rule (#623) is only added here when the rights are already
@@ -103,11 +87,46 @@ internal static class Program
                 return;
             }
 
-            // EnableVisualStyles/SetCompatibleTextRenderingDefault/SetHighDpiMode
-            // already ran at the top of Main, before VelopackApp could show
-            // the first-run component picker.
+            EnsureWinFormsBootstrap();
             Application.Run(new TrayApplication());
         }
+    }
+
+    private static bool _winFormsBootstrapped;
+
+    /// <summary>
+    /// EnableVisualStyles/SetCompatibleTextRenderingDefault/SetHighDpiMode
+    /// must run before the first Win32Window (Form) is created anywhere in
+    /// the process -- and must NOT run unconditionally at the top of Main:
+    /// that was tried and reverted. Main also runs for Velopack's other
+    /// lifecycle invocations (OnAfterInstall, OnBeforeUninstall, and an
+    /// internal "--veloapp-install" fast-exit helper process, confirmed live
+    /// via velopack.log: "Found fast exit hook: --veloapp-install" was the
+    /// last line logged, then that process just sat there, never installing
+    /// anything, for minutes past Velopack's own 30-second budget for this
+    /// callback). None of those paths show a Form or need WinForms
+    /// initialized at all, and initializing it unconditionally broke at
+    /// least one of them.
+    ///
+    /// <para>So this runs lazily, guarded so it only executes once, from the
+    /// two places that actually need it: <see cref="InstallHooks.OnFirstRun"/>,
+    /// right before it can show the component picker (#640) -- a Form -- and
+    /// <see cref="RunAsync"/>, right before showing the tray icon itself.
+    /// Either can run first in a given process (a fresh install's first
+    /// launch hits OnFirstRun first, in the same process, before RunAsync
+    /// gets here); the guard makes calling it from both safe.</para>
+    /// </summary>
+    internal static void EnsureWinFormsBootstrap()
+    {
+        if (_winFormsBootstrapped)
+        {
+            return;
+        }
+
+        Application.EnableVisualStyles();
+        Application.SetCompatibleTextRenderingDefault(false);
+        Application.SetHighDpiMode(HighDpiMode.SystemAware);
+        _winFormsBootstrapped = true;
     }
 
     private static int? TryParsePortOverride(string[] args)

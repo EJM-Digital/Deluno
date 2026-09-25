@@ -46,6 +46,10 @@ internal static class InstallHooks
     /// </summary>
     public static void OnFirstRun()
     {
+        // Before ComponentPickerDialog (#640) -- a Form -- can be created.
+        // See Program.EnsureWinFormsBootstrap for why this cannot just run
+        // unconditionally at the top of Main instead.
+        Program.EnsureWinFormsBootstrap();
         Run(() => Firewall().AllowAsync(CancellationToken.None), "first run");
         RunComponentPicker();
     }
