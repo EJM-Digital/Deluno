@@ -93,10 +93,10 @@ export const STATUS_PRESENTATION = {
   "connection.notRouted": { tone: "warn", label: "Not routed" },
   // Deluno backed off deliberately and resumes on its own. Nothing to do.
   "connection.rateLimited": { tone: "info", label: "Rate-limited" },
-  // Deluno stopped asking after repeated failures. Unlike a rate limit this
-  // does not clear on its own on any promised schedule the person can see,
-  // so it needs the same weight as Degraded — warn, not idle motion.
-  "connection.circuitOpen": { tone: "warn", label: "Circuit open" },
+  // Deluno stopped asking after repeated failures and resumes on its own at
+  // the time the health message states (#648), like a rate limit. Reset is
+  // there to try sooner; nothing is stuck until someone acts, so not amber.
+  "connection.circuitOpen": { tone: "info", label: "Paused after failures" },
   // A configuration fact, not motion.
   "connection.categoryRoute": { tone: "idle", label: "Routed" },
 
