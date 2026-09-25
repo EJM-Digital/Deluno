@@ -691,10 +691,10 @@ test.describe("dashboard workflow", () => {
 
     // Metadata is a page inside the Media Management area, so it is reached from
     // the page toolbar rather than the sidebar — see the tabsInToolbar rule.
-    await page.getByRole("link", { name: "Metadata & Files", exact: true }).first().click();
+    await page.getByRole("link", { name: "Metadata", exact: true }).first().click();
 
     await expect(page.getByRole("heading", { name: "Media Management", exact: true }).first()).toBeVisible();
-    await expect(page.getByText("Metadata Files", { exact: true })).toBeVisible();
+    await expect(page.getByText("Title Details", { exact: true })).toBeVisible();
     await expect(page.getByText(/Deluno matches titles and loads posters/)).toHaveCount(0);
     await expect(page.getByText("TMDb API key", { exact: true })).toHaveCount(0);
     await expect(page.getByText("OMDb API key", { exact: true })).toHaveCount(0);
