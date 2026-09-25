@@ -72,7 +72,7 @@ interface GuideForm {
   movieRootPath: string;
   seriesRootPath: string;
   qualityPreset: "" | "balanced1080p" | "premium4k";
-  formatGoal: "" | "simpleClean" | "balanced" | "homeTheater" | "storageSaver";
+  formatGoal: "" | "simpleClean" | "balanced" | "homeTheater" | "storageSaver" | "anime";
   indexerName: string;
   indexerProtocol: "torznab" | "newznab" | "rss";
   indexerUrl: string;
@@ -174,7 +174,26 @@ const FORMAT_GOALS = {
     copy: "Discourages huge files, remux-sized releases, generated HDR, and other storage-heavy matches.",
     bestFor: "NAS limits, remote users, slower upload links, and very large libraries."
   },
+  anime: {
+    label: "Anime",
+    bundleId: "anime-balanced",
+    copy: "Anime-specific release groups, dual-audio preference, uncensored boost, and raw-release blocking.",
+    bestFor: "Anime libraries where normal Sonarr-style scoring is not enough."
+  },
 } as const;
+
+/** The only format goals a saved draft can carry; anything else is a stale or foreign value. */
+const FORMAT_GOAL_IDS = new Set(Object.keys(FORMAT_GOALS));
+
+/**
+ * A saved draft's formatGoal is free-form on the wire (`string`), because the
+ * backend accepts anything it can normalize. Round-trip whatever this guide
+ * still recognises — including "anime" (#731) — and only fall back to
+ * "not chosen" for a value this guide no longer offers.
+ */
+export function resolveDraftFormatGoal(draftFormatGoal: string): GuideForm["formatGoal"] {
+  return FORMAT_GOAL_IDS.has(draftFormatGoal) ? (draftFormatGoal as GuideForm["formatGoal"]) : "";
+}
 
 const INDEXER_SETUP_PRESETS = [
   {
@@ -251,7 +270,7 @@ export function SetupGuidePage() {
     movieRootPath: data.draft.movieRootPath || data.settings.movieRootPath || "",
     seriesRootPath: data.draft.seriesRootPath || data.settings.seriesRootPath || "",
     qualityPreset: data.draft.qualityPreset as GuideForm["qualityPreset"],
-    formatGoal: data.draft.formatGoal === "anime" ? "balanced" : (data.draft.formatGoal as GuideForm["formatGoal"]),
+    formatGoal: resolveDraftFormatGoal(data.draft.formatGoal),
     indexerName: data.draft.indexerName || data.indexers[0]?.name || "Primary indexer",
     indexerProtocol: (data.draft.indexerProtocol || data.indexers[0]?.protocol || "torznab") as GuideForm["indexerProtocol"],
     indexerUrl: data.draft.indexerUrl || data.indexers[0]?.baseUrl || "",
