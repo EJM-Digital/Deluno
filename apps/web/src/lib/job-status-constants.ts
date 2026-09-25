@@ -70,6 +70,41 @@ export const getJobStatusLabel = (status: JobStatus): string => {
 };
 
 /**
+ * Words for a download dispatch's status: a grab handed to a client, and what
+ * became of it. Four screens each kept their own copy of this switch (#644),
+ * and two had fallen behind -- a title's page showed a failed import as the raw
+ * "importFailed".
+ */
+const DISPATCH_STATUS_LABELS: Record<string, string> = {
+  sent: "Sent",
+  failed: "Failed",
+  planned: "Needs URL",
+  imported: "Imported",
+  importFailed: "Import failed",
+};
+
+/** "importFailed" / "dead-letter" / "series.search" -> sentence case, for a word no table knows yet. */
+const sentenceCase = (value: string): string => {
+  const spaced = value.replace(/([a-z0-9])([A-Z])/g, "$1 $2").replace(/[._-]/g, " ");
+  return spaced.charAt(0).toUpperCase() + spaced.slice(1).toLowerCase();
+};
+
+export const getDispatchStatusLabel = (status: string): string =>
+  DISPATCH_STATUS_LABELS[status] ?? sentenceCase(status);
+
+/**
+ * Any status word the backend writes where the screen cannot know which kind
+ * it is -- a decision explanation's status is a job's, a dispatch's or a
+ * search's. The job table answers first, so a job that ran out of attempts
+ * reads "Gave up" here too, not "Dead letter".
+ */
+export const getStatusLabel = (status: string): string => {
+  const jobLabel = getJobStatusLabel(status as JobStatus);
+  if (jobLabel !== status) return jobLabel;
+  return getDispatchStatusLabel(status);
+};
+
+/**
  * The tone a job status wears, from the one table.
  *
  * Running was amber and Queued was grey. #290 names both blue by name: a job in

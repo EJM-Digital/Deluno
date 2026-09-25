@@ -1,5 +1,6 @@
 import type { DownloadDispatchItem } from "../../lib/api";
 import { formatDateTime, useDisplayPreferences } from "../../lib/display-preferences";
+import { getDispatchStatusLabel as formatDispatchStatus } from "../../lib/job-status-constants";
 import { Drawer, DrawerFacts, DrawerFooter, DrawerSection } from "../ui/drawer";
 
 export function DownloadDispatchDrawer({
@@ -78,17 +79,6 @@ export function DownloadDispatchDrawer({
       ) : null}
     </Drawer>
   );
-}
-
-function formatDispatchStatus(status: string) {
-  switch (status) {
-    case "sent": return "Sent";
-    case "failed": return "Failed";
-    case "planned": return "Needs URL";
-    case "imported": return "Imported";
-    case "importFailed": return "Import failed";
-    default: return formatOperation(status);
-  }
 }
 
 function formatDispatchStage(value: string | null | undefined, fallback: string) {

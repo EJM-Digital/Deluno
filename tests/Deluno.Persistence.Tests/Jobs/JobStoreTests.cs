@@ -361,7 +361,10 @@ public sealed class JobStoreTests
 
         var stored = Assert.Single(await store.ListAsync(20, CancellationToken.None));
         Assert.Equal("dead-letter", stored.Status);
-        Assert.Contains("retry limit", stored.LastError, StringComparison.OrdinalIgnoreCase);
+        // Shown on Activity's "Why it failed" in the screen's own word for the
+        // status (#644), not the queue's name for it.
+        Assert.Equal("Indexer still timed out. Deluno tried 2 times and gave up.", stored.LastError);
+        Assert.DoesNotContain("dead-letter", stored.LastError, StringComparison.OrdinalIgnoreCase);
         Assert.Null(await store.LeaseNextAsync("worker-c", TimeSpan.FromMinutes(5), [LibrarySearchJobTypes.Movies], CancellationToken.None));
     }
 

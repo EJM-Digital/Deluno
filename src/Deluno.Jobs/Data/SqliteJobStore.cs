@@ -1144,7 +1144,7 @@ public sealed class SqliteJobStore(
         var nextAttemptUtc = shouldDeadLetter ? (DateTimeOffset?)null : now.Add(CalculateRetryDelay(attempts));
         var nextStatus = shouldDeadLetter ? "dead-letter" : "failed";
         var storedError = shouldDeadLetter
-            ? $"{errorMessage} The job reached its retry limit and moved to dead-letter."
+            ? $"{errorMessage} {GaveUpSentence(job.MaxAttempts)}"
             : errorMessage;
 
         using (var update = connection.CreateCommand())
@@ -1180,7 +1180,7 @@ public sealed class SqliteJobStore(
             transaction,
             category: shouldDeadLetter ? "job.dead-letter" : "job.failed",
             message: shouldDeadLetter
-                ? $"{errorMessage} The job reached its retry limit and moved to dead-letter."
+                ? $"{errorMessage} {GaveUpSentence(job.MaxAttempts)}"
                 : $"{errorMessage} Deluno will retry after {nextAttemptUtc:O}.",
             detailsJson: job.PayloadJson,
             relatedJobId: job.Id,
@@ -1233,7 +1233,7 @@ public sealed class SqliteJobStore(
         await realtimeEventPublisher.PublishActivityEventAddedAsync(
             Guid.CreateVersion7().ToString("N"),
             shouldDeadLetter
-                ? $"{errorMessage} The job reached its retry limit and moved to dead-letter."
+                ? $"{errorMessage} {GaveUpSentence(job.MaxAttempts)}"
                 : $"{errorMessage} Deluno will retry after {nextAttemptUtc:O}.",
             shouldDeadLetter ? "job.dead-letter" : "job.failed",
             SeverityForCategory(shouldDeadLetter ? "job.dead-letter" : "job.failed"),
@@ -3291,7 +3291,7 @@ public sealed class SqliteJobStore(
             var shouldDeadLetter = job.Attempts >= job.MaxAttempts;
             var nextAttemptUtc = shouldDeadLetter ? (DateTimeOffset?)null : now.Add(CalculateRetryDelay(Math.Max(job.Attempts, 1)));
             var message = shouldDeadLetter
-                ? "Worker lease expired after the retry limit was reached; job moved to dead-letter."
+                ? $"The worker running it stopped answering. {GaveUpSentence(job.MaxAttempts)}"
                 : "Worker lease expired; job was released for retry.";
 
             using var update = connection.CreateCommand();
@@ -4164,6 +4164,15 @@ public sealed class SqliteJobStore(
 
     private static int NormalizeMaxAttempts(int? value)
         => value is >= 1 and <= 25 ? value.Value : DefaultMaxAttempts;
+
+    /// <summary>
+    /// What a job that ran out of attempts says about it, in the words the
+    /// screens use for that status ("Gave up", #644) rather than the queue's
+    /// own name for it. One sentence in one place: it was written out three
+    /// times, and every copy said "moved to dead-letter".
+    /// </summary>
+    private static string GaveUpSentence(int maxAttempts)
+        => $"Deluno tried {maxAttempts} time{(maxAttempts == 1 ? string.Empty : "s")} and gave up.";
 
     private static TimeSpan CalculateRetryDelay(int attempts)
     {
