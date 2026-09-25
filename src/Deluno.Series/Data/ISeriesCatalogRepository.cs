@@ -263,7 +263,10 @@ public interface ISeriesCatalogRepository : ISeriesImportRecoveryRetentionReposi
         IReadOnlyList<ImportedEpisodeNumberingItem>? alternateEpisodes = null,
         IReadOnlyList<ImportedSeasonPackItem>? seasonPacks = null,
         IReadOnlyList<PreferenceEvaluationSnapshot>? preferenceEvaluations = null,
-        string? seriesId = null);
+        string? seriesId = null,
+        bool upgradeUntilCutoff = false,
+        bool upgradeUnknownItems = false,
+        string episodeImportSource = "download");
 
     /// <summary>
     /// Imports a slice of already-on-disk shows, and the episodes detected

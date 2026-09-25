@@ -35,4 +35,16 @@ public sealed record ImportedEpisodeItem(
     /// place to decide policy. Null means the caller did not decide, and the
     /// series-level answer is used as before.</para>
     /// </summary>
-    bool? QualityCutoffMet = null);
+    bool? QualityCutoffMet = null,
+
+    /// <summary>
+    /// Whether this episode's file came from a season pack rather than its
+    /// own single-episode release or an existing-library scan.
+    ///
+    /// <para>Set by <c>ExpandSeasonPacksAsync</c> on the copies it produces
+    /// from a declared season pack, so the wanted reason written for the
+    /// episode can say what actually happened ("imported from a season
+    /// pack") instead of the one generic sentence every import path used to
+    /// share regardless of where the file came from (#654).</para>
+    /// </summary>
+    bool FromSeasonPack = false);

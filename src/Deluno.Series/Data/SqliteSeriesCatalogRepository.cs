@@ -2502,7 +2502,10 @@ public sealed class SqliteSeriesCatalogRepository(
         IReadOnlyList<ImportedEpisodeNumberingItem>? alternateEpisodes = null,
         IReadOnlyList<ImportedSeasonPackItem>? seasonPacks = null,
         IReadOnlyList<PreferenceEvaluationSnapshot>? preferenceEvaluations = null,
-        string? seriesId = null)
+        string? seriesId = null,
+        bool upgradeUntilCutoff = false,
+        bool upgradeUnknownItems = false,
+        string episodeImportSource = "download")
     {
         var created = await ImportExistingBatchAsync(
             libraryId,
@@ -2523,7 +2526,10 @@ public sealed class SqliteSeriesCatalogRepository(
                     AlternateEpisodes: alternateEpisodes,
                     SeasonPacks: seasonPacks,
                     PreferenceEvaluations: preferenceEvaluations,
-                    SeriesId: seriesId)
+                    SeriesId: seriesId,
+                    UpgradeUntilCutoff: upgradeUntilCutoff,
+                    UpgradeUnknownItems: upgradeUnknownItems,
+                    EpisodeImportSource: episodeImportSource)
             ],
             cancellationToken);
 
@@ -2582,7 +2588,8 @@ public sealed class SqliteSeriesCatalogRepository(
     {
         var (title, startYear, wantedStatus, wantedReason, currentQuality, targetQuality,
             qualityCutoffMet, unmonitorWhenCutoffMet, filePath, fileSizeBytes, episodes,
-            preferenceEvaluation, alternateEpisodes, seasonPacks, preferenceEvaluations, knownSeriesId) = request;
+            preferenceEvaluation, alternateEpisodes, seasonPacks, preferenceEvaluations, knownSeriesId,
+            upgradeUntilCutoff, upgradeUnknownItems, episodeImportSource) = request;
 
         var normalizedTitle = title.Trim();
         var normalizedFilePath = NormalizeText(filePath);
@@ -3007,23 +3014,6 @@ public sealed class SqliteSeriesCatalogRepository(
                             last_search_result = excluded.last_search_result,
                             updated_utc = excluded.updated_utc;
                         """;
-                    AddParameter(upsertEpisodeWanted, "@episodeId", episodeId);
-                    AddParameter(upsertEpisodeWanted, "@seriesId", seriesId);
-                    AddParameter(upsertEpisodeWanted, "@libraryId", libraryId);
-                    AddParameter(
-                        upsertEpisodeWanted,
-                        "@wantedStatus",
-                        episode.HasFile ? "covered" : "missing");
-                    AddParameter(
-                        upsertEpisodeWanted,
-                        "@wantedReason",
-                        episode.HasFile
-                            ? "Episode imported from your existing library."
-                            : "Episode is missing from the library.");
-                    AddParameter(
-                        upsertEpisodeWanted,
-                        "@lastSearchResult",
-                        episode.HasFile ? "Imported from your existing library." : null);
                     // The quality the series row has been given all along. An
                     // episode that held a file and recorded no quality showed
                     // none on its own page and gave the upgrade check nothing
@@ -3042,6 +3032,45 @@ public sealed class SqliteSeriesCatalogRepository(
                     var episodeCutoffMet = episode.HasFile
                         && (episode.QualityCutoffMet ?? qualityCutoffMet);
 
+                    // #654: an episode with a file used to be written
+                    // `covered` outright, whatever its quality, so a 720p
+                    // episode under a 1080p cutoff with upgrade-until-cutoff
+                    // on was never searched again. This is the same decision
+                    // the film side and the series row above already make —
+                    // met (or upgrades off) settles, short of it and still
+                    // upgrading keeps looking.
+                    var episodeWantedStatus = !episode.HasFile
+                        ? WantedStatuses.Missing
+                        : episodeCutoffMet || !upgradeUntilCutoff
+                            ? WantedStatuses.Covered
+                            : WantedStatuses.Upgrade;
+
+                    // The reason says what actually happened: a season pack
+                    // episode, one found sitting in an existing library scan,
+                    // or an ordinary completed-download import — not the one
+                    // sentence every path used to share regardless of source.
+                    var episodeOrigin = !episode.HasFile
+                        ? "Episode is missing from the library."
+                        : episode.FromSeasonPack
+                            ? "Episode imported from a season pack."
+                            : string.Equals(episodeImportSource, "existing-library", StringComparison.OrdinalIgnoreCase)
+                                ? "Episode found in your existing library."
+                                : "Episode imported.";
+                    var episodeWantedReason = episodeWantedStatus == WantedStatuses.Upgrade
+                        && !string.IsNullOrWhiteSpace(episodeQuality)
+                        && !string.IsNullOrWhiteSpace(targetQuality)
+                        ? $"{episodeOrigin} It's currently {episodeQuality}. Deluno will keep looking until it reaches {targetQuality}."
+                        : episodeOrigin;
+
+                    AddParameter(upsertEpisodeWanted, "@episodeId", episodeId);
+                    AddParameter(upsertEpisodeWanted, "@seriesId", seriesId);
+                    AddParameter(upsertEpisodeWanted, "@libraryId", libraryId);
+                    AddParameter(upsertEpisodeWanted, "@wantedStatus", episodeWantedStatus);
+                    AddParameter(upsertEpisodeWanted, "@wantedReason", episodeWantedReason);
+                    AddParameter(
+                        upsertEpisodeWanted,
+                        "@lastSearchResult",
+                        episode.HasFile ? episodeOrigin : null);
                     AddParameter(upsertEpisodeWanted, "@episodeCurrentQuality", episodeQuality);
                     AddParameter(upsertEpisodeWanted, "@episodeTargetQuality", targetQuality);
                     AddParameter(upsertEpisodeWanted, "@episodeQualityCutoffMet", episodeCutoffMet ? 1 : 0);
@@ -3114,7 +3143,8 @@ public sealed class SqliteSeriesCatalogRepository(
                 {
                     HasFile = true,
                     FilePath = NormalizeText(episode.FilePath) ?? NormalizeText(pack.FilePath),
-                    FileSizeBytes = episode.FileSizeBytes ?? pack.FileSizeBytes
+                    FileSizeBytes = episode.FileSizeBytes ?? pack.FileSizeBytes,
+                    FromSeasonPack = true
                 });
             }
         }

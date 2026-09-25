@@ -742,7 +742,10 @@ public sealed class ExistingLibraryImportService(
             Episodes: DecideEpisodes(library, item.Episodes, model),
             PreferenceEvaluation: preferenceEvaluation,
             AlternateEpisodes: item.AlternateEpisodes,
-            SeasonPacks: item.SeasonPacks);
+            SeasonPacks: item.SeasonPacks,
+            UpgradeUntilCutoff: library.UpgradeUntilCutoff,
+            UpgradeUnknownItems: library.UpgradeUnknownItems,
+            EpisodeImportSource: "existing-library");
     }
 
     private async Task<(QualityProfileItem? Profile, IReadOnlyList<CustomFormatItem>? CustomFormats)> ResolvePreferenceInputsAsync(
