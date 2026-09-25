@@ -27,7 +27,7 @@ import {
   type MovieImportRecoverySummary,
   type SeriesImportRecoverySummary
 } from "../lib/api";
-import { getJobStatusTone, JOB_STATUS, isJobActive, isJobFailed, isJobInProgress, isJobRetrying, isJobSuccessful, type JobStatus } from "../lib/job-status-constants";
+import { getJobStatusLabel, getJobStatusTone, JOB_STATUS, isJobActive, isJobFailed, isJobInProgress, isJobRetrying, isJobSuccessful, type JobStatus } from "../lib/job-status-constants";
 import { dismissFailedJob, fetchFailedJobs } from "../lib/failed-jobs";
 import { authedFetch } from "../lib/use-auth";
 import { Button } from "../components/ui/button";
@@ -215,7 +215,7 @@ export function ActivityPage() {
                     <ListCell primary={job.attempts} align="end" numeric />
                     <ListCell primary={formatPreferenceDateTime(job.completedUtc ?? job.startedUtc ?? job.scheduledUtc, preferences)} />
                     <ListCell>
-                      <Chip tone={jobTone(job.status)}>{formatJobStatus(job.status)}</Chip>
+                      <Chip tone={jobTone(job.status)}>{getJobStatusLabel(job.status as JobStatus)}</Chip>
                     </ListCell>
                   </ListRow>
                 ))}
@@ -243,7 +243,7 @@ export function ActivityPage() {
                     <ListCell primary={job.attempts} align="end" numeric />
                     <ListCell primary={formatPreferenceDateTime(job.completedUtc ?? job.startedUtc ?? job.scheduledUtc, preferences)} />
                     <ListCell>
-                      <Chip tone={isJobRetrying(job) ? "info" : jobTone(job.status)}>{isJobRetrying(job) ? "Retrying" : formatJobStatus(job.status)}</Chip>
+                      <Chip tone={isJobRetrying(job) ? "info" : jobTone(job.status)}>{isJobRetrying(job) ? "Retrying" : getJobStatusLabel(job.status as JobStatus)}</Chip>
                     </ListCell>
                   </ListRow>
                 ))}
@@ -339,12 +339,12 @@ export function ActivityPage() {
           if (!next) setOpenJobId(null);
         }}
         title={openJob ? formatJobType(openJob.jobType) : "Job"}
-        description={openJob ? `${openJob.source} · ${formatJobStatus(openJob.status)}` : undefined}
+        description={openJob ? `${openJob.source} · ${getJobStatusLabel(openJob.status as JobStatus)}` : undefined}
         footer={<DrawerFooter state="clean" readOnly saveLabel="Close" onCancel={() => setOpenJobId(null)} />}
       >
         {openJob ? (
           <>
-            <DrawerSection title="Run" aside={formatJobStatus(openJob.status)}>
+            <DrawerSection title="Run" aside={getJobStatusLabel(openJob.status as JobStatus)}>
               <DrawerFacts
                 items={[
                   { label: "Attempts", value: String(openJob.attempts) },
@@ -450,11 +450,6 @@ function formatJobType(value: string) {
   const action = rest.join(" ").replace(/[-_]/g, " ");
   const label = `${area} ${action}`.trim();
   return label.charAt(0).toUpperCase() + label.slice(1);
-}
-
-function formatJobStatus(status: string) {
-  const spaced = status.replace(/[-_]/g, " ");
-  return spaced.charAt(0).toUpperCase() + spaced.slice(1);
 }
 
 /**
