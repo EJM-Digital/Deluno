@@ -1,0 +1,114 @@
+using System.Globalization;
+using System.Net;
+using System.Text;
+using Deluno.Connections.Contracts;
+using Deluno.Contracts;
+using Deluno.Integrations.DownloadClients;
+using Deluno.Integrations.DownloadClients.Clients;
+
+namespace Deluno.Integrations.Tests.DownloadClients;
+
+/// <summary>
+/// #660 — every state qBittorrent's <c>torrents/info</c> can report for
+/// <c>state</c>, checked against the WebUI API's own enum. Before this,
+/// <c>missingFiles</c>, the three checking states and <c>moving</c> all fell
+/// through to the default arm and read as a healthy, active download; a
+/// person-paused, incomplete torrent (<c>pausedDL</c>/<c>stoppedDL</c>) read
+/// identically to one merely waiting behind others in the queue
+/// (<c>queuedDL</c>).
+/// </summary>
+public sealed class QbittorrentStateMappingTests
+{
+    [Theory]
+    [InlineData("downloading", DownloadQueueStatuses.Downloading)]
+    [InlineData("metaDL", DownloadQueueStatuses.Downloading)]
+    [InlineData("forcedDL", DownloadQueueStatuses.Downloading)]
+    [InlineData("allocating", DownloadQueueStatuses.Downloading)]
+    [InlineData("stalledDL", DownloadQueueStatuses.Stalled)]
+    [InlineData("error", DownloadQueueStatuses.Stalled)]
+    // The top-priority defect: the payload is gone from disk and this cannot
+    // progress on its own, but used to fall through to Downloading.
+    [InlineData("missingFiles", DownloadQueueStatuses.Stalled)]
+    // Verifying and relocating: no bytes moving on the wire, so their own
+    // status rather than Downloading, which let the no-throughput/excessive-
+    // ETA checks (#659) reason about a torrent that cannot show either.
+    [InlineData("checkingDL", DownloadQueueStatuses.NotTransferring)]
+    [InlineData("checkingUP", DownloadQueueStatuses.NotTransferring)]
+    [InlineData("checkingResumeData", DownloadQueueStatuses.NotTransferring)]
+    [InlineData("moving", DownloadQueueStatuses.NotTransferring)]
+    // A person paused this, incomplete, download - distinct from queuedDL,
+    // which is qBittorrent holding it back on its own.
+    [InlineData("pausedDL", DownloadQueueStatuses.Paused)]
+    [InlineData("stoppedDL", DownloadQueueStatuses.Paused)]
+    [InlineData("queuedDL", DownloadQueueStatuses.Queued)]
+    [InlineData("uploading", DownloadQueueStatuses.ImportReady)]
+    [InlineData("pausedUP", DownloadQueueStatuses.ImportReady)]
+    [InlineData("stoppedUP", DownloadQueueStatuses.ImportReady)]
+    [InlineData("queuedUP", DownloadQueueStatuses.ImportReady)]
+    [InlineData("stalledUP", DownloadQueueStatuses.ImportReady)]
+    [InlineData("forcedUP", DownloadQueueStatuses.ImportReady)]
+    [InlineData("unknown", DownloadQueueStatuses.Downloading)]
+    public async Task Every_qbittorrent_state_maps_to_the_right_status(string state, string expected)
+    {
+        // Completed states report progress 1; qBittorrent's own convention.
+        var progress = state is "uploading" or "pausedUP" or "stoppedUP" or "queuedUP" or "stalledUP" or "forcedUP" ? 1.0 : 0.4;
+        var item = await Snapshot(state, progress);
+
+        Assert.Equal(expected, item.Status);
+    }
+
+    [Fact]
+    public async Task MissingFiles_carries_a_plain_words_explanation()
+    {
+        var item = await Snapshot("missingFiles", 0.4);
+
+        Assert.Equal("qBittorrent reports this torrent's data is missing from disk.", item.ErrorMessage);
+    }
+
+    [Fact]
+    public async Task Peers_is_seeds_plus_leechers()
+    {
+        var item = await Snapshot("downloading", 0.4, numSeeds: 2, numLeechs: 5);
+
+        Assert.Equal(7, item.Peers);
+    }
+
+    [Fact]
+    public async Task A_swarm_with_only_leechers_and_no_seeds_is_not_reported_as_zero_peers()
+    {
+        var item = await Snapshot("downloading", 0.4, numSeeds: 0, numLeechs: 3);
+
+        Assert.Equal(3, item.Peers);
+    }
+
+    private static async Task<DownloadQueueItem> Snapshot(string state, double progress, int numSeeds = 1, int numLeechs = 0)
+    {
+        var torrentsInfo = "[{\"hash\":\"abc123\",\"name\":\"Sherlock.Jr.1924.1080p.BluRay\",\"category\":\"movies\","
+            + $"\"state\":\"{state}\",\"progress\":{progress.ToString(CultureInfo.InvariantCulture)},"
+            + $"\"dlspeed\":0,\"upspeed\":0,\"eta\":0,\"size\":5000000000,\"downloaded\":2000000000,"
+            + $"\"num_seeds\":{numSeeds},\"num_leechs\":{numLeechs},"
+            + $"\"added_on\":{DateTimeOffset.UtcNow.AddMinutes(-5).ToUnixTimeSeconds()},\"save_path\":\"/downloads\",\"content_path\":\"/downloads/item\"}}]";
+        var handler = new QbittorrentHandler(torrentsInfo);
+        var client = new QbittorrentDownloadClient(() => handler);
+        var snapshot = await client.GetSnapshotAsync(Client(), DateTimeOffset.UtcNow, CancellationToken.None);
+        return Assert.Single(snapshot!.Queue);
+    }
+
+    private static DownloadClientItem Client()
+        => new("qbit-1", "qBittorrent", "qbittorrent", "localhost", 8080, null, null, "http://localhost:8080/", "movies", "tv", null, 1, true,
+            "healthy", null, null, null, null, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow);
+
+    private sealed class QbittorrentHandler(string torrentsInfo) : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            var path = request.RequestUri?.AbsolutePath ?? string.Empty;
+            var reply = path.Contains("auth/login", StringComparison.Ordinal)
+                ? "Ok."
+                : path.Contains("torrents/info", StringComparison.Ordinal)
+                    ? torrentsInfo
+                    : "{}";
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(reply, Encoding.UTF8, "application/json") });
+        }
+    }
+}

@@ -118,7 +118,12 @@ public sealed class DownloadProgressPublisher(
 
         var live = overview.Clients
             .SelectMany(client => client.Queue)
-            .Where(item => item.Status is DownloadQueueStatuses.Downloading or DownloadQueueStatuses.Stalled or DownloadQueueStatuses.Queued)
+            // NotTransferring (#660): a checking or moving torrent is not
+            // stalled, but it is still doing something a person watching this
+            // card should see change, so it earns the same live cadence as an
+            // active transfer rather than looking frozen until it flips to a
+            // status this filter already knew.
+            .Where(item => item.Status is DownloadQueueStatuses.Downloading or DownloadQueueStatuses.Stalled or DownloadQueueStatuses.Queued or DownloadQueueStatuses.NotTransferring)
             .ToArray();
 
         foreach (var item in live)

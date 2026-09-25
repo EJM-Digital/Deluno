@@ -66,19 +66,50 @@ public sealed class TransmissionDownloadClient(IHttpClientFactory httpClientFact
         if (baseUri is null) return CreateConfigurationSnapshot(client, capturedUtc, "Download client address is missing.");
         var response = await SendAsync(client, baseUri, new TransmissionRequest("torrent-get", new()
         {
-            ["fields"] = new[] { "id", "name", "status", "percentDone", "rateDownload", "rateUpload", "eta", "totalSize", "downloadedEver", "peersConnected", "addedDate", "doneDate", "downloadDir", "labels", "error", "errorString" }
+            // uploadRatio/secondsSeeding: #661 — without them Ratio/SeedingMinutes
+            // stayed null forever and a sharing rule could never be seen as met.
+            // isStalled: Transmission's own, better-informed stall detection,
+            // folded into NormalizeStatus below rather than reinventing a
+            // cruder one. peersSendingToUs is requested and deserialized too
+            // (#661), but deliberately not used for Peers below: it is 0 for
+            // a magnet still exchanging metadata over a connected peer, and
+            // ReconcileTorrentStatus's own no-metadata-no-peers stall window
+            // reads Peers as "is there anyone to talk to at all" — switching
+            // it to sending-only would stall that magnet on the first poll.
+            ["fields"] = new[] { "id", "name", "status", "percentDone", "rateDownload", "rateUpload", "eta", "totalSize", "downloadedEver", "peersConnected", "peersSendingToUs", "addedDate", "doneDate", "downloadDir", "labels", "error", "errorString", "isStalled", "uploadRatio", "secondsSeeding" }
         }), cancellationToken);
         var queue = (response.Arguments?.Torrents ?? []).Select(item => new DownloadQueueItem(
             item.Id?.ToString(CultureInfo.InvariantCulture) ?? item.Name ?? Guid.CreateVersion7().ToString("N"), client.Id, client.Name, client.Protocol,
             DownloadClientHelpers.InferMediaType(client, item.Labels?.FirstOrDefault()), DownloadClientHelpers.CleanReleaseTitle(item.Name ?? "Unknown Transmission item"),
-            item.Name ?? "Unknown Transmission item", item.Labels?.FirstOrDefault() ?? string.Empty, NormalizeStatus(item.Status?.ToString(CultureInfo.InvariantCulture), item.PercentDone, item.Error, item.ErrorString),
+            item.Name ?? "Unknown Transmission item", item.Labels?.FirstOrDefault() ?? string.Empty, Status(item),
             Math.Clamp(Math.Round((item.PercentDone ?? 0) * 100, 1), 0, 100), Math.Round((item.RateDownload ?? 0) / 1_000_000d, 1), Math.Max(0, item.Eta ?? 0),
             item.TotalSize ?? 0, item.DownloadedEver ?? 0, item.PeersConnected ?? 0, "Transmission", string.IsNullOrWhiteSpace(item.ErrorString) ? null : item.ErrorString,
             DownloadClientHelpers.FromUnix(item.AddedDate), DownloadClientHelpers.ResolveDownloadPath(item.DownloadDir, item.Name),
+            // Both come back on the same torrent-get call, so a sharing rule
+            // costs no extra request. secondsSeeding is 0 while still downloading.
+            Ratio: item.UploadRatio,
+            SeedingMinutes: item.SecondsSeeding is null ? null : (int)Math.Clamp(item.SecondsSeeding.Value / 60, 0, int.MaxValue),
             UploadSpeedMbps: Math.Round((item.RateUpload ?? 0) / 1_000_000d, 1)))
             .Select(item => DownloadClientHelpers.ReconcileTorrentStatus(item, capturedUtc))
             .ToArray();
         return CreateSnapshot(client, queue, capturedUtc, "healthy", $"Connected to Transmission at {baseUri.Host}:{baseUri.Port}.");
+    }
+
+    /// <summary>
+    /// Transmission's own stall detection folded in on top of the status-code
+    /// mapping (#661): it watches real peer/tracker activity Deluno does not
+    /// see, so a torrent it has already flagged stalled should read as
+    /// <see cref="DownloadQueueStatuses.Stalled"/> immediately rather than
+    /// waiting on the generic no-throughput health check to notice on its own.
+    /// Only promotes a torrent still reading as Downloading — an error, a
+    /// completion or a pause already outranks "stalled".
+    /// </summary>
+    private string Status(TransmissionTorrent item)
+    {
+        var status = NormalizeStatus(item.Status?.ToString(CultureInfo.InvariantCulture), item.PercentDone, item.Error, item.ErrorString);
+        return item.IsStalled == true && status == DownloadQueueStatuses.Downloading
+            ? DownloadQueueStatuses.Stalled
+            : status;
     }
 
     public override async Task<DownloadClientActionResult> ExecuteActionAsync(DownloadClientItem client, string action, string queueItemId, CancellationToken cancellationToken)
@@ -151,7 +182,16 @@ public sealed class TransmissionDownloadClient(IHttpClientFactory httpClientFact
     {
         if (errorCode is > 0 || !string.IsNullOrWhiteSpace(errorMessage)) return DownloadQueueStatuses.Stalled;
         if ((progress ?? 0) >= 1) return DownloadQueueStatuses.ImportReady;
-        return int.TryParse(nativeStatus, out var status) && status == 4 ? DownloadQueueStatuses.Downloading : DownloadQueueStatuses.Queued;
+        if (!int.TryParse(nativeStatus, out var status)) return DownloadQueueStatuses.Queued;
+        return status switch
+        {
+            4 => DownloadQueueStatuses.Downloading,
+            // Status 0 is stopped: a person stopped this, incomplete, download
+            // by hand. Distinct from the queued-behind-others statuses (1, 3,
+            // 5), which used to collapse into the same word (#661).
+            0 => DownloadQueueStatuses.Paused,
+            _ => DownloadQueueStatuses.Queued
+        };
     }
 
     private async Task<TransmissionResponse> SendAsync(DownloadClientItem client, Uri baseUri, TransmissionRequest payload, CancellationToken cancellationToken)
@@ -201,5 +241,5 @@ public sealed class TransmissionDownloadClient(IHttpClientFactory httpClientFact
         [property: JsonPropertyName("torrent-duplicate")] TransmissionAdded? Duplicate = null,
         [property: JsonPropertyName("download-dir")] string? DownloadDir = null);
     private sealed record TransmissionAdded([property: JsonPropertyName("id")] int? Id, [property: JsonPropertyName("hashString")] string? HashString);
-    private sealed record TransmissionTorrent([property: JsonPropertyName("id")] int? Id, [property: JsonPropertyName("name")] string? Name, [property: JsonPropertyName("status")] int? Status, [property: JsonPropertyName("percentDone")] double? PercentDone, [property: JsonPropertyName("rateDownload")] long? RateDownload, [property: JsonPropertyName("rateUpload")] long? RateUpload, [property: JsonPropertyName("eta")] int? Eta, [property: JsonPropertyName("totalSize")] long? TotalSize, [property: JsonPropertyName("downloadedEver")] long? DownloadedEver, [property: JsonPropertyName("peersConnected")] int? PeersConnected, [property: JsonPropertyName("addedDate")] long? AddedDate, [property: JsonPropertyName("downloadDir")] string? DownloadDir, [property: JsonPropertyName("labels")] IReadOnlyList<string>? Labels, [property: JsonPropertyName("error")] int? Error, [property: JsonPropertyName("errorString")] string? ErrorString);
+    private sealed record TransmissionTorrent([property: JsonPropertyName("id")] int? Id, [property: JsonPropertyName("name")] string? Name, [property: JsonPropertyName("status")] int? Status, [property: JsonPropertyName("percentDone")] double? PercentDone, [property: JsonPropertyName("rateDownload")] long? RateDownload, [property: JsonPropertyName("rateUpload")] long? RateUpload, [property: JsonPropertyName("eta")] int? Eta, [property: JsonPropertyName("totalSize")] long? TotalSize, [property: JsonPropertyName("downloadedEver")] long? DownloadedEver, [property: JsonPropertyName("peersConnected")] int? PeersConnected, [property: JsonPropertyName("addedDate")] long? AddedDate, [property: JsonPropertyName("downloadDir")] string? DownloadDir, [property: JsonPropertyName("labels")] IReadOnlyList<string>? Labels, [property: JsonPropertyName("error")] int? Error, [property: JsonPropertyName("errorString")] string? ErrorString, [property: JsonPropertyName("peersSendingToUs")] int? PeersSendingToUs = null, [property: JsonPropertyName("isStalled")] bool? IsStalled = null, [property: JsonPropertyName("uploadRatio")] double? UploadRatio = null, [property: JsonPropertyName("secondsSeeding")] long? SecondsSeeding = null);
 }

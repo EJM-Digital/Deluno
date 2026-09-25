@@ -5,6 +5,11 @@ export const downloadQueueStatuses = {
   queued: "queued",
   completed: "completed",
   stalled: "stalled",
+  // Verifying a hash or relocating finished files: not moving bytes on the
+  // wire, but not a problem either (#660).
+  notTransferring: "notTransferring",
+  // Stopped by a person, distinct from queued (#660/#661).
+  paused: "paused",
   processing: "processing",
   processed: "processed",
   processingFailed: "processingFailed",
@@ -44,7 +49,9 @@ export function queueStatusLabel(status: string) {
       importQueued: "Import queued",
       imported: "Imported",
       importFailed: "Import failed",
-      stalled: "Stalled"
+      stalled: "Stalled",
+      notTransferring: "Not transferring",
+      paused: "Paused"
     } as Record<string, string>
   )[status] ?? status;
 }

@@ -65,6 +65,12 @@ export const STATUS_PRESENTATION = {
   "transfer.downloading": { tone: "info", label: "Downloading" },
   // Stopped, and it will not restart itself.
   "transfer.stalled": { tone: "warn", label: "Stalled" },
+  // Verifying a hash or relocating finished files: motion, but not on the
+  // wire, so it is its own word rather than Downloading (#660).
+  "transfer.notTransferring": { tone: "info", label: "Not transferring" },
+  // A person stopped this, distinct from Queued, which is the client holding
+  // it back on its own. Nothing happens until they resume it (#660/#661).
+  "transfer.paused": { tone: "idle", label: "Paused" },
   // Mid-pipeline, not finished — it was green in Transfers, which is the
   // colour for done, and grey in the pipeline strip, which is the colour for
   // nothing happening.

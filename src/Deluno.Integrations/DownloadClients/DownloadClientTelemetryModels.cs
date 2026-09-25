@@ -83,6 +83,27 @@ public static class DownloadQueueStatuses
     public const string Imported = "imported";
     public const string ImportFailed = "importFailed";
     public const string Completed = "completed";
+
+    /// <summary>
+    /// The client is doing something to the payload that is not moving bytes on
+    /// the wire — verifying a hash (qBittorrent's <c>checkingUP</c>/
+    /// <c>checkingDL</c>/<c>checkingResumeData</c>) or relocating finished files
+    /// (<c>moving</c>). #660: these used to fall through to
+    /// <see cref="Downloading"/>, which let the no-progress and speed rules
+    /// (#659) reason about throughput from a torrent that structurally cannot
+    /// have any right now.
+    /// </summary>
+    public const string NotTransferring = "notTransferring";
+
+    /// <summary>
+    /// Stopped because a person stopped it — qBittorrent's <c>pausedDL</c>/
+    /// <c>stoppedDL</c>, Transmission's stopped status, Deluge's <c>Paused</c>
+    /// state — distinct from <see cref="Queued"/>, which is the client holding
+    /// an item back on its own behind others (#660/#661). Collapsing the two
+    /// told a person a download was merely waiting its turn when they had, in
+    /// fact, stopped it themselves.
+    /// </summary>
+    public const string Paused = "paused";
 }
 
 internal static class DownloadClientTelemetryLimits
