@@ -110,16 +110,20 @@ try {
     # -Fast` reused it unchanged (MSBuild saw its inputs as up to date), and
     # the rig deployed a Deluno.Worker that would not start.
     #
-    # -p:BaseOutputPath / -p:BaseIntermediateOutputPath are global properties
-    # too, so every project in the graph picks them up -- but given as
-    # RELATIVE paths (no drive, no leading slash) they resolve against each
-    # project's own directory the same way the SDK default "bin\"/"obj\" does,
-    # so Deluno.Worker still gets its own isolated folder, not one shared with
-    # Deluno.Tray or any other project. An absolute path here would instead
-    # point every project at the identical folder and mix their outputs
-    # together, which is the one thing this fix cannot do. Nesting them under
-    # "bin\" and "obj\" (rather than beside them) also means the repo's
-    # existing bin/ and obj/ .gitignore entries already cover them.
+    # Relocating BaseOutputPath/BaseIntermediateOutputPath was tried and
+    # reverted: the .NET SDK computes its default Compile-item excludes from
+    # those same properties very early, so moving them left whatever a
+    # previous ordinary build had already generated under the old obj\Release\
+    # sitting there unexcluded, and the compiler tried to build both copies at
+    # once (CS0579, duplicate assembly attributes).
+    #
+    # A `dotnet clean` of the whole solution before and after this publish is
+    # blunter but reliable: before, so this run never starts from a build
+    # another workflow left in the shared tree; after, so this run never
+    # leaves one for another workflow to find "up to date" and reuse
+    # unrebuilt. It costs a slower next build elsewhere, never a wrong one.
+    $solution = Join-Path $root "Deluno.slnx"
+    Invoke-Native { dotnet clean $solution -c Release --verbosity quiet } "cleaning before the tray payload build"
     Invoke-Native {
         dotnet publish (Join-Path $root "apps\windows-tray\Deluno.Tray.csproj") `
             -c Release `
@@ -128,10 +132,9 @@ try {
             -p:PublishSingleFile=false `
             -p:Version=$Version `
             -p:DelunoUpdateChannel=$Channel `
-            -p:BaseOutputPath=bin\installer-pack\ `
-            -p:BaseIntermediateOutputPath=obj\installer-pack\ `
             -o $payload
     } "publishing the tray payload"
+    Invoke-Native { dotnet clean $solution -c Release --verbosity quiet } "cleaning after the tray payload build"
 
     Write-Host "== FFmpeg"
     & (Join-Path $PSScriptRoot "fetch-ffmpeg.ps1") -RuntimeIdentifier $RuntimeIdentifier
