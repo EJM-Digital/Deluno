@@ -1,4 +1,4 @@
-import type { BulkRenamePreviewItem, BulkWorkflowOperation } from "../../hooks/use-bulk-edit";
+import type { BulkRenamePreviewItem, BulkTagMode, BulkWorkflowOperation } from "../../hooks/use-bulk-edit";
 import type { LibraryVariant } from "../../hooks/use-library-create";
 import { Button } from "../ui/button";
 import { Field } from "../ui/field";
@@ -17,6 +17,7 @@ type LibraryBulkToolsDialogProps = {
   qualityProfileId: string;
   targetLibraryId: string;
   tags: string;
+  tagsMode: BulkTagMode;
   renameTemplate: string;
   renamePreview: BulkRenamePreviewItem[];
   confirming: boolean;
@@ -32,15 +33,16 @@ type LibraryBulkToolsDialogProps = {
   onQualityProfileChange: (value: string) => void;
   onTargetLibraryChange: (value: string) => void;
   onTagsChange: (value: string) => void;
+  onTagsModeChange: (value: BulkTagMode) => void;
   onRenameTemplateChange: (value: string) => void;
   onExecute: () => void;
 };
 
 export function LibraryBulkToolsDialog({
   open, selectedCount, variant, isUpdating, operation, monitored, qualityProfileId,
-  targetLibraryId, tags, renameTemplate, renamePreview, confirming, error, libraries,
+  targetLibraryId, tags, tagsMode, renameTemplate, renamePreview, confirming, error, libraries,
   qualityProfiles, isOptionsLoading, undoCount, redoCount, onClose, onOperationChange,
-  onMonitoredChange, onQualityProfileChange, onTargetLibraryChange, onTagsChange,
+  onMonitoredChange, onQualityProfileChange, onTargetLibraryChange, onTagsChange, onTagsModeChange,
   onRenameTemplateChange, onExecute,
 }: LibraryBulkToolsDialogProps) {
   if (!open) return null;
@@ -61,7 +63,18 @@ export function LibraryBulkToolsDialog({
         {operation === "monitoring" ? <Field label="Monitoring state" help="Apply monitored or unmonitored to the selection."><Select value={monitored ? "true" : "false"} onChange={(event) => onMonitoredChange(event.target.value === "true")}><option value="true">Monitored</option><option value="false">Unmonitored</option></Select></Field> : null}
         {operation === "quality" ? <Field label="Quality profile" help="Set one quality profile for all selected titles."><Select value={qualityProfileId} onChange={(event) => onQualityProfileChange(event.target.value)}><option value="">Choose a quality profile</option>{qualityProfiles.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</Select></Field> : null}
         {operation === "reassignLibrary" ? <Field label="Destination library" help="Reassign selected titles to a different library/root."><Select value={targetLibraryId} onChange={(event) => onTargetLibraryChange(event.target.value)}><option value="">Choose library</option>{libraries.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</Select></Field> : null}
-        {operation === "tags" ? <Field label="Tags" help="Comma-separated tags to apply to all selected titles."><Input value={tags} onChange={(event) => onTagsChange(event.target.value)} placeholder="e.g. favourites, weekend, 4k" /></Field> : null}
+        {operation === "tags" ? <Field label="Tags" help="Comma-separated tags. Add keeps existing tags; Remove drops only these; Replace wipes the rest.">
+          <div className="flex items-center gap-2">
+            <Input value={tags} onChange={(event) => onTagsChange(event.target.value)} placeholder="e.g. favourites, weekend, 4k" />
+            <div className="w-32 shrink-0">
+              <Select value={tagsMode} onChange={(event) => onTagsModeChange(event.target.value as BulkTagMode)}>
+                <option value="add">Add</option>
+                <option value="remove">Remove</option>
+                <option value="replace">Replace</option>
+              </Select>
+            </div>
+          </div>
+        </Field> : null}
         {operation === "renamePreview" ? <Field label="Template (optional)" help="Preview generated folder names before rename workflows."><Input value={renameTemplate} onChange={(event) => onRenameTemplateChange(event.target.value)} placeholder={variant === "movies" ? "{Movie Title} ({Release Year})" : "{Series Title} ({Series Year})"} /></Field> : null}
       </div>
       {confirming && operation !== "renamePreview" ? <div className="rounded-xl border border-warning/40 bg-warning/10 px-4 py-3 text-sm text-warning-foreground">Confirming will run this operation across {selectedTitleLabel}.</div> : null}

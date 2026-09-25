@@ -2016,6 +2016,14 @@ public static class SeriesEndpointRouteBuilderExtensions
                 });
             }
 
+            if (!MediaTagBulkOperations.TryParseMode(request.Mode, out var mode))
+            {
+                return Results.ValidationProblem(new Dictionary<string, string[]>
+                {
+                    ["mode"] = ["Mode must be add, remove or replace."]
+                });
+            }
+
             var normalizedTags = NormalizeTags(request.Tags);
             var managedTags = await platformSettingsRepository.ListTagsAsync(cancellationToken);
             var assignments = normalizedTags
@@ -2035,12 +2043,14 @@ public static class SeriesEndpointRouteBuilderExtensions
                     continue;
                 }
 
-                await tagStore.ReplaceAsync(MediaKind.Series, seriesItem.Id, assignments, cancellationToken);
+                var currentAssignments = await tagStore.ListAsync(MediaKind.Series, seriesItem.Id, cancellationToken);
+                var finalAssignments = MediaTagBulkOperations.Apply(mode, currentAssignments, assignments);
+                await tagStore.ReplaceAsync(MediaKind.Series, seriesItem.Id, finalAssignments, cancellationToken);
                 updated++;
                 await realtimeEventPublisher.PublishEntityChangedAsync("Series", seriesItem.Id, cancellationToken);
             }
 
-            return Results.Ok(new { updated, tags = normalizedTags });
+            return Results.Ok(new { updated, tags = normalizedTags, mode = mode.ToString().ToLowerInvariant() });
         });
 
         series.MapPost("/bulk/rename-preview", async (
@@ -3114,7 +3124,8 @@ public static class SeriesEndpointRouteBuilderExtensions
 
     private sealed record BulkTagsRequest(
         IReadOnlyList<string>? SeriesIds,
-        string? Tags);
+        string? Tags,
+        string? Mode = null);
 
     private sealed record BulkRenamePreviewRequest(
         IReadOnlyList<string>? SeriesIds,
