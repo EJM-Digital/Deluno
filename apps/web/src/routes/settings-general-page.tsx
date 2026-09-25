@@ -9,20 +9,20 @@
  */
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { useLoaderData } from "react-router-dom";
-import { Field, FieldRow } from "../components/ui/field";
+import { Field } from "../components/ui/field";
 import { Loader2, Wifi } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
-import { ListCard } from "../components/ui/list-card";
+import { ListCard, ListCell, ListNameCell, ListRow, ListTable } from "../components/ui/list-card";
 import { PageFooter } from "../components/ui/page-footer";
 import { PageToolbar } from "../components/ui/page-toolbar";
-import { PresetField } from "../components/ui/preset-field";
 import { systemSettingsNavItems } from "../components/app/settings-shell";
 import { useUnsavedChanges } from "../hooks/use-unsaved-changes";
 import type { DrawerSaveState } from "../components/ui/drawer";
 import { settingsOverviewLoader } from "./settings-overview-page";
 import { fetchJson, type LibraryItem, type PlatformSettingsSnapshot, type QualityProfileItem } from "../lib/api";
 import type { PlatformSettingsPatch } from "../lib/api/settings";
+import type { LanAccessStatus } from "../components/app/lan-access-notice";
 import { useApiMutation } from "../lib/use-api-mutation";
 import { resolveDrawerSaveState, shouldClearSaveState } from "../lib/drawer-save-state";
 
@@ -36,9 +36,6 @@ export const settingsGeneralLoader = settingsOverviewLoader;
 
 interface GeneralForm {
   appInstanceName: string;
-  hostBindAddress: string;
-  hostPort: string;
-  urlBase: string;
   cloudflareHelperUrl: string;
 }
 
@@ -64,9 +61,6 @@ export function SettingsGeneralPage() {
   useEffect(() => {
     if (shouldClearSaveState(saveState, dirty)) setSaveState(undefined);
   }, [dirty, saveState]);
-
-  /** Address and port only take effect on restart, so say so rather than imply a live change. */
-  const hostChanged = form.hostBindAddress !== savedForm.hostBindAddress || form.hostPort !== savedForm.hostPort;
 
   const [helperResult, setHelperResult] = useState<{ healthy: boolean; message: string } | null>(null);
   const [helperBusy, setHelperBusy] = useState(false);
@@ -94,14 +88,11 @@ export function SettingsGeneralPage() {
     try {
       await settingsMutation.mutate({
         appInstanceName: form.appInstanceName.trim(),
-        hostBindAddress: form.hostBindAddress.trim(),
-        hostPort: Number(form.hostPort || 5099),
-        urlBase: form.urlBase.trim(),
         cloudflareHelperUrl: form.cloudflareHelperUrl.trim()
       });
       setSavedForm(form);
       setSaveState("saved");
-      setMessage(hostChanged ? "Saved — restart Deluno to move to the new address" : "Saved just now");
+      setMessage("Saved just now");
     } catch (error) {
       setSaveState("error");
       setMessage(error instanceof Error ? error.message : "Could not save");
@@ -113,7 +104,7 @@ export function SettingsGeneralPage() {
       <PageToolbar tabs={systemSettingsNavItems} />
 
 
-      <ListCard title="Instance and host" count="How this installation names and serves itself">
+      <ListCard title="Instance" count="How this installation names itself">
         <div className="grid gap-[var(--grid-gap)] p-[var(--card-pad-x)]">
           <Field label="Instance name" help="Shown in the topbar and in notifications, so you can tell two installations apart." error={settingsMutation.fieldErrors.appInstanceName}>
             <Input
@@ -123,56 +114,10 @@ export function SettingsGeneralPage() {
               className="max-w-[24rem]"
             />
           </Field>
-          <FieldRow>
-            <Field label="Bind address" help="Use the local address unless you need to reach Deluno from another machine." error={settingsMutation.fieldErrors.hostBindAddress}>
-              <PresetField
-                value={form.hostBindAddress}
-                onChange={(value) => setForm((current) => ({ ...current, hostBindAddress: value }))}
-                options={[
-                  { label: "This machine only (127.0.0.1)", value: "127.0.0.1" },
-                  { label: "Every network interface (0.0.0.0)", value: "0.0.0.0" },
-                  { label: "IPv6 localhost (::1)", value: "::1" }
-                ]}
-                customLabel="Custom bind address"
-                customPlaceholder="IP address or hostname"
-              />
-            </Field>
-            <Field label="Port" help="Must not clash with another service on this machine." error={settingsMutation.fieldErrors.hostPort}>
-              <PresetField
-                inputType="number"
-                value={form.hostPort}
-                onChange={(value) => setForm((current) => ({ ...current, hostPort: value }))}
-                options={[
-                  { label: "Deluno default (5099)", value: "5099" },
-                  { label: "Radarr-style (7878)", value: "7878" },
-                  { label: "Sonarr-style (8989)", value: "8989" },
-                  { label: "9696", value: "9696" }
-                ]}
-                customLabel="Custom port"
-                customPlaceholder="Port number"
-              />
-            </Field>
-          </FieldRow>
-          <Field label="URL base" optional help="Path prefix when Deluno sits behind a reverse proxy. Leave empty when it serves from the root." error={settingsMutation.fieldErrors.urlBase}>
-            <PresetField
-              value={form.urlBase}
-              onChange={(value) => setForm((current) => ({ ...current, urlBase: value }))}
-              options={[
-                { label: "None — serve at /", value: "" },
-                { label: "/deluno", value: "/deluno" },
-                { label: "/media", value: "/media" }
-              ]}
-              customLabel="Custom URL base"
-              customPlaceholder="/my-deluno"
-            />
-          </Field>
-          {hostChanged ? (
-            <p className="text-[length:var(--type-caption)] text-warning">
-              Changing the address or port takes effect the next time Deluno starts. The page you are on now stays on the old one until then.
-            </p>
-          ) : null}
         </div>
       </ListCard>
+
+      <ReachabilityCard />
 
       <ListCard title="Cloudflare helper" count="For trackers behind a Cloudflare check">
         <div className="grid gap-[var(--grid-gap)] p-[var(--card-pad-x)]">
@@ -203,9 +148,57 @@ function same<T>(a: T, b: T) {
 function formFrom(settings: PlatformSettingsSnapshot): GeneralForm {
   return {
     appInstanceName: settings.appInstanceName,
-    hostBindAddress: settings.hostBindAddress,
-    hostPort: String(settings.hostPort),
-    urlBase: settings.urlBase,
     cloudflareHelperUrl: settings.cloudflareHelperUrl ?? ""
   };
+}
+
+/**
+ * Bind address, port and URL base used to sit here as editable fields that
+ * PATCHed host.bindAddress / host.port / host.urlBase, and nothing ever read
+ * them back: Kestrel binds to `Server:Port` / `Server:AllowLan` from
+ * configuration in Deluno.Host/Program.cs, and there is no `UsePathBase` for
+ * a URL base anywhere (#736). Editing them changed a value nobody consulted
+ * while implying the opposite.
+ *
+ * This reports the same two facts honestly instead: the effective port and
+ * whether other devices on the network can reach Deluno, both read from
+ * `/api/system/lan-access` — the same source System's own reachability
+ * notice uses — and says in plain words that changing either happens outside
+ * Deluno, not on this page.
+ */
+function ReachabilityCard() {
+  const [status, setStatus] = useState<LanAccessStatus | null>(null);
+  const [loadFailed, setLoadFailed] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    void fetchJson<LanAccessStatus>("/api/system/lan-access")
+      .then((next) => { if (active) setStatus(next); })
+      .catch(() => { if (active) setLoadFailed(true); });
+    return () => { active = false; };
+  }, []);
+
+  const reachabilityLabel =
+    status?.state === "open" ? "Yes" : status?.state === "blocked" ? "No" : "Unknown from here";
+
+  return (
+    <ListCard title="How Deluno is reached" count="Read-only — set outside the app">
+      <ListTable columns={[{ label: "Setting" }, { label: "Value", width: "minmax(0,1.4fr)", align: "end" }]} chevron={false}>
+        <ListRow>
+          <ListNameCell name="Port" />
+          <ListCell numeric align="end" primary={status ? String(status.port ?? "—") : loadFailed ? "Unavailable" : "Loading…"} />
+        </ListRow>
+        <ListRow>
+          <ListNameCell name="Other devices on your network can connect" sub={status?.message} />
+          <ListCell numeric align="end" primary={status ? reachabilityLabel : loadFailed ? "Unavailable" : "Loading…"} />
+        </ListRow>
+      </ListTable>
+      <p className="p-[var(--card-pad-x)] pt-0 text-[length:var(--type-caption)] text-muted-foreground">
+        The port and LAN access are set where Deluno starts, not in this page: the <code>Server:Port</code> and{" "}
+        <code>Server:AllowLan</code> environment variables (<code>Server__Port</code> / <code>Server__AllowLan</code> in
+        Docker Compose), or the equivalent command-line arguments for a manual run. Change either there and restart
+        Deluno.
+      </p>
+    </ListCard>
+  );
 }

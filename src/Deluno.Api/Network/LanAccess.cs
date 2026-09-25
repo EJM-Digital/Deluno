@@ -2,6 +2,7 @@ using Deluno.Security;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
+using Microsoft.Extensions.Configuration;
 
 namespace Deluno.Api.Network;
 
@@ -45,19 +46,29 @@ public sealed record LanAccessStatus(
     string Message,
     bool CanAllow);
 
-/// <summary>A host with no firewall for Deluno to look after: Docker, Linux, or a loopback-only Deluno.</summary>
-public sealed class UncheckedLanAccess : ILanAccess
+/// <summary>
+/// A host with no firewall for Deluno to look after: Docker, Linux, or a
+/// loopback-only Deluno.
+///
+/// <para>Even here the effective port is worth reporting: Settings → General
+/// used to show the stored host.port as if it were live, when Kestrel binds
+/// to <c>Server:Port</c> from configuration instead (#736). This reads the
+/// same key and the same default (5099) as <c>Program.cs</c> so the UI has
+/// one true answer regardless of which <see cref="ILanAccess"/> is
+/// registered.</para>
+/// </summary>
+public sealed class UncheckedLanAccess(IConfiguration configuration) : ILanAccess
 {
-    private static readonly LanAccessStatus Status = new(
+    private readonly LanAccessStatus _status = new(
         LanAccessStates.NotChecked,
-        null,
+        configuration.GetValue<int?>("Server:Port") ?? 5099,
         null,
         "Deluno does not manage a firewall on this host.",
         CanAllow: false);
 
-    public Task<LanAccessStatus> GetStatusAsync(CancellationToken cancellationToken) => Task.FromResult(Status);
+    public Task<LanAccessStatus> GetStatusAsync(CancellationToken cancellationToken) => Task.FromResult(_status);
 
-    public Task<LanAccessStatus> AllowAsync(CancellationToken cancellationToken) => Task.FromResult(Status);
+    public Task<LanAccessStatus> AllowAsync(CancellationToken cancellationToken) => Task.FromResult(_status);
 }
 
 public static class LanAccessEndpointRouteBuilderExtensions
