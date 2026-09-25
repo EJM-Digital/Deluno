@@ -180,7 +180,13 @@ try {
     # A machine that already has a different vpk gets the right one rather
     # than silently packing with whatever it happened to have.
     $env:PATH += ";$env:USERPROFILE\.dotnet\tools"
-    $installed = (& vpk --version 2>$null | Select-Object -First 1)
+    # A machine that has never had vpk installed has no `vpk` on PATH at all,
+    # which PowerShell treats as a terminating "command not found" error under
+    # $ErrorActionPreference = Stop - not a nonzero $LASTEXITCODE from the
+    # command itself. Without this try/catch that error aborted the whole
+    # packaging run instead of falling through to the install below.
+    $installed = $null
+    try { $installed = (& vpk --version 2>$null | Select-Object -First 1) } catch { $installed = $null }
     if ($LASTEXITCODE -ne 0 -or "$installed" -notmatch [regex]::Escape($VelopackVersion)) {
         Write-Host "   installing vpk $VelopackVersion (had: $installed)"
         # Uninstall first. `dotnet tool update` refuses to move backwards -
