@@ -271,6 +271,7 @@ public static class ConnectionsEndpointRouteBuilderExtensions
             HttpContext httpContext,
             [FromServices] IConnectionsRepository repository,
             [FromServices] IRealtimeEventPublisher realtimeEventPublisher,
+            [FromServices] IIntegrationResiliencePolicy resiliencePolicy,
             CancellationToken cancellationToken) =>
         {
             var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
@@ -282,6 +283,14 @@ public static class ConnectionsEndpointRouteBuilderExtensions
             var item = await repository.ResetIndexerCircuitAsync(id, cancellationToken);
             if (item is not null)
             {
+                // The indexer_sources row is only half the picture: the
+                // resilience policy keeps its own circuit, in memory and
+                // persisted in integration_circuit_states, keyed by
+                // "indexer:{id}:...". That circuit is what a search actually
+                // consults, and a reset that only touched the row left it
+                // open — the row said "reset manually" while every search kept
+                // silently skipping the indexer (#606).
+                await resiliencePolicy.CloseCircuitsAsync("indexer", item.Id, cancellationToken);
                 await realtimeEventPublisher.PublishEntityChangedAsync("Indexer", item.Id, cancellationToken);
             }
             return item is null ? Results.NotFound() : Results.Ok(item);
@@ -819,6 +828,17 @@ public static class ConnectionsEndpointRouteBuilderExtensions
             ClassifyIntegrationHealth,
             cancellationToken);
 
+        // A person just proved the indexer works. Its Test key is not
+        // necessarily the same key a background search used to open the
+        // circuit (Test includes the protocol, search does not), so closing
+        // only the Test's own key can leave the search's circuit open even
+        // though the person who tested it thinks it is fixed. Close every
+        // circuit recorded for this indexer, whatever suffix opened it.
+        if (result.Value is { HealthStatus: "healthy" })
+        {
+            await resiliencePolicy.CloseCircuitsAsync("indexer", item.Id, cancellationToken);
+        }
+
         return result.CircuitOpen
             ? IntegrationHealthCheckResult.CircuitOpen(
                 "indexer",
@@ -865,6 +885,14 @@ public static class ConnectionsEndpointRouteBuilderExtensions
             },
             ClassifyIntegrationHealth,
             cancellationToken);
+
+        // Same reasoning as the indexer test above: a proven-healthy client
+        // should close every circuit recorded under its id, not just the one
+        // this particular Test call happened to key itself under.
+        if (result.Value is { HealthStatus: "healthy" })
+        {
+            await resiliencePolicy.CloseCircuitsAsync("download-client", item.Id, cancellationToken);
+        }
 
         return result.CircuitOpen
             ? IntegrationHealthCheckResult.CircuitOpen(

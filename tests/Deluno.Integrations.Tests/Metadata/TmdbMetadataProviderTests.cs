@@ -774,6 +774,9 @@ public sealed class TmdbMetadataProviderTests : IDisposable
             return false;
         }
 
+        public Task CloseCircuitsAsync(string serviceType, string serviceId, CancellationToken cancellationToken)
+            => Task.CompletedTask;
+
         private static async Task<IntegrationResilienceResult<T>> ExecuteInternalAsync<T>(
             Func<CancellationToken, Task<T>> operation,
             Func<T, IntegrationResilienceOutcome> classifyResult,

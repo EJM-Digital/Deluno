@@ -94,6 +94,9 @@ public sealed class ReadingAnIndexerFeedTests
             retryAfterUtc = default;
             return false;
         }
+
+        public Task CloseCircuitsAsync(string serviceType, string serviceId, CancellationToken cancellationToken)
+            => Task.CompletedTask;
     }
 
     private sealed class StubFactory(HttpClient client) : IHttpClientFactory

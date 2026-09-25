@@ -611,6 +611,14 @@ public sealed class FeedMediaSearchPlanner(
                 indexer.Name,
                 indexer.Id,
                 result.RetryAfterUtc);
+
+            // An open circuit that only appears in a search's failures list is
+            // invisible to anyone not reading that one search's result: the
+            // Indexers screen kept showing this indexer as healthy/untested
+            // while every search silently skipped it (#606). Write the same
+            // fact to the indexer's own health so the screen says it in plain
+            // words and the existing Reset action can clear it.
+            await MarkCircuitOpenHealthAsync(indexer, result.RetryAfterUtc, cancellationToken);
         }
 
         // IntegrationResilienceResult<T>.Value is declared `T?`, and
@@ -645,6 +653,53 @@ public sealed class FeedMediaSearchPlanner(
             Failure = result.Failure ?? resolved.Failure
         };
         return WithTelemetry(final, indexer, queryText, mediaType, queryKind, startedTimestamp);
+    }
+
+    /// <summary>
+    /// Records an open search circuit on the indexer's own health, in plain
+    /// words, with the time it will try again. Without this, an indexer whose
+    /// circuit opened during background search stayed marked
+    /// healthy/untested on the Indexers screen — nothing on that screen ever
+    /// changed, so nobody knew to use the Reset action (#606).
+    ///
+    /// A failure here is logged and swallowed: a health write must never turn
+    /// a skipped indexer into a failed search for every other indexer still
+    /// running under the same <see cref="Parallel.ForAsync{TFrom}(TFrom,TFrom,ParallelOptions,Func{TFrom,CancellationToken,ValueTask})"/> call.
+    /// </summary>
+    private async Task MarkCircuitOpenHealthAsync(
+        IndexerItem indexer,
+        DateTimeOffset? retryAfterUtc,
+        CancellationToken cancellationToken)
+    {
+        var message = retryAfterUtc is { } retryAt
+            ? $"Deluno stopped asking {indexer.Name} after repeated failures; it will try again at {retryAt.UtcDateTime:HH:mm} UTC. Reset to try now."
+            : $"Deluno stopped asking {indexer.Name} after repeated failures. Reset to try now.";
+
+        try
+        {
+            await connectionsRepository.UpdateIndexerHealthAsync(
+                indexer.Id,
+                "circuitOpen",
+                message,
+                "circuitOpen",
+                latencyMs: null,
+                cancellationToken,
+                failure: IntegrationFailureFactory.CircuitOpen(
+                    "indexer",
+                    indexer.Id,
+                    indexer.Name,
+                    "search",
+                    retryAfterUtc,
+                    "Deluno paused it after repeated failures."));
+        }
+        catch (Exception exception)
+        {
+            logger.LogWarning(
+                exception,
+                "Failed to record the open search circuit on indexer {IndexerName} ({IndexerId}).",
+                indexer.Name,
+                indexer.Id);
+        }
     }
 
     private readonly record struct IndexerSearchOutcome(

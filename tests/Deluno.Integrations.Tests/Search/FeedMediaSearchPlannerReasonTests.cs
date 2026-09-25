@@ -138,6 +138,55 @@ public sealed class FeedMediaSearchPlannerReasonTests
         Assert.Equal("Unreachable indexer", failure.ServiceName);
     }
 
+    /// <summary>
+    /// #606: The Pirate Bay's circuit was open and every search silently
+    /// skipped it -- healthy/untested on the Indexers screen, no telemetry,
+    /// nothing in this search's failures. Both halves of that are asserted
+    /// here: the skip is attributable in this search's own result, and it is
+    /// also written to the indexer's own health so the screen says so without
+    /// anyone having to read a search log.
+    /// </summary>
+    [Fact]
+    public async Task A_search_skipped_by_an_open_circuit_is_reported_in_failures_and_on_the_indexer_itself()
+    {
+        var indexer = CreateIndexer("tpb-id", "The Pirate Bay");
+        var connections = CreateConnections(indexer);
+        var retryAfterUtc = DateTimeOffset.Parse("2026-09-25T18:30:00Z");
+
+        var plan = await CreatePlanner(
+            connections.Object,
+            resiliencePolicy: new CircuitOpenResiliencePolicy(retryAfterUtc)).BuildPlanAsync(
+                "Example",
+                2026,
+                "movies",
+                null,
+                "WEB 1080p",
+                [CreateSource(indexer)],
+                cancellationToken: CancellationToken.None);
+
+        Assert.Equal(MediaSearchReasons.CircuitOpen, plan.Reason);
+        var failure = Assert.Single(plan.Failures ?? []);
+        Assert.Equal("The Pirate Bay", failure.ServiceName);
+        Assert.Equal(IntegrationFailureKind.CircuitOpen, failure.Kind);
+
+        // The same fact must reach the indexer's own health -- a hidden
+        // circuit that only a search log shows is exactly what let the rig
+        // keep reporting the indexer as healthy while it was never asked.
+        connections.Verify(
+            repository => repository.UpdateIndexerHealthAsync(
+                "tpb-id",
+                "circuitOpen",
+                It.Is<string>(message =>
+                    message.Contains("The Pirate Bay", StringComparison.Ordinal) &&
+                    message.Contains("18:30", StringComparison.Ordinal) &&
+                    message.Contains("Reset", StringComparison.Ordinal)),
+                "circuitOpen",
+                null,
+                It.IsAny<CancellationToken>(),
+                It.IsAny<IntegrationFailure>()),
+            Times.Once);
+    }
+
     [Fact]
     public async Task Malformed_feed_returns_all_indexers_failed_and_logs_indexer_warning()
     {
@@ -941,6 +990,9 @@ public sealed class FeedMediaSearchPlannerReasonTests
             retryAfterUtc = DateTimeOffset.MinValue;
             return false;
         }
+
+        public Task CloseCircuitsAsync(string serviceType, string serviceId, CancellationToken cancellationToken)
+            => Task.CompletedTask;
     }
 
     /// <summary>
@@ -976,6 +1028,47 @@ public sealed class FeedMediaSearchPlannerReasonTests
             retryAfterUtc = DateTimeOffset.MinValue;
             return false;
         }
+
+        public Task CloseCircuitsAsync(string serviceType, string serviceId, CancellationToken cancellationToken)
+            => Task.CompletedTask;
+    }
+
+    /// <summary>
+    /// Behaves the way the real policy does when the circuit it consults is
+    /// already open: no attempts made at all, and a CircuitOpen failure built
+    /// from the caller's own service identity, exactly as
+    /// <c>IntegrationResiliencePolicy.ExecuteAsync</c> returns it (#606).
+    /// </summary>
+    private sealed class CircuitOpenResiliencePolicy(DateTimeOffset retryAfterUtc) : IIntegrationResiliencePolicy
+    {
+        public Task<IntegrationResilienceResult<T>> ExecuteAsync<T>(
+            IntegrationResilienceRequest request,
+            Func<CancellationToken, Task<T>> operation,
+            Func<T, IntegrationResilienceOutcome> classifyResult,
+            CancellationToken cancellationToken)
+            => Task.FromResult(new IntegrationResilienceResult<T>(
+                default!,
+                CircuitOpen: true,
+                CircuitOpened: false,
+                Attempts: 0,
+                FailureMessage: "Deluno paused it after repeated failures.",
+                RetryAfterUtc: retryAfterUtc,
+                Failure: IntegrationFailureFactory.CircuitOpen(
+                    request.ServiceType ?? "integration",
+                    request.ServiceId ?? request.Key,
+                    request.ServiceName ?? request.Operation,
+                    request.Operation,
+                    retryAfterUtc,
+                    "Deluno paused it after repeated failures.")));
+
+        public bool IsCircuitOpen(string key, out DateTimeOffset outRetryAfterUtc)
+        {
+            outRetryAfterUtc = retryAfterUtc;
+            return true;
+        }
+
+        public Task CloseCircuitsAsync(string serviceType, string serviceId, CancellationToken cancellationToken)
+            => Task.CompletedTask;
     }
 
     private sealed class PassthroughResiliencePolicy : IIntegrationResiliencePolicy
@@ -996,6 +1089,9 @@ public sealed class FeedMediaSearchPlannerReasonTests
             retryAfterUtc = DateTimeOffset.MinValue;
             return false;
         }
+
+        public Task CloseCircuitsAsync(string serviceType, string serviceId, CancellationToken cancellationToken)
+            => Task.CompletedTask;
     }
 
     private sealed class DisabledRankingModelService : IReleaseRankingModelService
