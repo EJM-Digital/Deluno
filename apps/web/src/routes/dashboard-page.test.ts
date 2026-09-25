@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { MediaItem } from "../lib/media-types";
-import { newestDashboardItems } from "./dashboard-page";
+import { dashboardShouldRevalidate, newestDashboardItems } from "./dashboard-page";
 
 function item(id: string, type: MediaItem["type"], addedUtc: string): MediaItem {
   return {
@@ -38,5 +38,23 @@ describe("dashboard recently added", () => {
 
     expect(newestDashboardItems(movies, [], 10).map((entry) => entry.id))
       .toEqual(["first", "second"]);
+  });
+});
+
+describe("dashboardShouldRevalidate", () => {
+  const here = new URL("http://deluno.local/");
+
+  it("does not re-run the loader for a same-address revalidation, such as returning to a hidden tab", () => {
+    expect(dashboardShouldRevalidate({ currentUrl: here, nextUrl: here, defaultShouldRevalidate: true })).toBe(false);
+  });
+
+  it("still revalidates after a form submission", () => {
+    expect(dashboardShouldRevalidate({ currentUrl: here, nextUrl: here, formMethod: "POST", defaultShouldRevalidate: true })).toBe(true);
+  });
+
+  it("defers to React Router when the address changes", () => {
+    const next = new URL("http://deluno.local/?range=7");
+    expect(dashboardShouldRevalidate({ currentUrl: here, nextUrl: next, defaultShouldRevalidate: true })).toBe(true);
+    expect(dashboardShouldRevalidate({ currentUrl: here, nextUrl: next, defaultShouldRevalidate: false })).toBe(false);
   });
 });

@@ -188,6 +188,26 @@ const EMPTY_TELEMETRY: DownloadTelemetryOverview = {
 const EMPTY_SHARING: DownloadSharingSnapshot = { holds: [], extraBytes: 0, driveNote: null, observedUtc: null };
 const EMPTY_SETUP_PROGRESS: SetupProgressItem = { lastCompletedStep: 0, isSkipped: false, isCompleted: false, updatedUtc: new Date(0).toISOString() };
 
+/**
+ * The loader only seeds the page's queries: every field is read through its own
+ * `useQuery` with the loader's answer as `initialData`, which React Query uses
+ * only while the cache is empty. So once the page is mounted, re-running the
+ * loader for the same address fetches all twenty-two sources and changes
+ * nothing on screen. The page's own `useSignalRResync` refetches the queries
+ * that matter, so the app-wide revalidation on returning to a hidden tab (#641)
+ * ran every source twice. A form submission or a change of address still
+ * revalidates as React Router would by default.
+ */
+export function dashboardShouldRevalidate({ currentUrl, nextUrl, formMethod, defaultShouldRevalidate }: {
+  currentUrl: URL;
+  nextUrl: URL;
+  formMethod?: string;
+  defaultShouldRevalidate: boolean;
+}): boolean {
+  if (formMethod || currentUrl.href !== nextUrl.href) return defaultShouldRevalidate;
+  return false;
+}
+
 export async function dashboardLoader(): Promise<DashboardLoaderData> {
   const [moviePage, movieWanted, showPage, showWanted, telemetry, indexers, clients, libraries, automation, searchCycles, retryWindows, upcomingEpisodes, setupProgress, settings, policySets, qualityProfiles] = await Promise.all([
     fetchJson<CataloguePage<MovieListItem>>("/api/movies/page?pageSize=14&sort=added&direction=desc").catch((): CataloguePage<MovieListItem> => ({ items: [], nextPageToken: null, hasMore: false, totalCount: 0, facets: null })),
