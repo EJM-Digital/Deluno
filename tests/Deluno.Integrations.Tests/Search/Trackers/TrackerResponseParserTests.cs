@@ -99,6 +99,50 @@ public sealed class TrackerResponseParserTests
         });
     }
 
+    [Fact]
+    public void Rutor_rows_already_carry_a_magnet_link()
+    {
+        var releases = Parse("rutor", "rutor.html", new TrackerQuery("ubuntu", "search", Categories: [2000]));
+
+        Assert.Equal(2, releases.Count);
+        Assert.All(releases, release =>
+        {
+            Assert.StartsWith("Ubuntu 24.04.1", release.Title);
+            Assert.StartsWith("magnet:?xt=urn:btih:", release.MagnetUrl);
+            Assert.True(release.Size > 0);
+            Assert.NotNull(release.Seeders);
+            Assert.NotNull(release.Peers);
+        });
+    }
+
+    [Fact]
+    public void Torrentdownloads_rows_point_at_a_details_page_the_magnet_is_fetched_from()
+    {
+        var releases = Parse("torrentdownloads", "torrentdownloads.html", new TrackerQuery("ubuntu", "search", Categories: [2000]));
+
+        Assert.Equal(2, releases.Count);
+        Assert.All(releases, release =>
+        {
+            Assert.StartsWith("Ubuntu 24.04.1", release.Title);
+            Assert.StartsWith("https://www.torrentdownloads.pro/torrent/", release.DownloadUrl);
+            Assert.NotNull(release.Seeders);
+            Assert.True(release.Size > 0);
+        });
+    }
+
+    [Fact]
+    public void Internet_archive_builds_the_torrent_address_from_each_items_identifier()
+    {
+        var releases = Parse("internetarchive", "internetarchive.json", new TrackerQuery("ubuntu", "search", Categories: [2000]));
+
+        Assert.Equal(2, releases.Count);
+        var first = releases[0];
+        Assert.Equal("Ubuntu 24.04.1 Release Notes Screencast", first.Title);
+        Assert.Equal("https://archive.org/download/ubuntu-24-04-1-release-notes-screencast/ubuntu-24-04-1-release-notes-screencast_archive.torrent", first.DownloadUrl);
+        Assert.Equal(828815442L, first.Size);
+        Assert.Contains(first.Categories, category => category / 1000 == 2);
+    }
+
     private static IReadOnlyList<TrackerRelease> Parse(string id, string fixture, TrackerQuery query)
     {
         var definition = Catalog.Find(id)!;

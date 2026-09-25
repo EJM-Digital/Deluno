@@ -1,0 +1,47 @@
+# Deluno's own definition (#606), written from the Internet Archive's public
+# advancedsearch.php JSON API, not copied from any indexer manager. Every
+# item's torrent is at a fixed, predictable address: no page to scrape.
+id: internetarchive
+name: Internet Archive
+description: A public general tracker of public-domain and freely licensed media. Its own advancedsearch API is queried directly; every item's torrent lives at a fixed address.
+language: en-US
+type: public
+encoding: UTF-8
+links:
+  - https://archive.org/
+caps:
+  categorymappings:
+    - {id: movies, cat: Movies, desc: Movies}
+    - {id: movies, cat: TV, desc: "TV"}
+  modes:
+    search: [q]
+    movie-search: [q]
+    tv-search: [q]
+search:
+  paths:
+    - path: "advancedsearch.php?fl[]=identifier&fl[]=title&fl[]=year&fl[]=item_size&output=json&rows=50&page=1"
+      response:
+        type: json
+      inputs:
+        q: "title:({{ .Keywords }}) AND mediatype:(movies)"
+  rows:
+    selector: response.docs
+    count:
+      selector: response.numFound
+  fields:
+    identifier:
+      selector: identifier
+    title:
+      selector: title
+    details:
+      text: "https://archive.org/details/{{ .Result.identifier }}"
+    download:
+      text: "https://archive.org/download/{{ .Result.identifier }}/{{ .Result.identifier }}_archive.torrent"
+    size:
+      selector: item_size
+      optional: true
+    year:
+      selector: year
+      optional: true
+    category:
+      text: movies

@@ -18,10 +18,14 @@ public sealed class TrackerIndexers(
 {
     public TrackerConnection Connect(IndexerItem indexer)
     {
+        // A definition removed or renamed since this indexer was added (or one
+        // never installed after a data folder was copied elsewhere) must not
+        // crash a search: it is a configuration problem this row can show and
+        // a person can clear, by adding the definition back or removing the row.
         var definition = catalog.Find(indexer.DefinitionId)
                          ?? throw new TrackerException(indexer.DefinitionId is null
                              ? $"{indexer.Name} does not say which tracker it is."
-                             : $"Deluno has no tracker called '{indexer.DefinitionId}'.");
+                             : $"This tracker's definition ('{indexer.DefinitionId}') is not installed. Add one to the trackers folder or remove this indexer.");
 
         var settings = new Dictionary<string, string?>(StringComparer.Ordinal);
         foreach (var (name, value) in indexer.DefinitionSettings ?? new Dictionary<string, string>())
