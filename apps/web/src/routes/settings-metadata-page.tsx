@@ -15,7 +15,6 @@ import { ListCard } from "../components/ui/list-card";
 import { PageFooter } from "../components/ui/page-footer";
 import { PageToolbar } from "../components/ui/page-toolbar";
 import { PresetField } from "../components/ui/preset-field";
-import { SwitchRow } from "../components/ui/switch";
 import { librarySetupNavItems } from "../components/app/settings-shell";
 import { useUnsavedChanges } from "../hooks/use-unsaved-changes";
 import type { DrawerSaveState } from "../components/ui/drawer";
@@ -59,8 +58,6 @@ export async function settingsMetadataLoader(): Promise<LoaderData> {
 interface MetadataForm {
   certificationCountry: string;
   language: string;
-  nfoEnabled: boolean;
-  artworkEnabled: boolean;
 }
 
 export function SettingsMetadataPage() {
@@ -94,9 +91,7 @@ export function SettingsMetadataPage() {
     try {
       await settingsMutation.mutate({
         metadataCertificationCountry: form.certificationCountry,
-        metadataLanguage: form.language,
-        metadataNfoEnabled: form.nfoEnabled,
-        metadataArtworkEnabled: form.artworkEnabled
+        metadataLanguage: form.language
       });
       setSavedForm(form);
       setSaveState("saved");
@@ -112,7 +107,8 @@ export function SettingsMetadataPage() {
     <form onSubmit={handleSubmit} className="flex flex-col gap-[var(--page-gap)]" noValidate>
       <PageToolbar tabs={librarySetupNavItems} />
 
-      <ListCard title="Metadata files" count="Optional information stored beside your media">
+      {/* No .nfo or artwork switches here: Deluno writes neither file (#735). Offer them again only with a writer behind them. */}
+      <ListCard title="Title details" count="Language and ratings region">
         <div className="grid gap-[var(--grid-gap)] p-[var(--card-pad-x)]">
           <FieldRow>
             <Field label="Details language" help="Preferred language for titles, descriptions, and release information." error={settingsMutation.fieldErrors.metadataLanguage}>
@@ -134,21 +130,6 @@ export function SettingsMetadataPage() {
               />
             </Field>
           </FieldRow>
-          <FieldRow>
-            <SwitchRow
-              label="Save portable metadata files (.nfo)"
-              description="Keep a small .nfo record in each media folder so other players and tools can read the details."
-              checked={form.nfoEnabled}
-              onCheckedChange={(checked) => setForm((current) => ({ ...current, nfoEnabled: checked }))}
-            />
-            <SwitchRow
-              label="Save artwork files"
-              description="Keep poster and backdrop images next to your media so they remain available outside Deluno."
-              checked={form.artworkEnabled}
-              onCheckedChange={(checked) => setForm((current) => ({ ...current, artworkEnabled: checked }))}
-              className="sm:border-l sm:border-hairline sm:pl-[var(--grid-gap)]"
-            />
-          </FieldRow>
         </div>
       </ListCard>
 
@@ -166,8 +147,6 @@ function same<T>(a: T, b: T) {
 function formFrom(settings: PlatformSettingsSnapshot): MetadataForm {
   return {
     certificationCountry: settings.metadataCertificationCountry,
-    language: settings.metadataLanguage,
-    nfoEnabled: settings.metadataNfoEnabled,
-    artworkEnabled: settings.metadataArtworkEnabled
+    language: settings.metadataLanguage
   };
 }
