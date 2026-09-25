@@ -236,12 +236,36 @@ public sealed class RealProcessRunner : IProcessRunner
 
             using var budget = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             budget.CancelAfter(timeout);
-            await process.WaitForExitAsync(budget.Token);
-            return process.ExitCode;
+            try
+            {
+                await process.WaitForExitAsync(budget.Token);
+                return process.ExitCode;
+            }
+            catch (OperationCanceledException)
+            {
+                // A timed-out or cancelled installer must not keep running
+                // detached: without this, Deluno reports the component
+                // failed while the vendor's own installer process (and
+                // anything it already spawned) is left running unsupervised.
+                TryKillTree(process);
+                return null;
+            }
         }
         catch
         {
             return null;
+        }
+    }
+
+    private static void TryKillTree(Process process)
+    {
+        try
+        {
+            process.Kill(entireProcessTree: true);
+        }
+        catch
+        {
+            // Already exited, or Windows refused the kill; nothing more this can do.
         }
     }
 }
