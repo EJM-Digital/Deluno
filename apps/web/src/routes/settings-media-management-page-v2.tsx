@@ -144,8 +144,7 @@ function FileHandlingPage() {
         movieFileFormat: form.movieFileFormat,
         episodeFileFormat: form.episodeFileFormat,
         renameOnImport: form.renameOnImport,
-        useHardlinks: form.useHardlinks,
-        cleanupEmptyFolders: form.cleanupEmptyFolders
+        useHardlinks: form.useHardlinks
       });
       setSaved(nextSettings);
       setForm(nextSettings);
@@ -273,8 +272,7 @@ function ImportPolicyPage() {
     try {
       const nextSettings = await settingsMutation.mutate({
         renameOnImport: form.renameOnImport,
-        useHardlinks: form.useHardlinks,
-        cleanupEmptyFolders: form.cleanupEmptyFolders
+        useHardlinks: form.useHardlinks
       });
       setSaved(nextSettings);
       setForm(nextSettings);
@@ -311,17 +309,26 @@ function ImportPolicyFields({
 }) {
   return (
     <>
-      <div className="grid divide-y divide-hairline md:grid-cols-3 md:divide-x md:divide-y-0">
+      <div className="grid divide-y divide-hairline md:grid-cols-2 md:divide-x md:divide-y-0">
       <div className="p-[var(--card-pad-x)]">
         <SwitchRow label="Rename files when imported" description="Apply the naming choices from Media Naming as the file enters the library." checked={form.renameOnImport} onCheckedChange={(checked) => onFormChange((current) => ({ ...current, renameOnImport: checked }))} />
       </div>
       <div className="p-[var(--card-pad-x)]">
         <SwitchRow label="Keep seeding without a second copy" description="Use a hardlink when the drives support it, so the download client and library share one set of file data." checked={form.useHardlinks} onCheckedChange={(checked) => onFormChange((current) => ({ ...current, useHardlinks: checked }))} />
       </div>
-      <div className="p-[var(--card-pad-x)]">
-        <SwitchRow label="Remove empty folders after import" description="Clean up folders left empty by the import. Deluno never removes the download root." checked={form.cleanupEmptyFolders} onCheckedChange={(checked) => onFormChange((current) => ({ ...current, cleanupEmptyFolders: checked }))} />
       </div>
-      </div>
+      {/*
+        A global empty-folder cleanup switch (CleanupEmptyFolders) used to sit
+        here too. Import only ever consulted the per-library
+        LibraryItem.RemoveEmptySourceFolders switch (Processing -> a
+        library's workflow drawer) -- this one was stored and never read
+        (#736). Removed rather than wired up, since a global default would
+        still need the per-library switch to win, and that switch already
+        exists per library.
+      */}
+      <p className="border-t border-hairline p-[var(--card-pad-x)] text-[length:var(--type-caption)] text-muted-foreground">
+        Whether Deluno removes folders left empty by an import is set per library, in Processing -&gt; that library's workflow.
+      </p>
     </>
   );
 }
