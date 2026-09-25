@@ -1137,10 +1137,17 @@ public sealed class DownloadClientTelemetryService(
     /// consequences.</b> Nothing is blocklisted and nothing is searched for
     /// again: the release did not fail, it is waiting on a person to free
     /// space and re-run post-processing in NZBGet. No import outcome is
-    /// recorded either — there is nothing to point an import at yet — so the
-    /// dispatch is left resolvable by <see cref="RecordDetectionAsync"/>
-    /// having already marked it detected and finished, the same way a
-    /// duplicate is.</para>
+    /// recorded either — there is nothing to point an import at yet.</para>
+    ///
+    /// <para><b>Deliberately not "finished".</b> Unlike a duplicate or a real
+    /// failure, this dispatch's <c>ClientCompletedUtc</c> is left unset (see
+    /// <see cref="ShownByClient"/>): the unpacked output is not there yet, so
+    /// nothing downstream should treat it as ready to import, and NZBGet
+    /// reporting SUCCESS later still needs to look like a fresh completion.
+    /// That also means <see cref="ShownByClient"/> keeps re-surfacing this
+    /// sighting on every poll until then, so the timeline/activity write here
+    /// is guarded by whether it already ran — otherwise a person watching the
+    /// same full disk would see the same entry every polling pass.</para>
     /// </summary>
     private async Task RecordClientNeedsAttentionAsync(
         DownloadDispatchItem dispatch,
@@ -1148,6 +1155,12 @@ public sealed class DownloadClientTelemetryService(
         CancellationToken cancellationToken)
     {
         if (dispatch.ImportStatus is not null)
+        {
+            return;
+        }
+
+        var timeline = await dispatchesRepository.GetDispatchTimelineAsync(dispatch.Id, cancellationToken);
+        if (timeline.Any(entry => entry.EventType == "client-reported-needs-attention"))
         {
             return;
         }
@@ -1287,12 +1300,21 @@ public sealed class DownloadClientTelemetryService(
             // DELETED/DUPE, DELETED/COPY and DELETED/GOOD. Also only trusted
             // from the client's own history — never inferred from the queue.
             var duplicateByClient = item.Outcome == DownloadClientHistoryOutcomes.Duplicate && item.HistorySource == "native";
-            // The download finished but needs a person before it can go
-            // further (#733): NZBGet's WARNING/SPACE (disk full during
-            // unpacking). Not a failure, so it takes none of the failure
-            // path's consequences.
+            // The download is not finished by needing a person (#733):
+            // NZBGet's WARNING/SPACE (disk full during unpacking) means
+            // unpacking has not produced anything importable yet, and NZBGet
+            // keeps reporting the same history row until a person frees space
+            // and re-runs post-processing — at which point it reports SUCCESS
+            // and this dispatch takes the ordinary completed path. Folding it
+            // into `finished` here stamped ClientCompletedUtc immediately,
+            // which is wrong twice over: it looks like the still-packed
+            // output is ready to import right now, and once NZBGet later
+            // does report SUCCESS the sighting filter below (`seen.Finished
+            // && ClientCompletedUtc is null`) never fires again because
+            // ClientCompletedUtc is already set — the recovered download
+            // would never be picked up.
             var attentionByClient = item.Outcome == DownloadClientHistoryOutcomes.NeedsAttention && item.HistorySource == "native";
-            var finished = item.Outcome is DownloadQueueStatuses.Completed or DownloadQueueStatuses.ImportReady || failedByClient || duplicateByClient || attentionByClient;
+            var finished = item.Outcome is DownloadQueueStatuses.Completed or DownloadQueueStatuses.ImportReady || failedByClient || duplicateByClient;
             var bytes = item.SizeBytes > 0 ? item.SizeBytes : (long?)null;
             var reason = failedByClient ? item.ErrorMessage : null;
             var duplicateReason = duplicateByClient ? item.ErrorMessage : null;
@@ -1310,7 +1332,16 @@ public sealed class DownloadClientTelemetryService(
                 continue;
             }
 
-            if (dispatch.DetectedUtc is null || (seen.Finished && dispatch.ClientCompletedUtc is null))
+            // A needs-attention sighting keeps qualifying on every poll while
+            // ClientCompletedUtc stays unset (#733) — it never becomes
+            // "finished" on its own, so this is the only way NZBGet later
+            // reporting SUCCESS still gets picked up, and the only way a
+            // person still gets told about it if the earlier telling somehow
+            // never landed. RecordClientNeedsAttentionAsync is the one that
+            // stops the timeline and activity feed from repeating.
+            if (dispatch.DetectedUtc is null
+                || (seen.Finished && dispatch.ClientCompletedUtc is null)
+                || (seen.NeedsAttention && dispatch.ClientCompletedUtc is null))
             {
                 sightings.Add(new ClientSighting(dispatch, seen.Bytes, seen.Finished, seen.Failed, seen.Reason, seen.Duplicate, seen.DuplicateReason, seen.NeedsAttention, seen.AttentionReason));
             }
