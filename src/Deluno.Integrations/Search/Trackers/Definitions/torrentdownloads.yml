@@ -1,10 +1,10 @@
 # Deluno's own definition (#606), written from TorrentDownloads' own search
-# results page, not copied from any indexer manager. Search results only
-# link to a details page; the real download link is fetched from there when
-# a release is grabbed.
+# RSS feed (rss.xml?type=search), not copied from any indexer manager. Each
+# item carries its size, seeders, leechers and info hash, so a release is
+# grabbed from its magnet with no second page to fetch.
 id: torrentdownloads
 name: TorrentDownloads
-description: A public general tracker. Search results only link to a details page; the real download link is fetched from there when a release is grabbed.
+description: A public general tracker, read from its own search RSS feed. Every item carries its info hash, so a release is grabbed by magnet.
 language: en-US
 type: public
 encoding: UTF-8
@@ -20,30 +20,26 @@ caps:
     tv-search: [q]
 search:
   paths:
-    - path: "search/"
+    - path: "rss.xml"
+      response:
+        type: xml
       inputs:
+        type: search
         search: "{{ .Keywords }}"
   rows:
-    selector: "table.table4 tr:has(td.tdleft)"
+    selector: "item"
   fields:
     title:
-      selector: "div.tt-name a"
+      selector: title
     details:
-      selector: "div.tt-name a"
-      attribute: href
-    download:
-      selector: "div.tt-name a"
-      attribute: href
+      selector: link
+    infohash:
+      selector: info_hash
     size:
-      selector: "td:nth-of-type(2)"
+      selector: size
     seeders:
-      selector: td.tdseed
+      selector: seeders
     leechers:
-      selector: td.tdleech
-# The search row only links to the torrent's details page; the magnet (or
-# .torrent link the page also carries) is fetched from there when a
-# release is grabbed, not from the search results themselves.
-download:
-  selectors:
-    - selector: "a[href^='magnet:']"
-      attribute: href
+      selector: leechers
+    date:
+      selector: pubDate

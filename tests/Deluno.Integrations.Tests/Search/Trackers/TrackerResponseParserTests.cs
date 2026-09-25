@@ -102,32 +102,41 @@ public sealed class TrackerResponseParserTests
     [Fact]
     public void Rutor_rows_already_carry_a_magnet_link()
     {
-        var releases = Parse("rutor", "rutor.html", new TrackerQuery("ubuntu", "search", Categories: [2000]));
+        // Recorded from rutor.info on 25 September 2026: a search for The
+        // Wild Robot, 23 results striped across "gai" and "tum" rows.
+        var releases = Parse("rutor", "rutor.html", new TrackerQuery("The Wild Robot", "search", Categories: [2000]));
 
-        Assert.Equal(2, releases.Count);
+        Assert.Equal(23, releases.Count);
         Assert.All(releases, release =>
         {
-            Assert.StartsWith("Ubuntu 24.04.1", release.Title);
+            Assert.Contains("The Wild Robot", release.Title);
             Assert.StartsWith("magnet:?xt=urn:btih:", release.MagnetUrl);
-            Assert.True(release.Size > 0);
+            Assert.True(release.Size > 100_000_000);
             Assert.NotNull(release.Seeders);
             Assert.NotNull(release.Peers);
         });
+        Assert.Contains(releases, release => release.Title!.Contains("BDRip 720p", StringComparison.Ordinal));
     }
 
     [Fact]
-    public void Torrentdownloads_rows_point_at_a_details_page_the_magnet_is_fetched_from()
+    public void Torrentdownloads_search_feed_gives_the_info_hash_so_no_second_page_is_needed()
     {
-        var releases = Parse("torrentdownloads", "torrentdownloads.html", new TrackerQuery("ubuntu", "search", Categories: [2000]));
+        // Recorded from torrentdownloads.pro's rss.xml?type=search on
+        // 25 September 2026: a search for The Wild Robot, 50 items.
+        var releases = Parse("torrentdownloads", "torrentdownloads.xml", new TrackerQuery("The Wild Robot", "search", Categories: [2000]));
 
-        Assert.Equal(2, releases.Count);
+        Assert.Equal(50, releases.Count);
         Assert.All(releases, release =>
         {
-            Assert.StartsWith("Ubuntu 24.04.1", release.Title);
-            Assert.StartsWith("https://www.torrentdownloads.pro/torrent/", release.DownloadUrl);
-            Assert.NotNull(release.Seeders);
+            Assert.False(string.IsNullOrWhiteSpace(release.Title));
+            Assert.Equal(40, release.InfoHash!.Length);
             Assert.True(release.Size > 0);
+            Assert.NotNull(release.Seeders);
         });
+        var first = releases[0];
+        Assert.Equal("The Wild Robot (2024) [1080p] [WEBRip] [5 1] [YTS MX]", first.Title);
+        Assert.Equal(2014280923, first.Size);
+        Assert.Equal(765, first.Seeders);
     }
 
     [Fact]

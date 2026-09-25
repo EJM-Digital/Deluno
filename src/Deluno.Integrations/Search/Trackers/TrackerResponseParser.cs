@@ -43,6 +43,27 @@ public static partial class TrackerResponseParser
 
     // ---- HTML and XML ------------------------------------------------------
 
+    /// <summary>
+    /// A feed behind Cloudflare can arrive with a <c>&lt;script&gt;</c> appended
+    /// after its closing root tag (seen on torrentdownloads.pro's search RSS,
+    /// #606), which no XML parser accepts. Everything after the root element's
+    /// own closing tag is dropped; a document without one is left alone.
+    /// </summary>
+    internal static string WithoutTrailingContent(string body)
+    {
+        // The first element tag; the XML declaration and comments start with
+        // <? and <!, which the letter this requires already rules out.
+        var match = Regex.Match(body, @"<([A-Za-z_][\w:.-]*)[\s>/]", RegexOptions.CultureInvariant);
+        if (!match.Success)
+        {
+            return body;
+        }
+
+        var closing = $"</{match.Groups[1].Value}>";
+        var end = body.LastIndexOf(closing, StringComparison.Ordinal);
+        return end < 0 ? body : body[..(end + closing.Length)];
+    }
+
     private static TrackerSearchResult ParseMarkup(
         TrackerDefinition definition,
         bool isXml,
@@ -52,7 +73,7 @@ public static partial class TrackerResponseParser
         TrackerContext context)
     {
         var search = definition.Search;
-        IDocument document = isXml ? new XmlParser().ParseDocument(body) : new HtmlParser().ParseDocument(body);
+        IDocument document = isXml ? new XmlParser().ParseDocument(WithoutTrailingContent(body)) : new HtmlParser().ParseDocument(body);
         var root = document.DocumentElement;
 
         CheckForErrors(search.Errors, root, variables, context);
