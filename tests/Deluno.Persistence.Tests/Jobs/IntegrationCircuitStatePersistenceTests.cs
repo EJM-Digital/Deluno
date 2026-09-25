@@ -60,6 +60,85 @@ public sealed class IntegrationCircuitStatePersistenceTests
         Assert.True(skipped.CircuitOpen);
     }
 
+    /// <summary>
+    /// #732: a fixed one-minute break never escalated, so a dead indexer or
+    /// client got retried every minute forever. The escalation level -- how
+    /// many consecutive openings this circuit has had with no success in
+    /// between -- rides along with the rest of the persisted row: a restart
+    /// mid-streak must resume climbing the ladder instead of dropping back to
+    /// the first (one-minute) rung.
+    /// </summary>
+    [Fact]
+    public async Task Escalation_level_survives_a_restart_and_keeps_climbing_the_ladder()
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-09-25T00:00:00Z"));
+        await InitializeSchemaAsync(storage, timeProvider);
+
+        var request = new IntegrationResilienceRequest(
+            "indexer:tpb-id:torznab:https://thepiratebay.example:443",
+            "search",
+            MaxAttempts: 1,
+            FailureThreshold: 1,
+            ServiceType: "indexer",
+            ServiceId: "tpb-id",
+            ServiceName: "The Pirate Bay");
+
+        var beforeRestart = new IntegrationResiliencePolicy(
+            timeProvider,
+            storage.Factory,
+            NullLogger<IntegrationResiliencePolicy>.Instance);
+
+        // First opening: one minute.
+        var first = await beforeRestart.ExecuteAsync(
+            request,
+            _ => Task.FromResult("down"),
+            _ => IntegrationResilienceOutcome.RetryableFailure,
+            CancellationToken.None);
+        Assert.Equal(TimeSpan.FromMinutes(1), first.RetryAfterUtc!.Value - timeProvider.GetUtcNow());
+        timeProvider.Advance(TimeSpan.FromMinutes(1));
+
+        // Second opening in the same streak, still the pre-restart process:
+        // five minutes.
+        var second = await beforeRestart.ExecuteAsync(
+            request,
+            _ => Task.FromResult("still-down"),
+            _ => IntegrationResilienceOutcome.RetryableFailure,
+            CancellationToken.None);
+        Assert.Equal(TimeSpan.FromMinutes(5), second.RetryAfterUtc!.Value - timeProvider.GetUtcNow());
+
+        // A fresh process, backed by the same jobs database, standing in for
+        // a restart while the second break is still running. Its first call
+        // loads persisted state -- including the escalation level -- while
+        // the row is still in the "circuit_open_until_utc > now" window that
+        // load query filters on; that has to happen before the break ends,
+        // or the freshly-expired row is skipped and the level is lost.
+        var afterRestart = new IntegrationResiliencePolicy(
+            timeProvider,
+            storage.Factory,
+            NullLogger<IntegrationResiliencePolicy>.Instance);
+
+        var stillOpenAfterRestart = await afterRestart.ExecuteAsync(
+            request,
+            _ => Task.FromResult("should-not-run"),
+            _ => IntegrationResilienceOutcome.Success,
+            CancellationToken.None);
+        Assert.True(stillOpenAfterRestart.CircuitOpen);
+
+        timeProvider.Advance(TimeSpan.FromMinutes(5));
+
+        var third = await afterRestart.ExecuteAsync(
+            request,
+            _ => Task.FromResult("still-down-after-restart"),
+            _ => IntegrationResilienceOutcome.RetryableFailure,
+            CancellationToken.None);
+
+        // Fifteen minutes -- the third rung -- not back at one minute: the
+        // escalation level came from the database, not a fresh in-memory
+        // circuit.
+        Assert.Equal(TimeSpan.FromMinutes(15), third.RetryAfterUtc!.Value - timeProvider.GetUtcNow());
+    }
+
     [Fact]
     public async Task CloseCircuitsAsync_clears_the_persisted_row_so_it_does_not_reappear_after_a_restart()
     {

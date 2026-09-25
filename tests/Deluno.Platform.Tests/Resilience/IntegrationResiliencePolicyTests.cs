@@ -111,6 +111,171 @@ public sealed class IntegrationResiliencePolicyTests
     }
 
     [Fact]
+    public async Task Escalates_the_break_on_every_consecutive_opening_up_to_the_cap()
+    {
+        // #732: a dead indexer or client re-opened its circuit for exactly
+        // one minute forever. Each opening in an unbroken streak should now
+        // climb the same ladder Radarr/Sonarr/Prowlarr use, and the streak
+        // must not climb past the last rung once it is reached.
+        var timeProvider = new ManualTimeProvider(DateTimeOffset.Parse("2026-04-29T00:00:00Z"));
+        var policy = CreatePolicy(timeProvider);
+        var request = new IntegrationResilienceRequest(
+            "indexer:escalating",
+            "indexer.search",
+            MaxAttempts: 1,
+            FailureThreshold: 1,
+            InitialDelay: TimeSpan.Zero,
+            MaxDelay: TimeSpan.Zero);
+
+        TimeSpan[] expectedBreaks =
+        [
+            TimeSpan.FromMinutes(1),
+            TimeSpan.FromMinutes(5),
+            TimeSpan.FromMinutes(15),
+            TimeSpan.FromMinutes(30),
+            TimeSpan.FromHours(1),
+            TimeSpan.FromHours(3),
+            TimeSpan.FromHours(3) // one opening past the ladder: stays capped, does not grow further.
+        ];
+
+        foreach (var expectedBreak in expectedBreaks)
+        {
+            var openedAt = timeProvider.GetUtcNow();
+            var opened = await policy.ExecuteAsync(
+                request,
+                _ => Task.FromResult("still-down"),
+                _ => IntegrationResilienceOutcome.RetryableFailure,
+                CancellationToken.None);
+
+            Assert.True(opened.CircuitOpened);
+            Assert.Equal(openedAt.Add(expectedBreak), opened.RetryAfterUtc);
+
+            // Land exactly on the moment the break ends, so the next failure
+            // opens a fresh circuit instead of being swallowed by the
+            // still-open one.
+            timeProvider.Advance(expectedBreak);
+        }
+    }
+
+    [Fact]
+    public async Task A_success_resets_the_escalation_ladder_back_to_the_first_rung()
+    {
+        var timeProvider = new ManualTimeProvider(DateTimeOffset.Parse("2026-04-29T00:00:00Z"));
+        var policy = CreatePolicy(timeProvider);
+        var request = new IntegrationResilienceRequest(
+            "download-client:recovers",
+            "download-client.telemetry",
+            MaxAttempts: 1,
+            FailureThreshold: 1,
+            InitialDelay: TimeSpan.Zero,
+            MaxDelay: TimeSpan.Zero);
+
+        // Climb to the second rung (1m, then 5m).
+        var first = await policy.ExecuteAsync(
+            request,
+            _ => Task.FromResult("down"),
+            _ => IntegrationResilienceOutcome.RetryableFailure,
+            CancellationToken.None);
+        Assert.Equal(TimeSpan.FromMinutes(1), first.RetryAfterUtc - timeProvider.GetUtcNow());
+        timeProvider.Advance(TimeSpan.FromMinutes(1));
+
+        var second = await policy.ExecuteAsync(
+            request,
+            _ => Task.FromResult("still-down"),
+            _ => IntegrationResilienceOutcome.RetryableFailure,
+            CancellationToken.None);
+        Assert.Equal(TimeSpan.FromMinutes(5), second.RetryAfterUtc - timeProvider.GetUtcNow());
+        timeProvider.Advance(TimeSpan.FromMinutes(5));
+
+        // A success in between clears the circuit entirely.
+        var recovered = await policy.ExecuteAsync(
+            request,
+            _ => Task.FromResult("ok"),
+            _ => IntegrationResilienceOutcome.Success,
+            CancellationToken.None);
+        Assert.True(recovered.Succeeded);
+
+        // The next opening starts back at the first (one-minute) rung, not
+        // where the ladder left off.
+        var reopened = await policy.ExecuteAsync(
+            request,
+            _ => Task.FromResult("down-again"),
+            _ => IntegrationResilienceOutcome.RetryableFailure,
+            CancellationToken.None);
+        Assert.True(reopened.CircuitOpened);
+        Assert.Equal(TimeSpan.FromMinutes(1), reopened.RetryAfterUtc - timeProvider.GetUtcNow());
+    }
+
+    [Fact]
+    public async Task An_explicit_break_duration_still_wins_over_escalation()
+    {
+        var timeProvider = new ManualTimeProvider(DateTimeOffset.Parse("2026-04-29T00:00:00Z"));
+        var policy = CreatePolicy(timeProvider);
+        var request = new IntegrationResilienceRequest(
+            "metadata:explicit-break",
+            "metadata.tmdb.search",
+            MaxAttempts: 1,
+            FailureThreshold: 1,
+            InitialDelay: TimeSpan.Zero,
+            MaxDelay: TimeSpan.Zero,
+            BreakDuration: TimeSpan.FromSeconds(30));
+
+        var opened = await policy.ExecuteAsync(
+            request,
+            _ => Task.FromResult("down"),
+            _ => IntegrationResilienceOutcome.RetryableFailure,
+            CancellationToken.None);
+
+        Assert.True(opened.CircuitOpened);
+        Assert.Equal(TimeSpan.FromSeconds(30), opened.RetryAfterUtc - timeProvider.GetUtcNow());
+        timeProvider.Advance(TimeSpan.FromSeconds(30));
+
+        var reopened = await policy.ExecuteAsync(
+            request,
+            _ => Task.FromResult("still-down"),
+            _ => IntegrationResilienceOutcome.RetryableFailure,
+            CancellationToken.None);
+
+        // Escalation would have moved to the second rung (5 minutes); an
+        // explicit break keeps using its own fixed duration instead.
+        Assert.Equal(TimeSpan.FromSeconds(30), reopened.RetryAfterUtc - timeProvider.GetUtcNow());
+    }
+
+    [Fact]
+    public async Task Circuit_open_failure_message_says_when_the_next_try_is()
+    {
+        var timeProvider = new ManualTimeProvider(DateTimeOffset.Parse("2026-04-29T00:00:00Z"));
+        var policy = CreatePolicy(timeProvider);
+        var request = new IntegrationResilienceRequest(
+            "indexer:messaging",
+            "indexer.search",
+            MaxAttempts: 1,
+            FailureThreshold: 1,
+            InitialDelay: TimeSpan.Zero,
+            MaxDelay: TimeSpan.Zero,
+            ServiceType: "indexer",
+            ServiceId: "messaging-id",
+            ServiceName: "Messaging Indexer");
+
+        await policy.ExecuteAsync(
+            request,
+            _ => Task.FromResult("down"),
+            _ => IntegrationResilienceOutcome.RetryableFailure,
+            CancellationToken.None);
+
+        var blocked = await policy.ExecuteAsync(
+            request,
+            _ => Task.FromResult("should-not-run"),
+            _ => IntegrationResilienceOutcome.Success,
+            CancellationToken.None);
+
+        Assert.True(blocked.CircuitOpen);
+        var expectedTime = blocked.RetryAfterUtc!.Value.ToLocalTime().ToString("HH:mm");
+        Assert.Contains(expectedTime, blocked.FailureMessage);
+        Assert.Contains("try again", blocked.FailureMessage, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public async Task Does_not_retry_or_open_circuit_for_non_retryable_failures()
     {
         var policy = CreatePolicy();
@@ -224,6 +389,10 @@ public sealed class IntegrationResiliencePolicyTests
 
     private sealed class ManualTimeProvider(DateTimeOffset now) : TimeProvider
     {
-        public override DateTimeOffset GetUtcNow() => now;
+        private DateTimeOffset current = now;
+
+        public override DateTimeOffset GetUtcNow() => current;
+
+        public void Advance(TimeSpan duration) => current = current.Add(duration);
     }
 }
