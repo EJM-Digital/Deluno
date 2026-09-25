@@ -20,6 +20,7 @@ Deluno keeps product, architecture, and repo-state context in the repository so 
 - `guide-packages.md`: backend-owned guide package contract, provenance, mapping safety, and update procedure.
 - `metadata-broker-contract.md`: managed TMDb gateway contract, deployment endpoint, and privacy boundary.
 - `packaging.md`: source-backed Docker and Windows packaging guide.
+- `bundled-components-install.md`: Windows installer component picker (download clients + Weir) — where it lives, the verify-before-run manifest, and how the setup wizard auto-wires what it finds (#640).
 - `DEPLOYMENT.md`: current deployment instructions for Docker, Compose, and Windows publish runs.
 - `TROUBLESHOOTING.md`: runtime, path-mapping, and startup troubleshooting.
 - `backup-restore-runbook.md`: packaged Windows backup, restore, rollback, and migration recovery procedures.

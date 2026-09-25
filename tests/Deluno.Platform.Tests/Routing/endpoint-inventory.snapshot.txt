@@ -194,6 +194,7 @@ GET /api/setup/draft
 GET /api/setup/progress
 GET /api/subtitle-languages
 GET /api/subtitle-providers/
+GET /api/system/bundled-components
 GET /api/system/lan-access
 GET /api/system/tasks
 GET /api/tags/

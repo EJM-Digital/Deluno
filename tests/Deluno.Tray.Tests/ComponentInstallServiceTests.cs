@@ -1,0 +1,202 @@
+using Deluno.Api.Network;
+using Deluno.Tray;
+using Xunit;
+
+namespace Deluno.Tray.Tests;
+
+/// <summary>
+/// The installer's component picker never runs a vendor's installer it could
+/// not verify, and never re-installs something already on the machine
+/// (#640).
+/// </summary>
+public sealed class ComponentInstallServiceTests
+{
+    private static readonly BundledComponentSpec Spec = new(
+        DisplayName: "Test Client",
+        Category: BundledComponentSpec.DownloadClientCategory,
+        Protocol: "qbittorrent",
+        Licence: "GPL-3.0",
+        LicenceUrl: "https://example.invalid/licence",
+        Version: "1.0",
+        FileName: "test-client-setup.exe",
+        Url: "https://example.invalid/test-client-setup.exe",
+        Sha256: null,
+        MinimumBytes: 10,
+        MustBeSigned: false,
+        SilentArgs: "/S",
+        DefaultPort: 12345,
+        UninstallDisplayNameHint: "Test Client",
+        GithubRepo: null,
+        GithubAsset: null,
+        GithubChecksumAsset: null)
+    { Kind = "test-client" };
+
+    [Fact]
+    public async Task Already_installed_is_skipped_without_downloading_anything()
+    {
+        var downloader = new RecordingDownloader();
+        var service = new ComponentInstallService(
+            new FakePrograms("Test Client 1.0"),
+            new FakePorts(),
+            downloader,
+            new FakeSignatures(signed: true),
+            new RecordingProcesses());
+
+        var result = await service.InstallAsync(Spec, CancellationToken.None);
+
+        Assert.Equal(ComponentInstallOutcome.AlreadyInstalled, result.Outcome);
+        Assert.False(downloader.WasCalled);
+    }
+
+    [Fact]
+    public async Task A_file_with_no_pinned_checksum_and_no_signature_requirement_is_refused()
+    {
+        var downloadedPath = WriteTempFile(new byte[20]);
+        var service = new ComponentInstallService(
+            new FakePrograms(),
+            new FakePorts(),
+            new RecordingDownloader(downloadedPath),
+            new FakeSignatures(signed: true),
+            new RecordingProcesses());
+
+        var result = await service.InstallAsync(Spec, CancellationToken.None);
+
+        Assert.Equal(ComponentInstallOutcome.VerificationFailed, result.Outcome);
+    }
+
+    [Fact]
+    public async Task A_file_too_small_to_be_real_is_refused_even_when_signed()
+    {
+        var downloadedPath = WriteTempFile(new byte[2]); // below MinimumBytes: 10
+        var processes = new RecordingProcesses();
+        var service = new ComponentInstallService(
+            new FakePrograms(),
+            new FakePorts(),
+            new RecordingDownloader(downloadedPath),
+            new FakeSignatures(signed: true),
+            processes);
+
+        var result = await service.InstallAsync(Spec with { MustBeSigned = true }, CancellationToken.None);
+
+        Assert.Equal(ComponentInstallOutcome.VerificationFailed, result.Outcome);
+        Assert.False(processes.WasCalled);
+    }
+
+    [Fact]
+    public async Task An_unsigned_file_is_refused_when_the_manifest_requires_a_signature()
+    {
+        var downloadedPath = WriteTempFile(new byte[20]);
+        var processes = new RecordingProcesses();
+        var service = new ComponentInstallService(
+            new FakePrograms(),
+            new FakePorts(),
+            new RecordingDownloader(downloadedPath),
+            new FakeSignatures(signed: false),
+            processes);
+
+        var result = await service.InstallAsync(Spec with { MustBeSigned = true }, CancellationToken.None);
+
+        Assert.Equal(ComponentInstallOutcome.VerificationFailed, result.Outcome);
+        Assert.False(processes.WasCalled);
+    }
+
+    [Fact]
+    public async Task A_signed_file_matching_the_manifests_requirement_is_run()
+    {
+        var downloadedPath = WriteTempFile(new byte[20]);
+        var processes = new RecordingProcesses(exitCode: 0);
+        var service = new ComponentInstallService(
+            new FakePrograms(),
+            new FakePorts(),
+            new RecordingDownloader(downloadedPath),
+            new FakeSignatures(signed: true),
+            processes);
+
+        var result = await service.InstallAsync(Spec with { MustBeSigned = true }, CancellationToken.None);
+
+        Assert.Equal(ComponentInstallOutcome.Installed, result.Outcome);
+        Assert.True(processes.WasCalled);
+        Assert.Equal("/S", processes.LastArguments);
+    }
+
+    [Fact]
+    public async Task A_pinned_checksum_that_does_not_match_is_refused_even_when_signed()
+    {
+        var downloadedPath = WriteTempFile(new byte[20]);
+        var processes = new RecordingProcesses();
+        var service = new ComponentInstallService(
+            new FakePrograms(),
+            new FakePorts(),
+            new RecordingDownloader(downloadedPath),
+            new FakeSignatures(signed: true),
+            processes);
+
+        var result = await service.InstallAsync(Spec with { Sha256 = "0000000000000000000000000000000000000000000000000000000000000000" }, CancellationToken.None);
+
+        Assert.Equal(ComponentInstallOutcome.VerificationFailed, result.Outcome);
+        Assert.False(processes.WasCalled);
+    }
+
+    [Fact]
+    public async Task A_nonzero_exit_code_is_reported_as_a_failed_installer()
+    {
+        var downloadedPath = WriteTempFile(new byte[20]);
+        var processes = new RecordingProcesses(exitCode: 1);
+        var service = new ComponentInstallService(
+            new FakePrograms(),
+            new FakePorts(),
+            new RecordingDownloader(downloadedPath),
+            new FakeSignatures(signed: true),
+            processes);
+
+        var result = await service.InstallAsync(Spec with { MustBeSigned = true }, CancellationToken.None);
+
+        Assert.Equal(ComponentInstallOutcome.InstallerFailed, result.Outcome);
+    }
+
+    private static string WriteTempFile(byte[] content)
+    {
+        var path = Path.Combine(Path.GetTempPath(), "deluno-tray-tests-" + Guid.NewGuid().ToString("N") + ".bin");
+        File.WriteAllBytes(path, content);
+        return path;
+    }
+
+    private sealed class FakePrograms(params string[] names) : IInstalledProgramsReader
+    {
+        public IReadOnlyList<string> ReadDisplayNames() => names;
+    }
+
+    private sealed class FakePorts : IPortProbe
+    {
+        public Task<bool> IsOpenAsync(string host, int port, CancellationToken cancellationToken) => Task.FromResult(false);
+    }
+
+    private sealed class FakeSignatures(bool signed) : IAuthenticodeVerifier
+    {
+        public bool IsSigned(string path) => signed;
+    }
+
+    private sealed class RecordingDownloader(string? path = null) : IComponentDownloader
+    {
+        public bool WasCalled { get; private set; }
+
+        public Task<string?> DownloadAsync(string url, string suggestedFileName, CancellationToken cancellationToken)
+        {
+            WasCalled = true;
+            return Task.FromResult(path);
+        }
+    }
+
+    private sealed class RecordingProcesses(int? exitCode = null) : IProcessRunner
+    {
+        public bool WasCalled { get; private set; }
+        public string? LastArguments { get; private set; }
+
+        public Task<int?> RunAsync(string path, string? arguments, TimeSpan timeout, CancellationToken cancellationToken)
+        {
+            WasCalled = true;
+            LastArguments = arguments;
+            return Task.FromResult(exitCode);
+        }
+    }
+}

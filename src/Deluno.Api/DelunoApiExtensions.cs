@@ -32,6 +32,7 @@ public static class DelunoApiExtensions
         services.AddSingleton<IMonitoringService, MonitoringService>();
         services.TryAddSingleton<IUpdateOrchestrator, DefaultUpdateOrchestrator>();
         services.TryAddSingleton<ILanAccess, UncheckedLanAccess>();
+        services.TryAddSingleton<IBundledComponentDetection, UncheckedBundledComponentDetection>();
         return services;
     }
 
@@ -80,6 +81,7 @@ public static class DelunoApiExtensions
             .RequireAuthorization(DelunoAuthorizationPolicies.Read);
         api.MapDelunoMonitoringEndpoints();
         api.MapDelunoLanAccessEndpoints();
+        api.MapDelunoBundledComponentsEndpoints();
 
         if (includeOperationalEndpoints)
         {

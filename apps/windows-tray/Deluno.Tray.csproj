@@ -36,6 +36,9 @@
     <EmbeddedResource Include="..\..\installer\deluno.ico">
       <LogicalName>Deluno.Tray.Assets.deluno.ico</LogicalName>
     </EmbeddedResource>
+    <EmbeddedResource Include="..\..\installer\bundled-components.json">
+      <LogicalName>Deluno.Tray.Assets.bundled-components.json</LogicalName>
+    </EmbeddedResource>
   </ItemGroup>
 
   <ItemGroup>
