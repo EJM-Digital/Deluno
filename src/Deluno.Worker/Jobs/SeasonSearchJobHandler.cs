@@ -37,16 +37,26 @@ public sealed class SeasonSearchJobHandler(
             activityClause: "was searched by the automatic library cycle.",
             cancellationToken);
 
-        // Nothing to fall back to if the series or season no longer exists —
-        // the episodes this job was planned for are gone with it.
-        var seasonGone = result.Status is SeasonSearchStatus.SeriesNotFound or SeasonSearchStatus.SeasonNotFound;
-        if (!result.Dispatched && !seasonGone)
+        // Every status but a genuine no-match already says why nothing was
+        // planned again immediately: SeriesNotFound/SeasonNotFound have
+        // nothing left to fall back to, NotSearchable/LibraryMissing have no
+        // library to search the episodes against either, and Blocked and
+        // EvidenceHeld have each just had SeasonSearchExecutor record
+        // nextEligibleSearchUtc = now + retryDelayHours for every episode in
+        // the season. A "held" Completed outcome (a candidate was found but
+        // was not a safe automatic upgrade) records that same backoff. Falling
+        // back to PlanEpisodeSearchesAsync here plans episode.search at "now"
+        // regardless, which blew straight through the backoff the executor had
+        // just written. Only "checked" — the search actually ran and found no
+        // candidate at all — means there is nothing to wait on, so that is the
+        // only case worth handing to the per-episode path right away (#646).
+        var genuineNoMatch = result.Status == SeasonSearchStatus.Completed
+            && string.Equals(result.Outcome, "checked", StringComparison.Ordinal);
+        if (!result.Dispatched && genuineNoMatch)
         {
-            // No acceptable pack: held on evidence, blocked on configuration,
-            // or the search simply found nothing. Whatever the reason, every
-            // episode this job owns is still missing and still due, so it goes
-            // back to being searched one at a time rather than waiting for the
-            // next library cycle to notice (#646).
+            // Every episode this job owns is still missing and still due, so
+            // it goes back to being searched one at a time rather than waiting
+            // for the next library cycle to notice (#646).
             var fallback = payload.Episodes
                 .Select(episode => new EpisodeSearchPlanItem(
                     episode.EpisodeId,

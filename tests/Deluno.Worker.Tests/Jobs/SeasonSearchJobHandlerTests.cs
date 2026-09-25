@@ -82,6 +82,8 @@ public sealed class SeasonSearchJobHandlerTests
     [Theory]
     [InlineData(SeasonSearchStatus.SeriesNotFound)]
     [InlineData(SeasonSearchStatus.SeasonNotFound)]
+    [InlineData(SeasonSearchStatus.NotSearchable)]
+    [InlineData(SeasonSearchStatus.LibraryMissing)]
     public async Task A_series_or_season_that_no_longer_exists_is_not_planned_for_fallback(SeasonSearchStatus status)
     {
         var seasonSearchExecutor = new Mock<ISeasonSearchExecutor>();
@@ -91,6 +93,70 @@ public sealed class SeasonSearchJobHandlerTests
             .Setup(executor => executor.ExecuteAsync("series-1", 1, "automatic-season", It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new SeasonSearchOutcome(
                 status, "not-found", null, 1, 0, 0, 0, 0, 0, null, null, null, null, null, [], [], false));
+
+        var handler = new SeasonSearchJobHandler(seasonSearchExecutor.Object, jobQueueRepository.Object);
+        await handler.HandleAsync(SeasonJob(), CancellationToken.None);
+
+        jobQueueRepository.VerifyNoOtherCalls();
+    }
+
+    // Defect: SeasonSearchExecutor records nextEligibleSearchUtc = now +
+    // retryDelayHours for every episode in the season when it holds or
+    // blocks — EvidenceHeld (an installed episode's evaluation is stale),
+    // Blocked (no indexers/download client linked), and a Completed-but-held
+    // outcome (a candidate was found but was not a safe automatic upgrade).
+    // The handler used to fall back to PlanEpisodeSearchesAsync in every one
+    // of these cases anyway, which plans episode.search at "now" and runs
+    // straight through the backoff the executor had just written. None of
+    // these three should ever reach PlanEpisodeSearchesAsync.
+    [Fact]
+    public async Task Evidence_held_respects_its_own_retry_window_instead_of_searching_episodes_immediately()
+    {
+        var seasonSearchExecutor = new Mock<ISeasonSearchExecutor>();
+        var jobQueueRepository = new Mock<IJobQueueRepository>(MockBehavior.Strict);
+
+        seasonSearchExecutor
+            .Setup(executor => executor.ExecuteAsync("series-1", 1, "automatic-season", It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(SeasonSearchOutcome.EvidenceHeld(1, 3, 2, 1, "Whole-season replacement was held."));
+
+        var handler = new SeasonSearchJobHandler(seasonSearchExecutor.Object, jobQueueRepository.Object);
+        await handler.HandleAsync(SeasonJob(), CancellationToken.None);
+
+        jobQueueRepository.VerifyNoOtherCalls();
+    }
+
+    [Fact]
+    public async Task Blocked_on_missing_routing_respects_its_own_retry_window_instead_of_searching_episodes_immediately()
+    {
+        var seasonSearchExecutor = new Mock<ISeasonSearchExecutor>();
+        var jobQueueRepository = new Mock<IJobQueueRepository>(MockBehavior.Strict);
+
+        seasonSearchExecutor
+            .Setup(executor => executor.ExecuteAsync("series-1", 1, "automatic-season", It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(SeasonSearchOutcome.Blocked(1, 3, "No indexers are linked to this library yet."));
+
+        var handler = new SeasonSearchJobHandler(seasonSearchExecutor.Object, jobQueueRepository.Object);
+        await handler.HandleAsync(SeasonJob(), CancellationToken.None);
+
+        jobQueueRepository.VerifyNoOtherCalls();
+    }
+
+    [Fact]
+    public async Task A_candidate_not_authorized_as_an_upgrade_respects_its_own_retry_window_instead_of_searching_episodes_immediately()
+    {
+        var seasonSearchExecutor = new Mock<ISeasonSearchExecutor>();
+        var jobQueueRepository = new Mock<IJobQueueRepository>(MockBehavior.Strict);
+
+        // Status is Completed (the search actually ran and picked a
+        // candidate), but Outcome is "held" rather than "checked" — the
+        // candidate was not a proven upgrade for every installed episode, and
+        // SeasonSearchExecutor recorded the same retryDelayHours backoff as
+        // Blocked/EvidenceHeld for it.
+        seasonSearchExecutor
+            .Setup(executor => executor.ExecuteAsync("series-1", 1, "automatic-season", It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new SeasonSearchOutcome(
+                SeasonSearchStatus.Completed, "held", "Not a proven upgrade for every installed episode.",
+                1, 3, 2, 0, 0, 0, "Pioneer.One.S01.1080p", "Example", null, null, null, [], ["episode-1", "episode-2", "episode-3"], false));
 
         var handler = new SeasonSearchJobHandler(seasonSearchExecutor.Object, jobQueueRepository.Object);
         await handler.HandleAsync(SeasonJob(), CancellationToken.None);
