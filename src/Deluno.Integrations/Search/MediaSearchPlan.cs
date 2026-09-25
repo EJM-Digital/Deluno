@@ -34,6 +34,9 @@ public static class MediaSearchReasons
     public const string SeasonPackReplacementRequiresEpisodeScope = "season_pack_replacement_requires_episode_scope";
     public const string SeasonPackInstalledEvidenceMissing = "season_pack_installed_evidence_missing";
     public const string SeasonPackCandidateNotUpgradeForEveryEpisode = "season_pack_candidate_not_upgrade_for_every_episode";
+
+    /// <summary>Another path already sent a download for this title or the episodes it covers (#555, #655).</summary>
+    public const string AlreadyOnItsWay = "already_on_its_way";
 }
 
 public sealed record MediaSearchPlan(

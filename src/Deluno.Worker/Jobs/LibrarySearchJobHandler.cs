@@ -448,6 +448,35 @@ public abstract class LibrarySearchJobHandler(
         => !IsTargeted(payload) ||
            ids.Any(id => string.Equals(id, payload.TargetEntityId, StringComparison.OrdinalIgnoreCase));
 
+    /// <summary>
+    /// One search decides a season (#655). The show-level pass searches
+    /// generally and can still land on a season pack — the same evidence the
+    /// planner just used to hand this series' season its own
+    /// <c>series.search.season</c> job. Sending the show-level candidate too
+    /// would dispatch the same season twice within the one cycle, before
+    /// either grab has a chance to show up in the in-flight list the other
+    /// path checks. Null when the best candidate is not a pack for a season
+    /// the planner just claimed.
+    /// </summary>
+    private static string? LeftToPlannedSeasonSearch(
+        string seriesId,
+        MediaSearchCandidate bestCandidate,
+        IReadOnlyDictionary<string, HashSet<int>> plannedSeasonNumbersBySeries)
+    {
+        if (!plannedSeasonNumbersBySeries.TryGetValue(seriesId, out var plannedSeasons))
+        {
+            return null;
+        }
+
+        var classification = SeasonPackDetector.Classify(bestCandidate.ReleaseName);
+        if (classification is not { IsSeason: true, Season: { } season } || !plannedSeasons.Contains(season))
+        {
+            return null;
+        }
+
+        return $"Not sent: season {season} is searched on its own this cycle.";
+    }
+
     private async Task<string> SearchSeriesAsync(
         JobQueueItem job,
         JobPayloads.LibrarySearchPayload payload,
@@ -485,6 +514,101 @@ public abstract class LibrarySearchJobHandler(
         var seriesHeldCount = 0;
         var seriesApiCallCount = 0;
         long seriesQueuedReleaseBytes = 0;
+
+        // The episodes the series pass cannot reach (#303).
+        //
+        // `library.search` searches at the series level — a season pack, a
+        // series-level release. Individual episodes have their own job type,
+        // `episode.search`, their own handler and their own planner, and until
+        // now nothing called the planner: three pieces that each worked and
+        // never met. A show missing four scattered episodes was searched for as
+        // a show, found nothing at that level, and the four were never asked
+        // for.
+        //
+        // Planned here rather than in the heartbeat's automation lane, which is
+        // where the missing call was expected. The lane would have needed its
+        // own copy of every gate this cycle already passed — the time-of-day
+        // window, the search interval, missing-versus-upgrade, the manual
+        // override and `MaxItemsPerRun` — and a second copy of a scheduling
+        // rule is how the last four defects in this codebase were built. Riding
+        // on the cycle, the episode pass is due exactly when the series pass is
+        // due, and asks for the same half of the work.
+        //
+        // Decided before the series-level pass below, not after: a season the
+        // planner is about to hand to its own search is left alone by the
+        // show-level candidate loop, so exactly one of the two ever dispatches
+        // a candidate covering it (#655).
+        var eligibleEpisodes = (await seriesCatalogRepository.ListEligibleWantedEpisodesAsync(
+            payload.LibraryId,
+            CandidateLimit(payload),
+            now,
+            seriesIgnoreRetryWindow,
+            cancellationToken,
+            searchStatus,
+            scopeFilters,
+            requireMonitored: !PersonAsked(payload)))
+            .Where(episode => MatchesTarget(payload, episode.SeriesId, episode.EpisodeId))
+            .Select(episode => new EpisodeSearchPlanItem(
+                EpisodeId: episode.EpisodeId,
+                SeriesId: episode.SeriesId,
+                SeasonNumber: episode.SeasonNumber,
+                EpisodeNumber: episode.EpisodeNumber,
+                // An episode with no title yet is still worth searching for; the
+                // plan payload names it by its code, which is what an indexer
+                // query uses anyway.
+                Title: episode.Title ?? $"S{episode.SeasonNumber:00}E{episode.EpisodeNumber:00}"))
+            .ToArray();
+
+        // A season that is entirely missing and fully aired is searched as one
+        // season rather than one search per episode, so a whole-season pack
+        // can win the way the manual "Search season" button already lets it
+        // (#646). Inventory is only fetched for the series with at least two
+        // eligible episodes in the same season — nothing smaller can ever
+        // qualify — and only once per series even when several of its seasons
+        // qualify.
+        var seasonCandidateSeriesIds = eligibleEpisodes
+            .GroupBy(episode => (episode.SeriesId, episode.SeasonNumber))
+            .Where(group => group.Count() >= SeasonSearchPlanner.MinimumSeasonSize)
+            .Select(group => group.Key.SeriesId)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+
+        var seasonInventoryBySeries = new Dictionary<string, SeriesInventoryDetail>(StringComparer.OrdinalIgnoreCase);
+        foreach (var candidateSeriesId in seasonCandidateSeriesIds)
+        {
+            var candidateInventory = await seriesCatalogRepository.GetInventoryDetailAsync(candidateSeriesId, cancellationToken);
+            if (candidateInventory is not null)
+            {
+                seasonInventoryBySeries[candidateSeriesId] = candidateInventory;
+            }
+        }
+
+        var seasonPlan = SeasonSearchPlanner.Decide(
+            eligibleEpisodes,
+            now,
+            (seriesId, seasonNumber) => seasonInventoryBySeries.TryGetValue(seriesId, out var seriesInventory)
+                ? seriesInventory.Episodes.Where(episode => episode.SeasonNumber == seasonNumber).ToArray()
+                : []);
+
+        var seasonSearches = seasonPlan.SeasonSearches
+            .Select(season => season with
+            {
+                SeriesTitle = seasonInventoryBySeries.TryGetValue(season.SeriesId, out var seriesInventory)
+                    ? seriesInventory.Title
+                    : season.SeriesTitle
+            })
+            .ToArray();
+
+        // One search decides a season (#655): every series+season the planner
+        // just handed a season search looked up here, so the show-level pass
+        // below can tell a season pack it is about to send apart from one that
+        // is already spoken for this cycle.
+        var plannedSeasonNumbersBySeries = seasonPlan.SeasonSearches
+            .GroupBy(season => season.SeriesId, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(
+                group => group.Key,
+                group => group.Select(season => season.SeasonNumber).ToHashSet(),
+                StringComparer.OrdinalIgnoreCase);
 
         foreach (var candidate in seriesCandidates)
         {
@@ -602,6 +726,7 @@ public abstract class LibrarySearchJobHandler(
             var searchResult = decisionPlan.SearchResult;
             var onItsWay = decisionPlan.ShouldDispatch && bestCandidate is not null
                 ? await SearchExecutionSupport.AlreadyOnItsWayAsync(jobQueueRepository, bestCandidate.ReleaseName, [candidate.SeriesId], cancellationToken)
+                  ?? LeftToPlannedSeasonSearch(candidate.SeriesId, bestCandidate, plannedSeasonNumbersBySeries)
                 : null;
             if (onItsWay is not null)
             {
@@ -691,85 +816,6 @@ public abstract class LibrarySearchJobHandler(
                 outcome,
                 cancellationToken);
         }
-
-        // The episodes the series pass cannot reach (#303).
-        //
-        // `library.search` searches at the series level — a season pack, a
-        // series-level release. Individual episodes have their own job type,
-        // `episode.search`, their own handler and their own planner, and until
-        // now nothing called the planner: three pieces that each worked and
-        // never met. A show missing four scattered episodes was searched for as
-        // a show, found nothing at that level, and the four were never asked
-        // for.
-        //
-        // Planned here rather than in the heartbeat's automation lane, which is
-        // where the missing call was expected. The lane would have needed its
-        // own copy of every gate this cycle already passed — the time-of-day
-        // window, the search interval, missing-versus-upgrade, the manual
-        // override and `MaxItemsPerRun` — and a second copy of a scheduling
-        // rule is how the last four defects in this codebase were built. Riding
-        // on the cycle, the episode pass is due exactly when the series pass is
-        // due, and asks for the same half of the work.
-        var eligibleEpisodes = (await seriesCatalogRepository.ListEligibleWantedEpisodesAsync(
-            payload.LibraryId,
-            CandidateLimit(payload),
-            now,
-            seriesIgnoreRetryWindow,
-            cancellationToken,
-            searchStatus,
-            scopeFilters,
-            requireMonitored: !PersonAsked(payload)))
-            .Where(episode => MatchesTarget(payload, episode.SeriesId, episode.EpisodeId))
-            .Select(episode => new EpisodeSearchPlanItem(
-                EpisodeId: episode.EpisodeId,
-                SeriesId: episode.SeriesId,
-                SeasonNumber: episode.SeasonNumber,
-                EpisodeNumber: episode.EpisodeNumber,
-                // An episode with no title yet is still worth searching for; the
-                // plan payload names it by its code, which is what an indexer
-                // query uses anyway.
-                Title: episode.Title ?? $"S{episode.SeasonNumber:00}E{episode.EpisodeNumber:00}"))
-            .ToArray();
-
-        // A season that is entirely missing and fully aired is searched as one
-        // season rather than one search per episode, so a whole-season pack
-        // can win the way the manual "Search season" button already lets it
-        // (#646). Inventory is only fetched for the series with at least two
-        // eligible episodes in the same season — nothing smaller can ever
-        // qualify — and only once per series even when several of its seasons
-        // qualify.
-        var seasonCandidateSeriesIds = eligibleEpisodes
-            .GroupBy(episode => (episode.SeriesId, episode.SeasonNumber))
-            .Where(group => group.Count() >= SeasonSearchPlanner.MinimumSeasonSize)
-            .Select(group => group.Key.SeriesId)
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .ToArray();
-
-        var seasonInventoryBySeries = new Dictionary<string, SeriesInventoryDetail>(StringComparer.OrdinalIgnoreCase);
-        foreach (var candidateSeriesId in seasonCandidateSeriesIds)
-        {
-            var candidateInventory = await seriesCatalogRepository.GetInventoryDetailAsync(candidateSeriesId, cancellationToken);
-            if (candidateInventory is not null)
-            {
-                seasonInventoryBySeries[candidateSeriesId] = candidateInventory;
-            }
-        }
-
-        var seasonPlan = SeasonSearchPlanner.Decide(
-            eligibleEpisodes,
-            now,
-            (seriesId, seasonNumber) => seasonInventoryBySeries.TryGetValue(seriesId, out var seriesInventory)
-                ? seriesInventory.Episodes.Where(episode => episode.SeasonNumber == seasonNumber).ToArray()
-                : []);
-
-        var seasonSearches = seasonPlan.SeasonSearches
-            .Select(season => season with
-            {
-                SeriesTitle = seasonInventoryBySeries.TryGetValue(season.SeriesId, out var seriesInventory)
-                    ? seriesInventory.Title
-                    : season.SeriesTitle
-            })
-            .ToArray();
 
         // Both planners de-duplicate against jobs already queued for the same
         // episode or season, so a cycle that runs while the last one is still

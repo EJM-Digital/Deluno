@@ -316,10 +316,21 @@ public sealed class SeasonSearchExecutor(
                 installedEpisodes);
         }
         var replacementHeld = replacementDecision is { Authorized: false };
-        var outcome = replacementHeld ? "held" : noPackFound ? "checked" : decisionPlan.Outcome;
+
+        // The targeted show-level search that runs when a series is added, or
+        // any other search that already sent a release for this series, may
+        // have dispatched before this job ran — the two race within seconds
+        // of each other whenever a season qualifies for its own search
+        // (#655). Nothing else here knows that happened, so it is checked
+        // here, against the same series id every path dispatches under.
+        var onItsWay = !noPackFound && !replacementHeld && decisionPlan.ShouldDispatch && bestCandidate is not null
+            ? await DispatchCoverage.AlreadyOnItsWayAsync(jobQueueRepository, bestCandidate.ReleaseName, [seriesItem.Id], cancellationToken)
+            : null;
+
+        var outcome = onItsWay is not null ? "skipped" : replacementHeld ? "held" : noPackFound ? "checked" : decisionPlan.Outcome;
         var failures = (searchPlan.Failures ?? []).ToList();
         DownloadClientGrabResult? grabResult = null;
-        if (!noPackFound && !replacementHeld && decisionPlan.ShouldDispatch && decisionPlan.SelectedDownloadClient is not null && decisionPlan.DispatchRequest is not null)
+        if (onItsWay is null && !noPackFound && !replacementHeld && decisionPlan.ShouldDispatch && decisionPlan.SelectedDownloadClient is not null && decisionPlan.DispatchRequest is not null)
         {
             var downloadClient = decisionPlan.SelectedDownloadClient;
             grabResult = bestCandidate!.DownloadUrl is null
@@ -378,7 +389,7 @@ public sealed class SeasonSearchExecutor(
                 outcome,
                 now,
                 nextEligibleSearchUtc,
-                replacementHeld ? replacementDecision!.Reason : decisionPlan.SearchResult,
+                onItsWay ?? (replacementHeld ? replacementDecision!.Reason : decisionPlan.SearchResult),
                 searchPlan.BestCandidate?.ReleaseName,
                 searchPlan.BestCandidate?.IndexerName,
                 // The route's `seasonNumber` and `episode.SeasonNumber` differ
@@ -424,7 +435,7 @@ public sealed class SeasonSearchExecutor(
             new DecisionExplanationPayload(
                 Scope: "series.season-search",
                 Status: outcome,
-                Reason: replacementHeld ? replacementDecision!.Reason : decisionPlan.SearchResult,
+                Reason: onItsWay ?? (replacementHeld ? replacementDecision!.Reason : decisionPlan.SearchResult),
                 Inputs: new Dictionary<string, string?>
                 {
                     ["title"] = seriesItem.Title,
@@ -435,7 +446,9 @@ public sealed class SeasonSearchExecutor(
                     ["downloadClientCount"] = configuredClients.ToString(),
                     ["policyVersion"] = decisionPlan.PolicyVersion
                 },
-                Outcome: replacementHeld
+                Outcome: onItsWay is not null
+                    ? onItsWay
+                    : replacementHeld
                     ? "No dispatch was made because the candidate was not a proven upgrade for every installed episode."
                     : grabResult is null
                     ? searchPlan.Summary
@@ -446,11 +459,13 @@ public sealed class SeasonSearchExecutor(
             seriesItem.Id,
             cancellationToken);
 
-        var dispatched = searchPlan.BestCandidate is not null && !replacementHeld;
+        var dispatched = searchPlan.BestCandidate is not null && !replacementHeld && onItsWay is null;
         return new SeasonSearchOutcome(
             SeasonSearchStatus.Completed,
             outcome,
-            replacementHeld
+            onItsWay is not null
+                ? MediaSearchReasons.AlreadyOnItsWay
+                : replacementHeld
                 ? MediaSearchReasons.SeasonPackCandidateNotUpgradeForEveryEpisode
                 : searchPlan.Reason,
             seasonNumber,

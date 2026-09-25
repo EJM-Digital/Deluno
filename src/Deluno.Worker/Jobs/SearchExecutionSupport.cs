@@ -79,30 +79,12 @@ internal static class SearchExecutionSupport
     /// from their two sides; and titles grabbed before automatic grabs set the
     /// mark at all.</para>
     /// </summary>
-    internal static async Task<string?> AlreadyOnItsWayAsync(
+    internal static Task<string?> AlreadyOnItsWayAsync(
         IJobQueueRepository jobQueueRepository,
         string releaseName,
         IReadOnlyCollection<string> entityIds,
         CancellationToken cancellationToken)
-    {
-        var inFlight = await jobQueueRepository.ListDownloadsInFlightAsync(InFlightLimit, cancellationToken) ?? [];
-        // One its client never showed is not on its way; sending it again is the retry.
-        var same = inFlight.Where(download => !download.NeverShown).FirstOrDefault(download =>
-            entityIds.Contains(download.EntityId, StringComparer.Ordinal)
-            || string.Equals(download.ReleaseName, releaseName, StringComparison.OrdinalIgnoreCase));
-
-        return same is null
-            ? null
-            : string.Equals(same.ReleaseName, releaseName, StringComparison.OrdinalIgnoreCase)
-                ? $"Not sent again: {releaseName} is already on its way."
-                : $"Not sent: {same.ReleaseName} is already on its way for this.";
-    }
-
-    /// <summary>
-    /// Generous for the same reason as the reconciler's lookup: missing a live
-    /// download from this list costs a second download.
-    /// </summary>
-    private const int InFlightLimit = 5_000;
+        => DispatchCoverage.AlreadyOnItsWayAsync(jobQueueRepository, releaseName, entityIds, cancellationToken);
 
     internal static string? SerializeSearchPlan(MediaSearchPlan plan, DownloadClientGrabResult? grabResult = null)
     {
