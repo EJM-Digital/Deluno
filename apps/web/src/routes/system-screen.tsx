@@ -17,7 +17,7 @@ import {
 } from "lucide-react";
 import { JOB_STATUS, type JobStatus, isJobActive, isJobFailed, isJobSuccessful } from "../lib/job-status-constants";
 import { SystemShell } from "../components/app/settings-shell";
-import { LanAccessNotice } from "../components/app/lan-access-notice";
+import { LanAccessNotice, type LanAccessStatus } from "../components/app/lan-access-notice";
 import { MetadataMaintenanceCard } from "../components/app/metadata-maintenance-card";
 import { ProviderHealthDrawer, type ProviderHealthSelection } from "../components/app/provider-health-drawer";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card";
@@ -85,10 +85,11 @@ interface SystemLoaderData {
   systemTasks: SystemTaskItem[];
   recycleBin: RecycleBinItem[];
   recycleBinSettings: RecycleBinSettings;
+  lanAccess: LanAccessStatus | null;
 }
 
 export async function systemLoader(): Promise<SystemLoaderData> {
-  const [settings, libraries, jobs, activity, indexers, downloadClients, processors, backups, backupSettings, updateStatus, automation, searchCycles, retryWindows, monitoring, systemTasks, recycleBin, recycleBinSettings] = await Promise.all([
+  const [settings, libraries, jobs, activity, indexers, downloadClients, processors, backups, backupSettings, updateStatus, automation, searchCycles, retryWindows, monitoring, systemTasks, recycleBin, recycleBinSettings, lanAccess] = await Promise.all([
     fetchJson<PlatformSettingsSnapshot>("/api/settings"),
     fetchJson<LibraryItem[]>("/api/libraries"),
     fetchPageItems<JobQueueItem>("/api/jobs?pageSize=25"),
@@ -107,17 +108,22 @@ export async function systemLoader(): Promise<SystemLoaderData> {
     fetchJson<MonitoringDashboardSnapshot>("/api/monitoring/dashboard"),
     fetchJson<SystemTaskItem[]>("/api/system/tasks"),
     fetchJson<RecycleBinItem[]>("/api/recycle-bin"),
-    fetchJson<RecycleBinSettings>("/api/recycle-bin/settings")
+    fetchJson<RecycleBinSettings>("/api/recycle-bin/settings"),
+    // "Listening on" below used to echo the stored host.bindAddress/host.port
+    // as if they were live; Kestrel actually binds from Server:Port /
+    // Server:AllowLan configuration, so this reads the same effective values
+    // LanAccessNotice does (#736).
+    fetchJson<LanAccessStatus>("/api/system/lan-access").catch(() => null)
   ]);
 
-  return { activity, automation, backupSettings, backups, downloadClients, indexers, jobs, libraries, monitoring, processors, recycleBin, recycleBinSettings, retryWindows, searchCycles, settings, systemTasks, updateStatus };
+  return { activity, automation, backupSettings, backups, downloadClients, indexers, jobs, lanAccess, libraries, monitoring, processors, recycleBin, recycleBinSettings, retryWindows, searchCycles, settings, systemTasks, updateStatus };
 }
 
 export function SystemPage() {
   const location = useLocation();
   const revalidator = useRevalidator();
   const loaderData = useLoaderData() as SystemLoaderData;
-  const { activity, automation, backupSettings, backups, downloadClients, indexers, jobs, libraries, monitoring, processors, recycleBin, recycleBinSettings, retryWindows, searchCycles, settings, systemTasks, updateStatus } = loaderData;
+  const { activity, automation, backupSettings, backups, downloadClients, indexers, jobs, lanAccess, libraries, monitoring, processors, recycleBin, recycleBinSettings, retryWindows, searchCycles, settings, systemTasks, updateStatus } = loaderData;
   // The folders Deluno writes to are its libraries' folders. This used to count
   // the two paths the setup guide asks for, which a library made in Settings
   // never fills in: two libraries on a NAS read "0".
@@ -224,8 +230,14 @@ export function SystemPage() {
     <ListCard title="This installation" count="Host settings and defaults">
       <ListTable columns={[{ label: "Setting" }, { label: "Value", width: "minmax(0,1.4fr)", align: "end" }]} chevron={false}>
         {[
-          { label: "Listening on", value: `${settings.hostBindAddress}:${settings.hostPort}` },
-          { label: "URL base", value: settings.urlBase || "/" },
+          {
+            label: "Port",
+            value: lanAccess?.port ? String(lanAccess.port) : "Unknown"
+          },
+          {
+            label: "Other devices on your network",
+            value: lanAccess?.state === "open" ? "Can connect" : lanAccess?.state === "blocked" ? "Cannot connect" : "Unknown from here"
+          },
           { label: "Sign-in", value: "Required" },
           { label: "Interface", value: `${settings.uiTheme} · ${densityDisplayName(settings.uiDensity)}` }
         ].map((row) => (

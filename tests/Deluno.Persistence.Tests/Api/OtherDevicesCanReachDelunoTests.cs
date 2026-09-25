@@ -1,6 +1,7 @@
 using System.Net.Http.Json;
 using Deluno.Api.Network;
 using Deluno.Persistence.Tests.Support;
+using Microsoft.Extensions.Configuration;
 
 namespace Deluno.Persistence.Tests.Api;
 
@@ -221,6 +222,38 @@ public sealed class OtherDevicesCanReachDelunoTests
         Assert.Equal(LanAccessStates.NotChecked, status?.State);
         Assert.False(status?.CanAllow);
         Assert.True(allowed.IsSuccessStatusCode);
+        // The effective port still has to come from somewhere real, because
+        // Settings -> General now shows it instead of the dead host.port
+        // field (#736). The default matches Program.cs's own fallback.
+        Assert.Equal(5099, status?.Port);
+    }
+
+    /// <summary>
+    /// Settings -> General's "How Deluno is reached" section reads the port
+    /// from <c>/api/system/lan-access</c> even when there is no firewall to
+    /// check (#736): Docker and Linux hosts, and a Windows host that only
+    /// listens on loopback, all go through <see cref="UncheckedLanAccess"/>
+    /// rather than <see cref="WindowsFirewallLanAccess"/>. It has to read the
+    /// same <c>Server:Port</c> key and the same default that
+    /// <c>Deluno.Host/Program.cs</c> binds Kestrel to, or the two would be
+    /// free to disagree.
+    /// </summary>
+    [Theory]
+    [InlineData(null, 5099)]
+    [InlineData("7878", 7878)]
+    public async Task UncheckedLanAccess_reports_the_configured_port_or_Programs_own_default(string? configuredPort, int expectedPort)
+    {
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(configuredPort is null
+                ? []
+                : new Dictionary<string, string?> { ["Server:Port"] = configuredPort })
+            .Build();
+
+        var status = await new UncheckedLanAccess(configuration).GetStatusAsync(CancellationToken.None);
+
+        Assert.Equal(LanAccessStates.NotChecked, status.State);
+        Assert.Equal(expectedPort, status.Port);
+        Assert.False(status.CanAllow);
     }
 
     private static WindowsFirewallLanAccess Access(FakeFirewall firewall) => new(5099, firewall, Host);
