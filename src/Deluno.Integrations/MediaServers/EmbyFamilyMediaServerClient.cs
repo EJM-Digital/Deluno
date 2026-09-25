@@ -2,6 +2,7 @@ using System.Net.Http.Json;
 using Deluno.Infrastructure.Http;
 using System.Text.Json;
 using Deluno.Connections.Contracts;
+using Deluno.Contracts;
 using static Deluno.Integrations.MediaServers.MediaServerHttp;
 
 namespace Deluno.Integrations.MediaServers;
@@ -289,6 +290,75 @@ public abstract class EmbyFamilyMediaServerClient(IHttpClientFactory httpClientF
         return result.Ok
             ? new MediaServerAnswer<MediaServerRemoval>.Reported(new MediaServerRemoval($"{connection.Name} was told {item.Title} is gone and will drop it from its library."))
             : new MediaServerAnswer<MediaServerRemoval>.Unreachable(result.Problem!);
+    }
+
+    public async Task<MediaServerAnswer<MediaServerRefresh>> RefreshAsync(
+        MediaServerConnection connection,
+        string mediaType,
+        IReadOnlyList<MediaServerPathChange> changes,
+        CancellationToken cancellationToken)
+    {
+        if (changes.Count == 0)
+        {
+            return new MediaServerAnswer<MediaServerRefresh>.Reported(new MediaServerRefresh($"Nothing to tell {connection.Name}.", false));
+        }
+
+        var updates = changes
+            .Select(change => new
+            {
+                Path = change.Path,
+                UpdateType = change.Kind switch
+                {
+                    MediaServerChangeKind.Created => "Created",
+                    MediaServerChangeKind.Deleted => "Deleted",
+                    _ => "Modified"
+                }
+            })
+            .ToArray();
+
+        var result = await SendAsync(
+            httpClientFactory,
+            HttpMethod.Post,
+            Address(connection, "/Library/Media/Updated"),
+            Headers(connection),
+            connection.Name,
+            cancellationToken,
+            SizedJson.Create(new { Updates = updates }, options: DocumentedNames));
+
+        if (result.Ok)
+        {
+            return new MediaServerAnswer<MediaServerRefresh>.Reported(new MediaServerRefresh(
+                $"{connection.Name} was told about {updates.Length} changed file{(updates.Length == 1 ? string.Empty : "s")}.", false));
+        }
+
+        // The targeted call failed. Rather than leave the server never told at
+        // all, fall back to the full scan Radarr/Sonarr Connect also falls
+        // back to when a targeted notify is not possible.
+        var fallback = await SendAsync(httpClientFactory, HttpMethod.Post, Address(connection, "/Library/Refresh"), Headers(connection), connection.Name, cancellationToken);
+        return fallback.Ok
+            ? new MediaServerAnswer<MediaServerRefresh>.Reported(new MediaServerRefresh(
+                $"{connection.Name} could not take a targeted refresh ({result.Problem}), so a full library scan was requested instead.", true))
+            : new MediaServerAnswer<MediaServerRefresh>.Unreachable(result.Problem!);
+    }
+
+    public async Task<MediaServerAnswer<MediaServerPathMappingTest>> TestPathAsync(
+        MediaServerConnection connection,
+        string serverPath,
+        CancellationToken cancellationToken)
+    {
+        var browse = await GetAsync(connection, $"/Environment/DirectoryContents?path={Uri.EscapeDataString(serverPath)}&includeFiles=false", cancellationToken);
+        if (!browse.Ok)
+        {
+            return new MediaServerAnswer<MediaServerPathMappingTest>.Unreachable(browse.Problem!);
+        }
+
+        using var document = TryParse(browse.Body);
+        var found = document?.RootElement.ValueKind == JsonValueKind.Array;
+        return new MediaServerAnswer<MediaServerPathMappingTest>.Reported(new MediaServerPathMappingTest(
+            found,
+            found
+                ? $"{connection.Name} can see {serverPath}."
+                : $"{connection.Name} answered, but not with a folder listing for {serverPath}. Check the mapped path."));
     }
 
     public async Task<MediaServerAnswer<MediaServerCollectionSync>> SyncCollectionAsync(

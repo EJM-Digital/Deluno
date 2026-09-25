@@ -1,6 +1,7 @@
 using System.Net;
 using System.Text;
 using Deluno.Connections.Contracts;
+using Deluno.Contracts;
 using Deluno.Integrations.MediaServers;
 
 namespace Deluno.Integrations.Tests.MediaServers;
@@ -366,6 +367,156 @@ public sealed class MediaServerClientTests
         var answer = await client.ListItemsAsync(Server(MediaServerKinds.Plex, "http://192.168.1.51:32400"), "movies", CancellationToken.None);
 
         Assert.Contains("Leaving soon", Assert.IsType<MediaServerAnswer<MediaServerLibrary>.Unreachable>(answer).Reason, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task A_Plex_refresh_rescans_the_folder_of_a_section_whose_location_matches_the_path()
+    {
+        var sent = new List<(HttpMethod Method, string PathAndQuery)>();
+        var client = new PlexMediaServerClient(Factory(request =>
+        {
+            sent.Add((request.Method, Uri.UnescapeDataString(request.RequestUri!.PathAndQuery)));
+            return request.RequestUri!.AbsolutePath switch
+            {
+                "/library/sections" => Json("""{"MediaContainer":{"Directory":[{"key":"1","type":"movie","Location":[{"path":"/media/Movies"}]},{"key":"2","type":"show","Location":[{"path":"/media/TV"}]}]}}"""),
+                _ => new HttpResponseMessage(HttpStatusCode.OK)
+            };
+        }));
+
+        var answer = await client.RefreshAsync(
+            Server(MediaServerKinds.Plex, "http://192.168.1.51:32400"),
+            "movies",
+            [new MediaServerPathChange("/media/Movies/Sintel (2010)/Sintel.mkv", MediaServerChangeKind.Created)],
+            CancellationToken.None);
+
+        var refresh = Assert.IsType<MediaServerAnswer<MediaServerRefresh>.Reported>(answer).Value;
+        Assert.False(refresh.UsedFallbackScan);
+        Assert.Contains((HttpMethod.Get, "/library/sections/1/refresh?path=/media/Movies/Sintel (2010)"), sent);
+        Assert.DoesNotContain(sent, call => call.PathAndQuery.StartsWith("/library/sections/2", StringComparison.Ordinal));
+        Assert.DoesNotContain(sent, call => call.Method == HttpMethod.Put);
+    }
+
+    [Fact]
+    public async Task A_Plex_refresh_empties_trash_for_a_deleted_change_but_never_for_created()
+    {
+        var sent = new List<(HttpMethod Method, string PathAndQuery)>();
+        var client = new PlexMediaServerClient(Factory(request =>
+        {
+            sent.Add((request.Method, Uri.UnescapeDataString(request.RequestUri!.PathAndQuery)));
+            return request.RequestUri!.AbsolutePath switch
+            {
+                "/library/sections" => Json("""{"MediaContainer":{"Directory":[{"key":"1","type":"movie","Location":[{"path":"/media/Movies"}]}]}}"""),
+                _ => new HttpResponseMessage(HttpStatusCode.OK)
+            };
+        }));
+
+        await client.RefreshAsync(
+            Server(MediaServerKinds.Plex, "http://192.168.1.51:32400"),
+            "movies",
+            [new MediaServerPathChange("/media/Movies/Old (2009)/Old.mkv", MediaServerChangeKind.Deleted)],
+            CancellationToken.None);
+
+        Assert.Contains((HttpMethod.Put, "/library/sections/1/emptyTrash"), sent);
+    }
+
+    [Fact]
+    public async Task A_Plex_refresh_falls_back_to_a_full_scan_when_no_section_maps_the_path()
+    {
+        var sent = new List<(HttpMethod Method, string PathAndQuery)>();
+        var client = new PlexMediaServerClient(Factory(request =>
+        {
+            sent.Add((request.Method, Uri.UnescapeDataString(request.RequestUri!.PathAndQuery)));
+            return request.RequestUri!.AbsolutePath switch
+            {
+                "/library/sections" => Json("""{"MediaContainer":{"Directory":[{"key":"1","type":"movie","Location":[{"path":"/media/Movies"}]}]}}"""),
+                _ => new HttpResponseMessage(HttpStatusCode.OK)
+            };
+        }));
+
+        var answer = await client.RefreshAsync(
+            Server(MediaServerKinds.Plex, "http://192.168.1.51:32400"),
+            "movies",
+            [new MediaServerPathChange("/unmapped/Movies/Sintel (2010)/Sintel.mkv", MediaServerChangeKind.Created)],
+            CancellationToken.None);
+
+        var refresh = Assert.IsType<MediaServerAnswer<MediaServerRefresh>.Reported>(answer).Value;
+        Assert.True(refresh.UsedFallbackScan);
+        Assert.Contains((HttpMethod.Get, "/library/sections/1/refresh"), sent);
+        Assert.DoesNotContain(sent, call => call.PathAndQuery.Contains("path="));
+    }
+
+    [Fact]
+    public async Task Jellyfin_and_Emby_refresh_sends_one_call_with_every_changed_path()
+    {
+        HttpRequestMessage? captured = null;
+        string? body = null;
+        var client = new JellyfinMediaServerClient(Factory(request =>
+        {
+            captured = request;
+            body = request.Content?.ReadAsStringAsync().GetAwaiter().GetResult();
+            return new HttpResponseMessage(HttpStatusCode.OK);
+        }));
+
+        var answer = await client.RefreshAsync(
+            Server(MediaServerKinds.Jellyfin),
+            "tv",
+            [
+                new MediaServerPathChange("/tv/Breaking Bad/Season 01/S01E01.mkv", MediaServerChangeKind.Created),
+                new MediaServerPathChange("/tv/Breaking Bad/Season 01/S01E01.old.mkv", MediaServerChangeKind.Deleted)
+            ],
+            CancellationToken.None);
+
+        Assert.IsType<MediaServerAnswer<MediaServerRefresh>.Reported>(answer);
+        Assert.Equal("/Library/Media/Updated", captured!.RequestUri!.AbsolutePath);
+        Assert.Contains("\"Created\"", body);
+        Assert.Contains("\"Deleted\"", body);
+    }
+
+    [Fact]
+    public async Task Jellyfin_falls_back_to_a_full_scan_when_the_targeted_refresh_fails()
+    {
+        var calls = new List<string>();
+        var client = new JellyfinMediaServerClient(Factory(request =>
+        {
+            calls.Add(request.RequestUri!.AbsolutePath);
+            return request.RequestUri!.AbsolutePath == "/Library/Media/Updated"
+                ? new HttpResponseMessage(HttpStatusCode.InternalServerError)
+                : new HttpResponseMessage(HttpStatusCode.OK);
+        }));
+
+        var answer = await client.RefreshAsync(
+            Server(MediaServerKinds.Jellyfin),
+            "movies",
+            [new MediaServerPathChange("/media/Movies/Sintel (2010)/Sintel.mkv", MediaServerChangeKind.Created)],
+            CancellationToken.None);
+
+        var refresh = Assert.IsType<MediaServerAnswer<MediaServerRefresh>.Reported>(answer).Value;
+        Assert.True(refresh.UsedFallbackScan);
+        Assert.Contains("/Library/Refresh", calls);
+    }
+
+    [Fact]
+    public async Task A_Jellyfin_path_mapping_test_reports_whether_the_server_can_see_the_folder()
+    {
+        var client = new JellyfinMediaServerClient(Factory(request
+            => request.RequestUri!.AbsolutePath == "/Environment/DirectoryContents"
+                ? Json("""[{"Path":"/media/Movies/Sintel (2010)","Type":"Directory"}]""")
+                : new HttpResponseMessage(HttpStatusCode.NotFound)));
+
+        var answer = await client.TestPathAsync(Server(MediaServerKinds.Jellyfin), "/media/Movies/Sintel (2010)", CancellationToken.None);
+
+        var result = Assert.IsType<MediaServerAnswer<MediaServerPathMappingTest>.Reported>(answer).Value;
+        Assert.True(result.Found);
+    }
+
+    [Fact]
+    public async Task A_Plex_path_mapping_test_reports_the_server_could_not_be_asked()
+    {
+        var client = new PlexMediaServerClient(Factory(_ => new HttpResponseMessage(HttpStatusCode.Unauthorized)));
+
+        var answer = await client.TestPathAsync(Server(MediaServerKinds.Plex, "http://192.168.1.51:32400"), "/media/Movies", CancellationToken.None);
+
+        Assert.IsType<MediaServerAnswer<MediaServerPathMappingTest>.Unreachable>(answer);
     }
 
     private static HttpResponseMessage Json(string body)

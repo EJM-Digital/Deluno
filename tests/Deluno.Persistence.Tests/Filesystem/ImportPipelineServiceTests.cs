@@ -2357,6 +2357,84 @@ public sealed class ImportPipelineServiceTests
     /// block the whole pack. It is skipped and named instead, and every file
     /// that does resolve is still imported.
     /// </summary>
+    /// <summary>#662: a season pack queues one media-server refresh naming every placed episode - not one call per file.</summary>
+    [Fact]
+    public async Task Tv_pack_queues_a_single_media_server_refresh_naming_every_placed_episode()
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-04-29T08:00:00Z"));
+        await InitializeAllAsync(storage, timeProvider);
+
+        var downloadsPath = Path.Combine(storage.DataRoot, "downloads");
+        var seriesRootPath = Path.Combine(storage.DataRoot, "series");
+        Directory.CreateDirectory(downloadsPath);
+        Directory.CreateDirectory(seriesRootPath);
+
+        var platform = CreatePlatformRepository(storage, timeProvider);
+        var libraries = CreateLibrariesRepository(storage, timeProvider);
+        await SaveSettingsAsync(platform, Path.Combine(storage.DataRoot, "movies"), downloadsPath, seriesRootPath);
+        await CreateTvLibraryAsync(libraries, seriesRootPath, downloadsPath, qualityProfileId: null);
+
+        var seriesRepository = new SqliteSeriesCatalogRepository(storage.Factory, timeProvider);
+        var series = await seriesRepository.AddAsync(new CreateSeriesRequest("Pack Refresh", 2026, "tt1112223"), CancellationToken.None);
+        await seriesRepository.SyncEpisodeCatalogueAsync(
+            series.Id,
+            [
+                new CatalogueEpisodeItem(1, 1, "One", null, timeProvider.GetUtcNow().AddDays(-2)),
+                new CatalogueEpisodeItem(1, 2, "Two", null, timeProvider.GetUtcNow().AddDays(-1))
+            ],
+            "provider",
+            CancellationToken.None);
+
+        var scheduler = new FakeJobScheduler();
+        var service = CreateService(
+            storage, timeProvider, platform, libraries,
+            new SqliteMovieCatalogRepository(storage.Factory, timeProvider),
+            seriesCatalogRepository: seriesRepository,
+            mediaServerJobScheduler: scheduler);
+
+        var packDirectory = Path.Combine(downloadsPath, "Pack.Refresh.S01.WEB-DL");
+        Directory.CreateDirectory(packDirectory);
+        foreach (var episodeNumber in new[] { 1, 2 })
+        {
+            var path = Path.Combine(packDirectory, $"Pack.Refresh.S01E{episodeNumber:D2}.WEB-DL.mkv");
+            await File.WriteAllBytesAsync(path, Enumerable.Repeat((byte)(0x40 + episodeNumber), 4096).ToArray());
+            File.SetLastWriteTimeUtc(path, DateTime.UtcNow.AddMinutes(-1));
+        }
+
+        var request = new ImportExecuteRequest(
+            new ImportPreviewRequest(
+                packDirectory,
+                "Pack.Refresh.S01.WEB-DL.mkv",
+                "tv",
+                "Pack Refresh",
+                2026,
+                [],
+                [],
+                null,
+                null,
+                SeriesId: series.Id,
+                SeriesType: SeriesTypes.Standard,
+                NumberingScheme: SeriesNumberingSchemes.Standard),
+            "copy",
+            Overwrite: false,
+            AllowCopyFallback: true);
+
+        var result = await service.ExecuteAsync(request, CancellationToken.None);
+        Assert.True(result.Succeeded, result.Message);
+        Assert.Equal(2, result.Response!.PackFiles!.Count);
+
+        var enqueued = Assert.Single(scheduler.Requests);
+        Assert.Equal(MediaServerJobTypes.Refresh, enqueued.JobType);
+        var payload = JsonSerializer.Deserialize<MediaServerRefreshJobPayload>(enqueued.PayloadJson!)!;
+        Assert.Equal("tv", payload.MediaType);
+        Assert.Equal(2, payload.Changes.Count);
+        Assert.All(payload.Changes, change => Assert.Equal(MediaServerChangeKind.Created, change.Kind));
+        Assert.Equal(
+            result.Response.PackFiles!.Select(file => file.DestinationPath).OrderBy(path => path),
+            payload.Changes.Select(change => change.Path).OrderBy(path => path));
+    }
+
     [Fact]
     public async Task Tv_pack_skips_a_file_that_does_not_resolve_to_a_canonical_episode_and_imports_the_rest()
     {
@@ -3089,6 +3167,115 @@ public sealed class ImportPipelineServiceTests
         Assert.Equal(newFilePath, afterSecond.FilePath);
     }
 
+    /// <summary>#662: an upgrade queues both the new file (Created) and the file #656 recycled (Deleted), in one job.</summary>
+    [Fact]
+    public async Task An_upgrade_queues_a_media_server_refresh_with_the_new_file_created_and_the_old_one_deleted()
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-09-25T06:00:00Z"));
+        await InitializeAllAsync(storage, timeProvider);
+
+        var downloadsPath = Path.Combine(storage.DataRoot, "downloads");
+        var movieRootPath = Path.Combine(storage.DataRoot, "movies");
+        Directory.CreateDirectory(downloadsPath);
+        Directory.CreateDirectory(movieRootPath);
+
+        var platform = CreatePlatformRepository(storage, timeProvider);
+        var libraries = CreateLibrariesRepository(storage, timeProvider);
+        await SaveSettingsAsync(platform, movieRootPath, downloadsPath);
+        await CreateMovieLibraryAsync(libraries, movieRootPath, downloadsPath);
+        var library = Assert.Single(await libraries.ListLibrariesAsync(CancellationToken.None));
+
+        var jobStore = new SqliteJobStore(storage.Factory, timeProvider, new NullRealtimeEventPublisher(), new NullDownloadDispatchesRepository());
+        var movies = new SqliteMovieCatalogRepository(storage.Factory, timeProvider);
+        var scheduler = new FakeJobScheduler();
+        var service = CreateService(
+            storage, timeProvider, platform, libraries, movies,
+            downloadDispatchesRepository: new SqliteDownloadDispatchesRepository(storage.Factory, timeProvider),
+            mediaServerJobScheduler: scheduler);
+        var catalogued = await movies.AddAsync(new CreateMovieRequest("The Wild Robot", 2024, null), CancellationToken.None);
+
+        var firstSource = Path.Combine(downloadsPath, "The.Wild.Robot.2024.WEB.720p.mkv");
+        await File.WriteAllBytesAsync(firstSource, Enumerable.Repeat((byte)0x11, 4096).ToArray());
+        File.SetLastWriteTimeUtc(firstSource, DateTime.UtcNow.AddMinutes(-1));
+        var firstDispatchId = await jobStore.RecordDownloadDispatchAsync(
+            libraryId: library.Id, mediaType: "movies", entityType: "movie", entityId: catalogued.Id,
+            releaseName: "The Wild Robot 2024 WEB 720p", indexerName: "TestIndexer",
+            downloadClientId: "client-1", downloadClientName: "TestClient",
+            status: "sent", notesJson: null, cancellationToken: CancellationToken.None);
+        var firstResult = await service.ExecuteAsync(
+            new ImportExecuteRequest(
+                new ImportPreviewRequest(firstSource, null, "movies", "The Wild Robot", 2024, [], [], null, null),
+                "copy", Overwrite: false, AllowCopyFallback: true, DispatchId: firstDispatchId),
+            CancellationToken.None);
+        Assert.True(firstResult.Succeeded, firstResult.Message);
+        var originalFilePath = firstResult.Response!.Preview.DestinationPath;
+        scheduler.Requests.Clear();
+
+        var secondDispatchId = await jobStore.RecordDownloadDispatchAsync(
+            libraryId: library.Id, mediaType: "movies", entityType: "movie", entityId: catalogued.Id,
+            releaseName: "The Wild Robot 2024 REPACK 1080p BluRay", indexerName: "TestIndexer",
+            downloadClientId: "client-1", downloadClientName: "TestClient",
+            status: "sent", notesJson: null, cancellationToken: CancellationToken.None);
+        var secondSource = Path.Combine(downloadsPath, "The.Wild.Robot.2024.REPACK.1080p.BluRay.mkv");
+        await File.WriteAllBytesAsync(secondSource, Enumerable.Repeat((byte)0x22, 8192).ToArray());
+        File.SetLastWriteTimeUtc(secondSource, DateTime.UtcNow.AddMinutes(-1));
+        var secondResult = await service.ExecuteAsync(
+            new ImportExecuteRequest(
+                new ImportPreviewRequest(secondSource, null, "movies", "The Wild Robot", 2024, [], [], null, null),
+                "copy", Overwrite: true, AllowCopyFallback: true, ForceReplacement: true, DispatchId: secondDispatchId),
+            CancellationToken.None);
+        Assert.True(secondResult.Succeeded, secondResult.Message);
+        var newFilePath = secondResult.Response!.Preview.DestinationPath;
+
+        var request = Assert.Single(scheduler.Requests);
+        var payload = JsonSerializer.Deserialize<MediaServerRefreshJobPayload>(request.PayloadJson!)!;
+        Assert.Contains(payload.Changes, change => change.Path == newFilePath && change.Kind == MediaServerChangeKind.Created);
+        Assert.Contains(payload.Changes, change => change.Path == originalFilePath && change.Kind == MediaServerChangeKind.Deleted);
+    }
+
+    /// <summary>#662: a fresh import queues one media-server refresh naming the new file, and nothing replaced.</summary>
+    [Fact]
+    public async Task A_fresh_import_queues_a_media_server_refresh_for_the_new_file()
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-09-25T06:00:00Z"));
+        await InitializeAllAsync(storage, timeProvider);
+
+        var downloadsPath = Path.Combine(storage.DataRoot, "downloads");
+        var movieRootPath = Path.Combine(storage.DataRoot, "movies");
+        Directory.CreateDirectory(downloadsPath);
+        Directory.CreateDirectory(movieRootPath);
+
+        var platform = CreatePlatformRepository(storage, timeProvider);
+        var libraries = CreateLibrariesRepository(storage, timeProvider);
+        await SaveSettingsAsync(platform, movieRootPath, downloadsPath);
+        await CreateMovieLibraryAsync(libraries, movieRootPath, downloadsPath);
+
+        var movies = new SqliteMovieCatalogRepository(storage.Factory, timeProvider);
+        var scheduler = new FakeJobScheduler();
+        var service = CreateService(storage, timeProvider, platform, libraries, movies, mediaServerJobScheduler: scheduler);
+
+        var sourcePath = Path.Combine(downloadsPath, "Arrival.2016.WEB.1080p.mkv");
+        await File.WriteAllBytesAsync(sourcePath, Enumerable.Repeat((byte)0x11, 4096).ToArray());
+        File.SetLastWriteTimeUtc(sourcePath, DateTime.UtcNow.AddMinutes(-1));
+
+        var result = await service.ExecuteAsync(
+            new ImportExecuteRequest(
+                new ImportPreviewRequest(sourcePath, null, "movies", "Arrival", 2016, [], [], null, null),
+                "copy", Overwrite: true, AllowCopyFallback: true),
+            CancellationToken.None);
+        Assert.True(result.Succeeded, result.Message);
+
+        var request = Assert.Single(scheduler.Requests);
+        Assert.Equal(MediaServerJobTypes.Refresh, request.JobType);
+        var payload = JsonSerializer.Deserialize<MediaServerRefreshJobPayload>(request.PayloadJson!)!;
+        Assert.Equal("movies", payload.MediaType);
+        var change = Assert.Single(payload.Changes);
+        Assert.Equal(result.Response!.Preview.DestinationPath, change.Path);
+        Assert.Equal(MediaServerChangeKind.Created, change.Kind);
+    }
+
     /// <summary>
     /// The same scenario, but the new release renames to the exact path the
     /// old file already occupied (#656's guard: never touch a path when old
@@ -3556,6 +3743,7 @@ public sealed class ImportPipelineServiceTests
         ISeriesCatalogRepository? seriesCatalogRepository = null,
         IQualityRepository? qualityRepository = null,
         IDownloadDispatchesRepository? downloadDispatchesRepository = null,
+        IJobScheduler? mediaServerJobScheduler = null,
         TimeSpan? settleWindow = null)
         => new(
             platform,
@@ -3573,6 +3761,7 @@ public sealed class ImportPipelineServiceTests
             null,
             null,
             qualityRepository,
+            mediaServerJobScheduler: mediaServerJobScheduler,
             settleWindow: settleWindow ?? TimeSpan.Zero);
 
     private static FilesystemReconciliationService CreateReconciliationService(
@@ -3688,6 +3877,38 @@ public sealed class ImportPipelineServiceTests
                 MetadataOmdbApiKey: null,
                 ReleaseNeverGrabPatterns: null),
             CancellationToken.None);
+    }
+
+    /// <summary>#662: records what would have been queued, without a real job store.</summary>
+    private sealed class FakeJobScheduler : IJobScheduler
+    {
+        public List<EnqueueJobRequest> Requests { get; } = [];
+
+        public Task<JobQueueItem> EnqueueAsync(EnqueueJobRequest request, CancellationToken cancellationToken)
+        {
+            Requests.Add(request);
+            return Task.FromResult(new JobQueueItem(
+                Id: "job-" + Requests.Count,
+                JobType: request.JobType,
+                Source: request.Source,
+                Status: "pending",
+                PayloadJson: request.PayloadJson,
+                Attempts: 0,
+                CreatedUtc: DateTimeOffset.UnixEpoch,
+                ScheduledUtc: request.ScheduledUtc ?? DateTimeOffset.UnixEpoch,
+                StartedUtc: null,
+                CompletedUtc: null,
+                LeasedUntilUtc: null,
+                WorkerId: null,
+                LastError: null,
+                RelatedEntityType: request.RelatedEntityType,
+                RelatedEntityId: request.RelatedEntityId,
+                IdempotencyKey: request.IdempotencyKey,
+                DedupeKey: request.DedupeKey,
+                MaxAttempts: request.MaxAttempts ?? 1,
+                LastAttemptUtc: null,
+                NextAttemptUtc: null));
+        }
     }
 
     private sealed class SuccessfulProbeService : IMediaProbeService

@@ -50,6 +50,9 @@ public sealed partial class ImportPipelineService(
     IBlockedReleaseRepository? blockedReleases = null,
     IImportFailureRuleRepository? failureRules = null,
     IDispatchAlertRepository? dispatchAlerts = null,
+    // #662: queued, never awaited inline - a slow or down media server must
+    // never hold up or fail an import that already landed.
+    IJobScheduler? mediaServerJobScheduler = null,
     // Only a test passes this, to say "do not wait" without waiting for it.
     TimeSpan? settleWindow = null)
     : IImportPipelineService
@@ -462,6 +465,17 @@ public sealed partial class ImportPipelineService(
             {
                 logger.LogWarning("{Warning}", warning);
             }
+
+            // #662: the new file, plus whichever old file this upgrade
+            // recycled (#656) - a fresh import has none of those, an upgrade
+            // has exactly the one it just replaced.
+            await EnqueueMediaServerRefreshAsync(
+                mediaType,
+                [
+                    new MediaServerPathChange(preview.DestinationPath, MediaServerChangeKind.Created),
+                    .. catalogImportResult.ReplacedFilePaths.Select(replaced => new MediaServerPathChange(replaced, MediaServerChangeKind.Deleted))
+                ],
+                cancellationToken);
 
             if (catalogImportResult.CatalogUpdated && !string.IsNullOrWhiteSpace(request.DispatchId))
             {
@@ -1253,6 +1267,17 @@ public sealed partial class ImportPipelineService(
 
                 replacementMessages.Add($"Moved the previous {fileName} file to the recycle bin.");
             }
+
+            // #662: one refresh call per distinct destination folder for the
+            // whole pack, not one per episode - the batching the audit calls
+            // for, carried by the placed files' own destination folders.
+            await EnqueueMediaServerRefreshAsync(
+                "tv",
+                [
+                    .. placements.Select(placement => new MediaServerPathChange(placement.File.Preview.DestinationPath, MediaServerChangeKind.Created)),
+                    .. backups.Select(backup => new MediaServerPathChange(backup.ExistingPath, MediaServerChangeKind.Deleted))
+                ],
+                cancellationToken);
 
             var usedFallback = placements.Any(placement => placement.UsedFallback);
             var modes = placements.Select(placement => placement.Mode).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
@@ -2457,6 +2482,31 @@ public sealed partial class ImportPipelineService(
         }
 
         return $"{title} was imported from {release.Trim()} using {mode}.";
+    }
+
+    /// <summary>
+    /// Queues Plex/Jellyfin/Emby to be told about changed files (#662),
+    /// without ever waiting on them: the job runs on its own lane, so a slow
+    /// or unreachable server never delays or fails an import that has already
+    /// landed and been catalogued. A failed notify surfaces later as a
+    /// clearable finding on that server's own health, not as an import error.
+    /// </summary>
+    private Task EnqueueMediaServerRefreshAsync(string mediaType, IReadOnlyList<MediaServerPathChange> changes, CancellationToken cancellationToken)
+    {
+        if (mediaServerJobScheduler is null || changes.Count == 0)
+        {
+            return Task.CompletedTask;
+        }
+
+        var payload = new MediaServerRefreshJobPayload(mediaType, changes);
+        return mediaServerJobScheduler.EnqueueAsync(
+            new EnqueueJobRequest(
+                MediaServerJobTypes.Refresh,
+                Source: "filesystem.import",
+                PayloadJson: JsonSerializer.Serialize(payload),
+                RelatedEntityType: null,
+                RelatedEntityId: null),
+            cancellationToken);
     }
 
     /// <summary>

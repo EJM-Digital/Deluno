@@ -61,6 +61,50 @@ public sealed class MediaServerPersistenceTests
         Assert.Equal("untested", moved.HealthStatus);
     }
 
+    /// <summary>#662: per-server path mapping, the same shape as a download client's.</summary>
+    [Fact]
+    public async Task A_path_mapping_translates_Delunos_path_to_the_servers_and_is_scoped_to_its_own_server()
+    {
+        using var storage = TestStorage.Create();
+        var repository = await RepositoryAsync(storage);
+        var plex = await repository.SaveAsync(null, new SaveMediaServerRequest("plex", "Rig Plex", "http://192.168.1.51:32400", "token", true), CancellationToken.None);
+        var other = await repository.SaveAsync(null, new SaveMediaServerRequest("jellyfin", "Rig Jellyfin", "http://192.168.1.51:8096", "key", true), CancellationToken.None);
+
+        var created = await repository.CreatePathMappingAsync(
+            plex!.Id,
+            new CreateMediaServerPathMappingRequest("/mnt/media/Movies", "/data/Movies", true, null),
+            CancellationToken.None);
+        Assert.NotNull(created);
+        Assert.Equal("/mnt/media/Movies", created!.DelunoPath);
+        Assert.Equal("/data/Movies", created.ServerPath);
+        Assert.Equal(10, created.Priority);
+
+        await repository.CreatePathMappingAsync(other!.Id, new CreateMediaServerPathMappingRequest("/mnt/media/TV", "/data/TV", true, null), CancellationToken.None);
+
+        var plexMappings = await repository.ListPathMappingsAsync(plex.Id, CancellationToken.None);
+        Assert.Single(plexMappings);
+        Assert.Equal(created.Id, plexMappings[0].Id);
+
+        Assert.True(await repository.DeletePathMappingAsync(plex.Id, created.Id, CancellationToken.None));
+        Assert.Empty(await repository.ListPathMappingsAsync(plex.Id, CancellationToken.None));
+        // Deleting under the wrong server never touches another server's row.
+        Assert.False(await repository.DeletePathMappingAsync(plex.Id, created.Id, CancellationToken.None));
+    }
+
+    /// <summary>Deleting a media server takes its path mappings with it.</summary>
+    [Fact]
+    public async Task Deleting_a_server_deletes_its_path_mappings()
+    {
+        using var storage = TestStorage.Create();
+        var repository = await RepositoryAsync(storage);
+        var plex = await repository.SaveAsync(null, new SaveMediaServerRequest("plex", "Rig Plex", "http://192.168.1.51:32400", "token", true), CancellationToken.None);
+        await repository.CreatePathMappingAsync(plex!.Id, new CreateMediaServerPathMappingRequest("/mnt/media", "/data", true, null), CancellationToken.None);
+
+        Assert.True(await repository.DeleteAsync(plex.Id, CancellationToken.None));
+
+        Assert.Empty(await repository.ListPathMappingsAsync(plex.Id, CancellationToken.None));
+    }
+
     private static async Task<SqliteMediaServerRepository> RepositoryAsync(TestStorage storage)
     {
         var clock = new FixedTimeProvider(DateTimeOffset.Parse("2026-09-16T12:00:00Z"));

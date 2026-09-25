@@ -70,6 +70,7 @@ public static class IntegrationsServiceCollectionExtensions
         services.AddSingleton<MediaServers.IMediaServerClient, MediaServers.JellyfinMediaServerClient>();
         services.AddSingleton<MediaServers.IMediaServerClient, MediaServers.EmbyMediaServerClient>();
         services.AddSingleton<MediaServers.IMediaServerClientRegistry, MediaServers.MediaServerClientRegistry>();
+        services.AddSingleton<MediaServers.IMediaServerRefreshNotifier, MediaServers.MediaServerRefreshNotifier>();
 
         // Jellyseerr and Overseerr (#522), over the media servers' HTTP client.
         services.AddSingleton<Seerr.ISeerrClient, Seerr.SeerrClient>();

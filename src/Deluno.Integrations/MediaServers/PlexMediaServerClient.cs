@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Deluno.Connections.Contracts;
+using Deluno.Contracts;
 using static Deluno.Integrations.MediaServers.MediaServerHttp;
 
 namespace Deluno.Integrations.MediaServers;
@@ -324,6 +325,163 @@ public sealed class PlexMediaServerClient(IHttpClientFactory httpClientFactory) 
             ? new MediaServerAnswer<MediaServerRemoval>.Reported(new MediaServerRemoval($"{connection.Name} rescanned where {item.Title} was and emptied its trash."))
             : new MediaServerAnswer<MediaServerRemoval>.Unreachable(emptied.Problem!);
     }
+
+    public async Task<MediaServerAnswer<MediaServerRefresh>> RefreshAsync(
+        MediaServerConnection connection,
+        string mediaType,
+        IReadOnlyList<MediaServerPathChange> changes,
+        CancellationToken cancellationToken)
+    {
+        if (changes.Count == 0)
+        {
+            return new MediaServerAnswer<MediaServerRefresh>.Reported(new MediaServerRefresh($"Nothing to tell {connection.Name}.", false));
+        }
+
+        var sectionType = mediaType == "tv" ? "show" : "movie";
+        var sectionsCall = await GetAsync(connection, "/library/sections", cancellationToken);
+        using var sectionsDocument = sectionsCall.Ok ? TryParse(sectionsCall.Body) : null;
+        if (Container(sectionsDocument) is not { } sections ||
+            !sections.TryGetProperty("Directory", out var directories) ||
+            directories.ValueKind != JsonValueKind.Array)
+        {
+            return new MediaServerAnswer<MediaServerRefresh>.Unreachable(sectionsCall.Problem ?? $"{connection.Name} did not list its libraries.");
+        }
+
+        // Every section of the right type, with the root paths Plex itself
+        // sees it at - what a folder is matched against below.
+        var candidates = new List<(string Key, string[] Roots)>();
+        foreach (var directory in directories.EnumerateArray())
+        {
+            if (!string.Equals(String(directory, "type"), sectionType, StringComparison.OrdinalIgnoreCase) ||
+                String(directory, "key") is not { Length: > 0 } key)
+            {
+                continue;
+            }
+
+            var roots = directory.TryGetProperty("Location", out var locations) && locations.ValueKind == JsonValueKind.Array
+                ? locations.EnumerateArray()
+                    .Select(location => String(location, "path"))
+                    .Where(path => !string.IsNullOrWhiteSpace(path))
+                    .Select(path => path!)
+                    .ToArray()
+                : [];
+            candidates.Add((key, roots));
+        }
+
+        if (candidates.Count == 0)
+        {
+            return new MediaServerAnswer<MediaServerRefresh>.NotSupported($"{connection.Name} has no {sectionType} library, so there is nothing to refresh.");
+        }
+
+        var folders = changes.Select(change => FolderOf(change.Path)).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+
+        // The longest matching root wins, the same rule a download-client path
+        // mapping uses: a specific mapping may safely sit beside a broader one.
+        var resolved = new List<(string Key, string Folder)>();
+        var unresolved = new List<string>();
+        foreach (var folder in folders)
+        {
+            var normalizedFolder = NormalizeForMatch(folder);
+            var match = candidates
+                .SelectMany(candidate => candidate.Roots.Select(root => (candidate.Key, NormalizedRoot: NormalizeForMatch(root))))
+                .Where(entry => normalizedFolder.Equals(entry.NormalizedRoot, StringComparison.OrdinalIgnoreCase) ||
+                                normalizedFolder.StartsWith(entry.NormalizedRoot + "/", StringComparison.OrdinalIgnoreCase))
+                .OrderByDescending(entry => entry.NormalizedRoot.Length)
+                .Select(entry => (string?)entry.Key)
+                .FirstOrDefault();
+
+            if (match is null)
+            {
+                unresolved.Add(folder);
+            }
+            else
+            {
+                resolved.Add((match, folder));
+            }
+        }
+
+        string? problem = null;
+        var usedFallback = false;
+        var touchedSections = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var (key, folder) in resolved)
+        {
+            var refresh = await GetAsync(connection, $"/library/sections/{Uri.EscapeDataString(key)}/refresh?path={Uri.EscapeDataString(folder)}", cancellationToken);
+            if (refresh.Ok)
+            {
+                touchedSections.Add(key);
+            }
+            else
+            {
+                problem ??= refresh.Problem;
+            }
+        }
+
+        if (unresolved.Count > 0)
+        {
+            // Nothing on the server maps to these folders - most often a
+            // missing path mapping. A full scan of every section of this type
+            // is the fallback the audit calls for, rather than silently
+            // telling the server nothing at all.
+            usedFallback = true;
+            foreach (var candidate in candidates)
+            {
+                var refresh = await GetAsync(connection, $"/library/sections/{Uri.EscapeDataString(candidate.Key)}/refresh", cancellationToken);
+                if (refresh.Ok)
+                {
+                    touchedSections.Add(candidate.Key);
+                }
+                else
+                {
+                    problem ??= refresh.Problem;
+                }
+            }
+        }
+
+        if (changes.Any(change => change.Kind == MediaServerChangeKind.Deleted))
+        {
+            foreach (var key in touchedSections)
+            {
+                // Best effort: a scan already told Plex the file is gone, and
+                // a trash that will not empty should not turn a successful
+                // refresh into a failed one.
+                await SendAsync(httpClientFactory, HttpMethod.Put, Address(connection, $"/library/sections/{Uri.EscapeDataString(key)}/emptyTrash"), Headers(connection), connection.Name, cancellationToken);
+            }
+        }
+
+        if (touchedSections.Count == 0)
+        {
+            return new MediaServerAnswer<MediaServerRefresh>.Unreachable(problem ?? $"{connection.Name} could not be refreshed.");
+        }
+
+        return new MediaServerAnswer<MediaServerRefresh>.Reported(new MediaServerRefresh(
+            usedFallback
+                ? $"{connection.Name} could not map every changed path to a library, so its {sectionType} libraries were fully rescanned instead."
+                : $"{connection.Name} was told about {folders.Length} changed folder{(folders.Length == 1 ? string.Empty : "s")}.",
+            usedFallback));
+    }
+
+    public async Task<MediaServerAnswer<MediaServerPathMappingTest>> TestPathAsync(
+        MediaServerConnection connection,
+        string serverPath,
+        CancellationToken cancellationToken)
+    {
+        var browse = await GetAsync(connection, $"/services/browse?path={Uri.EscapeDataString(serverPath)}&includeFiles=0", cancellationToken);
+        if (!browse.Ok)
+        {
+            return new MediaServerAnswer<MediaServerPathMappingTest>.Unreachable(browse.Problem!);
+        }
+
+        using var document = TryParse(browse.Body);
+        var found = Container(document) is not null;
+        return new MediaServerAnswer<MediaServerPathMappingTest>.Reported(new MediaServerPathMappingTest(
+            found,
+            found
+                ? $"{connection.Name} can see {serverPath}."
+                : $"{connection.Name} answered, but not with a folder listing for {serverPath}. Check the mapped path."));
+    }
+
+    private static string NormalizeForMatch(string path) => path.Trim().TrimEnd('/', '\\').Replace('\\', '/');
 
     public async Task<MediaServerAnswer<MediaServerCollectionSync>> SyncCollectionAsync(
         MediaServerConnection connection,

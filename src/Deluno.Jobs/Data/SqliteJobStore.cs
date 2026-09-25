@@ -4294,7 +4294,9 @@ public sealed class SqliteJobStore(
             ["series.quality.recalculate"] = new(
                 "a TV quality refresh", "Started refreshing TV quality decisions.", "TV quality refresh"),
             ["movies.collection.sync"] = new(
-                "a movie collection refresh", "Started refreshing a movie collection.", "Movie collection refresh")
+                "a movie collection refresh", "Started refreshing a movie collection.", "Movie collection refresh"),
+            ["media-servers.refresh"] = new(
+                "a media server refresh", "Started telling your media servers about changed files.", "Media server refresh")
         };
 
     private static string? NormalizeJobKey(string? value)

@@ -1,5 +1,6 @@
 using Deluno.Connections.Contracts;
 using Deluno.Connections.Data;
+using Deluno.Contracts;
 using Deluno.Integrations.MediaServers;
 using Deluno.Retention;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -153,6 +154,10 @@ public sealed class RetentionCollectionServiceTests
         public Task<MediaServerAnswer<MediaServerLibrary>> ListItemsAsync(MediaServerConnection connection, string mediaType, CancellationToken cancellationToken) => throw new NotSupportedException();
 
         public Task<MediaServerAnswer<MediaServerRemoval>> RemoveAsync(MediaServerConnection connection, MediaServerItem item, CancellationToken cancellationToken) => throw new NotSupportedException();
+
+        public Task<MediaServerAnswer<MediaServerRefresh>> RefreshAsync(MediaServerConnection connection, string mediaType, IReadOnlyList<MediaServerPathChange> changes, CancellationToken cancellationToken) => throw new NotSupportedException();
+
+        public Task<MediaServerAnswer<MediaServerPathMappingTest>> TestPathAsync(MediaServerConnection connection, string serverPath, CancellationToken cancellationToken) => throw new NotSupportedException();
 
         public Task<MediaServerAnswer<MediaServerCollectionSync>> SyncCollectionAsync(MediaServerConnection connection, MediaServerCollectionRequest request, CancellationToken cancellationToken)
         {
