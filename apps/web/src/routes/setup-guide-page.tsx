@@ -72,7 +72,7 @@ interface GuideForm {
   movieRootPath: string;
   seriesRootPath: string;
   qualityPreset: "" | "balanced1080p" | "premium4k";
-  formatGoal: "" | "simpleClean" | "balanced" | "homeTheater" | "storageSaver" | "anime";
+  formatGoal: "" | "simpleClean" | "balanced" | "homeTheater" | "storageSaver" | "anime" | "archive";
   indexerName: string;
   indexerProtocol: "torznab" | "newznab" | "rss";
   indexerUrl: string;
@@ -179,6 +179,12 @@ const FORMAT_GOALS = {
     bundleId: "anime-balanced",
     copy: "Anime-specific release groups, dual-audio preference, uncensored boost, and raw-release blocking.",
     bestFor: "Anime TV libraries where normal Sonarr-style scoring is not enough. Films in the same setup use Balanced."
+  },
+  archive: {
+    label: "Archive quality",
+    bundleId: "archive-4k-remux",
+    copy: "Prefers remux, UHD Blu-ray groups, lossless audio, HDR, and special editions over WEB releases of any size.",
+    bestFor: "Reference movie libraries and home cinema rooms that care more about quality than disk usage. TV shows in the same setup use Balanced."
   },
 } as const;
 
@@ -1498,6 +1504,9 @@ export function getEffectiveFormatGoal(mediaType: "movies" | "tv", form: GuideFo
   // The anime bundle is TV-only; films in an anime setup get Balanced rather
   // than a profile with no release rules in it.
   if (form.formatGoal === "anime" && mediaType === "movies") return "balanced";
+  // archive-4k-remux is a movies-only bundle; TV shows in an archive setup
+  // get Balanced for the same reason.
+  if (form.formatGoal === "archive" && mediaType === "tv") return "balanced";
   return form.formatGoal;
 }
 
