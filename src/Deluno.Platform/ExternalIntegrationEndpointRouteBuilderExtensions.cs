@@ -786,7 +786,16 @@ public static class ExternalIntegrationEndpointRouteBuilderExtensions
             var message = string.IsNullOrWhiteSpace(request.Message) ? null : request.Message.Trim();
             var mediaType = library.MediaType;
 
-            if (status == "completed" && !ProcessorOutputPathPolicy.IsOutputOwnedByLibrary(request.OutputPath, library.ProcessorOutputPath))
+            // Partial success: the processor gives up on the rest of a hand-off
+            // but names the files it did finish. Those still belong in the
+            // library - refusing them because the batch as a whole failed would
+            // throw away work the processor already did (#619).
+            var partialImport = status == "failed" &&
+                request.OutputFiles is { Count: > 0 } &&
+                !string.IsNullOrWhiteSpace(request.OutputPath);
+            var importsOutput = status == "completed" || partialImport;
+
+            if (importsOutput && !ProcessorOutputPathPolicy.IsOutputOwnedByLibrary(request.OutputPath, library.ProcessorOutputPath))
             {
                 return Results.ValidationProblem(new Dictionary<string, string[]>
                 {
@@ -820,7 +829,7 @@ public static class ExternalIntegrationEndpointRouteBuilderExtensions
             // and being inside the output folder only says the processor wrote
             // where it was told. A file that is recognisably another download's
             // is refused rather than imported under this one's title (#573).
-            if (status == "completed" &&
+            if (importsOutput &&
                 !ProcessorOutputPathPolicy.IsOutputAbout(request.OutputPath, library.ProcessorOutputPath, handoff.SourcePath))
             {
                 var claimedBy = (await repository.ListProcessorHandoffsAsync(library.Id, 200, cancellationToken))
@@ -854,7 +863,7 @@ public static class ExternalIntegrationEndpointRouteBuilderExtensions
             // An ending is an ending. Deluno stopped waiting for this file, or a
             // person did, and a report arriving afterwards must not quietly
             // start an import for a hand-off that has been closed and cleared.
-            if (status == "completed" && !ProcessorHandoffStatuses.IsWithProcessor(handoff.Status))
+            if (importsOutput && !ProcessorHandoffStatuses.IsWithProcessor(handoff.Status))
             {
                 return Results.Conflict(new
                 {
@@ -926,7 +935,7 @@ public static class ExternalIntegrationEndpointRouteBuilderExtensions
             await repository.UpdateProcessorHandoffAsync(
                 handoff.Id,
                 status,
-                status == "completed" ? request.OutputPath : null,
+                importsOutput ? request.OutputPath : null,
                 null,
                 status == "failed" ? message : null,
                 cancellationToken);
@@ -960,7 +969,7 @@ public static class ExternalIntegrationEndpointRouteBuilderExtensions
                 cancellationToken);
 
             ProcessorOutputImport? importJob = null;
-            if (status == "completed" && !string.IsNullOrWhiteSpace(request.OutputPath))
+            if (importsOutput && !string.IsNullOrWhiteSpace(request.OutputPath))
             {
                 // Named from the catalogue, into the library that grabbed it: the
                 // same queue the output-folder watcher uses (#526).
@@ -975,18 +984,27 @@ public static class ExternalIntegrationEndpointRouteBuilderExtensions
                     ? $"{processorName} produced a cleaned file, but {removed}, so Deluno did not import it. The file is still at {outputPath}."
                     : missing.Length > 0
                         ? $"{processorName} named {missing.Length} of its {request.OutputFiles!.Count} output files that Deluno cannot find: {string.Join(", ", missing.Select(Path.GetFileName))}. Deluno imported what is there."
-                        : null;
+                        // The processor gave up on the rest, not on these: they
+                        // still land in the library, and the processor's own
+                        // count of what failed travels with them rather than
+                        // being guessed at again (#619).
+                        : partialImport
+                            ? $"{message} Deluno imported the {request.OutputFiles!.Count} file(s) that {processorName} said succeeded."
+                            : null;
 
                 await repository.UpdateProcessorHandoffAsync(
                     handoff.Id,
-                    "completed",
+                    partialImport ? "failed" : "completed",
                     outputPath,
                     importJob.JobId,
                     notImported,
                     cancellationToken);
 
                 await activityFeed.RecordActivityAsync(
-                    importJob.NotImportedBecause is not null ? "filesystem.import.not-imported" : notImported is not null ? "processing.outputs-missing" : "processing.completed.import-queued",
+                    importJob.NotImportedBecause is not null ? "filesystem.import.not-imported"
+                        : missing.Length > 0 ? "processing.outputs-missing"
+                        : partialImport ? "processing.partial-import"
+                        : "processing.completed.import-queued",
                     notImported ?? $"{processorName} produced a cleaned file; Deluno queued it for import.",
                     JsonSerializer.Serialize(new
                     {
@@ -1031,6 +1049,13 @@ public static class ExternalIntegrationEndpointRouteBuilderExtensions
         if (status == "failed" && string.IsNullOrWhiteSpace(request.Message))
         {
             errors["message"] = ["Failed processor events should explain what went wrong."];
+        }
+
+        // OutputFiles names files inside OutputPath; naming files with nowhere
+        // to find them is not a claim Deluno can check (#619).
+        if (request.OutputFiles is { Count: > 0 } && string.IsNullOrWhiteSpace(request.OutputPath))
+        {
+            errors["outputPath"] = ["OutputFiles was reported without an OutputPath to find them in."];
         }
 
         return errors;

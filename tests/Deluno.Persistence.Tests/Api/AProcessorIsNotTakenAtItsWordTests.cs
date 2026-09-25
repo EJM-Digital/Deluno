@@ -1,3 +1,6 @@
+using Deluno.Filesystem;
+using Deluno.Jobs.Contracts;
+using Deluno.Jobs.Data;
 using Deluno.Libraries.Contracts;
 using Deluno.Libraries.Data;
 using Deluno.Persistence.Tests.Support;
@@ -6,6 +9,7 @@ using Deluno.Platform.Data;
 using Microsoft.Extensions.DependencyInjection;
 using System.Net;
 using System.Net.Http.Json;
+using System.Text.Json;
 
 namespace Deluno.Persistence.Tests.Api;
 
@@ -147,6 +151,127 @@ public sealed class AProcessorIsNotTakenAtItsWordTests
         Assert.Contains($"{Ours}.extra.mkv", stored?.FailureMessage);
     }
 
+    /// <summary>
+    /// #619, live on the rig: the Pioneer One season pack. A folder hand-off's
+    /// completion, naming every episode in OutputFiles, is imported as the one
+    /// pack the existing season-pack import already knows how to place - not as
+    /// six separate completions of the same hand-off.
+    /// </summary>
+    [Fact]
+    public async Task A_folder_hand_off_with_several_output_files_imports_as_one_pack()
+    {
+        await using var app = await ApplicationTestHost.StartAsync();
+        var scene = await TvSceneAsync(app);
+        var folder = Directory.CreateDirectory(Path.Combine(scene.Output, "Pioneer.One.S01")).FullName;
+        var episode1 = Path.Combine(folder, "Pioneer.One.S01E01.mkv");
+        var episode2 = Path.Combine(folder, "Pioneer.One.S01E02.mkv");
+        await File.WriteAllBytesAsync(episode1, new byte[4096]);
+        await File.WriteAllBytesAsync(episode2, new byte[4096]);
+        var handoff = await HandoffAsync(app, scene, "Pioneer.One.S01");
+
+        var response = await app.Client.PostAsJsonAsync("/api/integrations/processors/events", new
+        {
+            libraryId = scene.LibraryId,
+            handoffId = handoff.Id,
+            status = "completed",
+            outputPath = folder,
+            outputFiles = new[] { episode1, episode2 }
+        });
+
+        Assert.True(response.IsSuccessStatusCode, await response.Content.ReadAsStringAsync());
+        var stored = await Repository(app).GetProcessorHandoffAsync(handoff.Id, CancellationToken.None);
+        Assert.Equal(ProcessorHandoffStatuses.Completed, stored?.Status);
+        Assert.Null(stored?.FailureMessage);
+        Assert.NotNull(stored?.ImportJobId);
+
+        // One pack import, not one job per episode: the existing season-pack
+        // import path is reused for the whole folder.
+        var jobs = await app.Services.GetRequiredService<IJobQueueRepository>().ListAsync(50, CancellationToken.None);
+        var importJob = Assert.Single(jobs, job => job.Id == stored!.ImportJobId);
+        var payload = JsonSerializer.Deserialize<ImportExecuteRequest>(importJob.PayloadJson!, new JsonSerializerOptions { PropertyNameCaseInsensitive = true })!;
+        Assert.Equal(folder, payload.Preview.SourcePath);
+    }
+
+    /// <summary>#619: a single-file hand-off also carries OutputFiles, with one item, and still works.</summary>
+    [Fact]
+    public async Task A_single_file_hand_off_with_one_output_file_still_works()
+    {
+        await using var app = await ApplicationTestHost.StartAsync();
+        var scene = await SceneAsync(app);
+        var folder = Directory.CreateDirectory(Path.Combine(scene.Output, Ours)).FullName;
+        var file = Path.Combine(folder, $"{Ours}.mkv");
+        await File.WriteAllBytesAsync(file, new byte[1024]);
+        var handoff = await HandoffAsync(app, scene, Ours);
+
+        var response = await app.Client.PostAsJsonAsync("/api/integrations/processors/events", new
+        {
+            libraryId = scene.LibraryId,
+            handoffId = handoff.Id,
+            status = "completed",
+            outputPath = file,
+            outputFiles = new[] { file }
+        });
+
+        Assert.True(response.IsSuccessStatusCode, await response.Content.ReadAsStringAsync());
+        var stored = await Repository(app).GetProcessorHandoffAsync(handoff.Id, CancellationToken.None);
+        Assert.Equal(ProcessorHandoffStatuses.Completed, stored?.Status);
+        Assert.Null(stored?.FailureMessage);
+        Assert.NotNull(stored?.ImportJobId);
+    }
+
+    /// <summary>An older processor that has not been updated for OutputFiles keeps working exactly as before.</summary>
+    [Fact]
+    public async Task A_completion_with_no_output_files_from_an_older_processor_still_works()
+    {
+        await using var app = await ApplicationTestHost.StartAsync();
+        var scene = await SceneAsync(app);
+
+        var response = await ReportAsync(app, scene, Ours, "completed", Path.Combine(scene.Output, Ours, $"{Ours}.mkv"));
+
+        Assert.True(response.IsSuccessStatusCode, await response.Content.ReadAsStringAsync());
+    }
+
+    /// <summary>
+    /// #619: a processor that only finished some of a hand-off's files reports
+    /// failed, with a message giving the counts and OutputFiles listing the
+    /// files that did succeed. Those files still belong in the library.
+    /// </summary>
+    [Fact]
+    public async Task A_partial_failure_imports_what_succeeded_and_reports_the_count()
+    {
+        await using var app = await ApplicationTestHost.StartAsync();
+        var scene = await TvSceneAsync(app);
+        var folder = Directory.CreateDirectory(Path.Combine(scene.Output, "Pioneer.One.S01")).FullName;
+        var succeeded = Path.Combine(folder, "Pioneer.One.S01E01.mkv");
+        await File.WriteAllBytesAsync(succeeded, new byte[4096]);
+        var handoff = await HandoffAsync(app, scene, "Pioneer.One.S01");
+
+        var response = await app.Client.PostAsJsonAsync("/api/integrations/processors/events", new
+        {
+            libraryId = scene.LibraryId,
+            handoffId = handoff.Id,
+            status = "failed",
+            outputPath = folder,
+            message = "1 of 2 episodes processed; 1 failed: S01E02.",
+            outputFiles = new[] { succeeded }
+        });
+
+        Assert.True(response.IsSuccessStatusCode, await response.Content.ReadAsStringAsync());
+        var body = await response.Content.ReadAsStringAsync();
+        Assert.Contains("\"failed\"", body);
+
+        var stored = await Repository(app).GetProcessorHandoffAsync(handoff.Id, CancellationToken.None);
+        Assert.Equal(ProcessorHandoffStatuses.Failed, stored?.Status);
+        Assert.NotNull(stored?.ImportJobId);
+        Assert.Contains("1 of 2 episodes processed; 1 failed", stored?.FailureMessage);
+        Assert.Contains("imported", stored?.FailureMessage, StringComparison.OrdinalIgnoreCase);
+
+        var jobs = await app.Services.GetRequiredService<IJobQueueRepository>().ListAsync(50, CancellationToken.None);
+        var importJob = Assert.Single(jobs, job => job.Id == stored!.ImportJobId);
+        var payload = JsonSerializer.Deserialize<ImportExecuteRequest>(importJob.PayloadJson!, new JsonSerializerOptions { PropertyNameCaseInsensitive = true })!;
+        Assert.Equal(succeeded, payload.Preview.SourcePath);
+    }
+
     [Fact]
     public async Task A_status_Deluno_does_not_understand_is_refused_rather_than_read_as_accepted()
     {
@@ -162,7 +287,7 @@ public sealed class AProcessorIsNotTakenAtItsWordTests
         Assert.Equal(ProcessorHandoffStatuses.Waiting, stored?.Status);
     }
 
-    private sealed record Scene(string LibraryId, string Downloads, string Output);
+    private sealed record Scene(string LibraryId, string Downloads, string Output, string MediaType = "movies");
 
     private static IProcessorRepository Repository(ApplicationTestHost app)
         => app.Services.GetRequiredService<IProcessorRepository>();
@@ -187,11 +312,32 @@ public sealed class AProcessorIsNotTakenAtItsWordTests
         return new Scene(library!.Id, downloads, output);
     }
 
+    /// <summary>A TV library, for the folder-hand-off/season-pack cases (#619).</summary>
+    private static async Task<Scene> TvSceneAsync(ApplicationTestHost app)
+    {
+        var root = Directory.CreateDirectory(Path.Combine(app.DataRoot, "Shows")).FullName;
+        var downloads = Directory.CreateDirectory(Path.Combine(app.DataRoot, "TvDownloads")).FullName;
+        var output = Directory.CreateDirectory(Path.Combine(app.DataRoot, "TvRefined")).FullName;
+        var response = await app.Client.PostAsJsonAsync("/api/libraries", new
+        {
+            name = "Shows",
+            mediaType = "tv",
+            rootPath = root,
+            downloadsPath = downloads,
+            importWorkflow = "refine-before-import",
+            processorName = "Weir",
+            processorOutputPath = output
+        });
+        Assert.True(response.IsSuccessStatusCode, await response.Content.ReadAsStringAsync());
+        var library = await response.Content.ReadFromJsonAsync<LibraryItem>();
+        return new Scene(library!.Id, downloads, output, "tv");
+    }
+
     private static async Task<ProcessorHandoffItem> HandoffAsync(ApplicationTestHost app, Scene scene, string releaseName)
         => await Repository(app).EnsureProcessorHandoffAsync(
             new CreateProcessorHandoffRequest(
                 scene.LibraryId,
-                "movies",
+                scene.MediaType,
                 "sabnzbd",
                 $"nzo-{releaseName}",
                 releaseName,
