@@ -448,6 +448,21 @@ public sealed partial class ImportPipelineService(
 
             var matchedLibrary = ResolveLibraryForImport(preview.DestinationPath, mediaType, libraries);
 
+            // The catalogue write above already moved the title/episode onto
+            // the new file. Whatever file it tracked before that is the file
+            // this upgrade replaces, and by this point the new file is placed
+            // and verified - so it is safe to recycle now (#656).
+            var replacementCleanup = await RecycleReplacedFilesAsync(
+                catalogImportResult.ReplacedFilePaths,
+                preview.DestinationPath,
+                mediaType,
+                libraries,
+                cancellationToken);
+            foreach (var warning in replacementCleanup.Warnings)
+            {
+                logger.LogWarning("{Warning}", warning);
+            }
+
             if (catalogImportResult.CatalogUpdated && !string.IsNullOrWhiteSpace(request.DispatchId))
             {
                 await platformRepository.MarkWorkflowVerifiedAsync(cancellationToken);
@@ -517,7 +532,7 @@ public sealed partial class ImportPipelineService(
 
             await activityFeedRepository.RecordActivityAsync(
                 "filesystem.import.completed",
-                ImportCompletedMessage(TitleForActivity(request.Preview), provenance, mode),
+                ImportCompletedMessage(TitleForActivity(request.Preview), provenance, mode) + replacementCleanup.Summary,
                 JsonSerializer.Serialize(provenance),
                 null,
                 mediaType == "tv" ? "series" : "movie",
@@ -548,6 +563,9 @@ public sealed partial class ImportPipelineService(
                         ["matchedRuleName"] = preview.MatchedRuleName,
                         ["catalogUpdated"] = catalogImportResult.CatalogUpdated.ToString(),
                         ["workflowCleanup"] = cleanup.Summary,
+                        ["replacedFileCleanup"] = replacementCleanup.Messages.Count == 0
+                            ? null
+                            : string.Join(" ", replacementCleanup.Messages),
                         ["dispatchId"] = provenance.DispatchId,
                         ["releaseNameEvidence"] = provenance.ReleaseNameEvidence,
                         ["indexer"] = provenance.IndexerName,
@@ -556,7 +574,7 @@ public sealed partial class ImportPipelineService(
                         ["preferencePlanHash"] = provenance.PreferencePlanHash,
                         ["matchedCustomRules"] = provenance.MatchedRuleNames
                     },
-                    Outcome: $"{TitleForActivity(request.Preview)} imported to {preview.DestinationPath}. {cleanup.Summary}",
+                    Outcome: $"{TitleForActivity(request.Preview)} imported to {preview.DestinationPath}. {cleanup.Summary}{replacementCleanup.Summary}",
                     Alternatives: []),
                 null,
                 mediaType == "tv" ? "series" : "movie",
@@ -569,9 +587,9 @@ public sealed partial class ImportPipelineService(
                 TransferModeUsed: mode,
                 UsedFallback: usedFallback,
                 CatalogUpdated: catalogImportResult.CatalogUpdated,
-                Message: usedFallback
+                Message: (usedFallback
                     ? $"Import completed with copy fallback because hardlink creation was not possible. {cleanup.Summary}"
-                    : $"Import completed using {mode}. {cleanup.Summary}");
+                    : $"Import completed using {mode}. {cleanup.Summary}") + replacementCleanup.Summary);
 
             restoreSourceOnFailure = false;
             if (backupPath is not null)
@@ -1197,15 +1215,50 @@ public sealed partial class ImportPipelineService(
                 throw new InvalidOperationException("Every pack file was staged, but the TV catalogue did not accept the atomic episode manifest.");
             }
             catalogCommitted = true;
+
+            // Each backup is the episode file this pack replaced, moved aside
+            // before its slot was reused. The new files are placed and
+            // verified and the catalogue transaction has committed, so it is
+            // safe to recycle them now instead of deleting them outright -
+            // the same rule a single-file upgrade follows (#656).
+            var replacementMessages = new List<string>();
             foreach (var backup in backups)
             {
-                TryDelete(backup.BackupPath);
+                var fileName = Path.GetFileName(backup.ExistingPath);
+                var library = ResolveLibraryForImport(backup.ExistingPath, "tv", libraries);
+                if (library is null || recycleBinService is null)
+                {
+                    TryDelete(backup.BackupPath);
+                    if (library is null)
+                    {
+                        logger.LogWarning(
+                            "The replaced file was left at {BackupPath} because no library matched {ExistingPath}.",
+                            backup.BackupPath,
+                            backup.ExistingPath);
+                    }
+                    continue;
+                }
+
+                if (await recycleBinService.StoreReplacementAsync(
+                    library,
+                    backup.ExistingPath,
+                    backup.BackupPath,
+                    cancellationToken) is null && File.Exists(backup.BackupPath))
+                {
+                    logger.LogWarning(
+                        "The replaced file was left at {BackupPath} because it could not be moved into the recycle bin.",
+                        backup.BackupPath);
+                    continue;
+                }
+
+                replacementMessages.Add($"Moved the previous {fileName} file to the recycle bin.");
             }
 
             var usedFallback = placements.Any(placement => placement.UsedFallback);
             var modes = placements.Select(placement => placement.Mode).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
             var modeUsed = modes.Length == 1 ? modes[0] : "mixed";
-            var message = $"Imported {placements.Count} season-pack files covering {plan.Numbers.Episodes.Count} episodes as one catalogue transaction.{DescribeSkippedFiles(plan.SkippedFiles)}";
+            var replacementSummary = replacementMessages.Count == 0 ? string.Empty : " " + string.Join(" ", replacementMessages);
+            var message = $"Imported {placements.Count} season-pack files covering {plan.Numbers.Episodes.Count} episodes as one catalogue transaction.{DescribeSkippedFiles(plan.SkippedFiles)}{replacementSummary}";
             var response = BuildTvPackResponse(plan, modeUsed, usedFallback, message, placements);
             await RecordTvPackCompletionBestEffortAsync(
                 request,
@@ -2515,6 +2568,15 @@ public sealed partial class ImportPipelineService(
         public string? ReleaseNameEvidence { get; init; }
         public IReadOnlyList<PreferenceEvaluationSnapshot> PreferenceEvaluations { get; init; } = [];
         public IReadOnlyList<string> MatchedRuleNames { get; init; } = [];
+
+        /// <summary>
+        /// The file(s) this import's catalogue write just superseded, found
+        /// before the write overwrote their tracked path with the new one.
+        /// Never includes a path equal to the destination - that upgrade
+        /// replaces a file in place and is handled by ExecuteAsync's own
+        /// backup-then-recycle path instead (#656).
+        /// </summary>
+        public IReadOnlyList<string> ReplacedFilePaths { get; init; } = [];
     }
 
     private async Task<CatalogImportResult> MarkCatalogImportedAsync(
@@ -2709,6 +2771,7 @@ public sealed partial class ImportPipelineService(
             // tokens already; parsing that output would lose the source
             // numbering model and could attach the file to the wrong episode.
             var episodeNumbers = tvNumbersOverride;
+            IReadOnlyList<string> replacedEpisodeFilePaths = [];
             if (episodeNumbers is null)
             {
                 var seriesNumbering = await ResolveSeriesNumberingAsync(request, cancellationToken);
@@ -2720,6 +2783,35 @@ public sealed partial class ImportPipelineService(
                         request.SeriesType ?? seriesNumbering?.SeriesType,
                         request.NumberingScheme ?? seriesNumbering?.NumberingScheme),
                     seriesNumbering);
+
+                // A season pack (tvNumbersOverride is not null) resolves and
+                // discards its own replaced files before this method is ever
+                // called (see ExecuteTvPackAsync), so this only runs for a
+                // single-file import: the shape that left The Wild Robot's
+                // superseded WEB 720p copy sitting beside its Bluray 1080p
+                // replacement (#656). The file the catalogue tracked before
+                // this write overwrites it is the file this import replaces -
+                // whatever it was named.
+                if (seriesNumbering is not null)
+                {
+                    var episodeIdsByNumber = seriesNumbering.Episodes.ToDictionary(
+                        episode => (episode.SeasonNumber, episode.EpisodeNumber),
+                        episode => episode.EpisodeId);
+                    var replaced = new List<string>();
+                    foreach (var episode in episodeNumbers.Episodes)
+                    {
+                        if (!episodeIdsByNumber.TryGetValue((episode.SeasonNumber, episode.EpisodeNumber), out var episodeId))
+                        {
+                            continue;
+                        }
+                        var trackedPath = await seriesCatalogRepository.GetEpisodeFilePathAsync(episodeId, cancellationToken);
+                        if (!string.IsNullOrWhiteSpace(trackedPath))
+                        {
+                            replaced.Add(trackedPath);
+                        }
+                    }
+                    replacedEpisodeFilePaths = replaced.Distinct(GetPathComparer()).ToArray();
+                }
             }
             var result = await seriesCatalogRepository.ImportExistingAsync(
                 library.Id,
@@ -2760,7 +2852,10 @@ public sealed partial class ImportPipelineService(
                 EntityId = knownSeriesId ?? request.SeriesId ?? dispatch?.EntityId,
                 ReleaseNameEvidence = dispatchReleaseName ?? preview.SourcePath,
                 PreferenceEvaluations = preferenceEvaluations,
-                MatchedRuleNames = ResolveMatchedRuleNames(preferenceEvaluations, customFormats, preferencePlan)
+                MatchedRuleNames = ResolveMatchedRuleNames(preferenceEvaluations, customFormats, preferencePlan),
+                ReplacedFilePaths = catalogUpdated
+                    ? replacedEpisodeFilePaths.Where(path => !IsSamePath(path, preview.DestinationPath)).ToArray()
+                    : []
             };
         }
 
@@ -2837,6 +2932,16 @@ public sealed partial class ImportPipelineService(
             };
         }
 
+        // The file the catalogue tracked for this film before this write
+        // overwrites it is the file this import replaces - whatever name it
+        // was under. A same-name upgrade is caught separately by the
+        // destination-already-exists backup path in ExecuteAsync; this is
+        // what a differently-named upgrade (a Bluray remux replacing a WEB
+        // rip, say) needs to find its own predecessor at all (#656).
+        var replacedMovieFilePath = knownMovieId is null
+            ? null
+            : (await movieCatalogRepository.GetByIdAsync(knownMovieId, cancellationToken))?.FilePath;
+
         var movieResult = await movieCatalogRepository.ImportExistingAsync(
             library.Id,
             title,
@@ -2860,7 +2965,16 @@ public sealed partial class ImportPipelineService(
             EntityId = dispatch?.EntityId ?? request.SeriesId,
             ReleaseNameEvidence = dispatchReleaseName ?? preview.SourcePath,
             PreferenceEvaluations = preferenceEvaluations,
-            MatchedRuleNames = ResolveMatchedRuleNames(preferenceEvaluations, customFormats, preferencePlan)
+            MatchedRuleNames = ResolveMatchedRuleNames(preferenceEvaluations, customFormats, preferencePlan),
+            // The wanted-state write above is an upsert that always runs -
+            // movieResult only reports whether a *new* movie row was needed,
+            // not whether the file was recorded (mirrored in the tv branch's
+            // own catalogUpdated compensation above). An existing film's file
+            // is replaced whether or not this import happened to create it.
+            ReplacedFilePaths = !string.IsNullOrWhiteSpace(replacedMovieFilePath)
+                && !IsSamePath(replacedMovieFilePath, preview.DestinationPath)
+                    ? [replacedMovieFilePath]
+                    : []
         };
     }
 
@@ -3211,6 +3325,77 @@ public sealed partial class ImportPipelineService(
             .OrderByDescending(item => item.Root.Length)
             .Select(item => item.Library)
             .FirstOrDefault();
+    }
+
+    /// <summary>
+    /// What an automatic upgrade does with the file(s) it just superseded:
+    /// recycle each one through Deluno's recycle bin, once the new file is
+    /// already placed and verified (#656). Never touches a path outside a
+    /// configured library root, and never a path equal to the destination -
+    /// that is not a replaced file, it is the file this import just wrote.
+    /// </summary>
+    private async Task<ReplacedFileCleanupResult> RecycleReplacedFilesAsync(
+        IReadOnlyList<string> replacedPaths,
+        string destinationPath,
+        string mediaType,
+        IReadOnlyList<LibraryItem> libraries,
+        CancellationToken cancellationToken)
+    {
+        var messages = new List<string>();
+        var warnings = new List<string>();
+
+        foreach (var replacedPath in replacedPaths.Distinct(GetPathComparer()))
+        {
+            if (string.IsNullOrWhiteSpace(replacedPath) ||
+                IsSamePath(replacedPath, destinationPath) ||
+                !File.Exists(replacedPath))
+            {
+                continue;
+            }
+
+            var fileName = Path.GetFileName(replacedPath);
+            var library = ResolveLibraryForImport(replacedPath, mediaType, libraries);
+            if (library is null)
+            {
+                // Never outside the library root: Deluno will not delete or
+                // move a file it cannot place under a configured root.
+                warnings.Add($"The previous file {fileName} was left in place because it is outside a configured library root.");
+                continue;
+            }
+
+            if (recycleBinService is null)
+            {
+                // Keep hand-constructed test/utility instances backwards
+                // compatible; the host always supplies the recoverable
+                // service through DI.
+                TryDelete(replacedPath);
+                messages.Add($"Removed the previous {fileName} file it replaced.");
+                continue;
+            }
+
+            var recycled = await recycleBinService.StoreReplacementAsync(
+                library,
+                replacedPath,
+                replacedPath,
+                cancellationToken);
+            if (recycled is null && File.Exists(replacedPath))
+            {
+                warnings.Add($"The previous file {fileName} could not be moved to the recycle bin and was left in place.");
+            }
+            else
+            {
+                messages.Add($"Moved the previous {fileName} file to the recycle bin.");
+            }
+        }
+
+        return new ReplacedFileCleanupResult(messages, warnings);
+    }
+
+    private sealed record ReplacedFileCleanupResult(
+        IReadOnlyList<string> Messages,
+        IReadOnlyList<string> Warnings)
+    {
+        public string Summary => Messages.Count == 0 ? string.Empty : " " + string.Join(" ", Messages);
     }
 
     private static void AtomicCopy(string sourcePath, string destinationPath, bool overwrite)
