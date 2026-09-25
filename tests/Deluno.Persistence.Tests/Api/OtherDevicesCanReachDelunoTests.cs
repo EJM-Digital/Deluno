@@ -46,6 +46,53 @@ public sealed class OtherDevicesCanReachDelunoTests
     }
 
     [Fact]
+    public async Task A_package_scoped_rule_that_looks_like_a_wildcard_does_not_count()
+    {
+        // Windows ships rules like this by default -- "Desktop App Web
+        // Viewer", "Windows Feature Experience Pack", the OOBE package --
+        // with no ApplicationName and no LocalPorts restriction, which reads
+        // exactly like an "any program, any port" allow rule. Confirmed live
+        // on a real machine that it does not actually let an ordinary Win32
+        // process's traffic through: a real inbound connection to Deluno's
+        // port timed out while this rule made GetStatusAsync report "open".
+        var firewall = new FakeFirewall(Public, Rule(
+            "Windows Feature Experience Pack", ports: "*", profiles: AllProfiles,
+            localAppPackageId: "windows.immersivecontrolpanel_cw5n1h2txyewy"));
+
+        var status = await Access(firewall).GetStatusAsync(CancellationToken.None);
+
+        Assert.Equal(LanAccessStates.Blocked, status.State);
+        Assert.True(status.CanAllow);
+    }
+
+    [Fact]
+    public async Task A_rule_scoped_to_another_service_does_not_count()
+    {
+        var firewall = new FakeFirewall(Public, Rule(
+            "Some Windows service's rule", ports: "*", profiles: AllProfiles,
+            service: "WinRM"));
+
+        var status = await Access(firewall).GetStatusAsync(CancellationToken.None);
+
+        Assert.Equal(LanAccessStates.Blocked, status.State);
+        Assert.True(status.CanAllow);
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("*")]
+    public async Task A_rule_with_no_real_service_restriction_still_counts(string? service)
+    {
+        var firewall = new FakeFirewall(Public, Rule(
+            "Deluno E2E lab - Deluno Host", ports: "5099", profiles: AllProfiles, service: service));
+
+        var status = await Access(firewall).GetStatusAsync(CancellationToken.None);
+
+        Assert.Equal(LanAccessStates.Open, status.State);
+    }
+
+    [Fact]
     public async Task A_firewall_switched_off_for_this_network_lets_everything_in()
     {
         var status = await Access(new FakeFirewall(Public, firewallOffFor: Public)).GetStatusAsync(CancellationToken.None);
@@ -156,8 +203,10 @@ public sealed class OtherDevicesCanReachDelunoTests
 
     private static WindowsFirewallLanAccess Access(FakeFirewall firewall) => new(5099, firewall, Host);
 
-    private static FirewallRule Rule(string name, string ports, int profiles, string? program = null, bool enabled = true, bool allow = true)
-        => new(name, enabled, Inbound: true, allow, Protocol: 6, ports, profiles, program);
+    private static FirewallRule Rule(
+        string name, string ports, int profiles, string? program = null, bool enabled = true, bool allow = true,
+        string? service = null, string? localAppPackageId = null)
+        => new(name, enabled, Inbound: true, allow, Protocol: 6, ports, profiles, program, service, localAppPackageId);
 
     private sealed class FakeFirewall(int currentProfiles, params FirewallRule[] rules) : IWindowsFirewall
     {

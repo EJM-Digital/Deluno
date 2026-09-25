@@ -106,6 +106,14 @@ public sealed record FirewallSnapshot(int CurrentProfiles, int FirewallOffFor, I
 /// <param name="Protocol">6 is TCP, 256 is any.</param>
 /// <param name="LocalPorts">"*", a port, a range, or a comma-separated list of either; null means any.</param>
 /// <param name="Program">The program the rule is limited to, or null for any.</param>
+/// <param name="Service">The Windows service the rule is limited to, "*"/null for any.</param>
+/// <param name="LocalAppPackageId">
+/// Non-empty when the rule is scoped to an AppX/MSIX package rather than an
+/// ordinary Win32 program (INetFwRule3, read only when the COM object
+/// supports that interface). Deluno ships as a plain Win32 executable, never
+/// as a package, so a rule scoped this way can never actually be Deluno's --
+/// see <see cref="FirewallRules.LetsIn"/>.
+/// </param>
 public sealed record FirewallRule(
     string Name,
     bool Enabled,
@@ -114,7 +122,9 @@ public sealed record FirewallRule(
     int Protocol,
     string? LocalPorts,
     int Profiles,
-    string? Program);
+    string? Program,
+    string? Service = null,
+    string? LocalAppPackageId = null);
 
 public static class FirewallRules
 {
@@ -126,6 +136,19 @@ public static class FirewallRules
     /// or null when nothing does: a firewall switched off for the network
     /// Deluno is on, or an enabled inbound allow rule for that port, that
     /// program and that network.
+    ///
+    /// <para>A rule scoped to an AppX/MSIX package (<see
+    /// cref="FirewallRule.LocalAppPackageId"/> non-empty) or to a specific
+    /// Windows service never counts, even when it otherwise looks like a
+    /// wildcard "any port, any program" allow rule. Windows ships several of
+    /// these by default -- "Desktop App Web Viewer", "Windows Feature
+    /// Experience Pack", the OOBE package -- with <c>ApplicationName</c> and
+    /// <c>LocalPorts</c> both empty, which previously read as "any program,
+    /// any port" and reported Deluno reachable from the network when it
+    /// verifiably was not (confirmed live: a real inbound connection timed
+    /// out while GetStatusAsync reported "open" against one of these). Those
+    /// rules only ever admit traffic for their own package's isolated
+    /// network context, never for an ordinary Win32 process like Deluno.</para>
     /// </summary>
     public static string? LetsIn(FirewallSnapshot snapshot, int port, string? programPath)
     {
@@ -141,8 +164,23 @@ public static class FirewallRules
             rule.Protocol is Tcp or AnyProtocol &&
             (rule.Profiles & snapshot.CurrentProfiles) != 0 &&
             CoversPort(rule.LocalPorts, port) &&
-            CoversProgram(rule.Program, programPath))?.Name;
+            CoversProgram(rule.Program, programPath) &&
+            CoversService(rule.Service) &&
+            !IsPackageScoped(rule.LocalAppPackageId))?.Name;
     }
+
+    private static bool IsPackageScoped(string? localAppPackageId)
+        => !string.IsNullOrWhiteSpace(localAppPackageId);
+
+    /// <summary>
+    /// Deluno never runs as a named Windows service for the purposes of this
+    /// check (it is reached as an ordinary program on its port), so a rule
+    /// restricted to some OTHER service never covers it. Windows' own
+    /// wildcard for "no service restriction" is "*", alongside the more
+    /// common null/empty.
+    /// </summary>
+    private static bool CoversService(string? service)
+        => string.IsNullOrWhiteSpace(service) || service.Trim() == "*";
 
     internal static bool CoversPort(string? localPorts, int port)
     {
@@ -249,10 +287,32 @@ public sealed class WindowsFirewall : IWindowsFirewall
                     (int)rule.Protocol,
                     (string?)rule.LocalPorts,
                     (int)rule.Profiles,
-                    (string?)rule.ApplicationName));
+                    (string?)rule.ApplicationName,
+                    TryReadString(() => rule.ServiceName),
+                    TryReadString(() => rule.LocalAppPackageId)));
             }
 
             return new FirewallSnapshot(current, off, rules);
+        }
+        catch (Exception ex) when (ex is System.Runtime.InteropServices.COMException or InvalidCastException or Microsoft.CSharp.RuntimeBinder.RuntimeBinderException)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// <c>LocalAppPackageId</c> is only on INetFwRule3; a rule object that
+    /// does not implement it (an older Windows Firewall rule shape) throws
+    /// on the property access rather than returning null, either as a COM
+    /// interface-not-supported error or, through the dynamic dispatch here,
+    /// a RuntimeBinderException. Either way, "this rule has no package
+    /// restriction" is the right read, not "the whole rule is unreadable".
+    /// </summary>
+    private static string? TryReadString(Func<dynamic> read)
+    {
+        try
+        {
+            return (string?)read();
         }
         catch (Exception ex) when (ex is System.Runtime.InteropServices.COMException or InvalidCastException or Microsoft.CSharp.RuntimeBinder.RuntimeBinderException)
         {
