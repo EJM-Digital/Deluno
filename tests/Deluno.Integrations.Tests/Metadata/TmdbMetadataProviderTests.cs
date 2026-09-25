@@ -691,7 +691,180 @@ public sealed class TmdbMetadataProviderTests : IDisposable
         Assert.Contains((expectedQuery, expectedYear), searches);
     }
 
-    private static PlatformSettingsSnapshot CreateSettingsSnapshot(string providerMode, string brokerUrl)
+    /// <summary>#736: a direct TMDb search/detail request must carry the saved
+    /// details language, and an unset language must not force one TMDb would
+    /// not otherwise have applied.</summary>
+    [Theory]
+    [InlineData("pt-BR", "pt-BR")]
+    [InlineData("", null)]
+    public async Task SearchAsync_sends_the_saved_language_as_the_tmdb_language_parameter(
+        string savedLanguage,
+        string? expectedLanguageParameter)
+    {
+        var settings = new Mock<IPlatformSettingsRepository>();
+        settings.Setup(repo => repo.GetAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(CreateSettingsSnapshot("direct", string.Empty, language: savedLanguage));
+
+        var storageOptions = Options.Create(new StoragePathOptions { DataRoot = _dataRoot });
+        var factory = new SqliteDatabaseConnectionFactory(storageOptions);
+        var timeProvider = new FakeTimeProvider(DateTimeOffset.Parse("2026-09-25T00:00:00Z"));
+        await new CacheSchemaInitializer(
+            factory,
+            new SqliteDatabaseMigrator(factory, timeProvider),
+            NullLogger<CacheSchemaInitializer>.Instance).StartAsync(CancellationToken.None);
+
+        string? capturedLanguage = null;
+        var sawLanguageParameter = false;
+        var provider = new TmdbMetadataProvider(
+            new HttpClient(new StubHttpMessageHandler(request =>
+            {
+                var uri = request.RequestUri!;
+                if (!uri.AbsolutePath.Contains("/search/movie", StringComparison.Ordinal))
+                {
+                    return new HttpResponseMessage(HttpStatusCode.NotFound);
+                }
+
+                var parameters = System.Web.HttpUtility.ParseQueryString(uri.Query);
+                sawLanguageParameter = parameters["language"] is not null;
+                capturedLanguage = parameters["language"];
+                return new HttpResponseMessage(HttpStatusCode.OK)
+                {
+                    Content = new StringContent(
+                        """{ "results": [{ "id": 603, "title": "The Matrix", "release_date": "1999-03-30" }] }""",
+                        Encoding.UTF8,
+                        "application/json")
+                };
+            })),
+            new ConfigurationBuilder()
+                .AddInMemoryCollection(new Dictionary<string, string?>
+                {
+                    ["Deluno:Metadata:TMDbApiKey"] = "test-key"
+                })
+                .Build(),
+            settings.Object,
+            factory,
+            storageOptions,
+            timeProvider,
+            new PassthroughResiliencePolicy(),
+            new OutboundRequestThrottle(timeProvider, NullLogger<OutboundRequestThrottle>.Instance),
+            NullLogger<TmdbMetadataProvider>.Instance);
+
+        var result = Assert.Single(await provider.SearchAsync(
+            new MetadataLookupRequest("The Matrix", "movies", null, null),
+            CancellationToken.None));
+
+        Assert.Equal("The Matrix", result.Title);
+        if (expectedLanguageParameter is null)
+        {
+            Assert.False(sawLanguageParameter);
+        }
+        else
+        {
+            Assert.Equal(expectedLanguageParameter, capturedLanguage);
+        }
+    }
+
+    /// <summary>#736: the certification a movie or show carries is the one the
+    /// saved ratings-region country reports, and a country TMDb has nothing
+    /// for falls back to the US board — the certification Deluno showed
+    /// before a region setting existed.</summary>
+    [Theory]
+    [InlineData("movies", "AU", "M")]
+    [InlineData("movies", "DE", "PG-13")]
+    [InlineData("tv", "AU", "M")]
+    [InlineData("tv", "DE", "TV-14")]
+    public async Task ResolveProviderRecordAsync_picks_the_certification_for_the_saved_region(
+        string mediaType,
+        string certificationCountry,
+        string expectedCertification)
+    {
+        var settings = new Mock<IPlatformSettingsRepository>();
+        settings.Setup(repo => repo.GetAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(CreateSettingsSnapshot("direct", string.Empty, certificationCountry: certificationCountry));
+
+        var storageOptions = Options.Create(new StoragePathOptions { DataRoot = _dataRoot });
+        var factory = new SqliteDatabaseConnectionFactory(storageOptions);
+        var timeProvider = new FakeTimeProvider(DateTimeOffset.Parse("2026-09-25T00:00:00Z"));
+        await new CacheSchemaInitializer(
+            factory,
+            new SqliteDatabaseMigrator(factory, timeProvider),
+            NullLogger<CacheSchemaInitializer>.Instance).StartAsync(CancellationToken.None);
+
+        var provider = new TmdbMetadataProvider(
+            new HttpClient(new StubHttpMessageHandler(request =>
+            {
+                var uri = request.RequestUri!;
+                string payload;
+                if (uri.AbsolutePath.Contains("/movie/", StringComparison.Ordinal))
+                {
+                    payload = """
+                    {
+                      "id": 603,
+                      "title": "The Matrix",
+                      "release_date": "1999-03-30",
+                      "release_dates": {
+                        "results": [
+                          { "iso_3166_1": "US", "release_dates": [{ "type": 3, "release_date": "1999-03-30T00:00:00.000Z", "certification": "PG-13" }] },
+                          { "iso_3166_1": "AU", "release_dates": [{ "type": 3, "release_date": "1999-04-08T00:00:00.000Z", "certification": "M" }] }
+                        ]
+                      }
+                    }
+                    """;
+                }
+                else if (uri.AbsolutePath.Contains("/tv/", StringComparison.Ordinal))
+                {
+                    payload = """
+                    {
+                      "id": 1399,
+                      "name": "Game of Thrones",
+                      "first_air_date": "2011-04-17",
+                      "content_ratings": {
+                        "results": [
+                          { "iso_3166_1": "US", "rating": "TV-14" },
+                          { "iso_3166_1": "AU", "rating": "M" }
+                        ]
+                      }
+                    }
+                    """;
+                }
+                else
+                {
+                    return new HttpResponseMessage(HttpStatusCode.NotFound);
+                }
+
+                return new HttpResponseMessage(HttpStatusCode.OK)
+                {
+                    Content = new StringContent(payload, Encoding.UTF8, "application/json")
+                };
+            })),
+            new ConfigurationBuilder()
+                .AddInMemoryCollection(new Dictionary<string, string?>
+                {
+                    ["Deluno:Metadata:TMDbApiKey"] = "test-key"
+                })
+                .Build(),
+            settings.Object,
+            factory,
+            storageOptions,
+            timeProvider,
+            new PassthroughResiliencePolicy(),
+            new OutboundRequestThrottle(timeProvider, NullLogger<OutboundRequestThrottle>.Instance),
+            NullLogger<TmdbMetadataProvider>.Instance);
+
+        var providerId = mediaType == "tv" ? "1399" : "603";
+        var lookup = await provider.ResolveProviderRecordAsync(
+            new MetadataLookupRequest(null, mediaType, null, providerId),
+            CancellationToken.None);
+
+        Assert.Equal(MetadataProviderRecordStatus.Found, lookup.Status);
+        Assert.Equal(expectedCertification, lookup.Result?.Certification);
+    }
+
+    private static PlatformSettingsSnapshot CreateSettingsSnapshot(
+        string providerMode,
+        string brokerUrl,
+        string language = "en",
+        string certificationCountry = "US")
         => new(
             AppInstanceName: "Deluno Test",
             MovieRootPath: null,
@@ -719,8 +892,8 @@ public sealed class TmdbMetadataProviderTests : IDisposable
             DefaultShowView: "grid",
             MetadataNfoEnabled: false,
             MetadataArtworkEnabled: true,
-            MetadataCertificationCountry: "US",
-            MetadataLanguage: "en",
+            MetadataCertificationCountry: certificationCountry,
+            MetadataLanguage: language,
             MetadataProviderMode: providerMode,
             MetadataBrokerUrl: brokerUrl,
             MetadataBrokerConfigured: !string.IsNullOrWhiteSpace(brokerUrl),

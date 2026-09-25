@@ -69,6 +69,31 @@ A hosted broker can implement the same `/metadata/search` response shape and add
 
 Commercial/licensing terms must be reviewed before any hosted broker is offered beyond internal development.
 
+## Language and ratings region
+
+Deluno's Settings → Metadata page stores a details language
+(`metadata.language`, e.g. `en`, `pt-BR`) and a ratings-region country
+(`metadata.certificationCountry`, e.g. `US`, `AU`). Neither has a parameter in
+the `/metadata/search` contract above, and the managed gateway deliberately
+accepts only title lookup terms, media type/year, and optional TMDb IDs (see
+below) — it is not a general-purpose query passthrough.
+
+Both settings therefore apply on the **direct** TMDb path only:
+
+- `direct` mode sends the saved language as TMDb's `language` query parameter
+  on search and detail requests, and picks a movie's or show's certification
+  for the saved country from TMDb's `release_dates` / `content_ratings`
+  detail data, falling back to `US` when that country has none.
+- `broker` mode returns whatever language and certification the broker itself
+  chose; Deluno cannot ask it for a different one under this contract.
+- `hybrid` mode behaves like `broker` for anything the broker answers, and
+  like `direct` only for the fallback calls it makes itself.
+
+A future broker contract could add `language` and `region` search parameters
+to close this gap; until then, an installation that cares about a
+non-English language or a non-US ratings board should use `direct` mode with
+its own TMDb key.
+
 ## Managed gateway deployment
 
 The Deluno-managed Cloudflare Worker is deployed at

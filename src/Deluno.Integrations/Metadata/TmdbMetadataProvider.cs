@@ -159,7 +159,7 @@ public sealed class TmdbMetadataProvider(
 
         var config = await GetMetadataConfigurationAsync(cancellationToken);
         var mediaType = NormalizeMediaType(request.MediaType);
-        var cacheKey = BuildSearchCacheKey(config.ProviderMode, mediaType, query, request.Year, request.ProviderId);
+        var cacheKey = BuildSearchCacheKey(config.ProviderMode, mediaType, query, request.Year, request.ProviderId, config.Language);
         var cached = await TryReadSearchCacheAsync(cacheKey, cancellationToken);
         if (cached is not null)
         {
@@ -201,7 +201,15 @@ public sealed class TmdbMetadataProvider(
             return stale is null ? [] : await LocalizeArtworkAsync(stale, cancellationToken);
         }
 
-        var live = await SearchDirectAsync(request, config.TmdbApiKey, cacheKey, mediaType, query, cancellationToken);
+        var live = await SearchDirectAsync(
+            request,
+            config.TmdbApiKey,
+            cacheKey,
+            mediaType,
+            query,
+            config.Language,
+            config.CertificationCountry,
+            cancellationToken);
         if (live.Count > 0)
         {
             return await LocalizeArtworkAsync(live, cancellationToken);
@@ -273,7 +281,7 @@ public sealed class TmdbMetadataProvider(
                     "TMDb is not configured for exact provider-id lookup."));
         }
 
-        var result = await GetDetailsByIdAsync(providerId, mediaType, apiKey, cancellationToken);
+        var result = await GetDetailsByIdAsync(providerId, mediaType, apiKey, config.Language, config.CertificationCountry, cancellationToken);
         if (result is not null)
         {
             var localized = await LocalizeArtworkAsync([result], cancellationToken);
@@ -315,15 +323,16 @@ public sealed class TmdbMetadataProvider(
             return [];
         }
 
+        var (language, certificationCountry) = await GetLocalizationAsync(cancellationToken);
         var mediaType = NormalizeMediaType(request.MediaType);
-        var cacheKey = BuildSearchCacheKey($"{ProviderName}:direct", mediaType, query, request.Year, request.ProviderId);
+        var cacheKey = BuildSearchCacheKey($"{ProviderName}:direct", mediaType, query, request.Year, request.ProviderId, language);
         var cached = await TryReadSearchCacheAsync(cacheKey, cancellationToken);
         if (cached is not null)
         {
             return await LocalizeArtworkAsync(cached, cancellationToken);
         }
 
-        return await SearchDirectAsync(request, apiKey, cacheKey, mediaType, query, cancellationToken);
+        return await SearchDirectAsync(request, apiKey, cacheKey, mediaType, query, language, certificationCountry, cancellationToken);
     }
 
     private async Task<IReadOnlyList<MetadataSearchResult>> SearchDirectAsync(
@@ -332,13 +341,15 @@ public sealed class TmdbMetadataProvider(
         string cacheKey,
         string mediaType,
         string query,
+        string? language,
+        string certificationCountry,
         CancellationToken cancellationToken)
     {
 
         if (!string.IsNullOrWhiteSpace(request.ProviderId) &&
             int.TryParse(request.ProviderId, NumberStyles.Integer, CultureInfo.InvariantCulture, out var providerId))
         {
-            var exact = await GetDetailsByIdAsync(providerId, mediaType, apiKey, cancellationToken);
+            var exact = await GetDetailsByIdAsync(providerId, mediaType, apiKey, language, certificationCountry, cancellationToken);
             if (exact is not null)
             {
                 var result = await LocalizeArtworkAsync(new[] { exact }, cancellationToken);
@@ -355,6 +366,11 @@ public sealed class TmdbMetadataProvider(
         var endpoint = mediaType == "tv" ? "search/tv" : "search/movie";
         var url =
             $"https://api.themoviedb.org/3/{endpoint}?api_key={Uri.EscapeDataString(apiKey)}&query={Uri.EscapeDataString(query)}&include_adult=false";
+        if (!string.IsNullOrWhiteSpace(language))
+        {
+            url += $"&language={Uri.EscapeDataString(language)}";
+        }
+
         if (request.Year is > 0)
         {
             url += mediaType == "tv"
@@ -1045,7 +1061,7 @@ public sealed class TmdbMetadataProvider(
     }
 
     private static string BuildSearchCacheKey(string mediaType, string query, int? year, string? providerId)
-        => BuildSearchCacheKey(ProviderName, mediaType, query, year, providerId);
+        => BuildSearchCacheKey(ProviderName, mediaType, query, year, providerId, null);
 
     /// <summary>
     /// The shape of a cached metadata result, not the query.
@@ -1059,10 +1075,19 @@ public sealed class TmdbMetadataProvider(
     ///
     /// Bump this whenever <see cref="MetadataSearchResult"/> gains a field.
     /// </summary>
-    private const string SearchCacheShape = "v5";
+    private const string SearchCacheShape = "v6";
 
-    private static string BuildSearchCacheKey(string source, string mediaType, string query, int? year, string? providerId)
-        => $"{source}:search:{SearchCacheShape}:{mediaType}:{query.Trim().ToLowerInvariant()}:{year?.ToString(CultureInfo.InvariantCulture) ?? "any"}:{providerId?.Trim() ?? "none"}";
+    // The language is part of the key, not the shape: two installs asking for
+    // the same title in different languages are asking a different question,
+    // and a cached Portuguese title must never answer an English request.
+    private static string BuildSearchCacheKey(
+        string source,
+        string mediaType,
+        string query,
+        int? year,
+        string? providerId,
+        string? language)
+        => $"{source}:search:{SearchCacheShape}:{mediaType}:{query.Trim().ToLowerInvariant()}:{year?.ToString(CultureInfo.InvariantCulture) ?? "any"}:{providerId?.Trim() ?? "none"}:{language?.Trim().ToLowerInvariant() ?? "default"}";
 
     private static void AddParameter(System.Data.Common.DbCommand command, string name, object? value)
     {
@@ -1086,7 +1111,41 @@ public sealed class TmdbMetadataProvider(
             providerMode,
             brokerUrl,
             requiresDirectFallback ? await GetApiKeyAsync(cancellationToken) : null,
-            requiresDirectFallback ? await GetOmdbApiKeyAsync(cancellationToken) : null);
+            requiresDirectFallback ? await GetOmdbApiKeyAsync(cancellationToken) : null,
+            NormalizeLanguage(settings.MetadataLanguage),
+            NormalizeCountry(settings.MetadataCertificationCountry));
+    }
+
+    /// <summary>
+    /// The saved details language and ratings-region country, for the callers
+    /// that talk to TMDb directly outside <see cref="GetMetadataConfigurationAsync"/>
+    /// (the broker-bypassing debug search). A broker or hybrid call never
+    /// reaches here: the managed gateway contract accepts title lookup terms,
+    /// media type/year and a TMDb id only, so neither setting has anywhere to
+    /// go on that path (see docs/metadata-broker-contract.md).
+    /// </summary>
+    private async Task<(string? Language, string CertificationCountry)> GetLocalizationAsync(CancellationToken cancellationToken)
+    {
+        var settings = await platformRepository.GetAsync(cancellationToken);
+        return (NormalizeLanguage(settings.MetadataLanguage), NormalizeCountry(settings.MetadataCertificationCountry));
+    }
+
+    /// <summary>
+    /// Blank reads as "no preference", which lets TMDb apply its own default
+    /// (en-US) rather than Deluno forcing a language parameter that was never
+    /// actually set.
+    /// </summary>
+    private static string? NormalizeLanguage(string? value)
+    {
+        var trimmed = value?.Trim();
+        return string.IsNullOrWhiteSpace(trimmed) ? null : trimmed;
+    }
+
+    /// <summary>Unlike language, a country always resolves to something: certification lookup needs one to compare against, and US is the board Deluno showed before this setting existed.</summary>
+    private static string NormalizeCountry(string? value)
+    {
+        var trimmed = value?.Trim();
+        return string.IsNullOrWhiteSpace(trimmed) ? "US" : trimmed;
     }
 
     private string ResolveProviderMode(string? legacySettingsValue)
@@ -1327,10 +1386,24 @@ public sealed class TmdbMetadataProvider(
         int id,
         string mediaType,
         string apiKey,
+        string? language,
+        string certificationCountry,
         CancellationToken cancellationToken)
     {
         var path = mediaType == "tv" ? "tv" : "movie";
-        var url = $"https://api.themoviedb.org/3/{path}/{id}?api_key={Uri.EscapeDataString(apiKey)}&append_to_response=external_ids,credits,keywords";
+        // A show's certification lives under content_ratings; a movie's under
+        // release_dates. Asking for the one that does not apply to this media
+        // type costs nothing — TMDb answers null for it, the same as any other
+        // append the title does not carry.
+        var appends = mediaType == "tv"
+            ? "external_ids,credits,keywords,content_ratings"
+            : "external_ids,credits,keywords,release_dates";
+        var url = $"https://api.themoviedb.org/3/{path}/{id}?api_key={Uri.EscapeDataString(apiKey)}&append_to_response={appends}";
+        if (!string.IsNullOrWhiteSpace(language))
+        {
+            url += $"&language={Uri.EscapeDataString(language)}";
+        }
+
         var detail = await GetJsonWithResilienceAsync<TmdbDetailItem>(
             url,
             $"metadata:tmdb:detail:{mediaType}",
@@ -1395,8 +1468,51 @@ public sealed class TmdbMetadataProvider(
             OriginalLanguage: string.IsNullOrWhiteSpace(detail.OriginalLanguage) ? null : detail.OriginalLanguage,
             TvDbId: detail.ExternalIds?.TvDbId,
             Status: string.IsNullOrWhiteSpace(detail.Status) ? null : detail.Status,
-            Keywords: detail.Keywords?.Names ?? []);
+            Keywords: detail.Keywords?.Names ?? [],
+            Certification: ResolveCertification(mediaType, certificationCountry, detail.ReleaseDates, detail.ContentRatings));
     }
+
+    /// <summary>
+    /// The certification Deluno shows for a title, taken for the saved
+    /// ratings-region country (metadata.certificationCountry). TMDb reports a
+    /// certification per country, and for a movie, per release type within
+    /// that country. A country with nothing on file for this title — most of
+    /// them, most of the time — falls back to the US board, which is the
+    /// certification Deluno showed before a region setting existed to ask
+    /// for.
+    /// </summary>
+    private static string? ResolveCertification(
+        string mediaType,
+        string certificationCountry,
+        TmdbReleaseDatesResponse? releaseDates,
+        TmdbContentRatingsResponse? contentRatings)
+    {
+        if (mediaType == "tv")
+        {
+            var ratings = contentRatings?.Results?
+                .Select(entry => (entry.Country, entry.Rating))
+                .ToArray();
+            return FindCertification(ratings, certificationCountry) ?? FindCertification(ratings, "US");
+        }
+
+        var certifications = releaseDates?.Results?
+            .Select(country => (
+                country.Country,
+                Rating: country.ReleaseDates?
+                    .Select(entry => entry.Certification)
+                    .FirstOrDefault(certification => !string.IsNullOrWhiteSpace(certification))))
+            .ToArray();
+        return FindCertification(certifications, certificationCountry) ?? FindCertification(certifications, "US");
+    }
+
+    private static string? FindCertification(
+        IReadOnlyList<(string? Country, string? Rating)>? entries,
+        string country)
+        => entries?
+            .Where(entry => string.Equals(entry.Country, country, StringComparison.OrdinalIgnoreCase)
+                             && !string.IsNullOrWhiteSpace(entry.Rating))
+            .Select(entry => entry.Rating)
+            .FirstOrDefault();
 
     /// <summary>
     /// The season/episode catalogue for a series.
@@ -1858,7 +1974,15 @@ public sealed class TmdbMetadataProvider(
 
     private sealed record TmdbReleaseDateEntry(
         [property: JsonPropertyName("type")] int Type,
-        [property: JsonPropertyName("release_date")] string? ReleaseDate);
+        [property: JsonPropertyName("release_date")] string? ReleaseDate,
+        [property: JsonPropertyName("certification")] string? Certification = null);
+
+    private sealed record TmdbContentRatingsResponse(
+        [property: JsonPropertyName("results")] IReadOnlyList<TmdbContentRatingEntry>? Results);
+
+    private sealed record TmdbContentRatingEntry(
+        [property: JsonPropertyName("iso_3166_1")] string? Country,
+        [property: JsonPropertyName("rating")] string? Rating);
 
     private async Task<TmdbExternalIds> GetExternalIdsAsync(
         int id,
@@ -2368,7 +2492,9 @@ public sealed class TmdbMetadataProvider(
         string ProviderMode,
         string? BrokerUrl,
         string? TmdbApiKey,
-        string? OmdbApiKey);
+        string? OmdbApiKey,
+        string? Language = null,
+        string CertificationCountry = "US");
 
     private sealed record MetadataBrokerSearchResponse(
         string Provider,
@@ -2434,7 +2560,12 @@ public sealed class TmdbMetadataProvider(
         [property: JsonPropertyName("networks")] IReadOnlyList<TmdbNamed>? Networks,
         [property: JsonPropertyName("production_companies")] IReadOnlyList<TmdbNamed>? ProductionCompanies,
         [property: JsonPropertyName("belongs_to_collection")] TmdbNamed? BelongsToCollection,
-        [property: JsonPropertyName("keywords")] TmdbKeywords? Keywords);
+        [property: JsonPropertyName("keywords")] TmdbKeywords? Keywords,
+        // Only one of these is ever populated per media type — release_dates
+        // for a movie, content_ratings for a show — the other appended value
+        // simply comes back null.
+        [property: JsonPropertyName("release_dates")] TmdbReleaseDatesResponse? ReleaseDates = null,
+        [property: JsonPropertyName("content_ratings")] TmdbContentRatingsResponse? ContentRatings = null);
 
     /// <summary>
     /// TMDb answers <c>keywords.keywords</c> for a film and
