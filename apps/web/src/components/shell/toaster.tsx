@@ -98,3 +98,23 @@ export function Toaster() {
  *   toast.success("Provider ready", { id })
  */
 export const toast = sonnerToast;
+
+/**
+ * For a toast raised by a realtime event rather than by something the person
+ * just did. Deluno stays live while its tab is hidden (#641), so these events
+ * keep arriving in the background; a toast for each would pile up unseen and
+ * then land all at once when the tab is looked at. While the tab is hidden
+ * the toast is dropped, not saved for later. What the event changed is
+ * already on screen, because the data behind it stayed current.
+ */
+function whileOnScreen<A extends unknown[], R>(show: (...args: A) => R) {
+  return (...args: A): R | undefined =>
+    typeof document !== "undefined" && document.visibilityState === "hidden" ? undefined : show(...args);
+}
+
+export const realtimeToast = {
+  success: whileOnScreen(sonnerToast.success),
+  error: whileOnScreen(sonnerToast.error),
+  info: whileOnScreen(sonnerToast.info),
+  warning: whileOnScreen(sonnerToast.warning)
+};

@@ -53,7 +53,7 @@ import {
   writeStoredHistoryDays,
   type HistoryDays
 } from "../lib/dashboard-history-range";
-import { useCoalescedRevalidate } from "../hooks/use-visible-interval";
+import { useCoalescedRevalidate } from "../hooks/use-live-interval";
 import { StatusLed, type LedTone } from "../components/ui/status-led";
 import { RealtimeGroups, useSignalREvent, useSignalRResync } from "../lib/use-signalr";
 import {
@@ -194,8 +194,8 @@ const EMPTY_SETUP_PROGRESS: SetupProgressItem = { lastCompletedStep: 0, isSkippe
  * only while the cache is empty. So once the page is mounted, re-running the
  * loader for the same address fetches all twenty-two sources and changes
  * nothing on screen. The page's own `useSignalRResync` refetches the queries
- * that matter, so the app-wide revalidation on returning to a hidden tab (#641)
- * ran every source twice. A form submission or a change of address still
+ * that matter, so the app-wide revalidation after a reconnect gap would fetch
+ * every source twice (seen on the rig while working on #641). A form submission or a change of address still
  * revalidates as React Router would by default.
  */
 export function dashboardShouldRevalidate({ currentUrl, nextUrl, formMethod, defaultShouldRevalidate }: {
@@ -324,11 +324,12 @@ function buildDashboardData(sources: DashboardSources): DashboardLoaderData {
 }
 
 const DASHBOARD_REFRESH = {
-  // Deliberate visible-only safety net: realtime drives normal freshness, while
-  // this heartbeat recovers from a missed envelope without waking hidden tabs.
+  // A safety net: realtime drives normal freshness, and this heartbeat
+  // recovers from a missed envelope. It keeps running while the tab is hidden,
+  // so the Dashboard is current the moment it is looked at again (#641).
   staleTime: 60_000,
   refetchInterval: 60_000,
-  refetchIntervalInBackground: false
+  refetchIntervalInBackground: true
 } as const;
 
 /**
@@ -342,7 +343,7 @@ const DASHBOARD_REFRESH = {
 const MONITORING_REFRESH = {
   staleTime: 30_000,
   refetchInterval: 30_000,
-  refetchIntervalInBackground: false
+  refetchIntervalInBackground: true
 } as const;
 
 /**

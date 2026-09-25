@@ -4,11 +4,10 @@ import type { ReactNode } from "react";
 import type { SignalREventName, SignalREventPayload } from "./use-signalr";
 
 /**
- * Covers #641: while the Deluno tab is hidden, `useSignalREvent` subscribers
- * must not be called at all -- not live, and not on return either. Returning
- * to the tab gets exactly one `useSignalRResync` call if anything was missed,
- * never a replay of the missed events themselves. See the "hidden tab"
- * paragraph in use-signalr.tsx's file header for the design this proves.
+ * Covers #641: Deluno stays live while its tab is hidden. Every envelope
+ * reaches its `useSignalREvent` subscribers as it arrives, hidden or not, so
+ * the data behind a screen is already current when the tab is looked at again,
+ * and nothing -- no replay, no resync -- fires on return.
  *
  * `@microsoft/signalr` is replaced with a small fake connection so a test can
  * push envelopes directly through the same `"RealtimeEvent"` handler the real
@@ -133,7 +132,7 @@ beforeEach(() => {
 });
 
 describe("realtime dispatch while the tab is hidden (#641)", () => {
-  it("delivers every envelope immediately while visible, unchanged", async () => {
+  it("delivers every envelope immediately while visible", async () => {
     const handler = vi.fn();
     await mount(() => useEventHarness("DownloadProgress", "queue", handler));
 
@@ -145,37 +144,31 @@ describe("realtime dispatch while the tab is hidden (#641)", () => {
     expect(handler).toHaveBeenLastCalledWith({ id: "a", progress: 40 });
   });
 
-  it("calls no handler at all for a same-entity burst while hidden, and none on return either", async () => {
+  it("keeps delivering while hidden, so the latest value is already in place", async () => {
     const handler = vi.fn();
     await mount(() => useEventHarness("DownloadProgress", "queue", handler));
 
     setVisibility("hidden");
     send(nextEnvelope("DownloadProgress", "queue", { id: "a", progress: 10 }));
-    send(nextEnvelope("DownloadProgress", "queue", { id: "a", progress: 45 }));
     send(nextEnvelope("DownloadProgress", "queue", { id: "a", progress: 91 }));
-    expect(handler).not.toHaveBeenCalled();
-
-    setVisibility("visible");
-    // Not "one clean update with the latest value" -- the handler is never
-    // told about missed events at all. A resync subscriber, not this handler,
-    // is what brings the screen current (see the resync describe block below).
-    expect(handler).not.toHaveBeenCalled();
+    expect(handler).toHaveBeenCalledTimes(2);
+    expect(handler).toHaveBeenLastCalledWith({ id: "a", progress: 91 });
   });
 
-  it("calls no handler for distinct entities missed while hidden either", async () => {
+  it("calls nothing on return: there is nothing to catch up", async () => {
     const handler = vi.fn();
     await mount(() => useEventHarness("QueueItemAdded", "queue", handler));
 
     setVisibility("hidden");
     send(nextEnvelope("QueueItemAdded", "queue", { id: "a", title: "A", type: "movie", status: "queued" }));
     send(nextEnvelope("QueueItemAdded", "queue", { id: "b", title: "B", type: "movie", status: "queued" }));
-    expect(handler).not.toHaveBeenCalled();
+    expect(handler).toHaveBeenCalledTimes(2);
 
     setVisibility("visible");
-    expect(handler).not.toHaveBeenCalled();
+    expect(handler).toHaveBeenCalledTimes(2);
   });
 
-  it("leaves a raw increment/decrement counter untouched by a burst missed while hidden", async () => {
+  it("keeps a raw increment/decrement counter correct through a hidden spell", async () => {
     let count = 0;
     await mount(() => useQueueCounterHarness(
       () => { count += 1; },
@@ -188,30 +181,7 @@ describe("realtime dispatch while the tab is hidden (#641)", () => {
     send(nextEnvelope("QueueItemRemoved", "queue", { id: "a" }));
     setVisibility("visible");
 
-    // Neither add nor remove ever reached the counter -- it stays at its
-    // pre-hidden value. A resync (fetching the true count from REST) is what
-    // is expected to bring a counter like this back in line, not a replay.
-    expect(count).toBe(0);
-  });
-
-  it("shows no toast/animation replay for a burst of one-shot events missed while hidden", async () => {
-    const handler = vi.fn();
-    await mount(() => useEventHarness("DispatchGrabAttempt", "queue", handler));
-
-    setVisibility("hidden");
-    for (let i = 0; i < 5; i++) {
-      send(nextEnvelope("DispatchGrabAttempt", "queue", {
-        dispatchId: "same-dispatch",
-        releaseName: `Attempt ${i}`,
-        clientId: "c1",
-        clientName: "Client",
-        timestamp: new Date().toISOString()
-      }));
-    }
-    expect(handler).not.toHaveBeenCalled();
-
-    setVisibility("visible");
-    expect(handler).not.toHaveBeenCalled();
+    expect(count).toBe(1);
   });
 
   it("still ignores a stale replay of an already-applied seq", async () => {
@@ -227,47 +197,8 @@ describe("realtime dispatch while the tab is hidden (#641)", () => {
   });
 });
 
-describe("useSignalRResync on return from a hidden tab (#641)", () => {
-  it("fires exactly once when a burst of envelopes was missed while hidden", async () => {
-    const resync = vi.fn();
-    await mount(() => useSignalRResync(resync));
-
-    setVisibility("hidden");
-    send(nextEnvelope("DownloadProgress", "queue", { id: "a", progress: 10 }));
-    send(nextEnvelope("QueueItemAdded", "queue", { id: "b", title: "B", type: "movie", status: "queued" }));
-    send(nextEnvelope("DispatchGrabAttempt", "queue", {
-      dispatchId: "d1", releaseName: "R", clientId: "c1", clientName: "Client", timestamp: new Date().toISOString()
-    }));
-    expect(resync).not.toHaveBeenCalled();
-
-    setVisibility("visible");
-    expect(resync).toHaveBeenCalledTimes(1);
-  });
-
-  it("does not fire when nothing arrived while hidden", async () => {
-    const resync = vi.fn();
-    await mount(() => useSignalRResync(resync));
-
-    setVisibility("hidden");
-    setVisibility("visible");
-    expect(resync).not.toHaveBeenCalled();
-  });
-
-  it("does not fire again on a later hidden/visible cycle with nothing new", async () => {
-    const resync = vi.fn();
-    await mount(() => useSignalRResync(resync));
-
-    setVisibility("hidden");
-    send(nextEnvelope("HealthChanged", "dashboard", { source: "indexer", status: "degraded", message: "slow" }));
-    setVisibility("visible");
-    expect(resync).toHaveBeenCalledTimes(1);
-
-    setVisibility("hidden");
-    setVisibility("visible");
-    expect(resync).toHaveBeenCalledTimes(1);
-  });
-
-  it("calls the resync subscriber, never the missed event's own handler, exactly once on return", async () => {
+describe("useSignalRResync and returning to the tab (#641)", () => {
+  it("does not fire when the tab comes back, however much arrived while hidden", async () => {
     const onEvent = vi.fn();
     const onResync = vi.fn();
     await mount(() => useEventAndResyncHarness("DispatchImportCompleted", "queue", onEvent, onResync));
@@ -278,8 +209,8 @@ describe("useSignalRResync on return from a hidden tab (#641)", () => {
     }));
     setVisibility("visible");
 
-    expect(onEvent).not.toHaveBeenCalled();
-    expect(onResync).toHaveBeenCalledTimes(1);
+    expect(onEvent).toHaveBeenCalledTimes(1);
+    expect(onResync).not.toHaveBeenCalled();
   });
 });
 

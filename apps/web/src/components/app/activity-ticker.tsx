@@ -19,7 +19,7 @@ import { ListCard, ListEmpty } from "../ui/list-card";
 import { StatusLed, type LedTone } from "../ui/status-led";
 import { cn } from "../../lib/utils";
 import type { ActivityEventItem } from "../../lib/api";
-import { useVisibleInterval } from "../../hooks/use-visible-interval";
+import { useLiveInterval } from "../../hooks/use-live-interval";
 import { RealtimeGroups, useSignalREvent, useSignalRStatus } from "../../lib/use-signalr";
 import { formatDateTime, formatShortDate, type DisplayPreferences, useDisplayPreferences } from "../../lib/display-preferences";
 
@@ -52,7 +52,7 @@ export function ActivityTicker({ seed, limit = 10 }: { seed: ActivityEventItem[]
   // they were when the last event arrived, which on a quiet system is the
   // difference between "nothing has happened for an hour" and a lie.
   const [, setNow] = useState(() => Date.now());
-  useVisibleInterval(() => setNow(Date.now()), 30_000);
+  useLiveInterval(() => setNow(Date.now()), 30_000);
 
   useSignalREvent("ActivityEventAdded", RealtimeGroups.Activity, (event) => {
     setLive((current) => {

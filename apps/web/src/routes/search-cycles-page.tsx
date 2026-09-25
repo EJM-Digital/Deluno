@@ -32,7 +32,7 @@ import { Switch, SwitchRow } from "../components/ui/switch";
 import { toast } from "../components/shell/toaster";
 import { automationNavItems } from "../components/app/settings-shell";
 import { useUnsavedChanges } from "../hooks/use-unsaved-changes";
-import { useVisibleInterval } from "../hooks/use-visible-interval";
+import { useLiveInterval } from "../hooks/use-live-interval";
 import {
   fetchJson, fetchPageItems,
   type LibraryAutomationStateItem,
@@ -136,10 +136,9 @@ export function SearchCyclesPage() {
   const revalidator = useRevalidator();
   const settingsMutation = useApiMutation<PlatformSettingsPatch, PlatformSettingsSnapshot>("/api/settings", "PATCH");
 
-  // The app-wide realtime resync (app-layout.tsx) already revalidates this
-  // route the moment the tab returns from hidden, so this fallback poll skips
-  // its own catch-up call there and only keeps ticking every 10s while visible.
-  useVisibleInterval(() => revalidator.revalidate(), 10_000, { skipImmediateCatchup: true });
+  // A fallback poll, kept running while the tab is hidden so the schedule is
+  // already current when it is looked at (#641).
+  useLiveInterval(() => revalidator.revalidate(), 10_000);
 
   const view = location.pathname.endsWith("/missing") ? "missing" : location.pathname.endsWith("/upgrades") ? "upgrades" : location.pathname.endsWith("/failed-downloads") ? "failed" : location.pathname.endsWith("/blocklist") ? "blocklist" : "overview";
   const scheduleLibraries = useMemo(

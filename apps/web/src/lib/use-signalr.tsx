@@ -19,20 +19,15 @@
  * this, a client that trusted the stream after a drop would drift out of
  * sync and never recover -- see docs/exec-plans/active/ADR-002-realtime-architecture.md.
  *
- * The connection, and its seq bookkeeping, stay live while the tab is hidden
- * (#641) -- a hidden tab isn't painted, so there's no cost to staying current.
- * What changes is delivery to `useSignalREvent` subscribers: while hidden, an
- * envelope still advances `lastSeq` but is never handed to a handler -- no
- * toast, no animation, no per-event state update, for anything that arrives
- * while nobody is looking. Only that something changed is noted. On the next
- * `visibilitychange` back to visible, if anything was missed, every
- * `useSignalRResync` subscriber fires exactly once -- the same "go refetch
- * from REST" signal a reconnect gap already uses -- instead of replaying the
- * backlog. `apps/web/src/layouts/app-layout.tsx` wires that signal to a
- * single app-wide route revalidation so every loader-backed screen ends up
- * current, not just the one that happened to register a handler. While
- * visible, dispatch is untouched: synchronous, one call per envelope, same as
- * before this existed.
+ * Deluno stays live while its tab is in the background (#641). Every envelope
+ * is delivered to its subscribers the moment it arrives, hidden or not, so the
+ * data behind every screen is already current when the tab is looked at again
+ * and there is nothing to catch up on return. Holding events until the tab was
+ * visible and then resyncing was tried first and rejected: it still produced a
+ * visible refresh the moment the tab came back. Only what exists purely to be
+ * seen is held back while hidden -- a toast raised by a realtime event goes
+ * through `realtimeToast` (components/shell/toaster.tsx), which drops it
+ * rather than replaying it later.
  *
  * Events emitted by the hub (mirror backend contracts):
  *   DownloadProgress        { id, title, progress, speedMbps, eta, status }
@@ -270,14 +265,6 @@ export function SignalRProvider({
   const connectionRef = useRef<signalR.HubConnection | null>(null);
   /** Highest seq applied so far. Reset to 0 whenever the server tells us to resync. */
   const lastSeqRef = useRef(0);
-  /**
-   * Tab visibility (#641), tracked independently of the connection's own
-   * lifecycle -- the socket keeps running whether or not the tab is on
-   * screen; only delivery below cares about this.
-   */
-  const hiddenRef = useRef(typeof document !== "undefined" && document.visibilityState === "hidden");
-  /** Set when an envelope arrived while hidden and nothing has resynced since. Cleared once the one resync on return fires. */
-  const pendingResyncRef = useRef(false);
 
   const invokeSubjects = useCallback((method: "Subscribe" | "Unsubscribe", subjects: string[]) => {
     const connection = connectionRef.current;
@@ -326,8 +313,8 @@ export function SignalRProvider({
 
   /**
    * Calls every handler subscribed to this envelope's event, with the raw
-   * payload -- the one place a live envelope reaches subscriber code. Never
-   * called for anything that arrived while hidden (#641); see `applyEnvelope`.
+   * payload -- the one place a live envelope reaches subscriber code, whether
+   * or not the tab is on screen (#641).
    */
   const deliver = useCallback((envelope: RealtimeEnvelope) => {
     if (DEBUG) console.debug(`[WS] ${envelope.name}`, envelope.data);
@@ -337,48 +324,14 @@ export function SignalRProvider({
     }
   }, []);
 
-  /**
-   * Tells every `useSignalRResync` subscriber to refetch, exactly once, if
-   * anything was missed while hidden (#641). No handler is ever called with
-   * the missed envelopes themselves -- a resync means "go get the current
-   * state", not "here is what you missed", so there is nothing left here to
-   * toast or animate.
-   */
-  const resyncOnReturn = useCallback(() => {
-    if (!pendingResyncRef.current) return;
-    pendingResyncRef.current = false;
-    for (const h of resyncHandlersRef.current) h();
-  }, []);
-
-  useEffect(() => {
-    if (typeof document === "undefined") return;
-
-    const onVisibilityChange = () => {
-      const isHidden = document.visibilityState === "hidden";
-      hiddenRef.current = isHidden;
-      if (!isHidden) resyncOnReturn();
-    };
-
-    document.addEventListener("visibilitychange", onVisibilityChange);
-    return () => document.removeEventListener("visibilitychange", onVisibilityChange);
-  }, [resyncOnReturn]);
-
   useEffect(() => {
     /**
-     * Applies one envelope: advances lastSeq, then either dispatches it
-     * immediately (tab visible) or, while hidden (#641), only notes that
-     * something changed -- no handler runs, no value is retained, there is
-     * nothing to replay on return but the one resync in `resyncOnReturn`.
-     * Idempotent against replays either way, since the seq check runs before
-     * either path.
+     * Applies one envelope: advances lastSeq and dispatches it. Idempotent
+     * against replays, since the seq check runs first.
      */
     const applyEnvelope = (envelope: RealtimeEnvelope) => {
       if (envelope.seq <= lastSeqRef.current) return;
       lastSeqRef.current = envelope.seq;
-      if (hiddenRef.current) {
-        pendingResyncRef.current = true;
-        return;
-      }
       deliver(envelope);
     };
 
@@ -481,12 +434,11 @@ export function useSignalRStatus(): SignalRStatus {
 }
 
 /**
- * Whether the Deluno tab is the one currently on screen (#641). Realtime
- * dispatch already uses this internally to hold purely-visual and per-event
- * work until the tab is looked at again; exposed so a consumer that wants to
- * gate its own toast, ticker animation or highlight can ask directly instead
- * of re-deriving it from `document.visibilityState` itself. Does not require
- * a `SignalRProvider` ancestor -- it only wraps the Page Visibility API.
+ * Whether the Deluno tab is the one currently on screen (#641), for a
+ * consumer that wants to hold back its own purely visual work -- an
+ * animation or highlight -- while nobody is looking. Data never waits on
+ * this. Does not require a `SignalRProvider` ancestor -- it only wraps the
+ * Page Visibility API.
  */
 export function useIsTabVisible(): boolean {
   const [visible, setVisible] = useState(
