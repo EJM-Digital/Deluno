@@ -30,7 +30,7 @@ public sealed class TrackerDefinitionCatalogTests(ITestOutputHelper output)
 
         // The starter set (#606): a film, a TV and general trackers, each
         // written from scratch from the site's own API or pages.
-        Assert.Equal(6, count);
+        Assert.Equal(9, count);
         Assert.Empty(failures);
     }
 
@@ -53,6 +53,9 @@ public sealed class TrackerDefinitionCatalogTests(ITestOutputHelper output)
         Assert.NotNull(catalog.Find("limetorrents"));
         Assert.NotNull(catalog.Find("1337x"));
         Assert.NotNull(catalog.Find("nyaasi"));
+        Assert.NotNull(catalog.Find("rutor"));
+        Assert.NotNull(catalog.Find("internetarchive"));
+        Assert.NotNull(catalog.Find("torrentdownloads"));
     }
 
     /// <summary>

@@ -1,0 +1,40 @@
+# Deluno's own definition (#606), written from Rutor's own search results
+# page, not copied from any indexer manager. Every row already carries a
+# magnet link, so no second page is needed to grab a release.
+id: rutor
+name: Rutor
+description: A public general tracker. Every row already carries a magnet link.
+language: ru-RU
+type: public
+encoding: UTF-8
+links:
+  - https://rutor.info/
+  - https://rutor.is/
+caps:
+  categorymappings:
+    - {id: movies, cat: Movies, desc: Movies}
+    - {id: tv, cat: TV, desc: "TV"}
+  modes:
+    search: [q]
+    movie-search: [q]
+    tv-search: [q]
+search:
+  paths:
+    - path: "search/0/0/000/0/{{ .Keywords }}"
+  rows:
+    selector: "table#index tr:has(td.t-title)"
+  fields:
+    title:
+      selector: "td.t-title a:not(.downgif)"
+    details:
+      selector: "td.t-title a:not(.downgif)"
+      attribute: href
+    magnet:
+      selector: "td.t-title a.downgif"
+      attribute: href
+    size:
+      selector: td.t-size
+    seeders:
+      selector: td.t-seeds
+    leechers:
+      selector: td.t-leech

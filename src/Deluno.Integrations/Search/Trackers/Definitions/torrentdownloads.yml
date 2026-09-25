@@ -1,0 +1,49 @@
+# Deluno's own definition (#606), written from TorrentDownloads' own search
+# results page, not copied from any indexer manager. Search results only
+# link to a details page; the real download link is fetched from there when
+# a release is grabbed.
+id: torrentdownloads
+name: TorrentDownloads
+description: A public general tracker. Search results only link to a details page; the real download link is fetched from there when a release is grabbed.
+language: en-US
+type: public
+encoding: UTF-8
+links:
+  - https://www.torrentdownloads.pro/
+caps:
+  categorymappings:
+    - {id: movies, cat: Movies, desc: Movies}
+    - {id: tv, cat: TV, desc: "TV"}
+  modes:
+    search: [q]
+    movie-search: [q]
+    tv-search: [q]
+search:
+  paths:
+    - path: "search/"
+      inputs:
+        search: "{{ .Keywords }}"
+  rows:
+    selector: "table.table4 tr:has(td.tdleft)"
+  fields:
+    title:
+      selector: "div.tt-name a"
+    details:
+      selector: "div.tt-name a"
+      attribute: href
+    download:
+      selector: "div.tt-name a"
+      attribute: href
+    size:
+      selector: "td:nth-of-type(2)"
+    seeders:
+      selector: td.tdseed
+    leechers:
+      selector: td.tdleech
+# The search row only links to the torrent's details page; the magnet (or
+# .torrent link the page also carries) is fetched from there when a
+# release is grabbed, not from the search results themselves.
+download:
+  selectors:
+    - selector: "a[href^='magnet:']"
+      attribute: href

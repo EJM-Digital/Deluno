@@ -181,6 +181,9 @@ definitions, because Deluno carries no licence file that would allow it:
 | `limetorrents` | LimeTorrents | Its own search results page (HTML) |
 | `1337x` | 1337x | Its own search results page (HTML); usually needs a Cloudflare helper |
 | `nyaasi` | Nyaa.si | Its own search results page (HTML) |
+| `rutor` | Rutor | Its own search results page (HTML) |
+| `torrentdownloads` | TorrentDownloads | Its own search results page (HTML) |
+| `internetarchive` | Internet Archive | Its own public `advancedsearch.php` JSON API; every item's torrent lives at a fixed, predictable address |
 
 Adding another public tracker is writing one more file in this format from
 that site's own API or pages, dropping it in the data folder's `trackers`
