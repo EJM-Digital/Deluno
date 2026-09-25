@@ -1,5 +1,21 @@
 import { useCallback, useEffect, useRef } from "react";
 
+export interface UseVisibleIntervalOptions {
+  /**
+   * Skip the immediate catch-up call this hook would otherwise make the
+   * moment the tab becomes visible again (#641). The recurring interval
+   * itself is unaffected -- only that one on-return call is dropped.
+   *
+   * For a caller whose screen is also covered by the app-wide realtime
+   * resync (`useSignalRResync`, wired once in `app-layout.tsx`), that resync
+   * already revalidates the same data on the very same return: without this,
+   * the two fire back to back and the same refresh happens twice. A caller
+   * with no such coverage must leave this unset -- the fallback poll is the
+   * only thing that will ever catch it up.
+   */
+  skipImmediateCatchup?: boolean;
+}
+
 /**
  * Runs a refresh only while the document is visible. The route loader remains
  * the initial hydrate; returning to a visible tab gets exactly one catch-up
@@ -9,15 +25,17 @@ import { useCallback, useEffect, useRef } from "react";
  * with no realtime coverage at all (and by at least one pure UI clock tick),
  * not exclusively paired with `useSignalREvent`. Whether its catch-up fetch
  * is redundant now depends on whether THIS caller's data also arrives over
- * SignalR — this hook has no way to know that, and guessing wrong trades a
- * harmless extra request for a stale screen after a long hidden spell, which
- * is the worse failure. `useCoalescedRevalidate` below is the one changed:
- * it is used exclusively downstream of realtime events, where the tradeoff
- * is unambiguous.
+ * SignalR — this hook has no way to know that on its own, and guessing wrong
+ * trades a harmless extra request for a stale screen after a long hidden
+ * spell, which is the worse failure — hence `skipImmediateCatchup` being
+ * opt-in rather than inferred. `useCoalescedRevalidate` below is the one
+ * changed unconditionally: it is used exclusively downstream of realtime
+ * events, where the tradeoff is unambiguous.
  */
-export function useVisibleInterval(callback: () => void, intervalMs: number) {
+export function useVisibleInterval(callback: () => void, intervalMs: number, options?: UseVisibleIntervalOptions) {
   const callbackRef = useRef(callback);
   callbackRef.current = callback;
+  const skipImmediateCatchup = options?.skipImmediateCatchup ?? false;
 
   useEffect(() => {
     let timer: number | undefined;
@@ -36,7 +54,7 @@ export function useVisibleInterval(callback: () => void, intervalMs: number) {
 
     const syncVisibility = () => {
       if (document.visibilityState === "visible") {
-        callbackRef.current();
+        if (!skipImmediateCatchup) callbackRef.current();
         start();
       } else {
         stop();
@@ -52,7 +70,7 @@ export function useVisibleInterval(callback: () => void, intervalMs: number) {
       stop();
       document.removeEventListener("visibilitychange", syncVisibility);
     };
-  }, [intervalMs]);
+  }, [intervalMs, skipImmediateCatchup]);
 }
 
 /**

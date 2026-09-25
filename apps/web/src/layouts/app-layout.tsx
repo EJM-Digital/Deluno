@@ -14,7 +14,7 @@ import { useTheme } from "next-themes";
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { useHotkeys } from "react-hotkeys-hook";
-import { NavLink, useLocation, useNavigate } from "react-router-dom";
+import { NavLink, useLocation, useNavigate, useRevalidator } from "react-router-dom";
 import { CommandPalette } from "../components/shell/command-palette";
 import { KeyboardHintOverlay } from "../components/shell/keyboard-hint-overlay";
 import { MobileShellNav } from "../components/shell/mobile-shell-nav";
@@ -28,7 +28,7 @@ import { getGlobalShortcuts } from "../lib/command-registry";
 import { attentionTotal, type AttentionSnapshot, useAttention } from "../lib/use-attention";
 import { useAuth, type UserProfile } from "../lib/use-auth";
 import { DENSITY_LABELS, DensityProvider, useDensity, type Density } from "../lib/use-density";
-import { RealtimeGroups, SignalRProvider, useSignalREvent } from "../lib/use-signalr";
+import { RealtimeGroups, SignalRProvider, useSignalREvent, useSignalRResync } from "../lib/use-signalr";
 import { cn } from "../lib/utils";
 import { DisplayPreferencesProvider } from "../lib/display-preferences";
 import { commandPaletteShortcut } from "../lib/platform-shortcuts";
@@ -174,6 +174,18 @@ function AppLayoutContent() {
   const { user, logout } = useAuth();
   const { resolvedTheme, setTheme } = useTheme();
   const attention = useAttention();
+  const revalidator = useRevalidator();
+
+  /*
+    Returning to a hidden tab must show current state, not queued events
+    replaying one by one (#641): every `useSignalREvent` subscriber below,
+    and every one on the mounted route, goes quiet while the tab is hidden.
+    This is the one place that catches every screen back up on return — a
+    single route revalidation covers every loader-backed page, mounted here
+    rather than per-route so a screen with no realtime handler of its own
+    still ends up current.
+  */
+  useSignalRResync(() => { revalidator.revalidate(); });
 
   /*
     An import finishing is the end of the workflow the user started, and until

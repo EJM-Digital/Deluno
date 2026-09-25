@@ -136,7 +136,10 @@ export function SearchCyclesPage() {
   const revalidator = useRevalidator();
   const settingsMutation = useApiMutation<PlatformSettingsPatch, PlatformSettingsSnapshot>("/api/settings", "PATCH");
 
-  useVisibleInterval(() => revalidator.revalidate(), 10_000);
+  // The app-wide realtime resync (app-layout.tsx) already revalidates this
+  // route the moment the tab returns from hidden, so this fallback poll skips
+  // its own catch-up call there and only keeps ticking every 10s while visible.
+  useVisibleInterval(() => revalidator.revalidate(), 10_000, { skipImmediateCatchup: true });
 
   const view = location.pathname.endsWith("/missing") ? "missing" : location.pathname.endsWith("/upgrades") ? "upgrades" : location.pathname.endsWith("/failed-downloads") ? "failed" : location.pathname.endsWith("/blocklist") ? "blocklist" : "overview";
   const scheduleLibraries = useMemo(

@@ -21,14 +21,18 @@
  *
  * The connection, and its seq bookkeeping, stay live while the tab is hidden
  * (#641) -- a hidden tab isn't painted, so there's no cost to staying current.
- * What changes is delivery to `useSignalREvent` subscribers: while hidden,
- * envelopes are held rather than dispatched immediately, coalesced to their
- * latest value per event+subject+entity (see `coalesceKey`); the whole
- * buffer is delivered in one pass on the next `visibilitychange` back to
- * visible. A handler still receives exactly the payload shape it always did
- * -- this only changes when it is called and, for a burst touching the same
- * entity, how many times. While visible, dispatch is untouched: synchronous,
- * one call per envelope, same as before this existed.
+ * What changes is delivery to `useSignalREvent` subscribers: while hidden, an
+ * envelope still advances `lastSeq` but is never handed to a handler -- no
+ * toast, no animation, no per-event state update, for anything that arrives
+ * while nobody is looking. Only that something changed is noted. On the next
+ * `visibilitychange` back to visible, if anything was missed, every
+ * `useSignalRResync` subscriber fires exactly once -- the same "go refetch
+ * from REST" signal a reconnect gap already uses -- instead of replaying the
+ * backlog. `apps/web/src/layouts/app-layout.tsx` wires that signal to a
+ * single app-wide route revalidation so every loader-backed screen ends up
+ * current, not just the one that happened to register a handler. While
+ * visible, dispatch is untouched: synchronous, one call per envelope, same as
+ * before this existed.
  *
  * Events emitted by the hub (mirror backend contracts):
  *   DownloadProgress        { id, title, progress, speedMbps, eta, status }
@@ -252,36 +256,6 @@ function normalizeSubjects(subjects: RealtimeSubject): string[] {
     : [...new Set(subjects)];
 }
 
-/**
- * Best-effort entity id for coalescing envelopes held while the tab is
- * hidden (#641). Several payloads carry a natural id -- a queue item, a
- * download dispatch, a background job -- and keying on it means a burst of
- * updates to the SAME entity collapses to its latest value while a burst
- * across DIFFERENT entities does not: a counter that moves once per
- * `QueueItemAdded` still sees one delivery per distinct item, not one for
- * the whole burst. Payloads with none of these fields fall back to
- * name+subject alone in `coalesceKey`, which is safe for the identity-only
- * `*Changed` family and similar broad "something changed, go refetch"
- * events -- their handlers refetch instead of reading fields off the event.
- */
-function realtimeIdentity(data: unknown): string | null {
-  if (!data || typeof data !== "object") return null;
-  const record = data as Record<string, unknown>;
-  for (const field of ["id", "dispatchId", "jobId"]) {
-    const value = record[field];
-    if (typeof value === "string" || typeof value === "number") return `${field}:${value}`;
-  }
-  return null;
-}
-
-/** Coalescing key for the hidden-tab buffer: same key means "the same thing changed again", so only the latest survives. */
-function coalesceKey(envelope: RealtimeEnvelope): string {
-  const identity = realtimeIdentity(envelope.data);
-  return identity
-    ? `${envelope.name}\u001f${envelope.subject}\u001f${identity}`
-    : `${envelope.name}\u001f${envelope.subject}`;
-}
-
 export function SignalRProvider({
   children,
   accessToken
@@ -302,8 +276,8 @@ export function SignalRProvider({
    * screen; only delivery below cares about this.
    */
   const hiddenRef = useRef(typeof document !== "undefined" && document.visibilityState === "hidden");
-  /** Envelopes seen while hidden, held by `coalesceKey`. Flushed in one pass on the next return to visible. */
-  const pendingRef = useRef(new Map<string, RealtimeEnvelope>());
+  /** Set when an envelope arrived while hidden and nothing has resynced since. Cleared once the one resync on return fires. */
+  const pendingResyncRef = useRef(false);
 
   const invokeSubjects = useCallback((method: "Subscribe" | "Unsubscribe", subjects: string[]) => {
     const connection = connectionRef.current;
@@ -352,9 +326,8 @@ export function SignalRProvider({
 
   /**
    * Calls every handler subscribed to this envelope's event, with the raw
-   * payload -- the one place envelopes reach subscriber code, whether
-   * delivered live or flushed from the hidden-tab buffer, so a handler never
-   * sees a different shape on one path than the other.
+   * payload -- the one place a live envelope reaches subscriber code. Never
+   * called for anything that arrived while hidden (#641); see `applyEnvelope`.
    */
   const deliver = useCallback((envelope: RealtimeEnvelope) => {
     if (DEBUG) console.debug(`[WS] ${envelope.name}`, envelope.data);
@@ -365,16 +338,17 @@ export function SignalRProvider({
   }, []);
 
   /**
-   * Delivers everything buffered while hidden, then empties the buffer. One
-   * pass, so returning to the tab is one update per distinct thing that
-   * changed rather than a replay of every intermediate one (#641).
+   * Tells every `useSignalRResync` subscriber to refetch, exactly once, if
+   * anything was missed while hidden (#641). No handler is ever called with
+   * the missed envelopes themselves -- a resync means "go get the current
+   * state", not "here is what you missed", so there is nothing left here to
+   * toast or animate.
    */
-  const flushPending = useCallback(() => {
-    if (pendingRef.current.size === 0) return;
-    const envelopes = [...pendingRef.current.values()];
-    pendingRef.current.clear();
-    for (const envelope of envelopes) deliver(envelope);
-  }, [deliver]);
+  const resyncOnReturn = useCallback(() => {
+    if (!pendingResyncRef.current) return;
+    pendingResyncRef.current = false;
+    for (const h of resyncHandlersRef.current) h();
+  }, []);
 
   useEffect(() => {
     if (typeof document === "undefined") return;
@@ -382,25 +356,27 @@ export function SignalRProvider({
     const onVisibilityChange = () => {
       const isHidden = document.visibilityState === "hidden";
       hiddenRef.current = isHidden;
-      if (!isHidden) flushPending();
+      if (!isHidden) resyncOnReturn();
     };
 
     document.addEventListener("visibilitychange", onVisibilityChange);
     return () => document.removeEventListener("visibilitychange", onVisibilityChange);
-  }, [flushPending]);
+  }, [resyncOnReturn]);
 
   useEffect(() => {
     /**
      * Applies one envelope: advances lastSeq, then either dispatches it
-     * immediately (tab visible) or holds only its latest value for the
-     * current hidden window (#641) -- see `coalesceKey`. Idempotent against
-     * replays either way, since the seq check runs before either path.
+     * immediately (tab visible) or, while hidden (#641), only notes that
+     * something changed -- no handler runs, no value is retained, there is
+     * nothing to replay on return but the one resync in `resyncOnReturn`.
+     * Idempotent against replays either way, since the seq check runs before
+     * either path.
      */
     const applyEnvelope = (envelope: RealtimeEnvelope) => {
       if (envelope.seq <= lastSeqRef.current) return;
       lastSeqRef.current = envelope.seq;
       if (hiddenRef.current) {
-        pendingRef.current.set(coalesceKey(envelope), envelope);
+        pendingResyncRef.current = true;
         return;
       }
       deliver(envelope);
