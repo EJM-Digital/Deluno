@@ -194,7 +194,7 @@ public sealed class MigrationRunnerTests
         Assert.Equal("notification_webhook_failure_details", await ReadScalarAsync<string>(platformConnection, "SELECT name FROM schema_migrations WHERE version = 46;"));
 
         await using var jobsConnection = await storage.Factory.OpenConnectionAsync(DelunoDatabaseNames.Jobs);
-        Assert.Equal(33, await ReadScalarAsync<int>(jobsConnection, "SELECT COUNT(*) FROM schema_migrations;"));
+        Assert.Equal(34, await ReadScalarAsync<int>(jobsConnection, "SELECT COUNT(*) FROM schema_migrations;"));
         Assert.Equal("initial_schema", await ReadScalarAsync<string>(jobsConnection, "SELECT name FROM schema_migrations WHERE version = 1;"));
         Assert.Equal("job_integrity", await ReadScalarAsync<string>(jobsConnection, "SELECT name FROM schema_migrations WHERE version = 2;"));
         Assert.Equal("download_outcome_tracking", await ReadScalarAsync<string>(jobsConnection, "SELECT name FROM schema_migrations WHERE version = 3;"));
@@ -230,6 +230,8 @@ public sealed class MigrationRunnerTests
         Assert.Equal("schedule_interval_used", await ReadScalarAsync<string>(jobsConnection, "SELECT name FROM schema_migrations WHERE version = 30;"));
         Assert.Equal("dispatch_alert_resolution", await ReadScalarAsync<string>(jobsConnection, "SELECT name FROM schema_migrations WHERE version = 31;"));
         Assert.Equal("dispatch_client_completed", await ReadScalarAsync<string>(jobsConnection, "SELECT name FROM schema_migrations WHERE version = 32;"));
+        Assert.Equal("orphan_grab_retry_jobs", await ReadScalarAsync<string>(jobsConnection, "SELECT name FROM schema_migrations WHERE version = 33;"));
+        Assert.Equal("integration_circuit_escalation_level", await ReadScalarAsync<string>(jobsConnection, "SELECT name FROM schema_migrations WHERE version = 34;"));
     }
 
     /// <summary>
@@ -329,6 +331,48 @@ public sealed class MigrationRunnerTests
         Assert.Equal("NotRetryable", await ReadScalarAsync<string>(after, "SELECT json_extract(grab_failure_json, '$.RetryState') FROM download_dispatches WHERE id = 'slowed';"));
         Assert.Equal("2026-09-20T00:10:00+00:00", await ReadScalarAsync<string>(after, "SELECT json_extract(grab_failure_json, '$.RetryAfterUtc') FROM download_dispatches WHERE id = 'slowed';"));
         Assert.Equal("ManualAction", await ReadScalarAsync<string>(after, "SELECT json_extract(grab_failure_json, '$.RetryState') FROM download_dispatches WHERE id = 'refused';"));
+    }
+
+    /// <summary>
+    /// #732: a circuit already open (or already recorded) on a database from
+    /// before this migration gets the new column with its escalation reset to
+    /// zero -- the same starting point as a circuit that has never opened --
+    /// rather than failing to migrate or losing the row.
+    /// </summary>
+    [Fact]
+    public async Task Existing_circuit_breaker_rows_gain_an_escalation_level_without_a_rebuild()
+    {
+        using var storage = TestStorage.Create();
+        var migrator = new SqliteDatabaseMigrator(
+            storage.Factory,
+            new FixedTimeProvider(DateTimeOffset.Parse("2026-09-25T00:00:00Z")));
+
+        await migrator.ApplyAsync(
+            DelunoDatabaseNames.Jobs,
+            Deluno.Jobs.Migrations.JobsDatabaseMigrations.All.Where(migration => migration.Version < 34).ToArray(),
+            CancellationToken.None);
+
+        await using (var before = await storage.Factory.OpenConnectionAsync(DelunoDatabaseNames.Jobs))
+        {
+            Assert.Equal(0, await ReadScalarAsync<int>(before,
+                "SELECT COUNT(*) FROM pragma_table_info('integration_circuit_states') WHERE name = 'escalation_level';"));
+
+            await using var insert = before.CreateCommand();
+            insert.CommandText =
+                """
+                INSERT INTO integration_circuit_states (integration_key, circuit_open_until_utc, opened_utc, failure_count)
+                VALUES ('indexer:pre-migration:search', '2026-09-25T00:05:00Z', '2026-09-25T00:00:00Z', 3);
+                """;
+            await insert.ExecuteNonQueryAsync();
+        }
+
+        await migrator.ApplyAsync(DelunoDatabaseNames.Jobs, Deluno.Jobs.Migrations.JobsDatabaseMigrations.All, CancellationToken.None);
+
+        await using var after = await storage.Factory.OpenConnectionAsync(DelunoDatabaseNames.Jobs);
+        Assert.Equal(1, await ReadScalarAsync<int>(after,
+            "SELECT COUNT(*) FROM pragma_table_info('integration_circuit_states') WHERE name = 'escalation_level';"));
+        Assert.Equal(0, await ReadScalarAsync<int>(after,
+            "SELECT escalation_level FROM integration_circuit_states WHERE integration_key = 'indexer:pre-migration:search';"));
     }
 
     [Fact]

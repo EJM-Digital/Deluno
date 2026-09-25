@@ -90,7 +90,25 @@ public sealed class IntegrationResiliencePolicy(
 {
     private static readonly TimeSpan DefaultInitialDelay = TimeSpan.FromMilliseconds(250);
     private static readonly TimeSpan DefaultMaxDelay = TimeSpan.FromSeconds(2);
-    private static readonly TimeSpan DefaultBreakDuration = TimeSpan.FromMinutes(1);
+
+    /// <summary>
+    /// How long a circuit stays open on its 1st, 2nd, 3rd... consecutive
+    /// opening, roughly matching Radarr/Sonarr/Prowlarr's indexer/client
+    /// disable escalation. A dead integration stops being retried every
+    /// minute forever (#732): the wait grows with each opening that follows
+    /// directly on the last one, capped at the final entry, and a
+    /// successful call resets the ladder back to the first rung.
+    /// </summary>
+    private static readonly TimeSpan[] EscalatingBreakDurations =
+    [
+        TimeSpan.FromMinutes(1),
+        TimeSpan.FromMinutes(5),
+        TimeSpan.FromMinutes(15),
+        TimeSpan.FromMinutes(30),
+        TimeSpan.FromHours(1),
+        TimeSpan.FromHours(3)
+    ];
+
     private readonly object _sync = new();
     private readonly Dictionary<string, CircuitState> _circuits = new(StringComparer.OrdinalIgnoreCase);
     private volatile bool _stateLoaded;
@@ -116,8 +134,11 @@ public sealed class IntegrationResiliencePolicy(
                 normalized.Operation,
                 retryAfterUtc,
                 // Summary is "{ServiceName} {Operation} failed: {Message}",
-                // so naming the service here says it twice.
-                "Deluno paused it after repeated failures.");
+                // so naming the service here says it twice. It does say when
+                // the next try is: a fixed one-minute break re-tried a dead
+                // indexer or client every minute forever and told nobody it
+                // had stopped trying harder (#732).
+                FormatCircuitOpenMessage(retryAfterUtc));
             return new IntegrationResilienceResult<T>(
                 Value: default,
                 CircuitOpen: true,
@@ -284,6 +305,15 @@ public sealed class IntegrationResiliencePolicy(
         }
     }
 
+    /// <summary>
+    /// "Deluno paused it after repeated failures" on its own told a person
+    /// nothing but that a retry loop had stopped; it never said when Deluno
+    /// would try again, so a paused indexer or client looked indistinguishable
+    /// from one nobody was ever going to look at again (#732).
+    /// </summary>
+    private static string FormatCircuitOpenMessage(DateTimeOffset retryAfterUtc)
+        => $"Deluno paused it after repeated failures; it will try again at {retryAfterUtc.ToLocalTime():HH:mm}.";
+
     private static string EscapeLikePattern(string value)
         => value.Replace("\\", "\\\\").Replace("%", "\\%").Replace("_", "\\_");
 
@@ -304,7 +334,12 @@ public sealed class IntegrationResiliencePolicy(
             FailureThreshold = Math.Clamp(request.FailureThreshold, 1, 200),
             InitialDelay = request.InitialDelay is { } initial && initial >= TimeSpan.Zero ? initial : DefaultInitialDelay,
             MaxDelay = request.MaxDelay is { } max && max >= TimeSpan.Zero ? max : DefaultMaxDelay,
-            BreakDuration = request.BreakDuration is { } duration && duration > TimeSpan.Zero ? duration : DefaultBreakDuration
+            // Left null when the caller did not ask for a specific break: an
+            // explicit BreakDuration still wins over escalation, but nobody
+            // passes one today (#732), so leaving this unset here is what
+            // lets RecordRetryableFailure choose the escalating break instead
+            // of silently defaulting every circuit to the same one minute.
+            BreakDuration = request.BreakDuration is { } duration && duration > TimeSpan.Zero ? duration : null
         };
 
     private static string NormalizeKey(string key)
@@ -370,28 +405,47 @@ public sealed class IntegrationResiliencePolicy(
     {
         DateTimeOffset? openedUntil;
         int failureCount;
+        int escalationLevel;
         var openedUtc = timeProvider.GetUtcNow();
 
         lock (_sync)
         {
             _circuits.TryGetValue(request.Key, out var current);
             failureCount = (current?.FailureCount ?? 0) + 1;
+            escalationLevel = current?.EscalationLevel ?? 0;
             openedUntil = null;
             if (failureCount >= request.FailureThreshold)
             {
-                openedUntil = openedUtc.Add(request.BreakDuration ?? DefaultBreakDuration);
+                // Every opening that follows directly on the last one climbs
+                // the ladder one more rung; a call that succeeds calls
+                // Reset(), which drops the whole circuit entry (including
+                // this level) back to zero.
+                escalationLevel++;
+                var breakDuration = request.BreakDuration ?? GetEscalatingBreakDuration(escalationLevel);
+                openedUntil = openedUtc.Add(breakDuration);
                 failureCount = 0;
             }
 
-            _circuits[request.Key] = new CircuitState(failureCount, openedUntil);
+            _circuits[request.Key] = new CircuitState(failureCount, openedUntil, escalationLevel);
         }
 
         if (openedUntil is not null)
         {
-            _ = PersistCircuitOpenAsync(request.Key, openedUntil.Value, openedUtc, request.FailureThreshold);
+            _ = PersistCircuitOpenAsync(request.Key, openedUntil.Value, openedUtc, request.FailureThreshold, escalationLevel);
         }
 
         return openedUntil;
+    }
+
+    /// <summary>
+    /// The 1st opening in a row gets the first rung, the 2nd the next rung,
+    /// and so on; once <see cref="EscalatingBreakDurations"/> runs out every
+    /// further opening in the same streak stays at the last (longest) rung.
+    /// </summary>
+    private static TimeSpan GetEscalatingBreakDuration(int escalationLevel)
+    {
+        var index = Math.Clamp(escalationLevel - 1, 0, EscalatingBreakDurations.Length - 1);
+        return EscalatingBreakDurations[index];
     }
 
     private async Task EnsureStateLoadedAsync(CancellationToken cancellationToken)
@@ -405,7 +459,7 @@ public sealed class IntegrationResiliencePolicy(
             using var command = connection.CreateCommand();
             command.CommandText =
                 """
-                SELECT integration_key, circuit_open_until_utc, failure_count
+                SELECT integration_key, circuit_open_until_utc, failure_count, escalation_level
                 FROM integration_circuit_states
                 WHERE circuit_open_until_utc > @now
                 """;
@@ -422,7 +476,8 @@ public sealed class IntegrationResiliencePolicy(
                     var key = reader.GetString(0);
                     var openUntil = DateTimeOffset.Parse(reader.GetString(1));
                     var count = reader.IsDBNull(2) ? 0 : reader.GetInt32(2);
-                    _circuits[key] = new CircuitState(count, openUntil);
+                    var escalationLevel = reader.IsDBNull(3) ? 0 : reader.GetInt32(3);
+                    _circuits[key] = new CircuitState(count, openUntil, escalationLevel);
                 }
             }
         }
@@ -440,7 +495,8 @@ public sealed class IntegrationResiliencePolicy(
         string key,
         DateTimeOffset openUntilUtc,
         DateTimeOffset openedUtc,
-        int failureCount)
+        int failureCount,
+        int escalationLevel)
     {
         try
         {
@@ -450,13 +506,14 @@ public sealed class IntegrationResiliencePolicy(
             command.CommandText =
                 """
                 INSERT INTO integration_circuit_states
-                    (integration_key, circuit_open_until_utc, opened_utc, failure_count)
+                    (integration_key, circuit_open_until_utc, opened_utc, failure_count, escalation_level)
                 VALUES
-                    (@key, @openUntil, @openedUtc, @failureCount)
+                    (@key, @openUntil, @openedUtc, @failureCount, @escalationLevel)
                 ON CONFLICT(integration_key) DO UPDATE SET
                     circuit_open_until_utc = excluded.circuit_open_until_utc,
                     opened_utc = excluded.opened_utc,
-                    failure_count = excluded.failure_count
+                    failure_count = excluded.failure_count,
+                    escalation_level = excluded.escalation_level
                 """;
 
             void AddParam(string name, object value)
@@ -471,6 +528,7 @@ public sealed class IntegrationResiliencePolicy(
             AddParam("@openUntil", openUntilUtc.ToString("O"));
             AddParam("@openedUtc", openedUtc.ToString("O"));
             AddParam("@failureCount", failureCount);
+            AddParam("@escalationLevel", escalationLevel);
 
             await command.ExecuteNonQueryAsync(CancellationToken.None);
         }
@@ -480,5 +538,13 @@ public sealed class IntegrationResiliencePolicy(
         }
     }
 
-    private sealed record CircuitState(int FailureCount, DateTimeOffset? OpenUntilUtc);
+    /// <summary>
+    /// <see cref="EscalationLevel"/> is how many consecutive circuit openings
+    /// have happened for this key with no success in between — the position
+    /// on <see cref="EscalatingBreakDurations"/> the next opening will use.
+    /// It rides along with the rest of the persisted circuit row so a
+    /// restart resumes the same rung instead of quietly dropping back to a
+    /// one-minute break (#732).
+    /// </summary>
+    private sealed record CircuitState(int FailureCount, DateTimeOffset? OpenUntilUtc, int EscalationLevel = 0);
 }
