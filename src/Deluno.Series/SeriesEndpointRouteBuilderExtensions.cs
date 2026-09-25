@@ -2435,6 +2435,16 @@ public static class SeriesEndpointRouteBuilderExtensions
             var already = (await mediaState.ListWantedByIdsAsync(MediaKind.Series, [item.Id], cancellationToken))
                 .Select(row => row.LibraryId)
                 .ToArray();
+            // Carried into the catalogue refresh below rather than enqueued
+            // here directly (#646 follow-up). The refresh job learns this
+            // show's episode list; a search enqueued in this same request runs
+            // whenever its own worker picks it up, which is often *before*
+            // the refresh — a targeted show-level search with zero episodes
+            // known yet finds nothing to plan and never runs again until the
+            // library's own next scheduled cycle. Handing the request to the
+            // refresh handler instead means it only runs once the episodes it
+            // needs are on record.
+            var pendingSearches = new List<object>();
             foreach (var library in LibraryMembership.Targets(libraries, "tv", request.LibraryId, already))
             {
                 // The show's own state, not a fresh install's.
@@ -2484,25 +2494,15 @@ public static class SeriesEndpointRouteBuilderExtensions
                 // sweep of the library.
                 if (item.Monitored && WantedStatuses.IsSearchable(decision.WantedStatus))
                 {
-                    await jobScheduler.EnqueueAsync(
-                        new EnqueueJobRequest(
-                            JobType: LibrarySearchJobTypes.For(library.MediaType),
-                            Source: "series",
-                            PayloadJson: JsonSerializer.Serialize(new
-                            {
-                                libraryId = library.Id,
-                                libraryName = library.Name,
-                                mediaType = library.MediaType,
-                                checkMissing = true,
-                                checkUpgrades = true,
-                                maxItems = 1,
-                                retryDelayHours = library.RetryDelayHours,
-                                triggeredBy = "series-added",
-                                targetEntityId = item.Id
-                            }),
-                            RelatedEntityType: "series",
-                            RelatedEntityId: item.Id),
-                        cancellationToken);
+                    pendingSearches.Add(new
+                    {
+                        libraryId = library.Id,
+                        libraryName = library.Name,
+                        mediaType = library.MediaType,
+                        retryDelayHours = library.RetryDelayHours,
+                        triggeredBy = "series-added",
+                        targetEntityId = item.Id
+                    });
                 }
             }
 
@@ -2514,7 +2514,8 @@ public static class SeriesEndpointRouteBuilderExtensions
                     {
                         item.Id,
                         item.Title,
-                        item.ImdbId
+                        item.ImdbId,
+                        pendingSearches
                     }),
                     RelatedEntityType: "series",
                     RelatedEntityId: item.Id),

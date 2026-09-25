@@ -1720,6 +1720,15 @@ public static class MoviesEndpointRouteBuilderExtensions
             var already = (await mediaState.ListWantedByIdsAsync(MediaKind.Movie, [movie.Id], cancellationToken))
                 .Select(row => row.LibraryId)
                 .ToArray();
+            // Carried into the catalogue refresh below rather than enqueued
+            // here directly (series' #646 follow-up applies here too). A
+            // freshly-added film can still be missing metadata (IMDb id,
+            // runtime) the search needs, and that refresh job races this same
+            // request's own search job exactly the way the series add did.
+            // Handing the request to the refresh handler means it runs once
+            // the metadata it needs is on record, not whenever its own worker
+            // happens to pick it up.
+            var pendingSearches = new List<object>();
             foreach (var library in LibraryMembership.Targets(libraries, "movies", request.LibraryId, already))
             {
                 // The film's own state, not a fresh install's.
@@ -1769,25 +1778,15 @@ public static class MoviesEndpointRouteBuilderExtensions
                 // sweep of the library.
                 if (movie.Monitored && WantedStatuses.IsSearchable(decision.WantedStatus))
                 {
-                    await jobScheduler.EnqueueAsync(
-                        new EnqueueJobRequest(
-                            JobType: LibrarySearchJobTypes.For(library.MediaType),
-                            Source: "movies",
-                            PayloadJson: JsonSerializer.Serialize(new
-                            {
-                                libraryId = library.Id,
-                                libraryName = library.Name,
-                                mediaType = library.MediaType,
-                                checkMissing = true,
-                                checkUpgrades = true,
-                                maxItems = 1,
-                                retryDelayHours = library.RetryDelayHours,
-                                triggeredBy = "movie-added",
-                                targetEntityId = movie.Id
-                            }),
-                            RelatedEntityType: "movie",
-                            RelatedEntityId: movie.Id),
-                        cancellationToken);
+                    pendingSearches.Add(new
+                    {
+                        libraryId = library.Id,
+                        libraryName = library.Name,
+                        mediaType = library.MediaType,
+                        retryDelayHours = library.RetryDelayHours,
+                        triggeredBy = "movie-added",
+                        targetEntityId = movie.Id
+                    });
                 }
             }
 
@@ -1799,7 +1798,8 @@ public static class MoviesEndpointRouteBuilderExtensions
                     {
                         movie.Id,
                         movie.Title,
-                        movie.ImdbId
+                        movie.ImdbId,
+                        pendingSearches
                     }),
                     RelatedEntityType: "movie",
                     RelatedEntityId: movie.Id),
