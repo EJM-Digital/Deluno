@@ -272,9 +272,8 @@ After the app starts:
 
 ### Health Endpoints
 
-- `/health`
-- `/api/health/ready`
-- `/api/system/health` after authentication
+- `/health` and `/api/health/live`: liveness. Anonymous; 200 whenever the process is up.
+- `/api/health/ready`: readiness. Anonymous; 200 when every readiness check passes, 503 with the failing checks in the body when one does not. Point container or load-balancer health checks here.
 
 ### Application log
 
