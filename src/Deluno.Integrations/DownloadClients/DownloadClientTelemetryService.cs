@@ -72,6 +72,7 @@ public sealed class DownloadClientTelemetryService(
             var liveSnapshot = await TryGetLiveSnapshotAsync(client, capturedUtc, cancellationToken);
             if (liveSnapshot is not null)
             {
+                liveSnapshot = await ApplyDownloadProgressStallAsync(liveSnapshot, capturedUtc, cancellationToken);
                 var clientDispatches = dispatches
                     .Where(dispatch => string.Equals(dispatch.DownloadClientId, client.Id, StringComparison.OrdinalIgnoreCase))
                     .ToArray();
@@ -390,6 +391,43 @@ public sealed class DownloadClientTelemetryService(
             HistoryTruncated: historyItems.Length > DownloadClientTelemetryLimits.HistoryWindow)
         {
             LastFailure = failure
+        };
+    }
+
+    /// <summary>
+    /// The persisted twin of <see cref="DownloadClientHelpers.ReconcileTorrentStatus"/>'s
+    /// no-progress rule (#659): known size and connected peers can still mean
+    /// nothing is arriving. This re-applies that same shared rule armed with
+    /// each item's downloaded-bytes history from
+    /// <see cref="IDownloadHealthRepository.RecordDownloadProgressAsync"/>,
+    /// which is restart-safe rather than an in-memory dict a restart would
+    /// wipe. Every protocol client's live snapshot passes through here, so
+    /// Transmission, qBittorrent and Deluge all get the same answer from the
+    /// one rule.
+    /// </summary>
+    private async Task<DownloadClientTelemetrySnapshot> ApplyDownloadProgressStallAsync(
+        DownloadClientTelemetrySnapshot snapshot,
+        DateTimeOffset capturedUtc,
+        CancellationToken cancellationToken)
+    {
+        if (snapshot.Queue.Count == 0)
+        {
+            return snapshot;
+        }
+
+        var lastIncreaseByQueueItemId = await healthRepository.RecordDownloadProgressAsync(
+            snapshot.ClientId,
+            snapshot.Queue.Select(item => (item.Id, item.DownloadedBytes)).ToArray(),
+            cancellationToken);
+
+        return snapshot with
+        {
+            Queue = snapshot.Queue
+                .Select(item => DownloadClientHelpers.ReconcileTorrentStatus(
+                    item,
+                    capturedUtc,
+                    lastIncreaseByQueueItemId.TryGetValue(item.Id, out var since) ? since : null))
+                .ToArray()
         };
     }
 

@@ -17,6 +17,7 @@ public sealed class SqliteDownloadHealthRepository(
     // sightings rather than time, so their strikes and start times cannot be
     // trusted; V0066 removes the v1 key rather than carry them forward.
     private const string DownloadHealthRecordsSettingKey = "download-health.records.v2";
+    private const string DownloadProgressRecordsSettingKey = "download-health.progress.v1";
     private static readonly TimeSpan DownloadHealthRetention = TimeSpan.FromDays(90);
 
     public async Task<IReadOnlyList<DownloadHealthRecord>> RecordDownloadHealthObservationsAsync(
@@ -142,11 +143,25 @@ public sealed class SqliteDownloadHealthRepository(
         var settings = await ReadSettingsAsync(connection, cancellationToken);
         var records = ReadDownloadHealthRecords(settings).ToList();
         var forgotten = records.RemoveAll(record => string.Equals(record.ClientId, clientId, StringComparison.OrdinalIgnoreCase));
-        if (forgotten == 0) return 0;
 
-        await UpsertSettingAsync(connection, transaction, DownloadHealthRecordsSettingKey, JsonSerializer.Serialize(records), now, cancellationToken);
+        // Its progress memory is the same kind of leftover #568 was filed
+        // about: a deleted client is never polled again, so nothing would
+        // otherwise clear it either.
+        var progressRecords = ReadDownloadProgressRecords(settings).ToList();
+        var forgottenProgress = progressRecords.RemoveAll(record => string.Equals(record.ClientId, clientId, StringComparison.OrdinalIgnoreCase));
+
+        if (forgotten == 0 && forgottenProgress == 0) return 0;
+
+        if (forgotten > 0)
+        {
+            await UpsertSettingAsync(connection, transaction, DownloadHealthRecordsSettingKey, JsonSerializer.Serialize(records), now, cancellationToken);
+        }
+        if (forgottenProgress > 0)
+        {
+            await UpsertSettingAsync(connection, transaction, DownloadProgressRecordsSettingKey, JsonSerializer.Serialize(progressRecords), now, cancellationToken);
+        }
         await transaction.CommitAsync(cancellationToken);
-        return forgotten;
+        return forgotten + forgottenProgress;
     }
 
     public async Task<DownloadHealthRecord?> IgnoreDownloadHealthFindingAsync(
@@ -172,6 +187,63 @@ public sealed class SqliteDownloadHealthRepository(
         await UpsertSettingAsync(connection, transaction, DownloadHealthRecordsSettingKey, JsonSerializer.Serialize(records), now, cancellationToken);
         await transaction.CommitAsync(cancellationToken);
         return updated;
+    }
+
+    public async Task<IReadOnlyDictionary<string, DateTimeOffset>> RecordDownloadProgressAsync(
+        string clientId,
+        IReadOnlyList<(string QueueItemId, long DownloadedBytes)> observations,
+        CancellationToken cancellationToken)
+    {
+        var result = new Dictionary<string, DateTimeOffset>(StringComparer.OrdinalIgnoreCase);
+        if (string.IsNullOrWhiteSpace(clientId) || observations.Count == 0)
+        {
+            return result;
+        }
+
+        var now = timeProvider.GetUtcNow();
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(DelunoDatabaseNames.Platform, cancellationToken);
+        await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+        var settings = await ReadSettingsAsync(connection, cancellationToken);
+        var records = ReadDownloadProgressRecords(settings)
+            .Where(record => now - record.LastObservedUtc <= DownloadHealthRetention)
+            .ToList();
+
+        foreach (var (queueItemId, downloadedBytes) in observations)
+        {
+            if (string.IsNullOrWhiteSpace(queueItemId))
+            {
+                continue;
+            }
+
+            var trimmedId = queueItemId.Trim();
+            var index = records.FindIndex(record =>
+                string.Equals(record.ClientId, clientId, StringComparison.OrdinalIgnoreCase) &&
+                string.Equals(record.QueueItemId, trimmedId, StringComparison.OrdinalIgnoreCase));
+            var existing = index >= 0 ? records[index] : null;
+
+            // No prior record: this is the first sighting, not a stall - the
+            // clock starts now, the same way a freshly-added magnet is not
+            // stalled the instant it is seen. Otherwise only an actual gain in
+            // bytes moves the clock; equal or fewer bytes (a paused torrent, a
+            // recheck) leaves it exactly where it was.
+            var lastIncreaseUtc = existing is null || downloadedBytes > existing.DownloadedBytes
+                ? now
+                : existing.LastIncreaseUtc;
+            var updated = new DownloadProgressRecord(clientId.Trim(), trimmedId, downloadedBytes, lastIncreaseUtc, now);
+            if (index >= 0) records[index] = updated; else records.Add(updated);
+            result[trimmedId] = lastIncreaseUtc;
+        }
+
+        await UpsertSettingAsync(connection, transaction, DownloadProgressRecordsSettingKey, JsonSerializer.Serialize(records), now, cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+        return result;
+    }
+
+    private static IReadOnlyList<DownloadProgressRecord> ReadDownloadProgressRecords(IReadOnlyDictionary<string, string> settings)
+    {
+        if (!settings.TryGetValue(DownloadProgressRecordsSettingKey, out var json) || string.IsNullOrWhiteSpace(json)) return [];
+        try { return JsonSerializer.Deserialize<List<DownloadProgressRecord>>(json) ?? []; }
+        catch (JsonException) { return []; }
     }
 
     private static async Task<IReadOnlyDictionary<string, string>> ReadSettingsAsync(
