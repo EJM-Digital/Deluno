@@ -12,6 +12,7 @@ import { Drawer, DrawerFacts, DrawerFooter, DrawerSection } from "../ui/drawer";
 import { ListCard, ListCell, ListEmpty, ListNameCell, ListRow, ListTable, LIST_TRACK } from "../ui/list-card";
 import type { DecisionExplanationItem } from "../../lib/api";
 import { formatDateTime, useDisplayPreferences } from "../../lib/display-preferences";
+import { getStatusLabel as formatStatus } from "../../lib/job-status-constants";
 
 export function DecisionExplanationList({ decisions }: { decisions: DecisionExplanationItem[] }) {
   const [openId, setOpenId] = useState<string | null>(null);
@@ -105,11 +106,6 @@ export function DecisionExplanationList({ decisions }: { decisions: DecisionExpl
     </>
   );
 }
-function formatStatus(status: string) {
-  const spaced = status.replace(/[-_]/g, " ");
-  return spaced.charAt(0).toUpperCase() + spaced.slice(1);
-}
-
 function statusTone(status: string): "ok" | "warn" | "bad" | "info" {
   const normalized = status.toLowerCase();
   if (["completed", "matched", "sent", "requeued"].includes(normalized)) return "ok";

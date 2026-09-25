@@ -27,7 +27,7 @@ import {
   type MovieImportRecoverySummary,
   type SeriesImportRecoverySummary
 } from "../lib/api";
-import { getJobStatusLabel, getJobStatusTone, JOB_STATUS, isJobActive, isJobFailed, isJobInProgress, isJobRetrying, isJobSuccessful, type JobStatus } from "../lib/job-status-constants";
+import { getDispatchStatusLabel as formatDispatchStatus, getJobStatusLabel, getJobStatusTone, JOB_STATUS, isJobActive, isJobFailed, isJobInProgress, isJobRetrying, isJobSuccessful, type JobStatus } from "../lib/job-status-constants";
 import { dismissFailedJob, fetchFailedJobs } from "../lib/failed-jobs";
 import { authedFetch } from "../lib/use-auth";
 import { Button } from "../components/ui/button";
@@ -474,28 +474,6 @@ function dispatchTone(status: string): "ok" | "warn" | "bad" | "info" {
     default:
       return "info";
   }
-}
-
-function formatDispatchStatus(status: string) {
-  switch (status) {
-    case "sent":
-      return "Sent";
-    case "failed":
-      return "Failed";
-    case "planned":
-      return "Needs URL";
-    case "imported":
-      return "Imported";
-    case "importFailed":
-      return "Import failed";
-    default:
-      return formatOperation(status);
-  }
-}
-
-function formatOperation(value: string) {
-  const spaced = value.replace(/([a-z0-9])([A-Z])/g, "$1 $2").replace(/[._-]/g, " ");
-  return spaced.charAt(0).toUpperCase() + spaced.slice(1);
 }
 
 function formatFailureKind(value: string) {

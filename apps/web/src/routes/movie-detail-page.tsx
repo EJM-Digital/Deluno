@@ -10,6 +10,7 @@
  * /api/movies/{id}/search, /grab, /automation/defer, /automation/skip-once,
  * /api/movies/bulk.
  */
+import { getDispatchStatusLabel as formatDispatchStatus } from "../lib/job-status-constants";
 import type { Tone } from "../lib/status-tones";
 import { useMemo, useState } from "react";
 import { Link, useLoaderData, useNavigate, useRevalidator } from "react-router-dom";
@@ -1509,19 +1510,6 @@ function dispatchTone(status: string): "ok" | "warn" | "bad" | "info" {
       return "warn";
     default:
       return "info";
-  }
-}
-
-function formatDispatchStatus(status: string) {
-  switch (status) {
-    case "sent":
-      return "Sent";
-    case "failed":
-      return "Failed";
-    case "planned":
-      return "Needs URL";
-    default:
-      return status;
   }
 }
 

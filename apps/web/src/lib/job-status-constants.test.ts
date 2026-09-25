@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
   JOB_STATUS,
+  getDispatchStatusLabel,
   getJobStatusLabel,
+  getStatusLabel,
   isJobActive,
   isJobDeadLettered,
   isJobDone,
@@ -59,5 +61,24 @@ describe("a job that will try again", () => {
   it("says nothing about a job that has not failed", () => {
     expect(isJobRetrying({ ...attempt, status: JOB_STATUS.RUNNING })).toBe(false);
     expect(isJobRetrying({ ...attempt, status: JOB_STATUS.COMPLETED })).toBe(false);
+  });
+});
+
+// #644: one table for every status word a screen shows, so no screen says
+// "Dead letter" or "importFailed" while another says "Gave up" or "Import failed".
+describe("shared status labels", () => {
+  it("names every dispatch status in plain words", () => {
+    expect(getDispatchStatusLabel("sent")).toBe("Sent");
+    expect(getDispatchStatusLabel("planned")).toBe("Needs URL");
+    expect(getDispatchStatusLabel("imported")).toBe("Imported");
+    expect(getDispatchStatusLabel("importFailed")).toBe("Import failed");
+    expect(getDispatchStatusLabel("somethingNew")).toBe("Something new");
+  });
+
+  it("reads a job that gave up as Gave up wherever the kind of status is unknown", () => {
+    expect(getStatusLabel("dead-letter")).toBe("Gave up");
+    expect(getStatusLabel("completed")).toBe("Completed");
+    expect(getStatusLabel("importFailed")).toBe("Import failed");
+    expect(getStatusLabel("requeued")).toBe("Requeued");
   });
 });
