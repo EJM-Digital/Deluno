@@ -710,9 +710,13 @@ public sealed class JobStoreTests
         Assert.True(await store.RequestLibrarySearchAsync(library, CancellationToken.None));
         await store.PlanLibrarySearchesAsync([library], CancellationToken.None);
         var plannedJobs = await store.ListAsync(20, CancellationToken.None);
-        Assert.Equal(2, plannedJobs.Count);
-        Assert.Contains(plannedJobs, job => job.PayloadJson?.Contains("\"searchKind\":\"missing\"", StringComparison.Ordinal) == true);
-        Assert.Contains(plannedJobs, job => job.PayloadJson?.Contains("\"searchKind\":\"upgrade\"", StringComparison.Ordinal) == true);
+        // Missing and upgrade are both enabled and both due together here, so
+        // they go out as one combined job rather than two (#658) — see
+        // PlanLibrarySearchesAsync_combines_missing_and_upgrade_into_one_job_when_both_are_due.
+        var plannedJob = Assert.Single(plannedJobs);
+        Assert.Contains("\"searchKind\":\"combined\"", plannedJob.PayloadJson, StringComparison.Ordinal);
+        Assert.Contains("\"checkMissing\":true", plannedJob.PayloadJson, StringComparison.Ordinal);
+        Assert.Contains("\"checkUpgrades\":true", plannedJob.PayloadJson, StringComparison.Ordinal);
 
         Assert.True(await store.SkipLibrarySearchCycleAsync(library, CancellationToken.None));
 
@@ -768,6 +772,83 @@ public sealed class JobStoreTests
         Assert.Contains("\"scopeId\":\"saved-filter-1\"", job.PayloadJson, StringComparison.Ordinal);
         Assert.Contains("\"scopeConditions\"", job.PayloadJson, StringComparison.Ordinal);
         Assert.DoesNotContain("\"searchKind\":\"upgrade\"", job.PayloadJson, StringComparison.Ordinal);
+    }
+
+    // #658: a library with both missing and upgrade search enabled had its
+    // scheduled check queued twice, as two separate jobs, in the same
+    // second — every cycle, not occasionally, because both next-search
+    // clocks advance by the same interval and so are always due together.
+    [Fact]
+    public async Task PlanLibrarySearchesAsync_combines_missing_and_upgrade_into_one_job_when_both_are_due()
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-05-14T01:00:00Z"));
+        await InitializeJobsAsync(storage, timeProvider);
+        var store = new SqliteJobStore(storage.Factory, timeProvider, new NullRealtimeEventPublisher(), new NullDownloadDispatchesRepository());
+        var library = new LibraryAutomationPlanItem(
+            LibraryId: "tv-main",
+            LibraryName: "TV",
+            MediaType: "tv",
+            AutoSearchEnabled: true,
+            MissingSearchEnabled: true,
+            UpgradeSearchEnabled: true,
+            SearchIntervalHours: 12,
+            RetryDelayHours: 6,
+            MaxItemsPerRun: 10,
+            SearchWindowStartHour: null,
+            SearchWindowEndHour: null);
+
+        // Nothing has ever diverged the two clocks, so a plain scheduled
+        // pass (no manual "Search now") finds both due at once.
+        await store.PlanLibrarySearchesAsync([library], CancellationToken.None);
+
+        var job = Assert.Single(await store.ListAsync(20, CancellationToken.None));
+        Assert.Equal("library.search:tv-main", job.DedupeKey);
+        Assert.Contains("\"checkMissing\":true", job.PayloadJson, StringComparison.Ordinal);
+        Assert.Contains("\"checkUpgrades\":true", job.PayloadJson, StringComparison.Ordinal);
+        Assert.Contains("\"searchKind\":\"combined\"", job.PayloadJson, StringComparison.Ordinal);
+
+        // Nothing left to plan on the very next tick.
+        await store.PlanLibrarySearchesAsync([library], CancellationToken.None);
+        Assert.Single(await store.ListAsync(20, CancellationToken.None));
+    }
+
+    // #658: two scheduler ticks (or a tick racing a manual "Search now")
+    // landing on the same due slot must still queue exactly one job —
+    // ux_job_queue_active_dedupe is the backstop, and InsertJobAsync's
+    // unique-constraint failure has to be treated as "already queued"
+    // rather than left to blow up the whole planning pass.
+    [Fact]
+    public async Task PlanLibrarySearchesAsync_two_concurrent_calls_for_the_same_due_slot_queue_exactly_one_job()
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-05-14T01:00:00Z"));
+        await InitializeJobsAsync(storage, timeProvider);
+        var storeA = new SqliteJobStore(storage.Factory, timeProvider, new NullRealtimeEventPublisher(), new NullDownloadDispatchesRepository());
+        var storeB = new SqliteJobStore(storage.Factory, timeProvider, new NullRealtimeEventPublisher(), new NullDownloadDispatchesRepository());
+        var library = new LibraryAutomationPlanItem(
+            LibraryId: "movies-main",
+            LibraryName: "Movies",
+            MediaType: "movies",
+            AutoSearchEnabled: true,
+            MissingSearchEnabled: true,
+            UpgradeSearchEnabled: true,
+            SearchIntervalHours: 12,
+            RetryDelayHours: 6,
+            MaxItemsPerRun: 10,
+            SearchWindowStartHour: null,
+            SearchWindowEndHour: null);
+
+        // Two independent planning passes (two lane ticks, or two worker
+        // processes) racing to plan the very same first-ever due slot.
+        await Task.WhenAll(
+            storeA.PlanLibrarySearchesAsync([library], CancellationToken.None),
+            storeB.PlanLibrarySearchesAsync([library], CancellationToken.None));
+
+        var jobs = await storeA.ListAsync(20, CancellationToken.None);
+        var job = Assert.Single(jobs);
+        Assert.Contains("\"checkMissing\":true", job.PayloadJson, StringComparison.Ordinal);
+        Assert.Contains("\"checkUpgrades\":true", job.PayloadJson, StringComparison.Ordinal);
     }
 
     [Fact]
