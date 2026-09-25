@@ -8,7 +8,7 @@
   "scripts": {
     "dev:web": "npm --workspace apps/web run dev",
     "build:web": "npm --workspace apps/web run build",
-    "test:web": "npm --workspace apps/web run test:smoke",
+    "test:web": "npm --workspace apps/web run test:unit && npm --workspace apps/web run test:smoke",
     "test:unit:web": "npm --workspace apps/web run test:unit",
     "typecheck:sdk": "npm --workspace sdk/typescript run typecheck",
     "preview:web": "npm --workspace apps/web run preview",
