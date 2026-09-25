@@ -29,6 +29,15 @@ public sealed class TrackerRelease
     public int? Year { get; set; }
     public string? Genre { get; set; }
 
+    /// <summary>
+    /// The season and episode a row itself reported (EZTV's JSON API carries
+    /// both per row). Populated only by a definition that has a "season" or
+    /// "episode" field; every other definition leaves these null, so <see
+    /// cref="TrackerResponseParser"/> never filters on them.
+    /// </summary>
+    public int? Season { get; set; }
+    public int? Episode { get; set; }
+
     /// <summary>Where Deluno fetches the release from: the download address, else the magnet.</summary>
     public string? Link => DownloadUrl ?? MagnetUrl;
 }

@@ -87,7 +87,14 @@ public sealed class FeedMediaSearchPlanner(
         IReadOnlyList<ProfileSizeRule>? sizeRules = null,
         QualityUpgradeStopPolicy? upgradeStop = null,
         ProfileAcquisitionRules? profileAcquisition = null,
-        int? runtimeMinutes = null)
+        int? runtimeMinutes = null,
+        /// <summary>
+        /// The title's own IMDb id, when metadata gave one. A tracker
+        /// definition that only filters server-side by IMDb id (EZTV's JSON
+        /// API, #606) needs this to search the right show at all, rather than
+        /// falling back to a keywords-only request it cannot answer usefully.
+        /// </summary>
+        string? imdbId = null)
     {
         var indexers = await connectionsRepository.ListIndexersAsync(cancellationToken);
         var normalizedSearchKind = AcquisitionSearchKinds.Normalize(searchKind);
@@ -174,7 +181,7 @@ public sealed class FeedMediaSearchPlanner(
                     customFormats, neverGrabPatterns, scoringMode, seasonNumber, episodeNumber, allowedQualities,
                      applicableProfiles, normalizedSearchKind, availableUtc, currentCustomFormatScore, currentReleaseName, upgradeUntilCutoff,
                      numberingScheme, absoluteNumber, airDate, sceneSeasonNumber, sceneEpisodeNumber,
-                     currentPreferenceEvaluation, preferencePlan, currentFilePresent, sizeRules, upgradeStop, runtimeMinutes, token);
+                     currentPreferenceEvaluation, preferencePlan, currentFilePresent, sizeRules, upgradeStop, runtimeMinutes, imdbId, token);
             });
 
         await RecordQueryTelemetryAsync(searchResults, cancellationToken);
@@ -363,6 +370,7 @@ public sealed class FeedMediaSearchPlanner(
         IReadOnlyList<ProfileSizeRule>? sizeRules,
         QualityUpgradeStopPolicy? upgradeStop,
         int? runtimeMinutes,
+        string? imdbId,
         CancellationToken cancellationToken)
     {
         var startedTimestamp = Stopwatch.GetTimestamp();
@@ -475,7 +483,7 @@ public sealed class FeedMediaSearchPlanner(
                         {
                             trackerDocument = await trackerIndexers.SearchAsync(
                                 indexer,
-                                TrackerQueryFor(indexer, queryText, mediaType, year, seasonNumber, episodeNumber),
+                                TrackerQueryFor(indexer, queryText, mediaType, year, seasonNumber, episodeNumber, imdbId),
                                 trackerTime.Token);
                         }
                         catch (OperationCanceledException) when (!token.IsCancellationRequested)
@@ -753,7 +761,7 @@ public sealed class FeedMediaSearchPlanner(
     /// episode as numbers too, and only the indexer's categories for this kind
     /// of media, since a tracker files films and series apart.
     /// </summary>
-    private static TrackerQuery TrackerQueryFor(IndexerItem indexer, string queryText, string mediaType, int? year, int? seasonNumber, int? episodeNumber)
+    private static TrackerQuery TrackerQueryFor(IndexerItem indexer, string queryText, string mediaType, int? year, int? seasonNumber, int? episodeNumber, string? imdbId)
     {
         var isTv = string.Equals(mediaType, "tv", StringComparison.OrdinalIgnoreCase);
         var family = isTv ? 5 : 2;
@@ -764,6 +772,7 @@ public sealed class FeedMediaSearchPlanner(
             Season: isTv ? seasonNumber : null,
             Episode: isTv ? episodeNumber : null,
             Year: year,
+            ImdbId: imdbId,
             Categories: categories.Length > 0 ? categories : [family * 1000]);
     }
 

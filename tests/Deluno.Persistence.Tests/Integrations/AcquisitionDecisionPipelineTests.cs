@@ -342,7 +342,8 @@ public sealed class AcquisitionDecisionPipelineTests
             IReadOnlyList<ProfileSizeRule>? sizeRules = null,
             QualityUpgradeStopPolicy? upgradeStop = null,
             ProfileAcquisitionRules? profileAcquisition = null,
-            int? runtimeMinutes = null)
+            int? runtimeMinutes = null,
+            string? imdbId = null)
         {
             ObservedPreferencePlan = preferencePlan;
             return Task.FromResult(plan);
@@ -380,7 +381,8 @@ public sealed class AcquisitionDecisionPipelineTests
             IReadOnlyList<ProfileSizeRule>? sizeRules = null,
             QualityUpgradeStopPolicy? upgradeStop = null,
             ProfileAcquisitionRules? profileAcquisition = null,
-            int? runtimeMinutes = null)
+            int? runtimeMinutes = null,
+            string? imdbId = null)
             => throw new InvalidOperationException("An unready connection must not reach the search planner.");
     }
 

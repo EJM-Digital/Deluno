@@ -214,7 +214,8 @@ public abstract class LibrarySearchJobHandler(
                      CurrentReleaseName: candidate.FilePath,
                      PreferencePlan: preferencePlan,
                      CurrentPreferenceEvaluation: currentPreferenceEvaluation,
-                     RuntimeMinutes: candidate.RuntimeMinutes).WithProfile(profileRules),
+                     RuntimeMinutes: candidate.RuntimeMinutes,
+                     ImdbId: candidate.ImdbId).WithProfile(profileRules),
                 cancellationToken);
             if (decisionPlan.SourceCount > 0 && decisionPlan.DownloadClientCount > 0)
             {
@@ -574,7 +575,8 @@ public abstract class LibrarySearchJobHandler(
                      CurrentReleaseName: candidate.FilePath,
                      PreferencePlan: preferencePlan,
                      CurrentPreferenceEvaluation: currentPreferenceEvaluation,
-                     RuntimeMinutes: candidate.RuntimeMinutes).WithProfile(profileRules),
+                     RuntimeMinutes: candidate.RuntimeMinutes,
+                     ImdbId: candidate.ImdbId).WithProfile(profileRules),
                 cancellationToken);
             if (decisionPlan.SourceCount > 0 && decisionPlan.DownloadClientCount > 0)
             {

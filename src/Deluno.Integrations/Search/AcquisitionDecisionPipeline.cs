@@ -115,7 +115,8 @@ public sealed class AcquisitionDecisionPipeline : IAcquisitionDecisionPipeline
                 request.SizeRules,
                 request.UpgradeStop,
                 request.ProfileAcquisition,
-                request.RuntimeMinutes);
+                request.RuntimeMinutes,
+                request.ImdbId);
 
         searchPlan = await SkipBlockedReleasesAsync(searchPlan, cancellationToken);
         searchPlan = LeaveEpisodesToTheirOwnSearch(searchPlan, request);
@@ -703,7 +704,13 @@ public sealed record AcquisitionDecisionRequest(
     /// of the fixed reference runtime the profile is configured against
     /// (#630).
     /// </summary>
-    int? RuntimeMinutes = null);
+    int? RuntimeMinutes = null,
+    /// <summary>
+    /// The title's own IMDb id, when the catalogue has one. Carried down to
+    /// the tracker search so a definition that only filters server-side by
+    /// IMDb id (EZTV's JSON API, #606) can search the right show.
+    /// </summary>
+    string? ImdbId = null);
 
 public sealed record AcquisitionDecisionPlan(
     MediaSearchPlan SearchPlan,

@@ -279,7 +279,8 @@ public sealed class SeasonSearchExecutor(
                 AvailableUtc: wantedItem.AvailableUtc,
                 NumberingScheme: seriesItem.NumberingScheme,
                 PreferencePlan: preferencePlan,
-                RuntimeMinutes: seriesItem.RuntimeMinutes).WithProfile(profileRules),
+                RuntimeMinutes: seriesItem.RuntimeMinutes,
+                ImdbId: seriesItem.ImdbId).WithProfile(profileRules),
             cancellationToken);
         var searchPlan = decisionPlan.SearchPlan;
         var bestCandidate = searchPlan.BestCandidate;
