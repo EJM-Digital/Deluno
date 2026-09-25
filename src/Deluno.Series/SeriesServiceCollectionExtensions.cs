@@ -40,6 +40,9 @@ public static class SeriesServiceCollectionExtensions
         services.AddSingleton<IQualityRankSink>(provider => provider.GetRequiredService<ISeriesCatalogRepository>());
         services.AddSingleton<ISeriesImportRecoveryRetentionRepository>(provider => provider.GetRequiredService<ISeriesCatalogRepository>());
         services.AddSingleton<ISeriesWorkflowService, SeriesWorkflowService>();
+        // Scoped, not singleton: it consumes IAcquisitionDecisionPipeline and
+        // IDownloadClientGrabService, which are both scoped.
+        services.TryAddScoped<ISeasonSearchExecutor, SeasonSearchExecutor>();
         services.AddSingleton<IEpisodeWorkflowService, EpisodeWorkflowService>();
         services.AddSingleton<IEpisodeImportRecoveryService, EpisodeImportRecoveryService>();
         services.AddSingleton<IDispatchRecoveryHandlerComponent, SeriesDispatchRecoveryHandler>();

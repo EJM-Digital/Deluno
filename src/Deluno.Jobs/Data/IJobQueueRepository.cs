@@ -242,6 +242,11 @@ public interface IJobQueueRepository
         IReadOnlyList<EpisodeSearchPlanItem> episodes,
         CancellationToken cancellationToken);
 
+    Task PlanSeasonSearchesAsync(
+        string libraryId,
+        IReadOnlyList<SeasonSearchPlanItem> seasons,
+        CancellationToken cancellationToken);
+
     Task<string> RecordDownloadDispatchAsync(
         string libraryId,
         string mediaType,

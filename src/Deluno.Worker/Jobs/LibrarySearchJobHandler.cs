@@ -7,7 +7,9 @@ using Deluno.Libraries.Contracts;
 using Deluno.Libraries.Data;
 using Deluno.Movies.Data;
 using Deluno.Quality.Data;
+using Deluno.Series.Contracts;
 using Deluno.Series.Data;
+using Deluno.Series.Services;
 using Deluno.Quality;
 using Deluno.Quality.ReleasePreferences;
 using Deluno.Platform.Contracts;
@@ -724,10 +726,51 @@ public abstract class LibrarySearchJobHandler(
                 Title: episode.Title ?? $"S{episode.SeasonNumber:00}E{episode.EpisodeNumber:00}"))
             .ToArray();
 
-        // The planner de-duplicates against jobs already queued for the same
-        // episode, so a cycle that runs while the last one is still working
-        // through its episodes adds nothing rather than doubling it.
-        await jobQueueRepository.PlanEpisodeSearchesAsync(payload.LibraryId, eligibleEpisodes, cancellationToken);
+        // A season that is entirely missing and fully aired is searched as one
+        // season rather than one search per episode, so a whole-season pack
+        // can win the way the manual "Search season" button already lets it
+        // (#646). Inventory is only fetched for the series with at least two
+        // eligible episodes in the same season — nothing smaller can ever
+        // qualify — and only once per series even when several of its seasons
+        // qualify.
+        var seasonCandidateSeriesIds = eligibleEpisodes
+            .GroupBy(episode => (episode.SeriesId, episode.SeasonNumber))
+            .Where(group => group.Count() >= SeasonSearchPlanner.MinimumSeasonSize)
+            .Select(group => group.Key.SeriesId)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+
+        var seasonInventoryBySeries = new Dictionary<string, SeriesInventoryDetail>(StringComparer.OrdinalIgnoreCase);
+        foreach (var candidateSeriesId in seasonCandidateSeriesIds)
+        {
+            var candidateInventory = await seriesCatalogRepository.GetInventoryDetailAsync(candidateSeriesId, cancellationToken);
+            if (candidateInventory is not null)
+            {
+                seasonInventoryBySeries[candidateSeriesId] = candidateInventory;
+            }
+        }
+
+        var seasonPlan = SeasonSearchPlanner.Decide(
+            eligibleEpisodes,
+            now,
+            (seriesId, seasonNumber) => seasonInventoryBySeries.TryGetValue(seriesId, out var seriesInventory)
+                ? seriesInventory.Episodes.Where(episode => episode.SeasonNumber == seasonNumber).ToArray()
+                : []);
+
+        var seasonSearches = seasonPlan.SeasonSearches
+            .Select(season => season with
+            {
+                SeriesTitle = seasonInventoryBySeries.TryGetValue(season.SeriesId, out var seriesInventory)
+                    ? seriesInventory.Title
+                    : season.SeriesTitle
+            })
+            .ToArray();
+
+        // Both planners de-duplicate against jobs already queued for the same
+        // episode or season, so a cycle that runs while the last one is still
+        // working through its plan adds nothing rather than doubling it.
+        await jobQueueRepository.PlanSeasonSearchesAsync(payload.LibraryId, seasonSearches, cancellationToken);
+        await jobQueueRepository.PlanEpisodeSearchesAsync(payload.LibraryId, seasonPlan.EpisodeSearches, cancellationToken);
 
         await jobQueueRepository.RecordSearchCycleRunAsync(
             new RecordSearchCycleRunRequest(
