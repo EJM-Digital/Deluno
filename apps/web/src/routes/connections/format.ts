@@ -26,6 +26,10 @@ export function healthChip(item: { isEnabled: boolean; healthStatus: string; rat
     case "healthy": return statusPresentation("connection.healthy");
     case "degraded": return statusPresentation("connection.degraded");
     case "untested": return statusPresentation("connection.untested");
+    // Deluno stopped asking it after repeated failures (see lastHealthMessage
+    // for when it tries again). Distinct from Degraded because the action is
+    // different: Degraded means check the config, this means Reset it.
+    case "circuitOpen": return statusPresentation("connection.circuitOpen");
     default: return statusPresentation("connection.unhealthy");
   }
 }

@@ -351,6 +351,9 @@ public sealed class ReferenceSearchFlowTests
             retryAfterUtc = DateTimeOffset.MinValue;
             return false;
         }
+
+        public Task CloseCircuitsAsync(string serviceType, string serviceId, CancellationToken cancellationToken)
+            => Task.CompletedTask;
     }
 
     private sealed class DisabledRankingModelService : IReleaseRankingModelService

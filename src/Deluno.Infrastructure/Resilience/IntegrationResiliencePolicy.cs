@@ -15,6 +15,22 @@ public interface IIntegrationResiliencePolicy
         CancellationToken cancellationToken);
 
     bool IsCircuitOpen(string key, out DateTimeOffset retryAfterUtc);
+
+    /// <summary>
+    /// Closes every circuit recorded for one service — every key built as
+    /// "{serviceType}:{serviceId}:...", regardless of what a caller appended
+    /// after the id (address, protocol, purpose). Every call site in the
+    /// codebase keys its circuits this way, so a prefix match reaches every
+    /// circuit a given indexer or download client could have opened, even
+    /// when two call sites (a manual Test and a background search, say)
+    /// built their own key suffix differently and would otherwise be talking
+    /// past each other.
+    ///
+    /// Clears both the in-memory circuit and the rows persisted in
+    /// integration_circuit_states, so a circuit closed this way does not
+    /// reappear on the next restart.
+    /// </summary>
+    Task CloseCircuitsAsync(string serviceType, string serviceId, CancellationToken cancellationToken);
 }
 
 public sealed record IntegrationResilienceRequest(
@@ -220,6 +236,56 @@ public sealed class IntegrationResiliencePolicy(
 
     public bool IsCircuitOpen(string key, out DateTimeOffset retryAfterUtc)
         => TryGetOpenCircuit(NormalizeKey(key), out retryAfterUtc);
+
+    public async Task CloseCircuitsAsync(string serviceType, string serviceId, CancellationToken cancellationToken)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(serviceType);
+        ArgumentException.ThrowIfNullOrWhiteSpace(serviceId);
+
+        // Persisted state may not have been loaded into memory yet on a
+        // fresh process (nobody has searched or tested this service since
+        // startup); load it first so a stale in-memory circuit never
+        // survives this call and reappears later.
+        await EnsureStateLoadedAsync(cancellationToken);
+
+        var prefix = $"{serviceType}:{serviceId}:";
+        lock (_sync)
+        {
+            foreach (var key in _circuits.Keys.Where(k => k.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)).ToArray())
+            {
+                _circuits.Remove(key);
+            }
+        }
+
+        try
+        {
+            await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+                DelunoDatabaseNames.Jobs, cancellationToken);
+            using var command = connection.CreateCommand();
+            command.CommandText =
+                """
+                DELETE FROM integration_circuit_states
+                WHERE integration_key LIKE @prefix ESCAPE '\'
+                """;
+            var param = command.CreateParameter();
+            param.ParameterName = "@prefix";
+            param.Value = EscapeLikePattern(prefix) + "%";
+            command.Parameters.Add(param);
+
+            await command.ExecuteNonQueryAsync(cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(
+                ex,
+                "Failed to clear persisted circuit breaker state for {ServiceType}:{ServiceId}.",
+                serviceType,
+                serviceId);
+        }
+    }
+
+    private static string EscapeLikePattern(string value)
+        => value.Replace("\\", "\\\\").Replace("%", "\\%").Replace("_", "\\_");
 
     public static bool IsTransientHttpStatusCode(HttpStatusCode statusCode)
     {
