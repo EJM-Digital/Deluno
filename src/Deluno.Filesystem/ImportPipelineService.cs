@@ -2739,7 +2739,9 @@ public sealed partial class ImportPipelineService(
                 episodeNumbers.AlternateEpisodes,
                 episodeNumbers.SeasonPacks,
                 preferenceEvaluations.Skip(1).ToArray(),
-                seriesId: knownSeriesId);
+                seriesId: knownSeriesId,
+                upgradeUntilCutoff: library.UpgradeUntilCutoff,
+                upgradeUnknownItems: library.UpgradeUnknownItems);
             // The repository's legacy single-item boolean means "a new series
             // row was created", not "the import was recorded". A download
             // tied to an existing series therefore used to report a successful

@@ -28,4 +28,24 @@ public sealed record ExistingSeriesImportRequest(
     IReadOnlyList<ImportedSeasonPackItem>? SeasonPacks = null,
     IReadOnlyList<PreferenceEvaluationSnapshot>? PreferenceEvaluations = null,
     /// <summary>The show this is already known to be, when it is; see <c>MediaExistingImportRequest.MediaId</c>.</summary>
-    string? SeriesId = null);
+    string? SeriesId = null,
+
+    /// <summary>
+    /// The library's own upgrade policy, needed to decide each episode's own
+    /// wanted state rather than writing every held episode <c>covered</c>
+    /// regardless of its quality (#654). Defaults to <c>false</c> so a caller
+    /// that does not pass it keeps today's settle-immediately behaviour
+    /// instead of silently gaining upgrade search traffic it never asked for.
+    /// </summary>
+    bool UpgradeUntilCutoff = false,
+
+    /// <summary>Mirrors <see cref="UpgradeUntilCutoff"/> for episodes whose quality could not be read.</summary>
+    bool UpgradeUnknownItems = false,
+
+    /// <summary>
+    /// What actually put this file here, for the episode's wanted reason:
+    /// <c>"existing-library"</c> for a rescan of files already on disk, or
+    /// the default for a completed download (a season pack episode says so
+    /// itself via <see cref="ImportedEpisodeItem.FromSeasonPack"/>).
+    /// </summary>
+    string EpisodeImportSource = "download");
