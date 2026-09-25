@@ -143,7 +143,7 @@ export const router = createBrowserRouter([
         index: true,
         lazy: withSkeleton(async () => {
           const module = await import("./routes/dashboard-page");
-          return { loader: module.dashboardLoader, Component: module.DashboardPage };
+          return { loader: module.dashboardLoader, shouldRevalidate: module.dashboardShouldRevalidate, Component: module.DashboardPage };
         })
       },
       {
