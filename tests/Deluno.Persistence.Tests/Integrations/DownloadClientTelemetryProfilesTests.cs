@@ -136,6 +136,58 @@ public sealed class DownloadClientTelemetryProfilesTests
         Assert.Equal("import-no-match", history.Failure.Code);
     }
 
+    /// <summary>
+    /// #650: GrabStatus only ever means "the client accepted the request" -
+    /// the grab, not the download, succeeded. A Transmission magnet that
+    /// never got its metadata was shown as completed a second after being
+    /// sent, with a size of zero, because "succeeded" was read the same way
+    /// whatever field it came from.
+    /// </summary>
+    [Fact]
+    public void A_grab_the_client_accepted_but_never_detected_is_not_shown_as_completed()
+    {
+        var grabbedUtc = DateTimeOffset.Parse("2026-09-25T04:22:05Z");
+        var dispatch = new DownloadDispatchItem(
+            Id: "dispatch-650",
+            LibraryId: "library-1",
+            MediaType: "tv",
+            EntityType: "episode",
+            EntityId: "episode-1",
+            ReleaseName: "The.Last.of.Us.S01E07.2023.720p.WEB-DL",
+            IndexerName: "LimeTorrents",
+            DownloadClientId: "client-1",
+            DownloadClientName: "Transmission",
+            Status: "sent",
+            NotesJson: null,
+            CreatedUtc: grabbedUtc,
+            GrabStatus: "succeeded",
+            GrabAttemptedUtc: grabbedUtc.AddSeconds(1),
+            GrabResponseCode: 200,
+            GrabMessage: null,
+            GrabFailureCode: null,
+            GrabResponseJson: null,
+            DetectedUtc: null,
+            TorrentHashOrItemId: "7",
+            DownloadedBytes: null,
+            ImportStatus: null,
+            ImportDetectedUtc: null,
+            ImportCompletedUtc: null,
+            ImportedFilePath: null,
+            ImportFailureCode: null,
+            ImportFailureMessage: null,
+            CircuitOpenUntilUtc: null,
+            NextRetryEligibleUtc: null,
+            AttemptCount: 1);
+
+        var history = DownloadClientTelemetryService.CreateDispatchHistoryItem(
+            "client-1", "Transmission", "transmission", dispatch, grabbedUtc.AddMinutes(10));
+
+        Assert.NotEqual(DownloadQueueStatuses.Completed, history.Outcome);
+        Assert.NotEqual(DownloadQueueStatuses.Imported, history.Outcome);
+        Assert.Equal("sent", history.Outcome);
+        Assert.Equal(0, history.SizeBytes);
+    }
+
     [Fact]
     public void Dispatch_history_deduplicates_against_native_external_id_and_keeps_unmatched_trace_rows()
     {

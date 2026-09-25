@@ -54,7 +54,9 @@ public sealed class DelugeDownloadClient(IHttpClientFactory httpClientFactory) :
                 Math.Max(0, Convert.ToInt32(item.Eta ?? 0)), Convert.ToInt64(item.TotalSize ?? 0), Convert.ToInt64(item.TotalDone ?? 0), item.NumPeers ?? 0, "Deluge",
                 DelugeMessage(item.Message), DownloadClientHelpers.FromUnix(Convert.ToInt64(item.TimeAdded ?? 0)), DownloadClientHelpers.ResolveDownloadPath(item.SavePath, item.Name),
                 UploadSpeedMbps: Math.Round((item.UploadPayloadRate ?? 0) / 1_000_000d, 1));
-        }).ToArray();
+        })
+            .Select(item => DownloadClientHelpers.ReconcileTorrentStatus(item, capturedUtc))
+            .ToArray();
         return CreateSnapshot(client, queue, capturedUtc, "healthy", $"Connected to Deluge at {baseUri.Host}:{baseUri.Port}.");
     }
 

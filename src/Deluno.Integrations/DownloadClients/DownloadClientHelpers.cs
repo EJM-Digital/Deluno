@@ -5,6 +5,7 @@ using System.Net.Http.Json;
 using System.Text;
 using Deluno.Connections.Contracts;
 using Deluno.Contracts;
+using Deluno.Platform.Contracts;
 
 namespace Deluno.Integrations.DownloadClients;
 
@@ -270,6 +271,52 @@ internal static class DownloadClientHelpers
             $"\"{queueItemId}\" is not a download id {label} would recognise, so Deluno did not send the request.",
             upstreamDetail: $"{label} addresses downloads by number.",
             category: "configuration");
+
+    /// <summary>
+    /// The one rule every torrent adapter (Transmission, qBittorrent, Deluge)
+    /// applies to a freshly built <see cref="DownloadQueueItem"/> before it
+    /// reaches a screen, so none of them has to reimplement it (#650).
+    ///
+    /// <para><b>Never complete on "nothing left" alone.</b> A magnet whose
+    /// metadata has not arrived reports zero size, zero progress and zero
+    /// peers — on Transmission that is <c>leftUntilDone == 0</c> only because
+    /// <c>sizeWhenDone</c> is still unknown, not because the transfer is
+    /// done. A client-reported "done" status is trusted only once the size is
+    /// actually known (greater than zero); otherwise a status an adapter
+    /// mapped to <see cref="DownloadQueueStatuses.ImportReady"/> or
+    /// <see cref="DownloadQueueStatuses.Completed"/> is downgraded back to
+    /// downloading.</para>
+    ///
+    /// <para><b>No metadata and no peers, for the stall window, is stalled.</b>
+    /// #618 gave Deluge this rule for the same reason a torrent with no
+    /// connected peers never gets a chance to show throughput: the generic
+    /// no-throughput health check needs at least one sample of "not moving",
+    /// and a torrent that never even resolves its own size can sit at
+    /// "downloading" forever without ever tripping it. qBittorrent's own
+    /// <c>metaDL</c> is exactly this case (its <c>stalledDL</c> already maps
+    /// to <see cref="DownloadQueueStatuses.Stalled"/> through its status
+    /// text), so this is the one place all three clients get the same
+    /// answer.</para>
+    /// </summary>
+    internal static DownloadQueueItem ReconcileTorrentStatus(DownloadQueueItem item, DateTimeOffset capturedUtc)
+    {
+        var metadataKnown = item.SizeBytes > 0;
+
+        if (!metadataKnown && item.Status is DownloadQueueStatuses.ImportReady or DownloadQueueStatuses.Completed)
+        {
+            return item with { Status = DownloadQueueStatuses.Downloading };
+        }
+
+        if (!metadataKnown &&
+            item.Peers <= 0 &&
+            item.Status == DownloadQueueStatuses.Downloading &&
+            capturedUtc - item.AddedUtc >= DownloadHealthStrikes.Window)
+        {
+            return item with { Status = DownloadQueueStatuses.Stalled };
+        }
+
+        return item;
+    }
 
     internal static string NormalizeTextStatus(string? status, double? progress)
     {
