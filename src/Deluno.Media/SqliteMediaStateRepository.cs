@@ -773,6 +773,25 @@ public sealed class SqliteMediaStateRepository(
             await countCommand.ExecuteScalarAsync(cancellationToken),
             CultureInfo.InvariantCulture);
 
+        // Counted separately from the page below (#649): a person can only
+        // dismiss or retry what the screen lists, so these must reflect every
+        // open case, not just the ones that fit in RecentCases.
+        var kindCounts = new Dictionary<string, int>(StringComparer.Ordinal);
+        using (var kindCommand = connection.CreateCommand())
+        {
+            kindCommand.CommandText = $"""
+                SELECT failure_kind, COUNT(*)
+                FROM {map.RecoveryTable}
+                WHERE status = 'open'
+                GROUP BY failure_kind;
+                """;
+            using var kindReader = await kindCommand.ExecuteReaderAsync(cancellationToken);
+            while (await kindReader.ReadAsync(cancellationToken))
+            {
+                kindCounts[kindReader.GetString(0)] = Convert.ToInt32(kindReader.GetInt64(1), CultureInfo.InvariantCulture);
+            }
+        }
+
         using var command = connection.CreateCommand();
         command.CommandText = $"""
             SELECT
@@ -788,7 +807,7 @@ public sealed class SqliteMediaStateRepository(
             FROM {map.RecoveryTable}
             WHERE status = 'open'
             ORDER BY detected_utc DESC
-            LIMIT 12;
+            LIMIT {RecoveryCasePageLimit};
             """;
 
         var cases = new List<MediaImportRecoveryCase>();
@@ -809,13 +828,22 @@ public sealed class SqliteMediaStateRepository(
 
         return new MediaImportRecoverySummary(
             OpenCount: openCount,
-            QualityCount: cases.Count(item => item.FailureKind == "quality"),
-            UnmatchedCount: cases.Count(item => item.FailureKind == "unmatched"),
-            CorruptCount: cases.Count(item => item.FailureKind == "corrupt"),
-            DownloadFailedCount: cases.Count(item => item.FailureKind == "downloadFailed"),
-            ImportFailedCount: cases.Count(item => item.FailureKind == "importFailed"),
+            QualityCount: kindCounts.GetValueOrDefault("quality"),
+            UnmatchedCount: kindCounts.GetValueOrDefault("unmatched"),
+            CorruptCount: kindCounts.GetValueOrDefault("corrupt"),
+            DownloadFailedCount: kindCounts.GetValueOrDefault("downloadFailed"),
+            ImportFailedCount: kindCounts.GetValueOrDefault("importFailed"),
             RecentCases: cases);
     }
+
+    /// <summary>
+    /// How many open cases RecentCases can hold (#649). A single-user
+    /// instance's open recovery cases are meant to be worked down to zero, not
+    /// to accumulate for ever, so this is generous rather than exact — but it
+    /// must stay well above what the sidebar's "needs attention" count could
+    /// plausibly reach, or the count and the list disagree again.
+    /// </summary>
+    private const int RecoveryCasePageLimit = 500;
 
     /// <summary>
     /// One <c>SET</c> line per rating column, generated from

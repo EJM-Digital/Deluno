@@ -178,6 +178,68 @@ public sealed class MediaStateRepositoryTests
     [Theory]
     [InlineData(MediaKind.Movie)]
     [InlineData(MediaKind.Series)]
+    public async Task Import_recovery_counts_and_cases_cover_more_than_the_old_twelve_row_page(MediaKind kind)
+    {
+        // #649: the summary's per-kind counts used to be computed from the
+        // twelve-row page rather than the full open set, and cases past the
+        // twelfth were never returned at all — so a person could not see or
+        // clear them from any screen. Twenty open cases, split across two
+        // failure kinds, past the old page size, proves both are fixed.
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(new DateTimeOffset(2026, 8, 21, 5, 0, 0, TimeSpan.Zero));
+        await InitializeSchemaAsync(storage, timeProvider, kind);
+
+        const int downloadFailedCases = 13;
+        const int importFailedCases = 7;
+
+        if (kind == MediaKind.Movie)
+        {
+            var repository = new SqliteMovieCatalogRepository(storage.Factory, timeProvider);
+            for (var index = 0; index < downloadFailedCases; index++)
+            {
+                await repository.AddImportRecoveryCaseAsync(
+                    new CreateMovieImportRecoveryCaseRequest($"Movie {index}", "downloadFailed", "Grab failed", "Retry"),
+                    CancellationToken.None);
+            }
+            for (var index = 0; index < importFailedCases; index++)
+            {
+                await repository.AddImportRecoveryCaseAsync(
+                    new CreateMovieImportRecoveryCaseRequest($"Movie import {index}", "importFailed", "Import failed", "Review"),
+                    CancellationToken.None);
+            }
+        }
+        else
+        {
+            var repository = new SqliteSeriesCatalogRepository(storage.Factory, timeProvider);
+            for (var index = 0; index < downloadFailedCases; index++)
+            {
+                await repository.AddImportRecoveryCaseAsync(
+                    new CreateSeriesImportRecoveryCaseRequest($"Series {index}", "downloadFailed", "Grab failed", "Retry"),
+                    CancellationToken.None);
+            }
+            for (var index = 0; index < importFailedCases; index++)
+            {
+                await repository.AddImportRecoveryCaseAsync(
+                    new CreateSeriesImportRecoveryCaseRequest($"Series import {index}", "importFailed", "Import failed", "Review"),
+                    CancellationToken.None);
+            }
+        }
+
+        var summary = await new SqliteMediaStateRepository(storage.Factory, timeProvider)
+            .GetImportRecoverySummaryAsync(kind, CancellationToken.None);
+
+        const int totalCases = downloadFailedCases + importFailedCases;
+        Assert.Equal(totalCases, summary.OpenCount);
+        // Every open case is returned, not just the first twelve.
+        Assert.Equal(totalCases, summary.RecentCases.Count);
+        // Per-kind counts reflect the full open set, not the truncated page.
+        Assert.Equal(downloadFailedCases, summary.DownloadFailedCount);
+        Assert.Equal(importFailedCases, summary.ImportFailedCount);
+    }
+
+    [Theory]
+    [InlineData(MediaKind.Movie)]
+    [InlineData(MediaKind.Series)]
     public async Task Engine_repositories_route_metadata_updates_through_shared_store(MediaKind kind)
     {
         using var storage = TestStorage.Create();
