@@ -1484,7 +1484,8 @@ public static class SeriesEndpointRouteBuilderExtensions
                         SceneEpisodeNumber: episode.SceneEpisodeNumber,
                         CurrentPreferenceEvaluation: baseline.PreferenceEvaluation,
                         PreferencePlan: preferencePlan,
-                        RuntimeMinutes: seriesItem.RuntimeMinutes).WithProfile(profileRules),
+                        RuntimeMinutes: seriesItem.RuntimeMinutes,
+                        ImdbId: seriesItem.ImdbId).WithProfile(profileRules),
                     cancellationToken);
                 var searchPlan = decisionPlan.SearchPlan;
                 var bestCandidate = searchPlan.BestCandidate;

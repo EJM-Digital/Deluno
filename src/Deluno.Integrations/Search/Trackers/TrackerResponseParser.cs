@@ -409,7 +409,7 @@ public static partial class TrackerResponseParser
 
     /// <summary>Fields Cardigann never lets cost a release: extras a site may leave out of one row.</summary>
     private static readonly HashSet<string> ImplicitlyOptional =
-        ["imdb", "imdbid", "tmdbid", "rageid", "tvdbid", "tvmazeid", "traktid", "doubanid", "poster", "banner", "description", "genre"];
+        ["imdb", "imdbid", "tmdbid", "rageid", "tvdbid", "tvmazeid", "traktid", "doubanid", "poster", "banner", "description", "genre", "season", "episode"];
 
     /// <summary>
     /// Every field in order. Each value is kept as <c>.Result.name</c> for the
@@ -598,6 +598,14 @@ public static partial class TrackerResponseParser
                 release.Year = TrackerNumbers.ParseInt(value);
                 return value;
 
+            case "season":
+                release.Season = TrackerNumbers.ParseInt(value);
+                return value;
+
+            case "episode":
+                release.Episode = TrackerNumbers.ParseInt(value);
+                return value;
+
             case "genre":
                 release.Genre = value;
                 return value;
@@ -638,8 +646,27 @@ public static partial class TrackerResponseParser
             }
         }
 
+        // A row that reports its own season or episode (EZTV's JSON API does,
+        // per row) is held to the season/episode the search asked for. Every
+        // other definition leaves TrackerRelease.Season/Episode null, so this
+        // never touches them.
+        if (release.Season is { } rowSeason && WantedNumber(variables, ".Query.Season") is { } wantedSeason && rowSeason != wantedSeason)
+        {
+            return false;
+        }
+
+        if (release.Episode is { } rowEpisode && WantedNumber(variables, ".Query.Ep") is { } wantedEpisode && rowEpisode != wantedEpisode)
+        {
+            return false;
+        }
+
         return true;
     }
+
+    private static int? WantedNumber(IReadOnlyDictionary<string, object?> variables, string name)
+        => variables.GetValueOrDefault(name) is string text && int.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out var number)
+            ? number
+            : null;
 
     private static int? FirstNumber(string value)
     {

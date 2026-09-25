@@ -46,6 +46,60 @@ public sealed class TrackerResponseParserTests
         Assert.NotNull(first.PublishDate);
     }
 
+    /// <summary>
+    /// #606: EZTV's JSON API only filters server-side by IMDb id; an episode
+    /// search with one reads every row EZTV has for the show, and only the
+    /// requested season/episode survive the row-level filter.
+    /// </summary>
+    [Fact]
+    public void Eztv_with_an_imdb_id_keeps_only_the_requested_episode()
+    {
+        var releases = Parse(
+            "eztv",
+            "eztv.json",
+            new TrackerQuery("Young Sheldon", "tvsearch", Season: 7, Episode: 9, ImdbId: "tt6226232", Categories: [5000]));
+
+        var release = Assert.Single(releases);
+        Assert.StartsWith("Young Sheldon S07E09", release.Title);
+        Assert.StartsWith("magnet:?xt=urn:btih:", release.MagnetUrl);
+        Assert.Equal(40, release.InfoHash!.Length);
+        Assert.True(release.Size > 100_000_000);
+        Assert.Equal(3, release.Seeders);
+        Assert.NotNull(release.PublishDate);
+    }
+
+    /// <summary>A season search (no episode number) keeps the whole season.</summary>
+    [Fact]
+    public void Eztv_with_an_imdb_id_and_no_episode_keeps_the_whole_season()
+    {
+        var releases = Parse(
+            "eztv",
+            "eztv.json",
+            new TrackerQuery("Young Sheldon", "tvsearch", Season: 7, ImdbId: "tt6226232", Categories: [5000]));
+
+        Assert.Equal(10, releases.Count);
+        Assert.All(releases, release => Assert.StartsWith("Young Sheldon S07", release.Title));
+    }
+
+    /// <summary>
+    /// Without an IMDb id, EZTV's API hands back its newest torrents across
+    /// every show on the site. A keywords-only search must not surface them
+    /// as if they were an answer for the searched show (#606): the fixture's
+    /// rows are all "Young Sheldon", so a search for something else reads
+    /// nothing from it, same as the andmatch row filter every other keyword
+    /// tracker definition uses.
+    /// </summary>
+    [Fact]
+    public void Eztv_without_an_imdb_id_reads_nothing_for_an_unrelated_keyword_search()
+    {
+        var releases = Parse(
+            "eztv",
+            "eztv.json",
+            new TrackerQuery("The Simpsons S01E01", "tvsearch", Season: 1, Episode: 1, Categories: [5000]));
+
+        Assert.Empty(releases);
+    }
+
     [Fact]
     public void Limetorrents_html_rows_become_releases_that_point_at_their_details_page()
     {
@@ -60,25 +114,6 @@ public sealed class TrackerResponseParserTests
             Assert.NotNull(release.PublishDate);
             // The .torrent is on the details page; the download block finds it at grab time.
             Assert.StartsWith("https://www.limetorrents.fun/", release.DownloadUrl);
-        });
-    }
-
-    [Fact]
-    public void Eztv_answers_by_imdb_id_with_a_magnet_already_on_every_row()
-    {
-        var releases = Parse("eztv", "eztv.json", new TrackerQuery(string.Empty, "tvsearch", ImdbId: "tt37158600", Categories: [5000]));
-
-        Assert.Equal(2, releases.Count);
-        Assert.All(releases, release =>
-        {
-            Assert.False(string.IsNullOrWhiteSpace(release.Title));
-            Assert.StartsWith("magnet:?xt=urn:btih:", release.MagnetUrl);
-            Assert.Equal(40, release.InfoHash!.Length);
-            Assert.True(release.Size > 0);
-            Assert.NotNull(release.Seeders);
-            Assert.NotNull(release.PublishDate);
-            Assert.Equal("tt37158600", release.ImdbId);
-            Assert.Contains(release.Categories, category => category / 1000 == 5);
         });
     }
 

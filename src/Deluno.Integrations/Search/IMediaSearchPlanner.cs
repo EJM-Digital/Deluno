@@ -42,5 +42,11 @@ public interface IMediaSearchPlanner
         IReadOnlyList<ProfileSizeRule>? sizeRules = null,
         QualityUpgradeStopPolicy? upgradeStop = null,
         ProfileAcquisitionRules? profileAcquisition = null,
-        int? runtimeMinutes = null);
+        int? runtimeMinutes = null,
+        /// <summary>
+        /// The title's own IMDb id, when metadata gave one. A tracker
+        /// definition that only filters server-side by IMDb id needs this to
+        /// search the right show at all (#606).
+        /// </summary>
+        string? imdbId = null);
 }

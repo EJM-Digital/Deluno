@@ -13,7 +13,7 @@ caps:
   categorymappings:
     - {id: tv, cat: TV, desc: "TV shows"}
   modes:
-    tv-search: [imdbid]
+    tv-search: [q, season, ep, imdbid]
 search:
   paths:
     - path: "api/get-torrents"
@@ -23,8 +23,13 @@ search:
         imdb_id: "{{ .Query.IMDBIDShort }}"
         limit: "100"
         page: "1"
+  # Without an IMDb id the API answers with its newest torrents from every
+  # show, so a row is kept only when its title carries every search word:
+  # an unrelated latest episode is not a result.
   rows:
     selector: torrents
+    filters:
+      - name: andmatch
     count:
       selector: torrents_count
   fields:
@@ -44,6 +49,14 @@ search:
       selector: date_released_unix
     imdbid:
       selector: imdb_id
+      optional: true
+    # Each row names its own season and episode, so a release is held to the
+    # one the search asked for rather than any episode of the show.
+    season:
+      selector: season
+      optional: true
+    episode:
+      selector: episode
       optional: true
     category:
       text: tv

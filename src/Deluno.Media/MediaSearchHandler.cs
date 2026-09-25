@@ -130,7 +130,8 @@ public static class MediaSearchHandler
                 CurrentReleaseName: wantedItem.FilePath,
                 PreferencePlan: preferencePlan,
                 CurrentPreferenceEvaluation: currentPreferenceEvaluation,
-                RuntimeMinutes: item.RuntimeMinutes).WithProfile(profileRules),
+                RuntimeMinutes: item.RuntimeMinutes,
+                ImdbId: wantedItem.ImdbId).WithProfile(profileRules),
             cancellationToken);
         var searchPlan = decisionPlan.SearchPlan;
         var bestCandidate = searchPlan.BestCandidate;

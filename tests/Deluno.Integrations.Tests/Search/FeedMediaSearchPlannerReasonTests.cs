@@ -661,6 +661,63 @@ public sealed class FeedMediaSearchPlannerReasonTests
         Assert.Equal("preferred", Assert.Single(withRuntime.Candidates).DecisionStatus);
     }
 
+    /// <summary>
+    /// #606: EZTV's JSON API only filters by IMDb id server-side; without one
+    /// it hands back its newest torrents across every show. This proves the
+    /// title's IMDb id actually reaches the tracker query through the real
+    /// path production uses - <c>BuildPlanAsync</c>'s <c>imdbId</c> parameter,
+    /// through <c>TrySearchIndexerAsync</c> into <c>TrackerQueryFor</c> and
+    /// onto <c>TrackerQuery.ImdbId</c> - rather than being dropped along the
+    /// way and leaving the tracker to search by keywords alone.
+    /// </summary>
+    [Fact]
+    public async Task A_titles_own_imdb_id_reaches_the_tracker_query()
+    {
+        var tracker = CreateIndexer("tracker-1", "EZTV Tracker", "tv") with
+        {
+            Protocol = "tracker",
+            BaseUrl = "https://eztvx.to/",
+            Categories = "5000",
+            DefinitionId = "eztv"
+        };
+        var recordingEngine = new RecordingTrackerEngine();
+        var trackers = new Deluno.Integrations.Search.Trackers.TrackerIndexers(
+            new Deluno.Integrations.Search.Trackers.TrackerDefinitionCatalog(overrideDirectory: null, NullLogger<Deluno.Integrations.Search.Trackers.TrackerDefinitionCatalog>.Instance),
+            recordingEngine);
+
+        await CreatePlanner(CreateConnections(tracker).Object, trackerIndexers: trackers).BuildPlanAsync(
+            "Young Sheldon",
+            2017,
+            "tv",
+            null,
+            "WEB 1080p",
+            [CreateSource(tracker)],
+            seasonNumber: 7,
+            episodeNumber: 9,
+            imdbId: "tt6226232",
+            cancellationToken: CancellationToken.None);
+
+        Assert.NotNull(recordingEngine.LastQuery);
+        Assert.Equal("tt6226232", recordingEngine.LastQuery!.ImdbId);
+        Assert.Equal(7, recordingEngine.LastQuery.Season);
+        Assert.Equal(9, recordingEngine.LastQuery.Episode);
+    }
+
+    private sealed class RecordingTrackerEngine : Deluno.Integrations.Search.Trackers.ITrackerEngine
+    {
+        public Deluno.Integrations.Search.Trackers.TrackerQuery? LastQuery { get; private set; }
+
+        public Task<Deluno.Integrations.Search.Trackers.TrackerSearchResult> SearchAsync(
+            Deluno.Integrations.Search.Trackers.TrackerConnection connection, Deluno.Integrations.Search.Trackers.TrackerQuery query, CancellationToken cancellationToken)
+        {
+            LastQuery = query;
+            return Task.FromResult(new Deluno.Integrations.Search.Trackers.TrackerSearchResult([], [], 0));
+        }
+
+        public Task<Deluno.Integrations.Search.Trackers.TrackerGrab> ResolveDownloadAsync(
+            Deluno.Integrations.Search.Trackers.TrackerConnection connection, string link, CancellationToken cancellationToken) => throw new NotSupportedException();
+    }
+
     private static FeedMediaSearchPlanner CreatePlanner(
         IConnectionsRepository connections,
         HttpMessageHandler? handler = null,
