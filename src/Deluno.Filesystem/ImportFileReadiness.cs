@@ -22,10 +22,19 @@ public static class ImportFileReadiness
         // A reviewed season pack's source path is a directory. Checking that
         // directory with FileInfo always reports a zero-length non-file and
         // incorrectly blocks the job. The executable unit is every member of
-        // the authoritative pack plan, so each source file must be stable.
-        return preview.Pack is { } pack
-            ? pack.Files.Count > 0 && pack.Files.All(file => IsReady(file.SourcePath))
-            : IsReady(preview.SourcePath);
+        // the authoritative pack plan, so each source file must be stable -
+        // including a file that will be skipped rather than imported (#652):
+        // it still has to be a settled file before Deluno can tell it does
+        // not resolve to a canonical episode, not one still arriving.
+        if (preview.Pack is { } pack)
+        {
+            var packSourcePaths = pack.Files.Select(file => file.SourcePath)
+                .Concat((pack.SkippedFiles ?? []).Select(file => file.SourcePath))
+                .ToArray();
+            return packSourcePaths.Length > 0 && packSourcePaths.All(IsReady);
+        }
+
+        return IsReady(preview.SourcePath);
     }
 
     /// <param name="timeProvider">

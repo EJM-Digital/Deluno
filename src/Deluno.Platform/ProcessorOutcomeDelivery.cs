@@ -63,7 +63,11 @@ public static class ProcessorOutcomeDelivery
             handoff.ReleaseName,
             ProcessorOutcomeRecord.Word(outcome),
             outcome == ProcessorHandoffOutcome.Imported ? importedPath : null,
-            outcome == ProcessorHandoffOutcome.NotImported ? reason : null,
+            // Reason is not only "why not imported" any more: an imported
+            // season pack carries which of its files were skipped and why
+            // here too (#652), so the processor - and the drawer - hear the
+            // whole story, not just "it has it".
+            reason,
             nowUtc,
             ProcessorOutcomeDeliveries.Pending,
             0,
@@ -274,6 +278,7 @@ public static class ProcessorOutcomeDelivery
     {
         var said = record.Outcome == ProcessorOutcomeRecord.Imported
             ? $"Deluno told {record.ProcessorName} it has {record.ReleaseName}"
+                + (string.IsNullOrWhiteSpace(record.Reason) ? "" : $" ({record.Reason})")
             : $"Deluno told {record.ProcessorName} it will not import {record.ReleaseName}: {record.Reason}";
         var tries = record.Attempts > 1 ? $" on attempt {record.Attempts}" : "";
         return record.Delivery switch

@@ -2351,6 +2351,258 @@ public sealed class ImportPipelineServiceTests
         Assert.Contains(recovery.RecentCases, item => item.Summary.Contains("does not prove", StringComparison.OrdinalIgnoreCase));
     }
 
+    /// <summary>
+    /// #652: a season pack with one extra the catalogue never listed as an
+    /// episode - "S01E00 - Making of ..." is the shape from the bug - used to
+    /// block the whole pack. It is skipped and named instead, and every file
+    /// that does resolve is still imported.
+    /// </summary>
+    [Fact]
+    public async Task Tv_pack_skips_a_file_that_does_not_resolve_to_a_canonical_episode_and_imports_the_rest()
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-04-29T08:00:00Z"));
+        await InitializeAllAsync(storage, timeProvider);
+        var downloadsPath = Path.Combine(storage.DataRoot, "downloads");
+        var movieRootPath = Path.Combine(storage.DataRoot, "movies");
+        var seriesRootPath = Path.Combine(storage.DataRoot, "series");
+        Directory.CreateDirectory(downloadsPath);
+        Directory.CreateDirectory(movieRootPath);
+        Directory.CreateDirectory(seriesRootPath);
+        var platform = CreatePlatformRepository(storage, timeProvider);
+        var libraries = CreateLibrariesRepository(storage, timeProvider);
+        await SaveSettingsAsync(platform, movieRootPath, downloadsPath, seriesRootPath);
+        await CreateTvLibraryAsync(libraries, seriesRootPath, downloadsPath);
+        var repository = new SqliteSeriesCatalogRepository(storage.Factory, timeProvider);
+        var series = await repository.AddAsync(new CreateSeriesRequest("Extra Pack", 2026, null), CancellationToken.None);
+        await repository.SyncEpisodeCatalogueAsync(
+            series.Id,
+            [
+                new CatalogueEpisodeItem(1, 1, "One", null, timeProvider.GetUtcNow().AddDays(-2)),
+                new CatalogueEpisodeItem(1, 2, "Two", null, timeProvider.GetUtcNow().AddDays(-1))
+            ],
+            "provider",
+            CancellationToken.None);
+        var packDirectory = Path.Combine(downloadsPath, "Extra.Pack.S01");
+        Directory.CreateDirectory(packDirectory);
+        foreach (var episode in new[] { 1, 2 })
+        {
+            var source = Path.Combine(packDirectory, $"Extra.Pack.S01E{episode:D2}.mkv");
+            await File.WriteAllBytesAsync(source, Enumerable.Repeat((byte)(0x70 + episode), 4096).ToArray());
+            File.SetLastWriteTimeUtc(source, DateTime.UtcNow.AddMinutes(-1));
+        }
+        var extraPath = Path.Combine(packDirectory, "Extra.Pack.S01E00.Making.Of.mkv");
+        await File.WriteAllBytesAsync(extraPath, Enumerable.Repeat((byte)0x99, 4096).ToArray());
+        File.SetLastWriteTimeUtc(extraPath, DateTime.UtcNow.AddMinutes(-1));
+
+        var service = CreateService(storage, timeProvider, platform, libraries, new SqliteMovieCatalogRepository(storage.Factory, timeProvider));
+        var request = new ImportExecuteRequest(
+            new ImportPreviewRequest(
+                packDirectory, null, "tv", series.Title, series.StartYear, [], [], null, null,
+                SeriesId: series.Id, SeriesType: SeriesTypes.Standard, NumberingScheme: SeriesNumberingSchemes.Standard),
+            "copy", false, true);
+
+        var preview = await service.PreviewAsync(request.Preview, CancellationToken.None);
+        Assert.True(preview.Pack!.CanExecute, string.Join(" | ", preview.Pack.BlockReasons));
+        Assert.Equal(3, preview.Pack.SourceFileCount);
+        Assert.Equal(2, preview.Pack.EpisodeCount);
+        var previewSkipped = Assert.Single(preview.Pack.SkippedFiles!);
+        Assert.Equal(extraPath, previewSkipped.SourcePath);
+        Assert.Contains("does not resolve", previewSkipped.Reason, StringComparison.OrdinalIgnoreCase);
+
+        var result = await service.ExecuteAsync(request, CancellationToken.None);
+        Assert.True(result.Succeeded, result.Message);
+        Assert.Contains("Skipped 1 file(s)", result.Message, StringComparison.Ordinal);
+        Assert.Contains("Making.Of", result.Message, StringComparison.OrdinalIgnoreCase);
+        var skipped = Assert.Single(result.Response!.SkippedFiles!);
+        Assert.Equal(extraPath, skipped.SourcePath);
+        Assert.Equal(2, result.Response.PackFiles!.Count);
+
+        Assert.True(File.Exists(extraPath));
+        var detail = await repository.GetInventoryDetailAsync(series.Id, CancellationToken.None);
+        Assert.Equal(2, detail!.Episodes.Count(episode => episode.HasFile));
+    }
+
+    /// <summary>
+    /// #652: a season-0 special the catalogue DOES list is not an extra. It
+    /// resolves like any other episode and is imported as that special.
+    /// </summary>
+    [Fact]
+    public async Task Tv_pack_imports_an_episode_zero_special_the_catalogue_lists()
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-04-29T08:00:00Z"));
+        await InitializeAllAsync(storage, timeProvider);
+        var downloadsPath = Path.Combine(storage.DataRoot, "downloads");
+        var movieRootPath = Path.Combine(storage.DataRoot, "movies");
+        var seriesRootPath = Path.Combine(storage.DataRoot, "series");
+        Directory.CreateDirectory(downloadsPath);
+        Directory.CreateDirectory(movieRootPath);
+        Directory.CreateDirectory(seriesRootPath);
+        var platform = CreatePlatformRepository(storage, timeProvider);
+        var libraries = CreateLibrariesRepository(storage, timeProvider);
+        await SaveSettingsAsync(platform, movieRootPath, downloadsPath, seriesRootPath);
+        await CreateTvLibraryAsync(libraries, seriesRootPath, downloadsPath);
+        var repository = new SqliteSeriesCatalogRepository(storage.Factory, timeProvider);
+        var series = await repository.AddAsync(new CreateSeriesRequest("Special Pack", 2026, null), CancellationToken.None);
+        await repository.SyncEpisodeCatalogueAsync(
+            series.Id,
+            [
+                new CatalogueEpisodeItem(1, 0, "Making Of", null, timeProvider.GetUtcNow().AddDays(-3)),
+                new CatalogueEpisodeItem(1, 1, "One", null, timeProvider.GetUtcNow().AddDays(-2)),
+                new CatalogueEpisodeItem(1, 2, "Two", null, timeProvider.GetUtcNow().AddDays(-1))
+            ],
+            "provider",
+            CancellationToken.None);
+        var packDirectory = Path.Combine(downloadsPath, "Special.Pack.S01");
+        Directory.CreateDirectory(packDirectory);
+        foreach (var episode in new[] { 0, 1, 2 })
+        {
+            var source = Path.Combine(packDirectory, $"Special.Pack.S01E{episode:D2}.mkv");
+            await File.WriteAllBytesAsync(source, Enumerable.Repeat((byte)(0x80 + episode), 4096).ToArray());
+            File.SetLastWriteTimeUtc(source, DateTime.UtcNow.AddMinutes(-1));
+        }
+
+        var service = CreateService(storage, timeProvider, platform, libraries, new SqliteMovieCatalogRepository(storage.Factory, timeProvider));
+        var request = new ImportExecuteRequest(
+            new ImportPreviewRequest(
+                packDirectory, null, "tv", series.Title, series.StartYear, [], [], null, null,
+                SeriesId: series.Id, SeriesType: SeriesTypes.Standard, NumberingScheme: SeriesNumberingSchemes.Standard),
+            "copy", false, true);
+
+        var preview = await service.PreviewAsync(request.Preview, CancellationToken.None);
+        Assert.True(preview.Pack!.CanExecute, string.Join(" | ", preview.Pack.BlockReasons));
+        Assert.Equal(3, preview.Pack.EpisodeCount);
+        Assert.Empty(preview.Pack.SkippedFiles ?? []);
+
+        var result = await service.ExecuteAsync(request, CancellationToken.None);
+        Assert.True(result.Succeeded, result.Message);
+        Assert.Empty(result.Response!.SkippedFiles ?? []);
+        Assert.Equal(3, result.Response.PackFiles!.Count);
+
+        var detail = await repository.GetInventoryDetailAsync(series.Id, CancellationToken.None);
+        Assert.Equal(3, detail!.Episodes.Count(episode => episode.HasFile));
+    }
+
+    /// <summary>
+    /// #652: a file still being written by the download client or a processor
+    /// is transient, not a reason to refuse the pack. Deluno waits the pack's
+    /// shared settle window and imports normally once it settles.
+    /// </summary>
+    [Fact]
+    public async Task Tv_pack_with_a_file_that_is_not_stable_yet_is_retried_and_then_imported()
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-04-29T08:00:00Z"));
+        await InitializeAllAsync(storage, timeProvider);
+        var downloadsPath = Path.Combine(storage.DataRoot, "downloads");
+        var movieRootPath = Path.Combine(storage.DataRoot, "movies");
+        var seriesRootPath = Path.Combine(storage.DataRoot, "series");
+        Directory.CreateDirectory(downloadsPath);
+        Directory.CreateDirectory(movieRootPath);
+        Directory.CreateDirectory(seriesRootPath);
+        var platform = CreatePlatformRepository(storage, timeProvider);
+        var libraries = CreateLibrariesRepository(storage, timeProvider);
+        await SaveSettingsAsync(platform, movieRootPath, downloadsPath, seriesRootPath);
+        await CreateTvLibraryAsync(libraries, seriesRootPath, downloadsPath);
+        var repository = new SqliteSeriesCatalogRepository(storage.Factory, timeProvider);
+        var series = await repository.AddAsync(new CreateSeriesRequest("Locked Pack", 2026, null), CancellationToken.None);
+        await repository.SyncEpisodeCatalogueAsync(
+            series.Id,
+            [
+                new CatalogueEpisodeItem(1, 1, "One", null, timeProvider.GetUtcNow().AddDays(-2)),
+                new CatalogueEpisodeItem(1, 2, "Two", null, timeProvider.GetUtcNow().AddDays(-1))
+            ],
+            "provider",
+            CancellationToken.None);
+        var packDirectory = Path.Combine(downloadsPath, "Locked.Pack.S01");
+        Directory.CreateDirectory(packDirectory);
+        var stableSource = Path.Combine(packDirectory, "Locked.Pack.S01E01.mkv");
+        await File.WriteAllBytesAsync(stableSource, Enumerable.Repeat((byte)0x21, 4096).ToArray());
+        File.SetLastWriteTimeUtc(stableSource, DateTime.UtcNow.AddMinutes(-1));
+        var lockedSource = Path.Combine(packDirectory, "Locked.Pack.S01E02.mkv");
+        await File.WriteAllBytesAsync(lockedSource, Enumerable.Repeat((byte)0x22, 4096).ToArray());
+        // Not yet stable: the settle-window wait has to let real time pass
+        // before this file reads as ready, the same way the single-file
+        // settle test above does.
+        File.SetLastWriteTimeUtc(lockedSource, DateTime.UtcNow);
+
+        var service = CreateService(
+            storage,
+            timeProvider,
+            platform,
+            libraries,
+            new SqliteMovieCatalogRepository(storage.Factory, timeProvider),
+            settleWindow: TimeSpan.FromSeconds(10));
+        var request = new ImportExecuteRequest(
+            new ImportPreviewRequest(
+                packDirectory, null, "tv", series.Title, series.StartYear, [], [], null, null,
+                SeriesId: series.Id, SeriesType: SeriesTypes.Standard, NumberingScheme: SeriesNumberingSchemes.Standard),
+            "copy", false, true);
+
+        var result = await service.ExecuteAsync(request, CancellationToken.None);
+        Assert.True(result.Succeeded, result.Message);
+        Assert.Equal(2, result.Response!.PackFiles!.Count);
+        var detail = await repository.GetInventoryDetailAsync(series.Id, CancellationToken.None);
+        Assert.Equal(2, detail!.Episodes.Count(episode => episode.HasFile));
+    }
+
+    /// <summary>
+    /// #652: skipping non-resolving files must not turn "nothing matched" into
+    /// a quiet success. A pack with no resolvable episode still fails whole,
+    /// exactly as before.
+    /// </summary>
+    [Fact]
+    public async Task Tv_pack_with_zero_resolvable_episodes_still_fails()
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-04-29T08:00:00Z"));
+        await InitializeAllAsync(storage, timeProvider);
+        var downloadsPath = Path.Combine(storage.DataRoot, "downloads");
+        var movieRootPath = Path.Combine(storage.DataRoot, "movies");
+        var seriesRootPath = Path.Combine(storage.DataRoot, "series");
+        Directory.CreateDirectory(downloadsPath);
+        Directory.CreateDirectory(movieRootPath);
+        Directory.CreateDirectory(seriesRootPath);
+        var platform = CreatePlatformRepository(storage, timeProvider);
+        var libraries = CreateLibrariesRepository(storage, timeProvider);
+        await SaveSettingsAsync(platform, movieRootPath, downloadsPath, seriesRootPath);
+        await CreateTvLibraryAsync(libraries, seriesRootPath, downloadsPath);
+        var repository = new SqliteSeriesCatalogRepository(storage.Factory, timeProvider);
+        var series = await repository.AddAsync(new CreateSeriesRequest("No Match Pack", 2026, null), CancellationToken.None);
+        await repository.SyncEpisodeCatalogueAsync(
+            series.Id,
+            [new CatalogueEpisodeItem(1, 1, "One", null, timeProvider.GetUtcNow().AddDays(-1))],
+            "provider",
+            CancellationToken.None);
+        var packDirectory = Path.Combine(downloadsPath, "No.Match.Pack.S01");
+        Directory.CreateDirectory(packDirectory);
+        foreach (var suffix in new[] { "00", "99" })
+        {
+            var source = Path.Combine(packDirectory, $"No.Match.Pack.S01E{suffix}.mkv");
+            await File.WriteAllBytesAsync(source, Enumerable.Repeat((byte)0x33, 4096).ToArray());
+            File.SetLastWriteTimeUtc(source, DateTime.UtcNow.AddMinutes(-1));
+        }
+
+        var service = CreateService(storage, timeProvider, platform, libraries, new SqliteMovieCatalogRepository(storage.Factory, timeProvider));
+        var request = new ImportExecuteRequest(
+            new ImportPreviewRequest(
+                packDirectory, null, "tv", series.Title, series.StartYear, [], [], null, null,
+                SeriesId: series.Id, SeriesType: SeriesTypes.Standard, NumberingScheme: SeriesNumberingSchemes.Standard),
+            "copy", false, true);
+
+        var preview = await service.PreviewAsync(request.Preview, CancellationToken.None);
+        Assert.False(preview.Pack!.CanExecute);
+        Assert.Contains(preview.Pack.BlockReasons, reason => reason.Contains("No file in this pack resolves", StringComparison.OrdinalIgnoreCase));
+
+        var result = await service.ExecuteAsync(request, CancellationToken.None);
+        Assert.False(result.Succeeded);
+        Assert.Equal(409, result.StatusCode);
+        Assert.Contains("No file in this pack resolves", result.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(2, Directory.GetFiles(packDirectory, "*.mkv").Length);
+        Assert.DoesNotContain((await repository.GetInventoryDetailAsync(series.Id, CancellationToken.None))!.Episodes, episode => episode.HasFile);
+    }
+
     [Fact]
     public async Task Tv_pack_with_duplicate_episode_claims_is_blocked_before_any_file_is_placed()
     {

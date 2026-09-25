@@ -1,4 +1,5 @@
 using Deluno.Filesystem;
+using Deluno.Jobs.Contracts;
 using Deluno.Worker.Jobs;
 using Deluno.Worker.Tests.Support;
 using Moq;
@@ -56,6 +57,34 @@ public sealed class FilesystemImportExecuteJobHandlerTests
 
         var exception = await Assert.ThrowsAsync<InvalidOperationException>(() => handler.HandleAsync(job, CancellationToken.None));
         Assert.Equal("The file is being used by another process.", exception.Message);
+    }
+
+    /// <summary>
+    /// #652: a source file that has not settled yet - one file or a whole
+    /// season pack sharing its settle window - is deferred and retried
+    /// without spending one of the job's dead-letter attempts, rather than
+    /// counted as a failure like every other retryable error.
+    /// </summary>
+    [Fact]
+    public async Task HandleAsync_unstable_source_is_deferred_without_burning_an_attempt()
+    {
+        var importPipelineService = new Mock<IImportPipelineService>();
+        importPipelineService
+            .Setup(service => service.ExecuteAsync(It.IsAny<ImportExecuteRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ImportPipelineResult(
+                false,
+                ImportFileReadiness.RetryableStatusCode,
+                null,
+                "The source file 'Locked.Pack.S01E02.mkv' was still being written, or locked by another process, 20 seconds after Deluno started importing this season pack. Deluno will retry when it is stable."));
+        var handler = new FilesystemImportExecuteJobHandler(importPipelineService.Object);
+
+        var job = TestJobs.Create("filesystem.import.execute", payloadJson: ValidPayload);
+
+        var deferred = await Assert.ThrowsAsync<JobDeferredException>(() => handler.HandleAsync(job, CancellationToken.None));
+        Assert.Equal(
+            "The source file 'Locked.Pack.S01E02.mkv' was still being written, or locked by another process, 20 seconds after Deluno started importing this season pack. Deluno will retry when it is stable.",
+            deferred.Message);
+        Assert.True(deferred.Delay > TimeSpan.Zero);
     }
 
     [Fact]

@@ -335,7 +335,11 @@ public sealed class ProcessorConnectionService(IHttpClientFactory httpClientFact
                     outcome = outcome == ProcessorHandoffOutcome.Imported ? "imported" : "not-imported",
                     occurredUtc = occurredUtc.ToUniversalTime(),
                     importedPath = outcome == ProcessorHandoffOutcome.Imported ? importedPath : null,
-                    reason = outcome == ProcessorHandoffOutcome.NotImported ? reason : null
+                    // Not only why an import did not happen any more: an
+                    // imported season pack sends why any of its files were
+                    // skipped here too, so the processor is told the whole
+                    // story about what it gets to release (#652).
+                    reason
                 })
             };
             ApplyAuthentication(request, connection);

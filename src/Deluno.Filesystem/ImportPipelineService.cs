@@ -729,6 +729,7 @@ public sealed partial class ImportPipelineService(
         }
 
         var files = new List<TvPackFilePlan>();
+        var skippedFiles = new List<TvPackSkippedFilePlan>();
         foreach (var sourcePath in sourceFiles)
         {
             var fileRequest = request with
@@ -749,6 +750,10 @@ public sealed partial class ImportPipelineService(
             }
             else if (!ImportFileReadiness.IsReady(preview.SourcePath))
             {
+                // Execution already waited out the pack's shared settle window
+                // (see ExecuteTvPackAsync) before this method is ever called, so
+                // this only fires from a preview - it is informational there,
+                // not something a still-arriving file should be skipped over.
                 warnings.Add("Source file is still being written or locked.");
             }
             if (!Path.IsPathRooted(preview.DestinationPath))
@@ -786,9 +791,21 @@ public sealed partial class ImportPipelineService(
                 numbering);
             if (fileNumbers.Episodes.Count == 0)
             {
-                warnings.Add("The filename does not resolve to one or more canonical episodes in this show.");
+                // Not a reason to refuse the rest of the pack (#652): an extra,
+                // featurette or sample the catalogue never listed as an episode
+                // does not belong in the library, so it is left where it is and
+                // named rather than treated as a blocking problem. A season-0
+                // special the catalogue DOES list resolves to an episode above
+                // and is imported like any other file. Whatever else is wrong
+                // with a file that is being skipped anyway (a failed probe, a
+                // short runtime) does not matter, so it is not carried into
+                // blockReasons.
+                skippedFiles.Add(new TvPackSkippedFilePlan(
+                    preview,
+                    "The filename does not resolve to one or more canonical episodes in this show."));
+                continue;
             }
-            else if (declaredSeasons.Length == 1 && fileNumbers.Episodes.Any(episode => episode.SeasonNumber != declaredSeasons[0]))
+            if (declaredSeasons.Length == 1 && fileNumbers.Episodes.Any(episode => episode.SeasonNumber != declaredSeasons[0]))
             {
                 warnings.Add($"The file resolves outside season {declaredSeasons[0]:00} named by the download folder.");
             }
@@ -798,6 +815,11 @@ public sealed partial class ImportPipelineService(
                 blockReasons.Add($"{Path.GetFileName(sourcePath)}: {string.Join(" ", warnings)}");
             }
             files.Add(new TvPackFilePlan(fileRequest, preview, fileNumbers, warnings));
+        }
+
+        if (files.Count == 0)
+        {
+            blockReasons.Add("No file in this pack resolves to one or more canonical episodes in this show.");
         }
 
         foreach (var duplicate in files
@@ -939,14 +961,21 @@ public sealed partial class ImportPipelineService(
                 .OrderBy(key => key, StringComparer.Ordinal)
                 .ToArray(),
             file.Warnings)).ToArray();
+        var publicSkippedFiles = skippedFiles
+            .Select(file => new ImportPackSkippedFile(file.Preview.SourcePath, file.Reason))
+            .ToArray();
         var pack = new ImportPackPreview(
             CanExecute: distinctReasons.Length == 0,
             AlreadyCommitted: alreadyCommitted,
-            SourceFileCount: files.Count,
+            SourceFileCount: sourceFiles.Count,
             EpisodeCount: episodes.Length,
             Files: publicFiles,
-            BlockReasons: distinctReasons);
-        var first = files[0].Preview;
+            BlockReasons: distinctReasons,
+            SkippedFiles: publicSkippedFiles);
+        var first = files.Count > 0 ? files[0].Preview : skippedFiles[0].Preview;
+        var skippedNote = skippedFiles.Count > 0
+            ? $" {skippedFiles.Count} file(s) do not resolve to a canonical episode and will be skipped: {string.Join(", ", skippedFiles.Select(file => Path.GetFileName(file.Preview.SourcePath)))}."
+            : string.Empty;
         var summary = first with
         {
             SourcePath = request.SourcePath,
@@ -963,17 +992,20 @@ public sealed partial class ImportPipelineService(
                 ? "Every pack file can use a hardlink. Deluno stages all links before committing the episode catalogue."
                 : "Deluno will stage every pack file before committing the episode catalogue; copy fallback is used where hardlinks are unavailable.",
             Warnings = distinctReasons.Length == 0
-                ? [alreadyCommitted
+                ? [(alreadyCommitted
                     ? "This exact season pack is already placed and catalogued. Retrying is safe and will not duplicate it."
-                    : $"All {files.Count} files resolve to {episodes.Length} canonical episodes and can be committed together."]
+                    : $"All {files.Count} files resolve to {episodes.Length} canonical episodes and can be committed together.") + skippedNote]
                 : distinctReasons,
             Explanation = distinctReasons.Length == 0
                 ? "Every file has a unique destination and canonical episode identity. Placement and catalogue updates will be committed as one pack operation."
                 : "Deluno will not import any part of this pack until every file has one safe destination and canonical episode mapping.",
             DecisionSteps =
             [
-                $"Pack: found {files.Count} importable video files.",
-                $"Identity: resolved {episodes.Length} unique canonical episodes.",
+                $"Pack: found {sourceFiles.Count} video file(s) in the folder.",
+                $"Identity: resolved {episodes.Length} unique canonical episode(s) across {files.Count} file(s).",
+                .. skippedFiles.Count > 0
+                    ? [$"Skip:{skippedNote}"]
+                    : Array.Empty<string>(),
                 distinctReasons.Length == 0
                     ? "Safety: no duplicate episode claims, destination collisions, or unmatched files were found."
                     : $"Safety: blocked by {distinctReasons.Length} issue(s); no file will be placed."
@@ -983,6 +1015,7 @@ public sealed partial class ImportPipelineService(
         return new TvPackPlan(
             summary,
             files,
+            skippedFiles,
             numbers,
             numbering,
             distinctReasons,
@@ -995,6 +1028,37 @@ public sealed partial class ImportPipelineService(
         IReadOnlyList<string> sourceFiles,
         CancellationToken cancellationToken)
     {
+        // A source file that exists but has not settled yet is transient, not a
+        // bad file (#652): a processor or download client can still be
+        // finishing with it. The whole pack shares one settle window - the
+        // same one a single file gets - rather than each file getting its own,
+        // so a ten-file pack cannot wait ten times as long. Checked here,
+        // before any plan is built or anything staged, so a pack that is not
+        // ready yet is never partly imported: nothing has touched disk when
+        // this returns. The caller (the job handler) turns this retryable
+        // status into a deferred retry that does not spend one of the pack's
+        // dead-letter attempts, exactly like a single locked file does.
+        var readinessDeadline = DateTimeOffset.UtcNow + _settleWindow;
+        foreach (var sourcePath in sourceFiles)
+        {
+            if (!File.Exists(sourcePath) || ImportFileReadiness.IsReady(sourcePath))
+            {
+                continue;
+            }
+
+            var remaining = readinessDeadline - DateTimeOffset.UtcNow;
+            if (remaining < TimeSpan.Zero)
+            {
+                remaining = TimeSpan.Zero;
+            }
+            if (!await ImportFileReadiness.WaitUntilReadyAsync(sourcePath, remaining, cancellationToken))
+            {
+                return Failed(
+                    ImportFileReadiness.RetryableStatusCode,
+                    $"The source file '{Path.GetFileName(sourcePath)}' was still being written, or locked by another process, {_settleWindow.TotalSeconds:0} seconds after Deluno started importing this season pack. Deluno will retry when it is stable.");
+            }
+        }
+
         var settings = await platformRepository.GetAsync(cancellationToken);
         var rules = await librariesRepository.ListDestinationRulesAsync(cancellationToken);
         var libraries = await librariesRepository.ListLibrariesAsync(cancellationToken);
@@ -1014,7 +1078,7 @@ public sealed partial class ImportPipelineService(
                 plan,
                 "already-committed",
                 usedFallback: false,
-                "This exact season pack is already placed and catalogued. Nothing was duplicated.");
+                $"This exact season pack is already placed and catalogued. Nothing was duplicated.{DescribeSkippedFiles(plan.SkippedFiles)}");
             return new ImportPipelineResult(true, StatusCodes.Status200OK, response, response.Message);
         }
 
@@ -1141,7 +1205,7 @@ public sealed partial class ImportPipelineService(
             var usedFallback = placements.Any(placement => placement.UsedFallback);
             var modes = placements.Select(placement => placement.Mode).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
             var modeUsed = modes.Length == 1 ? modes[0] : "mixed";
-            var message = $"Imported {placements.Count} season-pack files covering {plan.Numbers.Episodes.Count} episodes as one catalogue transaction.";
+            var message = $"Imported {placements.Count} season-pack files covering {plan.Numbers.Episodes.Count} episodes as one catalogue transaction.{DescribeSkippedFiles(plan.SkippedFiles)}";
             var response = BuildTvPackResponse(plan, modeUsed, usedFallback, message, placements);
             await RecordTvPackCompletionBestEffortAsync(
                 request,
@@ -1199,7 +1263,7 @@ public sealed partial class ImportPipelineService(
             }
 
             logger.LogWarning(exception, "Season-pack follow-up recording failed after the catalogue transaction committed.");
-            var response = BuildTvPackResponse(plan, "committed", usedFallback: false, message);
+            var response = BuildTvPackResponse(plan, "committed", usedFallback: false, message + DescribeSkippedFiles(plan.SkippedFiles));
             return new ImportPipelineResult(true, StatusCodes.Status200OK, response, response.Message);
         }
     }
@@ -1231,7 +1295,16 @@ public sealed partial class ImportPipelineService(
                     .OrderBy(key => key, StringComparer.Ordinal)
                     .ToArray(),
                     placement?.Mode ?? transferMode);
-            }).ToArray());
+            }).ToArray(),
+            SkippedFiles: plan.SkippedFiles
+                .Select(file => new ImportPackSkippedFile(file.Preview.SourcePath, file.Reason))
+                .ToArray());
+
+    /// <summary>Plain words for what did not go in, appended to a result message (#652).</summary>
+    private static string DescribeSkippedFiles(IReadOnlyList<TvPackSkippedFilePlan> skippedFiles)
+        => skippedFiles.Count == 0
+            ? string.Empty
+            : $" Skipped {skippedFiles.Count} file(s) that do not resolve to a canonical episode: {string.Join(", ", skippedFiles.Select(file => Path.GetFileName(file.Preview.SourcePath)))}.";
 
     private async Task TryRecordPackFailureAsync(
         ImportExecuteRequest request,
@@ -1325,7 +1398,7 @@ public sealed partial class ImportPipelineService(
             }
             await activityFeedRepository.RecordActivityAsync(
                 "filesystem.import.season-pack.completed",
-                $"{TitleForActivity(request.Preview)} season pack imported {placements.Count} files covering {plan.Numbers.Episodes.Count} episodes.",
+                $"{TitleForActivity(request.Preview)} season pack imported {placements.Count} files covering {plan.Numbers.Episodes.Count} episodes.{DescribeSkippedFiles(plan.SkippedFiles)}",
                 JsonSerializer.Serialize(new
                 {
                     Files = placements.Select(placement => new
@@ -1335,6 +1408,11 @@ public sealed partial class ImportPipelineService(
                         placement.Mode,
                         placement.UsedFallback,
                         Episodes = placement.File.Numbers.Episodes.Select(episode => EpisodeKey(episode.SeasonNumber, episode.EpisodeNumber))
+                    }),
+                    Skipped = plan.SkippedFiles.Select(file => new
+                    {
+                        file.Preview.SourcePath,
+                        file.Reason
                     }),
                     Cleanup = cleanup.Select(item => item.Summary),
                     Provenance = provenance
@@ -3044,9 +3122,19 @@ public sealed partial class ImportPipelineService(
         TvImportNumbers Numbers,
         IReadOnlyList<string> Warnings);
 
+    /// <summary>
+    /// A pack file that does not resolve to any canonical episode - an extra,
+    /// featurette, sample, or a special the catalogue does not list (#652). It
+    /// is left in place and named rather than blocking the rest of the pack.
+    /// </summary>
+    private sealed record TvPackSkippedFilePlan(
+        ImportPreviewResponse Preview,
+        string Reason);
+
     private sealed record TvPackPlan(
         ImportPreviewResponse Summary,
         IReadOnlyList<TvPackFilePlan> Files,
+        IReadOnlyList<TvPackSkippedFilePlan> SkippedFiles,
         TvImportNumbers Numbers,
         SeriesNumberingDetail? Numbering,
         IReadOnlyList<string> BlockReasons,

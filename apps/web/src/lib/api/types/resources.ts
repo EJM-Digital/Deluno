@@ -332,6 +332,8 @@ export interface ImportPackPreview {
   episodeCount: number;
   files: ImportPackFilePreview[];
   blockReasons: string[];
+  /** Files in the pack folder that do not resolve to a canonical episode: extras, featurettes, samples, or specials the catalogue does not list. */
+  skippedFiles?: ImportPackSkippedFile[] | null;
 }
 
 export interface ImportPackFilePreview {
@@ -340,6 +342,11 @@ export interface ImportPackFilePreview {
   sourceSizeBytes: number;
   episodeKeys: string[];
   warnings: string[];
+}
+
+export interface ImportPackSkippedFile {
+  sourcePath: string;
+  reason: string;
 }
 
 export interface MediaProbeInfo {
@@ -404,6 +411,7 @@ export interface ImportExecuteResponse {
   catalogUpdated: boolean;
   message: string;
   packFiles?: ImportPackFileResult[] | null;
+  skippedFiles?: ImportPackSkippedFile[] | null;
 }
 
 export interface ImportPackFileResult {

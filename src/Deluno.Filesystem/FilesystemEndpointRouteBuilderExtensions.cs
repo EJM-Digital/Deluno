@@ -644,7 +644,13 @@ public sealed record ImportPackPreview(
     int SourceFileCount,
     int EpisodeCount,
     IReadOnlyList<ImportPackFilePreview> Files,
-    IReadOnlyList<string> BlockReasons);
+    IReadOnlyList<string> BlockReasons,
+    /// <summary>
+    /// Files in the pack folder that do not resolve to a canonical episode -
+    /// extras, featurettes, samples, or specials the catalogue does not list
+    /// (#652). They are not imported and do not block the rest of the pack.
+    /// </summary>
+    IReadOnlyList<ImportPackSkippedFile>? SkippedFiles = null);
 
 public sealed record ImportPackFilePreview(
     string SourcePath,
@@ -652,6 +658,11 @@ public sealed record ImportPackFilePreview(
     long SourceSizeBytes,
     IReadOnlyList<string> EpisodeKeys,
     IReadOnlyList<string> Warnings);
+
+/// <summary>A pack file Deluno left alone, and why (#652).</summary>
+public sealed record ImportPackSkippedFile(
+    string SourcePath,
+    string Reason);
 
 public sealed record ImportExecuteRequest(
     ImportPreviewRequest Preview,
@@ -682,7 +693,9 @@ public sealed record ImportExecuteResponse(
     bool UsedFallback,
     bool CatalogUpdated,
     string Message,
-    IReadOnlyList<ImportPackFileResult>? PackFiles = null);
+    IReadOnlyList<ImportPackFileResult>? PackFiles = null,
+    /// <summary>Pack files left alone because they did not resolve to a canonical episode (#652).</summary>
+    IReadOnlyList<ImportPackSkippedFile>? SkippedFiles = null);
 
 public sealed record ImportPackFileResult(
     string SourcePath,
