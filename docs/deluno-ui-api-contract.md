@@ -40,7 +40,8 @@ UI expectations:
 
 Implemented REST endpoints:
 
-- `GET /api/system/health`
+- `GET /health` and `GET /api/health/live`: liveness, anonymous; answers 200 whenever the process is up
+- `GET /api/health/ready`: readiness, anonymous; 200 with the check results when every readiness check passes, 503 with the same body when one fails
 - `GET /api/system/logs`
 - `GET /api/system/jobs`
 - `GET /api/system/lan-access`: whether other devices on the network can reach Deluno (`open`, `blocked`, or `notChecked` on a host with no firewall for Deluno to manage)
