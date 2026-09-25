@@ -110,6 +110,75 @@ async function send(url: string, method: string, body?: unknown, failure = "Requ
   return response;
 }
 
+/**
+ * The body of PUT/POST /api/indexers — shared by Save and Test (#626).
+ *
+ * Tags are not exposed as a form field: nothing in Deluno routes searches or
+ * selects indexers by tag today (#730), so there is nothing here for a
+ * person to usefully edit. What there is stays untouched rather than
+ * getting wiped: `existingTags` is the saved indexer's current value
+ * (empty for a new one), and it is echoed straight back so an indexer that
+ * had tags set through the API keeps them across a UI save.
+ */
+export function buildIndexerSavePayload(form: IndexerForm, initial: IndexerForm, editing: boolean, existingTags: string) {
+  return {
+    name: form.name.trim(),
+    protocol: form.protocol,
+    // Privacy is not sent at all. Deluno branches on none of it, nobody
+    // can set it here, and guessing "private" for every hand-added source
+    // was inventing provenance. It stays a fact a migration imports from
+    // the app you came from, where it seeds the sharing rule that does
+    // change behaviour.
+    baseUrl: form.baseUrl.trim(),
+    apiKey: form.apiKey.trim() || undefined,
+    priority: Number(form.priority || 10),
+    requestIntervalSeconds: form.requestIntervalSeconds.trim() ? Number(form.requestIntervalSeconds) : null,
+    clearRequestInterval: editing && !form.requestIntervalSeconds.trim(),
+    minimumAgeMinutes: form.minimumAgeMinutes.trim() ? Number(form.minimumAgeMinutes) : null,
+    clearMinimumAge: editing && !form.minimumAgeMinutes.trim(),
+    retentionDays: form.retentionDays.trim() ? Number(form.retentionDays) : null,
+    clearRetention: editing && !form.retentionDays.trim(),
+    maximumSizeMb: form.maximumSizeMb.trim() ? Number(form.maximumSizeMb) : null,
+    clearMaximumSize: editing && !form.maximumSizeMb.trim(),
+    preferIndexerFlags: form.preferIndexerFlags.trim() || null,
+    clearPreferIndexerFlags: editing && !form.preferIndexerFlags.trim(),
+    availabilityDelayDays: form.availabilityDelayDays.trim() ? Number(form.availabilityDelayDays) : null,
+    clearAvailabilityDelay: editing && !form.availabilityDelayDays.trim(),
+    rssEnabled: form.rssEnabled,
+    automaticSearchEnabled: form.automaticSearchEnabled,
+    interactiveSearchEnabled: form.interactiveSearchEnabled,
+    // A built-in tracker (#606): which one, its settings, and only the
+    // secrets typed now; a blank one keeps what is saved.
+    ...(form.protocol === "tracker"
+      ? {
+          definitionId: form.definitionId,
+          definitionSettings: form.trackerSettings,
+          definitionSecrets: Object.fromEntries(Object.entries(form.trackerSecrets).filter(([, value]) => value.trim()))
+        }
+      : {}),
+    categories: form.categories,
+    tags: existingTags,
+    mediaScope: form.scope,
+    isEnabled: form.isEnabled,
+    // Only written when the user actually answered the question
+    // differently. A source may carry a hand-tuned rule this one control
+    // cannot express, and saving an unrelated field should not flatten it
+    // back to the canned one (#288).
+    ...(form.sharingRule === initial.sharingRule
+      ? {}
+      : form.sharingRule === "strict"
+        ? {
+            sharingMode: "share-then-tidy",
+            sharingForHours: STRICT_SHARING.forHours,
+            sharingUntilRatio: STRICT_SHARING.untilRatio,
+            sharingStuckAction: "keep-waiting",
+            sharingStuckAfterDays: STRICT_SHARING.stuckAfterDays,
+            clearSharingPolicy: false
+          }
+        : { clearSharingPolicy: true })
+  };
+}
+
 export function IndexersPage() {
   const { clients, pathMappings, indexers, libraries, routing, settings, telemetry, outboundThrottle, scoreboard } = useLoaderData() as LoaderData;
   const location = useLocation();
@@ -300,63 +369,7 @@ export function IndexersPage() {
 
   // What Save sends is what Test tries (#626).
   function indexerPayload() {
-    const editing = drawer.kind === "indexer" && Boolean(drawer.id);
-    return {
-      name: indexerForm.name.trim(),
-      protocol: indexerForm.protocol,
-      // Privacy is not sent at all. Deluno branches on none of it, nobody
-      // can set it here, and guessing "private" for every hand-added source
-      // was inventing provenance. It stays a fact a migration imports from
-      // the app you came from, where it seeds the sharing rule that does
-      // change behaviour.
-      baseUrl: indexerForm.baseUrl.trim(),
-      apiKey: indexerForm.apiKey.trim() || undefined,
-      priority: Number(indexerForm.priority || 10),
-      requestIntervalSeconds: indexerForm.requestIntervalSeconds.trim() ? Number(indexerForm.requestIntervalSeconds) : null,
-      clearRequestInterval: editing && !indexerForm.requestIntervalSeconds.trim(),
-      minimumAgeMinutes: indexerForm.minimumAgeMinutes.trim() ? Number(indexerForm.minimumAgeMinutes) : null,
-      clearMinimumAge: editing && !indexerForm.minimumAgeMinutes.trim(),
-      retentionDays: indexerForm.retentionDays.trim() ? Number(indexerForm.retentionDays) : null,
-      clearRetention: editing && !indexerForm.retentionDays.trim(),
-      maximumSizeMb: indexerForm.maximumSizeMb.trim() ? Number(indexerForm.maximumSizeMb) : null,
-      clearMaximumSize: editing && !indexerForm.maximumSizeMb.trim(),
-      preferIndexerFlags: indexerForm.preferIndexerFlags.trim() || null,
-      clearPreferIndexerFlags: editing && !indexerForm.preferIndexerFlags.trim(),
-      availabilityDelayDays: indexerForm.availabilityDelayDays.trim() ? Number(indexerForm.availabilityDelayDays) : null,
-      clearAvailabilityDelay: editing && !indexerForm.availabilityDelayDays.trim(),
-      rssEnabled: indexerForm.rssEnabled,
-      automaticSearchEnabled: indexerForm.automaticSearchEnabled,
-      interactiveSearchEnabled: indexerForm.interactiveSearchEnabled,
-      // A built-in tracker (#606): which one, its settings, and only the
-      // secrets typed now; a blank one keeps what is saved.
-      ...(indexerForm.protocol === "tracker"
-        ? {
-            definitionId: indexerForm.definitionId,
-            definitionSettings: indexerForm.trackerSettings,
-            definitionSecrets: Object.fromEntries(Object.entries(indexerForm.trackerSecrets).filter(([, value]) => value.trim()))
-          }
-        : {}),
-      categories: indexerForm.categories,
-      tags: "",
-      mediaScope: indexerForm.scope,
-      isEnabled: indexerForm.isEnabled,
-      // Only written when the user actually answered the question
-      // differently. A source may carry a hand-tuned rule this one control
-      // cannot express, and saving an unrelated field should not flatten it
-      // back to the canned one (#288).
-      ...(indexerForm.sharingRule === indexerInitial.sharingRule
-        ? {}
-        : indexerForm.sharingRule === "strict"
-          ? {
-              sharingMode: "share-then-tidy",
-              sharingForHours: STRICT_SHARING.forHours,
-              sharingUntilRatio: STRICT_SHARING.untilRatio,
-              sharingStuckAction: "keep-waiting",
-              sharingStuckAfterDays: STRICT_SHARING.stuckAfterDays,
-              clearSharingPolicy: false
-            }
-          : { clearSharingPolicy: true })
-    };
+    return buildIndexerSavePayload(indexerForm, indexerInitial, drawer.kind === "indexer" && Boolean(drawer.id), editingIndexer?.tags ?? "");
   }
 
   function clientPayload() {
