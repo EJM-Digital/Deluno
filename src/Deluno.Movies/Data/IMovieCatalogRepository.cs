@@ -170,7 +170,10 @@ public interface IMovieCatalogRepository : IMovieImportRecoveryRetentionReposito
         bool ignoreRetryWindow,
         CancellationToken cancellationToken,
         string? wantedStatus = null,
-        CatalogueFilters? filters = null);
+        CatalogueFilters? filters = null,
+        // See IMediaStateRepository.ListEligibleWantedAsync: false only for a
+        // person's own retry of one title (#653).
+        bool requireMonitored = true);
 
     Task<int> CountRetryDelayedWantedAsync(
         string libraryId,

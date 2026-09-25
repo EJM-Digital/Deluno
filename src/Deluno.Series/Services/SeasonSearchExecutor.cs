@@ -284,8 +284,31 @@ public sealed class SeasonSearchExecutor(
             cancellationToken);
         var searchPlan = decisionPlan.SearchPlan;
         var bestCandidate = searchPlan.BestCandidate;
+
+        // A season-level search does not filter single-episode releases out
+        // of its candidates — LeaveEpisodesToTheirOwnSearch skips that
+        // filtering whenever SeasonNumber is set, on purpose, so a real pack
+        // is scored against them. That means the planner's best answer can
+        // still be one episode's release when no pack exists. Grabbing it
+        // here used to stand in as "the season's result": every episode of
+        // the season was then marked searched, and once that one grab
+        // failed, the replacement search queued for it (entity type
+        // "series") lifted the retry window for the whole series rather
+        // than just the episode it actually covered — restarting this same
+        // near-miss in the next season down the list within the minute
+        // (#653, #646). A non-pack candidate is treated as no candidate at
+        // all: nothing is dispatched, and the season falls back to the
+        // ordinary per-episode plan, each episode judged on its own.
+        var noPackFound = bestCandidate is not null
+            && !SeasonPackDetector.Classify(bestCandidate.ReleaseName).IsSeason;
+        if (noPackFound)
+        {
+            bestCandidate = null;
+            searchPlan = searchPlan with { BestCandidate = null };
+        }
+
         SeasonPackReplacementDecision? replacementDecision = null;
-        if (installedEpisodes.Count > 0 && preferencePlan is not null && bestCandidate is not null)
+        if (!noPackFound && installedEpisodes.Count > 0 && preferencePlan is not null && bestCandidate is not null)
         {
             replacementDecision = SeriesSearchBaselineResolver.EvaluateSeasonPackCandidate(
                 preferencePlan,
@@ -293,10 +316,10 @@ public sealed class SeasonSearchExecutor(
                 installedEpisodes);
         }
         var replacementHeld = replacementDecision is { Authorized: false };
-        var outcome = replacementHeld ? "held" : decisionPlan.Outcome;
+        var outcome = replacementHeld ? "held" : noPackFound ? "checked" : decisionPlan.Outcome;
         var failures = (searchPlan.Failures ?? []).ToList();
         DownloadClientGrabResult? grabResult = null;
-        if (!replacementHeld && decisionPlan.ShouldDispatch && decisionPlan.SelectedDownloadClient is not null && decisionPlan.DispatchRequest is not null)
+        if (!noPackFound && !replacementHeld && decisionPlan.ShouldDispatch && decisionPlan.SelectedDownloadClient is not null && decisionPlan.DispatchRequest is not null)
         {
             var downloadClient = decisionPlan.SelectedDownloadClient;
             grabResult = bestCandidate!.DownloadUrl is null

@@ -669,12 +669,63 @@ public sealed class DownloadClientTelemetryService(
         return $"{what}, so Deluno stopped waiting for it and will not pick it again.";
     }
 
+    /// <summary>
+    /// Queues the retry search that follows a failed grab, scoped to exactly
+    /// what that grab covered.
+    ///
+    /// <para>A season-pack dispatch's <c>EntityId</c> is the series, not any
+    /// one episode — the whole season shares one dispatch because the
+    /// download itself belongs to no single episode. Targeting the series id
+    /// used to mean the retry search's <c>targetEntityId</c> made the job
+    /// <c>IsTargeted</c>, which lifts the retry window (see
+    /// <c>LibrarySearchJobHandler.IgnoresRetryWindow</c>) for every missing
+    /// episode of the whole series, not just the season that failed. Every
+    /// one of those became due at once; the search grabbed the next single
+    /// episode it found, that grab failed the same way, and its own
+    /// replacement search repeated the same series-wide lift — a cascade of
+    /// one grab per season inside a minute (#653, #646). The episodes this
+    /// dispatch actually covered are the ones <see cref="SeasonSearchExecutor"/>
+    /// recorded in its own dispatch notes; retrying each of those by its own
+    /// episode id keeps the lift scoped to exactly what failed.</para>
+    /// </summary>
     private async Task QueueReplacementSearchAsync(
         DownloadDispatchItem dispatch,
         LibraryItem? library,
         CancellationToken cancellationToken)
     {
         var libraryName = library?.Name ?? dispatch.LibraryId;
+        var seasonEpisodeIds = dispatch.EntityType == "series"
+            ? ExtractSeasonEpisodeIds(dispatch.NotesJson)
+            : [];
+
+        if (seasonEpisodeIds.Count > 0)
+        {
+            foreach (var episodeId in seasonEpisodeIds)
+            {
+                await jobScheduler.EnqueueAsync(new EnqueueJobRequest(
+                    LibrarySearchJobTypes.For(dispatch.MediaType),
+                    "download-health",
+                    JsonSerializer.Serialize(new
+                    {
+                        libraryId = dispatch.LibraryId,
+                        libraryName,
+                        mediaType = dispatch.MediaType,
+                        checkMissing = true,
+                        checkUpgrades = true,
+                        maxItems = 1,
+                        retryDelayHours = 24,
+                        triggeredBy = "health-replacement",
+                        targetEntityId = episodeId
+                    }),
+                    "download_dispatch",
+                    dispatch.Id,
+                    IdempotencyKey: $"download-health-replacement:{dispatch.Id}:{episodeId}",
+                    DedupeKey: $"download-health-replacement:{dispatch.Id}:{episodeId}"), cancellationToken);
+            }
+
+            return;
+        }
+
         await jobScheduler.EnqueueAsync(new EnqueueJobRequest(
             LibrarySearchJobTypes.For(dispatch.MediaType),
             "download-health",
@@ -694,6 +745,46 @@ public sealed class DownloadClientTelemetryService(
             dispatch.Id,
             IdempotencyKey: $"download-health-replacement:{dispatch.Id}",
             DedupeKey: $"download-health-replacement:{dispatch.Id}"), cancellationToken);
+    }
+
+    /// <summary>
+    /// The episode ids a season-pack dispatch's own notes recorded it covers
+    /// (<see cref="SeasonSearchExecutor"/>'s <c>episodeIds</c> field). Absent
+    /// or unparsable notes fall back to the series-wide retry rather than
+    /// silently retrying nothing — the same conservative reading as every
+    /// other malformed-notes case in this file.
+    /// </summary>
+    private static IReadOnlyList<string> ExtractSeasonEpisodeIds(string? notesJson)
+    {
+        if (string.IsNullOrWhiteSpace(notesJson))
+        {
+            return [];
+        }
+
+        try
+        {
+            using var document = JsonDocument.Parse(notesJson);
+            if (!document.RootElement.TryGetProperty("episodeIds", out var episodeIds)
+                || episodeIds.ValueKind != JsonValueKind.Array)
+            {
+                return [];
+            }
+
+            var ids = new List<string>();
+            foreach (var element in episodeIds.EnumerateArray())
+            {
+                if (element.ValueKind == JsonValueKind.String && element.GetString() is { Length: > 0 } id)
+                {
+                    ids.Add(id);
+                }
+            }
+
+            return ids;
+        }
+        catch (JsonException)
+        {
+            return [];
+        }
     }
 
     public async Task<DownloadClientActionResult> ReclaimCompletedAsync(

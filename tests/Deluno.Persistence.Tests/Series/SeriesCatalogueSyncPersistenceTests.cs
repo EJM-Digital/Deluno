@@ -15,8 +15,13 @@ namespace Deluno.Persistence.Tests.Series;
 /// </summary>
 public sealed class SeriesCatalogueSyncPersistenceTests
 {
-    private static async Task<(TestStorage Storage, SqliteSeriesCatalogRepository Repository, FixedTimeProvider TimeProvider, string SeriesId)> CreateSeriesAsync(
+    private static Task<(TestStorage Storage, SqliteSeriesCatalogRepository Repository, FixedTimeProvider TimeProvider, string SeriesId)> CreateSeriesAsync(
         DateTimeOffset now)
+        => CreateSeriesAsync(now, monitored: true);
+
+    private static async Task<(TestStorage Storage, SqliteSeriesCatalogRepository Repository, FixedTimeProvider TimeProvider, string SeriesId)> CreateSeriesAsync(
+        DateTimeOffset now,
+        bool monitored)
     {
         var storage = TestStorage.Create();
         var timeProvider = new FixedTimeProvider(now);
@@ -28,7 +33,7 @@ public sealed class SeriesCatalogueSyncPersistenceTests
 
         var repository = new SqliteSeriesCatalogRepository(storage.Factory, timeProvider);
         var series = await repository.AddAsync(
-            new CreateSeriesRequest("Severance", 2022, "tt11280740"),
+            new CreateSeriesRequest("Severance", 2022, "tt11280740", Monitored: monitored),
             CancellationToken.None);
 
         return (storage, repository, timeProvider, series.Id);
@@ -433,6 +438,40 @@ public sealed class SeriesCatalogueSyncPersistenceTests
         Assert.Equal(2L, monitoredBySeason[1]);
     }
 
+    /// <summary>
+    /// An unmonitored series' newly-learned episodes arrive unmonitored too
+    /// (#653). Abbott Elementary was added with <c>monitored: false</c> on the
+    /// rig and every one of its 93 episodes still came in monitored, which the
+    /// scheduled cycle then searched and grabbed within the minute — the
+    /// series' own flag was never consulted when episodes were created. Sonarr
+    /// leaves a new episode unwanted the same way when its series is
+    /// unmonitored; this is that same rule, one level up from season 0.
+    /// </summary>
+    [Fact]
+    public async Task SyncEpisodeCatalogueAsync_leaves_episodes_unmonitored_when_the_series_is()
+    {
+        var now = DateTimeOffset.Parse("2026-09-25T04:54:16Z");
+        var (storage, repository, _, seriesId) = await CreateSeriesAsync(now, monitored: false);
+        using var _ = storage;
+
+        await repository.SyncEpisodeCatalogueAsync(
+            seriesId,
+            [
+                new CatalogueEpisodeItem(1, 1, "S1E1", null, now.AddDays(-30)),
+                new CatalogueEpisodeItem(1, 2, "S1E2", null, now.AddDays(-28)),
+            ],
+            source: "tmdb",
+            CancellationToken.None);
+
+        await using var connection = await storage.Factory.OpenConnectionAsync("series", CancellationToken.None);
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT SUM(monitored) FROM episode_entries WHERE series_id = @seriesId;";
+        AddParam(command, "@seriesId", seriesId);
+
+        var monitoredCount = await command.ExecuteScalarAsync();
+        Assert.Equal(0L, Convert.ToInt64(monitoredCount));
+    }
+
     [Fact]
     public async Task SyncEpisodeCatalogueAsync_backfills_wanted_state_idempotently()
     {
@@ -488,6 +527,48 @@ public sealed class SeriesCatalogueSyncPersistenceTests
         Assert.Equal(1L, (long)(await verify.ExecuteScalarAsync())!);
     }
 
+    /// <summary>
+    /// The scheduled cycle's episode pass (<c>LibrarySearchJobHandler</c>) and
+    /// every other automatic path read episode eligibility through
+    /// <c>ListEligibleWantedEpisodesAsync</c>. An episode row that is itself
+    /// monitored is not enough on its own if its series is not — that gap is
+    /// exactly how Abbott Elementary's episodes were searched and grabbed five
+    /// minutes after being added unmonitored (#653). A person's own retry
+    /// (<c>requireMonitored: false</c>) still reaches the episode.
+    /// </summary>
+    [Fact]
+    public async Task ListEligibleWantedEpisodesAsync_excludes_episodes_of_an_unmonitored_series()
+    {
+        var now = DateTimeOffset.Parse("2026-09-25T04:59:15Z");
+        var (storage, repository, _, seriesId) = await CreateSeriesAsync(now);
+        using var _ = storage;
+
+        await repository.EnsureWantedStateAsync(
+            seriesId, "series-main", "missing", "Needs episodes.", false, null, "WEB 1080p", false, CancellationToken.None);
+        await repository.SyncEpisodeCatalogueAsync(
+            seriesId,
+            [new CatalogueEpisodeItem(1, 1, "S1E1", null, now.AddDays(-30))],
+            source: "tmdb",
+            CancellationToken.None);
+
+        // Confirms the episode itself is monitored: e.monitored = 1 was
+        // always true here, and used to be the whole gate.
+        Assert.Single(await repository.ListEligibleWantedEpisodesAsync(
+            "series-main", 10, now, ignoreRetryWindow: false, CancellationToken.None));
+
+        await repository.UpdateMonitoredAsync([seriesId], monitored: false, CancellationToken.None);
+
+        Assert.Empty(await repository.ListEligibleWantedEpisodesAsync(
+            "series-main", 10, now, ignoreRetryWindow: false, CancellationToken.None));
+        // Targeted but still automatic (add-triggered, health-replacement)
+        // must not reach it either.
+        Assert.Empty(await repository.ListEligibleWantedEpisodesAsync(
+            "series-main", 10, now, ignoreRetryWindow: true, CancellationToken.None));
+        // A person's own retry still can.
+        Assert.Single(await repository.ListEligibleWantedEpisodesAsync(
+            "series-main", 10, now, ignoreRetryWindow: true, CancellationToken.None, requireMonitored: false));
+    }
+
     [Fact]
     public async Task ListEligibleWantedAsync_excludes_files_present_unmonitored_and_deferred_series()
     {
@@ -517,16 +598,25 @@ public sealed class SeriesCatalogueSyncPersistenceTests
 
         var eligible = await repository.ListEligibleWantedAsync("series-main", 10, now, ignoreRetryWindow: false, CancellationToken.None);
         var eligibleIgnoringRetry = await repository.ListEligibleWantedAsync("series-main", 10, now, ignoreRetryWindow: true, CancellationToken.None);
+        // Only a person's own retry (requireMonitored: false) still reaches the unmonitored one (#653).
+        var eligibleIgnoringRetryAndMonitored = await repository.ListEligibleWantedAsync(
+            "series-main", 10, now, ignoreRetryWindow: true, CancellationToken.None, requireMonitored: false);
 
         Assert.Single(eligible);
         Assert.Equal(wantedSeriesId, eligible[0].SeriesId);
 
-        // Ignoring the retry window still excludes the series with a file, but includes the
-        // unmonitored/deferred ones — those are retry-window/monitoring skips, not "has file" skips.
+        // Ignoring the retry window still excludes the series with a file and
+        // the unmonitored one — a targeted automatic search (add-triggered,
+        // health-replacement) ignores the retry window but never bypasses
+        // monitoring — but includes the merely-deferred one, since that is a
+        // retry-window skip, not a monitoring skip.
         Assert.DoesNotContain(eligibleIgnoringRetry, item => item.SeriesId == coveredSeries.Id);
         Assert.Contains(eligibleIgnoringRetry, item => item.SeriesId == wantedSeriesId);
-        Assert.Contains(eligibleIgnoringRetry, item => item.SeriesId == unmonitoredSeries.Id);
+        Assert.DoesNotContain(eligibleIgnoringRetry, item => item.SeriesId == unmonitoredSeries.Id);
         Assert.Contains(eligibleIgnoringRetry, item => item.SeriesId == deferredSeries.Id);
+
+        // A person's own retry still finds the unmonitored one.
+        Assert.Contains(eligibleIgnoringRetryAndMonitored, item => item.SeriesId == unmonitoredSeries.Id);
     }
 
     [Fact]

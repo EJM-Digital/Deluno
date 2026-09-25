@@ -114,7 +114,8 @@ public abstract class LibrarySearchJobHandler(
             ignoreRetryWindow,
             cancellationToken,
             searchStatus,
-            scopeFilters))
+            scopeFilters,
+            requireMonitored: !PersonAsked(payload)))
             .Where(candidate => MatchesTarget(payload, candidate.MovieId))
             .ToArray();
         IReadOnlyList<BlockedRelease> refusals = PersonAsked(payload) ? [] : await ListRefusalsAsync(cancellationToken);
@@ -469,7 +470,8 @@ public abstract class LibrarySearchJobHandler(
             seriesIgnoreRetryWindow,
             cancellationToken,
             searchStatus,
-            scopeFilters))
+            scopeFilters,
+            requireMonitored: !PersonAsked(payload)))
             .Where(candidate => MatchesTarget(payload, candidate.SeriesId))
             .ToArray();
         var seriesStartedUtc = now;
@@ -715,7 +717,8 @@ public abstract class LibrarySearchJobHandler(
             seriesIgnoreRetryWindow,
             cancellationToken,
             searchStatus,
-            scopeFilters))
+            scopeFilters,
+            requireMonitored: !PersonAsked(payload)))
             .Where(episode => MatchesTarget(payload, episode.SeriesId, episode.EpisodeId))
             .Select(episode => new EpisodeSearchPlanItem(
                 EpisodeId: episode.EpisodeId,

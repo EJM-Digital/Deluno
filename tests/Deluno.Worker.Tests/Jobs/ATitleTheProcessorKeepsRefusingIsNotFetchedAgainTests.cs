@@ -40,7 +40,7 @@ public sealed class ATitleTheProcessorKeepsRefusingIsNotFetchedAgainTests
         _movies
             .Setup(repository => repository.ListEligibleWantedAsync(
                 It.IsAny<string>(), It.IsAny<int>(), It.IsAny<DateTimeOffset>(), It.IsAny<bool>(),
-                It.IsAny<CancellationToken>(), It.IsAny<string?>(), It.IsAny<CatalogueFilters?>()))
+                It.IsAny<CancellationToken>(), It.IsAny<string?>(), It.IsAny<CatalogueFilters?>(), It.IsAny<bool>()))
             .ReturnsAsync([Blank<MovieWantedItem>() with { MovieId = "movie-1", Title = "The Terror", WantedStatus = WantedStatuses.Missing }]);
         _movies
             .Setup(repository => repository.RecordSearchAttemptAsync(
