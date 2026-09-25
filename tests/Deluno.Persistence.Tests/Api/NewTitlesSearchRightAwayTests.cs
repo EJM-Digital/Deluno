@@ -29,9 +29,23 @@ namespace Deluno.Persistence.Tests.Api;
 /// <para>The fix enqueues a real, targeted <c>library.search.movies</c> /
 /// <c>library.search.tv</c> job — the same shape <c>AnotherCopySearch</c>,
 /// <c>RecoveryCaseRetry</c> and <c>ExternalRedownload</c> already use for "search
-/// this one title now" — alongside the existing refresh, gated on the title
-/// actually being missing (or upgradable) and monitored. An already-fully-owned
-/// title, or one added unmonitored, must not trigger a pointless search.</para>
+/// this one title now" — gated on the title actually being missing (or
+/// upgradable) and monitored. An already-fully-owned title, or one added
+/// unmonitored, must not trigger a pointless search.</para>
+///
+/// <para><b>#651 follow-up.</b> That search job used to be enqueued directly,
+/// side by side with the refresh. Both went straight to the queue, so whichever
+/// a worker happened to pick up first decided whether the search ran with the
+/// episodes (TV) or metadata (movies) the refresh was about to learn, or with
+/// none of it — a series search that beat its own catalogue refresh by even a
+/// second found zero eligible episodes and was never searched again until the
+/// library's own next scheduled cycle. The search request now rides along on
+/// the refresh job's own payload instead, and is enqueued by the refresh
+/// handler once the refresh has actually run
+/// (<c>SimpleJobHandlerTests.*_queues_the_adds_own_search_after_the_refresh_lands</c>
+/// pins that side). This file now pins the endpoint's half: the refresh job
+/// itself carries the right pending-search request, and nothing is enqueued as
+/// a separate job up front.</para>
 ///
 /// <para>Both media kinds are held to the same contract here, deliberately, the
 /// same reason <see cref="ReAddingKeepsTheFileTests"/> is.</para>
@@ -41,26 +55,27 @@ public sealed class NewTitlesSearchRightAwayTests
     [Theory]
     [InlineData(MediaKind.Movie)]
     [InlineData(MediaKind.Series)]
-    public async Task Adding_a_monitored_missing_title_enqueues_a_targeted_search_alongside_the_refresh(MediaKind kind)
+    public async Task Adding_a_monitored_missing_title_carries_a_pending_search_on_the_refresh_job(MediaKind kind)
     {
         await using var app = await ApplicationTestHost.StartAsync();
         var libraryId = await CreateLibraryAsync(app, kind);
 
         var id = await AddAsync(app, Route(kind), CreateBody(kind, "Severance", 2022, monitored: true, libraryId));
 
-        var searchJob = await FindJobAsync(app, SearchJobType(kind), id);
-        Assert.True(searchJob is not null, "a newly-added, monitored, missing title should be searched for right away");
-        Assert.Equal(RelatedEntityType(kind) == "movie" ? "movies" : "series", searchJob!.Source);
-        Assert.Equal(RelatedEntityType(kind), searchJob.RelatedEntityType);
-        Assert.Equal(id, searchJob.RelatedEntityId);
+        // Nothing is enqueued as its own job up front — see the "why" above.
+        Assert.Null(await FindJobAsync(app, SearchJobType(kind), id));
 
-        using var payload = JsonDocument.Parse(searchJob.PayloadJson!);
-        Assert.Equal(id, payload.RootElement.GetProperty("targetEntityId").GetString());
-        Assert.Equal(libraryId, payload.RootElement.GetProperty("libraryId").GetString());
-        Assert.True(payload.RootElement.GetProperty("checkMissing").GetBoolean());
-
-        // On top of the refresh, not instead of it.
-        Assert.NotNull(await FindJobAsync(app, RefreshJobType(kind), id));
+        var refreshJob = await FindJobAsync(app, RefreshJobType(kind), id);
+        Assert.NotNull(refreshJob);
+        using var payload = JsonDocument.Parse(refreshJob!.PayloadJson!);
+        var pendingSearches = payload.RootElement.GetProperty("pendingSearches");
+        Assert.Equal(JsonValueKind.Array, pendingSearches.ValueKind);
+        var pending = Assert.Single(pendingSearches.EnumerateArray());
+        Assert.Equal(id, pending.GetProperty("targetEntityId").GetString());
+        Assert.Equal(libraryId, pending.GetProperty("libraryId").GetString());
+        Assert.Equal(
+            RelatedEntityType(kind) == "movie" ? "movie-added" : "series-added",
+            pending.GetProperty("triggeredBy").GetString());
     }
 
     [Theory]
@@ -75,7 +90,9 @@ public sealed class NewTitlesSearchRightAwayTests
 
         Assert.Null(await FindJobAsync(app, SearchJobType(kind), id));
         // The refresh is unconditional; only the search is gated on monitoring.
-        Assert.NotNull(await FindJobAsync(app, RefreshJobType(kind), id));
+        var refreshJob = await FindJobAsync(app, RefreshJobType(kind), id);
+        Assert.NotNull(refreshJob);
+        Assert.Empty(NoPendingSearchesOr(refreshJob!.PayloadJson));
     }
 
     /// <summary>
@@ -124,7 +141,9 @@ public sealed class NewTitlesSearchRightAwayTests
 
         Assert.Equal(id, second);
         Assert.Null(await FindJobAsync(app, SearchJobType(kind), id));
-        Assert.NotNull(await FindJobAsync(app, RefreshJobType(kind), id));
+        var refreshJob = await FindJobAsync(app, RefreshJobType(kind), id);
+        Assert.NotNull(refreshJob);
+        Assert.Empty(NoPendingSearchesOr(refreshJob!.PayloadJson));
     }
 
     // ------------------------------------------------------------------ helpers
@@ -163,6 +182,19 @@ public sealed class NewTitlesSearchRightAwayTests
             new CreateSeriesRequest(Title: title, StartYear: year, ImdbId: null, Monitored: true),
             CancellationToken.None);
         return createdSeries.Id;
+    }
+
+    /// <summary>
+    /// The refresh job's own <c>pendingSearches</c> array, or empty if the
+    /// payload carries none (an unmonitored add, or one that deduped onto a
+    /// title already fully owned).
+    /// </summary>
+    private static JsonElement[] NoPendingSearchesOr(string? payloadJson)
+    {
+        using var document = JsonDocument.Parse(payloadJson ?? "{}");
+        return document.RootElement.TryGetProperty("pendingSearches", out var pendingSearches)
+            ? pendingSearches.EnumerateArray().ToArray()
+            : [];
     }
 
     private static async Task<JobQueueItem?> FindJobAsync(ApplicationTestHost app, string jobType, string relatedEntityId)
