@@ -3741,6 +3741,26 @@ public sealed class SqliteSeriesCatalogRepository(
             openCount = Convert.ToInt32(await countCmd.ExecuteScalarAsync(cancellationToken));
         }
 
+        // Counted separately from the page below (#649): a person can only
+        // dismiss or retry what the screen lists, so these must reflect every
+        // open case, not just the ones that fit in RecentCases.
+        var kindCounts = new Dictionary<string, int>(StringComparer.Ordinal);
+        using (var kindCommand = connection.CreateCommand())
+        {
+            kindCommand.CommandText =
+                """
+                SELECT failure_kind, COUNT(*)
+                FROM series_import_recovery_cases
+                WHERE status = 'open'
+                GROUP BY failure_kind;
+                """;
+            using var kindReader = await kindCommand.ExecuteReaderAsync(cancellationToken);
+            while (await kindReader.ReadAsync(cancellationToken))
+            {
+                kindCounts[kindReader.GetString(0)] = Convert.ToInt32(kindReader.GetInt64(1));
+            }
+        }
+
         using (var command = connection.CreateCommand())
         {
             command.CommandText =
@@ -3758,7 +3778,7 @@ public sealed class SqliteSeriesCatalogRepository(
                 FROM series_import_recovery_cases
                 WHERE status = 'open'
                 ORDER BY detected_utc DESC
-                LIMIT 12;
+                LIMIT 500;
                 """;
 
             using var reader = await command.ExecuteReaderAsync(cancellationToken);
@@ -3770,11 +3790,11 @@ public sealed class SqliteSeriesCatalogRepository(
 
         return new SeriesImportRecoverySummary(
             OpenCount: openCount,
-            QualityCount: openCases.Count(item => item.FailureKind == "quality"),
-            UnmatchedCount: openCases.Count(item => item.FailureKind == "unmatched"),
-            CorruptCount: openCases.Count(item => item.FailureKind == "corrupt"),
-            DownloadFailedCount: openCases.Count(item => item.FailureKind == "downloadFailed"),
-            ImportFailedCount: openCases.Count(item => item.FailureKind == "importFailed"),
+            QualityCount: kindCounts.GetValueOrDefault("quality"),
+            UnmatchedCount: kindCounts.GetValueOrDefault("unmatched"),
+            CorruptCount: kindCounts.GetValueOrDefault("corrupt"),
+            DownloadFailedCount: kindCounts.GetValueOrDefault("downloadFailed"),
+            ImportFailedCount: kindCounts.GetValueOrDefault("importFailed"),
             RecentCases: openCases);
     }
 
