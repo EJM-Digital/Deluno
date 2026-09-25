@@ -2533,9 +2533,21 @@ public sealed partial class ImportPipelineService(
                 .ToArray();
         var preferenceEvaluation = preferenceEvaluations.FirstOrDefault();
 
+        // The title this file is already known to be: the show the request
+        // names, or the show or film its grab was for -- and only when that
+        // entry still exists (#643). The catalogue write goes straight to it.
+        // Every Say Yes to the Dress episode Deluno grabbed for the real show
+        // carried the real show's id, yet the write matched on title and year
+        // instead; the real show had no start year, the file name said 2007,
+        // and 120 episodes landed on a phantom made from the file name. An id
+        // that no longer exists is no identity at all, so it does not excuse
+        // an import from the unconfirmed-title guards below either.
+        var knownSeriesId = mediaType == "tv" ? await KnownSeriesIdAsync(request, dispatch, cancellationToken) : null;
+        var knownMovieId = mediaType == "movies" ? await KnownMovieIdAsync(dispatch, cancellationToken) : null;
+
         if (mediaType == "tv"
             && string.IsNullOrWhiteSpace(request.Title)
-            && string.IsNullOrWhiteSpace(request.SeriesId)
+            && knownSeriesId is null
             && request.TvDbId is null)
         {
             // The TV side of #417, and #617: with no grab found and no title,
@@ -2563,7 +2575,7 @@ public sealed partial class ImportPipelineService(
         }
 
         if (mediaType == "tv"
-            && string.IsNullOrWhiteSpace(request.SeriesId)
+            && knownSeriesId is null
             && request.TvDbId is null
             && string.IsNullOrWhiteSpace(request.ImdbId)
             && await seriesCatalogRepository.FindExistingIdAsync(title, request.Year, request.ImdbId, null, null, cancellationToken) is null)
@@ -2648,7 +2660,8 @@ public sealed partial class ImportPipelineService(
                 preferenceEvaluation,
                 episodeNumbers.AlternateEpisodes,
                 episodeNumbers.SeasonPacks,
-                preferenceEvaluations.Skip(1).ToArray());
+                preferenceEvaluations.Skip(1).ToArray(),
+                seriesId: knownSeriesId);
             // The repository's legacy single-item boolean means "a new series
             // row was created", not "the import was recorded". A download
             // tied to an existing series therefore used to report a successful
@@ -2656,7 +2669,7 @@ public sealed partial class ImportPipelineService(
             // verification. An explicit series id is proof that this was an
             // existing, addressable catalogue item; the write above still
             // updates its wanted state and episode file.
-            var catalogUpdated = result || !string.IsNullOrWhiteSpace(request.SeriesId);
+            var catalogUpdated = result || knownSeriesId is not null;
             return new CatalogImportResult
             {
                 CatalogUpdated = catalogUpdated,
@@ -2664,7 +2677,7 @@ public sealed partial class ImportPipelineService(
                 Dispatch = dispatch,
                 // The show, not the grab: an episode search's grab names the episode,
                 // and the show's History is where this import belongs (#595).
-                EntityId = request.SeriesId ?? dispatch?.EntityId,
+                EntityId = knownSeriesId ?? request.SeriesId ?? dispatch?.EntityId,
                 ReleaseNameEvidence = dispatchReleaseName ?? preview.SourcePath,
                 PreferenceEvaluations = preferenceEvaluations,
                 MatchedRuleNames = ResolveMatchedRuleNames(preferenceEvaluations, customFormats, preferencePlan)
@@ -2720,6 +2733,7 @@ public sealed partial class ImportPipelineService(
         // FindExistingIdAsync finds it, this guard does not fire, and
         // ImportExistingAsync matches onto it exactly as before.
         if (string.IsNullOrWhiteSpace(request.ImdbId)
+            && knownMovieId is null
             && await movieCatalogRepository.FindExistingIdAsync(title, request.Year, request.ImdbId, null, null, cancellationToken) is null)
         {
             await movieCatalogRepository.AddImportRecoveryCaseAsync(
@@ -2756,7 +2770,8 @@ public sealed partial class ImportPipelineService(
             preview.DestinationPath,
             fileSizeBytes,
             cancellationToken,
-            preferenceEvaluation);
+            preferenceEvaluation,
+            movieId: knownMovieId);
         return new CatalogImportResult
         {
             CatalogUpdated = movieResult,
@@ -2767,6 +2782,32 @@ public sealed partial class ImportPipelineService(
             PreferenceEvaluations = preferenceEvaluations,
             MatchedRuleNames = ResolveMatchedRuleNames(preferenceEvaluations, customFormats, preferencePlan)
         };
+    }
+
+    private async Task<string?> KnownSeriesIdAsync(ImportPreviewRequest request, DownloadDispatchItem? dispatch, CancellationToken cancellationToken)
+    {
+        if (!string.IsNullOrWhiteSpace(request.SeriesId)
+            && await seriesCatalogRepository.GetByIdAsync(request.SeriesId.Trim(), cancellationToken) is { } named)
+        {
+            return named.Id;
+        }
+
+        return dispatch is not null
+            && !string.IsNullOrWhiteSpace(dispatch.EntityId)
+            && string.Equals(dispatch.EntityType, "series", StringComparison.OrdinalIgnoreCase)
+            && await seriesCatalogRepository.GetByIdAsync(dispatch.EntityId, cancellationToken) is { } grabbed
+                ? grabbed.Id
+                : null;
+    }
+
+    private async Task<string?> KnownMovieIdAsync(DownloadDispatchItem? dispatch, CancellationToken cancellationToken)
+    {
+        return dispatch is not null
+            && !string.IsNullOrWhiteSpace(dispatch.EntityId)
+            && string.Equals(dispatch.EntityType, "movie", StringComparison.OrdinalIgnoreCase)
+            && await movieCatalogRepository.GetByIdAsync(dispatch.EntityId, cancellationToken) is { } grabbed
+                ? grabbed.Id
+                : null;
     }
 
     /// <summary>The title and year of what a grab was for: its film, or its show.</summary>

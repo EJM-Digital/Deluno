@@ -259,7 +259,8 @@ public interface ISeriesCatalogRepository : ISeriesImportRecoveryRetentionReposi
         PreferenceEvaluationSnapshot? preferenceEvaluation = null,
         IReadOnlyList<ImportedEpisodeNumberingItem>? alternateEpisodes = null,
         IReadOnlyList<ImportedSeasonPackItem>? seasonPacks = null,
-        IReadOnlyList<PreferenceEvaluationSnapshot>? preferenceEvaluations = null);
+        IReadOnlyList<PreferenceEvaluationSnapshot>? preferenceEvaluations = null,
+        string? seriesId = null);
 
     /// <summary>
     /// Imports a slice of already-on-disk shows, and the episodes detected

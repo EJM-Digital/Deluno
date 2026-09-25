@@ -402,6 +402,141 @@ public sealed class ImportPipelineServiceTests
     }
 
     /// <summary>
+    /// #643 as it actually happened on the rig: every grab was for the real
+    /// show and carried its id, but the real show had been catalogued without
+    /// a start year and the file name said 2007. The write matched on title
+    /// and year, missed, and made a phantom from the file name. A known id is
+    /// where the file goes, whatever the name and year say. Run against both
+    /// the shared media store (production) and the catalogue's own path.
+    /// </summary>
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task ExecuteAsync_files_an_episode_onto_the_show_its_request_names_even_when_the_year_differs(bool sharedMediaState)
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-04-29T08:00:00Z"));
+        await InitializeAllAsync(storage, timeProvider);
+
+        var downloadsPath = Path.Combine(storage.DataRoot, "downloads");
+        var movieRootPath = Path.Combine(storage.DataRoot, "movies");
+        var seriesRootPath = Path.Combine(storage.DataRoot, "series");
+        Directory.CreateDirectory(downloadsPath);
+        Directory.CreateDirectory(movieRootPath);
+        Directory.CreateDirectory(seriesRootPath);
+
+        var sourcePath = Path.Combine(downloadsPath, "Say.Yes.to.the.Dress.2007.S11E15.Always.the.Pageant.Girl.1080p.WEB-DL.mkv");
+        await File.WriteAllBytesAsync(sourcePath, Enumerable.Range(0, 4096).Select(value => (byte)(value % 251)).ToArray());
+        File.SetLastWriteTimeUtc(sourcePath, DateTime.UtcNow.AddMinutes(-1));
+
+        var platform = CreatePlatformRepository(storage, timeProvider);
+        var libraries = CreateLibrariesRepository(storage, timeProvider);
+        await SaveSettingsAsync(platform, movieRootPath, downloadsPath, seriesRootPath);
+        await CreateTvLibraryAsync(libraries, seriesRootPath, downloadsPath);
+
+        var mediaState = sharedMediaState ? new SqliteMediaStateRepository(storage.Factory, timeProvider) : null;
+        var movies = new SqliteMovieCatalogRepository(storage.Factory, timeProvider, mediaState);
+        var seriesRepository = new SqliteSeriesCatalogRepository(storage.Factory, timeProvider, mediaState);
+        // The real show, confirmed against TMDB but with no start year stored.
+        var real = await seriesRepository.AddAsync(
+            new CreateSeriesRequest("Say Yes to the Dress", null, null, MetadataProvider: "tmdb", MetadataProviderId: "31306"),
+            CancellationToken.None);
+        await seriesRepository.SyncEpisodeCatalogueAsync(
+            real.Id,
+            [new CatalogueEpisodeItem(11, 15, "Always the Pageant Girl", null, timeProvider.GetUtcNow().AddYears(-10))],
+            "provider",
+            CancellationToken.None);
+
+        var service = CreateService(storage, timeProvider, platform, libraries, movies, seriesCatalogRepository: seriesRepository);
+
+        var result = await service.ExecuteAsync(
+            new ImportExecuteRequest(
+                Preview: new ImportPreviewRequest(
+                    SourcePath: sourcePath,
+                    FileName: null,
+                    MediaType: "tv",
+                    Title: "Say Yes to the Dress",
+                    Year: 2007,
+                    Genres: [],
+                    Tags: [],
+                    Studio: null,
+                    OriginalLanguage: null,
+                    SeriesId: real.Id),
+                TransferMode: "copy",
+                Overwrite: false,
+                AllowCopyFallback: true),
+            CancellationToken.None);
+
+        Assert.True(result.Succeeded, result.Message);
+        Assert.True(result.Response!.CatalogUpdated);
+
+        var only = Assert.Single(await seriesRepository.ListAsync(CancellationToken.None));
+        Assert.Equal(real.Id, only.Id);
+        var detail = await seriesRepository.GetInventoryDetailAsync(real.Id, CancellationToken.None);
+        var episode = Assert.Single(detail!.Episodes, item => item.HasFile);
+        Assert.Equal(11, episode.SeasonNumber);
+        Assert.Equal(15, episode.EpisodeNumber);
+    }
+
+    /// <summary>
+    /// The other half: an id that names nothing — the show it named has
+    /// since been removed — is not a confirmation, so it cannot carry an
+    /// unconfirmed title past the #643 guard into a brand-new show.
+    /// </summary>
+    [Fact]
+    public async Task ExecuteAsync_does_not_treat_a_series_id_that_no_longer_exists_as_confirmation()
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-04-29T08:00:00Z"));
+        await InitializeAllAsync(storage, timeProvider);
+
+        var downloadsPath = Path.Combine(storage.DataRoot, "downloads");
+        var movieRootPath = Path.Combine(storage.DataRoot, "movies");
+        var seriesRootPath = Path.Combine(storage.DataRoot, "series");
+        Directory.CreateDirectory(downloadsPath);
+        Directory.CreateDirectory(movieRootPath);
+        Directory.CreateDirectory(seriesRootPath);
+
+        var sourcePath = Path.Combine(downloadsPath, "Say.Yes.to.the.Dress.2007.S11E13.For.His.Consideration.1080p.WEB-DL.mkv");
+        await File.WriteAllBytesAsync(sourcePath, Enumerable.Range(0, 4096).Select(value => (byte)(value % 251)).ToArray());
+        File.SetLastWriteTimeUtc(sourcePath, DateTime.UtcNow.AddMinutes(-1));
+
+        var platform = CreatePlatformRepository(storage, timeProvider);
+        var libraries = CreateLibrariesRepository(storage, timeProvider);
+        await SaveSettingsAsync(platform, movieRootPath, downloadsPath, seriesRootPath);
+        await CreateTvLibraryAsync(libraries, seriesRootPath, downloadsPath);
+
+        var mediaState = new SqliteMediaStateRepository(storage.Factory, timeProvider);
+        var movies = new SqliteMovieCatalogRepository(storage.Factory, timeProvider, mediaState);
+        var seriesRepository = new SqliteSeriesCatalogRepository(storage.Factory, timeProvider, mediaState);
+        var service = CreateService(storage, timeProvider, platform, libraries, movies, seriesCatalogRepository: seriesRepository);
+
+        var result = await service.ExecuteAsync(
+            new ImportExecuteRequest(
+                Preview: new ImportPreviewRequest(
+                    SourcePath: sourcePath,
+                    FileName: null,
+                    MediaType: "tv",
+                    Title: "Say Yes to the Dress",
+                    Year: 2007,
+                    Genres: [],
+                    Tags: [],
+                    Studio: null,
+                    OriginalLanguage: null,
+                    SeriesId: "01a0d310c61474feb09f69b94c56071d"),
+                TransferMode: "copy",
+                Overwrite: false,
+                AllowCopyFallback: true),
+            CancellationToken.None);
+
+        Assert.True(result.Succeeded, result.Message);
+        Assert.False(result.Response!.CatalogUpdated);
+        Assert.Empty(await seriesRepository.ListAsync(CancellationToken.None));
+        var summary = await seriesRepository.GetImportRecoverySummaryAsync(CancellationToken.None);
+        Assert.Equal("unmatched", Assert.Single(summary.RecentCases).FailureKind);
+    }
+
+    /// <summary>
     /// The TV mirror of the regression check above: a Title that lands on a
     /// show Deluno already has, by name and year, must keep importing onto
     /// it — this is the "real" Say Yes to the Dress side of #643, which was

@@ -1530,10 +1530,20 @@ public sealed class SqliteMediaStateRepository(
         var normalizedFilePath = NormalizeText(request.FilePath);
         var fileFacts = MediaFileNameFacts.Parse(request.FilePath);
         var now = timeProvider.GetUtcNow().ToString("O");
-        string? mediaId;
+        string? mediaId = null;
 
-        using (var lookup = connection.CreateCommand())
+        if (!string.IsNullOrWhiteSpace(request.MediaId))
         {
+            using var known = connection.CreateCommand();
+            known.Transaction = transaction;
+            known.CommandText = $"SELECT id FROM {map.EntryTable} WHERE id = @id LIMIT 1;";
+            AddParameter(known, "@id", request.MediaId.Trim());
+            mediaId = await known.ExecuteScalarAsync(cancellationToken) as string;
+        }
+
+        if (string.IsNullOrWhiteSpace(mediaId))
+        {
+            using var lookup = connection.CreateCommand();
             lookup.Transaction = transaction;
             lookup.CommandText = $"""
                 SELECT id

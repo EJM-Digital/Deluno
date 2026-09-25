@@ -202,7 +202,8 @@ public interface IMovieCatalogRepository : IMovieImportRecoveryRetentionReposito
         string? filePath,
         long? fileSizeBytes,
         CancellationToken cancellationToken,
-        PreferenceEvaluationSnapshot? preferenceEvaluation = null);
+        PreferenceEvaluationSnapshot? preferenceEvaluation = null,
+        string? movieId = null);
 
     /// <summary>
     /// Imports a slice of already-on-disk titles in one transaction, and

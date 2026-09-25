@@ -2509,7 +2509,8 @@ public sealed class SqliteSeriesCatalogRepository(
         PreferenceEvaluationSnapshot? preferenceEvaluation = null,
         IReadOnlyList<ImportedEpisodeNumberingItem>? alternateEpisodes = null,
         IReadOnlyList<ImportedSeasonPackItem>? seasonPacks = null,
-        IReadOnlyList<PreferenceEvaluationSnapshot>? preferenceEvaluations = null)
+        IReadOnlyList<PreferenceEvaluationSnapshot>? preferenceEvaluations = null,
+        string? seriesId = null)
     {
         var created = await ImportExistingBatchAsync(
             libraryId,
@@ -2529,7 +2530,8 @@ public sealed class SqliteSeriesCatalogRepository(
                     PreferenceEvaluation: preferenceEvaluation,
                     AlternateEpisodes: alternateEpisodes,
                     SeasonPacks: seasonPacks,
-                    PreferenceEvaluations: preferenceEvaluations)
+                    PreferenceEvaluations: preferenceEvaluations,
+                    SeriesId: seriesId)
             ],
             cancellationToken);
 
@@ -2588,7 +2590,7 @@ public sealed class SqliteSeriesCatalogRepository(
     {
         var (title, startYear, wantedStatus, wantedReason, currentQuality, targetQuality,
             qualityCutoffMet, unmonitorWhenCutoffMet, filePath, fileSizeBytes, episodes,
-            preferenceEvaluation, alternateEpisodes, seasonPacks, preferenceEvaluations) = request;
+            preferenceEvaluation, alternateEpisodes, seasonPacks, preferenceEvaluations, knownSeriesId) = request;
 
         var normalizedTitle = title.Trim();
         var normalizedFilePath = NormalizeText(filePath);
@@ -2601,8 +2603,18 @@ public sealed class SqliteSeriesCatalogRepository(
 
         if (sharedMediaStateRepository is null)
         {
-            using (var lookup = connection.CreateCommand())
+            if (!string.IsNullOrWhiteSpace(knownSeriesId))
             {
+                using var known = connection.CreateCommand();
+                known.Transaction = transaction;
+                known.CommandText = "SELECT id FROM series_entries WHERE id = @id LIMIT 1;";
+                AddParameter(known, "@id", knownSeriesId.Trim());
+                seriesId = await known.ExecuteScalarAsync(cancellationToken) as string;
+            }
+
+            if (string.IsNullOrWhiteSpace(seriesId))
+            {
+                using var lookup = connection.CreateCommand();
                 lookup.Transaction = transaction;
                 lookup.CommandText =
                     """
@@ -2664,7 +2676,8 @@ public sealed class SqliteSeriesCatalogRepository(
                     filePath,
                     fileSizeBytes,
                     preferenceEvaluation,
-                    preferenceEvaluations),
+                    preferenceEvaluations,
+                    knownSeriesId),
                 connection,
                 transaction,
                 cancellationToken);
