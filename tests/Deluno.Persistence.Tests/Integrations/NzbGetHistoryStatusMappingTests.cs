@@ -25,6 +25,11 @@ public sealed class NzbGetHistoryStatusMappingTests
     [InlineData("FAILURE/MOVE", "failed")]
     [InlineData("WARNING/HEALTH", "failed")]
     [InlineData("WARNING/PAR", "failed")]
+    // #733: Sonarr's Nzbget.cs also keeps these two out of its "warning"
+    // bucket — a wrong or missing unpack password and a par-check disabled
+    // in settings are not recoverable the way a full disk is.
+    [InlineData("WARNING/PASSWORD", "failed")]
+    [InlineData("WARNING/DAMAGED", "failed")]
     [InlineData("DELETED/HEALTH", "failed")]
     [InlineData("DELETED/SCAN", "failed")]
     [InlineData("DELETED/MANUAL", "failed")]
@@ -37,6 +42,18 @@ public sealed class NzbGetHistoryStatusMappingTests
     [InlineData("DELETED/GOOD")]
     public void Outcome_reads_NZBGets_own_duplicate_check_as_duplicate_not_failed(string status)
         => Assert.Equal(DownloadClientHistoryOutcomes.Duplicate, NzbGetDownloadClient.NormalizeOutcome(status));
+
+    /// <summary>
+    /// #733: NZBGet's WARNING/SPACE means unpacking stopped because the disk
+    /// filled — the release downloaded completely and freeing space plus
+    /// re-running post-processing in NZBGet recovers it. Sonarr's Nzbget.cs
+    /// (GetHistory) reads UnpackStatus SPACE as a warning rather than a
+    /// failure for the same reason; every other WARNING/* detail still maps
+    /// to "failed" above.
+    /// </summary>
+    [Fact]
+    public void Outcome_reads_NZBGets_disk_full_warning_as_needing_attention_not_failed()
+        => Assert.Equal(DownloadClientHistoryOutcomes.NeedsAttention, NzbGetDownloadClient.NormalizeOutcome("WARNING/SPACE"));
 
     [Theory]
     [InlineData("FAILURE/HEALTH", "NZBGet could not download it: too many articles are missing.")]
@@ -58,4 +75,10 @@ public sealed class NzbGetHistoryStatusMappingTests
     [InlineData("DELETED/GOOD", "NZBGet already has this download: a better duplicate was kept instead.")]
     public void DuplicateReason_translates_NZBGets_duplicate_status_into_plain_words(string status, string expected)
         => Assert.Equal(expected, NzbGetDownloadClient.DuplicateReason(status));
+
+    [Fact]
+    public void AttentionReason_translates_NZBGets_disk_full_warning_into_plain_words()
+        => Assert.Equal(
+            "NZBGet finished downloading this, but unpacking stopped because the disk is full: free space and re-run post-processing in NZBGet.",
+            NzbGetDownloadClient.AttentionReason("WARNING/SPACE"));
 }

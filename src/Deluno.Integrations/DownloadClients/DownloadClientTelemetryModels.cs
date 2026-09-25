@@ -67,6 +67,16 @@ public static class DownloadClientHistoryOutcomes
     /// <c>DELETED/GOOD</c>.
     /// </summary>
     public const string Duplicate = "duplicate";
+
+    /// <summary>
+    /// The download itself is not lost, but finishing it needs a person
+    /// (#733). NZBGet's <c>WARNING/SPACE</c> means the release downloaded
+    /// completely and unpacking stopped because the disk filled — freeing
+    /// space and re-running post-processing in NZBGet recovers it, so it is
+    /// not a failure: nothing is blocklisted and nothing is searched for
+    /// again.
+    /// </summary>
+    public const string NeedsAttention = "needsAttention";
 }
 
 public static class DownloadQueueStatuses
