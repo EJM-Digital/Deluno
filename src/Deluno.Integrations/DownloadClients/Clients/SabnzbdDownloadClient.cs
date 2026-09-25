@@ -21,11 +21,29 @@ public sealed class SabnzbdDownloadClient(IHttpClientFactory httpClientFactory) 
         if (baseUri is null) return DownloadClientHelpers.GrabFailure(client, request, "Download client address is missing.");
         var apiKey = client.Secret ?? client.Username;
         if (string.IsNullOrWhiteSpace(apiKey)) return DownloadClientHelpers.GrabFailure(client, request, "SABnzbd API key is missing.");
-        var uri = new Uri(baseUri, $"api?{DownloadClientHelpers.BuildQuery(new Dictionary<string, string>
+        var query = new Dictionary<string, string>
         {
             ["mode"] = "addurl", ["apikey"] = apiKey, ["name"] = request.DownloadUrl,
             ["cat"] = DownloadClientHelpers.ResolveCategory(client, request), ["output"] = "json"
-        })}");
+        };
+        // #663: SABnzbd's addurl priority is the small discrete enum documented
+        // at sabnzbd.org/wiki (Low/Normal/High), not NZBGet's continuous scale —
+        // Deluno's request only says which side of normal it wants, so that is
+        // all that is mapped across. Omitted rather than forced to 0/Normal when
+        // nothing was asked for, so an unset request still gets SABnzbd's own
+        // default priority.
+        if (request.Priority is { } priority && priority != 0)
+        {
+            query["priority"] = (priority < 0 ? -1 : 1).ToString(CultureInfo.InvariantCulture);
+        }
+        // Sent only when Deluno actually has a password for this release — a
+        // protected archive that arrived from an indexer that provides one.
+        if (!string.IsNullOrWhiteSpace(request.Password))
+        {
+            query["password"] = request.Password;
+        }
+
+        var uri = new Uri(baseUri, $"api?{DownloadClientHelpers.BuildQuery(query)}");
         using var response = await httpClientFactory.CreateClient("download-clients").GetAsync(uri, cancellationToken);
         var responseJson = await response.Content.ReadAsStringAsync(cancellationToken);
         response.EnsureSuccessStatusCode();
@@ -89,7 +107,11 @@ public sealed class SabnzbdDownloadClient(IHttpClientFactory httpClientFactory) 
                 QueueError(item.Status), capturedUtc);
         }).ToArray();
         var history = await GetHistoryCoreAsync(http, client, baseUri, apiKey, capturedUtc, cancellationToken);
-        return CreateSnapshot(client, queue, capturedUtc, "healthy", $"Connected to SABnzbd at {baseUri.Host}:{baseUri.Port}.", history.Count > 0 ? history : null);
+        var (health, message) = DownloadClientHelpers.EvaluateDiskSpaceHealth(
+            $"Connected to SABnzbd at {baseUri.Host}:{baseUri.Port}.",
+            ParseGbString(payload?.Queue?.DiskSpace1),
+            ParseGbString(payload?.Queue?.DiskSpaceTotal1));
+        return CreateSnapshot(client, queue, capturedUtc, health, message, history.Count > 0 ? history : null);
     }
 
     public override async Task<IReadOnlyList<DownloadClientHistoryItem>> GetHistoryAsync(DownloadClientItem client, DateTimeOffset capturedUtc, CancellationToken cancellationToken)
@@ -336,11 +358,34 @@ public sealed class SabnzbdDownloadClient(IHttpClientFactory httpClientFactory) 
     public override string NormalizeStatus(string? nativeStatus, double? progress, int? errorCode = null, string? errorMessage = null)
     {
         var normalized = nativeStatus?.ToLowerInvariant() ?? string.Empty;
+        // Verifying/Repairing/Extracting/Moving/Running (#663) — checked ahead
+        // of the progress-based "complete" test below, which would otherwise
+        // misread one: SABnzbd's transfer is done and progress already reads
+        // 100% while these run, so without this a slot stuck repairing for
+        // hours looked identical to one actually finished. Past the transfer,
+        // short of the library — the same "processing" NZBGet's post-processing
+        // stages map to and Deluno's own cleanup step already uses.
+        if (IsPostProcessingStage(normalized)) return DownloadQueueStatuses.Processing;
         if ((progress ?? 0) >= 99.9 || normalized.Contains("complete")) return DownloadQueueStatuses.ImportReady;
         if (normalized.Contains("pause") || normalized.Contains("queued")) return DownloadQueueStatuses.Queued;
         if (normalized.Contains("fail") || normalized.Contains("error")) return DownloadQueueStatuses.Stalled;
         return DownloadQueueStatuses.Downloading;
     }
+
+    /// <summary>SABnzbd queue slot statuses distinct from Downloading (#663).</summary>
+    private static bool IsPostProcessingStage(string normalized) =>
+        normalized.Contains("verifying") || normalized.Contains("repairing") ||
+        normalized.Contains("extracting") || normalized.Contains("moving") || normalized.Contains("running");
+
+    /// <summary>
+    /// SABnzbd's disk-space fields, a bare decimal number of GB with no unit
+    /// suffix — unlike <see cref="ParseSize"/>, which reads MB-with-suffix
+    /// strings such as "512.3 MB" and would misread this by a factor of 1000.
+    /// </summary>
+    private static long? ParseGbString(string? value)
+        => double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out var gb) && gb > 0
+            ? Convert.ToInt64(gb * 1_000_000_000d)
+            : null;
 
     private static async Task<IReadOnlyList<DownloadClientHistoryItem>> GetHistoryCoreAsync(HttpClient http, DownloadClientItem client, Uri baseUri, string apiKey, DateTimeOffset capturedUtc, CancellationToken cancellationToken)
     {
@@ -443,7 +488,15 @@ public sealed class SabnzbdDownloadClient(IHttpClientFactory httpClientFactory) 
     }
 
     private sealed record SabQueueResponse([property: JsonPropertyName("queue")] SabQueue? Queue);
-    private sealed record SabQueue([property: JsonPropertyName("speed")] string? Speed, [property: JsonPropertyName("slots")] IReadOnlyList<SabSlot>? Slots);
+    // diskspace1/diskspacetotal1 (#663): the "complete" download folder's free
+    // and total space, in GB as SABnzbd's own decimal string — the field the
+    // health check never read, so a client filling its disk stayed "healthy"
+    // right up until every download in the queue started failing.
+    private sealed record SabQueue(
+        [property: JsonPropertyName("speed")] string? Speed,
+        [property: JsonPropertyName("slots")] IReadOnlyList<SabSlot>? Slots,
+        [property: JsonPropertyName("diskspace1")] string? DiskSpace1,
+        [property: JsonPropertyName("diskspacetotal1")] string? DiskSpaceTotal1);
     private sealed record SabSlot([property: JsonPropertyName("nzo_id")] string? NzoId, [property: JsonPropertyName("filename")] string? Filename, [property: JsonPropertyName("cat")] string? Category, [property: JsonPropertyName("status")] string? Status, [property: JsonPropertyName("mb")] string? Mb, [property: JsonPropertyName("mbleft")] string? Mbleft, [property: JsonPropertyName("timeleft")] string? TimeLeft);
     private sealed record SabHistoryResponse([property: JsonPropertyName("history")] SabHistory? History);
     private sealed record SabHistory([property: JsonPropertyName("slots")] IReadOnlyList<SabHistorySlot>? Slots);

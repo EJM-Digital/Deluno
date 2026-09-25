@@ -50,7 +50,7 @@ public sealed class AClientReportedFailureIsBlockedAndSearchedAgainTests
     [InlineData("FAILURE/MOVE", "NZBGet could not download it: it could not move the finished files into place.")]
     [InlineData("WARNING/HEALTH", "NZBGet finished it with a warning: too many articles are missing.")]
     [InlineData("DELETED/HEALTH", "NZBGet deleted it: a health check failed.")]
-    [InlineData("DELETED/DUPE", "NZBGet deleted it: it was a duplicate of one NZBGet already held.")]
+    [InlineData("DELETED/MANUAL", "NZBGet deleted it: something asked NZBGet to remove it.")]
     public async Task Every_NZBGet_failure_status_ends_the_dispatch_with_its_own_reason(string status, string reason)
     {
         using var world = await World.CreateAsync();

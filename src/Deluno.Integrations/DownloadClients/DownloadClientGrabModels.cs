@@ -19,6 +19,24 @@ public sealed record DownloadClientGrabRequest(
     /// uploads them instead of adding <see cref="DownloadUrl"/>.
     /// </summary>
     public byte[]? TorrentFile { get; init; }
+
+    /// <summary>
+    /// How urgently this release should be fetched relative to the rest of the
+    /// client's queue: negative for low, zero (or unset) for normal, positive
+    /// for high (#663). Each adapter maps this onto its own native scale —
+    /// NZBGet's <c>append</c> priority is a continuous integer and SABnzbd's
+    /// <c>addurl</c> priority is a small discrete enum — so the request carries
+    /// intent, not a client-specific number.
+    /// </summary>
+    public int? Priority { get; init; }
+
+    /// <summary>
+    /// The archive password for a password-protected release, when the
+    /// release or its indexer actually provided one. Never fabricated: absent
+    /// unless something upstream supplied it, because a wrong password sent
+    /// to a client that did not need one is worse than sending none.
+    /// </summary>
+    public string? Password { get; init; }
 }
 
 public sealed record DownloadClientGrabResult(
