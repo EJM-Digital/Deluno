@@ -19,6 +19,17 @@
  * this, a client that trusted the stream after a drop would drift out of
  * sync and never recover -- see docs/exec-plans/active/ADR-002-realtime-architecture.md.
  *
+ * The connection, and its seq bookkeeping, stay live while the tab is hidden
+ * (#641) -- a hidden tab isn't painted, so there's no cost to staying current.
+ * What changes is delivery to `useSignalREvent` subscribers: while hidden,
+ * envelopes are held rather than dispatched immediately, coalesced to their
+ * latest value per event+subject+entity (see `coalesceKey`); the whole
+ * buffer is delivered in one pass on the next `visibilitychange` back to
+ * visible. A handler still receives exactly the payload shape it always did
+ * -- this only changes when it is called and, for a burst touching the same
+ * entity, how many times. While visible, dispatch is untouched: synchronous,
+ * one call per envelope, same as before this existed.
+ *
  * Events emitted by the hub (mirror backend contracts):
  *   DownloadProgress        { id, title, progress, speedMbps, eta, status }
  *   QueueItemAdded          { id, title, type, status }
@@ -241,6 +252,36 @@ function normalizeSubjects(subjects: RealtimeSubject): string[] {
     : [...new Set(subjects)];
 }
 
+/**
+ * Best-effort entity id for coalescing envelopes held while the tab is
+ * hidden (#641). Several payloads carry a natural id -- a queue item, a
+ * download dispatch, a background job -- and keying on it means a burst of
+ * updates to the SAME entity collapses to its latest value while a burst
+ * across DIFFERENT entities does not: a counter that moves once per
+ * `QueueItemAdded` still sees one delivery per distinct item, not one for
+ * the whole burst. Payloads with none of these fields fall back to
+ * name+subject alone in `coalesceKey`, which is safe for the identity-only
+ * `*Changed` family and similar broad "something changed, go refetch"
+ * events -- their handlers refetch instead of reading fields off the event.
+ */
+function realtimeIdentity(data: unknown): string | null {
+  if (!data || typeof data !== "object") return null;
+  const record = data as Record<string, unknown>;
+  for (const field of ["id", "dispatchId", "jobId"]) {
+    const value = record[field];
+    if (typeof value === "string" || typeof value === "number") return `${field}:${value}`;
+  }
+  return null;
+}
+
+/** Coalescing key for the hidden-tab buffer: same key means "the same thing changed again", so only the latest survives. */
+function coalesceKey(envelope: RealtimeEnvelope): string {
+  const identity = realtimeIdentity(envelope.data);
+  return identity
+    ? `${envelope.name}\u001f${envelope.subject}\u001f${identity}`
+    : `${envelope.name}\u001f${envelope.subject}`;
+}
+
 export function SignalRProvider({
   children,
   accessToken
@@ -255,6 +296,14 @@ export function SignalRProvider({
   const connectionRef = useRef<signalR.HubConnection | null>(null);
   /** Highest seq applied so far. Reset to 0 whenever the server tells us to resync. */
   const lastSeqRef = useRef(0);
+  /**
+   * Tab visibility (#641), tracked independently of the connection's own
+   * lifecycle -- the socket keeps running whether or not the tab is on
+   * screen; only delivery below cares about this.
+   */
+  const hiddenRef = useRef(typeof document !== "undefined" && document.visibilityState === "hidden");
+  /** Envelopes seen while hidden, held by `coalesceKey`. Flushed in one pass on the next return to visible. */
+  const pendingRef = useRef(new Map<string, RealtimeEnvelope>());
 
   const invokeSubjects = useCallback((method: "Subscribe" | "Unsubscribe", subjects: string[]) => {
     const connection = connectionRef.current;
@@ -301,16 +350,60 @@ export function SignalRProvider({
     };
   }, []);
 
+  /**
+   * Calls every handler subscribed to this envelope's event, with the raw
+   * payload -- the one place envelopes reach subscriber code, whether
+   * delivered live or flushed from the hidden-tab buffer, so a handler never
+   * sees a different shape on one path than the other.
+   */
+  const deliver = useCallback((envelope: RealtimeEnvelope) => {
+    if (DEBUG) console.debug(`[WS] ${envelope.name}`, envelope.data);
+    const handlers = handlersRef.current.get(envelope.name);
+    if (handlers) {
+      for (const h of handlers) h(envelope.data);
+    }
+  }, []);
+
+  /**
+   * Delivers everything buffered while hidden, then empties the buffer. One
+   * pass, so returning to the tab is one update per distinct thing that
+   * changed rather than a replay of every intermediate one (#641).
+   */
+  const flushPending = useCallback(() => {
+    if (pendingRef.current.size === 0) return;
+    const envelopes = [...pendingRef.current.values()];
+    pendingRef.current.clear();
+    for (const envelope of envelopes) deliver(envelope);
+  }, [deliver]);
+
   useEffect(() => {
-    /** Applies one envelope: advances lastSeq and dispatches to subscribers. Idempotent against replays. */
+    if (typeof document === "undefined") return;
+
+    const onVisibilityChange = () => {
+      const isHidden = document.visibilityState === "hidden";
+      hiddenRef.current = isHidden;
+      if (!isHidden) flushPending();
+    };
+
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    return () => document.removeEventListener("visibilitychange", onVisibilityChange);
+  }, [flushPending]);
+
+  useEffect(() => {
+    /**
+     * Applies one envelope: advances lastSeq, then either dispatches it
+     * immediately (tab visible) or holds only its latest value for the
+     * current hidden window (#641) -- see `coalesceKey`. Idempotent against
+     * replays either way, since the seq check runs before either path.
+     */
     const applyEnvelope = (envelope: RealtimeEnvelope) => {
       if (envelope.seq <= lastSeqRef.current) return;
       lastSeqRef.current = envelope.seq;
-      if (DEBUG) console.debug(`[WS] ${envelope.name}`, envelope.data);
-      const handlers = handlersRef.current.get(envelope.name);
-      if (handlers) {
-        for (const h of handlers) h(envelope.data);
+      if (hiddenRef.current) {
+        pendingRef.current.set(coalesceKey(envelope), envelope);
+        return;
       }
+      deliver(envelope);
     };
 
     /**
@@ -394,7 +487,7 @@ export function SignalRProvider({
       void builder.stop();
       connectionRef.current = null;
     };
-  }, [accessToken]);
+  }, [accessToken, deliver]);
 
   return (
     <SignalRContext.Provider value={{ status, subscribe, subscribeResync }}>
@@ -409,6 +502,29 @@ export function SignalRProvider({
 export function useSignalRStatus(): SignalRStatus {
   const ctx = useContext(SignalRContext);
   return ctx?.status ?? "disconnected";
+}
+
+/**
+ * Whether the Deluno tab is the one currently on screen (#641). Realtime
+ * dispatch already uses this internally to hold purely-visual and per-event
+ * work until the tab is looked at again; exposed so a consumer that wants to
+ * gate its own toast, ticker animation or highlight can ask directly instead
+ * of re-deriving it from `document.visibilityState` itself. Does not require
+ * a `SignalRProvider` ancestor -- it only wraps the Page Visibility API.
+ */
+export function useIsTabVisible(): boolean {
+  const [visible, setVisible] = useState(
+    () => typeof document === "undefined" || document.visibilityState !== "hidden"
+  );
+
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    const onVisibilityChange = () => setVisible(document.visibilityState !== "hidden");
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    return () => document.removeEventListener("visibilitychange", onVisibilityChange);
+  }, []);
+
+  return visible;
 }
 
 /**
