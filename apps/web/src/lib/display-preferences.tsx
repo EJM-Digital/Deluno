@@ -6,8 +6,14 @@
  * gives the settings page one small, testable vocabulary.
  */
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import { useTheme } from "next-themes";
 import { fetchJson } from "./api/client";
 import type { PlatformSettingsSnapshot } from "./api/types/settings";
+
+/** The only values next-themes' ThemeProvider (see main.tsx) is configured to accept. */
+function isAppliedTheme(value: unknown): value is "system" | "dark" | "light" {
+  return value === "system" || value === "dark" || value === "light";
+}
 
 export type CalendarFirstDay = "monday" | "sunday";
 export type CalendarWeekHeaderFormat = "ddd d/M" | "ddd m/d" | "ddd d mmm";
@@ -180,17 +186,26 @@ const DisplayPreferencesContext = createContext<DisplayPreferencesContextValue |
 
 export function DisplayPreferencesProvider({ token, children }: { token: string | null; children: ReactNode }) {
   const [preferences, setPreferences] = useState<DisplayPreferences>(DEFAULT_DISPLAY_PREFERENCES);
+  const { setTheme } = useTheme();
 
   const replaceFromSettings = useCallback((settings: Partial<PlatformSettingsSnapshot>) => {
     setPreferences(displayPreferencesFromSettings(settings));
   }, []);
 
+  // The saved theme used to sit in Settings -> Interface and nowhere else:
+  // next-themes' own localStorage was the only thing that ever set it, so a
+  // theme chosen on one browser never followed to another (#736). This is the
+  // one place that already fetches settings once on app load, so apply the
+  // saved theme here too, right after that load — the same load this
+  // provider exists for.
   useEffect(() => {
     if (!token) return;
     let cancelled = false;
     fetchJson<PlatformSettingsSnapshot>("/api/settings")
       .then((settings) => {
-        if (!cancelled) replaceFromSettings(settings);
+        if (cancelled) return;
+        replaceFromSettings(settings);
+        if (isAppliedTheme(settings.uiTheme)) setTheme(settings.uiTheme);
       })
       .catch(() => {
         /* Formatting defaults are safe when settings are temporarily unavailable. */
@@ -198,7 +213,7 @@ export function DisplayPreferencesProvider({ token, children }: { token: string 
     return () => {
       cancelled = true;
     };
-  }, [replaceFromSettings, token]);
+  }, [replaceFromSettings, setTheme, token]);
 
   const value = useMemo(() => ({ preferences, replaceFromSettings }), [preferences, replaceFromSettings]);
   return <DisplayPreferencesContext.Provider value={value}>{children}</DisplayPreferencesContext.Provider>;
