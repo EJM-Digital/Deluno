@@ -75,7 +75,9 @@ public sealed class TransmissionDownloadClient(IHttpClientFactory httpClientFact
             Math.Clamp(Math.Round((item.PercentDone ?? 0) * 100, 1), 0, 100), Math.Round((item.RateDownload ?? 0) / 1_000_000d, 1), Math.Max(0, item.Eta ?? 0),
             item.TotalSize ?? 0, item.DownloadedEver ?? 0, item.PeersConnected ?? 0, "Transmission", string.IsNullOrWhiteSpace(item.ErrorString) ? null : item.ErrorString,
             DownloadClientHelpers.FromUnix(item.AddedDate), DownloadClientHelpers.ResolveDownloadPath(item.DownloadDir, item.Name),
-            UploadSpeedMbps: Math.Round((item.RateUpload ?? 0) / 1_000_000d, 1))).ToArray();
+            UploadSpeedMbps: Math.Round((item.RateUpload ?? 0) / 1_000_000d, 1)))
+            .Select(item => DownloadClientHelpers.ReconcileTorrentStatus(item, capturedUtc))
+            .ToArray();
         return CreateSnapshot(client, queue, capturedUtc, "healthy", $"Connected to Transmission at {baseUri.Host}:{baseUri.Port}.");
     }
 

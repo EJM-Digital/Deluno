@@ -155,7 +155,9 @@ public sealed class QbittorrentDownloadClient(Func<HttpMessageHandler>? handlerF
             // completed; it is 0 while still downloading.
             Ratio: item.Ratio,
             SeedingMinutes: item.SeedingTimeSeconds is null ? null : (int)Math.Clamp(item.SeedingTimeSeconds.Value / 60, 0, int.MaxValue),
-            UploadSpeedMbps: Math.Round((item.UploadSpeed ?? 0) / 1_000_000d, 1))).ToArray();
+            UploadSpeedMbps: Math.Round((item.UploadSpeed ?? 0) / 1_000_000d, 1)))
+            .Select(item => DownloadClientHelpers.ReconcileTorrentStatus(item, capturedUtc))
+            .ToArray();
         return CreateSnapshot(client, queue, capturedUtc, "healthy", $"Connected to qBittorrent at {baseUri.Host}:{baseUri.Port}.");
     }
 

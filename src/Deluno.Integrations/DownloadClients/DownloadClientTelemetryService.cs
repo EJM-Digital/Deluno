@@ -1664,10 +1664,17 @@ public sealed class DownloadClientTelemetryService(
                 : importOutcome;
         }
 
-        var grabOutcome = NormalizeHistoryOutcomeValue(dispatch.GrabStatus);
-        if (grabOutcome is not "unknown" and not "sent")
+        // GrabStatus only ever means "the client accepted the request" or "the
+        // client refused it" (SqliteDownloadDispatchesRepository.RecordGrabAsync
+        // writes only "succeeded" or "failed", and "failed" was already caught
+        // above). It is never itself evidence that the transfer finished - that
+        // needs detection or import - so "succeeded" must never read as history
+        // "completed" here. A Transmission magnet that never got its metadata
+        // was shown that way one second after being sent, with nothing left to
+        // ever correct it (#650).
+        if (string.Equals(dispatch.GrabStatus, "succeeded", StringComparison.OrdinalIgnoreCase))
         {
-            return grabOutcome;
+            return "sent";
         }
 
         return NormalizeHistoryOutcomeValue(dispatch.Status);
