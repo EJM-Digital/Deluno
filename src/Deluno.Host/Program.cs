@@ -65,6 +65,13 @@ if (allowLan && OperatingSystem.IsWindows())
     builder.Services.AddSingleton<ILanAccess>(new WindowsFirewallLanAccess(listenPort));
 }
 
+// Detecting an already-installed download client or Weir needs no LAN
+// exposure -- it only reads the local registry and probes loopback (#640).
+if (OperatingSystem.IsWindows())
+{
+    builder.Services.AddSingleton<IBundledComponentDetection, WindowsBundledComponentDetection>();
+}
+
 builder.Services.AddDelunoInfrastructure(builder.Configuration);
 // Login is the one endpoint an unauthenticated caller can hit repeatedly, and
 // each attempt costs 100k PBKDF2 iterations — so it is both a credential

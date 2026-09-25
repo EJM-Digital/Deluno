@@ -22,6 +22,7 @@ import { useApiMutation } from "../lib/use-api-mutation";
 import { authedFetch } from "../lib/use-auth";
 import { RealtimeGroups, useSignalREvent } from "../lib/use-signalr";
 import { configurationNavAreas } from "../components/app/settings-shell";
+import { DetectedComponents, type BundledComponentStatus } from "../components/app/bundled-components-detected";
 import { Button } from "../components/ui/button";
 import { ConnectionTestResult, type ConnectionTestOutcome } from "./connections/connection-test-result";
 import { Chip } from "../components/ui/chip";
@@ -181,6 +182,16 @@ export function IndexersPage() {
   const [showKey, setShowKey] = useState(false);
   const [fineTuneOpen, setFineTuneOpen] = useState(false);
   const [newMapping, setNewMapping] = useState({ remotePath: "", localPath: "" });
+  // Set by openDetectedClient once a drawer opens pre-filled from a detected
+  // component (#640), so it shows as tested before the person even reaches
+  // Save — the same test a manual "Test" click runs, just run once for them.
+  const [pendingAutoTest, setPendingAutoTest] = useState(false);
+  useEffect(() => {
+    if (!pendingAutoTest) return;
+    setPendingAutoTest(false);
+    void testForm();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingAutoTest]);
 
   const editingIndexer = drawer.kind === "indexer" && drawer.id ? indexers.find((item) => item.id === drawer.id) ?? null : null;
   const editingIndexerThrottle = editingIndexer ? throttleByHost.get(indexerHost(editingIndexer.baseUrl) ?? "") ?? null : null;
@@ -230,6 +241,30 @@ export function IndexersPage() {
     setClientForm(next);
     setClientInitial(next);
     resetDrawerChrome();
+  }
+  /**
+   * Opens a new client already pointed at what the installer put on this
+   * machine, or found already there (#640): host, port and the matching
+   * preset, so the person only has to add credentials if the client needs
+   * them. Auto-tests once the drawer has settled, the same test a manual
+   * "Test" click would run, so the connection shows as tested before Save.
+   */
+  function openDetectedClient(status: BundledComponentStatus) {
+    const preset = CLIENT_PRESETS.find((item) => item.protocol === status.kind);
+    const next: ClientForm = {
+      ...emptyClientForm(),
+      protocol: status.kind,
+      host: status.defaultHost,
+      port: String(status.defaultPort),
+      name: preset?.label ?? status.displayName,
+      moviesCategory: preset?.defaultMoviesCategory ?? emptyClientForm().moviesCategory,
+      tvCategory: preset?.defaultTvCategory ?? emptyClientForm().tvCategory
+    };
+    setDrawer({ kind: "client", id: null });
+    setClientForm(next);
+    setClientInitial(next);
+    resetDrawerChrome();
+    setPendingAutoTest(true);
   }
   const openRouting = useCallback((library: LibraryItem) => {
     const snapshot = routing.find((item) => item.libraryId === library.id);
@@ -587,6 +622,11 @@ export function IndexersPage() {
 
       {section === "clients" ? (
         <>
+          <DetectedComponents
+            category="download-client"
+            configuredKinds={clients.map((item) => item.protocol)}
+            onUse={openDetectedClient}
+          />
           <ListCard title="Download clients" count={clients.length ? `${clients.length} ${clients.length === 1 ? "client" : "clients"}` : undefined}>
             {clients.length === 0 ? (
               <ListEmpty

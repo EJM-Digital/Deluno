@@ -38,8 +38,34 @@ internal static class InstallHooks
         Run(() => firewall.AllowAsync(CancellationToken.None), "after install");
     }
 
-    /// <summary>First run after install: asks Windows, once, to let other devices reach Deluno.</summary>
-    public static void OnFirstRun() => Run(() => Firewall().AllowAsync(CancellationToken.None), "first run");
+    /// <summary>
+    /// First run after install: asks Windows, once, to let other devices reach
+    /// Deluno (#623), then offers the component picker (#640). Both need an
+    /// interactive prompt, and first run is Velopack's one moment for that --
+    /// its other callbacks must return in seconds and show nothing.
+    /// </summary>
+    public static void OnFirstRun()
+    {
+        Run(() => Firewall().AllowAsync(CancellationToken.None), "first run");
+        RunComponentPicker();
+    }
+
+    private static void RunComponentPicker()
+    {
+        try
+        {
+            var results = ComponentPickerDialog.ShowOnce();
+            foreach (var result in results)
+            {
+                LogHook($"component '{result.Kind}': {result.Outcome}: {result.Message}");
+            }
+        }
+        catch (Exception ex)
+        {
+            // Never let an installer-picker failure stop first run from finishing.
+            LogHook($"component picker failed: {ex.Message}");
+        }
+    }
 
     /// <summary>Before uninstall: removes the rule Deluno added, so nothing is left behind.</summary>
     public static void OnBeforeUninstall()

@@ -26,6 +26,7 @@ import { Select } from "../components/ui/select";
 import { SwitchRow } from "../components/ui/switch";
 import { NamingFormatField, NamingPatternEditor, previewNamingFormat, type NamingFormatKind } from "../components/app/naming-format-field";
 import { librarySetupNavItems } from "../components/app/settings-shell";
+import { DetectedComponents, type BundledComponentStatus } from "../components/app/bundled-components-detected";
 import { toast } from "../components/shell/toaster";
 import { settingsOverviewLoader } from "./settings-overview-page";
 import { fetchJson, type LibraryItem, type PlatformSettingsSnapshot, type ProcessorConnectionItem, type ProcessorConnectionTestResult, type QualityProfileItem } from "../lib/api";
@@ -409,6 +410,18 @@ function ProcessingWorkflowPage() {
     setCallback(emptyCallback());
     setSaveState(undefined);
   }
+  /**
+   * Opens the processor drawer pointed at Weir's own address on this machine
+   * (#640): the installer put it there, or it was already running. Weir still
+   * generates its own webhook secret when its account is created, so that
+   * field is left for the person to paste in — Deluno and Weir stay decoupled
+   * (no API exchange Deluno would have to know Weir-specific internals for).
+   */
+  function openDetectedCallback(status: BundledComponentStatus) {
+    setDrawer({ kind: "callback" });
+    setCallback({ ...emptyCallback(), name: status.displayName, submissionUrl: `http://${status.defaultHost}:${status.defaultPort}/api/v1/intake/webhook/deluno` });
+    setSaveState(undefined);
+  }
   function closeDrawer() {
     setDrawer({ kind: "closed" });
     setConfirmDiscard(false);
@@ -522,6 +535,11 @@ function ProcessingWorkflowPage() {
         )}
       </ListCard>
 
+      <DetectedComponents
+        category="processor"
+        configuredKinds={processorConnections.some((connection) => connection.submissionUrl.includes(":9347")) ? ["weir"] : []}
+        onUse={openDetectedCallback}
+      />
       <ListCard title="Processor connections" count="Optional — only when an external processor cleans files for Deluno">
         {processorConnections.length === 0 ? (
           <ListEmpty
