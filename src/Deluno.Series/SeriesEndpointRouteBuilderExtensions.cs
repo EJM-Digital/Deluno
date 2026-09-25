@@ -2866,6 +2866,40 @@ public static class SeriesEndpointRouteBuilderExtensions
                     decision.TargetQuality,
                     decision.QualityCutoffMet,
                     cancellationToken);
+
+                // The add dialog's "Monitor and search automatically" checkbox
+                // read as a promise to search right away, and did not keep it: a
+                // newly-added show just sat there until the library's own next
+                // scheduled cycle happened to reach it (#645). item.Monitored
+                // rather than request.Monitored for the same reason item.HasFile
+                // is used above and not a field off the request — AddAsync
+                // dedupes, so a title the catalogue already holds keeps its own
+                // stored state rather than whatever this call asked for.
+                // Targeted at this one show, the same shape as a recovery retry
+                // or an external redownload: real work for one id, not a fresh
+                // sweep of the library.
+                if (item.Monitored && WantedStatuses.IsSearchable(decision.WantedStatus))
+                {
+                    await jobScheduler.EnqueueAsync(
+                        new EnqueueJobRequest(
+                            JobType: LibrarySearchJobTypes.For(library.MediaType),
+                            Source: "series",
+                            PayloadJson: JsonSerializer.Serialize(new
+                            {
+                                libraryId = library.Id,
+                                libraryName = library.Name,
+                                mediaType = library.MediaType,
+                                checkMissing = true,
+                                checkUpgrades = true,
+                                maxItems = 1,
+                                retryDelayHours = library.RetryDelayHours,
+                                triggeredBy = "series-added",
+                                targetEntityId = item.Id
+                            }),
+                            RelatedEntityType: "series",
+                            RelatedEntityId: item.Id),
+                        cancellationToken);
+                }
             }
 
             await jobScheduler.EnqueueAsync(
