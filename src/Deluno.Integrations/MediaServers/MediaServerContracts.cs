@@ -155,6 +155,19 @@ public sealed record MediaServerLibrary(IReadOnlyList<MediaServerItem> Items, IR
 /// <summary>What removing an item from a server did.</summary>
 public sealed record MediaServerRemoval(string Message);
 
+/// <summary>
+/// What telling a server about changed files did (#662).
+/// </summary>
+/// <param name="UsedFallbackScan">
+/// True when no targeted per-path refresh could be sent - no section matched
+/// the path on Plex, or the targeted call failed on Jellyfin/Emby - so a full
+/// library scan was requested instead.
+/// </param>
+public sealed record MediaServerRefresh(string Message, bool UsedFallbackScan);
+
+/// <summary>Whether a mapped server path is one the server can actually see (#662).</summary>
+public sealed record MediaServerPathMappingTest(bool Found, string Message);
+
 /// <summary>An item that belongs in a collection Deluno keeps on a server.</summary>
 /// <param name="SectionId">Plex's library section; a Plex collection lives in one section.</param>
 public sealed record MediaServerCollectionMember(string ItemId, string Level, string? SectionId = null);
@@ -210,6 +223,41 @@ public interface IMediaServerClient
     Task<MediaServerAnswer<MediaServerRemoval>> RemoveAsync(
         MediaServerConnection connection,
         MediaServerItem item,
+        CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Tells the server about files that were created, replaced or removed
+    /// (#662) - the direct equivalent of Radarr's/Sonarr's Connect "On
+    /// Import"/"On Upgrade"/"On Rename" events. A targeted refresh is
+    /// preferred: Plex rescans the section that owns each distinct folder,
+    /// Jellyfin/Emby are sent one <c>Library/Media/Updated</c> call carrying
+    /// every change in the batch. When a targeted refresh cannot be sent -
+    /// nothing on the server maps to the path - a full library scan is
+    /// requested instead, and <see cref="MediaServerRefresh.UsedFallbackScan"/>
+    /// says so.
+    /// </summary>
+    /// <param name="mediaType"><c>movies</c> or <c>tv</c>, to pick the right Plex section type.</param>
+    /// <param name="changes">
+    /// Paths already translated into this server's own filesystem view (path
+    /// mapping applied by the caller) - a season pack sends one entry per
+    /// file, not one call per file.
+    /// </param>
+    Task<MediaServerAnswer<MediaServerRefresh>> RefreshAsync(
+        MediaServerConnection connection,
+        string mediaType,
+        IReadOnlyList<MediaServerPathChange> changes,
+        CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Whether <paramref name="serverPath"/> - a path already translated by a
+    /// configured path mapping - is one the server can see on its own
+    /// filesystem. Backs the "test" action on a path mapping (#662): the most
+    /// common path-mapping mistake is a mapping that still points nowhere the
+    /// server can reach.
+    /// </summary>
+    Task<MediaServerAnswer<MediaServerPathMappingTest>> TestPathAsync(
+        MediaServerConnection connection,
+        string serverPath,
         CancellationToken cancellationToken);
 
     /// <summary>

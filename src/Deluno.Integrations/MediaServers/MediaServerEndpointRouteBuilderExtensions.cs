@@ -109,6 +109,73 @@ public static class MediaServerEndpointRouteBuilderExtensions
             return Results.Ok(result);
         });
 
+        servers.MapGet("{id}/path-mappings", async (
+            string id,
+            [FromServices] IMediaServerRepository repository,
+            CancellationToken cancellationToken)
+            => Results.Ok(await repository.ListPathMappingsAsync(id, cancellationToken)));
+
+        servers.MapPost("{id}/path-mappings", async (
+            string id,
+            [FromBody] CreateMediaServerPathMappingRequest request,
+            [FromServices] IMediaServerRepository repository,
+            CancellationToken cancellationToken) =>
+        {
+            if (string.IsNullOrWhiteSpace(request.DelunoPath) || string.IsNullOrWhiteSpace(request.ServerPath))
+            {
+                return Results.ValidationProblem(new Dictionary<string, string[]>
+                {
+                    ["pathMapping"] = ["Both Deluno's path and the server's path are required."]
+                });
+            }
+
+            var item = await repository.CreatePathMappingAsync(id, request, cancellationToken);
+            return item is null ? Results.NotFound() : Results.Ok(item);
+        });
+
+        servers.MapDelete("{id}/path-mappings/{mappingId}", async (
+            string id,
+            string mappingId,
+            [FromServices] IMediaServerRepository repository,
+            CancellationToken cancellationToken)
+            => await repository.DeletePathMappingAsync(id, mappingId, cancellationToken) ? Results.NoContent() : Results.NotFound());
+
+        servers.MapPost("{id}/path-mappings/{mappingId}/test", async (
+            string id,
+            string mappingId,
+            [FromServices] IMediaServerRepository repository,
+            [FromServices] IMediaServerClientRegistry registry,
+            CancellationToken cancellationToken) =>
+        {
+            var stored = await repository.GetAsync(id, cancellationToken);
+            if (stored is null)
+            {
+                return Results.NotFound();
+            }
+
+            var mapping = (await repository.ListPathMappingsAsync(id, cancellationToken))
+                .FirstOrDefault(item => string.Equals(item.Id, mappingId, StringComparison.OrdinalIgnoreCase));
+            if (mapping is null)
+            {
+                return Results.NotFound();
+            }
+
+            var client = registry.Find(stored.Kind);
+            if (client is null)
+            {
+                return Results.ValidationProblem(new Dictionary<string, string[]> { ["kind"] = ["Choose Plex, Jellyfin or Emby."] });
+            }
+
+            var answer = await client.TestPathAsync(stored, mapping.ServerPath, cancellationToken);
+            return Results.Ok(answer switch
+            {
+                MediaServerAnswer<MediaServerPathMappingTest>.Reported reported => new { found = reported.Value.Found, message = reported.Value.Message },
+                MediaServerAnswer<MediaServerPathMappingTest>.Unreachable unreachable => new { found = false, message = unreachable.Reason },
+                MediaServerAnswer<MediaServerPathMappingTest>.NotSupported notSupported => new { found = false, message = notSupported.Reason },
+                _ => new { found = false, message = $"{stored.Name} could not be asked." }
+            });
+        });
+
         return endpoints;
     }
 

@@ -73,7 +73,8 @@ public static class PlatformDatabaseMigrations
         new V0065CompanionToolWeir(),
         new V0066DownloadHealthStrikesV2(),
         new V0067ProcessorHandoffOutcomes(),
-        new V0068IndexerTrackerDefinition()
+        new V0068IndexerTrackerDefinition(),
+        new V0069MediaServerPathMappings()
     ];
 
     private sealed class V0001InitialSchema : SqliteSqlMigration

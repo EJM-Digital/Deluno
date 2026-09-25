@@ -175,6 +175,13 @@ public static class JobLanes
         // both through the existing automation cycle.
         new("collections.movies", [MovieCollectionJobTypes.Sync], BatchSize: RemoteWidth, MaxConcurrency: RemoteWidth),
 
+        // Telling Plex/Jellyfin/Emby about a changed file (#662) - remote HTTP
+        // to servers Deluno does not control, so it is sized and signalled like
+        // the other remote lanes rather than tied to import's own disk-bound
+        // one. A slow or down media server must never be able to delay a file
+        // import queued right beside it.
+        new("media-servers.notify", [MediaServerJobTypes.Refresh], BatchSize: RemoteWidth, MaxConcurrency: RemoteWidth),
+
         // Indexers, one lane per catalogue so neither can starve the other.
         //
         // Outbound request pacing is handled a layer down: `FeedMediaSearchPlanner`

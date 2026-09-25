@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { useLoaderData, useRevalidator } from "react-router-dom";
-import { Loader2, Wifi } from "lucide-react";
+import { Loader2, Plus, Trash2, Wifi } from "lucide-react";
 import { fetchJson, readValidationProblem } from "../lib/api";
 import type { IntegrationFailure } from "../lib/api/types";
 import { authedFetch } from "../lib/use-auth";
@@ -10,6 +10,7 @@ import { configurationNavAreas } from "../components/app/settings-shell";
 import { Button } from "../components/ui/button";
 import { Chip } from "../components/ui/chip";
 import { ConfirmDialog } from "../components/ui/confirm-dialog";
+import { Disclosure } from "../components/ui/disclosure";
 import { Drawer, DrawerDanger, DrawerFooter, DrawerSection, type DrawerSaveState } from "../components/ui/drawer";
 import { Field, FieldRow } from "../components/ui/field";
 import { Input } from "../components/ui/input";
@@ -57,6 +58,21 @@ interface MediaServerTestResult {
   message: string;
   latencyMs: number | null;
   serverName: string | null;
+}
+
+/** Mirrors `Deluno.Connections.Contracts.MediaServerPathMappingItem` (#662). */
+interface MediaServerPathMappingItem {
+  id: string;
+  mediaServerId: string;
+  delunoPath: string;
+  serverPath: string;
+  isEnabled: boolean;
+  priority: number;
+}
+
+interface MediaServerPathMappingTestResult {
+  found: boolean;
+  message: string;
 }
 
 const KINDS = [
@@ -126,6 +142,10 @@ export function MediaServersPage() {
   const [testResult, setTestResult] = useState<MediaServerTestResult | null>(null);
   const [confirmRemove, setConfirmRemove] = useState(false);
   const [confirmDiscard, setConfirmDiscard] = useState(false);
+  const [mappings, setMappings] = useState<MediaServerPathMappingItem[]>([]);
+  const [newMapping, setNewMapping] = useState({ delunoPath: "", serverPath: "" });
+  const [mappingOpen, setMappingOpen] = useState(false);
+  const [mappingResults, setMappingResults] = useState<Record<string, MediaServerPathMappingTestResult>>({});
 
   const editing = drawer.id ? servers.find((server) => server.id === drawer.id) ?? null : null;
   const editingCollections = editing ? collections.filter((collection) => collection.serverId === editing.id) : [];
@@ -149,6 +169,15 @@ export function MediaServersPage() {
     setSaveState(undefined);
     setSaveMessage(null);
     setTestResult(null);
+    setMappings([]);
+    setNewMapping({ delunoPath: "", serverPath: "" });
+    setMappingOpen(false);
+    setMappingResults({});
+    if (server) {
+      fetchJson<MediaServerPathMappingItem[]>(`/api/media-servers/${server.id}/path-mappings`)
+        .then(setMappings)
+        .catch(() => setMappings([]));
+    }
   }
 
   function close() {
@@ -237,6 +266,61 @@ export function MediaServersPage() {
         body: JSON.stringify({ kind: server.kind, name: server.name, baseUrl: server.baseUrl, token: "", isEnabled, leavingSoonOnHome: server.leavingSoonOnHome ?? false })
       });
       revalidator.revalidate();
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function addMapping() {
+    if (!editing || !newMapping.delunoPath.trim() || !newMapping.serverPath.trim()) return;
+    setBusy("mapping:add");
+    try {
+      const response = await authedFetch(`/api/media-servers/${editing.id}/path-mappings`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ delunoPath: newMapping.delunoPath, serverPath: newMapping.serverPath, isEnabled: true })
+      });
+      if (!response.ok) throw new Error();
+      const created = (await response.json()) as MediaServerPathMappingItem;
+      setMappings((current) => [...current, created]);
+      setNewMapping({ delunoPath: "", serverPath: "" });
+    } catch {
+      setSaveMessage("The path mapping could not be saved.");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function removeMapping(mappingId: string) {
+    if (!editing) return;
+    setBusy(`mapping:remove:${mappingId}`);
+    try {
+      const response = await authedFetch(`/api/media-servers/${editing.id}/path-mappings/${mappingId}`, { method: "DELETE" });
+      if (!response.ok) throw new Error();
+      setMappings((current) => current.filter((mapping) => mapping.id !== mappingId));
+      setMappingResults((current) => {
+        const next = { ...current };
+        delete next[mappingId];
+        return next;
+      });
+    } catch {
+      setSaveMessage("The path mapping could not be removed.");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function testMapping(mappingId: string) {
+    if (!editing) return;
+    setBusy(`mapping:test:${mappingId}`);
+    try {
+      const response = await authedFetch(`/api/media-servers/${editing.id}/path-mappings/${mappingId}/test`, { method: "POST" });
+      const result = response.ok
+        ? ((await response.json()) as MediaServerPathMappingTestResult)
+        : { found: false, message: `The test could not run (HTTP ${response.status}).` };
+      setMappingResults((current) => ({ ...current, [mappingId]: result }));
+    } catch {
+      setMappingResults((current) => ({ ...current, [mappingId]: { found: false, message: "The test could not run." } }));
     } finally {
       setBusy(null);
     }
@@ -374,6 +458,59 @@ export function MediaServersPage() {
             Test connection
           </Button>
         </DrawerSection>
+
+        {editing ? (
+          <Disclosure
+            title="Advanced path mapping"
+            summary={mappings.length ? `${mappings.length} saved path ${mappings.length === 1 ? "mapping" : "mappings"}` : "Only when Deluno and this server see different paths"}
+            open={mappingOpen}
+            onOpenChange={setMappingOpen}
+          >
+            <p className="text-[length:var(--type-caption)] text-muted-foreground">
+              Use this only when {editing.name} sees a folder under a different path than Deluno does — the usual case when they run in separate Docker containers or mount the same share differently. For example, Deluno reads <code className="font-mono">D:\Media\Movies</code> while {editing.name} sees the same files at <code className="font-mono">/data/Movies</code>.
+            </p>
+            {mappings.length ? (
+              <div className="grid gap-2">
+                {mappings.map((mapping) => {
+                  const result = mappingResults[mapping.id];
+                  return (
+                    <div key={mapping.id} className="grid gap-1">
+                      <div className="flex min-h-10 items-center gap-2 rounded-[10px] border border-hairline px-[var(--field-pad-x)] font-mono text-[length:var(--type-caption)]">
+                        <span className="min-w-0 flex-1 truncate text-muted-foreground" title={mapping.delunoPath}>{mapping.delunoPath}</span>
+                        <span aria-hidden className="text-primary">→</span>
+                        <span className="min-w-0 flex-1 truncate text-foreground" title={mapping.serverPath}>{mapping.serverPath}</span>
+                        <Button type="button" variant="outline" size="sm" className="h-7 px-2 font-sans" onClick={() => void testMapping(mapping.id)} disabled={busy !== null}>
+                          {busy === `mapping:test:${mapping.id}` ? <Loader2 className="h-3 w-3 animate-spin" /> : null}
+                          Test
+                        </Button>
+                        <Button type="button" variant="ghost" size="icon" className="h-7 w-7" aria-label={`Remove ${mapping.delunoPath} link`} onClick={() => void removeMapping(mapping.id)} disabled={busy !== null}>
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
+                      </div>
+                      {result ? (
+                        <p className={`font-sans text-[length:var(--type-caption)] ${result.found ? "text-success" : "text-destructive"}`} role="status">
+                          {result.message}
+                        </p>
+                      ) : null}
+                    </div>
+                  );
+                })}
+              </div>
+            ) : null}
+            <FieldRow>
+              <Field label="Path as Deluno sees it">
+                <Input value={newMapping.delunoPath} onChange={(event) => setNewMapping({ ...newMapping, delunoPath: event.target.value })} placeholder="D:\Media\Movies" className="font-mono text-[length:var(--type-caption)]" />
+              </Field>
+              <Field label={`Same path as ${editing.name} sees it`}>
+                <Input value={newMapping.serverPath} onChange={(event) => setNewMapping({ ...newMapping, serverPath: event.target.value })} placeholder="/data/Movies" className="font-mono text-[length:var(--type-caption)]" />
+              </Field>
+            </FieldRow>
+            <Button type="button" variant="outline" size="sm" className="w-max" onClick={() => void addMapping()} disabled={busy !== null || !newMapping.delunoPath.trim() || !newMapping.serverPath.trim()}>
+              {busy === "mapping:add" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />}
+              Link paths
+            </Button>
+          </Disclosure>
+        ) : null}
 
         {editing ? (
           <DrawerSection title="Leaving soon" aside={editingCollections.length ? undefined : "nothing leaving"}>

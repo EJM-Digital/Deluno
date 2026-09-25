@@ -5,6 +5,7 @@ using Deluno.Contracts;
 using Deluno.Infrastructure.Storage;
 using Deluno.Security;
 using static Deluno.Infrastructure.Storage.SqliteRecordHelpers;
+using static Deluno.Contracts.DelunoValueNormalizers;
 
 namespace Deluno.Connections.Data;
 
@@ -23,6 +24,16 @@ public interface IMediaServerRepository
         CancellationToken cancellationToken);
 
     Task<bool> DeleteAsync(string id, CancellationToken cancellationToken);
+
+    /// <summary>Every mapping, or one server's, oldest/broadest last (#662).</summary>
+    Task<IReadOnlyList<MediaServerPathMappingItem>> ListPathMappingsAsync(string? mediaServerId, CancellationToken cancellationToken);
+
+    Task<MediaServerPathMappingItem?> CreatePathMappingAsync(
+        string mediaServerId,
+        CreateMediaServerPathMappingRequest request,
+        CancellationToken cancellationToken);
+
+    Task<bool> DeletePathMappingAsync(string mediaServerId, string id, CancellationToken cancellationToken);
 }
 
 /// <summary>
@@ -160,6 +171,90 @@ public sealed class SqliteMediaServerRepository(
         using var command = connection.CreateCommand();
         command.CommandText = "DELETE FROM media_servers WHERE id = @id;";
         AddParameter(command, "@id", id);
+        return await command.ExecuteNonQueryAsync(cancellationToken) > 0;
+    }
+
+    public async Task<IReadOnlyList<MediaServerPathMappingItem>> ListPathMappingsAsync(string? mediaServerId, CancellationToken cancellationToken)
+    {
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(DelunoDatabaseNames.Platform, cancellationToken);
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            """
+            SELECT id, media_server_id, deluno_path, server_path, is_enabled, priority, created_utc, updated_utc
+            FROM media_server_path_mappings
+            WHERE @mediaServerId IS NULL OR media_server_id = @mediaServerId
+            ORDER BY priority ASC, LENGTH(deluno_path) DESC, deluno_path ASC;
+            """;
+        AddParameter(command, "@mediaServerId", string.IsNullOrWhiteSpace(mediaServerId) ? null : mediaServerId.Trim());
+
+        var items = new List<MediaServerPathMappingItem>();
+        using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            items.Add(new MediaServerPathMappingItem(
+                reader.GetString(0),
+                reader.GetString(1),
+                reader.GetString(2),
+                reader.GetString(3),
+                reader.GetInt64(4) == 1,
+                reader.GetInt32(5),
+                ParseTimestamp(reader.GetString(6)),
+                ParseTimestamp(reader.GetString(7))));
+        }
+
+        return items;
+    }
+
+    public async Task<MediaServerPathMappingItem?> CreatePathMappingAsync(
+        string mediaServerId,
+        CreateMediaServerPathMappingRequest request,
+        CancellationToken cancellationToken)
+    {
+        var server = await GetAsync(mediaServerId, cancellationToken);
+        if (server is null) return null;
+
+        var delunoPath = NormalizePath(request.DelunoPath);
+        var serverPath = NormalizePath(request.ServerPath);
+        if (string.IsNullOrWhiteSpace(delunoPath) || string.IsNullOrWhiteSpace(serverPath)) return null;
+
+        var now = timeProvider.GetUtcNow();
+        var item = new MediaServerPathMappingItem(
+            Guid.CreateVersion7().ToString("N"),
+            server.Id,
+            delunoPath,
+            serverPath,
+            request.IsEnabled,
+            request.Priority is >= 1 ? request.Priority.Value : 10,
+            now,
+            now);
+
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(DelunoDatabaseNames.Platform, cancellationToken);
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            """
+            INSERT INTO media_server_path_mappings (
+                id, media_server_id, deluno_path, server_path, is_enabled, priority, created_utc, updated_utc)
+            VALUES (@id, @mediaServerId, @delunoPath, @serverPath, @isEnabled, @priority, @createdUtc, @updatedUtc);
+            """;
+        AddParameter(command, "@id", item.Id);
+        AddParameter(command, "@mediaServerId", item.MediaServerId);
+        AddParameter(command, "@delunoPath", item.DelunoPath);
+        AddParameter(command, "@serverPath", item.ServerPath);
+        AddParameter(command, "@isEnabled", item.IsEnabled ? 1 : 0);
+        AddParameter(command, "@priority", item.Priority);
+        AddParameter(command, "@createdUtc", item.CreatedUtc.ToString("O"));
+        AddParameter(command, "@updatedUtc", item.UpdatedUtc.ToString("O"));
+        await command.ExecuteNonQueryAsync(cancellationToken);
+        return item;
+    }
+
+    public async Task<bool> DeletePathMappingAsync(string mediaServerId, string id, CancellationToken cancellationToken)
+    {
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(DelunoDatabaseNames.Platform, cancellationToken);
+        using var command = connection.CreateCommand();
+        command.CommandText = "DELETE FROM media_server_path_mappings WHERE id = @id AND media_server_id = @mediaServerId;";
+        AddParameter(command, "@id", id);
+        AddParameter(command, "@mediaServerId", mediaServerId);
         return await command.ExecuteNonQueryAsync(cancellationToken) > 0;
     }
 

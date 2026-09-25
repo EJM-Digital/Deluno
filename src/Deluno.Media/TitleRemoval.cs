@@ -2,6 +2,7 @@ using System.Text.Json;
 using Deluno.Contracts;
 using Deluno.Intake.Contracts;
 using Deluno.Intake.Data;
+using Deluno.Jobs.Contracts;
 using Deluno.Jobs.Data;
 using Deluno.Libraries.Data;
 using Deluno.Platform;
@@ -60,7 +61,11 @@ public sealed class TitleRemovalService(
     IRecycleBinService recycleBinService,
     IDownloadDispatchesRepository? dispatchesRepository = null,
     IProcessorRepository? processorRepository = null,
-    IProcessorConnectionService? processorConnections = null)
+    IProcessorConnectionService? processorConnections = null,
+    // #662: the only place besides retention a title's files leave the
+    // library. Queued, same as an import's notify - a down media server must
+    // never hold up removing a title.
+    IJobScheduler? mediaServerJobScheduler = null)
 {
     public async Task<Dictionary<string, string?>> RemoveAsync(
         TitleToRemove title,
@@ -90,6 +95,24 @@ public sealed class TitleRemovalService(
             if (deletion.Warnings.Count > 0)
             {
                 metadata["fileDeletionWarnings"] = string.Join(" ", deletion.Warnings);
+            }
+
+            // #662: manual removal is the other path a title's files leave
+            // the library by, alongside retention - and until now the only
+            // one that told a media server about it.
+            if (mediaServerJobScheduler is not null && trackedFiles.Count > 0)
+            {
+                var payload = new MediaServerRefreshJobPayload(
+                    title.MediaType,
+                    trackedFiles.Select(file => new MediaServerPathChange(file.FilePath, MediaServerChangeKind.Deleted)).ToArray());
+                await mediaServerJobScheduler.EnqueueAsync(
+                    new EnqueueJobRequest(
+                        MediaServerJobTypes.Refresh,
+                        Source: "title.removed",
+                        PayloadJson: JsonSerializer.Serialize(payload),
+                        RelatedEntityType: title.EntityType,
+                        RelatedEntityId: title.Id),
+                    cancellationToken);
             }
         }
 
