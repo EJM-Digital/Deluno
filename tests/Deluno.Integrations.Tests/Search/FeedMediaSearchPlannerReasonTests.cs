@@ -394,6 +394,115 @@ public sealed class FeedMediaSearchPlannerReasonTests
         Assert.DoesNotContain("score", seederFamily.Explanation, StringComparison.OrdinalIgnoreCase);
     }
 
+    /// <summary>
+    /// #646: a fresh season search - nothing installed, so
+    /// SeasonPackReplacementDecision never runs - had no factor anywhere for
+    /// "this release is a whole season in one file". A pack and a same-quality
+    /// single episode scored identically on everything but size, so the season
+    /// search took whichever the indexers happened to order first.
+    /// </summary>
+    [Fact]
+    public async Task Season_search_prefers_a_season_pack_over_a_same_quality_single_episode()
+    {
+        var indexer = CreateIndexer("season-pack-indexer", "Season pack indexer", "tv");
+        var handler = new FixedFeedHandler(
+            """
+            <rss><channel>
+              <item><title>Example.S02E01.1080p.WEB-DL</title><link>https://fixture.invalid/episode</link></item>
+              <item><title>Example.S02.1080p.WEB-DL</title><link>https://fixture.invalid/pack</link></item>
+            </channel></rss>
+            """);
+
+        var plan = await CreatePlanner(
+            CreateConnections(indexer).Object,
+            handler).BuildPlanAsync(
+                "Example",
+                2026,
+                "tv",
+                null,
+                "WEB 1080p",
+                [CreateSource(indexer)],
+                seasonNumber: 2,
+                cancellationToken: CancellationToken.None);
+
+        Assert.Equal(2, plan.Candidates.Count);
+        Assert.Equal("Example.S02.1080p.WEB-DL", plan.BestCandidate!.ReleaseName);
+        var packFamily = Assert.Single(
+            plan.BestCandidate.PreferenceEvaluation!.Families,
+            family => family.FamilyId == "transient.season-pack");
+        Assert.Equal(PreferenceFactState.Present, packFamily.State);
+        Assert.Equal("whole", packFamily.SelectedLevelId);
+    }
+
+    /// <summary>
+    /// The season-pack tie-break must never outrank a persistent family: a
+    /// pack at a lower tier than a clearly better single episode still loses,
+    /// the same as any other transient signal (seeders included).
+    /// </summary>
+    [Fact]
+    public async Task Season_search_does_not_let_a_pack_beat_a_clearly_better_quality_release()
+    {
+        var indexer = CreateIndexer("season-pack-quality-indexer", "Season pack quality indexer", "tv");
+        var handler = new FixedFeedHandler(
+            """
+            <rss><channel>
+              <item><title>Example.S02.1080p.WEB-DL</title><link>https://fixture.invalid/pack</link></item>
+              <item><title>Example.S02E01.2160p.WEB-DL</title><link>https://fixture.invalid/episode</link></item>
+            </channel></rss>
+            """);
+
+        var plan = await CreatePlanner(
+            CreateConnections(indexer).Object,
+            handler).BuildPlanAsync(
+                "Example",
+                2026,
+                "tv",
+                null,
+                "WEB 1080p",
+                [CreateSource(indexer)],
+                seasonNumber: 2,
+                cancellationToken: CancellationToken.None);
+
+        Assert.Equal(2, plan.Candidates.Count);
+        Assert.Equal("Example.S02E01.2160p.WEB-DL", plan.BestCandidate!.ReleaseName);
+    }
+
+    /// <summary>
+    /// A search for one episode already refuses a season pack as a title
+    /// mismatch (ReleaseTitleMatch.EpisodeMismatch): "the search was for one
+    /// episode". The season-pack tie-break must not change that outcome.
+    /// </summary>
+    [Fact]
+    public async Task Episode_search_is_unaffected_by_the_season_pack_tie_break()
+    {
+        var indexer = CreateIndexer("episode-search-indexer", "Episode search indexer", "tv");
+        var handler = new FixedFeedHandler(
+            """
+            <rss><channel>
+              <item><title>Example.S02.1080p.WEB-DL</title><link>https://fixture.invalid/pack</link></item>
+              <item><title>Example.S02E03.1080p.WEB-DL</title><link>https://fixture.invalid/episode</link></item>
+            </channel></rss>
+            """);
+
+        var plan = await CreatePlanner(
+            CreateConnections(indexer).Object,
+            handler).BuildPlanAsync(
+                "Example",
+                2026,
+                "tv",
+                null,
+                "WEB 1080p",
+                [CreateSource(indexer)],
+                seasonNumber: 2,
+                episodeNumber: 3,
+                cancellationToken: CancellationToken.None);
+
+        Assert.Equal(2, plan.Candidates.Count);
+        Assert.Equal("Example.S02E03.1080p.WEB-DL", plan.BestCandidate!.ReleaseName);
+        var packCandidate = plan.Candidates.Single(candidate => candidate.ReleaseName == "Example.S02.1080p.WEB-DL");
+        Assert.Equal(ReleaseDecisionStatuses.Rejected, packCandidate.DecisionStatus);
+    }
+
     [Fact]
     public async Task Automatic_and_interactive_typed_searches_return_the_same_installed_file_comparison()
     {
