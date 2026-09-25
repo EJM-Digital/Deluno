@@ -61,6 +61,33 @@ public sealed class SeasonSearchExecutorTests
         world.Grabs.Verify(grab => grab.GrabAsync("client-1", It.IsAny<DownloadClientGrabRequest>(), It.IsAny<CancellationToken>()), Times.Once);
     }
 
+    /// <summary>
+    /// #655: Chernobyl's targeted show-level search dispatched a season pack,
+    /// and the season search #646 already plans for a fully-missing season ran
+    /// straight after and dispatched a second one — nothing here knew the first
+    /// had happened. The season job now checks the same in-flight list every
+    /// other search path checks, keyed on the series id every one of those
+    /// paths dispatches under.
+    /// </summary>
+    [Fact]
+    public async Task A_season_already_on_its_way_is_not_sent_again()
+    {
+        var world = new World("Pioneer.One.S01.1080p.WEB-DL");
+        world.Jobs.Setup(jobs => jobs.ListDownloadsInFlightAsync(It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync([new DownloadInFlight("series", "series-1", "Pioneer.One.S01.720p.WEB-DL")]);
+
+        var result = await world.Executor.ExecuteAsync("series-1", 1, "automatic-season", "was searched.", CancellationToken.None);
+
+        Assert.False(result.Dispatched);
+        Assert.Equal("skipped", result.Outcome);
+        world.Grabs.Verify(grab => grab.GrabAsync(It.IsAny<string>(), It.IsAny<DownloadClientGrabRequest>(), It.IsAny<CancellationToken>()), Times.Never);
+        world.Jobs.Verify(jobs => jobs.RecordDownloadDispatchAsync(
+            It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(),
+            It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<int?>(), It.IsAny<string?>(),
+            It.IsAny<CancellationToken>(), It.IsAny<IntegrationFailure?>(), It.IsAny<bool>(), It.IsAny<bool>(), It.IsAny<string?>(),
+            It.IsAny<IReadOnlyList<DispatchReplacementTarget>?>(), It.IsAny<string?>()), Times.Never);
+    }
+
     /// <summary>One series with one season of two missing episodes, a search that finds one release, and a client that takes it.</summary>
     private sealed class World
     {
