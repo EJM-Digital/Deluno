@@ -252,6 +252,7 @@ public sealed class NzbGetDownloadClient(IHttpClientFactory httpClientFactory) :
             var outcome = NormalizeOutcome(item.Status ?? string.Empty);
             var errorMessage = outcome == "failed" ? FailureReason(item.Status ?? string.Empty)
                 : outcome == DownloadClientHistoryOutcomes.Duplicate ? DuplicateReason(item.Status ?? string.Empty)
+                : outcome == DownloadClientHistoryOutcomes.NeedsAttention ? AttentionReason(item.Status ?? string.Empty)
                 : QueueError(item.Status);
             return new DownloadClientHistoryItem(item.NzbId.ToString(CultureInfo.InvariantCulture), client.Id, client.Name, client.Protocol,
                 DownloadClientHelpers.InferMediaType(client, item.Category), DownloadClientHelpers.CleanReleaseTitle(item.NzbName ?? item.Name ?? "Unknown NZBGet history item"), item.NzbName ?? item.Name ?? "Unknown NZBGet history item",
@@ -295,6 +296,23 @@ public sealed class NzbGetDownloadClient(IHttpClientFactory httpClientFactory) :
     /// <see cref="DownloadClientTelemetryService.RecordWhatTheClientShowsAsync"/>
     /// only acts on a dispatch that has no outcome recorded yet — so a DELETED
     /// row Deluno itself produced is not read as a failure twice.</para>
+    ///
+    /// <para><b>WARNING/SPACE is not a failure either (#733).</b> Per NZBGet's
+    /// own history documentation
+    /// (https://nzbget.com/documentation/api/history), a MAIN status of
+    /// WARNING means the download itself completed and something in
+    /// post-processing needs attention; SPACE is the detail NZBGet uses when
+    /// unpacking stopped because the disk filled. The release is not lost —
+    /// freeing space and re-running post-processing in NZBGet recovers it —
+    /// so unlike every other WARNING/* detail it is read as
+    /// <see cref="DownloadClientHistoryOutcomes.NeedsAttention"/> rather than
+    /// "failed": nothing is blocklisted and nothing is searched for again.
+    /// Sonarr's Nzbget.cs (<c>GetHistory</c>) draws the same line, reading
+    /// <c>UnpackStatus.Space</c> as a warning rather than treating the item as
+    /// failed. Every other WARNING/* detail (HEALTH, PAR, and the rest) keeps
+    /// being read as "failed": Sonarr does not special-case them either, and
+    /// none of them describe a download that is still recoverable without a
+    /// new release.</para>
     /// </summary>
     internal static string NormalizeOutcome(string value)
     {
@@ -304,6 +322,7 @@ public sealed class NzbGetDownloadClient(IHttpClientFactory httpClientFactory) :
         {
             "SUCCESS" or "COMPLETED" or "SUCCEEDED" => DownloadQueueStatuses.Completed,
             "WARNING" when detail == "SCRIPT" => DownloadQueueStatuses.Completed,
+            "WARNING" when detail == "SPACE" => DownloadClientHistoryOutcomes.NeedsAttention,
             "DELETED" when detail is "DUPE" or "COPY" or "GOOD" => DownloadClientHistoryOutcomes.Duplicate,
             "WARNING" or "FAILURE" or "DELETED" => "failed",
             _ when status.Contains("fail", StringComparison.OrdinalIgnoreCase) || status.Contains("error", StringComparison.OrdinalIgnoreCase) => "failed",
@@ -338,6 +357,21 @@ public sealed class NzbGetDownloadClient(IHttpClientFactory httpClientFactory) :
     {
         var (_, detail) = SplitStatus(value.Trim());
         return $"NZBGet already has this download: {DeletedDetail(detail)}.";
+    }
+
+    /// <summary>
+    /// The words for a <see cref="DownloadClientHistoryOutcomes.NeedsAttention"/>
+    /// row (#733) — the download is not lost, but a person has to act before it
+    /// can finish.
+    /// </summary>
+    internal static string AttentionReason(string value)
+    {
+        var (_, detail) = SplitStatus(value.Trim());
+        return detail switch
+        {
+            "SPACE" => "NZBGet finished downloading this, but unpacking stopped because the disk is full: free space and re-run post-processing in NZBGet.",
+            _ => $"NZBGet needs help finishing this: {FailureDetail(detail)}."
+        };
     }
 
     private static string FailureDetail(string detail) => detail switch

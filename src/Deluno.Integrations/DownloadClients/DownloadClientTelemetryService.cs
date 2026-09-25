@@ -951,6 +951,10 @@ public sealed class DownloadClientTelemetryService(
                 {
                     await RecordClientDuplicateAsync(sighting.Dispatch, sighting.DuplicateReason, cancellationToken);
                 }
+                else if (sighting.NeedsAttention)
+                {
+                    await RecordClientNeedsAttentionAsync(sighting.Dispatch, sighting.AttentionReason, cancellationToken);
+                }
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
@@ -1125,6 +1129,50 @@ public sealed class DownloadClientTelemetryService(
     }
 
     /// <summary>
+    /// The download itself is not lost, but finishing it needs a person
+    /// (#733) — NZBGet's WARNING/SPACE, where the release downloaded
+    /// completely and unpacking stopped because the disk filled.
+    ///
+    /// <para><b>Not a failure, so it takes none of the failure path's
+    /// consequences.</b> Nothing is blocklisted and nothing is searched for
+    /// again: the release did not fail, it is waiting on a person to free
+    /// space and re-run post-processing in NZBGet. No import outcome is
+    /// recorded either — there is nothing to point an import at yet — so the
+    /// dispatch is left resolvable by <see cref="RecordDetectionAsync"/>
+    /// having already marked it detected and finished, the same way a
+    /// duplicate is.</para>
+    /// </summary>
+    private async Task RecordClientNeedsAttentionAsync(
+        DownloadDispatchItem dispatch,
+        string? reason,
+        CancellationToken cancellationToken)
+    {
+        if (dispatch.ImportStatus is not null)
+        {
+            return;
+        }
+
+        var message = string.IsNullOrWhiteSpace(reason)
+            ? $"{dispatch.DownloadClientName} finished downloading this but needs a person to finish it."
+            : reason;
+
+        await dispatchesRepository.RecordTimelineEventAsync(
+            dispatch.Id,
+            "client-reported-needs-attention",
+            JsonSerializer.Serialize(new { reason = message, source = "history" }),
+            cancellationToken);
+
+        await activityFeedRepository.RecordActivityAsync(
+            "download.client.needs-attention",
+            $"{dispatch.DownloadClientName} could not finish {dispatch.ReleaseName}: {message}",
+            null,
+            null,
+            "download_dispatch",
+            dispatch.Id,
+            cancellationToken);
+    }
+
+    /// <summary>
     /// "Follow the existing item" for a duplicate (#663): another dispatch for
     /// the same title that has already imported, so this dispatch's release is
     /// already on the shelf under a different id. Matched on entity rather than
@@ -1184,7 +1232,15 @@ public sealed class DownloadClientTelemetryService(
         /// and nothing is searched for again.
         /// </summary>
         bool Duplicate = false,
-        string? DuplicateReason = null);
+        string? DuplicateReason = null,
+        /// <summary>
+        /// The download finished but a person has to act before it can go
+        /// further (#733) — NZBGet's WARNING/SPACE (disk full while
+        /// unpacking). Distinct from <see cref="Failed"/>: the release is not
+        /// lost, so nothing is blocklisted and nothing is searched for again.
+        /// </summary>
+        bool NeedsAttention = false,
+        string? AttentionReason = null);
 
     /// <summary>
     /// The downloads this client shows that their records do not know about yet:
@@ -1198,9 +1254,9 @@ public sealed class DownloadClientTelemetryService(
         DownloadClientTelemetrySnapshot live,
         IEnumerable<DownloadDispatchItem> clientDispatches)
     {
-        var shown = new Dictionary<string, (long? Bytes, bool Finished, bool Failed, string? Reason, bool Duplicate, string? DuplicateReason)>(StringComparer.OrdinalIgnoreCase);
+        var shown = new Dictionary<string, (long? Bytes, bool Finished, bool Failed, string? Reason, bool Duplicate, string? DuplicateReason, bool NeedsAttention, string? AttentionReason)>(StringComparer.OrdinalIgnoreCase);
 
-        void Add(string? id, long? bytes, bool finished, bool failed, string? reason, bool duplicate, string? duplicateReason)
+        void Add(string? id, long? bytes, bool finished, bool failed, string? reason, bool duplicate, string? duplicateReason, bool needsAttention, string? attentionReason)
         {
             if (string.IsNullOrWhiteSpace(id))
             {
@@ -1209,13 +1265,14 @@ public sealed class DownloadClientTelemetryService(
 
             var key = id.Trim();
             shown[key] = shown.TryGetValue(key, out var seen)
-                ? (bytes ?? seen.Bytes, finished || seen.Finished, failed || seen.Failed, reason ?? seen.Reason, duplicate || seen.Duplicate, duplicateReason ?? seen.DuplicateReason)
-                : (bytes, finished, failed, reason, duplicate, duplicateReason);
+                ? (bytes ?? seen.Bytes, finished || seen.Finished, failed || seen.Failed, reason ?? seen.Reason, duplicate || seen.Duplicate, duplicateReason ?? seen.DuplicateReason,
+                    needsAttention || seen.NeedsAttention, attentionReason ?? seen.AttentionReason)
+                : (bytes, finished, failed, reason, duplicate, duplicateReason, needsAttention, attentionReason);
         }
 
         foreach (var item in live.Queue)
         {
-            Add(item.Id, item.DownloadedBytes, item.Status is DownloadQueueStatuses.ImportReady or DownloadQueueStatuses.Completed, false, null, false, null);
+            Add(item.Id, item.DownloadedBytes, item.Status is DownloadQueueStatuses.ImportReady or DownloadQueueStatuses.Completed, false, null, false, null, false, null);
         }
 
         foreach (var item in live.History)
@@ -1230,12 +1287,18 @@ public sealed class DownloadClientTelemetryService(
             // DELETED/DUPE, DELETED/COPY and DELETED/GOOD. Also only trusted
             // from the client's own history — never inferred from the queue.
             var duplicateByClient = item.Outcome == DownloadClientHistoryOutcomes.Duplicate && item.HistorySource == "native";
-            var finished = item.Outcome is DownloadQueueStatuses.Completed or DownloadQueueStatuses.ImportReady || failedByClient || duplicateByClient;
+            // The download finished but needs a person before it can go
+            // further (#733): NZBGet's WARNING/SPACE (disk full during
+            // unpacking). Not a failure, so it takes none of the failure
+            // path's consequences.
+            var attentionByClient = item.Outcome == DownloadClientHistoryOutcomes.NeedsAttention && item.HistorySource == "native";
+            var finished = item.Outcome is DownloadQueueStatuses.Completed or DownloadQueueStatuses.ImportReady || failedByClient || duplicateByClient || attentionByClient;
             var bytes = item.SizeBytes > 0 ? item.SizeBytes : (long?)null;
             var reason = failedByClient ? item.ErrorMessage : null;
             var duplicateReason = duplicateByClient ? item.ErrorMessage : null;
-            Add(item.Id, bytes, finished, failedByClient, reason, duplicateByClient, duplicateReason);
-            Add(item.ExternalId, bytes, finished, failedByClient, reason, duplicateByClient, duplicateReason);
+            var attentionReason = attentionByClient ? item.ErrorMessage : null;
+            Add(item.Id, bytes, finished, failedByClient, reason, duplicateByClient, duplicateReason, attentionByClient, attentionReason);
+            Add(item.ExternalId, bytes, finished, failedByClient, reason, duplicateByClient, duplicateReason, attentionByClient, attentionReason);
         }
 
         var sightings = new List<ClientSighting>();
@@ -1249,7 +1312,7 @@ public sealed class DownloadClientTelemetryService(
 
             if (dispatch.DetectedUtc is null || (seen.Finished && dispatch.ClientCompletedUtc is null))
             {
-                sightings.Add(new ClientSighting(dispatch, seen.Bytes, seen.Finished, seen.Failed, seen.Reason, seen.Duplicate, seen.DuplicateReason));
+                sightings.Add(new ClientSighting(dispatch, seen.Bytes, seen.Finished, seen.Failed, seen.Reason, seen.Duplicate, seen.DuplicateReason, seen.NeedsAttention, seen.AttentionReason));
             }
         }
 
