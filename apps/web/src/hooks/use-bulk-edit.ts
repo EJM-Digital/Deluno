@@ -7,6 +7,8 @@ import { describeRequestFailure, RequestFailedError } from "../lib/search-reason
 
 export type BulkWorkflowOperation = "monitoring" | "quality" | "reassignLibrary" | "tags" | "search" | "renamePreview";
 
+export type BulkTagMode = "add" | "remove" | "replace";
+
 export interface BulkRenamePreviewItem {
   itemId: string;
   title: string;
@@ -39,6 +41,7 @@ export function useBulkEdit({
   const [bulkQualityProfileId, setBulkQualityProfileId] = useState("");
   const [bulkTargetLibraryId, setBulkTargetLibraryId] = useState("");
   const [bulkTagsInput, setBulkTagsInput] = useState("");
+  const [bulkTagsMode, setBulkTagsMode] = useState<BulkTagMode>("add");
   const [bulkRenameTemplate, setBulkRenameTemplate] = useState("");
   const [bulkRenamePreview, setBulkRenamePreview] = useState<BulkRenamePreviewItem[]>([]);
   const [bulkConfirming, setBulkConfirming] = useState(false);
@@ -116,7 +119,7 @@ export function useBulkEdit({
     }
   }
 
-  async function applyTags(ids: string[], tags: string[]) {
+  async function applyTags(ids: string[], tags: string[], mode: BulkTagMode = "add") {
     const endpoint = variant === "movies"
       ? "/api/movies/bulk/tags"
       : "/api/series/bulk/tags";
@@ -126,14 +129,33 @@ export function useBulkEdit({
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(
         variant === "movies"
-          ? { movieIds: ids, tags: tags.join(", ") }
-          : { seriesIds: ids, tags: tags.join(", ") }
+          ? { movieIds: ids, tags: tags.join(", "), mode }
+          : { seriesIds: ids, tags: tags.join(", "), mode }
       )
     });
 
     if (!response.ok) {
       throw new Error("bulk-tags-failed");
     }
+  }
+
+  function mergeTagsForMode(currentTags: string[], requestedTags: string[], mode: BulkTagMode): string[] {
+    if (mode === "replace") {
+      return requestedTags;
+    }
+
+    if (mode === "remove") {
+      const removed = new Set(requestedTags.map((tag) => tag.toLowerCase()));
+      return currentTags.filter((tag) => !removed.has(tag.toLowerCase()));
+    }
+
+    const merged = [...currentTags];
+    for (const tag of requestedTags) {
+      if (!merged.some((existing) => existing.toLowerCase() === tag.toLowerCase())) {
+        merged.push(tag);
+      }
+    }
+    return merged;
   }
 
   async function applyReassignLibrary(ids: string[], fromLibraryId: string, toLibraryId: string) {
@@ -319,6 +341,7 @@ export function useBulkEdit({
 
     setBulkOperation(operation);
     setBulkMonitored(monitored);
+    setBulkTagsMode("add");
     setBulkConfirming(false);
     setBulkError(null);
     setBulkRenamePreview([]);
@@ -474,15 +497,20 @@ export function useBulkEdit({
       }
       else if (bulkOperation === "tags") {
         const normalizedTags = normalizeBulkTags(bulkTagsInput);
+        const mode = bulkTagsMode;
         const previousTags = new Map(selectedItems.map((item) => [item.id, item.tags ?? []] as const));
-        await applyTags(selectedIds, normalizedTags);
+        const nextTagsById = new Map(
+          selectedItems.map((item) => [item.id, mergeTagsForMode(item.tags ?? [], normalizedTags, mode)] as const)
+        );
+        await applyTags(selectedIds, normalizedTags, mode);
         setLibraryItems((current) =>
           current.map((item) =>
-            selectedIds.includes(item.id) ? { ...item, tags: normalizedTags } : item
+            nextTagsById.has(item.id) ? { ...item, tags: nextTagsById.get(item.id)! } : item
           )
         );
+        const modeLabel = mode === "remove" ? "Remove tags" : mode === "replace" ? "Replace tags" : "Add tags";
         pushHistory({
-          label: "Apply tags",
+          label: modeLabel,
           undoLabel: "Tags reverted",
           redoLabel: "Tags re-applied",
           undo: async () => {
@@ -495,7 +523,7 @@ export function useBulkEdit({
             });
             for (const [key, ids] of groups) {
               const tags = key ? key.split("||").filter(Boolean) : [];
-              await applyTags(ids, tags);
+              await applyTags(ids, tags, "replace");
             }
             setLibraryItems((current) =>
               current.map((item) =>
@@ -504,9 +532,11 @@ export function useBulkEdit({
             );
           },
           redo: async () => {
-            await applyTags(selectedIds, normalizedTags);
+            await applyTags(selectedIds, normalizedTags, mode);
             setLibraryItems((current) =>
-              current.map((item) => selectedIds.includes(item.id) ? { ...item, tags: normalizedTags } : item)
+              current.map((item) =>
+                nextTagsById.has(item.id) ? { ...item, tags: nextTagsById.get(item.id)! } : item
+              )
             );
           }
         });
@@ -578,6 +608,7 @@ export function useBulkEdit({
     isRemovalConfirmationOpen, setIsRemovalConfirmationOpen, bulkOperation, setBulkOperation,
     bulkMonitored, setBulkMonitored, bulkQualityProfileId, setBulkQualityProfileId,
     bulkTargetLibraryId, setBulkTargetLibraryId, bulkTagsInput, setBulkTagsInput,
+    bulkTagsMode, setBulkTagsMode,
     bulkRenameTemplate, setBulkRenameTemplate, bulkRenamePreview, setBulkRenamePreview,
     bulkConfirming, setBulkConfirming, bulkError, setBulkError, bulkLibraries, bulkQualityProfiles,
     bulkOptionsLoading, undoStack, redoStack, runUndo, runRedo, openBulkTools,

@@ -187,6 +187,7 @@ export function LibraryView({
     isRemovalConfirmationOpen, setIsRemovalConfirmationOpen, bulkOperation, setBulkOperation,
     bulkMonitored, setBulkMonitored, bulkQualityProfileId, setBulkQualityProfileId,
     bulkTargetLibraryId, setBulkTargetLibraryId, bulkTagsInput, setBulkTagsInput,
+    bulkTagsMode, setBulkTagsMode,
     bulkRenameTemplate, setBulkRenameTemplate, bulkRenamePreview, setBulkRenamePreview,
     bulkConfirming, setBulkConfirming, bulkError, setBulkError, bulkLibraries, bulkQualityProfiles,
     bulkOptionsLoading, undoStack, redoStack, runUndo, runRedo, openBulkTools,
@@ -1097,6 +1098,7 @@ export function LibraryView({
         qualityProfileId={bulkQualityProfileId}
         targetLibraryId={bulkTargetLibraryId}
         tags={bulkTagsInput}
+        tagsMode={bulkTagsMode}
         renameTemplate={bulkRenameTemplate}
         renamePreview={bulkRenamePreview}
         confirming={bulkConfirming}
@@ -1117,6 +1119,7 @@ export function LibraryView({
         onQualityProfileChange={setBulkQualityProfileId}
         onTargetLibraryChange={setBulkTargetLibraryId}
         onTagsChange={setBulkTagsInput}
+        onTagsModeChange={setBulkTagsMode}
         onRenameTemplateChange={setBulkRenameTemplate}
         onExecute={() => void executeBulkToolsOperation()}
       />

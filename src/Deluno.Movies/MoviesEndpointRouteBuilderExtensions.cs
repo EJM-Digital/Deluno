@@ -2107,6 +2107,14 @@ public static class MoviesEndpointRouteBuilderExtensions
                 });
             }
 
+            if (!MediaTagBulkOperations.TryParseMode(request.Mode, out var mode))
+            {
+                return Results.ValidationProblem(new Dictionary<string, string[]>
+                {
+                    ["mode"] = ["Mode must be add, remove or replace."]
+                });
+            }
+
             var normalizedTags = NormalizeTags(request.Tags);
             var managedTags = await platformSettingsRepository.ListTagsAsync(cancellationToken);
             var assignments = normalizedTags
@@ -2126,12 +2134,14 @@ public static class MoviesEndpointRouteBuilderExtensions
                     continue;
                 }
 
-                await tagStore.ReplaceAsync(MediaKind.Movie, movie.Id, assignments, cancellationToken);
+                var currentAssignments = await tagStore.ListAsync(MediaKind.Movie, movie.Id, cancellationToken);
+                var finalAssignments = MediaTagBulkOperations.Apply(mode, currentAssignments, assignments);
+                await tagStore.ReplaceAsync(MediaKind.Movie, movie.Id, finalAssignments, cancellationToken);
                 updated++;
                 await realtimeEventPublisher.PublishEntityChangedAsync("Movie", movie.Id, cancellationToken);
             }
 
-            return Results.Ok(new { updated, tags = normalizedTags });
+            return Results.Ok(new { updated, tags = normalizedTags, mode = mode.ToString().ToLowerInvariant() });
         });
 
         movies.MapPost("/bulk/rename-preview", async (
@@ -2616,7 +2626,8 @@ public static class MoviesEndpointRouteBuilderExtensions
 
     private sealed record BulkTagsRequest(
         IReadOnlyList<string>? MovieIds,
-        string? Tags);
+        string? Tags,
+        string? Mode = null);
 
     private sealed record BulkRenamePreviewRequest(
         IReadOnlyList<string>? MovieIds,
