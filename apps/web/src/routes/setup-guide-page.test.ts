@@ -11,6 +11,7 @@ describe("setup guide draft format goal (#731)", () => {
     expect(resolveDraftFormatGoal("balanced")).toBe("balanced");
     expect(resolveDraftFormatGoal("homeTheater")).toBe("homeTheater");
     expect(resolveDraftFormatGoal("storageSaver")).toBe("storageSaver");
+    expect(resolveDraftFormatGoal("archive")).toBe("archive");
   });
 
   it("falls back to not-chosen for an empty or unrecognised draft value", () => {
@@ -31,5 +32,11 @@ describe("setup guide effective format goal per media type", () => {
     const form = { formatGoal: "homeTheater" } as Form;
     expect(getEffectiveFormatGoal("tv", form)).toBe("homeTheater");
     expect(getEffectiveFormatGoal("movies", form)).toBe("homeTheater");
+  });
+
+  it("gives films the archive goal and TV Balanced, because archive-4k-remux is movies-only (B006)", () => {
+    const form = { formatGoal: "archive" } as Form;
+    expect(getEffectiveFormatGoal("movies", form)).toBe("archive");
+    expect(getEffectiveFormatGoal("tv", form)).toBe("balanced");
   });
 });
