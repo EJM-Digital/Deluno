@@ -145,8 +145,10 @@ public sealed class DownloadHealthEvaluatorTests
                 item.SpeedMbps,
                 item.AddedUtc,
                 item.EtaSeconds,
-                item.ReleaseName),
-            CapturedUtc)
+                item.ReleaseName,
+                item.Peers),
+            CapturedUtc,
+            DownloadHealthRulesSettings.Default)
         .Select(finding => new DownloadHealthFinding(
             finding.Severity,
             finding.Kind,

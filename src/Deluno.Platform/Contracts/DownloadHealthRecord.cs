@@ -86,9 +86,17 @@ public static class DownloadHealthStrikes
     /// <summary>Nothing has arrived for at least half an hour.</summary>
     public const string NoThroughput = "no-throughput";
 
+    /// <summary>Slower than the configured floor for longer than allowed (#659, off by default).</summary>
+    public const string LowSpeed = "low-speed";
+
+    /// <summary>Fewer peers or seeders than the configured floor for longer than allowed (#659, off by default).</summary>
+    public const string LowPeers = "low-peers";
+
     public static bool Counts(string kind)
         => string.Equals(kind, ClientStalled, StringComparison.OrdinalIgnoreCase) ||
-           string.Equals(kind, NoThroughput, StringComparison.OrdinalIgnoreCase);
+           string.Equals(kind, NoThroughput, StringComparison.OrdinalIgnoreCase) ||
+           string.Equals(kind, LowSpeed, StringComparison.OrdinalIgnoreCase) ||
+           string.Equals(kind, LowPeers, StringComparison.OrdinalIgnoreCase);
 
     /// <summary>Strikes for a problem seen without a break since <paramref name="since"/>.</summary>
     public static int For(DateTimeOffset since, DateTimeOffset now)

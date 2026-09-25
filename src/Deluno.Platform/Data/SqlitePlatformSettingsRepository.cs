@@ -197,6 +197,18 @@ public sealed class SqlitePlatformSettingsRepository(
         await UpsertSettingAsync(connection, transaction, "cleanup.blockReleaseAfterThreshold", request.CleanupBlockReleaseAfterThreshold is false ? "false" : "true", updatedUtc, cancellationToken);
         await UpsertSettingAsync(connection, transaction, "cleanup.queueReplacementAfterThreshold", request.CleanupQueueReplacementAfterThreshold is false ? "false" : "true", updatedUtc, cancellationToken);
         await UpsertSettingAsync(connection, transaction, "cleanup.removeClientEntryAfterThreshold", request.CleanupRemoveClientEntryAfterThreshold == true ? "true" : "false", updatedUtc, cancellationToken);
+        // #659: each rule's own on/off switch plus its threshold, mirroring
+        // the strike threshold above. Minutes are clamped to the same 1..1440
+        // (a day) DownloadHealthRulesSettings itself clamps to, so a value
+        // that survives being saved is one the shared rule will actually use.
+        await UpsertSettingAsync(connection, transaction, "download-health.noProgress.enabled", request.DownloadHealthNoProgressEnabled is false ? "false" : "true", updatedUtc, cancellationToken);
+        await UpsertSettingAsync(connection, transaction, "download-health.noProgress.minutes", Math.Clamp(request.DownloadHealthNoProgressMinutes ?? 30, 1, 1440).ToString(CultureInfo.InvariantCulture), updatedUtc, cancellationToken);
+        await UpsertSettingAsync(connection, transaction, "download-health.minSpeed.enabled", request.DownloadHealthMinSpeedEnabled == true ? "true" : "false", updatedUtc, cancellationToken);
+        await UpsertSettingAsync(connection, transaction, "download-health.minSpeed.kbps", Math.Clamp(request.DownloadHealthMinSpeedKbps ?? 50, 1, 1_000_000).ToString(CultureInfo.InvariantCulture), updatedUtc, cancellationToken);
+        await UpsertSettingAsync(connection, transaction, "download-health.minSpeed.minutes", Math.Clamp(request.DownloadHealthMinSpeedMinutes ?? 30, 1, 1440).ToString(CultureInfo.InvariantCulture), updatedUtc, cancellationToken);
+        await UpsertSettingAsync(connection, transaction, "download-health.minPeers.enabled", request.DownloadHealthMinPeersEnabled == true ? "true" : "false", updatedUtc, cancellationToken);
+        await UpsertSettingAsync(connection, transaction, "download-health.minPeers.count", Math.Clamp(request.DownloadHealthMinPeers ?? 1, 0, 1000).ToString(CultureInfo.InvariantCulture), updatedUtc, cancellationToken);
+        await UpsertSettingAsync(connection, transaction, "download-health.minPeers.minutes", Math.Clamp(request.DownloadHealthMinPeersMinutes ?? 30, 1, 1440).ToString(CultureInfo.InvariantCulture), updatedUtc, cancellationToken);
         // The sharing rule is written only when the caller is actually setting
         // it. Writing it on every settings PATCH meant that saving anything
         // else — a metadata key, a rename format — silently cleared both
@@ -497,8 +509,21 @@ public sealed class SqlitePlatformSettingsRepository(
             ShortDateFormat: NormalizeShortDateFormat(GetValue(settings, "ui.shortDateFormat")),
             LongDateFormat: NormalizeLongDateFormat(GetValue(settings, "ui.longDateFormat")),
             TimeFormat: NormalizeTimeFormat(GetValue(settings, "ui.timeFormat")),
-            ShowRelativeDates: !string.Equals(GetValue(settings, "ui.relativeDates"), "false", StringComparison.OrdinalIgnoreCase));
+            ShowRelativeDates: !string.Equals(GetValue(settings, "ui.relativeDates"), "false", StringComparison.OrdinalIgnoreCase),
+            DownloadHealthNoProgressEnabled: !string.Equals(GetValue(settings, "download-health.noProgress.enabled"), "false", StringComparison.OrdinalIgnoreCase),
+            DownloadHealthNoProgressMinutes: ReadPositiveInt(GetValue(settings, "download-health.noProgress.minutes"), 30, 1, 1440),
+            DownloadHealthMinSpeedEnabled: string.Equals(GetValue(settings, "download-health.minSpeed.enabled"), "true", StringComparison.OrdinalIgnoreCase),
+            DownloadHealthMinSpeedKbps: ReadPositiveInt(GetValue(settings, "download-health.minSpeed.kbps"), 50, 1, 1_000_000),
+            DownloadHealthMinSpeedMinutes: ReadPositiveInt(GetValue(settings, "download-health.minSpeed.minutes"), 30, 1, 1440),
+            DownloadHealthMinPeersEnabled: string.Equals(GetValue(settings, "download-health.minPeers.enabled"), "true", StringComparison.OrdinalIgnoreCase),
+            DownloadHealthMinPeers: ReadPositiveInt(GetValue(settings, "download-health.minPeers.count"), 1, 0, 1000),
+            DownloadHealthMinPeersMinutes: ReadPositiveInt(GetValue(settings, "download-health.minPeers.minutes"), 30, 1, 1440));
     }
+
+    private static int ReadPositiveInt(string? value, int fallback, int min, int max)
+        => int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsed)
+            ? Math.Clamp(parsed, min, max)
+            : fallback;
 
     private static int ReadDownloadHealthStrikeThreshold(IReadOnlyDictionary<string, string> settings)
         => int.TryParse(GetValue(settings, "cleanup.strikeThreshold"), NumberStyles.Integer, CultureInfo.InvariantCulture, out var threshold)

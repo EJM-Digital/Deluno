@@ -86,6 +86,19 @@ export interface PlatformSettingsSnapshot {
    * asked.
    */
   libraryFileCheckHours: number;
+  /**
+   * #659: when a download counts as stuck, before it is struck. Each rule has
+   * its own on/off switch; "no progress" is on by default with the minutes
+   * Deluno always used, the other two are sharper rules a person opts into.
+   */
+  downloadHealthNoProgressEnabled: boolean;
+  downloadHealthNoProgressMinutes: number;
+  downloadHealthMinSpeedEnabled: boolean;
+  downloadHealthMinSpeedKbps: number;
+  downloadHealthMinSpeedMinutes: number;
+  downloadHealthMinPeersEnabled: boolean;
+  downloadHealthMinPeers: number;
+  downloadHealthMinPeersMinutes: number;
   updatedUtc: string;
 }
 
@@ -196,5 +209,13 @@ export const emptyPlatformSettingsSnapshot: PlatformSettingsSnapshot = {
   sharingStuckAction: "give-up",
   sharingStuckAfterDays: 14,
   libraryFileCheckHours: 6,
+  downloadHealthNoProgressEnabled: true,
+  downloadHealthNoProgressMinutes: 30,
+  downloadHealthMinSpeedEnabled: false,
+  downloadHealthMinSpeedKbps: 50,
+  downloadHealthMinSpeedMinutes: 30,
+  downloadHealthMinPeersEnabled: false,
+  downloadHealthMinPeers: 1,
+  downloadHealthMinPeersMinutes: 30,
   updatedUtc: new Date(0).toISOString()
 };

@@ -310,8 +310,21 @@ internal static class DownloadClientHelpers
     /// has been persisted yet (a caller that has not wired up progress
     /// tracking, or this item's first sighting), which this rule treats the
     /// same as "not stalled yet" rather than guessing.</para>
+    ///
+    /// <para><paramref name="noProgressWindow"/> is the configurable half of
+    /// that second check (#659's later scope: a person's own "no progress"
+    /// minutes, off entirely when the caller has switched that rule off and
+    /// leaves it null). It defaults to <see cref="DownloadHealthStrikes.Window"/>
+    /// for a caller with nothing configured, the same 30 minutes this rule
+    /// always used. It does not touch the metadata-and-no-peers window above,
+    /// which #618/#650 already covers and #659's settings screen never asked
+    /// to change.</para>
     /// </summary>
-    internal static DownloadQueueItem ReconcileTorrentStatus(DownloadQueueItem item, DateTimeOffset capturedUtc, DateTimeOffset? lastProgressUtc = null)
+    internal static DownloadQueueItem ReconcileTorrentStatus(
+        DownloadQueueItem item,
+        DateTimeOffset capturedUtc,
+        DateTimeOffset? lastProgressUtc = null,
+        TimeSpan? noProgressWindow = null)
     {
         var metadataKnown = item.SizeBytes > 0;
 
@@ -330,7 +343,7 @@ internal static class DownloadClientHelpers
 
         if (item.Status == DownloadQueueStatuses.Downloading &&
             lastProgressUtc is { } since &&
-            capturedUtc - since >= DownloadHealthStrikes.Window)
+            capturedUtc - since >= (noProgressWindow ?? DownloadHealthStrikes.Window))
         {
             return item with { Status = DownloadQueueStatuses.Stalled };
         }

@@ -437,6 +437,80 @@ public sealed class PlatformSettingsPersistenceTests
         Assert.True(resumed.AutoStartJobs);
     }
 
+    /// <summary>
+    /// #659: an install that never opens the "Download health" settings
+    /// screen gets exactly the behaviour the rule originally shipped with -
+    /// no progress flags a download after 30 minutes, the other two rules are
+    /// off.
+    /// </summary>
+    [Fact]
+    public async Task Download_health_rules_default_to_the_original_hard_coded_behaviour()
+    {
+        using var storage = TestStorage.Create();
+        var repository = await SettingsAsync(storage);
+
+        var loaded = await repository.GetAsync(CancellationToken.None);
+
+        Assert.True(loaded.DownloadHealthNoProgressEnabled);
+        Assert.Equal(30, loaded.DownloadHealthNoProgressMinutes);
+        Assert.False(loaded.DownloadHealthMinSpeedEnabled);
+        Assert.Equal(50, loaded.DownloadHealthMinSpeedKbps);
+        Assert.Equal(30, loaded.DownloadHealthMinSpeedMinutes);
+        Assert.False(loaded.DownloadHealthMinPeersEnabled);
+        Assert.Equal(1, loaded.DownloadHealthMinPeers);
+        Assert.Equal(30, loaded.DownloadHealthMinPeersMinutes);
+    }
+
+    [Fact]
+    public async Task Download_health_rules_round_trip_through_a_patch_and_survive_being_reloaded()
+    {
+        using var storage = TestStorage.Create();
+        var repository = await SettingsAsync(storage);
+
+        var merged = PlatformSettingsPatchMerger.Apply(
+            await repository.GetAsync(CancellationToken.None),
+            new PatchPlatformSettingsRequest(
+                DownloadHealthNoProgressEnabled: true,
+                DownloadHealthNoProgressMinutes: 15,
+                DownloadHealthMinSpeedEnabled: true,
+                DownloadHealthMinSpeedKbps: 200,
+                DownloadHealthMinSpeedMinutes: 45,
+                DownloadHealthMinPeersEnabled: true,
+                DownloadHealthMinPeers: 3,
+                DownloadHealthMinPeersMinutes: 20));
+        await repository.SaveAsync(merged, CancellationToken.None);
+
+        var reloaded = await SettingsAsync(storage); // a fresh instance: nothing survives but the database
+        var loaded = await reloaded.GetAsync(CancellationToken.None);
+
+        Assert.True(loaded.DownloadHealthNoProgressEnabled);
+        Assert.Equal(15, loaded.DownloadHealthNoProgressMinutes);
+        Assert.True(loaded.DownloadHealthMinSpeedEnabled);
+        Assert.Equal(200, loaded.DownloadHealthMinSpeedKbps);
+        Assert.Equal(45, loaded.DownloadHealthMinSpeedMinutes);
+        Assert.True(loaded.DownloadHealthMinPeersEnabled);
+        Assert.Equal(3, loaded.DownloadHealthMinPeers);
+        Assert.Equal(20, loaded.DownloadHealthMinPeersMinutes);
+    }
+
+    [Fact]
+    public async Task Each_download_health_rule_can_be_switched_off_independently()
+    {
+        using var storage = TestStorage.Create();
+        var repository = await SettingsAsync(storage);
+
+        var merged = PlatformSettingsPatchMerger.Apply(
+            await repository.GetAsync(CancellationToken.None),
+            new PatchPlatformSettingsRequest(DownloadHealthNoProgressEnabled: false));
+        await repository.SaveAsync(merged, CancellationToken.None);
+
+        var loaded = await repository.GetAsync(CancellationToken.None);
+        Assert.False(loaded.DownloadHealthNoProgressEnabled);
+        // Untouched by this patch - still off, not flipped as a side effect.
+        Assert.False(loaded.DownloadHealthMinSpeedEnabled);
+        Assert.False(loaded.DownloadHealthMinPeersEnabled);
+    }
+
     [Fact]
     public async Task Settings_patch_preserves_a_value_changed_after_the_callers_snapshot_was_loaded()
     {

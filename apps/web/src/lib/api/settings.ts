@@ -57,4 +57,12 @@ export interface PlatformSettingsPatch {
   sharingUntilRatio?: number | null;
   sharingStuckAction?: string;
   sharingStuckAfterDays?: number;
+  downloadHealthNoProgressEnabled?: boolean;
+  downloadHealthNoProgressMinutes?: number;
+  downloadHealthMinSpeedEnabled?: boolean;
+  downloadHealthMinSpeedKbps?: number;
+  downloadHealthMinSpeedMinutes?: number;
+  downloadHealthMinPeersEnabled?: boolean;
+  downloadHealthMinPeers?: number;
+  downloadHealthMinPeersMinutes?: number;
 }

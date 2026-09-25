@@ -66,5 +66,13 @@ public static class PlatformSettingsPatchMerger
             LongDateFormat: patch.LongDateFormat ?? current.LongDateFormat,
             TimeFormat: patch.TimeFormat ?? current.TimeFormat,
             ShowRelativeDates: patch.ShowRelativeDates ?? current.ShowRelativeDates,
-            CloudflareHelperUrl: patch.CloudflareHelperUrl ?? current.CloudflareHelperUrl);
+            CloudflareHelperUrl: patch.CloudflareHelperUrl ?? current.CloudflareHelperUrl,
+            DownloadHealthNoProgressEnabled: patch.DownloadHealthNoProgressEnabled ?? current.DownloadHealthNoProgressEnabled,
+            DownloadHealthNoProgressMinutes: patch.DownloadHealthNoProgressMinutes ?? current.DownloadHealthNoProgressMinutes,
+            DownloadHealthMinSpeedEnabled: patch.DownloadHealthMinSpeedEnabled ?? current.DownloadHealthMinSpeedEnabled,
+            DownloadHealthMinSpeedKbps: patch.DownloadHealthMinSpeedKbps ?? current.DownloadHealthMinSpeedKbps,
+            DownloadHealthMinSpeedMinutes: patch.DownloadHealthMinSpeedMinutes ?? current.DownloadHealthMinSpeedMinutes,
+            DownloadHealthMinPeersEnabled: patch.DownloadHealthMinPeersEnabled ?? current.DownloadHealthMinPeersEnabled,
+            DownloadHealthMinPeers: patch.DownloadHealthMinPeers ?? current.DownloadHealthMinPeers,
+            DownloadHealthMinPeersMinutes: patch.DownloadHealthMinPeersMinutes ?? current.DownloadHealthMinPeersMinutes);
 }
