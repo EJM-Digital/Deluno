@@ -985,6 +985,47 @@ public sealed class JobStoreTests
         Assert.Contains(queued, job => job.RelatedEntityId == "episode-2");
     }
 
+    /// <summary>
+    /// The automatic cycle's whole-season plan (#646): one
+    /// <c>series.search.season</c> job per season, not one per episode, and a
+    /// cycle that runs again while the first is still queued adds nothing.
+    /// </summary>
+    [Fact]
+    public async Task Planning_season_searches_queues_one_job_per_season_and_dedupes()
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-09-19T08:14:00Z"));
+        await InitializeJobsAsync(storage, timeProvider);
+        var store = new SqliteJobStore(storage.Factory, timeProvider, new NullRealtimeEventPublisher(), new NullDownloadDispatchesRepository());
+        SeasonSearchPlanItem[] seasons =
+        [
+            new(
+                "series-1",
+                "Pioneer One",
+                1,
+                [
+                    new("episode-1", 1, "Bought"),
+                    new("episode-2", 2, "The Second Door"),
+                    new("episode-3", 3, "Login")
+                ])
+        ];
+
+        await store.PlanSeasonSearchesAsync("library-tv", seasons, CancellationToken.None);
+        // A cycle that runs again while the season search is still queued adds
+        // nothing rather than doubling it.
+        await store.PlanSeasonSearchesAsync("library-tv", seasons, CancellationToken.None);
+
+        var queued = (await store.ListAsync(10, CancellationToken.None)).Where(job => job.JobType == "series.search.season").ToArray();
+        var queuedSeason = Assert.Single(queued);
+        Assert.Equal("queued", queuedSeason.Status);
+        Assert.Equal("series-1", queuedSeason.RelatedEntityId);
+        Assert.Contains("Pioneer One", queuedSeason.PayloadJson);
+
+        var activity = await store.ListActivityAsync(10, null, null, CancellationToken.None);
+        Assert.Contains(activity, item => item.Message.Contains("Season search scheduled", StringComparison.Ordinal)
+            && item.Message.Contains("S01", StringComparison.Ordinal));
+    }
+
     private static async Task InitializeJobsAsync(TestStorage storage, TimeProvider timeProvider)
     {
         await new JobsSchemaInitializer(

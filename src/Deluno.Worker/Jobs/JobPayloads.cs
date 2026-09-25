@@ -41,6 +41,18 @@ internal static class JobPayloads
         int EpisodeNumber,
         string Title);
 
+    internal sealed record SeasonSearchPayloadEpisode(
+        string EpisodeId,
+        int EpisodeNumber,
+        string Title);
+
+    internal sealed record SeasonSearchPayload(
+        string SeriesId,
+        string SeriesTitle,
+        string LibraryId,
+        int SeasonNumber,
+        IReadOnlyList<SeasonSearchPayloadEpisode> Episodes);
+
     internal sealed record IntakeSyncPayload(
         string? SourceId,
         bool Manual);
@@ -74,6 +86,18 @@ internal static class JobPayloads
         try
         {
             return JsonSerializer.Deserialize<EpisodeSearchPayload>(payloadJson ?? "{}", Options);
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    internal static SeasonSearchPayload? ParseSeasonSearchPayload(string? payloadJson)
+    {
+        try
+        {
+            return JsonSerializer.Deserialize<SeasonSearchPayload>(payloadJson ?? "{}", Options);
         }
         catch
         {

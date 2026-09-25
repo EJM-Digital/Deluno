@@ -189,6 +189,12 @@ public static class JobLanes
         // queued behind it.
         new("search.episodes", ["episode.search"], BatchSize: RemoteWidth, MaxConcurrency: RemoteWidth),
 
+        // A whole-season pack search (#646). Its own lane for the same reason
+        // as the split above: a season search that finds nothing still queues
+        // per-episode fallback work, and neither kind should be able to starve
+        // the other.
+        new("search.seasons", ["series.search.season"], BatchSize: RemoteWidth, MaxConcurrency: RemoteWidth),
+
         // Remote list providers, rate limited by them.
         new("intake", ["intake.sync"], BatchSize: RemoteWidth, MaxConcurrency: RemoteWidth / 2),
 

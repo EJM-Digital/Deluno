@@ -2644,6 +2644,112 @@ public sealed class SqliteJobStore(
         }
     }
 
+    /// <summary>
+    /// Queues one whole-season search for each season the automatic cycle
+    /// found entirely missing and fully aired, in place of one
+    /// <c>episode.search</c> per episode (#646).
+    ///
+    /// <para>Deduped like <see cref="PlanEpisodeSearchesAsync"/>: a cycle that
+    /// runs while the last one is still working the same season adds nothing.
+    /// The job handler that executes <c>series.search.season</c> queues its own
+    /// per-episode fallback if the pack search finds nothing worth grabbing, so
+    /// nothing here needs to.</para>
+    /// </summary>
+    public async Task PlanSeasonSearchesAsync(
+        string libraryId,
+        IReadOnlyList<SeasonSearchPlanItem> seasons,
+        CancellationToken cancellationToken)
+    {
+        if (seasons.Count == 0)
+        {
+            return;
+        }
+
+        var now = timeProvider.GetUtcNow();
+
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Jobs,
+            cancellationToken);
+
+        await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+        var queuedAny = false;
+
+        foreach (var season in seasons)
+        {
+            var payload = JsonSerializer.Serialize(new
+            {
+                seriesId = season.SeriesId,
+                seriesTitle = season.SeriesTitle,
+                libraryId,
+                seasonNumber = season.SeasonNumber,
+                episodes = season.Episodes.Select(episode => new
+                {
+                    episodeId = episode.EpisodeId,
+                    episodeNumber = episode.EpisodeNumber,
+                    title = episode.Title
+                })
+            });
+            var idempotencyKey = $"season.search:{season.SeriesId}:{season.SeasonNumber}:schedule";
+            var dedupeKey = $"season.search:{season.SeriesId}:{season.SeasonNumber}";
+
+            var job = new JobQueueItem(
+                Id: Guid.CreateVersion7().ToString("N"),
+                JobType: "series.search.season",
+                Source: "series",
+                Status: "queued",
+                PayloadJson: payload,
+                Attempts: 0,
+                CreatedUtc: now,
+                ScheduledUtc: now,
+                StartedUtc: null,
+                CompletedUtc: null,
+                LeasedUntilUtc: null,
+                WorkerId: null,
+                LastError: null,
+                RelatedEntityType: "series",
+                RelatedEntityId: season.SeriesId,
+                IdempotencyKey: idempotencyKey,
+                DedupeKey: dedupeKey,
+                MaxAttempts: DefaultMaxAttempts,
+                LastAttemptUtc: null,
+                NextAttemptUtc: now);
+
+            var duplicate = await FindDuplicateActiveJobAsync(
+                connection,
+                transaction,
+                idempotencyKey,
+                dedupeKey,
+                cancellationToken);
+            if (duplicate is not null)
+            {
+                continue;
+            }
+
+            await InsertJobAsync(connection, transaction, job, cancellationToken);
+            queuedAny = true;
+
+            await InsertActivityAsync(
+                connection,
+                transaction,
+                category: "job.queued",
+                message: $"Season search scheduled: S{season.SeasonNumber:D2} - {season.SeriesTitle} ({season.Episodes.Count} episodes)",
+                detailsJson: payload,
+                relatedJobId: job.Id,
+                relatedEntityType: job.RelatedEntityType,
+                relatedEntityId: job.RelatedEntityId,
+                createdUtc: now,
+                cancellationToken: cancellationToken);
+
+            DelunoObservability.JobsQueued.Add(1, new("job.type", "series.search.season"), new("source", "series"));
+        }
+
+        await transaction.CommitAsync(cancellationToken);
+        if (queuedAny)
+        {
+            laneSignal?.Notify("series.search.season");
+        }
+    }
+
     public async Task<string> RecordDownloadDispatchAsync(
         string libraryId,
         string mediaType,
@@ -4131,6 +4237,8 @@ public sealed class SqliteJobStore(
                 "a list sync", "Started reading one of your lists.", "List sync"),
             ["episode.search"] = new(
                 "an episode search", "Started looking for an episode.", "Episode search"),
+            ["series.search.season"] = new(
+                "a season search", "Started looking for a whole season.", "Season search"),
             ["movies.metadata.refresh"] = new(
                 "a movie metadata refresh", "Started refreshing movie metadata.", "Movie metadata refresh"),
             ["series.metadata.refresh"] = new(

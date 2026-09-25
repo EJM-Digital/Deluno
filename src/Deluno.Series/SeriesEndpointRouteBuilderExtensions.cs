@@ -1,4 +1,4 @@
-using Deluno.Contracts;
+﻿using Deluno.Contracts;
 using Microsoft.AspNetCore.Mvc;
 using System.Text.Json;
 using Deluno.Jobs.Contracts;
@@ -2189,17 +2189,7 @@ public static class SeriesEndpointRouteBuilderExtensions
             string id,
             int seasonNumber,
             HttpContext httpContext,
-            ISeriesCatalogRepository repository,
-            IMediaStateRepository mediaStateRepository,
-            ILibrariesRepository platformSettingsRepository,
-            IQualityRepository qualityRepository,
-            IReleasePreferencePlanRepository releasePreferencePlanRepository,
-            IJobQueueRepository jobQueueRepository,
-            IAcquisitionDecisionPipeline acquisitionPipeline,
-            IDownloadClientGrabService downloadClientGrabService,
-            IActivityFeedRepository activityFeedRepository,
-            TimeProvider timeProvider,
-            IMediaTagStore tagStore,
+            ISeasonSearchExecutor seasonSearchExecutor,
             CancellationToken cancellationToken) =>
         {
             var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
@@ -2208,24 +2198,19 @@ public static class SeriesEndpointRouteBuilderExtensions
                 return denied;
             }
 
-            var seriesItem = await repository.GetByIdAsync(id, cancellationToken);
-            if (seriesItem is null)
+            var result = await seasonSearchExecutor.ExecuteAsync(
+                id,
+                seasonNumber,
+                triggeredBy: "manual-season",
+                activityClause: "was searched from the TV workspace.",
+                cancellationToken);
+
+            if (result.Status is SeasonSearchStatus.SeriesNotFound)
             {
                 return Results.NotFound();
             }
 
-            var inventory = await repository.GetInventoryDetailAsync(id, cancellationToken);
-            if (inventory is null)
-            {
-                return Results.NotFound();
-            }
-
-            var seasonEpisodes = inventory.Episodes
-                .Where(item => item.SeasonNumber == seasonNumber)
-                .OrderBy(item => item.EpisodeNumber)
-                .ToList();
-
-            if (seasonEpisodes.Count == 0)
+            if (result.Status is SeasonSearchStatus.SeasonNotFound)
             {
                 return Results.ValidationProblem(new Dictionary<string, string[]>
                 {
@@ -2233,404 +2218,22 @@ public static class SeriesEndpointRouteBuilderExtensions
                 });
             }
 
-            var wantedItem = (await mediaStateRepository.ListWantedByIdsAsync(
-                    MediaKind.Series,
-                    [id],
-                    cancellationToken))
-                .OrderByDescending(item => item.UpdatedUtc)
-                .ThenBy(item => item.LibraryId, StringComparer.Ordinal)
-                .FirstOrDefault();
-            if (wantedItem is null || string.IsNullOrWhiteSpace(wantedItem.LibraryId))
-            {
-                return Results.Ok(new
-                {
-                    outcome = "blocked",
-                    reason = MediaSearchReasons.NotSearchable,
-                    seasonNumber,
-                    searchedEpisodes = seasonEpisodes.Count,
-                    matchedCount = 0,
-                    queuedCount = 0,
-                    releaseName = (string?)null,
-                    indexerName = (string?)null,
-                    dispatchStatus = (string?)null,
-                    dispatchMessage = (string?)null
-                });
-            }
-
-            var libraries = await platformSettingsRepository.ListLibrariesAsync(cancellationToken);
-            var library = libraries.FirstOrDefault(item => item.Id == wantedItem.LibraryId);
-            if (library is null)
-            {
-                return Results.Ok(new
-                {
-                    outcome = "blocked",
-                    reason = MediaSearchReasons.LibraryMissing,
-                    seasonNumber,
-                    searchedEpisodes = seasonEpisodes.Count,
-                    matchedCount = 0,
-                    queuedCount = 0,
-                    releaseName = (string?)null,
-                    indexerName = (string?)null,
-                    dispatchStatus = (string?)null,
-                    dispatchMessage = (string?)null
-                });
-            }
-
-            var routing = await platformSettingsRepository.GetLibraryRoutingAsync(library.Id, cancellationToken);
-            var configuredSources = routing?.Sources.Count ?? 0;
-            var configuredClients = routing?.DownloadClients.Count ?? 0;
-            var now = timeProvider.GetUtcNow();
-            var nextEligibleSearchUtc = now.AddHours(Math.Max(1, library.RetryDelayHours));
-            var customFormats = await ResolveCustomFormatsAsync(qualityRepository, library.QualityProfileId, cancellationToken);
-            var profileRules = await QualityProfileResolver.ResolveSearchRulesAsync(qualityRepository, library.QualityProfileId, cancellationToken);
-            var preferencePlan = await QualityProfileResolver.ResolveReleasePreferencePlanAsync(
-                qualityRepository,
-                releasePreferencePlanRepository,
-                library.QualityProfileId,
-                cancellationToken,
-                customFormats);
-            var tagNames = (await tagStore.ListAsync(MediaKind.Series, seriesItem.Id, cancellationToken))
-                .Select(tag => tag.Name)
-                .ToArray();
-
-            // A season pack is one candidate, but an installed season has one
-            // independently evaluated current file per episode. Load every
-            // exact baseline now; a missing or stale snapshot holds before an
-            // indexer query, while complete evidence is compared after the
-            // search against the same candidate and immutable plan.
-            var installedEpisodeIds = await SeriesSearchBaselineResolver.ListInstalledEpisodeIdsAsync(
-                repository,
-                seasonEpisodes.Select(episode => episode.EpisodeId).ToArray(),
-                cancellationToken);
-            var installedEpisodes = new List<SeasonPackInstalledEpisode>();
-            foreach (var episodeId in installedEpisodeIds)
-            {
-                var baseline = await SeriesSearchBaselineResolver.ResolveEpisodeAsync(
-                    repository,
-                    mediaStateRepository,
-                    seriesItem.Id,
-                    episodeId,
-                    library.Id,
-                    cancellationToken);
-                installedEpisodes.Add(new SeasonPackInstalledEpisode(
-                    episodeId,
-                    baseline.FilePath ?? string.Empty,
-                    baseline.PreferenceEvaluation));
-            }
-            var missingInstalledEvidence = preferencePlan is null
-                ? installedEpisodes
-                : installedEpisodes.Where(item =>
-                        string.IsNullOrWhiteSpace(item.FilePath) ||
-                        item.PreferenceEvaluation is null ||
-                        !string.Equals(item.PreferenceEvaluation.PlanId, preferencePlan.Id, StringComparison.OrdinalIgnoreCase) ||
-                        !string.Equals(item.PreferenceEvaluation.PlanVersion, preferencePlan.Version, StringComparison.Ordinal) ||
-                        !string.Equals(item.PreferenceEvaluation.PlanHash, preferencePlan.PlanHash, StringComparison.OrdinalIgnoreCase))
-                    .ToList();
-
-            if (missingInstalledEvidence.Count > 0)
-            {
-                const string holdMessage = "Whole-season replacement was held because at least one installed episode does not have an exact evaluation under the current release-preference plan.";
-                foreach (var episode in seasonEpisodes)
-                {
-                    await repository.RecordSearchAttemptAsync(
-                        seriesItem.Id,
-                        episode.EpisodeId,
-                        library.Id,
-                        "manual-season",
-                        "held",
-                        now,
-                        nextEligibleSearchUtc,
-                        holdMessage,
-                        null,
-                        null,
-                        JsonSerializer.Serialize(new
-                        {
-                            episode.EpisodeId,
-                            episode.SeasonNumber,
-                            episode.EpisodeNumber,
-                            installedFilePresent = installedEpisodeIds.Contains(episode.EpisodeId, StringComparer.OrdinalIgnoreCase),
-                            currentPlanEvidencePresent = !missingInstalledEvidence.Any(item => string.Equals(item.EpisodeId, episode.EpisodeId, StringComparison.OrdinalIgnoreCase)),
-                            preferencePlanId = preferencePlan?.Id,
-                            preferencePlanVersion = preferencePlan?.Version,
-                            preferencePlanHash = preferencePlan?.PlanHash
-                        }),
-                        cancellationToken);
-                }
-
-                await activityFeedRepository.RecordActivityAsync(
-                    "series.search.season",
-                    $"{seriesItem.Title} season {seasonNumber} search was held until installed-file evidence is current.",
-                    JsonSerializer.Serialize(new
-                    {
-                        seasonNumber,
-                        installedEpisodeIds,
-                        reason = MediaSearchReasons.SeasonPackInstalledEvidenceMissing,
-                        missingEvidenceEpisodeIds = missingInstalledEvidence.Select(item => item.EpisodeId).ToArray()
-                    }),
-                    null,
-                    "series",
-                    seriesItem.Id,
-                    cancellationToken);
-
-                await activityFeedRepository.RecordDecisionAsync(
-                    new DecisionExplanationPayload(
-                        Scope: "series.season-search",
-                        Status: "held",
-                        Reason: holdMessage,
-                        Inputs: new Dictionary<string, string?>
-                        {
-                            ["title"] = seriesItem.Title,
-                            ["seasonNumber"] = seasonNumber.ToString(),
-                            ["libraryId"] = library.Id,
-                            ["episodeCount"] = seasonEpisodes.Count.ToString(),
-                            ["installedEpisodeCount"] = installedEpisodeIds.Count.ToString(),
-                            ["preferencePlanId"] = preferencePlan?.Id,
-                            ["preferencePlanVersion"] = preferencePlan?.Version,
-                            ["preferencePlanHash"] = preferencePlan?.PlanHash
-                        },
-                        Outcome: "No indexer query or download dispatch was made until every installed episode has same-plan evidence.",
-                        Alternatives:
-                        [
-                            new DecisionAlternativeExplanation(
-                                "Targeted episode search",
-                                "available",
-                                "Search selected episodes individually or let the file probe produce the missing current-plan evaluation.")
-                        ]),
-                    null,
-                    "series",
-                    seriesItem.Id,
-                    cancellationToken);
-
-                return Results.Ok(new
-                {
-                    outcome = "held",
-                    reason = MediaSearchReasons.SeasonPackInstalledEvidenceMissing,
-                    seasonNumber,
-                    searchedEpisodes = seasonEpisodes.Count,
-                    installedEpisodeCount = installedEpisodeIds.Count,
-                    missingEvidenceEpisodeCount = missingInstalledEvidence.Count,
-                    matchedCount = 0,
-                    queuedCount = 0,
-                    releaseName = (string?)null,
-                    indexerName = (string?)null,
-                    dispatchStatus = (string?)null,
-                    dispatchMessage = holdMessage
-                });
-            }
-
-            if (configuredSources == 0 || configuredClients == 0)
-            {
-                foreach (var episode in seasonEpisodes)
-                {
-                    await repository.RecordSearchAttemptAsync(
-                        seriesItem.Id,
-                        episode.EpisodeId,
-                        library.Id,
-                        "manual-season",
-                        "blocked",
-                        now,
-                        nextEligibleSearchUtc,
-                        configuredSources == 0
-                            ? "No indexers are linked to this library yet."
-                            : "No download client is linked to this library yet.",
-                        null,
-                        null,
-                        null,
-                        cancellationToken);
-                }
-
-                return Results.Ok(new
-                {
-                    outcome = "blocked",
-                    reason = configuredSources == 0 ? MediaSearchReasons.NoIndexers : MediaSearchReasons.NoResults,
-                    seasonNumber,
-                    searchedEpisodes = seasonEpisodes.Count,
-                    matchedCount = 0,
-                    queuedCount = 0
-                });
-            }
-
-            var decisionPlan = await acquisitionPipeline.PlanAsync(
-                new AcquisitionDecisionRequest(
-                    // The planner owns the season suffix and the TV API's
-                    // dedicated season parameter. Passing a title that already
-                    // contains "Season 01" produced queries such as
-                    // "Show Season 01 S01" and made season-pack matching
-                    // dependent on an accidental duplicate token.
-                    seriesItem.Title,
-                    seriesItem.StartYear,
-                    "tv",
-                    null,
-                    wantedItem.TargetQuality,
-                    routing?.Sources ?? [],
-                    routing?.DownloadClients ?? [],
-                    customFormats,
-                    SeasonNumber: seasonNumber,
-                    TagNames: tagNames,
-                    SearchKind: AcquisitionSearchKinds.Interactive,
-                    AvailableUtc: wantedItem.AvailableUtc,
-                    NumberingScheme: seriesItem.NumberingScheme,
-                    PreferencePlan: preferencePlan,
-                    RuntimeMinutes: seriesItem.RuntimeMinutes).WithProfile(profileRules),
-                cancellationToken);
-            var searchPlan = decisionPlan.SearchPlan;
-            var bestCandidate = searchPlan.BestCandidate;
-            SeasonPackReplacementDecision? replacementDecision = null;
-            if (installedEpisodes.Count > 0 && preferencePlan is not null && bestCandidate is not null)
-            {
-                replacementDecision = SeriesSearchBaselineResolver.EvaluateSeasonPackCandidate(
-                    preferencePlan,
-                    bestCandidate,
-                    installedEpisodes);
-            }
-            var replacementHeld = replacementDecision is { Authorized: false };
-            var outcome = replacementHeld ? "held" : decisionPlan.Outcome;
-            var failures = (searchPlan.Failures ?? []).ToList();
-            DownloadClientGrabResult? grabResult = null;
-            if (!replacementHeld && decisionPlan.ShouldDispatch && decisionPlan.SelectedDownloadClient is not null && decisionPlan.DispatchRequest is not null)
-            {
-                var downloadClient = decisionPlan.SelectedDownloadClient;
-                grabResult = bestCandidate!.DownloadUrl is null
-                    ? new DownloadClientGrabResult(downloadClient.DownloadClientId, bestCandidate.ReleaseName, false, "planned", "No download URL was available.")
-                    {
-                        Failure = IntegrationFailureFactory.FromLegacy(
-                            "download-client",
-                            downloadClient.DownloadClientId,
-                            downloadClient.DownloadClientName,
-                            "grab",
-                            "planned",
-                            "No downloadable URL was available for this release.")
-                    }
-                    : await downloadClientGrabService.GrabAsync(downloadClient.DownloadClientId, decisionPlan.DispatchRequest, cancellationToken);
-                if (grabResult.Failure is { } dispatchFailure)
-                {
-                    failures.Add(dispatchFailure);
-                }
-                await jobQueueRepository.RecordDownloadDispatchAsync(
-                    library.Id,
-                    "tv",
-                    "series",
-                    seriesItem.Id,
-                    bestCandidate.ReleaseName,
-                    bestCandidate.IndexerName,
-                    downloadClient.DownloadClientId,
-                    downloadClient.DownloadClientName,
-                    grabResult.Status,
-                    JsonSerializer.Serialize(new
-                    {
-                        seasonNumber,
-                        episodeIds = seasonEpisodes.Select(item => item.EpisodeId).ToArray(),
-                        searchPlan,
-                        replacementComparisons = replacementDecision?.Comparisons,
-                        grabResult
-                    }),
-                    grabResponseCode: grabResult.Succeeded ? 200 : 400,
-                    grabFailureCode: grabResult.Failure?.Code ?? grabResult.FailureCode,
-                    cancellationToken: cancellationToken,
-                    failure: grabResult.Failure,
-                    replacementAuthorized: replacementDecision is { Authorized: true, Targets.Count: > 0 },
-                    replacementTargets: replacementDecision?.Targets,
-                    clientExternalId: grabResult.ExternalId);
-
-                // A season's release puts the show on its way, as any grab does (#555).
-                await mediaStateRepository.MarkDownloadingIfSentAsync(MediaKind.Series, seriesItem.Id, grabResult.Status, now, cancellationToken);
-            }
-
-            foreach (var episode in seasonEpisodes)
-            {
-                await repository.RecordSearchAttemptAsync(
-                    seriesItem.Id,
-                    episode.EpisodeId,
-                    library.Id,
-                    "manual-season",
-                    outcome,
-                    now,
-                    nextEligibleSearchUtc,
-                    replacementHeld ? replacementDecision!.Reason : decisionPlan.SearchResult,
-                    searchPlan.BestCandidate?.ReleaseName,
-                    searchPlan.BestCandidate?.IndexerName,
-                    // The route's `seasonNumber` and `episode.SeasonNumber` differ
-                    // only by case, and System.Text.Json refuses to bind two such
-                    // members to one constructor parameter — it threw on every
-                    // season search, so the endpoint always returned 500 (#285).
-                    // The per-episode value is the accurate one and the route
-                    // value was redundant: seasonEpisodes is already filtered to
-                    // that season.
-                    searchPlan.Candidates.Count == 0
-                        ? JsonSerializer.Serialize(new
-                        {
-                            episode.EpisodeId,
-                            episode.SeasonNumber,
-                            episode.EpisodeNumber
-                        })
-                        : JsonSerializer.Serialize(new
-                        {
-                            episode.EpisodeId,
-                            episode.SeasonNumber,
-                            episode.EpisodeNumber,
-                            searchPlan,
-                            replacementComparisons = replacementDecision?.Comparisons
-                        }),
-                    cancellationToken);
-            }
-
-            await activityFeedRepository.RecordActivityAsync(
-                "series.search.season",
-                $"{seriesItem.Title} season {seasonNumber} was searched from the TV workspace.",
-                JsonSerializer.Serialize(new
-                {
-                    seasonNumber,
-                    episodeIds = seasonEpisodes.Select(item => item.EpisodeId).ToArray(),
-                    matched = searchPlan.BestCandidate is not null
-                }),
-                null,
-                "series",
-                seriesItem.Id,
-                cancellationToken);
-
-            await activityFeedRepository.RecordDecisionAsync(
-                new DecisionExplanationPayload(
-                    Scope: "series.season-search",
-                    Status: outcome,
-                    Reason: replacementHeld ? replacementDecision!.Reason : decisionPlan.SearchResult,
-                    Inputs: new Dictionary<string, string?>
-                    {
-                        ["title"] = seriesItem.Title,
-                        ["seasonNumber"] = seasonNumber.ToString(),
-                        ["libraryId"] = library.Id,
-                        ["episodeCount"] = seasonEpisodes.Count.ToString(),
-                        ["sourceCount"] = configuredSources.ToString(),
-                        ["downloadClientCount"] = configuredClients.ToString(),
-                        ["policyVersion"] = decisionPlan.PolicyVersion
-                    },
-                    Outcome: replacementHeld
-                        ? "No dispatch was made because the candidate was not a proven upgrade for every installed episode."
-                        : grabResult is null
-                        ? searchPlan.Summary
-                        : $"{grabResult.Status}: {grabResult.Message}",
-                    Alternatives: decisionPlan.Alternatives),
-                null,
-                "series",
-                seriesItem.Id,
-                cancellationToken);
-
             return Results.Ok(new
             {
-                outcome,
-                seasonNumber,
-                reason = replacementHeld
-                    ? MediaSearchReasons.SeasonPackCandidateNotUpgradeForEveryEpisode
-                    : searchPlan.Reason,
-                searchedEpisodes = seasonEpisodes.Count,
-                installedEpisodeCount = installedEpisodes.Count,
-                matchedCount = searchPlan.BestCandidate is null || replacementHeld ? 0 : seasonEpisodes.Count,
-                queuedCount = searchPlan.BestCandidate is null || replacementHeld ? 0 : 1,
-                releaseName = searchPlan.BestCandidate?.ReleaseName,
-                indexerName = searchPlan.BestCandidate?.IndexerName,
-                dispatchStatus = grabResult?.Status,
-                dispatchMessage = replacementHeld ? replacementDecision!.Reason : grabResult?.Message,
-                replacementComparisons = replacementDecision?.Comparisons,
-                failures = failures.Distinct().ToArray()
+                outcome = result.Outcome,
+                reason = result.Reason,
+                seasonNumber = result.SeasonNumber,
+                searchedEpisodes = result.SearchedEpisodes,
+                installedEpisodeCount = result.InstalledEpisodeCount,
+                missingEvidenceEpisodeCount = result.MissingEvidenceEpisodeCount,
+                matchedCount = result.MatchedCount,
+                queuedCount = result.QueuedCount,
+                releaseName = result.ReleaseName,
+                indexerName = result.IndexerName,
+                dispatchStatus = result.DispatchStatus,
+                dispatchMessage = result.DispatchMessage,
+                replacementComparisons = result.ReplacementComparisons,
+                failures = result.Failures
             });
         });
 
