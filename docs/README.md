@@ -30,6 +30,7 @@ Deluno keeps product, architecture, and repo-state context in the repository so 
 - `release-notes-1.0.0-draft.md`: draft 1.0.0 release notes structure for final GA publication.
 - `upgrade-guide-0x-to-1x.md`: user upgrade procedure from prerelease line to GA line.
 - `MEDIA_AUTOMATION_TERMINOLOGY.md`: familiar media-automation terms and Deluno's simpler, media-first equivalents.
+- `tracker-definitions.md`: the tracker definition format Deluno's native tracker engine reads (#606): fields, how to add a definition without a Deluno release, and the starter set Deluno ships.
 
 ## Execution Plans
 

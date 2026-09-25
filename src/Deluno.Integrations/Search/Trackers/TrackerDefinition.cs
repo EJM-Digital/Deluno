@@ -4,8 +4,9 @@ using YamlDotNet.RepresentationModel;
 namespace Deluno.Integrations.Search.Trackers;
 
 /// <summary>
-/// One tracker Deluno can search itself (#606), read from a Cardigann
-/// definition: the YAML format Prowlarr and Jackett describe trackers in.
+/// One tracker Deluno can search itself (#606), read from a definition
+/// written in Deluno's own tracker definition format: see
+/// docs/tracker-definitions.md for the fields it supports.
 ///
 /// <para>The model is read from the YAML node tree by hand rather than by a
 /// deserializer, for two reasons. Field order matters (a field may read an

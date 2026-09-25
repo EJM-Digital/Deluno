@@ -6,10 +6,10 @@ using System.Text.RegularExpressions;
 namespace Deluno.Integrations.Search.Trackers;
 
 /// <summary>
-/// The filters a definition runs a value through (#606), with Cardigann's
-/// meanings. A filter that cannot run throws; the caller decides whether the
-/// field was optional. dateparse is the exception, as it is in Prowlarr: a
-/// date it cannot read passes through untouched for the date field to try.
+/// The filters a definition runs a value through (#606). A filter that
+/// cannot run throws; the caller decides whether the field was optional.
+/// dateparse is the exception: a date it cannot read passes through
+/// untouched for the date field to try on its own.
 /// </summary>
 public static class TrackerFilters
 {

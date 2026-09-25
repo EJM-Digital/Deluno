@@ -63,6 +63,42 @@ public sealed class TrackerResponseParserTests
         });
     }
 
+    [Fact]
+    public void Eztv_answers_by_imdb_id_with_a_magnet_already_on_every_row()
+    {
+        var releases = Parse("eztv", "eztv.json", new TrackerQuery(string.Empty, "tvsearch", ImdbId: "tt37158600", Categories: [5000]));
+
+        Assert.Equal(2, releases.Count);
+        Assert.All(releases, release =>
+        {
+            Assert.False(string.IsNullOrWhiteSpace(release.Title));
+            Assert.StartsWith("magnet:?xt=urn:btih:", release.MagnetUrl);
+            Assert.Equal(40, release.InfoHash!.Length);
+            Assert.True(release.Size > 0);
+            Assert.NotNull(release.Seeders);
+            Assert.NotNull(release.PublishDate);
+            Assert.Equal("tt37158600", release.ImdbId);
+            Assert.Contains(release.Categories, category => category / 1000 == 5);
+        });
+    }
+
+    [Fact]
+    public void The_1337x_rows_point_at_a_details_page_the_magnet_is_fetched_from()
+    {
+        var releases = Parse("1337x", "1337x.html", new TrackerQuery("Night of the Living Dead 1968", "movie", Categories: [2000]));
+
+        Assert.Equal(2, releases.Count);
+        Assert.All(releases, release =>
+        {
+            Assert.StartsWith("Night of the Living Dead 1968", release.Title);
+            Assert.StartsWith("https://1337x.to/torrent/", release.DownloadUrl);
+            Assert.NotNull(release.Seeders);
+            Assert.NotNull(release.Peers);
+            Assert.True(release.Size > 0);
+            Assert.Contains(release.Categories, category => category / 1000 == 2);
+        });
+    }
+
     private static IReadOnlyList<TrackerRelease> Parse(string id, string fixture, TrackerQuery query)
     {
         var definition = Catalog.Find(id)!;

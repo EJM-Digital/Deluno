@@ -9,8 +9,8 @@ namespace Deluno.Integrations.Search.Trackers;
 /// <summary>
 /// The Go-template subset tracker definitions are written in (#606).
 ///
-/// <para>Values are strings, null or lists of strings. The names are what
-/// Cardigann uses: <c>.Keywords</c>, <c>.Query.IMDBID</c>, <c>.Config.sort</c>,
+/// <para>Values are strings, null or lists of strings. The names a
+/// definition reads: <c>.Keywords</c>, <c>.Query.IMDBID</c>, <c>.Config.sort</c>,
 /// <c>.Result.title</c>, and <c>.True</c>, which is "True", and <c>.False</c>,
 /// which is null. A checkbox that is off reads as <c>.False</c>, so
 /// <c>eq .Config.x .False</c> asks whether it is off.</para>
@@ -470,8 +470,8 @@ public static class TrackerTemplate
         var position = 0;
         var expression = ParsePipeline(tokens, ref position);
 
-        // A stray closing bracket is a typo Prowlarr's reader forgives, and
-        // live definitions carry it (1337x's second path has one).
+        // A stray closing bracket is a typo Deluno forgives rather than
+        // failing a whole definition over.
         while (position < tokens.Count && tokens[position] == ")")
         {
             position++;
@@ -645,9 +645,9 @@ public static class TrackerTemplate
 }
 
 /// <summary>
-/// The definitions' regular expressions are written for .NET already (Prowlarr
-/// runs them), so they run as written; only the replacement's Go-style
-/// <c>${1}</c> and .NET's <c>$1</c> are the same thing and need nothing.
+/// A definition's regular expressions are ordinary .NET regular expressions;
+/// only the replacement's Go-style <c>${1}</c> and .NET's <c>$1</c> mean the
+/// same thing and need translating.
 /// </summary>
 internal static class TrackerRegex
 {

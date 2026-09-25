@@ -47,9 +47,10 @@ public interface ITrackerEngine
 public sealed class TrackerException(string message, Exception? inner = null) : Exception(message, inner);
 
 /// <summary>
-/// Searches a tracker from its definition (#606), the work Prowlarr did for
-/// Deluno before: signs in, builds each search request, reads the pages, and
-/// turns a release link into a magnet or a .torrent a client can take.
+/// Searches a tracker from its definition (#606): signs in, builds each
+/// search request, reads the pages, and turns a release link into a magnet
+/// or a .torrent a client can take. This is Deluno's own tracker engine, so
+/// a torrent tracker needs no outside indexer manager any more.
 ///
 /// <para>Each configured tracker has one session: a cookie jar, whether it is
 /// signed in, which mirror answered last, and when it was last asked, so the
@@ -680,7 +681,7 @@ public sealed partial class TrackerEngine : ITrackerEngine
     /// that declares its charset, in the Content-Type header or an HTML meta
     /// charset, is decoded as that; a tracker definition's configured
     /// encoding is only a fallback for a response that declares neither.
-    /// LimeTorrents' pages, and its Cardigann definition, both already say
+    /// LimeTorrents' pages, and Deluno's definition for it, both already say
     /// UTF-8 — the bug was the engine forcing the definition's encoding onto
     /// every response regardless, which mangles Cyrillic (and anything else
     /// outside ASCII) the moment a definition's configured encoding stops

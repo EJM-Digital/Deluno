@@ -4,7 +4,7 @@ namespace Deluno.Integrations.Search.Trackers;
 
 /// <summary>
 /// The names a definition's templates read (#606), filled from the user's
-/// settings and the search, with Cardigann's meanings.
+/// settings and the search.
 /// </summary>
 public static class TrackerVariables
 {
@@ -48,16 +48,16 @@ public static class TrackerVariables
             _ => "search"
         };
 
-        // Only what the tracker says it can search by, as Prowlarr strips the
-        // rest: a definition branches on .Query.IMDBID, and a branch for a
-        // parameter the site does not take breaks the search.
+        // Only what the tracker says it can search by: a definition branches
+        // on .Query.IMDBID, and a branch for a parameter the site does not
+        // take would otherwise break the search.
         bool Supports(string parameter) => definition.Caps.Supports(mode, parameter);
 
         var imdb = Supports("imdbid") ? TrackerNumbers.ParseImdbId(query.ImdbId) : null;
 
-        // A movie found by its IMDb id is searched by the id alone, as Radarr
-        // asks Prowlarr: definitions are written for that, and some (rutor)
-        // build the id and the keywords into one path when both are set.
+        // A movie found by its IMDb id is searched by the id alone, the way
+        // Radarr's own interactive search behaves: a definition may build
+        // the id and the keywords into one path when both are set.
         var keywords = imdb is not null && mode == "movie-search" ? string.Empty : query.Keywords.Trim();
         variables[".Query.Type"] = query.SearchType;
         variables[".Query.Q"] = keywords;
