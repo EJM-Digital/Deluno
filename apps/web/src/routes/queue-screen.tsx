@@ -66,7 +66,7 @@ import { PathInput } from "../components/ui/path-input";
 import { SegmentedControl } from "../components/ui/segmented-control";
 import { Select } from "../components/ui/select";
 import { SummaryStrip } from "../components/ui/summary-strip";
-import { toast } from "../components/shell/toaster";
+import { realtimeToast, toast } from "../components/shell/toaster";
 import { RealtimeGroups, useSignalREvent } from "../lib/use-signalr";
 import { formatDateTime as formatPreferenceDateTime, useDisplayPreferences } from "../lib/display-preferences";
 
@@ -161,7 +161,7 @@ export function QueuePage() {
   useSignalREvent("DispatchImportStarted", RealtimeGroups.Queue, scheduleDispatchRefresh);
   useSignalREvent("DispatchImportCompleted", RealtimeGroups.Queue, scheduleDispatchRefresh);
   useSignalREvent("DispatchGrabAttempt", RealtimeGroups.Queue, (event) => {
-    toast.info(`Sent "${event.releaseName}" to ${event.clientName}`);
+    realtimeToast.info(`Sent "${event.releaseName}" to ${event.clientName}`);
   });
 
   const [busyKey, setBusyKey] = useState<string | null>(null);

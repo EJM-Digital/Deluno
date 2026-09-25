@@ -47,7 +47,7 @@ import { SegmentedControl } from "../components/ui/segmented-control";
 import { SummaryStrip } from "../components/ui/summary-strip";
 import { toast } from "../components/shell/toaster";
 import { DownloadDispatchDrawer } from "../components/app/download-dispatch-drawer";
-import { useVisibleInterval } from "../hooks/use-visible-interval";
+import { useLiveInterval } from "../hooks/use-live-interval";
 import { RealtimeGroups, useSignalREvent } from "../lib/use-signalr";
 import { formatDateTime as formatPreferenceDateTime, useDisplayPreferences } from "../lib/display-preferences";
 
@@ -86,12 +86,9 @@ export function ActivityPage() {
   const [busy, setBusy] = useState(false);
   const { preferences } = useDisplayPreferences();
 
-  // Active work needs a short refresh, but hidden tabs must not contend with
-  // it. The app-wide realtime resync (app-layout.tsx) already revalidates this
-  // route on return from hidden, so the catch-up call here is skipped to
-  // avoid firing that same revalidation twice (#641) -- the 10s tick while
-  // visible is unaffected.
-  useVisibleInterval(() => revalidator.revalidate(), 10_000, { skipImmediateCatchup: true });
+  // Active work needs a short refresh, and it keeps running while the tab is
+  // hidden so the screen is already current when it is looked at (#641).
+  useLiveInterval(() => revalidator.revalidate(), 10_000);
 
   const scheduleDispatchRefresh = () => {
     const now = Date.now();

@@ -12,7 +12,7 @@ import {
   type SeriesImportRecoverySummary,
   type SeriesWantedSummary
 } from "./api";
-import { useVisibleInterval } from "../hooks/use-visible-interval";
+import { useLiveInterval } from "../hooks/use-live-interval";
 import { fetchFailedJobs } from "./failed-jobs";
 import { isJobDeadLettered, isJobRetrying, type JobStatus } from "./job-status-constants";
 import { needsAction } from "./needs-action";
@@ -105,7 +105,7 @@ export function useAttention(pollMs = 45000) {
     void load();
   }, [load]);
 
-  useVisibleInterval(() => void load(), pollMs);
+  useLiveInterval(() => void load(), pollMs);
 
   // A job failing, being retried or being dismissed changes the count now, not
   // at the next poll: dismissing the last failure beside a pill still saying

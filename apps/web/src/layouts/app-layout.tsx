@@ -19,7 +19,7 @@ import { CommandPalette } from "../components/shell/command-palette";
 import { KeyboardHintOverlay } from "../components/shell/keyboard-hint-overlay";
 import { MobileShellNav } from "../components/shell/mobile-shell-nav";
 import { PageTransition } from "../components/shell/motion";
-import { Toaster, toast } from "../components/shell/toaster";
+import { Toaster, realtimeToast } from "../components/shell/toaster";
 import { WsStatusBadge } from "../components/shell/ws-status-badge";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
@@ -152,7 +152,10 @@ function AppLayoutInner() {
   const { token } = useAuth();
   const [queryClient] = useState(() => new QueryClient({
     defaultOptions: {
-      queries: { retry: 1 }
+      // Deluno stays live while its tab is hidden (#641), so there is nothing
+      // to catch up on when it is looked at again. Refetching on focus would
+      // put back the refresh-on-return #641 removed.
+      queries: { retry: 1, refetchOnWindowFocus: false }
     }
   }));
   return (
@@ -177,13 +180,11 @@ function AppLayoutContent() {
   const revalidator = useRevalidator();
 
   /*
-    Returning to a hidden tab must show current state, not queued events
-    replaying one by one (#641): every `useSignalREvent` subscriber below,
-    and every one on the mounted route, goes quiet while the tab is hidden.
-    This is the one place that catches every screen back up on return — a
-    single route revalidation covers every loader-backed page, mounted here
-    rather than per-route so a screen with no realtime handler of its own
-    still ends up current.
+    A reconnect whose gap is too large to replay means events were lost, so
+    every screen has to fetch current state again. One route revalidation,
+    mounted here rather than per route, covers every loader-backed page,
+    including one with no realtime handler of its own. Returning to a hidden
+    tab is not such a case: realtime keeps delivering while hidden (#641).
   */
   useSignalRResync(() => { revalidator.revalidate(); });
 
@@ -200,11 +201,11 @@ function AppLayoutContent() {
   useSignalREvent("DispatchImportCompleted", RealtimeGroups.Queue, (event) => {
     const title = event.releaseName || "A download";
     if (event.succeeded) {
-      toast.success(`${title} is in your library.`, {
+      realtimeToast.success(`${title} is in your library.`, {
         action: { label: "Open Transfers", onClick: () => navigate("/queue") }
       });
     } else {
-      toast.error(`Import failed for ${title}.${event.failureReason ? ` ${event.failureReason}` : ""}`, {
+      realtimeToast.error(`Import failed for ${title}.${event.failureReason ? ` ${event.failureReason}` : ""}`, {
         action: { label: "See why", onClick: () => navigate("/queue") }
       });
     }
