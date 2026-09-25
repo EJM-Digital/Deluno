@@ -42,6 +42,22 @@ public sealed record DownloadHealthRecord(
 }
 
 /// <summary>
+/// Durable, restart-safe memory of one queue item's downloaded-bytes
+/// progress (#659). Kept separately from <see cref="DownloadHealthRecord"/>
+/// because it is not a finding: it is watched for every item the client
+/// lists, not only one already in trouble, and it never itself counts
+/// toward a strike. A stall check reads <see cref="LastIncreaseUtc"/> to ask
+/// "how long has this gone without gaining a byte", a question that has to
+/// survive a process restart or every restart looks like fresh progress.
+/// </summary>
+public sealed record DownloadProgressRecord(
+    string ClientId,
+    string QueueItemId,
+    long DownloadedBytes,
+    DateTimeOffset LastIncreaseUtc,
+    DateTimeOffset LastObservedUtc);
+
+/// <summary>
 /// What a strike is (#560).
 ///
 /// <para><b>A strike is time, not a sighting.</b> One strike when a problem is

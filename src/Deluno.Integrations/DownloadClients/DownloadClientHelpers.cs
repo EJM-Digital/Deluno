@@ -297,8 +297,21 @@ internal static class DownloadClientHelpers
     /// to <see cref="DownloadQueueStatuses.Stalled"/> through its status
     /// text), so this is the one place all three clients get the same
     /// answer.</para>
+    ///
+    /// <para><b>Known metadata and connected peers can still mean nothing is
+    /// arriving (#659).</b> Peers that never send anything are not evidence
+    /// of progress; only a gain in <see cref="DownloadQueueItem.DownloadedBytes"/>
+    /// between observations is. <paramref name="lastProgressUtc"/> is that
+    /// evidence - when this item's bytes were last seen to increase, kept in
+    /// <see cref="Deluno.Platform.Data.IDownloadHealthRepository.RecordDownloadProgressAsync"/>
+    /// so a restart does not read as fresh progress. No gain for the stall
+    /// window is stalled regardless of peer count; any gain moves the clock,
+    /// so a slow-but-moving torrent is never caught here. Null means nothing
+    /// has been persisted yet (a caller that has not wired up progress
+    /// tracking, or this item's first sighting), which this rule treats the
+    /// same as "not stalled yet" rather than guessing.</para>
     /// </summary>
-    internal static DownloadQueueItem ReconcileTorrentStatus(DownloadQueueItem item, DateTimeOffset capturedUtc)
+    internal static DownloadQueueItem ReconcileTorrentStatus(DownloadQueueItem item, DateTimeOffset capturedUtc, DateTimeOffset? lastProgressUtc = null)
     {
         var metadataKnown = item.SizeBytes > 0;
 
@@ -311,6 +324,13 @@ internal static class DownloadClientHelpers
             item.Peers <= 0 &&
             item.Status == DownloadQueueStatuses.Downloading &&
             capturedUtc - item.AddedUtc >= DownloadHealthStrikes.Window)
+        {
+            return item with { Status = DownloadQueueStatuses.Stalled };
+        }
+
+        if (item.Status == DownloadQueueStatuses.Downloading &&
+            lastProgressUtc is { } since &&
+            capturedUtc - since >= DownloadHealthStrikes.Window)
         {
             return item with { Status = DownloadQueueStatuses.Stalled };
         }

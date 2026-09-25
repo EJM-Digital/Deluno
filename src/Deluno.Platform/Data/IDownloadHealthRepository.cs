@@ -44,4 +44,17 @@ public interface IDownloadHealthRepository
         string kind,
         int durationDays,
         CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Updates the restart-safe memory of downloaded bytes for every queue
+    /// item this observation lists, and returns when each one's bytes were
+    /// last seen to increase (#659). A gain moves that item's clock to now;
+    /// no gain leaves the previous value alone, so a torrent that is merely
+    /// slow (any gain, however small) never reaches the stall window, and one
+    /// that has genuinely stopped keeps the clock it had before a restart.
+    /// </summary>
+    Task<IReadOnlyDictionary<string, DateTimeOffset>> RecordDownloadProgressAsync(
+        string clientId,
+        IReadOnlyList<(string QueueItemId, long DownloadedBytes)> observations,
+        CancellationToken cancellationToken);
 }
