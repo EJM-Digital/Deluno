@@ -56,6 +56,16 @@ public sealed class FilesystemImportExecuteJobHandler(
                     : $"Not imported: {result.Message}";
             }
 
+            // A source file that has not settled yet - one file, or a whole
+            // season pack that shares its settle window (#652) - is not a
+            // broken import: it is retried after a short wait without
+            // spending one of the pack's dead-letter attempts, the same way
+            // an indexer pacing pass defers a search (#598).
+            if (result.StatusCode == ImportFileReadiness.RetryableStatusCode)
+            {
+                throw new JobDeferredException(ImportFileReadiness.SettleWindow, result.Message);
+            }
+
             throw new InvalidOperationException(result.Message);
         }
 
@@ -65,12 +75,22 @@ public sealed class FilesystemImportExecuteJobHandler(
                 imported,
                 ProcessorHandoffOutcome.Imported,
                 result.Response?.Preview.DestinationPath,
-                null,
+                DescribeSkippedFiles(result.Response?.SkippedFiles),
                 cancellationToken);
         }
 
         return result.Response?.Message ?? "Import completed.";
     }
+
+    /// <summary>
+    /// Plain words for the pack files a season-pack import left alone, so the
+    /// processor outcome report says which files were skipped and why (#652),
+    /// not only that the pack, as a whole, was imported.
+    /// </summary>
+    private static string? DescribeSkippedFiles(IReadOnlyList<ImportPackSkippedFile>? skippedFiles)
+        => skippedFiles is not { Count: > 0 }
+            ? null
+            : $"Skipped {skippedFiles.Count} file(s) that do not resolve to a canonical episode: {string.Join(", ", skippedFiles.Select(file => Path.GetFileName(file.SourcePath)))}.";
 
     /// <summary>
     /// When the refusal put the release on the blocklist, look for another copy

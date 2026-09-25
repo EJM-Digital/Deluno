@@ -457,7 +457,7 @@ POST …/intake/handoffs/{source}/{handoffId}/outcome
 { "outcome": "imported | not-imported", "occurredUtc": "…", "importedPath": "…", "reason": "…" }
 ```
 
-`not-imported` is final and is sent only when Deluno will not try the import again. `occurredUtc` is when the import finished, so every repeat of a report is the same report.
+`not-imported` is final and is sent only when Deluno will not try the import again. `occurredUtc` is when the import finished, so every repeat of a report is the same report. `reason` is why, on `not-imported`; on `imported` it is set only for a season pack that left some of its files alone - an extra, featurette, sample or a special the catalogue does not list - and names them, in plain words, so the processor is told the whole story about what it gets to release.
 
 Deluno keeps an outcome until the processor hears it:
 
