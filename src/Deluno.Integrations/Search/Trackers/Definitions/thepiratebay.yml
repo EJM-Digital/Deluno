@@ -28,7 +28,9 @@ caps:
     tv-search: [q]
 search:
   paths:
-    - path: "q.php"
+    # Absolute on purpose: an indexer saved with the site's own address
+    # (thepiratebay.org) must still reach the API, not the web page.
+    - path: "https://apibay.org/q.php"
       response:
         type: json
       inputs:

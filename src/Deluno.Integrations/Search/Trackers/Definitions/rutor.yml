@@ -21,20 +21,23 @@ caps:
 search:
   paths:
     - path: "search/0/0/000/0/{{ .Keywords }}"
+  # Each result is a row of the table inside div#index, striped "gai" and
+  # "tum"; the header row is "backgr". The second cell holds the .torrent
+  # link (a.downgif), the magnet, and the title link to /torrent/<id>/.
   rows:
-    selector: "table#index tr:has(td.t-title)"
+    selector: "div#index tr.gai, div#index tr.tum"
   fields:
     title:
-      selector: "td.t-title a:not(.downgif)"
+      selector: "a[href^='/torrent/']"
     details:
-      selector: "td.t-title a:not(.downgif)"
+      selector: "a[href^='/torrent/']"
       attribute: href
     magnet:
-      selector: "td.t-title a.downgif"
+      selector: "a[href^='magnet:']"
       attribute: href
     size:
-      selector: td.t-size
+      selector: "td:nth-last-child(2)"
     seeders:
-      selector: td.t-seeds
+      selector: "span.green"
     leechers:
-      selector: td.t-leech
+      selector: "span.red"
