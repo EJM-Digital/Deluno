@@ -47,4 +47,33 @@ describe("the shelf remembers its layout", () => {
     const { result } = renderHook(() => useLibraryFilters("movies", null));
     expect(result.current.view).toBe("grid");
   });
+
+  /**
+   * Settings -> Interface's "Default views" claimed to control how a library
+   * opens, and use-library-filters read only localStorage — a library this
+   * browser had never opened before always started in the hardcoded grid
+   * regardless of that setting (#736).
+   */
+  it("opens in the saved default view when this browser has never remembered one", () => {
+    const list = renderHook(() => useLibraryFilters("movies", null, "list"));
+    expect(list.result.current.view).toBe("list");
+
+    const shows = renderHook(() => useLibraryFilters("shows", null, "list"));
+    expect(shows.result.current.view).toBe("list");
+  });
+
+  it("keeps a remembered layout even when the saved default has since changed", () => {
+    const first = renderHook(() => useLibraryFilters("movies", null, "grid"));
+    act(() => first.result.current.setView("list"));
+
+    // The default moved to "grid" too, but this browser already chose "list"
+    // for this shelf — a stored choice outranks a default from settings.
+    const second = renderHook(() => useLibraryFilters("movies", null, "grid"));
+    expect(second.result.current.view).toBe("list");
+  });
+
+  it("uses the plain grid default when no saved default is given", () => {
+    const { result } = renderHook(() => useLibraryFilters("movies", null));
+    expect(result.current.view).toBe("grid");
+  });
 });

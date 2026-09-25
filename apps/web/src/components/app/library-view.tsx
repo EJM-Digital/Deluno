@@ -27,6 +27,7 @@ import {
   ControlRail,
   isQuickFilter,
   type SavedFilterPreset,
+  type ViewMode,
 } from "./library-control-rail";
 import { useDensity } from "../../lib/use-density";
 import { useLibraryFilters } from "../../hooks/use-library-filters";
@@ -102,12 +103,15 @@ export function LibraryView({
   isRouteLoading = false,
   metadataStatus,
   onReload,
-  variant
+  variant,
+  defaultView
 }: {
   isRouteLoading?: boolean;
   metadataStatus?: MetadataProviderStatus | null;
   onReload?: () => void;
   variant: Variant;
+  /** Settings -> Interface's saved default, used only when this browser has never remembered a view for this variant (#736). */
+  defaultView?: ViewMode;
 }) {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -118,7 +122,7 @@ export function LibraryView({
     savedPresets, setSavedPresets, newPresetName, setNewPresetName, isSavingPreset,
     setIsSavingPreset, changeSize, updateDisplayOptions, activeFilterCount,
     monitoring, setMonitoring, controlSet, conditions, setConditions, clearConditions
-  } = useLibraryFilters(variant, searchParams.get("filter"));
+  } = useLibraryFilters(variant, searchParams.get("filter"), defaultView);
 
   const buildCatalogueParams = useCallback((pageToken?: string, pageSize = FIRST_PAGE_SIZE) => {
     const params = new URLSearchParams({ pageSize: String(pageSize), sort: sortField, direction: sortDirection });
