@@ -1,4 +1,4 @@
-import type { LoaderFunction } from "react-router-dom";
+import type { LoaderFunction, ShouldRevalidateFunction } from "react-router-dom";
 import { createBrowserRouter, Navigate, redirect, useLoaderData, useLocation, useParams } from "react-router-dom";
 import type { ComponentType } from "react";
 import { RouteErrorBoundary } from "./components/shell/route-error-boundary";
@@ -27,6 +27,7 @@ function LegacyShowDetailRedirect() {
 
 type LazyRouteModule = {
   loader?: LoaderFunction;
+  shouldRevalidate?: ShouldRevalidateFunction;
   Component: ComponentType;
 };
 
@@ -49,6 +50,9 @@ function withSkeleton(loadModule: () => Promise<LazyRouteModule>) {
         ? async (args: Parameters<NonNullable<LazyRouteModule["loader"]>>[0]) =>
             (await mod.loader!(args)) ?? null
         : async () => null,
+      // Passed through, not dropped: a route that declines a revalidation
+      // (the Dashboard, #641) must still decline it once wrapped.
+      ...(mod.shouldRevalidate ? { shouldRevalidate: mod.shouldRevalidate } : {}),
       Component,
       ErrorBoundary: RouteErrorBoundary,
       HydrateFallback: RoutePending
