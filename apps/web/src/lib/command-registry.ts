@@ -206,8 +206,8 @@ export const settingsCommands: CommandItem[] = [
   },
   {
     id: "settings.metadata",
-    label: "Media Management · Metadata & Files",
-    keywords: ["library", "tmdb", "tvdb", "fanart", "metadata", "nfo"],
+    label: "Media Management · Metadata",
+    keywords: ["library", "tmdb", "language", "ratings", "certification", "metadata"],
     group: "navigation",
     icon: Sparkles,
     to: "/settings/metadata"

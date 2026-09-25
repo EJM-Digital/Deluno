@@ -12,7 +12,7 @@ export const librarySetupNavItems = [
   { to: "/settings/import-policy", label: "Import Policy", end: false, icon: <FileInput aria-hidden="true" /> },
   { to: "/settings/processing", label: "Processing Workflow", end: false, icon: <Workflow aria-hidden="true" /> },
   { to: "/settings/destination-rules", label: "Final Destinations", end: false, icon: <MapPinned aria-hidden="true" /> },
-  { to: "/settings/metadata", label: "Metadata & Files", end: false, icon: <Image aria-hidden="true" /> },
+  { to: "/settings/metadata", label: "Metadata", end: false, icon: <Image aria-hidden="true" /> },
   { to: "/settings/subtitles", label: "Subtitles", end: false, icon: <Captions aria-hidden="true" /> },
   { to: "/settings/tags", label: "Tags", end: false, icon: <Tags aria-hidden="true" /> }
 ] as const;
