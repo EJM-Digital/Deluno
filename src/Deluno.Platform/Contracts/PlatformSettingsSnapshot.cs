@@ -69,4 +69,17 @@ public sealed record PlatformSettingsSnapshot(
     int LibraryFileCheckHours = 6,
     // A FlareSolverr-compatible service that gets trackers past a Cloudflare
     // check (#628). Deluno does not solve those checks itself.
-    string? CloudflareHelperUrl = null);
+    string? CloudflareHelperUrl = null,
+    // Download health (#659): configurable in the same spirit as Cleanuparr's
+    // thresholds. Defaults match what #659 originally hard-coded, so an
+    // install that never opens the settings screen behaves the same as
+    // before. Only "no progress" starts on; the other two are sharper rules a
+    // person opts into once they know their own swarms.
+    bool DownloadHealthNoProgressEnabled = true,
+    int DownloadHealthNoProgressMinutes = 30,
+    bool DownloadHealthMinSpeedEnabled = false,
+    int DownloadHealthMinSpeedKbps = 50,
+    int DownloadHealthMinSpeedMinutes = 30,
+    bool DownloadHealthMinPeersEnabled = false,
+    int DownloadHealthMinPeers = 1,
+    int DownloadHealthMinPeersMinutes = 30);

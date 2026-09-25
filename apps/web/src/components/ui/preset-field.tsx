@@ -23,11 +23,13 @@ interface PresetFieldProps {
   inputType?: "text" | "number";
   /** Shown while nothing is chosen. Defaults to "Choose…". */
   placeholder?: string;
+  /** Greys out both the preset select and the custom input, e.g. while the rule it configures is switched off. */
+  disabled?: boolean;
 }
 
 const CUSTOM = "__custom";
 
-export function PresetField({ value, onChange, options, customLabel = "Custom", customPlaceholder, allowCustom = true, inputType = "text", placeholder = "Choose…" }: PresetFieldProps) {
+export function PresetField({ value, onChange, options, customLabel = "Custom", customPlaceholder, allowCustom = true, inputType = "text", placeholder = "Choose…", disabled = false }: PresetFieldProps) {
   const [editingCustom, setEditingCustom] = useState(false);
   const customInputId = useId();
   const optionValues = useMemo(() => new Set(options.map((option) => option.value)), [options]);
@@ -43,6 +45,7 @@ export function PresetField({ value, onChange, options, customLabel = "Custom", 
     <div className="grid gap-2">
       <Select
         value={selectValue}
+        disabled={disabled}
         onChange={(event) => {
           if (event.target.value === CUSTOM) {
             setEditingCustom(true);
@@ -76,6 +79,7 @@ export function PresetField({ value, onChange, options, customLabel = "Custom", 
           }}
           placeholder={customPlaceholder}
           aria-label={customLabel}
+          disabled={disabled}
         />
       ) : null}
     </div>

@@ -38,6 +38,7 @@ public sealed class DownloadClientTelemetryService(
     {
         var capturedUtc = timeProvider.GetUtcNow();
         var platformSettings = await platformRepository.GetAsync(cancellationToken);
+        var downloadHealthRules = DownloadHealthRulesFrom(platformSettings);
         var clients = await connectionsRepository.ListDownloadClientsAsync(cancellationToken);
         var pathMappings = await connectionsRepository.ListDownloadClientPathMappingsAsync(null, cancellationToken);
         var libraries = await librariesRepository.ListLibrariesAsync(cancellationToken);
@@ -72,7 +73,7 @@ public sealed class DownloadClientTelemetryService(
             var liveSnapshot = await TryGetLiveSnapshotAsync(client, capturedUtc, cancellationToken);
             if (liveSnapshot is not null)
             {
-                liveSnapshot = await ApplyDownloadProgressStallAsync(liveSnapshot, capturedUtc, cancellationToken);
+                liveSnapshot = await ApplyDownloadProgressStallAsync(liveSnapshot, capturedUtc, downloadHealthRules, cancellationToken);
                 var clientDispatches = dispatches
                     .Where(dispatch => string.Equals(dispatch.DownloadClientId, client.Id, StringComparison.OrdinalIgnoreCase))
                     .ToArray();
@@ -110,7 +111,7 @@ public sealed class DownloadClientTelemetryService(
         var mappedSnapshots = snapshots
             .Select(snapshot => ApplyPathMappings(snapshot, pathMappings))
             .ToArray();
-        var healthAnnotatedSnapshots = await Task.WhenAll(mappedSnapshots.Select(snapshot => AttachHealthFindingsAsync(snapshot, platformSettings.DownloadHealthStrikeThreshold, platformSettings.CleanupBlockReleaseAfterThreshold, cancellationToken)));
+        var healthAnnotatedSnapshots = await Task.WhenAll(mappedSnapshots.Select(snapshot => AttachHealthFindingsAsync(snapshot, platformSettings.DownloadHealthStrikeThreshold, platformSettings.CleanupBlockReleaseAfterThreshold, downloadHealthRules, cancellationToken)));
 
         return new DownloadTelemetryOverview(
             Summary: Summarize(healthAnnotatedSnapshots.SelectMany(snapshot => snapshot.Queue)),
@@ -408,6 +409,7 @@ public sealed class DownloadClientTelemetryService(
     private async Task<DownloadClientTelemetrySnapshot> ApplyDownloadProgressStallAsync(
         DownloadClientTelemetrySnapshot snapshot,
         DateTimeOffset capturedUtc,
+        DownloadHealthRulesSettings rules,
         CancellationToken cancellationToken)
     {
         if (snapshot.Queue.Count == 0)
@@ -415,10 +417,19 @@ public sealed class DownloadClientTelemetryService(
             return snapshot;
         }
 
+        // Bytes are still watched even with the rule off (#659): switching it
+        // on later should read "no gain since the window opened", not "no
+        // gain since the setting changed" - the memory has to already be
+        // there.
         var lastIncreaseByQueueItemId = await healthRepository.RecordDownloadProgressAsync(
             snapshot.ClientId,
             snapshot.Queue.Select(item => (item.Id, item.DownloadedBytes)).ToArray(),
             cancellationToken);
+
+        if (!rules.NoProgressEnabled)
+        {
+            return snapshot;
+        }
 
         return snapshot with
         {
@@ -426,15 +437,29 @@ public sealed class DownloadClientTelemetryService(
                 .Select(item => DownloadClientHelpers.ReconcileTorrentStatus(
                     item,
                     capturedUtc,
-                    lastIncreaseByQueueItemId.TryGetValue(item.Id, out var since) ? since : null))
+                    lastIncreaseByQueueItemId.TryGetValue(item.Id, out var since) ? since : null,
+                    rules.NoProgressWindow))
                 .ToArray()
         };
     }
+
+    /// <summary>Builds #659's configurable rules from the platform settings a caller already loaded.</summary>
+    private static DownloadHealthRulesSettings DownloadHealthRulesFrom(PlatformSettingsSnapshot settings)
+        => new(
+            NoProgressEnabled: settings.DownloadHealthNoProgressEnabled,
+            NoProgressMinutes: settings.DownloadHealthNoProgressMinutes,
+            MinSpeedEnabled: settings.DownloadHealthMinSpeedEnabled,
+            MinSpeedKbps: settings.DownloadHealthMinSpeedKbps,
+            MinSpeedMinutes: settings.DownloadHealthMinSpeedMinutes,
+            MinPeersEnabled: settings.DownloadHealthMinPeersEnabled,
+            MinPeers: settings.DownloadHealthMinPeers,
+            MinPeersMinutes: settings.DownloadHealthMinPeersMinutes);
 
     private async Task<DownloadClientTelemetrySnapshot> AttachHealthFindingsAsync(
         DownloadClientTelemetrySnapshot snapshot,
         int strikeThreshold,
         bool blockReleaseAfterThreshold,
+        DownloadHealthRulesSettings rules,
         CancellationToken cancellationToken)
     {
         var annotated = snapshot.Queue
@@ -446,8 +471,10 @@ public sealed class DownloadClientTelemetryService(
                     item.SpeedMbps,
                     item.AddedUtc,
                     item.EtaSeconds,
-                    item.ReleaseName),
-                snapshot.CapturedUtc)))
+                    item.ReleaseName,
+                    item.Peers),
+                snapshot.CapturedUtc,
+                rules)))
             .ToArray();
         var observations = annotated
             .SelectMany(entry => entry.Findings.Select(finding => new DownloadHealthObservation(

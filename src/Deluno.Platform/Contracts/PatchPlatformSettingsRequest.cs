@@ -64,4 +64,12 @@ public sealed record PatchPlatformSettingsRequest(
     string? TimeFormat = null,
     bool? ShowRelativeDates = null,
     int? LibraryFileCheckHours = null,
-    string? CloudflareHelperUrl = null);
+    string? CloudflareHelperUrl = null,
+    bool? DownloadHealthNoProgressEnabled = null,
+    int? DownloadHealthNoProgressMinutes = null,
+    bool? DownloadHealthMinSpeedEnabled = null,
+    int? DownloadHealthMinSpeedKbps = null,
+    int? DownloadHealthMinSpeedMinutes = null,
+    bool? DownloadHealthMinPeersEnabled = null,
+    int? DownloadHealthMinPeers = null,
+    int? DownloadHealthMinPeersMinutes = null);
