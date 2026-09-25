@@ -58,9 +58,13 @@ public sealed class ANzbGetDiskFullIsNotTreatedAsAFailedDownloadTests
         Assert.NotEqual(DownloadClientFailureCodes.ClientReported, dispatch.ImportFailureCode);
     }
 
-    /// <summary>The dispatch stops looking like it is still in flight, whatever else it becomes.</summary>
+    /// <summary>
+    /// Detected (NZBGet showed it), but deliberately not finished: the
+    /// unpacked output is not there yet, so nothing downstream should treat
+    /// it as ready to import.
+    /// </summary>
     [Fact]
-    public async Task Disk_full_still_marks_the_dispatch_detected_and_finished()
+    public async Task Disk_full_marks_the_dispatch_detected_but_not_finished()
     {
         using var world = await World.CreateAsync();
 
@@ -68,7 +72,8 @@ public sealed class ANzbGetDiskFullIsNotTreatedAsAFailedDownloadTests
 
         var dispatch = await world.Dispatches.GetDispatchAsync(world.DispatchId, CancellationToken.None);
         Assert.NotNull(dispatch!.DetectedUtc);
-        Assert.NotNull(dispatch.ClientCompletedUtc);
+        Assert.Null(dispatch.ClientCompletedUtc);
+        Assert.Null(dispatch.ImportStatus);
     }
 
     /// <summary>A person reading the timeline sees why NZBGet stopped, in plain words.</summary>
@@ -85,6 +90,13 @@ public sealed class ANzbGetDiskFullIsNotTreatedAsAFailedDownloadTests
         Assert.Contains("free space and re-run post-processing in NZBGet", entry.DetailsJson);
     }
 
+    /// <summary>
+    /// NZBGet keeps reporting WARNING/SPACE for this history row on every
+    /// poll until a person acts — unlike a duplicate or a real failure, this
+    /// sighting is never marked finished, so it keeps qualifying in
+    /// <see cref="DownloadClientTelemetryService.ShownByClient"/>. The
+    /// timeline/activity write is what must not repeat.
+    /// </summary>
     [Fact]
     public async Task Disk_full_already_recorded_is_not_reprocessed_on_the_next_poll()
     {
@@ -96,6 +108,49 @@ public sealed class ANzbGetDiskFullIsNotTreatedAsAFailedDownloadTests
         Assert.Empty(await world.Blocklist.ListAsync(CancellationToken.None));
         var timeline = await world.Dispatches.GetDispatchTimelineAsync(world.DispatchId, CancellationToken.None);
         Assert.Single(timeline, entry => entry.EventType == "client-reported-needs-attention");
+
+        var dispatch = await world.Dispatches.GetDispatchAsync(world.DispatchId, CancellationToken.None);
+        Assert.Null(dispatch!.ClientCompletedUtc);
+    }
+
+    /// <summary>
+    /// #733's actual recovery path: a person frees space and re-runs
+    /// post-processing in NZBGet, which then reports the same NZB as
+    /// SUCCESS. Because WARNING/SPACE never marked the dispatch finished, the
+    /// completed sighting is picked up exactly like any download that
+    /// succeeded on the first try — detected, then finished, with no import
+    /// outcome recorded yet so the normal import path can still claim it.
+    /// Before this fix, WARNING/SPACE stamped ClientCompletedUtc immediately,
+    /// which permanently satisfied the sighting filter's
+    /// <c>ClientCompletedUtc is null</c> guard and meant the later SUCCESS
+    /// history row was never picked up at all.
+    /// </summary>
+    [Fact]
+    public async Task Disk_full_followed_by_success_is_finished_and_ready_to_import()
+    {
+        using var world = await World.CreateAsync();
+
+        await world.ShowHistoryAsync(NzbGetHistory("WARNING/SPACE"));
+        await world.ShowHistoryAsync(NzbGetHistory("WARNING/SPACE"));
+
+        var afterSpace = await world.Dispatches.GetDispatchAsync(world.DispatchId, CancellationToken.None);
+        Assert.Null(afterSpace!.ClientCompletedUtc);
+        Assert.Null(afterSpace.ImportStatus);
+
+        await world.ShowHistoryAsync(NzbGetHistory("SUCCESS/UNPACK"));
+
+        var afterSuccess = await world.Dispatches.GetDispatchAsync(world.DispatchId, CancellationToken.None);
+        Assert.NotNull(afterSuccess!.DetectedUtc);
+        Assert.NotNull(afterSuccess.ClientCompletedUtc);
+        // No import outcome recorded by this service: a completed download is
+        // handed to the ordinary import path, the same as one that never saw
+        // WARNING/SPACE at all.
+        Assert.Null(afterSuccess.ImportStatus);
+        Assert.NotEqual(DownloadClientFailureCodes.ClientReported, afterSuccess.ImportFailureCode);
+
+        var timeline = await world.Dispatches.GetDispatchTimelineAsync(world.DispatchId, CancellationToken.None);
+        Assert.Single(timeline, entry => entry.EventType == "client-reported-needs-attention");
+        Assert.Contains(timeline, entry => entry.EventType == "client_completed");
     }
 
     private static DownloadClientHistoryItem NzbGetHistory(string status)
