@@ -66,6 +66,28 @@ public sealed class OtherDevicesCanReachDelunoTests
     }
 
     [Fact]
+    public async Task A_capability_rule_with_an_empty_LocalAppPackageId_is_still_excluded_by_its_name()
+    {
+        // The rule shape actually found live: querying HNetCfg.FwPolicy2
+        // directly for "Desktop App Web Viewer" / the OOBE package's rules
+        // showed LocalAppPackageId reading back empty, even though they are
+        // package-scoped in practice (enforced by Windows Filtering Platform
+        // against the caller's AppContainer token, not by that property).
+        // Their one distinguishing feature on the plain rule object is the
+        // name Windows generates for them: an indirect resource string,
+        // @{PackageFamilyName?ms-resource://...}, which a hand-created rule
+        // -- netsh, PowerShell, an installer, Deluno's own -- never produces.
+        var firewall = new FakeFirewall(Public, Rule(
+            "@{MicrosoftWindows.Client.OOBE_1000.26100.28.0_x64__cw5n1h2txyewy?ms-resource://MicrosoftWindows.Client.OOBE/resources/ProductPkgDisplayName}",
+            ports: "*", profiles: AllProfiles, localAppPackageId: null));
+
+        var status = await Access(firewall).GetStatusAsync(CancellationToken.None);
+
+        Assert.Equal(LanAccessStates.Blocked, status.State);
+        Assert.True(status.CanAllow);
+    }
+
+    [Fact]
     public async Task A_rule_scoped_to_another_service_does_not_count()
     {
         var firewall = new FakeFirewall(Public, Rule(
