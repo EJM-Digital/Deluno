@@ -2386,117 +2386,163 @@ public sealed class SqliteJobStore(
                     continue;
                 }
 
-                foreach (var (kind, enabled, due) in new[]
+                var checkMissing = library.MissingSearchEnabled && (manualRequest || missingDue) &&
+                    (requestedKind is null || string.Equals(requestedKind, "missing", StringComparison.OrdinalIgnoreCase));
+                var checkUpgrades = library.UpgradeSearchEnabled && (manualRequest || upgradeDue) &&
+                    (requestedKind is null || string.Equals(requestedKind, "upgrade", StringComparison.OrdinalIgnoreCase));
+
+                if (!checkMissing && !checkUpgrades)
                 {
-                    (Kind: "missing", Enabled: library.MissingSearchEnabled, Due: missingDue),
-                    (Kind: "upgrade", Enabled: library.UpgradeSearchEnabled, Due: upgradeDue)
-                })
-                {
-                    if (!enabled || (!manualRequest && !due) ||
-                        (requestedKind is not null && !string.Equals(requestedKind, kind, StringComparison.OrdinalIgnoreCase)))
-                    {
-                        continue;
-                    }
-
-                    attemptedKinds++;
-                    var scopeSuffix = scope is null ? string.Empty : $":scope:{scope.Id}";
-                    var dedupeKey = $"library.search:{library.LibraryId}:{kind}{scopeSuffix}";
-                    var legacyDedupeKey = scope is null ? $"library.search:{library.LibraryId}" : null;
-                    if (pendingJobKeys.Contains(dedupeKey) ||
-                        (legacyDedupeKey is not null && pendingJobKeys.Contains(legacyDedupeKey)))
-                    {
-                        hasPendingForLibrary = true;
-                        continue;
-                    }
-
-                    var payload = JsonSerializer.Serialize(new
-                    {
-                        libraryId = library.LibraryId,
-                        libraryName = library.LibraryName,
-                        mediaType = library.MediaType,
-                        checkMissing = kind == "missing",
-                        checkUpgrades = kind == "upgrade",
-                        searchKind = kind,
-                        maxItems = library.MaxItemsPerRun,
-                        retryDelayHours = library.RetryDelayHours,
-                        triggeredBy = manualRequest ? "manual" : "schedule",
-                        scopeId = scope?.Id,
-                        scopeName = scope?.Name,
-                        scopeConditions = scope?.Filters.Conditions
-                    });
-                    var idempotencyKey = $"library.search:{library.LibraryId}:{kind}{scopeSuffix}:{(manualRequest ? "manual" : "schedule")}";
-                    var job = new JobQueueItem(
-                        Id: Guid.CreateVersion7().ToString("N"),
-                        JobType: LibrarySearchJobTypes.For(library.MediaType),
-                        Source: library.MediaType,
-                        Status: "queued",
-                        PayloadJson: payload,
-                        Attempts: 0,
-                        CreatedUtc: now,
-                        ScheduledUtc: now,
-                        StartedUtc: null,
-                        CompletedUtc: null,
-                        LeasedUntilUtc: null,
-                        WorkerId: null,
-                        LastError: null,
-                        RelatedEntityType: "library",
-                        RelatedEntityId: library.LibraryId,
-                        IdempotencyKey: idempotencyKey,
-                        DedupeKey: dedupeKey,
-                        MaxAttempts: DefaultMaxAttempts,
-                        LastAttemptUtc: null,
-                        NextAttemptUtc: now);
-
-                    var duplicate = await FindDuplicateActiveJobAsync(connection, transaction, idempotencyKey, dedupeKey, cancellationToken);
-                    if (duplicate is not null)
-                    {
-                        hasPendingForLibrary = true;
-                        if (kind == "missing") missingNextSearchUtc = NextSearchAfterQueue(now, library);
-                        else upgradeNextSearchUtc = NextSearchAfterQueue(now, library);
-                        continue;
-                    }
-
-                    await InsertJobAsync(connection, transaction, job, cancellationToken);
-                    queuedAny = true;
-                    queuedForLibrary = true;
-                    if (kind == "missing") missingNextSearchUtc = NextSearchAfterQueue(now, library);
-                    else upgradeNextSearchUtc = NextSearchAfterQueue(now, library);
-
-                    using var update = connection.CreateCommand();
-                    update.Transaction = transaction;
-                    update.CommandText =
-                        """
-                        UPDATE library_automation_state
-                        SET library_name = @libraryName,
-                            media_type = @mediaType,
-                            status = 'queued',
-                            search_requested = 0,
-                            last_planned_utc = @lastPlannedUtc,
-                            next_search_utc = @nextSearchUtc,
-                            next_missing_search_utc = @nextMissingSearchUtc,
-                            next_upgrade_search_utc = @nextUpgradeSearchUtc,
-                            last_job_id = @lastJobId,
-                            last_error = NULL,
-                            updated_utc = @updatedUtc
-                        WHERE library_id = @libraryId;
-                        """;
-                    AddParameter(update, "@libraryId", library.LibraryId);
-                    AddParameter(update, "@libraryName", library.LibraryName);
-                    AddParameter(update, "@mediaType", library.MediaType);
-                    AddParameter(update, "@lastPlannedUtc", now.ToString("O"));
-                    AddParameter(update, "@nextSearchUtc", Earliest(missingNextSearchUtc, upgradeNextSearchUtc)?.ToString("O"));
-                    AddParameter(update, "@nextMissingSearchUtc", missingNextSearchUtc?.ToString("O"));
-                    AddParameter(update, "@nextUpgradeSearchUtc", upgradeNextSearchUtc?.ToString("O"));
-                    AddParameter(update, "@lastJobId", job.Id);
-                    AddParameter(update, "@updatedUtc", now.ToString("O"));
-                    await update.ExecuteNonQueryAsync(cancellationToken);
-                    // Queueing a search always moves the state — status, last job and
-                    // next search all change — so this one is unconditional.
-                    changedLibraryIds.Add(library.LibraryId);
-
-                    await InsertActivityAsync(connection, transaction, "job.queued", FormatQueuedMessage(job.JobType, job.Source, job.PayloadJson), job.PayloadJson, job.Id, job.RelatedEntityType, job.RelatedEntityId, now, cancellationToken);
-                    queuedJobTypes.Add(job.JobType);
+                    continue;
                 }
+
+                // One scheduled check per library (or scope) per due slot (#658).
+                //
+                // Missing and upgrade searches keep independent next-search clocks
+                // so either can be paused and resumed on its own, but
+                // NextSearchAfterQueue advances both by the same interval, so a
+                // library that has never had one of them diverge finds them due
+                // at exactly the same instant on every single cycle — not
+                // occasionally, every time. That used to mean two separate jobs,
+                // each logged as the same "Queued a library check" line, run
+                // concurrently by two lanes against the same due slot. When both
+                // are due together they now go out as one job: the handler
+                // already treats CheckMissing/CheckUpgrades as independent flags
+                // on a single payload (ResolveSearchStatus falls back to neither
+                // when both are set), so nothing downstream needed to change.
+                // Only when the two clocks have actually pulled apart — one due,
+                // the other not — does this fall back to a single-kind job on
+                // its own dedupe key, exactly as before.
+                attemptedKinds += (checkMissing ? 1 : 0) + (checkUpgrades ? 1 : 0);
+                var kindSuffix = checkMissing && checkUpgrades
+                    ? string.Empty
+                    : checkMissing ? ":missing" : ":upgrade";
+                var searchKind = checkMissing && checkUpgrades
+                    ? "combined"
+                    : checkMissing ? "missing" : "upgrade";
+                var scopeSuffix = scope is null ? string.Empty : $":scope:{scope.Id}";
+                var dedupeKey = $"library.search:{library.LibraryId}{kindSuffix}{scopeSuffix}";
+                // Only meaningful for a single-kind job: the combined dedupe key
+                // above already collapses to this exact string when unscoped, so
+                // checking it a second time there would be redundant rather than
+                // wrong.
+                var legacyDedupeKey = scope is null && kindSuffix.Length > 0
+                    ? $"library.search:{library.LibraryId}"
+                    : null;
+                if (pendingJobKeys.Contains(dedupeKey) ||
+                    (legacyDedupeKey is not null && pendingJobKeys.Contains(legacyDedupeKey)))
+                {
+                    hasPendingForLibrary = true;
+                    continue;
+                }
+
+                var payload = JsonSerializer.Serialize(new
+                {
+                    libraryId = library.LibraryId,
+                    libraryName = library.LibraryName,
+                    mediaType = library.MediaType,
+                    checkMissing,
+                    checkUpgrades,
+                    searchKind,
+                    maxItems = library.MaxItemsPerRun,
+                    retryDelayHours = library.RetryDelayHours,
+                    triggeredBy = manualRequest ? "manual" : "schedule",
+                    scopeId = scope?.Id,
+                    scopeName = scope?.Name,
+                    scopeConditions = scope?.Filters.Conditions
+                });
+                var idempotencyKey = $"library.search:{library.LibraryId}{kindSuffix}{scopeSuffix}:{(manualRequest ? "manual" : "schedule")}";
+                var job = new JobQueueItem(
+                    Id: Guid.CreateVersion7().ToString("N"),
+                    JobType: LibrarySearchJobTypes.For(library.MediaType),
+                    Source: library.MediaType,
+                    Status: "queued",
+                    PayloadJson: payload,
+                    Attempts: 0,
+                    CreatedUtc: now,
+                    ScheduledUtc: now,
+                    StartedUtc: null,
+                    CompletedUtc: null,
+                    LeasedUntilUtc: null,
+                    WorkerId: null,
+                    LastError: null,
+                    RelatedEntityType: "library",
+                    RelatedEntityId: library.LibraryId,
+                    IdempotencyKey: idempotencyKey,
+                    DedupeKey: dedupeKey,
+                    MaxAttempts: DefaultMaxAttempts,
+                    LastAttemptUtc: null,
+                    NextAttemptUtc: now);
+
+                var duplicate = await FindDuplicateActiveJobAsync(connection, transaction, idempotencyKey, dedupeKey, cancellationToken);
+                if (duplicate is not null)
+                {
+                    hasPendingForLibrary = true;
+                    if (checkMissing) missingNextSearchUtc = NextSearchAfterQueue(now, library);
+                    if (checkUpgrades) upgradeNextSearchUtc = NextSearchAfterQueue(now, library);
+                    continue;
+                }
+
+                try
+                {
+                    await InsertJobAsync(connection, transaction, job, cancellationToken);
+                }
+                catch (SqliteException ex) when (ex.SqliteErrorCode == 19)
+                {
+                    // ux_job_queue_active_dedupe is what actually makes "one job
+                    // per due slot" true under concurrency: a second planning
+                    // pass — another scheduler tick, or a manual "Search now"
+                    // landing in the same instant as the automatic one — can
+                    // still read no pending job above and then lose this insert
+                    // to the unique index once the first pass commits. Treat
+                    // that refusal the same way EnqueueAsync does, as evidence
+                    // the work is already queued, rather than letting it fail
+                    // the whole planning pass (#658).
+                    hasPendingForLibrary = true;
+                    if (checkMissing) missingNextSearchUtc = NextSearchAfterQueue(now, library);
+                    if (checkUpgrades) upgradeNextSearchUtc = NextSearchAfterQueue(now, library);
+                    continue;
+                }
+
+                queuedAny = true;
+                queuedForLibrary = true;
+                if (checkMissing) missingNextSearchUtc = NextSearchAfterQueue(now, library);
+                if (checkUpgrades) upgradeNextSearchUtc = NextSearchAfterQueue(now, library);
+
+                using var update = connection.CreateCommand();
+                update.Transaction = transaction;
+                update.CommandText =
+                    """
+                    UPDATE library_automation_state
+                    SET library_name = @libraryName,
+                        media_type = @mediaType,
+                        status = 'queued',
+                        search_requested = 0,
+                        last_planned_utc = @lastPlannedUtc,
+                        next_search_utc = @nextSearchUtc,
+                        next_missing_search_utc = @nextMissingSearchUtc,
+                        next_upgrade_search_utc = @nextUpgradeSearchUtc,
+                        last_job_id = @lastJobId,
+                        last_error = NULL,
+                        updated_utc = @updatedUtc
+                    WHERE library_id = @libraryId;
+                    """;
+                AddParameter(update, "@libraryId", library.LibraryId);
+                AddParameter(update, "@libraryName", library.LibraryName);
+                AddParameter(update, "@mediaType", library.MediaType);
+                AddParameter(update, "@lastPlannedUtc", now.ToString("O"));
+                AddParameter(update, "@nextSearchUtc", Earliest(missingNextSearchUtc, upgradeNextSearchUtc)?.ToString("O"));
+                AddParameter(update, "@nextMissingSearchUtc", missingNextSearchUtc?.ToString("O"));
+                AddParameter(update, "@nextUpgradeSearchUtc", upgradeNextSearchUtc?.ToString("O"));
+                AddParameter(update, "@lastJobId", job.Id);
+                AddParameter(update, "@updatedUtc", now.ToString("O"));
+                await update.ExecuteNonQueryAsync(cancellationToken);
+                // Queueing a search always moves the state — status, last job and
+                // next search all change — so this one is unconditional.
+                changedLibraryIds.Add(library.LibraryId);
+
+                await InsertActivityAsync(connection, transaction, "job.queued", FormatQueuedMessage(job.JobType, job.Source, job.PayloadJson), job.PayloadJson, job.Id, job.RelatedEntityType, job.RelatedEntityId, now, cancellationToken);
+                queuedJobTypes.Add(job.JobType);
             }
 
             // A manual request against a library with both search types off has
