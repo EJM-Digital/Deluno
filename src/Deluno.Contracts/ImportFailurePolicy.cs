@@ -132,6 +132,15 @@ public static class ImportFailurePolicy
     /// </summary>
     public const string DownloadStalled = "downloadStalled";
 
+    /// <summary>
+    /// The download client itself said this release failed — NZBGet's
+    /// FAILURE, DELETED or WARNING history statuses, SABnzbd's Failed status,
+    /// or a client's failure webhook (#647). Unlike <see cref="ImportFailed"/>,
+    /// nothing is inferred from a timeout: the client answered directly, so
+    /// there is nothing to prove twice before refusing the release.
+    /// </summary>
+    public const string ClientReportedFailure = "clientReportedFailure";
+
     /// <summary>Every reason this table has an answer for.</summary>
     public static readonly IReadOnlyList<string> KnownReasons =
     [
@@ -140,7 +149,7 @@ public static class ImportFailurePolicy
         Unmatched, ImportFailed, ReplacementRejected,
         MissingLibraryRoot, MissingSource, Permission, IoError,
         HardlinkUnavailable, HardlinkFailed, SamePath, Conflict,
-        ReplacementOwnershipMismatch, ProcessedFileIsLess
+        ReplacementOwnershipMismatch, ProcessedFileIsLess, ClientReportedFailure
     ];
 
     /// <summary>
@@ -156,6 +165,11 @@ public static class ImportFailurePolicy
         // resolution or a shorter cut than what is already held. It
         // misrepresented itself, and every copy of it lies the same way.
         ReplacementRejected => BlockDecision.Immediately,
+
+        // The client did not go quiet and leave Deluno guessing — it said
+        // outright that this release failed. Nothing is proven twice about a
+        // fact the client already stated.
+        ClientReportedFailure => BlockDecision.Immediately,
 
         // Deluno cannot say whose fault it was, so it proves it twice.
         ImportFailed or MediaProbeUnreadable => BlockDecision.AfterOneRetry,
@@ -204,7 +218,7 @@ public static class ImportFailurePolicy
     {
         NoVideoStream or LikelySample or UnsupportedFile or MediaProbeRejected or ProcessorRejected => FailureCategories.BadFile,
         ReplacementRejected => FailureCategories.NotAFailure,
-        Unmatched or ImportFailed or MediaProbeUnreadable or DownloadStalled => FailureCategories.CannotSay,
+        Unmatched or ImportFailed or MediaProbeUnreadable or DownloadStalled or ClientReportedFailure => FailureCategories.CannotSay,
         _ => FailureCategories.YourSetup
     };
 

@@ -94,7 +94,7 @@ public sealed class DownloadClientWebhookService(
             dispatch.Id,
             importStatus: "failed",
             importedFilePath: null,
-            importFailureCode: "client-reported-failure",
+            importFailureCode: DownloadClientFailureCodes.ClientReported,
             importFailureMessage: request.FailureReason ?? "Download client reported failure.",
             cancellationToken,
             failure: IntegrationFailureFactory.FromLegacy(
@@ -104,7 +104,7 @@ public sealed class DownloadClientWebhookService(
                 "download",
                 "failed",
                 request.FailureReason ?? "Download client reported failure.",
-                code: "client-reported-failure",
+                code: DownloadClientFailureCodes.ClientReported,
                 externalId: dispatch.Id));
 
         await dispatchesRepository.RecordTimelineEventAsync(

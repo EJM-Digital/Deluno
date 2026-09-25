@@ -551,7 +551,7 @@ public sealed class DownloadClientTelemetryService(
                 }
 
                 if (settings.CleanupQueueReplacementAfterThreshold &&
-                    dispatch.EntityType is "movie" or "series")
+                    SupportsReplacementSearch(dispatch.EntityType))
                 {
                     await QueueReplacementSearchAsync(dispatch, library, cancellationToken);
                     replacements++;
@@ -559,7 +559,7 @@ public sealed class DownloadClientTelemetryService(
                 }
                 else if (settings.CleanupQueueReplacementAfterThreshold)
                 {
-                    notes.Add($"{item.ReleaseName}: replacement was not queued because this dispatch is not a movie or series library search.");
+                    notes.Add($"{item.ReleaseName}: replacement was not queued because this dispatch is not a movie, series or episode library search.");
                 }
 
                 if (settings.CleanupRemoveClientEntryAfterThreshold)
@@ -771,7 +771,7 @@ public sealed class DownloadClientTelemetryService(
     /// completed, and Deluno had itself handed to Weir, were failed that way and
     /// grabbed again.</para>
     /// </summary>
-    private async Task RecordWhatTheClientShowsAsync(
+    internal async Task RecordWhatTheClientShowsAsync(
         DownloadClientTelemetrySnapshot live,
         IReadOnlyList<DownloadDispatchItem> clientDispatches,
         CancellationToken cancellationToken)
@@ -786,6 +786,11 @@ public sealed class DownloadClientTelemetryService(
                     sighting.DownloadedBytes,
                     sighting.Finished,
                     cancellationToken);
+
+                if (sighting.Failed)
+                {
+                    await RecordClientReportedFailureAsync(sighting.Dispatch, sighting.FailureReason, cancellationToken);
+                }
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
@@ -795,7 +800,123 @@ public sealed class DownloadClientTelemetryService(
         }
     }
 
-    internal sealed record ClientSighting(DownloadDispatchItem Dispatch, long? DownloadedBytes, bool Finished);
+    /// <summary>
+    /// The client's own history said this release failed — NZBGet's FAILURE,
+    /// DELETED or WARNING statuses, SABnzbd's Failed — read from a poll rather
+    /// than a push (#647).
+    ///
+    /// <para>Before this, a native history failure was read exactly like a
+    /// native history success: it marked the dispatch detected and completed,
+    /// and nothing else. The dispatch then wore "sent" until a generic
+    /// detection timeout fired hours later, with no failure reason, no
+    /// blocklist entry and no replacement search — even though the client had
+    /// already said, in its own words, that the download was not coming.</para>
+    ///
+    /// <para>This is the poll-driven twin of
+    /// <see cref="DownloadClientWebhookService.HandleFailureAsync"/>: same
+    /// dispatch outcome, same failure code
+    /// (<see cref="DownloadClientFailureCodes.ClientReported"/>), so a
+    /// dispatch either path already handled is recognised by the other rather
+    /// than recorded, blocked and searched for twice.</para>
+    /// </summary>
+    private async Task RecordClientReportedFailureAsync(
+        DownloadDispatchItem dispatch,
+        string? reason,
+        CancellationToken cancellationToken)
+    {
+        if (dispatch.ImportStatus is not null)
+        {
+            return;
+        }
+
+        var message = string.IsNullOrWhiteSpace(reason)
+            ? $"{dispatch.DownloadClientName} reported this download as failed."
+            : reason;
+
+        await dispatchesRepository.RecordImportOutcomeAsync(
+            dispatch.Id,
+            importStatus: "failed",
+            importedFilePath: null,
+            importFailureCode: DownloadClientFailureCodes.ClientReported,
+            importFailureMessage: message,
+            cancellationToken,
+            failure: IntegrationFailureFactory.FromLegacy(
+                "download-client",
+                dispatch.DownloadClientId,
+                dispatch.DownloadClientName,
+                "download",
+                "failed",
+                message,
+                code: DownloadClientFailureCodes.ClientReported,
+                externalId: dispatch.Id));
+
+        await dispatchesRepository.RecordTimelineEventAsync(
+            dispatch.Id,
+            "client-reported-failed",
+            JsonSerializer.Serialize(new { reason = message, source = "history" }),
+            cancellationToken);
+
+        await activityFeedRepository.RecordActivityAsync(
+            "download.client.failed",
+            $"{dispatch.DownloadClientName} could not download {dispatch.ReleaseName}: {message}",
+            null,
+            null,
+            "download_dispatch",
+            dispatch.Id,
+            cancellationToken);
+
+        if (blockedReleases is not null)
+        {
+            // Blocked the same way a stalled torrent is: on the spot, not
+            // behind a settings toggle. A queue item stalling might still
+            // recover; a client that has already filed the download under
+            // FAILURE, DELETED or WARNING never will.
+            await blockedReleases.BlockAsync(
+                new BlockedRelease(
+                    Guid.NewGuid().ToString("n"),
+                    BlockedReleaseKeys.For(dispatch.ReleaseName, dispatch.IndexerName),
+                    dispatch.ReleaseName,
+                    dispatch.IndexerName,
+                    dispatch.MediaType,
+                    dispatch.EntityId,
+                    dispatch.ReleaseName,
+                    ImportFailurePolicy.ClientReportedFailure,
+                    message,
+                    dispatch.TorrentHashOrItemId,
+                    dispatch.DownloadClientId,
+                    dispatch.DownloadClientName,
+                    DateTimeOffset.MinValue),
+                cancellationToken);
+        }
+
+        if (SupportsReplacementSearch(dispatch.EntityType))
+        {
+            var library = (await librariesRepository.ListLibrariesAsync(cancellationToken))
+                .FirstOrDefault(item => string.Equals(item.Id, dispatch.LibraryId, StringComparison.OrdinalIgnoreCase));
+            await QueueReplacementSearchAsync(dispatch, library, cancellationToken);
+        }
+    }
+
+    /// <summary>
+    /// Whether <see cref="QueueReplacementSearchAsync"/> can act on this
+    /// dispatch's entity type.
+    ///
+    /// <para>A manual grab dispatches with EntityType <c>"movie"</c> or
+    /// <c>"series"</c>; an automatic per-episode search
+    /// (<c>EpisodeSearchJobHandler</c>) dispatches with <c>"episode"</c>.
+    /// Checking only the first two silently dropped the replacement search for
+    /// every automatically-searched TV episode — the shape #647 was filed
+    /// against.</para>
+    /// </summary>
+    private static bool SupportsReplacementSearch(string entityType)
+        => entityType is "movie" or "series" or "episode";
+
+    internal sealed record ClientSighting(
+        DownloadDispatchItem Dispatch,
+        long? DownloadedBytes,
+        bool Finished,
+        bool Failed = false,
+        string? FailureReason = null);
 
     /// <summary>
     /// The downloads this client shows that their records do not know about yet:
@@ -809,9 +930,9 @@ public sealed class DownloadClientTelemetryService(
         DownloadClientTelemetrySnapshot live,
         IEnumerable<DownloadDispatchItem> clientDispatches)
     {
-        var shown = new Dictionary<string, (long? Bytes, bool Finished)>(StringComparer.OrdinalIgnoreCase);
+        var shown = new Dictionary<string, (long? Bytes, bool Finished, bool Failed, string? Reason)>(StringComparer.OrdinalIgnoreCase);
 
-        void Add(string? id, long? bytes, bool finished)
+        void Add(string? id, long? bytes, bool finished, bool failed, string? reason)
         {
             if (string.IsNullOrWhiteSpace(id))
             {
@@ -820,25 +941,28 @@ public sealed class DownloadClientTelemetryService(
 
             var key = id.Trim();
             shown[key] = shown.TryGetValue(key, out var seen)
-                ? (bytes ?? seen.Bytes, finished || seen.Finished)
-                : (bytes, finished);
+                ? (bytes ?? seen.Bytes, finished || seen.Finished, failed || seen.Failed, reason ?? seen.Reason)
+                : (bytes, finished, failed, reason);
         }
 
         foreach (var item in live.Queue)
         {
-            Add(item.Id, item.DownloadedBytes, item.Status is DownloadQueueStatuses.ImportReady or DownloadQueueStatuses.Completed);
+            Add(item.Id, item.DownloadedBytes, item.Status is DownloadQueueStatuses.ImportReady or DownloadQueueStatuses.Completed, false, null);
         }
 
         foreach (var item in live.History)
         {
-            // A failure counts as finished only in the client's own history. One
-            // derived from the queue is a torrent with an error message, which
-            // can still be downloading.
-            var finished = item.Outcome is DownloadQueueStatuses.Completed or DownloadQueueStatuses.ImportReady
-                || (item.Outcome == "failed" && item.HistorySource == "native");
+            // A failure counts as finished — and as a failure Deluno should act
+            // on — only in the client's own history. One derived from the
+            // queue is a torrent with an error message, which can still be
+            // downloading (#647: NZBGet's FAILURE/DELETED/WARNING statuses,
+            // SABnzbd's Failed, land here).
+            var failedByClient = item.Outcome == "failed" && item.HistorySource == "native";
+            var finished = item.Outcome is DownloadQueueStatuses.Completed or DownloadQueueStatuses.ImportReady || failedByClient;
             var bytes = item.SizeBytes > 0 ? item.SizeBytes : (long?)null;
-            Add(item.Id, bytes, finished);
-            Add(item.ExternalId, bytes, finished);
+            var reason = failedByClient ? item.ErrorMessage : null;
+            Add(item.Id, bytes, finished, failedByClient, reason);
+            Add(item.ExternalId, bytes, finished, failedByClient, reason);
         }
 
         var sightings = new List<ClientSighting>();
@@ -852,7 +976,7 @@ public sealed class DownloadClientTelemetryService(
 
             if (dispatch.DetectedUtc is null || (seen.Finished && dispatch.ClientCompletedUtc is null))
             {
-                sightings.Add(new ClientSighting(dispatch, seen.Bytes, seen.Finished));
+                sightings.Add(new ClientSighting(dispatch, seen.Bytes, seen.Finished, seen.Failed, seen.Reason));
             }
         }
 

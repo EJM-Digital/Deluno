@@ -224,11 +224,16 @@ public sealed class NzbGetDownloadClient(IHttpClientFactory httpClientFactory) :
     private static async Task<IReadOnlyList<DownloadClientHistoryItem>> GetHistoryCoreAsync(HttpClient http, DownloadClientItem client, Uri baseUri, DateTimeOffset capturedUtc, CancellationToken cancellationToken)
     {
         var response = await DownloadClientHelpers.PostJsonAsync<NzbGetResponse<IReadOnlyList<NzbGetHistoryItem>>>(http, new Uri(baseUri, "jsonrpc"), new NzbGetRequest("history", []), cancellationToken);
-        return (response?.Result ?? []).Select(item => new DownloadClientHistoryItem(item.NzbId.ToString(CultureInfo.InvariantCulture), client.Id, client.Name, client.Protocol,
-            DownloadClientHelpers.InferMediaType(client, item.Category), DownloadClientHelpers.CleanReleaseTitle(item.NzbName ?? item.Name ?? "Unknown NZBGet history item"), item.NzbName ?? item.Name ?? "Unknown NZBGet history item",
-            item.Category ?? string.Empty, NormalizeOutcome(item.Status ?? string.Empty), "NZBGet", item.FileSizeHi * 1_000_000L, DownloadClientHelpers.FromUnix(item.HistoryTime), QueueError(item.Status), JobFolder(item.DestDir),
-            HistorySource: "native",
-            ExternalId: item.NzbId.ToString(CultureInfo.InvariantCulture))).ToArray();
+        return (response?.Result ?? []).Select(item =>
+        {
+            var outcome = NormalizeOutcome(item.Status ?? string.Empty);
+            var errorMessage = outcome == "failed" ? FailureReason(item.Status ?? string.Empty) : QueueError(item.Status);
+            return new DownloadClientHistoryItem(item.NzbId.ToString(CultureInfo.InvariantCulture), client.Id, client.Name, client.Protocol,
+                DownloadClientHelpers.InferMediaType(client, item.Category), DownloadClientHelpers.CleanReleaseTitle(item.NzbName ?? item.Name ?? "Unknown NZBGet history item"), item.NzbName ?? item.Name ?? "Unknown NZBGet history item",
+                item.Category ?? string.Empty, outcome, "NZBGet", item.FileSizeHi * 1_000_000L, DownloadClientHelpers.FromUnix(item.HistoryTime), errorMessage, JobFolder(item.DestDir),
+                HistorySource: "native",
+                ExternalId: item.NzbId.ToString(CultureInfo.InvariantCulture));
+        }).ToArray();
     }
 
     private static async Task<NzbGetStatus?> GetStatusAsync(HttpClient http, Uri baseUri, CancellationToken cancellationToken)
@@ -240,24 +245,77 @@ public sealed class NzbGetDownloadClient(IHttpClientFactory httpClientFactory) :
     private static string? QueueError(string? status) => string.IsNullOrWhiteSpace(status) ? null : status.Contains("fail", StringComparison.OrdinalIgnoreCase) || status.Contains("error", StringComparison.OrdinalIgnoreCase) || status.Contains("stall", StringComparison.OrdinalIgnoreCase) ? status : null;
     /// <summary>
     /// NZBGet's history status is MAIN/DETAIL: SUCCESS/UNPACK, FAILURE/PAR,
-    /// WARNING/SCRIPT, DELETED/MANUAL and so on (#635). Only bare words were
-    /// read, so "success/unpack" was never completed and no NZBGet download was
-    /// ever handed on. WARNING/SCRIPT is a finished download whose script
-    /// complained; every other WARNING, FAILURE and DELETED is not usable.
+    /// WARNING/SCRIPT, DELETED/MANUAL and so on (#635, #647). Only bare words
+    /// were read, so "success/unpack" was never completed and no NZBGet
+    /// download was ever handed on. WARNING/SCRIPT is a finished download
+    /// whose script complained; every other WARNING, FAILURE and DELETED is
+    /// not usable — DELETED included, because Deluno's own removal (the
+    /// health-remediation and "delete" paths) already records the dispatch's
+    /// outcome before NZBGet's history catches up, and
+    /// <see cref="DownloadClientTelemetryService.RecordWhatTheClientShowsAsync"/>
+    /// only acts on a dispatch that has no outcome recorded yet — so a DELETED
+    /// row Deluno itself produced is not read as a failure twice.
     /// </summary>
     internal static string NormalizeOutcome(string value)
     {
         var status = value.Trim();
-        var main = status.Split('/', 2)[0].ToUpperInvariant();
+        var (main, detail) = SplitStatus(status);
         return main switch
         {
             "SUCCESS" or "COMPLETED" or "SUCCEEDED" => DownloadQueueStatuses.Completed,
-            "WARNING" when status.EndsWith("/SCRIPT", StringComparison.OrdinalIgnoreCase) => DownloadQueueStatuses.Completed,
+            "WARNING" when detail == "SCRIPT" => DownloadQueueStatuses.Completed,
             "WARNING" or "FAILURE" or "DELETED" => "failed",
             _ when status.Contains("fail", StringComparison.OrdinalIgnoreCase) || status.Contains("error", StringComparison.OrdinalIgnoreCase) => "failed",
             _ when status.Contains("import", StringComparison.OrdinalIgnoreCase) => DownloadQueueStatuses.ImportReady,
             _ => status.Length == 0 ? "unknown" : status.ToLowerInvariant()
         };
+    }
+
+    /// <summary>
+    /// NZBGet's own reason, in words a person reads rather than a MAIN/DETAIL
+    /// pair (#647). Only meaningful once <see cref="NormalizeOutcome"/> has
+    /// said the status is a failure.
+    /// </summary>
+    internal static string FailureReason(string value)
+    {
+        var (main, detail) = SplitStatus(value.Trim());
+        return main switch
+        {
+            "FAILURE" => $"NZBGet could not download it: {FailureDetail(detail)}.",
+            "WARNING" => $"NZBGet finished it with a warning: {FailureDetail(detail)}.",
+            "DELETED" => $"NZBGet deleted it: {DeletedDetail(detail)}.",
+            _ => $"NZBGet reported it as \"{value.Trim()}\"."
+        };
+    }
+
+    private static string FailureDetail(string detail) => detail switch
+    {
+        "HEALTH" => "too many articles are missing",
+        "PAR" => "it could not repair the download; too much data is missing or damaged",
+        "UNPACK" => "unpacking the download failed",
+        "MOVE" => "it could not move the finished files into place",
+        "SCRIPT" => "a post-processing script failed it",
+        "" or "NONE" => "no reason was given",
+        _ => detail.ToLowerInvariant()
+    };
+
+    private static string DeletedDetail(string detail) => detail switch
+    {
+        "HEALTH" => "a health check failed",
+        "DUPE" or "COPY" => "it was a duplicate of one NZBGet already held",
+        "GOOD" => "a better duplicate was kept instead",
+        "SCAN" => "the NZB file itself was unreadable",
+        "MANUAL" => "something asked NZBGet to remove it",
+        "" or "NONE" => "no reason was given",
+        _ => detail.ToLowerInvariant()
+    };
+
+    private static (string Main, string Detail) SplitStatus(string status)
+    {
+        var slash = status.IndexOf('/');
+        return slash < 0
+            ? (status.ToUpperInvariant(), string.Empty)
+            : (status[..slash].ToUpperInvariant(), status[(slash + 1)..].ToUpperInvariant());
     }
 
     /// <summary>NZBGet's DestDir is already the job's own folder; adding the job name again named a folder that does not exist (#635).</summary>

@@ -37,6 +37,21 @@ public static class DownloadClientActions
     public const string Forget = "forget";
 }
 
+/// <summary>
+/// Values shared between the two places a client says a download failed on
+/// its own: a push webhook and a poll of its history (#647). One string, so
+/// a dispatch already marked by one path is recognised by the other instead
+/// of being recorded, blocked and searched for again.
+/// </summary>
+public static class DownloadClientFailureCodes
+{
+    /// <summary>
+    /// The download client itself reported the failure — not a timeout Deluno
+    /// inferred, and not an import Deluno tried and lost.
+    /// </summary>
+    public const string ClientReported = "client-reported-failure";
+}
+
 public static class DownloadQueueStatuses
 {
     public const string Downloading = "downloading";
