@@ -3864,7 +3864,6 @@ public sealed class ImportPipelineServiceTests
                 UrlBase: null,
                 RequireAuthentication: true,
                 UiTheme: "system",
-                UiDensity: "comfortable",
                 DefaultMovieView: "grid",
                 DefaultShowView: "grid",
                 MetadataNfoEnabled: false,

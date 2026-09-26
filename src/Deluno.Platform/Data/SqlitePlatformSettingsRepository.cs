@@ -166,7 +166,6 @@ public sealed class SqlitePlatformSettingsRepository(
         await UpsertSettingAsync(connection, transaction, "host.urlBase", NormalizeName(request.UrlBase) ?? string.Empty, updatedUtc, cancellationToken);
         await UpsertSettingAsync(connection, transaction, "security.requireAuthentication", "true", updatedUtc, cancellationToken);
         await UpsertSettingAsync(connection, transaction, "ui.theme", NormalizeUiTheme(request.UiTheme), updatedUtc, cancellationToken);
-        await UpsertSettingAsync(connection, transaction, "ui.density", NormalizeUiDensity(request.UiDensity), updatedUtc, cancellationToken);
         await UpsertSettingAsync(connection, transaction, "ui.colorMode", NormalizeUiColorMode(request.UiColorMode), updatedUtc, cancellationToken);
         await UpsertSettingAsync(connection, transaction, "ui.language", NormalizeUiLanguage(request.UiLanguage), updatedUtc, cancellationToken);
         await UpsertSettingAsync(connection, transaction, "ui.calendarFirstDay", NormalizeCalendarFirstDay(request.CalendarFirstDayOfWeek), updatedUtc, cancellationToken);
@@ -471,7 +470,6 @@ public sealed class SqlitePlatformSettingsRepository(
             UrlBase: GetValue(settings, "host.urlBase") ?? string.Empty,
             RequireAuthentication: true,
             UiTheme: NormalizeUiTheme(GetValue(settings, "ui.theme")),
-            UiDensity: NormalizeUiDensity(GetValue(settings, "ui.density")),
             DefaultMovieView: NormalizeUiView(GetValue(settings, "ui.defaultMovieView")),
             DefaultShowView: NormalizeUiView(GetValue(settings, "ui.defaultShowView")),
             MetadataNfoEnabled: string.Equals(GetValue(settings, "metadata.nfoEnabled"), "true", StringComparison.OrdinalIgnoreCase),
@@ -694,18 +692,6 @@ public sealed class SqlitePlatformSettingsRepository(
             "light" => "light",
             "dark" => "dark",
             _ => "system"
-        };
-    }
-
-    private static string NormalizeUiDensity(string? value)
-    {
-        var normalized = value?.Trim().ToLowerInvariant();
-        return normalized switch
-        {
-            "compact" => "compact",
-            "spacious" => "spacious",
-            "expanded" => "expanded",
-            _ => "comfortable"
         };
     }
 

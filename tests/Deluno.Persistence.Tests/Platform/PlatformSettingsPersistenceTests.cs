@@ -51,7 +51,6 @@ public sealed class PlatformSettingsPersistenceTests
                 UrlBase: "/deluno",
                 RequireAuthentication: true,
                 UiTheme: "dark",
-                UiDensity: "expanded",
                 DefaultMovieView: "grid",
                 DefaultShowView: "list",
                 MetadataNfoEnabled: true,
@@ -82,7 +81,6 @@ public sealed class PlatformSettingsPersistenceTests
         Assert.True(loaded.RenameOnImport);
         Assert.True(loaded.UseHardlinks);
         Assert.True(loaded.UnmonitorWhenCutoffMet);
-        Assert.Equal("expanded", loaded.UiDensity);
         Assert.Equal("broker", loaded.MetadataProviderMode);
         Assert.Equal("https://metadata.example.test", loaded.MetadataBrokerUrl);
         Assert.True(loaded.MetadataTmdbApiKeyConfigured);
