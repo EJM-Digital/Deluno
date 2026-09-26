@@ -27,7 +27,6 @@ public static class PlatformSettingsPatchMerger
             UrlBase: patch.UrlBase ?? current.UrlBase,
             RequireAuthentication: patch.RequireAuthentication ?? current.RequireAuthentication,
             UiTheme: patch.UiTheme ?? current.UiTheme,
-            UiDensity: patch.UiDensity ?? current.UiDensity,
             DefaultMovieView: patch.DefaultMovieView ?? current.DefaultMovieView,
             DefaultShowView: patch.DefaultShowView ?? current.DefaultShowView,
             MetadataNfoEnabled: patch.MetadataNfoEnabled ?? current.MetadataNfoEnabled,

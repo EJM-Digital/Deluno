@@ -917,7 +917,6 @@ public sealed class FeedMediaSearchPlannerReasonTests
             UrlBase: "",
             RequireAuthentication: false,
             UiTheme: "system",
-            UiDensity: "comfortable",
             DefaultMovieView: "poster",
             DefaultShowView: "poster",
             MetadataNfoEnabled: true,

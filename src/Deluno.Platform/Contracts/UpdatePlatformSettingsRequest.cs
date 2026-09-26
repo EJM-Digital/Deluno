@@ -22,7 +22,6 @@ public sealed record UpdatePlatformSettingsRequest(
     string? UrlBase,
     bool RequireAuthentication,
     string? UiTheme,
-    string? UiDensity,
     string? DefaultMovieView,
     string? DefaultShowView,
     bool MetadataNfoEnabled,
