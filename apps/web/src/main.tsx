@@ -7,6 +7,7 @@ import { AuthProvider } from "./lib/use-auth";
 import { ColorModeProvider } from "./lib/use-color-mode";
 import { router } from "./router";
 import { installStaleBuildRecovery } from "./lib/stale-build";
+import { installHiddenPageMotionGuard } from "./lib/page-motion";
 import "./index.css";
 
 // A screen that fails because the tab predates an update is the page being
@@ -15,6 +16,9 @@ installStaleBuildRecovery(window, () => {
   const pending = router.state.navigation.location;
   return pending ? pending.pathname + pending.search + pending.hash : null;
 });
+
+// Nothing replays a backlog of movement when a hidden tab is shown again (#873).
+installHiddenPageMotionGuard();
 
 // Register PWA service worker (production only)
 if ("serviceWorker" in navigator && import.meta.env.PROD) {

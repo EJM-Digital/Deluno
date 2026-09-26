@@ -7,9 +7,13 @@
  * final frame is always the exact value passed in, and the accessible name is
  * that value throughout, so a screen reader is never read a tween.
  *
- * Under `prefers-reduced-motion` it simply prints the number.
+ * Under `prefers-reduced-motion` it simply prints the number, and so it does
+ * while the page is hidden or covered (#873): the browser pauses the frames a
+ * tween needs, so a change made then would otherwise count up from a stale
+ * value the moment the page is looked at again.
  */
 import { useEffect, useRef, useState } from "react";
+import { motionAllowed, onPageHidden } from "../../lib/page-motion";
 
 const DURATION_MS = 520;
 
@@ -26,21 +30,22 @@ export function CountUp({
   const [display, setDisplay] = useState(value);
   const fromRef = useRef(value);
   const frameRef = useRef(0);
-  const startRef = useRef(0);
 
   useEffect(() => {
-    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+    const from = fromRef.current;
+    if (from === value) return;
+
+    if (!motionAllowed()) {
+      fromRef.current = value;
       setDisplay(value);
       return;
     }
 
-    const from = fromRef.current;
-    if (from === value) return;
-
-    startRef.current = 0;
+    // Timed from the change, not from the first frame: if the browser delays
+    // frames anyway, the first one that arrives late lands on the value.
+    const start = performance.now();
     const step = (now: number) => {
-      if (!startRef.current) startRef.current = now;
-      const progress = Math.min(1, (now - startRef.current) / DURATION_MS);
+      const progress = Math.min(1, Math.max(0, now - start) / DURATION_MS);
       // Ease-out cubic: quick off the mark, settling rather than stopping.
       const eased = 1 - (1 - progress) ** 3;
       const current = from + (value - from) * eased;
@@ -50,7 +55,15 @@ export function CountUp({
     };
 
     frameRef.current = window.requestAnimationFrame(step);
-    return () => window.cancelAnimationFrame(frameRef.current);
+    const stopWatching = onPageHidden(() => {
+      window.cancelAnimationFrame(frameRef.current);
+      fromRef.current = value;
+      setDisplay(value);
+    });
+    return () => {
+      window.cancelAnimationFrame(frameRef.current);
+      stopWatching();
+    };
   }, [value]);
 
   useEffect(() => {

@@ -11,6 +11,7 @@
  */
 import { useEffect, useRef, useState } from "react";
 import { cn } from "../../lib/utils";
+import { motionAllowed, onPageHidden } from "../../lib/page-motion";
 
 export type GaugeTone = "primary" | "success" | "warning" | "danger" | "info";
 
@@ -27,6 +28,8 @@ const RADIUS = 42;
 /** A 240° arc, leaving the bottom open so the gap reads as deliberate. */
 const SWEEP = 240;
 const START = 150;
+/** How long a sweep takes; timed from the change so a late frame lands on the value (#873). */
+const DURATION_MS = 650;
 
 export function RadialGauge({
   value,
@@ -46,25 +49,41 @@ export function RadialGauge({
 }) {
   const target = Math.min(1, Math.max(0, Number.isFinite(value) ? value : 0));
   const [drawn, setDrawn] = useState(target);
+  const drawnRef = useRef(target);
   const frameRef = useRef(0);
 
   useEffect(() => {
-    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+    drawnRef.current = drawn;
+  }, [drawn]);
+
+  useEffect(() => {
+    const from = drawnRef.current;
+    if (from === target) return;
+
+    // Hidden or covered, the browser pauses the frames a sweep needs; the
+    // sweep would then play from a stale angle when the page is shown (#873).
+    if (!motionAllowed()) {
       setDrawn(target);
       return;
     }
 
-    const animate = () => {
-      setDrawn((current) => {
-        const next = current + (target - current) * 0.14;
-        if (Math.abs(target - next) < 0.0015) return target;
-        frameRef.current = window.requestAnimationFrame(animate);
-        return next;
-      });
+    const start = performance.now();
+    const step = (now: number) => {
+      const progress = Math.min(1, Math.max(0, now - start) / DURATION_MS);
+      const eased = 1 - (1 - progress) ** 3;
+      setDrawn(progress === 1 ? target : from + (target - from) * eased);
+      if (progress < 1) frameRef.current = window.requestAnimationFrame(step);
     };
 
-    frameRef.current = window.requestAnimationFrame(animate);
-    return () => window.cancelAnimationFrame(frameRef.current);
+    frameRef.current = window.requestAnimationFrame(step);
+    const stopWatching = onPageHidden(() => {
+      window.cancelAnimationFrame(frameRef.current);
+      setDrawn(target);
+    });
+    return () => {
+      window.cancelAnimationFrame(frameRef.current);
+      stopWatching();
+    };
   }, [target]);
 
   const trackLength = (SWEEP / 360) * 2 * Math.PI * RADIUS;

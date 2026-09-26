@@ -749,6 +749,14 @@
   }
 }
 
+/* While the tab is hidden, and for two frames after it is shown, values that
+   changed in the background land where they are instead of animating (#873). */
+html[data-page-hidden] *,
+html[data-page-hidden] *::before,
+html[data-page-hidden] *::after {
+  transition: none !important;
+}
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
     animation-duration: 0.01ms !important;
