@@ -21,9 +21,30 @@ export const SEVERITY_LED: Record<ActivitySeverity, LedTone> = {
 };
 
 /** Category slugs come from the backend as machine names; read them out. */
+/**
+ * The area an event belongs to, in the words a person uses.
+ *
+ * Categories are internal codes such as `job.failed` or
+ * `download.dispatch.sent`; printing them with the punctuation swapped out
+ * still read as code ("Job.failed", "Download dispatch.sent"). Only the area
+ * is shown: the event's own message already says what happened.
+ */
+const CATEGORY_AREAS: Record<string, string> = {
+  download: "Downloads", dispatch: "Downloads", transfer: "Downloads", release: "Downloads",
+  import: "Imports", filesystem: "Imports", storage: "Storage",
+  search: "Search", rss: "Search", wanted: "Search",
+  job: "Background task", jobs: "Background task",
+  library: "Library", media: "Library", episode: "Library",
+  metadata: "Metadata", subtitle: "Subtitles", subtitles: "Subtitles",
+  retention: "Retention", intake: "Lists", trakt: "Lists", mdblist: "Lists",
+  health: "Health", services: "Health", failure: "Health", policy: "Settings",
+  processor: "Processing", indexer: "Indexers", notification: "Notifications", system: "System", deluno: "System"
+};
+
 export function categoryLabel(category: string): string {
-  const spaced = category.replace(/[_-]+/g, " ").trim();
-  return spaced ? spaced.charAt(0).toUpperCase() + spaced.slice(1) : "General";
+  const area = category.trim().toLowerCase().split(/[._\s-]+/)[0] ?? "";
+  if (CATEGORY_AREAS[area]) return CATEGORY_AREAS[area];
+  return area ? area.charAt(0).toUpperCase() + area.slice(1) : "General";
 }
 
 /**
