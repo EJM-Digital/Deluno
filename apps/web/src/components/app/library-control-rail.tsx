@@ -302,180 +302,6 @@ export function ControlRail({ label, variant, facets, actions, controls }: {
             </div>
 
             {/*
-              Search and act. Nothing here narrows anything.
-
-              The height is set on the container, not on each button. It was on
-              each: the box is 40px, `size="sm"` is 32 and `size="icon"` is 36,
-              so one line carried three heights and the row read as ragged. One
-              rule here governs whatever is passed in, including the next action
-              somebody adds.
-            */}
-            <div className={cn(
-              "ml-auto flex shrink-0 flex-wrap items-center gap-2",
-              "[&_button]:h-[var(--library-toolbar-height)]",
-              "[&_button[data-slot=icon-action]]:w-[var(--library-toolbar-height)]"
-            )}>{actions}</div>
-          </div>
-
-          {/*
-            Narrow and arrange. The chips are the legend, the counts and the
-            filters at once; the controls beside them decide which titles and how
-            they are drawn.
-          */}
-          <div className="mt-2.5 flex flex-wrap items-center gap-x-3 gap-y-2">
-            <div ref={pillTrackRef} className="relative flex flex-1 flex-wrap items-center gap-0.5">
-              {pill.ready ? (
-                <div
-                  aria-hidden
-                  className="absolute rounded-lg bg-foreground/[0.07] dark:bg-white/[0.09]"
-                  style={{
-                    left: pill.left,
-                    width: pill.width,
-                    height: "calc(var(--library-toolbar-height) * 0.74)",
-                    top: "50%",
-                    transform: "translateY(-50%)",
-                    transition: "left 0.22s cubic-bezier(0.4,0,0.2,1), width 0.22s cubic-bezier(0.4,0,0.2,1)"
-                  }}
-                />
-              ) : null}
-
-              {quickFiltersFor(variant).map((chip) => {
-                const active = quickFilter === chip.key;
-                return (
-                  <button
-                    key={chip.key}
-                    ref={(element) => { btnRefs.current.set(chip.key, element); }}
-                    type="button"
-                    onClick={() => setQuickFilter(chip.key)}
-                    className={cn(
-                      "relative flex min-h-[calc(var(--library-toolbar-height)*0.78)] items-center gap-1.5 rounded-lg px-3 text-[length:var(--library-toolbar-size)] select-none",
-                      active ? "font-semibold text-foreground" : "font-medium text-muted-foreground hover:text-foreground"
-                    )}
-                  >
-                    {/*
-                      The mark's own colour, as a strip rather than a dot.
-
-                      It was a dot at the same diameter as the dot on a small
-                      poster, on the reasoning that the chip and the posters it
-                      filters to should be one signal rather than two. That
-                      reasoning held right up until the poster's dot became a
-                      bar across its top — after which the legend was teaching a
-                      shape the shelf below it no longer drew.
-
-                      The sheen comes with it, so the swatch is drawn the way
-                      the bar is drawn, gold leaf included. A legend that leaves
-                      out what makes a mark recognisable is working at half
-                      strength.
-                    */}
-                    {chip.mark ? <MarkStrip mark={chip.mark} type={variant === "movies" ? "movie" : "show"} sheen /> : null}
-                    <span>{chip.label}</span>
-                    {/* The count wears the colour: the number is the part you read. */}
-                    <span
-                      className={cn(
-                        "tabular rounded-md px-1.5 py-px text-[length:var(--library-badge-size)] font-bold leading-tight",
-                        chip.mark
-                          ? cn(TITLE_MARK_PRESENTATION[chip.mark].tint, TITLE_MARK_PRESENTATION[chip.mark].text)
-                          : active
-                            ? "bg-primary/15 text-primary dark:bg-primary/20"
-                            : "bg-foreground/[0.06] text-muted-foreground dark:bg-white/[0.07]"
-                      )}
-                    >
-                      {counts[chip.key] ?? 0}
-                    </span>
-                  </button>
-                );
-              })}
-
-              {/*
-                Unmonitored follows Upcoming, behind a divider, on the OTHER
-                axis. This is deliberately the same position on Movies and TV:
-                `quickFiltersFor` ends both shelves with Upcoming, and this
-                control is the monitoring filter that sits beside it without
-                becoming a lifecycle rung.
-
-                James: *"unmonitored should be a filter the same as quality
-                met, upgradeable downloading missing etc etc"*. It was a legend
-                entry, on the grounds `library-filters.ts` gives for taking
-                Monitored/Unmonitored out of the chips: monitoring multiplies
-                across the rungs rather than sitting beside them, so a chip that
-                set `quickFilter` would make *"missing, and I have told Deluno to
-                leave it alone"* unaskable again.
-
-                That objection is about which axis the chip writes to, not about
-                whether it can be a chip. This one sets `monitoring`, the axis
-                that already exists for it — so it looks and behaves like every
-                other chip and **stacks** with them instead of replacing them.
-                Missing + Unmonitored is now one click each, which is the
-                question the old shared value could not ask at all.
-
-                It also has a colour now, which is the other reason it was
-                excluded: grey is what an unmonitored card's bars are painted.
-                A chip that could not be given a colour had no business in a row
-                that is the shelf's colour legend; this one has one.
-              */}
-              <span aria-hidden="true" className="mx-1 h-5 border-l border-hairline" />
-              <button
-                  type="button"
-                  onClick={() => setMonitoring(monitoring === "unmonitored" ? "any" : "unmonitored")}
-                  aria-pressed={monitoring === "unmonitored"}
-                  title="Titles Deluno is not watching. Stacks with the state chips rather than replacing them."
-                  className={cn(
-                    "relative flex min-h-[calc(var(--library-toolbar-height)*0.78)] items-center gap-1.5 rounded-lg px-3 text-[length:var(--library-toolbar-size)] select-none",
-                    monitoring === "unmonitored"
-                      ? "font-semibold text-foreground"
-                      : "font-medium text-muted-foreground hover:text-foreground"
-                  )}
-                >
-                  <span
-                    aria-hidden
-                    className="h-1 w-4 shrink-0 rounded-full"
-                    style={{ background: "hsl(var(--mark-unmonitored))" }}
-                  />
-                  <span>Unmonitored</span>
-                  <span className="tabular rounded-md bg-foreground/[0.06] px-1.5 py-px text-[length:var(--library-badge-size)] font-bold leading-tight text-muted-foreground dark:bg-white/[0.07]">
-                    {facets?.unmonitored ?? 0}
-                  </span>
-              </button>
-
-              {/*
-                The bar's legend (#327), on the row that is already the legend.
-
-                It was first built into the View drawer, on the issue's own
-                reasoning that a second row of chip-shaped things which filtered
-                nothing would read as broken. James: *"why cant the subtitle bar
-                be up the top next to upcoming? with a divider? it should not be
-                in view cause nothing else is in there"* — and he is right on
-                both halves. That drawer is switches; a legend was the only thing
-                in it that was not one. And this row is where a reader already
-                learns what a colour means, so the answer was a divider, not a
-                different room.
-
-                The divider is what says the rest of the row does not filter.
-                These carry no count and no click for the same reason.
-              */}
-
-            </div>
-
-            {/*
-              Outside the chip track on purpose.
-
-              It used to sit inside it, and that track wraps. Once the chips
-              filled the width the legend dropped onto a line of its own, still
-              wearing the left-hand rule that was meant to separate it from
-              them - so it arrived at the start of a new line as a second run of
-              chip-shaped things with a stray divider in front. That is the exact
-              shape #327 said a legend must never take, and James spotted it.
-
-              As a sibling it keeps its place beside the chips at every width:
-              the chips wrap among themselves, and the rule stays between the two
-              clusters rather than in front of one.
-            */}
-            <TitleMarkBarLegend
-              className="shrink-0 border-l border-hairline pl-3"
-              type={variant === "movies" ? "movie" : "show"}
-            />
-
-            {/*
               Two clusters, and the gap between them is the organising idea:
               **which titles** on the left, beside the chips that are also
               narrowing, and **how they are drawn** on the right. They used to be
@@ -573,6 +399,195 @@ export function ControlRail({ label, variant, facets, actions, controls }: {
                 onClick={() => toggle("view")}
               />
             </div>
+            {/*
+              Search and act. Nothing here narrows anything.
+
+              The height is set on the container, not on each button. It was on
+              each: the box is 40px, `size="sm"` is 32 and `size="icon"` is 36,
+              so one line carried three heights and the row read as ragged. One
+              rule here governs whatever is passed in, including the next action
+              somebody adds.
+            */}
+            <div className={cn(
+              "ml-auto flex shrink-0 flex-wrap items-center gap-2",
+              "[&_button]:h-[var(--library-toolbar-height)]",
+              "[&_button[data-slot=icon-action]]:w-[var(--library-toolbar-height)]"
+            )}>{actions}</div>
+          </div>
+
+          {/*
+            The chips are the legend, the counts and the filters at once. The
+            controls that decide which titles and how they are drawn sit on the
+            search row above.
+          */}
+          {/*
+            One line, always. The controls used to share this row, so the chips
+            were squeezed into what was left and wrapped onto three lines, making
+            the bar far taller than its content (James, 27 Sep). The controls now
+            sit on the search row; this row is the chips and their legend only.
+
+            When the legend no longer fits beside the chips it moves to its own
+            line. The divider in front of it is clipped away there: the inner row
+            is pulled left by exactly the divider plus its gap, so a cluster that
+            starts a line has its divider outside the visible box. That keeps
+            #327 fixed (no stray rule at the start of a line). On a phone the row
+            scrolls sideways instead of wrapping.
+          */}
+          <div className="mt-2.5 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden sm:overflow-hidden">
+          <div className="-ml-[13px] flex flex-nowrap items-center gap-x-3 gap-y-1.5 sm:flex-wrap">
+            <div ref={pillTrackRef} className="relative flex shrink-0 flex-nowrap items-center gap-0.5 border-l border-hairline pl-3 sm:shrink sm:flex-wrap">
+              {pill.ready ? (
+                <div
+                  aria-hidden
+                  className="absolute rounded-lg bg-foreground/[0.07] dark:bg-white/[0.09]"
+                  style={{
+                    left: pill.left,
+                    width: pill.width,
+                    height: "calc(var(--library-toolbar-height) * 0.74)",
+                    top: "50%",
+                    transform: "translateY(-50%)",
+                    transition: "left 0.22s cubic-bezier(0.4,0,0.2,1), width 0.22s cubic-bezier(0.4,0,0.2,1)"
+                  }}
+                />
+              ) : null}
+
+              {quickFiltersFor(variant).map((chip) => {
+                const active = quickFilter === chip.key;
+                return (
+                  <button
+                    key={chip.key}
+                    ref={(element) => { btnRefs.current.set(chip.key, element); }}
+                    type="button"
+                    onClick={() => setQuickFilter(chip.key)}
+                    className={cn(
+                      "relative flex min-h-[calc(var(--library-toolbar-height)*0.78)] shrink-0 items-center gap-1.5 rounded-lg px-2.5 text-[length:var(--library-toolbar-size)] select-none",
+                      active ? "font-semibold text-foreground" : "font-medium text-muted-foreground hover:text-foreground"
+                    )}
+                  >
+                    {/*
+                      The mark's own colour, as a strip rather than a dot.
+
+                      It was a dot at the same diameter as the dot on a small
+                      poster, on the reasoning that the chip and the posters it
+                      filters to should be one signal rather than two. That
+                      reasoning held right up until the poster's dot became a
+                      bar across its top — after which the legend was teaching a
+                      shape the shelf below it no longer drew.
+
+                      The sheen comes with it, so the swatch is drawn the way
+                      the bar is drawn, gold leaf included. A legend that leaves
+                      out what makes a mark recognisable is working at half
+                      strength.
+                    */}
+                    {chip.mark ? <MarkStrip mark={chip.mark} type={variant === "movies" ? "movie" : "show"} sheen /> : null}
+                    <span>{chip.label}</span>
+                    {/* The count wears the colour: the number is the part you read. */}
+                    <span
+                      className={cn(
+                        "tabular rounded-md px-1.5 py-px text-[length:var(--library-badge-size)] font-bold leading-tight",
+                        chip.mark
+                          ? cn(TITLE_MARK_PRESENTATION[chip.mark].tint, TITLE_MARK_PRESENTATION[chip.mark].text)
+                          : active
+                            ? "bg-primary/15 text-primary dark:bg-primary/20"
+                            : "bg-foreground/[0.06] text-muted-foreground dark:bg-white/[0.07]"
+                      )}
+                    >
+                      {counts[chip.key] ?? 0}
+                    </span>
+                  </button>
+                );
+              })}
+
+              {/*
+                Unmonitored follows Upcoming, behind a divider, on the OTHER
+                axis. This is deliberately the same position on Movies and TV:
+                `quickFiltersFor` ends both shelves with Upcoming, and this
+                control is the monitoring filter that sits beside it without
+                becoming a lifecycle rung.
+
+                James: *"unmonitored should be a filter the same as quality
+                met, upgradeable downloading missing etc etc"*. It was a legend
+                entry, on the grounds `library-filters.ts` gives for taking
+                Monitored/Unmonitored out of the chips: monitoring multiplies
+                across the rungs rather than sitting beside them, so a chip that
+                set `quickFilter` would make *"missing, and I have told Deluno to
+                leave it alone"* unaskable again.
+
+                That objection is about which axis the chip writes to, not about
+                whether it can be a chip. This one sets `monitoring`, the axis
+                that already exists for it — so it looks and behaves like every
+                other chip and **stacks** with them instead of replacing them.
+                Missing + Unmonitored is now one click each, which is the
+                question the old shared value could not ask at all.
+
+                It also has a colour now, which is the other reason it was
+                excluded: grey is what an unmonitored card's bars are painted.
+                A chip that could not be given a colour had no business in a row
+                that is the shelf's colour legend; this one has one.
+              */}
+              <span aria-hidden="true" className="mx-1 h-5 border-l border-hairline" />
+              <button
+                  type="button"
+                  onClick={() => setMonitoring(monitoring === "unmonitored" ? "any" : "unmonitored")}
+                  aria-pressed={monitoring === "unmonitored"}
+                  title="Titles Deluno is not watching. Stacks with the state chips rather than replacing them."
+                  className={cn(
+                    "relative flex min-h-[calc(var(--library-toolbar-height)*0.78)] shrink-0 items-center gap-1.5 rounded-lg px-2.5 text-[length:var(--library-toolbar-size)] select-none",
+                    monitoring === "unmonitored"
+                      ? "font-semibold text-foreground"
+                      : "font-medium text-muted-foreground hover:text-foreground"
+                  )}
+                >
+                  <span
+                    aria-hidden
+                    className="h-1 w-4 shrink-0 rounded-full"
+                    style={{ background: "hsl(var(--mark-unmonitored))" }}
+                  />
+                  <span>Unmonitored</span>
+                  <span className="tabular rounded-md bg-foreground/[0.06] px-1.5 py-px text-[length:var(--library-badge-size)] font-bold leading-tight text-muted-foreground dark:bg-white/[0.07]">
+                    {facets?.unmonitored ?? 0}
+                  </span>
+              </button>
+
+              {/*
+                The bar's legend (#327), on the row that is already the legend.
+
+                It was first built into the View drawer, on the issue's own
+                reasoning that a second row of chip-shaped things which filtered
+                nothing would read as broken. James: *"why cant the subtitle bar
+                be up the top next to upcoming? with a divider? it should not be
+                in view cause nothing else is in there"* — and he is right on
+                both halves. That drawer is switches; a legend was the only thing
+                in it that was not one. And this row is where a reader already
+                learns what a colour means, so the answer was a divider, not a
+                different room.
+
+                The divider is what says the rest of the row does not filter.
+                These carry no count and no click for the same reason.
+              */}
+
+            </div>
+
+            {/*
+              Outside the chip track on purpose.
+
+              It used to sit inside it, and that track wraps. Once the chips
+              filled the width the legend dropped onto a line of its own, still
+              wearing the left-hand rule that was meant to separate it from
+              them - so it arrived at the start of a new line as a second run of
+              chip-shaped things with a stray divider in front. That is the exact
+              shape #327 said a legend must never take, and James spotted it.
+
+              As a sibling it keeps its place beside the chips at every width:
+              the chips wrap among themselves, and the rule stays between the two
+              clusters rather than in front of one.
+            */}
+            <TitleMarkBarLegend
+              className="shrink-0 border-l border-hairline pl-3"
+              type={variant === "movies" ? "movie" : "show"}
+            />
+          </div>
+
           </div>
 
         </div>
