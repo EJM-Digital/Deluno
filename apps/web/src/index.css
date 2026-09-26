@@ -227,8 +227,8 @@
     --shell-icon-button-size: 2rem;
     --shell-icon-size: 0.9375rem;
     --shell-icon-size-sm: 0.875rem;
-    --topbar-height: calc(74px * var(--density-scale));
-    --topbar-height-mobile: calc(74px * var(--density-scale));
+    --topbar-height: calc(74px * var(--ui-scale));
+    --topbar-height-mobile: calc(74px * var(--ui-scale));
     /* Sized by the widest group heading, not by the links. The rail stopped
        needing room for expanded child labels when sub-navigation moved into
        the page toolbar, so the headings became the only thing holding it open. */
@@ -767,470 +767,34 @@ html[data-page-hidden] *::after {
 }
 
 /* ══════════════════════════════════════════════════════════════
-   DISPLAY DENSITY
-   Set via <html data-density="…"> from <DensityProvider>.
-   Tokens here feed row heights AND padding on .data-table rows,
-   card padding, and gap tightness across the shell.
+   LAYOUT TOKENS
+   One set of values, built on two global scalars (`--ui-scale` for
+   spacing/sizing, `--font-scale` for type) so component tokens do not each
+   redefine their own step. #908 removed the Standard/Compact/Spacious/
+   Expanded switch: these are today's former "Standard" values, and the
+   scalars now move only with the viewport (see the breakpoints below),
+   never with a user choice.
 ═══════════════════════════════════════════════════════════════ */
-  html {
-  font-size: 16px;
-  --row-height: 52px;
-  --data-row-py: 10px;
-  --card-pad-x: 1.25rem;
-  --card-pad-y: 1rem;
-  --tile-pad: 1.25rem;
-  --metric-value-size: 3rem;
-  --metric-unit-size: 1.125rem;
-  --metric-meta-size: 0.75rem;
-  --metric-label-size: 0.6875rem;
-  --poster-rail-width: 156px;
-  /* Poster sizes step by about a quarter, not by 40%.
-     They were 126 / 176 / 244, which is +40% each time and so a Large card
-     covering nearly four times the area of a Small one. Measured on a 2560px
-     screen that is 15 / 11 / 8 columns: the step from Medium to Large cost
-     three columns and showed exactly the same rows, because Medium and Large
-     carry identical information and only Small drops the metadata block.
-     James: "the poster sizes are way out of proportion". A ~1.25 ratio gives
-     15 / 12 / 10 on the same screen, so each size is still a different job
-     without the lurch between them. */
-  --library-card-sm: 132px;
-  --library-card-md: 166px;
-  --library-card-lg: 205px;
-  --library-title-sm: 0.8125rem;
-  --library-title-md: 0.9375rem;
-  --library-title-lg: 1.0625rem;
-  --library-meta-size: 0.8125rem;
-  --library-badge-size: 0.6875rem;
-  --library-toolbar-size: 0.875rem;
-  --library-toolbar-height: 2.5rem;
-  --library-table-min-width: 980px;
-  --control-height: 36px;
-  --control-height-sm: 32px;
-  --control-height-lg: 40px;
-  --control-height-icon: 36px;
-  --field-pad-x: 0.75rem;
-  --field-group-pad: 1rem;
-  --field-label-size: 0.6875rem;
-  --field-help-size: 0.875rem;
-  --field-control-size: 0.875rem;
-  --field-label-gap: 0.55rem;
-  --type-micro: 0.6875rem;
-  --type-caption: 0.75rem;
-  --type-body-sm: 0.875rem;
-  --type-body: 0.9375rem;
-  --type-body-lg: 1rem;
-  --type-card-title: 1rem;
-  --type-title-sm: 1.125rem;
-  --type-title-md: 1.5rem;
-  --type-title-lg: 2rem;
-  --type-title-xl: 2.5rem;
-  --type-display: 3rem;
-  --content-max-width: 1920px;
-  --sidebar-width: 268px;
-  --content-outer-gap: clamp(0.75rem, 1.4vw, 1.5rem);
-  --content-pad-inline: clamp(0.75rem, 1.4vw, 1.75rem);
-  --content-pad-block: clamp(1rem, 1.6vw, 1.75rem);
-  --page-gap: 1.25rem;
-  --grid-gap: 1rem;
-  --library-grid-gap: 0.9rem;
-  --dashboard-metric-min: 210px;
-  --summary-tile-min: 190px;
-  --hero-stat-min: 180px;
-  --hero-stat-panel-min: 380px;
-  --kpi-card-min: 230px;
-  --dashboard-poster-min: 138px;
-  --metric-plane-min-height: 148px;
-  --shell-brand-size: 16px;
-  --shell-subtle-size: 12.5px;
-  --shell-nav-size: 14px;
-  --shell-nav-badge-size: 9.5px;
-  --shell-pill-height: 42px;
-  --shell-nav-pad-x: 0.95rem;
-  --shell-nav-gap: 0.5rem;
-  --shell-action-gap: 0.25rem;
-  --shell-avatar-size: 1.65rem;
-  --shell-divider-height: 1.05rem;
-  --shell-kbd-size: 9px;
-  --shell-nav-radius: 0.75rem;
-  --settings-nav-size: 0.875rem;
-  --settings-nav-pad-y: 0.5rem;
-  --settings-nav-pad-x: 0.75rem;
-  --section-eyebrow-size: 0.6875rem;
-  --section-subtitle-size: 0.875rem;
-  --button-font-size: 0.84375rem;
-  --button-font-size-sm: 0.8125rem;
-}
-  html[data-density="compact"] {
-  font-size: 14px;
-  --row-height: 40px;
-  --data-row-py: 6px;
-  --card-pad-x: 0.95rem;
-  --card-pad-y: 0.8rem;
-  --tile-pad: 0.95rem;
-  --metric-value-size: 2.55rem;
-  --metric-unit-size: 1rem;
-  --metric-meta-size: 0.6875rem;
-  --metric-label-size: 0.625rem;
-  --poster-rail-width: 136px;
-  /* The same ~1.25 ratios, scaled down for the compact breakpoint. */
-  --library-card-sm: 116px;
-  --library-card-md: 146px;
-  --library-card-lg: 182px;
-  --library-title-sm: 0.75rem;
-  --library-title-md: 0.84375rem;
-  --library-title-lg: 0.9375rem;
-  --library-meta-size: 0.75rem;
-  --library-badge-size: 0.625rem;
-  --library-toolbar-size: 0.8125rem;
-  --library-toolbar-height: 2.25rem;
-  --library-table-min-width: 880px;
-  --control-height: 34px;
-  --control-height-sm: 30px;
-  --control-height-lg: 38px;
-  --control-height-icon: 34px;
-  --field-pad-x: 0.65rem;
-  --field-group-pad: 0.85rem;
-  --field-label-size: 0.6875rem;
-  --field-help-size: 0.8125rem;
-  --field-control-size: 0.8125rem;
-  --field-label-gap: 0.45rem;
-  --type-micro: 0.625rem;
-  --type-caption: 0.6875rem;
-  --type-body-sm: 0.8125rem;
-  --type-body: 0.875rem;
-  --type-body-lg: 0.9375rem;
-  --type-card-title: 0.9375rem;
-  --type-title-sm: 1rem;
-  --type-title-md: 1.35rem;
-  --type-title-lg: 1.75rem;
-  --type-title-xl: 2.15rem;
-  --type-display: 2.55rem;
-  --content-max-width: 1760px;
-  --sidebar-width: 244px;
-  --content-outer-gap: clamp(0.5rem, 1vw, 1rem);
-  --content-pad-inline: clamp(0.65rem, 1.1vw, 1.25rem);
-  --content-pad-block: clamp(0.9rem, 1.2vw, 1.35rem);
-  --page-gap: 1rem;
-  --grid-gap: 0.75rem;
-  --library-grid-gap: 0.65rem;
-  --dashboard-metric-min: 180px;
-  --summary-tile-min: 170px;
-  --hero-stat-min: 160px;
-  --hero-stat-panel-min: 330px;
-  --kpi-card-min: 205px;
-  --dashboard-poster-min: 118px;
-  --metric-plane-min-height: 132px;
-  --shell-brand-size: 15px;
-  --shell-subtle-size: 12px;
-  --shell-nav-size: 13px;
-  --shell-nav-badge-size: 9px;
-  --shell-pill-height: 38px;
-  --shell-nav-pad-x: 0.8rem;
-  --shell-nav-gap: 0.425rem;
-  --shell-action-gap: 0.2rem;
-  --shell-avatar-size: 1.5rem;
-  --shell-divider-height: 0.95rem;
-  --shell-kbd-size: 8.5px;
-  --shell-nav-radius: 0.65rem;
-  --shell-top-row-height: 42px;
-  --shell-nav-row-height: 50px;
-  --shell-mobile-row-height: 44px;
-  --shell-icon-button-size: 32px;
-  --shell-icon-size: 14px;
-  --shell-icon-size-sm: 13px;
-  --settings-nav-size: 0.8125rem;
-  --settings-nav-pad-y: 0.45rem;
-  --settings-nav-pad-x: 0.7rem;
-  --section-eyebrow-size: 0.625rem;
-  --section-subtitle-size: 0.8125rem;
-  --button-font-size: 0.8125rem;
-  --button-font-size-sm: 0.78125rem;
-}
-  html[data-density="comfortable"] {
-  font-size: 16px;
-  --row-height: 52px;
-  --data-row-py: 10px;
-  --card-pad-x: 1.25rem;
-  --card-pad-y: 1rem;
-  --tile-pad: 1.25rem;
-  --metric-value-size: 3rem;
-  --metric-unit-size: 1.125rem;
-  --metric-meta-size: 0.75rem;
-  --metric-label-size: 0.6875rem;
-  --poster-rail-width: 156px;
-  --library-card-sm: 126px;
-  --library-card-md: 176px;
-  --library-card-lg: 244px;
-  --library-title-sm: 0.8125rem;
-  --library-title-md: 0.9375rem;
-  --library-title-lg: 1.0625rem;
-  --library-meta-size: 0.8125rem;
-  --library-badge-size: 0.6875rem;
-  --library-toolbar-size: 0.875rem;
-  --library-toolbar-height: 2.5rem;
-  --library-table-min-width: 980px;
-  --control-height: 36px;
-  --control-height-sm: 32px;
-  --control-height-lg: 40px;
-  --control-height-icon: 36px;
-  --field-pad-x: 0.75rem;
-  --field-group-pad: 1rem;
-  --field-label-size: 0.75rem;
-  --field-help-size: 0.9rem;
-  --field-control-size: 0.9rem;
-  --field-label-gap: 0.55rem;
-  --type-micro: 0.6875rem;
-  --type-caption: 0.75rem;
-  --type-body-sm: 0.875rem;
-  --type-body: 0.9375rem;
-  --type-body-lg: 1rem;
-  --type-card-title: 1rem;
-  --type-title-sm: 1.125rem;
-  --type-title-md: 1.5rem;
-  --type-title-lg: 2rem;
-  --type-title-xl: 2.5rem;
-  --type-display: 3rem;
-  --content-max-width: 1920px;
-  --sidebar-width: 268px;
-  --content-outer-gap: clamp(0.75rem, 1.4vw, 1.5rem);
-  --content-pad-inline: clamp(0.75rem, 1.4vw, 1.75rem);
-  --content-pad-block: clamp(1rem, 1.6vw, 1.75rem);
-  --page-gap: 1.25rem;
-  --grid-gap: 1rem;
-  --library-grid-gap: 0.9rem;
-  --dashboard-metric-min: 210px;
-  --summary-tile-min: 190px;
-  --hero-stat-min: 180px;
-  --hero-stat-panel-min: 380px;
-  --kpi-card-min: 230px;
-  --dashboard-poster-min: 138px;
-  --metric-plane-min-height: 148px;
-  --shell-brand-size: 16px;
-  --shell-subtle-size: 12.5px;
-  --shell-nav-size: 14px;
-  --shell-nav-badge-size: 9.5px;
-  --shell-pill-height: 42px;
-  --shell-nav-pad-x: 0.95rem;
-  --shell-nav-gap: 0.5rem;
-  --shell-action-gap: 0.25rem;
-  --shell-avatar-size: 1.65rem;
-  --shell-divider-height: 1.05rem;
-  --shell-kbd-size: 9px;
-  --shell-nav-radius: 0.75rem;
-  --shell-top-row-height: 46px;
-  --shell-nav-row-height: 58px;
-  --shell-mobile-row-height: 46px;
-  --shell-icon-button-size: 34px;
-  --shell-icon-size: 15px;
-  --shell-icon-size-sm: 14px;
-  --settings-nav-size: 0.875rem;
-  --settings-nav-pad-y: 0.5rem;
-  --settings-nav-pad-x: 0.75rem;
-  --section-eyebrow-size: 0.6875rem;
-  --section-subtitle-size: 0.875rem;
-  --button-font-size: 0.84375rem;
-  --button-font-size-sm: 0.8125rem;
-}
-  html[data-density="spacious"] {
-    font-size: 18px;
-    --row-height: 68px;
-    --data-row-py: 15px;
-    --card-pad-x: 1.65rem;
-    --card-pad-y: 1.3rem;
-    --tile-pad: 1.6rem;
-    --metric-value-size: 3.5rem;
-    --metric-unit-size: 1.25rem;
-    --metric-meta-size: 0.8125rem;
-    --metric-label-size: 0.75rem;
-    --poster-rail-width: 188px;
-    --library-card-sm: 156px;
-    --library-card-md: 224px;
-    --library-card-lg: 308px;
-    --library-title-sm: 0.9375rem;
-    --library-title-md: 1.1875rem;
-    --library-title-lg: 1.375rem;
-    --library-meta-size: 1rem;
-    --library-badge-size: 0.8125rem;
-    --library-toolbar-size: 1.0625rem;
-    --library-toolbar-height: 2.9rem;
-    --library-table-min-width: 1080px;
-    --control-height: 44px;
-    --control-height-sm: 38px;
-    --control-height-lg: 48px;
-    --control-height-icon: 44px;
-    --field-pad-x: 1rem;
-    --field-group-pad: 1.2rem;
-    --field-label-size: 0.8125rem;
-    --field-help-size: 1rem;
-    --field-control-size: 1rem;
-    --field-label-gap: 0.65rem;
-    --type-micro: 0.75rem;
-    --type-caption: 0.875rem;
-    --type-body-sm: 1rem;
-    --type-body: 1.0625rem;
-    --type-body-lg: 1.1875rem;
-    --type-card-title: 1.1875rem;
-    --type-title-sm: 1.25rem;
-    --type-title-md: 1.75rem;
-    --type-title-lg: 2.25rem;
-    --type-title-xl: 3rem;
-    --type-display: 3.5rem;
-    --content-max-width: 2400px;
-  --sidebar-width: 288px;
-    --content-outer-gap: clamp(0.7rem, 1vw, 1.4rem);
-    --content-pad-inline: clamp(0.95rem, 1.35vw, 1.9rem);
-    --content-pad-block: clamp(1.25rem, 1.75vw, 2.25rem);
-    --page-gap: 1.5rem;
-    --grid-gap: 1.15rem;
-    --library-grid-gap: 1rem;
-    --dashboard-metric-min: 245px;
-    --summary-tile-min: 220px;
-    --hero-stat-min: 210px;
-    --hero-stat-panel-min: 430px;
-    --kpi-card-min: 265px;
-    --dashboard-poster-min: 156px;
-    --metric-plane-min-height: 168px;
-    --shell-brand-size: 18px;
-    --shell-subtle-size: 14px;
-    --shell-nav-size: 16px;
-    --shell-nav-badge-size: 11px;
-    --shell-pill-height: 50px;
-    --shell-nav-pad-x: 1.15rem;
-    --shell-nav-gap: 0.65rem;
-    --shell-action-gap: 0.35rem;
-    --shell-avatar-size: 2rem;
-    --shell-divider-height: 1.25rem;
-    --shell-kbd-size: 10.5px;
-    --shell-nav-radius: 0.85rem;
-    --shell-top-row-height: 56px;
-    --shell-nav-row-height: 66px;
-    --shell-mobile-row-height: 52px;
-    --shell-icon-button-size: 42px;
-    --shell-icon-size: 16px;
-    --shell-icon-size-sm: 15px;
-    --settings-nav-size: 1rem;
-    --settings-nav-pad-y: 0.65rem;
-    --settings-nav-pad-x: 0.95rem;
-    --section-eyebrow-size: 0.8125rem;
-    --section-subtitle-size: 1rem;
-    --button-font-size: 0.9375rem;
-    --button-font-size-sm: 0.875rem;
-  }
-  html[data-density="expanded"] {
-    font-size: 20px;
-    --row-height: 80px;
-    --data-row-py: 18px;
-    --card-pad-x: 2rem;
-    --card-pad-y: 1.55rem;
-    --tile-pad: 1.9rem;
-    --metric-value-size: 4rem;
-    --metric-unit-size: 1.375rem;
-    --metric-meta-size: 0.875rem;
-    --metric-label-size: 0.75rem;
-    --poster-rail-width: 220px;
-    --library-card-sm: 176px;
-    --library-card-md: 256px;
-    --library-card-lg: 352px;
-    --library-title-sm: 1.0625rem;
-    --library-title-md: 1.25rem;
-    --library-title-lg: 1.5rem;
-    --library-meta-size: 1.0625rem;
-    --library-badge-size: 0.8125rem;
-    --library-toolbar-size: 1.125rem;
-    --library-toolbar-height: 3.25rem;
-    --library-table-min-width: 1180px;
-    --control-height: 48px;
-    --control-height-sm: 42px;
-    --control-height-lg: 54px;
-    --control-height-icon: 48px;
-    --field-pad-x: 1.1rem;
-    --field-group-pad: 1.35rem;
-    --field-label-size: 0.875rem;
-    --field-help-size: 1.125rem;
-    --field-control-size: 1.125rem;
-    --field-label-gap: 0.75rem;
-    --type-micro: 0.8125rem;
-    --type-caption: 0.9375rem;
-    --type-body-sm: 1.0875rem;
-    --type-body: 1.15rem;
-    --type-body-lg: 1.275rem;
-    --type-card-title: 1.275rem;
-    --type-title-sm: 1.375rem;
-    --type-title-md: 2rem;
-    --type-title-lg: 2.65rem;
-    --type-title-xl: 3.45rem;
-    --type-display: 4rem;
-    --content-max-width: 2880px;
-  --sidebar-width: 308px;
-    --content-outer-gap: clamp(0.65rem, 0.85vw, 1.5rem);
-    --content-pad-inline: clamp(1rem, 1.35vw, 2.15rem);
-    --content-pad-block: clamp(1.35rem, 1.9vw, 2.75rem);
-    --page-gap: 1.75rem;
-    --grid-gap: 1.25rem;
-    --library-grid-gap: 1.1rem;
-    --dashboard-metric-min: 280px;
-    --summary-tile-min: 252px;
-    --hero-stat-min: 238px;
-    --hero-stat-panel-min: 500px;
-    --kpi-card-min: 305px;
-    --dashboard-poster-min: 176px;
-    --metric-plane-min-height: 188px;
-    --shell-brand-size: 21px;
-    --shell-subtle-size: 16px;
-    --shell-nav-size: 18px;
-    --shell-nav-badge-size: 12px;
-    --shell-pill-height: 56px;
-    --shell-nav-pad-x: 1.3rem;
-    --shell-nav-gap: 0.75rem;
-    --shell-action-gap: 0.45rem;
-    --shell-avatar-size: 2.25rem;
-    --shell-divider-height: 1.45rem;
-    --shell-kbd-size: 11px;
-    --shell-nav-radius: 0.95rem;
-    --shell-top-row-height: 64px;
-    --shell-nav-row-height: 74px;
-    --shell-mobile-row-height: 58px;
-    --shell-icon-button-size: 46px;
-    --shell-icon-size: 17px;
-    --shell-icon-size-sm: 16px;
-    --settings-nav-size: 1.125rem;
-    --settings-nav-pad-y: 0.75rem;
-    --settings-nav-pad-x: 1.05rem;
-    --section-eyebrow-size: 0.875rem;
-    --section-subtitle-size: 1.0625rem;
-    --button-font-size: 1rem;
-    --button-font-size-sm: 0.9375rem;
-  }
-
-/*
-  Density v2 normalization.
-  Keep the current persisted values for compatibility:
-  compact = Compact, comfortable = Standard, spacious = Spacious,
-  expanded = Expanded.
-
-  The important change is that component tokens now derive from two global
-  scalars instead of each density redefining dozens of unrelated values.
-*/
 html {
   font-size: 16px;
-  --density-scale: 1;
+  --ui-scale: 1;
   --font-scale: 1;
 
-  --row-height: calc(52px * var(--density-scale));
-  --data-row-py: calc(10px * var(--density-scale));
-  --data-cell-px: calc(16px * var(--density-scale));
+  --row-height: calc(52px * var(--ui-scale));
+  --data-row-py: calc(10px * var(--ui-scale));
+  --data-cell-px: calc(16px * var(--ui-scale));
 
   /*
     List → drawer grammar (see components/ui/list-card, drawer, toolbar).
     One row height, one card-header height, one toolbar height, one drawer
     width — every collection page and every editor composes these.
   */
-  --list-row-height: calc(56px * var(--density-scale));
-  --list-header-height: calc(48px * var(--density-scale));
-  --list-thead-height: calc(36px * var(--density-scale));
+  --list-row-height: calc(56px * var(--ui-scale));
+  --list-header-height: calc(48px * var(--ui-scale));
+  --list-thead-height: calc(36px * var(--ui-scale));
   /* Group divider inside a list — taller than a column header, shorter than a row. */
-  --list-group-height: calc(40px * var(--density-scale));
-  --toolbar-height: calc(40px * var(--density-scale));
+  --list-group-height: calc(40px * var(--ui-scale));
+  --toolbar-height: calc(40px * var(--ui-scale));
   --drawer-width: 760px;
   --drawer-header-height: 72px;
   --drawer-footer-height: 64px;
@@ -1241,28 +805,28 @@ html {
     page sections are separated, related controls stay together, and cards do
     not create dead space on wide displays.
   */
-  --card-pad-x: calc(18px * var(--density-scale));
-  --card-pad-y: calc(14px * var(--density-scale));
-  --tile-pad: calc(18px * var(--density-scale));
+  --card-pad-x: calc(18px * var(--ui-scale));
+  --card-pad-y: calc(14px * var(--ui-scale));
+  --tile-pad: calc(18px * var(--ui-scale));
   /* Shared visual rhythm: page sections, peer panels, then compact controls. */
-  --page-gap: calc(14px * var(--density-scale));
-  --grid-gap: calc(12px * var(--density-scale));
-  --control-gap: calc(8px * var(--density-scale));
-  --library-grid-gap: calc(12px * var(--density-scale));
+  --page-gap: calc(14px * var(--ui-scale));
+  --grid-gap: calc(12px * var(--ui-scale));
+  --control-gap: calc(8px * var(--ui-scale));
+  --library-grid-gap: calc(12px * var(--ui-scale));
 
-  --control-height: calc(40px * var(--density-scale));
-  --control-height-sm: calc(34px * var(--density-scale));
-  --control-height-lg: calc(46px * var(--density-scale));
-  --control-height-icon: calc(38px * var(--density-scale));
+  --control-height: calc(40px * var(--ui-scale));
+  --control-height-sm: calc(34px * var(--ui-scale));
+  --control-height-lg: calc(46px * var(--ui-scale));
+  --control-height-icon: calc(38px * var(--ui-scale));
   --button-font-size: calc(13.5px * var(--font-scale));
   --button-font-size-sm: calc(13px * var(--font-scale));
 
-  --field-pad-x: calc(12px * var(--density-scale));
-  --field-group-pad: calc(16px * var(--density-scale));
+  --field-pad-x: calc(12px * var(--ui-scale));
+  --field-group-pad: calc(16px * var(--ui-scale));
   --field-label-size: calc(11px * var(--font-scale));
   --field-help-size: calc(14px * var(--font-scale));
   --field-control-size: calc(14px * var(--font-scale));
-  --field-label-gap: calc(9px * var(--density-scale));
+  --field-label-gap: calc(9px * var(--ui-scale));
 
   --type-micro: calc(11px * var(--font-scale));
   --type-caption: calc(12px * var(--font-scale));
@@ -1282,138 +846,132 @@ html {
   --metric-unit-size: calc(18px * var(--font-scale));
   --metric-meta-size: calc(12px * var(--font-scale));
   --metric-label-size: calc(11px * var(--font-scale));
-  --metric-plane-min-height: calc(148px * var(--density-scale));
+  --metric-plane-min-height: calc(148px * var(--ui-scale));
 
-  --poster-rail-width: calc(156px * var(--density-scale));
-  --library-card-sm: calc(126px * var(--density-scale));
-  --library-card-md: calc(176px * var(--density-scale));
-  --library-card-lg: calc(244px * var(--density-scale));
+  --poster-rail-width: calc(156px * var(--ui-scale));
+  --library-card-sm: calc(126px * var(--ui-scale));
+  --library-card-md: calc(176px * var(--ui-scale));
+  --library-card-lg: calc(244px * var(--ui-scale));
   --library-title-sm: calc(13px * var(--font-scale));
   --library-title-md: calc(15px * var(--font-scale));
   --library-title-lg: calc(17px * var(--font-scale));
   --library-meta-size: calc(13px * var(--font-scale));
   --library-badge-size: calc(11px * var(--font-scale));
   --library-toolbar-size: calc(14px * var(--font-scale));
-  --library-toolbar-height: calc(40px * var(--density-scale));
-  --library-table-min-width: calc(980px * var(--density-scale));
+  --library-toolbar-height: calc(40px * var(--ui-scale));
+  --library-table-min-width: calc(980px * var(--ui-scale));
 
-  --content-max-width: calc(2040px * var(--density-scale));
-  --content-outer-gap: clamp(calc(10px * var(--density-scale)), 1.2vw, calc(24px * var(--density-scale)));
-  --content-pad-inline: clamp(calc(14px * var(--density-scale)), 1.08vw, calc(26px * var(--density-scale)));
-  --content-pad-block: clamp(calc(12px * var(--density-scale)), 1vw, calc(20px * var(--density-scale)));
+  --content-max-width: calc(2040px * var(--ui-scale));
+  --content-outer-gap: clamp(calc(10px * var(--ui-scale)), 1.2vw, calc(24px * var(--ui-scale)));
+  --content-pad-inline: clamp(calc(14px * var(--ui-scale)), 1.08vw, calc(26px * var(--ui-scale)));
+  --content-pad-block: clamp(calc(12px * var(--ui-scale)), 1vw, calc(20px * var(--ui-scale)));
 
-  --dashboard-metric-min: calc(210px * var(--density-scale));
-  --summary-tile-min: calc(190px * var(--density-scale));
-  --hero-stat-min: calc(180px * var(--density-scale));
-  --hero-stat-panel-min: calc(380px * var(--density-scale));
-  --settings-panel-min: calc(420px * var(--density-scale));
-  --kpi-card-min: calc(230px * var(--density-scale));
-  --dashboard-poster-min: calc(138px * var(--density-scale));
+  --dashboard-metric-min: calc(210px * var(--ui-scale));
+  --summary-tile-min: calc(190px * var(--ui-scale));
+  --hero-stat-min: calc(180px * var(--ui-scale));
+  --hero-stat-panel-min: calc(380px * var(--ui-scale));
+  --settings-panel-min: calc(420px * var(--ui-scale));
+  --kpi-card-min: calc(230px * var(--ui-scale));
+  --dashboard-poster-min: calc(138px * var(--ui-scale));
 
   --shell-brand-size: calc(16px * var(--font-scale));
   --shell-subtle-size: calc(12.5px * var(--font-scale));
   --shell-nav-size: calc(14px * var(--font-scale));
   --shell-nav-badge-size: calc(9.5px * var(--font-scale));
   --shell-nav-text-min: calc(168px * var(--font-scale));
-  --shell-pill-height: calc(42px * var(--density-scale));
-  --shell-nav-pad-x: calc(15px * var(--density-scale));
+  --shell-pill-height: calc(42px * var(--ui-scale));
+  --shell-nav-pad-x: calc(15px * var(--ui-scale));
   /* Centres the icon+label column in the rail rather than pinning it left.
      Sub-navigation moving into page toolbars left the rail much wider than its
      content; this spends that slack evenly instead of all on the right.
-     Deliberately not density-scaled: the labels already grow with density, so
-     scaling the inset too would push the column back off-centre at the top tiers. */
+     Deliberately not scaled: the labels already grow with `--font-scale`, so
+     scaling the inset too would push the column back off-centre at the largest
+     breakpoint. */
   --shell-nav-inset: 32px;
-  --shell-nav-gap: calc(8px * var(--density-scale));
-  --shell-action-gap: calc(4px * var(--density-scale));
-  --shell-avatar-size: calc(26px * var(--density-scale));
-  --shell-divider-height: calc(17px * var(--density-scale));
+  --shell-nav-gap: calc(8px * var(--ui-scale));
+  --shell-action-gap: calc(4px * var(--ui-scale));
+  --shell-avatar-size: calc(26px * var(--ui-scale));
+  --shell-divider-height: calc(17px * var(--ui-scale));
   --shell-kbd-size: calc(9px * var(--font-scale));
-  --shell-nav-radius: calc(12px * var(--density-scale));
-  --shell-top-row-height: calc(46px * var(--density-scale));
-  --shell-nav-row-height: calc(58px * var(--density-scale));
-  --shell-mobile-row-height: calc(46px * var(--density-scale));
-  --shell-icon-button-size: calc(34px * var(--density-scale));
+  --shell-nav-radius: calc(12px * var(--ui-scale));
+  --shell-top-row-height: calc(46px * var(--ui-scale));
+  --shell-nav-row-height: calc(58px * var(--ui-scale));
+  --shell-mobile-row-height: calc(46px * var(--ui-scale));
+  --shell-icon-button-size: calc(34px * var(--ui-scale));
   --shell-icon-col: calc(var(--shell-pill-height) * 0.68);
-  --shell-icon-size: calc(15px * var(--density-scale));
-  --shell-icon-size-sm: calc(14px * var(--density-scale));
+  --shell-icon-size: calc(15px * var(--ui-scale));
+  --shell-icon-size-sm: calc(14px * var(--ui-scale));
   --sidebar-width: clamp(
-    calc(220px * var(--density-scale)),
-    max(280px, calc((var(--tile-pad) * 1.15) + (var(--shell-nav-pad-x) * 2) + var(--shell-icon-col) + var(--shell-nav-text-min) + (28px * var(--density-scale)))),
-    max(320px, calc(304px * var(--density-scale)))
+    calc(220px * var(--ui-scale)),
+    max(280px, calc((var(--tile-pad) * 1.15) + (var(--shell-nav-pad-x) * 2) + var(--shell-icon-col) + var(--shell-nav-text-min) + (28px * var(--ui-scale)))),
+    max(320px, calc(304px * var(--ui-scale)))
   );
 
   --settings-nav-size: calc(14px * var(--font-scale));
-  --settings-nav-pad-y: calc(8px * var(--density-scale));
-  --settings-nav-pad-x: calc(12px * var(--density-scale));
+  --settings-nav-pad-y: calc(8px * var(--ui-scale));
+  --settings-nav-pad-x: calc(12px * var(--ui-scale));
   --section-eyebrow-size: calc(11px * var(--font-scale));
   --section-subtitle-size: calc(14px * var(--font-scale));
 }
 
-html[data-density="compact"] {
-  --density-scale: 0.84;
-  --font-scale: 0.88;
-  --content-max-width: calc(1840px * var(--density-scale));
-  --type-hero-sm: clamp(calc(2rem * var(--font-scale)), calc(1.4rem * var(--font-scale) + 2.2vw * var(--font-scale)), calc(2.75rem * var(--font-scale)));
-  --type-hero-lg: clamp(calc(2.25rem * var(--font-scale)), calc(1.2rem * var(--font-scale) + 4vw * var(--font-scale)), calc(4rem * var(--font-scale)));
+/*
+  #908: the layout used to offer this same step up as a user-facing
+  Compact/Standard/Spacious/Expanded switch. James: the switch is not worth
+  having if the layout is built well for standard resolutions — so the same
+  two values now key off the CSS viewport width instead of a stored choice.
+  `--ui-scale`/`--font-scale` cascade into every token declared above, so
+  nothing here needs to be redeclared per breakpoint.
+
+  1920×1080 (100%) and 1920×1080-equivalent scaled viewports stay at the
+  base 1 shown above. 2560×1440 — and a 3840×2160 display running Windows'
+  150% scaling, which reports the same 2560×1440 CSS viewport — get the step
+  that used to be "Spacious". True 3840×2160 at 100% gets the step that used
+  to be "Expanded".
+*/
+@media (min-width: 2560px) {
+  html {
+    --ui-scale: 1.12;
+    --font-scale: 1.12;
+  }
 }
 
-html[data-density="comfortable"] {
-  --density-scale: 1;
-  --font-scale: 1;
-  --type-hero-sm: clamp(calc(2rem * var(--font-scale)), calc(1.4rem * var(--font-scale) + 2.2vw * var(--font-scale)), calc(2.75rem * var(--font-scale)));
-  --type-hero-lg: clamp(calc(2.25rem * var(--font-scale)), calc(1.2rem * var(--font-scale) + 4vw * var(--font-scale)), calc(4rem * var(--font-scale)));
-}
-
-html[data-density="spacious"] {
-  --density-scale: 1.12;
-  --font-scale: 1.12;
-  --type-hero-sm: clamp(calc(2rem * var(--font-scale)), calc(1.4rem * var(--font-scale) + 2.2vw * var(--font-scale)), calc(2.75rem * var(--font-scale)));
-  --type-hero-lg: clamp(calc(2.25rem * var(--font-scale)), calc(1.2rem * var(--font-scale) + 4vw * var(--font-scale)), calc(4rem * var(--font-scale)));
-}
-
-html[data-density="expanded"] {
-  --density-scale: 1.22;
-  --font-scale: 1.22;
-  --content-max-width: calc(2180px * var(--density-scale));
-  --type-hero-sm: clamp(calc(2rem * var(--font-scale)), calc(1.4rem * var(--font-scale) + 2.2vw * var(--font-scale)), calc(2.75rem * var(--font-scale)));
-  --type-hero-lg: clamp(calc(2.25rem * var(--font-scale)), calc(1.2rem * var(--font-scale) + 4vw * var(--font-scale)), calc(4rem * var(--font-scale)));
+@media (min-width: 3840px) {
+  html {
+    --ui-scale: 1.22;
+    --font-scale: 1.22;
+    --content-max-width: calc(2180px * var(--ui-scale));
+  }
 }
 
 /* The desktop sidebar is visible from Tailwind's `lg` breakpoint (1024px).
    Never collapse it to an icon rail while full desktop labels are still rendered. */
 @media (max-width: 1023px) {
   html {
-    --sidebar-width: calc(84px * var(--density-scale));
+    --sidebar-width: calc(84px * var(--ui-scale));
     --content-max-width: 100vw;
   }
 }
 
 @media (max-width: 720px) {
   html {
-    --content-outer-gap: calc(10px * var(--density-scale));
-    --content-pad-inline: calc(14px * var(--density-scale));
-    --content-pad-block: calc(12px * var(--density-scale));
-    --library-card-sm: calc(142px * var(--density-scale));
-    --library-card-md: calc(158px * var(--density-scale));
-    --library-card-lg: calc(174px * var(--density-scale));
-    --library-toolbar-height: max(44px, calc(40px * var(--density-scale)));
-    --control-height: max(42px, calc(40px * var(--density-scale)));
-    --control-height-icon: max(42px, calc(38px * var(--density-scale)));
-    --shell-pill-height: max(42px, calc(42px * var(--density-scale)));
-  }
-
-  html[data-density="spacious"],
-  html[data-density="expanded"] {
-    --density-scale: 1.12;
-    --font-scale: 1.12;
+    --content-outer-gap: calc(10px * var(--ui-scale));
+    --content-pad-inline: calc(14px * var(--ui-scale));
+    --content-pad-block: calc(12px * var(--ui-scale));
+    --library-card-sm: calc(142px * var(--ui-scale));
+    --library-card-md: calc(158px * var(--ui-scale));
+    --library-card-lg: calc(174px * var(--ui-scale));
+    --library-toolbar-height: max(44px, calc(40px * var(--ui-scale)));
+    --control-height: max(42px, calc(40px * var(--ui-scale)));
+    --control-height-icon: max(42px, calc(38px * var(--ui-scale)));
+    --shell-pill-height: max(42px, calc(42px * var(--ui-scale)));
   }
 }
 
 /*
   Typography normalization.
   The app still contains legacy Tailwind text utilities and arbitrary pixel
-  classes from earlier UI passes. Density should not preserve every tiny
-  variation; it should collapse them into a small, predictable ladder.
+  classes from earlier UI passes. The type scale should not preserve every
+  tiny variation; it should collapse them into a small, predictable ladder.
 */
 html body {
   font-size: var(--type-body);

@@ -298,7 +298,7 @@ export const settingsPageMeta = [
   {
     match: (path: string) => path.startsWith("/settings/ui"),
     title: "Interface",
-    description: "Theme, density, default views, and how Deluno should feel on your display.",
+    description: "Theme, default views, and how Deluno should feel on your display.",
     chrome: "none"
   }
 ] as const;

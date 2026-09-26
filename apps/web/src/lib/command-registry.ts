@@ -159,7 +159,7 @@ export const settingsCommands: CommandItem[] = [
   {
     id: "settings.ui",
     label: "Maintain Deluno · Interface",
-    keywords: ["system", "appearance", "theme", "density", "display", "ui", "interface"],
+    keywords: ["system", "appearance", "theme", "display", "ui", "interface"],
     group: "navigation",
     icon: Palette,
     to: "/settings/ui"

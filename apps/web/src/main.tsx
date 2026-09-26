@@ -41,7 +41,7 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
       >
         <ColorModeProvider>
           <AuthProvider>
-            {/* Toaster now lives inside <AppLayout> so it inherits density and theme */}
+            {/* Toaster now lives inside <AppLayout> so it inherits theme */}
             <RouterProvider router={router} />
           </AuthProvider>
         </ColorModeProvider>

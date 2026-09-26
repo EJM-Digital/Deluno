@@ -43,7 +43,6 @@ export interface PlatformSettingsSnapshot {
   cloudflareHelperUrl?: string | null;
   requireAuthentication: boolean;
   uiTheme: string;
-  uiDensity: string;
   uiColorMode: "standard" | "impaired" | string;
   uiLanguage: string;
   calendarFirstDayOfWeek: "monday" | "sunday" | string;
@@ -173,7 +172,6 @@ export const emptyPlatformSettingsSnapshot: PlatformSettingsSnapshot = {
   cloudflareHelperUrl: null,
   requireAuthentication: true,
   uiTheme: "system",
-  uiDensity: "comfortable",
   uiColorMode: "standard",
   uiLanguage: "en-AU",
   calendarFirstDayOfWeek: "monday",

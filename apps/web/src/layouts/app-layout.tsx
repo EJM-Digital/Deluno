@@ -22,11 +22,9 @@ import { Toaster, realtimeToast } from "../components/shell/toaster";
 import { WsStatusBadge } from "../components/shell/ws-status-badge";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
-import { MenuSelect } from "../components/ui/menu-select";
 import { getGlobalShortcuts } from "../lib/command-registry";
 import { attentionTotal, type AttentionSnapshot, useAttention } from "../lib/use-attention";
 import { authedFetch, useAuth, type UserProfile } from "../lib/use-auth";
-import { DENSITY_LABELS, DensityProvider, useDensity, type Density } from "../lib/use-density";
 import { RealtimeGroups, SignalRProvider, useSignalREvent, useSignalRResync } from "../lib/use-signalr";
 import { cn } from "../lib/utils";
 import { DisplayPreferencesProvider } from "../lib/display-preferences";
@@ -91,8 +89,6 @@ const operationsNav = [
   { to: "/queue", label: "Transfers", icon: "transfers", end: false, attention: "transfers" as const },
   { to: "/activity", label: "Activity", icon: "activity", end: false, attention: "activity" as const }
 ] as const;
-
-const densityChoices: Density[] = ["compact", "comfortable", "spacious", "expanded"];
 
 const routeMeta = [
   { match: (path: string) => path === "/", title: "Dashboard", subtitle: "Your movies and shows, in one place" },
@@ -266,7 +262,6 @@ function AppLayoutContent() {
   }, [navigate]);
 
   return (
-    <DensityProvider>
       <div className="relative min-h-dvh overflow-x-hidden bg-background text-foreground">
         <a
           href="#main-content"
@@ -324,7 +319,6 @@ function AppLayoutContent() {
         <MobileShellNav attention={attention} user={user} onLogout={logout} />
         <Toaster />
       </div>
-    </DensityProvider>
   );
 }
 
@@ -784,7 +778,6 @@ function ContentTopbar({
 }) {
   const searchRef = useRef<HTMLInputElement>(null);
   const commandShortcut = commandPaletteShortcut();
-  const { density, setDensity } = useDensity();
   useEffect(() => { if (searchOpen) setTimeout(() => searchRef.current?.focus(), 50); }, [searchOpen]);
 
   return (
@@ -807,10 +800,10 @@ function ContentTopbar({
 
           These were three different tokens sitting side by side: the search
           pill on `--shell-pill-height` (42px), the icon buttons on
-          `--control-height-icon` (38px) and the density menu on a third, with
-          the mobile search icon drawn a pixel larger than the bell beside it.
-          Four pixels is invisible in a diff and obvious on screen. The three
-          constants below are the row's only sizing; nothing here sets its own.
+          `--control-height-icon` (38px), and the mobile search icon drawn a
+          pixel larger than the bell beside it. Four pixels is invisible in a
+          diff and obvious on screen. The two constants below are the row's
+          only sizing; nothing here sets its own.
 
           The search box is also wider and shows its label from `lg` rather than
           `xl`. It is the only control here anybody uses on purpose, and it was
@@ -848,30 +841,6 @@ function ContentTopbar({
         <button type="button" className={cn(TOPBAR_ICON_BUTTON, "hidden md:inline-flex")} onClick={onOpenHelp} aria-label="Keyboard shortcuts">
           <HelpCircle className={TOPBAR_ICON} strokeWidth={1.75} />
         </button>
-
-        {/*
-          The same menu the library picker uses, rather than a second one that
-          looks like it. This was the original, hand-rolled here; extracting it
-          is what let a native select in the toolbar stop pretending to match.
-        */}
-        <MenuSelect
-          label="Display density"
-          value={density}
-          onChange={(value: string) => setDensity(value as Density)}
-          options={densityChoices.map((choice) => ({ value: choice, label: DENSITY_LABELS[choice] }))}
-          align="end"
-          menuWidth="w-52"
-          className="hidden min-[920px]:block"
-          leading={<span aria-hidden className="h-1.5 w-1.5 shrink-0 rounded-full bg-primary shadow-[0_0_10px_hsl(var(--primary)/0.65)]" />}
-          triggerClassName={cn(
-            TOPBAR_CONTROL,
-            "rounded-xl border px-3",
-            "bg-card/75 text-[length:var(--shell-nav-size)] font-semibold text-muted-foreground",
-            "hover:border-primary/30 hover:bg-muted/40 hover:text-foreground",
-            "border-hairline/70 data-[open=true]:border-primary/45 data-[open=true]:text-foreground",
-            "data-[open=true]:shadow-[0_0_0_1px_hsl(var(--primary)/0.12),0_10px_30px_hsl(var(--primary)/0.08)]"
-          )}
-        />
 
         <button
           type="button"

@@ -1474,7 +1474,6 @@ async function saveSettings(settings: PlatformSettingsSnapshot, form: GuideForm)
     urlBase: settings.urlBase || "",
     requireAuthentication: true,
     uiTheme: settings.uiTheme || "system",
-    uiDensity: settings.uiDensity || "comfortable",
     defaultMovieView: settings.defaultMovieView || "grid",
     defaultShowView: settings.defaultShowView || "grid",
     metadataNfoEnabled: settings.metadataNfoEnabled,
