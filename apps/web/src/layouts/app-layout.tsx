@@ -1,5 +1,4 @@
 import {
-  Bell,
   ChevronDown,
   ChevronRight,
   HelpCircle,
@@ -36,6 +35,8 @@ import { UnsavedChangesProvider } from "../components/shell/unsaved-changes-prov
 import { configurationNavAreas, maintenanceNavItems, settingsPageMeta } from "../components/app/settings-shell";
 import { DelunoNavGlyph, type DelunoNavGlyphKind } from "../components/shell/deluno-nav-glyph";
 import { AppMark } from "../components/shell/app-mark";
+import { NotificationsBell } from "../components/shell/notifications-bell";
+import { TOPBAR_CONTROL, TOPBAR_ICON, TOPBAR_ICON_BUTTON } from "./topbar-tokens";
 
 /** The shape both sidebar area lists share. */
 interface NavArea {
@@ -781,7 +782,6 @@ function ContentTopbar({
   onLogout: () => void;
   ownsHeading: boolean;
 }) {
-  const navigate = useNavigate();
   const searchRef = useRef<HTMLInputElement>(null);
   const commandShortcut = commandPaletteShortcut();
   const { density, setDensity } = useDensity();
@@ -839,25 +839,11 @@ function ContentTopbar({
 
         {/*
           The dot only appears when something has failed, so this button asks
-          for attention — and it used to have no onClick at all, which meant it
-          asked and then swallowed the answer. Activity is where the failures
-          are explained, so that is where it goes.
+          for attention. It used to jump straight to Activity and swallow
+          whatever was asked of it (the panel below answers that); Show all
+          activity is still the escape hatch to the full screen (#907).
         */}
-        <button
-          type="button"
-          className={cn(TOPBAR_ICON_BUTTON, "relative")}
-          onClick={() => navigate("/activity")}
-          aria-label={
-            attention.failedJobs > 0
-              ? `Notifications — ${attention.failedJobs} failed job${attention.failedJobs === 1 ? "" : "s"}`
-              : "Notifications"
-          }
-        >
-          <Bell className={TOPBAR_ICON} strokeWidth={1.75} />
-          {attention.failedJobs > 0 ? (
-            <span className="absolute right-1.5 top-1.5 h-[5px] w-[5px] rounded-full bg-destructive shadow-[0_0_0_1.5px_hsl(var(--background)),0_0_6px_hsl(var(--destructive)/0.7)]" />
-          ) : null}
-        </button>
+        <NotificationsBell attention={attention} />
 
         <button type="button" className={cn(TOPBAR_ICON_BUTTON, "hidden md:inline-flex")} onClick={onOpenHelp} aria-label="Keyboard shortcuts">
           <HelpCircle className={TOPBAR_ICON} strokeWidth={1.75} />
@@ -919,15 +905,6 @@ function ContentTopbar({
     </header>
   );
 }
-
-/**
- * The topbar row's three constants. Every control in it wears these and none
- * sets its own height or icon size — that is the whole fix.
- */
-const TOPBAR_CONTROL = "h-[var(--shell-pill-height)] shrink-0";
-const TOPBAR_ICON_BUTTON =
-  "flex h-[var(--shell-pill-height)] w-[var(--shell-pill-height)] shrink-0 items-center justify-center rounded-xl text-muted-foreground transition hover:bg-muted/50 hover:text-foreground";
-const TOPBAR_ICON = "h-[var(--shell-icon-size)] w-[var(--shell-icon-size)]";
 
 /** What the pill says when something needs a person — the specific thing, not a total. */
 function attentionSummary(attention: AttentionSnapshot): string {

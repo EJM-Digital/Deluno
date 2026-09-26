@@ -16,14 +16,15 @@ import { useState } from "react";
 import { Link } from "react-router-dom";
 import { Button } from "../ui/button";
 import { ListCard, ListEmpty } from "../ui/list-card";
-import { StatusLed, type LedTone } from "../ui/status-led";
+import { StatusLed } from "../ui/status-led";
 import { cn } from "../../lib/utils";
 import type { ActivityEventItem } from "../../lib/api";
 import { useLiveInterval } from "../../hooks/use-live-interval";
 import { RealtimeGroups, useSignalREvent, useSignalRStatus } from "../../lib/use-signalr";
-import { formatDateTime, formatShortDate, type DisplayPreferences, useDisplayPreferences } from "../../lib/display-preferences";
+import { useDisplayPreferences } from "../../lib/display-preferences";
+import { categoryLabel, formatEventAge, SEVERITY_LED, type ActivitySeverity } from "../../lib/activity-format";
 
-type Severity = "info" | "success" | "warning" | "error";
+type Severity = ActivitySeverity;
 
 interface TickerEvent {
   id: string;
@@ -34,14 +35,6 @@ interface TickerEvent {
   /** How many times in a row this exact message occurred. Absent means once. */
   repeats?: number;
 }
-
-/** A leading light carries the severity, so a bad minute reads as colour first. */
-const SEVERITY_LED: Record<Severity, LedTone> = {
-  info: "idle",
-  success: "ok",
-  warning: "warn",
-  error: "bad"
-};
 
 export function ActivityTicker({ seed, limit = 10 }: { seed: ActivityEventItem[]; limit?: number }) {
   const status = useSignalRStatus();
@@ -127,7 +120,7 @@ export function ActivityTicker({ seed, limit = 10 }: { seed: ActivityEventItem[]
                   ) : null}
                 </span>
                 <span className="mt-0.5 block truncate text-[length:var(--type-micro)] text-muted-foreground">
-                  {categoryLabel(event.category)} · {formatAgo(event.createdUtc, preferences)}
+                  {categoryLabel(event.category)} · {formatEventAge(event.createdUtc, preferences)}
                 </span>
               </span>
             </div>
@@ -170,24 +163,3 @@ function collapseRepeats(events: TickerEvent[]): TickerEvent[] {
   return collapsed;
 }
 
-/** Category slugs come from the backend as machine names; read them out. */
-function categoryLabel(category: string) {
-  const spaced = category.replace(/[_-]+/g, " ").trim();
-  return spaced ? spaced.charAt(0).toUpperCase() + spaced.slice(1) : "General";
-}
-
-function formatAgo(value: string, preferences: DisplayPreferences) {
-  const then = new Date(value).getTime();
-  if (Number.isNaN(then)) return "—";
-
-  if (!preferences.showRelativeDates) return formatDateTime(value, preferences);
-
-  const seconds = Math.max(0, Math.round((Date.now() - then) / 1000));
-  if (seconds < 10) return "just now";
-  if (seconds < 60) return `${seconds}s ago`;
-  const minutes = Math.round(seconds / 60);
-  if (minutes < 60) return `${minutes}m ago`;
-  const hours = Math.round(minutes / 60);
-  if (hours < 24) return `${hours}h ago`;
-  return formatShortDate(value, { ...preferences, showRelativeDates: false });
-}

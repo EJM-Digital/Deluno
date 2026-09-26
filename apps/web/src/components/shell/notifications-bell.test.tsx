@@ -1,0 +1,171 @@
+import { render, screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import type { ActivityEventItem } from "../../lib/api";
+import type { AttentionSnapshot } from "../../lib/use-attention";
+
+const fetchPageItems = vi.hoisted(() => vi.fn());
+vi.mock("../../lib/api", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../lib/api")>()),
+  fetchPageItems
+}));
+
+const navigate = vi.hoisted(() => vi.fn());
+vi.mock("react-router-dom", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("react-router-dom")>()),
+  useNavigate: () => navigate
+}));
+
+const { NotificationsBell } = await import("./notifications-bell");
+
+const attention: AttentionSnapshot = {
+  failedJobs: 2,
+  deadLetteredJobs: 0,
+  indexerAlerts: 0,
+  downloadsNeedingAction: 0,
+  failedImportJobs: 0,
+  movieWanted: 0,
+  tvWanted: 0,
+  loading: false
+};
+
+const events: ActivityEventItem[] = [
+  {
+    id: "evt-3",
+    category: "job.failed",
+    message: "Import failed for The Newest Film",
+    severity: "error",
+    detailsJson: null,
+    relatedJobId: "job-3",
+    relatedEntityType: "movie",
+    relatedEntityId: "movie-3",
+    createdUtc: "2026-09-27T12:03:00Z"
+  },
+  {
+    id: "evt-2",
+    category: "download_dispatch.sent",
+    message: "Sent The Middle Episode to qBittorrent",
+    severity: "info",
+    detailsJson: null,
+    relatedJobId: null,
+    relatedEntityType: "download_dispatch",
+    relatedEntityId: "dispatch-2",
+    createdUtc: "2026-09-27T12:02:00Z"
+  },
+  {
+    id: "evt-1",
+    category: "search.completed",
+    message: "Finished checking Movies",
+    severity: "info",
+    detailsJson: null,
+    relatedJobId: null,
+    relatedEntityType: null,
+    relatedEntityId: null,
+    createdUtc: "2026-09-27T12:01:00Z"
+  }
+];
+
+async function openPanel() {
+  const user = userEvent.setup();
+  render(<NotificationsBell attention={attention} />);
+  await user.click(screen.getByRole("button", { name: /notifications/i }));
+  await waitFor(() => expect(fetchPageItems).toHaveBeenCalled());
+  return user;
+}
+
+describe("notifications bell (#907)", () => {
+  afterEach(() => {
+    fetchPageItems.mockReset();
+    navigate.mockReset();
+  });
+
+  it("says how many failed jobs need attention in its own label", () => {
+    fetchPageItems.mockResolvedValue([]);
+    render(<NotificationsBell attention={attention} />);
+    expect(screen.getByRole("button", { name: "Notifications — 2 failed jobs" })).toBeTruthy();
+  });
+
+  it("opens on click and lists the most recent events newest first", async () => {
+    fetchPageItems.mockResolvedValue(events);
+    await openPanel();
+
+    expect(fetchPageItems).toHaveBeenCalledWith("/api/activity?pageSize=10");
+    const rows = await screen.findAllByRole("button", { name: /Import failed|Sent The Middle|Finished checking/ });
+    expect(rows.map((row) => row.textContent)).toEqual([
+      expect.stringContaining("Import failed for The Newest Film"),
+      expect.stringContaining("Sent The Middle Episode to qBittorrent"),
+      expect.stringContaining("Finished checking Movies")
+    ]);
+  });
+
+  it("marks a failure clearly and leaves ordinary events unmarked", async () => {
+    fetchPageItems.mockResolvedValue(events);
+    await openPanel();
+
+    const failedRow = await screen.findByRole("button", { name: /Import failed for The Newest Film/ });
+    expect(within(failedRow).getByText("Failed")).toBeTruthy();
+
+    const quietRow = screen.getByRole("button", { name: /Finished checking Movies/ });
+    expect(within(quietRow).queryByText("Failed")).toBeNull();
+    expect(within(quietRow).queryByText("Attention")).toBeNull();
+  });
+
+  it("sends a movie event to the title, a dispatch event to the Queue, and an untargeted one to Activity", async () => {
+    fetchPageItems.mockResolvedValue(events);
+    const user = await openPanel();
+
+    await user.click(await screen.findByRole("button", { name: /Import failed for The Newest Film/ }));
+    expect(navigate).toHaveBeenLastCalledWith("/movies/movie-3");
+
+    await user.click(screen.getByRole("button", { name: /Notifications/i }));
+    await user.click(await screen.findByRole("button", { name: /Sent The Middle Episode/ }));
+    expect(navigate).toHaveBeenLastCalledWith("/queue");
+
+    await user.click(screen.getByRole("button", { name: /Notifications/i }));
+    await user.click(await screen.findByRole("button", { name: /Finished checking Movies/ }));
+    expect(navigate).toHaveBeenLastCalledWith("/activity");
+  });
+
+  it("ends the list with Show all activity, which goes to Activity and closes the panel", async () => {
+    fetchPageItems.mockResolvedValue(events);
+    const user = await openPanel();
+
+    await user.click(await screen.findByRole("button", { name: "Show all activity" }));
+    expect(navigate).toHaveBeenLastCalledWith("/activity");
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+  });
+
+  it("closes on Escape and returns focus to the bell", async () => {
+    fetchPageItems.mockResolvedValue(events);
+    const user = await openPanel();
+
+    expect(screen.getByRole("dialog")).toBeTruthy();
+    await user.keyboard("{Escape}");
+
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(screen.getByRole("button", { name: /notifications/i })).toHaveFocus();
+  });
+
+  it("closes on a click outside the panel", async () => {
+    fetchPageItems.mockResolvedValue(events);
+    const user = await openPanel();
+
+    expect(screen.getByRole("dialog")).toBeTruthy();
+    await user.click(document.body);
+
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+  });
+
+  it("is keyboard reachable: every row and Show all activity are real buttons in the panel", async () => {
+    fetchPageItems.mockResolvedValue(events);
+    await openPanel();
+
+    const dialog = screen.getByRole("dialog");
+    const buttons = within(dialog).getAllByRole("button");
+    expect(buttons.map((b) => b.textContent).join(" ")).toContain("Show all activity");
+    // Nothing in the panel is left unreachable behind a negative tabindex.
+    for (const button of buttons) {
+      expect(button.getAttribute("tabindex")).not.toBe("-1");
+    }
+  });
+});
