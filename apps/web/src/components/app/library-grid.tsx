@@ -9,7 +9,6 @@ import type { MediaItem } from "../../lib/media-types";
 import { buildJumpBuckets } from "../../lib/library-buckets";
 import type { SortField } from "../../lib/library-filters";
 import { JumpRail, useJumpRail } from "./library-jump-rail";
-import type { Density } from "../../lib/use-density";
 import { authedFetch } from "../../lib/use-auth";
 import { cn } from "../../lib/utils";
 import { TitleBars, TitleMarkBar, TitleMarkCorner, TitleMarkTopBar } from "../ui/title-mark";
@@ -51,18 +50,12 @@ const RATING_SOURCES = [
   { option: "showRatingmetacritic", field: "metacriticRating", label: "Metacritic", outOf: 100 }
 ] as const;
 
-const GRID_MIN_BY_DENSITY: Record<Density, Record<CardSize, string>> = {
-  compact: { sm: "var(--library-card-sm)", md: "var(--library-card-md)", lg: "var(--library-card-lg)" },
-  comfortable: { sm: "var(--library-card-sm)", md: "var(--library-card-md)", lg: "var(--library-card-lg)" },
-  spacious: { sm: "var(--library-card-sm)", md: "var(--library-card-md)", lg: "var(--library-card-lg)" },
-  expanded: { sm: "var(--library-card-sm)", md: "var(--library-card-md)", lg: "var(--library-card-lg)" }
+const GRID_MIN_BY_SIZE: Record<CardSize, string> = {
+  sm: "var(--library-card-sm)", md: "var(--library-card-md)", lg: "var(--library-card-lg)"
 };
 
-const TITLE_CLASS_BY_DENSITY: Record<Density, Record<CardSize, string>> = {
-  compact: { sm: "text-[length:var(--library-title-sm)]", md: "text-[length:var(--library-title-md)]", lg: "text-[length:var(--library-title-lg)]" },
-  comfortable: { sm: "text-[length:var(--library-title-sm)]", md: "text-[length:var(--library-title-md)]", lg: "text-[length:var(--library-title-lg)]" },
-  spacious: { sm: "text-[length:var(--library-title-sm)]", md: "text-[length:var(--library-title-md)]", lg: "text-[length:var(--library-title-lg)]" },
-  expanded: { sm: "text-[length:var(--library-title-sm)]", md: "text-[length:var(--library-title-md)]", lg: "text-[length:var(--library-title-lg)]" }
+const TITLE_CLASS_BY_SIZE: Record<CardSize, string> = {
+  sm: "text-[length:var(--library-title-sm)]", md: "text-[length:var(--library-title-md)]", lg: "text-[length:var(--library-title-lg)]"
 };
 
 const SHOW_META: Record<CardSize, boolean> = { sm: false, md: true, lg: true };
@@ -83,7 +76,6 @@ const SHOW_META: Record<CardSize, boolean> = { sm: false, md: true, lg: true };
 export function ProgressiveGrid({
   items,
   cardSize,
-  density,
   displayOptions,
   selectedIds,
   keyBust,
@@ -96,7 +88,6 @@ export function ProgressiveGrid({
 }: {
   items: MediaItem[];
   cardSize: CardSize;
-  density: Density;
   displayOptions: DisplayOptions;
   selectedIds: string[];
   keyBust: string;
@@ -114,7 +105,7 @@ export function ProgressiveGrid({
   // is actually on screen.
   const [container, setContainer] = useState<HTMLDivElement | null>(null);
   const [columns, setColumns] = useState(4);
-  const gridMin = GRID_MIN_BY_DENSITY[density][cardSize];
+  const gridMin = GRID_MIN_BY_SIZE[cardSize];
 
   useLayoutEffect(() => {
     if (!container) return;
@@ -128,8 +119,8 @@ export function ProgressiveGrid({
       const width = container.clientWidth;
       if (width <= 0) return;
 
-      // Resolve the density-aware CSS values in the same element that owns the
-      // grid. `getComputedStyle` exposes custom properties as expressions, so a
+      // Resolve the viewport-scaled CSS values in the same element that owns
+      // the grid. `getComputedStyle` exposes custom properties as expressions, so a
       // hidden probe is the reliable way to obtain their computed pixel values.
       // The probe goes in the container's *parent*, not the container.
       //
@@ -190,7 +181,7 @@ export function ProgressiveGrid({
             <div key={row.key} ref={virtualizer.measureElement} data-index={row.index} className="absolute left-0 top-0 w-full" style={{ transform: `translateY(${row.start}px)` }}>
               <div className="stagger grid gap-[var(--library-grid-gap)] pb-[var(--library-grid-gap)]" style={{ gridTemplateColumns: `repeat(${safeColumns}, minmax(${gridMin}, 1fr))` }}>
                 {items.slice(row.index * safeColumns, (row.index + 1) * safeColumns).map((item) => (
-                  <PosterCard key={item.id} item={item} size={cardSize} density={density} displayOptions={displayOptions} selected={selectedIds.includes(item.id)} onSelect={() => onSelect(item)} onToggle={() => onToggle(item.id)} />
+                  <PosterCard key={item.id} item={item} size={cardSize} displayOptions={displayOptions} selected={selectedIds.includes(item.id)} onSelect={() => onSelect(item)} onToggle={() => onToggle(item.id)} />
                 ))}
               </div>
             </div>
@@ -211,7 +202,6 @@ export function ProgressiveGrid({
 function PosterCard({
   item,
   size = "md",
-  density,
   displayOptions,
   selected,
   onSelect,
@@ -219,7 +209,6 @@ function PosterCard({
 }: {
   item: MediaItem;
   size?: CardSize;
-  density: Density;
   displayOptions: DisplayOptions;
   selected: boolean;
   onSelect: () => void;
@@ -262,7 +251,7 @@ function PosterCard({
   // deliberately title-only. It is not a switch — the switches decide *what*
   // is drawn, and this decides whether there is room to draw it.
   const carriesMeta = SHOW_META[size];
-  const titleCls = TITLE_CLASS_BY_DENSITY[density][size];
+  const titleCls = TITLE_CLASS_BY_SIZE[size];
 
   return (
     <div className="group relative">

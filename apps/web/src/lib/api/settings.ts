@@ -21,7 +21,6 @@ export interface PlatformSettingsPatch {
   cloudflareHelperUrl?: string;
   requireAuthentication?: boolean;
   uiTheme?: string;
-  uiDensity?: string;
   uiColorMode?: string;
   uiLanguage?: string;
   calendarFirstDayOfWeek?: string;

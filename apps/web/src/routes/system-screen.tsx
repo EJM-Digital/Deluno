@@ -49,7 +49,6 @@ import {
   type UpdatePreferencesResponse,
   type UpdateStatusResponse, readErrorText } from "../lib/api";
 import { authedFetch } from "../lib/use-auth";
-import { densityDisplayName } from "../lib/use-density";
 import { Button } from "../components/ui/button";
 import { ConfirmDialog } from "../components/ui/confirm-dialog";
 import { describeCleanup, type RecycleBinCleanupPreview } from "../lib/recycle-bin-words";
@@ -239,7 +238,7 @@ export function SystemPage() {
             value: lanAccess?.state === "open" ? "Can connect" : lanAccess?.state === "blocked" ? "Cannot connect" : "Unknown from here"
           },
           { label: "Sign-in", value: "Required" },
-          { label: "Interface", value: `${settings.uiTheme} · ${densityDisplayName(settings.uiDensity)}` }
+          { label: "Interface", value: settings.uiTheme }
         ].map((row) => (
           <ListRow key={row.label}>
             <ListNameCell name={row.label} />

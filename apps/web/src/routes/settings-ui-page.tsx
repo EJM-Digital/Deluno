@@ -2,7 +2,7 @@
  * Interface — a page-level form on the shared grammar.
  *
  *   PageToolbar (System settings tabs)
- *   ListCard  appearance    (theme, density — density applies live)
+ *   ListCard  appearance    (theme)
  *   ListCard  default views (movies, TV)
  *   PageFooter (pinned: status · Save)
  *
@@ -19,7 +19,6 @@ import { SegmentedControl } from "../components/ui/segmented-control";
 import { Switch } from "../components/ui/switch";
 import { systemSettingsNavItems } from "../components/app/settings-shell";
 import { useUnsavedChanges } from "../hooks/use-unsaved-changes";
-import { isDensity, useDensity, type Density } from "../lib/use-density";
 import type { DrawerSaveState } from "../components/ui/drawer";
 import { settingsOverviewLoader } from "./settings-overview-page";
 import type { LibraryItem, PlatformSettingsSnapshot, QualityProfileItem } from "../lib/api";
@@ -28,14 +27,6 @@ import { useApiMutation } from "../lib/use-api-mutation";
 import { isColorMode, useColorMode, type ColorMode } from "../lib/use-color-mode";
 import { useDisplayPreferences } from "../lib/display-preferences";
 import { resolveDrawerSaveState, shouldClearSaveState } from "../lib/drawer-save-state";
-
-/** One line each — the four presets differ by degree, so a paragraph apiece said nothing. */
-const DENSITY_OPTIONS: { value: Density; label: string; help: string }[] = [
-  { value: "compact", label: "Compact", help: "Tighter rows and smaller type — the most information per screen. Suits laptops." },
-  { value: "comfortable", label: "Standard", help: "Readable and efficient. The right choice on most displays." },
-  { value: "spacious", label: "Spacious", help: "Larger type and controls, wider canvas. Start here if Deluno feels small on a 27-inch 1440p monitor." },
-  { value: "expanded", label: "Expanded", help: "The most screen-filling preset, for ultrawide displays and long sessions." }
-];
 
 interface LoaderData {
   libraries: LibraryItem[];
@@ -47,7 +38,6 @@ export const settingsUiLoader = settingsOverviewLoader;
 
 interface UiForm {
   theme: string;
-  density: string;
   movieView: string;
   showView: string;
   uiLanguage: string;
@@ -63,7 +53,6 @@ interface UiForm {
 export function SettingsUiPage() {
   const { settings } = useLoaderData() as LoaderData;
   const settingsMutation = useApiMutation<PlatformSettingsPatch, PlatformSettingsSnapshot>("/api/settings", "PATCH");
-  const { density, setDensity } = useDensity();
   const { setColorMode } = useColorMode();
   const { setTheme } = useTheme();
   const { replaceFromSettings } = useDisplayPreferences();
@@ -75,12 +64,6 @@ export function SettingsUiPage() {
   const [colorModeDraft, setColorModeDraft] = useState<ColorMode>(initialColorMode);
   const [saveState, setSaveState] = useState<Exclude<DrawerSaveState, "clean" | "dirty">>();
   const [message, setMessage] = useState<string | null>(null);
-
-  // Density applies as you pick it, so you can see whether it suits the screen
-  // before committing. Navigation discard is handled by the shared modal.
-  useEffect(() => {
-    if (isDensity(form.density) && density !== form.density) setDensity(form.density as Density);
-  }, [form.density, density, setDensity]);
 
   const dirty = !same(form, savedForm) || colorModeDraft !== savedColorMode;
   const settingsForm = useMemo(() => formFrom(settings), [settings]);
@@ -107,7 +90,6 @@ export function SettingsUiPage() {
     try {
       const updated = await settingsMutation.mutate({
         uiTheme: form.theme,
-        uiDensity: form.density,
         defaultMovieView: form.movieView,
         defaultShowView: form.showView,
         uiColorMode: colorModeDraft,
@@ -125,8 +107,7 @@ export function SettingsUiPage() {
       setColorMode(colorModeDraft);
       // The saved theme used to go nowhere but the settings table: next-themes'
       // own localStorage was the only thing actually driving light/dark/system
-      // (#736). Apply it here too, the same way density applies as you pick it
-      // and colour mode applies above.
+      // (#736). Apply it here too, the same way colour mode applies above.
       setTheme(form.theme);
       replaceFromSettings(updated);
       setSaveState("saved");
@@ -137,13 +118,11 @@ export function SettingsUiPage() {
     }
   }
 
-  const densityHelp = DENSITY_OPTIONS.find((option) => option.value === form.density)?.help;
-
   return (
     <form onSubmit={handleSubmit} className="flex flex-col gap-[var(--page-gap)]" noValidate>
       <PageToolbar tabs={systemSettingsNavItems} />
 
-      <ListCard title="Appearance" count="Density applies as you pick it, so you can see it before you save">
+      <ListCard title="Appearance" count="How Deluno should feel on your display">
         <div className="grid gap-[var(--grid-gap)] p-[var(--card-pad-x)]">
           <Field label="Theme" help="Follow the device, or pin Deluno to dark or light." className="max-w-[24rem]">
             <SegmentedControl<string>
@@ -155,14 +134,6 @@ export function SettingsUiPage() {
                 { value: "dark", label: "Dark" },
                 { value: "light", label: "Light" }
               ]}
-            />
-          </Field>
-          <Field label="Density" help={densityHelp}>
-            <SegmentedControl<string>
-              aria-label="Density"
-              value={form.density}
-              onValueChange={(value) => setForm((current) => ({ ...current, density: value }))}
-              options={DENSITY_OPTIONS.map((option) => ({ value: option.value, label: option.label }))}
             />
           </Field>
           <Field label="Colour-impaired mode" help="Keeps the mark glyphs and uses a palette with stronger lightness separation. The glyphs remain on in every mode.">
@@ -328,7 +299,6 @@ function same<T>(a: T, b: T) {
 function formFrom(settings: PlatformSettingsSnapshot): UiForm {
   return {
     theme: settings.uiTheme,
-    density: settings.uiDensity,
     movieView: settings.defaultMovieView,
     showView: settings.defaultShowView,
     uiLanguage: settings.uiLanguage,

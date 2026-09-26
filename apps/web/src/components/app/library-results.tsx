@@ -1,6 +1,5 @@
 import type { MediaItem } from "../../lib/media-types";
 import { Plus } from "lucide-react";
-import type { Density } from "../../lib/use-density";
 import type { CardSize, DisplayOptions } from "./library-grid";
 import type { SortField } from "../../lib/library-filters";
 import { ProgressiveGrid } from "./library-grid";
@@ -29,7 +28,6 @@ type LibraryResultsProps = {
   hasActiveFilter: boolean;
   view: "grid" | "list" | "overview";
   cardSize: CardSize;
-  density: Density;
   displayOptions: DisplayOptions;
   listColumnOrder: LibraryListColumnKey[];
   onListColumnOrderChange: (next: LibraryListColumnKey[]) => void;
@@ -50,7 +48,7 @@ type LibraryResultsProps = {
 
 export function LibraryResults({
   variant,
-  hasLoadedOnce, items, label, singular, libraryCount, hasActiveFilter, view, cardSize, density, displayOptions, selectedIds,
+  hasLoadedOnce, items, label, singular, libraryCount, hasActiveFilter, view, cardSize, displayOptions, selectedIds,
   listColumnOrder, onListColumnOrderChange,
   keyBust, sortField, sortDirection, isComplete, onOpenCreate,
   onClearFilters, onSelect, onToggle, onToggleAll, onEndReached,
@@ -87,7 +85,7 @@ export function LibraryResults({
     ) : view === "overview" ? (
       <LibraryOverview items={items} selectedIds={selectedIds} isComplete={isComplete} onSelect={onSelect} onToggle={onToggle} onEndReached={onEndReached} />
     ) : view === "grid" ? (
-      <ProgressiveGrid items={items} cardSize={cardSize} density={density} displayOptions={displayOptions} selectedIds={selectedIds} keyBust={keyBust} sortField={sortField} sortDirection={sortDirection} isComplete={isComplete} onSelect={onSelect} onToggle={onToggle} onEndReached={onEndReached} />
+      <ProgressiveGrid items={items} cardSize={cardSize} displayOptions={displayOptions} selectedIds={selectedIds} keyBust={keyBust} sortField={sortField} sortDirection={sortDirection} isComplete={isComplete} onSelect={onSelect} onToggle={onToggle} onEndReached={onEndReached} />
     ) : (
       <GlassTile className="p-0"><LibraryTable variant={variant} items={items} selectedIds={selectedIds} onSelect={onSelect} onToggle={onToggle} onToggleAll={onToggleAll} allSelected={items.length > 0 && items.every((item) => selectedIds.includes(item.id))} someSelected={selectedIds.length > 0 && !items.every((item) => selectedIds.includes(item.id))} sortField={sortField} sortDirection={sortDirection} isComplete={isComplete} onEndReached={onEndReached} columnOrder={listColumnOrder} onColumnOrderChange={onListColumnOrderChange} /></GlassTile>
     )}

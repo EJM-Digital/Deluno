@@ -29,7 +29,6 @@ import {
   type SavedFilterPreset,
   type ViewMode,
 } from "./library-control-rail";
-import { useDensity } from "../../lib/use-density";
 import { useLibraryFilters } from "../../hooks/use-library-filters";
 import { useBulkEdit } from "../../hooks/use-bulk-edit";
 import { createInitialLibraryForm, metadataCreatePayload, useLibraryCreate, type CreateFormDraft } from "../../hooks/use-library-create";
@@ -115,7 +114,6 @@ export function LibraryView({
 }) {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
-  const { density } = useDensity();
   const {
     query, setQuery, libraryId, setLibraryId, quickFilter, setQuickFilter, view, setView, sortField, setSortField,
     sortDirection, setSortDirection, cardSize, listColumnOrder, setListColumnOrder, resetListColumnOrder, displayOptions,
@@ -1067,7 +1065,6 @@ export function LibraryView({
           hasActiveFilter={activeFilterCount > 0 || Boolean(query.trim())}
           view={view}
           cardSize={cardSize}
-          density={density}
           displayOptions={displayOptions}
           listColumnOrder={listColumnOrder}
           onListColumnOrderChange={setListColumnOrder}

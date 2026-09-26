@@ -8,7 +8,7 @@ import { emptyPlatformSettingsSnapshot } from "../lib/api";
  * own localStorage was the only thing that actually drove light/dark/system,
  * so a theme chosen here disagreed with whatever was saved the moment the
  * page reloaded (#736). Saving now calls next-themes' setTheme too, the same
- * way density and colour mode already apply as you change them.
+ * way colour mode already applies as you change it.
  */
 const setTheme = vi.hoisted(() => vi.fn());
 vi.mock("next-themes", () => ({ useTheme: () => ({ setTheme }) }));

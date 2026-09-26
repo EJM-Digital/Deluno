@@ -349,10 +349,10 @@ function TwoToneBar({
 }) {
   const pct = Math.min(100, Math.max(0, Math.round(fill)));
     /*
-    The label rides `--library-badge-size`, the shelf's own density-aware token,
+    The label rides `--library-badge-size`, the shelf's own scaled token,
     rather than a fixed size. `validate-ui-typography` rejects a raw pixel value
-    and it is right to: a card that ignores density is a card that stops matching
-    the shelf around it at three of the four settings.
+    and it is right to: a card with a fixed size is a card that stops matching
+    the shelf around it once the viewport scales up.
   */
   const layer = "pointer-events-none absolute inset-0 flex items-center justify-center whitespace-nowrap px-1 font-mono text-[length:var(--library-badge-size)] font-bold leading-none";
   /*
