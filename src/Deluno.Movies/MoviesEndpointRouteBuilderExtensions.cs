@@ -1015,6 +1015,7 @@ public static class MoviesEndpointRouteBuilderExtensions
             TimeProvider timeProvider,
             IGuidePackageStore guidePackageStore,
             IReleasePreferencePlanRepository releasePreferencePlanRepository,
+            IMediaTagStore tagStore,
             CancellationToken cancellationToken) =>
         {
             var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
@@ -1061,7 +1062,8 @@ public static class MoviesEndpointRouteBuilderExtensions
                 cancellationToken,
                 guidePackageStore,
                 releasePreferencePlanRepository,
-                libraryId);
+                libraryId,
+                tagStore);
 
             if (result.NotFound)
             {

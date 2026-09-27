@@ -77,7 +77,8 @@ public static class MediaGrabHandler
         CancellationToken cancellationToken,
         IGuidePackageStore? guidePackageStore = null,
         IReleasePreferencePlanRepository? releasePreferencePlanRepository = null,
-        string? libraryId = null)
+        string? libraryId = null,
+        IMediaTagStore? mediaTagStore = null)
     {
         var item = await mediaStateRepository.GetByIdAsync(kind, id, cancellationToken);
         if (item is null)
@@ -127,7 +128,10 @@ public static class MediaGrabHandler
         // The first routed client used to be taken whatever it was, so a torrent
         // picked here could be handed to a Usenet client, which accepts the
         // address and then cannot read what is at it.
-        var downloadClient = await acquisitionPipeline.ChooseDownloadClientAsync(request.IndexerId, routing.DownloadClients, cancellationToken);
+        var titleTags = mediaTagStore is null
+            ? null
+            : (await mediaTagStore.ListAsync(kind, id, cancellationToken)).Select(assignment => assignment.Name).ToArray();
+        var downloadClient = await acquisitionPipeline.ChooseDownloadClientAsync(request.IndexerId, routing.DownloadClients, cancellationToken, titleTags);
         if (downloadClient is null)
         {
             return MediaGrabResult.ValidationResult(new Dictionary<string, string[]>

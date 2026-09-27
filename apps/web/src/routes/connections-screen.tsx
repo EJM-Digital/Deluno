@@ -220,7 +220,8 @@ export function buildClientSavePayload(form: ClientForm) {
     categoryTemplate: form.moviesCategory,
     priority: Number(form.priority || 1),
     isEnabled: form.isEnabled,
-    addPaused: form.addPaused
+    addPaused: form.addPaused,
+    tags: form.tags.trim()
   };
 }
 

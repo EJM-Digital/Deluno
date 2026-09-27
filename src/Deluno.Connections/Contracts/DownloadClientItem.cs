@@ -26,7 +26,9 @@ public sealed record DownloadClientItem(
     DateTimeOffset? LastHealthTestUtc,
     DateTimeOffset CreatedUtc,
     DateTimeOffset UpdatedUtc,
-    bool AddPaused = false)
+    bool AddPaused = false,
+    /// <summary>Comma-separated tag names (#808). Empty means the client is used for any title; otherwise it is used only for a title sharing one of these tags.</summary>
+    string Tags = "")
 {
     /// <summary>Last typed health failure, when the client did not pass its most recent test.</summary>
     public IntegrationFailure? LastHealthFailure { get; init; }

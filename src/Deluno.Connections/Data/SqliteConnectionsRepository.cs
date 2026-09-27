@@ -153,7 +153,7 @@ public sealed class SqliteConnectionsRepository(
                 is_enabled, health_status, last_health_message,
                 last_health_failure_category, last_health_latency_ms, last_health_test_utc,
                 created_utc, updated_utc,
-                last_health_failure_json, use_ssl, url_base, add_paused
+                last_health_failure_json, use_ssl, url_base, add_paused, tags
             FROM download_clients
             ORDER BY priority ASC, name ASC;
             """;
@@ -184,7 +184,8 @@ public sealed class SqliteConnectionsRepository(
                 LastHealthTestUtc: reader.IsDBNull(17) ? null : ParseTimestamp(reader.GetString(17)),
                 CreatedUtc: ParseTimestamp(reader.GetString(18)),
                 UpdatedUtc: ParseTimestamp(reader.GetString(19)),
-                AddPaused: reader.GetInt64(23) == 1)
+                AddPaused: reader.GetInt64(23) == 1,
+                Tags: reader.GetString(24))
             {
                 LastHealthFailure = reader.IsDBNull(20) ? null : DeserializeFailure(reader.GetString(20))
             });
@@ -567,7 +568,8 @@ public sealed class SqliteConnectionsRepository(
             LastHealthTestUtc: null,
             CreatedUtc: now,
             UpdatedUtc: now,
-            AddPaused: request.AddPaused);
+            AddPaused: request.AddPaused,
+            Tags: NormalizeCsv(request.Tags));
 
         await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
             DelunoDatabaseNames.Platform,
@@ -580,13 +582,13 @@ public sealed class SqliteConnectionsRepository(
                 id, name, protocol, host, port, username, secret, endpoint_url,
                 use_ssl, url_base, add_paused,
                 movies_category, tv_category, category_template, priority,
-                is_enabled, health_status, last_health_message, created_utc, updated_utc
+                is_enabled, health_status, last_health_message, created_utc, updated_utc, tags
             )
             VALUES (
                 @id, @name, @protocol, @host, @port, @username, @secret, @endpointUrl,
                 @useSsl, @urlBase, @addPaused,
                 @moviesCategory, @tvCategory, @categoryTemplate, @priority,
-                @isEnabled, @healthStatus, @lastHealthMessage, @createdUtc, @updatedUtc
+                @isEnabled, @healthStatus, @lastHealthMessage, @createdUtc, @updatedUtc, @tags
             );
             """;
 
@@ -615,6 +617,7 @@ public sealed class SqliteConnectionsRepository(
         AddParameter(command, "@lastHealthMessage", item.LastHealthMessage);
         AddParameter(command, "@createdUtc", item.CreatedUtc.ToString("O"));
         AddParameter(command, "@updatedUtc", item.UpdatedUtc.ToString("O"));
+        AddParameter(command, "@tags", item.Tags);
         await command.ExecuteNonQueryAsync(cancellationToken);
 
         return item;
@@ -748,6 +751,7 @@ public sealed class SqliteConnectionsRepository(
         var newCatTmpl  = request.CategoryTemplate is not null ? NormalizeName(request.CategoryTemplate) : existing.CategoryTemplate;
         var newPriority = request.Priority is >= 1 ? request.Priority.Value : existing.Priority;
         var newEnabled  = request.IsEnabled ?? existing.IsEnabled;
+        var newTags     = request.Tags is not null ? NormalizeCsv(request.Tags) : existing.Tags;
 
         var newHealth = newEnabled && !existing.IsEnabled ? "untested" : existing.HealthStatus;
         var newMsg    = newEnabled && !existing.IsEnabled ? "Re-enabled — test connection to confirm." : existing.LastHealthMessage;
@@ -774,7 +778,8 @@ public sealed class SqliteConnectionsRepository(
                 is_enabled = @isEnabled,
                 health_status = @healthStatus,
                 last_health_message = @lastHealthMessage,
-                updated_utc = @updatedUtc
+                updated_utc = @updatedUtc,
+                tags = @tags
             WHERE id = @id;
             """;
 
@@ -802,6 +807,7 @@ public sealed class SqliteConnectionsRepository(
         AddParameter(command, "@healthStatus", newHealth);
         AddParameter(command, "@lastHealthMessage", newMsg);
         AddParameter(command, "@updatedUtc", now.ToString("O"));
+        AddParameter(command, "@tags", newTags);
 
         if (await command.ExecuteNonQueryAsync(cancellationToken) == 0) return null;
 
@@ -824,6 +830,7 @@ public sealed class SqliteConnectionsRepository(
             IsEnabled        = newEnabled,
             HealthStatus     = newHealth,
             LastHealthMessage = newMsg,
+            Tags             = newTags,
             UpdatedUtc       = now
         };
     }

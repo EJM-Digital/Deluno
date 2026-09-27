@@ -63,3 +63,20 @@ describe("client save payload (#807)", () => {
     expect(buildClientSavePayload(form).priority).toBe(1);
   });
 });
+
+/**
+ * #808 — Radarr/Sonarr route a tagged title only to a client sharing its tag;
+ * an untagged client stays usable for anything. The drawer had no field for
+ * this at all, so the payload always sent nothing.
+ */
+describe("client save payload tags (#808)", () => {
+  it("sends the client's tags, trimmed", () => {
+    const form = { ...emptyClientForm(), name: "qBittorrent Anime", host: "localhost", tags: " anime, 4k " };
+    expect(buildClientSavePayload(form).tags).toBe("anime, 4k");
+  });
+
+  it("sends an empty string for an untagged client", () => {
+    const form = { ...emptyClientForm(), name: "qBittorrent", host: "localhost", tags: "" };
+    expect(buildClientSavePayload(form).tags).toBe("");
+  });
+});
