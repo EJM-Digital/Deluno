@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
-import type { DownloadDispatchItem, DownloadHealthFinding, DownloadQueueItem, ImportPreviewResponse, LibraryItem } from "../lib/api";
+import type { DownloadDispatchItem, DownloadHealthFinding, DownloadQueueItem, ImportPreviewResponse, LibraryItem, MediaProbeInfo } from "../lib/api";
 import { RemovalReasonDialog, type RemovalReason } from "../components/ui/removal-reason-dialog";
 import { buildImportRequest, findDispatchForQueueItem, ImportPreviewFacts, visibleFindings } from "./queue-screen";
 
@@ -67,7 +67,95 @@ describe("season-pack import preview", () => {
     expect(within(region).getByText("Needs recovery review")).toBeVisible();
     expect(within(region).getByText(/S01E01 is claimed by more than one file/)).toBeVisible();
   });
+});
 
+describe("MediaInfo detail (#794)", () => {
+  function probe(overrides: Partial<MediaProbeInfo> = {}): MediaProbeInfo {
+    return {
+      status: "succeeded",
+      tool: "ffprobe",
+      message: null,
+      durationSeconds: 1420,
+      container: "matroska",
+      bitrate: 8_500_000,
+      videoStreams: [
+        { index: 0, codec: "hevc", profile: "Main 10", width: 3840, height: 2160, pixelFormat: "yuv420p10le", frameRate: 23.976, bitrate: 8_000_000, language: null }
+      ],
+      audioStreams: [
+        { index: 1, codec: "eac3", profile: null, channels: 6, channelLayout: "5.1", sampleRate: 48000, bitrate: 448_000, language: "eng" }
+      ],
+      subtitleStreams: [],
+      ...overrides
+    };
+  }
+
+  function previewWithProbe(mediaProbe: MediaProbeInfo | null): ImportPreviewResponse {
+    return {
+      sourcePath: "C:\\Downloads\\Example.mkv",
+      destinationFolder: "C:\\Movies\\Example (2026)",
+      destinationPath: "C:\\Movies\\Example (2026)\\Example (2026).mkv",
+      preferredTransferMode: "hardlink",
+      hardlinkAvailable: true,
+      matchedRuleId: "movies-main",
+      matchedRuleName: "Movies",
+      sourceExists: true,
+      destinationExists: false,
+      sourceSizeBytes: 8192,
+      destinationSizeBytes: 0,
+      isSupportedMediaFile: true,
+      mediaProbe,
+      transferExplanation: "Every file is staged before the catalogue transaction.",
+      warnings: [],
+      explanation: "Matched by extension.",
+      decisionSteps: []
+    };
+  }
+
+  it("shows pixel format, frame rate, sample rate and channel layout for a fully-probed file", () => {
+    render(<ImportPreviewFacts preview={previewWithProbe(probe())} />);
+
+    const region = screen.getByRole("region", { name: "MediaInfo" });
+    expect(within(region).getByText("yuv420p10le")).toBeVisible();
+    expect(within(region).getByText("23.98 fps")).toBeVisible();
+    expect(within(region).getByText("5.1")).toBeVisible();
+    expect(within(region).getByText("48,000 Hz")).toBeVisible();
+  });
+
+  it("shows a missing field as Unavailable rather than blank", () => {
+    render(<ImportPreviewFacts preview={previewWithProbe(probe({
+      videoStreams: [{ index: 0, codec: "h264", profile: null, width: 1920, height: 1080, pixelFormat: null, frameRate: null, bitrate: null, language: null }],
+      audioStreams: [{ index: 1, codec: "aac", profile: null, channels: null, channelLayout: null, sampleRate: null, bitrate: null, language: null }]
+    }))} />);
+
+    const region = screen.getByRole("region", { name: "MediaInfo" });
+    expect(within(region).getAllByText("Unavailable").length).toBeGreaterThanOrEqual(3);
+  });
+
+  it("shows the probe's own message when the file could not be probed at all", () => {
+    render(<ImportPreviewFacts preview={previewWithProbe({
+      status: "unavailable",
+      tool: "ffprobe",
+      message: "ffprobe is not installed.",
+      durationSeconds: null,
+      container: null,
+      bitrate: null,
+      videoStreams: [],
+      audioStreams: [],
+      subtitleStreams: []
+    })} />);
+
+    const region = screen.getByRole("region", { name: "MediaInfo" });
+    expect(within(region).getByText("ffprobe is not installed.")).toBeVisible();
+  });
+
+  it("renders nothing extra when there is no probe at all", () => {
+    render(<ImportPreviewFacts preview={previewWithProbe(null)} />);
+
+    expect(screen.queryByRole("region", { name: "MediaInfo" })).not.toBeInTheDocument();
+  });
+});
+
+describe("dispatch identity in the import preview", () => {
   it("carries the dispatch's series identity into the Transfers preview and job", () => {
     const queueItem = {
       id: "torrent-hash",

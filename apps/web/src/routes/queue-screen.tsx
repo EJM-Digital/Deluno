@@ -38,6 +38,7 @@ import {
   type ImportPreviewResponse,
   type JobQueueItem,
   type LibraryItem,
+  type MediaProbeInfo,
   type MovieImportRecoverySummary,
   type OrphanedDownloadItem,
   type PlatformSettingsSnapshot,
@@ -1457,6 +1458,45 @@ export function ImportPreviewFacts({ preview }: { preview: ImportPreviewResponse
         </div>
       ) : null}
       {preview.warnings.length ? <Fact label="Warnings" value={preview.warnings.join(" · ")} /> : null}
+      {preview.mediaProbe ? <MediaInfoDetail probe={preview.mediaProbe} /> : null}
+    </div>
+  );
+}
+
+/**
+ * The full MediaInfo detail set for a file's video and audio streams (#794):
+ * pixel format, frame rate, sample rate and channel layout, straight off the
+ * probe the import preview already ran - no new prober work. A field ffprobe
+ * did not report is "Unavailable" rather than left blank or dropped, so a
+ * partly-probed file still reads as partly known rather than silently empty.
+ */
+export function MediaInfoDetail({ probe }: { probe: MediaProbeInfo }) {
+  if (probe.status !== "succeeded") {
+    return (
+      <div className="grid gap-0.5 rounded-[var(--radius-sm)] border border-border/70 bg-muted/20 p-2" role="region" aria-label="MediaInfo">
+        <Fact label="MediaInfo" value={probe.message ?? "Not probed"} />
+      </div>
+    );
+  }
+
+  const unavailable = "Unavailable";
+  return (
+    <div className="grid gap-1.5 rounded-[var(--radius-sm)] border border-border/70 bg-muted/20 p-2" role="region" aria-label="MediaInfo">
+      {probe.videoStreams.map((stream) => (
+        <div key={`video-${stream.index}`} className="grid gap-0.5">
+          <Fact label="Video" value={[stream.codec, stream.width && stream.height ? `${stream.width}x${stream.height}` : null].filter(Boolean).join(" · ") || unavailable} />
+          <Fact label="Pixel format" value={stream.pixelFormat ?? unavailable} mono />
+          <Fact label="Frame rate" value={stream.frameRate != null ? `${stream.frameRate.toFixed(2)} fps` : unavailable} />
+        </div>
+      ))}
+      {probe.audioStreams.map((stream) => (
+        <div key={`audio-${stream.index}`} className="grid gap-0.5 border-t border-border/60 pt-1.5 first:border-t-0 first:pt-0">
+          <Fact label="Audio" value={[stream.codec, stream.language].filter(Boolean).join(" · ") || unavailable} />
+          <Fact label="Channel layout" value={stream.channelLayout ?? (stream.channels != null ? `${stream.channels}ch` : unavailable)} />
+          <Fact label="Sample rate" value={stream.sampleRate != null ? `${stream.sampleRate.toLocaleString()} Hz` : unavailable} />
+        </div>
+      ))}
+      {probe.videoStreams.length === 0 && probe.audioStreams.length === 0 ? <Fact label="MediaInfo" value="No video or audio streams probed" /> : null}
     </div>
   );
 }
