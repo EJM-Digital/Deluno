@@ -207,11 +207,14 @@ public sealed class EpisodeSearchJobHandler(
                 jobScheduler,
                 activityFeedRepository,
                 grabResult,
+                decisionPlan.DispatchRequest,
                 timeProvider,
                 payload.LibraryId,
                 "tv",
                 "episode",
                 payload.EpisodeId,
+                seriesItem?.Title ?? bestCandidate!.ReleaseName,
+                downloadClient.DownloadClientId,
                 downloadClient.DownloadClientName,
                 cancellationToken);
 
