@@ -4467,6 +4467,48 @@ public sealed class SqliteSeriesCatalogRepository(
         return value is DBNull or null ? null : Convert.ToInt64(value, CultureInfo.InvariantCulture);
     }
 
+    public async Task<IReadOnlyList<(string EpisodeId, string FilePath)>> ListEpisodeFilePathsAsync(
+        string seriesId,
+        CancellationToken cancellationToken)
+    {
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Series,
+            cancellationToken);
+
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            "SELECT id, file_path FROM episode_entries WHERE series_id = @seriesId AND has_file = 1 AND file_path IS NOT NULL;";
+        AddParameter(command, "@seriesId", seriesId);
+
+        var results = new List<(string, string)>();
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            results.Add((reader.GetString(0), reader.GetString(1)));
+        }
+
+        return results;
+    }
+
+    public async Task<bool> UpdateEpisodeFileLocationAsync(
+        string episodeId,
+        string previousFilePath,
+        string newFilePath,
+        CancellationToken cancellationToken)
+    {
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Series,
+            cancellationToken);
+
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            "UPDATE episode_entries SET file_path = @newFilePath WHERE id = @episodeId AND file_path = @previousFilePath;";
+        AddParameter(command, "@episodeId", episodeId);
+        AddParameter(command, "@previousFilePath", previousFilePath);
+        AddParameter(command, "@newFilePath", newFilePath);
+        return await command.ExecuteNonQueryAsync(cancellationToken) > 0;
+    }
+
     /// <summary>The scores a page row carries, read straight from their columns.</summary>
     private static IReadOnlyList<MetadataRatingItem> ReadRatingColumns(System.Data.Common.DbDataReader reader)
     {

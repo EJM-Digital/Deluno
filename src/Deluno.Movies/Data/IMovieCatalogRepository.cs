@@ -353,6 +353,18 @@ public interface IMovieCatalogRepository : IMovieImportRecoveryRetentionReposito
     /// <summary>Update quality profile for a movie</summary>
     Task<bool> UpdateQualityProfileAsync(string movieId, string qualityProfileId, CancellationToken cancellationToken);
 
+    /// <summary>
+    /// Records a file's new on-disk location after the caller has physically
+    /// renamed or moved it - matched by <paramref name="previousFilePath"/>
+    /// rather than movie id alone, so a stale or already-changed row is never
+    /// overwritten with a path that does not belong to it (#788).
+    /// </summary>
+    Task<bool> UpdateFileLocationAsync(
+        string movieId,
+        string previousFilePath,
+        string newFilePath,
+        CancellationToken cancellationToken);
+
     /// <summary>Store the provider's cinema, digital and physical release dates.</summary>
     Task<bool> UpdateReleaseDatesAsync(
         string movieId,

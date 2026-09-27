@@ -2744,6 +2744,29 @@ public sealed class SqliteMovieCatalogRepository(
         return await command.ExecuteNonQueryAsync(cancellationToken) > 0;
     }
 
+    public async Task<bool> UpdateFileLocationAsync(
+        string movieId,
+        string previousFilePath,
+        string newFilePath,
+        CancellationToken cancellationToken)
+    {
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Movies,
+            cancellationToken);
+
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            """
+            UPDATE movie_wanted_state
+            SET file_path = @newFilePath
+            WHERE movie_id = @movieId AND file_path = @previousFilePath;
+            """;
+        AddParameter(command, "@movieId", movieId);
+        AddParameter(command, "@previousFilePath", previousFilePath);
+        AddParameter(command, "@newFilePath", newFilePath);
+        return await command.ExecuteNonQueryAsync(cancellationToken) > 0;
+    }
+
     public async Task<bool> UpdateReleaseDatesAsync(
         string movieId,
         DateOnly? inCinemas,

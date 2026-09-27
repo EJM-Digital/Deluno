@@ -2416,6 +2416,125 @@ public static class MoviesEndpointRouteBuilderExtensions
             return Results.Ok(new { count = previews.Count, previews });
         });
 
+        /*
+          Preview and apply were one continuous step in every renamed tool
+          this replaces; here they were two disconnected ones, because only
+          the first had ever been built. This is the second (#788): it
+          renders the same proposed folder name the preview did, for the same
+          selection, and then actually renames each title's folder on disk -
+          reporting per movie which renamed and which did not, rather than
+          promising a single all-or-nothing outcome for a batch.
+        */
+        movies.MapPost("/bulk/rename-apply", async (
+            HttpContext httpContext,
+            [FromBody] BulkRenamePreviewRequest request,
+            IMovieCatalogRepository repository,
+            IPlatformSettingsRepository platformSettingsRepository,
+            IActivityFeedRepository activityFeedRepository,
+            IRealtimeEventPublisher realtimeEventPublisher,
+            CancellationToken cancellationToken) =>
+        {
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
+            if (denied is not null)
+            {
+                return denied;
+            }
+
+            if (request.MovieIds is not { Count: > 0 })
+            {
+                return Results.ValidationProblem(new Dictionary<string, string[]>
+                {
+                    ["movieIds"] = ["Choose at least one movie to rename."]
+                });
+            }
+
+            var settings = await platformSettingsRepository.GetAsync(cancellationToken);
+            var template = string.IsNullOrWhiteSpace(request.Template)
+                ? settings.MovieFolderFormat
+                : request.Template.Trim();
+
+            var renamed = new List<object>();
+            var failures = new List<object>();
+            foreach (var id in request.MovieIds)
+            {
+                var movie = await repository.GetByIdAsync(id, cancellationToken);
+                if (movie is null)
+                {
+                    failures.Add(new { movieId = id, title = (string?)null, reason = "This title no longer exists." });
+                    continue;
+                }
+
+                if (movie.FilePath is not { Length: > 0 } filePath)
+                {
+                    // Nothing on disk for this title - there is no folder to
+                    // rename, so it is neither a success nor a failure.
+                    continue;
+                }
+
+                var sourceDir = Path.GetDirectoryName(filePath);
+                var parentDir = sourceDir is null ? null : Path.GetDirectoryName(sourceDir);
+                if (sourceDir is null || parentDir is null)
+                {
+                    failures.Add(new { movieId = id, movie.Title, reason = "The stored file path has no folder to rename." });
+                    continue;
+                }
+
+                var proposedName = NamingTemplateRenderer.RenderSegment(
+                    template,
+                    movie.Title,
+                    movie.ReleaseYear,
+                    movie.ImdbId,
+                    genre: movie.Genres?.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries).FirstOrDefault(),
+                    decision: new NamingDecision(OriginalTitle: movie.OriginalTitle),
+                    replaceIllegalCharacters: settings.ReplaceIllegalCharacters,
+                    colonReplacementMode: settings.ColonReplacementMode);
+
+                var destinationDir = Path.Combine(parentDir, proposedName);
+                if (string.Equals(destinationDir, sourceDir, StringComparison.OrdinalIgnoreCase))
+                {
+                    // Already named correctly - nothing to do, and not a failure.
+                    continue;
+                }
+
+                if (Directory.Exists(destinationDir))
+                {
+                    failures.Add(new { movieId = id, movie.Title, reason = $"A folder named \"{proposedName}\" already exists." });
+                    continue;
+                }
+
+                try
+                {
+                    Directory.Move(sourceDir, destinationDir);
+                }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                {
+                    failures.Add(new { movieId = id, movie.Title, reason = "The folder could not be renamed on disk." });
+                    continue;
+                }
+
+                var newFilePath = Path.Combine(destinationDir, Path.GetFileName(filePath));
+                await repository.UpdateFileLocationAsync(id, filePath, newFilePath, cancellationToken);
+                await realtimeEventPublisher.PublishEntityChangedAsync("Movie", id, cancellationToken);
+                renamed.Add(new { movieId = id, movie.Title, from = Path.GetFileName(sourceDir), to = proposedName });
+            }
+
+            if (renamed.Count > 0 || failures.Count > 0)
+            {
+                await activityFeedRepository.RecordActivityAsync(
+                    "library.movie.renamed",
+                    failures.Count == 0
+                        ? $"{renamed.Count} movie folder{(renamed.Count == 1 ? "" : "s")} renamed."
+                        : $"{renamed.Count} movie folder{(renamed.Count == 1 ? "" : "s")} renamed; {failures.Count} could not be renamed.",
+                    JsonSerializer.Serialize(new { renamed, failures }),
+                    null,
+                    "movie",
+                    null,
+                    cancellationToken);
+            }
+
+            return Results.Ok(new { renamedCount = renamed.Count, renamed, failures });
+        });
+
         return endpoints;
     }
 
