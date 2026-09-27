@@ -39,7 +39,7 @@ public sealed class SqliteNotificationRepository(
         using var command = connection.CreateCommand();
         command.CommandText =
             """
-            SELECT id, name, url, event_filters, is_enabled, last_fired_utc, last_error, created_utc, updated_utc
+            SELECT id, name, url, event_filters, is_enabled, last_fired_utc, last_error, created_utc, updated_utc, provider, config_json
             FROM notification_webhooks
             ORDER BY name ASC;
             """;
@@ -68,10 +68,10 @@ public sealed class SqliteNotificationRepository(
         using var command = connection.CreateCommand();
         command.CommandText =
             """
-            INSERT INTO notification_webhooks (id, name, url, event_filters, is_enabled, last_fired_utc, last_error, created_utc, updated_utc)
-            VALUES (@id, @name, @url, @eventFilters, @isEnabled, NULL, NULL, @createdUtc, @updatedUtc);
+            INSERT INTO notification_webhooks (id, name, url, event_filters, is_enabled, last_fired_utc, last_error, created_utc, updated_utc, provider, config_json)
+            VALUES (@id, @name, @url, @eventFilters, @isEnabled, NULL, NULL, @createdUtc, @updatedUtc, @provider, @configJson);
 
-            SELECT id, name, url, event_filters, is_enabled, last_fired_utc, last_error, created_utc, updated_utc
+            SELECT id, name, url, event_filters, is_enabled, last_fired_utc, last_error, created_utc, updated_utc, provider, config_json
             FROM notification_webhooks WHERE id = @id;
             """;
 
@@ -82,6 +82,8 @@ public sealed class SqliteNotificationRepository(
         AddParameter(command, "@isEnabled", request.IsEnabled ? 1 : 0);
         AddParameter(command, "@createdUtc", now.ToString("O"));
         AddParameter(command, "@updatedUtc", now.ToString("O"));
+        AddParameter(command, "@provider", NotificationProviders.Normalize(request.Provider));
+        AddParameter(command, "@configJson", string.IsNullOrWhiteSpace(request.ConfigJson) ? null : request.ConfigJson);
 
         using var reader = await command.ExecuteReaderAsync(cancellationToken);
         await reader.ReadAsync(cancellationToken);
@@ -103,10 +105,11 @@ public sealed class SqliteNotificationRepository(
         command.CommandText =
             """
             UPDATE notification_webhooks
-            SET name = @name, url = @url, event_filters = @eventFilters, is_enabled = @isEnabled, updated_utc = @updatedUtc
+            SET name = @name, url = @url, event_filters = @eventFilters, is_enabled = @isEnabled, updated_utc = @updatedUtc,
+                provider = COALESCE(@provider, provider), config_json = COALESCE(@configJson, config_json)
             WHERE id = @id;
 
-            SELECT id, name, url, event_filters, is_enabled, last_fired_utc, last_error, created_utc, updated_utc
+            SELECT id, name, url, event_filters, is_enabled, last_fired_utc, last_error, created_utc, updated_utc, provider, config_json
             FROM notification_webhooks WHERE id = @id;
             """;
 
@@ -116,6 +119,8 @@ public sealed class SqliteNotificationRepository(
         AddParameter(command, "@eventFilters", NormalizeCsv(request.EventFilters));
         AddParameter(command, "@isEnabled", request.IsEnabled ? 1 : 0);
         AddParameter(command, "@updatedUtc", now.ToString("O"));
+        AddParameter(command, "@provider", request.Provider is null ? null : NotificationProviders.Normalize(request.Provider));
+        AddParameter(command, "@configJson", string.IsNullOrWhiteSpace(request.ConfigJson) ? null : request.ConfigJson);
 
         using var reader = await command.ExecuteReaderAsync(cancellationToken);
         return await reader.ReadAsync(cancellationToken) ? ReadNotificationWebhook(reader) : null;
@@ -286,7 +291,8 @@ public sealed class SqliteNotificationRepository(
     private const string DeliverySelectSql =
         "SELECT d.id, d.webhook_id, d.event_category, d.title, d.message, d.details_json, " +
         "d.status, d.attempt_count, d.max_attempts, d.next_attempt_utc, d.last_attempt_utc, " +
-        "d.last_status_code, d.last_error, d.failure_json, d.created_utc, d.updated_utc, w.url " +
+        "d.last_status_code, d.last_error, d.failure_json, d.created_utc, d.updated_utc, w.url, " +
+        "w.provider, w.config_json " +
         "FROM notification_webhook_deliveries d " +
         "LEFT JOIN notification_webhooks w ON w.id = d.webhook_id";
 
@@ -312,7 +318,9 @@ public sealed class SqliteNotificationRepository(
             item,
             reader.IsDBNull(16) ? null : reader.GetString(16),
             reader.GetString(4),
-            reader.IsDBNull(5) ? null : reader.GetString(5));
+            reader.IsDBNull(5) ? null : reader.GetString(5),
+            reader.IsDBNull(17) ? NotificationProviders.Generic : reader.GetString(17),
+            reader.IsDBNull(18) ? null : reader.GetString(18));
     }
 
     private static IntegrationFailure? DeserializeFailure(string json)
@@ -341,7 +349,9 @@ public sealed class SqliteNotificationRepository(
             LastFiredUtc: reader.IsDBNull(5) ? null : ParseTimestamp(reader.GetString(5)),
             LastError: reader.IsDBNull(6) ? null : reader.GetString(6),
             CreatedUtc: ParseTimestamp(reader.GetString(7)),
-            UpdatedUtc: ParseTimestamp(reader.GetString(8)));
+            UpdatedUtc: ParseTimestamp(reader.GetString(8)),
+            Provider: reader.IsDBNull(9) ? NotificationProviders.Generic : reader.GetString(9),
+            ConfigJson: reader.IsDBNull(10) ? null : reader.GetString(10));
     }
 
 }

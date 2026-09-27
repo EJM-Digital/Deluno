@@ -914,6 +914,29 @@ export interface OutboundThrottleSnapshot {
   hosts: OutboundThrottleHostState[];
 }
 
+/** Dedicated outbound notification provider types (#855), beyond the
+ * generic webhook and the sniffed Discord embed. */
+export type NotificationProvider =
+  | "generic"
+  | "discord"
+  | "slack"
+  | "telegram"
+  | "pushover"
+  | "ntfy"
+  | "gotify"
+  | "apprise";
+
+/** Provider-specific connection fields that do not fit a single URL
+ * (Telegram's bot token + chat id, Pushover's app token + user key, Gotify's
+ * app token, ntfy's optional access token). */
+export interface NotificationProviderConfig {
+  botToken?: string | null;
+  chatId?: string | null;
+  appToken?: string | null;
+  userKey?: string | null;
+  accessToken?: string | null;
+}
+
 export interface NotificationWebhookItem {
   id: string;
   name: string;
@@ -924,6 +947,8 @@ export interface NotificationWebhookItem {
   lastError: string | null;
   createdUtc: string;
   updatedUtc: string;
+  provider: NotificationProvider;
+  configJson: string | null;
 }
 
 export interface NotificationWebhookDeliveryItem {

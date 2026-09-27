@@ -52,6 +52,8 @@ public sealed class OutboundNotificationService(
             await DeliverAsync(
                 webhook.Id,
                 webhook.Url,
+                webhook.Provider,
+                webhook.ConfigJson,
                 eventCategory,
                 title,
                 message,
@@ -116,6 +118,8 @@ public sealed class OutboundNotificationService(
         return await DeliverAsync(
             webhook.Id,
             webhook.Url,
+            webhook.Provider,
+            webhook.ConfigJson,
             eventCategory,
             title,
             message,
@@ -180,6 +184,8 @@ public sealed class OutboundNotificationService(
         return await DeliverAsync(
             reset.Item.WebhookId,
             delivery.WebhookUrl,
+            reset.WebhookProvider,
+            reset.WebhookConfigJson,
             reset.Item.EventCategory,
             reset.Item.Title,
             reset.Message,
@@ -192,6 +198,8 @@ public sealed class OutboundNotificationService(
     private async Task<NotificationWebhookDeliveryResult> DeliverAsync(
         string webhookId,
         string url,
+        string provider,
+        string? configJson,
         string eventCategory,
         string title,
         string message,
@@ -226,7 +234,7 @@ public sealed class OutboundNotificationService(
                     cancellationToken);
             }
 
-            var attempts = await SendWithRetryAsync(delivery, url, cancellationToken);
+            var attempts = await SendWithRetryAsync(delivery, url, provider, configJson, cancellationToken);
             await repository.RecordNotificationWebhookFiredAsync(webhookId, error: null, cancellationToken);
             return new NotificationWebhookDeliveryResult(
                 Sent: true,
@@ -282,6 +290,8 @@ public sealed class OutboundNotificationService(
     private async Task<int> SendWithRetryAsync(
         NotificationWebhookDeliveryRecord delivery,
         string url,
+        string provider,
+        string? configJson,
         CancellationToken cancellationToken)
     {
         var attempts = delivery.Item.AttemptCount;
@@ -301,6 +311,8 @@ public sealed class OutboundNotificationService(
             {
                 var statusCode = await SendAsync(
                     url,
+                    provider,
+                    configJson,
                     delivery.Item.EventCategory,
                     delivery.Item.Title,
                     delivery.Message,
@@ -376,6 +388,8 @@ public sealed class OutboundNotificationService(
 
     private async Task<int> SendAsync(
         string url,
+        string provider,
+        string? configJson,
         string eventCategory,
         string title,
         string message,
@@ -383,45 +397,28 @@ public sealed class OutboundNotificationService(
         CancellationToken cancellationToken)
     {
         using var client = httpClientFactory.CreateClient("notifications");
+        var config = ParseConfig(configJson);
 
-        object payload;
-        if (url.Contains("discord.com/api/webhooks", StringComparison.OrdinalIgnoreCase))
+        // A URL still auto-detected as Discord routes to the embed shape even
+        // when the row predates the Provider field (#855 keeps that working).
+        var effectiveProvider = provider == NotificationProviders.Generic &&
+            url.Contains("discord.com/api/webhooks", StringComparison.OrdinalIgnoreCase)
+                ? NotificationProviders.Discord
+                : provider;
+
+        using var request = effectiveProvider switch
         {
-            payload = new
-            {
-                embeds = new[]
-                {
-                    new
-                    {
-                        title,
-                        description = message,
-                        color = GetDiscordColor(eventCategory),
-                        footer = new { text = $"Deluno • {eventCategory}" },
-                        timestamp = DateTimeOffset.UtcNow.ToString("O")
-                    }
-                }
-            };
-        }
-        else
-        {
-            object? details = null;
-            if (!string.IsNullOrWhiteSpace(detailsJson))
-            {
-                using var document = JsonDocument.Parse(detailsJson);
-                details = document.RootElement.Clone();
-            }
+            NotificationProviders.Discord => BuildDiscordRequest(url, eventCategory, title, message),
+            NotificationProviders.Slack => BuildSlackRequest(url, title, message),
+            NotificationProviders.Telegram => BuildTelegramRequest(config, title, message),
+            NotificationProviders.Pushover => BuildPushoverRequest(config, title, message),
+            NotificationProviders.Ntfy => BuildNtfyRequest(url, config, title, message),
+            NotificationProviders.Gotify => BuildGotifyRequest(url, config, title, message),
+            NotificationProviders.Apprise => BuildAppriseRequest(url, title, message),
+            _ => BuildGenericRequest(url, eventCategory, title, message, detailsJson)
+        };
 
-            payload = new
-            {
-                eventCategory,
-                title,
-                message,
-                details,
-                firedAt = DateTimeOffset.UtcNow
-            };
-        }
-
-        using var response = await client.PostSizedJsonAsync(url, payload, cancellationToken);
+        using var response = await client.SendAsync(request, cancellationToken);
         if (!response.IsSuccessStatusCode)
         {
             throw new HttpRequestException(
@@ -431,6 +428,149 @@ public sealed class OutboundNotificationService(
         }
 
         return (int)response.StatusCode;
+    }
+
+    private static readonly JsonSerializerOptions ConfigJsonOptions = new(JsonSerializerDefaults.Web);
+
+    private static NotificationProviderConfig ParseConfig(string? configJson)
+    {
+        if (string.IsNullOrWhiteSpace(configJson))
+        {
+            return new NotificationProviderConfig();
+        }
+
+        try
+        {
+            return JsonSerializer.Deserialize<NotificationProviderConfig>(configJson, ConfigJsonOptions) ?? new NotificationProviderConfig();
+        }
+        catch (JsonException)
+        {
+            return new NotificationProviderConfig();
+        }
+    }
+
+    private static HttpRequestMessage BuildGenericRequest(
+        string url, string eventCategory, string title, string message, string? detailsJson)
+    {
+        object? details = null;
+        if (!string.IsNullOrWhiteSpace(detailsJson))
+        {
+            using var document = JsonDocument.Parse(detailsJson);
+            details = document.RootElement.Clone();
+        }
+
+        var payload = new
+        {
+            eventCategory,
+            title,
+            message,
+            details,
+            firedAt = DateTimeOffset.UtcNow
+        };
+
+        return new HttpRequestMessage(HttpMethod.Post, url) { Content = SizedJson.Create(payload) };
+    }
+
+    private static HttpRequestMessage BuildDiscordRequest(string url, string eventCategory, string title, string message)
+    {
+        var payload = new
+        {
+            embeds = new[]
+            {
+                new
+                {
+                    title,
+                    description = message,
+                    color = GetDiscordColor(eventCategory),
+                    footer = new { text = $"Deluno • {eventCategory}" },
+                    timestamp = DateTimeOffset.UtcNow.ToString("O")
+                }
+            }
+        };
+
+        return new HttpRequestMessage(HttpMethod.Post, url) { Content = SizedJson.Create(payload) };
+    }
+
+    // https://docs.slack.dev/messaging/sending-messages-using-incoming-webhooks
+    // POST application/json, body { "text": "..." }.
+    private static HttpRequestMessage BuildSlackRequest(string url, string title, string message)
+    {
+        var payload = new { text = $"*{title}*\n{message}" };
+        return new HttpRequestMessage(HttpMethod.Post, url) { Content = SizedJson.Create(payload) };
+    }
+
+    // https://core.telegram.org/bots/api#sendmessage
+    // POST https://api.telegram.org/bot<token>/sendMessage, JSON { chat_id, text }.
+    private static HttpRequestMessage BuildTelegramRequest(NotificationProviderConfig config, string title, string message)
+    {
+        var botToken = config.BotToken?.Trim() ?? string.Empty;
+        var chatId = config.ChatId?.Trim() ?? string.Empty;
+        // The token's colon is part of Telegram's documented bot<token> path
+        // segment, unescaped (https://api.telegram.org/bot<token>/METHOD).
+        var url = $"https://api.telegram.org/bot{botToken}/sendMessage";
+        var payload = new { chat_id = chatId, text = $"{title}\n\n{message}" };
+        return new HttpRequestMessage(HttpMethod.Post, url) { Content = SizedJson.Create(payload) };
+    }
+
+    // https://pushover.net/api
+    // POST https://api.pushover.net/1/messages.json, application/x-www-form-urlencoded.
+    private static HttpRequestMessage BuildPushoverRequest(NotificationProviderConfig config, string title, string message)
+    {
+        var form = new Dictionary<string, string>
+        {
+            ["token"] = config.AppToken?.Trim() ?? string.Empty,
+            ["user"] = config.UserKey?.Trim() ?? string.Empty,
+            ["title"] = title,
+            ["message"] = message
+        };
+
+        return new HttpRequestMessage(HttpMethod.Post, "https://api.pushover.net/1/messages.json")
+        {
+            Content = new FormUrlEncodedContent(form)
+        };
+    }
+
+    // https://docs.ntfy.sh/publish/
+    // POST {server}/{topic}, plain-text body, title via the Title header.
+    private static HttpRequestMessage BuildNtfyRequest(string url, NotificationProviderConfig config, string title, string message)
+    {
+        var request = new HttpRequestMessage(HttpMethod.Post, url)
+        {
+            Content = new StringContent(message, System.Text.Encoding.UTF8, "text/plain")
+        };
+        request.Headers.Add("Title", title);
+        if (!string.IsNullOrWhiteSpace(config.AccessToken))
+        {
+            request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", config.AccessToken.Trim());
+        }
+
+        return request;
+    }
+
+    // https://gotify.net/docs/pushmsg
+    // POST {server}/message, X-Gotify-Key header, JSON { title, message, priority }.
+    private static HttpRequestMessage BuildGotifyRequest(string url, NotificationProviderConfig config, string title, string message)
+    {
+        var baseUrl = url.TrimEnd('/');
+        var payload = new { title, message, priority = 5 };
+        var request = new HttpRequestMessage(HttpMethod.Post, $"{baseUrl}/message")
+        {
+            Content = SizedJson.Create(payload)
+        };
+        if (!string.IsNullOrWhiteSpace(config.AppToken))
+        {
+            request.Headers.Add("X-Gotify-Key", config.AppToken.Trim());
+        }
+
+        return request;
+    }
+
+    // https://github.com/caronc/apprise/wiki/Notify_Custom_JSON
+    // POST application/json, body { title, message } (Apprise's default JSON shape).
+    private static HttpRequestMessage BuildAppriseRequest(string url, string title, string message)
+    {
+        var payload = new { title, message, type = "info" };
+        return new HttpRequestMessage(HttpMethod.Post, url) { Content = SizedJson.Create(payload) };
     }
 
     private static bool IsMatchingEvent(string eventFilters, string eventCategory)

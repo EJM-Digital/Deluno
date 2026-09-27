@@ -91,7 +91,9 @@ public static class NotificationEndpointRouteBuilderExtensions
                 return denied;
             }
 
-            if (string.IsNullOrWhiteSpace(request.Url))
+            var provider = NotificationProviders.Normalize(request.Provider);
+            var needsUrl = provider is not (NotificationProviders.Telegram or NotificationProviders.Pushover);
+            if (needsUrl && string.IsNullOrWhiteSpace(request.Url))
             {
                 return Results.ValidationProblem(new Dictionary<string, string[]>
                 {
