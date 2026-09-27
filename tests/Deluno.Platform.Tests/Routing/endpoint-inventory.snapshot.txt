@@ -25,6 +25,7 @@ DELETE /api/media-servers/{id}/path-mappings/{mappingId}
 DELETE /api/metadata/cache
 DELETE /api/movies/import-recovery/{id}
 DELETE /api/movies/{id}
+DELETE /api/movies/{id}/files
 DELETE /api/movies/{id}/libraries/{libraryId}
 DELETE /api/notification-webhooks/{id}
 DELETE /api/notifications/
@@ -143,6 +144,7 @@ GET /api/movies/wanted
 GET /api/movies/{id}
 GET /api/movies/{id}/acquisition-blockers
 GET /api/movies/{id}/copy
+GET /api/movies/{id}/files
 GET /api/movies/{id}/libraries/
 GET /api/movies/{id}/metadata/issue
 GET /api/movies/{id}/preference-evaluation
@@ -473,6 +475,8 @@ PUT /api/media-servers/{id}
 PUT /api/movie-collections/{id}
 PUT /api/movie-collections/{id}/members/{providerId}/exclusion
 PUT /api/movies/monitoring
+PUT /api/movies/{id}/files/language
+PUT /api/movies/{id}/files/quality
 PUT /api/movies/{id}/libraries/{libraryId}
 PUT /api/movies/{id}/metadata/override
 PUT /api/movies/{id}/replacement-protection

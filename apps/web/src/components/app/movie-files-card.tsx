@@ -1,0 +1,226 @@
+/**
+ * The Files tab/section on the movie detail page (#782) — every file Deluno
+ * can see on disk for this title, not only the one it tracks. A title with a
+ * remux plus a sample previously had no way to see the second file at all.
+ */
+import { useEffect, useState } from "react";
+import { LoaderCircle, Pencil, Trash2 } from "lucide-react";
+import { fetchJson, type MovieFileItem, type SubtitleLanguageOption } from "../../lib/api";
+import { authedFetch } from "../../lib/use-auth";
+import { toast } from "../shell/toaster";
+import { Button } from "../ui/button";
+import { Input } from "../ui/input";
+import { Select } from "../ui/select";
+import {
+  ListCard,
+  ListCell,
+  ListEmpty,
+  ListNameCell,
+  ListRow,
+  ListTable
+} from "../ui/list-card";
+
+function formatBytes(bytes: number | null) {
+  if (bytes === null || bytes === undefined) return "—";
+  const units = ["B", "KB", "MB", "GB", "TB"];
+  let value = bytes;
+  let unit = 0;
+  while (value >= 1024 && unit < units.length - 1) {
+    value /= 1024;
+    unit += 1;
+  }
+  return `${value.toFixed(unit === 0 ? 0 : 1)} ${units[unit]}`;
+}
+
+function kindLabel(kind: MovieFileItem["kind"]) {
+  return kind === "video" ? "Video" : kind === "subtitle" ? "Subtitle" : "Other";
+}
+
+export function MovieFilesCard({ movieId }: { movieId: string }) {
+  const [files, setFiles] = useState<MovieFileItem[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [languageOptions, setLanguageOptions] = useState<SubtitleLanguageOption[]>([]);
+  const [editingPath, setEditingPath] = useState<string | null>(null);
+  const [editDraft, setEditDraft] = useState("");
+  const [confirmingDeletePath, setConfirmingDeletePath] = useState<string | null>(null);
+  const [busyPath, setBusyPath] = useState<string | null>(null);
+  const [reloadVersion, setReloadVersion] = useState(0);
+
+  useEffect(() => {
+    let cancelled = false;
+    setError(null);
+    fetchJson<MovieFileItem[]>(`/api/movies/${movieId}/files`)
+      .then((items) => { if (!cancelled) setFiles(items); })
+      .catch(() => { if (!cancelled) setError("Could not read this title's files from disk."); });
+    return () => { cancelled = true; };
+  }, [movieId, reloadVersion]);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetchJson<SubtitleLanguageOption[]>("/api/subtitle-languages")
+      .then((items) => { if (!cancelled) setLanguageOptions(items); })
+      .catch(() => { /* the language select falls back to a bare text field below */ });
+    return () => { cancelled = true; };
+  }, []);
+
+  function reload() {
+    setReloadVersion((current) => current + 1);
+  }
+
+  function startEdit(item: MovieFileItem) {
+    setConfirmingDeletePath(null);
+    setEditingPath(item.path);
+    setEditDraft(item.kind === "video" ? item.quality ?? "" : item.language ?? "");
+  }
+
+  async function saveEdit(item: MovieFileItem) {
+    setBusyPath(item.path);
+    try {
+      if (item.kind === "video") {
+        const response = await authedFetch(`/api/movies/${movieId}/files/quality`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ quality: editDraft })
+        });
+        if (!response.ok) throw new Error("quality-failed");
+        toast.success("Quality updated.");
+      } else {
+        const response = await authedFetch(`/api/movies/${movieId}/files/language`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ path: item.path, language: editDraft, hearingImpaired: Boolean(item.hearingImpaired) })
+        });
+        if (!response.ok) throw new Error("language-failed");
+        toast.success("Language updated.");
+      }
+      setEditingPath(null);
+      reload();
+    } catch {
+      toast.error(item.kind === "video" ? "Could not update the quality." : "Could not update the language.");
+    } finally {
+      setBusyPath(null);
+    }
+  }
+
+  async function confirmDelete(item: MovieFileItem) {
+    setBusyPath(item.path);
+    try {
+      const response = await authedFetch(`/api/movies/${movieId}/files`, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ path: item.path })
+      });
+      if (!response.ok) throw new Error("delete-failed");
+      toast.success(item.isPrimary ? "File deleted. This title now shows as missing." : "File deleted.");
+      setConfirmingDeletePath(null);
+      reload();
+    } catch {
+      toast.error("Could not delete this file.");
+    } finally {
+      setBusyPath(null);
+    }
+  }
+
+  const count = files ? `${files.length} file${files.length === 1 ? "" : "s"}` : undefined;
+
+  return (
+    <ListCard title="Files" count={count}>
+      {error ? (
+        <ListEmpty title="Could not load files" description={error} />
+      ) : files === null ? (
+        <div className="flex items-center gap-2 px-[var(--card-pad-x)] py-6 text-sm text-muted-foreground">
+          <LoaderCircle className="h-4 w-4 animate-spin" /> Reading files from disk…
+        </div>
+      ) : files.length === 0 ? (
+        <ListEmpty title="No files on disk" description="This title has no tracked file and nothing else was found in its folder." />
+      ) : (
+        <ListTable
+          chevron={false}
+          columns={[
+            { label: "File" },
+            { label: "Kind", mobile: true },
+            { label: "Size" },
+            { label: "Quality / language", mobile: true },
+            { label: "Media info" },
+            { label: "Actions", width: "220px" }
+          ]}
+        >
+          {files.map((item) => {
+            const editing = editingPath === item.path;
+            const canEdit = item.kind === "video" || item.kind === "subtitle";
+            const fileName = item.path.split(/[\\/]/).pop() ?? item.path;
+            return (
+              <ListRow key={item.path}>
+                <ListNameCell name={fileName} sub={item.isPrimary ? "Tracked file" : undefined} />
+                <ListCell primary={kindLabel(item.kind)} mobile />
+                <ListCell primary={formatBytes(item.sizeBytes)} />
+                <ListCell mobile>
+                  {editing ? (
+                    item.kind === "video" ? (
+                      <Input
+                        aria-label="Quality"
+                        value={editDraft}
+                        onChange={(event) => setEditDraft(event.target.value)}
+                        placeholder="e.g. WEB 1080p"
+                        className="h-8"
+                      />
+                    ) : (
+                      <Select aria-label="Language" value={editDraft} onChange={(event) => setEditDraft(event.target.value)} className="h-8">
+                        <option value="">Choose a language</option>
+                        {languageOptions.map((language) => <option key={language.code} value={language.code}>{language.name}</option>)}
+                      </Select>
+                    )
+                  ) : (
+                    item.kind === "video" ? (item.quality ?? "Unknown") : (item.language ?? "Unknown")
+                  )}
+                </ListCell>
+                <ListCell primary={[item.videoCodec, item.audioCodec].filter(Boolean).join(" · ") || "—"} />
+                <ListCell>
+                  <div className="flex items-center justify-end gap-1.5">
+                    {editing ? (
+                      <>
+                        <Button type="button" size="sm" onClick={() => void saveEdit(item)} disabled={busyPath === item.path}>
+                          {busyPath === item.path ? <LoaderCircle className="h-3.5 w-3.5 animate-spin" /> : "Save"}
+                        </Button>
+                        <Button type="button" size="sm" variant="ghost" onClick={() => setEditingPath(null)} disabled={busyPath === item.path}>
+                          Cancel
+                        </Button>
+                      </>
+                    ) : confirmingDeletePath === item.path ? (
+                      <>
+                        <Button type="button" size="sm" variant="destructive" onClick={() => void confirmDelete(item)} disabled={busyPath === item.path}>
+                          {busyPath === item.path ? <LoaderCircle className="h-3.5 w-3.5 animate-spin" /> : "Confirm delete"}
+                        </Button>
+                        <Button type="button" size="sm" variant="ghost" onClick={() => setConfirmingDeletePath(null)} disabled={busyPath === item.path}>
+                          Cancel
+                        </Button>
+                      </>
+                    ) : (
+                      <>
+                        {canEdit ? (
+                          <Button type="button" size="sm" variant="ghost" aria-label={`Edit ${fileName}`} onClick={() => startEdit(item)}>
+                            <Pencil className="h-3.5 w-3.5" />
+                          </Button>
+                        ) : null}
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="ghost"
+                          className="text-destructive hover:bg-destructive/10 hover:text-destructive"
+                          aria-label={`Delete ${fileName}`}
+                          onClick={() => { setEditingPath(null); setConfirmingDeletePath(item.path); }}
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
+                      </>
+                    )}
+                  </div>
+                </ListCell>
+              </ListRow>
+            );
+          })}
+        </ListTable>
+      )}
+    </ListCard>
+  );
+}

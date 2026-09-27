@@ -131,6 +131,23 @@ export interface MovieWantedSummary {
   recentItems: MovieWantedItem[];
 }
 
+/**
+ * One file on disk for a movie (#782) - the tracked video, a subtitle
+ * sidecar, or anything else in the title's folder. `GET /api/movies/{id}/files`.
+ */
+export interface MovieFileItem {
+  path: string;
+  sizeBytes: number | null;
+  kind: "video" | "subtitle" | "other";
+  isPrimary: boolean;
+  quality: string | null;
+  videoCodec: string | null;
+  audioCodec: string | null;
+  audioChannels: string | null;
+  language: string | null;
+  hearingImpaired: boolean | null;
+}
+
 export interface MovieSearchHistoryItem {
   id: string;
   movieId: string;

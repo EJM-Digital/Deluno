@@ -361,6 +361,19 @@ public interface IMovieCatalogRepository : IMovieImportRecoveryRetentionReposito
     Task<string?> GetQualityProfileIdAsync(string movieId, CancellationToken cancellationToken);
 
     /// <summary>
+    /// A per-file edit action on the movie's tracked (primary) file (#782) -
+    /// there was previously no way to correct the detected quality by hand.
+    /// </summary>
+    Task<bool> UpdateCurrentQualityOverrideAsync(string movieId, string quality, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// A per-file delete action removed the movie's tracked file from disk
+    /// (#782). Matched by <paramref name="filePath"/> so a row that changed
+    /// since it was read is never cleared by mistake.
+    /// </summary>
+    Task<bool> ClearFileAsync(string movieId, string filePath, CancellationToken cancellationToken);
+
+    /// <summary>
     /// Records a file's new on-disk location after the caller has physically
     /// renamed or moved it - matched by <paramref name="previousFilePath"/>
     /// rather than movie id alone, so a stale or already-changed row is never
