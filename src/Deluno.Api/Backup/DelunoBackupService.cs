@@ -587,7 +587,7 @@ public sealed class DelunoBackupService(
     }
 
     private static string GetVersion()
-        => Assembly.GetEntryAssembly()?.GetName().Version?.ToString() ?? "0.0.0";
+        => DelunoVersion.Running;
 
     private async Task RecordScheduledPassOutcomeAsync(
         DateTimeOffset startedUtc,
