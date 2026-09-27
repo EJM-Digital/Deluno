@@ -278,6 +278,8 @@ public static class SearchEndpointRouteBuilderExtensions
                 MinimumSeeders: request.MinimumSeeders,
                 IndexerFlags: request.IndexerFlags,
                 PreferIndexerFlags: request.PreferIndexerFlags,
+                RequiredWords: request.RequiredWords,
+                IgnoredWords: request.IgnoredWords,
                 AvailableUtc: request.AvailableUtc,
                 AvailabilityDelayDays: request.AvailabilityDelayDays));
 
@@ -637,6 +639,8 @@ file sealed record ReleaseExplainRequest(
     int? MinimumSeeders = null,
     string? IndexerFlags = null,
     string? PreferIndexerFlags = null,
+    string? RequiredWords = null,
+    string? IgnoredWords = null,
     DateTimeOffset? AvailableUtc = null,
     int? AvailabilityDelayDays = null);
 

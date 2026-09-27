@@ -91,6 +91,20 @@ public sealed record IndexerItem(
 
     public string? PreferIndexerFlags { get; init; }
 
+    /// <summary>
+    /// Comma-separated words a release's title must contain (case-insensitive)
+    /// to be grabbed from this indexer; null or empty means no requirement
+    /// (#744). Separate from <see cref="PreferIndexerFlags"/>, which only
+    /// nudges ranking and never rejects a release.
+    /// </summary>
+    public string? RequiredWords { get; init; }
+
+    /// <summary>
+    /// Comma-separated words that reject a release from this indexer
+    /// (case-insensitive) before it can be grabbed (#744).
+    /// </summary>
+    public string? IgnoredWords { get; init; }
+
     public int? AvailabilityDelayDays { get; init; }
 
     public bool RssEnabled { get; init; } = true;

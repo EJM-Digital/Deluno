@@ -99,6 +99,8 @@ public sealed class IndexerPersistenceTests
                 MaximumSizeMb = 20_000,
                 MinimumSeeders = 5,
                 PreferIndexerFlags = "freeleech",
+                RequiredWords = "remux",
+                IgnoredWords = "cam, korsub",
                 AvailabilityDelayDays = 2,
                 RssEnabled = false,
                 AutomaticSearchEnabled = false,
@@ -112,6 +114,8 @@ public sealed class IndexerPersistenceTests
         Assert.Equal(20_000, persisted.MaximumSizeMb);
         Assert.Equal(5, persisted.MinimumSeeders);
         Assert.Equal("freeleech", persisted.PreferIndexerFlags);
+        Assert.Equal("remux", persisted.RequiredWords);
+        Assert.Equal("cam, korsub", persisted.IgnoredWords);
         Assert.Equal(2, persisted.AvailabilityDelayDays);
         Assert.False(persisted.RssEnabled);
         Assert.False(persisted.AutomaticSearchEnabled);
@@ -137,6 +141,8 @@ public sealed class IndexerPersistenceTests
                 MaximumSizeMb: 20_000,
                 MinimumSeeders: 5,
                 PreferIndexerFlags: "double-upload",
+                RequiredWords: "remux",
+                IgnoredWords: "cam",
                 AvailabilityDelayDays: 3,
                 RssEnabled: false,
                 AutomaticSearchEnabled: false,
@@ -149,6 +155,8 @@ public sealed class IndexerPersistenceTests
         Assert.Equal(20_000, updated.MaximumSizeMb);
         Assert.Equal(5, updated.MinimumSeeders);
         Assert.Equal("double-upload", updated.PreferIndexerFlags);
+        Assert.Equal("remux", updated.RequiredWords);
+        Assert.Equal("cam", updated.IgnoredWords);
         Assert.Equal(3, updated.AvailabilityDelayDays);
         Assert.False(updated.RssEnabled);
         Assert.False(updated.AutomaticSearchEnabled);
@@ -162,6 +170,8 @@ public sealed class IndexerPersistenceTests
                 ClearMaximumSize: true,
                 ClearMinimumSeeders: true,
                 ClearPreferIndexerFlags: true,
+                ClearRequiredWords: true,
+                ClearIgnoredWords: true,
                 ClearAvailabilityDelay: true),
             CancellationToken.None);
 
@@ -171,6 +181,8 @@ public sealed class IndexerPersistenceTests
         Assert.Null(cleared.MaximumSizeMb);
         Assert.Null(cleared.MinimumSeeders);
         Assert.Null(cleared.PreferIndexerFlags);
+        Assert.Null(cleared.RequiredWords);
+        Assert.Null(cleared.IgnoredWords);
         Assert.Null(cleared.AvailabilityDelayDays);
         Assert.False(cleared.RssEnabled);
         Assert.False(cleared.AutomaticSearchEnabled);

@@ -220,6 +220,14 @@ export function IndexerDrawerBody({
             />
             <Input className="mt-1.5" value={form.preferIndexerFlags} onChange={(event) => { clearError("preferIndexerFlags"); setForm((current) => ({ ...current, preferIndexerFlags: event.target.value })); }} placeholder="freeleech, double-upload" />
           </Field>
+          <FieldRow>
+            <Field label="Required words" error={errors.requiredWords} help="Reject a release from this indexer unless its title contains every word here.">
+              <Input value={form.requiredWords} onChange={(event) => { clearError("requiredWords"); setForm((current) => ({ ...current, requiredWords: event.target.value })); }} placeholder="e.g. remux, bluray" />
+            </Field>
+            <Field label="Ignored words" error={errors.ignoredWords} help="Reject a release from this indexer if its title contains any word here.">
+              <Input value={form.ignoredWords} onChange={(event) => { clearError("ignoredWords"); setForm((current) => ({ ...current, ignoredWords: event.target.value })); }} placeholder="e.g. cam, korsub" />
+            </Field>
+          </FieldRow>
           <p className="text-[length:var(--type-caption)] text-muted-foreground">The timing rules hold or reject a candidate; they do not alter the indexer's results.</p>
         </Disclosure>
         <div className="flex flex-col gap-2">

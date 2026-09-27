@@ -72,6 +72,28 @@ describe("indexer save payload minimum seeders (#738)", () => {
   });
 });
 
+// #744: required/ignored word lists round-trip the same clear-flag way as
+// the other acquisition limits.
+describe("indexer save payload required/ignored words (#744)", () => {
+  it("sends typed required and ignored words", () => {
+    const form = { ...emptyIndexerForm(), name: "NZBGeek", baseUrl: "https://api.nzbgeek.info", requiredWords: "remux", ignoredWords: "cam, korsub" };
+    const payload = buildIndexerSavePayload(form, form, true, "");
+    expect(payload.requiredWords).toBe("remux");
+    expect(payload.ignoredWords).toBe("cam, korsub");
+    expect(payload.clearRequiredWords).toBe(false);
+    expect(payload.clearIgnoredWords).toBe(false);
+  });
+
+  it("clears required and ignored words on an edit when emptied", () => {
+    const form = { ...emptyIndexerForm(), name: "NZBGeek", baseUrl: "https://api.nzbgeek.info" };
+    const payload = buildIndexerSavePayload(form, form, true, "");
+    expect(payload.requiredWords).toBeNull();
+    expect(payload.ignoredWords).toBeNull();
+    expect(payload.clearRequiredWords).toBe(true);
+    expect(payload.clearIgnoredWords).toBe(true);
+  });
+});
+
 /**
  * #807 — Priority existed in the API contract and server-side ordering but the
  * drawer never rendered it, so create/edit always sent a hard-coded fallback

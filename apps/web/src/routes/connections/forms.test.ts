@@ -110,6 +110,16 @@ describe("client form Use SSL and URL Base", () => {
     expect(Object.keys(indexerFormErrors({ ...base, minimumSeeders: "-1" }, false)))
       .toEqual(["minimumSeeders"]);
   });
+
+  // #744: required/ignored word lists reject by keyword, separate from the
+  // ranking-only preferIndexerFlags field.
+  it("refuses a required or ignored word list over 500 characters", () => {
+    const base = { ...emptyIndexerForm(), name: "NZBGeek", baseUrl: "https://api.nzbgeek.info" };
+    const long = "a".repeat(501);
+    expect(indexerFormErrors({ ...base, requiredWords: "remux" }, false)).toEqual({});
+    expect(Object.keys(indexerFormErrors({ ...base, requiredWords: long }, false))).toEqual(["requiredWords"]);
+    expect(Object.keys(indexerFormErrors({ ...base, ignoredWords: long }, false))).toEqual(["ignoredWords"]);
+  });
 });
 
 // #606: a built-in tracker is chosen from Deluno's list, not typed as a URL.
