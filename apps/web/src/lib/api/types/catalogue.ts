@@ -79,6 +79,14 @@ export interface MovieListItem {
    * it, because the grid has never needed to show it.
    */
   qualityProfileId?: string | null;
+  /**
+   * This movie's own subtitle-language override (#843), replacing the
+   * library's Languages/Mode for this title only. Null means unset — this
+   * movie follows its library exactly as before. Only populated by
+   * `GET /api/movies/{id}`, the same precedent `qualityProfileId` set.
+   */
+  subtitleLanguagesOverride?: string[] | null;
+  subtitleModeOverride?: "all" | "first" | string | null;
 }
 
 export interface MovieImportRecoveryCase {
@@ -292,6 +300,13 @@ export interface SeriesListItem {
    * before this preset existed.
    */
   monitorNewEpisodes?: boolean;
+  /**
+   * This show's own subtitle-language override (#843), belonging to the show
+   * rather than to any one episode. Null means unset. Only populated by
+   * `GET /api/series/{id}`.
+   */
+  subtitleLanguagesOverride?: string[] | null;
+  subtitleModeOverride?: "all" | "first" | string | null;
 }
 
 export interface CatalogueFacets {
