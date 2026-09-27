@@ -238,6 +238,9 @@ public sealed class SqliteSeriesCatalogRepository(
             var sharedNumbering = entry is null
                 ? DefaultNumberingHeader
                 : await GetNumberingHeaderAsync(id, cancellationToken);
+            var monitorNewEpisodes = entry is null
+                ? true
+                : await GetMonitorNewEpisodesAsync(id, cancellationToken);
             return entry is null
                 ? null
                 : new SeriesListItem(
@@ -281,7 +284,8 @@ public sealed class SqliteSeriesCatalogRepository(
                     RuntimeMinutes: entry.RuntimeMinutes,
                     SeriesType: sharedNumbering.SeriesType,
                     NumberingScheme: sharedNumbering.NumberingScheme,
-                    NumberingSource: sharedNumbering.NumberingSource);
+                    NumberingSource: sharedNumbering.NumberingSource,
+                    MonitorNewEpisodes: monitorNewEpisodes);
         }
 
         await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
@@ -346,6 +350,7 @@ public sealed class SqliteSeriesCatalogRepository(
         // metadata numbers, and the search state follows.
         var singleWanted = CatalogueWantedState.Read(reader, 29);
         var numbering = ReadNumberingHeader(reader, 29 + CatalogueWantedState.PageColumnCount);
+        var monitorNewEpisodesPreset = await GetMonitorNewEpisodesAsync(id, cancellationToken);
 
         return ReadSeries(reader) with
         {
@@ -372,7 +377,8 @@ public sealed class SqliteSeriesCatalogRepository(
                 reader.IsDBNull(26) ? null : (int)reader.GetInt64(26)),
             SeriesType = numbering.SeriesType,
             NumberingScheme = numbering.NumberingScheme,
-            NumberingSource = numbering.NumberingSource
+            NumberingSource = numbering.NumberingSource,
+            MonitorNewEpisodes = monitorNewEpisodesPreset
         };
     }
 
@@ -4423,6 +4429,44 @@ public sealed class SqliteSeriesCatalogRepository(
             : DefaultNumberingHeader;
     }
 
+    /// <summary>
+    /// The series' own "monitor new episodes" preset (#801), for display and
+    /// editing - the read half of <see cref="ShouldMonitorNewEpisodesAsync"/>,
+    /// opening its own connection rather than sharing a sync's transaction.
+    /// </summary>
+    private async Task<bool> GetMonitorNewEpisodesAsync(string seriesId, CancellationToken cancellationToken)
+    {
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Series,
+            cancellationToken);
+
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT monitor_new_episodes FROM series_entries WHERE id = @seriesId LIMIT 1;";
+        AddParameter(command, "@seriesId", seriesId);
+        var result = await command.ExecuteScalarAsync(cancellationToken);
+        return result is not long value || value == 1;
+    }
+
+    /// <summary>
+    /// Changes the series' "monitor new episodes" preset (#801) at any time,
+    /// not only at series add time - the series screen/drawer's own control.
+    /// </summary>
+    public async Task<bool> UpdateMonitorNewEpisodesAsync(
+        string seriesId,
+        bool monitorNewEpisodes,
+        CancellationToken cancellationToken)
+    {
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Series,
+            cancellationToken);
+
+        using var command = connection.CreateCommand();
+        command.CommandText = "UPDATE series_entries SET monitor_new_episodes = @value WHERE id = @seriesId;";
+        AddParameter(command, "@value", monitorNewEpisodes ? 1 : 0);
+        AddParameter(command, "@seriesId", seriesId);
+        return await command.ExecuteNonQueryAsync(cancellationToken) > 0;
+    }
+
     private static DateOnly? ParseAirDateKey(string? value)
         => DateOnly.TryParseExact(
             value,
@@ -4527,6 +4571,10 @@ public sealed class SqliteSeriesCatalogRepository(
         // sync rather than once per episode; the series' own flag does not
         // change mid-transaction.
         var seriesMonitored = await IsSeriesMonitoredAsync(connection, transaction, seriesId, cancellationToken);
+        // #801: a series can ask that episodes it discovers on a refresh come
+        // out unmonitored, independently of the series itself being monitored.
+        // Read once per sync for the same reason seriesMonitored is.
+        var monitorNewEpisodes = await ShouldMonitorNewEpisodesAsync(connection, transaction, seriesId, cancellationToken);
 
         foreach (var seasonNumber in episodes.Select(item => item.SeasonNumber).Distinct().OrderBy(item => item))
         {
@@ -4584,7 +4632,7 @@ public sealed class SqliteSeriesCatalogRepository(
                 // episodes are never wanted until the series itself is
                 // monitored again (#653). Only the default differs — the
                 // per-episode switch still governs from here on.
-                AddParameter(upsert, "@monitored", episode.SeasonNumber == 0 || !seriesMonitored ? 0 : 1);
+                AddParameter(upsert, "@monitored", episode.SeasonNumber == 0 || !seriesMonitored || !monitorNewEpisodes ? 0 : 1);
                 AddParameter(upsert, "@title", NormalizeText(episode.Title));
                 AddParameter(upsert, "@overview", NormalizeText(episode.Overview));
                 AddParameter(upsert, "@airDateUtc", episode.AirDateUtc?.ToString("O"));
@@ -4920,6 +4968,27 @@ public sealed class SqliteSeriesCatalogRepository(
         AddParameter(command, "@seriesId", seriesId);
         var result = await command.ExecuteScalarAsync(cancellationToken);
         return result is long value && value == 1;
+    }
+
+    /// <summary>
+    /// The series' own "monitor new episodes" preset (#801) - whether an
+    /// episode this refresh discovers for the first time should come out
+    /// monitored. A missing series defaults to on, the same conservative
+    /// direction as the column's own migration default: before this preset
+    /// existed, a newly discovered episode was always monitored.
+    /// </summary>
+    private static async Task<bool> ShouldMonitorNewEpisodesAsync(
+        System.Data.Common.DbConnection connection,
+        System.Data.Common.DbTransaction transaction,
+        string seriesId,
+        CancellationToken cancellationToken)
+    {
+        using var command = connection.CreateCommand();
+        command.Transaction = transaction;
+        command.CommandText = "SELECT monitor_new_episodes FROM series_entries WHERE id = @seriesId LIMIT 1;";
+        AddParameter(command, "@seriesId", seriesId);
+        var result = await command.ExecuteScalarAsync(cancellationToken);
+        return result is not long value || value == 1;
     }
 
     private static async Task<string> EnsureSeasonAsync(

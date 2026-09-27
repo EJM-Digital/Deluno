@@ -423,6 +423,13 @@ public interface ISeriesCatalogRepository : ISeriesImportRecoveryRetentionReposi
     /// <summary>Update quality profile for a series</summary>
     Task<bool> UpdateQualityProfileAsync(string seriesId, string qualityProfileId, CancellationToken cancellationToken);
 
+    /// <summary>
+    /// Changes the series' "monitor new episodes" preset (#801) - whether an
+    /// episode this series discovers on a future refresh comes out monitored.
+    /// Can be changed at any time, not only at series add time.
+    /// </summary>
+    Task<bool> UpdateMonitorNewEpisodesAsync(string seriesId, bool monitorNewEpisodes, CancellationToken cancellationToken);
+
     /// <summary>Reassign wanted-state library mapping for a batch of series.</summary>
     Task<int> ReassignLibraryAsync(
         IReadOnlyList<string> seriesIds,

@@ -119,4 +119,11 @@ public sealed record SeriesListItem(
     /// <summary>The TV numbering model selected for this series.</summary>
     string SeriesType = SeriesTypes.Standard,
     string NumberingScheme = SeriesNumberingSchemes.Standard,
-    string? NumberingSource = null);
+    string? NumberingSource = null,
+    /// <summary>
+    /// Whether an episode this show discovers on a refresh - one TMDb has
+    /// not told Deluno about before - comes out monitored (#801). Defaults
+    /// to on, matching how every series behaved before this preset existed:
+    /// a newly discovered episode was always monitored.
+    /// </summary>
+    bool MonitorNewEpisodes = true);

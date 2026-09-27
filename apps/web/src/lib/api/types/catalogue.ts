@@ -263,6 +263,12 @@ export interface SeriesListItem {
   seriesType?: "standard" | "daily" | "anime" | string;
   numberingScheme?: "standard" | "airdate" | "absolute" | "scene" | string;
   numberingSource?: "provider" | "owner" | string | null;
+  /**
+   * Whether an episode this show discovers on a future refresh comes out
+   * monitored (#801). Defaults to `true`, matching how every series behaved
+   * before this preset existed.
+   */
+  monitorNewEpisodes?: boolean;
 }
 
 export interface CatalogueFacets {
