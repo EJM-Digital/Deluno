@@ -2,6 +2,7 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using Deluno.Connections.Contracts;
 using Deluno.Connections.Data;
+using Deluno.Integrations.DownloadClients;
 using Deluno.Persistence.Tests.Support;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
@@ -9,6 +10,7 @@ using Microsoft.AspNetCore.Hosting.Server;
 using Microsoft.AspNetCore.Hosting.Server.Features;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 
 namespace Deluno.Persistence.Tests.Api;
 
@@ -76,7 +78,6 @@ public sealed class ManualSearchEndpointTests
         {
             releaseName = "Example.Release.WEB.1080p",
             downloadUrl = (string?)null,
-            downloadClientId = "client-1",
             searchType = "movie"
         });
 
@@ -84,7 +85,7 @@ public sealed class ManualSearchEndpointTests
     }
 
     [Fact]
-    public async Task Grabbing_without_a_chosen_download_client_is_refused()
+    public async Task Grabbing_with_no_movie_library_at_all_is_refused()
     {
         await using var app = await ApplicationTestHost.StartAsync();
 
@@ -92,11 +93,104 @@ public sealed class ManualSearchEndpointTests
         {
             releaseName = "Example.Release.WEB.1080p",
             downloadUrl = "https://fixture.invalid/x.torrent",
-            downloadClientId = "",
             searchType = "movie"
         });
 
+        var body = await response.Content.ReadAsStringAsync();
         Assert.Equal(System.Net.HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Contains("Add a movie library", body);
+    }
+
+    [Fact]
+    public async Task Grabbing_routes_through_a_movie_librarys_own_routed_client_without_the_person_picking_one()
+    {
+        var grabService = new FakeGrabService();
+        await using var app = await ApplicationTestHost.StartAsync(replaceServices: services =>
+        {
+            services.RemoveAll<IDownloadClientGrabService>();
+            services.AddSingleton<IDownloadClientGrabService>(grabService);
+        });
+
+        var libraryRoot = Directory.CreateDirectory(Path.Combine(app.DataRoot, "Films")).FullName;
+        var created = await app.Client.PostAsJsonAsync("/api/libraries", new
+        {
+            name = "Films",
+            mediaType = "movies",
+            rootPath = libraryRoot
+        });
+        Assert.True(created.IsSuccessStatusCode, await created.Content.ReadAsStringAsync());
+        var libraryId = (await created.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("id").GetString()!;
+
+        var client = await app.Services.GetRequiredService<IConnectionsRepository>().CreateDownloadClientAsync(
+            new CreateDownloadClientRequest("Fake", "qbittorrent", "localhost", 1234, null, null, null, "movies", "tv", null, 1, true),
+            CancellationToken.None);
+        var routed = await app.Client.PutAsJsonAsync($"/api/libraries/{libraryId}/routing", new
+        {
+            sources = Array.Empty<object>(),
+            downloadClients = new[] { new { downloadClientId = client.Id, priority = 1, category = (string?)null } }
+        });
+        Assert.True(routed.IsSuccessStatusCode, await routed.Content.ReadAsStringAsync());
+
+        var response = await app.Client.PostAsJsonAsync("/api/search/grab", new
+        {
+            releaseName = "Example.Release.WEB.1080p",
+            downloadUrl = "https://fixture.invalid/x.torrent",
+            searchType = "movie"
+        });
+
+        var raw = await response.Content.ReadAsStringAsync();
+        Assert.True(response.IsSuccessStatusCode, raw);
+        var body = JsonSerializer.Deserialize<JsonElement>(raw);
+        Assert.Equal("Fake", body.GetProperty("downloadClientName").GetString());
+        Assert.Equal(client.Id, grabService.LastClientId);
+        Assert.True(body.GetProperty("succeeded").GetBoolean());
+    }
+
+    [Fact]
+    public async Task The_category_list_names_movies_and_tv()
+    {
+        await using var app = await ApplicationTestHost.StartAsync();
+
+        var response = await app.Client.GetAsync("/api/search/categories");
+        Assert.True(response.IsSuccessStatusCode, await response.Content.ReadAsStringAsync());
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        var labels = body.EnumerateArray().Select(item => item.GetProperty("label").GetString()).ToArray();
+
+        Assert.Contains("Movies", labels);
+        Assert.Contains("TV", labels);
+    }
+
+    [Fact]
+    public async Task A_basic_search_asks_both_the_movie_and_tv_engines()
+    {
+        await using var server = await TorznabServerAsync();
+        await using var app = await ApplicationTestHost.StartAsync();
+        var indexer = await app.Services.GetRequiredService<IConnectionsRepository>().CreateIndexerAsync(
+            new CreateIndexerRequest("Fixture torznab", "torznab", "public", server.BaseUrl, "fixture-key", 10, "2000,5000", "", "both", true),
+            CancellationToken.None);
+
+        var response = await app.Client.PostAsJsonAsync("/api/search", new { query = "Example", searchType = "basic", indexerIds = new[] { indexer.Id } });
+        var raw = await response.Content.ReadAsStringAsync();
+        Assert.True(response.IsSuccessStatusCode, raw);
+        var body = JsonSerializer.Deserialize<JsonElement>(raw);
+
+        var candidatesArray = body.GetProperty("candidates").EnumerateArray().ToArray();
+        // The fixture indexer answers every query the same way, so a basic
+        // search that asks both engines gets one hit back from each.
+        Assert.Equal(2, candidatesArray.Length);
+        var searchTypes = candidatesArray.Select(item => item.GetProperty("searchType").GetString()).OrderBy(x => x).ToArray();
+        Assert.Equal(new[] { "movies", "tv" }, searchTypes);
+    }
+
+    private sealed class FakeGrabService : IDownloadClientGrabService
+    {
+        public string? LastClientId { get; private set; }
+
+        public Task<DownloadClientGrabResult> GrabAsync(string clientId, DownloadClientGrabRequest request, CancellationToken cancellationToken)
+        {
+            LastClientId = clientId;
+            return Task.FromResult(new DownloadClientGrabResult(clientId, request.ReleaseName, true, "sent", "Sent to the fake client."));
+        }
     }
 
     private sealed class FakeServer(WebApplication app, string baseUrl) : IAsyncDisposable

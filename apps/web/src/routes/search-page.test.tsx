@@ -6,8 +6,8 @@ import { authedFetch } from "../lib/use-auth";
 /**
  * #753: the dedicated multi-indexer manual Search page -- a free-text query
  * fanned out to every enabled indexer, with a combined, sortable results
- * table and a grab flow that sends a hand-picked release straight to a
- * chosen download client.
+ * table and a grab flow that routes the release straight through the same
+ * resolver a per-title grab uses (no download-client picker here).
  */
 
 vi.mock("../lib/use-auth", () => ({ authedFetch: vi.fn() }));
@@ -20,7 +20,12 @@ const indexers = [
   { id: "idx-1", name: "EZTV", protocol: "torznab", privacy: "public", baseUrl: "https://fixture.invalid", priority: 1, categories: "2000", tags: "", isEnabled: true, healthStatus: "healthy", mediaScope: "movies" }
 ];
 
-const downloadClients = [{ id: "client-1", name: "qBittorrent", protocol: "qbittorrent" }];
+const categories = [
+  { value: 2000, label: "Movies" },
+  { value: 2040, label: "Movies/HD" },
+  { value: 5000, label: "TV" },
+  { value: 5040, label: "TV/HD" }
+];
 
 const searchResult = {
   candidates: [
@@ -46,16 +51,16 @@ function mockFetch() {
   vi.mocked(authedFetch).mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = typeof input === "string" ? input : input.toString();
     if (url.includes("/api/search/grab")) {
-      return new Response(JSON.stringify({ succeeded: true, status: "sent", message: "Sent" }), { status: 200 });
+      return new Response(JSON.stringify({ succeeded: true, status: "sent", message: "Sent", downloadClientName: "qBittorrent" }), { status: 200 });
+    }
+    if (url.includes("/api/search/categories")) {
+      return new Response(JSON.stringify(categories), { status: 200 });
     }
     if (url.includes("/api/search")) {
       return new Response(JSON.stringify(searchResult), { status: 200 });
     }
     if (url.includes("/api/indexers")) {
       return new Response(JSON.stringify(indexers), { status: 200 });
-    }
-    if (url.includes("/api/download-clients")) {
-      return new Response(JSON.stringify(downloadClients), { status: 200 });
     }
     return new Response(JSON.stringify({}), { status: 200 });
   });
@@ -88,6 +93,15 @@ describe("multi-indexer manual Search page (#753)", () => {
     ));
   });
 
+  it("offers a basic search type alongside movie and TV", async () => {
+    mockFetch();
+    renderPage();
+
+    expect(screen.getByRole("radio", { name: "Movie" })).toBeTruthy();
+    expect(screen.getByRole("radio", { name: "TV" })).toBeTruthy();
+    expect(screen.getByRole("radio", { name: "Basic" })).toBeTruthy();
+  });
+
   it("searches and shows enriched result columns", async () => {
     mockFetch();
     renderPage();
@@ -99,12 +113,29 @@ describe("multi-indexer manual Search page (#753)", () => {
     expect(screen.getByText("Torrent")).toBeTruthy();
     expect(screen.getByText("12 / 3")).toBeTruthy();
 
-    const searchCall = vi.mocked(authedFetch).mock.calls.find(([url]) => (url as string).includes("/api/search") && !(url as string).includes("grab"));
+    const searchCall = vi.mocked(authedFetch).mock.calls.find(([url]) => (url as string) === "/api/search");
     expect(searchCall).toBeTruthy();
     expect(JSON.parse((searchCall![1] as RequestInit).body as string)).toMatchObject({ query: "Example", searchType: "movie" });
   });
 
-  it("grabs a result by picking a download client", async () => {
+  it("lets categories relevant to the chosen type be picked and sends them with the search", async () => {
+    mockFetch();
+    renderPage();
+
+    await waitFor(() => expect(screen.getByText("Movies/HD")).toBeTruthy());
+    // TV categories are not relevant to a movie search.
+    expect(screen.queryByText("TV/HD")).toBeNull();
+
+    fireEvent.click(screen.getByRole("checkbox", { name: "Movies/HD" }));
+    fireEvent.change(screen.getByPlaceholderText("Search for a release…"), { target: { value: "Example" } });
+    fireEvent.click(screen.getByRole("button", { name: /^Search$/ }));
+
+    await waitFor(() => expect(screen.getByText("Example.Release.WEB.1080p")).toBeTruthy());
+    const searchCall = vi.mocked(authedFetch).mock.calls.find(([url]) => (url as string) === "/api/search");
+    expect(JSON.parse((searchCall![1] as RequestInit).body as string)).toMatchObject({ categoryIds: [2040] });
+  });
+
+  it("grabs a result without asking which download client to use", async () => {
     mockFetch();
     renderPage();
 
@@ -113,8 +144,8 @@ describe("multi-indexer manual Search page (#753)", () => {
     await waitFor(() => expect(screen.getByText("Example.Release.WEB.1080p")).toBeTruthy());
 
     fireEvent.click(screen.getByRole("button", { name: "Grab" }));
-    await waitFor(() => expect(screen.getByRole("combobox", { name: "Download client" })).toBeTruthy());
-    fireEvent.change(screen.getByRole("combobox", { name: "Download client" }), { target: { value: "client-1" } });
+    await waitFor(() => expect(screen.getByRole("button", { name: "Send to download client" })).toBeTruthy());
+    expect(screen.queryByRole("combobox", { name: "Download client" })).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Send to download client" }));
 
     await waitFor(() => expect(authedFetch).toHaveBeenCalledWith(
@@ -122,6 +153,8 @@ describe("multi-indexer manual Search page (#753)", () => {
       expect.objectContaining({ method: "POST" })
     ));
     const grabCall = vi.mocked(authedFetch).mock.calls.find(([url]) => (url as string).includes("/api/search/grab"));
-    expect(JSON.parse((grabCall![1] as RequestInit).body as string)).toMatchObject({ downloadClientId: "client-1" });
+    const body = JSON.parse((grabCall![1] as RequestInit).body as string);
+    expect(body.downloadClientId).toBeUndefined();
+    expect(body).toMatchObject({ releaseName: "Example.Release.WEB.1080p", searchType: "movie" });
   });
 });

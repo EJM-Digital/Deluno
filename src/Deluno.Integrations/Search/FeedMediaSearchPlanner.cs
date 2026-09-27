@@ -104,7 +104,8 @@ public sealed class FeedMediaSearchPlanner(
         /// <paramref name="title"/> itself. A release filed under one of
         /// these has nothing else to match against (#861).
         /// </summary>
-        IReadOnlyList<string>? otherTitles = null)
+        IReadOnlyList<string>? otherTitles = null,
+        IReadOnlyList<int>? categoryIds = null)
     {
         var indexers = await connectionsRepository.ListIndexersAsync(cancellationToken);
         var normalizedSearchKind = AcquisitionSearchKinds.Normalize(searchKind);
@@ -191,7 +192,7 @@ public sealed class FeedMediaSearchPlanner(
                     customFormats, neverGrabPatterns, scoringMode, seasonNumber, episodeNumber, allowedQualities,
                      applicableProfiles, normalizedSearchKind, availableUtc, currentCustomFormatScore, currentReleaseName, upgradeUntilCutoff,
                      numberingScheme, absoluteNumber, airDate, sceneSeasonNumber, sceneEpisodeNumber,
-                     currentPreferenceEvaluation, preferencePlan, currentFilePresent, sizeRules, upgradeStop, runtimeMinutes, imdbId, token, scoreLimits, genres, otherTitles);
+                     currentPreferenceEvaluation, preferencePlan, currentFilePresent, sizeRules, upgradeStop, runtimeMinutes, imdbId, token, scoreLimits, genres, otherTitles, categoryIds);
             });
 
         await RecordQueryTelemetryAsync(searchResults, cancellationToken);
@@ -384,7 +385,8 @@ public sealed class FeedMediaSearchPlanner(
         CancellationToken cancellationToken,
         ProfileScoreLimits? scoreLimits = null,
         string? genres = null,
-        IReadOnlyList<string>? otherTitles = null)
+        IReadOnlyList<string>? otherTitles = null,
+        IReadOnlyList<int>? categoryIds = null)
     {
         var startedTimestamp = Stopwatch.GetTimestamp();
         var queryText = BuildQueryText(title, year, seasonNumber, episodeNumber, numberingScheme, absoluteNumber, airDate, sceneSeasonNumber, sceneEpisodeNumber);
@@ -398,7 +400,7 @@ public sealed class FeedMediaSearchPlanner(
         var isTracker = IndexerProtocols.IsTracker(indexer.Protocol);
         var searchAddress = isTracker
             ? indexer.BaseUrl
-            : BuildSearchUrl(indexer, title, year, mediaType, seasonNumber, episodeNumber, numberingScheme, absoluteNumber, airDate, sceneSeasonNumber, sceneEpisodeNumber, genres);
+            : BuildSearchUrl(indexer, title, year, mediaType, seasonNumber, episodeNumber, numberingScheme, absoluteNumber, airDate, sceneSeasonNumber, sceneEpisodeNumber, genres, categoryIds);
         if (!Uri.TryCreate(searchAddress, UriKind.Absolute, out var uri))
         {
             logger.LogWarning(
@@ -558,7 +560,7 @@ public sealed class FeedMediaSearchPlanner(
                         {
                             trackerDocument = await trackerIndexers.SearchAsync(
                                 indexer,
-                                TrackerQueryFor(indexer, queryText, mediaType, year, seasonNumber, episodeNumber, imdbId),
+                                TrackerQueryFor(indexer, queryText, mediaType, year, seasonNumber, episodeNumber, imdbId, categoryIds),
                                 trackerTime.Token);
                         }
                         catch (OperationCanceledException) when (!token.IsCancellationRequested)
@@ -892,11 +894,18 @@ public sealed class FeedMediaSearchPlanner(
     /// episode as numbers too, and only the indexer's categories for this kind
     /// of media, since a tracker files films and series apart.
     /// </summary>
-    private static TrackerQuery TrackerQueryFor(IndexerItem indexer, string queryText, string mediaType, int? year, int? seasonNumber, int? episodeNumber, string? imdbId)
+    private static TrackerQuery TrackerQueryFor(IndexerItem indexer, string queryText, string mediaType, int? year, int? seasonNumber, int? episodeNumber, string? imdbId, IReadOnlyList<int>? categoryIds = null)
     {
         var isTv = string.Equals(mediaType, "tv", StringComparison.OrdinalIgnoreCase);
         var family = isTv ? 5 : 2;
-        var categories = TrackerCategories.Parse(indexer.Categories).Where(category => category / 1000 == family).ToArray();
+        // A caller-chosen set of categories (#753's Search page) narrows this
+        // tracker's own categories the same way its normal default does --
+        // still only the ones inside this search's own movie/TV family, since
+        // a tracker files the two apart.
+        var requested = categoryIds is { Count: > 0 } ? categoryIds.Where(category => category / 1000 == family).ToArray() : null;
+        var categories = requested is { Length: > 0 }
+            ? requested
+            : TrackerCategories.Parse(indexer.Categories).Where(category => category / 1000 == family).ToArray();
         return new TrackerQuery(
             queryText,
             isTv ? "tvsearch" : "movie",
@@ -1134,7 +1143,8 @@ public sealed class FeedMediaSearchPlanner(
         DateOnly? airDate = null,
         int? sceneSeasonNumber = null,
         int? sceneEpisodeNumber = null,
-        string? genres = null)
+        string? genres = null,
+        IReadOnlyList<int>? categoryIds = null)
     {
         var builder = new UriBuilder(IndexerApiEndpoint.For(indexer.BaseUrl, indexer.ApiPath));
         var query = ParseQuery(builder.Query);
@@ -1163,12 +1173,23 @@ public sealed class FeedMediaSearchPlanner(
             query["q"] = BuildQueryText(title, year, seasonNumber, episodeNumber, numberingScheme, absoluteNumber, airDate, sceneSeasonNumber, sceneEpisodeNumber);
         }
 
+        // A caller-chosen category list (#753's Search page) is kept to the
+        // ones inside this search's own movie/TV family -- the same guard
+        // TrackerQueryFor applies for a tracker -- so a stray category from
+        // the other engine never reaches this one.
+        var family = isTv ? 5 : 2;
+        var requestedCategories = categoryIds is { Count: > 0 }
+            ? categoryIds.Where(category => category / 1000 == family).ToArray()
+            : null;
+
         // #742: an anime search uses this indexer's own anime category
         // numbers when it has configured them, since anime is often
         // catalogued separately from normal TV on the same indexer.
-        var categories = isTv && IsAnimeGenre(genres) && !string.IsNullOrWhiteSpace(indexer.AnimeCategories)
-            ? indexer.AnimeCategories
-            : indexer.Categories;
+        var categories = requestedCategories is { Length: > 0 }
+            ? string.Join(",", requestedCategories)
+            : isTv && IsAnimeGenre(genres) && !string.IsNullOrWhiteSpace(indexer.AnimeCategories)
+                ? indexer.AnimeCategories
+                : indexer.Categories;
         return FinishIndexerUrl(builder, query, indexer, isTv ? "5000" : "2000", categories);
     }
 

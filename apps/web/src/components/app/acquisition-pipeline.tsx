@@ -120,12 +120,22 @@ export function AcquisitionPipeline({
         <span className="text-[length:var(--type-micro)] font-semibold uppercase tracking-[0.1em] text-muted-foreground">
           In the pipeline
         </span>
-        <Link
-          to="/queue"
-          className="text-[length:var(--type-caption)] font-medium text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-        >
-          Transfers
-        </Link>
+        <span className="flex items-baseline gap-3">
+          {/* Search is what starts this pipeline (#753), so its own dashboard
+              entry point sits beside the one for where the pipeline ends up. */}
+          <Link
+            to="/search"
+            className="text-[length:var(--type-caption)] font-medium text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            Search
+          </Link>
+          <Link
+            to="/queue"
+            className="text-[length:var(--type-caption)] font-medium text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            Transfers
+          </Link>
+        </span>
       </header>
 
       <div className="relative px-[var(--card-pad-x)]">
