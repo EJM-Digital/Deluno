@@ -22,3 +22,27 @@ describe("indexer save payload (#730)", () => {
     expect(payload.tags).toBe("");
   });
 });
+
+// #740: a custom API path is sent when set, and clearing it tells the backend
+// to drop back to the default rather than leaving the saved value untouched.
+describe("indexer save payload API path (#740)", () => {
+  it("sends a typed API path", () => {
+    const form = { ...emptyIndexerForm(), name: "NZBGeek", baseUrl: "https://api.nzbgeek.info", apiPath: "/api/v2" };
+    const payload = buildIndexerSavePayload(form, form, true, "");
+    expect(payload.apiPath).toBe("/api/v2");
+    expect(payload.clearApiPath).toBe(false);
+  });
+
+  it("clears the API path on an edit when the field is emptied", () => {
+    const form = { ...emptyIndexerForm(), name: "NZBGeek", baseUrl: "https://api.nzbgeek.info", apiPath: "" };
+    const payload = buildIndexerSavePayload(form, form, true, "");
+    expect(payload.apiPath).toBeNull();
+    expect(payload.clearApiPath).toBe(true);
+  });
+
+  it("does not ask to clear the API path when creating a new indexer", () => {
+    const form = { ...emptyIndexerForm(), name: "NZBGeek", baseUrl: "https://api.nzbgeek.info" };
+    const payload = buildIndexerSavePayload(form, form, false, "");
+    expect(payload.clearApiPath).toBe(false);
+  });
+});

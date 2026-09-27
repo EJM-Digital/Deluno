@@ -75,7 +75,8 @@ public sealed class SqliteConnectionsRepository(
                 sharing_mode, sharing_for_hours, sharing_until_ratio, sharing_stuck_action, sharing_stuck_after_days,
                 minimum_age_minutes, retention_days, maximum_size_mb, prefer_indexer_flags, availability_delay_days,
                 rss_enabled, automatic_search_enabled, interactive_search_enabled,
-                last_health_failure_json, definition_id, definition_settings_json, definition_secrets
+                last_health_failure_json, definition_id, definition_settings_json, definition_secrets,
+                api_path
             FROM indexer_sources
             ORDER BY priority ASC, name ASC;
             """;
@@ -125,7 +126,8 @@ public sealed class SqliteConnectionsRepository(
                 LastHealthFailure = reader.IsDBNull(35) ? null : DeserializeFailure(reader.GetString(35)),
                 DefinitionId = reader.IsDBNull(36) ? null : reader.GetString(36),
                 DefinitionSettings = reader.IsDBNull(37) ? null : ReadStringMap(reader.GetString(37)),
-                DefinitionSecrets = reader.IsDBNull(38) ? null : ReadStringMap(secretProtector.Unprotect("indexer:tracker-secrets", reader.GetString(38)))
+                DefinitionSecrets = reader.IsDBNull(38) ? null : ReadStringMap(secretProtector.Unprotect("indexer:tracker-secrets", reader.GetString(38))),
+                ApiPath = reader.IsDBNull(39) ? null : reader.GetString(39)
             });
         }
 
@@ -261,6 +263,7 @@ public sealed class SqliteConnectionsRepository(
             UpdatedUtc: now)
         {
             RequestIntervalSeconds = request.RequestIntervalSeconds,
+            ApiPath = NormalizeApiPath(request.ApiPath),
             SharingMode = request.SharingMode,
             SharingForHours = request.SharingForHours,
             SharingUntilRatio = request.SharingUntilRatio,
@@ -292,7 +295,7 @@ public sealed class SqliteConnectionsRepository(
                 sharing_mode, sharing_for_hours, sharing_until_ratio, sharing_stuck_action, sharing_stuck_after_days,
                 minimum_age_minutes, retention_days, maximum_size_mb, prefer_indexer_flags, availability_delay_days,
                 rss_enabled, automatic_search_enabled, interactive_search_enabled, definition_id,
-                definition_settings_json, definition_secrets
+                definition_settings_json, definition_secrets, api_path
             )
             VALUES (
                 @id, @name, @protocol, @privacy, @baseUrl, @apiKey, @priority, @categories, @tags,
@@ -300,7 +303,7 @@ public sealed class SqliteConnectionsRepository(
                 @sharingMode, @sharingForHours, @sharingUntilRatio, @sharingStuckAction, @sharingStuckAfterDays,
                 @minimumAgeMinutes, @retentionDays, @maximumSizeMb, @preferIndexerFlags, @availabilityDelayDays,
                 @rssEnabled, @automaticSearchEnabled, @interactiveSearchEnabled, @definitionId,
-                @definitionSettings, @definitionSecrets
+                @definitionSettings, @definitionSecrets, @apiPath
             );
             """;
 
@@ -340,6 +343,7 @@ public sealed class SqliteConnectionsRepository(
         AddParameter(command, "@requestIntervalSeconds", item.RequestIntervalSeconds);
         AddParameter(command, "@createdUtc", item.CreatedUtc.ToString("O"));
         AddParameter(command, "@updatedUtc", item.UpdatedUtc.ToString("O"));
+        AddParameter(command, "@apiPath", item.ApiPath);
         await command.ExecuteNonQueryAsync(cancellationToken);
 
         return item;
@@ -374,6 +378,9 @@ public sealed class SqliteConnectionsRepository(
         var newRequestInterval = request.ClearRequestInterval == true
             ? null
             : request.RequestIntervalSeconds ?? existing.RequestIntervalSeconds;
+        var newApiPath = request.ClearApiPath == true
+            ? null
+            : NormalizeApiPath(request.ApiPath) ?? existing.ApiPath;
 
         // Clearing drops the whole override at once rather than field by field:
         // "this source is no different from the rest" is a single intent, and
@@ -418,6 +425,7 @@ public sealed class SqliteConnectionsRepository(
                 tags = @tags,
                 media_scope = @mediaScope,
                 request_interval_seconds = @requestIntervalSeconds,
+                api_path = @apiPath,
                 sharing_mode = @sharingMode,
                 sharing_for_hours = @sharingForHours,
                 sharing_until_ratio = @sharingUntilRatio,
@@ -456,6 +464,7 @@ public sealed class SqliteConnectionsRepository(
         AddParameter(command, "@tags", newTags);
         AddParameter(command, "@mediaScope", newScope);
         AddParameter(command, "@requestIntervalSeconds", newRequestInterval);
+        AddParameter(command, "@apiPath", newApiPath);
         AddParameter(command, "@sharingMode", newSharingMode);
         AddParameter(command, "@sharingForHours", newSharingForHours);
         AddParameter(command, "@sharingUntilRatio", newSharingUntilRatio);
@@ -489,6 +498,7 @@ public sealed class SqliteConnectionsRepository(
             Tags     = newTags,
             MediaScope = newScope,
             RequestIntervalSeconds = newRequestInterval,
+            ApiPath = newApiPath,
             SharingMode = newSharingMode,
             SharingForHours = newSharingForHours,
             SharingUntilRatio = newSharingUntilRatio,
@@ -1107,4 +1117,8 @@ public sealed class SqliteConnectionsRepository(
 
     private static string NormalizeDownloadProtocol(string? value)
         => DownloadClientProtocolCatalog.NormalizeOrThrow(value);
+
+    /// <summary>A blank API path means "use the protocol's default" (#740), so it is stored as null rather than as an empty string.</summary>
+    private static string? NormalizeApiPath(string? value)
+        => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 }

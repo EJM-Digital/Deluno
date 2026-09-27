@@ -88,6 +88,11 @@ export function IndexerDrawerBody({
         <Field label={form.protocol === "torznab" ? "Torznab URL" : form.protocol === "newznab" ? "Newznab URL" : "URL"} error={errors.baseUrl}>
           <Input value={form.baseUrl} onChange={(event) => { clearError("baseUrl"); setForm((current) => ({ ...current, baseUrl: event.target.value })); }} placeholder={preset.placeholder} className="font-mono text-[length:var(--type-caption)]" autoComplete="off" spellCheck={false} />
         </Field>
+        {form.protocol === "newznab" || form.protocol === "torznab" ? (
+          <Field label="API path" help="Only needed if this indexer's API does not live at the default /api.">
+            <Input value={form.apiPath} onChange={(event) => setForm((current) => ({ ...current, apiPath: event.target.value }))} placeholder="/api" className="font-mono text-[length:var(--type-caption)]" autoComplete="off" spellCheck={false} />
+          </Field>
+        ) : null}
         {preset.requiresApiKey || form.apiKey ? (
           <Field label="API key" error={errors.apiKey} help={editing ? "Stored encrypted. Leave empty to keep the current key; paste a new one to rotate it." : "From your indexer's account or settings page."}>
             <span className="relative block">

@@ -17,6 +17,10 @@ public sealed record UpdateIndexerRequest(
     bool? IsEnabled,
     int? RequestIntervalSeconds = null,
     bool? ClearRequestInterval = null,
+    // Non-default Newznab/Torznab API path (#740). Null means "leave as is";
+    // ClearApiPath drops back to the protocol's standard /api path.
+    string? ApiPath = null,
+    bool? ClearApiPath = null,
     // Null means "leave as is". ClearSharingPolicy drops the override entirely
     // so the source goes back to inheriting the global rule (#288).
     string? SharingMode = null,

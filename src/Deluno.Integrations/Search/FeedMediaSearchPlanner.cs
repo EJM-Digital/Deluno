@@ -1032,7 +1032,7 @@ public sealed class FeedMediaSearchPlanner(
         int? sceneSeasonNumber = null,
         int? sceneEpisodeNumber = null)
     {
-        var builder = new UriBuilder(IndexerApiEndpoint.For(indexer.BaseUrl));
+        var builder = new UriBuilder(IndexerApiEndpoint.For(indexer.BaseUrl, indexer.ApiPath));
         var query = ParseQuery(builder.Query);
 
         var isTv = string.Equals(mediaType, "tv", StringComparison.OrdinalIgnoreCase);
@@ -1069,7 +1069,7 @@ public sealed class FeedMediaSearchPlanner(
     /// </summary>
     internal static string BuildFeedUrl(IndexerItem indexer)
     {
-        var builder = new UriBuilder(IndexerApiEndpoint.For(indexer.BaseUrl));
+        var builder = new UriBuilder(IndexerApiEndpoint.For(indexer.BaseUrl, indexer.ApiPath));
         var query = ParseQuery(builder.Query);
         query["t"] = "search";
         query.Remove("q");

@@ -35,6 +35,37 @@ public sealed class AnIndexerIsTestedWhereItIsSearchedTests
     public void The_api_endpoint_is_the_base_url_with_api_unless_it_already_names_one(string baseUrl, string endpoint)
         => Assert.Equal(endpoint, IndexerApiEndpoint.For(baseUrl));
 
+    /// <summary>#740: a custom API path replaces the default /api; a blank one keeps it.</summary>
+    [Theory]
+    [InlineData("https://indexer.example", "api/v2", "https://indexer.example/api/v2")]
+    [InlineData("https://indexer.example", "/api/v2", "https://indexer.example/api/v2")]
+    [InlineData("https://indexer.example/api/v2", "/api/v2", "https://indexer.example/api/v2")]
+    [InlineData("https://indexer.example", "", "https://indexer.example/api")]
+    [InlineData("https://indexer.example", null, "https://indexer.example/api")]
+    public void A_custom_api_path_is_used_instead_of_the_default(string baseUrl, string? apiPath, string endpoint)
+        => Assert.Equal(endpoint, IndexerApiEndpoint.For(baseUrl, apiPath));
+
+    /// <summary>#740: the connection test and a real search both reach a non-default API path.</summary>
+    [Fact]
+    public async Task An_indexer_with_a_custom_api_path_is_tested_on_that_path()
+    {
+        await using var server = await NewznabServerAsync(apiSegment: "/api/v2");
+        await using var app = await ApplicationTestHost.StartAsync();
+        var indexer = await app.Services.GetRequiredService<IConnectionsRepository>().CreateIndexerAsync(
+            new CreateIndexerRequest("Custom path", "newznab", "private", server.BaseUrl, "fixture-key", 10, "2000", "", "both", true)
+            {
+                ApiPath = "/api/v2"
+            },
+            CancellationToken.None);
+
+        var response = await app.Client.PostAsync($"/api/indexers/{indexer.Id}/test", null);
+
+        Assert.True(response.IsSuccessStatusCode, await response.Content.ReadAsStringAsync());
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("healthy", body.GetProperty("healthStatus").GetString());
+        Assert.StartsWith("/api/v2", server.LastPath);
+    }
+
     [Fact]
     public async Task An_indexer_entered_without_api_tests_healthy_when_its_api_answers()
     {
@@ -118,8 +149,8 @@ public sealed class AnIndexerIsTestedWhereItIsSearchedTests
         public ValueTask DisposeAsync() => app.DisposeAsync();
     }
 
-    /// <summary>A server that, like NZBGeek, answers Newznab on /api and HTML everywhere else.</summary>
-    private static async Task<FakeServer> NewznabServerAsync()
+    /// <summary>A server that, like NZBGeek, answers Newznab on /api (or a custom path) and HTML everywhere else.</summary>
+    private static async Task<FakeServer> NewznabServerAsync(string apiSegment = "/api")
     {
         var builder = WebApplication.CreateSlimBuilder();
         builder.WebHost.UseUrls("http://127.0.0.1:0");
@@ -130,7 +161,7 @@ public sealed class AnIndexerIsTestedWhereItIsSearchedTests
             server!.LastPath = context.Request.Path.Value;
             server.LastUserAgent = context.Request.Headers.UserAgent.ToString();
             server.LastQuery = context.Request.QueryString.Value;
-            if (context.Request.Path.StartsWithSegments("/api"))
+            if (context.Request.Path.StartsWithSegments(apiSegment))
             {
                 context.Response.ContentType = "application/rss+xml";
                 await context.Response.WriteAsync("<?xml version=\"1.0\"?><rss version=\"2.0\" xmlns:newznab=\"http://www.newznab.com/DTD/2010/feeds/attributes/\"><channel></channel></rss>");

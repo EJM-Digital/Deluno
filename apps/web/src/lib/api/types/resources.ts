@@ -601,6 +601,8 @@ export interface IndexerItem {
   apiKey?: string | null;
   priority: number;
   requestIntervalSeconds?: number | null;
+  /** A non-default Newznab/Torznab API path, such as /api/v2 (#740). Null or blank uses /api. */
+  apiPath?: string | null;
   categories: string;
   tags: string;
   isEnabled: boolean;
