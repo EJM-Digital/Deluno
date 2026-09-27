@@ -75,7 +75,12 @@ public sealed class SabnzbdDownloadClient(IHttpClientFactory httpClientFactory) 
 
         if (!accepted)
         {
-            return DownloadClientHelpers.GrabFailure(client, request, "SABnzbd did not accept the release URL.") with
+            // #876: SABnzbd answered the same request with a plain refusal —
+            // a dead link or an NZB it could not read, not a setup problem —
+            // so the caller blocklists it and lets the next search pick a
+            // different one, instead of leaving it to fail the same way again
+            // on its ordinary retry cycle.
+            return DownloadClientHelpers.DeadReleaseGrabFailure(client, request, "SABnzbd did not accept the release URL. It may be a dead link or a file it could not read.") with
             {
                 ResponseCode = (int)response.StatusCode,
                 ResponseJson = responseJson

@@ -280,6 +280,18 @@ public abstract class LibrarySearchJobHandler(
                     await mediaStateRepository.MarkDownloadingIfSentAsync(MediaKind.Movie, candidate.MovieId, grabResult.Status, now, cancellationToken);
                 }
 
+                await SearchExecutionSupport.BlockDeadReleaseAsync(
+                    blockedReleases,
+                    activityFeedRepository,
+                    grabResult,
+                    "movies",
+                    "movie",
+                    candidate.MovieId,
+                    candidate.Title,
+                    bestCandidate!.IndexerName,
+                    downloadClient.DownloadClientName,
+                    cancellationToken);
+
                 await jobQueueRepository.RecordDownloadDispatchAsync(
                     payload.LibraryId,
                     "movies",
@@ -767,6 +779,18 @@ public abstract class LibrarySearchJobHandler(
                 {
                     await mediaStateRepository.MarkDownloadingIfSentAsync(MediaKind.Series, candidate.SeriesId, grabResult.Status, now, cancellationToken);
                 }
+
+                await SearchExecutionSupport.BlockDeadReleaseAsync(
+                    blockedReleases,
+                    activityFeedRepository,
+                    grabResult,
+                    "tv",
+                    "series",
+                    candidate.SeriesId,
+                    candidate.Title,
+                    bestCandidate!.IndexerName,
+                    downloadClient.DownloadClientName,
+                    cancellationToken);
 
                 await jobQueueRepository.RecordDownloadDispatchAsync(
                     payload.LibraryId,

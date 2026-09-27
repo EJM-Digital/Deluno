@@ -156,6 +156,16 @@ public static class ImportFailurePolicy
     /// </remarks>
     public const string ManualFailure = "manualFailure";
 
+    /// <summary>
+    /// The download client refused the release outright, at grab time, before
+    /// anything was downloaded — a dead link, or a file it could not parse
+    /// (#876, cleanup sheet B2). Nothing was fetched, so unlike
+    /// <see cref="ClientReportedFailure"/> there is no payload to remove or
+    /// delete; only the release itself is refused so a later search picks a
+    /// different one.
+    /// </summary>
+    public const string DeadOrBrokenLink = "deadOrBrokenLink";
+
     /// <summary>Every reason this table has an answer for.</summary>
     public static readonly IReadOnlyList<string> KnownReasons =
     [
@@ -164,7 +174,8 @@ public static class ImportFailurePolicy
         Unmatched, ImportFailed, ReplacementRejected,
         MissingLibraryRoot, MissingSource, Permission, IoError,
         HardlinkUnavailable, HardlinkFailed, SamePath, Conflict,
-        ReplacementOwnershipMismatch, ProcessedFileIsLess, ClientReportedFailure
+        ReplacementOwnershipMismatch, ProcessedFileIsLess, ClientReportedFailure,
+        DeadOrBrokenLink
     ];
 
     /// <summary>
@@ -185,6 +196,11 @@ public static class ImportFailurePolicy
         // outright that this release failed. Nothing is proven twice about a
         // fact the client already stated.
         ClientReportedFailure => BlockDecision.Immediately,
+
+        // The client refused the release at grab time, before anything was
+        // downloaded. A dead link or an unparseable file fetches the same
+        // dead link or unparseable file a second time.
+        DeadOrBrokenLink => BlockDecision.Immediately,
 
         // Deluno cannot say whose fault it was, so it proves it twice.
         ImportFailed or MediaProbeUnreadable => BlockDecision.AfterOneRetry,
@@ -231,7 +247,7 @@ public static class ImportFailurePolicy
     /// </summary>
     public static string CategoryFor(string reasonCode) => reasonCode switch
     {
-        NoVideoStream or LikelySample or UnsupportedFile or MediaProbeRejected or ProcessorRejected or ManualFailure => FailureCategories.BadFile,
+        NoVideoStream or LikelySample or UnsupportedFile or MediaProbeRejected or ProcessorRejected or ManualFailure or DeadOrBrokenLink => FailureCategories.BadFile,
         ReplacementRejected => FailureCategories.NotAFailure,
         Unmatched or ImportFailed or MediaProbeUnreadable or DownloadStalled or ClientReportedFailure => FailureCategories.CannotSay,
         _ => FailureCategories.YourSetup

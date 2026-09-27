@@ -67,9 +67,16 @@ public sealed class QbittorrentDownloadClient(Func<HttpMessageHandler>? handlerF
         // qBittorrent answers 200 with a body of "Ok." or "Fails.", so the
         // status code on its own says nothing about whether it took the
         // release.
+        //
+        // #876: "Fails." is qBittorrent looking at the exact link or file it
+        // was handed and refusing it outright, in the same request — a dead
+        // link or a torrent it could not parse, not a setup problem. Read as
+        // a dead release, so the caller blocklists it and lets the next
+        // search pick a different one, instead of leaving it to fail the
+        // same way again on its ordinary retry cycle.
         if (payload.StartsWith("Fails", StringComparison.OrdinalIgnoreCase))
         {
-            return DownloadClientHelpers.GrabFailure(client, request, "qBittorrent refused the release URL.") with
+            return DownloadClientHelpers.DeadReleaseGrabFailure(client, request, "qBittorrent refused the release URL. It may be a dead link or a file it could not read.") with
             {
                 ResponseCode = (int)response.StatusCode,
                 ResponseJson = payload
