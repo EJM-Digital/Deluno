@@ -251,9 +251,12 @@ export function DrawerFooter({
       </span>
       <div className="flex shrink-0 items-center gap-2">
         {readOnly ? (
-          <Button type="button" onClick={onCancel}>
-            {saveLabel}
-          </Button>
+          <>
+            {extraAction}
+            <Button type="button" onClick={onCancel}>
+              {saveLabel}
+            </Button>
+          </>
         ) : (
           <>
             {extraAction}

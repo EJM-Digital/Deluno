@@ -35,6 +35,7 @@ import { LibraryMembershipCard, type LibraryMembership } from "../components/app
 import { RetentionTitleCard } from "../components/app/retention-title-card";
 import { CreditsRow, readStoredCredits } from "../components/app/credits-row";
 import { DownloadDispatchDrawer } from "../components/app/download-dispatch-drawer";
+import { BlockReleaseAction } from "../components/app/block-release-action";
 import { TitleTagsEditor } from "../components/app/title-tags-editor";
 import { authedFetch } from "../lib/use-auth";
 import { cn } from "../lib/utils";
@@ -1203,7 +1204,11 @@ export function MovieDetailPage() {
 
       {/* ------------------------------------------------------------ drawers */}
 
-      <DownloadDispatchDrawer dispatch={openDispatch} onClose={() => setOpenDispatchId(null)} />
+      <DownloadDispatchDrawer
+        dispatch={openDispatch}
+        onClose={() => setOpenDispatchId(null)}
+        onBlocked={() => revalidator.revalidate()}
+      />
 
       <Drawer
         open={openCandidate !== null}
@@ -1228,6 +1233,19 @@ export function MovieDetailPage() {
             saveEnabled={Boolean(openCandidate?.downloadUrl) && busyAction === null && !openCandidateNeedsForce}
             onSave={() => openCandidate && void handleGrabCandidate(openCandidate, false)}
             onCancel={() => setOpenCandidate(null)}
+            extraAction={openCandidate ? (
+              <BlockReleaseAction
+                releaseName={openCandidate.releaseName}
+                indexerName={openCandidate.indexerName}
+                mediaType="movie"
+                entityId={movie.id}
+                title={movie.title}
+                onBlocked={() => {
+                  setOpenCandidate(null);
+                  revalidator.revalidate();
+                }}
+              />
+            ) : null}
           />
         }
       >
@@ -1334,7 +1352,27 @@ export function MovieDetailPage() {
         }}
         title={openSearch?.releaseName ?? "Search"}
         description={openSearch ? formatPreferenceDateTime(openSearch.createdUtc, preferences) : undefined}
-        footer={<DrawerFooter state="clean" readOnly saveLabel="Close" onCancel={() => setOpenSearchId(null)} />}
+        footer={
+          <DrawerFooter
+            state="clean"
+            readOnly
+            saveLabel="Close"
+            onCancel={() => setOpenSearchId(null)}
+            extraAction={openSearch?.releaseName ? (
+              <BlockReleaseAction
+                releaseName={openSearch.releaseName}
+                indexerName={openSearch.indexerName}
+                mediaType="movie"
+                entityId={movie.id}
+                title={movie.title}
+                onBlocked={() => {
+                  setOpenSearchId(null);
+                  revalidator.revalidate();
+                }}
+              />
+            ) : null}
+          />
+        }
       >
         {openSearch ? (
           <>

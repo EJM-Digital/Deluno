@@ -46,6 +46,7 @@ import { RetentionTitleCard } from "../components/app/retention-title-card";
 import { RemoveMediaDialog, type MediaRemovalPreview, type RemoveMediaOptions } from "../components/app/remove-media-dialog";
 import { CreditsRow, readStoredCredits } from "../components/app/credits-row";
 import { DownloadDispatchDrawer } from "../components/app/download-dispatch-drawer";
+import { BlockReleaseAction } from "../components/app/block-release-action";
 import { TitleTagsEditor } from "../components/app/title-tags-editor";
 import { DecisionExplanationList } from "../components/app/decision-explanation-list";
 import { MediaMetadataDrawer } from "../components/app/media-metadata-drawer";
@@ -1447,7 +1448,11 @@ export function ShowDetailPage() {
 
       {/* ------------------------------------------------------------ drawers */}
 
-      <DownloadDispatchDrawer dispatch={openDispatch} onClose={() => setOpenDispatchId(null)} />
+      <DownloadDispatchDrawer
+        dispatch={openDispatch}
+        onClose={() => setOpenDispatchId(null)}
+        onBlocked={() => revalidator.revalidate()}
+      />
 
       <Drawer
         open={numberingDraft !== null}
@@ -1641,6 +1646,19 @@ export function ShowDetailPage() {
             saveEnabled={Boolean(openCandidate?.downloadUrl) && busyAction === null && !openCandidateNeedsForce}
             onSave={() => openCandidate && void handleGrabCandidate(openCandidate, false)}
             onCancel={() => setOpenCandidate(null)}
+            extraAction={openCandidate ? (
+              <BlockReleaseAction
+                releaseName={openCandidate.releaseName}
+                indexerName={openCandidate.indexerName}
+                mediaType="tv"
+                entityId={series.id}
+                title={series.title}
+                onBlocked={() => {
+                  setOpenCandidate(null);
+                  revalidator.revalidate();
+                }}
+              />
+            ) : null}
           />
         }
       >
@@ -1753,6 +1771,19 @@ export function ShowDetailPage() {
             readOnly
             saveLabel="Close"
             onCancel={() => setOpenSearchId(null)}
+            extraAction={openSearch?.releaseName ? (
+              <BlockReleaseAction
+                releaseName={openSearch.releaseName}
+                indexerName={openSearch.indexerName}
+                mediaType="tv"
+                entityId={series.id}
+                title={series.title}
+                onBlocked={() => {
+                  setOpenSearchId(null);
+                  revalidator.revalidate();
+                }}
+              />
+            ) : null}
           />
         }
       >

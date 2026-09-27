@@ -399,7 +399,11 @@ export function ActivityPage() {
         ) : null}
       </Drawer>
 
-      <DownloadDispatchDrawer dispatch={openDispatch} onClose={() => setOpenDispatchId(null)} />
+      <DownloadDispatchDrawer
+        dispatch={openDispatch}
+        onClose={() => setOpenDispatchId(null)}
+        onBlocked={() => revalidator.revalidate()}
+      />
 
       <Drawer
         open={openEvent !== null}
