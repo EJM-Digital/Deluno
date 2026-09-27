@@ -42,12 +42,19 @@ public static class JobsServiceCollectionExtensions
         services.AddSingleton<IActivityFeedRepository>(provider => provider.GetRequiredService<SqliteJobStore>());
 
         services.AddSingleton<DownloadDispatchPollingService>();
-        services.AddSingleton<IDownloadDispatchPollingService>(provider =>
+        services.AddSingleton<CircuitBreakerDownloadDispatchPollingService>(provider =>
         {
             var inner = provider.GetRequiredService<DownloadDispatchPollingService>();
             var logger = provider.GetRequiredService<Microsoft.Extensions.Logging.ILogger<CircuitBreakerDownloadDispatchPollingService>>();
             return new CircuitBreakerDownloadDispatchPollingService(inner, logger);
         });
+        services.AddSingleton<IDownloadDispatchPollingService>(provider =>
+            provider.GetRequiredService<CircuitBreakerDownloadDispatchPollingService>());
+        // #909: the health check reads whether the circuit is open from the
+        // same singleton the poller uses, rather than a second copy of the
+        // state that could disagree with it.
+        services.AddSingleton<IDownloadDispatchCircuitBreakerState>(provider =>
+            provider.GetRequiredService<CircuitBreakerDownloadDispatchPollingService>());
         services.AddHostedService<JobsSchemaInitializer>();
         services.AddHostedService<DownloadDispatchPollingHostedService>();
         return services;

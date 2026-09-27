@@ -1,4 +1,6 @@
 using Deluno.Infrastructure.Observability;
+using Deluno.Worker.HealthChecks;
+using Deluno.Worker.HealthChecks.Checks;
 using Deluno.Worker.Jobs;
 using Deluno.Worker.Services;
 using Deluno.Worker.Intake;
@@ -55,6 +57,20 @@ public static class WorkerServiceCollectionExtensions
         services.AddSingleton<IMachineProbe, MachineProbe>();
         services.AddHostedService<MachineTelemetrySampler>();
         services.AddHostedService<DownloadProgressPublisher>();
+
+        // #909: every check registers itself here, once, so the runner and the
+        // "run right after it changes" scheduler always see the same list.
+        services.AddScoped<IHealthCheck, DownloadClientHealthCheck>();
+        services.AddScoped<IHealthCheck, ClientDownloadFolderFreeSpaceHealthCheck>();
+        services.AddScoped<IHealthCheck, IndexerHealthCheck>();
+        services.AddScoped<IHealthCheck, LibraryRootHealthCheck>();
+        services.AddScoped<IHealthCheck, LibraryFolderChainHealthCheck>();
+        services.AddScoped<IHealthCheck, ProcessorHealthCheck>();
+        services.AddScoped<IHealthCheck, ExternalServiceHealthCheck>();
+        services.AddScoped<IHealthCheck, SystemDiskSpaceHealthCheck>();
+        services.AddScoped<IHealthCheck, DispatchRecoveryPollerHealthCheck>();
+        services.AddScoped<HealthCheckRunner>();
+        services.AddHostedService<HealthCheckHostedService>();
         return services;
     }
 }

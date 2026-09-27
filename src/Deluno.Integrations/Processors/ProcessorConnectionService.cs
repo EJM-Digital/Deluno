@@ -224,14 +224,15 @@ public sealed class ProcessorConnectionService(IHttpClientFactory httpClientFact
                 return ProcessorStatusSupport.None;
             }
 
-            var capabilities = await ReadCapabilitiesAsync(response, cancellationToken);
+            var (capabilities, watchedPath) = await ReadCapabilitiesAsync(response, cancellationToken);
             return new ProcessorStatusSupport(
                 ProcessorAnswer.Answered,
                 capabilities.Contains("handoff-status"),
                 capabilities.Contains("handoff-cancel"),
                 null)
             {
-                CanBeToldTheOutcome = capabilities.Contains("handoff-outcome")
+                CanBeToldTheOutcome = capabilities.Contains("handoff-outcome"),
+                WatchedPath = watchedPath
             };
         }
         catch (Exception exception) when (!cancellationToken.IsCancellationRequested && (exception is HttpRequestException or TaskCanceledException))
@@ -420,24 +421,38 @@ public sealed class ProcessorConnectionService(IHttpClientFactory httpClientFact
             ? $"{connection.Name} refused the webhook secret on this processor connection. Copy {connection.Name}'s secret for Deluno into the connection, so Deluno can ask about hand-offs."
             : $"Set a webhook secret in {connection.Name} and the same secret on this processor connection in Deluno, so Deluno can ask about hand-offs.");
 
-    private static async Task<HashSet<string>> ReadCapabilitiesAsync(HttpResponseMessage response, CancellationToken cancellationToken)
+    private static async Task<(HashSet<string> Capabilities, string? WatchedPath)> ReadCapabilitiesAsync(HttpResponseMessage response, CancellationToken cancellationToken)
     {
         var found = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        string? watchedPath = null;
         try
         {
             using var document = await System.Text.Json.JsonDocument.ParseAsync(
                 await response.Content.ReadAsStreamAsync(cancellationToken),
                 cancellationToken: cancellationToken);
-            if (document.RootElement.ValueKind == System.Text.Json.JsonValueKind.Object &&
-                document.RootElement.TryGetProperty("capabilities", out var list) &&
-                list.ValueKind == System.Text.Json.JsonValueKind.Array)
+            if (document.RootElement.ValueKind == System.Text.Json.JsonValueKind.Object)
             {
-                foreach (var item in list.EnumerateArray())
+                if (document.RootElement.TryGetProperty("capabilities", out var list) &&
+                    list.ValueKind == System.Text.Json.JsonValueKind.Array)
                 {
-                    if (item.ValueKind == System.Text.Json.JsonValueKind.String && item.GetString() is { Length: > 0 } value)
+                    foreach (var item in list.EnumerateArray())
                     {
-                        found.Add(value.Trim());
+                        if (item.ValueKind == System.Text.Json.JsonValueKind.String && item.GetString() is { Length: > 0 } value)
+                        {
+                            found.Add(value.Trim());
+                        }
                     }
+                }
+
+                // Optional and generic (#909): any processor may add it, not
+                // only Weir. Absent means "not reported", not "watching
+                // nothing" -- a processor that predates this field is not
+                // thereby broken.
+                if (document.RootElement.TryGetProperty("watchedPath", out var path) &&
+                    path.ValueKind == System.Text.Json.JsonValueKind.String &&
+                    path.GetString() is { Length: > 0 } pathValue)
+                {
+                    watchedPath = pathValue.Trim();
                 }
             }
         }
@@ -446,7 +461,7 @@ public sealed class ProcessorConnectionService(IHttpClientFactory httpClientFact
             // Unreadable capabilities are no capabilities.
         }
 
-        return found;
+        return (found, watchedPath);
     }
 
     private static async Task<ProcessorHandoffStatusResult?> ReadHandoffStatusAsync(HttpResponseMessage response, CancellationToken cancellationToken)

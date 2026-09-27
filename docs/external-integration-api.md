@@ -426,6 +426,17 @@ A processor should send `rejected` only when the manifest's `capabilities` inclu
 
 Deluno does not give a processor a fixed time to finish. When the connection's submission URL has the shape `…/intake/webhook/{source}`, Deluno reads `…/intake/capabilities` with the same authentication. If that lists `handoff-status`, Deluno asks `GET …/intake/handoffs/{source}/{handoffId}` on every planning pass and expects:
 
+`…/intake/capabilities` may also answer with an optional, generic `watchedPath` field naming the folder the processor is actually watching for finished downloads:
+
+```json
+{
+  "capabilities": ["handoff-status", "handoff-cancel", "handoff-outcome"],
+  "watchedPath": "/data/processing/incoming"
+}
+```
+
+This is not Weir-specific: any processor may report it, in whatever path shape makes sense on its own side of the connection. Deluno's health check (#909) compares it against the library's configured processed-output folder and raises a problem when they disagree — a processor that stopped watching the folder Deluno hands files to otherwise looks identical to one still working, right up until nothing gets imported. A processor that does not send this field is not treated as broken; the check shows "not reported by the processor" instead.
+
 ```json
 {
   "handoffId": "…",
