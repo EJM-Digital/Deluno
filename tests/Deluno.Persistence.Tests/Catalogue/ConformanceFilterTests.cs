@@ -26,9 +26,9 @@ public sealed class ConformanceFilterTests
     /// <summary>A 2160p rule of 7–60 GB, and nothing else judged.</summary>
     private static readonly QualityTierDefinition[] Ladder =
     [
-        new("WEB 2160p", 100, MovieMinGb: 7, MovieMaxGb: 60, EpisodeMinMb: 0, EpisodeMaxMb: 0, ScoreCeiling: 0),
+        new("WEB 2160p", 100, MovieMinGb: 7, MoviePreferredGb: 7, MovieMaxGb: 60, EpisodeMinMb: 0, EpisodePreferredMb: 0, EpisodeMaxMb: 0, ScoreCeiling: 0),
         // No bounds at all, to prove "no rule" is not the same as "breaches".
-        new("WEB 1080p", 70, MovieMinGb: 0, MovieMaxGb: 0, EpisodeMinMb: 0, EpisodeMaxMb: 0, ScoreCeiling: 0)
+        new("WEB 1080p", 70, MovieMinGb: 0, MoviePreferredGb: 0, MovieMaxGb: 0, EpisodeMinMb: 0, EpisodePreferredMb: 0, EpisodeMaxMb: 0, ScoreCeiling: 0)
     ];
 
     [Fact]
@@ -108,7 +108,7 @@ public sealed class ConformanceFilterTests
         // The same file, a rule that now allows it. Nothing about the title has
         // changed and its verdict must still move.
         await movies.SyncQualityRanksAsync(
-            [new("WEB 2160p", 100, MovieMinGb: 1, MovieMaxGb: 60, EpisodeMinMb: 0, EpisodeMaxMb: 0, ScoreCeiling: 0)],
+            [new("WEB 2160p", 100, MovieMinGb: 1, MoviePreferredGb: 1, MovieMaxGb: 60, EpisodeMinMb: 0, EpisodePreferredMb: 0, EpisodeMaxMb: 0, ScoreCeiling: 0)],
             CancellationToken.None);
 
         Assert.Empty(await TitlesAsync(movies, "sizeConformance:in:under"));

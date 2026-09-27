@@ -7,6 +7,10 @@
     <ProjectReference Include="..\Deluno.Infrastructure\Deluno.Infrastructure.csproj" />
     <ProjectReference Include="..\Deluno.Security\Deluno.Security.csproj" />
     <ProjectReference Include="..\Deluno.Realtime\Deluno.Realtime.csproj" />
+    <!-- #771: the quality-model reset endpoint records a deliberate change in
+         the activity feed, the same way setup completion and guide-rule
+         moves already do. -->
+    <ProjectReference Include="..\Deluno.Jobs\Deluno.Jobs.csproj" />
   </ItemGroup>
   <ItemGroup>
     <EmbeddedResource Include="Guides\trash-guide-package.json" />

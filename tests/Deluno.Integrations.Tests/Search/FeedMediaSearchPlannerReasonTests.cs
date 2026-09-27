@@ -929,7 +929,7 @@ public sealed class FeedMediaSearchPlannerReasonTests
             .Setup(service => service.GetAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(new QualityModelSnapshot(
                 "test",
-                [new QualityTierDefinition("WEB 1080p", 70, 1.0, 20.0, 350, 3000, 50)],
+                [new QualityTierDefinition("WEB 1080p", 70, 1.0, 12.0, 20.0, 350, 1750, 3000, 50)],
                 new QualityUpgradeStopPolicy(true, true),
                 DateTimeOffset.UtcNow));
 
