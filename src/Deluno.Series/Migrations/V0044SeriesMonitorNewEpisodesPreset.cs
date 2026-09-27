@@ -10,9 +10,9 @@ namespace Deluno.Series.Migrations;
 /// Defaults every existing series to on, matching current behaviour: before
 /// this preset existed, a newly discovered episode was always monitored.
 /// </summary>
-public sealed class V0083SeriesMonitorNewEpisodesPreset : SqliteSqlMigration
+public sealed class V0044SeriesMonitorNewEpisodesPreset : SqliteSqlMigration
 {
-    public override int Version => 83;
+    public override int Version => 44;
 
     public override string Name => "series_monitor_new_episodes_preset";
 
