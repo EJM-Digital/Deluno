@@ -5,6 +5,7 @@ using Deluno.Api.Downloads;
 using Deluno.Api.Health;
 using Deluno.Api.Monitoring;
 using Deluno.Api.Network;
+using Deluno.Api.SystemInfo;
 using Deluno.Api.Updates;
 using Deluno.Infrastructure.Storage;
 using Deluno.Security;
@@ -83,6 +84,7 @@ public static class DelunoApiExtensions
         api.MapDelunoLanAccessEndpoints();
         api.MapDelunoConnectivityEndpoints();
         api.MapDelunoBundledComponentsEndpoints();
+        api.MapDelunoSystemLogLevelEndpoints();
 
         if (includeOperationalEndpoints)
         {
