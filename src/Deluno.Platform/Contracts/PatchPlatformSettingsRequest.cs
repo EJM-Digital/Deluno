@@ -75,4 +75,6 @@ public sealed record PatchPlatformSettingsRequest(
     int? LibraryFreeSpacePausePercent = null,
     bool? SubtitleFetchAutomaticEnabled = null,
     bool? ReplaceIllegalCharacters = null,
-    string? ColonReplacementMode = null);
+    string? ColonReplacementMode = null,
+    string? DailyEpisodeFileFormat = null,
+    string? AnimeEpisodeFileFormat = null);

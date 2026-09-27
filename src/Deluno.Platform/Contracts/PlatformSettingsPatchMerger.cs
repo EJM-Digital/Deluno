@@ -77,5 +77,7 @@ public static class PlatformSettingsPatchMerger
             LibraryFreeSpacePausePercent: patch.LibraryFreeSpacePausePercent ?? current.LibraryFreeSpacePausePercent,
             SubtitleFetchAutomaticEnabled: patch.SubtitleFetchAutomaticEnabled ?? current.SubtitleFetchAutomaticEnabled,
             ReplaceIllegalCharacters: patch.ReplaceIllegalCharacters ?? current.ReplaceIllegalCharacters,
-            ColonReplacementMode: patch.ColonReplacementMode ?? current.ColonReplacementMode);
+            ColonReplacementMode: patch.ColonReplacementMode ?? current.ColonReplacementMode,
+            DailyEpisodeFileFormat: patch.DailyEpisodeFileFormat ?? current.DailyEpisodeFileFormat,
+            AnimeEpisodeFileFormat: patch.AnimeEpisodeFileFormat ?? current.AnimeEpisodeFileFormat);
 }

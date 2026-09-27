@@ -114,4 +114,9 @@ public sealed record PlatformSettingsSnapshot(
     // #759: one of ColonReplacementModes, consulted only when
     // ReplaceIllegalCharacters is on. Smart Replace is Radarr/Sonarr's own
     // default.
-    string ColonReplacementMode = ColonReplacementModes.SmartReplace);
+    string ColonReplacementMode = ColonReplacementModes.SmartReplace,
+    // #761: dated (daily) and absolute-numbered (anime) shows get their own
+    // episode file template, the way Sonarr does. Falls back to
+    // EpisodeFileFormat for a standard-numbered show.
+    string DailyEpisodeFileFormat = "{Series Title} - {Air-Date} - {Episode Title} [{Quality}] [{Custom Formats}]",
+    string AnimeEpisodeFileFormat = "{Series Title} - {absolute:000} - {Episode Title} [{Quality}] [{Custom Formats}]");

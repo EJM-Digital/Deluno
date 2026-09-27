@@ -2186,6 +2186,191 @@ public sealed class ImportPipelineServiceTests
         Assert.Equal(preview.DestinationPath, await command.ExecuteScalarAsync(CancellationToken.None));
     }
 
+    /// <summary>#761: a dated show is named with DailyEpisodeFileFormat, not the standard EpisodeFileFormat.</summary>
+    [Fact]
+    public async Task Preview_names_a_dated_series_episode_with_the_daily_format()
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-04-29T08:00:00Z"));
+        await InitializeAllAsync(storage, timeProvider);
+        var downloadsPath = Path.Combine(storage.DataRoot, "downloads");
+        var movieRootPath = Path.Combine(storage.DataRoot, "movies");
+        var seriesRootPath = Path.Combine(storage.DataRoot, "series");
+        Directory.CreateDirectory(downloadsPath);
+        Directory.CreateDirectory(movieRootPath);
+        Directory.CreateDirectory(seriesRootPath);
+        var sourcePath = Path.Combine(downloadsPath, "Daily.Show.2026-04-29.1080p.WEB-DL.mkv");
+        await File.WriteAllBytesAsync(sourcePath, Enumerable.Range(0, 4096).Select(value => (byte)(value % 251)).ToArray());
+        File.SetLastWriteTimeUtc(sourcePath, DateTime.UtcNow.AddMinutes(-1));
+
+        var platform = CreatePlatformRepository(storage, timeProvider);
+        var libraries = CreateLibrariesRepository(storage, timeProvider);
+        await SaveSettingsAsync(
+            platform,
+            movieRootPath,
+            downloadsPath,
+            seriesRootPath,
+            episodeFileFormat: "{Series Title} - S{season:00}E{episode:00} - {Episode Title}",
+            dailyEpisodeFileFormat: "{Series Title} - {Air-Date} - {Episode Title}");
+        await CreateTvLibraryAsync(libraries, seriesRootPath, downloadsPath);
+
+        var seriesRepository = new SqliteSeriesCatalogRepository(storage.Factory, timeProvider);
+        var series = await seriesRepository.AddAsync(
+            new CreateSeriesRequest("Daily Show", 2026, "tt1234567", SeriesType: SeriesTypes.Daily, NumberingScheme: SeriesNumberingSchemes.AirDate),
+            CancellationToken.None);
+        await seriesRepository.SyncEpisodeCatalogueAsync(
+            series.Id,
+            [new CatalogueEpisodeItem(1, 3, "The Episode", null, timeProvider.GetUtcNow())],
+            "provider",
+            CancellationToken.None);
+
+        var movies = new SqliteMovieCatalogRepository(storage.Factory, timeProvider);
+        var service = CreateService(storage, timeProvider, platform, libraries, movies);
+        var preview = await service.PreviewAsync(
+            new ImportPreviewRequest(
+                SourcePath: sourcePath,
+                FileName: Path.GetFileName(sourcePath),
+                MediaType: "tv",
+                Title: "Daily Show",
+                Year: 2026,
+                Genres: [],
+                Tags: [],
+                Studio: null,
+                OriginalLanguage: null,
+                SeriesId: series.Id,
+                SeriesType: SeriesTypes.Daily,
+                NumberingScheme: SeriesNumberingSchemes.AirDate),
+            CancellationToken.None);
+
+        Assert.EndsWith(
+            Path.Combine("Daily Show (2026)", "Daily Show - 2026-04-29 - The Episode.mkv"),
+            preview.DestinationPath,
+            StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>#761: an absolute-numbered show is named with AnimeEpisodeFileFormat, not the standard EpisodeFileFormat.</summary>
+    [Fact]
+    public async Task Preview_names_an_absolute_numbered_series_episode_with_the_anime_format()
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-04-29T08:00:00Z"));
+        await InitializeAllAsync(storage, timeProvider);
+        var downloadsPath = Path.Combine(storage.DataRoot, "downloads");
+        var movieRootPath = Path.Combine(storage.DataRoot, "movies");
+        var seriesRootPath = Path.Combine(storage.DataRoot, "series");
+        Directory.CreateDirectory(downloadsPath);
+        Directory.CreateDirectory(movieRootPath);
+        Directory.CreateDirectory(seriesRootPath);
+        var sourcePath = Path.Combine(downloadsPath, "Anime.Show.101.1080p.WEB-DL.mkv");
+        await File.WriteAllBytesAsync(sourcePath, Enumerable.Range(0, 4096).Select(value => (byte)(value % 251)).ToArray());
+        File.SetLastWriteTimeUtc(sourcePath, DateTime.UtcNow.AddMinutes(-1));
+
+        var platform = CreatePlatformRepository(storage, timeProvider);
+        var libraries = CreateLibrariesRepository(storage, timeProvider);
+        await SaveSettingsAsync(
+            platform,
+            movieRootPath,
+            downloadsPath,
+            seriesRootPath,
+            episodeFileFormat: "{Series Title} - S{season:00}E{episode:00} - {Episode Title}",
+            animeEpisodeFileFormat: "{Series Title} - {absolute:000} - {Episode Title}");
+        await CreateTvLibraryAsync(libraries, seriesRootPath, downloadsPath);
+
+        var seriesRepository = new SqliteSeriesCatalogRepository(storage.Factory, timeProvider);
+        var series = await seriesRepository.AddAsync(
+            new CreateSeriesRequest("Anime Show", 2026, "tt1234567", SeriesType: SeriesTypes.Anime, NumberingScheme: SeriesNumberingSchemes.Absolute),
+            CancellationToken.None);
+        await seriesRepository.SyncEpisodeCatalogueAsync(
+            series.Id,
+            [new CatalogueEpisodeItem(1, 3, "The Beginning", null, timeProvider.GetUtcNow(), AbsoluteNumber: 101)],
+            "provider",
+            CancellationToken.None);
+
+        var movies = new SqliteMovieCatalogRepository(storage.Factory, timeProvider);
+        var service = CreateService(storage, timeProvider, platform, libraries, movies);
+        var preview = await service.PreviewAsync(
+            new ImportPreviewRequest(
+                SourcePath: sourcePath,
+                FileName: Path.GetFileName(sourcePath),
+                MediaType: "tv",
+                Title: "Anime Show",
+                Year: 2026,
+                Genres: [],
+                Tags: [],
+                Studio: null,
+                OriginalLanguage: null,
+                SeriesId: series.Id,
+                SeriesType: SeriesTypes.Anime,
+                NumberingScheme: SeriesNumberingSchemes.Absolute),
+            CancellationToken.None);
+
+        Assert.EndsWith(
+            Path.Combine("Anime Show (2026)", "Anime Show - 101 - The Beginning.mkv"),
+            preview.DestinationPath,
+            StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>#761: a standard-numbered show keeps EpisodeFileFormat even when Daily/Anime formats differ from it.</summary>
+    [Fact]
+    public async Task Preview_names_a_standard_series_episode_with_the_standard_format()
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-04-29T08:00:00Z"));
+        await InitializeAllAsync(storage, timeProvider);
+        var downloadsPath = Path.Combine(storage.DataRoot, "downloads");
+        var movieRootPath = Path.Combine(storage.DataRoot, "movies");
+        var seriesRootPath = Path.Combine(storage.DataRoot, "series");
+        Directory.CreateDirectory(downloadsPath);
+        Directory.CreateDirectory(movieRootPath);
+        Directory.CreateDirectory(seriesRootPath);
+        var sourcePath = Path.Combine(downloadsPath, "Severance.S01E03.1080p.WEB-DL.mkv");
+        await File.WriteAllBytesAsync(sourcePath, Enumerable.Range(0, 4096).Select(value => (byte)(value % 251)).ToArray());
+        File.SetLastWriteTimeUtc(sourcePath, DateTime.UtcNow.AddMinutes(-1));
+
+        var platform = CreatePlatformRepository(storage, timeProvider);
+        var libraries = CreateLibrariesRepository(storage, timeProvider);
+        await SaveSettingsAsync(
+            platform,
+            movieRootPath,
+            downloadsPath,
+            seriesRootPath,
+            episodeFileFormat: "{Series Title} - S{season:00}E{episode:00} - {Episode Title}",
+            dailyEpisodeFileFormat: "{Series Title} - {Air-Date} - {Episode Title}",
+            animeEpisodeFileFormat: "{Series Title} - {absolute:000} - {Episode Title}");
+        await CreateTvLibraryAsync(libraries, seriesRootPath, downloadsPath);
+
+        var seriesRepository = new SqliteSeriesCatalogRepository(storage.Factory, timeProvider);
+        var series = await seriesRepository.AddAsync(
+            new CreateSeriesRequest("Severance", 2026, "tt1234567"),
+            CancellationToken.None);
+        await seriesRepository.SyncEpisodeCatalogueAsync(
+            series.Id,
+            [new CatalogueEpisodeItem(1, 3, "Good News About Hell", null, timeProvider.GetUtcNow())],
+            "provider",
+            CancellationToken.None);
+
+        var movies = new SqliteMovieCatalogRepository(storage.Factory, timeProvider);
+        var service = CreateService(storage, timeProvider, platform, libraries, movies);
+        var preview = await service.PreviewAsync(
+            new ImportPreviewRequest(
+                SourcePath: sourcePath,
+                FileName: Path.GetFileName(sourcePath),
+                MediaType: "tv",
+                Title: "Severance",
+                Year: 2026,
+                Genres: [],
+                Tags: [],
+                Studio: null,
+                OriginalLanguage: null,
+                SeriesId: series.Id),
+            CancellationToken.None);
+
+        Assert.EndsWith(
+            Path.Combine("Severance (2026)", "Severance - S01E03 - Good News About Hell.mkv"),
+            preview.DestinationPath,
+            StringComparison.OrdinalIgnoreCase);
+    }
+
     [Fact]
     public async Task Tv_multi_episode_import_persists_one_library_destination_for_every_episode()
     {
@@ -4031,7 +4216,13 @@ public sealed class ImportPipelineServiceTests
         string episodeFileFormat = "{Series Title} - S{season:00}E{episode:00} - {Episode Title}",
         string movieFileFormat = "{Movie Title} ({Release Year}) [{Quality}] [{Custom Formats}]",
         bool replaceIllegalCharacters = true,
-        string? colonReplacementMode = null)
+        string? colonReplacementMode = null,
+        // #761: default to mirroring episodeFileFormat, so a caller that only
+        // sets the standard episode format keeps naming daily/anime episodes
+        // the same way it always did, unless it deliberately asks for
+        // dedicated Daily/Anime formats.
+        string? dailyEpisodeFileFormat = null,
+        string? animeEpisodeFileFormat = null)
     {
         await platform.SaveAsync(
             new UpdatePlatformSettingsRequest(
@@ -4067,7 +4258,9 @@ public sealed class ImportPipelineServiceTests
                 MetadataOmdbApiKey: null,
                 ReleaseNeverGrabPatterns: null,
                 ReplaceIllegalCharacters: replaceIllegalCharacters,
-                ColonReplacementMode: colonReplacementMode),
+                ColonReplacementMode: colonReplacementMode,
+                DailyEpisodeFileFormat: dailyEpisodeFileFormat ?? episodeFileFormat,
+                AnimeEpisodeFileFormat: animeEpisodeFileFormat ?? episodeFileFormat),
             CancellationToken.None);
     }
 

@@ -4,7 +4,7 @@ import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { cn } from "../../lib/utils";
 
-export type NamingFormatKind = "movie-folder" | "series-folder" | "movie-file" | "episode-file" | "destination-movie" | "destination-series";
+export type NamingFormatKind = "movie-folder" | "series-folder" | "movie-file" | "episode-file" | "daily-episode-file" | "anime-episode-file" | "destination-movie" | "destination-series";
 
 interface FormatPreset {
   label: string;
@@ -48,6 +48,16 @@ const PRESETS: Record<NamingFormatKind, FormatPreset[]> = {
     { label: "Standard episode", value: "{Series Title} - S{Season:00}E{Episode:00} - {Episode Title}", hint: "Severance - S01E01 - Good News About Hell", description: "Best default. Human-readable and compatible with media servers." },
     { label: "With quality", value: "{Series Title} - S{Season:00}E{Episode:00} - {Episode Title} [{Quality}]", hint: "Severance - S01E01 - Good News About Hell [WEB-DL 1080p]", description: "Shows the imported quality directly in the filename." },
     { label: "Episode code only", value: "S{Season:00}E{Episode:00} - {Episode Title}", hint: "S01E01 - Good News About Hell", description: "Compact. Useful when files already sit inside the series folder." }
+  ],
+  "daily-episode-file": [
+    { label: "Standard daily episode", value: "{Series Title} - {Air-Date} - {Episode Title}", hint: "The Daily Show - 2022-09-30 - Guest Episode", description: "Best default for dated shows. The date is the episode's own identity, not a season/episode guess." },
+    { label: "With quality", value: "{Series Title} - {Air-Date} - {Episode Title} [{Quality}]", hint: "The Daily Show - 2022-09-30 - Guest Episode [WEB-DL 1080p]", description: "Shows the imported quality directly in the filename." },
+    { label: "Date only", value: "{Series Title} - {Air-Date}", hint: "The Daily Show - 2022-09-30", description: "Compact. Useful when a dated show rarely has a distinct episode title." }
+  ],
+  "anime-episode-file": [
+    { label: "Standard anime episode", value: "{Series Title} - {absolute:000} - {Episode Title}", hint: "One Piece - 042 - Ship Overboard!", description: "Best default for absolute-numbered shows: one running episode count instead of season/episode." },
+    { label: "With quality", value: "{Series Title} - {absolute:000} - {Episode Title} [{Quality}]", hint: "One Piece - 042 - Ship Overboard! [WEB-DL 1080p]", description: "Shows the imported quality directly in the filename." },
+    { label: "Season and absolute", value: "{Series Title} - S{Season:00}E{Episode:00} - {absolute:000} - {Episode Title}", hint: "One Piece - S01E42 - 042 - Ship Overboard!", description: "Keeps season/episode for media servers while still recording the absolute count." }
   ],
   "destination-movie": [
     { label: "Use movie default", value: "{Movie Title} ({Release Year})", hint: "Arrival (2016)", description: "Use the same naming style as the global movie setting." },
@@ -108,6 +118,27 @@ const TOKENS: Record<NamingFormatKind, FormatToken[]> = {
     { label: "Audio channels", value: "{MediaInfo AudioChannels}" },
     { label: "Dynamic range", value: "{MediaInfo VideoDynamicRangeType}" },
     { label: "Bit depth", value: "{MediaInfo VideoBitDepth}" }
+  ],
+  // #761: dated and absolute-numbered shows use the same token family as a
+  // standard episode file, just led by the token that actually identifies
+  // that episode.
+  "daily-episode-file": [
+    { label: "Series title", value: "{Series Title}" },
+    { label: "Air date", value: "{Air-Date}" },
+    { label: "Episode title", value: "{Episode Title}" },
+    { label: "Quality", value: "{Quality}" },
+    { label: "Custom formats", value: "{Custom Formats}" },
+    { label: "Release group", value: "{Release Group}" }
+  ],
+  "anime-episode-file": [
+    { label: "Series title", value: "{Series Title}" },
+    { label: "Absolute episode 001", value: "{absolute:000}" },
+    { label: "Season 01", value: "{Season:00}" },
+    { label: "Episode 01", value: "{Episode:00}" },
+    { label: "Episode title", value: "{Episode Title}" },
+    { label: "Quality", value: "{Quality}" },
+    { label: "Custom formats", value: "{Custom Formats}" },
+    { label: "Release group", value: "{Release Group}" }
   ],
   "destination-movie": [
     { label: "Movie title", value: "{Movie Title}" },

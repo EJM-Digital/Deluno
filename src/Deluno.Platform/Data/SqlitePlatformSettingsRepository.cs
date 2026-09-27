@@ -164,6 +164,10 @@ public sealed class SqlitePlatformSettingsRepository(
         // stored key keeps today's replace-with-dash rendering.
         await UpsertSettingAsync(connection, transaction, "media.replaceIllegalCharacters", request.ReplaceIllegalCharacters is false ? "false" : "true", updatedUtc, cancellationToken);
         await UpsertSettingAsync(connection, transaction, "media.colonReplacementMode", ColonReplacementModes.Normalize(request.ColonReplacementMode), updatedUtc, cancellationToken);
+        // #761: dated and absolute-numbered shows get their own episode
+        // template, falling back to the standard one above.
+        await UpsertSettingAsync(connection, transaction, "media.dailyEpisodeFileFormat", NormalizeName(request.DailyEpisodeFileFormat) ?? "{Series Title} - {Air-Date} - {Episode Title} [{Quality}] [{Custom Formats}]", updatedUtc, cancellationToken);
+        await UpsertSettingAsync(connection, transaction, "media.animeEpisodeFileFormat", NormalizeName(request.AnimeEpisodeFileFormat) ?? "{Series Title} - {absolute:000} - {Episode Title} [{Quality}] [{Custom Formats}]", updatedUtc, cancellationToken);
         await UpsertSettingAsync(connection, transaction, "host.bindAddress", NormalizeName(request.HostBindAddress) ?? "127.0.0.1", updatedUtc, cancellationToken);
         await UpsertSettingAsync(connection, transaction, "host.port", NormalizePositiveValue(request.HostPort, 5099).ToString(CultureInfo.InvariantCulture), updatedUtc, cancellationToken);
         await UpsertSettingAsync(connection, transaction, "host.urlBase", NormalizeName(request.UrlBase) ?? string.Empty, updatedUtc, cancellationToken);
@@ -547,7 +551,9 @@ public sealed class SqlitePlatformSettingsRepository(
             LibraryFreeSpacePausePercent: ReadPositiveInt(GetValue(settings, "library.freeSpace.pausePercent"), 5, 1, 50),
             SubtitleFetchAutomaticEnabled: string.Equals(GetValue(settings, "subtitles.fetchAutomatically"), "true", StringComparison.OrdinalIgnoreCase),
             ReplaceIllegalCharacters: !string.Equals(GetValue(settings, "media.replaceIllegalCharacters"), "false", StringComparison.OrdinalIgnoreCase),
-            ColonReplacementMode: ColonReplacementModes.Normalize(GetValue(settings, "media.colonReplacementMode")));
+            ColonReplacementMode: ColonReplacementModes.Normalize(GetValue(settings, "media.colonReplacementMode")),
+            DailyEpisodeFileFormat: GetValue(settings, "media.dailyEpisodeFileFormat") ?? "{Series Title} - {Air-Date} - {Episode Title} [{Quality}] [{Custom Formats}]",
+            AnimeEpisodeFileFormat: GetValue(settings, "media.animeEpisodeFileFormat") ?? "{Series Title} - {absolute:000} - {Episode Title} [{Quality}] [{Custom Formats}]");
     }
 
     private static int ReadPositiveInt(string? value, int fallback, int min, int max)
