@@ -346,6 +346,7 @@ POST /api/movies/bulk
 POST /api/movies/bulk/minimum-availability
 POST /api/movies/bulk/quality-profile
 POST /api/movies/bulk/reassign-library
+POST /api/movies/bulk/rename-apply
 POST /api/movies/bulk/rename-preview
 POST /api/movies/bulk/search
 POST /api/movies/bulk/subtitle-rescan
@@ -397,6 +398,7 @@ POST /api/series/
 POST /api/series/bulk
 POST /api/series/bulk/quality-profile
 POST /api/series/bulk/reassign-library
+POST /api/series/bulk/rename-apply
 POST /api/series/bulk/rename-preview
 POST /api/series/bulk/search
 POST /api/series/bulk/subtitle-rescan

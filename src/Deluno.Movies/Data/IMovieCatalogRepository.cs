@@ -354,6 +354,13 @@ public interface IMovieCatalogRepository : IMovieImportRecoveryRetentionReposito
     Task<bool> UpdateQualityProfileAsync(string movieId, string qualityProfileId, CancellationToken cancellationToken);
 
     /// <summary>
+    /// The per-title quality profile override <see cref="UpdateQualityProfileAsync"/>
+    /// writes, read back directly rather than through <c>GetByIdAsync</c>'s two
+    /// diverging branches (#784).
+    /// </summary>
+    Task<string?> GetQualityProfileIdAsync(string movieId, CancellationToken cancellationToken);
+
+    /// <summary>
     /// Records a file's new on-disk location after the caller has physically
     /// renamed or moved it - matched by <paramref name="previousFilePath"/>
     /// rather than movie id alone, so a stale or already-changed row is never

@@ -617,7 +617,17 @@ public static class MoviesEndpointRouteBuilderExtensions
         movies.MapGet("/{id}", async (string id, IMovieCatalogRepository repository, CancellationToken cancellationToken) =>
         {
             var movie = await repository.GetByIdAsync(id, cancellationToken);
-            return movie is null ? Results.NotFound() : Results.Ok(movie);
+            if (movie is null)
+            {
+                return Results.NotFound();
+            }
+
+            // The per-title quality profile override was write-only before
+            // #784 - GetByIdAsync's two branches never projected it, so an
+            // edit surface asking "what is this title's profile right now"
+            // had nothing to read.
+            var qualityProfileId = await repository.GetQualityProfileIdAsync(id, cancellationToken);
+            return Results.Ok(movie with { QualityProfileId = qualityProfileId });
         });
 
         /*

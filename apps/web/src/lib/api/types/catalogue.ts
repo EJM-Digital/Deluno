@@ -73,6 +73,12 @@ export interface MovieListItem {
   subtitleLanguagesWanted?: number;
   subtitleLanguagesHeld?: number;
   subtitleLanguagesSettled?: number;
+  /**
+   * The per-title quality profile override. Only populated by
+   * `GET /api/movies/{id}` (#784) - the paged catalogue query does not carry
+   * it, because the grid has never needed to show it.
+   */
+  qualityProfileId?: string | null;
 }
 
 export interface MovieImportRecoveryCase {
