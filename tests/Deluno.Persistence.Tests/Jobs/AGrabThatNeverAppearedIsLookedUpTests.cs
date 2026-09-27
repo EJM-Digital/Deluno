@@ -240,6 +240,13 @@ public sealed class AGrabThatNeverAppearedIsLookedUpTests
             Recorded.AddRange(activities);
             return Task.FromResult(activities);
         }
+
+        public Task<int> ClearActivityAsync(CancellationToken cancellationToken)
+        {
+            var count = Recorded.Count;
+            Recorded.Clear();
+            return Task.FromResult(count);
+        }
     }
 
     private sealed class RecordingJobScheduler : IJobScheduler

@@ -4,6 +4,7 @@ using Deluno.Contracts;
 using Deluno.Jobs.Contracts;
 using Deluno.Jobs.Data;
 using Deluno.Persistence.Tests.Support;
+using Deluno.Infrastructure.Observability;
 using Deluno.Infrastructure.Storage;
 using Deluno.Infrastructure.Storage.Migrations;
 using Microsoft.AspNetCore.Builder;
@@ -11,6 +12,7 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Logging.Abstractions;
 using System.Data.Common;
 using System.Net;
@@ -42,6 +44,10 @@ public sealed class DownloadDispatchesApiTests : IAsyncDisposable
                         services.AddSingleton<TimeProvider>(timeProvider);
                         services.AddSingleton(_storage.Factory);
                         services.AddDelunoApi();
+                        // AddDelunoApi maps the Log Level endpoints (#866), which need this;
+                        // production wiring adds it via AddDelunoInfrastructure, which this
+                        // minimal test host does not call.
+                        services.TryAddSingleton<IRuntimeLogLevelStore, FileRuntimeLogLevelStore>();
                         services.AddSingleton<IJobScheduler, TestJobScheduler>();
                         services.AddSingleton<IDownloadDispatchesRepository>(
                             new SqliteDownloadDispatchesRepository(_storage.Factory, timeProvider));

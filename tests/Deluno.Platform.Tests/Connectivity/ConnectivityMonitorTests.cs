@@ -236,6 +236,9 @@ public sealed class ConnectivityMonitorTests
 
         public Task<int> PruneActivityAsync(DateTimeOffset olderThan, CancellationToken cancellationToken)
             => Task.FromResult(0);
+
+        public Task<int> ClearActivityAsync(CancellationToken cancellationToken)
+            => Task.FromResult(0);
     }
 
     private sealed class ManualTimeProvider(DateTimeOffset now) : TimeProvider
