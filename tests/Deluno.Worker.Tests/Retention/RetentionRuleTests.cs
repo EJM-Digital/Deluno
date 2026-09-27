@@ -314,12 +314,32 @@ public sealed class RetentionRuleTests
         Assert.Equal(RetentionMarkStates.Ready, Assert.Single(await _store.ListMarksAsync(rule.Id, CancellationToken.None)).State);
         Assert.Equal(0, check.RemovedCount);
         _movies.Verify(repo => repo.DeleteAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
-        _notifications.Verify(service => service.DispatchAsync(RetentionService.WaitingEvent, It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Once);
+        _notifications.Verify(service => service.DispatchAsync(RetentionService.WaitingConfirmationEvent, It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Once);
+        _notifications.Verify(service => service.DispatchAsync(RetentionService.WaitingUnreachableEvent, It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
 
         var confirmed = await Service().ConfirmAsync(rule, ["m1"], CancellationToken.None);
 
         Assert.Equal(1, confirmed.RemovedCount);
         _movies.Verify(repo => repo.DeleteAsync("m1", It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task An_unreachable_server_holding_a_due_removal_waits_with_its_own_event_not_the_confirmation_ones()
+    {
+        ServerAnswers(Item("j1", Path("Nosferatu", 1922), tmdb: "653", playedBy: ["james"], last: Now.AddDays(-40)));
+        var rule = Rule(Keep("server.watchedBy:anyone:"));
+        _store.Add(rule);
+        await Service().CheckAsync(rule, "schedule", CancellationToken.None);
+
+        _clock.Now = Now.AddDays(30);
+        _jellyfin.Setup(client => client.ListItemsAsync(_server, "movies", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new MediaServerAnswer<MediaServerLibrary>.Unreachable("Deluno could not reach Rig lab Jellyfin."));
+
+        var run = await Service().CheckAsync(rule, "schedule", CancellationToken.None);
+
+        Assert.Equal(0, run.RemovedCount);
+        _notifications.Verify(service => service.DispatchAsync(RetentionService.WaitingUnreachableEvent, It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Once);
+        _notifications.Verify(service => service.DispatchAsync(RetentionService.WaitingConfirmationEvent, It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Fact]

@@ -53,7 +53,10 @@ public sealed class RetentionService(
 {
     public const string LeavingSoonEvent = "retention.leaving-soon";
     public const string RemovedEvent = "retention.removed";
-    public const string WaitingEvent = "retention.waiting";
+    /// <summary>A scheduled removal is stuck because a media server could not be reached (#833).</summary>
+    public const string WaitingUnreachableEvent = "retention.waiting-unreachable";
+    /// <summary>A title is Ready to remove and is simply awaiting a person's confirmation (#833).</summary>
+    public const string WaitingConfirmationEvent = "retention.waiting-confirmation";
     public const string FailedEvent = "retention.failed";
 
     public async Task<RetentionRun> CheckAsync(RetentionRule rule, string trigger, CancellationToken cancellationToken)
@@ -84,7 +87,7 @@ public sealed class RetentionService(
 
             if (due.Length > 0)
             {
-                await NotifyAsync(WaitingEvent, $"{Titles(due.Length)} could not be removed yet", $"Retention rule “{rule.Name}”: {why}. {List(due.Select(mark => mark.Title))}.", rule, cancellationToken);
+                await NotifyAsync(WaitingUnreachableEvent, $"{Titles(due.Length)} could not be removed yet", $"Retention rule “{rule.Name}”: {why}. {List(due.Select(mark => mark.Title))}.", rule, cancellationToken);
             }
 
             return await FinishAsync(rule, RetentionRunKinds.Check, trigger, started, marks.Count, items, 0,
@@ -537,7 +540,7 @@ public sealed class RetentionService(
 
         if (ready.Count > 0)
         {
-            await NotifyAsync(WaitingEvent, $"{Titles(ready.Count)} ready to remove",
+            await NotifyAsync(WaitingConfirmationEvent, $"{Titles(ready.Count)} ready to remove",
                 $"Retention rule “{rule.Name}” asks before removing: {List(ready.Select(mark => mark.Title))}.", rule, cancellationToken);
         }
 
