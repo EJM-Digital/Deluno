@@ -203,8 +203,10 @@ export interface QualityTierDefinition {
   name: string;
   rank: number;
   movieMinGb: number;
+  moviePreferredGb: number;
   movieMaxGb: number;
   episodeMinMb: number;
+  episodePreferredMb: number;
   episodeMaxMb: number;
   scoreCeiling: number;
 }

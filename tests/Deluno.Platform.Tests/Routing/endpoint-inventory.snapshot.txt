@@ -383,6 +383,7 @@ POST /api/policy-sets/
 POST /api/policy-sets/{id}/effective-preview
 POST /api/policy-sets/{id}/preview
 POST /api/policy-sets/{id}/rollback
+POST /api/quality-model/reset
 POST /api/quality-profile-presets/{presetId}/apply
 POST /api/quality-profiles/
 POST /api/ranking-model/rollback

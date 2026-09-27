@@ -403,6 +403,34 @@ public static class PlatformEndpointRouteBuilderExtensions
             return Results.NoContent();
         });
 
+        // #771: lives here rather than in Deluno.Quality's own endpoint group
+        // because it needs to write to Activity, and Deluno.Quality must not
+        // reference Deluno.Jobs (that reference used to be circular; see the
+        // fix in commit 2f3507de). Deluno.Platform already depends on both.
+        write.MapPost("/api/quality-model/reset", async (
+            HttpContext httpContext,
+            IQualityModelService qualityModelService,
+            IActivityFeedRepository activityFeedRepository,
+            CancellationToken cancellationToken) =>
+        {
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
+            if (denied is not null)
+            {
+                return denied;
+            }
+
+            var model = await qualityModelService.ResetToDefaultsAsync(cancellationToken);
+            await activityFeedRepository.RecordActivityAsync(
+                "quality.model.reset",
+                "Reset the Quality Definitions table (Min, Preferred and Max sizes) to Deluno's shipped defaults.",
+                null,
+                null,
+                "qualityModel",
+                null,
+                cancellationToken);
+            return Results.Ok(model);
+        });
+
         return endpoints;
     }
 

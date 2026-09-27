@@ -593,7 +593,27 @@ public sealed class ReleaseDecisionEngineTests
             quality: "WEB 1080p",
             sizeBytes: 8_000_000_000L)); // 8 GB, good for 1080p
 
-        Assert.Equal(80, decision.SizeScore);
+        Assert.True(decision.SizeScore >= 80);
+    }
+
+    /// <summary>
+    /// #771: within the Min/Max band, a release sized at the tier's Preferred
+    /// value scores at least as well as one further from it, so scoring can
+    /// favour a release closer to Preferred without a second candidate this
+    /// close ever losing to it.
+    /// </summary>
+    [Fact]
+    public void Decide_size_score_favours_a_release_closer_to_the_preferred_size()
+    {
+        var atPreferred = ReleaseDecisionEngine.Decide(GoodInput(
+            quality: "WEB 1080p",
+            sizeBytes: 15_600_000_000L)); // near WEB 1080p's Preferred (1.5-25 GB band)
+        var farFromPreferred = ReleaseDecisionEngine.Decide(GoodInput(
+            quality: "WEB 1080p",
+            sizeBytes: 2_000_000_000L)); // still in range, but far from Preferred
+
+        Assert.True(atPreferred.SizeScore > farFromPreferred.SizeScore);
+        Assert.True(farFromPreferred.SizeScore >= 80);
     }
 
     [Fact]

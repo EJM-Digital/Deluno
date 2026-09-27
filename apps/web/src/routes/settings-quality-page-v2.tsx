@@ -13,6 +13,7 @@ import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { useLoaderData } from "react-router-dom";
 import { ChevronRight } from "lucide-react";
 import { Button } from "../components/ui/button";
+import { ConfirmDialog } from "../components/ui/confirm-dialog";
 import { Field } from "../components/ui/field";
 import { Input } from "../components/ui/input";
 import { ListCard } from "../components/ui/list-card";
@@ -44,6 +45,8 @@ export function SettingsQualityPage() {
   const [model, setModel] = useState(loaded);
   const [saveState, setSaveState] = useState<Exclude<DrawerSaveState, "clean" | "dirty">>();
   const [message, setMessage] = useState<string | null>(null);
+  const [confirmingReset, setConfirmingReset] = useState(false);
+  const [resetting, setResetting] = useState(false);
 
   // One table at a time: 26 tiers × two units is a page nobody can scan.
   const [scope, setScope] = useState<"movie" | "episode">("movie");
@@ -82,29 +85,69 @@ export function SettingsQualityPage() {
     }
   }
 
+  async function handleReset() {
+    setResetting(true);
+    try {
+      const next = await fetchJson<QualityModelSnapshot>("/api/quality-model/reset", { method: "POST" });
+      setSaved(next);
+      setModel(next);
+      setSaveState("saved");
+      setMessage("Reset to Deluno's shipped defaults");
+    } catch (error) {
+      setSaveState("error");
+      setMessage(error instanceof Error ? error.message : "Could not reset size rules");
+    } finally {
+      setResetting(false);
+      setConfirmingReset(false);
+    }
+  }
+
   return (
     <form onSubmit={handleSubmit} className="flex flex-col gap-[var(--page-gap)]" noValidate>
       <PageToolbar
         tabs={TABS}
         actions={
-          <SegmentedControl<"movie" | "episode">
-            aria-label="Show sizes for"
-            className="w-auto"
-            value={scope}
-            onValueChange={setScope}
-            options={[
-              // "Movies · TV" is the vocabulary MediaTypeFilter already uses everywhere else.
-              { value: "movie", label: "Movies" },
-              { value: "episode", label: "TV" }
-            ]}
-          />
+          <div className="flex items-center gap-2">
+            <Button type="button" variant="outline" size="sm" onClick={() => setConfirmingReset(true)}>
+              Reset to defaults
+            </Button>
+            <SegmentedControl<"movie" | "episode">
+              aria-label="Show sizes for"
+              className="w-auto"
+              value={scope}
+              onValueChange={setScope}
+              options={[
+                // "Movies · TV" is the vocabulary MediaTypeFilter already uses everywhere else.
+                { value: "movie", label: "Movies" },
+                { value: "episode", label: "TV" }
+              ]}
+            />
+          </div>
         }
       />
 
       {scope === "movie" ? (
-        <SizeCard scope="movie" unit="GB" tiers={model.tiers} minKey="movieMinGb" maxKey="movieMaxGb" step={0.1} onChange={updateTier} />
+        <SizeCard
+          scope="movie"
+          unit="GB"
+          tiers={model.tiers}
+          minKey="movieMinGb"
+          preferredKey="moviePreferredGb"
+          maxKey="movieMaxGb"
+          step={0.1}
+          onChange={updateTier}
+        />
       ) : (
-        <SizeCard scope="episode" unit="MB" tiers={model.tiers} minKey="episodeMinMb" maxKey="episodeMaxMb" step={100} onChange={updateTier} />
+        <SizeCard
+          scope="episode"
+          unit="MB"
+          tiers={model.tiers}
+          minKey="episodeMinMb"
+          preferredKey="episodePreferredMb"
+          maxKey="episodeMaxMb"
+          step={100}
+          onChange={updateTier}
+        />
       )}
 
       <ListCard title="Same-quality upgrades" count="How Deluno chooses between equally ranked releases">
@@ -119,6 +162,16 @@ export function SettingsQualityPage() {
       </ListCard>
 
       <PageFooter state={state} message={message} saveLabel="Save size rules" />
+
+      <ConfirmDialog
+        open={confirmingReset}
+        onOpenChange={setConfirmingReset}
+        title="Reset size rules to defaults?"
+        description="Every tier's Min, Preferred and Max sizes go back to Deluno's shipped numbers. Anything you've hand-edited here is lost. This is recorded in Activity."
+        confirmLabel="Reset to defaults"
+        busy={resetting}
+        onConfirm={() => void handleReset()}
+      />
     </form>
   );
 }
@@ -137,13 +190,14 @@ function niceCeiling(value: number) {
  * so every one of them lines up. `pr-2` on the numeric columns matches the number
  * inputs' own padding, which is what keeps a header label over its own digits.
  */
-const SIZE_GRID = "grid grid-cols-[minmax(11rem,1.3fr)_minmax(12rem,2.4fr)_5.5rem_5.5rem] items-center gap-[var(--grid-gap)] px-[var(--card-pad-x)]";
+const SIZE_GRID = "grid grid-cols-[minmax(11rem,1.3fr)_minmax(12rem,2.4fr)_5.5rem_5.5rem_5.5rem] items-center gap-[var(--grid-gap)] px-[var(--card-pad-x)]";
 
 function SizeCard({
   scope,
   unit,
   tiers,
   minKey,
+  preferredKey,
   maxKey,
   step,
   onChange
@@ -153,6 +207,8 @@ function SizeCard({
   unit: string;
   tiers: QualityTierDefinition[];
   minKey: keyof QualityTierDefinition;
+  /** Radarr calls this column Preferred (#771): the size scoring aims for within Min/Max. */
+  preferredKey: keyof QualityTierDefinition;
   maxKey: keyof QualityTierDefinition;
   step: number;
   onChange: (index: number, key: keyof QualityTierDefinition, value: number) => void;
@@ -183,9 +239,9 @@ function SizeCard({
       }
     >
       <div className="overflow-x-auto">
-        <div className="min-w-[52rem]">
+        <div className="min-w-[58rem]">
           <div className={cn(SIZE_GRID, "h-[var(--list-thead-height)] border-b border-hairline bg-surface-2/40")}>
-            {["Quality tier", "Accepted range", `Min (${unit})`, `Max (${unit})`].map((label, index) => (
+            {["Quality tier", "Accepted range", `Min (${unit})`, `Preferred (${unit})`, `Max (${unit})`].map((label, index) => (
               <span
                 key={label}
                 className={cn(
@@ -201,6 +257,7 @@ function SizeCard({
           <div className={cn(SIZE_GRID, "border-b border-hairline bg-surface-2/40 pb-2")}>
             <span />
             <RangeAxis scaleMax={scaleMax} scale="sqrt" unit={unit} />
+            <span />
             <span />
             <span />
           </div>
@@ -226,10 +283,11 @@ function SizeCard({
                     <span className="truncate">{band.label}</span>
                   </span>
                   <span />
-                  {/* The band summary sits in the Min and Max columns, over the numbers it summarises. */}
+                  {/* The band summary sits in the Min and Max columns, over the numbers it summarises. Preferred is per-tier, not per-band. */}
                   <span className="pr-2 text-right text-[length:var(--type-caption)] tabular-nums text-muted-foreground">
                     {band.unruled ? "—" : format(band.spanMin)}
                   </span>
+                  <span />
                   <span className="pr-2 text-right text-[length:var(--type-caption)] tabular-nums text-muted-foreground">
                     {band.unruled ? "—" : formatMax(band.spanMax)}
                   </span>
@@ -239,6 +297,7 @@ function SizeCard({
                   ? band.tiers.map(({ tier, index }) => {
                       const low = Number(tier[minKey]);
                       const high = Number(tier[maxKey]);
+                      const preferred = Number(tier[preferredKey]);
                       const unset = low === 0 && high === 0;
                       return (
                         <div key={tier.name} className={cn(SIZE_GRID, "min-h-[var(--list-row-height)] border-b border-hairline last:border-b-0")}>
@@ -265,6 +324,7 @@ function SizeCard({
                             }}
                           />
                           <SizeInput label={`${tier.name} ${scope} minimum value`} value={low} max={scaleMax} step={step} onChange={(value) => onChange(index, minKey, value)} />
+                          <SizeInput label={`${tier.name} ${scope} preferred value`} value={preferred} max={scaleMax} step={step} onChange={(value) => onChange(index, preferredKey, value)} />
                           <SizeInput label={`${tier.name} ${scope} maximum value`} value={high} max={scaleMax} step={step} onChange={(value) => onChange(index, maxKey, value)} />
                         </div>
                       );
