@@ -13,6 +13,14 @@ public static partial class IntakeSourceAddressValidator
     {
         var normalizedProvider = provider?.Trim().ToLowerInvariant();
         var value = address?.Trim();
+
+        // TMDb Popular (#845) needs no address at all — it reads TMDb's
+        // current popular list for the source's media type.
+        if (normalizedProvider == "tmdb-popular")
+        {
+            return null;
+        }
+
         if (string.IsNullOrWhiteSpace(value))
         {
             return "Add the source URL or identifier Deluno should poll.";
@@ -26,6 +34,15 @@ public static partial class IntakeSourceAddressValidator
             "tmdb-person" when TmdbPersonIdRegex().IsMatch(value) || TmdbPersonUrlRegex().IsMatch(value)
                 => null,
             "tmdb-person" => "Use a TMDb person URL or numeric person ID.",
+            "tmdb-discover" when TmdbKeywordIdsRegex().IsMatch(value)
+                => null,
+            "tmdb-discover" => "Use one or more TMDb keyword IDs, comma-separated.",
+            "tmdb-collection" when TmdbListIdRegex().IsMatch(value) || IsHostedBy(value, "themoviedb.org") || IsHostedBy(value, "tmdb.org")
+                => null,
+            "tmdb-collection" => "Use a TMDb collection URL or its numeric collection ID.",
+            "tmdb-company-credits" when TmdbPersonIdRegex().IsMatch(value) || IsHostedBy(value, "themoviedb.org") || IsHostedBy(value, "tmdb.org")
+                => null,
+            "tmdb-company-credits" => "Use a TMDb company URL or its numeric company ID.",
             "imdb" when ImdbListIdRegex().IsMatch(value) || IsHostedBy(value, "imdb.com")
                 => null,
             "imdb" => "Use an IMDb list URL, an IMDb CSV export URL, or an ls… list ID.",
@@ -62,6 +79,9 @@ public static partial class IntakeSourceAddressValidator
 
     [GeneratedRegex(@"^\d{1,12}$")]
     private static partial Regex TmdbPersonIdRegex();
+
+    [GeneratedRegex(@"^\d{1,12}(,\d{1,12})*$")]
+    private static partial Regex TmdbKeywordIdsRegex();
 
     [GeneratedRegex(@"^https?://(?:[^./]+\.)?(?:themoviedb\.org|tmdb\.org)/person/\d{1,12}(?:[/?#].*)?$", RegexOptions.IgnoreCase)]
     private static partial Regex TmdbPersonUrlRegex();

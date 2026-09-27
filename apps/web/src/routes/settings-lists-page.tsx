@@ -52,6 +52,10 @@ const PROVIDERS = [
   { label: "IMDb", value: "imdb" },
   { label: "TMDb", value: "tmdb" },
   { label: "TMDb person", value: "tmdb-person" },
+  { label: "TMDb Popular", value: "tmdb-popular" },
+  { label: "TMDb Discover/Keywords", value: "tmdb-discover" },
+  { label: "TMDb Collection", value: "tmdb-collection" },
+  { label: "TMDb Company Credits", value: "tmdb-company-credits" },
   { label: "Letterboxd", value: "letterboxd" },
   { label: "RSS feed", value: "rss" },
   { label: "StevenLu", value: "stevenlu" },
@@ -277,7 +281,7 @@ export function SettingsListsPage() {
     if (!isOpen || busy) return;
     const nextErrors: typeof errors = {};
     if (!form.name.trim()) nextErrors.name = "Give this list a name.";
-    if (!form.feedUrl.trim()) nextErrors.feedUrl = "Paste the list URL or identifier.";
+    if (!form.feedUrl.trim() && form.provider !== "tmdb-popular") nextErrors.feedUrl = "Paste the list URL or identifier.";
     if (form.provider === "tmdb-person" && form.personCreditTypes.length === 0) {
       nextErrors.creditTypes = "Choose at least one credit type to follow.";
     }
@@ -967,6 +971,14 @@ function listAddressHelp(provider: string) {
       return "Paste a TMDb list URL or list ID.";
     case "tmdb-person":
       return "Paste a TMDb person URL or numeric person ID. Choose the credit types Deluno should follow below.";
+    case "tmdb-popular":
+      return "No address needed — reads TMDb's current Popular list for the media type below.";
+    case "tmdb-discover":
+      return "Enter one or more TMDb keyword IDs, comma-separated.";
+    case "tmdb-collection":
+      return "Paste a TMDb collection URL or numeric collection ID. Every movie in the collection is added.";
+    case "tmdb-company-credits":
+      return "Paste a TMDb company URL or numeric company ID.";
     case "mdblist":
       return "For a public MDbList list, choose Custom list URL and paste https://mdblist.com/lists/owner/list-name.";
     case "letterboxd":
