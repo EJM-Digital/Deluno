@@ -24,6 +24,13 @@ namespace Deluno.Platform.Contracts;
 /// single-copy links in use. Sharing then costs no disk at all, and saying it
 /// uses gigabytes would be a lie.
 /// </param>
+/// <param name="LostHardlink">
+/// True only when configuration said this should be sharing (same drive,
+/// hardlinks on) but the real files say otherwise — the library's copy was
+/// upgraded or deleted out from under it (#819, #926). Distinct from a
+/// download that was never going to share (different drives, or hardlinks
+/// off): that one costs space by design and is not a problem to flag.
+/// </param>
 public sealed record DownloadSharingHold(
     string ClientId,
     string ClientName,
@@ -32,7 +39,8 @@ public sealed record DownloadSharingHold(
     string Detail,
     long SizeBytes,
     bool NeedsYou,
-    bool SharesLibraryCopy);
+    bool SharesLibraryCopy,
+    bool LostHardlink = false);
 
 /// <summary>
 /// Everything the download clients are still holding after import, as of the

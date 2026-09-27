@@ -75,6 +75,7 @@ public static class WorkerServiceCollectionExtensions
         services.AddScoped<IHealthCheck, RemotePathMappingHealthCheck>();
         services.AddScoped<IHealthCheck, SystemTimeHealthCheck>();
         services.AddScoped<IHealthCheck, MediaServerRefreshHealthCheck>();
+        services.AddScoped<IHealthCheck, DownloadHardlinkHealthCheck>();
         services.AddHttpClient(Deluno.Worker.HealthChecks.HealthCheckHttpClients.SystemTime, client => client.Timeout = TimeSpan.FromSeconds(10));
         services.AddScoped<HealthCheckRunner>();
         services.AddHostedService<HealthCheckHostedService>();

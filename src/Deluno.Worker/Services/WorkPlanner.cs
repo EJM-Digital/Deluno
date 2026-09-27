@@ -574,6 +574,7 @@ public sealed class WorkPlanner(
         IMovieCatalogRepository movieCatalogRepository,
         ISeriesCatalogRepository seriesCatalogRepository,
         SharingReclaimService reclaimService,
+        IHardlinkInspector hardlinkInspector,
         CancellationToken cancellationToken)
     {
         await RunScheduledPassAsync(
@@ -619,6 +620,13 @@ public sealed class WorkPlanner(
         // What the clients are still holding, for the dashboard to explain.
         var holds = new List<DownloadSharingHold>();
         string? driveNote = null;
+
+        // #819/#926: real per-title file paths, read once per library rather
+        // than once per hold. The heuristic below (same drive, hardlinks on)
+        // still decides the drive-layout note; this is what catches the case
+        // it cannot see - a library copy that was upgraded or deleted out
+        // from under a download that is still, physically, a separate copy.
+        var trackedFiles = new SharingTrackedFileCache(movieCatalogRepository, seriesCatalogRepository);
 
         foreach (var item in overview.Clients.SelectMany(client => client.Queue))
         {
@@ -682,6 +690,25 @@ public sealed class WorkPlanner(
                 out var library);
             var downloadPath = item.SourcePath ?? library?.DownloadsPath;
             var libraryPath = library?.RootPath;
+            var heuristicShares = SharingFootprint.SharesOneCopy(downloadPath, libraryPath, settings.UseHardlinks);
+
+            // The heuristic only ever asked "could this be one copy" from
+            // configuration. Where it says yes, check the actual files: gone
+            // or replaced (false) downgrades it, uncertain (null) - most often
+            // the exact tracked file could not be resolved - leaves it as the
+            // heuristic said, same as before this existed.
+            bool sharesLibraryCopy = heuristicShares;
+            string? unlinkedDetail = null;
+            if (heuristicShares)
+            {
+                var exactLibraryPath = await trackedFiles.ResolveAsync(dispatch, library?.Id, cancellationToken);
+                var actuallyLinked = exactLibraryPath is null ? (bool?)null : hardlinkInspector.StillLinked(downloadPath, exactLibraryPath);
+                if (actuallyLinked == false)
+                {
+                    sharesLibraryCopy = false;
+                    unlinkedDetail = "No longer shared with your library - the library copy was upgraded or removed.";
+                }
+            }
 
             holds.Add(new DownloadSharingHold(
                 item.ClientId,
@@ -697,10 +724,11 @@ public sealed class WorkPlanner(
                     seriesCatalogRepository,
                     item.Title,
                     cancellationToken),
-                outcome.Detail ?? outcome.Reason,
+                unlinkedDetail ?? outcome.Detail ?? outcome.Reason,
                 Math.Max(0, item.SizeBytes),
                 NeedsYou: outcome.Action == SharingAction.Ask || outcome.Warning is not null,
-                SharesLibraryCopy: SharingFootprint.SharesOneCopy(downloadPath, libraryPath, settings.UseHardlinks)));
+                SharesLibraryCopy: sharesLibraryCopy,
+                LostHardlink: unlinkedDetail is not null));
 
             driveNote ??= SharingFootprint.Describe(downloadPath, libraryPath, settings.UseHardlinks);
         }
