@@ -130,6 +130,23 @@ public static class DownloadClientHistoryOutcomes
     /// again.
     /// </summary>
     public const string NeedsAttention = "needsAttention";
+
+    /// <summary>
+    /// The download itself finished, but the client's own post-processing
+    /// script failed (#910) — NZBGet's <c>FAILURE/SCRIPT</c>. A setup problem
+    /// with the client's script, not a bad release: never blocklisted, never
+    /// searched for again. The downloaded file is still handed to the
+    /// ordinary import path, which probes it and either imports it or follows
+    /// the bad-release path if the file itself turns out to be broken.
+    /// </summary>
+    public const string ScriptFailed = "scriptFailed";
+
+    /// <summary>
+    /// The same as <see cref="ScriptFailed"/>, but the client only warned
+    /// (#910) — NZBGet's <c>WARNING/SCRIPT</c>. Shown, not silently treated as
+    /// a plain success.
+    /// </summary>
+    public const string ScriptWarning = "scriptWarning";
 }
 
 public static class DownloadQueueStatuses

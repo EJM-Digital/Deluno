@@ -254,6 +254,7 @@ public sealed class NzbGetDownloadClient(IHttpClientFactory httpClientFactory) :
             var errorMessage = outcome == "failed" ? FailureReason(item.Status ?? string.Empty)
                 : outcome == DownloadClientHistoryOutcomes.Duplicate ? DuplicateReason(item.Status ?? string.Empty)
                 : outcome == DownloadClientHistoryOutcomes.NeedsAttention ? AttentionReason(item.Status ?? string.Empty)
+                : outcome is DownloadClientHistoryOutcomes.ScriptFailed or DownloadClientHistoryOutcomes.ScriptWarning ? ScriptReason(item.ScriptStatuses)
                 : QueueError(item.Status);
             return new DownloadClientHistoryItem(item.NzbId.ToString(CultureInfo.InvariantCulture), client.Id, client.Name, client.Protocol,
                 DownloadClientHelpers.InferMediaType(client, item.Category), DownloadClientHelpers.CleanReleaseTitle(item.NzbName ?? item.Name ?? "Unknown NZBGet history item"), item.NzbName ?? item.Name ?? "Unknown NZBGet history item",
@@ -281,6 +282,17 @@ public sealed class NzbGetDownloadClient(IHttpClientFactory httpClientFactory) :
     /// were read, so "success/unpack" was never completed and no NZBGet
     /// download was ever handed on. WARNING/SCRIPT is a finished download
     /// whose script complained; every other WARNING and FAILURE is not usable.
+    ///
+    /// <para><b>FAILURE/SCRIPT and WARNING/SCRIPT are not a bad release
+    /// either (#910).</b> The download itself completed; only NZBGet's own
+    /// post-processing script failed or warned. James: "if something is
+    /// unreadable and corrupt don't even retry" was about the file itself —
+    /// a script the user configured is a problem on this machine, the same
+    /// shape as <see cref="DownloadClientHistoryOutcomes.NeedsAttention"/>.
+    /// Read as <see cref="DownloadClientHistoryOutcomes.ScriptFailed"/> and
+    /// <see cref="DownloadClientHistoryOutcomes.ScriptWarning"/> so neither
+    /// blocklists or searches again, and both still hand the finished file to
+    /// the ordinary import path to be probed.</para>
     ///
     /// <para><b>DELETED/DUPE, DELETED/COPY and DELETED/GOOD are not failures
     /// (#663).</b> They mean NZBGet's own duplicate check correctly declined a
@@ -327,7 +339,8 @@ public sealed class NzbGetDownloadClient(IHttpClientFactory httpClientFactory) :
         return main switch
         {
             "SUCCESS" or "COMPLETED" or "SUCCEEDED" => DownloadQueueStatuses.Completed,
-            "WARNING" when detail == "SCRIPT" => DownloadQueueStatuses.Completed,
+            "FAILURE" when detail == "SCRIPT" => DownloadClientHistoryOutcomes.ScriptFailed,
+            "WARNING" when detail == "SCRIPT" => DownloadClientHistoryOutcomes.ScriptWarning,
             "WARNING" when detail == "SPACE" => DownloadClientHistoryOutcomes.NeedsAttention,
             "DELETED" when detail is "DUPE" or "COPY" or "GOOD" => DownloadClientHistoryOutcomes.Duplicate,
             "WARNING" or "FAILURE" or "DELETED" => "failed",
@@ -380,6 +393,22 @@ public sealed class NzbGetDownloadClient(IHttpClientFactory httpClientFactory) :
         };
     }
 
+    /// <summary>
+    /// The words for a <see cref="DownloadClientHistoryOutcomes.ScriptFailed"/>
+    /// or <see cref="DownloadClientHistoryOutcomes.ScriptWarning"/> row
+    /// (#910), naming the script NZBGet itself names in
+    /// <c>ScriptStatuses</c> — the first one not reporting SUCCESS — rather
+    /// than the bare MAIN/DETAIL pair.
+    /// </summary>
+    internal static string ScriptReason(IReadOnlyList<NzbGetScriptStatus>? scriptStatuses)
+    {
+        var failing = scriptStatuses?.FirstOrDefault(status =>
+            !string.Equals(status.Status, "SUCCESS", StringComparison.OrdinalIgnoreCase));
+        return failing is { Name.Length: > 0 }
+            ? $"Your client's script \"{failing.Name}\" {(string.Equals(failing.Status, "FAILURE", StringComparison.OrdinalIgnoreCase) ? "failed" : "warned")}."
+            : "Your client's post-processing script reported a problem.";
+    }
+
     private static string FailureDetail(string detail) => detail switch
     {
         "HEALTH" => "too many articles are missing",
@@ -417,7 +446,10 @@ public sealed class NzbGetDownloadClient(IHttpClientFactory httpClientFactory) :
     private sealed record NzbGetResponse<T>([property: JsonPropertyName("result")] T? Result, [property: JsonPropertyName("error")] NzbGetError? Error = null);
     private sealed record NzbGetError([property: JsonPropertyName("code")] int? Code, [property: JsonPropertyName("message")] string? Message);
     private sealed record NzbGetQueueItem([property: JsonPropertyName("NZBID")] int NzbId, [property: JsonPropertyName("NZBName")] string? NzbName, [property: JsonPropertyName("Category")] string? Category, [property: JsonPropertyName("Status")] string? Status, [property: JsonPropertyName("FileSizeHi")] long FileSizeHi, [property: JsonPropertyName("RemainingSizeHi")] long RemainingSizeHi, [property: JsonPropertyName("DestDir")] string? DestDir);
-    private sealed record NzbGetHistoryItem([property: JsonPropertyName("NZBID")] int NzbId, [property: JsonPropertyName("NZBName")] string? NzbName, [property: JsonPropertyName("Name")] string? Name, [property: JsonPropertyName("Category")] string? Category, [property: JsonPropertyName("Status")] string? Status, [property: JsonPropertyName("FileSizeHi")] long FileSizeHi, [property: JsonPropertyName("HistoryTime")] long? HistoryTime, [property: JsonPropertyName("DestDir")] string? DestDir);
+    private sealed record NzbGetHistoryItem([property: JsonPropertyName("NZBID")] int NzbId, [property: JsonPropertyName("NZBName")] string? NzbName, [property: JsonPropertyName("Name")] string? Name, [property: JsonPropertyName("Category")] string? Category, [property: JsonPropertyName("Status")] string? Status, [property: JsonPropertyName("FileSizeHi")] long FileSizeHi, [property: JsonPropertyName("HistoryTime")] long? HistoryTime, [property: JsonPropertyName("DestDir")] string? DestDir, [property: JsonPropertyName("ScriptStatuses")] IReadOnlyList<NzbGetScriptStatus>? ScriptStatuses);
+
+    /// <summary>One post-processing script's own outcome, from NZBGet's history <c>ScriptStatuses</c> (#910) — SUCCESS, FAILURE or a script-specific warning wording.</summary>
+    internal sealed record NzbGetScriptStatus([property: JsonPropertyName("Name")] string? Name, [property: JsonPropertyName("Status")] string? Status);
     // FreeDiskSpaceMB (#663): the one field the health check never read, so a
     // client filling its disk stayed "healthy" right up until every download
     // in the queue started failing.
