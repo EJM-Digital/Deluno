@@ -575,6 +575,7 @@ public sealed class WorkPlanner(
         ISeriesCatalogRepository seriesCatalogRepository,
         SharingReclaimService reclaimService,
         IHardlinkInspector hardlinkInspector,
+        IDownloadHealthRepository healthRepository,
         CancellationToken cancellationToken)
     {
         await RunScheduledPassAsync(
@@ -590,6 +591,10 @@ public sealed class WorkPlanner(
             settings.SharingStuckAfterDays);
         // #814: one sandbox switch, shared with the strike/blocklist executors.
         var dryRun = settings.DownloadHealthDryRunEnabled;
+        // #817: the same ignore list the strike/blocklist executor already
+        // honours - a download matching it is exempt from every health rule,
+        // seeding reclaim included.
+        var ignoreList = await healthRepository.ListDownloadHealthIgnoreEntriesAsync(cancellationToken);
 
         // Nothing to do at all when the user has told Deluno to keep its hands
         // off, and no reason to read telemetry to find that out. The stored
@@ -647,6 +652,13 @@ public sealed class WorkPlanner(
             }
 
             indexersByName.TryGetValue(dispatch.IndexerName ?? string.Empty, out var source);
+
+            // #817: exempt from seeding reclaim the same way it is exempt from
+            // every strike/blocklist rule.
+            if (ignoreList.Any(entry => entry.Matches(item.Id, item.Category, item.IndexerName)))
+            {
+                continue;
+            }
 
             var outcome = await reclaimService.ReconcileAsync(
                 new SharingReclaimCandidate(

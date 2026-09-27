@@ -364,6 +364,27 @@ export function QueuePage() {
     );
   }
 
+  // #817: exempts this one download from every download-health rule, for as
+  // long as it is in the client - by its hash (its queue item id, which for
+  // a torrent client is the info hash), reviewable and removable from
+  // Settings -> Download health. Different from Dismiss above: a dismissed
+  // finding still comes back if the same problem happens again; an ignored
+  // download never strikes on anything, ever, until this entry is removed.
+  async function ignoreDownloadHealth(item: DownloadQueueItem) {
+    return run(
+      `ignore-download:${item.id}`,
+      async () => {
+        const response = await authedFetch("/api/download-health/ignore-list", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ hash: item.id, note: item.title || item.releaseName })
+        });
+        if (!response.ok) throw new Error(await readErrorText(response, "That download could not be added to the ignore list."));
+      },
+      "Added to the ignore list — exempt from every health rule until removed"
+    );
+  }
+
   async function previewImport(item: DownloadQueueItem) {
     await run(`preview:${item.id}`, async () => {
       const sourcePath = resolveImportSourcePath(item, libraries);
@@ -1164,6 +1185,19 @@ export function QueuePage() {
                 <Fact label="Peers" value={String(openQueueItem.peers)} />
                 <Fact label="From" value={openQueueItem.indexerName || "Unknown source"} />
                 <Fact label="Release" value={openQueueItem.releaseName} mono />
+              </div>
+              <div className="flex justify-end">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => void ignoreDownloadHealth(openQueueItem)}
+                  disabled={busyKey !== null}
+                  title="Exempt this download from every health rule until removed from Settings -> Download health"
+                >
+                  {busyKey === `ignore-download:${openQueueItem.id}` ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
+                  Ignore this download
+                </Button>
               </div>
             </DrawerSection>
 

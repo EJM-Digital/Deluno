@@ -320,6 +320,7 @@ public sealed class DelunoHeartbeatWorker(
                 seriesCatalogRepository,
                 services.GetRequiredService<SharingReclaimService>(),
                 services.GetRequiredService<IHardlinkInspector>(),
+                services.GetRequiredService<IDownloadHealthRepository>(),
                 stoppingToken);
         }
 
