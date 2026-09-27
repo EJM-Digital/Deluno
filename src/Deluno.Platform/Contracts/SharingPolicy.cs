@@ -1,3 +1,5 @@
+using Deluno.Contracts;
+
 namespace Deluno.Platform.Contracts;
 
 /// <summary>
@@ -18,7 +20,9 @@ public sealed record SharingPolicy(
     int? ForHours,
     double? UntilRatio,
     string StuckAction,
-    int StuckAfterDays)
+    int StuckAfterDays,
+    /// <summary>#815: which tracker-privacy downloads this policy covers. "both" (the default) is every existing install's value, so nothing narrows until it is edited.</summary>
+    string PrivacyScope = DownloadHealthPrivacyScopes.Both)
 {
     /// <summary>Keep sharing until the rule below is met, then reclaim the space.</summary>
     public const string ModeShareThenTidy = "share-then-tidy";
@@ -90,5 +94,9 @@ public sealed record SharingPolicy(
             ForHours ?? fallback.ForHours,
             UntilRatio ?? fallback.UntilRatio,
             string.IsNullOrWhiteSpace(StuckAction) ? fallback.StuckAction : NormalizeStuckAction(StuckAction),
-            StuckAfterDays > 0 ? StuckAfterDays : fallback.StuckAfterDays);
+            StuckAfterDays > 0 ? StuckAfterDays : fallback.StuckAfterDays,
+            DownloadHealthPrivacyScopes.IsKnown(PrivacyScope) ? PrivacyScope : fallback.PrivacyScope);
+
+    /// <summary>#815: whether this policy's privacy scope covers a download with this reported privacy.</summary>
+    public bool AppliesToPrivacy(bool? isPrivate) => DownloadHealthPrivacyScopes.Matches(PrivacyScope, isPrivate);
 }

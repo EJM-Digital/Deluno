@@ -120,6 +120,8 @@ interface SharingForm {
   untilRatio: string;
   stuckAction: string;
   stuckAfterDays: string;
+  // #815: which tracker-privacy downloads this policy covers.
+  privacyScope: string;
 }
 
 interface CleanupForm {
@@ -341,7 +343,8 @@ export function SearchCyclesPage() {
             sharingForHours: sharing.forHours.trim() === "" ? null : Math.max(1, Number(sharing.forHours)),
             sharingUntilRatio: sharing.untilRatio.trim() === "" ? null : Math.max(0, Number(sharing.untilRatio)),
             sharingStuckAction: sharing.stuckAction,
-            sharingStuckAfterDays: Math.max(1, Number(sharing.stuckAfterDays || 14))
+            sharingStuckAfterDays: Math.max(1, Number(sharing.stuckAfterDays || 14)),
+            sharingPrivacyScope: sharing.privacyScope
         }),
         fetchJson<QualityModelSnapshot>("/api/quality-model", {
           method: "PUT",
@@ -466,6 +469,24 @@ export function SearchCyclesPage() {
                 ]}
               />
             </Field>
+
+            {sharing.mode !== "leave-alone" ? (
+              <Field
+                label="Tracker privacy this covers"
+                help="A private-tracker account can be permanently banned for early removal or a hit-and-run. Scope this policy away from private trackers to leave those alone entirely, or away from public ones."
+              >
+                <SegmentedControl
+                  aria-label="Tracker privacy this covers"
+                  value={sharing.privacyScope}
+                  onValueChange={(privacyScope) => setSharing((current) => ({ ...current, privacyScope }))}
+                  options={[
+                    { value: "both", label: "Public and private" },
+                    { value: "public", label: "Public only" },
+                    { value: "private", label: "Private only" }
+                  ]}
+                />
+              </Field>
+            ) : null}
 
             {sharing.mode === "share-then-tidy" ? (
               <>
@@ -730,7 +751,8 @@ function sharingFrom(settings: PlatformSettingsSnapshot): SharingForm {
     forHours: settings.sharingForHours == null ? "" : String(settings.sharingForHours),
     untilRatio: settings.sharingUntilRatio == null ? "" : String(settings.sharingUntilRatio),
     stuckAction: settings.sharingStuckAction ?? "give-up",
-    stuckAfterDays: String(settings.sharingStuckAfterDays ?? 14)
+    stuckAfterDays: String(settings.sharingStuckAfterDays ?? 14),
+    privacyScope: settings.sharingPrivacyScope ?? "both"
   };
 }
 

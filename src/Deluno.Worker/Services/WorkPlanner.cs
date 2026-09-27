@@ -607,7 +607,8 @@ public sealed class WorkPlanner(
             settings.SharingForHours,
             settings.SharingUntilRatio,
             settings.SharingStuckAction,
-            settings.SharingStuckAfterDays);
+            settings.SharingStuckAfterDays,
+            settings.SharingPrivacyScope);
         // #814: one sandbox switch, shared with the strike/blocklist executors.
         var dryRun = settings.DownloadHealthDryRunEnabled;
         // #817: the same ignore list the strike/blocklist executor already
@@ -687,7 +688,8 @@ public sealed class WorkPlanner(
                     item.Title,
                     item.Protocol,
                     item.Ratio,
-                    item.SeedingMinutes),
+                    item.SeedingMinutes,
+                    item.IsPrivate),
                 globalPolicy,
                 source,
                 dryRun,

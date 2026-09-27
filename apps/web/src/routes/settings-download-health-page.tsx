@@ -76,6 +76,13 @@ const APPLIES_TO_OPTIONS = [
   { value: "usenet", label: "Usenet only" }
 ];
 
+/** #815: a private-tracker account can be permanently banned for early removal or a hit-and-run, so a rule can be scoped away from it entirely. */
+const PRIVACY_SCOPE_OPTIONS = [
+  { value: "both", label: "Public and private" },
+  { value: "public", label: "Public only" },
+  { value: "private", label: "Private only" }
+];
+
 interface LoaderData {
   rules: DownloadHealthRule[];
   ignoreEntries: DownloadHealthIgnoreEntry[];
@@ -352,6 +359,7 @@ interface RuleForm {
   resetStrikesOnProgress: boolean;
   actionPreset: string;
   threshold: string;
+  privacyScope: string;
 }
 
 type DrawerMode = { kind: "closed" } | { kind: "create" } | { kind: "edit"; id: string };
@@ -367,7 +375,8 @@ function emptyForm(kind: string): RuleForm {
     maxCompletionPercent: "100",
     resetStrikesOnProgress: true,
     actionPreset: "just-tell-me",
-    threshold: "0"
+    threshold: "0",
+    privacyScope: "both"
   };
 }
 
@@ -382,7 +391,8 @@ function formFrom(rule: DownloadHealthRule): RuleForm {
     maxCompletionPercent: String(rule.maxCompletionPercent),
     resetStrikesOnProgress: rule.resetStrikesOnProgress,
     actionPreset: rule.actionPreset,
-    threshold: String(rule.threshold)
+    threshold: String(rule.threshold),
+    privacyScope: rule.privacyScope
   };
 }
 
@@ -465,7 +475,8 @@ export function SettingsDownloadHealthPage() {
         maxCompletionPercent: Number(form.maxCompletionPercent),
         resetStrikesOnProgress: form.resetStrikesOnProgress,
         actionPreset: form.actionPreset,
-        threshold: Number(form.threshold || 0)
+        threshold: Number(form.threshold || 0),
+        privacyScope: form.privacyScope
       });
       const response = await authedFetch(
         `/api/download-health/rules/${mode.kind === "edit" ? mode.id : "new"}`,
@@ -590,7 +601,7 @@ export function SettingsDownloadHealthPage() {
             {sorted.map((rule) => (
               <ListRow key={rule.id} onClick={() => openRule(rule)} selected={mode.kind === "edit" && mode.id === rule.id}>
                 <ListNameCell name={kindLabel(rule.kind)} sub={rule.enabled ? "On" : "Off"} />
-                <ListCell primary={appliesToLabel(rule.appliesTo)} secondary={`${rule.minCompletionPercent}-${rule.maxCompletionPercent}% complete`} />
+                <ListCell primary={scopeLabel(rule)} secondary={`${rule.minCompletionPercent}-${rule.maxCompletionPercent}% complete`} />
                 <ListCell primary={`${rule.strikeLimit} strike${rule.strikeLimit === 1 ? "" : "s"}`} secondary={`Every ${rule.timerMinutes} min`} />
                 <ListCell primary={actionLabel(rule.actionPreset)} />
               </ListRow>
@@ -709,6 +720,9 @@ export function SettingsDownloadHealthPage() {
           <Field label="Applies to">
             <Select value={form.appliesTo} onChange={(event) => setForm((current) => ({ ...current, appliesTo: event.target.value }))} options={APPLIES_TO_OPTIONS} />
           </Field>
+          <Field label="Tracker privacy" help="A private-tracker account can be banned for early removal or a hit-and-run. Scope this rule away from private trackers to protect it, or away from public ones to leave those alone.">
+            <Select value={form.privacyScope} onChange={(event) => setForm((current) => ({ ...current, privacyScope: event.target.value }))} options={PRIVACY_SCOPE_OPTIONS} />
+          </Field>
           <FieldRow>
             <Field label="From this % complete" error={errors.minCompletionPercent}>
               <Input type="number" min="0" max="100" step="1" value={form.minCompletionPercent} onChange={(event) => setForm((current) => ({ ...current, minCompletionPercent: event.target.value }))} />
@@ -787,7 +801,8 @@ function sameForm(left: RuleForm, right: RuleForm) {
     left.maxCompletionPercent === right.maxCompletionPercent &&
     left.resetStrikesOnProgress === right.resetStrikesOnProgress &&
     left.actionPreset === right.actionPreset &&
-    left.threshold === right.threshold;
+    left.threshold === right.threshold &&
+    left.privacyScope === right.privacyScope;
 }
 
 function validate(form: RuleForm): Record<string, string> {
@@ -809,4 +824,11 @@ function validate(form: RuleForm): Record<string, string> {
 
 function appliesToLabel(appliesTo: string) {
   return APPLIES_TO_OPTIONS.find((option) => option.value === appliesTo)?.label ?? appliesTo;
+}
+
+function scopeLabel(rule: DownloadHealthRule) {
+  const base = appliesToLabel(rule.appliesTo);
+  return rule.privacyScope === "both" || !rule.privacyScope
+    ? base
+    : `${base} · ${PRIVACY_SCOPE_OPTIONS.find((option) => option.value === rule.privacyScope)?.label ?? rule.privacyScope}`;
 }

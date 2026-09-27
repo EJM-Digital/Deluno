@@ -79,7 +79,8 @@ public static class DownloadClientEndpointRouteBuilderExtensions
                 ActionPreset: request.ActionPreset ?? DownloadHealthActionPresets.JustTellMe,
                 CreatedUtc: now,
                 UpdatedUtc: now,
-                Threshold: request.Threshold);
+                Threshold: request.Threshold,
+                PrivacyScope: request.PrivacyScope ?? DownloadHealthPrivacyScopes.Both);
 
             var legacy = await settingsRepository.GetAsync(cancellationToken);
             var (rules, error) = await platformRepository.SaveDownloadHealthRuleAsync(candidate, legacy, cancellationToken);
@@ -442,7 +443,8 @@ public sealed record SaveDownloadHealthRuleRequest(
     int MaxCompletionPercent,
     bool ResetStrikesOnProgress,
     string? ActionPreset,
-    double Threshold);
+    double Threshold,
+    string? PrivacyScope = null);
 
 public sealed record AddDownloadHealthIgnoreEntryRequest(
     string? Hash,

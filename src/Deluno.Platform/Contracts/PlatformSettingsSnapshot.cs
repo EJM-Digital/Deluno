@@ -1,3 +1,5 @@
+using Deluno.Contracts;
+
 namespace Deluno.Platform.Contracts;
 
 public sealed record PlatformSettingsSnapshot(
@@ -191,4 +193,6 @@ public sealed record PlatformSettingsSnapshot(
     // decides when media titles themselves are removed from the library;
     // this never touches a title or its files, only Deluno's own records
     // about what happened. Same pattern as ImportRecoveryRetentionDays.
-    int HistoryRetentionDays = 365);
+    int HistoryRetentionDays = 365,
+    /// <summary>#815: which tracker-privacy downloads the global sharing policy covers ("public" | "private" | "both"). "both" is every existing install's value, so nothing narrows until it is edited.</summary>
+    string SharingPrivacyScope = DownloadHealthPrivacyScopes.Both);

@@ -276,7 +276,16 @@ public sealed record DownloadQueueItem(
     /// #881). Carried through to <see cref="Deluno.Contracts.RecoveryQueueSnapshot"/>
     /// so it never earns a strike or triggers the cleanup remediation path.
     /// </summary>
-    bool IsSetupProblem = false);
+    bool IsSetupProblem = false,
+    /// <summary>
+    /// Whether the torrent's own tracker is private, as the client itself
+    /// reports it (#815) - qBittorrent, Transmission and Deluge each expose
+    /// this. Null when the client did not say (an older client version,
+    /// Usenet, which has no tracker at all) - a rule scoped to public-only
+    /// or private-only never matches an unknown privacy, so an unreadable
+    /// flag never wrongly narrows a private-tracker download's protection.
+    /// </summary>
+    bool? IsPrivate = null);
 
 /// <summary>
 /// An observational queue-health signal. These findings never cause Deluno to remove

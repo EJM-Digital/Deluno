@@ -97,5 +97,7 @@ public static class PlatformSettingsPatchMerger
             SpecialsFolderFormat: patch.SpecialsFolderFormat ?? current.SpecialsFolderFormat,
             MultiEpisodeStyle: patch.MultiEpisodeStyle ?? current.MultiEpisodeStyle,
             RenameFoldersOnImport: patch.RenameFoldersOnImport ?? current.RenameFoldersOnImport,
-            HistoryRetentionDays: patch.HistoryRetentionDays ?? current.HistoryRetentionDays);
+            HistoryRetentionDays: patch.HistoryRetentionDays ?? current.HistoryRetentionDays,
+            HistoryRetentionDays: patch.HistoryRetentionDays ?? current.HistoryRetentionDays,
+            SharingPrivacyScope: patch.SharingPrivacyScope ?? current.SharingPrivacyScope);
 }

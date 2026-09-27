@@ -14,11 +14,12 @@ public sealed class SharingPolicyEvaluatorTests
         int? forHours = 72,
         double? untilRatio = null,
         string stuck = SharingPolicy.StuckGiveUp,
-        int stuckAfterDays = 14)
-        => new(mode, forHours, untilRatio, stuck, stuckAfterDays);
+        int stuckAfterDays = 14,
+        string privacyScope = "both")
+        => new(mode, forHours, untilRatio, stuck, stuckAfterDays, privacyScope);
 
-    private static SharingDecision Evaluate(SharingPolicy policy, double? ratio = null, int? seedingMinutes = 0, bool supportsSharing = true)
-        => SharingPolicyEvaluator.Evaluate(policy, supportsSharing, ratio, seedingMinutes);
+    private static SharingDecision Evaluate(SharingPolicy policy, double? ratio = null, int? seedingMinutes = 0, bool supportsSharing = true, bool? isPrivate = null)
+        => SharingPolicyEvaluator.Evaluate(policy, supportsSharing, ratio, seedingMinutes, isPrivate);
 
     // ── Modes ─────────────────────────────────────────────────────────────
 
@@ -28,6 +29,33 @@ public sealed class SharingPolicyEvaluatorTests
         var decision = Evaluate(Policy(mode: SharingPolicy.ModeLeaveAlone), seedingMinutes: 0);
 
         Assert.Equal(SharingAction.Leave, decision.Action);
+    }
+
+    /// <summary>#815: a private-only policy never reclaims a public download - left alone, the same as "leave alone" mode.</summary>
+    [Fact]
+    public void A_policy_scoped_to_private_only_leaves_a_public_download_alone()
+    {
+        var decision = Evaluate(Policy(mode: SharingPolicy.ModeTidyNow, privacyScope: "private"), isPrivate: false);
+
+        Assert.Equal(SharingAction.Leave, decision.Action);
+    }
+
+    /// <summary>#815: a public-only policy never reclaims a private download.</summary>
+    [Fact]
+    public void A_policy_scoped_to_public_only_leaves_a_private_download_alone()
+    {
+        var decision = Evaluate(Policy(mode: SharingPolicy.ModeTidyNow, privacyScope: "public"), isPrivate: true);
+
+        Assert.Equal(SharingAction.Leave, decision.Action);
+    }
+
+    /// <summary>The flip side: a policy matching the download's actual privacy still reclaims it.</summary>
+    [Fact]
+    public void A_policy_scoped_to_the_downloads_own_privacy_still_reclaims_it()
+    {
+        var decision = Evaluate(Policy(mode: SharingPolicy.ModeTidyNow, privacyScope: "private"), isPrivate: true);
+
+        Assert.Equal(SharingAction.Reclaim, decision.Action);
     }
 
     [Fact]

@@ -96,13 +96,30 @@ public sealed class QbittorrentStateMappingTests
         Assert.Equal(3, item.Peers);
     }
 
-    private static async Task<DownloadQueueItem> Snapshot(string state, double progress, int numSeeds = 1, int numLeechs = 0)
+    /// <summary>
+    /// #815: qBittorrent's own "private" field on torrents/info round-trips
+    /// into IsPrivate exactly, and is null (unknown, not false) when an older
+    /// qBittorrent does not send it at all.
+    /// </summary>
+    [Theory]
+    [InlineData(true, true)]
+    [InlineData(false, false)]
+    [InlineData(null, null)]
+    public async Task Privacy_round_trips_from_qbittorrent(bool? clientReports, bool? expected)
     {
+        var item = await Snapshot("downloading", 0.4, isPrivate: clientReports);
+
+        Assert.Equal(expected, item.IsPrivate);
+    }
+
+    private static async Task<DownloadQueueItem> Snapshot(string state, double progress, int numSeeds = 1, int numLeechs = 0, bool? isPrivate = null)
+    {
+        var privateField = isPrivate is { } value ? $",\"private\":{(value ? "true" : "false")}" : string.Empty;
         var torrentsInfo = "[{\"hash\":\"abc123\",\"name\":\"Sherlock.Jr.1924.1080p.BluRay\",\"category\":\"movies\","
             + $"\"state\":\"{state}\",\"progress\":{progress.ToString(CultureInfo.InvariantCulture)},"
             + $"\"dlspeed\":0,\"upspeed\":0,\"eta\":0,\"size\":5000000000,\"downloaded\":2000000000,"
             + $"\"num_seeds\":{numSeeds},\"num_leechs\":{numLeechs},"
-            + $"\"added_on\":{DateTimeOffset.UtcNow.AddMinutes(-5).ToUnixTimeSeconds()},\"save_path\":\"/downloads\",\"content_path\":\"/downloads/item\"}}]";
+            + $"\"added_on\":{DateTimeOffset.UtcNow.AddMinutes(-5).ToUnixTimeSeconds()},\"save_path\":\"/downloads\",\"content_path\":\"/downloads/item\"{privateField}}}]";
         var handler = new QbittorrentHandler(torrentsInfo);
         var client = new QbittorrentDownloadClient(() => handler);
         var snapshot = await client.GetSnapshotAsync(Client(), DateTimeOffset.UtcNow, CancellationToken.None);

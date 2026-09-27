@@ -88,4 +88,6 @@ public sealed record UpdatePlatformSettingsRequest(
     string? SpecialsFolderFormat = null,
     string? MultiEpisodeStyle = null,
     bool? RenameFoldersOnImport = null,
-    int? HistoryRetentionDays = null);
+    int? HistoryRetentionDays = null,
+    int? HistoryRetentionDays = null,
+    string? SharingPrivacyScope = null);
