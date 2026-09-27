@@ -39,7 +39,8 @@ public static class ReleasePreferencePlanFactory
             version: inputsVersion,
             customFormats: selected,
             guidePackage: guidePackage,
-            formatIntents: profile.FormatIntents);
+            formatIntents: profile.FormatIntents,
+            languagePreference: profile.LanguagePreference);
 
         // The profile's saved time and the guide package do not say what the
         // plan was compiled into, and plans are immutable per version. Found on
@@ -175,7 +176,11 @@ public static class ReleasePreferencePlanFactory
         string? version = null,
         IReadOnlyList<CustomFormatItem>? customFormats = null,
         GuidePackage? guidePackage = null,
-        IReadOnlyDictionary<string, string>? formatIntents = null)
+        IReadOnlyDictionary<string, string>? formatIntents = null,
+        // #769: "Preferred language" as a Ranked/Required rule in this same
+        // typed system, so a language answer explains itself the same way
+        // every other typed preference does.
+        ProfileLanguagePreference? languagePreference = null)
     {
         guidePackage ??= GuidePackageCatalog.Current;
         var normalizedMediaType = MediaPolicyCatalog.NormalizeMediaType(mediaType);
@@ -206,6 +211,19 @@ public static class ReleasePreferencePlanFactory
             TargetLevelId: Slug(cutoff),
             UpgradeDriving: upgradeUntilCutoff,
             Transient: false);
+
+        // #769: a Ranked family orders candidates by the profile's preferred
+        // languages whenever more than one is present in a search - a
+        // tie-break, never a reason by itself to replace an installed file
+        // (UpgradeDriving: false), because the same title rarely changes
+        // language across releases. "Require" this language does not become a
+        // RequiredTraitIds gate on the preferred trait: most legitimate
+        // releases in a person's own language name no language at all, and a
+        // hard gate treats that silence as absence and refuses them outright.
+        // It becomes a forbidden gate on every *other* known language instead,
+        // so a release explicitly tagged as a different language is refused
+        // and everything else is left to the ranking.
+        var normalizedLanguage = languagePreference?.Normalize();
 
         var guideFormats = guidePackage.CustomFormats
             .ToDictionary(format => format.TrashId, StringComparer.OrdinalIgnoreCase);
@@ -342,7 +360,65 @@ public static class ReleasePreferencePlanFactory
                 Transient: false));
         }
 
-        var persistentFamilies = new[] { qualityFamily }
+        // #769: built last, once every trait a selected custom format already
+        // claims is known, so a language custom format and a profile-level
+        // language preference never fight the validator over the same trait.
+        // A trait a custom format already mapped keeps that family as its
+        // owner; the preference only orders what is left.
+        PreferenceFamily? languageFamily = null;
+        if (normalizedLanguage is { IsEmpty: false })
+        {
+            var languageLevels = (normalizedLanguage.PreferredLanguages ?? [])
+                .Select((code, index) => new PreferenceFamilyLevel(
+                    Id: Slug(code),
+                    Rank: index,
+                    TraitIds: [$"audio.language.{code}"]))
+                .Where(level => !mappedTraits.Contains(level.TraitIds[0])
+                    && PreferenceTraitRegistry.Current.TryResolve(level.TraitIds[0], out _))
+                .ToArray();
+            if (languageLevels.Length > 0)
+            {
+                languageFamily = new PreferenceFamily(
+                    Id: "language-preference",
+                    Dimension: "audio.language",
+                    Order: 0,
+                    // TieBreak, not Ranked: this orders otherwise-comparable
+                    // candidates in one search (CompareForSelection), but
+                    // never drives replacing an installed file, because the
+                    // same title rarely changes language across releases and
+                    // "prefer" must not read as "upgrade required".
+                    Intent: PreferenceIntent.TieBreak,
+                    Levels: languageLevels,
+                    TargetLevelId: null,
+                    UpgradeDriving: false,
+                    Transient: false);
+
+                // "Require" this language does not become a RequiredTraitIds
+                // gate on the preferred trait: most legitimate releases in a
+                // person's own language name no language at all, and a hard
+                // gate treats that silence as absence and refuses them
+                // outright. It becomes a forbidden gate on every *other* known
+                // language instead, so a release explicitly tagged as a
+                // different language is refused and everything else is left
+                // to the ranking above.
+                if (normalizedLanguage.RequireLanguage)
+                {
+                    var mostPreferred = (normalizedLanguage.PreferredLanguages ?? [])[0];
+                    foreach (var other in PreferenceTraitRegistry.Current.Traits
+                                 .Where(trait => string.Equals(trait.Dimension, "audio.language", StringComparison.OrdinalIgnoreCase)
+                                     && !mappedTraits.Contains(trait.Id)
+                                     && !string.Equals(trait.Id, $"audio.language.{mostPreferred}", StringComparison.OrdinalIgnoreCase)))
+                    {
+                        forbiddenTraits.Add(other.Id);
+                    }
+                }
+            }
+        }
+
+        var leadingFamilies = languageFamily is null
+            ? (IReadOnlyList<PreferenceFamily>)[qualityFamily]
+            : [languageFamily, qualityFamily];
+        var persistentFamilies = leadingFamilies
             .Concat(customFormatFamilies)
             .Concat(mappedFamilies)
             .ToArray();
