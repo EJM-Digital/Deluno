@@ -464,6 +464,7 @@ public static class SeriesEndpointRouteBuilderExtensions
             HttpContext httpContext,
             [FromBody] UpdateSeriesMonitoringRequest request,
             ISeriesCatalogRepository repository,
+            TitleRemovalService titleRemoval,
             IRealtimeEventPublisher realtimeEventPublisher,
             CancellationToken cancellationToken) =>
         {
@@ -481,11 +482,28 @@ public static class SeriesEndpointRouteBuilderExtensions
                 });
             }
 
+            var seriesIds = request.SeriesIds.Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+
+            // #900: unmonitoring is "I don't want this any more", not just "stop
+            // searching later" - an in-flight download for it is cancelled right
+            // now, with its data, rather than left to finish and import anyway.
+            if (!request.Monitored)
+            {
+                foreach (var seriesId in seriesIds)
+                {
+                    var seriesItem = await repository.GetByIdAsync(seriesId, cancellationToken);
+                    if (seriesItem is not null)
+                    {
+                        await titleRemoval.CancelDownloadForUnmonitoredTitleAsync("series", seriesId, seriesItem.Title, cancellationToken);
+                    }
+                }
+            }
+
             var updated = await repository.UpdateMonitoredAsync(
-                request.SeriesIds,
+                seriesIds,
                 request.Monitored,
                 cancellationToken);
-            foreach (var seriesId in request.SeriesIds.Distinct(StringComparer.OrdinalIgnoreCase))
+            foreach (var seriesId in seriesIds)
                 await realtimeEventPublisher.PublishEntityChangedAsync("Series", seriesId, cancellationToken);
 
             return Results.Ok(new { updated });
@@ -539,6 +557,7 @@ public static class SeriesEndpointRouteBuilderExtensions
             HttpContext httpContext,
             [FromBody] UpdateEpisodeMonitoringRequest request,
             ISeriesCatalogRepository repository,
+            TitleRemovalService titleRemoval,
             IRealtimeEventPublisher realtimeEventPublisher,
             CancellationToken cancellationToken) =>
         {
@@ -556,14 +575,30 @@ public static class SeriesEndpointRouteBuilderExtensions
                 });
             }
 
+            var episodeIds = request.EpisodeIds.Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+
+            // #900: unmonitoring is "I don't want this any more", not just "stop
+            // searching later" - an in-flight download for it is cancelled right
+            // now, with its data, rather than left to finish and import anyway.
+            if (!request.Monitored)
+            {
+                foreach (var episodeId in episodeIds)
+                {
+                    var seriesId = await repository.GetEpisodeSeriesIdAsync(episodeId, cancellationToken);
+                    var seriesTitle = seriesId is null ? null : (await repository.GetByIdAsync(seriesId, cancellationToken))?.Title;
+                    var label = seriesTitle is { Length: > 0 } ? $"An episode of {seriesTitle}" : "This episode";
+                    await titleRemoval.CancelDownloadForUnmonitoredTitleAsync("episode", episodeId, label, cancellationToken);
+                }
+            }
+
             var updated = await repository.UpdateEpisodeMonitoredAsync(
-                request.EpisodeIds,
+                episodeIds,
                 request.Monitored,
                 cancellationToken);
 
             if (updated > 0)
             {
-                foreach (var seriesId in await repository.ListParentSeriesIdsAsync(request.EpisodeIds, cancellationToken))
+                foreach (var seriesId in await repository.ListParentSeriesIdsAsync(episodeIds, cancellationToken))
                 {
                     await realtimeEventPublisher.PublishEntityChangedAsync("Series", seriesId, cancellationToken);
                 }
