@@ -113,7 +113,7 @@ export const STATUS_PRESENTATION = {
   // #812: the client itself is paused/on standby, read from its own API —
   // distinct from Deluno being unable to reach it. Nothing to fix; the
   // person paused it (or its own schedule did) and it will resume itself.
-  "connection.clientPaused": { tone: "info", label: "Paused" },
+  "connection.clientPaused": { tone: "idle", label: "Paused" },
 
   // ── Retention ───────────────────────────────────────────────────────────
   // Counting down to its day: motion, and anyone may keep it.

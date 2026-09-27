@@ -31,7 +31,6 @@ public sealed class SecretStorageTests
                 RenameOnImport: true,
                 UseHardlinks: true,
                 CleanupEmptyFolders: false,
-                RemoveCompletedDownloads: false,
                 MovieFolderFormat: null,
                 SeriesFolderFormat: null,
                 MovieFileFormat: null,

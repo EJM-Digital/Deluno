@@ -8,7 +8,7 @@ describe("healthChip client-paused state (#812)", () => {
   const item = { isEnabled: true, healthStatus: "healthy" };
 
   it("shows Paused when the client itself reports it is paused", () => {
-    expect(healthChip(item, true)).toEqual({ tone: "info", label: "Paused" });
+    expect(healthChip(item, true)).toEqual({ tone: "idle", label: "Paused" });
   });
 
   it("shows the ordinary health chip when the client is not paused", () => {

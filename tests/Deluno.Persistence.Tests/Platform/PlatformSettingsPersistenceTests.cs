@@ -43,7 +43,6 @@ public sealed class PlatformSettingsPersistenceTests
                 RenameOnImport: true,
                 UseHardlinks: true,
                 CleanupEmptyFolders: true,
-                RemoveCompletedDownloads: false,
                 MovieFolderFormat: "{Movie Title} ({Release Year})",
                 SeriesFolderFormat: "{Series Title} ({Series Year})",
                 MovieFileFormat: "{Movie Title} ({Release Year}) [{Quality}] [{Custom Formats}]",
