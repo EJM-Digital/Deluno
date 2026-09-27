@@ -751,6 +751,20 @@ public static class MoviesEndpointRouteBuilderExtensions
             return Results.Ok(rows);
         });
 
+        /*
+          #840: the same append-only history the Wanted screen's status
+          reads from, shown from this one title's own subtitle panel -
+          "what has Deluno already tried", not just what it currently holds.
+        */
+        movies.MapGet("/{id}/subtitles/history", async (
+            string id,
+            IMediaSubtitleRepository subtitles,
+            CancellationToken cancellationToken) =>
+        {
+            var rows = await subtitles.ListAttemptHistoryAsync(MediaKind.Movie, id, cancellationToken);
+            return Results.Ok(rows);
+        });
+
         movies.MapPut("/monitoring", async (
             HttpContext httpContext,
             [FromBody] UpdateMovieMonitoringRequest request,
