@@ -36,5 +36,7 @@ public interface IActivityFeedRepository
     /// governs; this never touches a title, a file, or anything but Deluno's
     /// own record of what it did and when.
     /// </summary>
-    Task<int> PruneActivityAsync(DateTimeOffset olderThan, CancellationToken cancellationToken);
+    // Default no-op so test doubles need not implement pruning; SqliteJobStore does the real work.
+    Task<int> PruneActivityAsync(DateTimeOffset olderThan, CancellationToken cancellationToken)
+        => Task.FromResult(0);
 }
