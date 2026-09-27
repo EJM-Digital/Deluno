@@ -39,7 +39,7 @@ const CATEGORY_AREAS: Record<string, string> = {
   retention: "Retention", intake: "Lists", trakt: "Lists", mdblist: "Lists",
   health: "Health", services: "Health", failure: "Health", policy: "Settings",
   processor: "Processing", indexer: "Indexers", notification: "Notifications", system: "System", deluno: "System",
-  connectivity: "Connectivity"
+  connectivity: "Connectivity", proxy: "Proxy", remote: "Remote paths"
 };
 
 export function categoryLabel(category: string): string {

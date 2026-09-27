@@ -30,6 +30,12 @@ public static class HealthCheckCategories
     public const string Seerr = "seerr";
     public const string System = "system";
     public const string Grab = "grab";
+
+    /// <summary>An outbound or indexer proxy, when one is configured (#868).</summary>
+    public const string Proxy = "proxy";
+
+    /// <summary>A remote path mapping's local side, and a client's reported save path translated through it (#868).</summary>
+    public const string RemotePathMapping = "remote-path";
 }
 
 /// <summary>
