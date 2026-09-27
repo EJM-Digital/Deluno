@@ -139,6 +139,51 @@ public sealed class UnmatchedImportGiveUpServiceTests
         await new JobsSchemaInitializer(storage.Factory, migrator, NullLogger<JobsSchemaInitializer>.Instance).StartAsync(CancellationToken.None);
     }
 
+    /// <summary>
+    /// #888: giving up on an unmatched import with a dispatch link queues a
+    /// search for the exact title that wanted it, rather than leaving it to
+    /// the library's own next missing/upgrade cycle.
+    /// </summary>
+    [Fact]
+    public async Task RunAsync_queues_a_search_for_the_title_the_dispatch_names()
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-04-29T08:00:00Z"));
+        await InitializeAllAsync(storage, timeProvider);
+        var (platform, libraries, series, movies) = await SetUpAsync(storage, timeProvider, UnmatchedImportPolicies.GiveUpAfterDays, giveUpDays: 3);
+        var library = Assert.Single(await libraries.ListLibrariesAsync(CancellationToken.None));
+        var jobStore = new SqliteJobStore(storage.Factory, timeProvider, new NullRealtimeEventPublisher(), new NullDownloadDispatchesRepository());
+        var dispatches = new SqliteDownloadDispatchesRepository(storage.Factory, timeProvider);
+        var blockedReleases = new SqliteBlockedReleaseRepository(storage.Factory, timeProvider);
+
+        var sourcePath = Path.Combine(storage.DataRoot, "downloads", "search-again.mkv");
+        Directory.CreateDirectory(Path.GetDirectoryName(sourcePath)!);
+        await File.WriteAllTextAsync(sourcePath, "unmatched content");
+        const string releaseName = "Search.Again.2026";
+        var dispatchId = await jobStore.RecordDownloadDispatchAsync(
+            library.Id, "tv", "series", "series-search-again", releaseName, "TestIndexer", "client-1", "TestClient", "sent",
+            notesJson: null, cancellationToken: CancellationToken.None);
+        await dispatches.RecordDetectionAsync(dispatchId, "torrent-hash-2", 1024, completed: true, CancellationToken.None);
+        await series.AddImportRecoveryCaseAsync(
+            new CreateSeriesImportRecoveryCaseRequest(
+                "Search Again", ImportFailurePolicy.Unmatched, "Could not match.", "Import by hand.",
+                $$"""{"DispatchId":"{{dispatchId}}","SourcePath":"{{sourcePath.Replace("\\", "\\\\")}}"}"""),
+            CancellationToken.None);
+
+        timeProvider.Advance(TimeSpan.FromDays(4));
+        var service = CreateGiveUpService(
+            storage, timeProvider, platform, movies, series, dispatches, blockedReleases, new RecordingGateway(),
+            jobStore, libraries);
+        var handled = await service.RunAsync(CancellationToken.None);
+
+        Assert.Equal(1, handled);
+        var jobs = await jobStore.ListAsync(200, CancellationToken.None);
+        Assert.Contains(jobs, job =>
+            job.JobType == LibrarySearchJobTypes.For("tv") &&
+            job.PayloadJson != null &&
+            job.PayloadJson.Contains("\"targetEntityId\":\"series-search-again\"", StringComparison.OrdinalIgnoreCase));
+    }
+
     private static async Task<(SqlitePlatformSettingsRepository Platform, SqliteLibrariesRepository Libraries, SqliteSeriesCatalogRepository Series, SqliteMovieCatalogRepository Movies)> SetUpAsync(
         TestStorage storage,
         TimeProvider timeProvider,
@@ -184,7 +229,9 @@ public sealed class UnmatchedImportGiveUpServiceTests
         SqliteSeriesCatalogRepository series,
         SqliteDownloadDispatchesRepository dispatches,
         SqliteBlockedReleaseRepository blockedReleases,
-        IDownloadClientActionGateway gateway)
+        IDownloadClientActionGateway gateway,
+        SqliteJobStore? jobStore = null,
+        SqliteLibrariesRepository? libraries = null)
         => new(
             platform,
             movies,
@@ -192,9 +239,11 @@ public sealed class UnmatchedImportGiveUpServiceTests
             dispatches,
             blockedReleases,
             gateway,
-            new SqliteJobStore(storage.Factory, timeProvider, new NullRealtimeEventPublisher(), new NullDownloadDispatchesRepository()),
+            jobStore ?? new SqliteJobStore(storage.Factory, timeProvider, new NullRealtimeEventPublisher(), new NullDownloadDispatchesRepository()),
             timeProvider,
-            NullLogger<UnmatchedImportGiveUpService>.Instance);
+            NullLogger<UnmatchedImportGiveUpService>.Instance,
+            jobScheduler: jobStore,
+            librariesRepository: libraries);
 
     private sealed class RecordingGateway : IDownloadClientActionGateway
     {
