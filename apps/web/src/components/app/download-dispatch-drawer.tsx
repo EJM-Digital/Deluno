@@ -2,13 +2,17 @@ import type { DownloadDispatchItem } from "../../lib/api";
 import { formatDateTime, useDisplayPreferences } from "../../lib/display-preferences";
 import { getDispatchStatusLabel as formatDispatchStatus } from "../../lib/job-status-constants";
 import { Drawer, DrawerFacts, DrawerFooter, DrawerSection } from "../ui/drawer";
+import { BlockReleaseAction } from "./block-release-action";
 
 export function DownloadDispatchDrawer({
   dispatch,
-  onClose
+  onClose,
+  onBlocked
 }: {
   dispatch: DownloadDispatchItem | null;
   onClose: () => void;
+  /** Revalidate whatever list this drawer was opened from, once a release is blocked (#925). */
+  onBlocked?: () => void;
 }) {
   const { preferences } = useDisplayPreferences();
   const nextEligibleUtc = dispatch ? dispatchNextEligibleUtc(dispatch) : null;
@@ -21,7 +25,27 @@ export function DownloadDispatchDrawer({
       }}
       title={dispatch?.releaseName ?? "Download handoff"}
       description={dispatch ? `${dispatch.downloadClientName} · ${formatDispatchStatus(dispatch.status)}` : undefined}
-      footer={<DrawerFooter state="clean" readOnly saveLabel="Close" onCancel={onClose} />}
+      footer={
+        <DrawerFooter
+          state="clean"
+          readOnly
+          saveLabel="Close"
+          onCancel={onClose}
+          extraAction={dispatch ? (
+            <BlockReleaseAction
+              releaseName={dispatch.releaseName}
+              indexerName={dispatch.indexerName}
+              hash={dispatch.torrentHashOrItemId}
+              mediaType={dispatch.mediaType}
+              entityId={dispatch.entityId}
+              onBlocked={() => {
+                onClose();
+                onBlocked?.();
+              }}
+            />
+          ) : null}
+        />
+      }
     >
       {dispatch ? (
         <>
