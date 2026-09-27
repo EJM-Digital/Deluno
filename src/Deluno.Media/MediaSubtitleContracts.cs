@@ -185,6 +185,18 @@ public interface IMediaSubtitleRepository
     /// would be two answers to one question, and this codebase has paid for that
     /// shape more than once.</para>
     /// </summary>
+    /// <summary>
+    /// One title's own wanted languages, read directly rather than as part of
+    /// a library's bounded slice (#840) — a person-triggered search asks for
+    /// this title right now, regardless of whether it is mid-backoff.
+    /// </summary>
+    Task<MediaSubtitleWantedItem?> GetWantedItemAsync(
+        MediaKind kind,
+        string mediaId,
+        IReadOnlyList<string> languages,
+        bool embeddedCounts,
+        CancellationToken cancellationToken);
+
     Task<IReadOnlyList<MediaSubtitleWantedItem>> ListWantedAsync(
         MediaKind kind,
         string libraryId,

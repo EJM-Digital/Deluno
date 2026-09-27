@@ -222,6 +222,13 @@ public static class JobLanes
         // hold both and subtitles simply stopped.
         new("subtitles.search", ["library.subtitles.search"], BatchSize: RemoteWidth, MaxConcurrency: RemoteWidth / 2),
 
+        // #840: a person's own "search this title now" (from the Wanted
+        // screen's bulk search-all, or a title's own subtitle panel), on its
+        // own lane rather than the automatic pass's — a click must never wait
+        // behind whatever the library's own scheduled slice is doing, the
+        // same reasoning subtitles.sync already gets its own lane for.
+        new("subtitles.title-search", [SubtitleTitleSearchJobHandler.JobType], BatchSize: RemoteWidth, MaxConcurrency: RemoteWidth / 2),
+
         // Metadata provider HTTP, split per catalogue for the same reason the
         // searches are.
         new("metadata.movies", ["movies.metadata.refresh"], BatchSize: RemoteWidth, MaxConcurrency: RemoteWidth),
