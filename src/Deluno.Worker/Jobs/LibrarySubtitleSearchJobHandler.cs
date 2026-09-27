@@ -249,6 +249,12 @@ public sealed class LibrarySubtitleSearchJobHandler(
                         FirstRetryDelay,
                         cancellationToken,
                         outcome.Failure);
+                    // #840: the append-only history, beside the upsert above -
+                    // a person reading the Wanted screen sees every attempt,
+                    // not only the one that decides when the next is due.
+                    await mediaSubtitleRepository.RecordAttemptHistoryAsync(
+                        kind, item.MediaId, language, provider: null,
+                        $"{decision.ToStoredName()}: {outcome.Reason}", cancellationToken);
                     await notificationEventPublisher.PublishSubtitleFailedAsync(
                         item.Title, language, outcome.Reason, cancellationToken);
                     continue;
@@ -291,6 +297,10 @@ public sealed class LibrarySubtitleSearchJobHandler(
                     // row goes.
                     tally = tally.With(SubtitleDecision.MeetsSubtitlePlan);
                     await mediaSubtitleRepository.ClearAttemptAsync(kind, item.MediaId, language, cancellationToken);
+                    await mediaSubtitleRepository.RecordAttemptHistoryAsync(
+                        kind, item.MediaId, language, outcome.ProviderKey,
+                        $"{SubtitleDecision.MeetsSubtitlePlan.ToStoredName()}: {SubtitleMatchRanking.Describe(outcome.Match)}",
+                        cancellationToken);
                 }
                 else
                 {
@@ -317,6 +327,10 @@ public sealed class LibrarySubtitleSearchJobHandler(
                         language,
                         $"{decision.ToStoredName()}: {SubtitleMatchRanking.Describe(outcome.Match)}",
                         FirstRetryDelay,
+                        cancellationToken);
+                    await mediaSubtitleRepository.RecordAttemptHistoryAsync(
+                        kind, item.MediaId, language, outcome.ProviderKey,
+                        $"{decision.ToStoredName()}: {SubtitleMatchRanking.Describe(outcome.Match)}",
                         cancellationToken);
 
                     // And this is where the timing gets fixed. "Not provably in

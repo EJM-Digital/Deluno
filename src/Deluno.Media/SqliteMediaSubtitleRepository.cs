@@ -341,6 +341,96 @@ public sealed class SqliteMediaSubtitleRepository(
         await command.ExecuteNonQueryAsync(cancellationToken);
     }
 
+    /// <summary>
+    /// A title's own subtitle search rarely needs more than a handful of past
+    /// attempts to be useful, and an append-only table with no cap is exactly
+    /// the shape of thing that quietly becomes the largest table in the
+    /// database for a show searched daily for years. Kept generous enough to
+    /// show real history rather than only the last try or two.
+    /// </summary>
+    private const int AttemptHistoryRetentionCap = 25;
+
+    public async Task RecordAttemptHistoryAsync(
+        MediaKind kind,
+        string mediaId,
+        string language,
+        string? provider,
+        string outcome,
+        CancellationToken cancellationToken)
+    {
+        var map = MediaTableMap.For(kind);
+        var now = timeProvider.GetUtcNow();
+
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            map.DatabaseName,
+            cancellationToken);
+
+        using var insert = connection.CreateCommand();
+        insert.CommandText = $"""
+            INSERT INTO {map.SubtitleAttemptHistoryTable} ({map.SubtitleMediaIdColumn}, language, provider, outcome, attempted_utc)
+            VALUES (@mediaId, @language, @provider, @outcome, @now);
+            """;
+        AddParameter(insert, "@mediaId", mediaId);
+        AddParameter(insert, "@language", language);
+        AddParameter(insert, "@provider", (object?)provider ?? DBNull.Value);
+        AddParameter(insert, "@outcome", outcome);
+        AddParameter(insert, "@now", now.ToString("O"));
+        await insert.ExecuteNonQueryAsync(cancellationToken);
+
+        // Trimmed on every write rather than by a separate sweep: the cap is
+        // per title, so this only ever deletes the handful of rows a single
+        // title has gone over by, never a table-wide scan.
+        using var trim = connection.CreateCommand();
+        trim.CommandText = $"""
+            DELETE FROM {map.SubtitleAttemptHistoryTable}
+            WHERE {map.SubtitleMediaIdColumn} = @mediaId
+              AND id NOT IN (
+                  SELECT id FROM {map.SubtitleAttemptHistoryTable}
+                  WHERE {map.SubtitleMediaIdColumn} = @mediaId
+                  ORDER BY attempted_utc DESC
+                  LIMIT @cap
+              );
+            """;
+        AddParameter(trim, "@mediaId", mediaId);
+        AddParameter(trim, "@cap", AttemptHistoryRetentionCap);
+        await trim.ExecuteNonQueryAsync(cancellationToken);
+    }
+
+    public async Task<IReadOnlyList<MediaSubtitleAttemptHistoryEntry>> ListAttemptHistoryAsync(
+        MediaKind kind,
+        string mediaId,
+        CancellationToken cancellationToken)
+    {
+        var map = MediaTableMap.For(kind);
+
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            map.DatabaseName,
+            cancellationToken);
+
+        using var command = connection.CreateCommand();
+        command.CommandText = $"""
+            SELECT language, provider, outcome, attempted_utc
+            FROM {map.SubtitleAttemptHistoryTable}
+            WHERE {map.SubtitleMediaIdColumn} = @mediaId
+            ORDER BY attempted_utc DESC
+            LIMIT {AttemptHistoryRetentionCap};
+            """;
+        AddParameter(command, "@mediaId", mediaId);
+
+        var items = new List<MediaSubtitleAttemptHistoryEntry>();
+        using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            items.Add(new MediaSubtitleAttemptHistoryEntry(
+                Language: reader.GetString(0),
+                Provider: reader.IsDBNull(1) ? null : reader.GetString(1),
+                Outcome: reader.GetString(2),
+                AttemptedUtc: DateTimeOffset.Parse(reader.GetString(3))));
+        }
+
+        return items;
+    }
+
     /// <summary>How many times the delay may double before it stops growing.</summary>
     private const int MaxDoublings = 6;
 

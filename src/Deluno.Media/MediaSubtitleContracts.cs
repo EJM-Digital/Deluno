@@ -155,6 +155,18 @@ public sealed record MediaSubtitleBlock(
     string Reason,
     DateTimeOffset BlockedUtc);
 
+/// <summary>
+/// One subtitle search attempt for one title, kept for as long as the
+/// retention cap allows (#840) — what a person sees on the Wanted screen and
+/// in a title's own subtitle panel when they ask "what has Deluno already
+/// tried".
+/// </summary>
+public sealed record MediaSubtitleAttemptHistoryEntry(
+    string Language,
+    string? Provider,
+    string Outcome,
+    DateTimeOffset AttemptedUtc);
+
 public interface IMediaSubtitleRepository
 {
 
@@ -214,6 +226,27 @@ public interface IMediaSubtitleRepository
         MediaKind kind,
         string mediaId,
         string language,
+        CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Appends one row to this title's own subtitle search history (#840),
+    /// then trims it back to the retention cap — unlike
+    /// <see cref="RecordAttemptAsync"/>, which upserts one row per language
+    /// to decide when the next try is due, this never overwrites: every
+    /// attempt is its own row, so a person can see what was actually tried.
+    /// </summary>
+    Task RecordAttemptHistoryAsync(
+        MediaKind kind,
+        string mediaId,
+        string language,
+        string? provider,
+        string outcome,
+        CancellationToken cancellationToken);
+
+    /// <summary>The most recent attempts for one title, newest first.</summary>
+    Task<IReadOnlyList<MediaSubtitleAttemptHistoryEntry>> ListAttemptHistoryAsync(
+        MediaKind kind,
+        string mediaId,
         CancellationToken cancellationToken);
 
     /// <param name="staleBefore">

@@ -50,7 +50,8 @@ public static class MoviesDatabaseMigrations
         new V0039MovieFilesReadAgain(),
         new V0040MovieSubtitleBlock(),
         new V0041MovieSubtitleTimingStatus(),
-        new MediaSubtitleOverrideMigration(MediaKind.Movie, 42)
+        new MediaSubtitleOverrideMigration(MediaKind.Movie, 42),
+        new V0043MovieSubtitleAttemptHistory()
     ];
 
     private sealed class V0001InitialSchema : SqliteSqlMigration
