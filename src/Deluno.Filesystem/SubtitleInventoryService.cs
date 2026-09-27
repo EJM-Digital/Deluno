@@ -121,6 +121,14 @@ public sealed class SubtitleInventoryService(IMediaProbeService mediaProbeServic
 
     private static readonly char[] TokenSeparators = [' ', '_', '-'];
 
+    /// <summary>
+    /// The paths of the subtitle files beside a video, without probing the
+    /// container — for a caller that only needs to find and move them, not
+    /// describe them (#893).
+    /// </summary>
+    public static IReadOnlyList<string> FindSidecarSubtitlePaths(string videoPath)
+        => FindSidecars(videoPath).Select(subtitle => subtitle.Path).Where(path => path is not null).Select(path => path!).ToArray();
+
     public async Task<SubtitleInventory> InspectAsync(
         string videoPath,
         bool probeContainer,

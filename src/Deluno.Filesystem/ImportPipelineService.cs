@@ -3511,13 +3511,25 @@ public sealed partial class ImportPipelineService(
                 continue;
             }
 
+            // #893: subtitles beside the replaced video belong to it, not to
+            // whatever the upgrade wrote - left behind, nothing ever reads
+            // them or finds them missing again.
+            var oldSubtitlePaths = SubtitleInventoryService.FindSidecarSubtitlePaths(replacedPath);
+
             if (recycleBinService is null)
             {
                 // Keep hand-constructed test/utility instances backwards
                 // compatible; the host always supplies the recoverable
                 // service through DI.
                 TryDelete(replacedPath);
-                messages.Add($"Removed the previous {fileName} file it replaced.");
+                foreach (var subtitlePath in oldSubtitlePaths)
+                {
+                    TryDelete(subtitlePath);
+                }
+
+                messages.Add(oldSubtitlePaths.Count > 0
+                    ? $"Removed the previous {fileName} file it replaced, and its subtitles."
+                    : $"Removed the previous {fileName} file it replaced.");
                 await DispatchFileDeletedNotificationAsync(fileName, forUpgrade: true, cancellationToken);
                 continue;
             }
@@ -3527,13 +3539,35 @@ public sealed partial class ImportPipelineService(
                 replacedPath,
                 replacedPath,
                 cancellationToken);
+
+            var subtitlesRecycled = 0;
+            foreach (var subtitlePath in oldSubtitlePaths)
+            {
+                if (!File.Exists(subtitlePath))
+                {
+                    continue;
+                }
+
+                var subtitleRecycled = await recycleBinService.StoreReplacementAsync(
+                    library,
+                    subtitlePath,
+                    subtitlePath,
+                    cancellationToken);
+                if (subtitleRecycled is not null)
+                {
+                    subtitlesRecycled++;
+                }
+            }
+
             if (recycled is null && File.Exists(replacedPath))
             {
                 warnings.Add($"The previous file {fileName} could not be moved to the recycle bin and was left in place.");
             }
             else
             {
-                messages.Add($"Moved the previous {fileName} file to the recycle bin.");
+                messages.Add(subtitlesRecycled > 0
+                    ? $"Moved the previous {fileName} file and its {subtitlesRecycled} subtitle file(s) to the recycle bin."
+                    : $"Moved the previous {fileName} file to the recycle bin.");
                 await DispatchFileDeletedNotificationAsync(fileName, forUpgrade: true, cancellationToken);
             }
         }

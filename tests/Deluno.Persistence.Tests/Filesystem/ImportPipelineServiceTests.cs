@@ -3897,6 +3897,94 @@ public sealed class ImportPipelineServiceTests
         Assert.Equal(newFilePath, afterSecond.FilePath);
     }
 
+    /// <summary>
+    /// #893: an upgrade recycles the video it replaces (#656), but left the old
+    /// video's subtitle files sitting beside it forever - nothing moved them and
+    /// nothing ever looked at that folder again. They must go with the video.
+    /// </summary>
+    [Fact]
+    public async Task Movie_upgrade_also_removes_the_old_file_s_subtitles()
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-09-25T06:00:00Z"));
+        await InitializeAllAsync(storage, timeProvider);
+
+        var downloadsPath = Path.Combine(storage.DataRoot, "downloads");
+        var movieRootPath = Path.Combine(storage.DataRoot, "movies");
+        Directory.CreateDirectory(downloadsPath);
+        Directory.CreateDirectory(movieRootPath);
+
+        var platform = CreatePlatformRepository(storage, timeProvider);
+        var libraries = CreateLibrariesRepository(storage, timeProvider);
+        await SaveSettingsAsync(platform, movieRootPath, downloadsPath);
+        await CreateMovieLibraryAsync(libraries, movieRootPath, downloadsPath);
+        var library = Assert.Single(await libraries.ListLibrariesAsync(CancellationToken.None));
+
+        var jobStore = new SqliteJobStore(storage.Factory, timeProvider, new NullRealtimeEventPublisher(), new NullDownloadDispatchesRepository());
+        var movies = new SqliteMovieCatalogRepository(storage.Factory, timeProvider);
+        var service = CreateService(
+            storage, timeProvider, platform, libraries, movies,
+            downloadDispatchesRepository: new SqliteDownloadDispatchesRepository(storage.Factory, timeProvider));
+
+        var catalogued = await movies.AddAsync(new CreateMovieRequest("The Wild Robot", 2024, null), CancellationToken.None);
+
+        var firstSource = Path.Combine(downloadsPath, "The.Wild.Robot.2024.WEB.720p.mkv");
+        await File.WriteAllBytesAsync(firstSource, Enumerable.Repeat((byte)0x11, 4096).ToArray());
+        File.SetLastWriteTimeUtc(firstSource, DateTime.UtcNow.AddMinutes(-1));
+
+        var firstDispatchId = await jobStore.RecordDownloadDispatchAsync(
+            libraryId: library.Id, mediaType: "movies", entityType: "movie", entityId: catalogued.Id,
+            releaseName: "The Wild Robot 2024 WEB 720p", indexerName: "TestIndexer",
+            downloadClientId: "client-1", downloadClientName: "TestClient",
+            status: "sent", notesJson: null, cancellationToken: CancellationToken.None);
+        var firstRequest = new ImportPreviewRequest(
+            SourcePath: firstSource, FileName: null, MediaType: "movies",
+            Title: "The Wild Robot", Year: 2024, Genres: [], Tags: [], Studio: null, OriginalLanguage: null);
+        var firstResult = await service.ExecuteAsync(
+            new ImportExecuteRequest(firstRequest, "copy", Overwrite: false, AllowCopyFallback: true, DispatchId: firstDispatchId),
+            CancellationToken.None);
+        Assert.True(firstResult.Succeeded, firstResult.Message);
+
+        var trackedAfterFirst = new List<MovieTrackedFileItem>();
+        await foreach (var item in movies.StreamTrackedFilesAsync(library.Id, CancellationToken.None))
+        {
+            trackedAfterFirst.Add(item);
+        }
+        var originalFilePath = Assert.Single(trackedAfterFirst).FilePath;
+
+        // Subtitles Bazarr (or a person) left beside the first file - one
+        // matching its exact name, one relying on the "lone video" rule.
+        var originalBaseName = Path.GetFileNameWithoutExtension(originalFilePath);
+        var originalDirectory = Path.GetDirectoryName(originalFilePath)!;
+        var englishSubtitlePath = Path.Combine(originalDirectory, $"{originalBaseName}.en.srt");
+        await File.WriteAllTextAsync(englishSubtitlePath, "1\n00:00:01,000 --> 00:00:02,000\nHello\n");
+        Assert.True(File.Exists(englishSubtitlePath));
+
+        var dispatchId = await jobStore.RecordDownloadDispatchAsync(
+            libraryId: library.Id, mediaType: "movies", entityType: "movie", entityId: catalogued.Id,
+            releaseName: "The Wild Robot 2024 REPACK 1080p BluRay DD 7 1 x264-playHD", indexerName: "TestIndexer",
+            downloadClientId: "client-1", downloadClientName: "TestClient",
+            status: "sent", notesJson: null, cancellationToken: CancellationToken.None);
+
+        var secondSource = Path.Combine(downloadsPath, "The.Wild.Robot.2024.REPACK.1080p.BluRay.mkv");
+        await File.WriteAllBytesAsync(secondSource, Enumerable.Repeat((byte)0x22, 8192).ToArray());
+        File.SetLastWriteTimeUtc(secondSource, DateTime.UtcNow.AddMinutes(-1));
+
+        var secondRequest = new ImportPreviewRequest(
+            SourcePath: secondSource, FileName: null, MediaType: "movies",
+            Title: "The Wild Robot", Year: 2024, Genres: [], Tags: [], Studio: null, OriginalLanguage: null);
+        var secondResult = await service.ExecuteAsync(
+            new ImportExecuteRequest(
+                secondRequest, "copy", Overwrite: true, AllowCopyFallback: true,
+                ForceReplacement: true, DispatchId: dispatchId),
+            CancellationToken.None);
+
+        Assert.True(secondResult.Succeeded, secondResult.Message);
+        Assert.False(File.Exists(originalFilePath), "the replaced video should have been recycled");
+        Assert.False(File.Exists(englishSubtitlePath), "the replaced video's subtitle should have been recycled with it");
+        Assert.Contains("subtitle", secondResult.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
     /// <summary>#662: an upgrade queues both the new file (Created) and the file #656 recycled (Deleted), in one job.</summary>
     [Fact]
     public async Task An_upgrade_queues_a_media_server_refresh_with_the_new_file_created_and_the_old_one_deleted()
