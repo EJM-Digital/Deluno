@@ -207,6 +207,30 @@ public sealed class ClearingRefusedDownloadsTests
     }
 
     /// <summary>
+    /// #882/#883/#885: removing a refused download and its files is an
+    /// automatic action just like the blocklist-and-search-again it follows,
+    /// so it must reach Activity in plain words too — a logger line settles
+    /// nothing for a person looking at the screen.
+    /// </summary>
+    [Fact]
+    public async Task Clearing_a_client_reported_failure_is_written_to_activity_in_plain_words()
+    {
+        var blocklist = Blocklist(RefusedForClientReportedFailure("nzo-1"));
+        var clients = Clients();
+        var activity = new Mock<IActivityFeedRepository>();
+
+        await Cleanup(blocklist.Object, clients.Object, Sharing(), clientReportedFailureCleanupOn: true, activityFeedRepository: activity.Object)
+            .CleanUpEverythingAsync(CancellationToken.None);
+
+        activity.Verify(
+            repository => repository.RecordActivityAsync(
+                "download.cleanup.cleared",
+                It.Is<string>(message => message.Contains("removed", StringComparison.OrdinalIgnoreCase) && message.Contains("deleted its files", StringComparison.OrdinalIgnoreCase)),
+                null, null, It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()),
+            Times.Once);
+    }
+
+    /// <summary>
     /// #936: nothing automatic is on by default, and an existing install is
     /// never flipped on. With the switches off, the release stays exactly
     /// where it is — still blocklisted and still shown (the Blocklist screen
@@ -246,12 +270,14 @@ public sealed class ClearingRefusedDownloadsTests
         IDownloadClientTelemetryService clients,
         IDownloadSharingRepository sharing,
         bool clientReportedFailureCleanupOn = false,
-        bool removeAndDeletePackedArchivesFromClient = false)
+        bool removeAndDeletePackedArchivesFromClient = false,
+        IActivityFeedRepository? activityFeedRepository = null)
         => new(
             blocklist,
             clients,
             sharing,
             PlatformSettings(clientReportedFailureCleanupOn, removeAndDeletePackedArchivesFromClient),
+            activityFeedRepository ?? Mock.Of<IActivityFeedRepository>(),
             NullLogger<RefusedDownloadCleanupService>.Instance);
 
     private static Mock<IBlockedReleaseRepository> Blocklist(params BlockedRelease[] pending)

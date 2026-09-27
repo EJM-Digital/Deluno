@@ -83,6 +83,7 @@ public sealed class RefusedDownloadCleanupService(
     IDownloadClientTelemetryService downloadClients,
     IDownloadSharingRepository sharingRepository,
     Deluno.Platform.Data.IPlatformSettingsRepository platformRepository,
+    IActivityFeedRepository activityFeedRepository,
     ILogger<RefusedDownloadCleanupService> logger) : IRefusedDownloadCleanupService
 {
     public async Task<RefusedDownloadCleanupResult> CleanUpEverythingAsync(CancellationToken cancellationToken)
@@ -229,6 +230,21 @@ public sealed class RefusedDownloadCleanupService(
             }
 
             await blockedReleases.MarkCleanedUpAsync(release.Id, cancellationToken);
+
+            // #882/#883/#885: this is an automatic action just like the
+            // blocklist-and-search-again it follows, and it must be just as
+            // visible — a logger line settles nothing for a person looking at
+            // the screen, wondering whether the bad copy is actually gone.
+            var entityType = string.Equals(release.MediaType, "tv", StringComparison.OrdinalIgnoreCase) ? "series" : "movie";
+            await activityFeedRepository.RecordActivityAsync(
+                "download.cleanup.cleared",
+                $"Deluno removed {release.ReleaseName} from {release.DownloadClientName ?? "its download client"} and deleted its files: {release.Reason}",
+                null,
+                null,
+                entityType,
+                release.EntityId,
+                cancellationToken);
+
             return RefusedDownloadCleanupOutcomes.Cleared;
         }
         catch (Exception exception) when (exception is not OperationCanceledException)
