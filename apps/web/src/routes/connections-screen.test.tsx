@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { buildClientSavePayload, buildIndexerSavePayload } from "./connections-screen";
-import { emptyClientForm, emptyIndexerForm } from "./connections/forms";
+import { clientFormFrom, emptyClientForm, emptyIndexerForm } from "./connections/forms";
+import type { DownloadClientItem } from "../lib/api";
 
 /**
  * #730 — tags: "" was hard-coded into every indexer save, so an indexer that
@@ -196,6 +197,43 @@ describe("client save payload (#807)", () => {
   it("falls back to 1 only when the priority field is actually blank", () => {
     const form = { ...emptyClientForm(), name: "qBittorrent", host: "localhost", priority: "" };
     expect(buildClientSavePayload(form).priority).toBe(1);
+  });
+
+  // The full loop: a create sends a chosen priority, the server hands the
+  // saved item back with that value, an edit of that same item sends the
+  // same value again, and reopening the drawer afterwards still shows it.
+  it("round-trips a chosen priority through create, edit, and reopen", () => {
+    const createForm = { ...emptyClientForm(), name: "qBittorrent", host: "localhost", priority: "37" };
+    const createPayload = buildClientSavePayload(createForm);
+    expect(createPayload.priority).toBe(37);
+
+    const saved: DownloadClientItem = {
+      id: "client-1",
+      name: "qBittorrent",
+      protocol: "qbittorrent",
+      host: "localhost",
+      port: 8080,
+      username: null,
+      endpointUrl: "http://localhost:8080/",
+      useSsl: false,
+      urlBase: "",
+      addPaused: false,
+      moviesCategory: "",
+      tvCategory: "",
+      categoryTemplate: null,
+      priority: createPayload.priority,
+      isEnabled: true,
+      healthStatus: "healthy",
+      lastHealthMessage: null,
+      createdUtc: "2026-01-01T00:00:00Z",
+      updatedUtc: "2026-01-01T00:00:00Z"
+    };
+
+    const reopenedForm = clientFormFrom(saved);
+    expect(reopenedForm.priority).toBe("37");
+
+    const editPayload = buildClientSavePayload(reopenedForm);
+    expect(editPayload.priority).toBe(37);
   });
 });
 
