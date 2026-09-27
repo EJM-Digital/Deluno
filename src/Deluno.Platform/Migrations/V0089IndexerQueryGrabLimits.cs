@@ -6,9 +6,9 @@ namespace Deluno.Platform.Migrations;
 /// Per-indexer Query Limit and Grab Limit caps, per day or per hour (#750),
 /// in addition to the existing request-interval pacing.
 /// </summary>
-public sealed class V0087IndexerQueryGrabLimits : SqliteSqlMigration
+public sealed class V0089IndexerQueryGrabLimits : SqliteSqlMigration
 {
-    public override int Version => 87;
+    public override int Version => 89;
 
     public override string Name => "indexer_query_grab_limits";
 

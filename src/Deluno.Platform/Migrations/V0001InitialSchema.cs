@@ -90,14 +90,13 @@ public static class PlatformDatabaseMigrations
         new V0082DownloadClientTags(),
         new V0083MediaServerRefreshBacklog(),
         new V0084RenameFoldersOnImportDefaultsExisting(),
-        new V0083IndexerMinimumSeeders(),
-        new V0083IndexerMinimumSeeders(),
-        new V0084IndexerRequiredIgnoredWords(),
-        new V0085IndexerMultiLanguages(),
-        new V0086IndexerVipExpiry(),
-        new V0087IndexerQueryGrabLimits(),
-        new V0088IndexerPreferMagnetUrl(),
-        new V0089IndexerSeasonPackSearchMode()
+        new V0085IndexerMinimumSeeders(),
+        new V0086IndexerRequiredIgnoredWords(),
+        new V0087IndexerMultiLanguages(),
+        new V0088IndexerVipExpiry(),
+        new V0089IndexerQueryGrabLimits(),
+        new V0090IndexerPreferMagnetUrl(),
+        new V0091IndexerSeasonPackSearchMode()
     ];
 
     private sealed class V0001InitialSchema : SqliteSqlMigration

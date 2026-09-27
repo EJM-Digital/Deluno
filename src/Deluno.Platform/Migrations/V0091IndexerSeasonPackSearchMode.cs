@@ -7,9 +7,9 @@ namespace Deluno.Platform.Migrations;
 /// against this indexer to season packs only, episodes only, or both
 /// (default). Null/"both" means no restriction.
 /// </summary>
-public sealed class V0089IndexerSeasonPackSearchMode : SqliteSqlMigration
+public sealed class V0091IndexerSeasonPackSearchMode : SqliteSqlMigration
 {
-    public override int Version => 89;
+    public override int Version => 91;
 
     public override string Name => "indexer_season_pack_search_mode";
 

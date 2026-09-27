@@ -7,9 +7,9 @@ namespace Deluno.Platform.Migrations;
 /// this indexer's releases actually names, e.g. "Original, French". Null
 /// keeps Deluno's fixed "Multilingual" default.
 /// </summary>
-public sealed class V0085IndexerMultiLanguages : SqliteSqlMigration
+public sealed class V0087IndexerMultiLanguages : SqliteSqlMigration
 {
-    public override int Version => 85;
+    public override int Version => 87;
 
     public override string Name => "indexer_multi_languages";
 

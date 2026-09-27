@@ -6,9 +6,9 @@ namespace Deluno.Platform.Migrations;
 /// Required/Ignored word lists that reject a release by keyword before grab
 /// (#744), separate from the existing PreferIndexerFlags ranking hint.
 /// </summary>
-public sealed class V0084IndexerRequiredIgnoredWords : SqliteSqlMigration
+public sealed class V0086IndexerRequiredIgnoredWords : SqliteSqlMigration
 {
-    public override int Version => 84;
+    public override int Version => 86;
 
     public override string Name => "indexer_required_ignored_words";
 

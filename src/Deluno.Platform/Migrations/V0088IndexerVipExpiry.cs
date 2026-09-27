@@ -7,9 +7,9 @@ namespace Deluno.Platform.Migrations;
 /// a separate acknowledged-expiry marker so a dismissed warning stays
 /// dismissed until the recorded date itself changes.
 /// </summary>
-public sealed class V0086IndexerVipExpiry : SqliteSqlMigration
+public sealed class V0088IndexerVipExpiry : SqliteSqlMigration
 {
-    public override int Version => 86;
+    public override int Version => 88;
 
     public override string Name => "indexer_vip_expiry";
 
