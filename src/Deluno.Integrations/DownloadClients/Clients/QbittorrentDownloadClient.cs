@@ -41,7 +41,7 @@ public sealed class QbittorrentDownloadClient(Func<HttpMessageHandler>? handlerF
 
         using var handler = this.handlerFactory();
         using var http = new HttpClient(handler) { BaseAddress = baseUri, Timeout = TimeSpan.FromSeconds(10) };
-        await LoginAsync(http, client, cancellationToken);
+        await AuthenticateAsync(http, client, cancellationToken);
         // A .torrent Deluno fetched with a tracker's sign-in goes up as a file;
         // qBittorrent could not fetch it by URL itself (#606).
         using HttpContent body = request.TorrentFile is { } file
@@ -169,7 +169,7 @@ public sealed class QbittorrentDownloadClient(Func<HttpMessageHandler>? handlerF
 
         using var handler = this.handlerFactory();
         using var http = new HttpClient(handler) { BaseAddress = baseUri, Timeout = TimeSpan.FromSeconds(8) };
-        await LoginAsync(http, client, cancellationToken);
+        await AuthenticateAsync(http, client, cancellationToken);
         var torrents = await http.GetFromJsonAsync<IReadOnlyList<QbitTorrentItem>>("api/v2/torrents/info", cancellationToken) ?? [];
         var trackerStatusByHash = await GetTrackerStatusesAsync(http, torrents, cancellationToken);
         var queue = torrents.Select(item => new DownloadQueueItem(
@@ -201,7 +201,11 @@ public sealed class QbittorrentDownloadClient(Func<HttpMessageHandler>? handlerF
             IsPrivate: item.Private,
             TrackerStatus: item.Hash is { Length: > 0 } hash && trackerStatusByHash.TryGetValue(hash, out var trackerStatus)
                 ? trackerStatus
-                : DownloadTrackerStatuses.Unknown))
+                : DownloadTrackerStatuses.Unknown,
+            // #811: availability/last_activity/completion_on, where qBittorrent reports them.
+            Availability: item.Availability,
+            LastActivityUtc: FromUnixOrNull(item.LastActivity),
+            CompletionUtc: FromUnixOrNull(item.CompletionOn)))
             .Select(item => DownloadClientHelpers.ReconcileTorrentStatus(item, capturedUtc))
             .ToArray();
         var freeSpaceBytes = await GetFreeSpaceBytesAsync(http, cancellationToken);
@@ -255,7 +259,7 @@ public sealed class QbittorrentDownloadClient(Func<HttpMessageHandler>? handlerF
         {
             using var handler = new HttpClientHandler { CookieContainer = new CookieContainer() };
             using var http = new HttpClient(handler) { BaseAddress = baseUri, Timeout = TimeSpan.FromSeconds(8) };
-            await LoginAsync(http, client, cancellationToken);
+            await AuthenticateAsync(http, client, cancellationToken);
             using var response = await http.GetAsync("api/v2/torrents/categories", cancellationToken);
             if (response.StatusCode == HttpStatusCode.NotFound)
             {
@@ -325,7 +329,7 @@ public sealed class QbittorrentDownloadClient(Func<HttpMessageHandler>? handlerF
         if (baseUri is null) return DownloadClientHelpers.MissingAddress(client, queueItemId, action);
         using var handler = this.handlerFactory();
         using var http = new HttpClient(handler) { BaseAddress = baseUri, Timeout = TimeSpan.FromSeconds(8) };
-        await LoginAsync(http, client, cancellationToken);
+        await AuthenticateAsync(http, client, cancellationToken);
         // One arm per verb, and `deleteFiles` set by the arm. The pause and
         // resume pairs are qBittorrent's own rename across versions, tried in
         // order; everything else is one endpoint.
@@ -383,6 +387,10 @@ public sealed class QbittorrentDownloadClient(Func<HttpMessageHandler>? handlerF
     internal static int EtaSeconds(long? eta)
         => eta is null or <= 0 or >= NoEstimateSeconds ? 0 : (int)Math.Min(eta.Value, int.MaxValue);
 
+    /// <summary>#811: qBittorrent sends -1/0 for "not yet" (no activity, not completed), which is null, not epoch.</summary>
+    private static DateTimeOffset? FromUnixOrNull(long? value)
+        => value is > 0 ? DateTimeOffset.FromUnixTimeSeconds(value.Value) : null;
+
     public override string NormalizeStatus(string? nativeStatus, double? progress, int? errorCode = null, string? errorMessage = null)
     {
         var normalized = nativeStatus?.ToLowerInvariant() ?? string.Empty;
@@ -428,6 +436,25 @@ public sealed class QbittorrentDownloadClient(Func<HttpMessageHandler>? handlerF
     /// </summary>
     private static bool IsSetupProblemState(string? state)
         => ErrorMessage(state) is not null;
+
+    /// <summary>
+    /// #811: qBittorrent v5.2.0+ added API-key (Bearer token) authentication,
+    /// alongside the existing form-based cookie login every earlier version
+    /// needs. Selected automatically: a saved client with no username but a
+    /// secret set was never a meaningful form login (an empty username is not
+    /// a real account), so that combination is read as "this secret is an API
+    /// key" and sent as a bearer token instead of attempting to log in.
+    /// </summary>
+    private static Task AuthenticateAsync(HttpClient http, DownloadClientItem client, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(client.Username) && !string.IsNullOrWhiteSpace(client.Secret))
+        {
+            http.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", client.Secret);
+            return Task.CompletedTask;
+        }
+
+        return LoginAsync(http, client, cancellationToken);
+    }
 
     private static async Task LoginAsync(HttpClient http, DownloadClientItem client, CancellationToken cancellationToken)
     {
@@ -527,7 +554,11 @@ public sealed class QbittorrentDownloadClient(Func<HttpMessageHandler>? handlerF
         // rest of this call's fields. Null on an older qBittorrent that does
         // not send it, which DownloadHealthPrivacyScopes reads as "unknown"
         // rather than guessing either way.
-        [property: JsonPropertyName("private")] bool? Private = null);
+        [property: JsonPropertyName("private")] bool? Private = null,
+        // #811 telemetry fields, all on the same torrents/info call.
+        [property: JsonPropertyName("availability")] double? Availability = null,
+        [property: JsonPropertyName("last_activity")] long? LastActivity = null,
+        [property: JsonPropertyName("completion_on")] long? CompletionOn = null);
 
     private sealed record QbitMainData([property: JsonPropertyName("server_state")] QbitServerState? ServerState);
 
