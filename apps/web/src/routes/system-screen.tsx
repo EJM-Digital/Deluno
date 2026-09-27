@@ -425,7 +425,7 @@ function SystemTasksCard({ tasks }: { tasks: SystemTaskItem[] }) {
 
   return (
     <ListCard title="System tasks" count={`${tasks.length} recurring passes · durable across restarts`}>
-      <ListTable columns={[{ label: "Task" }, { label: "Cadence", width: "140px" }, { label: "Last execution", width: "180px" }, { label: "Next execution", width: "180px" }, { label: "Result", width: LIST_TRACK.status, mobile: true }, { label: "", width: "auto", align: "end", mobile: true }]} chevron={false}>
+      <ListTable columns={[{ label: "Task" }, { label: "Cadence", width: "140px" }, { label: "Last execution", width: "180px" }, { label: "Next execution", width: "180px" }, { label: "Result", width: LIST_TRACK.status, mobile: true }, { label: "", width: LIST_TRACK.action, align: "end", mobile: true }]} chevron={false}>
         {tasks.map((task) => (
           <ListRow key={task.key}>
             <ListNameCell
