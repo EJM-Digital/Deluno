@@ -5061,11 +5061,72 @@ public sealed class ImportPipelineServiceTests
 
         Assert.Equal(expectedTitle, title);
         Assert.Equal(expectedYear, year);
+    [Fact]
+    public async Task A_processed_file_with_no_video_at_all_is_not_imported()
+    {
+        var scene = await ProcessedSceneAsync(processedSeconds: 7200, processedHasVideo: false);
+
+        var result = await scene.ImportAsync();
+
+        Assert.False(result.Succeeded);
+        Assert.Contains("No video stream", result.Message);
+    }
+
+    /// <summary>
+    /// A processor may legitimately be set up to produce a lower resolution
+    /// than its source -- that is deliberate, not a fault (#919).
+    /// </summary>
+    [Fact]
+    public async Task A_processed_file_at_a_lower_resolution_the_processor_produces_on_purpose_is_imported()
+    {
+        var scene = await ProcessedSceneAsync(processedSeconds: 7200, processedWidth: 1280, processedHeight: 720);
+
+        var result = await scene.ImportAsync();
+
+        Assert.True(result.Succeeded, result.Message);
+    }
+
+    /// <summary>
+    /// #919: on a fault, a person is offered the three named options, never
+    /// asked to fix the processor themselves in different words each time.
+    /// </summary>
+    [Fact]
+    public async Task A_fault_is_held_as_a_recovery_case_offering_the_three_options()
+    {
+        var scene = await ProcessedSceneAsync(processedSeconds: 180);
+
+        await scene.ImportAsync();
+
+        var summary = await scene.Movies.GetImportRecoverySummaryAsync(CancellationToken.None);
+        var recoveryCase = Assert.Single(summary.RecentCases);
+        Assert.Equal("processedFileIsLess", recoveryCase.FailureKind);
+        Assert.Equal("Import the original, run the processor again, or search for another release.", recoveryCase.RecommendedAction);
+    }
+
+    /// <summary>
+    /// #919: on a fault, the broken processed copy is deleted -- the
+    /// original, already shown good at Checkpoint A, is kept regardless (the
+    /// original itself is never probed by this scene, only referenced by
+    /// ProcessedFromPath, so its continued existence is not re-asserted
+    /// here).
+    /// </summary>
+    [Fact]
+    public async Task A_fault_deletes_the_broken_processed_copy()
+    {
+        var scene = await ProcessedSceneAsync(processedSeconds: 180);
+        Assert.True(File.Exists(scene.ProcessedFilePath));
+
+        var result = await scene.ImportAsync();
+
+        Assert.False(result.Succeeded);
+        Assert.False(File.Exists(scene.ProcessedFilePath));
     }
 
     private sealed record ProcessedScene(
         Func<Task<ImportPipelineResult>> Import,
-        string DestinationPath)
+        string DestinationPath,
+        string ProcessedFilePath,
+        SqliteMovieCatalogRepository Movies)
     {
         public Task<ImportPipelineResult> ImportAsync() => Import();
     }
@@ -5073,7 +5134,10 @@ public sealed class ImportPipelineServiceTests
     private static async Task<ProcessedScene> ProcessedSceneAsync(
         double processedSeconds,
         int processedAudioTracks = 2,
-        int sourceAudioTracks = 2)
+        int sourceAudioTracks = 2,
+        bool processedHasVideo = true,
+        int processedWidth = 1920,
+        int processedHeight = 1080)
     {
         var storage = TestStorage.Create();
         var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-09-23T08:00:00Z"));
@@ -5099,10 +5163,11 @@ public sealed class ImportPipelineServiceTests
         await SaveSettingsAsync(platform, movieRootPath, downloadsPath);
         await CreateMovieLibraryAsync(libraries, movieRootPath, downloadsPath);
 
-        var probe = new ProcessedProbeService(sourceFile, processed, processedSeconds, processedAudioTracks, sourceAudioTracks);
+        var probe = new ProcessedProbeService(sourceFile, processed, processedSeconds, processedAudioTracks, sourceAudioTracks, processedHasVideo, processedWidth, processedHeight);
+        var movies = new SqliteMovieCatalogRepository(storage.Factory, timeProvider);
         var service = new ImportPipelineService(
             platform, libraries,
-            new SqliteMovieCatalogRepository(storage.Factory, timeProvider),
+            movies,
             new SqliteSeriesCatalogRepository(storage.Factory, timeProvider),
             new SqliteJobStore(storage.Factory, timeProvider, new NullRealtimeEventPublisher(), new NullDownloadDispatchesRepository()),
             probe,
@@ -5125,7 +5190,9 @@ public sealed class ImportPipelineServiceTests
                     TransferMode: "copy", Overwrite: false, AllowCopyFallback: true,
                     ProcessedFromPath: download),
                 CancellationToken.None),
-            destination);
+            destination,
+            processed,
+            movies);
     }
 
     /// <summary>Answers for two named files, so a comparison has two sides.</summary>
@@ -5134,7 +5201,10 @@ public sealed class ImportPipelineServiceTests
         string processedFile,
         double processedSeconds,
         int processedAudioTracks,
-        int sourceAudioTracks) : IMediaProbeService
+        int sourceAudioTracks,
+        bool processedHasVideo = true,
+        int processedWidth = 1920,
+        int processedHeight = 1080) : IMediaProbeService
     {
         public Task<MediaProbeInfo> ProbeAsync(string path, CancellationToken cancellationToken)
         {
@@ -5145,6 +5215,9 @@ public sealed class ImportPipelineServiceTests
                 return Task.FromResult(new MediaProbeInfo("unavailable", "test", "Not one of the two files.", null, null, null, [], [], []));
             }
 
+            var width = isProcessed ? processedWidth : 1920;
+            var height = isProcessed ? processedHeight : 1080;
+            var hasVideo = !isProcessed || processedHasVideo;
             return Task.FromResult(new MediaProbeInfo(
                 Status: "succeeded",
                 Tool: "test",
@@ -5152,10 +5225,9 @@ public sealed class ImportPipelineServiceTests
                 DurationSeconds: isProcessed ? processedSeconds : 7200,
                 Container: "matroska",
                 Bitrate: 12_000_000,
-                VideoStreams:
-                [
-                    new MediaVideoStreamInfo(0, "h264", "High", 1920, 1080, "yuv420p", 23.976, 10_000_000, "eng")
-                ],
+                VideoStreams: hasVideo
+                    ? [new MediaVideoStreamInfo(0, "h264", "High", width, height, "yuv420p", 23.976, 10_000_000, "eng")]
+                    : [],
                 AudioStreams: Enumerable.Range(0, isProcessed ? processedAudioTracks : sourceAudioTracks)
                     .Select(index => new MediaAudioStreamInfo(index + 1, "eac3", null, 6, "5.1", 48_000, 640_000, "eng"))
                     .ToArray(),

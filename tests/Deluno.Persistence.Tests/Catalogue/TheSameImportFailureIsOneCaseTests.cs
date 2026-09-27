@@ -86,6 +86,39 @@ public sealed class TheSameImportFailureIsOneCaseTests
         Assert.Equal(1, (await movies.GetImportRecoverySummaryAsync(CancellationToken.None)).OpenCount);
     }
 
+    /// <summary>
+    /// Every processor-fault and processor-hold kind is its own case with its
+    /// own recommended action (#511, #914, #919, #921, #929, #930). Without a
+    /// case in NormalizeFailureKind for each, an unrecognised kind silently
+    /// became "importFailed" -- the case a person saw and the case a screen or
+    /// a retry endpoint filtered on stopped being the same case.
+    /// </summary>
+    [Theory]
+    [InlineData("processedFileIsLess")]
+    [InlineData("processor-output-missing")]
+    [InlineData("processor-unmatched-output")]
+    [InlineData("processor-lost")]
+    [InlineData("processor-timeout")]
+    [InlineData("processor-stalled")]
+    [InlineData("processor-failed")]
+    [InlineData("processor-held")]
+    [InlineData("processor-refuses-every-copy")]
+    public async Task A_processor_kind_is_stored_as_itself_not_folded_into_importFailed(string failureKind)
+    {
+        var (movies, series, _, storage) = await RepositoriesAsync();
+        using var _ = storage;
+
+        var movieCase = await movies.AddImportRecoveryCaseAsync(
+            new CreateMovieImportRecoveryCaseRequest("Sintel.2010.1080p", failureKind, "Something went wrong.", "Do something about it.", null),
+            CancellationToken.None);
+        var seriesCase = await series.AddImportRecoveryCaseAsync(
+            new CreateSeriesImportRecoveryCaseRequest(Title, failureKind, "Something went wrong.", "Do something about it.", null),
+            CancellationToken.None);
+
+        Assert.Equal(failureKind, movieCase.FailureKind);
+        Assert.Equal(failureKind, seriesCase.FailureKind);
+    }
+
     private static async Task<(SqliteMovieCatalogRepository Movies, SqliteSeriesCatalogRepository Series, FixedTimeProvider Clock, TestStorage Storage)> RepositoriesAsync()
     {
         var storage = TestStorage.Create();
