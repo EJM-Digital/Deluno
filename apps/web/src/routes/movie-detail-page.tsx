@@ -31,6 +31,7 @@ import {
   type AcquisitionBlockersResponse,
   type MediaSubtitleRow
 } from "../lib/api";
+import { subtitleTypeLabel, subtitleSourceLabel } from "../lib/subtitle-display";
 import { AcquisitionBlockersCard } from "../components/app/acquisition-blockers-card";
 import { LibraryMembershipCard, type LibraryMembership } from "../components/app/library-membership-card";
 import { RetentionTitleCard } from "../components/app/retention-title-card";
@@ -1675,23 +1676,6 @@ function formatSearchOutcome(outcome: string) {
   }
 }
 
-/** Plain, hearing-impaired or forced (#923) — the one fact this rung asks a title's own page to say. */
-function subtitleTypeLabel(subtitle: MediaSubtitleRow): string {
-  if (subtitle.forced) return "Forced";
-  if (subtitle.hearingImpaired) return "Hearing-impaired";
-  return "Plain";
-}
-
-function subtitleSourceLabel(source: string): string {
-  switch (source) {
-    case "fetched":
-      return "Fetched";
-    case "embedded":
-      return "Inside the video";
-    default:
-      return "Found beside the video";
-  }
-}
 
 function formatTriggerKind(value: string) {
   switch (value) {
