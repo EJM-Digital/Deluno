@@ -117,23 +117,36 @@ public sealed class DownloadClientTelemetryService(
         var mappedSnapshots = snapshots
             .Select(snapshot => ApplyPathMappings(snapshot, pathMappings))
             .ToArray();
-        var healthAnnotatedSnapshots = await Task.WhenAll(mappedSnapshots.Select(snapshot => AttachHealthFindingsAsync(snapshot, platformSettings.DownloadHealthStrikeThreshold, platformSettings.CleanupBlockReleaseAfterThreshold, downloadHealthRules, cancellationToken)));
 
-        // The summary and every per-item health finding above are computed
-        // against the client's whole queue on purpose (cleanup sheet row M2,
-        // #933): a download somebody else sent still counts towards free
-        // space and still gets struck for stalling, and #560's cleanup still
-        // sees it as a holding file. Only the rows a person is shown are
-        // narrowed - to the ones Deluno itself sent - because listing every
-        // download strangers or other tools left in the client is not "the
-        // Queue", it is "everything in the client".
-        var overviewSummary = Summarize(healthAnnotatedSnapshots.SelectMany(snapshot => snapshot.Queue));
+        // Ownership is decided once, here, and carried into everything below
+        // it rather than re-derived per concern (cleanup sheet row M2, #933).
+        // A download somebody else sent, or added by hand, still counts
+        // towards the client's own free-space and connectivity health - it is
+        // really there, using real disk - but it is never struck, never
+        // remediated (removed, deleted, blocklisted, replacement-searched)
+        // and never shown as a Queue row. Only #560's cleanup still treats it
+        // as a holding file, by design (M1): that pass reads the client's
+        // download folder directly, not this ownership test.
         var dispatchesByClientId = settledDispatches
             .GroupBy(dispatch => dispatch.DownloadClientId, StringComparer.OrdinalIgnoreCase)
             .ToDictionary(
                 group => group.Key,
                 group => (IReadOnlyList<DownloadDispatchItem>)group.ToArray(),
                 StringComparer.OrdinalIgnoreCase);
+
+        var healthAnnotatedSnapshots = await Task.WhenAll(orderedClients.Zip(mappedSnapshots, (client, snapshot) => AttachHealthFindingsAsync(
+            client,
+            snapshot,
+            dispatchesByClientId.GetValueOrDefault(client.Id, Array.Empty<DownloadDispatchItem>()),
+            routeCategoriesByLibrary,
+            platformSettings.DownloadHealthStrikeThreshold,
+            platformSettings.CleanupBlockReleaseAfterThreshold,
+            downloadHealthRules,
+            cancellationToken)));
+
+        // The free-space/connectivity summary is still read off the client's
+        // whole queue, foreign items included - see above.
+        var overviewSummary = Summarize(healthAnnotatedSnapshots.SelectMany(snapshot => snapshot.Queue));
 
         var visibleSnapshots = orderedClients
             .Zip(healthAnnotatedSnapshots, (client, snapshot) => snapshot with
@@ -623,7 +636,10 @@ public sealed class DownloadClientTelemetryService(
             MinPeersMinutes: settings.DownloadHealthMinPeersMinutes);
 
     private async Task<DownloadClientTelemetrySnapshot> AttachHealthFindingsAsync(
+        DownloadClientItem client,
         DownloadClientTelemetrySnapshot snapshot,
+        IReadOnlyList<DownloadDispatchItem> clientDispatches,
+        IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>> routeCategoriesByLibrary,
         int strikeThreshold,
         bool blockReleaseAfterThreshold,
         DownloadHealthRulesSettings rules,
@@ -632,6 +648,16 @@ public sealed class DownloadClientTelemetryService(
         var annotated = new List<(DownloadQueueItem Item, IReadOnlyList<RecoveryHealthFinding> Findings)>(snapshot.Queue.Count);
         foreach (var item in snapshot.Queue)
         {
+            // A download nobody at Deluno sent is never struck (cleanup sheet
+            // row M2, #933): no findings are evaluated for it, so it can never
+            // reach the strike threshold that "Force remediation" acts on
+            // below, and no observation is recorded for it either.
+            if (!IsDelunosOwnDownload(client, item, clientDispatches, routeCategoriesByLibrary))
+            {
+                annotated.Add((item, []));
+                continue;
+            }
+
             // #901: NoProgress/MinSpeed/MinPeers all measure "how long since
             // AddedUtc" - an outage stretches that clock exactly as long as
             // it lasted unless the added time itself is pushed forward by
@@ -659,6 +685,10 @@ public sealed class DownloadClientTelemetryService(
             .SelectMany(entry => entry.Findings.Select(finding => new DownloadHealthObservation(
                 entry.Item.ClientId, entry.Item.Id, entry.Item.ReleaseName, finding.Kind, finding.Severity, finding.Evidence)))
             .ToArray();
+        // The full id list here (not only Deluno's own) is what lets a stale
+        // strike recorded before this guard existed finally clear: an id that
+        // is listed but produced no observation this pass reads as "seen and
+        // clean", the same way a genuinely recovered download does.
         var records = await healthRepository.RecordDownloadHealthObservationsAsync(
             snapshot.ClientId,
             snapshot.Queue.Select(item => item.Id).ToArray(),
