@@ -28,7 +28,8 @@ import {
   type MovieListItem,
   type MetadataProviderIssue,
   type MovieSearchHistoryItem,
-  type AcquisitionBlockersResponse
+  type AcquisitionBlockersResponse,
+  type MediaSubtitleRow
 } from "../lib/api";
 import { AcquisitionBlockersCard } from "../components/app/acquisition-blockers-card";
 import { LibraryMembershipCard, type LibraryMembership } from "../components/app/library-membership-card";
@@ -110,6 +111,7 @@ interface MovieDetailLoaderData {
   origins: IntakeTitleOriginItem[];
   removalPreview: MediaRemovalPreview;
   searchHistory: MovieSearchHistoryItem[];
+  subtitles: MediaSubtitleRow[];
   workflowStatus: MovieWorkflowStatus | null;
 }
 
@@ -135,7 +137,7 @@ export async function movieDetailLoader({
   params: { id?: string };
 }): Promise<MovieDetailLoaderData> {
   const id = params.id!;
-  const [movie, metadataIssue, searchHistory, dispatches, importRecovery, activity, decisions, libraries, workflowStatus, origins, removalPreview, acquisitionBlockers, copy, memberships] = await Promise.all([
+  const [movie, metadataIssue, searchHistory, dispatches, importRecovery, activity, decisions, libraries, workflowStatus, origins, removalPreview, acquisitionBlockers, copy, memberships, subtitles] = await Promise.all([
     fetchJson<MovieListItem>(`/api/movies/${id}`),
     fetchJson<MetadataProviderIssue | null>(`/api/movies/${id}/metadata/issue`).catch(() => null),
     fetchJson<MovieSearchHistoryItem[]>("/api/movies/search-history"),
@@ -159,15 +161,19 @@ export async function movieDetailLoader({
     // preference and may say none of it.
     fetchJson<MovieCopyRecord>(`/api/movies/${id}/copy`).catch(() => null),
     // The libraries this film is in, as a person chose them (#530).
-    fetchJson<LibraryMembership[]>(`/api/movies/${id}/libraries/`).catch(() => [] as LibraryMembership[])
+    fetchJson<LibraryMembership[]>(`/api/movies/${id}/libraries/`).catch(() => [] as LibraryMembership[]),
+    // Which type each held subtitle is — plain, hearing-impaired or forced
+    // (#923). Caught rather than awaited into the failure: a page that
+    // cannot show its subtitle types is not a page that should not open.
+    fetchJson<MediaSubtitleRow[]>(`/api/movies/${id}/subtitles`).catch(() => [] as MediaSubtitleRow[])
   ]);
 
-  return { acquisitionBlockers, activity, copy, decisions, dispatches, importRecovery, libraries, memberships, metadataIssue, movie, origins, removalPreview, searchHistory, workflowStatus };
+  return { acquisitionBlockers, activity, copy, decisions, dispatches, importRecovery, libraries, memberships, metadataIssue, movie, origins, removalPreview, searchHistory, subtitles, workflowStatus };
 }
 
 export function MovieDetailPage() {
   const loaderData = useLoaderData() as MovieDetailLoaderData;
-  const { acquisitionBlockers, activity, copy, decisions, dispatches, importRecovery, libraries, memberships, metadataIssue, movie, origins, removalPreview, searchHistory, workflowStatus } = loaderData;
+  const { acquisitionBlockers, activity, copy, decisions, dispatches, importRecovery, libraries, memberships, metadataIssue, movie, origins, removalPreview, searchHistory, subtitles, workflowStatus } = loaderData;
   const navigate = useNavigate();
   const revalidator = useRevalidator();
   const { preferences, certificationCountry } = useDisplayPreferences();
@@ -1075,6 +1081,20 @@ export function MovieDetailPage() {
             </ListTable>
           </ListCard>
 
+          {subtitles.length > 0 ? (
+            <ListCard title="Subtitles" count={`${subtitles.length} on disk`}>
+              <ListTable chevron={false} columns={[{ label: "Language" }, { label: "Type" }, { label: "Source", mobile: true }]}>
+                {subtitles.map((subtitle, index) => (
+                  <ListRow key={`${subtitle.language}-${subtitle.forced}-${subtitle.hearingImpaired}-${index}`}>
+                    <ListNameCell name={subtitle.language.toUpperCase()} />
+                    <ListCell primary={subtitleTypeLabel(subtitle)} />
+                    <ListCell primary={subtitle.provider ?? subtitleSourceLabel(subtitle.source)} mobile />
+                  </ListRow>
+                ))}
+              </ListTable>
+            </ListCard>
+          ) : null}
+
           <ListCard title="Automation" count={movie.monitored ? "Monitored" : "Unmonitored"}>
             <ListTable chevron={false} columns={[{ label: "Control" }, { label: "Action", width: LIST_TRACK.action, align: "end", mobile: true }]}>
               <ListRow>
@@ -1652,6 +1672,24 @@ function formatSearchOutcome(outcome: string) {
       return "Blocked";
     default:
       return outcome.charAt(0).toUpperCase() + outcome.slice(1).replace(/[-_]/g, " ");
+  }
+}
+
+/** Plain, hearing-impaired or forced (#923) — the one fact this rung asks a title's own page to say. */
+function subtitleTypeLabel(subtitle: MediaSubtitleRow): string {
+  if (subtitle.forced) return "Forced";
+  if (subtitle.hearingImpaired) return "Hearing-impaired";
+  return "Plain";
+}
+
+function subtitleSourceLabel(source: string): string {
+  switch (source) {
+    case "fetched":
+      return "Fetched";
+    case "embedded":
+      return "Inside the video";
+    default:
+      return "Found beside the video";
   }
 }
 

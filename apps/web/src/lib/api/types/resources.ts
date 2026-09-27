@@ -78,6 +78,19 @@ export interface SubtitleLanguageTypePreference {
   includeForced: boolean;
 }
 
+/** One subtitle a title actually has, and which of the three types it is (#923). */
+export interface MediaSubtitleRow {
+  language: string;
+  source: "fetched" | "external" | "embedded" | string;
+  forced: boolean;
+  hearingImpaired: boolean;
+  filePath: string | null;
+  streamIndex: number | null;
+  codec: string | null;
+  provider: string | null;
+  sourceKey: string | null;
+}
+
 export interface SubtitleNamePolicy {
   mustContain: string[] | null;
   mustNotContain: string[] | null;
