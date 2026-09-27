@@ -35,7 +35,7 @@ import { PageToolbar, PageToolbarAction } from "../components/ui/page-toolbar";
 import { Switch } from "../components/ui/switch";
 import { toast } from "../components/shell/toaster";
 import { useUnsavedChanges } from "../hooks/use-unsaved-changes";
-import { CLIENT_PRESETS } from "./connections/presets";
+import { CLIENT_PRESETS, type MediaScope } from "./connections/presets";
 import { STRICT_SHARING, clientFormErrors, clientFormFrom, emptyClientForm, emptyIndexerForm, indexerFormErrors, indexerFormFrom, sameClient, sameIndexer, sameSet, sharingRuleFrom, type ClientForm, type DrawerState, type IndexerForm, type Section } from "./connections/forms";
 import { formatSeconds, healthChip, indexerHost, protocolLabel, relative, scopeLabel, unusedChip } from "./connections/format";
 import { ClientDrawerBody } from "./connections/client-drawer-body";
@@ -518,8 +518,18 @@ export function IndexersPage() {
       const response = savedAndUnchanged
         ? await send(`${base}/${drawer.id}/test`, "POST", undefined, "Test failed.")
         : await send(`${base}/test${drawer.id ? `?id=${encodeURIComponent(drawer.id)}` : ""}`, "POST", isIndexer ? indexerPayload() : clientPayload(), "Test failed.");
-      const body = (await response.json()) as { healthStatus?: string; message?: string; lastHealthMessage?: string };
+      const body = (await response.json()) as { healthStatus?: string; message?: string; lastHealthMessage?: string; caps?: { categories?: string | null; mediaScope?: string | null } | null };
       setTestResult({ healthStatus: body.healthStatus ?? "unknown", message: body.message ?? body.lastHealthMessage ?? "" });
+      // #755: a generic Newznab/Torznab indexer's own t=caps response
+      // pre-fills categories and search mode when adding it, editable
+      // afterwards. Never overwrites an existing indexer's own settings.
+      if (isIndexer && !drawer.id && body.caps) {
+        setIndexerForm((current) => ({
+          ...current,
+          categories: body.caps?.categories || current.categories,
+          scope: (body.caps?.mediaScope as MediaScope | undefined) ?? current.scope
+        }));
+      }
       if (savedAndUnchanged) revalidator.revalidate();
     } catch (error) {
       setTestResult({ healthStatus: "unreachable", message: error instanceof Error ? error.message : "Test failed." });

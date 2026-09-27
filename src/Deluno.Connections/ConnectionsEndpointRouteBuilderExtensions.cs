@@ -1,4 +1,6 @@
 using System.Diagnostics;
+using System.Linq;
+using System.Xml.Linq;
 using Deluno.Infrastructure.Http;
 using System.Net;
 using System.Net.Http;
@@ -160,13 +162,20 @@ public static class ConnectionsEndpointRouteBuilderExtensions
             var started = Stopwatch.GetTimestamp();
             var health = await TestIndexerWithResilienceAsync(draft, resiliencePolicy, httpContext.RequestServices.GetService<ITrackerIndexerTester>(), cancellationToken);
             await RecordAuthTelemetryAsync(statsRepository, draft, health, ElapsedMilliseconds(started), cancellationToken);
+            // #755: a generic Newznab/Torznab indexer's own t=caps response,
+            // fetched alongside the t=search health test (never instead of
+            // it) so categories/search modes can pre-fill the drawer. A
+            // caps failure never blocks the add - null here just means
+            // nothing to pre-fill.
+            var caps = await FetchIndexerCapsAsync(draft, cancellationToken);
             return Results.Ok(new
             {
                 healthStatus = health.HealthStatus,
                 message = health.Message,
                 failureCategory = health.FailureCategory,
                 failure = health.Failure,
-                latencyMs = ElapsedMilliseconds(started)
+                latencyMs = ElapsedMilliseconds(started),
+                caps = caps is null ? null : new { categories = caps.Categories, mediaScope = caps.MediaScope }
             });
         });
 
@@ -1161,12 +1170,124 @@ public static class ConnectionsEndpointRouteBuilderExtensions
         var separator = string.IsNullOrWhiteSpace(uri.Query) ? "?" : "&";
         var apiKey = string.IsNullOrWhiteSpace(item.ApiKey) ? string.Empty : $"&apikey={Uri.EscapeDataString(item.ApiKey)}";
 
-        // t=search, not t=caps. Most Torznab and Newznab servers serve their
-        // capabilities to anybody, so testing t=caps asked a question the API
-        // key could not fail — the same hole SABnzbd's health probe had. A
-        // one-row search is the cheapest call that actually presents the
-        // credential, and it is what a real query does.
+        // t=search, not t=caps, for the health test itself. Most Torznab and
+        // Newznab servers serve their capabilities to anybody, so testing
+        // t=caps asked a question the API key could not fail — the same
+        // hole SABnzbd's health probe had. A one-row search is the cheapest
+        // call that actually presents the credential, and it is what a real
+        // query does. t=caps is still called separately (#755), just never
+        // in place of this credential-presenting test.
         return $"{uri}{separator}t=search&limit=1{apiKey}";
+    }
+
+    /// <summary>What a generic Newznab/Torznab indexer's own t=caps response says it supports (#755).</summary>
+    public sealed record IndexerCapsResult(string? Categories, string? MediaScope);
+
+    private static string? BuildIndexerCapsUrl(IndexerItem item)
+    {
+        if (string.Equals(item.Protocol, "rss", StringComparison.OrdinalIgnoreCase)
+            || IndexerProtocols.IsTracker(item.Protocol))
+        {
+            return null;
+        }
+
+        var baseUrl = IndexerApiEndpoint.NormalizeBaseUrl(item.BaseUrl) ?? item.BaseUrl;
+        if (!Uri.TryCreate(baseUrl, UriKind.Absolute, out _))
+        {
+            return null;
+        }
+
+        var uri = new Uri(IndexerApiEndpoint.For(item.BaseUrl, item.ApiPath));
+        var separator = string.IsNullOrWhiteSpace(uri.Query) ? "?" : "&";
+        var apiKey = string.IsNullOrWhiteSpace(item.ApiKey) ? string.Empty : $"&apikey={Uri.EscapeDataString(item.ApiKey)}";
+        return $"{uri}{separator}t=caps{apiKey}";
+    }
+
+    /// <summary>
+    /// #755: calls a generic Newznab/Torznab indexer's own t=caps endpoint
+    /// when adding or testing it. Any failure - unreachable, not
+    /// implemented, not XML - is swallowed and reported as "nothing to
+    /// pre-fill" rather than surfaced as a test failure; the t=search test
+    /// above is what decides whether the indexer itself is healthy.
+    /// </summary>
+    private static async Task<IndexerCapsResult?> FetchIndexerCapsAsync(IndexerItem item, CancellationToken cancellationToken)
+    {
+        var capsUrl = BuildIndexerCapsUrl(item);
+        if (capsUrl is null || !Uri.TryCreate(capsUrl, UriKind.Absolute, out var uri))
+        {
+            return null;
+        }
+
+        try
+        {
+            using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(8) };
+            using var request = new HttpRequestMessage(HttpMethod.Get, uri);
+            request.Headers.UserAgent.ParseAdd(IndexerApiEndpoint.UserAgent);
+            using var response = await client.SendAsync(request, cancellationToken);
+            if ((int)response.StatusCode < 200 || (int)response.StatusCode >= 400)
+            {
+                return null;
+            }
+
+            var body = await response.Content.ReadAsStringAsync(cancellationToken);
+            return TryReadIndexerError(body, out _) ? null : ParseIndexerCaps(body);
+        }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or IOException or System.Xml.XmlException)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Reads a Torznab/Newznab t=caps response's category ids and which
+    /// search modes it says it supports (#755). Internal, not private, so
+    /// tests can feed it a caps body directly without a live indexer.
+    /// </summary>
+    public static IndexerCapsResult? ParseIndexerCaps(string body)
+    {
+        if (string.IsNullOrWhiteSpace(body))
+        {
+            return null;
+        }
+
+        XDocument document;
+        try
+        {
+            document = XDocument.Parse(body);
+        }
+        catch (System.Xml.XmlException)
+        {
+            return null;
+        }
+
+        var categoryIds = document.Descendants()
+            .Where(element => element.Name.LocalName is "category" or "subcat")
+            .Select(element => element.Attribute("id")?.Value)
+            .Where(id => !string.IsNullOrWhiteSpace(id))
+            .Distinct(StringComparer.Ordinal)
+            .ToArray();
+        if (categoryIds.Length == 0)
+        {
+            return null;
+        }
+
+        var searching = document.Descendants().FirstOrDefault(element => element.Name.LocalName == "searching");
+        bool Supports(string elementName)
+            => searching?.Elements().Any(element =>
+                element.Name.LocalName == elementName
+                && string.Equals(element.Attribute("available")?.Value, "yes", StringComparison.OrdinalIgnoreCase)) == true;
+
+        var supportsMovies = Supports("movie-search");
+        var supportsTv = Supports("tv-search");
+        var mediaScope = supportsMovies && supportsTv
+            ? "both"
+            : supportsMovies
+                ? "movies"
+                : supportsTv
+                    ? "tv"
+                    : null;
+
+        return new IndexerCapsResult(string.Join(",", categoryIds), mediaScope);
     }
 
     /// <summary>
