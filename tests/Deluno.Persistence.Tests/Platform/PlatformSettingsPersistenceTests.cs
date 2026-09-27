@@ -1,9 +1,11 @@
 using Deluno.Persistence.Tests.Support;
+using Deluno.Infrastructure.Storage;
 using Deluno.Intake.Contracts;
 using Deluno.Intake.Data;
 using Deluno.Libraries.Data;
 using Deluno.Platform.Contracts;
 using Deluno.Platform.Data;
+using Deluno.Platform.Migrations;
 using Deluno.Quality.Data;
 using Deluno.Infrastructure.Storage.Migrations;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -552,6 +554,50 @@ public sealed class PlatformSettingsPersistenceTests
         var loaded = await reloaded.GetAsync(CancellationToken.None);
         Assert.True(loaded.RenameFoldersOnImport);
         Assert.True(loaded.RenameOnImport);
+    }
+
+    /// <summary>
+    /// #764: before this, the destination folder was always computed from
+    /// the naming template -- there was no way to keep a release's own
+    /// folder name. V0084RenameFoldersOnImportDefaultsExisting must freeze
+    /// that behaviour for any install that already had settings saved, the
+    /// same way V0073AutomationDefaultsOff froze RenameOnImport (#936). A
+    /// brand-new install (nothing here yet when V0084 runs) reads the new
+    /// switch's missing key as off instead.
+    /// </summary>
+    [Fact]
+    public async Task An_upgraded_install_keeps_todays_folder_naming_after_the_rename_folders_migration_runs()
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-09-27T01:02:03Z"));
+        var migrator = new SqliteDatabaseMigrator(storage.Factory, timeProvider);
+
+        // The install as it stood before #764 shipped: every migration up to
+        // V0082, plus at least one setting saved -- an install with zero rows
+        // here has never actually been configured, and is treated as new even
+        // if it happens to run this migration late. Written as a direct row,
+        // not through SqlitePlatformSettingsRepository.SaveAsync: that method
+        // already knows about media.renameFoldersOnImport and would write its
+        // own "false" for it immediately, which is not what a database still
+        // running the pre-#764 code could ever have done.
+        await migrator.ApplyAsync(
+            DelunoDatabaseNames.Platform,
+            PlatformDatabaseMigrations.All.Where(migration => migration.Version < 84).ToArray(),
+            CancellationToken.None);
+        await using (var preUpgradeConnection = await storage.Factory.OpenConnectionAsync(DelunoDatabaseNames.Platform, CancellationToken.None))
+        await using (var insert = preUpgradeConnection.CreateCommand())
+        {
+            insert.CommandText = "INSERT INTO system_settings (setting_key, setting_value, updated_utc) VALUES ('app.instanceName', 'My Deluno', '2026-01-01T00:00:00Z');";
+            await insert.ExecuteNonQueryAsync(CancellationToken.None);
+        }
+
+        // The upgrade: the rest of the migrations, including V0084, run
+        // against that already-configured database.
+        await migrator.ApplyAsync(DelunoDatabaseNames.Platform, PlatformDatabaseMigrations.All, CancellationToken.None);
+
+        var upgraded = await new SqlitePlatformSettingsRepository(storage.Factory, timeProvider, TestSecretProtection.Create(storage))
+            .GetAsync(CancellationToken.None);
+        Assert.True(upgraded.RenameFoldersOnImport);
     }
 
     private static async Task<SqlitePlatformSettingsRepository> SettingsAsync(TestStorage storage)

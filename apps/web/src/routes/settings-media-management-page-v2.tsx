@@ -479,7 +479,7 @@ function ImportPolicyFields({
         {/* #764: independent of the file switch above -- a movie/series folder
             can be renamed to Deluno's naming choice while the file inside it
             keeps its original name, or the other way around. */}
-        <SwitchRow label="Rename folders when imported" description="Apply the naming choices from Media Naming to the movie or show folder itself, separately from the file switch." checked={form.renameFoldersOnImport} onCheckedChange={(checked) => onFormChange((current) => ({ ...current, renameFoldersOnImport: checked }))} />
+        <SwitchRow label="Rename folders when imported" description="On, the movie or show folder is renamed to match Media Naming, the same way the file switch renames the file. Off, a folder Deluno was handed (from a download client or processor) keeps the name it arrived with; a brand-new title still gets a named folder either way." checked={form.renameFoldersOnImport} onCheckedChange={(checked) => onFormChange((current) => ({ ...current, renameFoldersOnImport: checked }))} />
       </div>
       <div className="p-[var(--card-pad-x)]">
         <SwitchRow label="Keep seeding without a second copy" description="Use a hardlink when the drives support it, so the download client and library share one set of file data." checked={form.useHardlinks} onCheckedChange={(checked) => onFormChange((current) => ({ ...current, useHardlinks: checked }))} />
