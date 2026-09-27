@@ -60,6 +60,8 @@ GET /api/companion-tools/
 GET /api/companion-tools/{id}/login
 GET /api/connections/
 GET /api/custom-formats/
+GET /api/custom-formats/export
+GET /api/custom-formats/{id}/export
 GET /api/dashboard/metrics
 GET /api/decisions
 GET /api/destination-rules/
@@ -260,6 +262,7 @@ POST /api/companion-tools/install
 POST /api/connections/
 POST /api/custom-formats/
 POST /api/custom-formats/dry-run
+POST /api/custom-formats/import
 POST /api/destination-rules/
 POST /api/destination-rules/resolve
 POST /api/discover/add
