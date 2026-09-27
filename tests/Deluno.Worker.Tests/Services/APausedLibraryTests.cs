@@ -212,6 +212,42 @@ public sealed class APausedLibraryTests
     }
 
     /// <summary>
+    /// A root that answers but has almost no space left pauses the library
+    /// the same way an unreachable one does (#909) -- one clear problem
+    /// instead of failing title by title at import.
+    /// </summary>
+    [Fact]
+    public async Task A_library_root_at_the_pause_threshold_is_paused()
+    {
+        var settings = LowSpaceThresholds(warnPercent: 100, pausePercent: 100);
+        var availability = await Availability(settings: settings).ReadAsync(
+            [Library("library-1", Path.GetTempPath())],
+            CancellationToken.None);
+
+        // Every real disk has some space used, so a 100% pause threshold
+        // reliably trips without needing to fill a disk in a test.
+        Assert.False(availability.IsUsable("library-1"));
+        Assert.Empty(availability.UnreachableLibraryIds);
+        Assert.Equal(LibraryRootProblem.LowFreeSpace, availability.Statuses["library-1"].Problem);
+    }
+
+    /// <summary>
+    /// Below the warn threshold but still above pause is worth a problem on
+    /// Health, not worth stopping grabs and imports over.
+    /// </summary>
+    [Fact]
+    public async Task A_library_root_only_below_the_warn_threshold_still_usable()
+    {
+        var settings = LowSpaceThresholds(warnPercent: 100, pausePercent: 0);
+        var availability = await Availability(settings: settings).ReadAsync(
+            [Library("library-1", Path.GetTempPath())],
+            CancellationToken.None);
+
+        Assert.True(availability.IsUsable("library-1"));
+        Assert.True(availability.Statuses["library-1"].WarnLowFreeSpace);
+    }
+
+    /// <summary>
     /// The wiring, not just the answer. Import automation reads the library
     /// list and then does everything else; if the pause is not applied there,
     /// an unmounted drive still gets every finished download moved into it.
@@ -331,11 +367,60 @@ public sealed class APausedLibraryTests
 
     private static LibraryAvailabilityService Availability(
         Mock<IActivityFeedRepository>? activity = null,
-        TimeProvider? clock = null)
+        TimeProvider? clock = null,
+        IPlatformSettingsRepository? settings = null)
         => new(
             (activity ?? new Mock<IActivityFeedRepository>()).Object,
             clock ?? new AdvanceableClock(DateTimeOffset.Parse("2026-09-05T12:00:00Z")),
-            NullLogger<LibraryAvailabilityService>.Instance);
+            NullLogger<LibraryAvailabilityService>.Instance,
+            settings);
+
+    /// <summary>A settings stub reporting only the two free-space thresholds #909 added; nothing else here reads a real snapshot.</summary>
+    private static IPlatformSettingsRepository LowSpaceThresholds(int warnPercent, int pausePercent)
+    {
+        var settings = new Mock<IPlatformSettingsRepository>();
+        settings.Setup(repository => repository.GetAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new PlatformSettingsSnapshot(
+                AppInstanceName: "Deluno",
+                MovieRootPath: null,
+                SeriesRootPath: null,
+                DownloadsPath: null,
+                IncompleteDownloadsPath: null,
+                AutoStartJobs: true,
+                EnableNotifications: true,
+                RenameOnImport: true,
+                UseHardlinks: true,
+                CleanupEmptyFolders: true,
+                RemoveCompletedDownloads: true,
+                UnmonitorWhenCutoffMet: true,
+                MovieFolderFormat: "{Movie}",
+                SeriesFolderFormat: "{Series}",
+                MovieFileFormat: "{Movie}",
+                EpisodeFileFormat: "{Episode}",
+                HostBindAddress: "127.0.0.1",
+                HostPort: 7979,
+                UrlBase: string.Empty,
+                RequireAuthentication: false,
+                UiTheme: "dark",
+                DefaultMovieView: "poster",
+                DefaultShowView: "poster",
+                MetadataNfoEnabled: true,
+                MetadataArtworkEnabled: true,
+                MetadataCertificationCountry: "US",
+                MetadataLanguage: "en",
+                MetadataProviderMode: "auto",
+                MetadataBrokerUrl: string.Empty,
+                MetadataBrokerConfigured: false,
+                MetadataTmdbApiKeyConfigured: false,
+                MetadataOmdbApiKeyConfigured: false,
+                ReleaseNeverGrabPatterns: string.Empty,
+                SearchScoringMode: "balanced",
+                ImportRecoveryRetentionDays: 30,
+                UpdatedUtc: DateTimeOffset.UnixEpoch,
+                LibraryFreeSpaceWarnPercent: warnPercent,
+                LibraryFreeSpacePausePercent: pausePercent));
+        return settings.Object;
+    }
 
     private static LibraryItem Library(string id, string rootPath)
     {
