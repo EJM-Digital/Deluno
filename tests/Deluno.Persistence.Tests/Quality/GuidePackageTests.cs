@@ -363,7 +363,9 @@ public sealed class GuidePackageTests
     [Fact]
     public void An_unwanted_guide_rule_is_a_forbidden_gate_once_the_profile_says_never_and_off_until_then()
     {
-        var guideFormat = Assert.Single(GuidePackageCatalog.Current.CustomFormats,
+        // Any reviewed, movies-scoped unwanted format exercises this
+        // scenario; #780 grew the baseline unwanted set past one entry.
+        var guideFormat = GuidePackageCatalog.Current.CustomFormats.First(
             format => format.MappingStatus == GuideMappingStatus.Reviewed
                 && GuideFormatConditions.AppliesTo(format, "movies")
                 && string.Equals(format.Category, "unwanted", StringComparison.OrdinalIgnoreCase));
