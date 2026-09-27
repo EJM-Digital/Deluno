@@ -193,11 +193,20 @@ public interface IJobQueueRepository
     /// Archived records too. Archiving is housekeeping, not an outcome: an
     /// archived record still says whether its download was imported.
     /// </param>
+    /// <param name="clientId">
+    /// Scope <paramref name="take"/> to one download client (#933). Left
+    /// null, <paramref name="take"/> is a global cap shared by every client's
+    /// dispatches ordered together by recency - a client that grabs often
+    /// (Usenet's per-episode dispatches, say) crowds a quieter client's own
+    /// history out of the window entirely, not just trims it. Callers that
+    /// mean "this client's own recent dispatches" must pass it.
+    /// </param>
     Task<IReadOnlyList<DownloadDispatchItem>> ListDownloadDispatchesAsync(
         int take,
         string? mediaType,
         CancellationToken cancellationToken,
-        bool includeArchived = false);
+        bool includeArchived = false,
+        string? clientId = null);
 
     /// <summary>
     /// The downloads still on their way, so a search does not send a title or a

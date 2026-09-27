@@ -534,6 +534,74 @@ public sealed class JobStoreTests
     }
 
     /// <summary>
+    /// #933 — a shared, un-scoped <c>take</c> ordered every client's dispatches
+    /// together by recency, so a client that grabs often (a Usenet client's
+    /// one-dispatch-per-episode habit, say) could crowd a quieter torrent
+    /// client's own dispatches out of the window entirely, not merely trim
+    /// them. On the lab rig this hid a torrent client's real, still-open
+    /// dispatch from Deluno's own ownership check because it sat past
+    /// position 200 in the combined list once a high-volume client's rows
+    /// were mixed in. Passing <c>clientId</c> keeps each client's own window
+    /// its own, however busy another client has been.
+    /// </summary>
+    [Fact]
+    public async Task ListDownloadDispatchesAsync_scoped_by_client_keeps_a_quiet_clients_own_dispatch_in_a_small_window()
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-08-20T00:00:00Z"));
+        await InitializeJobsAsync(storage, timeProvider);
+
+        var dispatches = new SqliteDownloadDispatchesRepository(storage.Factory, timeProvider);
+        var store = new SqliteJobStore(
+            storage.Factory,
+            timeProvider,
+            new NullRealtimeEventPublisher(),
+            dispatches);
+
+        // The quiet client's own dispatch, recorded first (oldest).
+        var quietClientDispatchId = await store.RecordDownloadDispatchAsync(
+            libraryId: "tv-main",
+            mediaType: "tv",
+            entityType: "episode",
+            entityId: "episode-quiet-client",
+            releaseName: "The Kid 1921 CC 1080p BluRay x264-GROUP",
+            indexerName: "Indexer One",
+            downloadClientId: "torrent-client",
+            downloadClientName: "qBittorrent",
+            status: "sent",
+            notesJson: null,
+            cancellationToken: CancellationToken.None);
+
+        // A busy client dispatches many times afterwards, each one newer than
+        // the quiet client's single dispatch above.
+        for (var i = 0; i < 5; i++)
+        {
+            timeProvider.Advance(TimeSpan.FromMinutes(1));
+            await store.RecordDownloadDispatchAsync(
+                libraryId: "tv-main",
+                mediaType: "tv",
+                entityType: "episode",
+                entityId: $"episode-busy-client-{i}",
+                releaseName: $"Busy.Show.S01E{i:00}.1080p-GROUP",
+                indexerName: "Indexer One",
+                downloadClientId: "usenet-client",
+                downloadClientName: "SABnzbd",
+                status: "sent",
+                notesJson: null,
+                cancellationToken: CancellationToken.None);
+        }
+
+        // A window small enough that the busy client's five newer dispatches
+        // alone fill it, if the query were not scoped to one client.
+        var unscopedGlobalWindow = await store.ListDownloadDispatchesAsync(5, null, CancellationToken.None);
+        Assert.DoesNotContain(unscopedGlobalWindow, item => item.Id == quietClientDispatchId);
+
+        var scopedToQuietClient = await store.ListDownloadDispatchesAsync(5, null, CancellationToken.None, clientId: "torrent-client");
+        var onlyDispatch = Assert.Single(scopedToQuietClient);
+        Assert.Equal(quietClientDispatchId, onlyDispatch.Id);
+    }
+
+    /// <summary>
     /// #292 — activity said "Deluno sent … to qBittorrent" while the dispatch
     /// failed and the client's torrent list stayed empty. The line has to report
     /// the outcome of the send, not the intent to send.

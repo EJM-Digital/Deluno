@@ -1727,13 +1727,15 @@ public sealed class SqliteJobStore(
         int take,
         string? mediaType,
         CancellationToken cancellationToken,
-        bool includeArchived = false)
+        bool includeArchived = false,
+        string? clientId = null)
     {
         var (items, _) = await downloadDispatchesRepository.QueryDispatchesAsync(
             new DispatchQueryFilter
             {
                 MediaType = string.IsNullOrWhiteSpace(mediaType) ? null : mediaType.Trim().ToLowerInvariant(),
-                IncludeArchived = includeArchived
+                IncludeArchived = includeArchived,
+                ClientId = string.IsNullOrWhiteSpace(clientId) ? null : clientId
             },
             new DispatchPaginationOptions { PageSize = take },
             cancellationToken);

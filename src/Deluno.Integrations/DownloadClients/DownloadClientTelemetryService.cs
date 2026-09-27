@@ -45,17 +45,6 @@ public sealed class DownloadClientTelemetryService(
         var pathMappings = await connectionsRepository.ListDownloadClientPathMappingsAsync(null, cancellationToken);
         var libraries = await librariesRepository.ListLibrariesAsync(cancellationToken);
         var routeCategoriesByLibrary = await LoadRouteCategoriesAsync(libraries, cancellationToken);
-        var dispatches = await jobQueueRepository.ListDownloadDispatchesAsync(
-            DownloadClientTelemetryLimits.HistoryWindow,
-            null,
-            cancellationToken);
-        // Housekeeping archives a finished record after a week, while the
-        // torrent it describes can go on seeding for far longer.
-        var settledDispatches = await jobQueueRepository.ListDownloadDispatchesAsync(
-            DownloadClientTelemetryLimits.HistoryWindow,
-            null,
-            cancellationToken,
-            includeArchived: true);
         var importJobs = await jobQueueRepository.ListAsync(200, cancellationToken);
         // The hand-off is the only thing that knows a download in
         // C:\...\Downloads-Complete and a refined file in C:\...\Refined are
@@ -67,6 +56,35 @@ public sealed class DownloadClientTelemetryService(
             .OrderBy(item => item.Priority)
             .ThenBy(item => item.Name, StringComparer.OrdinalIgnoreCase)
             .ToArray();
+
+        // Scoped per client, not one query shared across all of them (#933).
+        // DownloadClientTelemetryLimits.HistoryWindow is a recent-activity cap,
+        // not an archive limit, and a shared cap ordered by recency across
+        // every client's dispatches together let a client that grabs often -
+        // Usenet's one-dispatch-per-episode habit, say - crowd a quieter
+        // torrent client's own dispatches out of the window entirely. On the
+        // lab rig that hid qBittorrent's and Transmission's own downloads from
+        // the Queue outright: their real dispatches existed, just past
+        // position 200 in the combined list once NZBGet's volume was mixed
+        // in. Fetching per client keeps each client's window its own.
+        var dispatchesByClientId = new Dictionary<string, IReadOnlyList<DownloadDispatchItem>>(StringComparer.OrdinalIgnoreCase);
+        var settledDispatchesByClientId = new Dictionary<string, IReadOnlyList<DownloadDispatchItem>>(StringComparer.OrdinalIgnoreCase);
+        foreach (var client in orderedClients)
+        {
+            dispatchesByClientId[client.Id] = await jobQueueRepository.ListDownloadDispatchesAsync(
+                DownloadClientTelemetryLimits.HistoryWindow,
+                null,
+                cancellationToken,
+                clientId: client.Id);
+            // Housekeeping archives a finished record after a week, while the
+            // torrent it describes can go on seeding for far longer.
+            settledDispatchesByClientId[client.Id] = await jobQueueRepository.ListDownloadDispatchesAsync(
+                DownloadClientTelemetryLimits.HistoryWindow,
+                null,
+                cancellationToken,
+                includeArchived: true,
+                clientId: client.Id);
+        }
 
         foreach (var client in orderedClients)
         {
@@ -80,9 +98,7 @@ public sealed class DownloadClientTelemetryService(
             if (liveSnapshot is not null)
             {
                 liveSnapshot = await ApplyDownloadProgressStallAsync(liveSnapshot, capturedUtc, downloadHealthRules, cancellationToken);
-                var clientDispatches = dispatches
-                    .Where(dispatch => string.Equals(dispatch.DownloadClientId, client.Id, StringComparison.OrdinalIgnoreCase))
-                    .ToArray();
+                var clientDispatches = dispatchesByClientId.GetValueOrDefault(client.Id, Array.Empty<DownloadDispatchItem>());
                 await RecordWhatTheClientShowsAsync(liveSnapshot, clientDispatches, cancellationToken);
                 snapshots.Add(DownloadClientHelpers.NormalizeSnapshotFailures(
                     EnrichQueueImportState(
@@ -92,15 +108,14 @@ public sealed class DownloadClientTelemetryService(
                             capturedUtc),
                         libraries,
                         clientDispatches,
-                        settledDispatches,
+                        settledDispatchesByClientId.GetValueOrDefault(client.Id, Array.Empty<DownloadDispatchItem>()),
                         importJobs,
                         handoffs,
                         routeCategoriesByLibrary)));
                 continue;
             }
 
-            var dispatchHistory = dispatches
-                .Where(dispatch => string.Equals(dispatch.DownloadClientId, client.Id, StringComparison.OrdinalIgnoreCase))
+            var dispatchHistory = dispatchesByClientId.GetValueOrDefault(client.Id, Array.Empty<DownloadDispatchItem>())
                 .Select(dispatch => CreateDispatchHistoryItem(client, dispatch, capturedUtc))
                 .ToArray();
 
@@ -127,16 +142,14 @@ public sealed class DownloadClientTelemetryService(
         // and never shown as a Queue row. Only #560's cleanup still treats it
         // as a holding file, by design (M1): that pass reads the client's
         // download folder directly, not this ownership test.
-        var dispatchesByClientId = settledDispatches
-            .GroupBy(dispatch => dispatch.DownloadClientId, StringComparer.OrdinalIgnoreCase)
-            .ToDictionary(
-                group => group.Key,
-                group => (IReadOnlyList<DownloadDispatchItem>)group.ToArray(),
-                StringComparer.OrdinalIgnoreCase);
-
+        //
+        // settledDispatchesByClientId (built above, per client) is what
+        // ownership is matched against - it includes archived dispatches,
+        // which a finished-but-still-seeding download still needs to be
+        // recognised by.
         var healthAnnotatedSnapshots = await Task.WhenAll(orderedClients.Zip(mappedSnapshots, (client, snapshot) => AttachHealthFindingsAsync(
             snapshot,
-            dispatchesByClientId.GetValueOrDefault(client.Id, Array.Empty<DownloadDispatchItem>()),
+            settledDispatchesByClientId.GetValueOrDefault(client.Id, Array.Empty<DownloadDispatchItem>()),
             platformSettings.DownloadHealthStrikeThreshold,
             platformSettings.CleanupBlockReleaseAfterThreshold,
             downloadHealthRules,
@@ -152,7 +165,7 @@ public sealed class DownloadClientTelemetryService(
                 Queue = snapshot.Queue
                     .Where(item => IsDelunosOwnDownload(
                         item,
-                        dispatchesByClientId.GetValueOrDefault(client.Id, Array.Empty<DownloadDispatchItem>()),
+                        settledDispatchesByClientId.GetValueOrDefault(client.Id, Array.Empty<DownloadDispatchItem>()),
                         capturedUtc))
                     .ToArray()
             })
