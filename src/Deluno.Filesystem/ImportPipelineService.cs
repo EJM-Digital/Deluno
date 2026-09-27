@@ -3936,7 +3936,14 @@ public sealed partial class ImportPipelineService(
         // (it is, or this method would not have been reached) the original is
         // checked and cleared, subject to the same sharing rule as everything
         // else.
-        var cleanupEnabled = string.Equals(transferModeUsed, "copy", StringComparison.OrdinalIgnoreCase)
+        // #915 (cleanup sheet row H4): a processor's copy is only ever a
+        // working copy. It is always removed after a successful import,
+        // together with everything else the processor left for that
+        // hand-off, regardless of the library's own Cleanup mode -- that
+        // setting answers a different question, about the original download.
+        var isProcessorOutput = IsProcessorOutput(sourcePath, library);
+        var cleanupEnabled = isProcessorOutput
+            || (enforceCopyCleanup && string.Equals(transferModeUsed, "copy", StringComparison.OrdinalIgnoreCase))
             || (library is not null && string.Equals(library.CleanupMode, "remove-source-after-import", StringComparison.OrdinalIgnoreCase));
 
         if (library is null || !cleanupEnabled)
@@ -3955,7 +3962,7 @@ public sealed partial class ImportPipelineService(
         // size, in the processor's folder for good, because the sharing rule
         // removes through the client and the client cannot remove what it does
         // not hold.
-        if (stillSharedByClient && !IsProcessorOutput(sourcePath, library))
+        if (stillSharedByClient && !isProcessorOutput)
         {
             return new WorkflowCleanupResult(
                 "share-then-remove",
@@ -3976,7 +3983,19 @@ public sealed partial class ImportPipelineService(
                 sourceRemoved = true;
             }
 
-            if (library.RemoveEmptySourceFolders)
+            if (isProcessorOutput)
+            {
+                // #915: everything else the processor left for this hand-off
+                // -- other output, temporary/partial files, empty folders --
+                // scoped to this hand-off's own place under the processor
+                // output folder. A hand-off in its own subfolder (the
+                // documented folder-hand-off shape) owns that subfolder
+                // outright; a loose file sharing the processor output root
+                // with other hand-offs only ever loses its own leftovers, by
+                // name, never a sibling hand-off's files.
+                emptyFoldersRemoved = CleanupProcessorHandoffLeftovers(sourcePath, library.ProcessorOutputPath);
+            }
+            else if (library.RemoveEmptySourceFolders)
             {
                 emptyFoldersRemoved = RemoveEmptySourceFolders(sourcePath, library.DownloadsPath);
             }
@@ -3993,13 +4012,97 @@ public sealed partial class ImportPipelineService(
         var summary = warning is null
             ? sourceRemoved
                 ? emptyFoldersRemoved == 0
-                    ? "The completed source file was removed after import."
-                    : $"The completed source file was removed and {emptyFoldersRemoved} empty source folder(s) cleaned up."
+                    ? isProcessorOutput
+                        ? "The processor's copy was removed after import."
+                        : "The completed source file was removed after import."
+                    : isProcessorOutput
+                        ? $"The processor's copy was removed, along with {emptyFoldersRemoved} leftover item(s) from that hand-off."
+                        : $"The completed source file was removed and {emptyFoldersRemoved} empty source folder(s) cleaned up."
                 : "The source file was already gone, so there was nothing left to remove."
             : $"Import succeeded, but source cleanup was not completed: {warning}";
 
         return new WorkflowCleanupResult("remove-source-after-import", sourceRemoved, emptyFoldersRemoved, summary, warning);
     }
+
+    /// <summary>
+    /// Removes everything the processor left for one hand-off under its
+    /// output folder, and reports how many extra items were cleared (#915).
+    /// The matched file itself is already gone by the time this runs.
+    /// </summary>
+    private static int CleanupProcessorHandoffLeftovers(string matchedFilePath, string? processorOutputRoot)
+    {
+        if (string.IsNullOrWhiteSpace(processorOutputRoot) || !Directory.Exists(processorOutputRoot))
+        {
+            return 0;
+        }
+
+        var root = Path.GetFullPath(processorOutputRoot).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        var handoffFolder = Path.GetDirectoryName(Path.GetFullPath(matchedFilePath));
+        if (string.IsNullOrWhiteSpace(handoffFolder))
+        {
+            return 0;
+        }
+
+        var removed = 0;
+
+        if (!string.Equals(handoffFolder.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar), root, GetPathComparison())
+            && IsWithinPath(root, handoffFolder)
+            && Directory.Exists(handoffFolder))
+        {
+            // The folder-hand-off shape: the whole subfolder was named for
+            // this one completed download and belongs to this hand-off
+            // alone, so whatever the processor left in it -- scraps,
+            // temporary files, anything -- goes with it.
+            removed += Directory.EnumerateFileSystemEntries(handoffFolder, "*", SearchOption.AllDirectories).Count();
+            Directory.Delete(handoffFolder, recursive: true);
+
+            var parent = Path.GetDirectoryName(handoffFolder);
+            while (!string.IsNullOrWhiteSpace(parent)
+                   && !string.Equals(parent.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar), root, GetPathComparison())
+                   && IsWithinPath(root, parent))
+            {
+                if (Directory.EnumerateFileSystemEntries(parent).Any())
+                {
+                    break;
+                }
+
+                Directory.Delete(parent);
+                parent = Path.GetDirectoryName(parent);
+            }
+        }
+        else if (Directory.Exists(handoffFolder))
+        {
+            // A loose-file hand-off shares the processor output root with
+            // other hand-offs' files. Only remove this hand-off's own
+            // leftovers: files with the same name stem and a temporary
+            // suffix the processor never finished renaming away.
+            var stem = Path.GetFileNameWithoutExtension(matchedFilePath);
+            foreach (var candidate in Directory.EnumerateFiles(handoffFolder, stem + ".*"))
+            {
+                if (string.Equals(candidate, matchedFilePath, GetPathComparison())
+                    || !IsTemporaryProcessorFileName(candidate))
+                {
+                    continue;
+                }
+
+                File.Delete(candidate);
+                removed++;
+            }
+        }
+
+        return removed;
+    }
+
+    // #915: the processor contract requires a drop-folder processor to write
+    // under one of these temporary names and rename when finished. Deluno's
+    // own import extension allow-list already ignores any of them for
+    // matching purposes (their extension is never a supported video
+    // extension); this is only consulted for cleaning up a leftover that a
+    // rename never claimed.
+    private static readonly string[] TemporaryProcessorFileSuffixes = [".partial", ".tmp", ".temp", ".part", ".crdownload"];
+
+    private static bool IsTemporaryProcessorFileName(string path)
+        => TemporaryProcessorFileSuffixes.Any(suffix => path.EndsWith(suffix, StringComparison.OrdinalIgnoreCase));
 
     private static int RemoveEmptySourceFolders(string sourcePath, string? configuredRoot)
     {

@@ -2177,6 +2177,137 @@ public sealed class ImportPipelineServiceTests
         Assert.True(File.Exists(sourcePath), "a hardlink import's source must be left alone while cleanup is off by default");
     }
 
+    /// <summary>
+    /// #915: a processor's copy is always removed after a successful import,
+    /// regardless of the library's Cleanup mode (kept off here on purpose) --
+    /// and so is everything else it left in this hand-off's own subfolder:
+    /// scraps, a leftover temporary-named file, and the now-empty folder
+    /// itself. A sibling hand-off's subfolder is never touched.
+    /// </summary>
+    [Fact]
+    public async Task A_folder_hand_off_processor_output_is_fully_cleaned_up_after_import()
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-09-27T08:00:00Z"));
+        await InitializeAllAsync(storage, timeProvider);
+
+        var downloadsPath = Path.Combine(storage.DataRoot, "downloads");
+        var movieRootPath = Path.Combine(storage.DataRoot, "movies");
+        var processorOutputPath = Path.Combine(storage.DataRoot, "refined");
+        Directory.CreateDirectory(downloadsPath);
+        Directory.CreateDirectory(movieRootPath);
+
+        var platform = CreatePlatformRepository(storage, timeProvider);
+        var libraries = CreateLibrariesRepository(storage, timeProvider);
+        await SaveSettingsAsync(platform, movieRootPath, downloadsPath);
+        await libraries.CreateLibraryAsync(
+            new CreateLibraryRequest(
+                Name: "Movies", MediaType: "movies", Purpose: "Main",
+                RootPath: movieRootPath, DownloadsPath: downloadsPath, QualityProfileId: null,
+                ImportWorkflow: ImportWorkflows.RefineBeforeImport,
+                ProcessorName: "External Refiner", ProcessorOutputPath: processorOutputPath,
+                ProcessorTimeoutMinutes: 60, ProcessorFailureMode: "hold",
+                AutoSearchEnabled: true, MissingSearchEnabled: true, UpgradeSearchEnabled: true,
+                SearchIntervalHours: 6, RetryDelayHours: 24, MaxItemsPerRun: 25,
+                // Left off on purpose: the processor's own copy is cleaned up
+                // regardless of this setting (#915), which only ever governed
+                // the original download.
+                CleanupMode: "keep-source"),
+            CancellationToken.None);
+
+        var handoffFolder = Directory.CreateDirectory(Path.Combine(processorOutputPath, "Interstellar.2014.WEB.1080p-DELUNO")).FullName;
+        var matchedFile = Path.Combine(handoffFolder, "Interstellar.2014.WEB.1080p-DELUNO.mkv");
+        await File.WriteAllBytesAsync(matchedFile, Enumerable.Range(0, 4096).Select(value => (byte)(value % 251)).ToArray());
+        File.SetLastWriteTimeUtc(matchedFile, DateTime.UtcNow.AddMinutes(-1));
+        // A scrap the processor also dropped, and a leftover it never
+        // finished renaming away.
+        await File.WriteAllTextAsync(Path.Combine(handoffFolder, "Interstellar.2014.WEB.1080p-DELUNO.nfo"), "scrap");
+        await File.WriteAllTextAsync(Path.Combine(handoffFolder, "Interstellar.2014.WEB.1080p-DELUNO.mkv.partial"), "leftover");
+
+        // A sibling hand-off's own subfolder, which must survive untouched.
+        var siblingFolder = Directory.CreateDirectory(Path.Combine(processorOutputPath, "Arrival.2016.WEB.1080p-DELUNO")).FullName;
+        var siblingFile = Path.Combine(siblingFolder, "Arrival.2016.WEB.1080p-DELUNO.mkv");
+        await File.WriteAllTextAsync(siblingFile, "unrelated hand-off");
+
+        var movies = new SqliteMovieCatalogRepository(storage.Factory, timeProvider);
+        var service = CreateService(storage, timeProvider, platform, libraries, movies);
+
+        var result = await service.ExecuteAsync(
+            new ImportExecuteRequest(
+                Preview: new ImportPreviewRequest(
+                    SourcePath: matchedFile, FileName: null, MediaType: "movies",
+                    Title: "Interstellar", Year: 2014, Genres: null, Tags: null,
+                    Studio: null, OriginalLanguage: null),
+                TransferMode: "copy", Overwrite: false, AllowCopyFallback: true),
+            CancellationToken.None);
+
+        Assert.True(result.Succeeded, result.Message);
+        Assert.False(Directory.Exists(handoffFolder), "the whole hand-off subfolder, including its scraps and leftover temp file, should be gone");
+        Assert.True(Directory.Exists(siblingFolder), "a sibling hand-off's own subfolder must never be touched");
+        Assert.True(File.Exists(siblingFile));
+    }
+
+    /// <summary>
+    /// #915: a loose-file hand-off shares the processor output root with
+    /// other hand-offs. Only its own leftover (same name stem, a temporary
+    /// suffix the processor never finished renaming away) is removed --
+    /// an unrelated file sitting in the same shared folder is left alone.
+    /// </summary>
+    [Fact]
+    public async Task A_loose_file_processor_output_only_removes_its_own_leftovers()
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-09-27T08:00:00Z"));
+        await InitializeAllAsync(storage, timeProvider);
+
+        var downloadsPath = Path.Combine(storage.DataRoot, "downloads");
+        var movieRootPath = Path.Combine(storage.DataRoot, "movies");
+        var processorOutputPath = Path.Combine(storage.DataRoot, "refined");
+        Directory.CreateDirectory(downloadsPath);
+        Directory.CreateDirectory(movieRootPath);
+        Directory.CreateDirectory(processorOutputPath);
+
+        var platform = CreatePlatformRepository(storage, timeProvider);
+        var libraries = CreateLibrariesRepository(storage, timeProvider);
+        await SaveSettingsAsync(platform, movieRootPath, downloadsPath);
+        await libraries.CreateLibraryAsync(
+            new CreateLibraryRequest(
+                Name: "Movies", MediaType: "movies", Purpose: "Main",
+                RootPath: movieRootPath, DownloadsPath: downloadsPath, QualityProfileId: null,
+                ImportWorkflow: ImportWorkflows.RefineBeforeImport,
+                ProcessorName: "External Refiner", ProcessorOutputPath: processorOutputPath,
+                ProcessorTimeoutMinutes: 60, ProcessorFailureMode: "hold",
+                AutoSearchEnabled: true, MissingSearchEnabled: true, UpgradeSearchEnabled: true,
+                SearchIntervalHours: 6, RetryDelayHours: 24, MaxItemsPerRun: 25,
+                CleanupMode: "keep-source"),
+            CancellationToken.None);
+
+        var matchedFile = Path.Combine(processorOutputPath, "Interstellar.2014.WEB.1080p-DELUNO.mkv");
+        await File.WriteAllBytesAsync(matchedFile, Enumerable.Range(0, 4096).Select(value => (byte)(value % 251)).ToArray());
+        File.SetLastWriteTimeUtc(matchedFile, DateTime.UtcNow.AddMinutes(-1));
+        var leftover = Path.Combine(processorOutputPath, "Interstellar.2014.WEB.1080p-DELUNO.mkv.tmp");
+        await File.WriteAllTextAsync(leftover, "leftover");
+        var unrelatedFile = Path.Combine(processorOutputPath, "Arrival.2016.WEB.1080p-DELUNO.mkv");
+        await File.WriteAllTextAsync(unrelatedFile, "unrelated hand-off");
+
+        var movies = new SqliteMovieCatalogRepository(storage.Factory, timeProvider);
+        var service = CreateService(storage, timeProvider, platform, libraries, movies);
+
+        var result = await service.ExecuteAsync(
+            new ImportExecuteRequest(
+                Preview: new ImportPreviewRequest(
+                    SourcePath: matchedFile, FileName: null, MediaType: "movies",
+                    Title: "Interstellar", Year: 2014, Genres: null, Tags: null,
+                    Studio: null, OriginalLanguage: null),
+                TransferMode: "copy", Overwrite: false, AllowCopyFallback: true),
+            CancellationToken.None);
+
+        Assert.True(result.Succeeded, result.Message);
+        Assert.False(File.Exists(matchedFile), "the matched file itself is removed once imported");
+        Assert.False(File.Exists(leftover), "the leftover temp file sharing this hand-off's name stem should be removed");
+        Assert.True(File.Exists(unrelatedFile), "an unrelated file in the shared output root must never be touched");
+    }
+
     [Fact]
     public async Task Import_with_dispatchId_records_resolution()
     {

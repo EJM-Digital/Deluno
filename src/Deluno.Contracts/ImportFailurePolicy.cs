@@ -183,7 +183,7 @@ public static class ImportFailurePolicy
         MissingLibraryRoot, MissingSource, Permission, IoError,
         HardlinkUnavailable, HardlinkFailed, SamePath, Conflict,
         ReplacementOwnershipMismatch, ProcessedFileIsLess, ClientReportedFailure,
-        DeadOrBrokenLink
+        DeadOrBrokenLink, InsufficientFreeSpace
     ];
 
     /// <summary>
