@@ -73,4 +73,4 @@ public sealed record PatchPlatformSettingsRequest(
     int? DownloadHealthMinPeersMinutes = null,
     int? LibraryFreeSpaceWarnPercent = null,
     int? LibraryFreeSpacePausePercent = null,
-    string? DismissedAutomationNotices = null);
+    bool? SubtitleFetchAutomaticEnabled = null);

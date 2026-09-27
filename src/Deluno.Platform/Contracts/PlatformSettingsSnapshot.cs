@@ -95,9 +95,14 @@ public sealed record PlatformSettingsSnapshot(
     // root, and says so once, not per title.
     int LibraryFreeSpaceWarnPercent = 10,
     int LibraryFreeSpacePausePercent = 5,
-    // #936: the Dashboard shows a plain-words notice for every automatic
-    // behaviour that reads off, each with "Turn on" and "Keep off". Keep off
-    // must stick, so it is stored here rather than in the browser — a
-    // comma-separated list of the notice keys the person has dismissed
-    // (see AUTOMATION_QUESTIONS keys in setup-guide-page.tsx).
-    string DismissedAutomationNotices = "");
+    // #936: the one global switch for fetching subtitles on its own, asked in
+    // the setup guide's "What should Deluno do by itself?" step and set here
+    // in Settings -> Subtitles. Off by default for a new install; an install
+    // that existed before this switch shipped keeps behaving as it always
+    // did, because V0076SubtitleFetchDefaultsExisting writes an explicit
+    // "true" for any such install that had not already stored a value — the
+    // same technique V0073AutomationDefaultsOff used for renaming on import.
+    // The per-library subtitle-language list still decides *which* languages
+    // are wanted; this decides whether the automatic job that fetches them
+    // is ever planned at all.
+    bool SubtitleFetchAutomaticEnabled = false);

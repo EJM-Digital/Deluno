@@ -242,6 +242,23 @@ public sealed class PlatformSettingsPersistenceTests
         Assert.True((await repository.GetAsync(CancellationToken.None)).RenameOnImport);
     }
 
+    /// <summary>#936: the one global switch for automatic subtitle fetching, off for a new install and saved through the same PATCH path as every other automatic behaviour.</summary>
+    [Fact]
+    public async Task SubtitleFetchAutomaticEnabled_defaults_to_off_for_a_new_install_and_stays_on_once_turned_on()
+    {
+        using var storage = TestStorage.Create();
+        var repository = await SettingsAsync(storage);
+
+        Assert.False((await repository.GetAsync(CancellationToken.None)).SubtitleFetchAutomaticEnabled);
+
+        var merged = PlatformSettingsPatchMerger.Apply(
+            await repository.GetAsync(CancellationToken.None),
+            new PatchPlatformSettingsRequest(SubtitleFetchAutomaticEnabled: true));
+        await repository.SaveAsync(merged, CancellationToken.None);
+
+        Assert.True((await repository.GetAsync(CancellationToken.None)).SubtitleFetchAutomaticEnabled);
+    }
+
     private static async Task<SqlitePlatformSettingsRepository> SettingsAsync(TestStorage storage)
     {
         var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-09-05T01:02:03Z"));

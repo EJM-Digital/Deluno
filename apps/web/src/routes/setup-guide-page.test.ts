@@ -129,7 +129,8 @@ describe("setup guide Automation step (#936)", () => {
       renameOnImport: false,
       cleanupEmptyFolders: false,
       cleanupRemoveClientEntryAfterThreshold: false,
-      cleanupPurgePayloadAfterThreshold: false
+      cleanupPurgePayloadAfterThreshold: false,
+      subtitleFetchAutomaticEnabled: false
     });
     expect(buildLibraryAutomationFields(ALL_NO)).toEqual({
       autoSearchEnabled: false,
@@ -148,7 +149,14 @@ describe("setup guide Automation step (#936)", () => {
       renameOnImport: true,
       cleanupEmptyFolders: false,
       cleanupRemoveClientEntryAfterThreshold: false,
-      cleanupPurgePayloadAfterThreshold: false
+      cleanupPurgePayloadAfterThreshold: false,
+      subtitleFetchAutomaticEnabled: false
+    });
+
+    const onlySubtitleFetchingYes: AutomationChoices = { ...ALL_NO, subtitleFetching: true };
+    expect(buildAutomationSettingsPayload(onlySubtitleFetchingYes)).toMatchObject({
+      renameOnImport: false,
+      subtitleFetchAutomaticEnabled: true
     });
 
     const onlyMissingSearchYes: AutomationChoices = { ...ALL_NO, searchMissingTitles: true };

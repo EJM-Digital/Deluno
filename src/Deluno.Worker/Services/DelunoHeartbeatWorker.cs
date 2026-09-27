@@ -256,7 +256,11 @@ public sealed class DelunoHeartbeatWorker(
                     MaxItemsPerRun: library.MaxItemsPerRun,
                     SearchWindowStartHour: library.SearchWindowStartHour,
                     SearchWindowEndHour: library.SearchWindowEndHour,
-                    WantsSubtitles: library.SubtitleLanguages is { Count: > 0 },
+                    // #936: automatic subtitle fetching has its own global
+                    // switch now (Settings -> Subtitles), off by default. A
+                    // library still asking for languages is not enough on its
+                    // own to plan the job. See SubtitleAutomationGate.
+                    WantsSubtitles: SubtitleAutomationGate.WantsSubtitles(settings.SubtitleFetchAutomaticEnabled, library.SubtitleLanguages),
                     SearchScopes: SearchScopesFor(library, automatedViews)))
                 .ToArray();
 

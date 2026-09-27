@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useLoaderData, useRevalidator } from "react-router-dom";
 import { Check } from "lucide-react";
 import { toast } from "sonner";
-import { fetchJson } from "../lib/api";
+import { fetchJson, type PlatformSettingsSnapshot } from "../lib/api";
 import { authedFetch } from "../lib/use-auth";
 import { configurationNavAreas } from "../components/app/settings-shell";
 import { SubtitleLanguagePicker } from "../components/app/subtitle-language-picker";
@@ -20,11 +20,12 @@ import type { LibraryItem, SubtitleContentModificationPolicy, SubtitleLanguageOp
 const TABS = configurationNavAreas.find((area) => area.to === "/settings/libraries")?.items ?? [];
 
 export async function subtitleLanguagesLoader() {
-  const [libraries, languages] = await Promise.all([
+  const [libraries, languages, settings] = await Promise.all([
     fetchJson<LibraryItem[]>("/api/libraries"),
-    fetchJson<SubtitleLanguageOption[]>("/api/subtitle-languages")
+    fetchJson<SubtitleLanguageOption[]>("/api/subtitle-languages"),
+    fetchJson<PlatformSettingsSnapshot>("/api/settings")
   ]);
-  return { libraries, languages };
+  return { libraries, languages, settings };
 }
 
 interface Form {
@@ -88,8 +89,31 @@ function terms(typed: string): string[] {
  * rather than another screen.</p>
  */
 export function SubtitleLanguagesPage() {
-  const { libraries, languages } = useLoaderData() as { libraries: LibraryItem[]; languages: SubtitleLanguageOption[] };
+  const { libraries, languages, settings } = useLoaderData() as {
+    libraries: LibraryItem[];
+    languages: SubtitleLanguageOption[];
+    settings: PlatformSettingsSnapshot;
+  };
   const revalidator = useRevalidator();
+
+  const [automaticBusy, setAutomaticBusy] = useState(false);
+
+  async function toggleAutomaticFetching(checked: boolean) {
+    setAutomaticBusy(true);
+    try {
+      const response = await authedFetch("/api/settings", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ subtitleFetchAutomaticEnabled: checked })
+      });
+      if (!response.ok) throw new Error("That could not be saved.");
+      revalidator.revalidate();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "That could not be saved.");
+    } finally {
+      setAutomaticBusy(false);
+    }
+  }
 
   const [editing, setEditing] = useState<LibraryItem | null>(null);
   const [form, setForm] = useState<Form>({
@@ -150,6 +174,23 @@ export function SubtitleLanguagesPage() {
   return (
     <div className="grid gap-[var(--page-gap)]">
       <PageToolbar tabs={TABS} />
+
+      <ListCard title="Fetching">
+        <div className="flex items-start justify-between gap-4 px-1 py-1">
+          <div>
+            <p className="font-medium text-foreground">Fetch subtitles automatically</p>
+            <p className="text-[length:var(--type-caption)] text-muted-foreground">
+              On: Deluno searches for the languages each library asks for below, on its own. Off: nothing is fetched until you ask, even if a library has languages set.
+            </p>
+          </div>
+          <Switch
+            aria-label="Fetch subtitles automatically"
+            checked={settings.subtitleFetchAutomaticEnabled}
+            disabled={automaticBusy}
+            onCheckedChange={(checked) => void toggleAutomaticFetching(checked)}
+          />
+        </div>
+      </ListCard>
 
       <ListCard
         title="Subtitle languages"

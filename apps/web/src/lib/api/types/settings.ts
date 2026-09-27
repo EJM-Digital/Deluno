@@ -101,8 +101,14 @@ export interface PlatformSettingsSnapshot {
   libraryFreeSpaceWarnPercent: number;
   /** #909: percent free remaining at or below which Deluno pauses a library's grabs and imports, the same way an unreachable root does. */
   libraryFreeSpacePausePercent: number;
-  /** #936: comma-separated automation-notice keys the Dashboard's "Keep off" has dismissed, so the notice stays gone across reloads and devices. */
-  dismissedAutomationNotices: string;
+  /**
+   * #936: the one global switch for fetching subtitles on its own, asked in
+   * the setup guide and set in Settings -> Subtitles. Off by default for a
+   * new install. The per-library subtitle-language list still decides which
+   * languages are wanted; this decides whether the automatic job that
+   * fetches them ever runs at all.
+   */
+  subtitleFetchAutomaticEnabled: boolean;
   updatedUtc: string;
 }
 
@@ -225,6 +231,7 @@ export const emptyPlatformSettingsSnapshot: PlatformSettingsSnapshot = {
   downloadHealthMinPeersMinutes: 30,
   libraryFreeSpaceWarnPercent: 10,
   libraryFreeSpacePausePercent: 5,
-  dismissedAutomationNotices: "",
+  // #936: off by default, matching PlatformSettingsSnapshot's server-side default.
+  subtitleFetchAutomaticEnabled: false,
   updatedUtc: new Date(0).toISOString()
 };
