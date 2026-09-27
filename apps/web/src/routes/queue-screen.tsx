@@ -59,7 +59,7 @@ import { dismissFailedJob, fetchFailedJobs } from "../lib/failed-jobs";
 import { JOB_STATUS, isJobActive, isJobDeadLettered, isJobFailed, isJobRetrying, type JobStatus } from "../lib/job-status-constants";
 import { downloadQueueStatuses, isImportReadyStatus, isProcessingStatus, queueStatusLabel } from "../lib/download-telemetry";
 import { parseImportJobPayload } from "../lib/import-job-payload";
-import { canTryAgain, handoffNeedsPerson, isDispatchFailure, isProcessorFailure, isVanished, isWithProcessor, needsAction } from "../lib/needs-action";
+import { canTryAgain, handoffNeedsPerson, isDispatchFailure, isProcessorFailure, isProcessorFault, isVanished, isWithProcessor, needsAction } from "../lib/needs-action";
 import { processorOutcomeSummary } from "../lib/processor-outcome";
 import { Button } from "../components/ui/button";
 import { Checkbox } from "../components/ui/checkbox";
@@ -527,6 +527,28 @@ export function QueuePage() {
       if (!response.ok) throw new Error(await readErrorText(response, "That could not be stopped."));
       const body = (await response.json().catch(() => null)) as { message?: string } | null;
       toast.success(body?.message ?? `Deluno stopped wanting ${item.title}.`);
+    });
+  }
+
+  /** Import the original, unprocessed download (#919): offered beside Run the processor again and Search for another on a processor-fault case. */
+  async function importOriginalRecovery(item: (typeof recoveryCases)[number]) {
+    const collection = item.mediaType === "movie" ? "movies" : "series";
+    await run(`recovery:import-original:${item.id}`, async () => {
+      const response = await authedFetch(`/api/${collection}/import-recovery/${item.id}/import-original`, { method: "POST" });
+      if (!response.ok) throw new Error(await readErrorText(response, "The original could not be imported."));
+      const body = (await response.json().catch(() => null)) as { message?: string } | null;
+      toast.success(body?.message ?? `${item.title} will be imported unprocessed.`);
+    });
+  }
+
+  /** Search for another release (#919): never blocklists -- Checkpoint A already showed this release is good, only the processor's copy of it is at fault. */
+  async function searchAgainRecovery(item: (typeof recoveryCases)[number]) {
+    const collection = item.mediaType === "movie" ? "movies" : "series";
+    await run(`recovery:search-again:${item.id}`, async () => {
+      const response = await authedFetch(`/api/${collection}/import-recovery/${item.id}/search-again`, { method: "POST" });
+      if (!response.ok) throw new Error(await readErrorText(response, "Deluno could not search for another release."));
+      const body = (await response.json().catch(() => null)) as { message?: string } | null;
+      toast.success(body?.message ?? `Searching for another release for ${item.title}.`);
     });
   }
 
@@ -1133,7 +1155,7 @@ export function QueuePage() {
                     {canTryAgain(item) ? (
                       <Button type="button" variant="outline" size="sm" onClick={() => void retryRecovery(item)} disabled={busyKey !== null}>
                         {busyKey === `recovery:retry:${item.id}` ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
-                        {isVanished(item) ? "Search for another" : "Try again"}
+                        {isVanished(item) ? "Search for another" : isProcessorFault(item) ? "Run the processor again" : "Try again"}
                       </Button>
                     ) : null}
                     {isVanished(item) ? (
@@ -1141,6 +1163,22 @@ export function QueuePage() {
                         {busyKey === `recovery:stop-wanting:${item.id}` ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
                         Stop wanting it
                       </Button>
+                    ) : null}
+                    {/* #919: Checkpoint B held a processed file back because the
+                        processor lost something the original had -- three real
+                        actions, never a blocklist since the release itself is
+                        already known good. */}
+                    {isProcessorFault(item) ? (
+                      <>
+                        <Button type="button" variant="outline" size="sm" onClick={() => void importOriginalRecovery(item)} disabled={busyKey !== null}>
+                          {busyKey === `recovery:import-original:${item.id}` ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
+                          Import original
+                        </Button>
+                        <Button type="button" variant="outline" size="sm" onClick={() => void searchAgainRecovery(item)} disabled={busyKey !== null}>
+                          {busyKey === `recovery:search-again:${item.id}` ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
+                          Search for another release
+                        </Button>
+                      </>
                     ) : null}
                     <Button type="button" variant="outline" size="sm" onClick={() => void dismissRecovery(item)} disabled={busyKey !== null}>
                       Dismiss

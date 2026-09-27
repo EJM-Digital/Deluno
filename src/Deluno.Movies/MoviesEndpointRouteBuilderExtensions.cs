@@ -510,6 +510,90 @@ public static class MoviesEndpointRouteBuilderExtensions
             return Results.Ok(new { message = outcome.Message });
         });
 
+        // #919: a processed file Checkpoint B held back offers three real
+        // actions, not just words in its recommendation -- this is the first
+        // of them, alongside /retry (run the processor again) and
+        // /search-again below.
+        movies.MapPost("/import-recovery/{id}/import-original", async (
+            string id,
+            HttpContext httpContext,
+            IMovieCatalogRepository repository,
+            IDispatchAlertRepository alertRepository,
+            IDownloadDispatchesRepository dispatchesRepository,
+            IProcessorRepository processorRepository,
+            CancellationToken cancellationToken) =>
+        {
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
+            if (denied is not null)
+            {
+                return denied;
+            }
+
+            var recoveryCase = await repository.GetImportRecoveryCaseAsync(id, cancellationToken);
+            if (recoveryCase is null || !string.Equals(recoveryCase.Status, "open", StringComparison.OrdinalIgnoreCase))
+            {
+                return Results.NotFound();
+            }
+
+            var outcome = await RecoveryCaseRetry.ImportOriginalAsync(
+                recoveryCase.FailureKind, recoveryCase.DetailsJson, dispatchesRepository, processorRepository, cancellationToken);
+            if (!outcome.Retried)
+            {
+                return Results.Conflict(new { message = outcome.Message });
+            }
+
+            await repository.ResolveImportRecoveryCaseAsync(id, "resolved", cancellationToken);
+            await RecoveryCaseAlerts.AcknowledgeAsync(recoveryCase.DetailsJson, alertRepository, cancellationToken, dispatchesRepository);
+            await repository.AddImportRecoveryEventAsync(id, "case_import_original", outcome.Message, null, cancellationToken);
+            return Results.Ok(new { message = outcome.Message });
+        });
+
+        // #919's third action: a different release entirely, without
+        // blocklisting this one -- Checkpoint A already showed it is good.
+        movies.MapPost("/import-recovery/{id}/search-again", async (
+            string id,
+            HttpContext httpContext,
+            IMovieCatalogRepository repository,
+            IDispatchAlertRepository alertRepository,
+            IDownloadDispatchesRepository dispatchesRepository,
+            IJobScheduler jobScheduler,
+            IMediaStateRepository mediaStateRepository,
+            ILibrariesRepository librariesRepository,
+            TimeProvider timeProvider,
+            CancellationToken cancellationToken) =>
+        {
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
+            if (denied is not null)
+            {
+                return denied;
+            }
+
+            var recoveryCase = await repository.GetImportRecoveryCaseAsync(id, cancellationToken);
+            if (recoveryCase is null || !string.Equals(recoveryCase.Status, "open", StringComparison.OrdinalIgnoreCase))
+            {
+                return Results.NotFound();
+            }
+
+            var outcome = await RecoveryCaseRetry.SearchAgainWithoutBlocklistingAsync(
+                recoveryCase.FailureKind,
+                recoveryCase.DetailsJson,
+                dispatchesRepository,
+                jobScheduler,
+                mediaStateRepository,
+                librariesRepository,
+                timeProvider,
+                cancellationToken);
+            if (!outcome.Retried)
+            {
+                return Results.Conflict(new { message = outcome.Message });
+            }
+
+            await repository.ResolveImportRecoveryCaseAsync(id, "resolved", cancellationToken);
+            await RecoveryCaseAlerts.AcknowledgeAsync(recoveryCase.DetailsJson, alertRepository, cancellationToken, dispatchesRepository);
+            await repository.AddImportRecoveryEventAsync(id, "case_search_again", outcome.Message, null, cancellationToken);
+            return Results.Ok(new { message = outcome.Message });
+        });
+
         movies.MapDelete("/import-recovery/{id}", async (
             string id,
             HttpContext httpContext,
