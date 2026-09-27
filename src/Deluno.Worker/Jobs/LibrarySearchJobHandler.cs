@@ -577,11 +577,12 @@ public abstract class LibrarySearchJobHandler(
     }
 
     /// <summary>
-    /// Eligible episodes for one cycle. Unlike the show-level lists above,
-    /// <see cref="EpisodeSearchEligibilityItem"/> does not carry its own
-    /// missing/upgrade status, so a combined cycle reads one list sized to
-    /// both budgets combined rather than each capped separately — the same
-    /// behaviour this had before #830 for this one path.
+    /// Eligible episodes for one cycle — same missing/upgrade cap
+    /// enforcement as <see cref="FetchMovieCandidatesAsync"/> and
+    /// <see cref="FetchSeriesCandidatesAsync"/> (#830): a combined, unscoped
+    /// cycle reads one list sized to both budgets, then
+    /// <see cref="CapEachKind{T}"/> truncates it so each kind is bounded by
+    /// its own cap rather than one kind's backlog eating the other's budget.
     /// </summary>
     private async Task<IReadOnlyList<EpisodeSearchEligibilityItem>> FetchEligibleEpisodesAsync(
         JobPayloads.LibrarySearchPayload payload,
@@ -590,7 +591,8 @@ public abstract class LibrarySearchJobHandler(
         bool ignoreRetryWindow,
         CatalogueFilters? scopeFilters,
         CancellationToken cancellationToken)
-        => await seriesCatalogRepository.ListEligibleWantedEpisodesAsync(
+    {
+        var candidates = await seriesCatalogRepository.ListEligibleWantedEpisodesAsync(
             payload.LibraryId,
             CandidateLimit(payload, searchStatus),
             now,
@@ -599,6 +601,8 @@ public abstract class LibrarySearchJobHandler(
             searchStatus,
             scopeFilters,
             requireMonitored: !PersonAsked(payload));
+        return CapEachKind(payload, searchStatus, candidates, episode => episode.WantedStatus);
+    }
 
     /// <summary>
     /// Whether a candidate is the target. An episode is named by its own id
