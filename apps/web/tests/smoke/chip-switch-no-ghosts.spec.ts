@@ -51,7 +51,10 @@ test.describe("library status chips (#934)", () => {
       await expect(page.getByText(titleA, { exact: true })).toHaveCount(0, { timeout: 200 });
       await expect(page.getByText(titleB, { exact: true })).toHaveCount(0, { timeout: 200 });
 
-      await page.unroute("**/api/movies/page**");
+      // Let the held-back response finish before removing the route: on a
+      // busy machine the delayed handler could otherwise try to continue a
+      // request unroute had already let through ("Route is already handled").
+      await page.unrouteAll({ behavior: "wait" });
       // And the real content still arrives once the slow response lands.
       await expect(page.getByText("Nothing matches")).toBeVisible({ timeout: 5_000 });
     } finally {
