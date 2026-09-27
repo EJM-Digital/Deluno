@@ -56,6 +56,98 @@ public static partial class CustomFormatDefinitionMatcher
                    && SupportedTypes.Contains(condition.Type));
     }
 
+    /// <summary>
+    /// Splits a raw conditions payload — Deluno's own JSON array, an imported
+    /// Radarr/Sonarr array, or the legacy newline shape — into the conditions
+    /// this matcher can evaluate and a description of every one it could not
+    /// interpret (#777, #774). Used by JSON import so an unsupported
+    /// condition is dropped from the saved rule but never silently: the
+    /// caller reports <see cref="CustomFormatImportPreview.Dropped"/>
+    /// instead of failing the whole import or losing the condition quietly.
+    /// </summary>
+    public static CustomFormatImportPreview PreviewImportedConditions(string? rawConditions, string? mediaType = null)
+    {
+        var sonarrNumbering = UsesSonarrNumbering(mediaType);
+        if (string.IsNullOrWhiteSpace(rawConditions))
+        {
+            return new CustomFormatImportPreview([], []);
+        }
+
+        var trimmed = rawConditions.Trim();
+        if (!trimmed.StartsWith('['))
+        {
+            // The legacy newline/regex shape and a plain string array both
+            // always parse into supported releaseTitle conditions.
+            return new CustomFormatImportPreview(
+                ParseConditions(rawConditions, sonarrNumbering).Select(ToImportCondition).ToArray(),
+                []);
+        }
+
+        JsonDocument document;
+        try
+        {
+            document = JsonDocument.Parse(trimmed);
+        }
+        catch (JsonException)
+        {
+            return new CustomFormatImportPreview([], ["The pasted text is not valid JSON."]);
+        }
+
+        using (document)
+        {
+            if (document.RootElement.ValueKind != JsonValueKind.Array)
+            {
+                return new CustomFormatImportPreview([], ["Expected a JSON array of conditions."]);
+            }
+
+            if (document.RootElement.EnumerateArray().All(item => item.ValueKind == JsonValueKind.String))
+            {
+                // A plain string array is every string as a releaseTitle match.
+                return new CustomFormatImportPreview(
+                    ParseConditions(rawConditions, sonarrNumbering).Select(ToImportCondition).ToArray(),
+                    []);
+            }
+
+            var supported = new List<CustomFormatImportCondition>();
+            var dropped = new List<string>();
+            foreach (var element in document.RootElement.EnumerateArray())
+            {
+                var condition = ParseJsonCondition(element, sonarrNumbering);
+                if (condition is not null)
+                {
+                    supported.Add(ToImportCondition(condition));
+                }
+                else
+                {
+                    dropped.Add(DescribeUnparseableCondition(element));
+                }
+            }
+
+            return new CustomFormatImportPreview(supported, dropped);
+        }
+    }
+
+    private static CustomFormatImportCondition ToImportCondition(CustomFormatDefinitionCondition condition)
+        => new(condition.Type, condition.Value, condition.Negate, condition.Required);
+
+    /// <summary>
+    /// A short label for a condition this matcher could not interpret, so an
+    /// import report reads "IndexerFlag: not supported for this media type"
+    /// rather than nothing at all.
+    /// </summary>
+    private static string DescribeUnparseableCondition(JsonElement element)
+    {
+        var implementation = ReadString(element, "implementation");
+        var name = ReadString(element, "name");
+        var type = ReadString(element, "type");
+        var label = !string.IsNullOrWhiteSpace(type)
+            ? type
+            : !string.IsNullOrWhiteSpace(implementation) ? implementation : "an unrecognised condition";
+        return !string.IsNullOrWhiteSpace(name) && !string.Equals(name, label, StringComparison.OrdinalIgnoreCase)
+            ? $"{name} ({label})"
+            : label!;
+    }
+
     public static CustomFormatDefinitionMatch Evaluate(
         string releaseName,
         string? rawConditions,
@@ -714,3 +806,18 @@ public sealed record CustomFormatDefinitionCondition(
     bool Negate = false,
     bool Required = true,
     string? ExternalGroup = null);
+
+/// <summary>One condition in Deluno's own, re-importable JSON shape.</summary>
+public sealed record CustomFormatImportCondition(
+    string Type,
+    string Value,
+    bool Negate,
+    bool Required);
+
+/// <summary>
+/// A conditions payload split into what this matcher can evaluate and a
+/// plain description of every condition it had to leave out (#777, #774).
+/// </summary>
+public sealed record CustomFormatImportPreview(
+    IReadOnlyList<CustomFormatImportCondition> Supported,
+    IReadOnlyList<string> Dropped);
