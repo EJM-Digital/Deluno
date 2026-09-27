@@ -362,7 +362,7 @@ public sealed partial class ImportPipelineService(
                 replacementRisk,
                 "Use force replacement only after confirming the incoming file is intentionally better.",
                 cancellationToken);
-            return Failed(StatusCodes.Status409Conflict, replacementRisk);
+            return Failed(StatusCodes.Status409Conflict, replacementRisk, ImportFailurePolicy.ReplacementRejected);
         }
 
         var requestedMode = NormalizeTransferMode(request.TransferMode);
@@ -726,8 +726,8 @@ public sealed partial class ImportPipelineService(
         }
     }
 
-    private static ImportPipelineResult Failed(int statusCode, string message)
-        => new(false, statusCode, null, message);
+    private static ImportPipelineResult Failed(int statusCode, string message, string? failureKind = null)
+        => new(false, statusCode, null, message, failureKind);
 
     private static ImportPreviewResponse AddReadinessWarning(ImportPreviewResponse preview)
         => preview with
