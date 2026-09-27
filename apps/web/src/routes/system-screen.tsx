@@ -90,10 +90,22 @@ interface SystemLoaderData {
   recycleBinSettings: RecycleBinSettings;
   lanAccess: LanAccessStatus | null;
   healthChecks: HealthCheckListResponse;
+  systemInfo: SystemInstallationInfo | null;
+}
+
+/** GET /api/system/info (#869): uptime, runtime, and app-data details for the "This installation" card. */
+interface SystemInstallationInfo {
+  processStartUtc: string;
+  uptimeSeconds: number;
+  osDescription: string;
+  runtimeVersion: string;
+  databaseType: string;
+  databaseLocation: string;
+  appDataPath: string;
 }
 
 export async function systemLoader(): Promise<SystemLoaderData> {
-  const [settings, libraries, jobs, activity, indexers, downloadClients, processors, backups, backupSettings, updateStatus, automation, searchCycles, retryWindows, monitoring, systemTasks, recycleBin, recycleBinSettings, lanAccess, healthChecks] = await Promise.all([
+  const [settings, libraries, jobs, activity, indexers, downloadClients, processors, backups, backupSettings, updateStatus, automation, searchCycles, retryWindows, monitoring, systemTasks, recycleBin, recycleBinSettings, lanAccess, healthChecks, systemInfo] = await Promise.all([
     fetchJson<PlatformSettingsSnapshot>("/api/settings"),
     fetchJson<LibraryItem[]>("/api/libraries"),
     fetchPageItems<JobQueueItem>("/api/jobs?pageSize=25"),
@@ -120,17 +132,20 @@ export async function systemLoader(): Promise<SystemLoaderData> {
     fetchJson<LanAccessStatus>("/api/system/lan-access").catch(() => null),
     // #909: every health check's latest result, read by System -> Health, the
     // Dashboard tile, the bell and outbound notifications alike.
-    fetchJson<HealthCheckListResponse>("/api/system/health")
+    fetchJson<HealthCheckListResponse>("/api/system/health"),
+    // #869: uptime, process start, OS/runtime version, and app-data path,
+    // read live rather than hardcoded at build time.
+    fetchJson<SystemInstallationInfo>("/api/system/info").catch(() => null)
   ]);
 
-  return { activity, automation, backupSettings, backups, downloadClients, healthChecks, indexers, jobs, lanAccess, libraries, monitoring, processors, recycleBin, recycleBinSettings, retryWindows, searchCycles, settings, systemTasks, updateStatus };
+  return { activity, automation, backupSettings, backups, downloadClients, healthChecks, indexers, jobs, lanAccess, libraries, monitoring, processors, recycleBin, recycleBinSettings, retryWindows, searchCycles, settings, systemInfo, systemTasks, updateStatus };
 }
 
 export function SystemPage() {
   const location = useLocation();
   const revalidator = useRevalidator();
   const loaderData = useLoaderData() as SystemLoaderData;
-  const { activity, automation, backupSettings, backups, downloadClients, healthChecks, indexers, jobs, lanAccess, libraries, monitoring, processors, recycleBin, recycleBinSettings, retryWindows, searchCycles, settings, systemTasks, updateStatus } = loaderData;
+  const { activity, automation, backupSettings, backups, downloadClients, healthChecks, indexers, jobs, lanAccess, libraries, monitoring, processors, recycleBin, recycleBinSettings, retryWindows, searchCycles, settings, systemInfo, systemTasks, updateStatus } = loaderData;
   // The folders Deluno writes to are its libraries' folders. This used to count
   // the two paths the setup guide asks for, which a library made in Settings
   // never fills in: two libraries on a NAS read "0".
@@ -253,7 +268,13 @@ export function SystemPage() {
             value: lanAccess?.state === "open" ? "Can connect" : lanAccess?.state === "blocked" ? "Cannot connect" : "Unknown from here"
           },
           { label: "Sign-in", value: "Required" },
-          { label: "Interface", value: settings.uiTheme }
+          { label: "Interface", value: settings.uiTheme },
+          { label: "Uptime", value: systemInfo ? formatUptime(systemInfo.uptimeSeconds) : "Unknown" },
+          { label: "Started", value: systemInfo ? relativeTime(systemInfo.processStartUtc) : "Unknown" },
+          { label: "OS", value: systemInfo?.osDescription ?? "Unknown" },
+          { label: ".NET runtime", value: systemInfo?.runtimeVersion ?? "Unknown" },
+          { label: "Database", value: systemInfo ? `${systemInfo.databaseType} · ${systemInfo.databaseLocation}` : "Unknown" },
+          { label: "App-data folder", value: systemInfo?.appDataPath ?? "Unknown" }
         ].map((row) => (
           <ListRow key={row.label}>
             <ListNameCell name={row.label} />
@@ -1689,6 +1710,24 @@ function JobStatusBadge({ status }: { status: string }) {
 
 function formatWhen(value: string, preferences: DisplayPreferences) {
   return formatDateTime(value, preferences);
+}
+
+/** #869: uptime in whole days/hours/minutes, the way an "up 3d 4h" line reads. */
+function formatUptime(totalSeconds: number): string {
+  const days = Math.floor(totalSeconds / 86_400);
+  const hours = Math.floor((totalSeconds % 86_400) / 3_600);
+  const minutes = Math.floor((totalSeconds % 3_600) / 60);
+  const parts = [
+    days ? `${days}d` : null,
+    hours ? `${hours}h` : null,
+    days === 0 ? `${minutes}m` : null
+  ].filter((part): part is string => part !== null);
+  return parts.length ? parts.join(" ") : "just started";
+}
+
+function relativeTime(iso: string): string {
+  const minutes = Math.round(Math.abs(Date.now() - new Date(iso).getTime()) / 60000);
+  return minutes < 1 ? "just now" : minutes < 60 ? `${minutes} min ago` : minutes < 60 * 48 ? `${Math.round(minutes / 60)} h ago` : `${Math.round(minutes / 1440)} d ago`;
 }
 
 function formatBytes(value: number) {
