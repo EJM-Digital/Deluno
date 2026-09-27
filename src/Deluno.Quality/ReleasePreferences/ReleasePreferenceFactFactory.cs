@@ -156,6 +156,7 @@ public static class ReleasePreferenceFactFactory
         AddObserved(facts, "release.revision", DetectRevision(lower), evidenceSource);
         AddObserved(facts, "edition", DetectEdition(lower), evidenceSource);
         AddObserved(facts, "streaming.service", DetectService(lower), evidenceSource);
+        AddObserved(facts, "audio.language", DetectLanguage(lower), evidenceSource);
         AddObserved(facts, "unwanted", DetectUnwanted(lower), evidenceSource);
         AddPlanMatcherFacts(facts, plan, releaseName);
 
@@ -275,6 +276,30 @@ public static class ReleasePreferenceFactFactory
                 : value.Contains("repack", StringComparison.Ordinal) || value.Contains("proper", StringComparison.Ordinal)
                     ? "Proper"
                     : null;
+
+    /// <summary>
+    /// #769: a profile's preferred-language answer only means anything once a
+    /// release name can be read as a language at all. Multi and dub markers
+    /// are checked first because a release tagged MULTI or DUAL also often
+    /// names one of its constituent languages, and "carries every language" or
+    /// "carries a dub" is the more useful fact to report.
+    /// </summary>
+    private static string? DetectLanguage(string value)
+        => HasReleaseToken(value, "multi") || value.Contains("multilanguage", StringComparison.Ordinal)
+            ? "Multilingual"
+            : HasReleaseToken(value, "dual", "dubbed")
+                ? "Dubbed"
+                : value.Contains("original", StringComparison.Ordinal)
+                    ? "Original language"
+                    : value.Contains("french", StringComparison.Ordinal) || HasReleaseToken(value, "vostfr", "vff", "vfq", "vf2", "truefrench")
+                        ? "French"
+                        : value.Contains("german", StringComparison.Ordinal) || HasReleaseToken(value, "deutsch")
+                            ? "German"
+                            : value.Contains("japanese", StringComparison.Ordinal) || HasReleaseToken(value, "jpn", "jap")
+                                ? "Japanese"
+                                : value.Contains("spanish", StringComparison.Ordinal) || HasReleaseToken(value, "castellano", "latino")
+                                    ? "Spanish"
+                                    : value.Contains("english", StringComparison.Ordinal) ? "English" : null;
 
     private static string? DetectEdition(string value)
         => value.Contains("director", StringComparison.Ordinal) && value.Contains("cut", StringComparison.Ordinal)
