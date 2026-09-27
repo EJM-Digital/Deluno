@@ -33,6 +33,7 @@ import { authedFetch } from "../lib/use-auth";
 import { Button } from "../components/ui/button";
 import { Chip } from "../components/ui/chip";
 import { ColumnPicker } from "../components/ui/column-picker";
+import { ConfirmDialog } from "../components/ui/confirm-dialog";
 import { Drawer, DrawerDanger, DrawerFacts, DrawerFooter, DrawerSection } from "../components/ui/drawer";
 import {
   LIST_TRACK,
@@ -62,6 +63,13 @@ import {
 } from "../lib/activity-format";
 import { reasonWords } from "../lib/failure-reasons";
 import { useColumnVisibility, type ColumnDefinition } from "../lib/use-column-visibility";
+import {
+  fileNameFromPath,
+  parseDeletedLeftoverPaths,
+  parseSeasonPackSkippedFiles,
+  SEASON_PACK_COMPLETED_CATEGORY,
+  SEASON_PACK_LEFTOVERS_DELETED_CATEGORY
+} from "../lib/season-pack-leftovers";
 
 interface ActivityLoaderData {
   activity: ActivityEventItem[];
@@ -107,6 +115,8 @@ export function ActivityPage() {
   const [openImportCaseId, setOpenImportCaseId] = useState<string | null>(null);
   const [eventTypeFilter, setEventTypeFilter] = useState<"all" | ActivityEventType>("all");
   const [busy, setBusy] = useState(false);
+  const [confirmingLeftoverDelete, setConfirmingLeftoverDelete] = useState(false);
+  const [deletingLeftovers, setDeletingLeftovers] = useState(false);
   const { preferences } = useDisplayPreferences();
   const eventColumns = useColumnVisibility("activity-page.events-columns", EVENT_OPTIONAL_COLUMNS);
 
@@ -163,6 +173,24 @@ export function ActivityPage() {
   const openEvent = openEventEntry?.event ?? activity.find((event) => event.id === openEventId) ?? null;
   const openEventFoldedFrom = openEventEntry?.foldedFrom ?? [];
 
+  // #889: a season-pack import names, in the same event, every file that did
+  // not go in - an extra the catalogue never listed, or one that matched an
+  // episode but had a problem of its own. A path already confirmed deleted
+  // (recorded on its own event) drops off the list rather than staying
+  // there for the life of the browser tab.
+  const deletedLeftoverPaths = useMemo(() => {
+    const paths = new Set<string>();
+    for (const event of activity) {
+      if (event.category !== SEASON_PACK_LEFTOVERS_DELETED_CATEGORY) continue;
+      for (const path of parseDeletedLeftoverPaths(event.detailsJson)) paths.add(path);
+    }
+    return paths;
+  }, [activity]);
+  const openEventLeftovers = useMemo(() => {
+    if (!openEvent || openEvent.category !== SEASON_PACK_COMPLETED_CATEGORY) return [];
+    return parseSeasonPackSkippedFiles(openEvent.detailsJson).filter((file) => !deletedLeftoverPaths.has(file.sourcePath));
+  }, [openEvent, deletedLeftoverPaths]);
+
   // Only the types actually present are offered (#798): a dropdown of eight
   // options where six are always empty is not a filter, it is a maze.
   const presentEventTypes = useMemo(
@@ -189,6 +217,37 @@ export function ActivityPage() {
       toast.error(error instanceof Error ? error.message : "Retry failed.");
     } finally {
       setBusy(false);
+    }
+  }
+
+  /**
+   * Confirmed leftovers from a season pack (#889): deletes exactly the files
+   * this event named as not matched, from wherever the import left them.
+   * What already imported is never touched.
+   */
+  async function handleDeleteLeftovers() {
+    if (openEventLeftovers.length === 0) return;
+    setDeletingLeftovers(true);
+    try {
+      const response = await authedFetch("/api/filesystem/import/season-pack/leftovers/delete", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ paths: openEventLeftovers.map((file) => file.sourcePath) })
+      });
+      const body = (await response.json().catch(() => null)) as { deleted?: number; refused?: string[] } | null;
+      if (!response.ok) throw new Error("Those leftover files could not be deleted.");
+      setConfirmingLeftoverDelete(false);
+      const deletedCount = body?.deleted ?? 0;
+      if (body?.refused?.length) {
+        toast.error(`Deleted ${deletedCount} of ${openEventLeftovers.length}. ${body.refused.length} could not be removed.`);
+      } else {
+        toast.success(`Deleted ${deletedCount} leftover file${deletedCount === 1 ? "" : "s"}.`);
+      }
+      revalidator.revalidate();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Those leftover files could not be deleted.");
+    } finally {
+      setDeletingLeftovers(false);
     }
   }
 
@@ -508,7 +567,10 @@ export function ActivityPage() {
       <Drawer
         open={openEvent !== null}
         onOpenChange={(next) => {
-          if (!next) setOpenEventId(null);
+          if (!next) {
+            setOpenEventId(null);
+            setConfirmingLeftoverDelete(false);
+          }
         }}
         title={openEvent?.message ?? "Event"}
         description={openEvent ? `${openEvent.category} · ${formatPreferenceDateTime(openEvent.createdUtc, preferences)}` : undefined}
@@ -531,6 +593,30 @@ export function ActivityPage() {
                     { label: "Id", value: openEvent.relatedEntityId, mono: true }
                   ]}
                 />
+              </DrawerSection>
+            ) : null}
+
+            {openEventLeftovers.length > 0 ? (
+              <DrawerSection title="What didn't match" aside={`${openEventLeftovers.length} file${openEventLeftovers.length === 1 ? "" : "s"}`}>
+                <ul className="flex flex-col gap-2">
+                  {openEventLeftovers.map((file) => (
+                    <li key={file.sourcePath} className="text-[length:var(--type-body-sm)] leading-relaxed text-foreground">
+                      <span className="font-medium">{fileNameFromPath(file.sourcePath)}</span>
+                      <span className="block text-[length:var(--type-caption)] text-muted-foreground">{file.reason}</span>
+                    </li>
+                  ))}
+                </ul>
+                <div className="mt-3">
+                  <DrawerDanger
+                    title="Delete leftover files"
+                    description="Removes exactly these files from the download's folder. What already imported is untouched."
+                    action={
+                      <Button type="button" variant="outline" size="sm" onClick={() => setConfirmingLeftoverDelete(true)} disabled={deletingLeftovers}>
+                        Delete leftover files
+                      </Button>
+                    }
+                  />
+                </div>
               </DrawerSection>
             ) : null}
 
@@ -596,6 +682,22 @@ export function ActivityPage() {
           </>
         ) : null}
       </Drawer>
+
+      <ConfirmDialog
+        open={confirmingLeftoverDelete}
+        onOpenChange={setConfirmingLeftoverDelete}
+        title="Delete leftover files?"
+        description={
+          openEventLeftovers.length > 0
+            ? `This permanently deletes ${openEventLeftovers.length} file${openEventLeftovers.length === 1 ? "" : "s"} that never matched an episode: ${openEventLeftovers.map((file) => fileNameFromPath(file.sourcePath)).join(", ")}.`
+            : "This permanently deletes the leftover files that never matched an episode."
+        }
+        confirmLabel="Delete"
+        confirmVariant="destructive"
+        presentation="default"
+        busy={deletingLeftovers}
+        onConfirm={() => void handleDeleteLeftovers()}
+      />
     </div>
   );
 }
