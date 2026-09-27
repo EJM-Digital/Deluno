@@ -91,6 +91,33 @@ public sealed class ASabnzbdScriptProblemIsNotTreatedAsABadReleaseTests
         Assert.Equal("warning", record.Severity);
     }
 
+    /// <summary>A script failure also reaches Activity, naming the script, so it is never a mystery what happened or why.</summary>
+    [Fact]
+    public async Task A_script_failure_is_written_to_activity_naming_the_script()
+    {
+        using var world = await World.CreateAsync();
+
+        await world.ShowHistoryAsync(SabHistory("Failed", "Script was aborted, please check script_log for more information.", "CustomProcess.py"));
+
+        var activity = await world.Jobs.ListActivityAsync(10, null, null, CancellationToken.None);
+        var entry = Assert.Single(activity, item => item.Category == "download.client.script-failed");
+        Assert.Contains("CustomProcess.py", entry.Message, StringComparison.Ordinal);
+        Assert.Contains(Release, entry.Message, StringComparison.Ordinal);
+    }
+
+    /// <summary>A soft script warning is written to Activity too, never silently read as success.</summary>
+    [Fact]
+    public async Task A_script_warning_is_written_to_activity_naming_the_script()
+    {
+        using var world = await World.CreateAsync();
+
+        await world.ShowHistoryAsync(SabHistory("Completed", "Script exit code 1, notify.sh reported a problem", "notify.sh"));
+
+        var activity = await world.Jobs.ListActivityAsync(10, null, null, CancellationToken.None);
+        var entry = Assert.Single(activity, item => item.Category == "download.client.script-warning");
+        Assert.Contains("notify.sh", entry.Message, StringComparison.Ordinal);
+    }
+
     private static DownloadClientHistoryItem SabHistory(string status, string failMessage, string scriptName)
     {
         var outcome = SabnzbdDownloadClient.NormalizeHistoryOutcome(status, failMessage);

@@ -90,6 +90,33 @@ public sealed class ANzbGetScriptProblemIsNotTreatedAsABadReleaseTests
         Assert.Equal("warning", record.Severity);
     }
 
+    /// <summary>A script failure also reaches Activity, naming the script, so it is never a mystery what happened or why.</summary>
+    [Fact]
+    public async Task A_script_failure_is_written_to_activity_naming_the_script()
+    {
+        using var world = await World.CreateAsync();
+
+        await world.ShowHistoryAsync(NzbGetHistory("FAILURE/SCRIPT"));
+
+        var activity = await world.Jobs.ListActivityAsync(10, null, null, CancellationToken.None);
+        var entry = Assert.Single(activity, item => item.Category == "download.client.script-failed");
+        Assert.Contains("CustomProcess.py", entry.Message, StringComparison.Ordinal);
+        Assert.Contains(Release, entry.Message, StringComparison.Ordinal);
+    }
+
+    /// <summary>A soft script warning is written to Activity too, never silently read as success.</summary>
+    [Fact]
+    public async Task A_script_warning_is_written_to_activity_naming_the_script()
+    {
+        using var world = await World.CreateAsync();
+
+        await world.ShowHistoryAsync(NzbGetHistory("WARNING/SCRIPT"));
+
+        var activity = await world.Jobs.ListActivityAsync(10, null, null, CancellationToken.None);
+        var entry = Assert.Single(activity, item => item.Category == "download.client.script-warning");
+        Assert.Contains("Notify.py", entry.Message, StringComparison.Ordinal);
+    }
+
     private static DownloadClientHistoryItem NzbGetHistory(string status)
     {
         var outcome = NzbGetDownloadClient.NormalizeOutcome(status);
