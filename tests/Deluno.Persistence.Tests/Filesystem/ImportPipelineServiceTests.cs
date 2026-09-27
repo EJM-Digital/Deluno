@@ -3093,7 +3093,9 @@ public sealed class ImportPipelineServiceTests
         Assert.True(directoryResult.Succeeded);
         Assert.Equal(200, directoryResult.StatusCode);
         Assert.Equal(2, directoryResult.Response!.PackFiles!.Count);
-        Assert.Equal(2, Directory.GetFiles(packDirectory, "*.mkv").Length);
+        // #892: a copy import's own source is checked, then deleted, once the
+        // pack is committed - the same rule a single file already followed.
+        Assert.Empty(Directory.GetFiles(packDirectory, "*.mkv"));
 
         var detail = await seriesRepository.GetInventoryDetailAsync(series.Id, CancellationToken.None);
         Assert.Equal(2, detail!.Episodes.Count(episode => episode.HasFile));
@@ -3143,24 +3145,20 @@ public sealed class ImportPipelineServiceTests
             Assert.All(rows, row => Assert.StartsWith(placedFolder, row.Path, StringComparison.OrdinalIgnoreCase));
         }
 
+        // #892: a copy season-pack's own source is checked (it was, above -
+        // every placed file's size was verified against the catalogued
+        // source) and cleaned up once the pack is committed, the same rule a
+        // single file already followed. The trade-off that comes with it: the
+        // pack directory this request pointed at is now empty, so there is
+        // nothing left there for a later preview to re-derive an
+        // "already-committed" answer from by rescanning it - a single-file
+        // copy import already worked this way (a retry against a cleaned-up
+        // source gets an honest "not found", not a silent no-op). What still
+        // holds is the one thing that actually matters: the library's own
+        // record of the import.
         var retryPreview = await service.PreviewAsync(directoryRequest.Preview, CancellationToken.None);
-        Assert.True(retryPreview.Pack!.CanExecute);
-        Assert.True(retryPreview.Pack.AlreadyCommitted);
-        var retry = await service.ExecuteAsync(directoryRequest, CancellationToken.None);
-        Assert.True(retry.Succeeded);
-        Assert.Contains("already placed and catalogued", retry.Message, StringComparison.OrdinalIgnoreCase);
-        Assert.Equal("already-committed", retry.Response!.TransferModeUsed);
-        Assert.All(retry.Response.PackFiles!, file => Assert.Equal("already-committed", file.TransferModeUsed));
-        Assert.Equal(2, Directory.GetFiles(placedFolder, "*.mkv").Length);
-
-        var firstPlan = directoryPreview.Pack.Files.Single(file => file.EpisodeKeys.Contains("S01E01"));
-        var expectedBytes = await File.ReadAllBytesAsync(firstPlan.SourcePath);
-        await File.WriteAllBytesAsync(firstPlan.DestinationPath, Enumerable.Repeat((byte)0x7F, expectedBytes.Length).ToArray());
-        var tamperedRetry = await service.PreviewAsync(directoryRequest.Preview, CancellationToken.None);
-        Assert.False(tamperedRetry.Pack!.CanExecute);
-        Assert.False(tamperedRetry.Pack.AlreadyCommitted);
-        Assert.Contains(tamperedRetry.Pack.BlockReasons, reason => reason.Contains("not the fully committed pack", StringComparison.OrdinalIgnoreCase));
-        await File.WriteAllBytesAsync(firstPlan.DestinationPath, expectedBytes);
+        Assert.False(retryPreview.SourceExists);
+        Assert.Null(retryPreview.Pack);
 
         var afterRestart = new SqliteSeriesCatalogRepository(storage.Factory, timeProvider);
         var restartedDetail = await afterRestart.GetInventoryDetailAsync(series.Id, CancellationToken.None);
@@ -3674,11 +3672,14 @@ public sealed class ImportPipelineServiceTests
 
         var newDirectory = Path.Combine(downloadsPath, "new", "Replace.Pack.S01");
         Directory.CreateDirectory(newDirectory);
+        var newBytesByPath = new Dictionary<string, byte[]>(StringComparer.OrdinalIgnoreCase);
         foreach (var episode in new[] { 1, 2 })
         {
             var source = Path.Combine(newDirectory, $"Replace.Pack.S01E{episode:D2}.mkv");
-            await File.WriteAllBytesAsync(source, Enumerable.Repeat((byte)(0x70 + episode), 4096).ToArray());
+            var bytes = Enumerable.Repeat((byte)(0x70 + episode), 4096).ToArray();
+            await File.WriteAllBytesAsync(source, bytes);
             File.SetLastWriteTimeUtc(source, DateTime.UtcNow.AddMinutes(-1));
+            newBytesByPath[source] = bytes;
         }
         var replacementRequest = oldRequest with
         {
@@ -3706,13 +3707,20 @@ public sealed class ImportPipelineServiceTests
         Assert.Equal(2, replaced.Response!.PackFiles!.Count);
         foreach (var file in replaced.Response.PackFiles)
         {
-            Assert.Equal(await File.ReadAllBytesAsync(file.SourcePath), await File.ReadAllBytesAsync(file.DestinationPath));
+            // #892: the copy import's own source is checked and cleaned up
+            // once the pack is committed, so it is compared against the
+            // bytes captured before the import ran, not re-read from disk.
+            Assert.Equal(newBytesByPath[file.SourcePath], await File.ReadAllBytesAsync(file.DestinationPath));
+            Assert.False(File.Exists(file.SourcePath));
         }
         Assert.Empty(Directory.EnumerateFiles(seriesRootPath, "*.deluno-pack-backup*", SearchOption.AllDirectories));
 
-        var retry = await service.ExecuteAsync(replacementRequest, CancellationToken.None);
-        Assert.True(retry.Succeeded, retry.Message);
-        Assert.Equal("already-committed", retry.Response!.TransferModeUsed);
+        // #892: the replacement's own source is cleaned up the same way a
+        // fresh pack's is, so the directory this request pointed at is now
+        // empty - there is nothing left for a later request against that
+        // same path to rescan into an "already-committed" answer. What still
+        // holds is the library's own record of the replacement.
+        Assert.Empty(Directory.EnumerateFiles(newDirectory));
         Assert.Equal(2, (await repository.GetInventoryDetailAsync(series.Id, CancellationToken.None))!.Episodes.Count(episode => episode.HasFile));
     }
 
