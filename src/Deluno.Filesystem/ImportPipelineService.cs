@@ -2617,7 +2617,7 @@ public sealed partial class ImportPipelineService(
     /// service is wired up, and never lets a misconfigured webhook fail the
     /// import itself.
     /// </summary>
-    private async Task DispatchImportOutcomeNotificationAsync(
+    private Task DispatchImportOutcomeNotificationAsync(
         string eventCategory,
         string title,
         string message,
@@ -2625,30 +2625,17 @@ public sealed partial class ImportPipelineService(
         Func<NotificationPreferences, bool> isEnabled,
         string outcomeLabel,
         CancellationToken cancellationToken)
-    {
-        if (outboundNotificationService is null)
-        {
-            return;
-        }
-
-        try
-        {
-            if (notificationService is not null)
-            {
-                var preferences = await notificationService.GetPreferencesAsync(cancellationToken);
-                if (!isEnabled(preferences))
-                {
-                    return;
-                }
-            }
-
-            await outboundNotificationService.DispatchAsync(eventCategory, title, message, detailsJson, cancellationToken);
-        }
-        catch (Exception ex)
-        {
-            logger.LogWarning(ex, "Outbound notification dispatch failed for import {Outcome} — notifications may be misconfigured.", outcomeLabel);
-        }
-    }
+        => NotificationOutboundDispatch.DispatchIfEnabledAsync(
+            outboundNotificationService,
+            notificationService,
+            eventCategory,
+            title,
+            message,
+            detailsJson,
+            isEnabled,
+            $"import {outcomeLabel}",
+            logger,
+            cancellationToken);
 
     /// <summary>
     /// A replaced file's own delete/recycle is the same "file delete" concept

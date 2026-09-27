@@ -49,7 +49,11 @@ public sealed class RetentionService(
     IActivityFeedRepository activity,
     IOutboundNotificationService notifications,
     TimeProvider timeProvider,
-    ILogger<RetentionService> logger)
+    ILogger<RetentionService> logger,
+    // #856: gates the per-file "file.deleted" event a season/episode removal
+    // fires below, same toggle a title removal or a manual Files-tab delete
+    // uses. Optional so existing positional test constructions keep compiling.
+    INotificationService? notificationPreferences = null)
 {
     public const string LeavingSoonEvent = "retention.leaving-soon";
     public const string RemovedEvent = "retention.removed";
@@ -469,6 +473,18 @@ public sealed class RetentionService(
             null,
             "series",
             unit.ShowId,
+            cancellationToken);
+
+        await NotificationOutboundDispatch.DispatchIfEnabledAsync(
+            notifications,
+            notificationPreferences,
+            "file.deleted",
+            $"Files removed: {unit.Title}",
+            $"{unit.Title}: {sentence}.",
+            JsonSerializer.Serialize(new { RuleId = rule.Id, unit.ShowId, EpisodeIds = episodeIds, FileCount = files.Count }),
+            prefs => prefs.FileDeletedEnabled,
+            "retention-episode-removal",
+            logger,
             cancellationToken);
 
         if (!rule.RemoveFromServers)
