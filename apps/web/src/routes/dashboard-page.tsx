@@ -16,6 +16,7 @@ import {
   type LibraryAutomationStateItem,
   type CataloguePage,
   type MonitoringDashboardSnapshot,
+  type HealthCheckListResponse,
   type MovieListItem,
   type MovieWantedSummary,
   type PlatformSettingsSnapshot,
@@ -86,6 +87,8 @@ interface DashboardLoaderData {
   metrics: DashboardMetrics | null;
   /** Operational state — readiness, storage, service health, latency. */
   monitoring: MonitoringDashboardSnapshot | null;
+  /** Every health check's latest result (#909) — the same read System -> Health and the bell use. */
+  healthChecks: HealthCheckListResponse | null;
   /** Seeds the live ticker so it is populated before the first push arrives. */
   activity: ActivityEventItem[];
   /** Whether any post-processor connection is enabled. */
@@ -142,6 +145,7 @@ interface DashboardSources {
   qualityProfiles: QualityProfileItem[];
   metrics: DashboardMetrics | null;
   monitoring: MonitoringDashboardSnapshot | null;
+  healthChecks: HealthCheckListResponse | null;
   activity: ActivityEventItem[];
   /** Only used to decide whether the pipeline has a Processing stage at all. */
   processors: ProcessorConnectionItem[];
@@ -161,7 +165,7 @@ function emptyDashboardSources(): DashboardSources {
     indexers: [], clients: [], libraries: [], automation: [], searchCycles: [], retryWindows: [], upcomingEpisodes: [],
     setupProgress: EMPTY_SETUP_PROGRESS,
     settings: emptyPlatformSettingsSnapshot,
-    policySets: [], qualityProfiles: [], metrics: null, monitoring: null, activity: [], processors: [], throughput: null,
+    policySets: [], qualityProfiles: [], metrics: null, monitoring: null, healthChecks: null, activity: [], processors: [], throughput: null,
     sharing: EMPTY_SHARING
   };
 }
@@ -230,9 +234,10 @@ export async function dashboardLoader(): Promise<DashboardLoaderData> {
 
   // A dashboard that cannot draw its charts or read its own health still has to
   // render, so these degrade to a stated gap rather than an error page.
-  const [metrics, monitoring, activity, processors, throughput, sharing] = await Promise.all([
+  const [metrics, monitoring, healthChecks, activity, processors, throughput, sharing] = await Promise.all([
     fetchJson<DashboardMetrics>("/api/dashboard/metrics?days=30").catch(() => null),
     fetchJson<MonitoringDashboardSnapshot>("/api/monitoring/dashboard").catch(() => null),
+    fetchJson<HealthCheckListResponse>("/api/system/health").catch(() => null),
     fetchPageItems<ActivityEventItem>("/api/activity?pageSize=10").catch((): ActivityEventItem[] => []),
     fetchJson<ProcessorConnectionItem[]>("/api/integrations/processors/connections").catch((): ProcessorConnectionItem[] => []),
     fetchJson<DownloadThroughputWindow>("/api/download-clients/throughput?hours=6").catch(() => null),
@@ -242,7 +247,7 @@ export async function dashboardLoader(): Promise<DashboardLoaderData> {
   return buildDashboardData({
     moviePage, movieWanted, showPage, showWanted, telemetry, indexers, clients,
     libraries, automation, searchCycles, retryWindows, upcomingEpisodes,
-    setupProgress, settings, policySets, qualityProfiles, metrics, monitoring, activity, processors, throughput, sharing
+    setupProgress, settings, policySets, qualityProfiles, metrics, monitoring, healthChecks, activity, processors, throughput, sharing
   });
 }
 
@@ -271,7 +276,7 @@ function buildDashboardData(sources: DashboardSources): DashboardLoaderData {
   const {
     moviePage, movieWanted, showPage, showWanted, telemetry, indexers, clients,
     libraries, automation, searchCycles, retryWindows, upcomingEpisodes,
-    setupProgress, settings, policySets, qualityProfiles, metrics, monitoring, activity, processors, throughput, sharing
+    setupProgress, settings, policySets, qualityProfiles, metrics, monitoring, healthChecks, activity, processors, throughput, sharing
   } = sources;
   const displayPreferences = displayPreferencesFromSettings(settings);
   const adaptedMovies = adaptMovieItems(moviePage.items);
@@ -285,6 +290,7 @@ function buildDashboardData(sources: DashboardSources): DashboardLoaderData {
     sources,
     metrics,
     monitoring,
+    healthChecks,
     activity,
     // A Processing stage only makes sense where something is actually
     // refining media before import.
@@ -388,6 +394,11 @@ function useDashboardData(initial: DashboardLoaderData, historyDays: HistoryDays
   // Health moves on its own clock — see MONITORING_REFRESH.
   const monitoring = useQuery({ ...MONITORING_REFRESH, queryKey: ["monitoring-dashboard"], queryFn: () => fetchJson<MonitoringDashboardSnapshot>("/api/monitoring/dashboard").catch(() => null), initialData: source.monitoring });
 
+  // #909: the same board System -> Health and the bell read. HealthChanged
+  // (below) already nudges this on a start/clear; the interval is the floor
+  // for the fifteen-minute scheduled pass finding something new on its own.
+  const healthChecks = useQuery({ ...MONITORING_REFRESH, queryKey: ["health-checks"], queryFn: () => fetchJson<HealthCheckListResponse>("/api/system/health").catch(() => null), initialData: source.healthChecks });
+
   // The window is part of the cache key, so every range keeps its own entry and
   // switching back to one already read is instant. The loader only ever fetches
   // the default window, so that is the only key it can legitimately seed.
@@ -439,6 +450,7 @@ function useDashboardData(initial: DashboardLoaderData, historyDays: HistoryDays
     qualityProfiles: qualityProfiles.data ?? source.qualityProfiles,
     metrics: metrics.data ?? source.metrics,
     monitoring: monitoring.data ?? source.monitoring,
+    healthChecks: healthChecks.data ?? source.healthChecks,
     activity: activity.data ?? source.activity,
     processors: processors.data ?? source.processors,
     throughput: throughput.data ?? source.throughput,
@@ -560,6 +572,20 @@ export function DashboardPage() {
       href: "/system",
       action: "Open System"
     })),
+    // The Dashboard tile #909 asks for: the same health checks System ->
+    // Health and the bell read, folded into the one list this screen already
+    // has for "something needs a decision" rather than a second card saying
+    // the same kind of thing in a different box.
+    ...(data.healthChecks?.checks ?? [])
+      .filter((check) => check.status !== "ok" && !(check.snoozedUntilUtc && new Date(check.snoozedUntilUtc).getTime() > Date.now()))
+      .map((check) => ({
+        id: `health:${check.id}`,
+        tone: (check.status === "problem" ? "warn" : "info") as SetupAttentionTone,
+        title: check.name,
+        text: [check.message, check.fix].filter(Boolean).join(" "),
+        href: "/system",
+        action: "Open System"
+      })),
     // Setup belongs to the ladder above, not here. Both lists were built from
     // the same `attentionItems`, so a part-configured install stated the same
     // three things twice on one screen, about 200px apart (#275). The ladder is

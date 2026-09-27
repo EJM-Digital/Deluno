@@ -317,6 +317,36 @@ export interface MonitoringDashboardSnapshot {
 }
 
 /**
+ * One health check's latest result (#909) -- the same row shown on
+ * System -> Health, the Dashboard tile, the bell and outbound notifications.
+ */
+export interface HealthCheckResultItem {
+  id: string;
+  category: string;
+  name: string;
+  status: "ok" | "problem" | "unknown";
+  message: string;
+  cause: string | null;
+  fix: string | null;
+  detailsJson: string | null;
+  lastRunUtc: string;
+  problemSinceUtc: string | null;
+  snoozedUntilUtc: string | null;
+}
+
+export interface HealthCheckSummary {
+  problemCount: number;
+  unsnoozedProblemCount: number;
+  unknownCount: number;
+  lastRunUtc: string | null;
+}
+
+export interface HealthCheckListResponse {
+  checks: HealthCheckResultItem[];
+  summary: HealthCheckSummary;
+}
+
+/**
  * Something in a library's completed-download folder that nothing claims
  * (#588). `delunoGrabbedIt` says whether Deluno can prove it downloaded it,
  * which is the only case in which it will remove it for you.
