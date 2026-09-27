@@ -249,6 +249,14 @@ public interface ISeriesCatalogRepository : ISeriesImportRecoveryRetentionReposi
 
     Task<IReadOnlyList<SeriesSearchHistoryItem>> ListSearchHistoryAsync(CancellationToken cancellationToken);
 
+    /// <summary>
+    /// The same rows as <see cref="ListSearchHistoryAsync"/>, but with a
+    /// caller-chosen limit rather than the fixed 20 (#754) -- the combined
+    /// Indexer History screen reads a much wider window before merging with
+    /// movie history and its own RSS-sync/auth-failure events.
+    /// </summary>
+    Task<IReadOnlyList<SeriesSearchHistoryItem>> ListRecentSearchHistoryAsync(int limit, CancellationToken cancellationToken);
+
     Task<IReadOnlyList<SeriesWantedItem>> ListEligibleWantedAsync(
         string libraryId,
         int take,

@@ -2511,6 +2511,71 @@ public sealed class SqliteSeriesCatalogRepository(
         return items;
     }
 
+    public async Task<IReadOnlyList<SeriesSearchHistoryItem>> ListRecentSearchHistoryAsync(int limit, CancellationToken cancellationToken)
+    {
+        var boundedLimit = Math.Clamp(limit, 1, 500);
+        if (sharedMediaStateRepository is not null)
+        {
+            var sharedItems = await sharedMediaStateRepository.ListSearchHistoryAsync(
+                MediaKind.Series,
+                boundedLimit,
+                cancellationToken);
+            return sharedItems.Select(MapSearchHistory).ToArray();
+        }
+
+        var items = new List<SeriesSearchHistoryItem>();
+
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Series,
+            cancellationToken);
+
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            $"""
+            SELECT
+                COALESCE(h.id, ''),
+                COALESCE(h.series_id, ''),
+                h.episode_id,
+                e.season_number,
+                e.episode_number,
+                COALESCE(h.library_id, ''),
+                COALESCE(h.trigger_kind, 'manual'),
+                COALESCE(h.outcome, 'unknown'),
+                h.release_name,
+                h.indexer_name,
+                h.details_json,
+                COALESCE(h.created_utc, '')
+            FROM series_search_history h
+            LEFT JOIN episode_entries e ON e.id = h.episode_id
+            ORDER BY h.created_utc DESC
+            LIMIT {boundedLimit};
+            """;
+
+        using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            items.Add(new SeriesSearchHistoryItem(
+                Id: reader.IsDBNull(0) || string.IsNullOrWhiteSpace(reader.GetString(0))
+                    ? Guid.CreateVersion7().ToString("N")
+                    : reader.GetString(0),
+                SeriesId: reader.IsDBNull(1) ? string.Empty : reader.GetString(1),
+                EpisodeId: reader.IsDBNull(2) ? null : reader.GetString(2),
+                SeasonNumber: reader.IsDBNull(3) ? null : reader.GetInt32(3),
+                EpisodeNumber: reader.IsDBNull(4) ? null : reader.GetInt32(4),
+                LibraryId: reader.IsDBNull(5) ? string.Empty : reader.GetString(5),
+                TriggerKind: reader.IsDBNull(6) ? "manual" : reader.GetString(6),
+                Outcome: reader.IsDBNull(7) ? "unknown" : reader.GetString(7),
+                ReleaseName: reader.IsDBNull(8) ? null : reader.GetString(8),
+                IndexerName: reader.IsDBNull(9) ? null : reader.GetString(9),
+                DetailsJson: reader.IsDBNull(10) ? null : reader.GetString(10),
+                CreatedUtc: reader.IsDBNull(11) || string.IsNullOrWhiteSpace(reader.GetString(11))
+                    ? DateTimeOffset.UnixEpoch
+                    : ParseTimestamp(reader.GetString(11))));
+        }
+
+        return items;
+    }
+
     public async Task<IReadOnlyList<SeriesWantedItem>> ListEligibleWantedAsync(
         string libraryId,
         int take,

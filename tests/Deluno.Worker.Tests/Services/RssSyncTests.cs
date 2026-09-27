@@ -1,4 +1,5 @@
 using System.Runtime.CompilerServices;
+using Deluno.Api.IndexerHistory;
 using Deluno.Connections.Contracts;
 using Deluno.Connections.Data;
 using Deluno.Contracts;
@@ -203,7 +204,7 @@ public sealed class RssSyncTests
             .Returns(Task.CompletedTask);
         await new RssSyncService(
             _connections.Object, _libraries.Object, _movies.Object, _series.Object, _feed.Object, state.Object,
-            _scheduler.Object, Mock.Of<IActivityFeedRepository>(), new Clock(Now), NullLogger<RssSyncService>.Instance)
+            _scheduler.Object, Mock.Of<IActivityFeedRepository>(), Mock.Of<IIndexerHistoryEventStore>(), new Clock(Now), NullLogger<RssSyncService>.Instance)
             .SyncAsync(CancellationToken.None);
     }
 

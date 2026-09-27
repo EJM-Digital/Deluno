@@ -87,6 +87,7 @@ export const configurationNavAreas = [
     items: [
       { to: "/indexers/indexers", label: "Indexers", end: false },
       { to: "/indexers/proxies", label: "Proxies", end: false },
+      { to: "/indexers/history", label: "History", end: false },
       { to: "/indexers/scoreboard", label: "Scoreboard", end: false },
       { to: "/indexers/download-clients", label: "Download Clients", end: false },
       { to: "/indexers/path-mappings", label: "Remote Path Mappings", end: false },

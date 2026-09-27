@@ -598,8 +598,10 @@ public sealed class SqliteMediaStateRepository(
 
     public async Task<IReadOnlyList<MediaSearchHistoryItem>> ListSearchHistoryAsync(
         MediaKind kind,
+        int limit,
         CancellationToken cancellationToken)
     {
+        var boundedLimit = Math.Clamp(limit, 1, 1000);
         var map = MediaTableMap.For(kind);
         await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
             map.DatabaseName,
@@ -612,7 +614,7 @@ public sealed class SqliteMediaStateRepository(
                      release_name, indexer_name, details_json, created_utc
               FROM {map.HistoryTable}
               ORDER BY created_utc DESC
-              LIMIT 20;
+              LIMIT {boundedLimit};
               """
             : $"""
               SELECT COALESCE(h.id, ''), COALESCE(h.series_id, ''), h.episode_id,
@@ -622,7 +624,7 @@ public sealed class SqliteMediaStateRepository(
               FROM {map.HistoryTable} h
               LEFT JOIN episode_entries e ON e.id = h.episode_id
               ORDER BY h.created_utc DESC
-              LIMIT 20;
+              LIMIT {boundedLimit};
               """;
 
         var items = new List<MediaSearchHistoryItem>();
