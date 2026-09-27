@@ -6,6 +6,8 @@ using Deluno.Infrastructure.Storage.Migrations;
 using Deluno.Intake.Contracts;
 using Deluno.Intake.Data;
 using Deluno.Integrations.Metadata;
+using Deluno.Jobs.Contracts;
+using Deluno.Jobs.Data;
 using Deluno.Libraries.Contracts;
 using Deluno.Libraries.Data;
 using Deluno.Media;
@@ -47,6 +49,7 @@ public sealed class DiscoverEndpointTests : IAsyncDisposable
     private readonly IIntakeRepository _intake;
     private readonly IUnifiedExclusionRepository _exclusions;
     private readonly FakeIntakeListPreviewService _intakePreview = new();
+    private readonly FakeJobScheduler _jobScheduler = new();
 
     public DiscoverEndpointTests()
     {
@@ -90,6 +93,7 @@ public sealed class DiscoverEndpointTests : IAsyncDisposable
                     services.AddSingleton(mediaDecisionService);
                     services.AddSingleton<IIntakeListPreviewService>(_intakePreview);
                     services.AddSingleton<IMetadataProvider>(new RecordingMetadataProvider(PopularCards));
+                    services.AddSingleton<IJobScheduler>(_jobScheduler);
                 })
                 .Configure(app =>
                 {
@@ -274,6 +278,35 @@ public sealed class DiscoverEndpointTests : IAsyncDisposable
         _storage.Dispose();
     }
 
+    [Fact]
+    public async Task Add_from_discover_with_search_for_missing_now_dispatches_a_targeted_search_job()
+    {
+        var library = await CreateMovieLibraryAsync();
+
+        var response = await _client.PostAsJsonAsync("/api/discover/add", new DiscoverAddRequest(
+            MediaType: "movies",
+            Title: "Arrival",
+            Year: 2016,
+            ImdbId: "tt2543164",
+            Provider: "tmdb",
+            ProviderId: "329865",
+            Overview: null,
+            PosterUrl: null,
+            BackdropUrl: null,
+            LibraryId: library.Id,
+            QualityProfileId: null,
+            Monitored: false,
+            SearchForMissingNow: true,
+            SearchForCutoffUnmetNow: false));
+
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+        var added = await response.Content.ReadFromJsonAsync<DiscoverAddResponse>();
+
+        var refreshJob = Assert.Single(_jobScheduler.Requests, request => request.JobType == "movies.catalog.refresh");
+        Assert.Contains("\"pendingSearches\":[{", refreshJob.PayloadJson);
+        Assert.Contains(added!.Id, refreshJob.PayloadJson);
+    }
+
     private sealed class FakeIntakeListPreviewService : IIntakeListPreviewService
     {
         public IntakeListPreviewResult? Result { get; set; }
@@ -282,5 +315,36 @@ public sealed class DiscoverEndpointTests : IAsyncDisposable
             => Result is null
                 ? throw new InvalidOperationException("No preview configured for this test.")
                 : Task.FromResult(Result);
+    }
+
+    private sealed class FakeJobScheduler : IJobScheduler
+    {
+        public List<EnqueueJobRequest> Requests { get; } = [];
+
+        public Task<JobQueueItem> EnqueueAsync(EnqueueJobRequest request, CancellationToken cancellationToken)
+        {
+            Requests.Add(request);
+            return Task.FromResult(new JobQueueItem(
+                Id: "job-" + Requests.Count,
+                JobType: request.JobType,
+                Source: request.Source,
+                Status: "pending",
+                PayloadJson: request.PayloadJson,
+                Attempts: 0,
+                CreatedUtc: DateTimeOffset.UnixEpoch,
+                ScheduledUtc: request.ScheduledUtc ?? DateTimeOffset.UnixEpoch,
+                StartedUtc: null,
+                CompletedUtc: null,
+                LeasedUntilUtc: null,
+                WorkerId: null,
+                LastError: null,
+                RelatedEntityType: request.RelatedEntityType,
+                RelatedEntityId: request.RelatedEntityId,
+                IdempotencyKey: request.IdempotencyKey,
+                DedupeKey: request.DedupeKey,
+                MaxAttempts: request.MaxAttempts ?? 1,
+                LastAttemptUtc: null,
+                NextAttemptUtc: null));
+        }
     }
 }

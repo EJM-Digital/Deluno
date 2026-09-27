@@ -586,6 +586,10 @@ export interface DiscoverAddRequest {
   libraryId: string | null;
   qualityProfileId: string | null;
   monitored: boolean;
+  /** Search for this title's missing content right away, once it is added from Discover (#785, mirroring #793). Off by default. */
+  searchForMissingNow?: boolean;
+  /** Search for this title's cutoff-unmet content right away, once it is added from Discover (#785, mirroring #793). Off by default. */
+  searchForCutoffUnmetNow?: boolean;
 }
 
 export interface DiscoverAddResponse {
