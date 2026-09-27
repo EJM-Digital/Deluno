@@ -400,14 +400,25 @@ public sealed class SabnzbdDownloadClient(IHttpClientFactory httpClientFactory) 
         using var response = await http.GetAsync(new Uri(baseUri, $"api?mode=history&output=json&apikey={Uri.EscapeDataString(apiKey)}"), cancellationToken);
         response.EnsureSuccessStatusCode();
         var payload = await response.Content.ReadFromJsonAsync<SabHistoryResponse>(cancellationToken);
-        return (payload?.History?.Slots ?? []).Select(item => new DownloadClientHistoryItem(
-            item.NzoId ?? item.Name ?? Guid.CreateVersion7().ToString("N"), client.Id, client.Name, client.Protocol,
-            DownloadClientHelpers.InferMediaType(client, item.Category), DownloadClientHelpers.CleanReleaseTitle(item.Name ?? "Unknown SABnzbd history item"),
-            item.Name ?? "Unknown SABnzbd history item", item.Category ?? string.Empty, NormalizeHistoryOutcome(item.Status ?? string.Empty), "SABnzbd",
-            ParseHistorySize(item.Bytes), item.Completed is > 0 ? DateTimeOffset.FromUnixTimeSeconds(item.Completed.Value) : capturedUtc,
-            string.IsNullOrWhiteSpace(item.FailMessage) ? QueueError(item.Status) : item.FailMessage, item.Storage,
-            HistorySource: "native",
-            ExternalId: item.NzoId)).ToArray();
+        return (payload?.History?.Slots ?? []).Select(item =>
+        {
+            var outcome = NormalizeHistoryOutcome(item.Status ?? string.Empty, item.FailMessage);
+            var errorMessage = outcome switch
+            {
+                DownloadClientHistoryOutcomes.Duplicate => DuplicateReason(item.FailMessage),
+                DownloadClientHistoryOutcomes.NeedsAttention => AttentionReason(item.FailMessage),
+                "failed" => FailureReason(item.FailMessage),
+                _ => string.IsNullOrWhiteSpace(item.FailMessage) ? QueueError(item.Status) : item.FailMessage
+            };
+            return new DownloadClientHistoryItem(
+                item.NzoId ?? item.Name ?? Guid.CreateVersion7().ToString("N"), client.Id, client.Name, client.Protocol,
+                DownloadClientHelpers.InferMediaType(client, item.Category), DownloadClientHelpers.CleanReleaseTitle(item.Name ?? "Unknown SABnzbd history item"),
+                item.Name ?? "Unknown SABnzbd history item", item.Category ?? string.Empty, outcome, "SABnzbd",
+                ParseHistorySize(item.Bytes), item.Completed is > 0 ? DateTimeOffset.FromUnixTimeSeconds(item.Completed.Value) : capturedUtc,
+                errorMessage, item.Storage,
+                HistorySource: "native",
+                ExternalId: item.NzoId);
+        }).ToArray();
     }
 
     private static long ParseSize(string? value)
@@ -437,7 +448,66 @@ public sealed class SabnzbdDownloadClient(IHttpClientFactory httpClientFactory) 
     // status. So a queue-level QueueError here stays a release-side finding,
     // same as before.
     private static string? QueueError(string? status) => string.IsNullOrWhiteSpace(status) ? null : status.Contains("fail", StringComparison.OrdinalIgnoreCase) || status.Contains("error", StringComparison.OrdinalIgnoreCase) || status.Contains("stall", StringComparison.OrdinalIgnoreCase) ? status : null;
-    private static string NormalizeHistoryOutcome(string value) => value.Equals("completed", StringComparison.OrdinalIgnoreCase) || value.Equals("succeeded", StringComparison.OrdinalIgnoreCase) || value.Equals("success", StringComparison.OrdinalIgnoreCase) ? DownloadQueueStatuses.Completed : value.Contains("fail", StringComparison.OrdinalIgnoreCase) || value.Contains("error", StringComparison.OrdinalIgnoreCase) ? "failed" : value.Contains("import", StringComparison.OrdinalIgnoreCase) ? DownloadQueueStatuses.ImportReady : value.Length == 0 ? "unknown" : value.Trim().ToLowerInvariant();
+
+    /// <summary>
+    /// SABnzbd's history status has no MAIN/DETAIL split the way NZBGet's
+    /// does (#663, #884, #886): "Failed" alone covers a duplicate SABnzbd's own
+    /// detection declined, a full disk during unpacking, and a genuinely bad
+    /// release, and the only place SABnzbd says which is the free-text
+    /// <c>fail_message</c>.
+    ///
+    /// <para><b>Duplicate (#886).</b> With "Detect Duplicate Downloads" set to
+    /// "Fail job (move to History)", SABnzbd's <c>NzbQueue.handle_duplicate_alternatives</c>
+    /// sets <c>fail_msg</c> to exactly "Duplicate NZB" before moving the job to
+    /// history as failed — read here the same way NZBGet's DELETED/DUPE is: not
+    /// a failure, so nothing is blocklisted or searched for again.</para>
+    ///
+    /// <para><b>Disk full (#884).</b> SABnzbd's unrar, 7-Zip and par2 paths each
+    /// set <c>fail_msg</c> to their own wording when the disk fills mid-unpack
+    /// ("Unpacking failed, disk full", "Unpacking failed, write error or disk
+    /// is full?", "Repairing failed, Disk full") — read as
+    /// <see cref="DownloadClientHistoryOutcomes.NeedsAttention"/>, parity with
+    /// NZBGet's WARNING/SPACE: the release is not lost, so nothing is
+    /// blocklisted or searched for either.</para>
+    /// </summary>
+    internal static string NormalizeHistoryOutcome(string status, string? failMessage)
+    {
+        if (status.Equals("completed", StringComparison.OrdinalIgnoreCase) ||
+            status.Equals("succeeded", StringComparison.OrdinalIgnoreCase) ||
+            status.Equals("success", StringComparison.OrdinalIgnoreCase))
+        {
+            return DownloadQueueStatuses.Completed;
+        }
+
+        if (status.Contains("fail", StringComparison.OrdinalIgnoreCase) || status.Contains("error", StringComparison.OrdinalIgnoreCase))
+        {
+            if (IsDuplicateFailure(failMessage)) return DownloadClientHistoryOutcomes.Duplicate;
+            if (IsDiskFullFailure(failMessage)) return DownloadClientHistoryOutcomes.NeedsAttention;
+            return "failed";
+        }
+
+        if (status.Contains("import", StringComparison.OrdinalIgnoreCase)) return DownloadQueueStatuses.ImportReady;
+        return status.Length == 0 ? "unknown" : status.Trim().ToLowerInvariant();
+    }
+
+    internal static bool IsDuplicateFailure(string? failMessage)
+        => !string.IsNullOrWhiteSpace(failMessage) && failMessage.Contains("duplicate", StringComparison.OrdinalIgnoreCase);
+
+    internal static bool IsDiskFullFailure(string? failMessage)
+        => !string.IsNullOrWhiteSpace(failMessage) &&
+           (failMessage.Contains("disk full", StringComparison.OrdinalIgnoreCase) ||
+            failMessage.Contains("disk is full", StringComparison.OrdinalIgnoreCase));
+
+    internal static string FailureReason(string? failMessage)
+        => string.IsNullOrWhiteSpace(failMessage) ? "SABnzbd could not download it." : $"SABnzbd could not download it: {failMessage}.";
+
+    /// <summary>The words for a <see cref="DownloadClientHistoryOutcomes.Duplicate"/> row (#886) — deliberately not "failed", which reads as something went wrong.</summary>
+    internal static string DuplicateReason(string? failMessage)
+        => $"SABnzbd already has this download: {(string.IsNullOrWhiteSpace(failMessage) ? "it was a duplicate." : failMessage + ".")}";
+
+    /// <summary>The words for a <see cref="DownloadClientHistoryOutcomes.NeedsAttention"/> row (#884) — the download is not lost, but a person has to act before it can finish.</summary>
+    internal static string AttentionReason(string? failMessage)
+        => $"SABnzbd finished downloading this, but ran out of disk space during unpacking: {(string.IsNullOrWhiteSpace(failMessage) ? "free space, then retry it in SABnzbd." : failMessage + " Free space, then retry it in SABnzbd.")}";
 
     /// <summary>
     /// Each configured category with the folder it writes to, from

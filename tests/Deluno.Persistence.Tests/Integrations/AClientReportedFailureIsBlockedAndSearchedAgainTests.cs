@@ -122,7 +122,7 @@ public sealed class AClientReportedFailureIsBlockedAndSearchedAgainTests
         Assert.Empty(await world.Blocklist.ListAsync(CancellationToken.None));
     }
 
-    /// <summary>SABnzbd's own "Failed" history status follows the same path as NZBGet's.</summary>
+    /// <summary>SABnzbd's own "Failed" history status follows the same path as NZBGet's — for a genuinely bad release, not a disk-full pause (#884) or a duplicate (#886), which are covered in their own test classes.</summary>
     [Fact]
     public async Task SABnzbds_own_Failed_history_status_follows_the_same_path()
     {
@@ -132,14 +132,14 @@ public sealed class AClientReportedFailureIsBlockedAndSearchedAgainTests
             Id: "sab-1", ClientId: world.ClientId, ClientName: "SABnzbd", Protocol: "sabnzbd",
             MediaType: "tv", Title: "Abbott Elementary", ReleaseName: Release, Category: "tv",
             Outcome: "failed", IndexerName: "NZBGeek", SizeBytes: 2_000_000_000,
-            CompletedUtc: world.Now, ErrorMessage: "Unpacking failed, write error or disk is full?",
+            CompletedUtc: world.Now, ErrorMessage: "Aborted, ran out of articles",
             HistorySource: "native", ExternalId: "331");
 
         await world.ShowHistoryAsync(history);
 
         var dispatch = await world.Dispatches.GetDispatchAsync(world.DispatchId, CancellationToken.None);
         Assert.Equal("failed", dispatch!.ImportStatus);
-        Assert.Equal("Unpacking failed, write error or disk is full?", dispatch.ImportFailureMessage);
+        Assert.Equal("Aborted, ran out of articles", dispatch.ImportFailureMessage);
         Assert.Single(await world.Blocklist.ListAsync(CancellationToken.None));
         Assert.Single(await world.Jobs.ListAsync(10, CancellationToken.None));
     }
