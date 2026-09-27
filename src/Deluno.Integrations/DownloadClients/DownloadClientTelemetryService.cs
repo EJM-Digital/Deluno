@@ -1583,6 +1583,9 @@ public sealed class DownloadClientTelemetryService(
             ? $"{dispatch.DownloadClientName}'s post-processing script {(isFailure ? "failed" : "warned")} on this download."
             : reason;
         var queueItemId = dispatch.TorrentHashOrItemId ?? dispatch.Id;
+        var platformSettings = await platformRepository.GetAsync(cancellationToken);
+        var defaultStrikeWindow = TimeSpan.FromMinutes(Math.Clamp(platformSettings.DownloadHealthDefaultStrikeWindowMinutes, 1, 1440));
+        var strikeInactivityWindow = TimeSpan.FromHours(Math.Clamp(platformSettings.DownloadHealthStrikeInactivityHours, 1, 720));
 
         await healthRepository.RecordDownloadHealthObservationsAsync(
             dispatch.DownloadClientId,
@@ -1594,6 +1597,8 @@ public sealed class DownloadClientTelemetryService(
                 DownloadHealthStrikes.ClientScriptFailed,
                 isFailure ? "critical" : "warning",
                 message)],
+            defaultStrikeWindow,
+            strikeInactivityWindow,
             cancellationToken);
 
         await dispatchesRepository.RecordTimelineEventAsync(
