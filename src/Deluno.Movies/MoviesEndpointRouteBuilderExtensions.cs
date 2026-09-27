@@ -2190,7 +2190,8 @@ public static class MoviesEndpointRouteBuilderExtensions
                         movie.Title,
                         movie.ReleaseYear,
                         movie.ImdbId,
-                        genre: movie.Genres?.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries).FirstOrDefault())
+                        genre: movie.Genres?.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries).FirstOrDefault(),
+                        replaceIllegalCharacters: settings.ReplaceIllegalCharacters)
                 });
             }
 

@@ -24,7 +24,7 @@ import { PathInput } from "../components/ui/path-input";
 import { SegmentedControl } from "../components/ui/segmented-control";
 import { Select } from "../components/ui/select";
 import { SwitchRow } from "../components/ui/switch";
-import { NamingFormatField, NamingPatternEditor, previewNamingFormat, type NamingFormatKind } from "../components/app/naming-format-field";
+import { NamingFormatField, NamingPatternEditor, previewNamingFormat, sanitizeIllegalCharacters, type NamingFormatKind } from "../components/app/naming-format-field";
 import { librarySetupNavItems } from "../components/app/settings-shell";
 import { DetectedComponents, type BundledComponentStatus } from "../components/app/bundled-components-detected";
 import { toast } from "../components/shell/toaster";
@@ -144,7 +144,8 @@ function FileHandlingPage() {
         movieFileFormat: form.movieFileFormat,
         episodeFileFormat: form.episodeFileFormat,
         renameOnImport: form.renameOnImport,
-        useHardlinks: form.useHardlinks
+        useHardlinks: form.useHardlinks,
+        replaceIllegalCharacters: form.replaceIllegalCharacters
       });
       setSaved(nextSettings);
       setForm(nextSettings);
@@ -198,6 +199,14 @@ function FileHandlingPage() {
                 <NamingFormatField kind="episode-file" value={form.episodeFileFormat} onChange={(value) => setForm((current) => ({ ...current, episodeFileFormat: value }))} onCustomModeChange={(active, draftValue, previousValue) => handleCustomMode("episode-file", active, draftValue, previousValue)} placeholder="{Series Title} - S{Season:00}E{Episode:00} - {Episode Title}" showExamples={false} />
               </div>
             </div>
+            <div className="p-[var(--card-pad-x)]">
+              <SwitchRow
+                label="Replace illegal characters"
+                description="On, a character a file system can't store (such as : or ?) becomes a dash. Off, Deluno removes it instead."
+                checked={form.replaceIllegalCharacters}
+                onCheckedChange={(checked) => setForm((current) => ({ ...current, replaceIllegalCharacters: checked }))}
+              />
+            </div>
           </div>
           <aside className="border-t border-hairline bg-surface-1/20 p-[var(--card-pad-x)] lg:border-l lg:border-t-0">
             <div className="grid gap-[var(--grid-gap)]">
@@ -217,6 +226,9 @@ function FileHandlingPage() {
                 </div>
                 <div className="grid gap-[var(--grid-gap)] border-b border-hairline pb-[var(--grid-gap)] last:border-b-0 last:pb-0">
                   <NamingPreview label="Episode file" value={previewNamingFormat(form.episodeFileFormat || "{Series Title} - S{Season:00}E{Episode:00} - {Episode Title}")} />
+                </div>
+                <div className="grid gap-[var(--grid-gap)] pb-[var(--grid-gap)] last:pb-0">
+                  <NamingPreview label="Illegal characters" value={sanitizeIllegalCharacters("Show? Special Edition", form.replaceIllegalCharacters)} />
                 </div>
               </div>
             </div>

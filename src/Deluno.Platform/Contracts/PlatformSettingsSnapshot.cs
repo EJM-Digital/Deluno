@@ -105,4 +105,9 @@ public sealed record PlatformSettingsSnapshot(
     // The per-library subtitle-language list still decides *which* languages
     // are wanted; this decides whether the automatic job that fetches them
     // is ever planned at all.
-    bool SubtitleFetchAutomaticEnabled = false);
+    bool SubtitleFetchAutomaticEnabled = false,
+    // #757: Radarr/Sonarr's "Replace Illegal Characters" switch. On (the
+    // historical behaviour) turns an illegal filename character into a dash;
+    // off removes it instead. Default true so an install that has never
+    // opened this setting keeps today's rendering.
+    bool ReplaceIllegalCharacters = true);

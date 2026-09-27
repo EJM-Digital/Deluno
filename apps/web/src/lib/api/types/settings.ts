@@ -109,6 +109,8 @@ export interface PlatformSettingsSnapshot {
    * fetches them ever runs at all.
    */
   subtitleFetchAutomaticEnabled: boolean;
+  /** #757: Radarr/Sonarr's "Replace Illegal Characters" switch. On (default) turns an illegal filename character into a dash; off removes it instead. */
+  replaceIllegalCharacters: boolean;
   updatedUtc: string;
 }
 
@@ -233,5 +235,6 @@ export const emptyPlatformSettingsSnapshot: PlatformSettingsSnapshot = {
   libraryFreeSpacePausePercent: 5,
   // #936: off by default, matching PlatformSettingsSnapshot's server-side default.
   subtitleFetchAutomaticEnabled: false,
+  replaceIllegalCharacters: true,
   updatedUtc: new Date(0).toISOString()
 };

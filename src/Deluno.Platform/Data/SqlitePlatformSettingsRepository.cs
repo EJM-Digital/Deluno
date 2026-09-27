@@ -160,6 +160,9 @@ public sealed class SqlitePlatformSettingsRepository(
         await UpsertSettingAsync(connection, transaction, "media.seriesFolderFormat", NormalizeName(request.SeriesFolderFormat) ?? "{Series Title} ({Series Year})", updatedUtc, cancellationToken);
         await UpsertSettingAsync(connection, transaction, "media.movieFileFormat", NormalizeName(request.MovieFileFormat) ?? "{Movie Title} ({Release Year}) [{Quality}] [{Custom Formats}]", updatedUtc, cancellationToken);
         await UpsertSettingAsync(connection, transaction, "media.episodeFileFormat", NormalizeName(request.EpisodeFileFormat) ?? "{Series Title} - S{season:00}E{episode:00} - {Episode Title} [{Quality}] [{Custom Formats}]", updatedUtc, cancellationToken);
+        // #757: "unless false" like UseHardlinks -- a brand-new install with no
+        // stored key keeps today's replace-with-dash rendering.
+        await UpsertSettingAsync(connection, transaction, "media.replaceIllegalCharacters", request.ReplaceIllegalCharacters is false ? "false" : "true", updatedUtc, cancellationToken);
         await UpsertSettingAsync(connection, transaction, "host.bindAddress", NormalizeName(request.HostBindAddress) ?? "127.0.0.1", updatedUtc, cancellationToken);
         await UpsertSettingAsync(connection, transaction, "host.port", NormalizePositiveValue(request.HostPort, 5099).ToString(CultureInfo.InvariantCulture), updatedUtc, cancellationToken);
         await UpsertSettingAsync(connection, transaction, "host.urlBase", NormalizeName(request.UrlBase) ?? string.Empty, updatedUtc, cancellationToken);
@@ -541,7 +544,8 @@ public sealed class SqlitePlatformSettingsRepository(
             DownloadHealthMinPeersMinutes: ReadPositiveInt(GetValue(settings, "download-health.minPeers.minutes"), 30, 1, 1440),
             LibraryFreeSpaceWarnPercent: ReadPositiveInt(GetValue(settings, "library.freeSpace.warnPercent"), 10, 1, 50),
             LibraryFreeSpacePausePercent: ReadPositiveInt(GetValue(settings, "library.freeSpace.pausePercent"), 5, 1, 50),
-            SubtitleFetchAutomaticEnabled: string.Equals(GetValue(settings, "subtitles.fetchAutomatically"), "true", StringComparison.OrdinalIgnoreCase));
+            SubtitleFetchAutomaticEnabled: string.Equals(GetValue(settings, "subtitles.fetchAutomatically"), "true", StringComparison.OrdinalIgnoreCase),
+            ReplaceIllegalCharacters: !string.Equals(GetValue(settings, "media.replaceIllegalCharacters"), "false", StringComparison.OrdinalIgnoreCase));
     }
 
     private static int ReadPositiveInt(string? value, int fallback, int min, int max)

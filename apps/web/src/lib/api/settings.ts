@@ -69,4 +69,6 @@ export interface PlatformSettingsPatch {
   libraryFreeSpacePausePercent?: number;
   /** #936: the one global switch for fetching subtitles on its own. */
   subtitleFetchAutomaticEnabled?: boolean;
+  /** #757: on (default) turns an illegal filename character into a dash; off removes it instead. */
+  replaceIllegalCharacters?: boolean;
 }
