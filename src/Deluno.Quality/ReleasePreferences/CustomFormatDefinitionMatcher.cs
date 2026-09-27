@@ -21,7 +21,10 @@ public static partial class CustomFormatDefinitionMatcher
             "hdr",
             "codec",
             "releaseGroup",
-            "language"
+            "language",
+            // #745: a flag the indexer itself reports for the release (Freeleech,
+            // Double Upload, ...), not anything derived from the release name.
+            "indexerFlag"
         };
 
     /// <summary>
@@ -44,7 +47,12 @@ public static partial class CustomFormatDefinitionMatcher
         string releaseName,
         string? rawConditions,
         bool anyCondition,
-        string? mediaType = null)
+        string? mediaType = null,
+        // The flags the indexer reported for this exact release (a
+        // comma-separated list, e.g. "freeleech"), when the caller has them.
+        // Null everywhere an "indexerFlag" condition simply never matches —
+        // never a guess.
+        string? indexerFlags = null)
     {
         if (string.IsNullOrWhiteSpace(releaseName))
         {
@@ -75,7 +83,7 @@ public static partial class CustomFormatDefinitionMatcher
 
         foreach (var condition in conditions)
         {
-            var hit = EvaluateSingleCondition(releaseName, lower, inferredGroup, condition);
+            var hit = EvaluateSingleCondition(releaseName, lower, inferredGroup, condition, indexerFlags);
             var effectiveHit = condition.Negate ? !hit : hit;
             var label = $"{condition.Type}:{condition.Value}";
             if (condition.Negate)
@@ -231,6 +239,7 @@ public static partial class CustomFormatDefinitionMatcher
             "hdrspecification" => ("hdr", value),
             "codecspecification" => ("codec", value),
             "releasegroupspecification" => ("releaseGroup", value),
+            "indexerflagspecification" => ("indexerFlag", value),
             _ => null
         };
     }
@@ -393,7 +402,8 @@ public static partial class CustomFormatDefinitionMatcher
         string releaseName,
         string lower,
         string? inferredGroup,
-        CustomFormatDefinitionCondition condition)
+        CustomFormatDefinitionCondition condition,
+        string? indexerFlags)
     {
         var value = condition.Value?.Trim() ?? string.Empty;
         if (value.Length == 0)
@@ -410,9 +420,21 @@ public static partial class CustomFormatDefinitionMatcher
             "codec" => MatchCodec(lower, value),
             "releasegroup" => MatchReleaseGroup(inferredGroup, value),
             "language" => MatchLanguage(releaseName, value),
+            "indexerflag" => MatchIndexerFlag(indexerFlags, value),
             _ => false
         };
     }
+
+    /// <summary>
+    /// True when the indexer reported <paramref name="value"/> among this
+    /// release's own flags (e.g. Freeleech) — never inferred from the release
+    /// name, which is not where an indexer's own metadata lives.
+    /// </summary>
+    private static bool MatchIndexerFlag(string? indexerFlags, string value)
+        => !string.IsNullOrWhiteSpace(indexerFlags)
+           && indexerFlags
+               .Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries)
+               .Any(flag => string.Equals(flag, value, StringComparison.OrdinalIgnoreCase));
 
     private static bool MatchReleaseTitle(string releaseName, string lower, string pattern)
     {

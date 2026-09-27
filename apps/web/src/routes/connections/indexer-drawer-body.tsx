@@ -15,6 +15,7 @@ import { INDEXER_PRESETS, PRIORITY_OPTIONS, type IndexerProtocol, type MediaScop
 import type { IndexerForm, SharingRule } from "./forms";
 import { describeGlobalSharingRule, describeStrictSharingRule } from "../../lib/sharing-rule";
 import { formatSeconds, healthChip, relative } from "./format";
+import { IndexerFlagPicker } from "./indexer-flag-picker";
 import { TrackerFields } from "./tracker-fields";
 export function IndexerDrawerBody({
   form,
@@ -204,8 +205,12 @@ export function IndexerDrawerBody({
               </div>
             </Field>
           </FieldRow>
-          <Field label="Preferred indexer flags" error={errors.preferIndexerFlags} help="Comma-separated flags from the indexer's feed, such as freeleech or double upload; matching releases receive a ranking boost.">
-            <Input value={form.preferIndexerFlags} onChange={(event) => { clearError("preferIndexerFlags"); setForm((current) => ({ ...current, preferIndexerFlags: event.target.value })); }} placeholder="freeleech, double-upload" />
+          <Field label="Preferred indexer flags" error={errors.preferIndexerFlags} help="Pick a flag this indexer reports, or type your own below; matching releases receive a ranking boost.">
+            <IndexerFlagPicker
+              value={form.preferIndexerFlags}
+              onChange={(next) => { clearError("preferIndexerFlags"); setForm((current) => ({ ...current, preferIndexerFlags: next })); }}
+            />
+            <Input className="mt-1.5" value={form.preferIndexerFlags} onChange={(event) => { clearError("preferIndexerFlags"); setForm((current) => ({ ...current, preferIndexerFlags: event.target.value })); }} placeholder="freeleech, double-upload" />
           </Field>
           <p className="text-[length:var(--type-caption)] text-muted-foreground">The timing rules hold or reject a candidate; they do not alter the indexer's results.</p>
         </Disclosure>

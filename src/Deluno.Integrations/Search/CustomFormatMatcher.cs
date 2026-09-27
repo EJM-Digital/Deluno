@@ -17,8 +17,9 @@ public static class CustomFormatMatcher
     public static int Evaluate(
         string releaseName,
         IReadOnlyList<CustomFormatItem>? formats,
-        out IReadOnlyList<CustomFormatMatchResult> matched)
-        => EvaluateCore(releaseName, formats, includeInformationalScores: true, out matched);
+        out IReadOnlyList<CustomFormatMatchResult> matched,
+        string? indexerFlags = null)
+        => EvaluateCore(releaseName, formats, includeInformationalScores: true, out matched, indexerFlags);
 
     /// <summary>
     /// Returns only the legacy score from formats allowed to drive an upgrade.
@@ -28,17 +29,19 @@ public static class CustomFormatMatcher
     public static int EvaluateUpgradeScore(
         string releaseName,
         IReadOnlyList<CustomFormatItem>? formats,
-        out IReadOnlyList<CustomFormatMatchResult> matched)
-        => EvaluateCore(releaseName, formats, includeInformationalScores: false, out matched);
+        out IReadOnlyList<CustomFormatMatchResult> matched,
+        string? indexerFlags = null)
+        => EvaluateCore(releaseName, formats, includeInformationalScores: false, out matched, indexerFlags);
 
     /// <summary>
     /// Returns matcher provenance without producing a numeric decision value.
     /// </summary>
     public static IReadOnlyList<CustomFormatMatchResult> EvaluateMatches(
         string releaseName,
-        IReadOnlyList<CustomFormatItem>? formats)
+        IReadOnlyList<CustomFormatItem>? formats,
+        string? indexerFlags = null)
     {
-        _ = EvaluateCore(releaseName, formats, includeInformationalScores: false, out var matched);
+        _ = EvaluateCore(releaseName, formats, includeInformationalScores: false, out var matched, indexerFlags);
         return matched;
     }
 
@@ -46,7 +49,8 @@ public static class CustomFormatMatcher
         string releaseName,
         IReadOnlyList<CustomFormatItem>? formats,
         bool includeInformationalScores,
-        out IReadOnlyList<CustomFormatMatchResult> matched)
+        out IReadOnlyList<CustomFormatMatchResult> matched,
+        string? indexerFlags = null)
     {
         if (formats is null || formats.Count == 0)
         {
@@ -62,7 +66,8 @@ public static class CustomFormatMatcher
                 releaseName,
                 format.Conditions,
                 anyCondition: format.TrashId is not null,
-                format.MediaType);
+                format.MediaType,
+                indexerFlags);
             if (!result.IsMatch)
             {
                 continue;
@@ -93,14 +98,16 @@ public static class CustomFormatMatcher
     /// </summary>
     public static IReadOnlyList<CustomFormatDryRunResult> DryRun(
         string releaseName,
-        IReadOnlyList<CustomFormatItem> formats)
+        IReadOnlyList<CustomFormatItem> formats,
+        string? indexerFlags = null)
         => formats.Select(format =>
         {
             var match = CustomFormatDefinitionMatcher.Evaluate(
                 releaseName,
                 format.Conditions,
                 anyCondition: format.TrashId is not null,
-                format.MediaType);
+                format.MediaType,
+                indexerFlags);
             return new CustomFormatDryRunResult(
                 FormatId: format.Id,
                 FormatName: format.Name,

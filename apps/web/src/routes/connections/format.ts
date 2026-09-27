@@ -38,3 +38,22 @@ export function scopeLabel(scope: string | null | undefined) { return scope === 
 export function protocolLabel(protocol: string) { return CLIENT_PRESETS.find((preset) => preset.protocol === protocol)?.label ?? INDEXER_PRESETS.find((preset) => preset.protocol === protocol)?.label ?? protocol; }
 export function indexerHost(baseUrl: string) { try { return new URL(baseUrl).hostname.toLowerCase(); } catch { return null; } }
 export function formatSeconds(seconds: number) { return seconds < 1 ? "less than a second" : `${Math.ceil(seconds)} second${seconds >= 1.01 ? "s" : ""}`; }
+
+/** The comma-separated flags in a "preferred indexer flags" field, trimmed and emptied of blanks. */
+export function splitIndexerFlags(preferIndexerFlags: string): string[] {
+  return preferIndexerFlags.split(",").map((flag) => flag.trim()).filter(Boolean);
+}
+
+/** Whether `flag` (e.g. "Freeleech") is already one of the comma-separated preferred flags, regardless of case. */
+export function indexerFlagSelected(preferIndexerFlags: string, flag: string): boolean {
+  return splitIndexerFlags(preferIndexerFlags).some((existing) => existing.toLowerCase() === flag.toLowerCase());
+}
+
+/** Adds or removes `flag` from a "preferred indexer flags" field, leaving any other typed flags untouched (#745). */
+export function toggleIndexerFlag(preferIndexerFlags: string, flag: string): string {
+  const flags = splitIndexerFlags(preferIndexerFlags);
+  const next = indexerFlagSelected(preferIndexerFlags, flag)
+    ? flags.filter((existing) => existing.toLowerCase() !== flag.toLowerCase())
+    : [...flags, flag];
+  return next.join(", ");
+}
