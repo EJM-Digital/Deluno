@@ -33,7 +33,11 @@ public static partial class CustomFormatDefinitionMatcher
             // #776: single episode / multi-episode / season pack, from the
             // same classification SeasonPackDetector already computes for TV
             // search and import (see ReleaseEpisodeClassifier).
-            "releaseType"
+            "releaseType",
+            // #772: an edition tag parsed from the release name (IMAX,
+            // Extended, Director's Cut, Unrated, ...), matched the same way a
+            // releaseTitle condition is.
+            "edition"
         };
 
     /// <summary>
@@ -266,6 +270,7 @@ public static partial class CustomFormatDefinitionMatcher
             "yearspecification" => ("year", value),
             "sizespecification" => ("size", value),
             "releasetypespecification" when MapReleaseType(value) is { } releaseType => ("releaseType", releaseType),
+            "editionspecification" => ("edition", value),
             _ => null
         };
     }
@@ -481,8 +486,27 @@ public static partial class CustomFormatDefinitionMatcher
             "year" => MatchYear(releaseName, value),
             "size" => MatchSize(releaseSizeBytes, value),
             "releasetype" => MatchReleaseType(releaseName, value),
+            "edition" => MatchEdition(releaseName, value),
             _ => false
         };
+    }
+
+    /// <summary>
+    /// Matches <paramref name="value"/> — plain text or a regex, exactly like
+    /// releaseTitle — against the release name's own parsed edition tags
+    /// (#772), never the full title. Without this, a rule for "IMAX" would
+    /// also fire on a film simply titled "IMAX Adventure".
+    /// </summary>
+    private static bool MatchEdition(string releaseName, string value)
+    {
+        var editions = MediaFileNameFacts.Parse(releaseName).Editions;
+        if (editions.Count == 0)
+        {
+            return false;
+        }
+
+        var joined = string.Join(" ", editions);
+        return MatchReleaseTitle(joined, joined.ToLowerInvariant(), value);
     }
 
     /// <summary>
