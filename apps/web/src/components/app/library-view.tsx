@@ -1135,6 +1135,10 @@ export function LibraryView({
           keyBust={`${cardSize}-${libraryId ?? "all"}-${quickFilter}-${monitoring}-${query}-${sortField}-${sortDirection}-${displayOptions.showMonitored}-${displayOptions.showQualityBadge}-${displayOptions.showRating}`}
           sortField={sortField}
           sortDirection={sortDirection}
+          onSortChange={(field, direction) => {
+            setSortField(field);
+            setSortDirection(direction);
+          }}
           isComplete={isComplete}
           onOpenCreate={openCreate}
           onClearFilters={() => {

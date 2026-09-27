@@ -19,7 +19,19 @@ export type LibraryListColumnKey =
   | "genre"
   | "size"
   | "rating"
-  | "added";
+  | "added"
+  // Radarr-parity columns (#790): the nine axes the audit found missing
+  // beside the eight above. `collection` and `studio` are movie-only —
+  // Radarr's own list offers them on films alone, and a show has neither.
+  | "studio"
+  | "originalTitle"
+  | "collection"
+  | "path"
+  | "releaseDate"
+  | "runtime"
+  | "releaseGroup"
+  | "tags"
+  | "qualityProfile";
 
 const MOVIE_COLUMNS: readonly LibraryListColumnKey[] = [
   "quality",
@@ -28,7 +40,16 @@ const MOVIE_COLUMNS: readonly LibraryListColumnKey[] = [
   "genre",
   "size",
   "rating",
-  "added"
+  "added",
+  "studio",
+  "originalTitle",
+  "collection",
+  "path",
+  "releaseDate",
+  "runtime",
+  "releaseGroup",
+  "tags",
+  "qualityProfile"
 ];
 
 const SHOW_COLUMNS: readonly LibraryListColumnKey[] = [
@@ -39,7 +60,13 @@ const SHOW_COLUMNS: readonly LibraryListColumnKey[] = [
   "genre",
   "size",
   "rating",
-  "added"
+  "added",
+  "originalTitle",
+  "path",
+  "runtime",
+  "releaseGroup",
+  "tags",
+  "qualityProfile"
 ];
 
 export const LIST_COLUMN_LABELS: Record<LibraryListColumnKey, string> = {
@@ -50,7 +77,34 @@ export const LIST_COLUMN_LABELS: Record<LibraryListColumnKey, string> = {
   genre: "Genre",
   size: "Size",
   rating: "Rating",
-  added: "Added"
+  added: "Added",
+  studio: "Studio",
+  originalTitle: "Original title",
+  collection: "Collection",
+  path: "Path",
+  releaseDate: "Release date",
+  runtime: "Runtime",
+  releaseGroup: "Release group",
+  tags: "Tags",
+  qualityProfile: "Quality profile"
+};
+
+/**
+ * The `SortField` id (served by `GET /api/{movies|series}/controls`, see
+ * `CatalogueControls.cs`) that clicking this column's header should sort by,
+ * or `null` when nothing on the server orders by that fact yet — the header
+ * still shows the column's data, it just is not a sort control.
+ */
+export const LIST_COLUMN_SORT_FIELD: Partial<Record<LibraryListColumnKey, string>> = {
+  quality: "quality",
+  size: "size",
+  rating: "rating",
+  added: "added",
+  studio: "studio",
+  originalTitle: "originalTitle",
+  path: "path",
+  releaseDate: "digitalRelease",
+  runtime: "runtime"
 };
 
 export function listColumnsFor(variant: LibraryListVariant): readonly LibraryListColumnKey[] {

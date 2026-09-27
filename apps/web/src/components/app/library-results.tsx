@@ -44,6 +44,8 @@ type LibraryResultsProps = {
   keyBust: string;
   sortField: SortField;
   sortDirection: "asc" | "desc";
+  /** Header click-to-sort (#790); undefined leaves the list's headers non-interactive. */
+  onSortChange?: (field: SortField, direction: "asc" | "desc") => void;
   /** Whether the whole matching library has arrived, which is what makes an empty rail stop inert. */
   isComplete: boolean;
   onOpenCreate: () => void;
@@ -59,7 +61,7 @@ export function LibraryResults({
   variant,
   hasLoadedOnce, isQueryLoading, items, label, singular, libraryCount, hasActiveFilter, view, cardSize, displayOptions, selectedIds,
   listColumnOrder, onListColumnOrderChange,
-  keyBust, sortField, sortDirection, isComplete, onOpenCreate,
+  keyBust, sortField, sortDirection, onSortChange, isComplete, onOpenCreate,
   onClearFilters, onSelect, onToggle, onToggleAll, onEndReached,
 }: LibraryResultsProps) {
   return <>
@@ -96,7 +98,7 @@ export function LibraryResults({
     ) : view === "grid" ? (
       <ProgressiveGrid items={items} cardSize={cardSize} displayOptions={displayOptions} selectedIds={selectedIds} keyBust={keyBust} sortField={sortField} sortDirection={sortDirection} isComplete={isComplete} onSelect={onSelect} onToggle={onToggle} onEndReached={onEndReached} />
     ) : (
-      <GlassTile className="p-0"><LibraryTable variant={variant} items={items} selectedIds={selectedIds} onSelect={onSelect} onToggle={onToggle} onToggleAll={onToggleAll} allSelected={items.length > 0 && items.every((item) => selectedIds.includes(item.id))} someSelected={selectedIds.length > 0 && !items.every((item) => selectedIds.includes(item.id))} sortField={sortField} sortDirection={sortDirection} isComplete={isComplete} onEndReached={onEndReached} columnOrder={listColumnOrder} onColumnOrderChange={onListColumnOrderChange} /></GlassTile>
+      <GlassTile className="p-0"><LibraryTable variant={variant} items={items} selectedIds={selectedIds} onSelect={onSelect} onToggle={onToggle} onToggleAll={onToggleAll} allSelected={items.length > 0 && items.every((item) => selectedIds.includes(item.id))} someSelected={selectedIds.length > 0 && !items.every((item) => selectedIds.includes(item.id))} sortField={sortField} sortDirection={sortDirection} onSortChange={onSortChange} isComplete={isComplete} onEndReached={onEndReached} columnOrder={listColumnOrder} onColumnOrderChange={onListColumnOrderChange} /></GlassTile>
     )}
     {/*
       `Previous 100` / `Next 100` and the line "Only this page is kept in
