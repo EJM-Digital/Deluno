@@ -1,7 +1,7 @@
 {
   "id": "trash-guides",
   "name": "TRaSH Guides — Deluno curated package",
-  "version": 4,
+  "version": 5,
   "schemaVersion": 3,
   "source": {
     "sourceName": "TRaSH Guides",
@@ -1161,6 +1161,126 @@
       "sourceKind": "trash-guides"
     },
     {
+      "trashId": "deluno-unwanted-cam",
+      "name": "CAM",
+      "category": "unwanted",
+      "description": "Camcorder-recorded theater rip — the lowest available source quality. Always penalised to prefer any proper release.",
+      "originalScore": -10000,
+      "patterns": [
+        "\\bCAM\\b",
+        "\\bCAMRIP\\b",
+        "\\bHDCAM\\b"
+      ],
+      "bundleOnly": false,
+      "mappingStatus": "reviewed",
+      "mappedTraitIds": [
+        "unwanted.cam"
+      ],
+      "sourceKind": "deluno"
+    },
+    {
+      "trashId": "deluno-unwanted-telesync",
+      "name": "Telesync",
+      "category": "unwanted",
+      "description": "Telesync — a camcorder video source synced to a separate, often illicit audio feed. Always penalised in favour of a proper release.",
+      "originalScore": -10000,
+      "patterns": [
+        "\\bTELESYNC\\b",
+        "\\bTS\\b"
+      ],
+      "bundleOnly": false,
+      "mappingStatus": "reviewed",
+      "mappedTraitIds": [
+        "unwanted.telesync"
+      ],
+      "sourceKind": "deluno"
+    },
+    {
+      "trashId": "deluno-unwanted-telecine",
+      "name": "Telecine",
+      "category": "unwanted",
+      "description": "Telecine — transferred from a film print with a telecine machine. An early, low-quality theatrical rip.",
+      "originalScore": -10000,
+      "patterns": [
+        "\\bTELECINE\\b",
+        "\\bTC\\b"
+      ],
+      "bundleOnly": false,
+      "mappingStatus": "reviewed",
+      "mappedTraitIds": [
+        "unwanted.telecine"
+      ],
+      "sourceKind": "deluno"
+    },
+    {
+      "trashId": "deluno-unwanted-r5",
+      "name": "R5",
+      "category": "unwanted",
+      "description": "R5 — an early regional DVD source released ahead of the main retail disc, sometimes paired with a separate synced audio track. Low quality.",
+      "originalScore": -10000,
+      "patterns": [
+        "\\bR5\\b"
+      ],
+      "bundleOnly": false,
+      "mappingStatus": "reviewed",
+      "mappedTraitIds": [
+        "unwanted.r5"
+      ],
+      "sourceKind": "deluno"
+    },
+    {
+      "trashId": "deluno-unwanted-screener",
+      "name": "Screener",
+      "category": "unwanted",
+      "description": "Screener — a pre-release promotional copy, often watermarked or timestamped. Always penalised in favour of a retail source.",
+      "originalScore": -10000,
+      "patterns": [
+        "\\bSCREENER\\b",
+        "\\bSCR\\b",
+        "\\bDVDSCR\\b",
+        "\\bBDSCR\\b"
+      ],
+      "bundleOnly": false,
+      "mappingStatus": "reviewed",
+      "mappedTraitIds": [
+        "unwanted.screener"
+      ],
+      "sourceKind": "deluno"
+    },
+    {
+      "trashId": "deluno-unwanted-vhsrip",
+      "name": "VHSRip",
+      "category": "unwanted",
+      "description": "VHSRip — sourced from an analogue VHS tape. Always penalised in favour of any digital or disc source.",
+      "originalScore": -10000,
+      "patterns": [
+        "\\bVHS[-.]?Rip\\b"
+      ],
+      "bundleOnly": false,
+      "mappingStatus": "reviewed",
+      "mappedTraitIds": [
+        "unwanted.vhsrip"
+      ],
+      "sourceKind": "deluno"
+    },
+    {
+      "trashId": "deluno-unwanted-workprint",
+      "name": "Workprint",
+      "category": "unwanted",
+      "description": "Workprint — an unfinished pre-release cut, often missing effects or scoring. Always penalised in favour of the finished release.",
+      "originalScore": -10000,
+      "patterns": [
+        "\\bWORKPRINT\\b",
+        "\\bWP\\b"
+      ],
+      "bundleOnly": false,
+      "mappingStatus": "reviewed",
+      "mappedTraitIds": [
+        "unwanted.workprint"
+      ],
+      "sourceKind": "deluno"
+    },
+    {
       "trashId": "e7c2fcae07cbada050a0af3357491d7b",
       "name": "PCM",
       "category": "audio",
@@ -2214,6 +2334,34 @@
         {
           "trashId": "0a3f082873eb454bde444150b70253cc",
           "score": -10000
+        },
+        {
+          "trashId": "deluno-unwanted-cam",
+          "score": -10000
+        },
+        {
+          "trashId": "deluno-unwanted-telesync",
+          "score": -10000
+        },
+        {
+          "trashId": "deluno-unwanted-telecine",
+          "score": -10000
+        },
+        {
+          "trashId": "deluno-unwanted-r5",
+          "score": -10000
+        },
+        {
+          "trashId": "deluno-unwanted-screener",
+          "score": -10000
+        },
+        {
+          "trashId": "deluno-unwanted-vhsrip",
+          "score": -10000
+        },
+        {
+          "trashId": "deluno-unwanted-workprint",
+          "score": -10000
         }
       ]
     },
@@ -2281,6 +2429,34 @@
         {
           "trashId": "90a6f9a284dff5103f6346090e6280c8",
           "score": -10000
+        },
+        {
+          "trashId": "deluno-unwanted-cam",
+          "score": -10000
+        },
+        {
+          "trashId": "deluno-unwanted-telesync",
+          "score": -10000
+        },
+        {
+          "trashId": "deluno-unwanted-telecine",
+          "score": -10000
+        },
+        {
+          "trashId": "deluno-unwanted-r5",
+          "score": -10000
+        },
+        {
+          "trashId": "deluno-unwanted-screener",
+          "score": -10000
+        },
+        {
+          "trashId": "deluno-unwanted-vhsrip",
+          "score": -10000
+        },
+        {
+          "trashId": "deluno-unwanted-workprint",
+          "score": -10000
         }
       ]
     },
@@ -2343,6 +2519,34 @@
         },
         {
           "trashId": "b8cd450cbfa689c0259a01d9e29ba3d6",
+          "score": -10000
+        },
+        {
+          "trashId": "deluno-unwanted-cam",
+          "score": -10000
+        },
+        {
+          "trashId": "deluno-unwanted-telesync",
+          "score": -10000
+        },
+        {
+          "trashId": "deluno-unwanted-telecine",
+          "score": -10000
+        },
+        {
+          "trashId": "deluno-unwanted-r5",
+          "score": -10000
+        },
+        {
+          "trashId": "deluno-unwanted-screener",
+          "score": -10000
+        },
+        {
+          "trashId": "deluno-unwanted-vhsrip",
+          "score": -10000
+        },
+        {
+          "trashId": "deluno-unwanted-workprint",
           "score": -10000
         }
       ]
@@ -2415,6 +2619,34 @@
         },
         {
           "trashId": "90a6f9a284dff5103f6346090e6280c8",
+          "score": -10000
+        },
+        {
+          "trashId": "deluno-unwanted-cam",
+          "score": -10000
+        },
+        {
+          "trashId": "deluno-unwanted-telesync",
+          "score": -10000
+        },
+        {
+          "trashId": "deluno-unwanted-telecine",
+          "score": -10000
+        },
+        {
+          "trashId": "deluno-unwanted-r5",
+          "score": -10000
+        },
+        {
+          "trashId": "deluno-unwanted-screener",
+          "score": -10000
+        },
+        {
+          "trashId": "deluno-unwanted-vhsrip",
+          "score": -10000
+        },
+        {
+          "trashId": "deluno-unwanted-workprint",
           "score": -10000
         }
       ]

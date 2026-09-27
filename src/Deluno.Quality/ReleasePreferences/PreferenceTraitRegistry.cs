@@ -469,7 +469,7 @@ public sealed class PreferenceTraitRegistry
         foreach (var revision in new[] { ("proper", "Proper"), ("repack1", "Repack"), ("repack2", "Repack 2"), ("repack3", "Repack 3") })
             Add($"release.revision.{revision.Item1}", "release.revision", revision.Item2, [revision.Item2]);
 
-        foreach (var unwanted in new[] { ("cam", "CAM"), ("telesync", "Telesync"), ("screener", "Screener"), ("sample", "Sample"), ("hardcoded-subtitles", "Hardcoded subtitles"), ("upscaled", "Upscaled video") })
+        foreach (var unwanted in new[] { ("cam", "CAM"), ("telesync", "Telesync"), ("telecine", "Telecine"), ("r5", "R5"), ("screener", "Screener"), ("vhsrip", "VHSRip"), ("workprint", "Workprint"), ("sample", "Sample"), ("hardcoded-subtitles", "Hardcoded subtitles"), ("upscaled", "Upscaled video") })
             Add($"unwanted.{unwanted.Item1}", "unwanted", unwanted.Item2);
 
         foreach (var transient in new[] { ("seeders", "Seeders"), ("release-age", "Release age"), ("indexer-priority", "Indexer priority"), ("ml-confidence", "ML confidence") })

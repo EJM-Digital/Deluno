@@ -163,6 +163,41 @@ public sealed class GuidePackageTests
             && relationship.ToTraitId == "audio.format.truehd");
     }
 
+    [Theory]
+    [InlineData("unwanted.cam", "Movie.Title.2024.CAM.x264-GROUP")]
+    [InlineData("unwanted.telesync", "Movie.Title.2024.TELESYNC.x264-GROUP")]
+    [InlineData("unwanted.telecine", "Movie.Title.2024.TELECINE.x264-GROUP")]
+    [InlineData("unwanted.r5", "Movie.Title.2024.R5.x264-GROUP")]
+    [InlineData("unwanted.screener", "Movie.Title.2024.SCREENER.x264-GROUP")]
+    [InlineData("unwanted.vhsrip", "Movie.Title.2024.VHSRip.x264-GROUP")]
+    [InlineData("unwanted.workprint", "Movie.Title.2024.WORKPRINT.x264-GROUP")]
+    public void Classic_low_quality_sources_are_forbidden_by_default_and_reject_a_matching_release_name(
+        string traitId,
+        string releaseName)
+    {
+        var compilation = GuidePlanCompiler.Compile("web-1080p");
+
+        Assert.Contains(traitId, compilation.Plan.ForbiddenTraitIds!);
+
+        var source = compilation.Plan.Sources!.Single(item =>
+            (item.MappedTraitIds ?? []).Contains(traitId, StringComparer.OrdinalIgnoreCase));
+        var match = CustomFormatDefinitionMatcher.Evaluate(
+            releaseName,
+            source.MatcherDefinition,
+            source.MatcherAny,
+            compilation.Plan.MediaType);
+
+        Assert.True(match.IsMatch, $"Expected '{releaseName}' to match custom format for '{traitId}'.");
+
+        var cleanRelease = "Movie.Title.2024.BluRay.REMUX.x264-GROUP";
+        var cleanMatch = CustomFormatDefinitionMatcher.Evaluate(
+            cleanRelease,
+            source.MatcherDefinition,
+            source.MatcherAny,
+            compilation.Plan.MediaType);
+        Assert.False(cleanMatch.IsMatch, $"Expected '{cleanRelease}' not to match custom format for '{traitId}'.");
+    }
+
     [Fact]
     public void Runtime_plan_factory_uses_the_same_best_first_order_as_the_guide_compiler()
     {
