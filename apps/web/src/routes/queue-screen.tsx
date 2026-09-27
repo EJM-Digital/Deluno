@@ -70,6 +70,7 @@ import { PathInput } from "../components/ui/path-input";
 import { SegmentedControl } from "../components/ui/segmented-control";
 import { Select } from "../components/ui/select";
 import { SummaryStrip } from "../components/ui/summary-strip";
+import { Switch } from "../components/ui/switch";
 import { realtimeToast, toast } from "../components/shell/toaster";
 import { RealtimeGroups, useSignalREvent } from "../lib/use-signalr";
 import { formatDateTime as formatPreferenceDateTime, useDisplayPreferences } from "../lib/display-preferences";
@@ -176,6 +177,8 @@ export function QueuePage() {
   const [pendingRemoval, setPendingRemoval] = useState<DownloadQueueItem | null>(null);
   const [removalReasonBusy, setRemovalReasonBusy] = useState<RemovalReason | null>(null);
   const [activityKind, setActivityKind] = useState<"all" | ActivityEntry["kind"]>("all");
+  // #932: select-all on the leftovers list, alongside per-item Keep/Remove.
+  const [selectedOrphanPaths, setSelectedOrphanPaths] = useState<Set<string>>(new Set());
   const [manualImport, setManualImport] = useState<ManualImportForm>(() => ({
     sourcePath: "",
     fileName: "",
@@ -212,6 +215,9 @@ export function QueuePage() {
     [movieRecovery, seriesRecovery, telemetry, failedJobs, processorHandoffs, dispatches, orphans]
   );
   const { recoveryCases, queueAttention, failedImportJobs, failedHandoffs: failedProcessorHandoffs, failedDownloads, orphanedDownloads } = attention;
+  // #932: select-all only ever offers what Deluno can prove it downloaded - the same rule the per-item Remove button already follows.
+  const removableOrphans = orphanedDownloads.filter((orphan) => orphan.delunoGrabbedIt);
+  const selectedRemovableOrphans = removableOrphans.filter((orphan) => selectedOrphanPaths.has(orphan.path));
   const activeImportJobs = importJobs.filter((job) => isJobActive(job.status as never)).length;
   const activeProcessorHandoffs = processorHandoffs.filter((handoff) => isWithProcessor(handoff.status));
   const blockedQueueItems = queue.filter((item) => item.healthFindings?.some((finding) => finding.candidateBlocked));
@@ -406,6 +412,54 @@ export function QueuePage() {
       const body = (await response.json().catch(() => null)) as { message?: string } | null;
       if (!response.ok) throw new Error(body?.message || "That could not be done.");
       toast.success(body?.message ?? (action === "keep" ? `Kept ${orphan.name}.` : `Removed ${orphan.name}.`));
+    });
+  }
+
+  function toggleOrphanSelected(path: string, checked: boolean) {
+    setSelectedOrphanPaths((current) => {
+      const next = new Set(current);
+      if (checked) next.add(path);
+      else next.delete(path);
+      return next;
+    });
+  }
+
+  /** #932: select-all on the leftovers list. Only what Deluno can prove it downloaded is ever selectable. */
+  function selectAllRemovableOrphans(removable: OrphanedDownloadItem[]) {
+    setSelectedOrphanPaths(new Set(removable.map((orphan) => orphan.path)));
+  }
+
+  function clearOrphanSelection() {
+    setSelectedOrphanPaths(new Set());
+  }
+
+  /** #932: delete every selected leftover in one action, the same per-item rule (Deluno's own grabs only), one at a time so one failure does not stop the rest. */
+  async function removeSelectedOrphans(selected: OrphanedDownloadItem[]) {
+    await run("orphan:remove-selected", async () => {
+      let removed = 0;
+      const failures: string[] = [];
+      for (const orphan of selected) {
+        const response = await authedFetch("/api/download-clients/orphans/remove", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ path: orphan.path })
+        });
+        if (response.ok) {
+          removed += 1;
+        } else {
+          const body = (await response.json().catch(() => null)) as { message?: string } | null;
+          failures.push(body?.message ?? `${orphan.name} could not be removed.`);
+        }
+      }
+      setSelectedOrphanPaths(new Set());
+      if (failures.length > 0) {
+        throw new Error(
+          removed > 0
+            ? `Removed ${removed} of ${selected.length}. ${failures[0]}`
+            : failures[0]
+        );
+      }
+      toast.success(`Removed ${removed} leftover download${removed === 1 ? "" : "s"}.`);
     });
   }
 
@@ -718,11 +772,32 @@ export function QueuePage() {
           title="Needs attention"
           count={`${needsActionCount} ${needsActionCount === 1 ? "thing" : "things"} Deluno could not finish on its own`}
           actions={
-            failedImportJobs.length ? (
-              <Button type="button" variant="outline" size="sm" onClick={() => void retryFailedJobs()} disabled={busyKey !== null}>
-                {busyKey === "jobs:retry-failed" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RotateCw className="h-3.5 w-3.5" />}
-                Retry {failedImportJobs.length} failed
-              </Button>
+            failedImportJobs.length || removableOrphans.length ? (
+              <>
+                {failedImportJobs.length ? (
+                  <Button type="button" variant="outline" size="sm" onClick={() => void retryFailedJobs()} disabled={busyKey !== null}>
+                    {busyKey === "jobs:retry-failed" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RotateCw className="h-3.5 w-3.5" />}
+                    Retry {failedImportJobs.length} failed
+                  </Button>
+                ) : null}
+                {removableOrphans.length ? (
+                  selectedRemovableOrphans.length > 0 ? (
+                    <>
+                      <Button type="button" variant="outline" size="sm" onClick={clearOrphanSelection} disabled={busyKey !== null}>
+                        Clear selection
+                      </Button>
+                      <Button type="button" variant="outline" size="sm" onClick={() => void removeSelectedOrphans(selectedRemovableOrphans)} disabled={busyKey !== null}>
+                        {busyKey === "orphan:remove-selected" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
+                        Remove {selectedRemovableOrphans.length} selected
+                      </Button>
+                    </>
+                  ) : (
+                    <Button type="button" variant="outline" size="sm" onClick={() => selectAllRemovableOrphans(removableOrphans)} disabled={busyKey !== null}>
+                      Select all leftovers
+                    </Button>
+                  )
+                ) : null}
+              </>
             ) : undefined
           }
         >
@@ -804,7 +879,16 @@ export function QueuePage() {
                   secondary={`${formatBytes(orphan.sizeBytes)} · ${orphan.path}`}
                 />
                 <ListCell mobile align="end">
-                  <span className="flex justify-end gap-2">
+                  <span className="flex items-center justify-end gap-2">
+                    {orphan.delunoGrabbedIt ? (
+                      <Switch
+                        size="sm"
+                        aria-label={`Select ${orphan.name}`}
+                        checked={selectedOrphanPaths.has(orphan.path)}
+                        onCheckedChange={(checked) => toggleOrphanSelected(orphan.path, checked)}
+                        disabled={busyKey !== null}
+                      />
+                    ) : null}
                     {orphan.delunoGrabbedIt ? (
                       <Button type="button" variant="outline" size="sm" aria-label={`Remove ${orphan.name}`} onClick={() => void actOnOrphan(orphan, "remove")} disabled={busyKey !== null}>
                         Remove

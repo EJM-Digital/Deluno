@@ -155,4 +155,14 @@ public sealed record PlatformSettingsSnapshot(
     // #860: the IANA zone episode air times are converted into for display
     // (e.g. "Australia/Sydney"). Empty means no zone chosen; every display
     // site falls back to the browser/OS timezone rather than UTC.
-    string Timezone = "");
+    string Timezone = "",
+    // #932 (cleanup sheet row M1, decided 27 Sep 2026): a scheduled task that
+    // deletes a leftover download once it is old enough and nothing at all is
+    // still holding it. Its own row on the decision sheet says "Default on,
+    // age configurable, can be switched off" - unlike the setup-guide
+    // automation questions (#936), this is not one of the eight behaviours
+    // asked there, so it carries its own explicit default rather than
+    // inheriting theirs. Never touches an item unless every hold condition in
+    // LeftoverDownloadCleanupService is met.
+    bool LeftoverDownloadCleanupEnabled = true,
+    int LeftoverDownloadCleanupAgeHours = 24);

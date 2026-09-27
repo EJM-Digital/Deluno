@@ -71,6 +71,18 @@ public static class DownloadClientEndpointRouteBuilderExtensions
             return result.Done ? Results.Ok(result) : Results.Conflict(result);
         });
 
+        // #932: the "Run now" button for the "Clean up leftover downloads"
+        // system task - the same service the schedule runs, so the answer
+        // cannot depend on which one started it.
+        endpoints.MapPost("/api/download-clients/leftovers/cleanup", async (
+            HttpContext httpContext,
+            ILeftoverDownloadCleanupService leftoverCleanup,
+            CancellationToken cancellationToken) =>
+        {
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
+            return denied ?? Results.Ok(await leftoverCleanup.RunAsync(cancellationToken));
+        });
+
         endpoints.MapGet("/api/download-clients/telemetry", async (
             IDownloadClientTelemetryService telemetryService,
             CancellationToken cancellationToken) =>

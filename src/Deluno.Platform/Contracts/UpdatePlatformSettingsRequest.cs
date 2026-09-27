@@ -81,4 +81,6 @@ public sealed record UpdatePlatformSettingsRequest(
     bool? DownloadHealthConnectivityCheckEnabled = null,
     string? DownloadHealthConnectivityCheckUrls = null,
     int? DownloadThroughputSamplerIntervalMinutes = null,
-    string? Timezone = null);
+    string? Timezone = null,
+    bool? LeftoverDownloadCleanupEnabled = null,
+    int? LeftoverDownloadCleanupAgeHours = null);

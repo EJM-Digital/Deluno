@@ -416,6 +416,33 @@ public sealed class PlatformSettingsPersistenceTests
         Assert.False((await repository.GetAsync(CancellationToken.None)).ReplaceIllegalCharacters);
     }
 
+    /// <summary>
+    /// #932: unlike the eight setup-guide automation questions (#936), the
+    /// leftover-download cleanup task's own decision sheet row says "Default
+    /// on, age configurable, can be switched off" - so a new install starts
+    /// with it already on, at the 24-hour default, and both are saved through
+    /// the same PATCH path as every other setting.
+    /// </summary>
+    [Fact]
+    public async Task LeftoverDownloadCleanup_defaults_to_on_at_24_hours_and_both_are_configurable()
+    {
+        using var storage = TestStorage.Create();
+        var repository = await SettingsAsync(storage);
+
+        var defaults = await repository.GetAsync(CancellationToken.None);
+        Assert.True(defaults.LeftoverDownloadCleanupEnabled);
+        Assert.Equal(24, defaults.LeftoverDownloadCleanupAgeHours);
+
+        var merged = PlatformSettingsPatchMerger.Apply(
+            defaults,
+            new PatchPlatformSettingsRequest(LeftoverDownloadCleanupEnabled: false, LeftoverDownloadCleanupAgeHours: 72));
+        await repository.SaveAsync(merged, CancellationToken.None);
+
+        var updated = await repository.GetAsync(CancellationToken.None);
+        Assert.False(updated.LeftoverDownloadCleanupEnabled);
+        Assert.Equal(72, updated.LeftoverDownloadCleanupAgeHours);
+    }
+
     /// <summary>#759: Smart Replace by default, and an unrecognised value normalizes back to it rather than being stored verbatim.</summary>
     [Fact]
     public async Task ColonReplacementMode_defaults_to_smart_replace_and_normalizes_an_unknown_value()

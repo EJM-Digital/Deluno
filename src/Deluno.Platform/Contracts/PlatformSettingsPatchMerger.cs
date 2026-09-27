@@ -90,5 +90,7 @@ public static class PlatformSettingsPatchMerger
             DownloadHealthConnectivityCheckEnabled: patch.DownloadHealthConnectivityCheckEnabled ?? current.DownloadHealthConnectivityCheckEnabled,
             DownloadHealthConnectivityCheckUrls: patch.DownloadHealthConnectivityCheckUrls ?? current.DownloadHealthConnectivityCheckUrls,
             DownloadThroughputSamplerIntervalMinutes: patch.DownloadThroughputSamplerIntervalMinutes ?? current.DownloadThroughputSamplerIntervalMinutes,
-            Timezone: patch.Timezone ?? current.Timezone);
+            Timezone: patch.Timezone ?? current.Timezone,
+            LeftoverDownloadCleanupEnabled: patch.LeftoverDownloadCleanupEnabled ?? current.LeftoverDownloadCleanupEnabled,
+            LeftoverDownloadCleanupAgeHours: patch.LeftoverDownloadCleanupAgeHours ?? current.LeftoverDownloadCleanupAgeHours);
 }
