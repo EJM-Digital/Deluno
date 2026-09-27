@@ -94,4 +94,6 @@ public sealed record UpdatePlatformSettingsRequest(
     bool? MaxSearchesPerHourEnabled = null,
     int? MaxSearchesPerHour = null,
     bool? DownloadIntegrityCheckEnabled = null,
-    int? DownloadIntegrityMinimumRuntimePercent = null);
+    int? DownloadIntegrityMinimumRuntimePercent = null,
+    int? MinimumFreeSpaceMb = null,
+    bool? SkipFreeSpaceCheck = null);

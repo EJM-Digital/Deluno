@@ -174,6 +174,10 @@ export interface PlatformSettingsSnapshot {
   multiEpisodeStyle: string;
   /** #764: independent of renameOnImport, which only ever governs the file name. Off by default. */
   renameFoldersOnImport: boolean;
+  /** #765: minimum free space (MB) the destination volume must keep after an import; matches Radarr/Sonarr's 100MB default floor. */
+  minimumFreeSpaceMb: number;
+  /** #765: for a filesystem that cannot report free space at all, not a substitute for lowering minimumFreeSpaceMb. */
+  skipFreeSpaceCheck: boolean;
   updatedUtc: string;
 }
 
@@ -326,5 +330,7 @@ export const emptyPlatformSettingsSnapshot: PlatformSettingsSnapshot = {
   specialsFolderFormat: "",
   multiEpisodeStyle: "range",
   renameFoldersOnImport: false,
+  minimumFreeSpaceMb: 100,
+  skipFreeSpaceCheck: false,
   updatedUtc: new Date(0).toISOString()
 };

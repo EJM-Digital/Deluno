@@ -61,10 +61,15 @@ public sealed partial class ImportPipelineService(
     // #806: the same "ask the client to let go" gateway the sharing rule
     // uses (#288), reused here for Remove completed rather than duplicating
     // the client-action path.
-    Deluno.Recovery.Services.IDownloadClientActionGateway? downloadClientActions = null)
+    Deluno.Recovery.Services.IDownloadClientActionGateway? downloadClientActions = null,
+    // #765: only a test passes this, to fake a near-full or unreadable
+    // volume without needing one. Returns available free bytes for the
+    // folder's volume, or null when the filesystem could not report it.
+    Func<string, long?>? freeSpaceBytesProbe = null)
     : IImportPipelineService
 {
     private readonly TimeSpan _settleWindow = settleWindow ?? ImportFileReadiness.SettleWindow;
+    private readonly Func<string, long?> _freeSpaceBytesProbe = freeSpaceBytesProbe ?? DefaultFreeSpaceBytesProbe;
 
     private static readonly HashSet<string> SupportedVideoExtensions = new(StringComparer.OrdinalIgnoreCase)
     {
@@ -372,6 +377,27 @@ public sealed partial class ImportPipelineService(
                 "Use force replacement only after confirming the incoming file is intentionally better.",
                 cancellationToken);
             return Failed(StatusCodes.Status409Conflict, replacementRisk, ImportFailurePolicy.ReplacementRejected);
+        }
+
+        // #765: a destination volume that would drop below the configured
+        // floor once this import lands fails at the worst possible moment --
+        // mid-copy -- with nothing saying why beforehand. Checked here,
+        // after every other guard, so a release that was always going to be
+        // refused for another reason is never blamed for the disk instead.
+        if (!settings.SkipFreeSpaceCheck)
+        {
+            var freeSpaceProblem = DescribeInsufficientFreeSpace(preview.DestinationFolder, settings.MinimumFreeSpaceMb);
+            if (freeSpaceProblem is not null)
+            {
+                await RecordImportFailureAsync(
+                    request,
+                    request.Preview,
+                    ImportFailurePolicy.InsufficientFreeSpace,
+                    freeSpaceProblem,
+                    "Free up space on the destination volume, lower the minimum free space setting, or turn on 'Skip free space check' if this filesystem cannot report free space.",
+                    cancellationToken);
+                return Failed(StatusCodes.Status507InsufficientStorage, freeSpaceProblem);
+            }
         }
 
         var requestedMode = NormalizeTransferMode(request.TransferMode);
@@ -1177,6 +1203,24 @@ public sealed partial class ImportPipelineService(
                 "Search the installed episodes through a reviewed season-pack decision so Deluno can bind every replacement to its current file.",
                 cancellationToken);
             return Failed(StatusCodes.Status409Conflict, message);
+        }
+
+        // #765: checked once for the pack's destination folder rather than
+        // per file -- every file in one season pack lands on the same
+        // library root, and a pack can be dozens of episodes.
+        if (!settings.SkipFreeSpaceCheck && plan.Files.Count > 0)
+        {
+            var freeSpaceProblem = DescribeInsufficientFreeSpace(plan.Files[0].Preview.DestinationFolder, settings.MinimumFreeSpaceMb);
+            if (freeSpaceProblem is not null)
+            {
+                await TryRecordPackFailureAsync(
+                    request,
+                    ImportFailurePolicy.InsufficientFreeSpace,
+                    freeSpaceProblem,
+                    "Free up space on the destination volume, lower the minimum free space setting, or turn on 'Skip free space check' if this filesystem cannot report free space.",
+                    cancellationToken);
+                return Failed(StatusCodes.Status507InsufficientStorage, freeSpaceProblem);
+            }
         }
 
         var placements = new List<TvPackPlacement>();
@@ -4435,6 +4479,58 @@ public sealed partial class ImportPipelineService(
         catch
         {
             return false;
+        }
+    }
+
+    /// <summary>
+    /// Null when the destination volume has enough room, or a plain-words
+    /// reason otherwise (#765). A volume the probe cannot read is never
+    /// blocked here -- that is what SkipFreeSpaceCheck exists for the person
+    /// to decide, and guessing wrong on an unreadable volume would fail an
+    /// import Radarr/Sonarr would have allowed.
+    /// </summary>
+    private string? DescribeInsufficientFreeSpace(string destinationFolder, int minimumFreeSpaceMb)
+    {
+        if (minimumFreeSpaceMb <= 0)
+        {
+            return null;
+        }
+
+        var freeBytes = _freeSpaceBytesProbe(destinationFolder);
+        if (freeBytes is null)
+        {
+            return null;
+        }
+
+        var minimumBytes = (long)minimumFreeSpaceMb * 1024 * 1024;
+        if (freeBytes.Value >= minimumBytes)
+        {
+            return null;
+        }
+
+        var freeMb = freeBytes.Value / (1024 * 1024);
+        return $"Importing this file would leave the destination volume with {freeMb:N0} MB free, below the configured minimum of {minimumFreeSpaceMb:N0} MB.";
+    }
+
+    private static long? DefaultFreeSpaceBytesProbe(string destinationFolder)
+    {
+        try
+        {
+            var probePath = Directory.Exists(destinationFolder) ? destinationFolder : Path.GetPathRoot(Path.GetFullPath(destinationFolder));
+            if (string.IsNullOrEmpty(probePath))
+            {
+                return null;
+            }
+
+            return new DriveInfo(probePath).AvailableFreeSpace;
+        }
+        catch
+        {
+            // Some network mounts and FUSE layers cannot report free space at
+            // all. Nothing here can tell "cannot report" apart from "briefly
+            // unavailable", so it is never treated as a block -- only
+            // SkipFreeSpaceCheck exists to say that on purpose.
+            return null;
         }
     }
 

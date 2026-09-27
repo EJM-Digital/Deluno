@@ -24,6 +24,7 @@ using Deluno.Quality.Guides;
 using Deluno.Quality.ReleasePreferences;
 using Deluno.Series.Contracts;
 using Deluno.Series.Data;
+using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Deluno.Persistence.Tests.Filesystem;
@@ -326,6 +327,153 @@ public sealed class ImportPipelineServiceTests
             LastQueueItemId = queueItemId;
             return Task.FromResult(new Deluno.Recovery.Services.DownloadClientRemovalResult(true, "removed"));
         }
+    }
+
+    /// <summary>
+    /// #765: a destination volume below the configured minimum free space
+    /// blocks the import with a clear, dismissable reason instead of failing
+    /// mid-copy.
+    /// </summary>
+    [Fact]
+    public async Task ExecuteAsync_blocks_import_when_destination_free_space_is_below_the_configured_minimum()
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-04-29T08:00:00Z"));
+        await InitializeAllAsync(storage, timeProvider);
+
+        var downloadsPath = Path.Combine(storage.DataRoot, "downloads");
+        var movieRootPath = Path.Combine(storage.DataRoot, "movies");
+        Directory.CreateDirectory(downloadsPath);
+        Directory.CreateDirectory(movieRootPath);
+        var sourcePath = Path.Combine(downloadsPath, "Arrival.2016.WEB.1080p.mkv");
+        await File.WriteAllBytesAsync(sourcePath, Enumerable.Range(0, 4096).Select(value => (byte)(value % 251)).ToArray());
+        File.SetLastWriteTimeUtc(sourcePath, DateTime.UtcNow.AddMinutes(-1));
+
+        var platform = CreatePlatformRepository(storage, timeProvider);
+        var libraries = CreateLibrariesRepository(storage, timeProvider);
+        await SaveSettingsAsync(platform, movieRootPath, downloadsPath, minimumFreeSpaceMb: 500);
+        await CreateMovieLibraryAsync(libraries, movieRootPath, downloadsPath);
+
+        var movies = new SqliteMovieCatalogRepository(storage.Factory, timeProvider);
+        // 100MB free, below the 500MB floor configured above.
+        var service = CreateService(storage, timeProvider, platform, libraries, movies, freeSpaceBytesProbe: _ => 100L * 1024 * 1024);
+
+        var result = await service.ExecuteAsync(
+            new ImportExecuteRequest(
+                Preview: new ImportPreviewRequest(
+                    SourcePath: sourcePath,
+                    FileName: null,
+                    MediaType: "movies",
+                    Title: "Arrival",
+                    Year: 2016,
+                    Genres: ["Drama", "Science Fiction"],
+                    Tags: [],
+                    Studio: "Paramount",
+                    OriginalLanguage: "en",
+                    ImdbId: "tt2543164"),
+                TransferMode: "copy",
+                Overwrite: false,
+                AllowCopyFallback: true),
+            CancellationToken.None);
+
+        Assert.False(result.Succeeded);
+        Assert.Equal(StatusCodes.Status507InsufficientStorage, result.StatusCode);
+        Assert.Contains("free", result.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.True(File.Exists(sourcePath));
+        Assert.Empty(await movies.ListAsync(CancellationToken.None));
+    }
+
+    /// <summary>#765: a destination volume above the configured minimum imports normally.</summary>
+    [Fact]
+    public async Task ExecuteAsync_imports_when_destination_free_space_is_above_the_configured_minimum()
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-04-29T08:00:00Z"));
+        await InitializeAllAsync(storage, timeProvider);
+
+        var downloadsPath = Path.Combine(storage.DataRoot, "downloads");
+        var movieRootPath = Path.Combine(storage.DataRoot, "movies");
+        Directory.CreateDirectory(downloadsPath);
+        Directory.CreateDirectory(movieRootPath);
+        var sourcePath = Path.Combine(downloadsPath, "Arrival.2016.WEB.1080p.mkv");
+        await File.WriteAllBytesAsync(sourcePath, Enumerable.Range(0, 4096).Select(value => (byte)(value % 251)).ToArray());
+        File.SetLastWriteTimeUtc(sourcePath, DateTime.UtcNow.AddMinutes(-1));
+
+        var platform = CreatePlatformRepository(storage, timeProvider);
+        var libraries = CreateLibrariesRepository(storage, timeProvider);
+        await SaveSettingsAsync(platform, movieRootPath, downloadsPath, minimumFreeSpaceMb: 100);
+        await CreateMovieLibraryAsync(libraries, movieRootPath, downloadsPath);
+
+        var movies = new SqliteMovieCatalogRepository(storage.Factory, timeProvider);
+        // 500MB free, above the 100MB floor configured above.
+        var service = CreateService(storage, timeProvider, platform, libraries, movies, freeSpaceBytesProbe: _ => 500L * 1024 * 1024);
+
+        var result = await service.ExecuteAsync(
+            new ImportExecuteRequest(
+                Preview: new ImportPreviewRequest(
+                    SourcePath: sourcePath,
+                    FileName: null,
+                    MediaType: "movies",
+                    Title: "Arrival",
+                    Year: 2016,
+                    Genres: ["Drama", "Science Fiction"],
+                    Tags: [],
+                    Studio: "Paramount",
+                    OriginalLanguage: "en",
+                    ImdbId: "tt2543164"),
+                TransferMode: "copy",
+                Overwrite: false,
+                AllowCopyFallback: true),
+            CancellationToken.None);
+
+        Assert.True(result.Succeeded);
+        Assert.Single(await movies.ListAsync(CancellationToken.None));
+    }
+
+    /// <summary>#765: SkipFreeSpaceCheck bypasses the guard even when the probe reports almost nothing free.</summary>
+    [Fact]
+    public async Task ExecuteAsync_skips_the_free_space_check_when_the_switch_is_on()
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-04-29T08:00:00Z"));
+        await InitializeAllAsync(storage, timeProvider);
+
+        var downloadsPath = Path.Combine(storage.DataRoot, "downloads");
+        var movieRootPath = Path.Combine(storage.DataRoot, "movies");
+        Directory.CreateDirectory(downloadsPath);
+        Directory.CreateDirectory(movieRootPath);
+        var sourcePath = Path.Combine(downloadsPath, "Arrival.2016.WEB.1080p.mkv");
+        await File.WriteAllBytesAsync(sourcePath, Enumerable.Range(0, 4096).Select(value => (byte)(value % 251)).ToArray());
+        File.SetLastWriteTimeUtc(sourcePath, DateTime.UtcNow.AddMinutes(-1));
+
+        var platform = CreatePlatformRepository(storage, timeProvider);
+        var libraries = CreateLibrariesRepository(storage, timeProvider);
+        await SaveSettingsAsync(platform, movieRootPath, downloadsPath, minimumFreeSpaceMb: 500, skipFreeSpaceCheck: true);
+        await CreateMovieLibraryAsync(libraries, movieRootPath, downloadsPath);
+
+        var movies = new SqliteMovieCatalogRepository(storage.Factory, timeProvider);
+        var service = CreateService(storage, timeProvider, platform, libraries, movies, freeSpaceBytesProbe: _ => 0L);
+
+        var result = await service.ExecuteAsync(
+            new ImportExecuteRequest(
+                Preview: new ImportPreviewRequest(
+                    SourcePath: sourcePath,
+                    FileName: null,
+                    MediaType: "movies",
+                    Title: "Arrival",
+                    Year: 2016,
+                    Genres: ["Drama", "Science Fiction"],
+                    Tags: [],
+                    Studio: "Paramount",
+                    OriginalLanguage: "en",
+                    ImdbId: "tt2543164"),
+                TransferMode: "copy",
+                Overwrite: false,
+                AllowCopyFallback: true),
+            CancellationToken.None);
+
+        Assert.True(result.Succeeded);
+        Assert.Single(await movies.ListAsync(CancellationToken.None));
     }
 
     /// <summary>#766: the configured chmod is applied to an imported file when enabled, on the non-Windows hosts CI runs on.</summary>
@@ -5434,7 +5582,8 @@ public sealed class ImportPipelineServiceTests
         IOutboundNotificationService? outboundNotificationService = null,
         INotificationService? notificationService = null,
         IConnectionsRepository? connectionsRepository = null,
-        Deluno.Recovery.Services.IDownloadClientActionGateway? downloadClientActions = null)
+        Deluno.Recovery.Services.IDownloadClientActionGateway? downloadClientActions = null,
+        Func<string, long?>? freeSpaceBytesProbe = null)
         => new(
             platform,
             librariesRepository,
@@ -5454,7 +5603,12 @@ public sealed class ImportPipelineServiceTests
             mediaServerJobScheduler: mediaServerJobScheduler,
             settleWindow: settleWindow ?? TimeSpan.Zero,
             notificationService: notificationService,
-            downloadClientActions: downloadClientActions);
+            downloadClientActions: downloadClientActions,
+            // #765: a fixed, always-plenty probe by default so file-size
+            // fixtures on a real (if nearly full) CI disk never trip the
+            // guard by accident; individual tests override it to exercise
+            // the guard deliberately.
+            freeSpaceBytesProbe: freeSpaceBytesProbe ?? (_ => long.MaxValue));
 
     private static FilesystemReconciliationService CreateReconciliationService(
         TestStorage storage,
@@ -5547,7 +5701,9 @@ public sealed class ImportPipelineServiceTests
         string? specialsFolderFormat = null,
         string? multiEpisodeStyle = null,
         bool renameOnImport = true,
-        bool renameFoldersOnImport = false)
+        bool renameFoldersOnImport = false,
+        int? minimumFreeSpaceMb = null,
+        bool skipFreeSpaceCheck = false)
     {
         await platform.SaveAsync(
             new UpdatePlatformSettingsRequest(
@@ -5591,7 +5747,9 @@ public sealed class ImportPipelineServiceTests
                 SeasonFolderFormat: seasonFolderFormat,
                 SpecialsFolderFormat: specialsFolderFormat,
                 MultiEpisodeStyle: multiEpisodeStyle,
-                RenameFoldersOnImport: renameFoldersOnImport),
+                RenameFoldersOnImport: renameFoldersOnImport,
+                MinimumFreeSpaceMb: minimumFreeSpaceMb,
+                SkipFreeSpaceCheck: skipFreeSpaceCheck),
             CancellationToken.None);
     }
 
