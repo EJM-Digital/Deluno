@@ -24,14 +24,23 @@ import { configurationNavAreas } from "../components/app/settings-shell";
 import { toast } from "../components/shell/toaster";
 import { useUnsavedChanges } from "../hooks/use-unsaved-changes";
 import { authedFetch } from "../lib/use-auth";
-import { fetchJson, type IndexerItem, type ReleaseProfileItem, type ReleaseTermScore } from "../lib/api";
+import { fetchJson, type IndexerItem, type PlatformSettingsSnapshot, type ReleaseProfileItem, type ReleaseTermScore } from "../lib/api";
+import type { PlatformSettingsPatch } from "../lib/api/settings";
+import { useApiMutation } from "../lib/use-api-mutation";
 import { resolveDrawerSaveState, shouldClearSaveState } from "../lib/drawer-save-state";
 
 const TABS = configurationNavAreas.find((area) => area.label === "Quality & Release")?.items ?? [];
 
+const PROPER_REPACK_OPTIONS = [
+  { value: "prefer-and-upgrade", label: "Prefer and upgrade", description: "A Proper or Repack is preferred, and can replace an already-installed file on its own." },
+  { value: "do-not-upgrade-automatically", label: "Do not upgrade automatically", description: "Still preferred when choosing between releases found in the same search, but never a reason to replace a file you already have." },
+  { value: "do-not-prefer", label: "Do not prefer", description: "Turns this off entirely. Leave Proper/Repack handling to your own Custom Formats." }
+];
+
 interface LoaderData {
   profiles: ReleaseProfileItem[];
   indexers: IndexerItem[];
+  settings: PlatformSettingsSnapshot;
 }
 
 interface ProfileForm {
@@ -50,15 +59,51 @@ interface ProfileForm {
 type DrawerMode = { kind: "closed" } | { kind: "create" } | { kind: "edit"; id: string };
 
 export async function settingsReleaseRulesLoader(): Promise<LoaderData> {
-  const [profiles, indexers] = await Promise.all([
+  const [profiles, indexers, settings] = await Promise.all([
     fetchJson<ReleaseProfileItem[]>("/api/release-profiles"),
-    fetchJson<IndexerItem[]>("/api/indexers")
+    fetchJson<IndexerItem[]>("/api/indexers"),
+    fetchJson<PlatformSettingsSnapshot>("/api/settings")
   ]);
-  return { profiles, indexers };
+  return { profiles, indexers, settings };
+}
+
+function ProperRepackCard({ settings }: { settings: PlatformSettingsSnapshot }) {
+  const settingsMutation = useApiMutation<PlatformSettingsPatch, PlatformSettingsSnapshot>("/api/settings", "PATCH");
+  const [mode, setMode] = useState(settings.properRepackAcquisitionMode);
+  const [saveState, setSaveState] = useState<"idle" | "saving" | "saved" | "error">("idle");
+
+  async function onChange(nextMode: string) {
+    setMode(nextMode);
+    setSaveState("saving");
+    try {
+      const next = await settingsMutation.mutate({ properRepackAcquisitionMode: nextMode });
+      setMode(next.properRepackAcquisitionMode);
+      setSaveState("saved");
+    } catch {
+      setMode(settings.properRepackAcquisitionMode);
+      setSaveState("error");
+    }
+  }
+
+  return (
+    <ListCard title="Proper &amp; Repack" count="How a corrected re-release affects acquisition">
+      <div className="grid gap-3 p-[var(--card-pad-x)]">
+        <Select
+          value={mode}
+          onChange={(event) => onChange(event.target.value)}
+          options={PROPER_REPACK_OPTIONS.map(({ value, label }) => ({ value, label }))}
+        />
+        <p className="text-[length:var(--type-caption)] text-muted-foreground">
+          {PROPER_REPACK_OPTIONS.find((option) => option.value === mode)?.description}
+        </p>
+        {saveState === "error" ? <p className="text-[length:var(--type-caption)] text-destructive">Could not save. Try again.</p> : null}
+      </div>
+    </ListCard>
+  );
 }
 
 export function SettingsReleaseRulesPage() {
-  const { profiles, indexers } = useLoaderData() as LoaderData;
+  const { profiles, indexers, settings } = useLoaderData() as LoaderData;
   const revalidator = useRevalidator();
   const [mode, setMode] = useState<DrawerMode>({ kind: "closed" });
   const [form, setForm] = useState<ProfileForm>(emptyForm());
@@ -172,6 +217,8 @@ export function SettingsReleaseRulesPage() {
   return (
     <div className="grid gap-[var(--page-gap)]">
       <PageToolbar tabs={TABS} actions={<PageToolbarAction onClick={() => openProfile(null)}>New acquisition rule</PageToolbarAction>} />
+
+      <ProperRepackCard settings={settings} />
 
       <ListCard
         title="Acquisition Rules"

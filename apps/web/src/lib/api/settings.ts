@@ -81,4 +81,5 @@ export interface PlatformSettingsPatch {
   setPermissionsOnImport?: boolean;
   folderChmod?: string | null;
   chownGroup?: string | null;
+  properRepackAcquisitionMode?: string;
 }

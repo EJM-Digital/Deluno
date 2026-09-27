@@ -132,6 +132,43 @@ public sealed class PlatformSettingsPersistenceTests
     }
 
     [Fact]
+    public async Task ProperRepackAcquisitionMode_persists_and_defaults_to_prefer_and_upgrade()
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-09-27T01:02:03Z"));
+
+        await new PlatformSchemaInitializer(
+            storage.Factory,
+            new SqliteDatabaseMigrator(storage.Factory, timeProvider),
+            NullLogger<PlatformSchemaInitializer>.Instance).StartAsync(CancellationToken.None);
+
+        var repository = new SqlitePlatformSettingsRepository(
+            storage.Factory,
+            timeProvider,
+            TestSecretProtection.Create(storage));
+
+        var beforeSave = await repository.GetAsync(CancellationToken.None);
+        Assert.Equal("prefer-and-upgrade", beforeSave.ProperRepackAcquisitionMode);
+
+        var current = await repository.GetAsync(CancellationToken.None);
+        await repository.SaveAsync(
+            PlatformSettingsPatchMerger.Apply(
+                current,
+                new PatchPlatformSettingsRequest(ProperRepackAcquisitionMode: "do-not-upgrade-automatically")),
+            CancellationToken.None);
+
+        Assert.Equal("do-not-upgrade-automatically", (await repository.GetAsync(CancellationToken.None)).ProperRepackAcquisitionMode);
+
+        await repository.SaveAsync(
+            PlatformSettingsPatchMerger.Apply(
+                await repository.GetAsync(CancellationToken.None),
+                new PatchPlatformSettingsRequest(ProperRepackAcquisitionMode: "not-a-real-mode")),
+            CancellationToken.None);
+
+        Assert.Equal("prefer-and-upgrade", (await repository.GetAsync(CancellationToken.None)).ProperRepackAcquisitionMode);
+    }
+
+    [Fact]
     public async Task FolderChmod_that_is_not_a_valid_octal_mode_is_dropped_rather_than_stored_malformed()
     {
         using var storage = TestStorage.Create();

@@ -206,6 +206,9 @@ public sealed class SqlitePlatformSettingsRepository(
         await UpsertSettingAsync(connection, transaction, "media.setPermissionsOnImport", request.SetPermissionsOnImport == true ? "true" : "false", updatedUtc, cancellationToken);
         await UpsertSettingAsync(connection, transaction, "media.folderChmod", NormalizeChmod(request.FolderChmod) ?? string.Empty, updatedUtc, cancellationToken);
         await UpsertSettingAsync(connection, transaction, "media.chownGroup", NormalizeName(request.ChownGroup) ?? string.Empty, updatedUtc, cancellationToken);
+        // #767: a real Proper/Repack acquisition choice, read by
+        // ReleasePreferencePlanFactory when it compiles a profile's plan.
+        await UpsertSettingAsync(connection, transaction, "search.properRepackAcquisitionMode", NormalizeProperRepackAcquisitionMode(request.ProperRepackAcquisitionMode), updatedUtc, cancellationToken);
         await UpsertSettingAsync(connection, transaction, "library.fileCheckHours", Math.Clamp(request.LibraryFileCheckHours ?? 6, 1, 168).ToString(CultureInfo.InvariantCulture), updatedUtc, cancellationToken);
         await UpsertSettingAsync(connection, transaction, "cleanup.strikeThreshold", Math.Clamp(request.DownloadHealthStrikeThreshold ?? 3, 1, 20).ToString(CultureInfo.InvariantCulture), updatedUtc, cancellationToken);
         await UpsertSettingAsync(connection, transaction, "cleanup.blockReleaseAfterThreshold", request.CleanupBlockReleaseAfterThreshold is false ? "false" : "true", updatedUtc, cancellationToken);
@@ -564,8 +567,17 @@ public sealed class SqlitePlatformSettingsRepository(
             AnimeEpisodeFileFormat: GetValue(settings, "media.animeEpisodeFileFormat") ?? "{Series Title} - {absolute:000} - {Episode Title} [{Quality}] [{Custom Formats}]",
             SetPermissionsOnImport: string.Equals(GetValue(settings, "media.setPermissionsOnImport"), "true", StringComparison.OrdinalIgnoreCase),
             FolderChmod: NormalizeChmod(GetValue(settings, "media.folderChmod")),
-            ChownGroup: NormalizeName(GetValue(settings, "media.chownGroup")));
+            ChownGroup: NormalizeName(GetValue(settings, "media.chownGroup")),
+            ProperRepackAcquisitionMode: NormalizeProperRepackAcquisitionMode(GetValue(settings, "search.properRepackAcquisitionMode")));
     }
+
+    private static string NormalizeProperRepackAcquisitionMode(string? value)
+        => value?.Trim().ToLowerInvariant() switch
+        {
+            "do-not-upgrade-automatically" => "do-not-upgrade-automatically",
+            "do-not-prefer" => "do-not-prefer",
+            _ => "prefer-and-upgrade"
+        };
 
     /// <summary>Accepts a 3- or 4-digit octal mode (e.g. "755", "0644"); anything else is dropped rather than stored malformed.</summary>
     private static string? NormalizeChmod(string? value)

@@ -126,4 +126,13 @@ public sealed record PlatformSettingsSnapshot(
     // it only ever takes effect on non-Windows hosts where Deluno owns the file.
     bool SetPermissionsOnImport = false,
     string? FolderChmod = null,
-    string? ChownGroup = null);
+    string? ChownGroup = null,
+    // #767: a real three-way choice instead of Proper/Repack detection always
+    // silently scoring. "prefer-and-upgrade" keeps today's behaviour;
+    // "do-not-upgrade-automatically" still lets a Proper/Repack win among
+    // releases found in the same search but never drives an unattended
+    // upgrade of an already-installed file; "do-not-prefer" turns the
+    // built-in scoring off entirely, leaving it to the user's own Custom
+    // Formats. Read by ReleasePreferencePlanFactory when it compiles a
+    // profile's guide-shipped Repack/Proper custom formats into a plan.
+    string ProperRepackAcquisitionMode = "prefer-and-upgrade");

@@ -150,7 +150,8 @@ public static class MediaGrabHandler
             releasePreferencePlanRepository,
             library.QualityProfileId,
             cancellationToken,
-            customFormats);
+            customFormats,
+            platformSettings.ProperRepackAcquisitionMode);
         var currentPreferenceEvaluation = wantedItem.HasFile
             ? await mediaStateRepository.GetLatestPreferenceEvaluationSnapshotAsync(
                 kind,

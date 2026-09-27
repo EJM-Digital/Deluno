@@ -121,6 +121,8 @@ export interface PlatformSettingsSnapshot {
   setPermissionsOnImport: boolean;
   folderChmod: string | null;
   chownGroup: string | null;
+  /** #767: "prefer-and-upgrade" | "do-not-upgrade-automatically" | "do-not-prefer". */
+  properRepackAcquisitionMode: string;
   updatedUtc: string;
 }
 
@@ -252,5 +254,6 @@ export const emptyPlatformSettingsSnapshot: PlatformSettingsSnapshot = {
   setPermissionsOnImport: false,
   folderChmod: null,
   chownGroup: null,
+  properRepackAcquisitionMode: "prefer-and-upgrade",
   updatedUtc: new Date(0).toISOString()
 };

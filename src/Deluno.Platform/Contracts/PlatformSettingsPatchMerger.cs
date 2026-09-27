@@ -82,5 +82,6 @@ public static class PlatformSettingsPatchMerger
             AnimeEpisodeFileFormat: patch.AnimeEpisodeFileFormat ?? current.AnimeEpisodeFileFormat,
             SetPermissionsOnImport: patch.SetPermissionsOnImport ?? current.SetPermissionsOnImport,
             FolderChmod: patch.FolderChmod ?? current.FolderChmod,
-            ChownGroup: patch.ChownGroup ?? current.ChownGroup);
+            ChownGroup: patch.ChownGroup ?? current.ChownGroup,
+            ProperRepackAcquisitionMode: patch.ProperRepackAcquisitionMode ?? current.ProperRepackAcquisitionMode);
 }

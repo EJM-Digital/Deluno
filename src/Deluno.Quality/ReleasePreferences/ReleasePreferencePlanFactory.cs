@@ -22,14 +22,18 @@ public static class ReleasePreferencePlanFactory
     public static ReleasePreferencePlan CreateQualityPlan(
         QualityProfileItem profile,
         IReadOnlyList<CustomFormatItem>? customFormats = null,
-        GuidePackage? guidePackage = null)
+        GuidePackage? guidePackage = null,
+        // #767: the global Proper/Repack acquisition choice (PlatformSettingsSnapshot.ProperRepackAcquisitionMode).
+        // Null behaves exactly as before this setting existed: "prefer-and-upgrade".
+        string? properRepackAcquisitionMode = null)
     {
         ArgumentNullException.ThrowIfNull(profile);
 
         guidePackage ??= GuidePackageCatalog.Current;
+        var normalizedProperRepackMode = ProperRepackAcquisitionModes.Normalize(properRepackAcquisitionMode);
         var selected = SelectProfileFormats(profile, customFormats);
         var inputsVersion = $"profile/{profile.UpdatedUtc.ToUniversalTime():yyyyMMddHHmmssfffffff}/"
-            + $"{guidePackage.Version}:{guidePackage.Source.UpstreamRevision}";
+            + $"{guidePackage.Version}:{guidePackage.Source.UpstreamRevision}/{normalizedProperRepackMode}";
         var compiled = CreateQualityPlan(
             profile.MediaType,
             profile.CutoffQuality,
@@ -40,7 +44,8 @@ public static class ReleasePreferencePlanFactory
             customFormats: selected,
             guidePackage: guidePackage,
             formatIntents: profile.FormatIntents,
-            languagePreference: profile.LanguagePreference);
+            languagePreference: profile.LanguagePreference,
+            properRepackAcquisitionMode: normalizedProperRepackMode);
 
         // The profile's saved time and the guide package do not say what the
         // plan was compiled into, and plans are immutable per version. Found on
@@ -180,7 +185,9 @@ public static class ReleasePreferencePlanFactory
         // #769: "Preferred language" as a Ranked/Required rule in this same
         // typed system, so a language answer explains itself the same way
         // every other typed preference does.
-        ProfileLanguagePreference? languagePreference = null)
+        ProfileLanguagePreference? languagePreference = null,
+        // #767: already normalized by the caller (ProperRepackAcquisitionModes.Normalize).
+        string properRepackAcquisitionMode = ProperRepackAcquisitionModes.PreferAndUpgrade)
     {
         guidePackage ??= GuidePackageCatalog.Current;
         var normalizedMediaType = MediaPolicyCatalog.NormalizeMediaType(mediaType);
@@ -241,6 +248,21 @@ public static class ReleasePreferencePlanFactory
 
             guideFormats.TryGetValue(format.TrashId ?? string.Empty, out var guideFormat);
             var hasReviewedMapping = guideFormat?.MappingStatus == GuideMappingStatus.Reviewed;
+
+            // #767: the guide ships Repack/Proper as ordinary custom formats
+            // (see trash-guide-package.json), so the global Proper/Repack
+            // choice acts here rather than as a second, competing scoring
+            // path. "Do not prefer" drops the format from the plan entirely —
+            // no family, no provenance — leaving the outcome to whatever
+            // other Custom Format conditions the person has defined.
+            var isRevisionFormat = hasReviewedMapping &&
+                PreferenceTraitRegistry.Current.CanonicalizeIds(guideFormat!.MappedTraitIds)
+                    .Any(traitId => traitId.StartsWith("release.revision.", StringComparison.OrdinalIgnoreCase));
+            if (isRevisionFormat && properRepackAcquisitionMode == ProperRepackAcquisitionModes.DoNotPrefer)
+            {
+                continue;
+            }
+
             // A rule is off until a person turns it on (the owner, 2026-09-19, #550).
             //
             // It used to take the guide's score as its answer when the profile
@@ -297,7 +319,12 @@ public static class ReleasePreferencePlanFactory
                         new PreferenceFamilyLevel("not-matched", 0, [notMatchedTrait]),
                         new PreferenceFamilyLevel("matched", 1, [matchedTrait])
                     };
-                var drivesUpgrade = ProfileFormatIntents.DrivesUpgrade(answer) && format.UpgradeAllowed;
+                var drivesUpgrade = ProfileFormatIntents.DrivesUpgrade(answer) && format.UpgradeAllowed
+                    // #767: still preferred among releases found in the same
+                    // search (Intent stays Ranked below), just never the
+                    // reason Deluno replaces an already-installed file on its
+                    // own.
+                    && !(isRevisionFormat && properRepackAcquisitionMode == ProperRepackAcquisitionModes.DoNotUpgradeAutomatically);
                 customFormatFamilies.Add(new PreferenceFamily(
                     Id: CustomFormatPreferenceTraits.Family(format.Id),
                     Dimension: $"Custom rule · {format.Name}",
