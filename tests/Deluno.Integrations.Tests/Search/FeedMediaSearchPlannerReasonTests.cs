@@ -553,6 +553,47 @@ public sealed class FeedMediaSearchPlannerReasonTests
         Assert.Contains("cat=2000", handler.Query, StringComparison.OrdinalIgnoreCase);
     }
 
+    /// <summary>#753: the manual Search page's own category picker narrows a newznab/torznab query to just the categories chosen, instead of the indexer's own defaults.</summary>
+    [Fact]
+    public async Task A_chosen_category_list_overrides_the_indexers_own_default_categories()
+    {
+        var indexer = CreateIndexer("category-indexer", "Category indexer");
+        var handler = new FixedFeedHandler(CreateFeed(1));
+
+        await CreatePlanner(CreateConnections(indexer).Object, handler).BuildPlanAsync(
+            "Example",
+            2026,
+            "movies",
+            null,
+            "WEB 1080p",
+            [CreateSource(indexer)],
+            cancellationToken: CancellationToken.None,
+            categoryIds: [2040, 2050]);
+
+        Assert.Contains("cat=2040%2c2050", handler.Query, StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>A chosen category from the other media type's family is dropped rather than sent to the wrong engine.</summary>
+    [Fact]
+    public async Task A_chosen_category_outside_this_searchs_family_is_ignored()
+    {
+        var indexer = CreateIndexer("mixed-category-indexer", "Mixed category indexer");
+        var handler = new FixedFeedHandler(CreateFeed(1));
+
+        await CreatePlanner(CreateConnections(indexer).Object, handler).BuildPlanAsync(
+            "Example",
+            2026,
+            "movies",
+            null,
+            "WEB 1080p",
+            [CreateSource(indexer)],
+            cancellationToken: CancellationToken.None,
+            categoryIds: [5040]);
+
+        // Nothing survived the family filter, so the indexer's own default stands.
+        Assert.Contains("cat=2000", handler.Query, StringComparison.OrdinalIgnoreCase);
+    }
+
     [Fact]
     public async Task A_candidate_carries_its_protocol_age_and_leechers_for_the_enriched_results_columns()
     {

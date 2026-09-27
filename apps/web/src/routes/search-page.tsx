@@ -1,18 +1,20 @@
 /**
  * Search (#753) — a free-text query fanned out to every enabled indexer,
  * no title required. Prowlarr's own Search screen: type a query, pick a
- * type, choose which indexers to ask, get back one combined, sortable
- * results table with the same enriched columns per-title interactive
- * search results show.
+ * type, choose which indexers and categories to ask, get back one combined,
+ * sortable results table with the same enriched columns per-title
+ * interactive search results show.
  *
- *   Query box · search-type picker · indexer checklist
- *   ListTable (sortable, filterable) -> Grab drawer (client picker)
+ *   Query box · search-type picker · indexer & category checklists
+ *   ListTable (sortable, filterable) -> Grab confirm
  *
- * Contracts: POST /api/search, /api/search/grab. Grabbing routes through the
- * same decision (IAcquisitionDecisionPipeline) and dispatch
- * (IDownloadClientGrabService) machinery a per-title grab uses; there is no
- * library to route a download client through for a title-less search, so the
- * client is chosen directly here.
+ * Contracts: POST /api/search, /api/search/grab, GET /api/search/categories.
+ * Grabbing routes through the same decision (IAcquisitionDecisionPipeline)
+ * and dispatch (IDownloadClientGrabService) machinery a per-title grab uses;
+ * there is no library to route a download client through for a title-less
+ * search, so the client is resolved on the server the same way a per-title
+ * grab's routing would for a library of the release's own media type —
+ * never a client hand-picked here.
  */
 import { useEffect, useState } from "react";
 import { ArrowUpDown, Loader2, Search as SearchIcon } from "lucide-react";
@@ -36,7 +38,7 @@ import {
   sortCandidates,
   type SortDirection
 } from "../lib/release-candidate-columns";
-import { fetchJson, type DownloadClientItem, type IndexerItem } from "../lib/api";
+import { fetchJson, type IndexerItem } from "../lib/api";
 import { cn } from "../lib/utils";
 import { authedFetch } from "../lib/use-auth";
 import { toast } from "../components/shell/toaster";
@@ -55,23 +57,30 @@ interface ManualSearchCandidate {
   indexerProtocol?: string | null;
   releaseAgeHours?: number | null;
   downloadUrl?: string | null;
+  /** Which engine this candidate came from — only meaningful for a "basic" search, which asks both (#753). */
+  searchType?: "movies" | "tv";
 }
 
-type SearchType = "movie" | "tv";
+interface SearchCategoryOption {
+  value: number;
+  label: string;
+}
+
+type SearchType = "movie" | "tv" | "basic";
 
 export function SearchPage() {
   const [query, setQuery] = useState("");
   const [searchType, setSearchType] = useState<SearchType>("movie");
   const [indexers, setIndexers] = useState<IndexerItem[] | null>(null);
   const [selectedIndexerIds, setSelectedIndexerIds] = useState<Set<string>>(new Set());
+  const [categories, setCategories] = useState<SearchCategoryOption[] | null>(null);
+  const [selectedCategoryIds, setSelectedCategoryIds] = useState<Set<number>>(new Set());
   const [searching, setSearching] = useState(false);
   const [results, setResults] = useState<ManualSearchCandidate[] | null>(null);
   const [candidateSort, setCandidateSort] = useState<{ key: CandidateSortKey; direction: SortDirection } | null>(null);
   const [protocolFilter, setProtocolFilter] = useState("");
   const [indexerFilter, setIndexerFilter] = useState("");
   const [grabTarget, setGrabTarget] = useState<ManualSearchCandidate | null>(null);
-  const [downloadClients, setDownloadClients] = useState<DownloadClientItem[] | null>(null);
-  const [chosenClientId, setChosenClientId] = useState("");
   const [grabbing, setGrabbing] = useState(false);
 
   useEffect(() => {
@@ -79,15 +88,11 @@ export function SearchPage() {
     void fetchJson<IndexerItem[]>("/api/indexers")
       .then((list) => { if (active) setIndexers(list); })
       .catch(() => { if (active) setIndexers([]); });
+    void fetchJson<SearchCategoryOption[]>("/api/search/categories")
+      .then((list) => { if (active) setCategories(Array.isArray(list) ? list : []); })
+      .catch(() => { if (active) setCategories([]); });
     return () => { active = false; };
   }, []);
-
-  async function ensureDownloadClients() {
-    if (downloadClients) return downloadClients;
-    const list = await fetchJson<DownloadClientItem[]>("/api/download-clients").catch(() => []);
-    setDownloadClients(list);
-    return list;
-  }
 
   async function runSearch() {
     const trimmed = query.trim();
@@ -107,7 +112,8 @@ export function SearchPage() {
         body: JSON.stringify({
           query: trimmed,
           searchType,
-          indexerIds: selectedIndexerIds.size > 0 ? [...selectedIndexerIds] : null
+          indexerIds: selectedIndexerIds.size > 0 ? [...selectedIndexerIds] : null,
+          categoryIds: selectedCategoryIds.size > 0 ? [...selectedCategoryIds] : null
         })
       });
       setResults(body.candidates);
@@ -139,14 +145,12 @@ export function SearchPage() {
   const protocolOptions = results ? [...new Set(results.map((item) => item.indexerProtocol).filter((value): value is string => Boolean(value)))] : [];
   const indexerOptions = results ? [...new Set(results.map((item) => item.indexerName))] : [];
 
-  async function openGrab(candidate: ManualSearchCandidate) {
+  function openGrab(candidate: ManualSearchCandidate) {
     setGrabTarget(candidate);
-    setChosenClientId("");
-    await ensureDownloadClients();
   }
 
   async function submitGrab() {
-    if (!grabTarget || !chosenClientId) return;
+    if (!grabTarget) return;
     setGrabbing(true);
     try {
       const response = await authedFetch("/api/search/grab", {
@@ -160,17 +164,23 @@ export function SearchPage() {
           quality: grabTarget.quality,
           sizeBytes: grabTarget.sizeBytes,
           seeders: grabTarget.seeders,
-          downloadClientId: chosenClientId,
-          searchType
+          // A "basic" result carries its own engine; anything else uses the
+          // page's own type (never "basic" itself, which the server does not
+          // know how to route a grab through).
+          searchType: grabTarget.searchType ?? (searchType === "tv" ? "tv" : "movie")
         })
       });
-      if (!response.ok) throw new Error("That release could not be sent.");
-      const body = (await response.json()) as { succeeded: boolean; message: string };
-      if (body.succeeded) {
-        toast.success(`${grabTarget.releaseName} sent to the download client.`);
+      const body = (await response.json().catch(() => null)) as
+        | { succeeded?: boolean; message?: string; downloadClientName?: string; errors?: Record<string, string[]> }
+        | null;
+      if (!response.ok) {
+        throw new Error(firstValidationMessage(body) ?? "That release could not be sent.");
+      }
+      if (body?.succeeded) {
+        toast.success(`${grabTarget.releaseName} sent to ${body.downloadClientName ?? "the download client"}.`);
         setGrabTarget(null);
       } else {
-        toast.error(body.message || "That release could not be sent.");
+        toast.error(body?.message || "That release could not be sent.");
       }
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "That release could not be sent.");
@@ -202,8 +212,13 @@ export function SearchPage() {
           <Field label="Type">
             <SegmentedControl
               value={searchType}
-              onValueChange={setSearchType}
-              options={[{ value: "movie", label: "Movie" }, { value: "tv", label: "TV" }]}
+              onValueChange={(value) => {
+                setSearchType(value);
+                // A category picked for one engine's family means nothing to
+                // the other, so switching type clears any that no longer apply.
+                setSelectedCategoryIds(new Set());
+              }}
+              options={[{ value: "movie", label: "Movie" }, { value: "tv", label: "TV" }, { value: "basic", label: "Basic" }]}
             />
           </Field>
           <Field label="Indexers" optional help="Leave every box unchecked to search every enabled indexer that covers this type.">
@@ -211,6 +226,14 @@ export function SearchPage() {
               indexers={indexers}
               selected={selectedIndexerIds}
               onChange={setSelectedIndexerIds}
+            />
+          </Field>
+          <Field label="Categories" optional help="Leave every box unchecked to search every category this type covers.">
+            <CategoryChecklist
+              categories={categories}
+              searchType={searchType}
+              selected={selectedCategoryIds}
+              onChange={setSelectedCategoryIds}
             />
           </Field>
         </div>
@@ -242,6 +265,10 @@ export function SearchPage() {
             <ListTable
               columns={[
                 { label: "Release" },
+                // Only a "basic" search asks both engines, so this column only
+                // earns its place there -- a movie or TV search already says
+                // its own type once, in the toolbar above.
+                ...(searchType === "basic" ? [{ label: "Type" }] : []),
                 { label: <SortHeader label="Protocol" active={candidateSort?.key === "protocol"} direction={candidateSort?.direction} onClick={() => toggleSort("protocol")} />, mobile: true },
                 { label: <SortHeader label="Age" active={candidateSort?.key === "age"} direction={candidateSort?.direction} onClick={() => toggleSort("age")} /> },
                 { label: <SortHeader label="Seeders/Leechers" active={candidateSort?.key === "seeders"} direction={candidateSort?.direction} onClick={() => toggleSort("seeders")} /> },
@@ -253,13 +280,16 @@ export function SearchPage() {
               {visibleResults.map((candidate) => (
                 <ListRow key={`${candidate.indexerId}:${candidate.releaseName}`}>
                   <ListNameCell name={candidate.releaseName} sub={`${candidate.indexerName} · ${candidate.quality}`} />
+                  {searchType === "basic" ? (
+                    <ListCell primary={candidate.searchType === "tv" ? "TV" : "Movie"} />
+                  ) : null}
                   <ListCell primary={formatProtocol(candidate.indexerProtocol)} mobile />
                   <ListCell primary={formatReleaseAge(candidate.releaseAgeHours)} />
                   <ListCell primary={formatSeedersAndLeechers(candidate.seeders, candidate.leechers)} />
                   <ListCell primary={candidate.sizeBytes ? formatBytes(candidate.sizeBytes) : "—"} />
                   <div role="cell" className="flex items-center justify-end gap-2">
                     <Chip tone={candidateTone(candidate)}>{candidateLabel(candidate)}</Chip>
-                    <Button type="button" size="sm" variant="outline" disabled={!candidate.downloadUrl} onClick={() => void openGrab(candidate)}>
+                    <Button type="button" size="sm" variant="outline" disabled={!candidate.downloadUrl} onClick={() => openGrab(candidate)}>
                       Grab
                     </Button>
                   </div>
@@ -280,7 +310,7 @@ export function SearchPage() {
             state={grabbing ? "saving" : "clean"}
             saveType="button"
             saveLabel="Send to download client"
-            saveEnabled={Boolean(chosenClientId) && !grabbing}
+            saveEnabled={!grabbing}
             onSave={() => void submitGrab()}
             onCancel={() => setGrabTarget(null)}
           />
@@ -295,19 +325,27 @@ export function SearchPage() {
                 { label: "Protocol", value: formatProtocol(grabTarget.indexerProtocol) }
               ]}
             />
-            <Field label="Download client" help="A title-less search has no library to route a client through, so pick one directly.">
-              <Select
-                value={chosenClientId}
-                onChange={(event) => setChosenClientId(event.target.value)}
-                options={[{ value: "", label: "Choose a download client" }, ...(downloadClients ?? []).map((client) => ({ value: client.id, label: client.name }))]}
-                aria-label="Download client"
-              />
-            </Field>
+            <p className="text-[length:var(--type-body-sm)] text-muted-foreground">
+              There is no title here to route through a library, so Deluno sends this the same way it would route a{" "}
+              {grabTarget.searchType === "tv" || searchType === "tv" ? "TV" : "movie"} library's own grab: to whichever
+              linked download client is set up to take it.
+            </p>
           </div>
         ) : null}
       </Drawer>
     </div>
   );
+}
+
+/** The first message out of an ASP.NET ValidationProblem's `errors` map, when the grab was refused before it could be sent. */
+function firstValidationMessage(body: { errors?: Record<string, string[]> } | null): string | null {
+  const errors = body?.errors;
+  if (!errors) return null;
+  for (const key of Object.keys(errors)) {
+    const message = errors[key]?.[0];
+    if (message) return message;
+  }
+  return null;
 }
 
 function IndexerChecklist({
@@ -337,6 +375,49 @@ function IndexerChecklist({
           onCheckedChange={(checked) => {
             const next = new Set(selected);
             if (checked) next.add(indexer.id); else next.delete(indexer.id);
+            onChange(next);
+          }}
+        />
+      ))}
+    </div>
+  );
+}
+
+/** Newznab/Torznab categories for the chosen search type, kept to that type's own family (2000s for movies, 5000s for TV, both for basic) so the list never offers a category that search would just drop. */
+function CategoryChecklist({
+  categories,
+  searchType,
+  selected,
+  onChange
+}: {
+  categories: SearchCategoryOption[] | null;
+  searchType: SearchType;
+  selected: Set<number>;
+  onChange: (next: Set<number>) => void;
+}) {
+  if (categories === null) {
+    return <p className="text-[length:var(--type-body-sm)] text-muted-foreground">Loading categories…</p>;
+  }
+
+  const relevant = categories.filter((category) => {
+    const family = Math.floor(category.value / 1000);
+    return searchType === "tv" ? family === 5 : searchType === "movie" ? family === 2 : family === 2 || family === 5;
+  });
+
+  if (relevant.length === 0) {
+    return null;
+  }
+
+  return (
+    <div className="grid max-h-40 gap-1.5 overflow-y-auto sm:grid-cols-2">
+      {relevant.map((category) => (
+        <CheckboxRow
+          key={category.value}
+          label={category.label}
+          checked={selected.has(category.value)}
+          onCheckedChange={(checked) => {
+            const next = new Set(selected);
+            if (checked) next.add(category.value); else next.delete(category.value);
             onChange(next);
           }}
         />

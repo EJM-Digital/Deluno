@@ -59,5 +59,12 @@ public interface IMediaSearchPlanner
         /// </summary>
         string? genres = null,
         /// <summary>Region-specific spellings metadata gave for this title, beyond <paramref name="title"/> itself (#861).</summary>
-        IReadOnlyList<string>? otherTitles = null);
+        IReadOnlyList<string>? otherTitles = null,
+        /// <summary>
+        /// Newznab/Torznab category numbers to restrict this search to (#753),
+        /// such as the manual Search page's own category picker. Null or empty
+        /// leaves each indexer's own configured categories (or anime override)
+        /// as the default, unchanged from before this existed.
+        /// </summary>
+        IReadOnlyList<int>? categoryIds = null);
 }
