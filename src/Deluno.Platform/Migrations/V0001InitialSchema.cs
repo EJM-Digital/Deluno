@@ -92,7 +92,8 @@ public static class PlatformDatabaseMigrations
         new V0084RenameFoldersOnImportDefaultsExisting(),
         new V0083IndexerMinimumSeeders(),
         new V0083IndexerMinimumSeeders(),
-        new V0084IndexerRequiredIgnoredWords()
+        new V0084IndexerRequiredIgnoredWords(),
+        new V0085IndexerMultiLanguages()
     ];
 
     private sealed class V0001InitialSchema : SqliteSqlMigration

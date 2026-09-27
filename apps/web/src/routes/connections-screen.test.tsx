@@ -94,6 +94,24 @@ describe("indexer save payload required/ignored words (#744)", () => {
   });
 });
 
+// #746: what a per-indexer MULTI tag means round-trips the same clear-flag
+// way as the other acquisition fields.
+describe("indexer save payload multi languages (#746)", () => {
+  it("sends a typed multi-languages meaning", () => {
+    const form = { ...emptyIndexerForm(), name: "NZBGeek", baseUrl: "https://api.nzbgeek.info", multiLanguages: "Original, French" };
+    const payload = buildIndexerSavePayload(form, form, true, "");
+    expect(payload.multiLanguages).toBe("Original, French");
+    expect(payload.clearMultiLanguages).toBe(false);
+  });
+
+  it("clears the multi-languages meaning on an edit when emptied", () => {
+    const form = { ...emptyIndexerForm(), name: "NZBGeek", baseUrl: "https://api.nzbgeek.info" };
+    const payload = buildIndexerSavePayload(form, form, true, "");
+    expect(payload.multiLanguages).toBeNull();
+    expect(payload.clearMultiLanguages).toBe(true);
+  });
+});
+
 /**
  * #807 — Priority existed in the API contract and server-side ordering but the
  * drawer never rendered it, so create/edit always sent a hard-coded fallback

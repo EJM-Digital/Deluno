@@ -101,6 +101,7 @@ public sealed class IndexerPersistenceTests
                 PreferIndexerFlags = "freeleech",
                 RequiredWords = "remux",
                 IgnoredWords = "cam, korsub",
+                MultiLanguages = "Original, French",
                 AvailabilityDelayDays = 2,
                 RssEnabled = false,
                 AutomaticSearchEnabled = false,
@@ -116,6 +117,7 @@ public sealed class IndexerPersistenceTests
         Assert.Equal("freeleech", persisted.PreferIndexerFlags);
         Assert.Equal("remux", persisted.RequiredWords);
         Assert.Equal("cam, korsub", persisted.IgnoredWords);
+        Assert.Equal("Original, French", persisted.MultiLanguages);
         Assert.Equal(2, persisted.AvailabilityDelayDays);
         Assert.False(persisted.RssEnabled);
         Assert.False(persisted.AutomaticSearchEnabled);
@@ -143,6 +145,7 @@ public sealed class IndexerPersistenceTests
                 PreferIndexerFlags: "double-upload",
                 RequiredWords: "remux",
                 IgnoredWords: "cam",
+                MultiLanguages: "Original, French",
                 AvailabilityDelayDays: 3,
                 RssEnabled: false,
                 AutomaticSearchEnabled: false,
@@ -157,6 +160,7 @@ public sealed class IndexerPersistenceTests
         Assert.Equal("double-upload", updated.PreferIndexerFlags);
         Assert.Equal("remux", updated.RequiredWords);
         Assert.Equal("cam", updated.IgnoredWords);
+        Assert.Equal("Original, French", updated.MultiLanguages);
         Assert.Equal(3, updated.AvailabilityDelayDays);
         Assert.False(updated.RssEnabled);
         Assert.False(updated.AutomaticSearchEnabled);
@@ -172,6 +176,7 @@ public sealed class IndexerPersistenceTests
                 ClearPreferIndexerFlags: true,
                 ClearRequiredWords: true,
                 ClearIgnoredWords: true,
+                ClearMultiLanguages: true,
                 ClearAvailabilityDelay: true),
             CancellationToken.None);
 
@@ -183,6 +188,7 @@ public sealed class IndexerPersistenceTests
         Assert.Null(cleared.PreferIndexerFlags);
         Assert.Null(cleared.RequiredWords);
         Assert.Null(cleared.IgnoredWords);
+        Assert.Null(cleared.MultiLanguages);
         Assert.Null(cleared.AvailabilityDelayDays);
         Assert.False(cleared.RssEnabled);
         Assert.False(cleared.AutomaticSearchEnabled);

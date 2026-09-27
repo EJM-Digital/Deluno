@@ -142,6 +142,7 @@ public static class ConnectionsEndpointRouteBuilderExtensions
                 PreferIndexerFlags = request.PreferIndexerFlags,
                 RequiredWords = request.RequiredWords,
                 IgnoredWords = request.IgnoredWords,
+                MultiLanguages = request.MultiLanguages,
                 AvailabilityDelayDays = request.AvailabilityDelayDays,
                 RssEnabled = request.RssEnabled,
                 AutomaticSearchEnabled = request.AutomaticSearchEnabled,
@@ -767,7 +768,8 @@ public static class ConnectionsEndpointRouteBuilderExtensions
             request.AvailabilityDelayDays,
             request.MinimumSeeders,
             request.RequiredWords,
-            request.IgnoredWords);
+            request.IgnoredWords,
+            request.MultiLanguages);
 
         return errors;
     }
@@ -815,6 +817,11 @@ public static class ConnectionsEndpointRouteBuilderExtensions
         {
             errors["ignoredWords"] = ["Ignored words must be 500 characters or fewer."];
         }
+
+        if (request.ClearMultiLanguages != true && request.MultiLanguages is { Length: > 200 })
+        {
+            errors["multiLanguages"] = ["Multi-language meaning must be 200 characters or fewer."];
+        }
         return errors;
     }
 
@@ -827,7 +834,8 @@ public static class ConnectionsEndpointRouteBuilderExtensions
         int? availabilityDelayDays,
         int? minimumSeeders = null,
         string? requiredWords = null,
-        string? ignoredWords = null)
+        string? ignoredWords = null,
+        string? multiLanguages = null)
     {
         AddNonNegativeError(errors, "minimumAgeMinutes", minimumAgeMinutes, "Minimum age cannot be negative.");
         AddNonNegativeError(errors, "retentionDays", retentionDays, "Retention cannot be negative.");
@@ -847,6 +855,11 @@ public static class ConnectionsEndpointRouteBuilderExtensions
         if (ignoredWords is { Length: > 500 })
         {
             errors["ignoredWords"] = ["Ignored words must be 500 characters or fewer."];
+        }
+
+        if (multiLanguages is { Length: > 200 })
+        {
+            errors["multiLanguages"] = ["Multi-language meaning must be 200 characters or fewer."];
         }
     }
 

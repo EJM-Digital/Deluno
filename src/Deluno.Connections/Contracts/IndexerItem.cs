@@ -105,6 +105,12 @@ public sealed record IndexerItem(
     /// </summary>
     public string? IgnoredWords { get; init; }
 
+    /// <summary>
+    /// The languages this indexer's own MULTI tag means (#746), e.g.
+    /// "Original, French". Null uses Deluno's fixed "Multilingual" default.
+    /// </summary>
+    public string? MultiLanguages { get; init; }
+
     public int? AvailabilityDelayDays { get; init; }
 
     public bool RssEnabled { get; init; } = true;

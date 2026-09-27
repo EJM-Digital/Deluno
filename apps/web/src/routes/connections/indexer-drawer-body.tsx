@@ -169,6 +169,11 @@ export function IndexerDrawerBody({
               <Input value={form.additionalParameters} onChange={(event) => setForm((current) => ({ ...current, additionalParameters: event.target.value }))} className="font-mono text-[length:var(--type-caption)]" placeholder="token=abc123" autoComplete="off" spellCheck={false} />
             </Field>
           ) : null}
+          {form.scope === "tv" || form.scope === "both" ? (
+            <Field label="What MULTI means here" error={errors.multiLanguages} help="This indexer's own languages for a release tagged MULTI, e.g. Original, French. Leave blank to use Deluno's default of 'Multilingual'.">
+              <Input value={form.multiLanguages} onChange={(event) => { clearError("multiLanguages"); setForm((current) => ({ ...current, multiLanguages: event.target.value })); }} placeholder="Original, French" />
+            </Field>
+          ) : null}
         </Disclosure>
       </DrawerSection>
 

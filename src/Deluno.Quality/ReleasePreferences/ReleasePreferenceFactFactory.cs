@@ -108,7 +108,10 @@ public static class ReleasePreferenceFactFactory
         string evidenceSource = "release-title",
         // The flags the indexer reported for this candidate (#745), e.g.
         // "freeleech" — never derived from the release name itself.
-        string? indexerFlags = null)
+        string? indexerFlags = null,
+        // What this indexer's own MULTI tag means (#746), e.g.
+        // "Original, French". Null keeps the fixed "Multilingual" default.
+        string? multiLanguages = null)
     {
         ArgumentNullException.ThrowIfNull(plan);
         var facts = new List<PreferenceFact>();
@@ -159,7 +162,21 @@ public static class ReleasePreferenceFactFactory
         AddObserved(facts, "release.revision", DetectRevision(lower), evidenceSource);
         AddObserved(facts, "edition", DetectEdition(lower), evidenceSource);
         AddObserved(facts, "streaming.service", DetectService(lower), evidenceSource);
-        AddObserved(facts, "audio.language", DetectLanguage(lower), evidenceSource);
+        // #746: a per-indexer MultiLanguages setting says what this
+        // indexer's own MULTI tag actually means (e.g. "Original, French");
+        // every other indexer, and one without the setting, keeps the fixed
+        // "Multilingual" default.
+        if (IsMultiTagged(lower) && ResolveConfiguredMultiLanguages(multiLanguages) is { Count: > 0 } resolved)
+        {
+            foreach (var language in resolved)
+            {
+                AddObserved(facts, "audio.language", language, evidenceSource);
+            }
+        }
+        else
+        {
+            AddObserved(facts, "audio.language", DetectLanguage(lower), evidenceSource);
+        }
         AddObserved(facts, "unwanted", DetectUnwanted(lower), evidenceSource);
         AddPlanMatcherFacts(facts, plan, releaseName, indexerFlags);
 
@@ -304,6 +321,60 @@ public static class ReleasePreferenceFactFactory
                                 : value.Contains("spanish", StringComparison.Ordinal) || HasReleaseToken(value, "castellano", "latino")
                                     ? "Spanish"
                                     : value.Contains("english", StringComparison.Ordinal) ? "English" : null;
+
+    /// <summary>Whether the release name carries a MULTI/dual-language tag (#746).</summary>
+    private static bool IsMultiTagged(string value)
+        => HasReleaseToken(value, "multi") || value.Contains("multilanguage", StringComparison.Ordinal);
+
+    /// <summary>
+    /// Words a per-indexer MultiLanguages setting can name (#746), mapped to
+    /// the same display strings <see cref="DetectLanguage"/> and the
+    /// preference trait registry already use for "audio.language" — so a
+    /// configured "Original, French" reports as those two known facts
+    /// instead of the single closed-world "Multilingual" bucket. A word the
+    /// registry does not know is silently dropped rather than invented.
+    /// </summary>
+    private static readonly IReadOnlyDictionary<string, string> MultiLanguageWords = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+    {
+        ["original"] = "Original language",
+        ["multi"] = "Multilingual",
+        ["multilingual"] = "Multilingual",
+        ["dubbed"] = "Dubbed",
+        ["dual"] = "Dubbed",
+        ["en"] = "English",
+        ["english"] = "English",
+        ["ja"] = "Japanese",
+        ["jap"] = "Japanese",
+        ["japanese"] = "Japanese",
+        ["de"] = "German",
+        ["german"] = "German",
+        ["deutsch"] = "German",
+        ["fr"] = "French",
+        ["french"] = "French",
+        ["es"] = "Spanish",
+        ["spanish"] = "Spanish",
+        ["latino"] = "Spanish",
+        ["castellano"] = "Spanish"
+    };
+
+    private static IReadOnlyList<string>? ResolveConfiguredMultiLanguages(string? multiLanguages)
+    {
+        if (string.IsNullOrWhiteSpace(multiLanguages))
+        {
+            return null;
+        }
+
+        var resolved = new List<string>();
+        foreach (var word in multiLanguages.Split([',', '+', '/', '&'], StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries))
+        {
+            if (MultiLanguageWords.TryGetValue(word, out var displayName) && !resolved.Contains(displayName))
+            {
+                resolved.Add(displayName);
+            }
+        }
+
+        return resolved;
+    }
 
     private static string? DetectEdition(string value)
         => value.Contains("director", StringComparison.Ordinal) && value.Contains("cut", StringComparison.Ordinal)
