@@ -40,7 +40,6 @@ import { DashboardHero } from "../components/app/dashboard-hero";
 import { LibraryComposition } from "../components/app/library-composition";
 import { SystemPulse } from "../components/app/system-pulse";
 import { OnboardingBanner } from "../components/shell/onboarding-banner";
-import { AutomationNoticeCard } from "../components/shell/automation-notice-card";
 import { SetupProgressLadder } from "../components/shell/setup-progress-ladder";
 import { Button } from "../components/ui/button";
 import { ListCard, ListEmpty } from "../components/ui/list-card";
@@ -648,9 +647,6 @@ export function DashboardPage() {
         onDismiss={dismissOnboarding}
       />
       <SetupProgressLadder status={data.setupStatus} />
-      {/* #936: nothing automatic is on until it is chosen, so a plain-words
-          notice sits here for every behaviour still reading off. */}
-      <AutomationNoticeCard settings={data.sources.settings} libraries={data.sources.libraries} />
 
       {/* The opening statement: how the whole system is, at a glance. */}
       <DashboardHero

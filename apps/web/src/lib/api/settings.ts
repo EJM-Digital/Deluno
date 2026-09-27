@@ -67,4 +67,6 @@ export interface PlatformSettingsPatch {
   libraryFreeSpaceWarnPercent?: number;
   /** #909: percent free remaining at or below which Deluno pauses a library's grabs and imports, the same way an unreachable root does. */
   libraryFreeSpacePausePercent?: number;
+  /** #936: the one global switch for fetching subtitles on its own. */
+  subtitleFetchAutomaticEnabled?: boolean;
 }

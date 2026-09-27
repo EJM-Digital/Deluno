@@ -201,7 +201,8 @@ export function buildAutomationSettingsPayload(automation: AutomationChoices) {
     renameOnImport: automation.renameOnImport === true,
     cleanupEmptyFolders: automation.leftoverCleanup === true,
     cleanupRemoveClientEntryAfterThreshold: automation.removeBadDownloads === true,
-    cleanupPurgePayloadAfterThreshold: automation.deleteBadDownloadFiles === true
+    cleanupPurgePayloadAfterThreshold: automation.deleteBadDownloadFiles === true,
+    subtitleFetchAutomaticEnabled: automation.subtitleFetching === true
   };
 }
 

@@ -75,5 +75,5 @@ public static class PlatformSettingsPatchMerger
             DownloadHealthMinPeersMinutes: patch.DownloadHealthMinPeersMinutes ?? current.DownloadHealthMinPeersMinutes,
             LibraryFreeSpaceWarnPercent: patch.LibraryFreeSpaceWarnPercent ?? current.LibraryFreeSpaceWarnPercent,
             LibraryFreeSpacePausePercent: patch.LibraryFreeSpacePausePercent ?? current.LibraryFreeSpacePausePercent,
-            DismissedAutomationNotices: patch.DismissedAutomationNotices ?? current.DismissedAutomationNotices);
+            SubtitleFetchAutomaticEnabled: patch.SubtitleFetchAutomaticEnabled ?? current.SubtitleFetchAutomaticEnabled);
 }

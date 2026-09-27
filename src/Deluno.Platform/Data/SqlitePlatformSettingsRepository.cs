@@ -213,15 +213,12 @@ public sealed class SqlitePlatformSettingsRepository(
         // round even if validation is ever bypassed.
         await UpsertSettingAsync(connection, transaction, "library.freeSpace.warnPercent", Math.Clamp(request.LibraryFreeSpaceWarnPercent ?? 10, 1, 50).ToString(CultureInfo.InvariantCulture), updatedUtc, cancellationToken);
         await UpsertSettingAsync(connection, transaction, "library.freeSpace.pausePercent", Math.Clamp(Math.Min(request.LibraryFreeSpacePausePercent ?? 5, request.LibraryFreeSpaceWarnPercent ?? 10), 1, 50).ToString(CultureInfo.InvariantCulture), updatedUtc, cancellationToken);
-        // Written only when the caller actually touches it. Every other full
-        // settings save (the setup guide, the Settings screen) resends the
-        // whole payload without this field, and null must mean "leave the
-        // dismissed notices alone", not "clear them" (the same shape as the
-        // API keys just above).
-        if (request.DismissedAutomationNotices is not null)
-        {
-            await UpsertSettingAsync(connection, transaction, "dashboard.dismissedAutomationNotices", request.DismissedAutomationNotices, updatedUtc, cancellationToken);
-        }
+        // #936: the one global switch for automatic subtitle fetching, set in
+        // Settings -> Subtitles. Off unless a value has been stored — see
+        // SubtitleFetchAutomaticEnabled on PlatformSettingsSnapshot for why a
+        // missing value here does not mean the same thing for every existing
+        // install.
+        await UpsertSettingAsync(connection, transaction, "subtitles.fetchAutomatically", request.SubtitleFetchAutomaticEnabled == true ? "true" : "false", updatedUtc, cancellationToken);
         // The sharing rule is written only when the caller is actually setting
         // it. Writing it on every settings PATCH meant that saving anything
         // else — a metadata key, a rename format — silently cleared both
@@ -544,7 +541,7 @@ public sealed class SqlitePlatformSettingsRepository(
             DownloadHealthMinPeersMinutes: ReadPositiveInt(GetValue(settings, "download-health.minPeers.minutes"), 30, 1, 1440),
             LibraryFreeSpaceWarnPercent: ReadPositiveInt(GetValue(settings, "library.freeSpace.warnPercent"), 10, 1, 50),
             LibraryFreeSpacePausePercent: ReadPositiveInt(GetValue(settings, "library.freeSpace.pausePercent"), 5, 1, 50),
-            DismissedAutomationNotices: GetValue(settings, "dashboard.dismissedAutomationNotices") ?? string.Empty);
+            SubtitleFetchAutomaticEnabled: string.Equals(GetValue(settings, "subtitles.fetchAutomatically"), "true", StringComparison.OrdinalIgnoreCase));
     }
 
     private static int ReadPositiveInt(string? value, int fallback, int min, int max)
