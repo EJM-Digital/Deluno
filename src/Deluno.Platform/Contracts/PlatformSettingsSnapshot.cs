@@ -119,4 +119,11 @@ public sealed record PlatformSettingsSnapshot(
     // episode file template, the way Sonarr does. Falls back to
     // EpisodeFileFormat for a standard-numbered show.
     string DailyEpisodeFileFormat = "{Series Title} - {Air-Date} - {Episode Title} [{Quality}] [{Custom Formats}]",
-    string AnimeEpisodeFileFormat = "{Series Title} - {absolute:000} - {Episode Title} [{Quality}] [{Custom Formats}]");
+    string AnimeEpisodeFileFormat = "{Series Title} - {absolute:000} - {Episode Title} [{Quality}] [{Custom Formats}]",
+    // #766: Radarr/Sonarr apply chmod/chown to an imported file when the
+    // app's own process owns it. Off by default (#936): it changes file
+    // ownership/permissions outside Deluno unless explicitly turned on, and
+    // it only ever takes effect on non-Windows hosts where Deluno owns the file.
+    bool SetPermissionsOnImport = false,
+    string? FolderChmod = null,
+    string? ChownGroup = null);

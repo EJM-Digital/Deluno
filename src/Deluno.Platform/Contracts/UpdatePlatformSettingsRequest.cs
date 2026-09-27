@@ -70,4 +70,7 @@ public sealed record UpdatePlatformSettingsRequest(
     bool? ReplaceIllegalCharacters = null,
     string? ColonReplacementMode = null,
     string? DailyEpisodeFileFormat = null,
-    string? AnimeEpisodeFileFormat = null);
+    string? AnimeEpisodeFileFormat = null,
+    bool? SetPermissionsOnImport = null,
+    string? FolderChmod = null,
+    string? ChownGroup = null);

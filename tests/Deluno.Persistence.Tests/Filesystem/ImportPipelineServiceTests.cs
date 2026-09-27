@@ -110,6 +110,118 @@ public sealed class ImportPipelineServiceTests
         Assert.Equal("Arrival", movie.Title);
     }
 
+    /// <summary>#766: the configured chmod is applied to an imported file when enabled, on the non-Windows hosts CI runs on.</summary>
+    [Fact]
+    public async Task ExecuteAsync_applies_the_configured_chmod_when_set_permissions_on_import_is_enabled()
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-04-29T08:00:00Z"));
+        await InitializeAllAsync(storage, timeProvider);
+
+        var downloadsPath = Path.Combine(storage.DataRoot, "downloads");
+        var movieRootPath = Path.Combine(storage.DataRoot, "movies");
+        Directory.CreateDirectory(downloadsPath);
+        Directory.CreateDirectory(movieRootPath);
+        var sourcePath = Path.Combine(downloadsPath, "Arrival.2016.WEB.1080p.mkv");
+        await File.WriteAllBytesAsync(sourcePath, Enumerable.Range(0, 4096).Select(value => (byte)(value % 251)).ToArray());
+        File.SetLastWriteTimeUtc(sourcePath, DateTime.UtcNow.AddMinutes(-1));
+
+        var platform = CreatePlatformRepository(storage, timeProvider);
+        var libraries = CreateLibrariesRepository(storage, timeProvider);
+        await SaveSettingsAsync(platform, movieRootPath, downloadsPath, setPermissionsOnImport: true, folderChmod: "700");
+        await CreateMovieLibraryAsync(libraries, movieRootPath, downloadsPath);
+
+        var movies = new SqliteMovieCatalogRepository(storage.Factory, timeProvider);
+        var service = CreateService(storage, timeProvider, platform, libraries, movies);
+
+        var result = await service.ExecuteAsync(
+            new ImportExecuteRequest(
+                Preview: new ImportPreviewRequest(
+                    SourcePath: sourcePath,
+                    FileName: null,
+                    MediaType: "movies",
+                    Title: "Arrival",
+                    Year: 2016,
+                    Genres: [],
+                    Tags: [],
+                    Studio: null,
+                    OriginalLanguage: "en",
+                    ImdbId: "tt2543164"),
+                TransferMode: "copy",
+                Overwrite: false,
+                AllowCopyFallback: true),
+            CancellationToken.None);
+
+        Assert.True(result.Succeeded);
+        var destinationPath = Path.Combine(movieRootPath, "Arrival (2016)", "Arrival (2016) [WEB 1080p].mkv");
+        Assert.True(File.Exists(destinationPath));
+        Assert.Equal(
+            UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute,
+            File.GetUnixFileMode(destinationPath));
+    }
+
+    /// <summary>#766: with the setting off, Deluno never touches the imported file's mode bits.</summary>
+    [Fact]
+    public async Task ExecuteAsync_leaves_permissions_untouched_when_set_permissions_on_import_is_disabled()
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-04-29T08:00:00Z"));
+        await InitializeAllAsync(storage, timeProvider);
+
+        var downloadsPath = Path.Combine(storage.DataRoot, "downloads");
+        var movieRootPath = Path.Combine(storage.DataRoot, "movies");
+        Directory.CreateDirectory(downloadsPath);
+        Directory.CreateDirectory(movieRootPath);
+        var sourcePath = Path.Combine(downloadsPath, "Arrival.2016.WEB.1080p.mkv");
+        await File.WriteAllBytesAsync(sourcePath, Enumerable.Range(0, 4096).Select(value => (byte)(value % 251)).ToArray());
+        File.SetLastWriteTimeUtc(sourcePath, DateTime.UtcNow.AddMinutes(-1));
+        File.SetUnixFileMode(sourcePath, UnixFileMode.UserRead | UnixFileMode.UserWrite);
+
+        var platform = CreatePlatformRepository(storage, timeProvider);
+        var libraries = CreateLibrariesRepository(storage, timeProvider);
+        // setPermissionsOnImport left at its off-by-default (#936) even though a chmod is configured.
+        await SaveSettingsAsync(platform, movieRootPath, downloadsPath, folderChmod: "700");
+        await CreateMovieLibraryAsync(libraries, movieRootPath, downloadsPath);
+
+        var movies = new SqliteMovieCatalogRepository(storage.Factory, timeProvider);
+        var service = CreateService(storage, timeProvider, platform, libraries, movies);
+
+        var result = await service.ExecuteAsync(
+            new ImportExecuteRequest(
+                Preview: new ImportPreviewRequest(
+                    SourcePath: sourcePath,
+                    FileName: null,
+                    MediaType: "movies",
+                    Title: "Arrival",
+                    Year: 2016,
+                    Genres: [],
+                    Tags: [],
+                    Studio: null,
+                    OriginalLanguage: "en",
+                    ImdbId: "tt2543164"),
+                TransferMode: "copy",
+                Overwrite: false,
+                AllowCopyFallback: true),
+            CancellationToken.None);
+
+        Assert.True(result.Succeeded);
+        var destinationPath = Path.Combine(movieRootPath, "Arrival (2016)", "Arrival (2016) [WEB 1080p].mkv");
+        Assert.True(File.Exists(destinationPath));
+        Assert.NotEqual(
+            UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute,
+            File.GetUnixFileMode(destinationPath));
+    }
+
     /// <summary>
     /// #857: a successful import dispatches "import.completed" outbound —
     /// not only "import.failed" — gated by the matching NotificationPreferences
@@ -4539,7 +4651,10 @@ public sealed class ImportPipelineServiceTests
         // the same way it always did, unless it deliberately asks for
         // dedicated Daily/Anime formats.
         string? dailyEpisodeFileFormat = null,
-        string? animeEpisodeFileFormat = null)
+        string? animeEpisodeFileFormat = null,
+        bool setPermissionsOnImport = false,
+        string? folderChmod = null,
+        string? chownGroup = null)
     {
         await platform.SaveAsync(
             new UpdatePlatformSettingsRequest(
@@ -4577,7 +4692,10 @@ public sealed class ImportPipelineServiceTests
                 ReplaceIllegalCharacters: replaceIllegalCharacters,
                 ColonReplacementMode: colonReplacementMode,
                 DailyEpisodeFileFormat: dailyEpisodeFileFormat ?? episodeFileFormat,
-                AnimeEpisodeFileFormat: animeEpisodeFileFormat ?? episodeFileFormat),
+                AnimeEpisodeFileFormat: animeEpisodeFileFormat ?? episodeFileFormat,
+                SetPermissionsOnImport: setPermissionsOnImport,
+                FolderChmod: folderChmod,
+                ChownGroup: chownGroup),
             CancellationToken.None);
     }
 

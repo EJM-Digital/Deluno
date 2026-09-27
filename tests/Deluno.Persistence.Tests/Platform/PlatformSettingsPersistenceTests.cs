@@ -95,6 +95,70 @@ public sealed class PlatformSettingsPersistenceTests
     }
 
     [Fact]
+    public async Task SetPermissionsOnImport_and_its_chmod_and_group_persist_and_default_off()
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-09-27T01:02:03Z"));
+
+        await new PlatformSchemaInitializer(
+            storage.Factory,
+            new SqliteDatabaseMigrator(storage.Factory, timeProvider),
+            NullLogger<PlatformSchemaInitializer>.Instance).StartAsync(CancellationToken.None);
+
+        var repository = new SqlitePlatformSettingsRepository(
+            storage.Factory,
+            timeProvider,
+            TestSecretProtection.Create(storage));
+
+        var beforeSave = await repository.GetAsync(CancellationToken.None);
+        Assert.False(beforeSave.SetPermissionsOnImport);
+        Assert.Null(beforeSave.FolderChmod);
+        Assert.Null(beforeSave.ChownGroup);
+
+        var current = await repository.GetAsync(CancellationToken.None);
+        await repository.SaveAsync(
+            PlatformSettingsPatchMerger.Apply(
+                current,
+                new PatchPlatformSettingsRequest(
+                    SetPermissionsOnImport: true,
+                    FolderChmod: "0755",
+                    ChownGroup: "media")),
+            CancellationToken.None);
+
+        var loaded = await repository.GetAsync(CancellationToken.None);
+        Assert.True(loaded.SetPermissionsOnImport);
+        Assert.Equal("0755", loaded.FolderChmod);
+        Assert.Equal("media", loaded.ChownGroup);
+    }
+
+    [Fact]
+    public async Task FolderChmod_that_is_not_a_valid_octal_mode_is_dropped_rather_than_stored_malformed()
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-09-27T01:02:03Z"));
+
+        await new PlatformSchemaInitializer(
+            storage.Factory,
+            new SqliteDatabaseMigrator(storage.Factory, timeProvider),
+            NullLogger<PlatformSchemaInitializer>.Instance).StartAsync(CancellationToken.None);
+
+        var repository = new SqlitePlatformSettingsRepository(
+            storage.Factory,
+            timeProvider,
+            TestSecretProtection.Create(storage));
+
+        var current = await repository.GetAsync(CancellationToken.None);
+        await repository.SaveAsync(
+            PlatformSettingsPatchMerger.Apply(
+                current,
+                new PatchPlatformSettingsRequest(FolderChmod: "not-octal")),
+            CancellationToken.None);
+
+        var loaded = await repository.GetAsync(CancellationToken.None);
+        Assert.Null(loaded.FolderChmod);
+    }
+
+    [Fact]
     public async Task ImportRecoveryRetentionDays_defaults_to_30_when_not_configured()
     {
         using var storage = TestStorage.Create();

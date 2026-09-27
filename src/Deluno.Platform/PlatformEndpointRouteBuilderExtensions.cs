@@ -3,6 +3,7 @@ using Deluno.Contracts;
 using Deluno.Quality.Presets;
 using System.Diagnostics;
 using System.Globalization;
+using System.Linq;
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
@@ -432,6 +433,12 @@ public static class PlatformEndpointRouteBuilderExtensions
         if (request.LibraryFreeSpaceWarnPercent is { } warnPercent && (warnPercent < 1 || warnPercent > 50))
         {
             errors["libraryFreeSpaceWarnPercent"] = ["Choose a percentage between 1 and 50."];
+        }
+
+        if (!string.IsNullOrWhiteSpace(request.FolderChmod) &&
+            (request.FolderChmod.Trim().Length is not (3 or 4) || !request.FolderChmod.Trim().All(digit => digit is >= '0' and <= '7')))
+        {
+            errors["folderChmod"] = ["Enter a 3- or 4-digit octal mode, such as 755 or 0755."];
         }
 
         if (request.LibraryFreeSpacePausePercent is { } pausePercent && (pausePercent < 1 || pausePercent > 50))

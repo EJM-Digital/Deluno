@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Linq;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -198,6 +199,13 @@ public sealed class SqlitePlatformSettingsRepository(
         // actually use. Two different bounds would mean the screen could show a
         // cadence Deluno never runs at.
         await UpsertSettingAsync(connection, transaction, "search.cloudflareHelperUrl", NormalizeName(request.CloudflareHelperUrl)?.TrimEnd('/') ?? string.Empty, updatedUtc, cancellationToken);
+        // #766: matches Radarr/Sonarr's Permissions section. Off by default
+        // (#936); the chmod/chown themselves only ever run on a non-Windows
+        // host, in ImportPipelineService, and only when Deluno's own process
+        // owns the imported file.
+        await UpsertSettingAsync(connection, transaction, "media.setPermissionsOnImport", request.SetPermissionsOnImport == true ? "true" : "false", updatedUtc, cancellationToken);
+        await UpsertSettingAsync(connection, transaction, "media.folderChmod", NormalizeChmod(request.FolderChmod) ?? string.Empty, updatedUtc, cancellationToken);
+        await UpsertSettingAsync(connection, transaction, "media.chownGroup", NormalizeName(request.ChownGroup) ?? string.Empty, updatedUtc, cancellationToken);
         await UpsertSettingAsync(connection, transaction, "library.fileCheckHours", Math.Clamp(request.LibraryFileCheckHours ?? 6, 1, 168).ToString(CultureInfo.InvariantCulture), updatedUtc, cancellationToken);
         await UpsertSettingAsync(connection, transaction, "cleanup.strikeThreshold", Math.Clamp(request.DownloadHealthStrikeThreshold ?? 3, 1, 20).ToString(CultureInfo.InvariantCulture), updatedUtc, cancellationToken);
         await UpsertSettingAsync(connection, transaction, "cleanup.blockReleaseAfterThreshold", request.CleanupBlockReleaseAfterThreshold is false ? "false" : "true", updatedUtc, cancellationToken);
@@ -553,7 +561,23 @@ public sealed class SqlitePlatformSettingsRepository(
             ReplaceIllegalCharacters: !string.Equals(GetValue(settings, "media.replaceIllegalCharacters"), "false", StringComparison.OrdinalIgnoreCase),
             ColonReplacementMode: ColonReplacementModes.Normalize(GetValue(settings, "media.colonReplacementMode")),
             DailyEpisodeFileFormat: GetValue(settings, "media.dailyEpisodeFileFormat") ?? "{Series Title} - {Air-Date} - {Episode Title} [{Quality}] [{Custom Formats}]",
-            AnimeEpisodeFileFormat: GetValue(settings, "media.animeEpisodeFileFormat") ?? "{Series Title} - {absolute:000} - {Episode Title} [{Quality}] [{Custom Formats}]");
+            AnimeEpisodeFileFormat: GetValue(settings, "media.animeEpisodeFileFormat") ?? "{Series Title} - {absolute:000} - {Episode Title} [{Quality}] [{Custom Formats}]",
+            SetPermissionsOnImport: string.Equals(GetValue(settings, "media.setPermissionsOnImport"), "true", StringComparison.OrdinalIgnoreCase),
+            FolderChmod: NormalizeChmod(GetValue(settings, "media.folderChmod")),
+            ChownGroup: NormalizeName(GetValue(settings, "media.chownGroup")));
+    }
+
+    /// <summary>Accepts a 3- or 4-digit octal mode (e.g. "755", "0644"); anything else is dropped rather than stored malformed.</summary>
+    private static string? NormalizeChmod(string? value)
+    {
+        var trimmed = value?.Trim();
+        if (string.IsNullOrEmpty(trimmed))
+        {
+            return null;
+        }
+        return trimmed.Length is 3 or 4 && trimmed.All(digit => digit is >= '0' and <= '7')
+            ? trimmed
+            : null;
     }
 
     private static int ReadPositiveInt(string? value, int fallback, int min, int max)
