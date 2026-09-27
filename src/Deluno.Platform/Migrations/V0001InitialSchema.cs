@@ -96,7 +96,8 @@ public static class PlatformDatabaseMigrations
         new V0088IndexerVipExpiry(),
         new V0089IndexerQueryGrabLimits(),
         new V0090IndexerPreferMagnetUrl(),
-        new V0091IndexerSeasonPackSearchMode()
+        new V0091IndexerSeasonPackSearchMode(),
+        new V0092DownloadClientRemoveCompletedFailed()
     ];
 
     private sealed class V0001InitialSchema : SqliteSqlMigration

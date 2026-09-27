@@ -177,6 +177,157 @@ public sealed class ImportPipelineServiceTests
             preview.DestinationPath);
     }
 
+    /// <summary>
+    /// #806: Remove completed is a per-client choice. Turned on for the
+    /// client a dispatch came from, a successful import also asks that
+    /// client to let go of the finished download and its data — the same
+    /// gateway the sharing rule already uses (#288), not a duplicate path.
+    /// </summary>
+    [Fact]
+    public async Task ExecuteAsync_removes_the_completed_download_when_its_client_has_Remove_completed_on()
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-04-29T08:00:00Z"));
+        await InitializeAllAsync(storage, timeProvider);
+
+        var downloadsPath = Path.Combine(storage.DataRoot, "downloads");
+        var movieRootPath = Path.Combine(storage.DataRoot, "movies");
+        Directory.CreateDirectory(downloadsPath);
+        Directory.CreateDirectory(movieRootPath);
+        var sourcePath = Path.Combine(downloadsPath, "Arrival.2016.WEB.1080p.mkv");
+        await File.WriteAllBytesAsync(sourcePath, Enumerable.Range(0, 4096).Select(value => (byte)(value % 251)).ToArray());
+        File.SetLastWriteTimeUtc(sourcePath, DateTime.UtcNow.AddMinutes(-1));
+
+        var platform = CreatePlatformRepository(storage, timeProvider);
+        var libraries = CreateLibrariesRepository(storage, timeProvider);
+        await SaveSettingsAsync(platform, movieRootPath, downloadsPath);
+        await CreateMovieLibraryAsync(libraries, movieRootPath, downloadsPath);
+
+        var connections = new SqliteConnectionsRepository(storage.Factory, timeProvider, TestSecretProtection.Create(storage));
+        var client = await connections.CreateDownloadClientAsync(
+            new CreateDownloadClientRequest(
+                "qBittorrent", "qbittorrent", "localhost", 8080, null, null, null, "movies", "tv", null, 1, true,
+                RemoveCompleted: true),
+            CancellationToken.None);
+
+        var dispatches = new SqliteDownloadDispatchesRepository(storage.Factory, timeProvider);
+        var jobStore = new SqliteJobStore(storage.Factory, timeProvider, new NullRealtimeEventPublisher(), dispatches);
+        var dispatchId = await jobStore.RecordDownloadDispatchAsync(
+            libraryId: "movies-main",
+            mediaType: "movies",
+            entityType: "movie",
+            entityId: "movie-arrival",
+            releaseName: "Arrival.2016.WEB.1080p",
+            indexerName: "TestIndexer",
+            downloadClientId: client.Id,
+            downloadClientName: client.Name,
+            status: "sent",
+            notesJson: null,
+            cancellationToken: CancellationToken.None);
+        await dispatches.RecordDetectionAsync(dispatchId, "arrival-hash", 4096, completed: true, CancellationToken.None);
+
+        var movies = new SqliteMovieCatalogRepository(storage.Factory, timeProvider);
+        var gateway = new FakeDownloadClientActionGateway();
+        var service = CreateService(
+            storage, timeProvider, platform, libraries, movies,
+            downloadDispatchesRepository: dispatches,
+            connectionsRepository: connections,
+            downloadClientActions: gateway);
+
+        var result = await service.ExecuteAsync(
+            new ImportExecuteRequest(
+                Preview: new ImportPreviewRequest(
+                    SourcePath: sourcePath, FileName: null, MediaType: "movies",
+                    Title: "Arrival", Year: 2016, Genres: ["Drama"], Tags: [],
+                    Studio: null, OriginalLanguage: "en", ImdbId: "tt2543164"),
+                TransferMode: "copy", Overwrite: false, AllowCopyFallback: true,
+                DispatchId: dispatchId),
+            CancellationToken.None);
+
+        Assert.True(result.Succeeded);
+        Assert.Equal(client.Id, gateway.LastClientId);
+        Assert.Equal("arrival-hash", gateway.LastQueueItemId);
+    }
+
+    /// <summary>Left off (the default, #936), nothing here changes: the client keeps its own entry exactly as it does today.</summary>
+    [Fact]
+    public async Task ExecuteAsync_leaves_the_download_alone_when_Remove_completed_is_off()
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-04-29T08:00:00Z"));
+        await InitializeAllAsync(storage, timeProvider);
+
+        var downloadsPath = Path.Combine(storage.DataRoot, "downloads");
+        var movieRootPath = Path.Combine(storage.DataRoot, "movies");
+        Directory.CreateDirectory(downloadsPath);
+        Directory.CreateDirectory(movieRootPath);
+        var sourcePath = Path.Combine(downloadsPath, "Arrival.2016.WEB.1080p.mkv");
+        await File.WriteAllBytesAsync(sourcePath, Enumerable.Range(0, 4096).Select(value => (byte)(value % 251)).ToArray());
+        File.SetLastWriteTimeUtc(sourcePath, DateTime.UtcNow.AddMinutes(-1));
+
+        var platform = CreatePlatformRepository(storage, timeProvider);
+        var libraries = CreateLibrariesRepository(storage, timeProvider);
+        await SaveSettingsAsync(platform, movieRootPath, downloadsPath);
+        await CreateMovieLibraryAsync(libraries, movieRootPath, downloadsPath);
+
+        var connections = new SqliteConnectionsRepository(storage.Factory, timeProvider, TestSecretProtection.Create(storage));
+        var client = await connections.CreateDownloadClientAsync(
+            new CreateDownloadClientRequest(
+                "qBittorrent", "qbittorrent", "localhost", 8080, null, null, null, "movies", "tv", null, 1, true),
+            CancellationToken.None);
+
+        var dispatches = new SqliteDownloadDispatchesRepository(storage.Factory, timeProvider);
+        var jobStore = new SqliteJobStore(storage.Factory, timeProvider, new NullRealtimeEventPublisher(), dispatches);
+        var dispatchId = await jobStore.RecordDownloadDispatchAsync(
+            libraryId: "movies-main",
+            mediaType: "movies",
+            entityType: "movie",
+            entityId: "movie-arrival",
+            releaseName: "Arrival.2016.WEB.1080p",
+            indexerName: "TestIndexer",
+            downloadClientId: client.Id,
+            downloadClientName: client.Name,
+            status: "sent",
+            notesJson: null,
+            cancellationToken: CancellationToken.None);
+        await dispatches.RecordDetectionAsync(dispatchId, "arrival-hash", 4096, completed: true, CancellationToken.None);
+
+        var movies = new SqliteMovieCatalogRepository(storage.Factory, timeProvider);
+        var gateway = new FakeDownloadClientActionGateway();
+        var service = CreateService(
+            storage, timeProvider, platform, libraries, movies,
+            downloadDispatchesRepository: dispatches,
+            connectionsRepository: connections,
+            downloadClientActions: gateway);
+
+        await service.ExecuteAsync(
+            new ImportExecuteRequest(
+                Preview: new ImportPreviewRequest(
+                    SourcePath: sourcePath, FileName: null, MediaType: "movies",
+                    Title: "Arrival", Year: 2016, Genres: ["Drama"], Tags: [],
+                    Studio: null, OriginalLanguage: "en", ImdbId: "tt2543164"),
+                TransferMode: "copy", Overwrite: false, AllowCopyFallback: true,
+                DispatchId: dispatchId),
+            CancellationToken.None);
+
+        Assert.Null(gateway.LastClientId);
+    }
+
+    private sealed class FakeDownloadClientActionGateway : Deluno.Recovery.Services.IDownloadClientActionGateway
+    {
+        public string? LastClientId { get; private set; }
+
+        public string? LastQueueItemId { get; private set; }
+
+        public Task<Deluno.Recovery.Services.DownloadClientRemovalResult> RemoveWithDataAsync(
+            string clientId, string queueItemId, CancellationToken cancellationToken)
+        {
+            LastClientId = clientId;
+            LastQueueItemId = queueItemId;
+            return Task.FromResult(new Deluno.Recovery.Services.DownloadClientRemovalResult(true, "removed"));
+        }
+    }
+
     /// <summary>#766: the configured chmod is applied to an imported file when enabled, on the non-Windows hosts CI runs on.</summary>
     [Fact]
     public async Task ExecuteAsync_applies_the_configured_chmod_when_set_permissions_on_import_is_enabled()
@@ -5281,7 +5432,9 @@ public sealed class ImportPipelineServiceTests
         IJobScheduler? mediaServerJobScheduler = null,
         TimeSpan? settleWindow = null,
         IOutboundNotificationService? outboundNotificationService = null,
-        INotificationService? notificationService = null)
+        INotificationService? notificationService = null,
+        IConnectionsRepository? connectionsRepository = null,
+        Deluno.Recovery.Services.IDownloadClientActionGateway? downloadClientActions = null)
         => new(
             platform,
             librariesRepository,
@@ -5293,14 +5446,15 @@ public sealed class ImportPipelineServiceTests
             outboundNotificationService,
             new NullImportResolutionsRepository(),
             downloadDispatchesRepository,
-            null,
+            connectionsRepository,
             NullLogger<ImportPipelineService>.Instance,
             null,
             null,
             qualityRepository,
             mediaServerJobScheduler: mediaServerJobScheduler,
             settleWindow: settleWindow ?? TimeSpan.Zero,
-            notificationService: notificationService);
+            notificationService: notificationService,
+            downloadClientActions: downloadClientActions);
 
     private static FilesystemReconciliationService CreateReconciliationService(
         TestStorage storage,

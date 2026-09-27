@@ -26,6 +26,13 @@ describe("create form defaults", () => {
   it("a new download client defaults Add downloads paused off", () => {
     expect(emptyClientForm().addPaused).toBe(false);
   });
+
+  // #806 (#936): nothing automatic is on by default, including for a client
+  // added after the feature shipped.
+  it("a new download client defaults Remove completed and Remove failed off", () => {
+    expect(emptyClientForm().removeCompleted).toBe(false);
+    expect(emptyClientForm().removeFailed).toBe(false);
+  });
 });
 
 // #804: Use SSL and URL Base round-trip through the client form the same way
@@ -75,6 +82,16 @@ describe("client form Use SSL and URL Base", () => {
   // drawer has to show the value that was actually saved.
   it("reads a saved client's priority into the form on reopen", () => {
     expect(clientFormFrom({ ...baseItem, priority: 37 }).priority).toBe("37");
+  });
+
+  // #806 — a single platform-wide RemoveCompletedDownloads flag is now two
+  // per-client toggles, both off unless the person turns them on for this
+  // client, and both have to read back on reopen.
+  it("reads a saved client's Remove completed/failed toggles into the form on reopen, defaulting off", () => {
+    expect(clientFormFrom(baseItem).removeCompleted).toBe(false);
+    expect(clientFormFrom(baseItem).removeFailed).toBe(false);
+    expect(clientFormFrom({ ...baseItem, removeCompleted: true }).removeCompleted).toBe(true);
+    expect(clientFormFrom({ ...baseItem, removeFailed: true }).removeFailed).toBe(true);
   });
 
   // #808 — no Tags field existed at all; reopening a saved client has to show

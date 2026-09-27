@@ -924,6 +924,10 @@ export interface DownloadClientItem {
   updatedUtc: string;
   /** Comma-separated tag names. Empty means this client is used for any title; otherwise it is used only for a title sharing one of these tags. */
   tags?: string;
+  /** Remove a download from this client once Deluno has imported it successfully. Off by default. */
+  removeCompleted?: boolean;
+  /** Remove a download from this client once Deluno records it as failed. Off by default; distinct from the blocklist/replacement-search decision, which is unaffected. */
+  removeFailed?: boolean;
 }
 
 export interface ExistingLibraryCandidate {

@@ -238,6 +238,36 @@ describe("client save payload (#807)", () => {
 });
 
 /**
+ * #806 — one platform-wide RemoveCompletedDownloads flag applied identically
+ * to every client; it is now two per-client toggles, both off unless the
+ * person turns them on for that client.
+ */
+describe("client save payload completed-download handling (#806)", () => {
+  it("sends Remove completed and Remove failed off by default", () => {
+    const form = { ...emptyClientForm(), name: "qBittorrent", host: "localhost" };
+    expect(buildClientSavePayload(form).removeCompleted).toBe(false);
+    expect(buildClientSavePayload(form).removeFailed).toBe(false);
+  });
+
+  it("sends each toggle independently when the person turns it on", () => {
+    const completedOnly = { ...emptyClientForm(), name: "qBittorrent", host: "localhost", removeCompleted: true };
+    expect(buildClientSavePayload(completedOnly).removeCompleted).toBe(true);
+    expect(buildClientSavePayload(completedOnly).removeFailed).toBe(false);
+
+    const failedOnly = { ...emptyClientForm(), name: "SABnzbd", host: "localhost", removeFailed: true };
+    expect(buildClientSavePayload(failedOnly).removeCompleted).toBe(false);
+    expect(buildClientSavePayload(failedOnly).removeFailed).toBe(true);
+  });
+
+  it("round-trips two clients with different settings independently", () => {
+    const clientA = { ...emptyClientForm(), name: "qBittorrent", host: "localhost", removeCompleted: true, removeFailed: false };
+    const clientB = { ...emptyClientForm(), name: "SABnzbd", host: "localhost", removeCompleted: false, removeFailed: true };
+    expect(buildClientSavePayload(clientA)).toMatchObject({ removeCompleted: true, removeFailed: false });
+    expect(buildClientSavePayload(clientB)).toMatchObject({ removeCompleted: false, removeFailed: true });
+  });
+});
+
+/**
  * #808 — Radarr/Sonarr route a tagged title only to a client sharing its tag;
  * an untagged client stays usable for anything. The drawer had no field for
  * this at all, so the payload always sent nothing.

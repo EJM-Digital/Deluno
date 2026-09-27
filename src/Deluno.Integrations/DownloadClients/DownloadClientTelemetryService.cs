@@ -1615,6 +1615,28 @@ public sealed class DownloadClientTelemetryService(
                 cancellationToken);
         }
 
+        // #806: Remove failed is a per-client choice about the client's own
+        // queue entry, separate from ImportFailurePolicy above, which decides
+        // whether the release is blocklisted and searched again. A client
+        // with the toggle off keeps the failed entry exactly as it does
+        // today; nothing here changes unless the person turned this on for
+        // this specific client.
+        if (dispatch.TorrentHashOrItemId is { Length: > 0 })
+        {
+            var client = (await connectionsRepository.ListDownloadClientsAsync(cancellationToken))
+                .FirstOrDefault(item => string.Equals(item.Id, dispatch.DownloadClientId, StringComparison.OrdinalIgnoreCase));
+            if (client is { RemoveFailed: true })
+            {
+                // Direct to the core action rather than the public
+                // ExecuteActionAsync: this runs from inside a poll pass that
+                // already found the failure, the same way the health
+                // remediation removal above (ExecuteOwnedRemediationRemovalAsync)
+                // does not go through the resilience/circuit-breaker wrapper
+                // meant for a person-initiated action.
+                await ExecuteActionCoreAsync(client, "delete-with-data", dispatch.TorrentHashOrItemId, cancellationToken);
+            }
+        }
+
         if (SupportsReplacementSearch(dispatch.EntityType))
         {
             var library = (await librariesRepository.ListLibrariesAsync(cancellationToken))

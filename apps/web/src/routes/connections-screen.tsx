@@ -238,7 +238,9 @@ export function buildClientSavePayload(form: ClientForm) {
     priority: Number(form.priority || 1),
     isEnabled: form.isEnabled,
     addPaused: form.addPaused,
-    tags: form.tags.trim()
+    tags: form.tags.trim(),
+    removeCompleted: form.removeCompleted,
+    removeFailed: form.removeFailed
   };
 }
 

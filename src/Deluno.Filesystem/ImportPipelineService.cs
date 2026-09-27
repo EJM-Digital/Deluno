@@ -57,7 +57,11 @@ public sealed partial class ImportPipelineService(
     IJobScheduler? mediaServerJobScheduler = null,
     // Only a test passes this, to say "do not wait" without waiting for it.
     TimeSpan? settleWindow = null,
-    INotificationService? notificationService = null)
+    INotificationService? notificationService = null,
+    // #806: the same "ask the client to let go" gateway the sharing rule
+    // uses (#288), reused here for Remove completed rather than duplicating
+    // the client-action path.
+    Deluno.Recovery.Services.IDownloadClientActionGateway? downloadClientActions = null)
     : IImportPipelineService
 {
     private readonly TimeSpan _settleWindow = settleWindow ?? ImportFileReadiness.SettleWindow;
@@ -524,6 +528,8 @@ public sealed partial class ImportPipelineService(
                         failureReason: null,
                         cancellationToken);
                 }
+
+                await RemoveCompletedDownloadIfConfiguredAsync(request.DispatchId, cancellationToken);
             }
 
             var cleanup = ApplyWorkflowCleanup(
@@ -3266,6 +3272,34 @@ public sealed partial class ImportPipelineService(
         }
 
         return await downloadDispatchesRepository.GetDispatchAsync(dispatchId, cancellationToken);
+    }
+
+    /// <summary>
+    /// Remove completed (#806): a per-client choice, off unless the person
+    /// turned it on for the specific client this download came from. Nothing
+    /// here changes behaviour for a client left at its default.
+    /// </summary>
+    private async Task RemoveCompletedDownloadIfConfiguredAsync(string? dispatchId, CancellationToken cancellationToken)
+    {
+        if (downloadClientActions is null || connectionsRepository is null)
+        {
+            return;
+        }
+
+        var dispatch = await ResolveDispatchAsync(dispatchId, cancellationToken);
+        if (dispatch is null || string.IsNullOrWhiteSpace(dispatch.TorrentHashOrItemId) || string.IsNullOrWhiteSpace(dispatch.DownloadClientId))
+        {
+            return;
+        }
+
+        var client = (await connectionsRepository.ListDownloadClientsAsync(cancellationToken))
+            .FirstOrDefault(item => string.Equals(item.Id, dispatch.DownloadClientId, StringComparison.OrdinalIgnoreCase));
+        if (client is not { RemoveCompleted: true })
+        {
+            return;
+        }
+
+        await downloadClientActions.RemoveWithDataAsync(client.Id, dispatch.TorrentHashOrItemId, cancellationToken);
     }
 
     private static IReadOnlyList<string> ResolveMatchedRuleNames(
