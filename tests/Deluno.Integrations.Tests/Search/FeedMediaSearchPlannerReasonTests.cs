@@ -260,6 +260,89 @@ public sealed class FeedMediaSearchPlannerReasonTests
         Assert.Empty(plan.Candidates);
     }
 
+    /// <summary>
+    /// #752: a generic Torznab item's magneturl attribute is captured into the
+    /// release. With the indexer's own Prefer magnet links switch on, the
+    /// magnet becomes what Deluno actually grabs, not the enclosure .torrent
+    /// link the item also carried.
+    /// </summary>
+    [Fact]
+    public async Task A_torznab_items_magnet_attribute_is_preferred_when_the_indexer_asks_for_it()
+    {
+        var indexer = CreateIndexer("magnet-preferring-indexer", "Magnet preferring indexer") with { PreferMagnetUrl = true };
+        var feed = "<rss><channel><item>" +
+            "<title>Example.Release.2026.WEB.1080p</title>" +
+            "<enclosure url=\"https://fixture.invalid/release/1.torrent\" length=\"1000\" type=\"application/x-bittorrent\" />" +
+            "<torznab:attr xmlns:torznab=\"http://torznab.com/schemas/2015/feed\" name=\"magneturl\" value=\"magnet:?xt=urn:btih:0123456789abcdef0123456789abcdef01234567\" />" +
+            "</item></channel></rss>";
+
+        var plan = await CreatePlanner(
+            CreateConnections(indexer).Object,
+            new FixedFeedHandler(feed)).BuildPlanAsync(
+                "Example",
+                2026,
+                "movies",
+                null,
+                "WEB 1080p",
+                [CreateSource(indexer)],
+                cancellationToken: CancellationToken.None);
+
+        var candidate = Assert.Single(plan.Candidates);
+        Assert.StartsWith("magnet:", candidate.DownloadUrl, StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>Without the switch, the enclosure/.torrent link is kept even when a magnet is also offered.</summary>
+    [Fact]
+    public async Task A_torznab_items_torrent_link_is_kept_when_the_indexer_does_not_prefer_magnet()
+    {
+        var indexer = CreateIndexer("magnet-indifferent-indexer", "Magnet indifferent indexer");
+        var feed = "<rss><channel><item>" +
+            "<title>Example.Release.2026.WEB.1080p</title>" +
+            "<enclosure url=\"https://fixture.invalid/release/1.torrent\" length=\"1000\" type=\"application/x-bittorrent\" />" +
+            "<torznab:attr xmlns:torznab=\"http://torznab.com/schemas/2015/feed\" name=\"magneturl\" value=\"magnet:?xt=urn:btih:0123456789abcdef0123456789abcdef01234567\" />" +
+            "</item></channel></rss>";
+
+        var plan = await CreatePlanner(
+            CreateConnections(indexer).Object,
+            new FixedFeedHandler(feed)).BuildPlanAsync(
+                "Example",
+                2026,
+                "movies",
+                null,
+                "WEB 1080p",
+                [CreateSource(indexer)],
+                cancellationToken: CancellationToken.None);
+
+        var candidate = Assert.Single(plan.Candidates);
+        Assert.Equal("https://fixture.invalid/release/1.torrent", candidate.DownloadUrl);
+    }
+
+    /// <summary>A usenet (newznab) indexer's own field is torrent-only; a magneturl attribute (never sent by usenet indexers in practice) must never override its link.</summary>
+    [Fact]
+    public async Task A_newznab_indexer_never_prefers_a_magnet_even_if_one_is_present()
+    {
+        var indexer = CreateIndexer("usenet-indexer", "Usenet indexer") with { Protocol = "newznab", PreferMagnetUrl = true };
+        var feed = "<rss><channel><item>" +
+            "<title>Example.Release.2026.WEB.1080p</title>" +
+            "<enclosure url=\"https://fixture.invalid/release/1.nzb\" length=\"1000\" type=\"application/x-nzb\" />" +
+            "<torznab:attr xmlns:torznab=\"http://torznab.com/schemas/2015/feed\" name=\"magneturl\" value=\"magnet:?xt=urn:btih:0123456789abcdef0123456789abcdef01234567\" />" +
+            "</item></channel></rss>";
+
+        var plan = await CreatePlanner(
+            CreateConnections(indexer).Object,
+            new FixedFeedHandler(feed)).BuildPlanAsync(
+                "Example",
+                2026,
+                "movies",
+                null,
+                "WEB 1080p",
+                [CreateSource(indexer)],
+                cancellationToken: CancellationToken.None);
+
+        var candidate = Assert.Single(plan.Candidates);
+        Assert.Equal("https://fixture.invalid/release/1.nzb", candidate.DownloadUrl);
+    }
+
     [Fact]
     public async Task Feed_parser_keeps_every_returned_item_and_requests_a_protocol_limit()
     {
