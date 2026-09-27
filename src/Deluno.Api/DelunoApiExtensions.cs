@@ -81,6 +81,7 @@ public static class DelunoApiExtensions
             .RequireAuthorization(DelunoAuthorizationPolicies.Read);
         api.MapDelunoMonitoringEndpoints();
         api.MapDelunoLanAccessEndpoints();
+        api.MapDelunoConnectivityEndpoints();
         api.MapDelunoBundledComponentsEndpoints();
 
         if (includeOperationalEndpoints)
