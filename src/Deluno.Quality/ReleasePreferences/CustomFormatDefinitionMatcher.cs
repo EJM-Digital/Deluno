@@ -390,7 +390,7 @@ public static partial class CustomFormatDefinitionMatcher
             "hdr" => MatchHdr(lower, value),
             "codec" => MatchCodec(lower, value),
             "releasegroup" => MatchReleaseGroup(inferredGroup, value),
-            "language" => lower.Contains(value.ToLowerInvariant(), StringComparison.Ordinal),
+            "language" => MatchLanguage(releaseName, value),
             _ => false
         };
     }
@@ -478,6 +478,18 @@ public static partial class CustomFormatDefinitionMatcher
             "xvid" or "divx" => lower.Contains("xvid", StringComparison.Ordinal) || lower.Contains("divx", StringComparison.Ordinal),
             var other => lower.Contains(other, StringComparison.Ordinal)
         };
+
+    /// <summary>
+    /// Matches against the release name's parsed language tag(s) (#758)
+    /// rather than a raw substring search, so a language word appearing
+    /// inside an unrelated fused token never claims the release carries that
+    /// audio track.
+    /// </summary>
+    private static bool MatchLanguage(string releaseName, string value)
+    {
+        var languages = MediaFileNameFacts.Parse(releaseName).Languages;
+        return languages.Any(language => string.Equals(language, value, StringComparison.OrdinalIgnoreCase));
+    }
 
     private static bool MatchReleaseGroup(string? inferredGroup, string value)
         => !string.IsNullOrWhiteSpace(inferredGroup)
