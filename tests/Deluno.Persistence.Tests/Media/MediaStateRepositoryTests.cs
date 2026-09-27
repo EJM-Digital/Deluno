@@ -530,9 +530,16 @@ public sealed class MediaStateRepositoryTests
     /// stops upgrade searches on its own via
     /// <see cref="WantedStatuses.Searchable"/>. This proves both halves of
     /// that design hold for both engines with nothing left to configure it:
-    /// a title imported already at its cutoff stays monitored, and its
-    /// wanted status is not one <see cref="WantedStatuses.IsSearchable"/>
-    /// would let a scheduled or RSS search pick up.
+    /// a title imported already at its cutoff stays monitored, its wanted
+    /// status is not one <see cref="WantedStatuses.IsSearchable"/> would let
+    /// a scheduled or RSS search pick up, and - driving the real candidate
+    /// query behind both a scheduled search
+    /// (<see cref="IMediaStateRepository.ListEligibleWantedAsync"/>) and RSS
+    /// (<see cref="Deluno.Worker.Services.RssSyncService"/>, which filters the
+    /// same list through <see cref="WantedStatuses.IsSearchable"/>) - the
+    /// covered title is left out of that candidate list entirely, while a
+    /// monitored title still below its cutoff is a positive control that
+    /// stays in it.
     /// </summary>
     [Theory]
     [InlineData(MediaKind.Movie)]
@@ -559,41 +566,102 @@ public sealed class MediaStateRepositoryTests
                         "Bluray-1080p",
                         QualityCutoffMet: true,
                         @"D:\Media\Already at cutoff (2016)\Already.at.cutoff.2016.1080p.BluRay.mkv",
-                        1024)
+                        1024),
+                    new ExistingMovieImportRequest(
+                        "Still below cutoff",
+                        2017,
+                        "upgrade",
+                        "Current file does not yet meet the cutoff.",
+                        "SDTV",
+                        "Bluray-1080p",
+                        QualityCutoffMet: false,
+                        @"D:\Media\Still below cutoff (2017)\Still.below.cutoff.2017.SDTV.mkv",
+                        512)
                 ],
                 CancellationToken.None);
 
-            var item = Assert.Single(
-                (await repository.ListPageAsync(new CatalogueQuery(), CancellationToken.None)).Items);
-            Assert.True(item.Monitored);
-            Assert.False(WantedStatuses.IsSearchable(item.WantedStatus));
+            var page = await repository.ListPageAsync(new CatalogueQuery(), CancellationToken.None);
+            var covered = page.Items.Single(candidate => candidate.Title == "Already at cutoff");
+            Assert.True(covered.Monitored);
+            Assert.False(WantedStatuses.IsSearchable(covered.WantedStatus));
+
+            // The real candidate query a scheduled search runs, and that RSS
+            // (RssSyncService.SyncAsync, via IsWanted) filters again with the
+            // same WantedStatuses.IsSearchable rule: the covered title must
+            // not be a candidate either way, while the below-cutoff title -
+            // the positive control - must still be one.
+            var eligible = await repository.ListEligibleWantedAsync(
+                "library-movies",
+                take: 10,
+                timeProvider.GetUtcNow(),
+                ignoreRetryWindow: true,
+                CancellationToken.None);
+            Assert.DoesNotContain(eligible, candidate => candidate.MovieId == covered.Id);
+            Assert.Contains(eligible, candidate => candidate.Title == "Still below cutoff");
         }
         else
         {
             var repository = new SqliteSeriesCatalogRepository(storage.Factory, timeProvider, shared);
-            await repository.ImportExistingBatchAsync(
+
+            // ImportExistingBatchAsync always writes a HasFile episode
+            // `covered` (upgradeUntilCutoff defaults to false there), so the
+            // single-show ImportExistingAsync overload is used here instead:
+            // it is the same upsert #654 fixed, and it is the one path that
+            // lets this test ask for upgrade-until-cutoff and get an episode
+            // still below its cutoff back as `upgrade` rather than `covered`.
+            await repository.ImportExistingAsync(
                 "library-series",
-                [
-                    new ExistingSeriesImportRequest(
-                        "Already at cutoff",
-                        2019,
-                        "covered",
-                        "Current file already meets the cutoff.",
-                        "WEB-1080p",
-                        "WEB-1080p",
-                        QualityCutoffMet: true,
-                        @"D:\Media\Already at cutoff (2019)\Already.at.cutoff.S01E01.1080p.WEB-DL.mkv",
-                        2048,
-                        [new ImportedEpisodeItem(1, 1, true, @"D:\Media\Already at cutoff\S01E01.mkv", 2048)])
-                ],
-                CancellationToken.None);
+                "Already at cutoff",
+                2019,
+                wantedStatus: "covered",
+                wantedReason: "Current file already meets the cutoff.",
+                currentQuality: "WEB-1080p",
+                targetQuality: "WEB-1080p",
+                qualityCutoffMet: true,
+                filePath: @"D:\Media\Already at cutoff (2019)\Already.at.cutoff.S01E01.1080p.WEB-DL.mkv",
+                fileSizeBytes: 2048,
+                episodes: [new ImportedEpisodeItem(1, 1, true, @"D:\Media\Already at cutoff\S01E01.mkv", 2048)],
+                CancellationToken.None,
+                upgradeUntilCutoff: true);
+            await repository.ImportExistingAsync(
+                "library-series",
+                "Still below cutoff",
+                2021,
+                wantedStatus: "upgrade",
+                wantedReason: "Current file does not yet meet the cutoff.",
+                currentQuality: "SDTV",
+                targetQuality: "WEB-1080p",
+                qualityCutoffMet: false,
+                filePath: @"D:\Media\Still below cutoff (2021)\Still.below.cutoff.S01E01.SDTV.mkv",
+                fileSizeBytes: 1024,
+                episodes: [new ImportedEpisodeItem(1, 1, true, @"D:\Media\Still below cutoff\S01E01.mkv", 1024)],
+                CancellationToken.None,
+                upgradeUntilCutoff: true);
 
-            var series = Assert.Single(await repository.ListAsync(CancellationToken.None));
-            Assert.True(series.Monitored);
+            var all = await repository.ListAsync(CancellationToken.None);
+            var covered = all.Single(candidate => candidate.Title == "Already at cutoff");
+            var belowCutoff = all.Single(candidate => candidate.Title == "Still below cutoff");
+            Assert.True(covered.Monitored);
 
-            var detail = await repository.GetInventoryDetailAsync(series.Id, CancellationToken.None);
+            var detail = await repository.GetInventoryDetailAsync(covered.Id, CancellationToken.None);
             var episode = Assert.Single(detail!.Episodes);
             Assert.False(WantedStatuses.IsSearchable(episode.WantedStatus));
+
+            // The real per-episode candidate query the scheduled series search
+            // draws from (LibrarySearchJobHandler.SearchSeriesAsync); RSS's
+            // episode gate (RssSyncService.QueueEpisodeAsync) filters the same
+            // per-episode wanted status a second time via IsWanted /
+            // WantedStatuses.IsSearchable. The covered episode must not be a
+            // candidate, and the below-cutoff show's episode - the positive
+            // control - must be.
+            var eligibleEpisodes = await repository.ListEligibleWantedEpisodesAsync(
+                "library-series",
+                take: 10,
+                timeProvider.GetUtcNow(),
+                ignoreRetryWindow: true,
+                CancellationToken.None);
+            Assert.DoesNotContain(eligibleEpisodes, candidate => candidate.SeriesId == covered.Id);
+            Assert.Contains(eligibleEpisodes, candidate => candidate.SeriesId == belowCutoff.Id);
         }
     }
 
