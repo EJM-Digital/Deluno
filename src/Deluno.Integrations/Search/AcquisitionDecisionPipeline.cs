@@ -33,6 +33,17 @@ public interface IAcquisitionDecisionPipeline
         IReadOnlyList<LibraryDownloadClientLinkItem> routedClients,
         CancellationToken cancellationToken = default,
         IReadOnlyList<string>? titleTags = null);
+
+    /// <summary>
+    /// The plain-English reason a title's tags sent it to this client rather
+    /// than another one routed to the same library (#808) — null when the
+    /// client is untagged, because an untagged client takes any title and
+    /// there is nothing about tags to explain.
+    /// </summary>
+    Task<string?> ExplainDownloadClientRoutingAsync(
+        string downloadClientId,
+        IReadOnlyList<string>? titleTags,
+        CancellationToken cancellationToken = default);
 }
 
 public sealed class AcquisitionDecisionPipeline : IAcquisitionDecisionPipeline
@@ -194,6 +205,21 @@ public sealed class AcquisitionDecisionPipeline : IAcquisitionDecisionPipeline
             clients.TryGetValue(client.DownloadClientId, out var detail)
             && string.Equals(DownloadProtocols.ClientKind(detail.Protocol), kind, StringComparison.OrdinalIgnoreCase)
             && DownloadClientTagMatch.IsEligible(detail.Tags, titleTags));
+    }
+
+    public async Task<string?> ExplainDownloadClientRoutingAsync(
+        string downloadClientId,
+        IReadOnlyList<string>? titleTags,
+        CancellationToken cancellationToken = default)
+    {
+        if (connectionsRepository is null)
+        {
+            return null;
+        }
+
+        var client = (await connectionsRepository.ListDownloadClientsAsync(cancellationToken))
+            .FirstOrDefault(item => string.Equals(item.Id, downloadClientId, StringComparison.OrdinalIgnoreCase));
+        return client is null ? null : DownloadClientTagMatch.Explain(client.Tags, titleTags, client.Name);
     }
 
     public AcquisitionSelectedReleaseDecision EvaluateSelectedRelease(AcquisitionSelectedReleaseRequest request)
@@ -704,6 +730,27 @@ public static class DownloadClientTagMatch
 
         var held = titleTags.Select(tag => tag.Trim()).Where(tag => tag.Length > 0).ToHashSet(StringComparer.OrdinalIgnoreCase);
         return required.Any(held.Contains);
+    }
+
+    /// <summary>
+    /// Why a grab went to this client, in words (#808) — null for an untagged
+    /// client, which takes any title and so is never the reason a routing
+    /// choice needs explaining.
+    /// </summary>
+    public static string? Explain(string? clientTags, IReadOnlyList<string>? titleTags, string clientName)
+    {
+        var required = Split(clientTags);
+        if (required.Count == 0)
+        {
+            return null;
+        }
+
+        var held = titleTags?.Select(tag => tag.Trim()).Where(tag => tag.Length > 0).ToHashSet(StringComparer.OrdinalIgnoreCase)
+            ?? new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var matchedTag = required.FirstOrDefault(held.Contains);
+        return matchedTag is null
+            ? null
+            : $"{clientName} only takes titles tagged \"{matchedTag}\", and this one is.";
     }
 
     private static IReadOnlyList<string> Split(string? csv) =>

@@ -25,4 +25,31 @@ public sealed class DownloadClientTagMatchTests
     {
         Assert.True(DownloadClientTagMatch.IsEligible(clientTags: " Anime , 4K ", titleTags: ["anime"]));
     }
+
+    // ── Explaining the routing choice in plain English (#808) ─────────────
+
+    [Fact]
+    public void An_untagged_client_never_needs_explaining()
+    {
+        Assert.Null(DownloadClientTagMatch.Explain(clientTags: "", titleTags: ["anime"], clientName: "qBittorrent"));
+        Assert.Null(DownloadClientTagMatch.Explain(clientTags: null, titleTags: null, clientName: "qBittorrent"));
+    }
+
+    [Fact]
+    public void A_tagged_client_explains_which_tag_sent_the_title_there()
+    {
+        var reason = DownloadClientTagMatch.Explain(clientTags: "anime", titleTags: ["kids", "anime"], clientName: "Anime qBittorrent");
+
+        Assert.NotNull(reason);
+        Assert.Contains("Anime qBittorrent", reason);
+        Assert.Contains("anime", reason);
+    }
+
+    [Fact]
+    public void A_tagged_client_with_no_matching_title_tag_has_nothing_to_explain()
+    {
+        // IsEligible would already have excluded this client from routing, so
+        // this only guards against Explain being called out of that context.
+        Assert.Null(DownloadClientTagMatch.Explain(clientTags: "anime", titleTags: ["kids"], clientName: "Anime qBittorrent"));
+    }
 }
