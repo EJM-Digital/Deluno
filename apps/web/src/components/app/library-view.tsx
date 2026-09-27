@@ -194,6 +194,7 @@ export function LibraryView({
     bulkTagsInput, setBulkTagsInput,
     bulkTagsMode, setBulkTagsMode,
     bulkRenameTemplate, setBulkRenameTemplate, bulkRenamePreview, setBulkRenamePreview,
+    isApplyingRename, applyBulkRename,
     bulkConfirming, setBulkConfirming, bulkError, setBulkError, bulkLibraries, bulkQualityProfiles,
     bulkOptionsLoading, undoStack, redoStack, runUndo, runRedo, openBulkTools,
     executeBulkToolsOperation, toggleSelectedId, toggleSelectAllVisible, clearSelection
@@ -1173,6 +1174,7 @@ export function LibraryView({
         tagsMode={bulkTagsMode}
         renameTemplate={bulkRenameTemplate}
         renamePreview={bulkRenamePreview}
+        isApplyingRename={isApplyingRename}
         confirming={bulkConfirming}
         error={bulkError}
         libraries={bulkLibraries}
@@ -1196,6 +1198,7 @@ export function LibraryView({
         onTagsModeChange={setBulkTagsMode}
         onRenameTemplateChange={setBulkRenameTemplate}
         onExecute={() => void executeBulkToolsOperation()}
+        onApplyRename={() => void applyBulkRename()}
       />
 
       <BulkRemoveDialog

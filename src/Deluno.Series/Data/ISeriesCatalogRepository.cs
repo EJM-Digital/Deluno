@@ -518,6 +518,22 @@ public interface ISeriesCatalogRepository : ISeriesImportRecoveryRetentionReposi
         string episodeId,
         CancellationToken cancellationToken);
 
+    /// <summary>Every episode of this series that has a file, with its path (#788).</summary>
+    Task<IReadOnlyList<(string EpisodeId, string FilePath)>> ListEpisodeFilePathsAsync(
+        string seriesId,
+        CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Records an episode's file at its new location after the caller has
+    /// physically moved it - matched by <paramref name="previousFilePath"/> so
+    /// a row that changed since it was read is never overwritten (#788).
+    /// </summary>
+    Task<bool> UpdateEpisodeFileLocationAsync(
+        string episodeId,
+        string previousFilePath,
+        string newFilePath,
+        CancellationToken cancellationToken);
+
     /// <summary>
     /// Write the provider's season/episode catalogue over the series' inventory.
     /// Adds episodes nobody has a file for, fills in titles and air dates, and

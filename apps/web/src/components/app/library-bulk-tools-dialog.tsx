@@ -22,6 +22,7 @@ type LibraryBulkToolsDialogProps = {
   tagsMode: BulkTagMode;
   renameTemplate: string;
   renamePreview: BulkRenamePreviewItem[];
+  isApplyingRename: boolean;
   confirming: boolean;
   error: string | null;
   libraries: NamedOption[];
@@ -40,6 +41,7 @@ type LibraryBulkToolsDialogProps = {
   onTagsModeChange: (value: BulkTagMode) => void;
   onRenameTemplateChange: (value: string) => void;
   onExecute: () => void;
+  onApplyRename: () => void;
 };
 
 const MINIMUM_AVAILABILITY_OPTIONS: NamedOption[] = [
@@ -50,11 +52,12 @@ const MINIMUM_AVAILABILITY_OPTIONS: NamedOption[] = [
 
 export function LibraryBulkToolsDialog({
   open, selectedCount, variant, isUpdating, operation, monitored, qualityProfileId,
-  minimumAvailability, targetLibraryId, moveFiles, tags, tagsMode, renameTemplate, renamePreview, confirming, error, libraries,
+  minimumAvailability, targetLibraryId, moveFiles, tags, tagsMode, renameTemplate, renamePreview,
+  isApplyingRename, confirming, error, libraries,
   qualityProfiles, isOptionsLoading, undoCount, redoCount, onClose, onOperationChange,
   onMonitoredChange, onQualityProfileChange, onMinimumAvailabilityChange, onTargetLibraryChange,
   onMoveFilesChange, onTagsChange, onTagsModeChange,
-  onRenameTemplateChange, onExecute,
+  onRenameTemplateChange, onExecute, onApplyRename,
 }: LibraryBulkToolsDialogProps) {
   if (!open) return null;
   const selectedTitleLabel = `${selectedCount} selected title${selectedCount === 1 ? "" : "s"}`;
@@ -99,8 +102,24 @@ export function LibraryBulkToolsDialog({
       </div>
       {confirming && operation !== "renamePreview" ? <div className="rounded-xl border border-warning/40 bg-warning/10 px-4 py-3 text-sm text-warning-foreground">Confirming will run this operation across {selectedTitleLabel}.</div> : null}
       {error ? <div className="rounded-xl border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-destructive">{error}</div> : null}
-      {operation === "renamePreview" && renamePreview.length > 0 ? <div className="max-h-72 overflow-auto rounded-xl border border-hairline bg-surface-1"><table className="min-w-full text-sm"><thead className="sticky top-0 bg-surface-2 text-left"><tr><th scope="col" className="px-3 py-2">Title</th><th scope="col" className="px-3 py-2">Proposed name</th></tr></thead><tbody>{renamePreview.map((item) => <tr key={item.itemId} className="border-t border-hairline/70"><td className="px-3 py-2 text-foreground">{item.title}</td><td className="px-3 py-2 font-mono text-xs text-muted-foreground">{item.proposedName}</td></tr>)}</tbody></table></div> : null}
-      <div className="flex items-center justify-between gap-3"><div className="text-xs text-muted-foreground">{isOptionsLoading ? "Loading options..." : `Undo stack: ${undoCount} · Redo stack: ${redoCount}`}</div><div className="flex items-center gap-2"><Button type="button" variant="outline" onClick={onClose} disabled={isUpdating}>Cancel</Button><Button type="button" onClick={onExecute} disabled={isUpdating || isOptionsLoading}>{isUpdating ? "Running..." : operation === "renamePreview" ? "Run preview" : confirming ? "Confirm and run" : "Review and continue"}</Button></div></div>
+      {operation === "renamePreview" && renamePreview.length > 0 ? <>
+        <div className="max-h-72 overflow-auto rounded-xl border border-hairline bg-surface-1"><table className="min-w-full text-sm"><thead className="sticky top-0 bg-surface-2 text-left"><tr><th scope="col" className="px-3 py-2">Title</th><th scope="col" className="px-3 py-2">Proposed name</th></tr></thead><tbody>{renamePreview.map((item) => <tr key={item.itemId} className="border-t border-hairline/70"><td className="px-3 py-2 text-foreground">{item.title}</td><td className="px-3 py-2 font-mono text-xs text-muted-foreground">{item.proposedName}</td></tr>)}</tbody></table></div>
+        <div className="rounded-xl border border-hairline bg-surface-1 px-4 py-3 text-sm text-muted-foreground">
+          This only shows what would happen. Nothing on disk changes until you apply it.
+        </div>
+      </> : null}
+      <div className="flex items-center justify-between gap-3">
+        <div className="text-xs text-muted-foreground">{isOptionsLoading ? "Loading options..." : `Undo stack: ${undoCount} · Redo stack: ${redoCount}`}</div>
+        <div className="flex items-center gap-2">
+          <Button type="button" variant="outline" onClick={onClose} disabled={isUpdating || isApplyingRename}>Cancel</Button>
+          <Button type="button" onClick={onExecute} disabled={isUpdating || isOptionsLoading || isApplyingRename}>{isUpdating ? "Running..." : operation === "renamePreview" ? "Run preview" : confirming ? "Confirm and run" : "Review and continue"}</Button>
+          {operation === "renamePreview" && renamePreview.length > 0 ? (
+            <Button type="button" onClick={onApplyRename} disabled={isApplyingRename}>
+              {isApplyingRename ? "Applying..." : `Apply to ${renamePreview.length} title${renamePreview.length === 1 ? "" : "s"}`}
+            </Button>
+          ) : null}
+        </div>
+      </div>
     </div>
   </div>;
 }

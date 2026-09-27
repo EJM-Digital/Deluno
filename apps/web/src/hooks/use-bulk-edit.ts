@@ -50,6 +50,7 @@ export function useBulkEdit({
   const [bulkTagsMode, setBulkTagsMode] = useState<BulkTagMode>("add");
   const [bulkRenameTemplate, setBulkRenameTemplate] = useState("");
   const [bulkRenamePreview, setBulkRenamePreview] = useState<BulkRenamePreviewItem[]>([]);
+  const [isApplyingRename, setIsApplyingRename] = useState(false);
   const [bulkConfirming, setBulkConfirming] = useState(false);
   const [bulkError, setBulkError] = useState<string | null>(null);
   const [bulkLibraries, setBulkLibraries] = useState<LibraryItem[]>([]);
@@ -693,6 +694,67 @@ export function useBulkEdit({
     }
   }
 
+  /**
+   * Commits the renames the preview just showed - the same selection and the
+   * same template, so nobody has to redo the operation from scratch to get
+   * from "here is what would happen" to "make it happen" (#788).
+   */
+  async function applyBulkRename() {
+    if (bulkRenamePreview.length === 0 || isApplyingRename) {
+      return;
+    }
+
+    const endpoint = variant === "movies" ? "/api/movies/bulk/rename-apply" : "/api/series/bulk/rename-apply";
+    const ids = bulkRenamePreview.map((item) => item.itemId);
+    setIsApplyingRename(true);
+    try {
+      const response = await authedFetch(endpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(
+          variant === "movies"
+            ? { movieIds: ids, template: bulkRenameTemplate.trim() || undefined }
+            : { seriesIds: ids, template: bulkRenameTemplate.trim() || undefined }
+        )
+      });
+
+      if (!response.ok) {
+        throw new Error("rename-apply-failed");
+      }
+
+      const payload = await response.json() as {
+        renamedCount?: number;
+        failures?: Array<{ title?: string | null; reason?: string }>;
+      };
+      const renamedCount = payload.renamedCount ?? 0;
+      const failures = payload.failures ?? [];
+
+      if (renamedCount > 0) {
+        toast.success(`${renamedCount} folder${renamedCount === 1 ? "" : "s"} renamed.`);
+      }
+      if (failures.length > 0) {
+        toast.error(
+          `${failures.length} folder${failures.length === 1 ? "" : "s"} could not be renamed`,
+          { description: failures.map((item) => `${item.title ?? "Untitled"}: ${item.reason ?? "unknown reason"}`).join("; ") }
+        );
+      }
+      if (renamedCount === 0 && failures.length === 0) {
+        toast.info("Nothing needed renaming.");
+      }
+
+      setBulkRenamePreview([]);
+      if (failures.length === 0) {
+        setIsBulkToolsOpen(false);
+        setSelectAllActive(false);
+        setSelectedIds([]);
+      }
+    } catch {
+      toast.error("Could not apply the rename.");
+    } finally {
+      setIsApplyingRename(false);
+    }
+  }
+
   function toggleSelectedId(id: string) {
     // A hand-picked change always wins over the standing "select all" intent -
     // otherwise the very next loaded page would silently put back the one row
@@ -729,6 +791,7 @@ export function useBulkEdit({
     bulkTagsInput, setBulkTagsInput,
     bulkTagsMode, setBulkTagsMode,
     bulkRenameTemplate, setBulkRenameTemplate, bulkRenamePreview, setBulkRenamePreview,
+    isApplyingRename, applyBulkRename,
     bulkConfirming, setBulkConfirming, bulkError, setBulkError, bulkLibraries, bulkQualityProfiles,
     bulkOptionsLoading, undoStack, redoStack, runUndo, runRedo, openBulkTools,
     executeBulkToolsOperation, toggleSelectedId, toggleSelectAllVisible,

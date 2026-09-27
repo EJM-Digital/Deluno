@@ -2261,6 +2261,137 @@ public static class SeriesEndpointRouteBuilderExtensions
             return Results.Ok(new { count = previews.Count, previews });
         });
 
+        /*
+          The Movies twin of this endpoint renames one folder. A series has
+          many episode files across however many seasons, so "the series
+          folder" here is whichever folder every one of them sits under -
+          found by SeriesFolderRelocationPlanner rather than assumed - and
+          every affected episode's stored path is rewritten once that folder
+          is renamed (#788).
+        */
+        series.MapPost("/bulk/rename-apply", async (
+            HttpContext httpContext,
+            [FromBody] BulkRenamePreviewRequest request,
+            ISeriesCatalogRepository repository,
+            IPlatformSettingsRepository platformSettingsRepository,
+            IActivityFeedRepository activityFeedRepository,
+            IRealtimeEventPublisher realtimeEventPublisher,
+            CancellationToken cancellationToken) =>
+        {
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
+            if (denied is not null)
+            {
+                return denied;
+            }
+
+            if (request.SeriesIds is not { Count: > 0 })
+            {
+                return Results.ValidationProblem(new Dictionary<string, string[]>
+                {
+                    ["seriesIds"] = ["Choose at least one series to rename."]
+                });
+            }
+
+            var settings = await platformSettingsRepository.GetAsync(cancellationToken);
+            var template = string.IsNullOrWhiteSpace(request.Template)
+                ? settings.SeriesFolderFormat
+                : request.Template.Trim();
+
+            var renamed = new List<object>();
+            var failures = new List<object>();
+            foreach (var id in request.SeriesIds)
+            {
+                var seriesItem = await repository.GetByIdAsync(id, cancellationToken);
+                if (seriesItem is null)
+                {
+                    failures.Add(new { seriesId = id, title = (string?)null, reason = "This series no longer exists." });
+                    continue;
+                }
+
+                var episodeFiles = await repository.ListEpisodeFilePathsAsync(id, cancellationToken);
+                if (episodeFiles.Count == 0)
+                {
+                    // Nothing on disk for this series - no folder to rename.
+                    continue;
+                }
+
+                var proposedName = NamingTemplateRenderer.RenderSegment(
+                    template,
+                    seriesItem.Title,
+                    seriesItem.StartYear,
+                    seriesItem.ImdbId,
+                    tvDbId: ReadMetadataText(seriesItem.MetadataJson, "TvDbId", "tvdbId", "tvdb_id"),
+                    network: ReadMetadataText(seriesItem.MetadataJson, "Network", "network"),
+                    genre: seriesItem.Genres?.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries).FirstOrDefault(),
+                    decision: new NamingDecision(OriginalTitle: seriesItem.OriginalTitle),
+                    replaceIllegalCharacters: settings.ReplaceIllegalCharacters,
+                    colonReplacementMode: settings.ColonReplacementMode);
+
+                var plan = SeriesFolderRelocationPlanner.Plan(
+                    episodeFiles.Select(file => file.FilePath).ToArray(),
+                    proposedName);
+                if (plan is null)
+                {
+                    failures.Add(new { seriesId = id, seriesItem.Title, reason = "Its episode files do not share a folder Deluno can rename." });
+                    continue;
+                }
+
+                if (string.Equals(plan.SourceDirectory, plan.DestinationDirectory, StringComparison.OrdinalIgnoreCase))
+                {
+                    // Already named correctly - nothing to do, and not a failure.
+                    continue;
+                }
+
+                if (Directory.Exists(plan.DestinationDirectory))
+                {
+                    failures.Add(new { seriesId = id, seriesItem.Title, reason = $"A folder named \"{proposedName}\" already exists." });
+                    continue;
+                }
+
+                try
+                {
+                    Directory.Move(plan.SourceDirectory, plan.DestinationDirectory);
+                }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                {
+                    failures.Add(new { seriesId = id, seriesItem.Title, reason = "The folder could not be renamed on disk." });
+                    continue;
+                }
+
+                foreach (var (episodeId, filePath) in episodeFiles)
+                {
+                    var relative = Path.GetRelativePath(plan.SourceDirectory, filePath);
+                    var newFilePath = Path.Combine(plan.DestinationDirectory, relative);
+                    await repository.UpdateEpisodeFileLocationAsync(episodeId, filePath, newFilePath, cancellationToken);
+                }
+
+                await realtimeEventPublisher.PublishEntityChangedAsync("Series", id, cancellationToken);
+                renamed.Add(new
+                {
+                    seriesId = id,
+                    seriesItem.Title,
+                    from = Path.GetFileName(plan.SourceDirectory),
+                    to = proposedName
+                });
+            }
+
+            if (renamed.Count > 0 || failures.Count > 0)
+            {
+                await activityFeedRepository.RecordActivityAsync(
+                    "library.series.renamed",
+                    failures.Count == 0
+                        ? $"{renamed.Count} series folder{(renamed.Count == 1 ? "" : "s")} renamed."
+                        : $"{renamed.Count} series folder{(renamed.Count == 1 ? "" : "s")} renamed; {failures.Count} could not be renamed.",
+                    JsonSerializer.Serialize(new { renamed, failures }),
+                    null,
+                    "series",
+                    null,
+                    cancellationToken);
+            }
+
+            return Results.Ok(new { renamedCount = renamed.Count, renamed, failures });
+        });
+
         series.MapPost("/{id}/grab", async (
             string id,
             [FromBody] ReleaseGrabRequest request,
