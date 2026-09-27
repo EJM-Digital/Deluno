@@ -52,4 +52,40 @@ public sealed class SabnzbdHistoryStatusMappingTests
         => Assert.Equal(
             "SABnzbd finished downloading this, but ran out of disk space during unpacking: Unpacking failed, write error or disk is full? Free space, then retry it in SABnzbd.",
             SabnzbdDownloadClient.AttentionReason("Unpacking failed, write error or disk is full?"));
+
+    /// <summary>
+    /// #910: a hard script failure moves the job to Failed, the same status a
+    /// genuinely bad release uses — SABnzbd's own free-text fail_message is the
+    /// only place that says which, mirroring the duplicate and disk-full checks
+    /// above.
+    /// </summary>
+    [Theory]
+    [InlineData("Script was aborted, please check script_log for more information.")]
+    [InlineData("Post-processing script CustomProcess.py failed")]
+    public void A_failed_status_naming_the_script_is_read_as_a_script_failure_not_a_bad_release(string failMessage)
+        => Assert.Equal(DownloadClientHistoryOutcomes.ScriptFailed, SabnzbdDownloadClient.NormalizeHistoryOutcome("Failed", failMessage));
+
+    /// <summary>
+    /// #910: a script that only warns does not fail the job at all — SABnzbd
+    /// leaves it Completed and notes the warning in fail_message — so today it
+    /// was silently read as a plain success. It must surface as a warning
+    /// instead, not disappear.
+    /// </summary>
+    [Fact]
+    public void A_completed_status_naming_the_script_is_read_as_a_script_warning_not_a_plain_success()
+        => Assert.Equal(
+            DownloadClientHistoryOutcomes.ScriptWarning,
+            SabnzbdDownloadClient.NormalizeHistoryOutcome("Completed", "Script exit code 1, notify.sh reported a problem"));
+
+    [Fact]
+    public void ScriptReason_names_the_script_when_SABnzbd_reports_one()
+        => Assert.Equal(
+            "Your client's script \"CustomProcess.py\" failed.",
+            SabnzbdDownloadClient.ScriptReason("CustomProcess.py", isFailure: true));
+
+    [Fact]
+    public void ScriptReason_falls_back_to_a_generic_message_when_no_script_is_named()
+        => Assert.Equal(
+            "Your client's post-processing script reported a problem.",
+            SabnzbdDownloadClient.ScriptReason(null, isFailure: false));
 }
