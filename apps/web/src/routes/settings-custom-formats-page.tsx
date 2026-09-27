@@ -185,7 +185,9 @@ const CONDITION_TYPES = [
   { value: "year", label: "Year" },
   { value: "size", label: "Size" },
   // #776: TV only — filtered out for a movie rule below.
-  { value: "releaseType", label: "Release type" }
+  { value: "releaseType", label: "Release type" },
+  // #772: a parsed edition tag (IMAX, Extended, Director's Cut, ...).
+  { value: "edition", label: "Edition" }
 ] as const;
 
 // #776: single episode / multi-episode / season pack, exactly the values
