@@ -276,6 +276,33 @@ public sealed class DownloadHealthRulesAreConfigurableTests
         Assert.Null(DownloadHealthRuleValidator.Validate(late, [early]));
     }
 
+    // #905 acceptance: "Queued-by-client and paused downloads never collect
+    // strikes" - every timed rule only ever looks at a download whose status
+    // is "downloading"; a download the client itself is holding back (its own
+    // queue limit) or that a person paused never reaches that check at all.
+    [Theory]
+    [InlineData(DownloadQueueStatuses.Queued)]
+    [InlineData(DownloadQueueStatuses.Paused)]
+    public void A_queued_or_paused_download_never_trips_no_progress_however_long_it_waits(string status)
+    {
+        var item = CreateItem(speedMbps: 0, addedUtc: CapturedUtc.AddMinutes(-120)) with { Status = status };
+        var findings = Evaluate(item, DownloadHealthRules.Defaults);
+
+        Assert.DoesNotContain(findings, finding => finding.Kind == DownloadHealthStrikes.NoThroughput);
+    }
+
+    [Theory]
+    [InlineData(DownloadQueueStatuses.Queued)]
+    [InlineData(DownloadQueueStatuses.Paused)]
+    public void A_queued_or_paused_download_never_trips_too_slow_low_peers_or_dead_torrent(string status)
+    {
+        var rules = new[] { TooSlowRule(kbps: 100, timerMinutes: 30), LowPeersRule(minPeers: 5, timerMinutes: 30), DeadTorrentRule(graceMinutes: 10, timerMinutes: 30) };
+        var item = CreateItem(speedMbps: 0.001, peers: 0, addedUtc: CapturedUtc.AddMinutes(-120)) with { Status = status };
+        var findings = Evaluate(item, rules);
+
+        Assert.Empty(findings);
+    }
+
     [Fact]
     public void Two_overlapping_enabled_rules_of_the_same_kind_are_refused()
     {

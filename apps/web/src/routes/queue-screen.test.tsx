@@ -4,7 +4,8 @@ import { describe, expect, it, vi } from "vitest";
 import type { DownloadClientTelemetrySnapshot, DownloadDispatchItem, DownloadHealthFinding, DownloadQueueItem, ImportPreviewResponse, LibraryItem, MediaProbeInfo } from "../lib/api";
 import { emptyPlatformSettingsSnapshot } from "../lib/api";
 import { RemovalReasonDialog, type RemovalReason } from "../components/ui/removal-reason-dialog";
-import { buildImportRequest, findDispatchForQueueItem, ImportPreviewFacts, QueuePage, queueRowExtras, reorderControlsFor, visibleFindings } from "./queue-screen";
+import { buildImportRequest, findDispatchForQueueItem, healthFindingRuleSummary, ImportPreviewFacts, QueuePage, queueRowExtras, reorderControlsFor, visibleFindings } from "./queue-screen";
+import { DEFAULT_DISPLAY_PREFERENCES } from "../lib/display-preferences";
 
 const authedFetchMock = vi.fn();
 vi.mock("../lib/use-auth", () => ({ authedFetch: (...args: unknown[]) => authedFetchMock(...args) }));
@@ -430,7 +431,11 @@ describe("dismissing a health finding", () => {
       canSafelyRemove: false,
       strikeCount: 0,
       candidateBlocked: false,
-      ignoredUntilUtc
+      ignoredUntilUtc,
+      ruleId: null,
+      ruleActionPreset: null,
+      ruleStrikeLimit: null,
+      nextStrikeUtc: null
     };
   }
 
@@ -452,6 +457,45 @@ describe("dismissing a health finding", () => {
     const item = { healthFindings: [findingAt(past)] } as DownloadQueueItem;
 
     expect(visibleFindings(item)).toHaveLength(1);
+  });
+});
+
+describe("healthFindingRuleSummary (#905)", () => {
+  function ruleFinding(overrides: Partial<DownloadHealthFinding> = {}): DownloadHealthFinding {
+    return {
+      severity: "warning",
+      kind: "no-progress",
+      summary: "This download has no observed throughput.",
+      evidence: "0 MB/s for at least 30 minutes.",
+      recommendedAction: "Check peers, then Resume or Recheck.",
+      canSafelyRetry: true,
+      canSafelyRemove: false,
+      strikeCount: 2,
+      candidateBlocked: false,
+      ignoredUntilUtc: null,
+      ruleId: "rule-1",
+      ruleActionPreset: "replace",
+      ruleStrikeLimit: 3,
+      nextStrikeUtc: "2026-09-27T12:30:00Z",
+      ...overrides
+    };
+  }
+
+  it("names the rule, the strikes so far out of its limit, when the next one is due, and its action", () => {
+    const summary = healthFindingRuleSummary(ruleFinding(), DEFAULT_DISPLAY_PREFERENCES);
+
+    expect(summary).toContain("No progress rule");
+    expect(summary).toContain("2 strikes so far of 3");
+    expect(summary).toContain("set to replace it");
+  });
+
+  it("shows only the strike count for a finding outside the rule engine", () => {
+    const summary = healthFindingRuleSummary(
+      ruleFinding({ ruleId: null, ruleActionPreset: null, ruleStrikeLimit: null, nextStrikeUtc: null, strikeCount: 1 }),
+      DEFAULT_DISPLAY_PREFERENCES
+    );
+
+    expect(summary).toBe("1 strike so far");
   });
 });
 
