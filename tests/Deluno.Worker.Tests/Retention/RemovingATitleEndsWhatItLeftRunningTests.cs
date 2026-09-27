@@ -102,10 +102,14 @@ public sealed class RemovingATitleEndsWhatItLeftRunningTests
 
     /// <summary>
     /// A processor mid-run is not interrupted — the same file imported twice is
-    /// worse than one hand-off ending the ordinary way, when it answers.
+    /// worse than one hand-off ending the ordinary way, when it answers. But
+    /// the title is gone, so its hand-off ends now regardless (#903): there is
+    /// no title left for the processor's output to land in, so it is
+    /// dismissed straight away rather than left <c>started</c> forever
+    /// waiting for output nobody will use.
     /// </summary>
     [Fact]
-    public async Task A_processor_that_has_started_work_is_left_alone()
+    public async Task A_processor_that_has_started_work_is_dismissed_without_being_interrupted()
     {
         var scene = new Scene();
         scene.Dispatched("grab-1", Release);
@@ -116,10 +120,18 @@ public sealed class RemovingATitleEndsWhatItLeftRunningTests
 
         var metadata = await scene.RemoveAsync();
 
+        // Asked, not interrupted: CancelHandoffAsync tells the processor,
+        // Deluno never touches its work directly.
+        scene.Processors.Verify(service => service.CancelHandoffAsync(It.IsAny<ProcessorConnectionItem>(), "h1", It.IsAny<CancellationToken>()), Times.Once);
         scene.Handoffs.Verify(repository => repository.UpdateProcessorHandoffAsync(
-                It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()),
-            Times.Never);
-        Assert.Equal("0", metadata["stoppedProcessorHandoffCount"]);
+                "h1",
+                ProcessorHandoffStatuses.Dismissed,
+                null,
+                null,
+                It.Is<string>(said => said.Contains("Tears of Steel was removed from Deluno") && said.Contains("already started work")),
+                It.IsAny<CancellationToken>()),
+            Times.Once);
+        Assert.Equal("1", metadata["stoppedProcessorHandoffCount"]);
     }
 
     private sealed class Scene

@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Deluno.Contracts;
+using Deluno.Integrations.DownloadClients;
 using Deluno.Intake.Contracts;
 using Deluno.Intake.Data;
 using Deluno.Jobs.Contracts;
@@ -65,7 +66,9 @@ public sealed class TitleRemovalService(
     // #662: the only place besides retention a title's files leave the
     // library. Queued, same as an import's notify - a down media server must
     // never hold up removing a title.
-    IJobScheduler? mediaServerJobScheduler = null)
+    IJobScheduler? mediaServerJobScheduler = null,
+    IDownloadClientTelemetryService? downloadClientTelemetry = null,
+    IMediaSubtitleRepository? subtitleRepository = null)
 {
     public async Task<Dictionary<string, string?>> RemoveAsync(
         TitleToRemove title,
@@ -77,6 +80,12 @@ public sealed class TitleRemovalService(
         var cancelledJobs = await jobQueueRepository.CancelPendingForRelatedEntityAsync(title.EntityType, title.Id, cancellationToken);
         metadata["cancelledPendingJobCount"] = cancelledJobs.ToString();
 
+        // #899/#900/#902/#903: the title is gone (or no longer wanted), so an
+        // in-flight download for it is never left running, untracked, at the
+        // client. Never blocklisted and never searched again - the release
+        // was not bad, the title just is not wanted any more.
+        metadata["cancelledClientDownloadCount"] = (await CancelActiveDownloadsAsync(title, cancellationToken)).ToString();
+
         if (options.DeleteFiles)
         {
             var trackedFiles = new List<TrackedLibraryFile>();
@@ -85,6 +94,23 @@ public sealed class TitleRemovalService(
                 await foreach (var path in title.TrackedFilesInLibrary(library.Id, cancellationToken))
                 {
                     trackedFiles.Add(new TrackedLibraryFile(library.Id, path));
+                }
+            }
+
+            // #893's rule again: subtitles follow the fate of the video they
+            // belong to. Here that is every subtitle the title has, since the
+            // whole title is being removed, not just one file replaced.
+            if (subtitleRepository is not null && trackedFiles.Count > 0)
+            {
+                var kind = title.EntityType == "series" ? MediaKind.Series : MediaKind.Movie;
+                var subtitles = await subtitleRepository.ListSubtitlesAsync(kind, title.Id, cancellationToken);
+                var subtitleLibraryId = trackedFiles[0].LibraryId;
+                foreach (var subtitle in subtitles)
+                {
+                    if (subtitle.FilePath is { Length: > 0 } subtitlePath)
+                    {
+                        trackedFiles.Add(new TrackedLibraryFile(subtitleLibraryId, subtitlePath));
+                    }
                 }
             }
 
@@ -238,6 +264,59 @@ public sealed class TitleRemovalService(
     }
 
     /// <summary>
+    /// Stops an in-flight download for the removed title at its client,
+    /// with its data — the title is gone, so nothing here is worth keeping,
+    /// and nothing here was the release's fault: never blocklisted, never
+    /// searched again (#899/#900/#902/#903).
+    ///
+    /// <para>Only a dispatch not yet imported and not already archived is
+    /// live enough to still be at the client. One already imported has
+    /// nothing left running; one already archived has already been settled by
+    /// an earlier removal or by the client itself.</para>
+    /// </summary>
+    private async Task<int> CancelActiveDownloadsAsync(TitleToRemove title, CancellationToken cancellationToken)
+    {
+        if (dispatchesRepository is null || downloadClientTelemetry is null)
+        {
+            return 0;
+        }
+
+        var cancelled = 0;
+        var pagination = new DispatchPaginationOptions { PageSize = 200 };
+        do
+        {
+            var (items, next) = await dispatchesRepository.QueryDispatchesAsync(
+                new DispatchQueryFilter { EntityType = title.EntityType, EntityId = title.Id },
+                pagination,
+                cancellationToken);
+            foreach (var dispatch in items)
+            {
+                if (string.Equals(dispatch.Status, "archived", StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(dispatch.ImportStatus, "imported", StringComparison.OrdinalIgnoreCase) ||
+                    string.IsNullOrWhiteSpace(dispatch.DownloadClientId) ||
+                    string.IsNullOrWhiteSpace(dispatch.TorrentHashOrItemId))
+                {
+                    continue;
+                }
+
+                var result = await downloadClientTelemetry.ExecuteActionAsync(
+                    dispatch.DownloadClientId,
+                    new DownloadClientActionRequest(DownloadClientActions.DeleteWithData, dispatch.TorrentHashOrItemId),
+                    cancellationToken);
+                if (result.Succeeded)
+                {
+                    cancelled++;
+                }
+            }
+
+            pagination = new DispatchPaginationOptions { PageSize = 200, PageToken = next };
+        }
+        while (pagination.PageToken is not null);
+
+        return cancelled;
+    }
+
+    /// <summary>
     /// Ends the hand-offs the removed title still has with a processor.
     ///
     /// <para>Settling its open cases is not enough on its own: a hand-off left
@@ -269,8 +348,12 @@ public sealed class TitleRemovalService(
                 cancellationToken,
                 // Not "cancelled": that is a row on Transfers waiting for a
                 // person, and the title it was about is gone.
-                ProcessorHandoffStatuses.Dismissed);
-            if (result is { Busy: false, Ended: not null }) stopped++;
+                ProcessorHandoffStatuses.Dismissed,
+                // #903: a title being removed is not a reason to keep waiting
+                // for a processor's output, even one already mid-run - there
+                // is no title left for that output to land in.
+                discardEvenIfBusy: true);
+            if (result.Ended is not null) stopped++;
         }
 
         return stopped;
