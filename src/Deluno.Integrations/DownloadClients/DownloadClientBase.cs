@@ -44,6 +44,13 @@ public abstract class DownloadClientBase : IDownloadClient
             Supported: false,
             Found: false));
 
+    /// <summary>Not supported by default (#816); a client that can list its files overrides this.</summary>
+    public virtual Task<IReadOnlyList<string>?> GetFilesAsync(
+        DownloadClientItem client,
+        string queueItemId,
+        CancellationToken cancellationToken)
+        => Task.FromResult<IReadOnlyList<string>?>(null);
+
     public abstract string NormalizeStatus(
         string? nativeStatus,
         double? progress,

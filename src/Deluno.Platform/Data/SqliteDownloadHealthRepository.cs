@@ -27,6 +27,8 @@ public sealed class SqliteDownloadHealthRepository(
     private const string DownloadProgressRecordsSettingKey = "download-health.progress.v1";
     private const string DownloadHealthRulesSettingKey = "download-health.rules.v1";
     private const string DownloadHealthIgnoreListSettingKey = "download-health.ignore-list.v1";
+    private const string ContentBlocklistSettingsSettingKey = "download-health.content-blocklist.v1";
+    private const string QbittorrentBlocklistSyncStatesSettingKey = "download-health.content-blocklist.qbit-sync.v1";
     private static readonly TimeSpan DownloadHealthRetention = TimeSpan.FromDays(90);
 
     public async Task<IReadOnlyList<DownloadHealthRecord>> RecordDownloadHealthObservationsAsync(
@@ -426,6 +428,102 @@ public sealed class SqliteDownloadHealthRepository(
         return remaining;
     }
 
+    public async Task<ContentBlocklistSettings> GetContentBlocklistSettingsAsync(CancellationToken cancellationToken)
+    {
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(DelunoDatabaseNames.Platform, cancellationToken);
+        var settings = await ReadSettingsAsync(connection, cancellationToken);
+        return ReadContentBlocklistSettings(settings);
+    }
+
+    public async Task<ContentBlocklistSettings> SaveContentBlocklistSettingsAsync(
+        ContentBlocklistSettings settings,
+        CancellationToken cancellationToken)
+    {
+        var now = timeProvider.GetUtcNow();
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(DelunoDatabaseNames.Platform, cancellationToken);
+        var current = ReadContentBlocklistSettings(await ReadSettingsAsync(connection, cancellationToken));
+        // A save from Settings never touches what the last remote refresh
+        // fetched, or when it ran - only #822's own refresh job (below)
+        // updates those, so a person editing the mode or custom patterns
+        // never loses the last-known remote content.
+        var saved = settings with
+        {
+            RemotePatterns = current.RemotePatterns,
+            LastRefreshedUtc = current.LastRefreshedUtc,
+            UpdatedUtc = now
+        };
+        await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+        await UpsertSettingAsync(connection, transaction, ContentBlocklistSettingsSettingKey, JsonSerializer.Serialize(saved), now, cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+        return saved;
+    }
+
+    public async Task<ContentBlocklistSettings> RecordContentBlocklistRemoteRefreshAsync(
+        IReadOnlyList<string> remotePatterns,
+        CancellationToken cancellationToken)
+    {
+        var now = timeProvider.GetUtcNow();
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(DelunoDatabaseNames.Platform, cancellationToken);
+        var current = ReadContentBlocklistSettings(await ReadSettingsAsync(connection, cancellationToken));
+        var saved = current with { RemotePatterns = remotePatterns, LastRefreshedUtc = now, UpdatedUtc = now };
+        await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+        await UpsertSettingAsync(connection, transaction, ContentBlocklistSettingsSettingKey, JsonSerializer.Serialize(saved), now, cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+        return saved;
+    }
+
+    private static ContentBlocklistSettings ReadContentBlocklistSettings(IReadOnlyDictionary<string, string> settings)
+    {
+        if (!settings.TryGetValue(ContentBlocklistSettingsSettingKey, out var json) || string.IsNullOrWhiteSpace(json))
+        {
+            return ContentBlocklistSettings.Default;
+        }
+
+        try
+        {
+            return JsonSerializer.Deserialize<ContentBlocklistSettings>(json) ?? ContentBlocklistSettings.Default;
+        }
+        catch (JsonException)
+        {
+            return ContentBlocklistSettings.Default;
+        }
+    }
+
+    public async Task<IReadOnlyDictionary<string, QbittorrentBlocklistSyncState>> ListQbittorrentBlocklistSyncStatesAsync(CancellationToken cancellationToken)
+    {
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(DelunoDatabaseNames.Platform, cancellationToken);
+        var settings = await ReadSettingsAsync(connection, cancellationToken);
+        return ReadQbittorrentBlocklistSyncStates(settings).ToDictionary(state => state.ClientId, StringComparer.OrdinalIgnoreCase);
+    }
+
+    public async Task RecordQbittorrentBlocklistSyncAsync(
+        string clientId,
+        string blocklistHash,
+        bool succeeded,
+        string? message,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(clientId)) return;
+        var now = timeProvider.GetUtcNow();
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(DelunoDatabaseNames.Platform, cancellationToken);
+        var settings = await ReadSettingsAsync(connection, cancellationToken);
+        var existing = ReadQbittorrentBlocklistSyncStates(settings).ToList();
+        var index = existing.FindIndex(state => string.Equals(state.ClientId, clientId, StringComparison.OrdinalIgnoreCase));
+        var updated = new QbittorrentBlocklistSyncState(clientId, blocklistHash, succeeded, message, now);
+        if (index >= 0) existing[index] = updated; else existing.Add(updated);
+
+        await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+        await UpsertSettingAsync(connection, transaction, QbittorrentBlocklistSyncStatesSettingKey, JsonSerializer.Serialize(existing), now, cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+    }
+
+    private static IReadOnlyList<QbittorrentBlocklistSyncState> ReadQbittorrentBlocklistSyncStates(IReadOnlyDictionary<string, string> settings)
+    {
+        if (!settings.TryGetValue(QbittorrentBlocklistSyncStatesSettingKey, out var json) || string.IsNullOrWhiteSpace(json)) return [];
+        try { return JsonSerializer.Deserialize<List<QbittorrentBlocklistSyncState>>(json) ?? []; }
+        catch (JsonException) { return []; }
+    }
+
     /// <summary>
     /// #905's own equivalent of every flat toggle Deluno shipped before it:
     /// one rule per kind, "dead torrent" off (it has no legacy toggle - #818
@@ -463,7 +561,12 @@ public sealed class SqliteDownloadHealthRepository(
             // #818: the timer here is the strike-repeat window, not the grace
             // period - the grace period is the rule's own Threshold, which
             // DownloadHealthEvaluator reads for DeadTorrent.
-            Rule("legacy-dead-torrent", DownloadHealthRuleKinds.DeadTorrent, legacy.DownloadHealthDeadTorrentEnabled, 30, legacy.DownloadHealthDeadTorrentGraceMinutes)
+            Rule("legacy-dead-torrent", DownloadHealthRuleKinds.DeadTorrent, legacy.DownloadHealthDeadTorrentEnabled, 30, legacy.DownloadHealthDeadTorrentGraceMinutes),
+            // #879: one confirmed dangerous file is enough - a 1-minute timer
+            // and a strike limit of 1 (Cleanuparr's "instant") rather than the
+            // shared legacy strikeLimit/timer, regardless of what those are
+            // set to for the timed rules above.
+            Rule("legacy-dangerous-file", DownloadHealthRuleKinds.DangerousFile, legacy.DownloadHealthDangerousFileEnabled, 1, 0) with { StrikeLimit = 1 }
         ];
     }
 

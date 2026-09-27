@@ -174,6 +174,49 @@ public static class DownloadClientEndpointRouteBuilderExtensions
             return Results.Ok(new PurgeDownloadHealthStrikesResult(purged));
         });
 
+        // #816: the per-file content blocklist. Off by default (#936); read
+        // and saved from Settings -> Download health, alongside the
+        // dangerous-file rule toggle on the main platform-settings endpoint.
+        endpoints.MapGet("/api/download-health/content-blocklist", async (
+            HttpContext httpContext,
+            IDownloadHealthRepository healthRepository,
+            CancellationToken cancellationToken) =>
+        {
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
+            return denied ?? Results.Ok(await healthRepository.GetContentBlocklistSettingsAsync(cancellationToken));
+        });
+
+        endpoints.MapPut("/api/download-health/content-blocklist", async (
+            HttpContext httpContext,
+            [FromBody] ContentBlocklistSettings request,
+            IDownloadHealthRepository healthRepository,
+            CancellationToken cancellationToken) =>
+        {
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
+            if (denied is not null) return denied;
+
+            if (!ContentBlocklistModes.IsKnown(request.Mode))
+            {
+                return Results.ValidationProblem(new Dictionary<string, string[]>
+                {
+                    [nameof(request.Mode)] = ["Choose blacklist or whitelist."]
+                });
+            }
+
+            return Results.Ok(await healthRepository.SaveContentBlocklistSettingsAsync(request, cancellationToken));
+        });
+
+        // #822: the qBittorrent "Excluded file names" sync's own last-attempt
+        // state per client, for the Connections screen's client row/drawer.
+        endpoints.MapGet("/api/download-health/content-blocklist/qbittorrent-sync-status", async (
+            HttpContext httpContext,
+            IDownloadHealthRepository healthRepository,
+            CancellationToken cancellationToken) =>
+        {
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
+            return denied ?? Results.Ok(await healthRepository.ListQbittorrentBlocklistSyncStatesAsync(cancellationToken));
+        });
+
         // Orphaned download folders (#588): what sits in a library's completed
         // folder that nothing claims. Counted in Needs attention; each is kept
         // or, when Deluno can prove it downloaded it, removed - by a person.

@@ -127,4 +127,6 @@ export interface PlatformSettingsPatch {
   skipFreeSpaceCheck?: boolean;
   /** #887: off by default. A still-packed archive is always blocklisted (governed separately, per-reason); this decides whether it is also removed and deleted from the download client. */
   removeAndDeletePackedArchivesFromClient?: boolean;
+  /** #879: the "dangerous or junk file" download-health rule. Off by default. */
+  downloadHealthDangerousFileEnabled?: boolean;
 }

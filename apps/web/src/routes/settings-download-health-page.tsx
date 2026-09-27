@@ -61,6 +61,10 @@ const RULE_KIND_COPY: Record<string, { label: string; description: string; thres
     thresholdLabel: "Grace period",
     thresholdUnit: "minutes",
     thresholdHelp: "How long a freshly added download is left alone before zero peers can trip this rule."
+  },
+  "dangerous-file": {
+    label: "Dangerous or junk file",
+    description: "A file inside the download matches the content blocklist (Search & Cycles -> Failed downloads -> Content blocklist). One confirmed match is enough - always a single instant strike, regardless of the strikes and timer below."
   }
 };
 

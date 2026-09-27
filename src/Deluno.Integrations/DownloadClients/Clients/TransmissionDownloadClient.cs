@@ -1,6 +1,7 @@
 using System.Globalization;
 using Deluno.Infrastructure.Http;
 using System.Net.Http.Json;
+using System.Text.Json;
 using System.Text.Json.Serialization;
 using Deluno.Connections.Contracts;
 using Deluno.Contracts;
@@ -186,6 +187,36 @@ public sealed class TransmissionDownloadClient(IHttpClientFactory httpClientFact
             : DownloadTrackerStatuses.Ok;
     }
 
+    /// <summary>
+    /// Transmission's own <c>files</c> field on <c>torrent-get</c> (#816):
+    /// every file's path relative to the torrent's own folder. Null when the
+    /// address is missing, the id does not parse, or the call fails.
+    /// </summary>
+    public override async Task<IReadOnlyList<string>?> GetFilesAsync(DownloadClientItem client, string queueItemId, CancellationToken cancellationToken)
+    {
+        var baseUri = DownloadClientHelpers.ResolveEndpoint(client);
+        if (baseUri is null || !int.TryParse(queueItemId, out var id)) return null;
+
+        try
+        {
+            var response = await SendAsync(client, baseUri, new TransmissionRequest("torrent-get", new()
+            {
+                ["ids"] = new[] { id },
+                ["fields"] = new[] { "files" }
+            }), cancellationToken);
+            var torrent = response.Arguments?.Torrents?.FirstOrDefault();
+            return torrent?.Files
+                ?.Select(file => file.Name)
+                .Where(name => !string.IsNullOrWhiteSpace(name))
+                .Select(name => name!)
+                .ToArray();
+        }
+        catch (Exception exception) when (exception is HttpRequestException or JsonException or TaskCanceledException)
+        {
+            return null;
+        }
+    }
+
     public override async Task<DownloadClientActionResult> ExecuteActionAsync(DownloadClientItem client, string action, string queueItemId, CancellationToken cancellationToken)
     {
         // One arm per verb, with `delete-local-data` set by the arm rather than
@@ -339,11 +370,14 @@ public sealed class TransmissionDownloadClient(IHttpClientFactory httpClientFact
         [property: JsonPropertyName("download-dir")] string? DownloadDir = null,
         [property: JsonPropertyName("size-bytes")] long? SizeBytes = null);
     private sealed record TransmissionAdded([property: JsonPropertyName("id")] int? Id, [property: JsonPropertyName("hashString")] string? HashString);
-    private sealed record TransmissionTorrent([property: JsonPropertyName("id")] int? Id, [property: JsonPropertyName("name")] string? Name, [property: JsonPropertyName("status")] int? Status, [property: JsonPropertyName("percentDone")] double? PercentDone, [property: JsonPropertyName("rateDownload")] long? RateDownload, [property: JsonPropertyName("rateUpload")] long? RateUpload, [property: JsonPropertyName("eta")] int? Eta, [property: JsonPropertyName("totalSize")] long? TotalSize, [property: JsonPropertyName("downloadedEver")] long? DownloadedEver, [property: JsonPropertyName("peersConnected")] int? PeersConnected, [property: JsonPropertyName("addedDate")] long? AddedDate, [property: JsonPropertyName("downloadDir")] string? DownloadDir, [property: JsonPropertyName("labels")] IReadOnlyList<string>? Labels, [property: JsonPropertyName("error")] int? Error, [property: JsonPropertyName("errorString")] string? ErrorString, [property: JsonPropertyName("peersSendingToUs")] int? PeersSendingToUs = null, [property: JsonPropertyName("isStalled")] bool? IsStalled = null, [property: JsonPropertyName("uploadRatio")] double? UploadRatio = null, [property: JsonPropertyName("secondsSeeding")] long? SecondsSeeding = null, [property: JsonPropertyName("isPrivate")] bool? IsPrivate = null, [property: JsonPropertyName("trackerStats")] IReadOnlyList<TransmissionTrackerStat>? TrackerStats = null);
+    private sealed record TransmissionTorrent([property: JsonPropertyName("id")] int? Id, [property: JsonPropertyName("name")] string? Name, [property: JsonPropertyName("status")] int? Status, [property: JsonPropertyName("percentDone")] double? PercentDone, [property: JsonPropertyName("rateDownload")] long? RateDownload, [property: JsonPropertyName("rateUpload")] long? RateUpload, [property: JsonPropertyName("eta")] int? Eta, [property: JsonPropertyName("totalSize")] long? TotalSize, [property: JsonPropertyName("downloadedEver")] long? DownloadedEver, [property: JsonPropertyName("peersConnected")] int? PeersConnected, [property: JsonPropertyName("addedDate")] long? AddedDate, [property: JsonPropertyName("downloadDir")] string? DownloadDir, [property: JsonPropertyName("labels")] IReadOnlyList<string>? Labels, [property: JsonPropertyName("error")] int? Error, [property: JsonPropertyName("errorString")] string? ErrorString, [property: JsonPropertyName("peersSendingToUs")] int? PeersSendingToUs = null, [property: JsonPropertyName("isStalled")] bool? IsStalled = null, [property: JsonPropertyName("uploadRatio")] double? UploadRatio = null, [property: JsonPropertyName("secondsSeeding")] long? SecondsSeeding = null, [property: JsonPropertyName("isPrivate")] bool? IsPrivate = null, [property: JsonPropertyName("trackerStats")] IReadOnlyList<TransmissionTrackerStat>? TrackerStats = null, [property: JsonPropertyName("files")] IReadOnlyList<TransmissionFile>? Files = null);
 
     /// <summary>One tracker's own last-announce result, from Transmission's <c>trackerStats</c> (#878).</summary>
     private sealed record TransmissionTrackerStat(
         [property: JsonPropertyName("lastAnnounceResult")] string? LastAnnounceResult,
         [property: JsonPropertyName("lastAnnounceSucceeded")] bool? LastAnnounceSucceeded,
         [property: JsonPropertyName("hasAnnounced")] bool? HasAnnounced);
+
+    /// <summary>One file inside a torrent (#816); <c>name</c> is its path relative to the torrent's own folder.</summary>
+    private sealed record TransmissionFile([property: JsonPropertyName("name")] string? Name);
 }

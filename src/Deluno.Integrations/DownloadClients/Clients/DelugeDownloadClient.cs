@@ -132,6 +132,34 @@ public sealed class DelugeDownloadClient(IHttpClientFactory httpClientFactory) :
         }
     }
 
+    /// <summary>
+    /// Deluge's <c>core.get_torrent_status</c> asked only for <c>files</c>
+    /// (#816): each entry's own path relative to the torrent's folder. Null
+    /// when the address is missing or the call fails.
+    /// </summary>
+    public override async Task<IReadOnlyList<string>?> GetFilesAsync(DownloadClientItem client, string queueItemId, CancellationToken cancellationToken)
+    {
+        var baseUri = DownloadClientHelpers.ResolveEndpoint(client);
+        if (baseUri is null || string.IsNullOrWhiteSpace(queueItemId)) return null;
+
+        try
+        {
+            var http = CreateHttp();
+            await LoginAsync(http, baseUri, client, cancellationToken);
+            var payload = new DelugeRequest("core.get_torrent_status", [queueItemId, new[] { "files" }], 2);
+            var response = await DownloadClientHelpers.PostJsonAsync<DelugeResponse<DelugeFilesResult>>(http, new Uri(baseUri, "json"), payload, cancellationToken);
+            return response?.Result?.Files
+                ?.Select(file => file.Path)
+                .Where(path => !string.IsNullOrWhiteSpace(path))
+                .Select(path => path!)
+                .ToArray();
+        }
+        catch (Exception exception) when (exception is HttpRequestException or JsonException or TaskCanceledException)
+        {
+            return null;
+        }
+    }
+
     public override async Task<DownloadClientActionResult> ExecuteActionAsync(DownloadClientItem client, string action, string queueItemId, CancellationToken cancellationToken)
     {
         // One arm per verb. `remove_data` is the second argument to
@@ -352,5 +380,7 @@ public sealed class DelugeDownloadClient(IHttpClientFactory httpClientFactory) :
     private sealed record DelugeResponse<T>([property: JsonPropertyName("result")] T? Result, [property: JsonPropertyName("error")] DelugeError? Error = null);
     private sealed record DelugeError([property: JsonPropertyName("message")] string? Message);
     private sealed record DelugeUpdateResult([property: JsonPropertyName("torrents")] IReadOnlyDictionary<string, DelugeTorrent>? Torrents);
+    private sealed record DelugeFilesResult([property: JsonPropertyName("files")] IReadOnlyList<DelugeFileEntry>? Files);
+    private sealed record DelugeFileEntry([property: JsonPropertyName("path")] string? Path);
     private sealed record DelugeTorrent([property: JsonPropertyName("name")] string? Name, [property: JsonPropertyName("state")] string? State, [property: JsonPropertyName("progress")] double? Progress, [property: JsonPropertyName("download_payload_rate")] double? DownloadPayloadRate, [property: JsonPropertyName("upload_payload_rate")] double? UploadPayloadRate, [property: JsonPropertyName("eta")] double? Eta, [property: JsonPropertyName("total_size")] double? TotalSize, [property: JsonPropertyName("total_done")] double? TotalDone, [property: JsonPropertyName("num_peers")] int? NumPeers, [property: JsonPropertyName("time_added")] double? TimeAdded, [property: JsonPropertyName("label")] string? Label, [property: JsonPropertyName("message")] string? Message, [property: JsonPropertyName("save_path")] string? SavePath, [property: JsonPropertyName("move_completed")] bool? MoveCompleted = null, [property: JsonPropertyName("move_completed_path")] string? MoveCompletedPath = null, [property: JsonPropertyName("ratio")] double? Ratio = null, [property: JsonPropertyName("seeding_time")] double? SeedingTime = null, [property: JsonPropertyName("tracker_status")] string? TrackerStatus = null, [property: JsonPropertyName("private")] bool? Private = null);
 }

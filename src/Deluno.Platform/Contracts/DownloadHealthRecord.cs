@@ -158,13 +158,21 @@ public static class DownloadHealthStrikes
     /// </summary>
     public const string TrackerUnregistered = "tracker-unregistered";
 
+    /// <summary>
+    /// A file inside the download matched the content blocklist, and the
+    /// dedicated rule (#879, off by default) is enabled - a single instant
+    /// strike, not a timed one: one confirmed dangerous file is enough.
+    /// </summary>
+    public const string DangerousFile = "dangerous-file";
+
     public static bool Counts(string kind)
         => string.Equals(kind, ClientStalled, StringComparison.OrdinalIgnoreCase) ||
            string.Equals(kind, NoThroughput, StringComparison.OrdinalIgnoreCase) ||
            string.Equals(kind, LowSpeed, StringComparison.OrdinalIgnoreCase) ||
            string.Equals(kind, LowPeers, StringComparison.OrdinalIgnoreCase) ||
            string.Equals(kind, DeadTorrent, StringComparison.OrdinalIgnoreCase) ||
-           string.Equals(kind, TrackerUnregistered, StringComparison.OrdinalIgnoreCase);
+           string.Equals(kind, TrackerUnregistered, StringComparison.OrdinalIgnoreCase) ||
+           string.Equals(kind, DangerousFile, StringComparison.OrdinalIgnoreCase);
 
     /// <summary>Strikes for a problem seen without a break since <paramref name="since"/>, under <paramref name="window"/>.</summary>
     public static int For(DateTimeOffset since, DateTimeOffset now, TimeSpan window)

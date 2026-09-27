@@ -40,7 +40,15 @@ public static class DownloadHealthRuleKinds
     /// </summary>
     public const string DeadTorrent = "dead-torrent";
 
-    public static readonly IReadOnlyList<string> All = [NoProgress, TooSlow, LowPeers, DeadTorrent];
+    /// <summary>
+    /// A file inside the download matched the content blocklist (#816, #879)
+    /// - the telemetry source #905's own doc comment said this kind was
+    /// waiting on. Applies to both torrents and Usenet alike; the signal is
+    /// the file listing, not the protocol.
+    /// </summary>
+    public const string DangerousFile = "dangerous-file";
+
+    public static readonly IReadOnlyList<string> All = [NoProgress, TooSlow, LowPeers, DeadTorrent, DangerousFile];
 
     public static bool IsKnown(string kind) => All.Contains(kind, StringComparer.OrdinalIgnoreCase);
 
@@ -255,6 +263,7 @@ public static class DownloadHealthRuleValidator
         DownloadHealthRuleKinds.TooSlow => "Too slow",
         DownloadHealthRuleKinds.LowPeers => "Not enough peers",
         DownloadHealthRuleKinds.DeadTorrent => "Dead torrent",
+        DownloadHealthRuleKinds.DangerousFile => "Dangerous or junk file",
         _ => kind
     };
 

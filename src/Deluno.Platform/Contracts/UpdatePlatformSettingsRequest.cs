@@ -100,4 +100,5 @@ public sealed record UpdatePlatformSettingsRequest(
     bool? SkipFreeSpaceCheck = null,
     bool? RemoveAndDeletePackedArchivesFromClient = null,
     string? UnmatchedImportPolicy = null,
-    int? UnmatchedImportGiveUpDays = null);
+    int? UnmatchedImportGiveUpDays = null,
+    bool? DownloadHealthDangerousFileEnabled = null);

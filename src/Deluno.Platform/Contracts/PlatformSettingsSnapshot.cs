@@ -236,7 +236,15 @@ public sealed record PlatformSettingsSnapshot(
     string UnmatchedImportPolicy = UnmatchedImportPolicies.Hold,
     // How many days "give-up-after-days" waits before Deluno removes the
     // download, deletes the file, blocklists the release and searches again.
-    int UnmatchedImportGiveUpDays = 7);
+    int UnmatchedImportGiveUpDays = 7,
+    // #879 (cleanup sheet row C6): the dangerous-or-junk-file rule kind in
+    // the #905 engine, migrated the same way DownloadHealthNoProgressEnabled
+    // and its siblings are - a flat legacy toggle an installation reads until
+    // it saves its own rule through the (still-to-come) rule editor. Off by
+    // default (#936): #816's content-blocklist check can surface a finding
+    // on its own once turned on, but nothing strikes, removes, deletes or
+    // blocklists on its own until this is explicitly turned on too.
+    bool DownloadHealthDangerousFileEnabled = false);
 
 /// <summary>The choices behind <see cref="PlatformSettingsSnapshot.UnmatchedImportPolicy"/> (#888).</summary>
 public static class UnmatchedImportPolicies

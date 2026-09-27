@@ -57,6 +57,7 @@ public static class WorkerServiceCollectionExtensions
         services.AddHostedService<DelunoHeartbeatWorker>();
         services.AddHostedService<DownloadThroughputSampler>();
         services.AddHostedService<HistoryRetentionWorker>();
+        services.AddHostedService<QbittorrentBlocklistSyncService>();
 
         // One probe for the whole process: rates are measured between calls, so
         // a second instance would reset this one's baseline (#272).

@@ -185,8 +185,46 @@ export interface PlatformSettingsSnapshot {
   skipFreeSpaceCheck: boolean;
   /** #887: off by default. A still-packed archive is always blocklisted (per-reason, on the failure rules console); this decides whether it is also removed and deleted from the download client. */
   removeAndDeletePackedArchivesFromClient: boolean;
+  /**
+   * #879: the "dangerous or junk file" rule in the download-health engine.
+   * Off by default (#936) - #816's content-blocklist check can still surface
+   * a warning on its own, but nothing removes, deletes or blocklists a
+   * download automatically until this is turned on too.
+   */
+  downloadHealthDangerousFileEnabled: boolean;
   updatedUtc: string;
 }
+
+/**
+ * #816's content-blocklist configuration, kept separately from
+ * PlatformSettingsSnapshot the same way download-health rules are - fetched
+ * and saved through its own small endpoint rather than living on the big flat
+ * settings object.
+ */
+export interface ContentBlocklistSettings {
+  enabled: boolean;
+  mode: "blacklist" | "whitelist" | string;
+  useBuiltInPatterns: boolean;
+  customPatterns: string[];
+  remoteUrl: string | null;
+  remotePatterns: string[];
+  lastRefreshedUtc: string | null;
+  /** #822: pushes this blocklist into every enabled qBittorrent client's own "Excluded file names" preference, hourly. Off by default and independent of `enabled`. */
+  syncToQbittorrentEnabled: boolean;
+  updatedUtc: string;
+}
+
+export const emptyContentBlocklistSettings: ContentBlocklistSettings = {
+  enabled: false,
+  mode: "blacklist",
+  useBuiltInPatterns: true,
+  customPatterns: [],
+  remoteUrl: null,
+  remotePatterns: [],
+  lastRefreshedUtc: null,
+  syncToQbittorrentEnabled: false,
+  updatedUtc: "1970-01-01T00:00:00Z",
+};
 
 export interface SetupProgressItem {
   lastCompletedStep: number;
@@ -362,5 +400,7 @@ export const emptyPlatformSettingsSnapshot: PlatformSettingsSnapshot = {
   minimumFreeSpaceMb: 100,
   skipFreeSpaceCheck: false,
   removeAndDeletePackedArchivesFromClient: false,
+  // #936: off by default, matching PlatformSettingsSnapshot's server-side default.
+  downloadHealthDangerousFileEnabled: false,
   updatedUtc: new Date(0).toISOString()
 };

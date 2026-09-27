@@ -288,6 +288,10 @@ public sealed class SqlitePlatformSettingsRepository(
         // default until somebody chooses otherwise.
         await UpsertSettingAsync(connection, transaction, "import.unmatchedPolicy", UnmatchedImportPolicies.IsKnown(request.UnmatchedImportPolicy ?? string.Empty) ? request.UnmatchedImportPolicy! : UnmatchedImportPolicies.Hold, updatedUtc, cancellationToken);
         await UpsertSettingAsync(connection, transaction, "import.unmatchedGiveUpDays", Math.Clamp(request.UnmatchedImportGiveUpDays ?? 7, 1, 365).ToString(CultureInfo.InvariantCulture), updatedUtc, cancellationToken);
+        // #879: off by default (#936); migrated into the #905 rule engine by
+        // IDownloadHealthRepository.GetDownloadHealthRulesAsync the same way
+        // the older download-health.* legacy toggles already are.
+        await UpsertSettingAsync(connection, transaction, "download-health.dangerousFile.enabled", request.DownloadHealthDangerousFileEnabled == true ? "true" : "false", updatedUtc, cancellationToken);
         // #909: warn and pause both read as "percent free remaining", so pause
         // must be the smaller number -- clamped here rather than merely
         // validated, so a stored value can never be read back the wrong way
@@ -660,7 +664,8 @@ public sealed class SqlitePlatformSettingsRepository(
             UnmatchedImportPolicy: UnmatchedImportPolicies.IsKnown(GetValue(settings, "import.unmatchedPolicy") ?? string.Empty)
                 ? GetValue(settings, "import.unmatchedPolicy")!
                 : UnmatchedImportPolicies.Hold,
-            UnmatchedImportGiveUpDays: ReadPositiveInt(GetValue(settings, "import.unmatchedGiveUpDays"), 7, 1, 365));
+            UnmatchedImportGiveUpDays: ReadPositiveInt(GetValue(settings, "import.unmatchedGiveUpDays"), 7, 1, 365),
+            DownloadHealthDangerousFileEnabled: string.Equals(GetValue(settings, "download-health.dangerousFile.enabled"), "true", StringComparison.OrdinalIgnoreCase));
     }
 
     private static string NormalizeMultiEpisodeStyle(string? value)

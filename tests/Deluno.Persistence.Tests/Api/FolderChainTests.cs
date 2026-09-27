@@ -168,6 +168,8 @@ public sealed class FolderChainTests
 
         public Task<IReadOnlyList<DownloadClientHistoryItem>> GetHistoryAsync(DownloadClientItem client, DateTimeOffset capturedUtc, CancellationToken cancellationToken) => Task.FromResult<IReadOnlyList<DownloadClientHistoryItem>>([]);
 
+        public Task<IReadOnlyList<string>?> GetFilesAsync(DownloadClientItem client, string queueItemId, CancellationToken cancellationToken) => Task.FromResult<IReadOnlyList<string>?>(null);
+
         public string NormalizeStatus(string? nativeStatus, double? progress, int? errorCode = null, string? errorMessage = null) => nativeStatus ?? "unknown";
     }
 }

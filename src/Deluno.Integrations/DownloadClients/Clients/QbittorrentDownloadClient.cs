@@ -18,7 +18,7 @@ namespace Deluno.Integrations.DownloadClients.Clients;
 /// and why no test could have caught it. The default is exactly what it built
 /// before, so a real deployment is unchanged.</para>
 /// </summary>
-public sealed class QbittorrentDownloadClient(Func<HttpMessageHandler>? handlerFactory = null) : DownloadClientBase
+public sealed class QbittorrentDownloadClient(Func<HttpMessageHandler>? handlerFactory = null) : DownloadClientBase, IQbittorrentBlocklistSyncClient
 {
     private readonly Func<HttpMessageHandler> handlerFactory =
         handlerFactory ?? (() => new HttpClientHandler { CookieContainer = new CookieContainer() });
@@ -472,6 +472,71 @@ public sealed class QbittorrentDownloadClient(Func<HttpMessageHandler>? handlerF
         }
     }
 
+    /// <summary>
+    /// qBittorrent's <c>api/v2/torrents/files?hash=</c> (#816): every file
+    /// inside one torrent, by its own relative name. Null (not one word about
+    /// it) when the address is missing or the call itself fails, so a content
+    /// blocklist check falls back to the release name rather than reading
+    /// silence as "no files".
+    /// </summary>
+    public override async Task<IReadOnlyList<string>?> GetFilesAsync(DownloadClientItem client, string queueItemId, CancellationToken cancellationToken)
+    {
+        var baseUri = DownloadClientHelpers.ResolveEndpoint(client);
+        if (baseUri is null || string.IsNullOrWhiteSpace(queueItemId)) return null;
+
+        try
+        {
+            using var handler = this.handlerFactory();
+            using var http = new HttpClient(handler) { BaseAddress = baseUri, Timeout = TimeSpan.FromSeconds(8) };
+            await LoginAsync(http, client, cancellationToken);
+            var query = $"api/v2/torrents/files?hash={Uri.EscapeDataString(queueItemId)}";
+            var files = await http.GetFromJsonAsync<QbitTorrentFile[]>(query, cancellationToken);
+            return files is null
+                ? null
+                : files
+                    .Select(file => file.Name)
+                    .Where(name => !string.IsNullOrWhiteSpace(name))
+                    .Select(name => name!)
+                    .ToArray();
+        }
+        catch (Exception exception) when (exception is HttpRequestException or JsonException or TaskCanceledException)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// #822: qBittorrent's own <c>app/setPreferences</c>, writing only
+    /// <c>excluded_file_names</c> - it never touches
+    /// <c>excluded_file_names_enabled</c>, so a person's own choice about
+    /// whether qBittorrent applies the list is never overridden.
+    /// </summary>
+    public async Task<(bool Succeeded, string? Message)> PushExcludedFileNamesAsync(
+        DownloadClientItem client,
+        IReadOnlyList<string> patterns,
+        CancellationToken cancellationToken)
+    {
+        var baseUri = DownloadClientHelpers.ResolveEndpoint(client);
+        if (baseUri is null) return (false, "Download client address is missing.");
+
+        try
+        {
+            using var handler = this.handlerFactory();
+            using var http = new HttpClient(handler) { BaseAddress = baseUri, Timeout = TimeSpan.FromSeconds(8) };
+            await LoginAsync(http, client, cancellationToken);
+            var json = JsonSerializer.Serialize(new { excluded_file_names = string.Join('\n', patterns) });
+            using var body = new FormUrlEncodedContent([new KeyValuePair<string, string>("json", json)]);
+            using var response = await http.PostAsync("api/v2/app/setPreferences", body, cancellationToken);
+            return response.IsSuccessStatusCode
+                ? (true, (string?)null)
+                : (false, $"qBittorrent returned {(int)response.StatusCode}.");
+        }
+        catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException or InvalidOperationException)
+        {
+            return (false, exception.Message);
+        }
+    }
+
     public override async Task<DownloadClientActionResult> ExecuteActionAsync(DownloadClientItem client, string action, string queueItemId, CancellationToken cancellationToken)
     {
         var baseUri = DownloadClientHelpers.ResolveEndpoint(client);
@@ -720,6 +785,8 @@ public sealed class QbittorrentDownloadClient(Func<HttpMessageHandler>? handlerF
         [property: JsonPropertyName("completion_on")] long? CompletionOn = null);
 
     private sealed record QbitMainData([property: JsonPropertyName("server_state")] QbitServerState? ServerState);
+
+    private sealed record QbitTorrentFile([property: JsonPropertyName("name")] string? Name);
 
     private sealed record QbitServerState([property: JsonPropertyName("free_space_on_disk")] long? FreeSpaceOnDisk);
 

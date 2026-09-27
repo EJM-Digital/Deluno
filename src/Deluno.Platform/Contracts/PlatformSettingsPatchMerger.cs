@@ -109,5 +109,6 @@ public static class PlatformSettingsPatchMerger
             SkipFreeSpaceCheck: patch.SkipFreeSpaceCheck ?? current.SkipFreeSpaceCheck,
             RemoveAndDeletePackedArchivesFromClient: patch.RemoveAndDeletePackedArchivesFromClient ?? current.RemoveAndDeletePackedArchivesFromClient,
             UnmatchedImportPolicy: patch.UnmatchedImportPolicy ?? current.UnmatchedImportPolicy,
-            UnmatchedImportGiveUpDays: patch.UnmatchedImportGiveUpDays ?? current.UnmatchedImportGiveUpDays);
+            UnmatchedImportGiveUpDays: patch.UnmatchedImportGiveUpDays ?? current.UnmatchedImportGiveUpDays,
+            DownloadHealthDangerousFileEnabled: patch.DownloadHealthDangerousFileEnabled ?? current.DownloadHealthDangerousFileEnabled);
 }

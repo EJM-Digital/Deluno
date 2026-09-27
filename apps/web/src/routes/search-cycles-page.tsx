@@ -41,7 +41,9 @@ import {
   type QualityModelSnapshot,
   type SearchCycleRunItem,
   type BlockedRelease,
-  type RecycleBinSettings
+  type RecycleBinSettings,
+  type ContentBlocklistSettings,
+  emptyContentBlocklistSettings
 } from "../lib/api";
 import type { PlatformSettingsPatch } from "../lib/api/settings";
 import { useApiMutation } from "../lib/use-api-mutation";
@@ -79,10 +81,11 @@ interface LoaderData {
   blockedReleases: BlockedRelease[];
   failureRules: ImportFailureRule[];
   recycleBinSettings: RecycleBinSettings;
+  contentBlocklist: ContentBlocklistSettings;
 }
 
 export async function searchCyclesLoader(): Promise<LoaderData> {
-  const [automationStates, libraries, qualityModel, settings, searchCycles, blockedReleases, failureRules, recycleBinSettings] = await Promise.all([
+  const [automationStates, libraries, qualityModel, settings, searchCycles, blockedReleases, failureRules, recycleBinSettings, contentBlocklist] = await Promise.all([
     fetchPageItems<LibraryAutomationStateItem>("/api/library-automation?pageSize=50"),
     fetchJson<LibraryItem[]>("/api/libraries"),
     fetchJson<QualityModelSnapshot>("/api/quality-model"),
@@ -90,9 +93,11 @@ export async function searchCyclesLoader(): Promise<LoaderData> {
     fetchPageItems<SearchCycleRunItem>("/api/search-cycles?pageSize=50"),
     fetchJson<BlockedRelease[]>("/api/blocked-releases").catch(() => []),
     fetchJson<ImportFailureRule[]>("/api/failure-rules").catch(() => []),
-    fetchJson<RecycleBinSettings>("/api/recycle-bin/settings")
+    fetchJson<RecycleBinSettings>("/api/recycle-bin/settings"),
+    // #816: its own small endpoint, not part of the flat settings object.
+    fetchJson<ContentBlocklistSettings>("/api/download-health/content-blocklist").catch(() => emptyContentBlocklistSettings)
   ]);
-  return { automationStates, libraries, qualityModel, settings, searchCycles, blockedReleases, failureRules, recycleBinSettings };
+  return { automationStates, libraries, qualityModel, settings, searchCycles, blockedReleases, failureRules, recycleBinSettings, contentBlocklist };
 }
 
 interface AutomationForm {
@@ -184,14 +189,37 @@ interface CleanupForm {
   // before a processor or the library ever sees it. Off by default (#936).
   downloadIntegrityCheckEnabled: boolean;
   downloadIntegrityMinimumRuntimePercent: string;
+  // #879: acted on through #816's file-content check, not the release name.
+  dangerousFileEnabled: boolean;
+}
+
+interface ContentBlocklistForm {
+  enabled: boolean;
+  mode: "blacklist" | "whitelist";
+  useBuiltInPatterns: boolean;
+  customPatterns: string;
+  remoteUrl: string;
+  syncToQbittorrentEnabled: boolean;
+}
+
+function contentBlocklistFrom(settings: ContentBlocklistSettings): ContentBlocklistForm {
+  return {
+    enabled: settings.enabled,
+    mode: settings.mode === "whitelist" ? "whitelist" : "blacklist",
+    useBuiltInPatterns: settings.useBuiltInPatterns,
+    customPatterns: settings.customPatterns.join("\n"),
+    remoteUrl: settings.remoteUrl ?? "",
+    syncToQbittorrentEnabled: settings.syncToQbittorrentEnabled
+  };
 }
 
 export function SearchCyclesPage() {
-  const { automationStates, libraries, qualityModel: loadedQualityModel, settings, searchCycles, blockedReleases, failureRules, recycleBinSettings } = useLoaderData() as LoaderData;
+  const { automationStates, libraries, qualityModel: loadedQualityModel, settings, searchCycles, blockedReleases, failureRules, recycleBinSettings, contentBlocklist: loadedContentBlocklist } = useLoaderData() as LoaderData;
   const location = useLocation();
   const navigate = useNavigate();
   const revalidator = useRevalidator();
   const settingsMutation = useApiMutation<PlatformSettingsPatch, PlatformSettingsSnapshot>("/api/settings", "PATCH");
+  const contentBlocklistMutation = useApiMutation<ContentBlocklistSettings, ContentBlocklistSettings>("/api/download-health/content-blocklist", "PUT");
 
   // A fallback poll, kept running while the tab is hidden so the schedule is
   // already current when it is looked at (#641).
@@ -337,16 +365,19 @@ export function SearchCyclesPage() {
   const [cleanup, setCleanup] = useState<CleanupForm>(savedCleanup);
   const [savedSharing, setSavedSharing] = useState<SharingForm>(() => sharingFrom(settings));
   const [sharing, setSharing] = useState<SharingForm>(savedSharing);
+  const [savedContentBlocklist, setSavedContentBlocklist] = useState<ContentBlocklistForm>(() => contentBlocklistFrom(loadedContentBlocklist));
+  const [contentBlocklist, setContentBlocklist] = useState<ContentBlocklistForm>(savedContentBlocklist);
   const [savedQualityModel, setSavedQualityModel] = useState(loadedQualityModel);
   const [qualityModel, setQualityModel] = useState(loadedQualityModel);
   const [cleanupState, setCleanupState] = useState<Exclude<DrawerSaveState, "clean" | "dirty">>();
   const [cleanupMessage, setCleanupMessage] = useState<string | null>(null);
 
-  const cleanupDirty = !same(cleanup, savedCleanup) || !same(sharing, savedSharing);
+  const cleanupDirty = !same(cleanup, savedCleanup) || !same(sharing, savedSharing) || !same(contentBlocklist, savedContentBlocklist);
   const qualityDirty = !same(qualityModel, savedQualityModel);
   const automationDirty = cleanupDirty || qualityDirty;
   const settingsCleanup = useMemo(() => cleanupFrom(settings), [settings]);
   const settingsSharing = useMemo(() => sharingFrom(settings), [settings]);
+  const settingsContentBlocklist = useMemo(() => contentBlocklistFrom(loadedContentBlocklist), [loadedContentBlocklist]);
   useEffect(() => {
     // Adopt server state only when the user has nothing unsaved in this form.
     if (cleanupDirty || same(savedCleanup, settingsCleanup)) return;
@@ -354,7 +385,9 @@ export function SearchCyclesPage() {
     setCleanup(settingsCleanup);
     setSavedSharing(settingsSharing);
     setSharing(settingsSharing);
-  }, [cleanupDirty, savedCleanup, settingsCleanup, settingsSharing]);
+    setSavedContentBlocklist(settingsContentBlocklist);
+    setContentBlocklist(settingsContentBlocklist);
+  }, [cleanupDirty, savedCleanup, settingsCleanup, settingsSharing, settingsContentBlocklist]);
 
   const cleanupFooter: DrawerSaveState = resolveDrawerSaveState(cleanupState, automationDirty);
   useUnsavedChanges(automationDirty || drawerDirty);
@@ -388,6 +421,7 @@ export function SearchCyclesPage() {
             downloadHealthDeadTorrentGraceMinutes: Math.max(0, Math.min(1440, Number(cleanup.deadTorrentGraceMinutes || 60))),
             downloadIntegrityCheckEnabled: cleanup.downloadIntegrityCheckEnabled,
             downloadIntegrityMinimumRuntimePercent: Math.max(1, Math.min(100, Number(cleanup.downloadIntegrityMinimumRuntimePercent || 80))),
+            downloadHealthDangerousFileEnabled: cleanup.dangerousFileEnabled,
             sharingMode: sharing.mode,
             // A blank target is sent as null, which the API stores as
             // "deliberately not part of this rule" rather than "never set".
@@ -401,8 +435,20 @@ export function SearchCyclesPage() {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ tiers: loadedQualityModel.tiers, upgradeStop: qualityModel.upgradeStop })
+        }),
+        contentBlocklistMutation.mutate({
+          enabled: contentBlocklist.enabled,
+          mode: contentBlocklist.mode,
+          useBuiltInPatterns: contentBlocklist.useBuiltInPatterns,
+          customPatterns: contentBlocklist.customPatterns.split("\n").map((line) => line.trim()).filter(Boolean),
+          remoteUrl: contentBlocklist.remoteUrl.trim() === "" ? null : contentBlocklist.remoteUrl.trim(),
+          remotePatterns: loadedContentBlocklist.remotePatterns,
+          lastRefreshedUtc: loadedContentBlocklist.lastRefreshedUtc,
+          syncToQbittorrentEnabled: contentBlocklist.syncToQbittorrentEnabled,
+          updatedUtc: loadedContentBlocklist.updatedUtc
         })
       ]);
+      setSavedContentBlocklist(contentBlocklist);
       // Move the baseline first: the revalidation below is slower than the render.
       setSavedCleanup(cleanup);
       setSavedSharing(sharing);
@@ -691,6 +737,58 @@ export function SearchCyclesPage() {
         </div>
       </ListCard> : null}
 
+      {view === "failed" ? <ListCard title="Content blocklist" count="Checks the files inside a download, not just its name">
+        <div className="grid gap-[var(--grid-gap)] p-[var(--card-pad-x)]">
+          <SwitchRow
+            label="Check files inside downloads"
+            description="Match every file actually inside a download against the patterns below, instead of only its release name."
+            checked={contentBlocklist.enabled}
+            onCheckedChange={(checked) => setContentBlocklist((current) => ({ ...current, enabled: checked }))}
+          />
+          <div className="grid gap-[var(--grid-gap)] sm:grid-cols-2">
+            <Field label="Mode" help="Blacklist blocks a matching file. Whitelist blocks everything except a matching file.">
+              <SegmentedControl
+                value={contentBlocklist.mode}
+                onValueChange={(value) => setContentBlocklist((current) => ({ ...current, mode: value }))}
+                options={[
+                  { value: "blacklist", label: "Blacklist" },
+                  { value: "whitelist", label: "Whitelist" }
+                ]}
+              />
+            </Field>
+            <SwitchRow
+              label="Include Deluno's built-in patterns"
+              description="Executable, script and shortcut extensions Deluno ships with, on top of anything entered below."
+              checked={contentBlocklist.useBuiltInPatterns}
+              onCheckedChange={(checked) => setContentBlocklist((current) => ({ ...current, useBuiltInPatterns: checked }))}
+            />
+          </div>
+          <Field label="Custom patterns" help="One glob pattern per line, e.g. *.exe or autorun.inf.">
+            <textarea
+              className="min-h-[6rem] w-full rounded-[var(--radius-md)] border border-hairline bg-transparent p-[var(--space-sm)] text-[length:var(--type-body-sm)]"
+              value={contentBlocklist.customPatterns}
+              onChange={(event) => setContentBlocklist((current) => ({ ...current, customPatterns: event.target.value }))}
+              placeholder={"*.exe\n*.scr"}
+            />
+          </Field>
+          <Field label="Custom remote list URL" help="Optional. Refetched periodically and combined with the patterns above.">
+            <input
+              type="url"
+              className="h-9 w-full rounded-[var(--radius-md)] border border-hairline bg-transparent px-[var(--space-sm)] text-[length:var(--type-body-sm)]"
+              value={contentBlocklist.remoteUrl}
+              onChange={(event) => setContentBlocklist((current) => ({ ...current, remoteUrl: event.target.value }))}
+              placeholder="https://example.com/blocklist.txt"
+            />
+          </Field>
+          <SwitchRow
+            label="Push into qBittorrent's Excluded file names"
+            description="Every hour, sets qBittorrent's own 'Excluded file names' preference to this list, only when it changed. Deluno never turns that qBittorrent setting on by itself — qBittorrent still needs its own 'Excluded file names' toggle on to actually skip a matching file."
+            checked={contentBlocklist.syncToQbittorrentEnabled}
+            onCheckedChange={(checked) => setContentBlocklist((current) => ({ ...current, syncToQbittorrentEnabled: checked }))}
+          />
+        </div>
+      </ListCard> : null}
+
       {view === "failed" ? <ListCard title="Failed downloads" count={`After ${cleanup.strikeThreshold || 3} strikes on the same release`}>
         <div className="grid gap-[var(--grid-gap)] p-[var(--card-pad-x)]">
           <Field label="Act after this many strikes" help="A strike is each half hour a download stays stalled or has nothing arriving. It starts again once the download moves." className="max-w-[16rem]">
@@ -907,7 +1005,8 @@ function cleanupFrom(settings: PlatformSettingsSnapshot): CleanupForm {
     deadTorrentEnabled: settings.downloadHealthDeadTorrentEnabled,
     deadTorrentGraceMinutes: String(settings.downloadHealthDeadTorrentGraceMinutes ?? 60),
     downloadIntegrityCheckEnabled: settings.downloadIntegrityCheckEnabled,
-    downloadIntegrityMinimumRuntimePercent: String(settings.downloadIntegrityMinimumRuntimePercent ?? 80)
+    downloadIntegrityMinimumRuntimePercent: String(settings.downloadIntegrityMinimumRuntimePercent ?? 80),
+    dangerousFileEnabled: settings.downloadHealthDangerousFileEnabled ?? false
   };
 }
 function nextSearchLabel(view: string, library: LibraryItem, state: LibraryAutomationStateItem | undefined): string | null {

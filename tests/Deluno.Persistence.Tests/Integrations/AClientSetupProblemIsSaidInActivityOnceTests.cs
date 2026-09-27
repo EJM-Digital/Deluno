@@ -134,6 +134,9 @@ public sealed class AClientSetupProblemIsSaidInActivityOnceTests
         public Task<DownloadClientCategoryCheckResult> CheckCategoryAsync(DownloadClientItem client, string category, CancellationToken cancellationToken)
             => throw new NotSupportedException();
 
+        public Task<IReadOnlyList<string>?> GetFilesAsync(DownloadClientItem client, string queueItemId, CancellationToken cancellationToken)
+            => Task.FromResult<IReadOnlyList<string>?>(null);
+
         public string NormalizeStatus(string? nativeStatus, double? progress, int? errorCode = null, string? errorMessage = null)
             => nativeStatus ?? "unknown";
     }

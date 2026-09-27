@@ -116,4 +116,5 @@ public sealed record PatchPlatformSettingsRequest(
     bool? RemoveAndDeletePackedArchivesFromClient = null,
     /// <summary>#888: hold for manual import (default), give up after N days, or retry once then treat it as bad.</summary>
     string? UnmatchedImportPolicy = null,
-    int? UnmatchedImportGiveUpDays = null);
+    int? UnmatchedImportGiveUpDays = null,
+    bool? DownloadHealthDangerousFileEnabled = null);
