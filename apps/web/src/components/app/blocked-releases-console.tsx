@@ -15,7 +15,8 @@
  * single title will search for it themselves.</p>
  *
  * Contract: GET /api/blocked-releases, DELETE /api/blocked-releases/{id},
- * POST /api/blocked-releases/{id}/refuse, POST /api/blocked-releases/{id}/cleanup.
+ * POST /api/blocked-releases/{id}/refuse, POST /api/blocked-releases/{id}/cleanup,
+ * POST /api/blocked-releases/cleanup-all.
  */
 import { useState } from "react";
 import { Check, Eraser, RotateCcw, X } from "lucide-react";
@@ -25,10 +26,19 @@ import { authedFetch } from "../../lib/use-auth";
 import { toast } from "../shell/toaster";
 import { Button } from "../ui/button";
 import { Chip } from "../ui/chip";
+import { ConfirmDialog } from "../ui/confirm-dialog";
 import { Disclosure } from "../ui/disclosure";
 import { LIST_TRACK, ListCard, ListEmpty, ListNameCell, ListRow, ListTable } from "../ui/list-card";
 import { FailureRulesConsole } from "./failure-rules-console";
 import { FailureSchedulesConsole } from "./failure-schedules-console";
+
+/**
+ * Whether a person clicked Refuse, or Deluno decided this on its own (#800).
+ * Sonarr says this in its blocklist detail; this is the same fact, one chip.
+ */
+function originLabel(release: BlockedRelease): string {
+  return release.origin === "manual" ? "You blocked it" : "Deluno blocked it";
+}
 
 /**
  * What clearing up actually did, said the way a person would say it.
@@ -70,10 +80,44 @@ export function BlockedReleasesConsole({
   const [busyId, setBusyId] = useState<string | null>(null);
   const [rulesOpen, setRulesOpen] = useState(false);
   const [schedulesOpen, setSchedulesOpen] = useState(false);
+  const [cleanUpAllOpen, setCleanUpAllOpen] = useState(false);
+  const [cleaningUpAll, setCleaningUpAll] = useState(false);
 
   const proposed = releases.filter((release) => release.state === "proposed");
   const refused = releases.filter((release) => release.state !== "proposed");
   const changedRules = rules.filter((rule) => rule.isOverridden).length;
+
+  /**
+   * The bulk version of `cleanUp` below (#800): the same per-release rules,
+   * run once for every refused release rather than once per click. Behind a
+   * confirmation naming how many will be touched, because unlike un-refusing
+   * this does talk to a download client for each one.
+   */
+  async function cleanUpAll() {
+    setCleaningUpAll(true);
+    try {
+      const response = await authedFetch("/api/blocked-releases/cleanup-all", { method: "POST" });
+      if (!response.ok) throw new Error("cleanup-all-failed");
+
+      const result = (await response.json()) as { cleared: number; waitingOnSharing: number; failed: number };
+      if (result.cleared > 0) {
+        toast.success(
+          `Cleared ${result.cleared} release${result.cleared === 1 ? "" : "s"} at the download client.` +
+            (result.waitingOnSharing > 0 ? ` ${result.waitingOnSharing} left alone — still sharing.` : "")
+        );
+        onChanged();
+      } else if (result.waitingOnSharing > 0) {
+        toast.warning(`Nothing was cleared — ${result.waitingOnSharing} release${result.waitingOnSharing === 1 ? "" : "s"} still sharing.`);
+      } else {
+        toast.warning("There was nothing left to clear.");
+      }
+    } catch {
+      toast.error("The blocklist could not be cleared up.");
+    } finally {
+      setCleaningUpAll(false);
+      setCleanUpAllOpen(false);
+    }
+  }
 
   /**
    * The manual half of the scheduled clear-out — for a refusal that predates
@@ -183,6 +227,20 @@ export function BlockedReleasesConsole({
       <ListCard
         title="Blocklist"
         count={refused.length === 1 ? "1 refused release" : `${refused.length} refused releases`}
+        actions={
+          refused.length ? (
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              disabled={busyId !== null || cleaningUpAll}
+              onClick={() => setCleanUpAllOpen(true)}
+            >
+              <Eraser aria-hidden className="h-3.5 w-3.5" />
+              Clean up all
+            </Button>
+          ) : undefined
+        }
       >
         <ListTable
           chevron={false}
@@ -205,8 +263,9 @@ export function BlockedReleasesConsole({
                   name={release.releaseName}
                   sub={`${release.title ?? "Unknown title"} · ${whereItIsRefused(release)}`}
                 />
-                <div role="cell">
+                <div role="cell" className="flex flex-wrap gap-1.5">
                   <Chip tone="idle">{reasonWords(release.reasonCode)}</Chip>
+                  <Chip tone={release.origin === "manual" ? "info" : "idle"}>{originLabel(release)}</Chip>
                 </div>
                 <div role="cell" className="text-[length:var(--type-caption)] text-muted-foreground">
                   {new Date(release.blockedUtc).toLocaleDateString(undefined, {
@@ -275,6 +334,18 @@ export function BlockedReleasesConsole({
       >
         <FailureSchedulesConsole settings={settings} recycleBin={recycleBin} onChanged={onChanged} />
       </Disclosure>
+
+      <ConfirmDialog
+        open={cleanUpAllOpen}
+        onOpenChange={setCleanUpAllOpen}
+        title="Clean up every refused release?"
+        description={`This clears ${refused.length} refused release${refused.length === 1 ? "" : "s"} at their download clients — the same as clicking Clean up now on each row. A copy your sharing rule still needs is left alone.`}
+        confirmLabel="Clean up all"
+        confirmVariant="destructive"
+        presentation="default"
+        busy={cleaningUpAll}
+        onConfirm={() => void cleanUpAll()}
+      />
     </div>
   );
 }

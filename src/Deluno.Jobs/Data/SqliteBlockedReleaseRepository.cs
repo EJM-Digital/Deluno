@@ -24,10 +24,10 @@ public sealed class SqliteBlockedReleaseRepository(
             INSERT INTO blocked_releases (
                 id, release_key, release_name, indexer_name, media_type, entity_id, title,
                 reason_code, reason, torrent_hash_or_item_id, download_client_id,
-                download_client_name, blocked_utc, state
+                download_client_name, blocked_utc, state, origin
             ) VALUES (
                 @id, @releaseKey, @releaseName, @indexerName, @mediaType, @entityId, @title,
-                @reasonCode, @reason, @hash, @clientId, @clientName, @blockedUtc, @state
+                @reasonCode, @reason, @hash, @clientId, @clientName, @blockedUtc, @state, @origin
             )
             ON CONFLICT (release_key) DO NOTHING;
             """;
@@ -47,6 +47,7 @@ public sealed class SqliteBlockedReleaseRepository(
         Add(command, "@clientName", (object?)release.DownloadClientName ?? DBNull.Value);
         Add(command, "@blockedUtc", blockedUtc.ToString("O", CultureInfo.InvariantCulture));
         Add(command, "@state", release.State);
+        Add(command, "@origin", release.Origin);
 
         await command.ExecuteNonQueryAsync(cancellationToken);
 
@@ -67,7 +68,7 @@ public sealed class SqliteBlockedReleaseRepository(
         command.CommandText =
             "SELECT id, release_key, release_name, indexer_name, media_type, entity_id, title, "
             + "reason_code, reason, torrent_hash_or_item_id, download_client_id, "
-            + "download_client_name, blocked_utc, state FROM blocked_releases "
+            + "download_client_name, blocked_utc, state, origin FROM blocked_releases "
             + (where is null ? string.Empty : $"WHERE {where} ")
             + "ORDER BY blocked_utc DESC;";
 
@@ -89,7 +90,8 @@ public sealed class SqliteBlockedReleaseRepository(
                 reader.IsDBNull(10) ? null : reader.GetString(10),
                 reader.IsDBNull(11) ? null : reader.GetString(11),
                 DateTimeOffset.Parse(reader.GetString(12), CultureInfo.InvariantCulture),
-                reader.GetString(13)));
+                reader.GetString(13),
+                reader.GetString(14)));
         }
 
         return results;

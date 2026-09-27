@@ -40,6 +40,9 @@ public sealed class ABlockedReleaseCanBeAddedFromAnywhereTests
         Assert.Equal("Arrival.2016.2160p.UHD.BluRay", refused.ReleaseName);
         Assert.Equal(BlockedReleaseStates.Refused, refused.State);
         Assert.Equal(ImportFailurePolicy.ManualFailure, refused.ReasonCode);
+        // #800: blocked from this endpoint means a person named the release
+        // themselves, not Deluno deciding it on its own.
+        Assert.Equal(BlockedReleaseOrigins.Manual, refused.Origin);
         Assert.Null(refused.TorrentHashOrItemId);
         Assert.Null(refused.DownloadClientId);
         // Never downloaded: no client to stop, no client to clean up.

@@ -451,7 +451,8 @@ public sealed class DownloadClientTelemetryService(
                     dispatch.TorrentHashOrItemId ?? queueItemId,
                     client.Id,
                     client.Name,
-                    DateTimeOffset.MinValue),
+                    DateTimeOffset.MinValue,
+                    Origin: BlockedReleaseOrigins.Manual),
                 cancellationToken);
             blocklisted = true;
 

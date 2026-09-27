@@ -71,7 +71,8 @@ public static class BlockedReleasesEndpointRouteBuilderExtensions
                     hash,
                     null,
                     null,
-                    DateTimeOffset.MinValue),
+                    DateTimeOffset.MinValue,
+                    Origin: BlockedReleaseOrigins.Manual),
                 cancellationToken);
 
             // Recorded regardless of whether this is a fresh block or the
@@ -187,6 +188,20 @@ public static class BlockedReleasesEndpointRouteBuilderExtensions
             return outcome == RefusedDownloadCleanupOutcomes.NotFound
                 ? Results.NotFound()
                 : Results.Ok(new { outcome });
+        });
+
+        // The bulk half of the same button (#800): every refused release the
+        // schedule would eventually reach anyway, cleared now instead of
+        // waited for. Same service, same per-release rules — a copy a
+        // sharing hold still needs is still left alone and still counted
+        // under waitingOnSharing rather than silently skipped.
+        endpoints.MapPost("/api/blocked-releases/cleanup-all", async (
+            HttpContext httpContext,
+            [FromServices] IRefusedDownloadCleanupService cleanup,
+            CancellationToken cancellationToken) =>
+        {
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
+            return denied ?? Results.Ok(await cleanup.CleanUpEverythingAsync(cancellationToken));
         });
 
         return endpoints;

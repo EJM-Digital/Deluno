@@ -41,7 +41,14 @@ public sealed record BlockedRelease(
     string? DownloadClientId,
     string? DownloadClientName,
     DateTimeOffset BlockedUtc,
-    string State = BlockedReleaseStates.Refused)
+    string State = BlockedReleaseStates.Refused,
+    /// <summary>
+    /// Whether a person clicked Refuse or Deluno decided this on its own
+    /// (#800). Sonarr says this explicitly on its blocklist entries; Deluno's
+    /// did not before this, though the two call sites that ever set it
+    /// manually already existed and used the same reason code for it.
+    /// </summary>
+    string Origin = BlockedReleaseOrigins.Automatic)
 {
     /// <summary>
     /// Whether searches skip this release from every indexer rather than only
@@ -73,6 +80,18 @@ public static class BlockedReleaseStates
 
     /// <summary>Asked. Searches are unaffected until somebody answers.</summary>
     public const string Proposed = "proposed";
+}
+
+/// <summary>
+/// Whether a block was a person's decision or Deluno's own (#800).
+/// </summary>
+public static class BlockedReleaseOrigins
+{
+    /// <summary>A person clicked Refuse, or removed a download from the Queue and said it failed.</summary>
+    public const string Manual = "manual";
+
+    /// <summary>Deluno decided this on its own — a stalled download, a client-reported failure, a rejected import, or a processor rejection.</summary>
+    public const string Automatic = "automatic";
 }
 
 public static class BlockedReleaseKeys
