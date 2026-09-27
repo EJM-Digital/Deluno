@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { useLoaderData, useLocation, useNavigate, useRevalidator } from "react-router-dom";
-import { Loader2, Plus, Wifi } from "lucide-react";
+import { ListChecks, Loader2, Plus, Wifi } from "lucide-react";
 import {
   fetchJson,
   readValidationProblem,
@@ -27,6 +27,7 @@ import { DetectedComponents, type BundledComponentStatus } from "../components/a
 import { Button } from "../components/ui/button";
 import { ConnectionTestResult, type ConnectionTestOutcome } from "./connections/connection-test-result";
 import { Chip } from "../components/ui/chip";
+import { Checkbox } from "../components/ui/checkbox";
 import { ConfirmDialog } from "../components/ui/confirm-dialog";
 import { Drawer, DrawerFooter, type DrawerSaveState } from "../components/ui/drawer";
 import { ListCard, ListCell, ListEmpty, ListNameCell, ListRow, ListTable, LIST_TRACK } from "../components/ui/list-card";
@@ -41,6 +42,19 @@ import { ClientDrawerBody } from "./connections/client-drawer-body";
 import { IndexerDrawerBody } from "./connections/indexer-drawer-body";
 import { RoutingDrawerBody } from "./connections/routing-drawer-body";
 import { IndexerScoreboard } from "./connections/indexer-scoreboard";
+import {
+  emptyIndexerFilters,
+  filterIndexers,
+  IndexerBulkBar,
+  IndexerFilterBar,
+  IndexerSelectAllCheckbox,
+  IndexerSortHeader,
+  nextIndexerSort,
+  sortIndexers,
+  type IndexerBulkScope,
+  type IndexerFilters,
+  type IndexerSortState
+} from "./connections/indexer-list-controls";
 import { resolveDrawerSaveState, shouldClearSaveState } from "../lib/drawer-save-state";
 
 const TABS = configurationNavAreas.find((area) => area.to === "/indexers/indexers")?.items ?? [];
@@ -226,6 +240,74 @@ export function IndexersPage() {
     for (const mapping of pathMappings) map.set(mapping.downloadClientId, [...(map.get(mapping.downloadClientId) ?? []), mapping]);
     return map;
   }, [pathMappings]);
+
+  const [indexerSort, setIndexerSort] = useState<IndexerSortState | null>(null);
+  const [indexerFilters, setIndexerFilters] = useState<IndexerFilters>(emptyIndexerFilters);
+  const [selectMode, setSelectMode] = useState(false);
+  const [selectedIndexerIds, setSelectedIndexerIds] = useState<Set<string>>(new Set());
+  const [confirmBulkRemove, setConfirmBulkRemove] = useState(false);
+  const [bulkBusy, setBulkBusy] = useState(false);
+
+  const visibleIndexers = useMemo(() => sortIndexers(filterIndexers(indexers, indexerFilters), indexerSort), [indexers, indexerFilters, indexerSort]);
+
+  function toggleSelectMode() {
+    setSelectMode((current) => !current);
+    setSelectedIndexerIds(new Set());
+  }
+  function toggleIndexerSelected(id: string) {
+    setSelectedIndexerIds((current) => {
+      const next = new Set(current);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+  async function bulkSetEnabled(isEnabled: boolean) {
+    const ids = [...selectedIndexerIds];
+    if (!ids.length) return;
+    setBulkBusy(true);
+    try {
+      await Promise.all(ids.map((id) => send(`/api/indexers/${id}`, "PUT", { isEnabled })));
+      toast.success(`${ids.length} indexer${ids.length === 1 ? "" : "s"} ${isEnabled ? "enabled" : "paused"}`);
+      setSelectedIndexerIds(new Set());
+      revalidator.revalidate();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Bulk update failed.");
+    } finally {
+      setBulkBusy(false);
+    }
+  }
+  async function bulkSetScope(scope: IndexerBulkScope) {
+    const ids = [...selectedIndexerIds];
+    if (!ids.length) return;
+    setBulkBusy(true);
+    try {
+      await Promise.all(ids.map((id) => send(`/api/indexers/${id}`, "PUT", { mediaScope: scope })));
+      toast.success(`${ids.length} indexer${ids.length === 1 ? "" : "s"} set to ${scopeLabel(scope)}`);
+      setSelectedIndexerIds(new Set());
+      revalidator.revalidate();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Bulk update failed.");
+    } finally {
+      setBulkBusy(false);
+    }
+  }
+  async function bulkRemove() {
+    const ids = [...selectedIndexerIds];
+    if (!ids.length) return;
+    setBulkBusy(true);
+    try {
+      await Promise.all(ids.map((id) => send(`/api/indexers/${id}`, "DELETE")));
+      toast.success(`${ids.length} indexer${ids.length === 1 ? "" : "s"} removed`);
+      setSelectedIndexerIds(new Set());
+      revalidator.revalidate();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Bulk remove failed.");
+    } finally {
+      setBulkBusy(false);
+      setConfirmBulkRemove(false);
+    }
+  }
 
   const [drawer, setDrawer] = useState<DrawerState>({ kind: "closed" });
   const [indexerForm, setIndexerForm] = useState<IndexerForm>(emptyIndexerForm);
@@ -589,7 +671,21 @@ export function IndexersPage() {
       {section === "scoreboard" ? <IndexerScoreboard snapshot={scoreboard} /> : null}
 
       {section === "indexers" ? (
-        <ListCard title="Indexers" count={indexers.length ? `${indexers.length} ${indexers.length === 1 ? "indexer" : "indexers"} · ${healthyIndexers}/${enabledIndexers} healthy` : undefined}>
+        <ListCard
+          title="Indexers"
+          count={indexers.length ? `${indexers.length} ${indexers.length === 1 ? "indexer" : "indexers"} · ${healthyIndexers}/${enabledIndexers} healthy` : undefined}
+          actions={
+            indexers.length > 0 ? (
+              <div className="flex flex-wrap items-center gap-2">
+                <IndexerFilterBar indexers={indexers} filters={indexerFilters} onChange={setIndexerFilters} />
+                <Button type="button" variant={selectMode ? "secondary" : "ghost"} size="sm" onClick={toggleSelectMode}>
+                  <ListChecks className="h-3.5 w-3.5" />
+                  {selectMode ? "Done" : "Select"}
+                </Button>
+              </div>
+            ) : undefined
+          }
+        >
           {indexers.length === 0 ? (
             <ListEmpty
               title="No indexers yet"
@@ -602,33 +698,71 @@ export function IndexersPage() {
               }
             />
           ) : (
-            <ListTable columns={[{ label: "Name" }, { label: "Protocol" }, { label: "Used for" }, { label: "Last test" }, { label: "Pacing" }, { label: "Status", width: LIST_TRACK.status, mobile: true }, { label: "On", width: LIST_TRACK.toggle, mobile: true }]}>
-              {indexers.map((item) => {
-                const searchedBy = routing.filter((route) => route.sources.some((source) => source.indexerId === item.id)).map((route) => route.libraryName);
-                const chip = unusedChip(item, searchedBy.length, libraries.length) ?? healthChip(item);
-                const throttle = throttleByHost.get(indexerHost(item.baseUrl) ?? "");
-                return (
-                  <ListRow key={item.id} onClick={() => openIndexer(item)} selected={drawer.kind === "indexer" && drawer.id === item.id}>
-                    <ListNameCell name={item.name} sub={<span className="font-mono">{item.baseUrl}</span>} />
-                    {/* "Private"/"Public" was a label nobody could set, Deluno
-                        never read, and two normalisers disagreed about. What a
-                        person actually wants to know about a source at a glance
-                        is what it expects back — and only when that differs from
-                        their normal rule. */}
-                    <ListCell primary={protocolLabel(item.protocol)} secondary={sharingRuleFrom(item) === "strict" ? "Strict sharing" : undefined} />
-                    <ListCell primary={scopeLabel(item.mediaScope)} secondary={libraries.length === 0 ? `Priority ${item.priority}` : searchedBy.length ? `Searched by ${searchedBy.join(", ")}` : "No library searches it"} />
-                    <ListCell numeric primary={relative(item.lastHealthTestUtc)} secondary={item.consecutiveFailures > 0 ? `${item.consecutiveFailures} consecutive failure${item.consecutiveFailures === 1 ? "" : "s"}` : item.lastHealthLatencyMs != null ? `${item.lastHealthLatencyMs} ms` : item.lastHealthMessage ?? "—"} />
-                    <ListCell primary={<span aria-live="polite">{throttle?.waiting ? `${throttle.waiting} request${throttle.waiting === 1 ? "" : "s"} waiting` : throttle?.nextPermitInSeconds ? `Next in ${formatSeconds(throttle.nextPermitInSeconds)}` : "Ready"}</span>} secondary={throttle ? `Deluno is pacing ${throttle.host}` : "No recent requests"} />
-                    <ListCell mobile>
-                      <Chip tone={chip.tone}>{chip.label}</Chip>
-                    </ListCell>
-                    <ListCell mobile>
-                      <Switch size="sm" aria-label={`${item.isEnabled ? "Pause" : "Enable"} ${item.name}`} checked={item.isEnabled} disabled={busy === `toggle:${item.id}`} onCheckedChange={(checked) => void toggleIndexer(item, checked)} />
-                    </ListCell>
-                  </ListRow>
-                );
-              })}
-            </ListTable>
+            <>
+              {selectMode ? (
+                <IndexerBulkBar
+                  count={selectedIndexerIds.size}
+                  busy={bulkBusy}
+                  onEnable={() => void bulkSetEnabled(true)}
+                  onPause={() => void bulkSetEnabled(false)}
+                  onRemove={() => setConfirmBulkRemove(true)}
+                  onChangeScope={(scope) => void bulkSetScope(scope)}
+                  onClear={() => setSelectedIndexerIds(new Set())}
+                />
+              ) : null}
+              {visibleIndexers.length === 0 ? (
+                <ListEmpty title="No indexers match these filters" description="Clear a filter to see the rest of your indexers." />
+              ) : (
+                <ListTable
+                  columns={[
+                    { label: <IndexerSortHeader label="Name" sortKey="name" sort={indexerSort} onSort={(key) => setIndexerSort((current) => nextIndexerSort(current, key))} /> },
+                    ...(selectMode ? [{ label: <IndexerSelectAllCheckbox items={visibleIndexers} selected={selectedIndexerIds} onChange={(ids) => setSelectedIndexerIds(new Set(ids))} />, width: "28px", mobile: true }] : []),
+                    { label: <IndexerSortHeader label="Protocol" sortKey="protocol" sort={indexerSort} onSort={(key) => setIndexerSort((current) => nextIndexerSort(current, key))} /> },
+                    { label: <IndexerSortHeader label="Used for" sortKey="usedFor" sort={indexerSort} onSort={(key) => setIndexerSort((current) => nextIndexerSort(current, key))} /> },
+                    { label: <IndexerSortHeader label="Last test" sortKey="lastTest" sort={indexerSort} onSort={(key) => setIndexerSort((current) => nextIndexerSort(current, key))} /> },
+                    { label: "Pacing" },
+                    { label: <IndexerSortHeader label="Status" sortKey="status" sort={indexerSort} onSort={(key) => setIndexerSort((current) => nextIndexerSort(current, key))} />, width: LIST_TRACK.status, mobile: true },
+                    { label: "On", width: LIST_TRACK.toggle, mobile: true }
+                  ]}
+                >
+                  {visibleIndexers.map((item) => {
+                    const searchedBy = routing.filter((route) => route.sources.some((source) => source.indexerId === item.id)).map((route) => route.libraryName);
+                    const chip = unusedChip(item, searchedBy.length, libraries.length) ?? healthChip(item);
+                    const throttle = throttleByHost.get(indexerHost(item.baseUrl) ?? "");
+                    return (
+                      <ListRow key={item.id} onClick={() => openIndexer(item)} selected={drawer.kind === "indexer" && drawer.id === item.id}>
+                        <ListNameCell name={item.name} sub={<span className="font-mono">{item.baseUrl}</span>} />
+                        {selectMode ? (
+                          <ListCell mobile>
+                            <Checkbox
+                              aria-label={`Select ${item.name}`}
+                              checked={selectedIndexerIds.has(item.id)}
+                              onClick={(event) => event.stopPropagation()}
+                              onCheckedChange={() => toggleIndexerSelected(item.id)}
+                            />
+                          </ListCell>
+                        ) : null}
+                        {/* "Private"/"Public" was a label nobody could set, Deluno
+                            never read, and two normalisers disagreed about. What a
+                            person actually wants to know about a source at a glance
+                            is what it expects back — and only when that differs from
+                            their normal rule. */}
+                        <ListCell primary={protocolLabel(item.protocol)} secondary={sharingRuleFrom(item) === "strict" ? "Strict sharing" : undefined} />
+                        <ListCell primary={scopeLabel(item.mediaScope)} secondary={libraries.length === 0 ? `Priority ${item.priority}` : searchedBy.length ? `Searched by ${searchedBy.join(", ")}` : "No library searches it"} />
+                        <ListCell numeric primary={relative(item.lastHealthTestUtc)} secondary={item.consecutiveFailures > 0 ? `${item.consecutiveFailures} consecutive failure${item.consecutiveFailures === 1 ? "" : "s"}` : item.lastHealthLatencyMs != null ? `${item.lastHealthLatencyMs} ms` : item.lastHealthMessage ?? "—"} />
+                        <ListCell primary={<span aria-live="polite">{throttle?.waiting ? `${throttle.waiting} request${throttle.waiting === 1 ? "" : "s"} waiting` : throttle?.nextPermitInSeconds ? `Next in ${formatSeconds(throttle.nextPermitInSeconds)}` : "Ready"}</span>} secondary={throttle ? `Deluno is pacing ${throttle.host}` : "No recent requests"} />
+                        <ListCell mobile>
+                          <Chip tone={chip.tone}>{chip.label}</Chip>
+                        </ListCell>
+                        <ListCell mobile>
+                          <Switch size="sm" aria-label={`${item.isEnabled ? "Pause" : "Enable"} ${item.name}`} checked={item.isEnabled} disabled={busy === `toggle:${item.id}`} onCheckedChange={(checked) => void toggleIndexer(item, checked)} />
+                        </ListCell>
+                      </ListRow>
+                    );
+                  })}
+                </ListTable>
+              )}
+            </>
           )}
         </ListCard>
       ) : null}
@@ -840,6 +974,15 @@ export function IndexersPage() {
         confirmLabel={drawer.kind === "indexer" ? "Remove indexer" : "Remove client"}
         busy={busy === "remove"}
         onConfirm={() => void handleRemove()}
+      />
+      <ConfirmDialog
+        open={confirmBulkRemove}
+        onOpenChange={setConfirmBulkRemove}
+        title={`Remove ${selectedIndexerIds.size} indexer${selectedIndexerIds.size === 1 ? "" : "s"}?`}
+        description="Libraries routed only to one of these indexers will need another one before Deluno can search for them."
+        confirmLabel="Remove indexers"
+        busy={bulkBusy}
+        onConfirm={() => void bulkRemove()}
       />
       <ConfirmDialog
         open={confirmDiscard}
