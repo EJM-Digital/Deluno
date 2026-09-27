@@ -153,6 +153,9 @@ public sealed record IndexerItem(
     /// </summary>
     public string? SeasonPackSearchMode { get; init; }
 
+    /// <summary>The configured proxy (#748) this indexer's requests go through; null is a direct connection.</summary>
+    public string? ProxyId { get; init; }
+
     public int? AvailabilityDelayDays { get; init; }
 
     public bool RssEnabled { get; init; } = true;

@@ -290,6 +290,13 @@ export const router = createBrowserRouter([
         })
       },
       {
+        path: "indexers/proxies",
+        lazy: withSkeleton(async () => {
+          const module = await import("./routes/connections-screen");
+          return { loader: module.indexersLoader, Component: module.IndexersPage };
+        })
+      },
+      {
         path: "indexers/scoreboard",
         lazy: withSkeleton(async () => {
           const module = await import("./routes/connections-screen");

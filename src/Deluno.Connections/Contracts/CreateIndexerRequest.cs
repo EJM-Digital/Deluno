@@ -58,4 +58,7 @@ public sealed record CreateIndexerRequest(
     bool InteractiveSearchEnabled = true,
     string? DefinitionId = null,
     IReadOnlyDictionary<string, string>? DefinitionSettings = null,
-    IReadOnlyDictionary<string, string>? DefinitionSecrets = null);
+    IReadOnlyDictionary<string, string>? DefinitionSecrets = null,
+    // The configured proxy (#748) this indexer's requests go through. Null
+    // means "no proxy assigned" -- direct connection.
+    string? ProxyId = null);

@@ -817,6 +817,23 @@ export interface IndexerItem {
   definitionSettings?: Record<string, string> | null;
   /** Which of its secrets (password, cookie, key) are saved. The values never leave Deluno. */
   definitionSecretsSet?: string[];
+  /** The configured proxy (#748) this indexer's requests go through; null is a direct connection. */
+  proxyId?: string | null;
+}
+
+/** A configured indexer proxy (#748): HTTP, SOCKS4, SOCKS5 or FlareSolverr/Byparr. */
+export interface ProxyItem {
+  id: string;
+  name: string;
+  proxyType: "http" | "socks4" | "socks5" | "flaresolverr";
+  address: string;
+  username?: string | null;
+  hasPassword: boolean;
+  isEnabled: boolean;
+  createdUtc: string;
+  updatedUtc: string;
+  /** Names of the indexers currently assigned to this proxy. */
+  assignedIndexerNames: string[];
 }
 
 /** One tracker Deluno can search itself, from GET /api/trackers (#606). */

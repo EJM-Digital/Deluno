@@ -15,7 +15,8 @@ import {
   type LibraryRoutingSnapshot,
   type OutboundThrottleHostState,
   type OutboundThrottleSnapshot,
-  type PlatformSettingsSnapshot
+  type PlatformSettingsSnapshot,
+  type ProxyItem
 } from "../lib/api";
 import type { PlatformSettingsPatch } from "../lib/api/settings";
 import { useApiMutation } from "../lib/use-api-mutation";
@@ -36,10 +37,11 @@ import { Switch } from "../components/ui/switch";
 import { toast } from "../components/shell/toaster";
 import { useUnsavedChanges } from "../hooks/use-unsaved-changes";
 import { CLIENT_PRESETS, type MediaScope } from "./connections/presets";
-import { STRICT_SHARING, clientFormErrors, clientFormFrom, emptyClientForm, emptyIndexerForm, indexerFormErrors, indexerFormFrom, sameClient, sameIndexer, sameSet, sharingRuleFrom, type ClientForm, type DrawerState, type IndexerForm, type Section } from "./connections/forms";
+import { STRICT_SHARING, clientFormErrors, clientFormFrom, emptyClientForm, emptyIndexerForm, emptyProxyForm, indexerFormErrors, indexerFormFrom, proxyFormErrors, proxyFormFrom, sameClient, sameIndexer, sameProxy, sameSet, sharingRuleFrom, type ClientForm, type DrawerState, type IndexerForm, type ProxyForm, type Section } from "./connections/forms";
 import { formatSeconds, healthChip, indexerHost, protocolLabel, relative, scopeLabel, unusedChip } from "./connections/format";
 import { ClientDrawerBody } from "./connections/client-drawer-body";
 import { IndexerDrawerBody } from "./connections/indexer-drawer-body";
+import { ProxyDrawerBody } from "./connections/proxy-drawer-body";
 import { RoutingDrawerBody } from "./connections/routing-drawer-body";
 import { IndexerScoreboard } from "./connections/indexer-scoreboard";
 import {
@@ -59,6 +61,13 @@ import { resolveDrawerSaveState, shouldClearSaveState } from "../lib/drawer-save
 
 const TABS = configurationNavAreas.find((area) => area.to === "/indexers/indexers")?.items ?? [];
 
+const PROXY_TYPE_LABELS: Record<string, string> = {
+  http: "HTTP",
+  socks4: "SOCKS4",
+  socks5: "SOCKS5",
+  flaresolverr: "FlareSolverr / Byparr"
+};
+
 interface LoaderData {
   clients: DownloadClientItem[];
   pathMappings: DownloadClientPathMappingItem[];
@@ -69,6 +78,7 @@ interface LoaderData {
   telemetry: DownloadTelemetryOverview | null;
   outboundThrottle: OutboundThrottleSnapshot;
   scoreboard: IndexerScoreboardSnapshot;
+  proxies: ProxyItem[];
 }
 
 type RouteCategories = Record<string, string>;
@@ -79,14 +89,15 @@ function sameRouteCategories(left: RouteCategories, right: RouteCategories) {
 }
 
 export async function indexersLoader(): Promise<LoaderData> {
-  const [indexers, clients, libraries, settings, telemetry, outboundThrottle, scoreboard] = await Promise.all([
+  const [indexers, clients, libraries, settings, telemetry, outboundThrottle, scoreboard, proxies] = await Promise.all([
     fetchJson<IndexerItem[]>("/api/indexers"),
     fetchJson<DownloadClientItem[]>("/api/download-clients"),
     fetchJson<LibraryItem[]>("/api/libraries"),
     fetchJson<PlatformSettingsSnapshot>("/api/settings"),
     fetchJson<DownloadTelemetryOverview>("/api/download-clients/telemetry").catch(() => null),
     fetchJson<OutboundThrottleSnapshot>("/api/integrations/outbound-throttle").catch(() => ({ hosts: [] })),
-    fetchJson<IndexerScoreboardSnapshot>("/api/indexers/scoreboard?days=30").catch(() => emptyScoreboard())
+    fetchJson<IndexerScoreboardSnapshot>("/api/indexers/scoreboard?days=30").catch(() => emptyScoreboard()),
+    fetchJson<ProxyItem[]>("/api/indexer-proxies").catch(() => [])
   ]);
   const routing = await Promise.all(
     libraries.map((lib) =>
@@ -96,7 +107,7 @@ export async function indexersLoader(): Promise<LoaderData> {
   const pathMappings = (
     await Promise.all(clients.map((client) => fetchJson<DownloadClientPathMappingItem[]>(`/api/download-clients/${client.id}/path-mappings`).catch(() => [])))
   ).flat();
-  return { clients, pathMappings, indexers, libraries, routing, settings, telemetry, outboundThrottle, scoreboard };
+  return { clients, pathMappings, indexers, libraries, routing, settings, telemetry, outboundThrottle, scoreboard, proxies };
 }
 
 function emptyScoreboard(): IndexerScoreboardSnapshot {
@@ -185,6 +196,8 @@ export function buildIndexerSavePayload(form: IndexerForm, initial: IndexerForm,
     rssEnabled: form.rssEnabled,
     automaticSearchEnabled: form.automaticSearchEnabled,
     interactiveSearchEnabled: form.interactiveSearchEnabled,
+    proxyId: form.proxyId || null,
+    clearProxy: editing && !form.proxyId,
     // A built-in tracker (#606): which one, its settings, and only the
     // secrets typed now; a blank one keeps what is saved.
     ...(form.protocol === "tracker"
@@ -255,8 +268,21 @@ export function buildClientSavePayload(form: ClientForm) {
   };
 }
 
+/** The body of PUT/POST /api/indexer-proxies — a proxy has no separate Test action, so this is only ever a save. */
+export function buildProxySavePayload(form: ProxyForm) {
+  return {
+    name: form.name.trim(),
+    proxyType: form.proxyType,
+    address: form.address.trim(),
+    username: form.username.trim() || null,
+    // Blank means "keep the saved password"; a proxy has no separate clear action.
+    password: form.password.trim() || undefined,
+    isEnabled: form.isEnabled
+  };
+}
+
 export function IndexersPage() {
-  const { clients, pathMappings, indexers, libraries, routing, settings, telemetry, outboundThrottle, scoreboard } = useLoaderData() as LoaderData;
+  const { clients, pathMappings, indexers, libraries, routing, settings, telemetry, outboundThrottle, scoreboard, proxies } = useLoaderData() as LoaderData;
   const location = useLocation();
   const navigate = useNavigate();
   const revalidator = useRevalidator();
@@ -264,7 +290,7 @@ export function IndexersPage() {
   const lastTelemetryRefresh = useRef(0);
   const [liveOutboundThrottle, setLiveOutboundThrottle] = useState(outboundThrottle);
 
-  const section: Section = location.pathname.endsWith("/scoreboard") ? "scoreboard" : location.pathname.endsWith("/download-clients") ? "clients" : location.pathname.endsWith("/library-routing") ? "routing" : "indexers";
+  const section: Section = location.pathname.endsWith("/scoreboard") ? "scoreboard" : location.pathname.endsWith("/download-clients") ? "clients" : location.pathname.endsWith("/library-routing") ? "routing" : location.pathname.endsWith("/proxies") ? "proxies" : "indexers";
 
   useEffect(() => {
     setLiveOutboundThrottle(outboundThrottle);
@@ -369,6 +395,8 @@ export function IndexersPage() {
   const [indexerInitial, setIndexerInitial] = useState<IndexerForm>(emptyIndexerForm);
   const [clientForm, setClientForm] = useState<ClientForm>(emptyClientForm);
   const [clientInitial, setClientInitial] = useState<ClientForm>(emptyClientForm);
+  const [proxyForm, setProxyForm] = useState<ProxyForm>(emptyProxyForm);
+  const [proxyInitial, setProxyInitial] = useState<ProxyForm>(emptyProxyForm);
   const [routeSources, setRouteSources] = useState<string[]>([]);
   const [routeClients, setRouteClients] = useState<string[]>([]);
   const [routeCategories, setRouteCategories] = useState<RouteCategories>({});
@@ -401,14 +429,16 @@ export function IndexersPage() {
   const editingIndexer = drawer.kind === "indexer" && drawer.id ? indexers.find((item) => item.id === drawer.id) ?? null : null;
   const editingIndexerThrottle = editingIndexer ? throttleByHost.get(indexerHost(editingIndexer.baseUrl) ?? "") ?? null : null;
   const editingClient = drawer.kind === "client" && drawer.id ? clients.find((item) => item.id === drawer.id) ?? null : null;
+  const editingProxy = drawer.kind === "proxy" && drawer.id ? proxies.find((item) => item.id === drawer.id) ?? null : null;
   const routingLibrary = drawer.kind === "routing" ? libraries.find((item) => item.id === drawer.libraryId) ?? null : null;
 
   const dirty = useMemo(() => {
     if (drawer.kind === "indexer") return !sameIndexer(indexerForm, indexerInitial);
     if (drawer.kind === "client") return !sameClient(clientForm, clientInitial);
+    if (drawer.kind === "proxy") return !sameProxy(proxyForm, proxyInitial);
     if (drawer.kind === "routing") return !sameSet(routeSources, routeInitial.sources) || !sameSet(routeClients, routeInitial.clients) || !sameRouteCategories(routeCategories, routeInitial.categories);
     return false;
-  }, [drawer.kind, indexerForm, indexerInitial, clientForm, clientInitial, routeSources, routeClients, routeCategories, routeInitial]);
+  }, [drawer.kind, indexerForm, indexerInitial, clientForm, clientInitial, proxyForm, proxyInitial, routeSources, routeClients, routeCategories, routeInitial]);
   const footerState: DrawerSaveState = resolveDrawerSaveState(saveState, dirty);
   /**
    * A create drawer opens with values the user is entitled to accept as-is, so
@@ -419,7 +449,7 @@ export function IndexersPage() {
    * form now says what is missing instead of doing nothing. Editing keeps the
    * dirty gate, where Save with no changes really is a no-op.
    */
-  const creating = (drawer.kind === "indexer" || drawer.kind === "client") && drawer.id === null;
+  const creating = (drawer.kind === "indexer" || drawer.kind === "client" || drawer.kind === "proxy") && drawer.id === null;
   useUnsavedChanges(dirty);
 
   useEffect(() => {
@@ -445,6 +475,13 @@ export function IndexersPage() {
     setDrawer({ kind: "client", id: item?.id ?? null });
     setClientForm(next);
     setClientInitial(next);
+    resetDrawerChrome();
+  }
+  function openProxy(item: ProxyItem | null) {
+    const next = item ? proxyFormFrom(item) : emptyProxyForm();
+    setDrawer({ kind: "proxy", id: item?.id ?? null });
+    setProxyForm(next);
+    setProxyInitial(next);
     resetDrawerChrome();
   }
   /**
@@ -558,6 +595,7 @@ export function IndexersPage() {
     const errors: Record<string, string> =
       drawer.kind === "indexer" ? indexerFormErrors(indexerForm, !drawer.id)
       : drawer.kind === "client" ? clientFormErrors(clientForm)
+      : drawer.kind === "proxy" ? proxyFormErrors(proxyForm)
       : {};
     setFieldErrors(errors);
     if (Object.keys(errors).length) return;
@@ -599,6 +637,23 @@ export function IndexersPage() {
           setDrawer({ kind: "client", id: created.id });
           setSaveMessage("Client added");
         }
+      } else if (drawer.kind === "proxy") {
+        const payload = buildProxySavePayload(proxyForm);
+        if (drawer.id) {
+          await send(`/api/indexer-proxies/${drawer.id}`, "PUT", payload, "Proxy could not be saved.");
+          const settled = { ...proxyForm, password: "" };
+          setProxyForm(settled);
+          setProxyInitial(settled);
+          setSaveMessage("Saved just now");
+        } else {
+          const response = await send("/api/indexer-proxies", "POST", payload, "Proxy could not be added.");
+          const created = (await response.json()) as ProxyItem;
+          const settled = proxyFormFrom(created);
+          setProxyForm(settled);
+          setProxyInitial(settled);
+          setDrawer({ kind: "proxy", id: created.id });
+          setSaveMessage("Proxy added");
+        }
       } else if (drawer.kind === "routing") {
         await send(
           `/api/libraries/${drawer.libraryId}/routing`,
@@ -629,12 +684,15 @@ export function IndexersPage() {
       await run("remove", () => send(`/api/indexers/${drawer.id}`, "DELETE", undefined, "Indexer could not be removed."), `${editingIndexer?.name ?? "Indexer"} removed`);
     } else if (drawer.kind === "client" && drawer.id) {
       await run("remove", () => send(`/api/download-clients/${drawer.id}`, "DELETE", undefined, "Download client could not be removed."), `${editingClient?.name ?? "Client"} removed`);
+    } else if (drawer.kind === "proxy" && drawer.id) {
+      await run("remove", () => send(`/api/indexer-proxies/${drawer.id}`, "DELETE", undefined, "Proxy could not be removed."), `${editingProxy?.name ?? "Proxy"} removed`);
     } else {
       return;
     }
     setConfirmRemove(false);
     setIndexerInitial(indexerForm);
     setClientInitial(clientForm);
+    setProxyInitial(proxyForm);
     closeDrawer();
   }
 
@@ -713,6 +771,8 @@ export function IndexersPage() {
       <PageToolbarAction onClick={() => openIndexer(null)}>New indexer</PageToolbarAction>
     ) : section === "clients" ? (
       <PageToolbarAction onClick={() => openClient(null)}>New client</PageToolbarAction>
+    ) : section === "proxies" ? (
+      <PageToolbarAction onClick={() => openProxy(null)}>New proxy</PageToolbarAction>
     ) : null;
 
   return (
@@ -922,6 +982,36 @@ export function IndexersPage() {
         </>
       ) : null}
 
+      {section === "proxies" ? (
+        <ListCard title="Indexer Proxies" count={proxies.length ? `${proxies.length} ${proxies.length === 1 ? "proxy" : "proxies"}` : undefined}>
+          {proxies.length === 0 ? (
+            <ListEmpty
+              title="No proxies yet"
+              description="Add an HTTP, SOCKS4, SOCKS5 or FlareSolverr/Byparr proxy, then assign it to whichever indexers need it from that indexer's own drawer."
+              actions={
+                <Button type="button" size="sm" onClick={() => openProxy(null)}>
+                  <Plus className="h-3.5 w-3.5" />
+                  New proxy
+                </Button>
+              }
+            />
+          ) : (
+            <ListTable columns={[{ label: "Name" }, { label: "Type" }, { label: "Used by" }, { label: "On", width: LIST_TRACK.toggle, mobile: true }]}>
+              {proxies.map((item) => (
+                <ListRow key={item.id} onClick={() => openProxy(item)} selected={drawer.kind === "proxy" && drawer.id === item.id}>
+                  <ListNameCell name={item.name} sub={<span className="font-mono">{item.address}</span>} />
+                  <ListCell primary={PROXY_TYPE_LABELS[item.proxyType] ?? item.proxyType} />
+                  <ListCell primary={item.assignedIndexerNames.length ? `${item.assignedIndexerNames.length} indexer${item.assignedIndexerNames.length === 1 ? "" : "s"}` : <span className="text-muted-foreground">None</span>} secondary={item.assignedIndexerNames.join(", ") || undefined} />
+                  <ListCell mobile>
+                    <Chip tone={item.isEnabled ? "ok" : "idle"}>{item.isEnabled ? "On" : "Off"}</Chip>
+                  </ListCell>
+                </ListRow>
+              ))}
+            </ListTable>
+          )}
+        </ListCard>
+      ) : null}
+
       <Drawer
         open={drawer.kind !== "closed"}
         onOpenChange={(open) => {
@@ -930,12 +1020,14 @@ export function IndexersPage() {
         title={
           drawer.kind === "indexer" ? editingIndexer?.name ?? (indexerForm.name || "New indexer")
           : drawer.kind === "client" ? editingClient?.name ?? (clientForm.name || "New download client")
+          : drawer.kind === "proxy" ? editingProxy?.name ?? (proxyForm.name || "New proxy")
           : drawer.kind === "routing" ? routingLibrary?.name ?? "Library routing"
           : ""
         }
         description={
           drawer.kind === "indexer" ? (editingIndexer ? `${protocolLabel(editingIndexer.protocol)} indexer · used for ${scopeLabel(editingIndexer.mediaScope)}` : "Where Deluno looks for releases.")
           : drawer.kind === "client" ? (editingClient ? `${protocolLabel(editingClient.protocol)} · ${editingClient.endpointUrl ?? ""}` : "Where Deluno sends approved releases.")
+          : drawer.kind === "proxy" ? (editingProxy ? `${PROXY_TYPE_LABELS[editingProxy.proxyType] ?? editingProxy.proxyType} · ${editingProxy.address}` : "Where an indexer's requests are sent instead of directly.")
           : drawer.kind === "routing" ? `Choose where ${routingLibrary?.name ?? "this library"} searches and where its downloads go`
           : undefined
         }
@@ -944,7 +1036,7 @@ export function IndexersPage() {
           <DrawerFooter
             state={footerState}
             message={saveMessage}
-            saveLabel={drawer.kind === "routing" ? "Save routing" : drawer.kind === "client" ? (drawer.id ? "Save client" : "Add client") : drawer.kind === "indexer" && drawer.id ? "Save indexer" : "Add indexer"}
+            saveLabel={drawer.kind === "routing" ? "Save routing" : drawer.kind === "client" ? (drawer.id ? "Save client" : "Add client") : drawer.kind === "proxy" ? (drawer.id ? "Save proxy" : "Add proxy") : drawer.kind === "indexer" && drawer.id ? "Save indexer" : "Add indexer"}
             onCancel={requestClose}
             extraAction={drawer.kind === "indexer" || drawer.kind === "client" ? (
               <Button type="button" variant="outline" onClick={() => void testForm()} disabled={busy !== null}>
@@ -963,6 +1055,7 @@ export function IndexersPage() {
             form={indexerForm}
             setForm={setIndexerForm}
             settings={settings}
+            proxies={proxies}
             editing={editingIndexer}
             throttle={editingIndexerThrottle}
             errors={fieldErrors}
@@ -991,6 +1084,17 @@ export function IndexersPage() {
             onAddMapping={() => editingClient && void addMapping(editingClient.id)}
             onRemoveMapping={(mappingId) => editingClient && void run(`mapping:remove:${mappingId}`, () => send(`/api/download-clients/${editingClient.id}/path-mappings/${mappingId}`, "DELETE", undefined, "File location link could not be removed."), "File location link removed")}
             onTestMapping={(mappingId) => editingClient && void testMapping(editingClient.id, mappingId)}
+            onRemove={() => setConfirmRemove(true)}
+          />
+        ) : null}
+        {drawer.kind === "proxy" ? (
+          <ProxyDrawerBody
+            form={proxyForm}
+            setForm={setProxyForm}
+            editing={editingProxy}
+            errors={fieldErrors}
+            clearError={(key) => setFieldErrors((current) => ({ ...current, [key]: "" }))}
+            busy={busy}
             onRemove={() => setConfirmRemove(true)}
           />
         ) : null}
@@ -1037,9 +1141,13 @@ export function IndexersPage() {
       <ConfirmDialog
         open={confirmRemove}
         onOpenChange={setConfirmRemove}
-        title={`Remove “${drawer.kind === "indexer" ? editingIndexer?.name : editingClient?.name}”?`}
-        description={drawer.kind === "indexer" ? "Libraries routed only to this indexer will need another one before Deluno can search for them." : "Downloads already in this client are left alone; Deluno just stops sending new ones there."}
-        confirmLabel={drawer.kind === "indexer" ? "Remove indexer" : "Remove client"}
+        title={`Remove “${drawer.kind === "indexer" ? editingIndexer?.name : drawer.kind === "proxy" ? editingProxy?.name : editingClient?.name}”?`}
+        description={
+          drawer.kind === "indexer" ? "Libraries routed only to this indexer will need another one before Deluno can search for them."
+          : drawer.kind === "proxy" ? "Any indexer assigned to it goes back to a direct connection."
+          : "Downloads already in this client are left alone; Deluno just stops sending new ones there."
+        }
+        confirmLabel={drawer.kind === "indexer" ? "Remove indexer" : drawer.kind === "proxy" ? "Remove proxy" : "Remove client"}
         busy={busy === "remove"}
         onConfirm={() => void handleRemove()}
       />

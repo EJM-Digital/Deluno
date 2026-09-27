@@ -70,4 +70,13 @@ public interface IConnectionsRepository
     Task<bool> DeleteConnectionAsync(string id, CancellationToken cancellationToken);
     Task<bool> DeleteIndexerAsync(string id, CancellationToken cancellationToken);
     Task<bool> DeleteDownloadClientAsync(string id, CancellationToken cancellationToken);
+
+    Task<IReadOnlyList<ProxyItem>> ListProxiesAsync(CancellationToken cancellationToken);
+
+    Task<ProxyItem> CreateProxyAsync(CreateProxyRequest request, CancellationToken cancellationToken);
+
+    Task<ProxyItem?> UpdateProxyAsync(string id, UpdateProxyRequest request, CancellationToken cancellationToken);
+
+    /// <summary>Removes the proxy and unassigns it from any indexer that was using it.</summary>
+    Task<bool> DeleteProxyAsync(string id, CancellationToken cancellationToken);
 }

@@ -86,6 +86,7 @@ export const configurationNavAreas = [
     tabsInToolbar: true,
     items: [
       { to: "/indexers/indexers", label: "Indexers", end: false },
+      { to: "/indexers/proxies", label: "Proxies", end: false },
       { to: "/indexers/scoreboard", label: "Scoreboard", end: false },
       { to: "/indexers/download-clients", label: "Download Clients", end: false },
       { to: "/indexers/library-routing", label: "Library Routing", end: false },
