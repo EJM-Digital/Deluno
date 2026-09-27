@@ -517,6 +517,24 @@ public sealed class DownloadClientTelemetryService(
             record => $"{record.ClientId}\u001f{record.QueueItemId}\u001f{record.Kind}",
             StringComparer.OrdinalIgnoreCase);
 
+        // #881: a setup problem never strikes, so nothing is removed, deleted,
+        // blocked or searched for. Say so once, when the spell starts, so it
+        // is never a mystery why Deluno left the download alone.
+        foreach (var record in records.Where(record =>
+                     string.Equals(record.Kind, DownloadHealthStrikes.ClientSetupProblem, StringComparison.OrdinalIgnoreCase) &&
+                     record.FirstObservedUtc == record.LastObservedUtc))
+        {
+            await activityFeedRepository.RecordActivityAsync(
+                "download.client.setup-problem",
+                $"{snapshot.ClientName} has a problem on this machine with {record.ReleaseName}: {record.Evidence} " +
+                "Deluno left the download alone (nothing removed, deleted or blocked) because the release isn't at fault.",
+                null,
+                null,
+                "download_client",
+                snapshot.ClientId,
+                cancellationToken);
+        }
+
         return snapshot with
         {
             Queue = annotated.Select(entry => entry.Item with
