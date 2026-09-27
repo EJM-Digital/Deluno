@@ -14,6 +14,8 @@ export const librarySetupNavItems = [
   { to: "/settings/destination-rules", label: "Final Destinations", end: false, icon: <MapPinned aria-hidden="true" /> },
   { to: "/settings/metadata", label: "Metadata", end: false, icon: <Image aria-hidden="true" /> },
   { to: "/settings/subtitles", label: "Subtitles", end: false, icon: <Captions aria-hidden="true" /> },
+  // Cross-library: what is still missing, not a setting (#840).
+  { to: "/settings/subtitles-wanted", label: "Subtitle Wanted", end: false, icon: <Captions aria-hidden="true" /> },
   { to: "/settings/tags", label: "Tags", end: false, icon: <Tags aria-hidden="true" /> }
 ] as const;
 
@@ -277,6 +279,12 @@ export const settingsPageMeta = [
     match: (path: string) => path.startsWith("/settings/metadata"),
     title: "Media Management",
     description: "Manage where your media lives, how it is named, and how it moves through Deluno.",
+    chrome: "none"
+  },
+  {
+    match: (path: string) => path.startsWith("/settings/subtitles-wanted"),
+    title: "Subtitle Wanted",
+    description: "Every title or episode across every library still missing a wanted subtitle language, with a bulk search.",
     chrome: "none"
   },
   {

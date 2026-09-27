@@ -351,6 +351,14 @@ export const router = createBrowserRouter([
         })
       },
       {
+        // Cross-library: what is still missing, not a per-library setting (#840).
+        path: "settings/subtitles-wanted",
+        lazy: withSkeleton(async () => {
+          const module = await import("./routes/subtitle-wanted-screen");
+          return { loader: module.subtitleWantedLoader, Component: module.SubtitleWantedPage };
+        })
+      },
+      {
         // A source, beside the other sources. It needs no download client,
         // because the file arrives in the answer.
         path: "indexers/subtitle-providers",
