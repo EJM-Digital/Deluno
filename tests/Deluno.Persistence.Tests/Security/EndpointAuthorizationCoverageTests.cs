@@ -68,6 +68,10 @@ public sealed class EndpointAuthorizationCoverageTests
                 "/api/health/live",
                 "/api/health/ready",
                 "/api/metadata/artwork/{cacheKey}",
+                // Overseerr/Jellyseerr's webhook agent has no Deluno session;
+                // it authenticates itself with a generated per-connection
+                // secret checked inside the handler (#851).
+                "/api/seerr-servers/{id}/webhook",
                 "/health"
             ],
             publicRoutes);

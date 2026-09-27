@@ -1,3 +1,5 @@
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 using Deluno.Connections.Contracts;
 using Deluno.Connections.Data;
@@ -6,6 +8,7 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Routing;
+using Microsoft.Extensions.Logging;
 
 namespace Deluno.Integrations.Seerr;
 
@@ -82,24 +85,53 @@ public static class SeerrEndpointRouteBuilderExtensions
             CancellationToken cancellationToken)
             => Results.Ok(await acquisitions.ListRecentAsync(id, take: 20, cancellationToken)));
 
+        // #851: generates a fresh secret and hands back the plaintext once so
+        // the Seerr card can show/copy it into Overseerr's webhook
+        // Authorization header field. Replaces any secret already issued.
+        servers.MapPost("{id}/webhook-secret", async (
+            string id,
+            [FromServices] ISeerrRepository repository,
+            CancellationToken cancellationToken) =>
+        {
+            var secret = await repository.RegenerateWebhookSecretAsync(id, cancellationToken);
+            return secret is null ? Results.NotFound() : Results.Ok(new { secret });
+        });
+
         // #851: Overseerr/Jellyseerr call this on their own webhook agent, one
         // per request-status change. No Deluno session exists to authorize —
-        // the connection id in the path is what scopes the call, the same way
-        // a scoped API key link would. A server that has never been asked for
-        // is exactly the state every install starts in, so this never sends a
-        // request an install did not itself configure Seerr to make.
+        // Overseerr sends whatever value was pasted into its webhook's
+        // "Authorization Header" field back as the Authorization header, and
+        // that value must match the connection's own generated secret,
+        // constant-time compared so a wrong guess cannot be timed apart from
+        // a right one. A connection that has never had a secret generated for
+        // it refuses every call, exactly the state every install starts in.
         endpoints.MapPost("/api/seerr-servers/{id}/webhook", async (
             string id,
             HttpRequest request,
             [FromServices] ISeerrRepository repository,
             [FromServices] ISeerrAcquisitionService acquisitionService,
             [FromServices] ISeerrAcquisitionsRepository acquisitions,
+            [FromServices] ILoggerFactory loggerFactory,
             CancellationToken cancellationToken) =>
         {
+            var logger = loggerFactory.CreateLogger("Deluno.Integrations.Seerr.Webhook");
             var connection = await repository.GetAsync(id, cancellationToken);
             if (connection is null || !connection.IsEnabled)
             {
                 return Results.NotFound();
+            }
+
+            if (!connection.HasWebhookSecret)
+            {
+                logger.LogWarning("Seerr webhook for connection {ConnectionId} refused: no webhook secret has been generated for it yet.", id);
+                return Results.Unauthorized();
+            }
+
+            var provided = request.Headers.Authorization.ToString();
+            if (!SecretMatches(provided, connection.WebhookSecret!))
+            {
+                logger.LogWarning("Seerr webhook for connection {ConnectionId} refused: the Authorization header did not match its webhook secret.", id);
+                return Results.Unauthorized();
             }
 
             using var document = await JsonDocument.ParseAsync(request.Body, cancellationToken: cancellationToken);
@@ -127,9 +159,25 @@ public static class SeerrEndpointRouteBuilderExtensions
 
             var outcome = await acquisitionService.AcquireAsync(connection, mediaType, tmdbId, tvdbId, seerrMediaId, cancellationToken);
             return Results.Ok(new { outcome.Ok, outcome.Message });
-        });
+        })
+            .AllowAnonymous()
+            .WithMetadata(new DelunoPublicEndpointAttribute());
 
         return endpoints;
+    }
+
+    private static bool SecretMatches(string? provided, string expected)
+    {
+        if (string.IsNullOrEmpty(provided))
+        {
+            return false;
+        }
+
+        // Hashed to a fixed length first so FixedTimeEquals cannot leak how
+        // long the guess was through how long the comparison took.
+        var providedHash = SHA256.HashData(Encoding.UTF8.GetBytes(provided));
+        var expectedHash = SHA256.HashData(Encoding.UTF8.GetBytes(expected));
+        return CryptographicOperations.FixedTimeEquals(providedHash, expectedHash);
     }
 
     private static string? TextOf(JsonElement element, string name)

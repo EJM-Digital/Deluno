@@ -18,6 +18,15 @@ public interface ISeerrRepository
     Task RecordHealthAsync(string id, SeerrTestResult result, CancellationToken cancellationToken);
 
     Task<bool> DeleteAsync(string id, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Generates a fresh webhook secret, stores it (encrypted, like the API
+    /// key) and returns the plaintext once so the Seerr card can show and
+    /// copy it into Overseerr's Authorization header field (#851). Replaces
+    /// any secret already set, so an old Overseerr webhook config stops
+    /// working the moment a new one is generated.
+    /// </summary>
+    Task<string?> RegenerateWebhookSecretAsync(string id, CancellationToken cancellationToken);
 }
 
 /// <summary>
@@ -32,9 +41,10 @@ public sealed class SqliteSeerrRepository(
     : ISeerrRepository
 {
     private const string KeyPurpose = "seerr:api-key";
+    private const string WebhookSecretPurpose = "seerr:webhook-secret";
 
     private const string Columns =
-        "id, name, base_url, api_key, is_enabled, health_status, last_health_message, last_health_latency_ms, last_health_test_utc, server_name, version, created_utc, updated_utc, movie_library_id, movie_quality_profile_id, series_library_id, series_quality_profile_id";
+        "id, name, base_url, api_key, is_enabled, health_status, last_health_message, last_health_latency_ms, last_health_test_utc, server_name, version, created_utc, updated_utc, movie_library_id, movie_quality_profile_id, series_library_id, series_quality_profile_id, webhook_secret";
 
     public async Task<IReadOnlyList<SeerrConnection>> ListAsync(CancellationToken cancellationToken)
     {
@@ -153,6 +163,31 @@ public sealed class SqliteSeerrRepository(
         return await command.ExecuteNonQueryAsync(cancellationToken) > 0;
     }
 
+    public async Task<string?> RegenerateWebhookSecretAsync(string id, CancellationToken cancellationToken)
+    {
+        var existing = await GetAsync(id, cancellationToken);
+        if (existing is null)
+        {
+            return null;
+        }
+
+        var secret = GenerateWebhookSecret();
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(DelunoDatabaseNames.Platform, cancellationToken);
+        using var command = connection.CreateCommand();
+        command.CommandText = "UPDATE seerr_servers SET webhook_secret = @secret, updated_utc = @now WHERE id = @id;";
+        AddParameter(command, "@id", id);
+        AddParameter(command, "@secret", secretProtector.Protect(WebhookSecretPurpose, secret));
+        AddParameter(command, "@now", timeProvider.GetUtcNow().ToString("O"));
+        await command.ExecuteNonQueryAsync(cancellationToken);
+        return secret;
+    }
+
+    private static string GenerateWebhookSecret()
+        => Convert.ToBase64String(System.Security.Cryptography.RandomNumberGenerator.GetBytes(32))
+            .TrimEnd('=')
+            .Replace('+', '-')
+            .Replace('/', '_');
+
     public static string NormalizeBaseUrl(string? value)
         => (value ?? string.Empty).Trim().TrimEnd('/');
 
@@ -174,5 +209,6 @@ public sealed class SqliteSeerrRepository(
             MovieLibraryId: reader.IsDBNull(13) ? null : reader.GetString(13),
             MovieQualityProfileId: reader.IsDBNull(14) ? null : reader.GetString(14),
             SeriesLibraryId: reader.IsDBNull(15) ? null : reader.GetString(15),
-            SeriesQualityProfileId: reader.IsDBNull(16) ? null : reader.GetString(16));
+            SeriesQualityProfileId: reader.IsDBNull(16) ? null : reader.GetString(16),
+            WebhookSecret: reader.IsDBNull(17) ? null : secretProtector.Unprotect(WebhookSecretPurpose, reader.GetString(17)));
 }

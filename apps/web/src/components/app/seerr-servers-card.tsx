@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent } from "react";
-import { Loader2, Wifi } from "lucide-react";
+import { Copy, Loader2, Wifi } from "lucide-react";
 import { fetchJson, readValidationProblem } from "../../lib/api";
 import type { LibraryItem, QualityProfileItem } from "../../lib/api/types";
 import { authedFetch } from "../../lib/use-auth";
@@ -34,6 +34,8 @@ export interface SeerrServer {
   movieQualityProfileId: string | null;
   seriesLibraryId: string | null;
   seriesQualityProfileId: string | null;
+  /** #851: whether a webhook secret has been generated for this connection yet. */
+  hasWebhookSecret: boolean;
 }
 
 /** Mirrors `Deluno.Connections.Contracts.SeerrAcquisitionItem` (#851/#852). */
@@ -125,6 +127,8 @@ export function SeerrServersCard({
   const [testResult, setTestResult] = useState<SeerrTestResult | null>(null);
   const [confirmRemove, setConfirmRemove] = useState(false);
   const [confirmDiscard, setConfirmDiscard] = useState(false);
+  const [webhookSecret, setWebhookSecret] = useState<string | null>(null);
+  const [copied, setCopied] = useState<"url" | "secret" | null>(null);
 
   const editing = drawer.id ? servers.find((server) => server.id === drawer.id) ?? null : null;
   const owed = editing ? cleanups.filter((cleanup) => cleanup.serverId === editing.id) : [];
@@ -144,6 +148,8 @@ export function SeerrServersCard({
     setSaveState(undefined);
     setSaveMessage(null);
     setTestResult(null);
+    setWebhookSecret(null);
+    setCopied(null);
   }
 
   function close() {
@@ -202,6 +208,33 @@ export function SeerrServersCard({
       setTestResult({ ok: false, message: "The test could not run. Check that Deluno is still reachable." });
     } finally {
       setBusy(null);
+    }
+  }
+
+  async function regenerateWebhookSecret() {
+    if (!editing) return;
+    setBusy("webhook-secret");
+    try {
+      const response = await authedFetch(`/api/seerr-servers/${editing.id}/webhook-secret`, { method: "POST" });
+      if (!response.ok) throw new Error();
+      const result = (await response.json()) as { secret: string };
+      setWebhookSecret(result.secret);
+      onChanged();
+    } catch {
+      setSaveState("error");
+      setSaveMessage("The webhook secret could not be generated.");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function copyToClipboard(value: string, which: "url" | "secret") {
+    try {
+      await navigator.clipboard.writeText(value);
+      setCopied(which);
+      setTimeout(() => setCopied((current) => (current === which ? null : current)), 2000);
+    } catch {
+      // Clipboard access can be denied by the browser; the value is still selectable text.
     }
   }
 
@@ -329,10 +362,38 @@ export function SeerrServersCard({
 
         <DrawerSection title="Turning approvals into downloads" aside="#851">
           <p className="text-[length:var(--type-body-sm)] text-muted-foreground">
-            In Seerr, add a Webhook notification agent pointed at{" "}
-            <code className="font-mono">{editing ? `${window.location.origin}/api/seerr-servers/${editing.id}/webhook` : "…save this server first…"}</code>
-            . An approved request lands in the library below and Deluno searches for it right away.
+            In Seerr, add a Webhook notification agent pointed at the URL below, and paste the secret into its Authorization Header field. An approved request lands in the library below and Deluno searches for it right away.
           </p>
+          {editing ? (
+            <div className="flex flex-col gap-2">
+              <Field label="Webhook URL">
+                <div className="flex items-center gap-2">
+                  <Input readOnly value={`${window.location.origin}/api/seerr-servers/${editing.id}/webhook`} className="font-mono" onFocus={(event) => event.target.select()} />
+                  <Button type="button" variant="outline" size="sm" onClick={() => void copyToClipboard(`${window.location.origin}/api/seerr-servers/${editing.id}/webhook`, "url")}>
+                    <Copy className="h-3.5 w-3.5" />
+                    {copied === "url" ? "Copied" : "Copy"}
+                  </Button>
+                </div>
+              </Field>
+              <Field label="Authorization header value" help={webhookSecret ? "Shown once. Paste it into Seerr's Authorization Header field now." : editing.hasWebhookSecret ? "Already generated. Regenerating replaces it, so the webhook needs re-pasting into Seerr." : "Generate a secret so Deluno can tell this is really Seerr calling."}>
+                <div className="flex items-center gap-2">
+                  <Input readOnly type={webhookSecret ? "text" : "password"} value={webhookSecret ?? (editing.hasWebhookSecret ? "••••••••••••••••" : "")} placeholder={editing.hasWebhookSecret ? undefined : "Not generated yet"} className="font-mono" onFocus={(event) => event.target.select()} />
+                  {webhookSecret ? (
+                    <Button type="button" variant="outline" size="sm" onClick={() => void copyToClipboard(webhookSecret, "secret")}>
+                      <Copy className="h-3.5 w-3.5" />
+                      {copied === "secret" ? "Copied" : "Copy"}
+                    </Button>
+                  ) : null}
+                  <Button type="button" variant="outline" size="sm" onClick={() => void regenerateWebhookSecret()} disabled={busy !== null}>
+                    {busy === "webhook-secret" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
+                    {editing.hasWebhookSecret ? "Regenerate" : "Generate"}
+                  </Button>
+                </div>
+              </Field>
+            </div>
+          ) : (
+            <p className="text-[length:var(--type-body-sm)] text-muted-foreground">…save this server first…</p>
+          )}
           <FieldRow>
             <Field label="Movie library" optional help="Blank uses the first movie library.">
               <Select
