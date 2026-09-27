@@ -221,6 +221,7 @@ public static class ConnectionsEndpointRouteBuilderExtensions
             [FromServices] IIntegrationResiliencePolicy resiliencePolicy,
             [FromServices] IIndexerQueryStatsRepository statsRepository,
             [FromServices] IOutboundNotificationService notificationService,
+            [FromServices] INotificationService notificationPreferences,
             CancellationToken cancellationToken) =>
         {
             var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
@@ -237,6 +238,7 @@ public static class ConnectionsEndpointRouteBuilderExtensions
                 return Results.NotFound();
             }
 
+            var previousHealthStatus = item.HealthStatus;
             var started = Stopwatch.GetTimestamp();
             var health = await TestIndexerWithResilienceAsync(item, resiliencePolicy, httpContext.RequestServices.GetService<ITrackerIndexerTester>(), cancellationToken);
             await RecordAuthTelemetryAsync(statsRepository, item, health, ElapsedMilliseconds(started), cancellationToken);
@@ -260,11 +262,25 @@ public static class ConnectionsEndpointRouteBuilderExtensions
 
                 if (health.HealthStatus != "healthy")
                 {
-                    await notificationService.DispatchAsync(
-                        "health.degraded",
-                        $"Indexer degraded: {item.Name}",
+                    if ((await notificationPreferences.GetPreferencesAsync(cancellationToken)).ProviderHealthChangedEnabled)
+                    {
+                        await notificationService.DispatchAsync(
+                            "health.degraded",
+                            $"Indexer degraded: {item.Name}",
+                            health.Message,
+                            null,
+                            cancellationToken);
+                    }
+                }
+                else
+                {
+                    await DispatchHealthRestoredIfRecoveredAsync(
+                        notificationService,
+                        notificationPreferences,
+                        $"Indexer {item.Name}",
+                        previousHealthStatus,
+                        health.HealthStatus,
                         health.Message,
-                        null,
                         cancellationToken);
                 }
             }
@@ -545,6 +561,8 @@ public static class ConnectionsEndpointRouteBuilderExtensions
             [FromServices] IConnectionsRepository repository,
             [FromServices] IRealtimeEventPublisher realtimeEventPublisher,
             [FromServices] IIntegrationResiliencePolicy resiliencePolicy,
+            [FromServices] IOutboundNotificationService notificationService,
+            [FromServices] INotificationService notificationPreferences,
             CancellationToken cancellationToken) =>
         {
             var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
@@ -561,6 +579,7 @@ public static class ConnectionsEndpointRouteBuilderExtensions
                 return Results.NotFound();
             }
 
+            var previousHealthStatus = item.HealthStatus;
             var started = Stopwatch.GetTimestamp();
             var health = await TestDownloadClientWithResilienceAsync(item, resiliencePolicy, cancellationToken);
             var result = await repository.UpdateDownloadClientHealthAsync(
@@ -580,6 +599,30 @@ public static class ConnectionsEndpointRouteBuilderExtensions
                     health.Message,
                     cancellationToken);
                 await realtimeEventPublisher.PublishEntityChangedAsync("DownloadClient", id, cancellationToken);
+
+                if (health.HealthStatus != "healthy")
+                {
+                    if ((await notificationPreferences.GetPreferencesAsync(cancellationToken)).ProviderHealthChangedEnabled)
+                    {
+                        await notificationService.DispatchAsync(
+                            "health.degraded",
+                            $"Download client degraded: {item.Name}",
+                            health.Message,
+                            null,
+                            cancellationToken);
+                    }
+                }
+                else
+                {
+                    await DispatchHealthRestoredIfRecoveredAsync(
+                        notificationService,
+                        notificationPreferences,
+                        $"Download client {item.Name}",
+                        previousHealthStatus,
+                        health.HealthStatus,
+                        health.Message,
+                        cancellationToken);
+                }
             }
 
             return result is null ? Results.NotFound() : Results.Ok(result);
@@ -1356,6 +1399,46 @@ public static class ConnectionsEndpointRouteBuilderExtensions
 
     private static int ElapsedMilliseconds(long startTimestamp)
         => (int)Math.Max(0, Stopwatch.GetElapsedTime(startTimestamp).TotalMilliseconds);
+
+    /// <summary>
+    /// Radarr/Sonarr document "On Health Issue" and "On Health Restored" as
+    /// two separate outbound triggers (#859). A manual Test only ever knew
+    /// about the first: whenever the result wasn't healthy it fired
+    /// "health.degraded" (every test, not just the first), and nothing ever
+    /// announced the provider recovering. This adds the missing half —
+    /// "health.restored" on a genuine unhealthy-to-healthy transition — gated
+    /// by the single Provider Health Changed toggle shared by every provider
+    /// type Deluno tests this way.
+    /// </summary>
+    private static async Task DispatchHealthRestoredIfRecoveredAsync(
+        IOutboundNotificationService notificationService,
+        INotificationService notificationPreferences,
+        string providerName,
+        string previousHealthStatus,
+        string newHealthStatus,
+        string? message,
+        CancellationToken cancellationToken)
+    {
+        var wasHealthy = string.Equals(previousHealthStatus, "healthy", StringComparison.OrdinalIgnoreCase);
+        var isHealthy = string.Equals(newHealthStatus, "healthy", StringComparison.OrdinalIgnoreCase);
+        if (wasHealthy || !isHealthy)
+        {
+            return;
+        }
+
+        var preferences = await notificationPreferences.GetPreferencesAsync(cancellationToken);
+        if (!preferences.ProviderHealthChangedEnabled)
+        {
+            return;
+        }
+
+        await notificationService.DispatchAsync(
+            "health.restored",
+            $"{providerName} is healthy again",
+            message ?? $"{providerName} recovered.",
+            null,
+            cancellationToken);
+    }
 
     private sealed record TransmissionRequest(
         [property: JsonPropertyName("method")] string Method,
