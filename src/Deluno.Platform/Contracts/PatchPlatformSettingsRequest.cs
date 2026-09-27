@@ -72,4 +72,5 @@ public sealed record PatchPlatformSettingsRequest(
     int? DownloadHealthMinPeers = null,
     int? DownloadHealthMinPeersMinutes = null,
     int? LibraryFreeSpaceWarnPercent = null,
-    int? LibraryFreeSpacePausePercent = null);
+    int? LibraryFreeSpacePausePercent = null,
+    string? DismissedAutomationNotices = null);

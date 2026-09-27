@@ -101,6 +101,8 @@ export interface PlatformSettingsSnapshot {
   libraryFreeSpaceWarnPercent: number;
   /** #909: percent free remaining at or below which Deluno pauses a library's grabs and imports, the same way an unreachable root does. */
   libraryFreeSpacePausePercent: number;
+  /** #936: comma-separated automation-notice keys the Dashboard's "Keep off" has dismissed, so the notice stays gone across reloads and devices. */
+  dismissedAutomationNotices: string;
   updatedUtc: string;
 }
 
@@ -158,11 +160,14 @@ export const emptyPlatformSettingsSnapshot: PlatformSettingsSnapshot = {
   seriesRootPath: null,
   downloadsPath: null,
   incompleteDownloadsPath: null,
-  autoStartJobs: true,
+  // #936: nothing automatic is on until the setup guide's Automation step, or
+  // Settings, explicitly turns it on. Matches PlatformSettingsSnapshot's
+  // server-side "missing key = off" default for a brand-new install.
+  autoStartJobs: false,
   enableNotifications: true,
-  renameOnImport: true,
+  renameOnImport: false,
   useHardlinks: false,
-  cleanupEmptyFolders: true,
+  cleanupEmptyFolders: false,
   removeCompletedDownloads: false,
   movieFolderFormat: "{Movie Title} ({Release Year})",
   seriesFolderFormat: "{Series Title} ({Series Year})",
@@ -200,9 +205,9 @@ export const emptyPlatformSettingsSnapshot: PlatformSettingsSnapshot = {
   downloadHealthStrikeThreshold: 3,
   cleanupBlockReleaseAfterThreshold: true,
   cleanupQueueReplacementAfterThreshold: true,
-  // #904: on by default, matching PlatformSettingsSnapshot's server-side default.
-  cleanupRemoveClientEntryAfterThreshold: true,
-  cleanupPurgePayloadAfterThreshold: true,
+  // #936: off by default (reverses #904), matching PlatformSettingsSnapshot's server-side default.
+  cleanupRemoveClientEntryAfterThreshold: false,
+  cleanupPurgePayloadAfterThreshold: false,
   workflowVerified: false,
   sharingMode: "share-then-tidy",
   sharingForHours: 72,
@@ -220,5 +225,6 @@ export const emptyPlatformSettingsSnapshot: PlatformSettingsSnapshot = {
   downloadHealthMinPeersMinutes: 30,
   libraryFreeSpaceWarnPercent: 10,
   libraryFreeSpacePausePercent: 5,
+  dismissedAutomationNotices: "",
   updatedUtc: new Date(0).toISOString()
 };

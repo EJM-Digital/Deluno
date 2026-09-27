@@ -65,4 +65,5 @@ public sealed record UpdatePlatformSettingsRequest(
     int? DownloadHealthMinPeers = null,
     int? DownloadHealthMinPeersMinutes = null,
     int? LibraryFreeSpaceWarnPercent = null,
-    int? LibraryFreeSpacePausePercent = null);
+    int? LibraryFreeSpacePausePercent = null,
+    string? DismissedAutomationNotices = null);
