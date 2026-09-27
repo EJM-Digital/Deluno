@@ -192,6 +192,7 @@ GET /api/retention/seerr-cleanups
 GET /api/retention/titles/{entityId}
 GET /api/search-cycles
 GET /api/search-retry-windows
+GET /api/search/categories
 GET /api/security/allowed-hosts
 GET /api/seerr-servers/
 GET /api/seerr-servers/{id}/acquisitions
