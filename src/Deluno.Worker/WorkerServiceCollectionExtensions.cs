@@ -43,6 +43,7 @@ public static class WorkerServiceCollectionExtensions
         services.AddScoped<IJobHandler, MovieCollectionSyncJobHandler>();
         services.AddScoped<IJobHandler, TvLibrarySearchJobHandler>();
         services.AddScoped<IJobHandler, MediaServerRefreshJobHandler>();
+        services.AddScoped<IJobHandler, MediaServerRefreshRetryJobHandler>();
         services.AddScoped<JobHandlerRegistry>();
 
         services.AddScoped<WorkPlanner>();
@@ -73,6 +74,7 @@ public static class WorkerServiceCollectionExtensions
         services.AddScoped<IHealthCheck, ProxyHealthCheck>();
         services.AddScoped<IHealthCheck, RemotePathMappingHealthCheck>();
         services.AddScoped<IHealthCheck, SystemTimeHealthCheck>();
+        services.AddScoped<IHealthCheck, MediaServerRefreshHealthCheck>();
         services.AddHttpClient(Deluno.Worker.HealthChecks.HealthCheckHttpClients.SystemTime, client => client.Timeout = TimeSpan.FromSeconds(10));
         services.AddScoped<HealthCheckRunner>();
         services.AddHostedService<HealthCheckHostedService>();

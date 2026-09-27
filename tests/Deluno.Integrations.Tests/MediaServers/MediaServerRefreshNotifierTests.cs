@@ -2,6 +2,8 @@ using Deluno.Connections.Contracts;
 using Deluno.Connections.Data;
 using Deluno.Contracts;
 using Deluno.Integrations.MediaServers;
+using Deluno.Jobs.Contracts;
+using Deluno.Jobs.Data;
 
 namespace Deluno.Integrations.Tests.MediaServers;
 
@@ -115,12 +117,181 @@ public sealed class MediaServerRefreshNotifierTests
         Assert.Empty(client.Calls);
     }
 
+    // ---------------------------------------------------------------- #920
+
+    [Fact]
+    public async Task A_failed_notify_backs_off_and_schedules_its_own_retry()
+    {
+        var down = Server("down", MediaServerKinds.Plex);
+        var repository = new FakeRepository([down], []);
+        var client = new FakeClient(MediaServerKinds.Plex, fail: true);
+        var backlogRepo = new FakeBacklogRepository();
+        var jobs = new FakeJobScheduler();
+        var notifier = new MediaServerRefreshNotifier(repository, new FakeRegistry(client), TimeProvider.System, backlogRepo, jobs, new FakeActivityFeed());
+
+        await notifier.NotifyAsync("movies", [new MediaServerPathChange("/media/Movies/Sintel.mkv", MediaServerChangeKind.Created)], CancellationToken.None);
+
+        var backlog = Assert.Single(backlogRepo.All());
+        Assert.Equal(1, backlog.AttemptCount);
+        Assert.Single(backlog.Changes);
+        var enqueued = Assert.Single(jobs.Enqueued);
+        Assert.Equal(MediaServerJobTypes.RefreshRetry, enqueued.JobType);
+        Assert.True(enqueued.ScheduledUtc > DateTimeOffset.UtcNow);
+        Assert.Equal("media-server-refresh-retry:down:movies", enqueued.DedupeKey);
+    }
+
+    [Fact]
+    public async Task Each_failed_attempt_backs_off_further_than_the_last()
+    {
+        var down = Server("down", MediaServerKinds.Plex);
+        var repository = new FakeRepository([down], []);
+        var client = new FakeClient(MediaServerKinds.Plex, fail: true);
+        var backlogRepo = new FakeBacklogRepository();
+        var jobs = new FakeJobScheduler();
+        var notifier = new MediaServerRefreshNotifier(repository, new FakeRegistry(client), TimeProvider.System, backlogRepo, jobs, new FakeActivityFeed());
+
+        await notifier.NotifyAsync("movies", [new MediaServerPathChange("/media/Movies/Sintel.mkv", MediaServerChangeKind.Created)], CancellationToken.None);
+        var firstDelay = jobs.Enqueued[0].ScheduledUtc!.Value - DateTimeOffset.UtcNow;
+
+        var stillDown = await notifier.RetryAsync("down", "movies", CancellationToken.None);
+        var secondDelay = jobs.Enqueued[1].ScheduledUtc!.Value - DateTimeOffset.UtcNow;
+
+        Assert.False(stillDown);
+        Assert.Equal(2, Assert.Single(backlogRepo.All()).AttemptCount);
+        Assert.True(secondDelay > firstDelay, $"expected {secondDelay} > {firstDelay}");
+    }
+
+    [Fact]
+    public async Task A_new_change_while_a_server_is_down_folds_into_the_same_backlog_instead_of_a_second_call()
+    {
+        var down = Server("down", MediaServerKinds.Plex);
+        var repository = new FakeRepository([down], []);
+        var client = new FakeClient(MediaServerKinds.Plex, fail: true);
+        var backlogRepo = new FakeBacklogRepository();
+        var notifier = new MediaServerRefreshNotifier(repository, new FakeRegistry(client), TimeProvider.System, backlogRepo, new FakeJobScheduler(), new FakeActivityFeed());
+
+        await notifier.NotifyAsync("movies", [new MediaServerPathChange("/media/Movies/Sintel.mkv", MediaServerChangeKind.Created)], CancellationToken.None);
+        await notifier.NotifyAsync("movies", [new MediaServerPathChange("/media/Movies/Big Buck Bunny.mkv", MediaServerChangeKind.Created)], CancellationToken.None);
+
+        var backlog = Assert.Single(backlogRepo.All());
+        Assert.Equal(2, backlog.Changes.Count);
+        Assert.Equal(2, client.Calls.Count);
+        // Both calls sent everything owed so far, not just what was new that time.
+        Assert.Single(client.Calls[0].Changes);
+        Assert.Equal(2, client.Calls[1].Changes.Count);
+    }
+
+    [Fact]
+    public async Task A_retry_that_succeeds_catches_up_everything_missed_in_one_call_and_clears_the_backlog()
+    {
+        var server = Server("s1", MediaServerKinds.Plex, healthStatus: "unreachable");
+        var repository = new FakeRepository([server], []);
+        var client = new FakeClient(MediaServerKinds.Plex, fail: true);
+        var backlogRepo = new FakeBacklogRepository();
+        var activity = new FakeActivityFeed();
+        var notifier = new MediaServerRefreshNotifier(repository, new FakeRegistry(client), TimeProvider.System, backlogRepo, new FakeJobScheduler(), activity);
+
+        await notifier.NotifyAsync("movies", [new MediaServerPathChange("/media/Movies/Sintel.mkv", MediaServerChangeKind.Created)], CancellationToken.None);
+        await notifier.NotifyAsync("movies", [new MediaServerPathChange("/media/Movies/Big Buck Bunny.mkv", MediaServerChangeKind.Created)], CancellationToken.None);
+        client.Fail = false;
+
+        var answered = await notifier.RetryAsync("s1", "movies", CancellationToken.None);
+
+        Assert.True(answered);
+        Assert.Empty(backlogRepo.All());
+        Assert.Equal(2, client.Calls[^1].Changes.Count);
+        var logged = Assert.Single(activity.Recorded);
+        Assert.Equal(MediaServerRefreshActivity.CaughtUp, logged.Category);
+        Assert.Contains("2 changed files", logged.Message);
+    }
+
+    [Fact]
+    public async Task A_retry_with_nothing_left_to_send_answers_true_without_calling_the_client()
+    {
+        var server = Server("s1", MediaServerKinds.Plex);
+        var client = new FakeClient(MediaServerKinds.Plex);
+        var notifier = new MediaServerRefreshNotifier(
+            new FakeRepository([server], []), new FakeRegistry(client), TimeProvider.System,
+            new FakeBacklogRepository(), new FakeJobScheduler(), new FakeActivityFeed());
+
+        var answered = await notifier.RetryAsync("s1", "movies", CancellationToken.None);
+
+        Assert.True(answered);
+        Assert.Empty(client.Calls);
+    }
+
+    private sealed class FakeBacklogRepository : IMediaServerRefreshBacklogRepository
+    {
+        private readonly Dictionary<(string ServerId, string MediaType), MediaServerRefreshBacklogItem> _items = [];
+
+        public IReadOnlyList<MediaServerRefreshBacklogItem> All() => _items.Values.ToArray();
+
+        public Task<MediaServerRefreshBacklogItem?> FindAsync(string mediaServerId, string mediaType, CancellationToken cancellationToken)
+            => Task.FromResult(_items.GetValueOrDefault((mediaServerId, mediaType)));
+
+        public Task<IReadOnlyList<MediaServerRefreshBacklogItem>> ListAsync(CancellationToken cancellationToken)
+            => Task.FromResult<IReadOnlyList<MediaServerRefreshBacklogItem>>(_items.Values.ToArray());
+
+        public Task<MediaServerRefreshBacklogItem> RecordFailureAsync(string mediaServerId, string mediaType, IReadOnlyList<MediaServerPathChange> pendingChanges, CancellationToken cancellationToken)
+        {
+            var key = (mediaServerId, mediaType);
+            var existing = _items.GetValueOrDefault(key);
+            var attempt = (existing?.AttemptCount ?? 0) + 1;
+            var now = DateTimeOffset.UtcNow;
+            var item = new MediaServerRefreshBacklogItem(mediaServerId, mediaType, existing?.FirstFailedUtc ?? now, now + MediaServerRefreshBackoff.Next(attempt), attempt, pendingChanges, now);
+            _items[key] = item;
+            return Task.FromResult(item);
+        }
+
+        public Task ClearAsync(string mediaServerId, string mediaType, CancellationToken cancellationToken)
+        {
+            _items.Remove((mediaServerId, mediaType));
+            return Task.CompletedTask;
+        }
+    }
+
+    private sealed class FakeJobScheduler : IJobScheduler
+    {
+        public List<EnqueueJobRequest> Enqueued { get; } = [];
+
+        public Task<JobQueueItem> EnqueueAsync(EnqueueJobRequest request, CancellationToken cancellationToken)
+        {
+            Enqueued.Add(request);
+            return Task.FromResult(new JobQueueItem(
+                Guid.NewGuid().ToString("N"), request.JobType, request.Source, "pending", request.PayloadJson, 0,
+                DateTimeOffset.UtcNow, request.ScheduledUtc ?? DateTimeOffset.UtcNow, null, null, null, null, null,
+                request.RelatedEntityType, request.RelatedEntityId, request.IdempotencyKey, request.DedupeKey,
+                request.MaxAttempts ?? 3, null, null));
+        }
+    }
+
+    private sealed class FakeActivityFeed : IActivityFeedRepository
+    {
+        public List<(string Category, string Message)> Recorded { get; } = [];
+
+        public Task<IReadOnlyList<ActivityEventItem>> ListActivityAsync(int take, string? relatedEntityType, string? relatedEntityId, CancellationToken cancellationToken)
+            => throw new NotSupportedException();
+
+        public Task<Page<ActivityEventItem>> ListActivityPageAsync(PageRequest request, string? relatedEntityType, string? relatedEntityId, CancellationToken cancellationToken)
+            => throw new NotSupportedException();
+
+        public Task<ActivityEventItem> RecordActivityAsync(string category, string message, string? detailsJson, string? relatedJobId, string? relatedEntityType, string? relatedEntityId, CancellationToken cancellationToken)
+        {
+            Recorded.Add((category, message));
+            return Task.FromResult(new ActivityEventItem(Guid.NewGuid().ToString("N"), category, message, detailsJson, relatedJobId, relatedEntityType, relatedEntityId, DateTimeOffset.UtcNow));
+        }
+
+        public Task<IReadOnlyList<ActivityEventItem>> RecordActivityBatchAsync(IReadOnlyList<ActivityEventItem> activities, CancellationToken cancellationToken)
+            => throw new NotSupportedException();
+    }
+
     private sealed record RefreshCall(string MediaType, IReadOnlyList<MediaServerPathChange> Changes);
 
     private sealed class FakeClient(string kind, bool fail = false) : IMediaServerClient
     {
         public string Kind => kind;
         public List<RefreshCall> Calls { get; } = [];
+        public bool Fail { get; set; } = fail;
 
         public Task<MediaServerTestResult> TestAsync(MediaServerConnection connection, CancellationToken cancellationToken)
             => throw new NotSupportedException();
@@ -135,7 +306,7 @@ public sealed class MediaServerRefreshNotifierTests
             MediaServerConnection connection, string mediaType, IReadOnlyList<MediaServerPathChange> changes, CancellationToken cancellationToken)
         {
             Calls.Add(new RefreshCall(mediaType, changes));
-            return Task.FromResult<MediaServerAnswer<MediaServerRefresh>>(fail
+            return Task.FromResult<MediaServerAnswer<MediaServerRefresh>>(Fail
                 ? new MediaServerAnswer<MediaServerRefresh>.Unreachable($"{connection.Name} is down.")
                 : new MediaServerAnswer<MediaServerRefresh>.Reported(new MediaServerRefresh("ok", false)));
         }
