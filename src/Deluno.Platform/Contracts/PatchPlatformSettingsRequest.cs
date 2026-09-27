@@ -97,4 +97,6 @@ public sealed record PatchPlatformSettingsRequest(
     // #762: blank clears the subfolder, matching how a movie/series folder
     // format already works.
     string? SeasonFolderFormat = null,
-    string? SpecialsFolderFormat = null);
+    string? SpecialsFolderFormat = null,
+    // #763: one of Deluno.Series.Contracts.MultiEpisodeStyles.
+    string? MultiEpisodeStyle = null);

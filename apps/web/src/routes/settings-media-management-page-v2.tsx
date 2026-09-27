@@ -53,6 +53,15 @@ const COLON_REPLACEMENT_OPTIONS = [
   { value: "space-dash", label: "Space Dash" },
   { value: "space-dash-space", label: "Space Dash Space" }
 ];
+/** #763: matches Deluno.Series.Contracts.MultiEpisodeStyles on the server. */
+const MULTI_EPISODE_STYLE_OPTIONS = [
+  { value: "extend", label: "Extend" },
+  { value: "duplicate", label: "Duplicate" },
+  { value: "repeat", label: "Repeat" },
+  { value: "scene", label: "Scene" },
+  { value: "range", label: "Range (recommended)" },
+  { value: "prefixed-range", label: "Prefixed Range" }
+];
 const FAILURE_OPTIONS = [
   { value: "block", label: "Stop and ask me" },
   { value: "manual-review", label: "Send to manual review" },
@@ -167,6 +176,7 @@ function FileHandlingPage() {
         useHardlinks: form.useHardlinks,
         replaceIllegalCharacters: form.replaceIllegalCharacters,
         colonReplacementMode: form.colonReplacementMode,
+        multiEpisodeStyle: form.multiEpisodeStyle,
         seasonFolderFormat: seasonSubfoldersEnabled ? form.seasonFolderFormat : "",
         specialsFolderFormat: seasonSubfoldersEnabled ? form.specialsFolderFormat : ""
       });
@@ -221,6 +231,15 @@ function FileHandlingPage() {
                 </div>
                 <NamingFormatField kind="episode-file" value={form.episodeFileFormat} onChange={(value) => setForm((current) => ({ ...current, episodeFileFormat: value }))} onCustomModeChange={(active, draftValue, previousValue) => handleCustomMode("episode-file", active, draftValue, previousValue)} placeholder="{Series Title} - S{Season:00}E{Episode:00} - {Episode Title}" showExamples={false} />
               </div>
+            </div>
+            <div className="grid gap-[var(--grid-gap)] p-[var(--card-pad-x)]">
+              <Field label="Multi-episode style" help="How a file that covers more than one episode (a double episode, a combined premiere) gets its combined season/episode name.">
+                <Select
+                  value={form.multiEpisodeStyle}
+                  onChange={(event) => setForm((current) => ({ ...current, multiEpisodeStyle: event.target.value }))}
+                  options={MULTI_EPISODE_STYLE_OPTIONS}
+                />
+              </Field>
             </div>
             <div className="grid gap-[var(--grid-gap)] p-[var(--card-pad-x)]">
               <SwitchRow
@@ -316,6 +335,9 @@ function FileHandlingPage() {
                 </div>
                 <div className="grid gap-[var(--grid-gap)] border-b border-hairline pb-[var(--grid-gap)] last:border-b-0 last:pb-0">
                   <NamingPreview label="Episode file" value={previewNamingFormat(form.episodeFileFormat || "{Series Title} - S{Season:00}E{Episode:00} - {Episode Title}")} />
+                </div>
+                <div className="grid gap-[var(--grid-gap)] border-b border-hairline pb-[var(--grid-gap)] last:border-b-0 last:pb-0">
+                  <NamingPreview label="Multi-episode file" value={previewMultiEpisodeFormat(form.episodeFileFormat || "{Series Title} - S{Season:00}E{Episode:00} - {Episode Title}", form.multiEpisodeStyle)} />
                 </div>
                 <div className="grid gap-[var(--grid-gap)] border-b border-hairline pb-[var(--grid-gap)] last:border-b-0 last:pb-0">
                   <NamingPreview label="Daily episode file" value={previewNamingFormat(form.dailyEpisodeFileFormat || "{Series Title} - {Air-Date} - {Episode Title}")} />
@@ -527,6 +549,31 @@ function ImportPolicyFields({
 /** #762: mirrors ImportPipelineService.BuildSeasonSubfolder's own two tokens. */
 function previewSeasonFormat(format: string, season = 1) {
   return format.replaceAll("{Season:00}", season.toString().padStart(2, "0")).replaceAll("{Season}", season.toString());
+}
+
+/** #763: mirrors Deluno.Series.Contracts.MultiEpisodeStyles.FormatToken for a 2-episode example. */
+function multiEpisodeToken(style: string): string {
+  switch (style) {
+    case "extend":
+      return "S01E01E02";
+    case "duplicate":
+      return "S01E01S01E02";
+    case "repeat":
+      return "S01E01-S01E02";
+    case "scene":
+      return "S01E01-E02";
+    case "prefixed-range":
+      return "S01E01-02";
+    default:
+      return "S01E01-E02";
+  }
+}
+
+/** #763: the same episode-file format the single-episode preview uses, but with a combined token and joined episode title. */
+function previewMultiEpisodeFormat(episodeFileFormat: string, style: string) {
+  return previewNamingFormat(episodeFileFormat)
+    .replace(/S0?1E0?1/i, multiEpisodeToken(style))
+    .replace("Good News About Hell", "Good News About Hell + The Grim Barrow");
 }
 
 function NamingPreview({ label, value }: { label: string; value: string }) {

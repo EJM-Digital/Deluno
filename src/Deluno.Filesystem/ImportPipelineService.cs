@@ -4237,41 +4237,61 @@ public sealed partial class ImportPipelineService(
             request.SeriesType ?? numbering?.SeriesType,
             request.NumberingScheme ?? numbering?.NumberingScheme);
         var parsedEpisodes = SeriesNumberingResolver.ParseFileName(incomingName, scheme);
-        if (parsedEpisodes.Matches.Count != 1)
+        if (parsedEpisodes.Matches.Count == 0)
         {
             return new ResolvedDestinationFileName(
                 incomingName,
                 "Rename on import preserved this TV filename because Deluno could not safely determine its season and episode number.");
         }
 
-        var parsed = parsedEpisodes.Matches[0];
-        int seasonNumber;
-        int episodeNumber;
-        SeriesEpisodeNumbering? cataloguedEpisode;
-        if (parsed.SeasonNumber is int parsedSeason && parsed.EpisodeNumber is int parsedEpisode)
+        // #763: a file naming more than one episode (S01E01E02, S01E01-E03,
+        // ...) resolves every one of them the same way a single match always
+        // has, so a multi-episode file gets exactly the same catalogue
+        // matching guarantees a single-episode one does.
+        var resolved = new List<(int Season, int Episode, SeriesEpisodeNumbering? Catalogued)>();
+        foreach (var parsed in parsedEpisodes.Matches)
         {
-            seasonNumber = parsedSeason;
-            episodeNumber = parsedEpisode;
-            cataloguedEpisode = numbering?.Episodes.SingleOrDefault(item =>
-                item.SeasonNumber == seasonNumber && item.EpisodeNumber == episodeNumber);
-        }
-        else if (numbering is not null &&
-                 SeriesNumberingResolver.TryResolve(parsed, numbering.Episodes, out var match, out _))
-        {
-            seasonNumber = match!.SeasonNumber;
-            episodeNumber = match.EpisodeNumber;
-            cataloguedEpisode = match;
-        }
-        else
-        {
+            if (parsed.SeasonNumber is int parsedSeason && parsed.EpisodeNumber is int parsedEpisode)
+            {
+                resolved.Add((
+                    parsedSeason,
+                    parsedEpisode,
+                    numbering?.Episodes.SingleOrDefault(item =>
+                        item.SeasonNumber == parsedSeason && item.EpisodeNumber == parsedEpisode)));
+                continue;
+            }
+
+            if (numbering is not null && SeriesNumberingResolver.TryResolve(parsed, numbering.Episodes, out var match, out _))
+            {
+                resolved.Add((match!.SeasonNumber, match.EpisodeNumber, match));
+                continue;
+            }
+
             return new ResolvedDestinationFileName(
                 incomingName,
                 $"Rename on import preserved this TV filename because its {scheme} number could not be matched to one catalogued episode.");
         }
 
-        var episodeTitle = string.IsNullOrWhiteSpace(cataloguedEpisode?.Title)
-            ? $"Episode {episodeNumber:D2}"
-            : cataloguedEpisode.Title.Trim();
+        if (resolved.Select(item => item.Season).Distinct().Count() > 1)
+        {
+            return new ResolvedDestinationFileName(
+                incomingName,
+                "Rename on import preserved this TV filename because its episodes span more than one season.");
+        }
+
+        var seasonNumber = resolved[0].Season;
+        var episodeNumbers = resolved.Select(item => item.Episode).Distinct().OrderBy(number => number).ToArray();
+        var episodeNumber = episodeNumbers[0];
+        var cataloguedEpisode = resolved[0].Catalogued;
+        // Every episode's own title, in episode order, joined the way Sonarr
+        // joins a multi-episode file's combined title -- the multi-episode
+        // style below only ever changes the season/episode token, never this.
+        var episodeTitle = string.Join(
+            " + ",
+            resolved
+                .OrderBy(item => item.Episode)
+                .Select(item => string.IsNullOrWhiteSpace(item.Catalogued?.Title) ? $"Episode {item.Episode:D2}" : item.Catalogued!.Title.Trim())
+                .Distinct(StringComparer.OrdinalIgnoreCase));
         // The decision's quality when there is one: reading it back out of the
         // incoming name is how an episode Deluno took as WEB-DL could be filed
         // as something else entirely.
@@ -4298,7 +4318,19 @@ public sealed partial class ImportPipelineService(
             SeriesNumberingSchemes.Absolute => settings.AnimeEpisodeFileFormat,
             _ => settings.EpisodeFileFormat
         };
-        var formatted = episodeFileFormat
+        // #763: a multi-episode file replaces the template's whole
+        // "S{Season:00}...E{Episode:00}" group with the chosen style's
+        // combined token before the usual token-by-token substitution below
+        // runs -- which is why the plain {season:00}/{episode:00} replacements
+        // further down are left in place as the fallback for a custom
+        // template that does not put the two tokens next to each other.
+        var multiEpisodeFormat = episodeNumbers.Length > 1
+            ? MultiEpisodeTokenPattern().Replace(
+                episodeFileFormat,
+                _ => MultiEpisodeStyles.FormatToken(settings.MultiEpisodeStyle, seasonNumber, episodeNumbers),
+                1)
+            : episodeFileFormat;
+        var formatted = multiEpisodeFormat
             .Replace("{Series Title}", SanitizeFileName(title, settings.ReplaceIllegalCharacters, settings.ColonReplacementMode), StringComparison.OrdinalIgnoreCase)
             .Replace("{Title}", SanitizeFileName(title, settings.ReplaceIllegalCharacters, settings.ColonReplacementMode), StringComparison.OrdinalIgnoreCase)
             .Replace("{season:00}", seasonNumber.ToString("D2"), StringComparison.OrdinalIgnoreCase)
@@ -4312,6 +4344,15 @@ public sealed partial class ImportPipelineService(
             null,
             seasonNumber);
     }
+
+    // #763: the template's own "S{Season:00}...E{Episode:00}" group -- an
+    // optional leading literal S (case-insensitive, matching a custom
+    // template that spells it lower-case), the season token, up to a
+    // handful of connecting characters (typically a literal "E"), then the
+    // episode token. Matched once, against the format string itself, before
+    // the tokens are substituted for real values.
+    [GeneratedRegex(@"S?\{season:00\}[^{}]{0,4}\{episode:00\}", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
+    private static partial Regex MultiEpisodeTokenPattern();
 
     [GeneratedRegex(@"(^|[.\-_\s])sample([.\-_\s]|$)", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
     private static partial Regex SampleTokenPattern();

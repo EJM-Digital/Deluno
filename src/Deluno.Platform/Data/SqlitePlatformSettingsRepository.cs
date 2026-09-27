@@ -249,6 +249,12 @@ public sealed class SqlitePlatformSettingsRepository(
         // format below.
         await UpsertSettingAsync(connection, transaction, "media.seasonFolderFormat", request.SeasonFolderFormat ?? string.Empty, updatedUtc, cancellationToken);
         await UpsertSettingAsync(connection, transaction, "media.specialsFolderFormat", request.SpecialsFolderFormat ?? string.Empty, updatedUtc, cancellationToken);
+        // #763: one of Deluno.Series.Contracts.MultiEpisodeStyles. Not
+        // referenced directly -- Deluno.Platform does not depend on
+        // Deluno.Series -- so this repeats that small, stable value set the
+        // same way ColonReplacementMode's own normalizer does not reach into
+        // another module either.
+        await UpsertSettingAsync(connection, transaction, "media.multiEpisodeStyle", NormalizeMultiEpisodeStyle(request.MultiEpisodeStyle), updatedUtc, cancellationToken);
         // #909: warn and pause both read as "percent free remaining", so pause
         // must be the smaller number -- clamped here rather than merely
         // validated, so a stored value can never be read back the wrong way
@@ -602,8 +608,20 @@ public sealed class SqlitePlatformSettingsRepository(
             LeftoverDownloadCleanupEnabled: string.Equals(GetValue(settings, "downloads.leftoverCleanup.enabled"), "true", StringComparison.OrdinalIgnoreCase),
             LeftoverDownloadCleanupAgeHours: ReadPositiveInt(GetValue(settings, "downloads.leftoverCleanup.ageHours"), 24, 1, 8760),
             SeasonFolderFormat: GetValue(settings, "media.seasonFolderFormat") ?? string.Empty,
-            SpecialsFolderFormat: GetValue(settings, "media.specialsFolderFormat") ?? string.Empty);
+            SpecialsFolderFormat: GetValue(settings, "media.specialsFolderFormat") ?? string.Empty,
+            MultiEpisodeStyle: NormalizeMultiEpisodeStyle(GetValue(settings, "media.multiEpisodeStyle")));
     }
+
+    private static string NormalizeMultiEpisodeStyle(string? value)
+        => value?.Trim().ToLowerInvariant() switch
+        {
+            "extend" => "extend",
+            "duplicate" => "duplicate",
+            "repeat" => "repeat",
+            "scene" => "scene",
+            "prefixed-range" => "prefixed-range",
+            _ => "range"
+        };
 
     private static string NormalizeProperRepackAcquisitionMode(string? value)
         => value?.Trim().ToLowerInvariant() switch

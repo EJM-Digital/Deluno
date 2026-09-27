@@ -3129,7 +3129,9 @@ public sealed class ImportPipelineServiceTests
             AllowCopyFallback: true);
 
         var preview = await service.PreviewAsync(request.Preview, CancellationToken.None);
-        Assert.Equal(Path.GetFileName(sourcePath), Path.GetFileName(preview.DestinationPath));
+        // #763: a multi-episode file now gets a templated name too (Range,
+        // the default style), instead of keeping the incoming filename as-is.
+        Assert.Equal("Example Show - S01E02-E03 - Two + Three.mkv", Path.GetFileName(preview.DestinationPath));
 
         var result = await service.ExecuteAsync(request, CancellationToken.None);
         Assert.True(result.Succeeded, result.Message);
@@ -3162,6 +3164,142 @@ public sealed class ImportPipelineServiceTests
         Assert.All(imported, item => Assert.Equal(preview.DestinationPath, item.FilePath));
         Assert.Single(imported.Select(item => item.FilePath).Distinct(StringComparer.OrdinalIgnoreCase));
         Assert.Single(imported.Select(item => item.ImportedUtc).Distinct(StringComparer.Ordinal));
+    }
+
+    /// <summary>#763: MultiEpisodeStyle is read from settings all the way through the import path, checked against a 2- and a 3-episode file for every style.</summary>
+    [Theory]
+    [InlineData(MultiEpisodeStyles.Extend, "S01E02E03", 2)]
+    [InlineData(MultiEpisodeStyles.Duplicate, "S01E02S01E03", 2)]
+    [InlineData(MultiEpisodeStyles.Repeat, "S01E02-S01E03", 2)]
+    [InlineData(MultiEpisodeStyles.Scene, "S01E02-E03", 2)]
+    [InlineData(MultiEpisodeStyles.Range, "S01E02-E03", 2)]
+    [InlineData(MultiEpisodeStyles.PrefixedRange, "S01E02-03", 2)]
+    [InlineData(MultiEpisodeStyles.Extend, "S01E02E03E04", 3)]
+    [InlineData(MultiEpisodeStyles.Duplicate, "S01E02S01E03S01E04", 3)]
+    [InlineData(MultiEpisodeStyles.Repeat, "S01E02-S01E03-S01E04", 3)]
+    [InlineData(MultiEpisodeStyles.Scene, "S01E02-E03-E04", 3)]
+    [InlineData(MultiEpisodeStyles.Range, "S01E02-E04", 3)]
+    [InlineData(MultiEpisodeStyles.PrefixedRange, "S01E02-04", 3)]
+    public async Task Preview_names_a_multi_episode_file_per_the_selected_style(string style, string expectedToken, int episodeCount)
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-04-29T08:00:00Z"));
+        await InitializeAllAsync(storage, timeProvider);
+
+        var downloadsPath = Path.Combine(storage.DataRoot, "downloads");
+        var movieRootPath = Path.Combine(storage.DataRoot, "movies");
+        var seriesRootPath = Path.Combine(storage.DataRoot, "series");
+        Directory.CreateDirectory(downloadsPath);
+        Directory.CreateDirectory(movieRootPath);
+        Directory.CreateDirectory(seriesRootPath);
+        var episodeToken = episodeCount == 2 ? "E02E03" : "E02E03E04";
+        var sourcePath = Path.Combine(downloadsPath, $"Example.Show.S01{episodeToken}.2160p.WEB-DL.mkv");
+        await File.WriteAllBytesAsync(sourcePath, Enumerable.Range(0, 4096).Select(value => (byte)(value % 251)).ToArray());
+        File.SetLastWriteTimeUtc(sourcePath, DateTime.UtcNow.AddMinutes(-1));
+
+        var platform = CreatePlatformRepository(storage, timeProvider);
+        var libraries = CreateLibrariesRepository(storage, timeProvider);
+        await SaveSettingsAsync(platform, movieRootPath, downloadsPath, seriesRootPath, multiEpisodeStyle: style);
+        await CreateTvLibraryAsync(libraries, seriesRootPath, downloadsPath);
+
+        var seriesRepository = new SqliteSeriesCatalogRepository(storage.Factory, timeProvider);
+        var episodes = new List<CatalogueEpisodeItem>
+        {
+            new(1, 2, "Two", null, timeProvider.GetUtcNow().AddDays(-3)),
+            new(1, 3, "Three", null, timeProvider.GetUtcNow().AddDays(-2))
+        };
+        var expectedTitle = "Two + Three";
+        if (episodeCount == 3)
+        {
+            episodes.Add(new CatalogueEpisodeItem(1, 4, "Four", null, timeProvider.GetUtcNow().AddDays(-1)));
+            expectedTitle = "Two + Three + Four";
+        }
+
+        var series = await seriesRepository.AddAsync(new CreateSeriesRequest("Example Show", 2026, "tt7654321"), CancellationToken.None);
+        await seriesRepository.SyncEpisodeCatalogueAsync(series.Id, episodes, "provider", CancellationToken.None);
+
+        var movies = new SqliteMovieCatalogRepository(storage.Factory, timeProvider);
+        var service = CreateService(storage, timeProvider, platform, libraries, movies);
+        var preview = await service.PreviewAsync(
+            new ImportPreviewRequest(
+                sourcePath,
+                Path.GetFileName(sourcePath),
+                "tv",
+                "Example Show",
+                2026,
+                [],
+                [],
+                null,
+                null,
+                SeriesId: series.Id,
+                SeriesType: SeriesTypes.Standard,
+                NumberingScheme: SeriesNumberingSchemes.Standard),
+            CancellationToken.None);
+
+        Assert.Equal($"Example Show - {expectedToken} - {expectedTitle}.mkv", Path.GetFileName(preview.DestinationPath));
+    }
+
+    /// <summary>
+    /// #763: two scene-numbered episodes in one file that map, through the
+    /// catalogue's own scene mapping, to two different canonical seasons
+    /// (a real XEM-style shape for a show whose scene numbering runs across
+    /// a season boundary) are left unmatched rather than guessed at.
+    /// </summary>
+    [Fact]
+    public async Task Preview_keeps_the_incoming_name_when_a_multi_episode_files_episodes_resolve_to_different_seasons()
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-04-29T08:00:00Z"));
+        await InitializeAllAsync(storage, timeProvider);
+
+        var downloadsPath = Path.Combine(storage.DataRoot, "downloads");
+        var movieRootPath = Path.Combine(storage.DataRoot, "movies");
+        var seriesRootPath = Path.Combine(storage.DataRoot, "series");
+        Directory.CreateDirectory(downloadsPath);
+        Directory.CreateDirectory(movieRootPath);
+        Directory.CreateDirectory(seriesRootPath);
+        var sourcePath = Path.Combine(downloadsPath, "Example.Show.S01E09E10.2160p.WEB-DL.mkv");
+        await File.WriteAllBytesAsync(sourcePath, Enumerable.Range(0, 4096).Select(value => (byte)(value % 251)).ToArray());
+        File.SetLastWriteTimeUtc(sourcePath, DateTime.UtcNow.AddMinutes(-1));
+
+        var platform = CreatePlatformRepository(storage, timeProvider);
+        var libraries = CreateLibrariesRepository(storage, timeProvider);
+        await SaveSettingsAsync(platform, movieRootPath, downloadsPath, seriesRootPath);
+        await CreateTvLibraryAsync(libraries, seriesRootPath, downloadsPath);
+
+        var seriesRepository = new SqliteSeriesCatalogRepository(storage.Factory, timeProvider);
+        var series = await seriesRepository.AddAsync(
+            new CreateSeriesRequest("Example Show", 2026, "tt7654321", NumberingScheme: SeriesNumberingSchemes.Scene),
+            CancellationToken.None);
+        await seriesRepository.SyncEpisodeCatalogueAsync(
+            series.Id,
+            [
+                new CatalogueEpisodeItem(1, 9, "Season One Finale", null, timeProvider.GetUtcNow().AddDays(-2), SceneSeasonNumber: 1, SceneEpisodeNumber: 9),
+                new CatalogueEpisodeItem(2, 1, "Season Two Premiere", null, timeProvider.GetUtcNow().AddDays(-1), SceneSeasonNumber: 1, SceneEpisodeNumber: 10)
+            ],
+            "provider",
+            CancellationToken.None);
+
+        var movies = new SqliteMovieCatalogRepository(storage.Factory, timeProvider);
+        var service = CreateService(storage, timeProvider, platform, libraries, movies);
+        var preview = await service.PreviewAsync(
+            new ImportPreviewRequest(
+                sourcePath,
+                Path.GetFileName(sourcePath),
+                "tv",
+                "Example Show",
+                2026,
+                [],
+                [],
+                null,
+                null,
+                SeriesId: series.Id,
+                SeriesType: SeriesTypes.Standard,
+                NumberingScheme: SeriesNumberingSchemes.Scene),
+            CancellationToken.None);
+
+        Assert.Equal(Path.GetFileName(sourcePath), Path.GetFileName(preview.DestinationPath));
+        Assert.Contains(preview.Warnings, warning => warning.Contains("more than one season", StringComparison.OrdinalIgnoreCase));
     }
 
     [Fact]
@@ -5024,7 +5162,8 @@ public sealed class ImportPipelineServiceTests
         string? folderChmod = null,
         string? chownGroup = null,
         string? seasonFolderFormat = null,
-        string? specialsFolderFormat = null)
+        string? specialsFolderFormat = null,
+        string? multiEpisodeStyle = null)
     {
         await platform.SaveAsync(
             new UpdatePlatformSettingsRequest(
@@ -5067,7 +5206,8 @@ public sealed class ImportPipelineServiceTests
                 FolderChmod: folderChmod,
                 ChownGroup: chownGroup,
                 SeasonFolderFormat: seasonFolderFormat,
-                SpecialsFolderFormat: specialsFolderFormat),
+                SpecialsFolderFormat: specialsFolderFormat,
+                MultiEpisodeStyle: multiEpisodeStyle),
             CancellationToken.None);
     }
 
