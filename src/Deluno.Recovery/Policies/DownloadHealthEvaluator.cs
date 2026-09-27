@@ -11,12 +11,15 @@ namespace Deluno.Recovery.Policies;
 public sealed class DownloadHealthEvaluator : IRecoveryHealthEvaluator
 {
     private static readonly TimeSpan ExcessiveEta = TimeSpan.FromDays(7);
-    private static readonly string[] SuspiciousExtensions = [".bat", ".cmd", ".exe", ".js", ".lnk", ".ps1", ".scr", ".url", ".vbs"];
 
     public IReadOnlyList<RecoveryHealthFinding> Evaluate(RecoveryQueueSnapshot item, DateTimeOffset capturedUtc)
-        => Evaluate(item, capturedUtc, DownloadHealthRules.Defaults);
+        => Evaluate(item, capturedUtc, DownloadHealthRules.Defaults, null);
 
-    public IReadOnlyList<RecoveryHealthFinding> Evaluate(RecoveryQueueSnapshot item, DateTimeOffset capturedUtc, IReadOnlyList<DownloadHealthRule> rules)
+    public IReadOnlyList<RecoveryHealthFinding> Evaluate(
+        RecoveryQueueSnapshot item,
+        DateTimeOffset capturedUtc,
+        IReadOnlyList<DownloadHealthRule> rules,
+        ContentBlocklistSettings? contentBlocklist = null)
     {
         var findings = new List<RecoveryHealthFinding>();
 
@@ -204,16 +207,45 @@ public sealed class DownloadHealthEvaluator : IRecoveryHealthEvaluator
                 CanSafelyRemove: false));
         }
 
-        if (SuspiciousExtensions.Any(extension => item.ReleaseName.EndsWith(extension, StringComparison.OrdinalIgnoreCase)))
+        // #816: check the files actually inside the download against the
+        // configured content blocklist, rather than only the release's own
+        // name. When no file listing was fetched (the client does not expose
+        // one, or the feature is off), fall back to matching the release name
+        // itself against the same patterns - this is what keeps the old
+        // release-name extension check alive as a special case of the new,
+        // configurable one instead of a second parallel check.
+        if (contentBlocklist is { Enabled: true })
         {
-            findings.Add(new(
-                Severity: "warning",
-                Kind: "suspicious-payload-name",
-                Summary: "The release name ends in an executable or shortcut extension.",
-                Evidence: $"Release name: {item.ReleaseName}",
-                RecommendedAction: "Verify the download contents before any import. Deluno will not remove it automatically.",
-                CanSafelyRetry: false,
-                CanSafelyRemove: false));
+            var candidates = item.Files is { Count: > 0 } files ? files : [item.ReleaseName];
+            var offendingFile = ContentBlocklistMatcher.FindOffendingFile(candidates, contentBlocklist);
+            if (offendingFile is not null)
+            {
+                findings.Add(new(
+                    Severity: "warning",
+                    Kind: "content-blocklist-match",
+                    Summary: "A file inside this download matches the content blocklist.",
+                    Evidence: $"Offending file: {offendingFile}",
+                    RecommendedAction: "Verify the download contents before any import. Turn on the dangerous-file rule to have Deluno act on this automatically.",
+                    CanSafelyRetry: false,
+                    CanSafelyRemove: true));
+
+                // #879: the same match, but only struck and acted on when the
+                // dedicated rule (its own strike limit, timer and action
+                // preset, off by default) is enabled for this download's
+                // scope - one instant strike is enough; a dangerous file
+                // does not need to be seen twice.
+                var dangerousFile = MatchRule(rules, DownloadHealthRuleKinds.DangerousFile, item);
+                if (dangerousFile is not null)
+                {
+                    findings.Add(RuleFinding(
+                        dangerousFile,
+                        "critical",
+                        DownloadHealthStrikes.DangerousFile,
+                        "A file inside this download matches the content blocklist.",
+                        $"Offending file: {offendingFile}",
+                        "Deluno can remove this download with its data, blocklist the release, and search again."));
+                }
+            }
         }
 
         return findings;

@@ -108,4 +108,38 @@ public interface IDownloadHealthRepository
     /// every read already applies. Returns how many rows were removed.
     /// </summary>
     Task<int> PruneDownloadHealthHistoryAsync(DateTimeOffset olderThan, CancellationToken cancellationToken);
+
+    /// <summary>The content-blocklist configuration (#816). Off by default (#936) until saved once.</summary>
+    Task<ContentBlocklistSettings> GetContentBlocklistSettingsAsync(CancellationToken cancellationToken);
+
+    Task<ContentBlocklistSettings> SaveContentBlocklistSettingsAsync(
+        ContentBlocklistSettings settings,
+        CancellationToken cancellationToken);
+
+    /// <summary>Replaces the patterns fetched from the configured custom remote URL, and stamps when that fetch happened (#816).</summary>
+    Task<ContentBlocklistSettings> RecordContentBlocklistRemoteRefreshAsync(
+        IReadOnlyList<string> remotePatterns,
+        CancellationToken cancellationToken);
+
+    /// <summary>
+    /// The last time Deluno pushed the content blocklist into one qBittorrent
+    /// client's "Excluded file names" preference (#822), and whether that push
+    /// succeeded, keyed by download-client id.
+    /// </summary>
+    Task<IReadOnlyDictionary<string, QbittorrentBlocklistSyncState>> ListQbittorrentBlocklistSyncStatesAsync(CancellationToken cancellationToken);
+
+    Task RecordQbittorrentBlocklistSyncAsync(
+        string clientId,
+        string blocklistHash,
+        bool succeeded,
+        string? message,
+        CancellationToken cancellationToken);
 }
+
+/// <summary>One qBittorrent client's last content-blocklist sync attempt (#822).</summary>
+public sealed record QbittorrentBlocklistSyncState(
+    string ClientId,
+    string BlocklistHash,
+    bool Succeeded,
+    string? Message,
+    DateTimeOffset SyncedUtc);

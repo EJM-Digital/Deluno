@@ -83,16 +83,103 @@ public sealed class DownloadHealthEvaluatorTests
         Assert.Contains("path mapping", finding.RecommendedAction, StringComparison.OrdinalIgnoreCase);
     }
 
+    /// <summary>
+    /// #816: with the content blocklist off (its default, #936), a
+    /// suspicious release name is no longer flagged on its own - the
+    /// release-name check now only runs as the blocklist's own fallback when
+    /// it is turned on and no file listing is available.
+    /// </summary>
     [Fact]
-    public void Evaluate_SuspiciousPayloadName_RequiresHumanVerification()
+    public void Evaluate_SuspiciousReleaseName_ContentBlocklistOff_HasNoFinding()
     {
         var findings = Evaluate(CreateItem(releaseName: "Example.Movie.2026.exe"));
 
+        Assert.Empty(findings);
+    }
+
+    /// <summary>#816: turned on, with no file listing available, the same suspicious release name is caught by matching the name itself against the built-in patterns.</summary>
+    [Fact]
+    public void Evaluate_SuspiciousReleaseName_ContentBlocklistOn_NoFileListing_FallsBackToReleaseName()
+    {
+        var findings = Evaluate(
+            CreateItem(releaseName: "Example.Movie.2026.exe"),
+            contentBlocklist: ContentBlocklistSettings.Default with { Enabled = true });
+
         var finding = Assert.Single(findings);
-        Assert.Equal("suspicious-payload-name", finding.Kind);
+        Assert.Equal("content-blocklist-match", finding.Kind);
         Assert.False(finding.CanSafelyRetry);
-        Assert.False(finding.CanSafelyRemove);
-        Assert.Contains("Verify", finding.RecommendedAction);
+        Assert.True(finding.CanSafelyRemove);
+        Assert.Contains("Example.Movie.2026.exe", finding.Evidence);
+    }
+
+    /// <summary>#816: a clean release name with a dangerous file packaged inside it is caught by checking the files themselves, not the release name.</summary>
+    [Fact]
+    public void Evaluate_CleanReleaseName_DangerousFileInside_IsCaughtByFileListing()
+    {
+        var findings = Evaluate(
+            CreateItem(releaseName: "Example.Movie.2026.1080p.mkv"),
+            files: ["Example.Movie.2026.1080p.mkv", "Setup.exe"],
+            contentBlocklist: ContentBlocklistSettings.Default with { Enabled = true });
+
+        var finding = Assert.Single(findings);
+        Assert.Equal("content-blocklist-match", finding.Kind);
+        Assert.Contains("Setup.exe", finding.Evidence);
+    }
+
+    /// <summary>#816 whitelist mode: any file not covered by an allow pattern is the offender.</summary>
+    [Fact]
+    public void Evaluate_WhitelistMode_FileNotOnTheAllowListIsTheOffender()
+    {
+        var findings = Evaluate(
+            CreateItem(releaseName: "Example.Movie.2026.1080p.mkv"),
+            files: ["Example.Movie.2026.1080p.mkv", "readme.exe"],
+            contentBlocklist: new ContentBlocklistSettings(
+                Enabled: true,
+                Mode: ContentBlocklistModes.Whitelist,
+                UseBuiltInPatterns: false,
+                CustomPatterns: ["*.mkv"],
+                RemoteUrl: null,
+                RemotePatterns: [],
+                LastRefreshedUtc: null,
+                UpdatedUtc: DateTimeOffset.MinValue));
+
+        var finding = Assert.Single(findings);
+        Assert.Equal("content-blocklist-match", finding.Kind);
+        Assert.Contains("readme.exe", finding.Evidence);
+    }
+
+    /// <summary>#879: the same match only strikes (and can go on to act) once the dedicated dangerous-file rule is enabled - the passive #816 finding above never does on its own.</summary>
+    [Fact]
+    public void Evaluate_DangerousFileMatch_WithRuleEnabled_AlsoProducesAStrikingFinding()
+    {
+        var rules = new[]
+        {
+            new DownloadHealthRule(
+                Id: "dangerous-file",
+                Kind: DownloadHealthRuleKinds.DangerousFile,
+                Enabled: true,
+                StrikeLimit: 1,
+                TimerMinutes: 1,
+                AppliesTo: DownloadHealthAppliesTo.Both,
+                MinCompletionPercent: 0,
+                MaxCompletionPercent: 100,
+                ResetStrikesOnProgress: true,
+                ActionPreset: DownloadHealthActionPresets.Replace,
+                CreatedUtc: DateTimeOffset.MinValue,
+                UpdatedUtc: DateTimeOffset.MinValue)
+        };
+
+        var findings = Evaluate(
+            CreateItem(releaseName: "Example.Movie.2026.1080p.mkv"),
+            files: ["Example.Movie.2026.1080p.mkv", "Setup.exe"],
+            contentBlocklist: ContentBlocklistSettings.Default with { Enabled = true },
+            rules: rules);
+
+        Assert.Equal(2, findings.Count);
+        Assert.Contains(findings, finding => finding.Kind == "content-blocklist-match");
+        var strikingFinding = Assert.Single(findings, finding => finding.Kind == DownloadHealthStrikes.DangerousFile);
+        Assert.Equal("dangerous-file", strikingFinding.RuleId);
+        Assert.Equal(DownloadHealthActionPresets.Replace, strikingFinding.RuleActionPreset);
     }
 
     [Fact]
@@ -171,7 +258,11 @@ public sealed class DownloadHealthEvaluatorTests
             SourcePath: sourcePath,
             IsSetupProblem: isSetupProblem);
 
-    private static IReadOnlyList<DownloadHealthFinding> Evaluate(DownloadQueueItem item) =>
+    private static IReadOnlyList<DownloadHealthFinding> Evaluate(
+        DownloadQueueItem item,
+        IReadOnlyList<string>? files = null,
+        ContentBlocklistSettings? contentBlocklist = null,
+        IReadOnlyList<DownloadHealthRule>? rules = null) =>
         Evaluator.Evaluate(
             new RecoveryQueueSnapshot(
                 item.Status,
@@ -182,9 +273,12 @@ public sealed class DownloadHealthEvaluatorTests
                 item.EtaSeconds,
                 item.ReleaseName,
                 item.Peers,
-                item.IsSetupProblem),
+                item.IsSetupProblem,
+                item.Progress,
+                Files: files),
             CapturedUtc,
-            DownloadHealthRules.Defaults)
+            rules ?? DownloadHealthRules.Defaults,
+            contentBlocklist)
         .Select(finding => new DownloadHealthFinding(
             finding.Severity,
             finding.Kind,
@@ -192,6 +286,8 @@ public sealed class DownloadHealthEvaluatorTests
             finding.Evidence,
             finding.RecommendedAction,
             finding.CanSafelyRetry,
-            finding.CanSafelyRemove))
+            finding.CanSafelyRemove,
+            RuleId: finding.RuleId,
+            RuleActionPreset: finding.RuleActionPreset))
         .ToArray();
 }

@@ -191,6 +191,9 @@ public sealed class AForeignDownloadIsNeverStruckOrRemediatedTests
         public Task<DownloadClientCategoryCheckResult> CheckCategoryAsync(DownloadClientItem requested, string category, CancellationToken cancellationToken)
             => throw new NotSupportedException();
 
+        public Task<IReadOnlyList<string>?> GetFilesAsync(DownloadClientItem requested, string queueItemId, CancellationToken cancellationToken)
+            => Task.FromResult<IReadOnlyList<string>?>(null);
+
         public string NormalizeStatus(string? nativeStatus, double? progress, int? errorCode = null, string? errorMessage = null)
             => nativeStatus ?? "unknown";
     }

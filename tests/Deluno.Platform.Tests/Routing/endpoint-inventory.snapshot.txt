@@ -79,6 +79,8 @@ GET /api/download-clients/{clientId}/queue/{queueItemId}/cleanup-preview
 GET /api/download-clients/{id}/path-mappings
 GET /api/download-dispatches
 GET /api/download-health
+GET /api/download-health/content-blocklist
+GET /api/download-health/content-blocklist/qbittorrent-sync-status
 GET /api/download-health/ignore-list
 GET /api/download-health/rules
 GET /api/exclusions
@@ -464,6 +466,7 @@ PUT /api/backups/settings
 PUT /api/custom-formats/{id}
 PUT /api/destination-rules/{id}
 PUT /api/download-clients/{id}
+PUT /api/download-health/content-blocklist
 PUT /api/download-health/rules/{id}
 PUT /api/failure-rules/{reasonCode}
 PUT /api/indexer-proxies/{id}

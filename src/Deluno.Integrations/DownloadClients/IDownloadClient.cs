@@ -39,6 +39,18 @@ public interface IDownloadClient
         string category,
         CancellationToken cancellationToken);
 
+    /// <summary>
+    /// The files actually inside one download, as the client's own file
+    /// listing reports them (#816) - a relative path per file, not the
+    /// release name. Null when this client does not expose a file listing, or
+    /// the queue item cannot be found; empty when it does and genuinely holds
+    /// no files. Never throws for an ordinary "not supported" answer.
+    /// </summary>
+    Task<IReadOnlyList<string>?> GetFilesAsync(
+        DownloadClientItem client,
+        string queueItemId,
+        CancellationToken cancellationToken);
+
     string NormalizeStatus(
         string? nativeStatus,
         double? progress,

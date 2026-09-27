@@ -56,7 +56,16 @@ public sealed record RecoveryQueueSnapshot(
     /// <summary>Whether the tracker is private, as the client itself reports it (#815). Null when unknown; a rule scoped to public-only or private-only never matches an unknown privacy.</summary>
     bool? IsPrivate = null,
     /// <summary>One of <see cref="DownloadTrackerStatuses"/> (#878).</summary>
-    string TrackerStatus = DownloadTrackerStatuses.Unknown);
+    string TrackerStatus = DownloadTrackerStatuses.Unknown,
+    /// <summary>
+    /// The files actually inside this download, as the client's own file
+    /// listing reports them (#816) - qBittorrent's <c>api/v2/torrents/files</c>,
+    /// Transmission's <c>files</c> field, Deluge's <c>get_torrent_status</c>
+    /// files. Empty when the content blocklist is off, the client does not
+    /// expose a file listing, or the listing has not been fetched yet; a
+    /// content-blocklist match then falls back to the release name alone.
+    /// </summary>
+    IReadOnlyList<string>? Files = null);
 
 public sealed record RecoveryHealthFinding(
     string Severity,
@@ -82,5 +91,7 @@ public interface IRecoveryHealthEvaluator
     IReadOnlyList<RecoveryHealthFinding> Evaluate(
         RecoveryQueueSnapshot item,
         DateTimeOffset capturedUtc,
-        IReadOnlyList<DownloadHealthRule> rules);
+        IReadOnlyList<DownloadHealthRule> rules,
+        // Off by default (#816, #936); null/disabled means no content-blocklist finding is ever produced.
+        ContentBlocklistSettings? contentBlocklist = null);
 }

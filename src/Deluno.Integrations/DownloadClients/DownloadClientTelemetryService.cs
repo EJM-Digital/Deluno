@@ -87,6 +87,7 @@ public sealed class DownloadClientTelemetryService(
         var platformSettings = await platformRepository.GetAsync(cancellationToken);
         var downloadHealthRules = await healthRepository.GetDownloadHealthRulesAsync(platformSettings, cancellationToken);
         var downloadHealthIgnoreList = await healthRepository.ListDownloadHealthIgnoreEntriesAsync(cancellationToken);
+        var contentBlocklist = await healthRepository.GetContentBlocklistSettingsAsync(cancellationToken);
         var clients = await connectionsRepository.ListDownloadClientsAsync(cancellationToken);
         var pathMappings = await connectionsRepository.ListDownloadClientPathMappingsAsync(null, cancellationToken);
         var libraries = await librariesRepository.ListLibrariesAsync(cancellationToken);
@@ -200,12 +201,14 @@ public sealed class DownloadClientTelemetryService(
         // which a finished-but-still-seeding download still needs to be
         // recognised by.
         var healthAnnotatedSnapshots = await Task.WhenAll(orderedClients.Zip(mappedSnapshots, (client, snapshot) => AttachHealthFindingsAsync(
+            client,
             snapshot,
             settledDispatchesByClientId.GetValueOrDefault(client.Id, Array.Empty<DownloadDispatchItem>()),
             platformSettings,
             downloadHealthRules,
             downloadHealthIgnoreList,
             connectivityCheckOk,
+            contentBlocklist,
             cancellationToken)));
 
         // The free-space/connectivity summary is still read off the client's
@@ -748,14 +751,24 @@ public sealed class DownloadClientTelemetryService(
     }
 
     private async Task<DownloadClientTelemetrySnapshot> AttachHealthFindingsAsync(
+        DownloadClientItem client,
         DownloadClientTelemetrySnapshot snapshot,
         IReadOnlyList<DownloadDispatchItem> clientDispatches,
         PlatformSettingsSnapshot settings,
         IReadOnlyList<DownloadHealthRule> rules,
         IReadOnlyList<DownloadHealthIgnoreEntry> ignoreList,
         bool connectivityCheckOk,
+        ContentBlocklistSettings contentBlocklist,
         CancellationToken cancellationToken)
     {
+        // #816: off by default, and only fetched for a download Deluno owns
+        // and is actually about to evaluate - every other item in the loop
+        // below skips straight past this, so a feature nobody turned on costs
+        // nothing extra per poll, and one that is on does not fetch a file
+        // listing for a download nobody asked Deluno to watch.
+        var downloadClient = contentBlocklist.Enabled && downloadClientRegistry.TryGet(client.Protocol, out var resolvedClient)
+            ? resolvedClient
+            : null;
         var strikeThreshold = settings.DownloadHealthStrikeThreshold;
         var blockReleaseAfterThreshold = settings.CleanupBlockReleaseAfterThreshold;
         var defaultStrikeWindow = TimeSpan.FromMinutes(Math.Clamp(settings.DownloadHealthDefaultStrikeWindowMinutes, 1, 1440));
@@ -796,6 +809,13 @@ public sealed class DownloadClientTelemetryService(
                 // evaluator moves; item.AddedUtc keeps showing when it was
                 // actually added.
                 var effectiveAddedUtc = item.AddedUtc + await connectivityMonitor.OutageOverlapAsync(item.AddedUtc, snapshot.CapturedUtc, cancellationToken);
+                // #816: only asked for once a download is actually being
+                // evaluated (Deluno's own, not ignored) and the feature is on.
+                // Null (not one word about it) means "unknown", not "empty" -
+                // Evaluate then falls back to matching the release name itself.
+                var files = downloadClient is not null
+                    ? await downloadClient.GetFilesAsync(client, item.Id, cancellationToken)
+                    : null;
                 var findings = healthEvaluator.Evaluate(
                     new RecoveryQueueSnapshot(
                         item.Status,
@@ -810,9 +830,11 @@ public sealed class DownloadClientTelemetryService(
                         item.Progress,
                         DownloadClientHelpers.IsUsenetProtocol(item.Protocol),
                         item.IsPrivate,
-                        item.TrackerStatus),
+                        item.TrackerStatus,
+                        files),
                     snapshot.CapturedUtc,
-                    rules);
+                    rules,
+                    contentBlocklist);
                 annotated.Add((item, findings));
             }
         }
@@ -1063,6 +1085,22 @@ public sealed class DownloadClientTelemetryService(
                 var (wantBlock, wantReplacement, wantRemove, wantPurge) = struck.RuleActionPreset is { } preset
                     ? ActionsFor(preset)
                     : (settings.CleanupBlockReleaseAfterThreshold, settings.CleanupQueueReplacementAfterThreshold, settings.CleanupRemoveClientEntryAfterThreshold, settings.CleanupPurgePayloadAfterThreshold);
+
+                // #879: a dangerous-or-junk file only removes the client
+                // entry and purges its payload once the user's own cleanup
+                // switches (#936) are on - unlike every other rule-engine
+                // kind, whose preset alone decides. Today the migrated
+                // "legacy-dangerous-file" rule's own preset already tracks
+                // those same switches (LegacyActionPreset), so this rarely
+                // changes anything in practice; it stays a hard requirement
+                // so a future hand-authored rule of this kind can never
+                // remove or delete on its own strike limit alone.
+                if (string.Equals(struck.Kind, DownloadHealthStrikes.DangerousFile, StringComparison.OrdinalIgnoreCase))
+                {
+                    wantRemove = wantRemove && settings.CleanupRemoveClientEntryAfterThreshold;
+                    wantPurge = wantPurge && settings.CleanupPurgePayloadAfterThreshold;
+                }
+
                 var canRefuse = wantBlock && blockedReleases is not null;
 
                 // "Do not select the same failed release again": on the one
