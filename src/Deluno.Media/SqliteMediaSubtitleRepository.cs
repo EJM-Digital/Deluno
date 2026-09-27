@@ -83,7 +83,15 @@ public sealed class SqliteMediaSubtitleRepository(
         // can prove was cut for your release is the first and not the second —
         // which is the whole of James's *"no point spreading lies about subs that
         // may be out of sync."*
-        var settledPredicate = $"{heldPredicate} AND sub.match_rung >= @cutoff";
+        //
+        // <b>An embedded track is the one exception (#894).</b> It has no release
+        // to check, so it can never climb to the cutoff on its own merits — and
+        // asking a provider for a language the container already carries is not
+        // improving anything, it is spending a daily allowance on a language that
+        // was never missing. When <paramref name="embeddedCounts"/> is false
+        // <c>heldPredicate</c> has already thrown embedded rows out, so this
+        // never reopens what that setting closed.
+        var settledPredicate = $"{heldPredicate} AND (sub.source = '{SubtitleSources.Embedded}' OR sub.match_rung >= @cutoff)";
 
         using var command = connection.CreateCommand();
         command.CommandText = $"""

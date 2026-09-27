@@ -238,6 +238,53 @@ public sealed class SubtitleWantedQueryTests
         Assert.Equal(["en"], item.LanguagesToFetch);
     }
 
+    /// <summary>
+    /// An embedded track has no release to check, so it can never climb the
+    /// match ladder on its own — before #894 that meant a language the
+    /// container already carried stayed "outstanding" forever and Deluno kept
+    /// asking providers for it. It has no upgrade to look for, so it is
+    /// settled the moment it is found, at whatever rung it was recorded at.
+    /// </summary>
+    [Fact]
+    public async Task An_embedded_track_is_settled_even_at_the_lowest_rung()
+    {
+        using var storage = TestStorage.Create();
+        var (movies, subtitles) = await CreateAsync(storage);
+        var id = await ImportAsync(movies, "Dune");
+
+        await subtitles.RecordFetchedAsync(
+            MediaKind.Movie,
+            id,
+            Row("en", SubtitleMatch.AnyRelease) with { Source = SubtitleSources.Embedded },
+            CancellationToken.None);
+
+        Assert.Empty(await subtitles.ListWantedAsync(
+            MediaKind.Movie, "library-movies", ["en"], 50, embeddedCounts: true, CancellationToken.None));
+    }
+
+    /// <summary>
+    /// Turning embedded coverage off already throws the row out of
+    /// <c>heldPredicate</c>, so the settled exception for embedded tracks must
+    /// never reopen what that setting closed: the language stays outstanding.
+    /// </summary>
+    [Fact]
+    public async Task Embedded_settling_never_reopens_when_the_library_excludes_embedded()
+    {
+        using var storage = TestStorage.Create();
+        var (movies, subtitles) = await CreateAsync(storage);
+        var id = await ImportAsync(movies, "Dune");
+
+        await subtitles.RecordFetchedAsync(
+            MediaKind.Movie,
+            id,
+            Row("en", SubtitleMatch.AnyRelease) with { Source = SubtitleSources.Embedded },
+            CancellationToken.None);
+
+        var item = Assert.Single(await subtitles.ListWantedAsync(
+            MediaKind.Movie, "library-movies", ["en"], 50, embeddedCounts: false, CancellationToken.None));
+        Assert.Equal(["en"], item.LanguagesToFetch);
+    }
+
     [Fact]
     public void The_bar_and_the_fetcher_read_the_same_held_predicate()
     {
