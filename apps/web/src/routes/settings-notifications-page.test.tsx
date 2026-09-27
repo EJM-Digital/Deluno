@@ -39,6 +39,9 @@ const preferences: NotificationPreferences = {
   grabEnabled: false,
   addedEnabled: true,
   updateEnabled: false,
+  stalledDownloadHandledEnabled: false,
+  queueItemRemovedEnabled: false,
+  orphanedDownloadRemovedEnabled: true,
   inAppNotificationsEnabled: true,
   emailNotificationsEnabled: false,
   webhookNotificationsEnabled: false,
@@ -131,5 +134,39 @@ describe("lifecycle notification preferences (#856)", () => {
     const body = JSON.parse((init as RequestInit).body as string);
     expect(body.grabEnabled).toBe(true);
     expect(body.addedEnabled).toBe(true);
+  });
+});
+
+describe("recovery and cleanup notification preferences (#858)", () => {
+  afterEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("lists Deluno's own strike/cleanup/queue actions under Recovery & cleanup with their saved state", () => {
+    renderPage();
+
+    expect(screen.getByText("Stalled/slow download handled")).toBeTruthy();
+    expect(screen.getByText("Queue item removed")).toBeTruthy();
+    expect(screen.getByText("Orphaned download removed")).toBeTruthy();
+
+    expect(screen.getByRole("switch", { name: "Queue item removed" }).getAttribute("aria-checked")).toBe("false");
+    expect(screen.getByRole("switch", { name: "Orphaned download removed" }).getAttribute("aria-checked")).toBe("true");
+  });
+
+  it("PUTs the full preferences object when Queue item removed is toggled on", async () => {
+    vi.mocked(authedFetch).mockResolvedValue(new Response(null, { status: 200 }));
+    renderPage();
+
+    fireEvent.click(screen.getByRole("switch", { name: "Queue item removed" }));
+
+    await waitFor(() => expect(authedFetch).toHaveBeenCalledWith(
+      "/api/notification-preferences",
+      expect.objectContaining({ method: "PUT" })
+    ));
+
+    const [, init] = vi.mocked(authedFetch).mock.calls[0];
+    const body = JSON.parse((init as RequestInit).body as string);
+    expect(body.queueItemRemovedEnabled).toBe(true);
+    expect(body.stalledDownloadHandledEnabled).toBe(false);
   });
 });

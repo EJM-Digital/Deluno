@@ -15,6 +15,8 @@ using Deluno.Connections.Contracts;
 using Deluno.Connections.Data;
 using Deluno.Contracts;
 using Deluno.Contracts.Connectivity;
+using Deluno.Notifications;
+using Deluno.Notifications.Contracts;
 
 namespace Deluno.Integrations.DownloadClients;
 
@@ -37,9 +39,42 @@ public sealed class DownloadClientTelemetryService(
     IDownloadHealthConnectivityCheck? connectivityCheck = null,
     IDispatchTitleUnmonitorService? titleUnmonitorService = null,
     IDispatchAlertRepository? dispatchAlertRepository = null,
-    IDispatchRecoveryHandler? recoveryHandler = null)
+    IDispatchRecoveryHandler? recoveryHandler = null,
+    IOutboundNotificationService? outboundNotificationService = null,
+    INotificationService? notificationPreferences = null)
     : IDownloadClientTelemetryService
 {
+    /// <summary>
+    /// Deluno's own recovery/cleanup actions (#858) already land in Activity;
+    /// this also sends them outbound, gated by the matching preference, the
+    /// same shape as every other outbound dispatch. Never lets a
+    /// misconfigured webhook affect the cleanup action itself.
+    /// </summary>
+    private async Task DispatchCleanupNotificationAsync(
+        string eventCategory,
+        string title,
+        string message,
+        string? detailsJson,
+        Func<NotificationPreferences, bool> isEnabled,
+        CancellationToken cancellationToken)
+    {
+        if (outboundNotificationService is null)
+        {
+            return;
+        }
+
+        if (notificationPreferences is not null)
+        {
+            var preferences = await notificationPreferences.GetPreferencesAsync(cancellationToken);
+            if (!isEnabled(preferences))
+            {
+                return;
+            }
+        }
+
+        await outboundNotificationService.DispatchAsync(eventCategory, title, message, detailsJson, cancellationToken);
+    }
+
     // #824 is off by default, so most callers - including every existing
     // test - never touch this; when a caller does turn it on without wiring
     // a real check, assuming reachable is the safe failure mode (never
@@ -473,6 +508,13 @@ public sealed class DownloadClientTelemetryService(
             null,
             dispatch is not null ? dispatch.EntityType : "download_dispatch",
             dispatch?.EntityId ?? dispatch?.Id ?? queueItemId,
+            cancellationToken);
+        await DispatchCleanupNotificationAsync(
+            "download.queue.removed",
+            $"Queue item removed: {title}",
+            message,
+            null,
+            prefs => prefs.QueueItemRemovedEnabled,
             cancellationToken);
 
         return new QueueRemovalResult(client.Id, queueItemId, reason, true, message, blocklisted, searchStarted, dispatch?.EntityId, dispatch?.MediaType);
@@ -1155,6 +1197,13 @@ public sealed class DownloadClientTelemetryService(
                     null,
                     "download_dispatch",
                     dispatch.Id,
+                    cancellationToken);
+                await DispatchCleanupNotificationAsync(
+                    "download.health.remediated",
+                    $"Stalled/slow download handled: {dispatch.ReleaseName}",
+                    activityMessage,
+                    details,
+                    prefs => prefs.StalledDownloadHandledEnabled,
                     cancellationToken);
             }
         }

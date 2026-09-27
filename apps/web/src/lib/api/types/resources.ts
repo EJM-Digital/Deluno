@@ -961,6 +961,9 @@ export interface NotificationPreferences {
   grabEnabled: boolean;
   addedEnabled: boolean;
   updateEnabled: boolean;
+  stalledDownloadHandledEnabled: boolean;
+  queueItemRemovedEnabled: boolean;
+  orphanedDownloadRemovedEnabled: boolean;
   inAppNotificationsEnabled: boolean;
   emailNotificationsEnabled: boolean;
   webhookNotificationsEnabled: boolean;

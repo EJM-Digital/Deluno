@@ -83,6 +83,22 @@ const LIFECYCLE_PREFERENCE_ROWS: Array<{
   { key: "providerHealthChangedEnabled", name: "Provider health changed", description: "An indexer, download client, media server, or processor became unhealthy or recovered." }
 ];
 
+/**
+ * Deluno's own recovery/cleanup actions (#858): each already lands in
+ * Activity; these gate the same actions reaching the outbound path too.
+ * Off by default, matching the conservative default for every other
+ * automation-triggered toggle.
+ */
+const RECOVERY_CLEANUP_PREFERENCE_ROWS: Array<{
+  key: keyof NotificationPreferences;
+  name: string;
+  description: string;
+}> = [
+  { key: "stalledDownloadHandledEnabled", name: "Stalled/slow download handled", description: "A download that stopped progressing had a health rule's action applied to it." },
+  { key: "queueItemRemovedEnabled", name: "Queue item removed", description: "A download was removed from a client's queue, from the Queue screen." },
+  { key: "orphanedDownloadRemovedEnabled", name: "Orphaned download removed", description: "A completed download folder nothing claimed was removed." }
+];
+
 interface WebhookForm {
   name: string;
   url: string;
@@ -321,6 +337,26 @@ export function SettingsNotificationsPage() {
       <ListCard title="Lifecycle notifications" count="Independently toggleable · off by default so nothing new fires unannounced">
         <ListTable columns={[{ label: "Event" }, { label: "Fires when" }, { label: "On", width: LIST_TRACK.toggle, mobile: true }]} chevron={false}>
           {LIFECYCLE_PREFERENCE_ROWS.map((row) => (
+            <ListRow key={row.key}>
+              <ListNameCell name={row.name} />
+              <ListCell primary={row.description} />
+              <ListCell mobile>
+                <Switch
+                  size="sm"
+                  aria-label={row.name}
+                  checked={Boolean(preferences[row.key])}
+                  disabled={busyPreference === row.key}
+                  onCheckedChange={(checked) => void togglePreference(row.key, checked)}
+                />
+              </ListCell>
+            </ListRow>
+          ))}
+        </ListTable>
+      </ListCard>
+
+      <ListCard title="Recovery & cleanup" count="Off by default · Deluno's own strike/cleanup/queue actions, not just Activity entries">
+        <ListTable columns={[{ label: "Event" }, { label: "Fires when" }, { label: "On", width: LIST_TRACK.toggle, mobile: true }]} chevron={false}>
+          {RECOVERY_CLEANUP_PREFERENCE_ROWS.map((row) => (
             <ListRow key={row.key}>
               <ListNameCell name={row.name} />
               <ListCell primary={row.description} />
