@@ -32,6 +32,12 @@ public static class PlatformServiceCollectionExtensions
         services.AddSingleton<IGuideRuleMigrationService, GuideRuleMigrationService>();
         services.AddSingleton<IAutomationIdempotencyStore, SqliteAutomationIdempotencyStore>();
         services.AddSingleton<IHealthCheckRepository, SqliteHealthCheckRepository>();
+        // Same instance behind both interfaces (#820): one small class, one
+        // table pair, rather than two repositories that would have to agree
+        // with each other about what a queue item's identity is.
+        services.AddSingleton<SqliteSharingRulesRepository>();
+        services.AddSingleton<ISharingRulesRepository>(sp => sp.GetRequiredService<SqliteSharingRulesRepository>());
+        services.AddSingleton<ISharingActivityTracker>(sp => sp.GetRequiredService<SqliteSharingRulesRepository>());
         services.AddHostedService<PlatformSchemaInitializer>();
         return services;
     }
