@@ -117,6 +117,70 @@ public sealed class IndexerCallLimiterTests
         Assert.Equal(1, limiter.Peek(indexer, IndexerCallKind.Query, now).Count);
     }
 
+    // ── Instance-wide hourly cap (#829) ─────────────────────────────────────
+
+    [Fact]
+    public void TryConsumeInstanceQuery_is_unrestricted_when_disabled()
+    {
+        var limiter = new IndexerCallLimiter();
+        var now = DateTimeOffset.Parse("2026-01-01T00:00:00Z");
+
+        for (var i = 0; i < 500; i++)
+        {
+            Assert.True(limiter.TryConsumeInstanceQuery(enabled: false, limit: 1, now).Allowed);
+        }
+    }
+
+    [Fact]
+    public void TryConsumeInstanceQuery_blocks_once_the_rolling_hour_total_is_reached()
+    {
+        var limiter = new IndexerCallLimiter();
+        var now = DateTimeOffset.Parse("2026-01-01T00:00:00Z");
+
+        Assert.True(limiter.TryConsumeInstanceQuery(true, 2, now).Allowed);
+        Assert.True(limiter.TryConsumeInstanceQuery(true, 2, now).Allowed);
+
+        var third = limiter.TryConsumeInstanceQuery(true, 2, now);
+        Assert.False(third.Allowed);
+        Assert.Equal(2, third.Limit);
+        Assert.Equal(now.AddHours(1), third.ResetsAtUtc);
+    }
+
+    [Fact]
+    public void TryConsumeInstanceQuery_is_ignored_below_the_cap()
+    {
+        var limiter = new IndexerCallLimiter();
+        var now = DateTimeOffset.Parse("2026-01-01T00:00:00Z");
+
+        Assert.True(limiter.TryConsumeInstanceQuery(true, 10, now).Allowed);
+        Assert.True(limiter.TryConsumeInstanceQuery(true, 10, now).Allowed);
+        Assert.True(limiter.TryConsumeInstanceQuery(true, 10, now).Allowed);
+    }
+
+    [Fact]
+    public void TryConsumeInstanceQuery_count_resets_at_the_next_hour_boundary()
+    {
+        var limiter = new IndexerCallLimiter();
+        var now = DateTimeOffset.Parse("2026-01-01T00:00:00Z");
+
+        Assert.True(limiter.TryConsumeInstanceQuery(true, 1, now).Allowed);
+        Assert.False(limiter.TryConsumeInstanceQuery(true, 1, now.AddMinutes(30)).Allowed);
+        Assert.True(limiter.TryConsumeInstanceQuery(true, 1, now.AddHours(1).AddSeconds(1)).Allowed);
+    }
+
+    [Fact]
+    public void TryConsumeInstanceQuery_is_counted_separately_from_any_single_indexers_own_cap()
+    {
+        var limiter = new IndexerCallLimiter();
+        var indexer = Indexer(queryLimit: 100, limitsUnit: "day");
+        var now = DateTimeOffset.Parse("2026-01-01T00:00:00Z");
+
+        // Reaching the instance-wide cap does not touch a per-indexer count.
+        Assert.True(limiter.TryConsumeInstanceQuery(true, 1, now).Allowed);
+        Assert.False(limiter.TryConsumeInstanceQuery(true, 1, now).Allowed);
+        Assert.True(limiter.TryConsumeQuery(indexer, now).Allowed);
+    }
+
     [Fact]
     public void Default_unit_is_day_when_not_configured()
     {

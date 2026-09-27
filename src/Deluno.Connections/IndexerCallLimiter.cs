@@ -34,6 +34,15 @@ public interface IIndexerCallLimiter
 
     /// <summary>The current state without consuming a call, for the Health section (#750).</summary>
     IndexerCallLimitResult Peek(IndexerItem indexer, IndexerCallKind kind, DateTimeOffset now);
+
+    /// <summary>
+    /// #829: a single hourly search-call ceiling across every indexer
+    /// combined, one instance-wide window rather than per indexer.
+    /// <paramref name="enabled"/> false always allows (the setting is off
+    /// by default, per #936); <paramref name="limit"/> is Deluno's
+    /// MaxSearchesPerHour setting.
+    /// </summary>
+    IndexerCallLimitResult TryConsumeInstanceQuery(bool enabled, int limit, DateTimeOffset now);
 }
 
 public sealed class IndexerCallLimiter : IIndexerCallLimiter
@@ -115,6 +124,35 @@ public sealed class IndexerCallLimiter : IIndexerCallLimiter
 
             window.Count++;
             return new IndexerCallLimitResult(true, limit, window.Count, resetsAtUtc, unit);
+        }
+    }
+
+    private const string InstanceQueryKey = "instance:query-hourly";
+
+    public IndexerCallLimitResult TryConsumeInstanceQuery(bool enabled, int limit, DateTimeOffset now)
+    {
+        if (!enabled || limit <= 0)
+        {
+            return new IndexerCallLimitResult(true, null, 0, null, null);
+        }
+
+        var window = _windows.GetOrAdd(InstanceQueryKey, _ => new Window { StartUtc = now, Count = 0 });
+        lock (window.Lock)
+        {
+            if (now >= window.StartUtc + TimeSpan.FromHours(1))
+            {
+                window.StartUtc = now;
+                window.Count = 0;
+            }
+
+            var resetsAtUtc = window.StartUtc + TimeSpan.FromHours(1);
+            if (window.Count >= limit)
+            {
+                return new IndexerCallLimitResult(false, limit, window.Count, resetsAtUtc, "hour");
+            }
+
+            window.Count++;
+            return new IndexerCallLimitResult(true, limit, window.Count, resetsAtUtc, "hour");
         }
     }
 

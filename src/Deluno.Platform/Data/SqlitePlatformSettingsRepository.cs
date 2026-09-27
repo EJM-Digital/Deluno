@@ -260,6 +260,10 @@ public sealed class SqlitePlatformSettingsRepository(
         // #828: Deluno's own event/strike history, not RetentionService's title-removal marks.
         await UpsertSettingAsync(connection, transaction, "history.retentionDays", Math.Clamp(request.HistoryRetentionDays ?? 365, 1, 3650).ToString(CultureInfo.InvariantCulture), updatedUtc, cancellationToken);
         await UpsertSettingAsync(connection, transaction, "sharing.privacyScope", DownloadHealthPrivacyScopes.IsKnown(request.SharingPrivacyScope ?? string.Empty) ? request.SharingPrivacyScope! : DownloadHealthPrivacyScopes.Both, updatedUtc, cancellationToken);
+        // #829: off by default (#936); the search scheduler only reads the
+        // number when the switch is on.
+        await UpsertSettingAsync(connection, transaction, "search.maxSearchesPerHour.enabled", request.MaxSearchesPerHourEnabled == true ? "true" : "false", updatedUtc, cancellationToken);
+        await UpsertSettingAsync(connection, transaction, "search.maxSearchesPerHour", Math.Clamp(request.MaxSearchesPerHour ?? 200, 1, 100_000).ToString(CultureInfo.InvariantCulture), updatedUtc, cancellationToken);
         // #909: warn and pause both read as "percent free remaining", so pause
         // must be the smaller number -- clamped here rather than merely
         // validated, so a stored value can never be read back the wrong way
@@ -619,7 +623,9 @@ public sealed class SqlitePlatformSettingsRepository(
             HistoryRetentionDays: ReadPositiveInt(GetValue(settings, "history.retentionDays"), 365, 1, 3650),
             SharingPrivacyScope: DownloadHealthPrivacyScopes.IsKnown(GetValue(settings, "sharing.privacyScope") ?? string.Empty)
                 ? GetValue(settings, "sharing.privacyScope")!
-                : DownloadHealthPrivacyScopes.Both);
+                : DownloadHealthPrivacyScopes.Both,
+            MaxSearchesPerHourEnabled: string.Equals(GetValue(settings, "search.maxSearchesPerHour.enabled"), "true", StringComparison.OrdinalIgnoreCase),
+            MaxSearchesPerHour: ReadPositiveInt(GetValue(settings, "search.maxSearchesPerHour"), 200, 1, 100_000));
     }
 
     private static string NormalizeMultiEpisodeStyle(string? value)

@@ -85,6 +85,9 @@ export interface PlatformSettingsPatch {
   downloadThroughputSamplerIntervalMinutes?: number;
   /** #828: 1-3650 days of Deluno's own event/strike history before a background job prunes it. */
   historyRetentionDays?: number;
+  /** #829: a single hourly search-call ceiling across every indexer combined. Off by default (#936). */
+  maxSearchesPerHourEnabled?: boolean;
+  maxSearchesPerHour?: number;
   /** #909: percent free remaining at which a library root's health check warns, but keeps grabbing and importing. */
   libraryFreeSpaceWarnPercent?: number;
   /** #909: percent free remaining at or below which Deluno pauses a library's grabs and imports, the same way an unreachable root does. */

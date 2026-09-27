@@ -464,10 +464,12 @@ public sealed class FeedMediaSearchPlanner(
             logger.LogDebug("Waited {Wait} before querying {Host}.", waited, uri.Host);
         }
 
-        // #750: a hard cap in addition to the pacing above. Checked after
-        // the interval throttle (so a skip there is reported first) and
-        // before the resilience-wrapped request itself, since a refused
-        // call must never count as a query attempt.
+        // #750/#829: a hard cap in addition to the pacing above - first this
+        // indexer's own, then the single instance-wide hourly ceiling across
+        // every indexer combined. Checked after the interval throttle (so a
+        // skip there is reported first) and before the resilience-wrapped
+        // request itself, since a refused call must never count as a query
+        // attempt.
         if (indexerCallLimiter is not null)
         {
             var limitResult = indexerCallLimiter.TryConsumeQuery(indexer, DateTimeOffset.UtcNow);
@@ -488,6 +490,34 @@ public sealed class FeedMediaSearchPlanner(
                         CircuitOpen: false,
                         Outcome: "query_limit_reached",
                         ErrorMessage: $"{indexer.Name}'s query limit ({limitResult.Limit} per {limitResult.Unit}) is reached for now."),
+                    indexer,
+                    queryText,
+                    mediaType,
+                    queryKind,
+                    startedTimestamp);
+            }
+
+            var settingsForLimit = await platformRepository.GetAsync(cancellationToken);
+            var instanceResult = indexerCallLimiter.TryConsumeInstanceQuery(
+                settingsForLimit.MaxSearchesPerHourEnabled,
+                settingsForLimit.MaxSearchesPerHour,
+                DateTimeOffset.UtcNow);
+            if (!instanceResult.Allowed)
+            {
+                logger.LogInformation(
+                    "Skipped {IndexerName}: the instance-wide {Limit}-searches-per-hour cap is reached; resets {ResetsAtUtc}.",
+                    indexer.Name,
+                    instanceResult.Limit,
+                    instanceResult.ResetsAtUtc);
+
+                return WithTelemetry(
+                    new IndexerSearchOutcome(
+                        [],
+                        CandidatesTruncatedByIndexer: false,
+                        Failed: false,
+                        CircuitOpen: false,
+                        Outcome: "instance_query_limit_reached",
+                        ErrorMessage: $"Deluno's hourly search cap ({instanceResult.Limit} per hour, across all indexers) is reached for now."),
                     indexer,
                     queryText,
                     mediaType,

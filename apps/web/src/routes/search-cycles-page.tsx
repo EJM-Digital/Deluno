@@ -142,6 +142,11 @@ interface CleanupForm {
   minPeersEnabled: boolean;
   minPeers: string;
   minPeersMinutes: string;
+  // #829: a single hourly search-call ceiling across every indexer
+  // combined, alongside a library's own "titles per run" limit. Off by
+  // default (#936).
+  maxSearchesPerHourEnabled: boolean;
+  maxSearchesPerHour: string;
 }
 
 export function SearchCyclesPage() {
@@ -337,6 +342,8 @@ export function SearchCyclesPage() {
             downloadHealthMinPeersEnabled: cleanup.minPeersEnabled,
             downloadHealthMinPeers: Math.max(0, Number(cleanup.minPeers || 1)),
             downloadHealthMinPeersMinutes: Math.max(1, Math.min(1440, Number(cleanup.minPeersMinutes || 30))),
+            maxSearchesPerHourEnabled: cleanup.maxSearchesPerHourEnabled,
+            maxSearchesPerHour: Math.max(1, Math.min(100_000, Number(cleanup.maxSearchesPerHour || 200))),
             sharingMode: sharing.mode,
             // A blank target is sent as null, which the API stores as
             // "deliberately not part of this rule" rather than "never set".
@@ -589,6 +596,30 @@ export function SearchCyclesPage() {
               <Link to="/search-cycles/download-health">Open Download health</Link>
             </Button>
           </div>
+
+          <div className="grid gap-[var(--grid-gap)] border-t border-hairline pt-[var(--grid-gap)] sm:grid-cols-[auto_1fr] sm:items-start">
+            <SwitchRow
+              label="Hourly search cap"
+              description="Stop after this many total searches per hour, across every indexer combined — not a per-indexer limit. Off until a ceiling makes sense for your own indexers."
+              checked={cleanup.maxSearchesPerHourEnabled}
+              onCheckedChange={(checked) => setCleanup((current) => ({ ...current, maxSearchesPerHourEnabled: checked }))}
+            />
+            <Field label="Searches per hour" className="max-w-[12rem] sm:pl-[var(--grid-gap)]">
+              <PresetField
+                inputType="number"
+                value={cleanup.maxSearchesPerHour}
+                onChange={(value) => setCleanup((current) => ({ ...current, maxSearchesPerHour: value }))}
+                disabled={!cleanup.maxSearchesPerHourEnabled}
+                options={[
+                  { value: "100", label: "100" },
+                  { value: "200", label: "200" },
+                  { value: "400", label: "400" }
+                ]}
+                customLabel="Custom"
+                customPlaceholder="1–100000"
+              />
+            </Field>
+          </div>
         </div>
       </ListCard> : null}
 
@@ -770,7 +801,9 @@ function cleanupFrom(settings: PlatformSettingsSnapshot): CleanupForm {
     minSpeedMinutes: String(settings.downloadHealthMinSpeedMinutes ?? 30),
     minPeersEnabled: settings.downloadHealthMinPeersEnabled,
     minPeers: String(settings.downloadHealthMinPeers ?? 1),
-    minPeersMinutes: String(settings.downloadHealthMinPeersMinutes ?? 30)
+    minPeersMinutes: String(settings.downloadHealthMinPeersMinutes ?? 30),
+    maxSearchesPerHourEnabled: settings.maxSearchesPerHourEnabled,
+    maxSearchesPerHour: String(settings.maxSearchesPerHour ?? 200)
   };
 }
 function nextSearchLabel(view: string, library: LibraryItem, state: LibraryAutomationStateItem | undefined): string | null {
