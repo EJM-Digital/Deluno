@@ -45,6 +45,14 @@ without a signature.
 - Windows release artifacts are complete and installable.
 - Install/upgrade/rollback matrix passes on clean Windows environments.
 - No open `P0` or `P1` release-blocking issues.
+- `RELEASE_NOTES.md` has a `## <version>` section for the version being
+  released, written in plain everyday words (not internal names). The repo
+  stays private ([#870](https://github.com/jampat000/Deluno/issues/870)), so
+  this file, embedded into the build, is the only place an install can read
+  what changed; the Updates card shows it for every version applied.
+  `npm run ci:check` warns (does not fail) when the version currently in
+  `Directory.Build.props` has no section yet — treat that warning as a real
+  step for a release build, not one to wave through with the rest.
 - Full regression gates pass on candidate commit:
   - `npm run ci:check`
   - `dotnet test Deluno.slnx --configuration Release`

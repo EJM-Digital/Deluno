@@ -52,6 +52,14 @@ public sealed record UpdateStatusResponse(
     IReadOnlyList<string> Notes,
     string? CurrentImageRef = null,
     string? CurrentImageDigest = null,
+    // Notes for a PENDING update (LatestVersion), looked up the same way as
+    // AppliedUpdateEntry.Notes once a version to look up exists. There is no
+    // update checker yet (every install kind reports UpdateAvailable=false
+    // and LatestVersion=null - see DefaultUpdateOrchestrator.BuildStatus), so
+    // this always stays null today; that is not a bug or an omission on
+    // screen. When a checker exists, set it from
+    // IReleaseNotesProvider.GetNotes(LatestVersion) the same way applied
+    // entries get theirs.
     string? Changelog = null,
     IReadOnlyList<AppliedUpdateEntry>? AppliedUpdates = null);
 
@@ -61,7 +69,14 @@ public sealed record UpdateStatusResponse(
 /// recorded — the same signal that fires the "On Application Update"
 /// outbound notification (#856).
 /// </summary>
-public sealed record AppliedUpdateEntry(string Version, DateTimeOffset AppliedAtUtc);
+/// <param name="Notes">
+/// This version's plain-language release notes (RELEASE_NOTES.md via
+/// IReleaseNotesProvider), or null when the notes file has no section for
+/// it. Looked up fresh each time the status is built, not persisted to
+/// update-history.json, so editing the notes file takes effect immediately
+/// without rewriting history already on disk.
+/// </param>
+public sealed record AppliedUpdateEntry(string Version, DateTimeOffset AppliedAtUtc, string? Notes = null);
 
 public sealed record UpdatePreferencesResponse(
     string Mode,
