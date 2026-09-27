@@ -127,6 +127,10 @@ public static class PlatformEndpointRouteBuilderExtensions
             // checks to run now costs one extra fast pass; not asking risks
             // showing a stale pause/warn state for up to fifteen minutes.
             await healthChecks.RequestImmediateRunAsync(HealthCheckCategories.Library, cancellationToken);
+            // The metadata provider mode, broker URL and keys live here too,
+            // so a save that fixes (or breaks) TMDb should not wait fifteen
+            // minutes to be believed either.
+            await healthChecks.RequestImmediateRunAsync(HealthCheckCategories.Metadata, cancellationToken);
             return Results.Ok(snapshot);
         });
 
@@ -155,6 +159,7 @@ public static class PlatformEndpointRouteBuilderExtensions
             var snapshot = await repository.SaveAsync(merged, cancellationToken);
             await realtimeEventPublisher.PublishEntityChangedAsync("Settings", "settings", cancellationToken);
             await healthChecks.RequestImmediateRunAsync(HealthCheckCategories.Library, cancellationToken);
+            await healthChecks.RequestImmediateRunAsync(HealthCheckCategories.Metadata, cancellationToken);
             return Results.Ok(snapshot);
         });
 
@@ -418,6 +423,28 @@ public static class PlatformEndpointRouteBuilderExtensions
             !SearchScoringModes.IsSupported(request.SearchScoringMode))
         {
             errors["searchScoringMode"] = ["Choose one of: hybrid, rules-only, or ml-only."];
+        }
+
+        // #909: the repository clamps both into range and quietly pulls pause
+        // down to meet warn on save, which is the right last resort against a
+        // corrupt value -- but silently rewriting what a person just typed is
+        // not a substitute for telling them why, on the form, before it saves.
+        if (request.LibraryFreeSpaceWarnPercent is { } warnPercent && (warnPercent < 1 || warnPercent > 50))
+        {
+            errors["libraryFreeSpaceWarnPercent"] = ["Choose a percentage between 1 and 50."];
+        }
+
+        if (request.LibraryFreeSpacePausePercent is { } pausePercent && (pausePercent < 1 || pausePercent > 50))
+        {
+            errors["libraryFreeSpacePausePercent"] = ["Choose a percentage between 1 and 50."];
+        }
+
+        if (!errors.ContainsKey("libraryFreeSpaceWarnPercent") &&
+            !errors.ContainsKey("libraryFreeSpacePausePercent") &&
+            request.LibraryFreeSpacePausePercent is { } pauseValue &&
+            pauseValue > (request.LibraryFreeSpaceWarnPercent ?? 10))
+        {
+            errors["libraryFreeSpacePausePercent"] = ["The pause threshold must be at or below the warn threshold."];
         }
 
         return errors;

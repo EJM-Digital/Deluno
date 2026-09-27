@@ -269,10 +269,18 @@ function ImportPolicyPage() {
     event.preventDefault();
     if (state === "saving") return;
     setSaveState("saving");
+    const thresholdError = libraryFreeSpaceThresholdError(form);
+    if (thresholdError) {
+      setSaveState("error");
+      setMessage(thresholdError);
+      return;
+    }
     try {
       const nextSettings = await settingsMutation.mutate({
         renameOnImport: form.renameOnImport,
-        useHardlinks: form.useHardlinks
+        useHardlinks: form.useHardlinks,
+        libraryFreeSpaceWarnPercent: form.libraryFreeSpaceWarnPercent,
+        libraryFreeSpacePausePercent: form.libraryFreeSpacePausePercent
       });
       setSaved(nextSettings);
       setForm(nextSettings);
@@ -300,6 +308,20 @@ function ImportPolicyPage() {
   );
 }
 
+/** Null when the two thresholds agree; otherwise the plain-words reason the drawer's Save should refuse (#909). */
+function libraryFreeSpaceThresholdError(form: PlatformSettingsSnapshot): string | null {
+  if (form.libraryFreeSpaceWarnPercent < 1 || form.libraryFreeSpaceWarnPercent > 50) {
+    return "Choose a warn percentage between 1 and 50.";
+  }
+  if (form.libraryFreeSpacePausePercent < 1 || form.libraryFreeSpacePausePercent > 50) {
+    return "Choose a pause percentage between 1 and 50.";
+  }
+  if (form.libraryFreeSpacePausePercent > form.libraryFreeSpaceWarnPercent) {
+    return "The pause threshold must be at or below the warn threshold.";
+  }
+  return null;
+}
+
 function ImportPolicyFields({
   form,
   onFormChange
@@ -307,6 +329,7 @@ function ImportPolicyFields({
   form: PlatformSettingsSnapshot;
   onFormChange: (update: (current: PlatformSettingsSnapshot) => PlatformSettingsSnapshot) => void;
 }) {
+  const thresholdError = libraryFreeSpaceThresholdError(form);
   return (
     <>
       <div className="grid divide-y divide-hairline md:grid-cols-2 md:divide-x md:divide-y-0">
@@ -329,6 +352,26 @@ function ImportPolicyFields({
       <p className="border-t border-hairline p-[var(--card-pad-x)] text-[length:var(--type-caption)] text-muted-foreground">
         Whether Deluno removes folders left empty by an import is set per library, in Processing -&gt; that library's workflow.
       </p>
+      <div className="border-t border-hairline p-[var(--card-pad-x)]">
+        <div className="grid content-start gap-1.5 pb-[var(--grid-gap)]">
+          <p className="text-[length:var(--type-body-sm)] font-medium leading-tight text-foreground">Storage safety</p>
+          <p className="text-[length:var(--type-caption)] leading-snug text-muted-foreground">Deluno checks every library's free space on the health schedule (#909). Below the warn line it flags a problem but keeps working; at or below the pause line it stops that library's grabs and imports until space is freed, the same way an unreachable folder does.</p>
+        </div>
+        <FieldRow>
+          <Field label="Warn when a library has less than" help="Percent of the drive free. Deluno flags the problem on Health, the Dashboard tile and the bell, but keeps grabbing and importing.">
+            <div className="flex items-center gap-2">
+              <Input type="number" min={1} max={50} value={form.libraryFreeSpaceWarnPercent} onChange={(event) => onFormChange((current) => ({ ...current, libraryFreeSpaceWarnPercent: Number(event.target.value || 0) }))} className="max-w-[7rem]" />
+              <span className="shrink-0 text-[length:var(--type-body-sm)] text-muted-foreground">% free</span>
+            </div>
+          </Field>
+          <Field label="Pause imports when a library has less than" error={thresholdError && form.libraryFreeSpacePausePercent > form.libraryFreeSpaceWarnPercent ? thresholdError : undefined} help={thresholdError && form.libraryFreeSpacePausePercent > form.libraryFreeSpaceWarnPercent ? undefined : "At or below this, Deluno pauses the library's grabs and imports until space is freed."}>
+            <div className="flex items-center gap-2">
+              <Input type="number" min={1} max={50} value={form.libraryFreeSpacePausePercent} onChange={(event) => onFormChange((current) => ({ ...current, libraryFreeSpacePausePercent: Number(event.target.value || 0) }))} className="max-w-[7rem]" />
+              <span className="shrink-0 text-[length:var(--type-body-sm)] text-muted-foreground">% free</span>
+            </div>
+          </Field>
+        </FieldRow>
+      </div>
     </>
   );
 }

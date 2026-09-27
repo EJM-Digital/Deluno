@@ -63,4 +63,8 @@ export interface PlatformSettingsPatch {
   downloadHealthMinPeersEnabled?: boolean;
   downloadHealthMinPeers?: number;
   downloadHealthMinPeersMinutes?: number;
+  /** #909: percent free remaining at which a library root's health check warns, but keeps grabbing and importing. */
+  libraryFreeSpaceWarnPercent?: number;
+  /** #909: percent free remaining at or below which Deluno pauses a library's grabs and imports, the same way an unreachable root does. */
+  libraryFreeSpacePausePercent?: number;
 }
