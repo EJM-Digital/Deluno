@@ -1065,6 +1065,7 @@ export function LibraryView({
               onUpdateMetadata={() => void handleUpdateAllMetadata()}
               isSearchingShown={isSearchingShown}
               onSearchShown={() => void handleSearchShown()}
+              showSeasonPassLink={variant === "shows"}
             />
           }
           controls={{

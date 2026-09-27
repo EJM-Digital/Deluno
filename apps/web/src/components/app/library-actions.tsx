@@ -1,4 +1,5 @@
-import { Plus, RefreshCw, Search } from "lucide-react";
+import { CalendarRange, Plus, RefreshCw, Search } from "lucide-react";
+import { Link } from "react-router-dom";
 import { cn } from "../../lib/utils";
 import { Button } from "../ui/button";
 
@@ -30,7 +31,9 @@ export function LibraryActions({
   isUpdatingMetadata,
   onUpdateMetadata,
   isSearchingShown = false,
-  onSearchShown
+  onSearchShown,
+  /** Only the TV library links to Season Pass (#791) — a movie has no seasons to bulk-monitor. */
+  showSeasonPassLink = false
 }: {
   label: string;
   singular: string;
@@ -41,6 +44,7 @@ export function LibraryActions({
   onUpdateMetadata: () => void;
   isSearchingShown?: boolean;
   onSearchShown?: () => void;
+  showSeasonPassLink?: boolean;
 }) {
   return (
     <>
@@ -48,6 +52,14 @@ export function LibraryActions({
         <Plus className="h-4 w-4" strokeWidth={2.5} />
         Add {singular}
       </Button>
+      {showSeasonPassLink ? (
+        <Button asChild size="sm" variant="outline" className="gap-2">
+          <Link to="/tv/season-pass" title="Bulk-monitor seasons across every show">
+            <CalendarRange className="h-4 w-4" />
+            Season Pass
+          </Link>
+        </Button>
+      ) : null}
       {shownCount > 0 ? (
         <Button
           type="button"

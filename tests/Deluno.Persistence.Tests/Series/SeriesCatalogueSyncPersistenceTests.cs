@@ -533,6 +533,83 @@ public sealed class SeriesCatalogueSyncPersistenceTests
         Assert.Equal(1L, Convert.ToInt64(monitoredCount));
     }
 
+    /// <summary>
+    /// The cross-series Season Pass listing (#791): one row per series/season,
+    /// with episode counts and how many of them are monitored.
+    /// </summary>
+    [Fact]
+    public async Task ListSeasonPassAsync_reports_episode_and_monitored_counts_per_season()
+    {
+        var now = DateTimeOffset.Parse("2026-09-27T04:00:00Z");
+        var (storage, repository, _, seriesId) = await CreateSeriesAsync(now);
+        using var _ = storage;
+
+        await repository.SyncEpisodeCatalogueAsync(
+            seriesId,
+            [
+                new CatalogueEpisodeItem(0, 1, "Special", null, now.AddDays(-50)),
+                new CatalogueEpisodeItem(1, 1, "S1E1", null, now.AddDays(-30)),
+                new CatalogueEpisodeItem(1, 2, "S1E2", null, now.AddDays(-28)),
+            ],
+            source: "tmdb",
+            CancellationToken.None);
+
+        var seasonPass = await repository.ListSeasonPassAsync(CancellationToken.None);
+
+        var special = Assert.Single(seasonPass, item => item.SeriesId == seriesId && item.SeasonNumber == 0);
+        Assert.Equal(1, special.EpisodeCount);
+        Assert.Equal(0, special.MonitoredCount); // specials arrive unmonitored (#243)
+
+        var season1 = Assert.Single(seasonPass, item => item.SeriesId == seriesId && item.SeasonNumber == 1);
+        Assert.Equal("Severance", season1.SeriesTitle);
+        Assert.Equal(2, season1.EpisodeCount);
+        Assert.Equal(2, season1.MonitoredCount);
+    }
+
+    /// <summary>
+    /// Bulk-toggling from the Season Pass screen (#791): a season-scoped
+    /// toggle touches only that season, and a series-scoped one (null season)
+    /// touches every episode the series has.
+    /// </summary>
+    [Fact]
+    public async Task SetSeasonPassMonitoringAsync_toggles_at_the_season_and_series_level()
+    {
+        var now = DateTimeOffset.Parse("2026-09-27T04:00:00Z");
+        var (storage, repository, _, seriesId) = await CreateSeriesAsync(now);
+        using var _ = storage;
+
+        await repository.SyncEpisodeCatalogueAsync(
+            seriesId,
+            [
+                new CatalogueEpisodeItem(1, 1, "S1E1", null, now.AddDays(-30)),
+                new CatalogueEpisodeItem(1, 2, "S1E2", null, now.AddDays(-28)),
+                new CatalogueEpisodeItem(2, 1, "S2E1", null, now.AddDays(-10)),
+            ],
+            source: "tmdb",
+            CancellationToken.None);
+
+        // Unmonitor season 1 only.
+        var seasonUpdated = await repository.SetSeasonPassMonitoringAsync(
+            [new SeasonPassScope(seriesId, SeasonNumber: 1)],
+            monitored: false,
+            CancellationToken.None);
+        Assert.Equal(2, seasonUpdated);
+
+        var afterSeasonToggle = await repository.ListSeasonPassAsync(CancellationToken.None);
+        Assert.Equal(0, Assert.Single(afterSeasonToggle, item => item.SeasonNumber == 1).MonitoredCount);
+        Assert.Equal(1, Assert.Single(afterSeasonToggle, item => item.SeasonNumber == 2).MonitoredCount);
+
+        // Now unmonitor the whole series.
+        var seriesUpdated = await repository.SetSeasonPassMonitoringAsync(
+            [new SeasonPassScope(seriesId, SeasonNumber: null)],
+            monitored: false,
+            CancellationToken.None);
+        Assert.Equal(3, seriesUpdated);
+
+        var afterSeriesToggle = await repository.ListSeasonPassAsync(CancellationToken.None);
+        Assert.All(afterSeriesToggle, item => Assert.Equal(0, item.MonitoredCount));
+    }
+
     [Fact]
     public async Task SyncEpisodeCatalogueAsync_backfills_wanted_state_idempotently()
     {

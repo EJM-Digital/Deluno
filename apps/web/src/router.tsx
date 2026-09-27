@@ -213,6 +213,13 @@ export const router = createBrowserRouter([
             })
           },
           {
+            path: "season-pass",
+            lazy: withSkeleton(async () => {
+              const module = await import("./routes/season-pass-page");
+              return { loader: module.seasonPassLoader, Component: module.SeasonPassPage };
+            })
+          },
+          {
             path: "upgrades",
             element: <Navigate to="/tv?filter=upgrades" replace />
           },
