@@ -34,7 +34,7 @@ public static class ReplacementSearchQueuer
     /// other episodes already in hand is not searched wholesale over one bad
     /// release.
     /// </summary>
-    public static async Task EnqueueAsync(
+    public static Task EnqueueAsync(
         IJobScheduler jobScheduler,
         DownloadDispatchItem dispatch,
         string libraryName,
@@ -44,18 +44,49 @@ public static class ReplacementSearchQueuer
             ? ExtractSeasonEpisodeIds(dispatch.NotesJson)
             : [];
 
+        return EnqueueAsync(
+            jobScheduler,
+            dispatch.Id,
+            dispatch.LibraryId,
+            libraryName,
+            dispatch.MediaType,
+            dispatch.EntityType,
+            dispatch.EntityId,
+            seasonEpisodeIds,
+            cancellationToken);
+    }
+
+    /// <summary>
+    /// The same targeted, one-item replacement search as the
+    /// <see cref="DownloadDispatchItem"/> overload, for a caller that has not
+    /// recorded a dispatch row yet — a grab the client refused outright
+    /// (#876) is blocklisted and searched for again before
+    /// <c>RecordDownloadDispatchAsync</c> ever runs, so there is no dispatch
+    /// id to read a season pack's episode ids back from.
+    /// </summary>
+    public static async Task EnqueueAsync(
+        IJobScheduler jobScheduler,
+        string dispatchId,
+        string libraryId,
+        string libraryName,
+        string mediaType,
+        string entityType,
+        string entityId,
+        IReadOnlyList<string> seasonEpisodeIds,
+        CancellationToken cancellationToken)
+    {
         if (seasonEpisodeIds.Count > 0)
         {
             foreach (var episodeId in seasonEpisodeIds)
             {
                 await jobScheduler.EnqueueAsync(new EnqueueJobRequest(
-                    LibrarySearchJobTypes.For(dispatch.MediaType),
+                    LibrarySearchJobTypes.For(mediaType),
                     "download-health",
                     JsonSerializer.Serialize(new
                     {
-                        libraryId = dispatch.LibraryId,
+                        libraryId,
                         libraryName,
-                        mediaType = dispatch.MediaType,
+                        mediaType,
                         checkMissing = true,
                         checkUpgrades = true,
                         maxItems = 1,
@@ -64,33 +95,33 @@ public static class ReplacementSearchQueuer
                         targetEntityId = episodeId
                     }),
                     "download_dispatch",
-                    dispatch.Id,
-                    IdempotencyKey: $"download-health-replacement:{dispatch.Id}:{episodeId}",
-                    DedupeKey: $"download-health-replacement:{dispatch.Id}:{episodeId}"), cancellationToken);
+                    dispatchId,
+                    IdempotencyKey: $"download-health-replacement:{dispatchId}:{episodeId}",
+                    DedupeKey: $"download-health-replacement:{dispatchId}:{episodeId}"), cancellationToken);
             }
 
             return;
         }
 
         await jobScheduler.EnqueueAsync(new EnqueueJobRequest(
-            LibrarySearchJobTypes.For(dispatch.MediaType),
+            LibrarySearchJobTypes.For(mediaType),
             "download-health",
             JsonSerializer.Serialize(new
             {
-                libraryId = dispatch.LibraryId,
+                libraryId,
                 libraryName,
-                mediaType = dispatch.MediaType,
+                mediaType,
                 checkMissing = true,
                 checkUpgrades = true,
                 maxItems = 1,
                 retryDelayHours = 24,
                 triggeredBy = "health-replacement",
-                targetEntityId = dispatch.EntityId
+                targetEntityId = entityId
             }),
             "download_dispatch",
-            dispatch.Id,
-            IdempotencyKey: $"download-health-replacement:{dispatch.Id}",
-            DedupeKey: $"download-health-replacement:{dispatch.Id}"), cancellationToken);
+            dispatchId,
+            IdempotencyKey: $"download-health-replacement:{dispatchId}",
+            DedupeKey: $"download-health-replacement:{dispatchId}"), cancellationToken);
     }
 
     /// <summary>

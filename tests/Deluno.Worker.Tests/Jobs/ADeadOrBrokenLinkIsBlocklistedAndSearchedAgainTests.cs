@@ -88,6 +88,76 @@ public sealed class ADeadOrBrokenLinkIsBlocklistedAndSearchedAgainTests
             Times.Once);
     }
 
+    /// <summary>
+    /// #876: the acceptance is that a replacement search is queued straight
+    /// away rather than left to the title's next ordinary search cycle.
+    /// </summary>
+    [Fact]
+    public async Task A_dead_link_queues_a_replacement_search_for_a_movie()
+    {
+        var world = new World(DownloadQueueStatuses.DeadRelease);
+
+        await world.MoviesHandler().HandleAsync(LibraryJob("movies"), CancellationToken.None);
+
+        world.JobScheduler.Verify(
+            scheduler => scheduler.EnqueueAsync(
+                It.Is<EnqueueJobRequest>(request =>
+                    request.JobType == "library.search.movies" &&
+                    request.PayloadJson!.Contains("\"targetEntityId\":\"movie-1\"") &&
+                    request.PayloadJson!.Contains("\"triggeredBy\":\"health-replacement\"")),
+                It.IsAny<CancellationToken>()),
+            Times.Once);
+    }
+
+    [Fact]
+    public async Task A_dead_link_queues_a_replacement_search_for_a_series()
+    {
+        var world = new World(DownloadQueueStatuses.DeadRelease);
+
+        await world.TvHandler().HandleAsync(LibraryJob("tv"), CancellationToken.None);
+
+        world.JobScheduler.Verify(
+            scheduler => scheduler.EnqueueAsync(
+                It.Is<EnqueueJobRequest>(request =>
+                    request.JobType == "library.search.tv" &&
+                    request.PayloadJson!.Contains("\"targetEntityId\":\"series-1\"")),
+                It.IsAny<CancellationToken>()),
+            Times.Once);
+    }
+
+    [Fact]
+    public async Task A_dead_link_queues_a_replacement_search_for_an_episode()
+    {
+        var world = new World(DownloadQueueStatuses.DeadRelease);
+
+        await world.EpisodeHandler().HandleAsync(EpisodeJob(), CancellationToken.None);
+
+        world.JobScheduler.Verify(
+            scheduler => scheduler.EnqueueAsync(
+                It.Is<EnqueueJobRequest>(request =>
+                    request.JobType == "library.search.tv" &&
+                    request.PayloadJson!.Contains("\"targetEntityId\":\"episode-1\"")),
+                It.IsAny<CancellationToken>()),
+            Times.Once);
+    }
+
+    /// <summary>
+    /// #875/#880/#901: an ordinary failure never causes an early replacement
+    /// search either — it is left to the connectivity retry lane, not treated
+    /// as a bad release worth searching around.
+    /// </summary>
+    [Fact]
+    public async Task An_ordinary_grab_failure_never_queues_a_replacement_search()
+    {
+        var world = new World("failed");
+
+        await world.MoviesHandler().HandleAsync(LibraryJob("movies"), CancellationToken.None);
+
+        world.JobScheduler.Verify(
+            scheduler => scheduler.EnqueueAsync(It.IsAny<EnqueueJobRequest>(), It.IsAny<CancellationToken>()),
+            Times.Never);
+    }
+
     /// <summary>Every automatic action here is written to Activity in plain words.</summary>
     [Fact]
     public async Task A_dead_link_is_written_to_activity_in_plain_words()
@@ -99,7 +169,10 @@ public sealed class ADeadOrBrokenLinkIsBlocklistedAndSearchedAgainTests
         world.ActivityFeed.Verify(
             activity => activity.RecordActivityAsync(
                 "download.release.dead-link",
-                It.Is<string>(message => message.Contains(Release) && message.Contains("blocklisted", StringComparison.OrdinalIgnoreCase)),
+                It.Is<string>(message =>
+                    message.Contains(Release) &&
+                    message.Contains("blocklisted", StringComparison.OrdinalIgnoreCase) &&
+                    message.Contains("searching for a replacement now", StringComparison.OrdinalIgnoreCase)),
                 null, null, "movie", "movie-1", It.IsAny<CancellationToken>()),
             Times.Once);
     }
@@ -169,6 +242,7 @@ public sealed class ADeadOrBrokenLinkIsBlocklistedAndSearchedAgainTests
         public Mock<IDownloadClientGrabService> Grabs { get; } = new();
         public Mock<IActivityFeedRepository> ActivityFeed { get; } = new();
         public Mock<IBlockedReleaseRepository> BlockedReleases { get; } = new();
+        public Mock<IJobScheduler> JobScheduler { get; } = new();
 
         public World(string grabStatus)
         {
@@ -177,6 +251,8 @@ public sealed class ADeadOrBrokenLinkIsBlocklistedAndSearchedAgainTests
                 .ReturnsAsync([]);
             BlockedReleases.Setup(repository => repository.ListAsync(It.IsAny<CancellationToken>())).ReturnsAsync([]);
             BlockedReleases.Setup(repository => repository.ListForAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>())).ReturnsAsync([]);
+            JobScheduler.Setup(scheduler => scheduler.EnqueueAsync(It.IsAny<EnqueueJobRequest>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync((EnqueueJobRequest request, CancellationToken _) => TestJobs.Create(request.JobType, request.PayloadJson));
 
             Movies.Setup(repository => repository.ListEligibleWantedAsync(
                     It.IsAny<string>(), It.IsAny<int>(), It.IsAny<DateTimeOffset>(), It.IsAny<bool>(),
@@ -218,17 +294,17 @@ public sealed class ADeadOrBrokenLinkIsBlocklistedAndSearchedAgainTests
         public MoviesLibrarySearchJobHandler MoviesHandler()
             => new(Libraries.Object, new Mock<IQualityRepository>().Object, Jobs.Object, Movies.Object, Series.Object,
                 Pipeline.Object, Grabs.Object, ActivityFeed.Object, new FixedClock(Now),
-                blockedReleases: BlockedReleases.Object);
+                blockedReleases: BlockedReleases.Object, jobScheduler: JobScheduler.Object);
 
         public TvLibrarySearchJobHandler TvHandler()
             => new(Libraries.Object, new Mock<IQualityRepository>().Object, Jobs.Object, Movies.Object, Series.Object,
                 Pipeline.Object, Grabs.Object, ActivityFeed.Object, new FixedClock(Now),
-                blockedReleases: BlockedReleases.Object);
+                blockedReleases: BlockedReleases.Object, jobScheduler: JobScheduler.Object);
 
         public EpisodeSearchJobHandler EpisodeHandler()
             => new(Libraries.Object, new Mock<IQualityRepository>().Object, Series.Object, Jobs.Object,
                 Pipeline.Object, Grabs.Object, ActivityFeed.Object, new FixedClock(Now),
-                blockedReleases: BlockedReleases.Object);
+                blockedReleases: BlockedReleases.Object, jobScheduler: JobScheduler.Object);
     }
 
     private sealed class FixedClock(DateTimeOffset now) : TimeProvider

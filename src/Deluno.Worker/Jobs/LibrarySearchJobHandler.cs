@@ -284,7 +284,10 @@ public abstract class LibrarySearchJobHandler(
                     candidate.Title,
                     bestCandidate!.IndexerName,
                     downloadClient.DownloadClientName,
-                    cancellationToken);
+                    cancellationToken,
+                    jobScheduler,
+                    payload.LibraryId,
+                    payload.LibraryName);
 
                 await SearchExecutionSupport.RecordDuplicateFollowAsync(
                     activityFeedRepository,
@@ -938,7 +941,10 @@ public abstract class LibrarySearchJobHandler(
                     candidate.Title,
                     bestCandidate!.IndexerName,
                     downloadClient.DownloadClientName,
-                    cancellationToken);
+                    cancellationToken,
+                    jobScheduler,
+                    payload.LibraryId,
+                    payload.LibraryName);
 
                 await SearchExecutionSupport.RecordDuplicateFollowAsync(
                     activityFeedRepository,

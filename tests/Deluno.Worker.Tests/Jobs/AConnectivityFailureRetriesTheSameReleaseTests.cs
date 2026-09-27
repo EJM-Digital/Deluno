@@ -131,7 +131,11 @@ public sealed class AConnectivityFailureRetriesTheSameReleaseTests
             Times.Once);
     }
 
-    /// <summary>A dead release (#876) is a different failure and must never schedule a connectivity retry.</summary>
+    /// <summary>
+    /// A dead release (#876) is a different failure and must never schedule a
+    /// connectivity retry — it still queues its own replacement search
+    /// straight away instead.
+    /// </summary>
     [Fact]
     public async Task A_dead_release_does_not_schedule_a_connectivity_retry()
     {
@@ -140,7 +144,9 @@ public sealed class AConnectivityFailureRetriesTheSameReleaseTests
         await world.MoviesHandler().HandleAsync(LibraryJob("movies"), CancellationToken.None);
 
         world.Scheduler.Verify(
-            scheduler => scheduler.EnqueueAsync(It.IsAny<EnqueueJobRequest>(), It.IsAny<CancellationToken>()),
+            scheduler => scheduler.EnqueueAsync(
+                It.Is<EnqueueJobRequest>(request => request.PayloadJson != null && request.PayloadJson.Contains("\"AttemptNumber\"")),
+                It.IsAny<CancellationToken>()),
             Times.Never);
     }
 
