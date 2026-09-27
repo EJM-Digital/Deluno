@@ -86,3 +86,5 @@ public sealed class FileActivityDisplaySettingsStore : IActivityDisplaySettingsS
 
     private sealed record PersistedPageSize(int PageSize);
 }
+
+public sealed record ActivityDisplaySettingsRequest(int PageSize);

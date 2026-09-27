@@ -91,6 +91,7 @@ interface SystemLoaderData {
   lanAccess: LanAccessStatus | null;
   healthChecks: HealthCheckListResponse;
   systemInfo: SystemInstallationInfo | null;
+  activityDisplaySettings: { pageSize: number };
 }
 
 /** GET /api/system/info (#869): uptime, runtime, and app-data details for the "This installation" card. */
@@ -105,11 +106,14 @@ interface SystemInstallationInfo {
 }
 
 export async function systemLoader(): Promise<SystemLoaderData> {
+  // #871: how many rows the timeline fetches and shows is a user setting now,
+  // not a fixed 500-row cap.
+  const activityDisplaySettings = await fetchJson<{ pageSize: number }>("/api/activity/display-settings").catch(() => ({ pageSize: 500 }));
   const [settings, libraries, jobs, activity, indexers, downloadClients, processors, backups, backupSettings, updateStatus, automation, searchCycles, retryWindows, monitoring, systemTasks, recycleBin, recycleBinSettings, lanAccess, healthChecks, systemInfo] = await Promise.all([
     fetchJson<PlatformSettingsSnapshot>("/api/settings"),
     fetchJson<LibraryItem[]>("/api/libraries"),
     fetchPageItems<JobQueueItem>("/api/jobs?pageSize=25"),
-    fetchPageItems<ActivityEventItem>("/api/activity?pageSize=200"),
+    fetchPageItems<ActivityEventItem>(`/api/activity?pageSize=${activityDisplaySettings.pageSize}`),
     fetchJson<IndexerItem[]>("/api/indexers"),
     fetchJson<DownloadClientItem[]>("/api/download-clients"),
     // A processor holds every file mid-import, and its health used to show on
@@ -138,14 +142,14 @@ export async function systemLoader(): Promise<SystemLoaderData> {
     fetchJson<SystemInstallationInfo>("/api/system/info").catch(() => null)
   ]);
 
-  return { activity, automation, backupSettings, backups, downloadClients, healthChecks, indexers, jobs, lanAccess, libraries, monitoring, processors, recycleBin, recycleBinSettings, retryWindows, searchCycles, settings, systemInfo, systemTasks, updateStatus };
+  return { activity, activityDisplaySettings, automation, backupSettings, backups, downloadClients, healthChecks, indexers, jobs, lanAccess, libraries, monitoring, processors, recycleBin, recycleBinSettings, retryWindows, searchCycles, settings, systemInfo, systemTasks, updateStatus };
 }
 
 export function SystemPage() {
   const location = useLocation();
   const revalidator = useRevalidator();
   const loaderData = useLoaderData() as SystemLoaderData;
-  const { activity, automation, backupSettings, backups, downloadClients, healthChecks, indexers, jobs, lanAccess, libraries, monitoring, processors, recycleBin, recycleBinSettings, retryWindows, searchCycles, settings, systemInfo, systemTasks, updateStatus } = loaderData;
+  const { activity, activityDisplaySettings, automation, backupSettings, backups, downloadClients, healthChecks, indexers, jobs, lanAccess, libraries, monitoring, processors, recycleBin, recycleBinSettings, retryWindows, searchCycles, settings, systemInfo, systemTasks, updateStatus } = loaderData;
   // The folders Deluno writes to are its libraries' folders. This used to count
   // the two paths the setup guide asks for, which a library made in Settings
   // never fills in: two libraries on a NAS read "0".
@@ -158,6 +162,45 @@ export function SystemPage() {
   const enabledProcessors = processors.filter((item) => item.isEnabled);
   const healthyProcessors = enabledProcessors.filter((item) => item.healthStatus === "healthy").length;
   const [selectedProvider, setSelectedProvider] = useState<ProviderHealthSelection | null>(null);
+
+  // #871: the Activity timeline's page-size control and Clear action.
+  const [activityPageSize, setActivityPageSize] = useState(activityDisplaySettings.pageSize);
+  const [activityBusy, setActivityBusy] = useState<"pageSize" | "clear" | null>(null);
+  const [confirmClearActivity, setConfirmClearActivity] = useState(false);
+  const activityStatus = useSaveStatus();
+
+  async function changeActivityPageSize(nextPageSize: number) {
+    setActivityBusy("pageSize");
+    try {
+      await authedFetch("/api/activity/display-settings", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ pageSize: nextPageSize })
+      });
+      setActivityPageSize(nextPageSize);
+      activityStatus.markSaved("Page size saved");
+      revalidator.revalidate();
+    } catch (error) {
+      activityStatus.markError(error instanceof Error ? error.message : "Could not save page size");
+    } finally {
+      setActivityBusy(null);
+    }
+  }
+
+  async function clearActivityHistory() {
+    setActivityBusy("clear");
+    try {
+      const response = await authedFetch("/api/activity/clear", { method: "POST" });
+      if (!response.ok) throw new Error("Activity could not be cleared.");
+      activityStatus.markSaved("Activity cleared");
+      setConfirmClearActivity(false);
+      revalidator.revalidate();
+    } catch (error) {
+      activityStatus.markError(error instanceof Error ? error.message : "Activity could not be cleared.");
+    } finally {
+      setActivityBusy(null);
+    }
+  }
 
   /* Live events prepended from WebSocket */
   const [liveEvents, setLiveEvents] = useState<TimelineEvent[]>([]);
@@ -180,15 +223,48 @@ export function SystemPage() {
   // The timeline has its own tab; repeating all 500 events here made Health
   // three times taller than everything on it that actually answers "is it well?".
   const auditCard = (
-    <ListCard
-      title="Activity timeline"
-      count="Every event Deluno has recorded, live as it happens"
-      actions={<WsStatusBadge />}
-    >
-      <div className="p-[var(--card-pad-x)]">
-        <AuditTimeline events={activity} liveEvents={liveEvents} maxVisible={500} />
-      </div>
-    </ListCard>
+    <>
+      <ListCard
+        title="Activity timeline"
+        count="Every event Deluno has recorded, live as it happens"
+        actions={
+          <div className="flex items-center gap-2">
+            <Field label="Rows shown" hideLabel>
+              <Select
+                value={String(activityPageSize)}
+                disabled={activityBusy !== null}
+                onChange={(event) => void changeActivityPageSize(Number(event.target.value))}
+                options={[
+                  { value: "50", label: "50 rows" },
+                  { value: "100", label: "100 rows" },
+                  { value: "250", label: "250 rows" },
+                  { value: "500", label: "500 rows" },
+                  { value: "1000", label: "1000 rows" }
+                ]}
+              />
+            </Field>
+            <Button type="button" variant="outline" size="sm" disabled={activityBusy !== null} onClick={() => setConfirmClearActivity(true)}>
+              Clear
+            </Button>
+            <WsStatusBadge />
+          </div>
+        }
+      >
+        <div className="space-y-2 p-[var(--card-pad-x)]">
+          <SaveStatus state={activityStatus.state} message={activityStatus.message} />
+          <AuditTimeline events={activity} liveEvents={liveEvents} maxVisible={activityPageSize} />
+        </div>
+      </ListCard>
+      <ConfirmDialog
+        open={confirmClearActivity}
+        onOpenChange={setConfirmClearActivity}
+        title="Clear the Activity timeline?"
+        description="This removes every stored Activity row, including the history behind automation decision explanations elsewhere in Deluno — there is no separate copy. This cannot be undone."
+        confirmLabel="Clear activity"
+        busy={activityBusy === "clear"}
+        onConfirm={() => void clearActivityHistory()}
+      />
+    </>
   );
 
   const providerCard = (

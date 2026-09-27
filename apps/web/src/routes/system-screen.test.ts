@@ -58,3 +58,24 @@ describe("system screen updates card release notes and history (#870)", () => {
     expect(source).toMatch(/entry\.appliedAtUtc/);
   });
 });
+
+/**
+ * #871: the Activity timeline's page-size control and Clear action, replacing
+ * the fixed maxVisible={500} cap, with a confirmation before the destructive
+ * clear since it also wipes decision-explanation history in the same table.
+ */
+describe("system screen activity timeline page size and clear (#871)", () => {
+  const source = readFileSync(resolve(__dirname, "system-screen.tsx"), "utf8");
+
+  it("no longer hardcodes maxVisible to 500 and offers a page-size control", () => {
+    expect(source).not.toMatch(/maxVisible=\{500\}/);
+    expect(source).toMatch(/activityPageSize/);
+    expect(source).toMatch(/\/api\/activity\/display-settings/);
+  });
+
+  it("clears through a confirmation naming the decision-history consequence", () => {
+    expect(source).toMatch(/\/api\/activity\/clear/);
+    expect(source).toMatch(/confirmClearActivity/);
+    expect(source).toMatch(/decision explanation/);
+  });
+});
