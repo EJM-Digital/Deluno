@@ -239,5 +239,8 @@ public sealed class GuideRuleMigrationTests
 
         public Task<int> PruneActivityAsync(DateTimeOffset olderThan, CancellationToken cancellationToken)
             => throw new NotSupportedException();
+
+        public Task<int> ClearActivityAsync(CancellationToken cancellationToken)
+            => throw new NotSupportedException();
     }
 }

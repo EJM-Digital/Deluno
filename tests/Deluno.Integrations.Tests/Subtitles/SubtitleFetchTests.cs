@@ -730,5 +730,8 @@ public sealed class SubtitleFetchTests
         public Task<IReadOnlyList<ActivityEventItem>> RecordActivityBatchAsync(
             IReadOnlyList<ActivityEventItem> activities, CancellationToken cancellationToken)
             => throw new NotSupportedException();
+
+        public Task<int> ClearActivityAsync(CancellationToken cancellationToken)
+            => throw new NotSupportedException();
     }
 }

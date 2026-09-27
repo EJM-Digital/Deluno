@@ -42,6 +42,7 @@ DELETE /api/series/{id}
 DELETE /api/series/{id}/libraries/{libraryId}
 DELETE /api/setup/draft
 DELETE /api/subtitle-providers/{key}
+DELETE /api/system/log-files/{name}
 DELETE /api/tags/{id}
 DELETE /api/v1/download-dispatches/{dispatchId}
 GET /api/
@@ -209,7 +210,12 @@ GET /api/system/bundled-components
 GET /api/system/connectivity
 GET /api/system/health/
 GET /api/system/health/summary
+GET /api/system/info
 GET /api/system/lan-access
+GET /api/system/log-files
+GET /api/system/log-files/folder
+GET /api/system/log-files/{name}/download
+GET /api/system/log-level
 GET /api/system/tasks
 GET /api/tags/
 GET /api/tags/usage
@@ -480,6 +486,7 @@ PUT /api/settings/automation
 PUT /api/setup/draft
 PUT /api/setup/progress
 PUT /api/subtitle-providers/{key}
+PUT /api/system/log-level
 PUT /api/tags/{id}
 PUT /api/updates/preferences
 PUT /api/v1/guides/trash/update-check/settings
