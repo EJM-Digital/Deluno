@@ -617,7 +617,6 @@ public sealed class SqlitePlatformSettingsRepository(
             MultiEpisodeStyle: NormalizeMultiEpisodeStyle(GetValue(settings, "media.multiEpisodeStyle")),
             RenameFoldersOnImport: string.Equals(GetValue(settings, "media.renameFoldersOnImport"), "true", StringComparison.OrdinalIgnoreCase),
             HistoryRetentionDays: ReadPositiveInt(GetValue(settings, "history.retentionDays"), 365, 1, 3650),
-            HistoryRetentionDays: ReadPositiveInt(GetValue(settings, "history.retentionDays"), 365, 1, 3650),
             SharingPrivacyScope: DownloadHealthPrivacyScopes.IsKnown(GetValue(settings, "sharing.privacyScope") ?? string.Empty)
                 ? GetValue(settings, "sharing.privacyScope")!
                 : DownloadHealthPrivacyScopes.Both);
