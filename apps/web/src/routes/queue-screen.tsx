@@ -82,7 +82,6 @@ import { realtimeToast, toast } from "../components/shell/toaster";
 import { RealtimeGroups, useSignalREvent } from "../lib/use-signalr";
 import { formatDateTime as formatPreferenceDateTime, useDisplayPreferences } from "../lib/display-preferences";
 import { useColumnVisibility, type ColumnDefinition } from "../lib/use-column-visibility";
-import { detectReleaseLanguage } from "../lib/release-language";
 
 /**
  * The queue table's optional columns (#796): quality, custom-format score,
@@ -2591,9 +2590,13 @@ export function findDispatchForQueueItem(
 
 /**
  * The five optional queue columns (#796), read from the matched dispatch's
- * decision telemetry and the release name, each falling back to "—" rather
- * than a blank cell when Deluno has no answer (an older dispatch with no
- * decision telemetry, or a release name that names no language).
+ * decision telemetry, each falling back to "—" rather than a blank cell when
+ * Deluno has no answer (an older dispatch recorded before a column existed,
+ * or a release name that names no language). Language comes from the
+ * backend's own release parser (Deluno.Quality's
+ * ReleasePreferenceFactFactory.DetectLanguageFromReleaseName, read back as
+ * decisionLanguage), recorded once at grab time — never a second copy of the
+ * token list in the web app.
  */
 export interface QueueRowExtras {
   quality: string;
@@ -2611,7 +2614,7 @@ export function queueRowExtras(
   return {
     quality: dispatch?.decisionQuality ?? "—",
     customFormat: dispatch?.decisionCustomFormatScore != null ? String(dispatch.decisionCustomFormatScore) : "—",
-    language: detectReleaseLanguage(item.releaseName) ?? "—",
+    language: dispatch?.decisionLanguage ?? "—",
     size: formatBytes(item.sizeBytes),
     timeleft: transferring && item.etaSeconds > 0 ? formatEta(item.etaSeconds) : "—"
   };

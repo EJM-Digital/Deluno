@@ -456,7 +456,7 @@ describe("dismissing a health finding", () => {
 });
 
 describe("queueRowExtras (#796)", () => {
-  it("reads quality and custom-format score from the matched dispatch's decision telemetry", () => {
+  it("reads quality, custom-format score and language from the matched dispatch's decision telemetry", () => {
     const item = {
       releaseName: "Movie.2026.1080p.WEB-DL-GROUP",
       sizeBytes: 4_294_967_296,
@@ -464,13 +464,15 @@ describe("queueRowExtras (#796)", () => {
     } as DownloadQueueItem;
     const dispatch = {
       decisionQuality: "WEB 1080p",
-      decisionCustomFormatScore: 125
+      decisionCustomFormatScore: 125,
+      decisionLanguage: "English"
     } as DownloadDispatchItem;
 
     const extras = queueRowExtras(item, dispatch, false);
 
     expect(extras.quality).toBe("WEB 1080p");
     expect(extras.customFormat).toBe("125");
+    expect(extras.language).toBe("English");
     expect(extras.size).toBe("4.0 GB");
   });
 
@@ -489,14 +491,13 @@ describe("queueRowExtras (#796)", () => {
     expect(extras.timeleft).toBe("—");
   });
 
-  it("reads a language named in the release itself, and only shows a timeleft while transferring", () => {
+  it("only shows a timeleft while transferring, from the matching queue item", () => {
     const item = {
       releaseName: "Movie.2026.MULTI.1080p.WEB-DL-GROUP",
       sizeBytes: 0,
       etaSeconds: 120
     } as DownloadQueueItem;
 
-    expect(queueRowExtras(item, null, true).language).toBe("Multilingual");
     expect(queueRowExtras(item, null, true).timeleft).toBe("2m left");
     expect(queueRowExtras(item, null, false).timeleft).toBe("—");
   });

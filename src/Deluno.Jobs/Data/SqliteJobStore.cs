@@ -7,6 +7,7 @@ using Deluno.Infrastructure.Observability;
 using Deluno.Infrastructure.Storage;
 using Deluno.Jobs.Contracts;
 using Deluno.Jobs.Decisions;
+using Deluno.Quality.ReleasePreferences;
 using Microsoft.Data.Sqlite;
 
 namespace Deluno.Jobs.Data;
@@ -2861,7 +2862,7 @@ public sealed class SqliteJobStore(
                     decision_custom_format_score, decision_seeder_score, decision_size_score, decision_release_group,
                     decision_estimated_bitrate_mbps, decision_size_bytes, decision_seeders, decision_policy_version,
                     decision_matched_custom_formats_json, decision_reasons_json, decision_risk_flags_json,
-                    decision_override_used, decision_override_reason,
+                    decision_override_used, decision_override_reason, decision_language,
                     replacement_authorized, force_replacement_authorized, replacement_expected_path,
                     replacement_targets_json, torrent_hash_or_item_id, created_utc
                 )
@@ -2872,7 +2873,7 @@ public sealed class SqliteJobStore(
                     @decisionCustomFormatScore, @decisionSeederScore, @decisionSizeScore, @decisionReleaseGroup,
                     @decisionEstimatedBitrateMbps, @decisionSizeBytes, @decisionSeeders, @decisionPolicyVersion,
                     @decisionMatchedCustomFormatsJson, @decisionReasonsJson, @decisionRiskFlagsJson,
-                    @decisionOverrideUsed, @decisionOverrideReason,
+                    @decisionOverrideUsed, @decisionOverrideReason, @decisionLanguage,
                     @replacementAuthorized, @forceReplacementAuthorized, @replacementExpectedPath,
                     @replacementTargetsJson, @clientExternalId, @createdUtc
                 );
@@ -2910,6 +2911,7 @@ public sealed class SqliteJobStore(
             AddParameter(command, "@decisionRiskFlagsJson", decisionTelemetry?.RiskFlagsJson);
             AddParameter(command, "@decisionOverrideUsed", decisionTelemetry is null ? 0 : decisionTelemetry.OverrideUsed ? 1 : 0);
             AddParameter(command, "@decisionOverrideReason", decisionTelemetry?.OverrideReason);
+            AddParameter(command, "@decisionLanguage", ReleasePreferenceFactFactory.DetectLanguageFromReleaseName(releaseName));
             AddParameter(command, "@replacementAuthorized", ownedReplacementAuthorized ? 1 : 0);
             // Force is a stricter form of replacement authority, never an
             // independent way to turn an ordinary import into an overwrite.
