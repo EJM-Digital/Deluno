@@ -1686,8 +1686,8 @@ export function SettingsCustomFormatsPage() {
                       </span>
                     </div>
                     {result.isMatch && result.matchedConditions.length ? (
-                      <span className="block truncate font-mono text-[length:var(--type-caption)] text-muted-foreground">
-                        {result.matchedConditions.join(" · ")}
+                      <span className="block truncate text-[length:var(--type-caption)] text-muted-foreground">
+                        {result.matchedConditions.map(describeMatchedCondition).join(" · ")}
                       </span>
                     ) : null}
                   </div>
@@ -1771,7 +1771,7 @@ function downloadJson(data: unknown, fileName: string) {
   URL.revokeObjectURL(url);
 }
 
-function slugForFileName(name: string) {
+export function slugForFileName(name: string) {
   return name.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "custom-format";
 }
 
@@ -1810,13 +1810,13 @@ function guideUpdateCheckLabel(status: GuideUpdateCheckState["status"]) {
  * optional), matching what the matcher and an imported Radarr
  * YearSpecification/SizeSpecification both use (#775).
  */
-function parseRange(value: string): { min: string; max: string } {
+export function parseRange(value: string): { min: string; max: string } {
   const separator = value.indexOf("-");
   if (separator < 0) return { min: value, max: "" };
   return { min: value.slice(0, separator), max: value.slice(separator + 1) };
 }
 
-function formatRange(min: string, max: string): string {
+export function formatRange(min: string, max: string): string {
   return `${min.trim()}-${max.trim()}`;
 }
 
@@ -1902,6 +1902,24 @@ function conditionSummary(conditions: Condition[]) {
   // Patterns can be long regex; the drawer shows them in full.
   const value = first.value.length > 32 ? `${first.value.slice(0, 32)}…` : first.value;
   return `${label} ${first.negate ? "without" : "with"} “${value}”`;
+}
+
+/**
+ * The matcher's raw "type:value" label (and "NOT type:value" when negated),
+ * turned into a plain phrase for the test-a-release result. For "language"
+ * specifically (#758), this is what shows which parsed language actually
+ * matched — never a raw text location, which Deluno does not track.
+ */
+export function describeMatchedCondition(label: string): string {
+  const negated = label.startsWith("NOT ");
+  const body = negated ? label.slice(4) : label;
+  const separator = body.indexOf(":");
+  if (separator < 0) return label;
+  const type = body.slice(0, separator);
+  const value = body.slice(separator + 1);
+  const friendly = CONDITION_TYPES.find((candidate) => candidate.value.toLowerCase() === type.toLowerCase())?.label ?? type;
+  const phrase = type.toLowerCase() === "language" ? `Language matched in the release name: ${value}` : `${friendly}: ${value}`;
+  return negated ? `Not ${phrase.charAt(0).toLowerCase()}${phrase.slice(1)}` : phrase;
 }
 
 function ruleIntent(score: number) {
