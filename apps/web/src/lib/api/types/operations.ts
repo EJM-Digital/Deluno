@@ -189,6 +189,14 @@ export interface UpdateStatusResponse {
   notes: string[];
   currentImageRef?: string | null;
   currentImageDigest?: string | null;
+  changelog?: string | null;
+  appliedUpdates?: AppliedUpdateEntry[];
+}
+
+/** One entry in the "past 5 updates applied" history (#870). */
+export interface AppliedUpdateEntry {
+  version: string;
+  appliedAtUtc: string;
 }
 
 export interface QualityTierDefinition {
