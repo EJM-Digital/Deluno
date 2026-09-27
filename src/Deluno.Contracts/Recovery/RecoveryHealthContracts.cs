@@ -24,7 +24,11 @@ public sealed record RecoveryQueueSnapshot(
     /// and never blocks or replaces the release: fixing the machine is what
     /// clears it, not a different download.
     /// </summary>
-    bool IsSetupProblem = false);
+    bool IsSetupProblem = false,
+    /// <summary>Percent complete (0-100), for a rule's completion-range scope (#905).</summary>
+    double ProgressPercent = 0,
+    /// <summary>Usenet has no peers or seeders, so peer/seed-based rules never apply to it.</summary>
+    bool IsUsenetProtocol = false);
 
 public sealed record RecoveryHealthFinding(
     string Severity,
@@ -33,44 +37,22 @@ public sealed record RecoveryHealthFinding(
     string Evidence,
     string RecommendedAction,
     bool CanSafelyRetry,
-    bool CanSafelyRemove);
-
-/// <summary>
-/// The configurable half of #659's download-health rules — how long a
-/// download may go without meeting one before it counts as a problem, and
-/// whether the rule runs at all. Cleanuparr makes the same thresholds a
-/// setting rather than a constant, and a person's downloads differ too much
-/// for one hard-coded answer to be right for everyone: a seedbox with deep
-/// peer pools calls "no progress in 10 minutes" broken, a home line on a
-/// small swarm calls it Tuesday.
-///
-/// <para>Every field has the default Deluno shipped with before it was
-/// configurable, so an installation that never opens the settings screen
-/// behaves exactly as it did (#659's original fix). Only "no progress" is on
-/// by default; "too slow" and "not enough peers" are extra, sharper rules a
-/// person opts into.</para>
-/// </summary>
-public sealed record DownloadHealthRulesSettings(
-    bool NoProgressEnabled = true,
-    int NoProgressMinutes = 30,
-    bool MinSpeedEnabled = false,
-    int MinSpeedKbps = 50,
-    int MinSpeedMinutes = 30,
-    bool MinPeersEnabled = false,
-    int MinPeers = 1,
-    int MinPeersMinutes = 30)
-{
-    public static readonly DownloadHealthRulesSettings Default = new();
-
-    public TimeSpan NoProgressWindow => TimeSpan.FromMinutes(Math.Clamp(NoProgressMinutes, 1, 1440));
-    public TimeSpan MinSpeedWindow => TimeSpan.FromMinutes(Math.Clamp(MinSpeedMinutes, 1, 1440));
-    public TimeSpan MinPeersWindow => TimeSpan.FromMinutes(Math.Clamp(MinPeersMinutes, 1, 1440));
-}
+    bool CanSafelyRemove,
+    /// <summary>
+    /// The specific configured rule (#905) that produced this finding, when
+    /// one matched. Null for findings outside the rule engine (a client-
+    /// reported error, a failed import, a suspicious file name) - those are
+    /// still shown, but never strike or act on their own.
+    /// </summary>
+    string? RuleId = null,
+    int? RuleStrikeLimit = null,
+    int? RuleTimerMinutes = null,
+    string? RuleActionPreset = null);
 
 public interface IRecoveryHealthEvaluator
 {
     IReadOnlyList<RecoveryHealthFinding> Evaluate(
         RecoveryQueueSnapshot item,
         DateTimeOffset capturedUtc,
-        DownloadHealthRulesSettings rules);
+        IReadOnlyList<DownloadHealthRule> rules);
 }

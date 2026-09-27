@@ -141,7 +141,7 @@ public sealed class AnOutageFreezesTheStrikeClockTests
         public SqliteDownloadHealthRepository Repository(DateTimeOffset at) => new(_storage.Factory, new FixedTimeProvider(at), Connectivity);
 
         public Task<IReadOnlyList<DownloadHealthRecord>> SeeAsync(DateTimeOffset at, params DownloadHealthObservation[] findings)
-            => Repository(at).RecordDownloadHealthObservationsAsync(Client, [Torrent], findings, CancellationToken.None);
+            => Repository(at).RecordDownloadHealthObservationsAsync(Client, [Torrent], findings, DownloadHealthStrikes.DefaultWindow, TimeSpan.FromHours(72), CancellationToken.None);
 
         public void Dispose() => _storage.Dispose();
     }

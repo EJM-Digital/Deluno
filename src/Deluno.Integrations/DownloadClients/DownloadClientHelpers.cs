@@ -11,6 +11,12 @@ namespace Deluno.Integrations.DownloadClients;
 
 internal static class DownloadClientHelpers
 {
+    private static readonly string[] UsenetProtocols = ["sabnzbd", "nzbget"];
+
+    /// <summary>Whether a client protocol is Usenet rather than BitTorrent - Usenet has no peers, seeders, or swarms (#905).</summary>
+    internal static bool IsUsenetProtocol(string protocol)
+        => UsenetProtocols.Contains(protocol, StringComparer.OrdinalIgnoreCase);
+
     internal static Uri? ResolveEndpoint(DownloadClientItem client)
     {
         if (!string.IsNullOrWhiteSpace(client.EndpointUrl) &&
@@ -319,7 +325,7 @@ internal static class DownloadClientHelpers
     /// <para><paramref name="noProgressWindow"/> is the configurable half of
     /// that second check (#659's later scope: a person's own "no progress"
     /// minutes, off entirely when the caller has switched that rule off and
-    /// leaves it null). It defaults to <see cref="DownloadHealthStrikes.Window"/>
+    /// leaves it null). It defaults to <see cref="DownloadHealthStrikes.DefaultWindow"/>
     /// for a caller with nothing configured, the same 30 minutes this rule
     /// always used. It does not touch the metadata-and-no-peers window above,
     /// which #618/#650 already covers and #659's settings screen never asked
@@ -341,14 +347,14 @@ internal static class DownloadClientHelpers
         if (!metadataKnown &&
             item.Peers <= 0 &&
             item.Status == DownloadQueueStatuses.Downloading &&
-            capturedUtc - item.AddedUtc >= DownloadHealthStrikes.Window)
+            capturedUtc - item.AddedUtc >= DownloadHealthStrikes.DefaultWindow)
         {
             return item with { Status = DownloadQueueStatuses.Stalled };
         }
 
         if (item.Status == DownloadQueueStatuses.Downloading &&
             lastProgressUtc is { } since &&
-            capturedUtc - since >= (noProgressWindow ?? DownloadHealthStrikes.Window))
+            capturedUtc - since >= (noProgressWindow ?? DownloadHealthStrikes.DefaultWindow))
         {
             return item with { Status = DownloadQueueStatuses.Stalled };
         }

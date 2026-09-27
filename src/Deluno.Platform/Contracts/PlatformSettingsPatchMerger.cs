@@ -83,5 +83,11 @@ public static class PlatformSettingsPatchMerger
             SetPermissionsOnImport: patch.SetPermissionsOnImport ?? current.SetPermissionsOnImport,
             FolderChmod: patch.FolderChmod ?? current.FolderChmod,
             ChownGroup: patch.ChownGroup ?? current.ChownGroup,
-            ProperRepackAcquisitionMode: patch.ProperRepackAcquisitionMode ?? current.ProperRepackAcquisitionMode);
+            ProperRepackAcquisitionMode: patch.ProperRepackAcquisitionMode ?? current.ProperRepackAcquisitionMode,
+            DownloadHealthDryRunEnabled: patch.DownloadHealthDryRunEnabled ?? current.DownloadHealthDryRunEnabled,
+            DownloadHealthDefaultStrikeWindowMinutes: patch.DownloadHealthDefaultStrikeWindowMinutes ?? current.DownloadHealthDefaultStrikeWindowMinutes,
+            DownloadHealthStrikeInactivityHours: patch.DownloadHealthStrikeInactivityHours ?? current.DownloadHealthStrikeInactivityHours,
+            DownloadHealthConnectivityCheckEnabled: patch.DownloadHealthConnectivityCheckEnabled ?? current.DownloadHealthConnectivityCheckEnabled,
+            DownloadHealthConnectivityCheckUrls: patch.DownloadHealthConnectivityCheckUrls ?? current.DownloadHealthConnectivityCheckUrls,
+            DownloadThroughputSamplerIntervalMinutes: patch.DownloadThroughputSamplerIntervalMinutes ?? current.DownloadThroughputSamplerIntervalMinutes);
 }

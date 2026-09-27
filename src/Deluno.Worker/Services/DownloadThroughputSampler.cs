@@ -1,6 +1,7 @@
 using Deluno.Contracts;
 using Deluno.Integrations.DownloadClients;
 using Deluno.Jobs.Data;
+using Deluno.Platform.Data;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -8,8 +9,8 @@ using Microsoft.Extensions.Logging;
 namespace Deluno.Worker.Services;
 
 /// <summary>
-/// Records combined throughput, both directions, on a fixed cadence, so the
-/// dashboard can show what the speed has been rather than only what it is.
+/// Records combined throughput, both directions, on a configurable cadence, so
+/// the dashboard can show what the speed has been rather than only what it is.
 ///
 /// Everything else on that dashboard counts stored rows; speed is a measurement
 /// and nothing was measuring it. Without this the live wave could only ever
@@ -27,11 +28,8 @@ public sealed class DownloadThroughputSampler(
     TimeProvider timeProvider)
     : BackgroundService
 {
-    /// <summary>
-    /// One reading a minute. Fine enough to see a transfer start and stop, and
-    /// coarse enough that two days of history is a few thousand small rows.
-    /// </summary>
-    private static readonly TimeSpan SampleInterval = TimeSpan.FromMinutes(1);
+    /// <summary>Fallback cadence before settings can be read even once.</summary>
+    private static readonly TimeSpan DefaultSampleInterval = TimeSpan.FromMinutes(1);
 
     /// <summary>
     /// How much history is kept. Long enough to cover "what happened last
@@ -47,13 +45,12 @@ public sealed class DownloadThroughputSampler(
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        using var timer = new PeriodicTimer(SampleInterval, timeProvider);
-
         while (!stoppingToken.IsCancellationRequested)
         {
+            var interval = DefaultSampleInterval;
             try
             {
-                await SampleAsync(stoppingToken);
+                interval = await SampleAsync(stoppingToken);
                 _reportedFailure = false;
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
@@ -83,10 +80,10 @@ public sealed class DownloadThroughputSampler(
 
             try
             {
-                if (!await timer.WaitForNextTickAsync(stoppingToken))
-                {
-                    break;
-                }
+                // #823: read fresh each tick rather than one PeriodicTimer
+                // fixed at startup, so a changed interval takes effect on the
+                // very next tick without a restart.
+                await Task.Delay(interval, timeProvider, stoppingToken);
             }
             catch (OperationCanceledException)
             {
@@ -95,11 +92,15 @@ public sealed class DownloadThroughputSampler(
         }
     }
 
-    private async Task SampleAsync(CancellationToken cancellationToken)
+    /// <summary>Samples once and returns the interval to wait before the next one.</summary>
+    private async Task<TimeSpan> SampleAsync(CancellationToken cancellationToken)
     {
         using var scope = scopeFactory.CreateScope();
         var telemetry = scope.ServiceProvider.GetRequiredService<IDownloadClientTelemetryService>();
         var repository = scope.ServiceProvider.GetRequiredService<IDownloadThroughputRepository>();
+        var platformSettingsRepository = scope.ServiceProvider.GetRequiredService<IPlatformSettingsRepository>();
+        var settings = await platformSettingsRepository.GetAsync(cancellationToken);
+        var interval = TimeSpan.FromMinutes(Math.Clamp(settings.DownloadThroughputSamplerIntervalMinutes, 1, 60));
 
         var overview = await telemetry.GetOverviewAsync(cancellationToken);
         var now = timeProvider.GetUtcNow();
@@ -114,7 +115,7 @@ public sealed class DownloadThroughputSampler(
 
         if (now - _lastPruneUtc < PruneInterval)
         {
-            return;
+            return interval;
         }
 
         _lastPruneUtc = now;
@@ -123,5 +124,7 @@ public sealed class DownloadThroughputSampler(
         {
             logger.LogDebug("Pruned {Count} download throughput samples past retention.", removed);
         }
+
+        return interval;
     }
 }

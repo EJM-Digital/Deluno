@@ -33,14 +33,22 @@ public sealed class DownloadClientTelemetryService(
     IRecoveryHealthEvaluator healthEvaluator,
     IProcessorRepository processorRepository,
     IConnectivityMonitor connectivityMonitor,
-    IBlockedReleaseRepository? blockedReleases = null)
+    IBlockedReleaseRepository? blockedReleases = null,
+    IDownloadHealthConnectivityCheck? connectivityCheck = null)
     : IDownloadClientTelemetryService
 {
+    // #824 is off by default, so most callers - including every existing
+    // test - never touch this; when a caller does turn it on without wiring
+    // a real check, assuming reachable is the safe failure mode (never
+    // wrongly skips a cleanup pass).
+    private readonly IDownloadHealthConnectivityCheck _connectivityCheck = connectivityCheck ?? AlwaysReachableConnectivityCheck.Instance;
+
     public async Task<DownloadTelemetryOverview> GetOverviewAsync(CancellationToken cancellationToken)
     {
         var capturedUtc = timeProvider.GetUtcNow();
         var platformSettings = await platformRepository.GetAsync(cancellationToken);
-        var downloadHealthRules = DownloadHealthRulesFrom(platformSettings);
+        var downloadHealthRules = await healthRepository.GetDownloadHealthRulesAsync(platformSettings, cancellationToken);
+        var downloadHealthIgnoreList = await healthRepository.ListDownloadHealthIgnoreEntriesAsync(cancellationToken);
         var clients = await connectionsRepository.ListDownloadClientsAsync(cancellationToken);
         var pathMappings = await connectionsRepository.ListDownloadClientPathMappingsAsync(null, cancellationToken);
         var libraries = await librariesRepository.ListLibrariesAsync(cancellationToken);
@@ -150,9 +158,9 @@ public sealed class DownloadClientTelemetryService(
         var healthAnnotatedSnapshots = await Task.WhenAll(orderedClients.Zip(mappedSnapshots, (client, snapshot) => AttachHealthFindingsAsync(
             snapshot,
             settledDispatchesByClientId.GetValueOrDefault(client.Id, Array.Empty<DownloadDispatchItem>()),
-            platformSettings.DownloadHealthStrikeThreshold,
-            platformSettings.CleanupBlockReleaseAfterThreshold,
+            platformSettings,
             downloadHealthRules,
+            downloadHealthIgnoreList,
             cancellationToken)));
 
         // The free-space/connectivity summary is still read off the client's
@@ -599,7 +607,7 @@ public sealed class DownloadClientTelemetryService(
     private async Task<DownloadClientTelemetrySnapshot> ApplyDownloadProgressStallAsync(
         DownloadClientTelemetrySnapshot snapshot,
         DateTimeOffset capturedUtc,
-        DownloadHealthRulesSettings rules,
+        IReadOnlyList<DownloadHealthRule> rules,
         CancellationToken cancellationToken)
     {
         if (snapshot.Queue.Count == 0)
@@ -616,7 +624,11 @@ public sealed class DownloadClientTelemetryService(
             snapshot.Queue.Select(item => (item.Id, item.DownloadedBytes)).ToArray(),
             cancellationToken);
 
-        if (!rules.NoProgressEnabled)
+        // Status text uses whichever no-progress rule is enabled, regardless
+        // of its completion-range/protocol scope - it is a display hint, not
+        // itself a finding (the evaluator below re-checks scope precisely).
+        var noProgressRule = rules.FirstOrDefault(rule => rule.Enabled && rule.Kind == DownloadHealthRuleKinds.NoProgress);
+        if (noProgressRule is null)
         {
             return snapshot;
         }
@@ -640,33 +652,25 @@ public sealed class DownloadClientTelemetryService(
                 item with { AddedUtc = effectiveAddedUtc },
                 capturedUtc,
                 effectiveSince,
-                rules.NoProgressWindow);
+                noProgressRule.Timer);
             reconciled.Add(item with { Status = reconciledItem.Status });
         }
 
         return snapshot with { Queue = reconciled };
     }
 
-    /// <summary>Builds #659's configurable rules from the platform settings a caller already loaded.</summary>
-    private static DownloadHealthRulesSettings DownloadHealthRulesFrom(PlatformSettingsSnapshot settings)
-        => new(
-            NoProgressEnabled: settings.DownloadHealthNoProgressEnabled,
-            NoProgressMinutes: settings.DownloadHealthNoProgressMinutes,
-            MinSpeedEnabled: settings.DownloadHealthMinSpeedEnabled,
-            MinSpeedKbps: settings.DownloadHealthMinSpeedKbps,
-            MinSpeedMinutes: settings.DownloadHealthMinSpeedMinutes,
-            MinPeersEnabled: settings.DownloadHealthMinPeersEnabled,
-            MinPeers: settings.DownloadHealthMinPeers,
-            MinPeersMinutes: settings.DownloadHealthMinPeersMinutes);
-
     private async Task<DownloadClientTelemetrySnapshot> AttachHealthFindingsAsync(
         DownloadClientTelemetrySnapshot snapshot,
         IReadOnlyList<DownloadDispatchItem> clientDispatches,
-        int strikeThreshold,
-        bool blockReleaseAfterThreshold,
-        DownloadHealthRulesSettings rules,
+        PlatformSettingsSnapshot settings,
+        IReadOnlyList<DownloadHealthRule> rules,
+        IReadOnlyList<DownloadHealthIgnoreEntry> ignoreList,
         CancellationToken cancellationToken)
     {
+        var strikeThreshold = settings.DownloadHealthStrikeThreshold;
+        var blockReleaseAfterThreshold = settings.CleanupBlockReleaseAfterThreshold;
+        var defaultStrikeWindow = TimeSpan.FromMinutes(Math.Clamp(settings.DownloadHealthDefaultStrikeWindowMinutes, 1, 1440));
+        var strikeInactivityWindow = TimeSpan.FromHours(Math.Clamp(settings.DownloadHealthStrikeInactivityHours, 1, 720));
         var annotated = new List<(DownloadQueueItem Item, IReadOnlyList<RecoveryHealthFinding> Findings)>(snapshot.Queue.Count);
         foreach (var item in snapshot.Queue)
         {
@@ -674,19 +678,23 @@ public sealed class DownloadClientTelemetryService(
             // row M2, #933): no findings are evaluated for it, so it can never
             // reach the strike threshold that "Force remediation" acts on
             // below, and no observation is recorded for it either.
-            if (!IsDelunosOwnDownload(item, clientDispatches, snapshot.CapturedUtc))
+            //
+            // #817: a download on the ignore list is treated the same way -
+            // exempt from every health rule, with no finding and no strike.
+            if (!IsDelunosOwnDownload(item, clientDispatches, snapshot.CapturedUtc) ||
+                ignoreList.Any(entry => entry.Matches(item.Id, item.Category, item.IndexerName)))
             {
                 annotated.Add((item, []));
                 continue;
             }
 
-            // #901: NoProgress/MinSpeed/MinPeers all measure "how long since
-            // AddedUtc" - an outage stretches that clock exactly as long as
-            // it lasted unless the added time itself is pushed forward by
-            // whatever it overlapped, so a download added before an outage
-            // is not judged as though it sat idle through it. Only the value
-            // fed to the evaluator moves; item.AddedUtc keeps showing when it
-            // was actually added.
+            // #901: every timed rule measures "how long since AddedUtc" - an
+            // outage stretches that clock exactly as long as it lasted unless
+            // the added time itself is pushed forward by whatever it
+            // overlapped, so a download added before an outage is not judged
+            // as though it sat idle through it. Only the value fed to the
+            // evaluator moves; item.AddedUtc keeps showing when it was
+            // actually added.
             var effectiveAddedUtc = item.AddedUtc + await connectivityMonitor.OutageOverlapAsync(item.AddedUtc, snapshot.CapturedUtc, cancellationToken);
             var findings = healthEvaluator.Evaluate(
                 new RecoveryQueueSnapshot(
@@ -698,14 +706,17 @@ public sealed class DownloadClientTelemetryService(
                     item.EtaSeconds,
                     item.ReleaseName,
                     item.Peers,
-                    item.IsSetupProblem),
+                    item.IsSetupProblem,
+                    item.Progress,
+                    DownloadClientHelpers.IsUsenetProtocol(item.Protocol)),
                 snapshot.CapturedUtc,
                 rules);
             annotated.Add((item, findings));
         }
         var observations = annotated
             .SelectMany(entry => entry.Findings.Select(finding => new DownloadHealthObservation(
-                entry.Item.ClientId, entry.Item.Id, entry.Item.ReleaseName, finding.Kind, finding.Severity, finding.Evidence)))
+                entry.Item.ClientId, entry.Item.Id, entry.Item.ReleaseName, finding.Kind, finding.Severity, finding.Evidence,
+                finding.RuleId, finding.RuleStrikeLimit, finding.RuleTimerMinutes, finding.RuleActionPreset)))
             .ToArray();
         // The full id list here (not only Deluno's own) is what lets a stale
         // strike recorded before this guard existed finally clear: an id that
@@ -715,6 +726,8 @@ public sealed class DownloadClientTelemetryService(
             snapshot.ClientId,
             snapshot.Queue.Select(item => item.Id).ToArray(),
             observations,
+            defaultStrikeWindow,
+            strikeInactivityWindow,
             cancellationToken);
         var recordsByFinding = records.ToDictionary(
             record => $"{record.ClientId}\u001f{record.QueueItemId}\u001f{record.Kind}",
@@ -745,6 +758,15 @@ public sealed class DownloadClientTelemetryService(
                 HealthFindings = entry.Findings.Select(finding =>
                 {
                     recordsByFinding.TryGetValue($"{entry.Item.ClientId}\u001f{entry.Item.Id}\u001f{finding.Kind}", out var record);
+                    // A rule-engine finding's own action preset decides
+                    // whether it can block a candidate on its own; a finding
+                    // outside the rule engine (client-stalled, and so on)
+                    // still falls back to the platform-wide switch (#905).
+                    var candidateBlocked = record is not null &&
+                        (record.RuleActionPreset is { } preset
+                            ? preset != DownloadHealthActionPresets.JustTellMe
+                            : blockReleaseAfterThreshold) &&
+                        record.BlocksCandidate(snapshot.CapturedUtc, strikeThreshold);
                     return new DownloadHealthFinding(
                         finding.Severity,
                         finding.Kind,
@@ -754,8 +776,11 @@ public sealed class DownloadClientTelemetryService(
                         finding.CanSafelyRetry,
                         finding.CanSafelyRemove,
                         StrikeCount: record?.StrikeCount ?? 0,
-                        CandidateBlocked: blockReleaseAfterThreshold && (record?.BlocksCandidate(snapshot.CapturedUtc, strikeThreshold) ?? false),
-                        IgnoredUntilUtc: record?.IgnoredUntilUtc);
+                        CandidateBlocked: candidateBlocked,
+                        IgnoredUntilUtc: record?.IgnoredUntilUtc,
+                        RuleId: record?.RuleId,
+                        RuleActionPreset: record?.RuleActionPreset,
+                        NextStrikeUtc: record?.NextStrikeUtc(defaultStrikeWindow.Minutes));
                 }).ToArray()
             }).ToArray()
         };
@@ -794,11 +819,36 @@ public sealed class DownloadClientTelemetryService(
         }
 
         var settings = await platformRepository.GetAsync(cancellationToken);
-        var refuseRelease = settings.CleanupBlockReleaseAfterThreshold && blockedReleases is not null;
-        if (!refuseRelease &&
-            !settings.CleanupQueueReplacementAfterThreshold &&
-            !settings.CleanupRemoveClientEntryAfterThreshold &&
-            !settings.CleanupPurgePayloadAfterThreshold)
+
+        // #824: a second, user-opted-in reachability guard on top of #901's
+        // own outage detection - a person's own probe URLs, checked before
+        // every pass, with the same "skip entirely, strike nothing" outcome.
+        if (settings.DownloadHealthConnectivityCheckEnabled)
+        {
+            var reachable = await _connectivityCheck.AnyReachableAsync(settings.DownloadHealthConnectivityCheckUrls, cancellationToken);
+            if (!reachable)
+            {
+                const string skipMessage = "Connectivity check found no reachable URL; this pass was skipped and nothing was struck.";
+                await activityFeedRepository.RecordActivityAsync(
+                    "download.health.connectivity-check-skipped",
+                    skipMessage,
+                    null,
+                    null,
+                    "download_client",
+                    "connectivity-check",
+                    cancellationToken);
+                return new DownloadHealthRemediationReport(0, 0, 0, 0, 0, [skipMessage]);
+            }
+        }
+
+        var dryRun = settings.DownloadHealthDryRunEnabled;
+        var rules = await healthRepository.GetDownloadHealthRulesAsync(settings, cancellationToken);
+        var anyRuleActs = rules.Any(rule => rule.Enabled && rule.ActionPreset != DownloadHealthActionPresets.JustTellMe);
+        var legacyActs = settings.CleanupBlockReleaseAfterThreshold ||
+            settings.CleanupQueueReplacementAfterThreshold ||
+            settings.CleanupRemoveClientEntryAfterThreshold ||
+            settings.CleanupPurgePayloadAfterThreshold;
+        if (!anyRuleActs && !legacyActs)
         {
             return new DownloadHealthRemediationReport(0, 0, 0, 0, 0, []);
         }
@@ -834,7 +884,10 @@ public sealed class DownloadClientTelemetryService(
 
                 evaluated++;
                 var dispatch = await dispatchesRepository.FindDispatchByHashAsync(client.Id, item.Id, cancellationToken);
-                if (dispatch is null || string.Equals(dispatch.ImportFailureCode, "health-remediation-applied", StringComparison.OrdinalIgnoreCase))
+                // A dry run never marks a dispatch handled (#814): nothing
+                // really happened, so a later real pass must still be free to
+                // act, and this same preview keeps showing every pass.
+                if (dispatch is null || (!dryRun && string.Equals(dispatch.ImportFailureCode, "health-remediation-applied", StringComparison.OrdinalIgnoreCase)))
                 {
                     skipped++;
                     continue;
@@ -849,63 +902,85 @@ public sealed class DownloadClientTelemetryService(
                 var payloadOwned = library is not null && IsPathWithinApprovedDownloadRoot(item.SourcePath, library.DownloadsPath);
                 var applied = new List<string>();
 
+                // #905: a rule-engine finding decides its own actions from
+                // its configured preset; a finding outside the rule engine
+                // (client-stalled, and so on) falls back to the platform-wide
+                // switches, exactly as before #905.
+                var (wantBlock, wantReplacement, wantRemove, wantPurge) = struck.RuleActionPreset is { } preset
+                    ? ActionsFor(preset)
+                    : (settings.CleanupBlockReleaseAfterThreshold, settings.CleanupQueueReplacementAfterThreshold, settings.CleanupRemoveClientEntryAfterThreshold, settings.CleanupPurgePayloadAfterThreshold);
+                var canRefuse = wantBlock && blockedReleases is not null;
+
                 // "Do not select the same failed release again": on the one
                 // blocklist, which searches skip, the title page counts, and the
                 // blocklist screen lists and lifts. It used to be a separate list
                 // only the grab checked, so the search kept choosing the release
                 // and nothing on screen said why (#560). Refused before the
                 // replacement is queued, so that search already skips it.
-                if (refuseRelease)
+                if (canRefuse)
                 {
-                    await blockedReleases!.BlockAsync(
-                        new BlockedRelease(
-                            Guid.NewGuid().ToString("n"),
-                            BlockedReleaseKeys.For(dispatch.ReleaseName, dispatch.IndexerName),
-                            dispatch.ReleaseName,
-                            dispatch.IndexerName,
-                            dispatch.MediaType,
-                            dispatch.EntityId,
-                            item.Title,
-                            ImportFailurePolicy.DownloadStalled,
-                            StalledReason(struck, client.Name),
-                            dispatch.TorrentHashOrItemId ?? item.Id,
-                            client.Id,
-                            client.Name,
-                            DateTimeOffset.MinValue),
-                        cancellationToken);
+                    if (!dryRun)
+                    {
+                        await blockedReleases!.BlockAsync(
+                            new BlockedRelease(
+                                Guid.NewGuid().ToString("n"),
+                                BlockedReleaseKeys.For(dispatch.ReleaseName, dispatch.IndexerName),
+                                dispatch.ReleaseName,
+                                dispatch.IndexerName,
+                                dispatch.MediaType,
+                                dispatch.EntityId,
+                                item.Title,
+                                ImportFailurePolicy.DownloadStalled,
+                                StalledReason(struck, client.Name),
+                                dispatch.TorrentHashOrItemId ?? item.Id,
+                                client.Id,
+                                client.Name,
+                                DateTimeOffset.MinValue),
+                            cancellationToken);
+                    }
                     refused++;
-                    applied.Add("release refused");
+                    applied.Add(dryRun ? "would refuse the release" : "release refused");
                 }
 
-                if (settings.CleanupQueueReplacementAfterThreshold &&
-                    SupportsReplacementSearch(dispatch.EntityType))
+                if (wantReplacement && SupportsReplacementSearch(dispatch.EntityType))
                 {
-                    await QueueReplacementSearchAsync(dispatch, library, cancellationToken);
+                    if (!dryRun)
+                    {
+                        await QueueReplacementSearchAsync(dispatch, library, cancellationToken);
+                    }
                     replacements++;
-                    applied.Add("replacement search queued");
+                    applied.Add(dryRun ? "would queue a replacement search" : "replacement search queued");
                 }
-                else if (settings.CleanupQueueReplacementAfterThreshold)
+                else if (wantReplacement)
                 {
                     notes.Add($"{item.ReleaseName}: replacement was not queued because this dispatch is not a movie, series or episode library search.");
                 }
 
-                if (settings.CleanupRemoveClientEntryAfterThreshold)
+                if (wantRemove)
                 {
                     if (categoryOwned)
                     {
-                        // This bypasses the interactive external-client toggle only after
-                        // the durable dispatch, Deluno category, and selected health policy
-                        // have all matched. The public queue-action endpoint retains its
-                        // stricter manual guard.
-                        var result = await ExecuteOwnedRemediationRemovalAsync(client, item.Id, cancellationToken);
-                        if (result.Succeeded)
+                        if (dryRun)
                         {
                             removed++;
-                            applied.Add("client entry removed (payload retained by client)");
+                            applied.Add("would remove the client entry (payload retained by client)");
                         }
                         else
                         {
-                            notes.Add($"{item.ReleaseName}: client entry was not removed: {result.Message}");
+                            // This bypasses the interactive external-client toggle only after
+                            // the durable dispatch, Deluno category, and selected health policy
+                            // have all matched. The public queue-action endpoint retains its
+                            // stricter manual guard.
+                            var result = await ExecuteOwnedRemediationRemovalAsync(client, item.Id, cancellationToken);
+                            if (result.Succeeded)
+                            {
+                                removed++;
+                                applied.Add("client entry removed (payload retained by client)");
+                            }
+                            else
+                            {
+                                notes.Add($"{item.ReleaseName}: client entry was not removed: {result.Message}");
+                            }
                         }
                     }
                     else
@@ -914,14 +989,21 @@ public sealed class DownloadClientTelemetryService(
                     }
                 }
 
-                if (settings.CleanupPurgePayloadAfterThreshold)
+                if (wantPurge)
                 {
-                    if (payloadOwned && TryPurgePayload(item.SourcePath!))
+                    var purgeable = payloadOwned && !string.IsNullOrWhiteSpace(item.SourcePath) &&
+                        (File.Exists(item.SourcePath) || Directory.Exists(item.SourcePath));
+                    if (dryRun && purgeable)
+                    {
+                        purged++;
+                        applied.Add("would purge approved residual payload");
+                    }
+                    else if (!dryRun && payloadOwned && TryPurgePayload(item.SourcePath!))
                     {
                         purged++;
                         applied.Add("approved residual payload purged");
                     }
-                    else
+                    else if (!purgeable)
                     {
                         notes.Add($"{item.ReleaseName}: payload was retained because it is absent, inaccessible, or outside the configured download root.");
                     }
@@ -940,8 +1022,27 @@ public sealed class DownloadClientTelemetryService(
                     releaseName = item.ReleaseName,
                     actions = applied,
                     categoryOwned,
-                    payloadOwned
+                    payloadOwned,
+                    dryRun
                 });
+                var activityMessage = dryRun
+                    ? $"[Dry run] Would apply failed-download handling to {item.ReleaseName}: {string.Join(", ", applied)}."
+                    : $"Applied failed-download handling to {item.ReleaseName}: {string.Join(", ", applied)}.";
+                if (dryRun)
+                {
+                    // No timeline/import-outcome write: a dry run must leave
+                    // no trace a real pass, or the person, would ever act on.
+                    await activityFeedRepository.RecordActivityAsync(
+                        "download.health.remediation-previewed",
+                        activityMessage,
+                        details,
+                        null,
+                        "download_dispatch",
+                        dispatch.Id,
+                        cancellationToken);
+                    continue;
+                }
+
                 await dispatchesRepository.RecordTimelineEventAsync(dispatch.Id, "health-remediation-applied", details, cancellationToken);
                 await dispatchesRepository.RecordImportOutcomeAsync(
                     dispatch.Id,
@@ -961,7 +1062,7 @@ public sealed class DownloadClientTelemetryService(
                         externalId: dispatch.Id));
                 await activityFeedRepository.RecordActivityAsync(
                     "download.health.remediated",
-                    $"Applied failed-download handling to {item.ReleaseName}: {string.Join(", ", applied)}.",
+                    activityMessage,
                     details,
                     null,
                     "download_dispatch",
@@ -982,7 +1083,7 @@ public sealed class DownloadClientTelemetryService(
         // "Nothing arriving" is only a finding once it has gone on for half an
         // hour, so that half hour came before the first strike.
         var nothingArriving = string.Equals(finding.Kind, DownloadHealthStrikes.NoThroughput, StringComparison.OrdinalIgnoreCase);
-        var lasted = DownloadHealthStrikes.Window * (Math.Max(0, finding.StrikeCount - 1) + (nothingArriving ? 1 : 0));
+        var lasted = DownloadHealthStrikes.DefaultWindow * (Math.Max(0, finding.StrikeCount - 1) + (nothingArriving ? 1 : 0));
         var forHowLong = lasted.TotalMinutes switch
         {
             <= 0 => string.Empty,
@@ -1557,6 +1658,14 @@ public sealed class DownloadClientTelemetryService(
     /// </summary>
     private static bool SupportsReplacementSearch(string entityType)
         => entityType is "movie" or "series" or "episode";
+
+    /// <summary>#905 decision 2: what each action preset means for the four legacy switches this executor already knew how to apply.</summary>
+    private static (bool Block, bool Replacement, bool Remove, bool Purge) ActionsFor(string preset) => preset switch
+    {
+        DownloadHealthActionPresets.Replace => (true, true, true, true),
+        DownloadHealthActionPresets.RetryElsewhere => (true, true, false, false),
+        _ => (false, false, false, false) // JustTellMe: surfaced only.
+    };
 
     internal sealed record ClientSighting(
         DownloadDispatchItem Dispatch,

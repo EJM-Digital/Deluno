@@ -38,6 +38,11 @@ public static class IntegrationsServiceCollectionExtensions
             client.DefaultRequestHeaders.UserAgent.ParseAdd(IndexerApiEndpoint.UserAgent);
         });
         services.AddHttpClient("download-clients", client => client.Timeout = TimeSpan.FromSeconds(8));
+        // #824: short and cheap on purpose - this runs before every health
+        // pass, and a slow probe URL should never itself stall the pass it
+        // is meant to guard.
+        services.AddHttpClient(HttpDownloadHealthConnectivityCheck.HttpClientName, client => client.Timeout = TimeSpan.FromSeconds(5));
+        services.AddSingleton<IDownloadHealthConnectivityCheck, HttpDownloadHealthConnectivityCheck>();
         services.AddHttpClient("processor-connections", client => client.Timeout = TimeSpan.FromSeconds(10));
         // Longer than an indexer's ten seconds on purpose: two of the subtitle
         // providers have no API and are read as HTML, and OpenSubtitles' download

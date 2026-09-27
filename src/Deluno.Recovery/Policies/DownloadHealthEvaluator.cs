@@ -14,9 +14,9 @@ public sealed class DownloadHealthEvaluator : IRecoveryHealthEvaluator
     private static readonly string[] SuspiciousExtensions = [".bat", ".cmd", ".exe", ".js", ".lnk", ".ps1", ".scr", ".url", ".vbs"];
 
     public IReadOnlyList<RecoveryHealthFinding> Evaluate(RecoveryQueueSnapshot item, DateTimeOffset capturedUtc)
-        => Evaluate(item, capturedUtc, DownloadHealthRulesSettings.Default);
+        => Evaluate(item, capturedUtc, DownloadHealthRules.Defaults);
 
-    public IReadOnlyList<RecoveryHealthFinding> Evaluate(RecoveryQueueSnapshot item, DateTimeOffset capturedUtc, DownloadHealthRulesSettings rules)
+    public IReadOnlyList<RecoveryHealthFinding> Evaluate(RecoveryQueueSnapshot item, DateTimeOffset capturedUtc, IReadOnlyList<DownloadHealthRule> rules)
     {
         var findings = new List<RecoveryHealthFinding>();
 
@@ -85,55 +85,77 @@ public sealed class DownloadHealthEvaluator : IRecoveryHealthEvaluator
                 CanSafelyRemove: false));
         }
 
-        if (rules.NoProgressEnabled &&
+        var noProgress = MatchRule(rules, DownloadHealthRuleKinds.NoProgress, item);
+        if (noProgress is not null &&
             item.Status == "downloading" &&
             item.SpeedMbps <= 0 &&
-            capturedUtc - item.AddedUtc >= rules.NoProgressWindow)
+            capturedUtc - item.AddedUtc >= noProgress.Timer)
         {
-            findings.Add(new(
-                Severity: "warning",
-                Kind: DownloadHealthStrikes.NoThroughput,
-                Summary: "This download has no observed throughput.",
-                Evidence: $"0 MB/s after at least {rules.NoProgressWindow.TotalMinutes:0} minutes in the queue.",
-                RecommendedAction: "Check peers, the indexer/client connection, and then Resume or Recheck if appropriate.",
-                CanSafelyRetry: true,
-                CanSafelyRemove: false));
+            findings.Add(RuleFinding(
+                noProgress,
+                "warning",
+                DownloadHealthStrikes.NoThroughput,
+                "This download has no observed throughput.",
+                $"0 MB/s after at least {noProgress.Timer.TotalMinutes:0} minutes in the queue.",
+                "Check peers, the indexer/client connection, and then Resume or Recheck if appropriate."));
         }
 
         // Off by default (#659): a person opts into a sharper floor than "zero
         // throughput" once they know their own swarms - a download crawling
         // under a few KB/s for an hour is, for them, as good as stalled.
-        if (rules.MinSpeedEnabled &&
+        var tooSlow = MatchRule(rules, DownloadHealthRuleKinds.TooSlow, item);
+        if (tooSlow is not null &&
             item.Status == "downloading" &&
-            item.SpeedMbps * 1000 < rules.MinSpeedKbps &&
-            capturedUtc - item.AddedUtc >= rules.MinSpeedWindow)
+            item.SpeedMbps * 1000 < tooSlow.Threshold &&
+            capturedUtc - item.AddedUtc >= tooSlow.Timer)
         {
-            findings.Add(new(
-                Severity: "warning",
-                Kind: DownloadHealthStrikes.LowSpeed,
-                Summary: "This download is slower than the configured floor.",
-                Evidence: $"{item.SpeedMbps * 1000:0.#} KB/s, under {rules.MinSpeedKbps} KB/s, for at least {rules.MinSpeedWindow.TotalMinutes:0} minutes.",
-                RecommendedAction: "Check the indexer's health and the client's connection, then Resume or Recheck if appropriate.",
-                CanSafelyRetry: true,
-                CanSafelyRemove: false));
+            findings.Add(RuleFinding(
+                tooSlow,
+                "warning",
+                DownloadHealthStrikes.LowSpeed,
+                "This download is slower than the configured floor.",
+                $"{item.SpeedMbps * 1000:0.#} KB/s, under {tooSlow.Threshold:0} KB/s, for at least {tooSlow.Timer.TotalMinutes:0} minutes.",
+                "Check the indexer's health and the client's connection, then Resume or Recheck if appropriate."));
         }
 
         // Off by default (#659): the same idea for peer/seeder count - a
         // download with plenty of speed today can still be one seeder from
-        // never finishing.
-        if (rules.MinPeersEnabled &&
+        // never finishing. Usenet has no peers, so this never applies there.
+        var lowPeers = MatchRule(rules, DownloadHealthRuleKinds.LowPeers, item);
+        if (lowPeers is not null &&
+            !item.IsUsenetProtocol &&
             item.Status == "downloading" &&
-            item.Peers < rules.MinPeers &&
-            capturedUtc - item.AddedUtc >= rules.MinPeersWindow)
+            item.Peers < lowPeers.Threshold &&
+            capturedUtc - item.AddedUtc >= lowPeers.Timer)
         {
-            findings.Add(new(
-                Severity: "warning",
-                Kind: DownloadHealthStrikes.LowPeers,
-                Summary: "This download has fewer peers or seeders than the configured floor.",
-                Evidence: $"{item.Peers} peers, under {rules.MinPeers}, for at least {rules.MinPeersWindow.TotalMinutes:0} minutes.",
-                RecommendedAction: "Check whether the release still has a healthy swarm; a replacement may do better.",
-                CanSafelyRetry: true,
-                CanSafelyRemove: false));
+            findings.Add(RuleFinding(
+                lowPeers,
+                "warning",
+                DownloadHealthStrikes.LowPeers,
+                "This download has fewer peers or seeders than the configured floor.",
+                $"{item.Peers} peers, under {lowPeers.Threshold:0}, for at least {lowPeers.Timer.TotalMinutes:0} minutes.",
+                "Check whether the release still has a healthy swarm; a replacement may do better."));
+        }
+
+        // #818: a torrent with nobody left to seed it is not "slow", it is
+        // dead - a separate, sharper check from the configurable low-peers
+        // floor above, with its own grace period so a magnet that has not
+        // yet announced is not judged the instant it is added.
+        var deadTorrent = MatchRule(rules, DownloadHealthRuleKinds.DeadTorrent, item);
+        if (deadTorrent is not null &&
+            !item.IsUsenetProtocol &&
+            item.Status == "downloading" &&
+            item.Peers <= 0 &&
+            capturedUtc - item.AddedUtc >= TimeSpan.FromMinutes(deadTorrent.Threshold) &&
+            capturedUtc - item.AddedUtc >= deadTorrent.Timer)
+        {
+            findings.Add(RuleFinding(
+                deadTorrent,
+                "warning",
+                DownloadHealthStrikes.DeadTorrent,
+                "This torrent has no seeds or peers left.",
+                $"0 peers for at least {deadTorrent.Timer.TotalMinutes:0} minutes, past its {deadTorrent.Threshold:0}-minute grace period.",
+                "This release may no longer be available anywhere. A replacement search may find a healthier one."));
         }
 
         // Only a download still downloading has a completion time. qBittorrent
@@ -165,4 +187,37 @@ public sealed class DownloadHealthEvaluator : IRecoveryHealthEvaluator
 
         return findings;
     }
+
+    /// <summary>
+    /// The one enabled rule of <paramref name="kind"/> that covers this item's
+    /// protocol and completion percent, if any. <see cref="DownloadHealthRuleValidator"/>
+    /// refuses to save two enabled rules of the same kind whose scope could
+    /// both match the same download, so at most one ever matches here.
+    /// </summary>
+    private static DownloadHealthRule? MatchRule(IReadOnlyList<DownloadHealthRule> rules, string kind, RecoveryQueueSnapshot item)
+        => rules.FirstOrDefault(rule =>
+            rule.Enabled &&
+            string.Equals(rule.Kind, kind, StringComparison.OrdinalIgnoreCase) &&
+            rule.AppliesToProtocol(item.IsUsenetProtocol) &&
+            rule.CoversCompletion(item.ProgressPercent));
+
+    private static RecoveryHealthFinding RuleFinding(
+        DownloadHealthRule rule,
+        string severity,
+        string strikeKind,
+        string summary,
+        string evidence,
+        string recommendedAction)
+        => new(
+            Severity: severity,
+            Kind: strikeKind,
+            Summary: summary,
+            Evidence: evidence,
+            RecommendedAction: recommendedAction,
+            CanSafelyRetry: true,
+            CanSafelyRemove: false,
+            RuleId: rule.Id,
+            RuleStrikeLimit: rule.StrikeLimit,
+            RuleTimerMinutes: rule.TimerMinutes,
+            RuleActionPreset: rule.ActionPreset);
 }

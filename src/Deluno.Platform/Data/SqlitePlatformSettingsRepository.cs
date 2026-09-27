@@ -226,6 +226,15 @@ public sealed class SqlitePlatformSettingsRepository(
         await UpsertSettingAsync(connection, transaction, "download-health.minPeers.enabled", request.DownloadHealthMinPeersEnabled == true ? "true" : "false", updatedUtc, cancellationToken);
         await UpsertSettingAsync(connection, transaction, "download-health.minPeers.count", Math.Clamp(request.DownloadHealthMinPeers ?? 1, 0, 1000).ToString(CultureInfo.InvariantCulture), updatedUtc, cancellationToken);
         await UpsertSettingAsync(connection, transaction, "download-health.minPeers.minutes", Math.Clamp(request.DownloadHealthMinPeersMinutes ?? 30, 1, 1440).ToString(CultureInfo.InvariantCulture), updatedUtc, cancellationToken);
+        // #905's remaining global settings: the per-rule engine itself lives
+        // in IDownloadHealthRepository (download-health.rules.v1), these are
+        // what sits alongside it. Off/at their old defaults (#936).
+        await UpsertSettingAsync(connection, transaction, "download-health.dryRunEnabled", request.DownloadHealthDryRunEnabled == true ? "true" : "false", updatedUtc, cancellationToken);
+        await UpsertSettingAsync(connection, transaction, "download-health.defaultStrikeWindowMinutes", Math.Clamp(request.DownloadHealthDefaultStrikeWindowMinutes ?? 30, 1, 1440).ToString(CultureInfo.InvariantCulture), updatedUtc, cancellationToken);
+        await UpsertSettingAsync(connection, transaction, "download-health.strikeInactivityHours", Math.Clamp(request.DownloadHealthStrikeInactivityHours ?? 72, 1, 720).ToString(CultureInfo.InvariantCulture), updatedUtc, cancellationToken);
+        await UpsertSettingAsync(connection, transaction, "download-health.connectivityCheck.enabled", request.DownloadHealthConnectivityCheckEnabled == true ? "true" : "false", updatedUtc, cancellationToken);
+        await UpsertSettingAsync(connection, transaction, "download-health.connectivityCheck.urls", request.DownloadHealthConnectivityCheckUrls ?? string.Empty, updatedUtc, cancellationToken);
+        await UpsertSettingAsync(connection, transaction, "download-health.throughputSampler.intervalMinutes", Math.Clamp(request.DownloadThroughputSamplerIntervalMinutes ?? 1, 1, 60).ToString(CultureInfo.InvariantCulture), updatedUtc, cancellationToken);
         // #909: warn and pause both read as "percent free remaining", so pause
         // must be the smaller number -- clamped here rather than merely
         // validated, so a stored value can never be read back the wrong way
@@ -568,7 +577,13 @@ public sealed class SqlitePlatformSettingsRepository(
             SetPermissionsOnImport: string.Equals(GetValue(settings, "media.setPermissionsOnImport"), "true", StringComparison.OrdinalIgnoreCase),
             FolderChmod: NormalizeChmod(GetValue(settings, "media.folderChmod")),
             ChownGroup: NormalizeName(GetValue(settings, "media.chownGroup")),
-            ProperRepackAcquisitionMode: NormalizeProperRepackAcquisitionMode(GetValue(settings, "search.properRepackAcquisitionMode")));
+            ProperRepackAcquisitionMode: NormalizeProperRepackAcquisitionMode(GetValue(settings, "search.properRepackAcquisitionMode")),
+            DownloadHealthDryRunEnabled: string.Equals(GetValue(settings, "download-health.dryRunEnabled"), "true", StringComparison.OrdinalIgnoreCase),
+            DownloadHealthDefaultStrikeWindowMinutes: ReadPositiveInt(GetValue(settings, "download-health.defaultStrikeWindowMinutes"), 30, 1, 1440),
+            DownloadHealthStrikeInactivityHours: ReadPositiveInt(GetValue(settings, "download-health.strikeInactivityHours"), 72, 1, 720),
+            DownloadHealthConnectivityCheckEnabled: string.Equals(GetValue(settings, "download-health.connectivityCheck.enabled"), "true", StringComparison.OrdinalIgnoreCase),
+            DownloadHealthConnectivityCheckUrls: GetValue(settings, "download-health.connectivityCheck.urls") ?? string.Empty,
+            DownloadThroughputSamplerIntervalMinutes: ReadPositiveInt(GetValue(settings, "download-health.throughputSampler.intervalMinutes"), 1, 1, 60));
     }
 
     private static string NormalizeProperRepackAcquisitionMode(string? value)

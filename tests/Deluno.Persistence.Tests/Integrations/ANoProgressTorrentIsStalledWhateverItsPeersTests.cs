@@ -26,7 +26,7 @@ public sealed class ANoProgressTorrentIsStalledWhateverItsPeersTests
     public void No_bytes_gained_for_the_stall_window_is_stalled_even_with_connected_peers()
     {
         var lastProgressUtc = AddedUtc; // never increased since the grab
-        var capturedUtc = AddedUtc.Add(Deluno.Platform.Contracts.DownloadHealthStrikes.Window);
+        var capturedUtc = AddedUtc.Add(Deluno.Platform.Contracts.DownloadHealthStrikes.DefaultWindow);
         var item = Downloading(sizeBytes: 3_580_727_698, downloadedBytes: 716_145, peers: 2, capturedUtc: capturedUtc);
 
         var reconciled = DownloadClientHelpers.ReconcileTorrentStatus(item, capturedUtc, lastProgressUtc);
