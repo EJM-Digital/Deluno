@@ -39,6 +39,54 @@ public sealed class TorznabFeedTests
         Assert.Equal("freeleech", Attr("flags"));
     }
 
+    // #745: the structured flags a media-plan "Indexer flag" custom-format
+    // condition and the legacy free-text preference both read (FeedMediaSearchPlanner
+    // joins every "flags"/"flag" attr into one comma list) come from the same
+    // ratio facts every private tracker already reports, not only Freeleech.
+
+    [Fact]
+    public void A_half_leech_release_is_flagged_half_leech()
+    {
+        var release = new TrackerRelease { Title = "Half Leech Release", MagnetUrl = "magnet:?xt=urn:btih:0000000000000000000000000000000000000000", DownloadVolumeFactor = 0.5, UploadVolumeFactor = 1 };
+
+        var item = TorznabFeed.Write([release]).Descendants("item").Single();
+
+        var flags = item.Elements(Torznab + "attr").Where(attr => attr.Attribute("name")!.Value == "flags").Select(attr => attr.Attribute("value")!.Value).ToArray();
+        Assert.Equal(["half leech"], flags);
+    }
+
+    [Fact]
+    public void A_double_upload_release_is_flagged_double_upload()
+    {
+        var release = new TrackerRelease { Title = "Double Upload Release", MagnetUrl = "magnet:?xt=urn:btih:1111111111111111111111111111111111111111", DownloadVolumeFactor = 1, UploadVolumeFactor = 2 };
+
+        var item = TorznabFeed.Write([release]).Descendants("item").Single();
+
+        var flags = item.Elements(Torznab + "attr").Where(attr => attr.Attribute("name")!.Value == "flags").Select(attr => attr.Attribute("value")!.Value).ToArray();
+        Assert.Equal(["double upload"], flags);
+    }
+
+    [Fact]
+    public void A_freeleech_and_double_upload_release_carries_both_flags()
+    {
+        var release = new TrackerRelease { Title = "Both Flags Release", MagnetUrl = "magnet:?xt=urn:btih:2222222222222222222222222222222222222222", DownloadVolumeFactor = 0, UploadVolumeFactor = 2 };
+
+        var item = TorznabFeed.Write([release]).Descendants("item").Single();
+
+        var flags = item.Elements(Torznab + "attr").Where(attr => attr.Attribute("name")!.Value == "flags").Select(attr => attr.Attribute("value")!.Value).ToArray();
+        Assert.Equal(["freeleech", "double upload"], flags);
+    }
+
+    [Fact]
+    public void A_release_with_ordinary_ratios_carries_no_flags()
+    {
+        var release = new TrackerRelease { Title = "Ordinary Release", MagnetUrl = "magnet:?xt=urn:btih:3333333333333333333333333333333333333333", DownloadVolumeFactor = 1, UploadVolumeFactor = 1 };
+
+        var item = TorznabFeed.Write([release]).Descendants("item").Single();
+
+        Assert.DoesNotContain(item.Elements(Torznab + "attr"), attr => attr.Attribute("name")!.Value == "flags");
+    }
+
     [Fact]
     public void A_magnet_only_release_links_to_its_magnet()
     {

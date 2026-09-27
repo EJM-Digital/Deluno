@@ -214,9 +214,23 @@ public static class TorznabFeed
             Attr("uploadvolumefactor", release.UploadVolumeFactor);
             Attr("minimumratio", release.MinimumRatio);
             Attr("minimumseedtime", release.MinimumSeedTimeSeconds);
+            // Structured indexer flags (#745): the same signal a private
+            // tracker's own site already gives, read once here so every
+            // release -- native tracker or Torznab/Newznab -- reaches the
+            // planner's "flags"/"flag" attrs the same way, whether or not the
+            // indexer names the flag itself.
             if (release.DownloadVolumeFactor == 0)
             {
                 Attr("flags", "freeleech");
+            }
+            else if (release.DownloadVolumeFactor == 0.5)
+            {
+                Attr("flags", "half leech");
+            }
+
+            if (release.UploadVolumeFactor >= 2)
+            {
+                Attr("flags", "double upload");
             }
 
             channel.Add(item);
