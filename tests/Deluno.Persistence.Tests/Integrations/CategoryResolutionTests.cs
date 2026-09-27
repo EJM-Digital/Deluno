@@ -27,6 +27,8 @@ public sealed class CategoryResolutionTests
             Username: null,
             Secret: null,
             EndpointUrl: null,
+            UseSsl: false,
+            UrlBase: null,
             MoviesCategory: movies,
             TvCategory: tv,
             CategoryTemplate: template,

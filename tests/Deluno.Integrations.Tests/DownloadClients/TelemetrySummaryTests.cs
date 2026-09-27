@@ -36,6 +36,8 @@ public sealed class TelemetrySummaryTests
                     Username: null,
                     Secret: null,
                     EndpointUrl: "http://localhost:8080",
+                    UseSsl: false,
+                    UrlBase: null,
                     MoviesCategory: null,
                     TvCategory: null,
                     CategoryTemplate: null,

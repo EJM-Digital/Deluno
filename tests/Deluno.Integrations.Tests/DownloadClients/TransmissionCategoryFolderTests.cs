@@ -48,7 +48,7 @@ public sealed class TransmissionCategoryFolderTests
 
     private static DownloadClientItem Transmission()
         => new(
-            "client-1", "Transmission", "transmission", "localhost", 9091, "user", "secret", "http://localhost:9091/",
+            "client-1", "Transmission", "transmission", "localhost", 9091, "user", "secret", "http://localhost:9091/", false, null,
             "Movies", "TV", null, 1, true, "healthy", null, null, null, null, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow);
 
     private sealed class StubFactory(HttpMessageHandler handler) : IHttpClientFactory

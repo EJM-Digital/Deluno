@@ -36,6 +36,74 @@ public sealed class DownloadClientPersistenceTests
             Priority: 1,
             IsEnabled: true);
 
+    // ── Use SSL / URL Base (#804) ─────────────────────────────────────────────
+
+    [Fact]
+    public async Task CreateDownloadClientAsync_persists_use_ssl_and_url_base()
+    {
+        using var storage = TestStorage.Create();
+        var repo = await CreateRepositoryAsync(storage);
+
+        var created = await repo.CreateDownloadClientAsync(
+            BaseCreateRequest() with { UseSsl = true, UrlBase = "/sabnzbd/" },
+            CancellationToken.None);
+
+        Assert.True(created.UseSsl);
+        Assert.Equal("/sabnzbd/", created.UrlBase);
+
+        var reloaded = Assert.Single(await repo.ListDownloadClientsAsync(CancellationToken.None));
+        Assert.True(reloaded.UseSsl);
+        Assert.Equal("/sabnzbd/", reloaded.UrlBase);
+    }
+
+    [Fact]
+    public async Task CreateDownloadClientAsync_defaults_use_ssl_to_false_and_url_base_to_null()
+    {
+        using var storage = TestStorage.Create();
+        var repo = await CreateRepositoryAsync(storage);
+
+        var created = await repo.CreateDownloadClientAsync(BaseCreateRequest(), CancellationToken.None);
+
+        Assert.False(created.UseSsl);
+        Assert.Null(created.UrlBase);
+    }
+
+    [Fact]
+    public async Task UpdateDownloadClientAsync_can_turn_use_ssl_on_and_set_url_base()
+    {
+        using var storage = TestStorage.Create();
+        var repo = await CreateRepositoryAsync(storage);
+        var created = await repo.CreateDownloadClientAsync(BaseCreateRequest(), CancellationToken.None);
+
+        var updated = await repo.UpdateDownloadClientAsync(
+            created.Id,
+            new UpdateDownloadClientRequest(null, null, null, null, null, null, null, null, null, null, null, null, UseSsl: true, UrlBase: "sabnzbd"),
+            CancellationToken.None);
+
+        Assert.NotNull(updated);
+        Assert.True(updated.UseSsl);
+        Assert.Equal("sabnzbd", updated.UrlBase);
+    }
+
+    [Fact]
+    public async Task UpdateDownloadClientAsync_null_use_ssl_and_url_base_preserve_existing_values()
+    {
+        using var storage = TestStorage.Create();
+        var repo = await CreateRepositoryAsync(storage);
+        var created = await repo.CreateDownloadClientAsync(
+            BaseCreateRequest() with { UseSsl = true, UrlBase = "sabnzbd" },
+            CancellationToken.None);
+
+        var updated = await repo.UpdateDownloadClientAsync(
+            created.Id,
+            new UpdateDownloadClientRequest(Name: "Renamed", null, null, null, null, null, null, null, null, null, null, null),
+            CancellationToken.None);
+
+        Assert.NotNull(updated);
+        Assert.True(updated.UseSsl);
+        Assert.Equal("sabnzbd", updated.UrlBase);
+    }
+
     // ── CreateDownloadClientAsync ─────────────────────────────────────────────
 
     [Fact]

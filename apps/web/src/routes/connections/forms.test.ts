@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { CLIENT_PRESETS } from "./presets";
 import type { IndexerItem } from "../../lib/api";
-import { clientFormErrors, emptyClientForm, emptyIndexerForm, indexerFormErrors, indexerFormFrom, sameIndexer } from "./forms";
+import type { DownloadClientItem } from "../../lib/api";
+import { clientFormErrors, clientFormFrom, emptyClientForm, emptyIndexerForm, indexerFormErrors, indexerFormFrom, sameIndexer } from "./forms";
 
 /**
  * #293 — a create form opens with values the user is entitled to accept as-is.
@@ -15,6 +16,48 @@ describe("create form defaults", () => {
 
   it("names the new client after the preset rather than leaving it blank", () => {
     expect(emptyClientForm().name).toBe(CLIENT_PRESETS[0]!.label);
+  });
+
+  it("a new download client defaults Use SSL off and URL base blank", () => {
+    expect(emptyClientForm().useSsl).toBe(false);
+    expect(emptyClientForm().urlBase).toBe("");
+  });
+});
+
+// #804: Use SSL and URL Base round-trip through the client form the same way
+// every other saved field does.
+describe("client form Use SSL and URL Base", () => {
+  const baseItem: DownloadClientItem = {
+    id: "client-1",
+    name: "SABnzbd",
+    protocol: "sabnzbd",
+    host: "localhost",
+    port: 8080,
+    username: null,
+    endpointUrl: "https://localhost:8080/sabnzbd/",
+    useSsl: true,
+    urlBase: "sabnzbd",
+    moviesCategory: "movies",
+    tvCategory: "tv",
+    categoryTemplate: null,
+    priority: 1,
+    isEnabled: true,
+    healthStatus: "healthy",
+    lastHealthMessage: null,
+    createdUtc: "2026-01-01T00:00:00Z",
+    updatedUtc: "2026-01-01T00:00:00Z"
+  };
+
+  it("reads a saved client's Use SSL and URL base into the form", () => {
+    const form = clientFormFrom(baseItem);
+    expect(form.useSsl).toBe(true);
+    expect(form.urlBase).toBe("sabnzbd");
+  });
+
+  it("reads a client with Use SSL off and no URL base as blank, not null", () => {
+    const form = clientFormFrom({ ...baseItem, useSsl: false, urlBase: null });
+    expect(form.useSsl).toBe(false);
+    expect(form.urlBase).toBe("");
   });
 
   it("a new indexer says what is missing instead of nothing", () => {

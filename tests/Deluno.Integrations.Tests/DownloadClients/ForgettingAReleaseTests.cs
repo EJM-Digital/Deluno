@@ -198,6 +198,8 @@ public sealed class ForgettingAReleaseTests
             null,
             secret,
             "http://localhost:8080/",
+            false,
+            null,
             "movies",
             "tv",
             null,

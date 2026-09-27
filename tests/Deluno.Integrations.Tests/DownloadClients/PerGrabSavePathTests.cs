@@ -113,7 +113,7 @@ public sealed class PerGrabSavePathTests
     {
         var now = DateTimeOffset.UnixEpoch;
         return new DownloadClientItem(
-            "client-1", "Test Client", "qbittorrent", "localhost", 8080, null, null, null,
+            "client-1", "Test Client", "qbittorrent", "localhost", 8080, null, null, null, false, null,
             "movies", "tv", null, 1, true, "healthy", null, null, null, now, now, now);
     }
 

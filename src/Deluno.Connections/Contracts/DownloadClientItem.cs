@@ -12,6 +12,8 @@ public sealed record DownloadClientItem(
     string? Username,
     [property: JsonIgnore] string? Secret,
     string? EndpointUrl,
+    bool UseSsl,
+    string? UrlBase,
     string? MoviesCategory,
     string? TvCategory,
     string? CategoryTemplate,
