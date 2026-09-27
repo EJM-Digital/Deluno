@@ -3,6 +3,7 @@ import {
   categoryIdSelected,
   customCategoryIds,
   joinCategoryIds,
+  nearestStandardGroupFor,
   splitCategoryIds,
   standardCategoriesForScope,
   STANDARD_CATEGORIES,
@@ -63,5 +64,20 @@ describe("category ids helpers (#751)", () => {
   it("reports a non-standard number as a custom category id", () => {
     expect(customCategoryIds("2000,2040,9999")).toEqual(["9999"]);
     expect(customCategoryIds("2000,2040")).toEqual([]);
+  });
+
+  // #751: "an indexer showing non-standard/custom categories shows them in
+  // picker labelled as custom, mapped under nearest standard group".
+  it("maps a custom category number onto its nearest standard family", () => {
+    expect(nearestStandardGroupFor("2045")).toEqual({ id: "2000", name: "Movies", group: "Movies" });
+    expect(nearestStandardGroupFor("2099")).toEqual({ id: "2000", name: "Movies", group: "Movies" });
+    expect(nearestStandardGroupFor("5070")).toEqual({ id: "5000", name: "TV", group: "TV" });
+    expect(nearestStandardGroupFor("5099")).toEqual({ id: "5000", name: "TV", group: "TV" });
+  });
+
+  it("has no nearest standard family for a category outside Movies/TV, or a non-numeric id", () => {
+    expect(nearestStandardGroupFor("3040")).toBeNull(); // Audio: Deluno has no group for it.
+    expect(nearestStandardGroupFor("999")).toBeNull(); // Under 1000: not a real category family.
+    expect(nearestStandardGroupFor("not-a-number")).toBeNull();
   });
 });

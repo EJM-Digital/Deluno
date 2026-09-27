@@ -1,6 +1,6 @@
 import { Checkbox } from "../../components/ui/checkbox";
 import type { MediaScope } from "./presets";
-import { categoryIdSelected, customCategoryIds, standardCategoriesForScope, toggleCategoryId } from "./category-catalog";
+import { categoryIdSelected, customCategoryIds, nearestStandardGroupFor, standardCategoriesForScope, toggleCategoryId } from "./category-catalog";
 
 /**
  * A checkable list of category names, grouped the way Newznab/Torznab
@@ -47,10 +47,18 @@ export function CategoryPicker({ value, onChange, scope }: { value: string; onCh
           <div className="grid grid-cols-2 gap-x-3 gap-y-1.5 sm:grid-cols-3">
             {custom.map((id) => {
               const checkboxId = `category-custom-${id}`;
+              // A custom number still belongs to whichever standard family it
+              // falls in (2045 is a kind of 2000 Movies), so it says which
+              // group it's nearest rather than only ever showing a bare
+              // number nobody can place (#751).
+              const nearest = nearestStandardGroupFor(id);
               return (
                 <label key={id} htmlFor={checkboxId} className="flex cursor-pointer items-center gap-1.5">
                   <Checkbox id={checkboxId} checked onCheckedChange={() => onChange(toggleCategoryId(value, id))} />
                   <span className="font-mono text-[length:var(--type-body-sm)] text-foreground">{id}</span>
+                  <span className="text-[length:var(--type-caption)] text-muted-foreground">
+                    {nearest ? `(custom, near ${nearest.name} ${nearest.id})` : "(custom)"}
+                  </span>
                 </label>
               );
             })}
