@@ -74,4 +74,15 @@ internal sealed class RecordingMetadataProvider(
         string providerId,
         CancellationToken cancellationToken)
         => throw new NotSupportedException();
+
+    /// <summary>Every card this test gave it, for the requested kind — Discover's "popular" grid (#785).</summary>
+    public Task<IReadOnlyList<MetadataSearchResult>> GetPopularAsync(
+        string mediaType,
+        int page,
+        CancellationToken cancellationToken)
+    {
+        var normalized = mediaType.Trim().ToLowerInvariant() is "tv" or "shows" or "series" ? "tv" : "movies";
+        return Task.FromResult<IReadOnlyList<MetadataSearchResult>>(
+            cards.Where(card => card.MediaType == normalized).ToArray());
+    }
 }

@@ -28,6 +28,7 @@ const PRIMARY = [
 const DRAWER_LINKS = [
   { to: "/collections", label: "Collections", icon: "library", group: "Your Media" as const },
   { to: "/calendar", label: "Schedule", icon: "schedule", group: "Your Media" as const },
+  { to: "/discover", label: "Discover", icon: "discover", group: "Your Media" as const },
   { to: "/activity", label: "Activity", icon: "activity", group: "Live operations" as const }
 ] as const;
 
@@ -41,6 +42,7 @@ const NAV_ACCENT_STYLE = {
 function moreTabActive(pathname: string): boolean {
   if (pathname.startsWith("/collections")) return true;
   if (pathname.startsWith("/calendar")) return true;
+  if (pathname.startsWith("/discover")) return true;
   if (pathname.startsWith("/indexers")) return true;
   if (pathname.startsWith("/search-cycles")) return true;
   if (pathname.startsWith("/activity")) return true;

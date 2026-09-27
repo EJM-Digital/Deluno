@@ -6,6 +6,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Deluno.Api;
 using Deluno.Api.Backup;
 using Deluno.Api.Calendar;
+using Deluno.Api.Discover;
 using Deluno.Api.Downloads;
 using Deluno.Api.Health;
 using Deluno.Connections;
@@ -99,6 +100,7 @@ public static class DelunoApplicationEndpointMapping
         systemEndpoints.MapDelunoSecretsDiagnostics();
         writeEndpoints.MapDelunoMoviesEndpoints();
         writeEndpoints.MapDelunoSeriesEndpoints();
+        writeEndpoints.MapDelunoDiscoverEndpoints();
         writeEndpoints.MapDelunoAutomationEndpoints();
         readEndpoints.MapDelunoAutomationReadEndpoints();
         writeEndpoints.MapDelunoJobsEndpoints();

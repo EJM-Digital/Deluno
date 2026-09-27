@@ -255,6 +255,13 @@ export const router = createBrowserRouter([
         })
       },
       {
+        path: "discover",
+        lazy: withSkeleton(async () => {
+          const module = await import("./routes/discover-page");
+          return { loader: module.discoverLoader, Component: module.DiscoverPage };
+        })
+      },
+      {
         path: "activity",
         lazy: withSkeleton(async () => {
           const module = await import("./routes/activity-page");
