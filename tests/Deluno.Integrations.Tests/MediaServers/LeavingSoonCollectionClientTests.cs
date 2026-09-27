@@ -55,6 +55,24 @@ public sealed class LeavingSoonCollectionClientTests
     }
 
     [Fact]
+    public async Task Jellyfin_favourites_the_collection_onto_home_when_asked_and_unfavourites_it_when_not()
+    {
+        var jellyfin = new FakeJellyfin();
+        var client = new JellyfinMediaServerClient(Factory(jellyfin.Handle));
+
+        var created = await client.SyncCollectionAsync(Server(MediaServerKinds.Jellyfin), Request("movies", true, new MediaServerCollectionMember("m1", "movie")), CancellationToken.None);
+
+        Assert.IsType<MediaServerAnswer<MediaServerCollectionSync>.Reported>(created);
+        var collection = Assert.Single(jellyfin.Collections);
+        Assert.Contains(collection.Id, jellyfin.Favourites);
+
+        var updated = await client.SyncCollectionAsync(Server(MediaServerKinds.Jellyfin), Request("movies", false, new MediaServerCollectionMember("m1", "movie")), CancellationToken.None);
+
+        Assert.IsType<MediaServerAnswer<MediaServerCollectionSync>.Reported>(updated);
+        Assert.DoesNotContain(collection.Id, jellyfin.Favourites);
+    }
+
+    [Fact]
     public async Task Emby_deletes_the_emptied_collection_and_never_anything_else_by_that_name()
     {
         var emby = new FakeJellyfin(prefix: "/emby");
@@ -142,6 +160,7 @@ public sealed class LeavingSoonCollectionClientTests
         public List<FakeCollection> Collections { get; } = [];
         public List<(string Id, string Name)> Movies { get; } = [];
         public List<string> Deletes { get; } = [];
+        public HashSet<string> Favourites { get; } = [];
         private int _next = 1;
 
         public HttpResponseMessage Handle(HttpRequestMessage request)
@@ -213,6 +232,14 @@ public sealed class LeavingSoonCollectionClientTests
                 var id = path.Split('/')[2];
                 Assert.Contains(Collections, c => c.Id == id);
                 Collections.RemoveAll(c => c.Id == id);
+                return new HttpResponseMessage(HttpStatusCode.NoContent);
+            }
+
+            if (path.StartsWith("/Users/", StringComparison.Ordinal) && path.Contains("/FavoriteItems/", StringComparison.Ordinal))
+            {
+                var itemId = path.Split('/')[4];
+                if (request.Method == HttpMethod.Post) Favourites.Add(itemId);
+                else if (request.Method == HttpMethod.Delete) Favourites.Remove(itemId);
                 return new HttpResponseMessage(HttpStatusCode.NoContent);
             }
 

@@ -176,7 +176,7 @@ public sealed record MediaServerCollectionMember(string ItemId, string Level, st
 /// A collection Deluno owns on a server, and exactly what should be in it (#521).
 /// No members means the collection should not exist.
 /// </summary>
-/// <param name="PromoteToHome">Plex only: show it on the home screen.</param>
+/// <param name="PromoteToHome">Show it on the home screen: Plex's own-home promotion, or Jellyfin/Emby's Favorites row (#854).</param>
 public sealed record MediaServerCollectionRequest(
     string MediaType,
     string Name,

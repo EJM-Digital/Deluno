@@ -405,6 +405,20 @@ public abstract class EmbyFamilyMediaServerClient(IHttpClientFactory httpClientF
             return new MediaServerAnswer<MediaServerCollectionSync>.Reported(new MediaServerCollectionSync(0, 0, 0, 0, existing.Count > 0));
         }
 
+        // Read as a user: asked without one, Jellyfin answered an empty
+        // collection, so a title added by hand was never taken out (#521, rig).
+        // The same user id is what favourites a collection onto the home
+        // screen below, so it is read once up front for both branches.
+        var usersCall = await GetAsync(connection, "/Users", cancellationToken);
+        using var usersDocument = usersCall.Ok ? TryParse(usersCall.Body) : null;
+        var userId = usersDocument?.RootElement.ValueKind == JsonValueKind.Array
+            ? usersDocument.RootElement.EnumerateArray().Select(user => String(user, "Id")).FirstOrDefault(id => !string.IsNullOrWhiteSpace(id))
+            : null;
+        if (userId is null)
+        {
+            return new MediaServerAnswer<MediaServerCollectionSync>.Unreachable(usersCall.Problem ?? $"{connection.Name} did not list its users, so its collection could not be read.");
+        }
+
         if (collectionId is null)
         {
             var created = await SendAsync(
@@ -427,19 +441,13 @@ public abstract class EmbyFamilyMediaServerClient(IHttpClientFactory httpClientF
             }
 
             await DescribeAsync(connection, collectionId, request.Description, cancellationToken);
-            return new MediaServerAnswer<MediaServerCollectionSync>.Reported(new MediaServerCollectionSync(wanted.Length, 0, wanted.Length, 0, false));
-        }
+            var homed = await SetHomeAsync(connection, userId, collectionId, request.PromoteToHome, cancellationToken);
+            if (homed is not null)
+            {
+                return new MediaServerAnswer<MediaServerCollectionSync>.Unreachable(homed);
+            }
 
-        // Read as a user: asked without one, Jellyfin answered an empty
-        // collection, so a title added by hand was never taken out (#521, rig).
-        var usersCall = await GetAsync(connection, "/Users", cancellationToken);
-        using var usersDocument = usersCall.Ok ? TryParse(usersCall.Body) : null;
-        var userId = usersDocument?.RootElement.ValueKind == JsonValueKind.Array
-            ? usersDocument.RootElement.EnumerateArray().Select(user => String(user, "Id")).FirstOrDefault(id => !string.IsNullOrWhiteSpace(id))
-            : null;
-        if (userId is null)
-        {
-            return new MediaServerAnswer<MediaServerCollectionSync>.Unreachable(usersCall.Problem ?? $"{connection.Name} did not list its users, so its collection could not be read.");
+            return new MediaServerAnswer<MediaServerCollectionSync>.Reported(new MediaServerCollectionSync(wanted.Length, 0, wanted.Length, 0, false));
         }
 
         var members = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -482,7 +490,30 @@ public abstract class EmbyFamilyMediaServerClient(IHttpClientFactory httpClientF
             await DescribeAsync(connection, collectionId, request.Description, cancellationToken);
         }
 
+        var homedExisting = await SetHomeAsync(connection, userId, collectionId, request.PromoteToHome, cancellationToken);
+        if (homedExisting is not null)
+        {
+            return new MediaServerAnswer<MediaServerCollectionSync>.Unreachable(homedExisting);
+        }
+
         return new MediaServerAnswer<MediaServerCollectionSync>.Reported(new MediaServerCollectionSync(add.Length, remove.Length, wanted.Length, 0, false));
+    }
+
+    /// <summary>
+    /// Jellyfin/Emby's nearest equivalent to Plex's own-home promotion (#854):
+    /// favouriting the collection puts it on the home screen's Favorites row.
+    /// </summary>
+    private async Task<string?> SetHomeAsync(MediaServerConnection connection, string userId, string collectionId, bool promote, CancellationToken cancellationToken)
+    {
+        var method = promote ? HttpMethod.Post : HttpMethod.Delete;
+        var result = await SendAsync(
+            httpClientFactory,
+            method,
+            Address(connection, $"/Users/{Uri.EscapeDataString(userId)}/FavoriteItems/{Uri.EscapeDataString(collectionId)}"),
+            Headers(connection),
+            connection.Name,
+            cancellationToken);
+        return result.Ok ? null : result.Problem;
     }
 
     /// <summary>

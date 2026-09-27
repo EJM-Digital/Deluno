@@ -531,14 +531,12 @@ export function MediaServersPage() {
             ) : (
               <p className="text-[length:var(--type-body-sm)] text-muted-foreground">When a retention rule reading this server marks a title, it appears in a Leaving soon collection here.</p>
             )}
-            {editing.kind === "plex" ? (
-              <SwitchRow
-                label="Show on home"
-                description="Puts the Leaving soon collections on this server's home screen."
-                checked={form.leavingSoonOnHome}
-                onCheckedChange={(checked) => setForm((current) => ({ ...current, leavingSoonOnHome: checked }))}
-              />
-            ) : null}
+            <SwitchRow
+              label="Show on home"
+              description="Puts the Leaving soon collections on this server's home screen."
+              checked={form.leavingSoonOnHome}
+              onCheckedChange={(checked) => setForm((current) => ({ ...current, leavingSoonOnHome: checked }))}
+            />
           </DrawerSection>
         ) : null}
 
