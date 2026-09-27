@@ -98,14 +98,39 @@ public sealed class QbittorrentGrabHonestyTests
         Assert.True(result.Succeeded);
     }
 
+    /// <summary>
+    /// #877, cleanup sheet B3: qBittorrent already holding a release is
+    /// nobody's fault. Usenet clients already follow the existing item instead
+    /// of failing the grab (#663); a magnet whose infohash Deluno can read and
+    /// already sees in the list must do the same, not report a failed download
+    /// and leave a person to remove it by hand.
+    /// </summary>
+    [Fact]
+    public async Task A_release_qbittorrent_already_holds_by_a_known_hash_is_followed_not_failed()
+    {
+        const string hash = "aaaa1111aaaa1111aaaa1111aaaa1111aaaa1111";
+        var handler = new SequencedHandler(
+            beforeHashes: $$"""[{"hash":"{{hash}}"}]""",
+            addBody: "Ok.",
+            afterHashes: $$"""[{"hash":"{{hash}}"}]""");
+
+        var result = await Grab(handler, downloadUrl: $"magnet:?xt=urn:btih:{hash}");
+
+        Assert.True(result.Succeeded);
+        Assert.Equal("sent", result.Status);
+        Assert.Equal(hash, result.ExternalId, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("already holds this release", result.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("following", result.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
     // ------------------------------------------------------------------ helpers
 
-    private static Task<DownloadClientGrabResult> Grab(HttpMessageHandler handler)
+    private static Task<DownloadClientGrabResult> Grab(HttpMessageHandler handler, string? downloadUrl = null)
         => new QbittorrentDownloadClient(() => handler).GrabAsync(
             CreateClient(),
             new DownloadClientGrabRequest(
                 "Big.Buck.Bunny.2008.1080p.WEB-DL.x264-DELUNO",
-                "http://indexer.test/download/1",
+                downloadUrl ?? "http://indexer.test/download/1",
                 "movies",
                 "movies",
                 "Lab Torznab",

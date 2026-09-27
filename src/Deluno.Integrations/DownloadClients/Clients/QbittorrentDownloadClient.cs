@@ -101,11 +101,32 @@ public sealed class QbittorrentDownloadClient(Func<HttpMessageHandler>? handlerF
             // looks like: it logs "Failed to add torrent" and still answered
             // Ok. Only a hash Deluno knows, already in the list, is a duplicate.
             var knownHash = Search.Trackers.TrackerMagnet.InfoHashOf(request.DownloadUrl);
-            var message = knownHash is { Length: 40 } && before.Contains(knownHash, StringComparer.OrdinalIgnoreCase)
-                ? "qBittorrent already holds this release. Remove it there, or force a re-download, before expecting this to start."
-                : knownHash is { Length: 40 }
-                    ? "qBittorrent accepted the magnet but added no torrent. Its log says why."
-                    : "qBittorrent accepted the request but added no torrent. Either it already holds this release (remove it there, or force a re-download), or it could not read what the link returned; its log says which.";
+            if (knownHash is { Length: 40 } duplicateHash && before.Contains(duplicateHash, StringComparer.OrdinalIgnoreCase))
+            {
+                // #877: "the download client says it already has this one" is
+                // nobody's fault (cleanup sheet B3) — Usenet clients already
+                // follow the existing item instead of failing the grab, and a
+                // torrent client should too, rather than reporting a failed
+                // download and asking the person to remove it themselves.
+                // Recording this as a success with the existing torrent's own
+                // hash as the external id is what lets Deluno follow it: the
+                // ordinary queue poll picks the torrent up by that hash next
+                // time, under whatever status it is actually in, exactly as if
+                // this dispatch had added it.
+                return DownloadClientHelpers.GrabSuccess(
+                    client,
+                    request,
+                    "qBittorrent already holds this release. Deluno is following the copy it has instead of sending another.") with
+                {
+                    ExternalId = duplicateHash,
+                    ResponseCode = (int)response.StatusCode,
+                    ResponseJson = payload
+                };
+            }
+
+            var message = knownHash is { Length: 40 }
+                ? "qBittorrent accepted the magnet but added no torrent. Its log says why."
+                : "qBittorrent accepted the request but added no torrent. Either it already holds this release (remove it there, or force a re-download), or it could not read what the link returned; its log says which.";
             return DownloadClientHelpers.GrabFailure(
                 client,
                 request,
