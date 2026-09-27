@@ -133,6 +133,105 @@ public sealed class IntegrationHealthPersistenceTests
         Assert.Equal("test", stored.LastHealthFailure.Operation);
     }
 
+    /// <summary>
+    /// #896: a wrong login or a used-up quota — both classify as
+    /// <see cref="IntegrationFailureKind.Authentication"/> — actually pauses
+    /// the provider now, instead of only recording the failure and letting
+    /// the next cycle ask it again anyway.
+    /// </summary>
+    [Fact]
+    public async Task An_authentication_failure_pauses_the_provider_with_a_reason()
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-04-29T09:00:00Z"));
+        await InitializePlatformAsync(storage, timeProvider);
+        var repository = new SqliteSubtitleProviderRepository(
+            storage.Factory, timeProvider, TestSecretProtection.Create(storage));
+
+        await repository.SaveAsync(
+            "opensubtitles",
+            "OpenSubtitles",
+            new SaveSubtitleProviderRequest(
+                ProviderKey: "opensubtitles", Username: "someone", Secret: "wrong", ApiKey: null, Priority: 1, IsEnabled: true),
+            CancellationToken.None);
+
+        var failure = IntegrationFailureFactory.FromLegacy(
+            "subtitle", "opensubtitles", "OpenSubtitles", "search", "authentication",
+            "OpenSubtitles rejected the request (401).");
+        await repository.RecordHealthAsync(
+            "opensubtitles", "failed", failure.Message, latencyMs: null, success: false,
+            rateLimitedUntilUtc: null, CancellationToken.None, failure);
+
+        var stored = Assert.Single(await repository.ListAsync(CancellationToken.None));
+        Assert.False(stored.IsEnabled);
+        Assert.Equal(failure.Message, stored.DisabledReason);
+        // Not askable is the point: a paused provider is never asked again
+        // until a person turns it back on.
+        Assert.False(stored.IsAskable(timeProvider.GetUtcNow()));
+    }
+
+    [Fact]
+    public async Task A_non_authentication_failure_never_pauses_the_provider()
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-04-29T09:00:00Z"));
+        await InitializePlatformAsync(storage, timeProvider);
+        var repository = new SqliteSubtitleProviderRepository(
+            storage.Factory, timeProvider, TestSecretProtection.Create(storage));
+
+        await repository.SaveAsync(
+            "podnapisi",
+            "Podnapisi",
+            new SaveSubtitleProviderRequest(
+                ProviderKey: "podnapisi", Username: null, Secret: null, ApiKey: null, Priority: 1, IsEnabled: true),
+            CancellationToken.None);
+
+        // A local setup problem (#880) or an internet outage (#901): neither
+        // is a bad release, and neither is a reason to stop asking a source
+        // that may simply be down for a minute.
+        var failure = IntegrationFailureFactory.FromLegacy(
+            "subtitle", "podnapisi", "Podnapisi", "search", "unreachable", "The provider host could not be reached.");
+        await repository.RecordHealthAsync(
+            "podnapisi", "failed", failure.Message, latencyMs: null, success: false,
+            rateLimitedUntilUtc: null, CancellationToken.None, failure);
+
+        var stored = Assert.Single(await repository.ListAsync(CancellationToken.None));
+        Assert.True(stored.IsEnabled);
+        Assert.Null(stored.DisabledReason);
+    }
+
+    [Fact]
+    public async Task A_success_clears_a_stale_disabled_reason()
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-04-29T09:00:00Z"));
+        await InitializePlatformAsync(storage, timeProvider);
+        var repository = new SqliteSubtitleProviderRepository(
+            storage.Factory, timeProvider, TestSecretProtection.Create(storage));
+
+        await repository.SaveAsync(
+            "opensubtitles",
+            "OpenSubtitles",
+            new SaveSubtitleProviderRequest(
+                ProviderKey: "opensubtitles", Username: "someone", Secret: "fixed-now", ApiKey: null, Priority: 1, IsEnabled: true),
+            CancellationToken.None);
+
+        var failure = IntegrationFailureFactory.FromLegacy(
+            "subtitle", "opensubtitles", "OpenSubtitles", "search", "authentication", "Wrong credentials.");
+        await repository.RecordHealthAsync(
+            "opensubtitles", "failed", failure.Message, latencyMs: null, success: false,
+            rateLimitedUntilUtc: null, CancellationToken.None, failure);
+
+        // A person noticed, fixed the password and turned it back on; the
+        // next successful search should not still say "wrong credentials".
+        await repository.RecordHealthAsync(
+            "opensubtitles", "healthy", "Found a subtitle.", latencyMs: 120, success: true,
+            rateLimitedUntilUtc: null, CancellationToken.None);
+
+        var stored = Assert.Single(await repository.ListAsync(CancellationToken.None));
+        Assert.Null(stored.DisabledReason);
+    }
+
     private static async Task InitializePlatformAsync(TestStorage storage, TimeProvider timeProvider)
     {
         await new PlatformSchemaInitializer(

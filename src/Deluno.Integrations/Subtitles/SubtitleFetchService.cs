@@ -1,6 +1,7 @@
 using Deluno.Connections.Contracts;
 using Deluno.Contracts;
 using Deluno.Connections.Data;
+using Deluno.Jobs.Data;
 using Microsoft.Extensions.Logging;
 
 namespace Deluno.Integrations.Subtitles;
@@ -118,7 +119,8 @@ public sealed class SubtitleFetchService(
     ISubtitleProviderRepository repository,
     ISubtitleFileWriter fileWriter,
     TimeProvider timeProvider,
-    ILogger<SubtitleFetchService> logger)
+    ILogger<SubtitleFetchService> logger,
+    IActivityFeedRepository? activityFeedRepository = null)
     : ISubtitleFetchService
 {
     public async Task<SubtitleFetchOutcome> FetchAsync(
@@ -303,6 +305,7 @@ public sealed class SubtitleFetchService(
                     retryScheduled: true);
                 failures.Add(failure);
                 await RecordAsync(connection, "failed", failure.Message, false, failure.RetryAfterUtc, cancellationToken, failure);
+                await NoteIfPausedAsync(provider!, failure, cancellationToken);
             }
         }
 
@@ -519,4 +522,36 @@ public sealed class SubtitleFetchService(
         IntegrationFailure? failure = null)
         => repository.RecordHealthAsync(
             connection.ProviderKey, status, message, latencyMs: null, success, rateLimitedUntil, cancellationToken, failure);
+
+    /// <summary>
+    /// Says so in Activity when the health record just written paused this
+    /// provider (#896). The repository is the one place that actually flips
+    /// <c>is_enabled</c> off — see
+    /// <see cref="Deluno.Connections.Data.ISubtitleProviderRepository.RecordHealthAsync"/> —
+    /// so this only decides whether to say so, from the same fact the
+    /// repository acted on.
+    ///
+    /// <para>A wrong login and a used-up quota answer the same way over HTTP
+    /// — 401 or 403 — so both read as <see cref="IntegrationFailureKind.Authentication"/>
+    /// and both get paused the same way: asking again would waste a search
+    /// attempt every cycle for a source that cannot answer until a person
+    /// does something about it.</para>
+    /// </summary>
+    private async Task NoteIfPausedAsync(
+        ISubtitleProvider provider, IntegrationFailure failure, CancellationToken cancellationToken)
+    {
+        if (failure.Kind != IntegrationFailureKind.Authentication || activityFeedRepository is null)
+        {
+            return;
+        }
+
+        await activityFeedRepository.RecordActivityAsync(
+            "subtitle.provider.paused",
+            $"{provider.DisplayName}'s login is wrong or its quota is used up, so Deluno paused it: {failure.Message} Turn it back on under Subtitle providers once this is fixed.",
+            null,
+            null,
+            "subtitle-provider",
+            provider.Key,
+            cancellationToken);
+    }
 }
