@@ -110,6 +110,59 @@ public sealed class SubtitleBlockTests
         Assert.Equal("gestdown|abc123", row.SourceKey);
     }
 
+    /// <summary>#922: what the last timing sync found, kept beside the row.</summary>
+    [Fact]
+    public async Task Timing_status_is_recorded_against_the_right_row()
+    {
+        using var storage = TestStorage.Create();
+        var (movies, subtitles) = await CreateAsync(storage);
+        var id = await ImportAsync(movies, "Dune");
+
+        await subtitles.RecordFetchedAsync(
+            MediaKind.Movie, id,
+            new MediaSubtitleRow("en", "fetched", Forced: false, HearingImpaired: false, FilePath: "x.en.srt",
+                StreamIndex: null, Codec: "srt", Provider: "gestdown"),
+            CancellationToken.None);
+
+        await subtitles.RecordTimingStatusAsync(
+            MediaKind.Movie, id, "en", forced: false, hearingImpaired: false,
+            "not_checked", "No clear peak.", CancellationToken.None);
+
+        var row = Assert.Single(await subtitles.ListSubtitlesAsync(MediaKind.Movie, id, CancellationToken.None));
+        Assert.Equal("not_checked", row.TimingStatus);
+        Assert.Equal("No clear peak.", row.TimingReason);
+    }
+
+    /// <summary>
+    /// #897/#922: rejecting a subtitle drops the held row so the language
+    /// goes back to being searched for, rather than staying "covered" by a
+    /// file that no longer exists.
+    /// </summary>
+    [Fact]
+    public async Task Removing_a_subtitle_drops_only_that_row()
+    {
+        using var storage = TestStorage.Create();
+        var (movies, subtitles) = await CreateAsync(storage);
+        var id = await ImportAsync(movies, "Dune");
+
+        await subtitles.RecordFetchedAsync(
+            MediaKind.Movie, id,
+            new MediaSubtitleRow("en", "fetched", Forced: false, HearingImpaired: false, FilePath: "x.en.srt",
+                StreamIndex: null, Codec: "srt", Provider: "gestdown"),
+            CancellationToken.None);
+        await subtitles.RecordFetchedAsync(
+            MediaKind.Movie, id,
+            new MediaSubtitleRow("fr", "fetched", Forced: false, HearingImpaired: false, FilePath: "x.fr.srt",
+                StreamIndex: null, Codec: "srt", Provider: "gestdown"),
+            CancellationToken.None);
+
+        await subtitles.RemoveSubtitleAsync(MediaKind.Movie, id, "en", forced: false, hearingImpaired: false, CancellationToken.None);
+
+        var remaining = await subtitles.ListSubtitlesAsync(MediaKind.Movie, id, CancellationToken.None);
+        var row = Assert.Single(remaining);
+        Assert.Equal("fr", row.Language);
+    }
+
     private static async Task<string> ImportAsync(IMovieCatalogRepository movies, string title)
     {
         await movies.ImportExistingBatchAsync(

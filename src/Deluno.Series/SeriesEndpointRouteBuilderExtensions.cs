@@ -2028,6 +2028,72 @@ public static class SeriesEndpointRouteBuilderExtensions
             return Results.Ok(new { queued = request.SeriesIds.Count, cleared });
         });
 
+        /*
+          #922's one-click "This is out of sync": a person's own judgment, fed
+          through #897's mechanism. Deletes the file, blocklists it so it is
+          never offered again, and drops the held row so the language is
+          missing again for that episode - which is what puts it back in
+          front of the library's own next subtitle search.
+
+          Addressed by episode, not by series: a subtitle belongs to one
+          episode, same as everywhere else this store keeps that distinction.
+        */
+        series.MapPost("/episodes/{episodeId}/subtitles/{language}/reject", async (
+            HttpContext httpContext,
+            string episodeId,
+            string language,
+            ISeriesCatalogRepository repository,
+            IMediaSubtitleRepository subtitles,
+            IActivityFeedRepository activity,
+            IRealtimeEventPublisher realtimeEventPublisher,
+            CancellationToken cancellationToken) =>
+        {
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
+            if (denied is not null)
+            {
+                return denied;
+            }
+
+            var seriesId = await repository.GetEpisodeSeriesIdAsync(episodeId, cancellationToken);
+            if (seriesId is null)
+            {
+                return Results.NotFound();
+            }
+
+            var show = await repository.GetByIdAsync(seriesId, cancellationToken);
+
+            var held = (await subtitles.ListSubtitlesAsync(MediaKind.Series, episodeId, cancellationToken))
+                .FirstOrDefault(row => string.Equals(row.Language, language, StringComparison.OrdinalIgnoreCase) && !row.Forced);
+            if (held is null || held.FilePath is null)
+            {
+                return Results.NotFound(new { message = $"There is no {language} subtitle held for this episode." });
+            }
+
+            await SubtitleRejection.RejectAsync(
+                subtitles,
+                activity,
+                MediaKind.Series,
+                episodeId,
+                show?.Title ?? "this show",
+                language,
+                forced: false,
+                held.HearingImpaired,
+                held.FilePath,
+                held.SourceKey,
+                held.Provider,
+                releaseName: null,
+                "You marked this subtitle as out of sync.",
+                cancellationToken);
+
+            await realtimeEventPublisher.PublishEntityChangedAsync("Episode", episodeId, cancellationToken);
+
+            return Results.Ok(new
+            {
+                rejected = true,
+                message = $"The {language} subtitle was removed and blocklisted; the next library subtitle search will fetch a replacement."
+            });
+        });
+
         series.MapPost("/bulk/quality-profile", async (
             HttpContext httpContext,
             [FromBody] BulkQualityProfileRequest request,

@@ -779,7 +779,8 @@ public sealed class SqliteMediaSubtitleRepository(
 
         using var command = connection.CreateCommand();
         command.CommandText = $"""
-            SELECT language, source, forced, hearing_impaired, file_path, stream_index, codec, provider, source_key
+            SELECT language, source, forced, hearing_impaired, file_path, stream_index, codec, provider, source_key,
+                   timing_status, timing_reason
             FROM {map.SubtitleTable}
             WHERE {map.SubtitleMediaIdColumn} = @mediaId
             ORDER BY language, forced, hearing_impaired;
@@ -799,10 +800,81 @@ public sealed class SqliteMediaSubtitleRepository(
                 StreamIndex: reader.IsDBNull(5) ? null : reader.GetInt32(5),
                 Codec: reader.IsDBNull(6) ? null : reader.GetString(6),
                 Provider: reader.IsDBNull(7) ? null : reader.GetString(7),
-                SourceKey: reader.IsDBNull(8) ? null : reader.GetString(8)));
+                SourceKey: reader.IsDBNull(8) ? null : reader.GetString(8),
+                TimingStatus: reader.IsDBNull(9) ? null : reader.GetString(9),
+                TimingReason: reader.IsDBNull(10) ? null : reader.GetString(10)));
         }
 
         return rows;
+    }
+
+    public async Task RecordTimingStatusAsync(
+        MediaKind kind,
+        string mediaId,
+        string language,
+        bool forced,
+        bool hearingImpaired,
+        string status,
+        string reason,
+        CancellationToken cancellationToken)
+    {
+        var map = MediaTableMap.For(kind);
+        var now = timeProvider.GetUtcNow();
+
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            map.DatabaseName,
+            cancellationToken);
+
+        using var command = connection.CreateCommand();
+        command.CommandText = $"""
+            UPDATE {map.SubtitleTable}
+            SET timing_status = @status, timing_reason = @reason, updated_utc = @now
+            WHERE {map.SubtitleMediaIdColumn} = @mediaId
+              AND language = @language
+              AND forced = @forced
+              AND hearing_impaired = @hearingImpaired;
+            """;
+
+        AddParameter(command, "@mediaId", mediaId);
+        AddParameter(command, "@language", language);
+        AddParameter(command, "@forced", forced ? 1 : 0);
+        AddParameter(command, "@hearingImpaired", hearingImpaired ? 1 : 0);
+        AddParameter(command, "@status", status);
+        AddParameter(command, "@reason", reason);
+        AddParameter(command, "@now", now.ToString("O"));
+
+        await command.ExecuteNonQueryAsync(cancellationToken);
+    }
+
+    public async Task RemoveSubtitleAsync(
+        MediaKind kind,
+        string mediaId,
+        string language,
+        bool forced,
+        bool hearingImpaired,
+        CancellationToken cancellationToken)
+    {
+        var map = MediaTableMap.For(kind);
+
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            map.DatabaseName,
+            cancellationToken);
+
+        using var command = connection.CreateCommand();
+        command.CommandText = $"""
+            DELETE FROM {map.SubtitleTable}
+            WHERE {map.SubtitleMediaIdColumn} = @mediaId
+              AND language = @language
+              AND forced = @forced
+              AND hearing_impaired = @hearingImpaired;
+            """;
+
+        AddParameter(command, "@mediaId", mediaId);
+        AddParameter(command, "@language", language);
+        AddParameter(command, "@forced", forced ? 1 : 0);
+        AddParameter(command, "@hearingImpaired", hearingImpaired ? 1 : 0);
+
+        await command.ExecuteNonQueryAsync(cancellationToken);
     }
 }
 
