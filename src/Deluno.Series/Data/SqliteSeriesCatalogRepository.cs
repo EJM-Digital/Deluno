@@ -1301,7 +1301,13 @@ public sealed class SqliteSeriesCatalogRepository(
                 CatalogueUpgradeFor(libraryId),
                 CatalogueWantedIs(libraryId, WantedStatuses.Covered),
                 CatalogueWantedIs(libraryId, WantedStatuses.Upcoming),
-                CatalogueWantedIs(libraryId, WantedStatuses.Downloading)),
+                CatalogueWantedIs(libraryId, WantedStatuses.Downloading),
+                // Without this the Airing chip filtered nothing: the switch
+                // fell through to "no predicate", which reads as "everything",
+                // so picking Continuing showed the whole shelf while the facet
+                // beside it — computed a few lines down with this same
+                // expression already present — correctly counted zero (#934).
+                CatalogueWantedIs(libraryId, WantedStatuses.Airing)),
             // Quality and size read `ws` — the one wanted-state row this page
             // speaks for — rather than an EXISTS over all of them, so what the
             // filter selects and what the row displays cannot disagree.
