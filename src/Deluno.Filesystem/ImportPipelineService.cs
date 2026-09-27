@@ -17,6 +17,7 @@ using Deluno.Platform.Contracts;
 using Deluno.Platform.Data;
 using Deluno.Platform;
 using Deluno.Notifications;
+using Deluno.Notifications.Contracts;
 using Deluno.Quality;
 using Deluno.Quality.Contracts;
 using Deluno.Quality.Data;
@@ -54,7 +55,8 @@ public sealed partial class ImportPipelineService(
     // never hold up or fail an import that already landed.
     IJobScheduler? mediaServerJobScheduler = null,
     // Only a test passes this, to say "do not wait" without waiting for it.
-    TimeSpan? settleWindow = null)
+    TimeSpan? settleWindow = null,
+    INotificationService? notificationService = null)
     : IImportPipelineService
 {
     private readonly TimeSpan _settleWindow = settleWindow ?? ImportFileReadiness.SettleWindow;
@@ -550,6 +552,20 @@ public sealed partial class ImportPipelineService(
                 null,
                 mediaType == "tv" ? "series" : "movie",
                 catalogImportResult.EntityId,
+                cancellationToken);
+
+            await DispatchImportOutcomeNotificationAsync(
+                "import.completed",
+                $"Import completed: {TitleForActivity(request.Preview)}",
+                ImportCompletedMessage(TitleForActivity(request.Preview), provenance, mode) + replacementCleanup.Summary,
+                JsonSerializer.Serialize(new
+                {
+                    title = TitleForActivity(request.Preview),
+                    mediaType,
+                    transferMode = provenance.TransferModeUsed
+                }),
+                prefs => prefs.ImportCompletedEnabled,
+                "completion",
                 cancellationToken);
 
             await RecordRenameAsync(
@@ -2341,27 +2357,60 @@ public sealed partial class ImportPipelineService(
 
         // Dispatch outbound webhook notification for critical failures so external
         // monitoring systems (Discord, Slack, custom webhooks) can react promptly.
-        if (outboundNotificationService is not null)
+        await DispatchImportOutcomeNotificationAsync(
+            "import.failed",
+            $"Import failed: {title}",
+            $"{summary} ({failureKind})",
+            JsonSerializer.Serialize(new
+            {
+                title,
+                failureKind,
+                summary,
+                recommendedAction,
+                sourcePath = executeRequest.Preview.SourcePath,
+                mediaType
+            }),
+            prefs => prefs.ImportFailedEnabled,
+            "failure",
+            cancellationToken);
+    }
+
+    /// <summary>
+    /// Shared by the import success and failure paths: gated by the matching
+    /// <see cref="NotificationPreferences"/> toggle when a notification
+    /// service is wired up, and never lets a misconfigured webhook fail the
+    /// import itself.
+    /// </summary>
+    private async Task DispatchImportOutcomeNotificationAsync(
+        string eventCategory,
+        string title,
+        string message,
+        string detailsJson,
+        Func<NotificationPreferences, bool> isEnabled,
+        string outcomeLabel,
+        CancellationToken cancellationToken)
+    {
+        if (outboundNotificationService is null)
+        {
+            return;
+        }
+
         try
         {
-            await outboundNotificationService.DispatchAsync(
-                "import.failed",
-                $"Import failed: {title}",
-                $"{summary} ({failureKind})",
-                JsonSerializer.Serialize(new
+            if (notificationService is not null)
+            {
+                var preferences = await notificationService.GetPreferencesAsync(cancellationToken);
+                if (!isEnabled(preferences))
                 {
-                    title,
-                    failureKind,
-                    summary,
-                    recommendedAction,
-                    sourcePath = executeRequest.Preview.SourcePath,
-                    mediaType
-                }),
-                cancellationToken);
+                    return;
+                }
+            }
+
+            await outboundNotificationService.DispatchAsync(eventCategory, title, message, detailsJson, cancellationToken);
         }
         catch (Exception ex)
         {
-            logger.LogWarning(ex, "Outbound notification dispatch failed for import failure — notifications may be misconfigured.");
+            logger.LogWarning(ex, "Outbound notification dispatch failed for import {Outcome} — notifications may be misconfigured.", outcomeLabel);
         }
     }
 

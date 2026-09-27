@@ -11,6 +11,8 @@ using Deluno.Libraries.Contracts;
 using Deluno.Libraries.Data;
 using Deluno.Media;
 using Deluno.Movies.Contracts;
+using Deluno.Notifications;
+using Deluno.Notifications.Contracts;
 using Deluno.Movies.Data;
 using Deluno.Persistence.Tests.Support;
 using Deluno.Platform.Contracts;
@@ -106,6 +108,153 @@ public sealed class ImportPipelineServiceTests
 
         var movie = Assert.Single(await movies.ListAsync(CancellationToken.None));
         Assert.Equal("Arrival", movie.Title);
+    }
+
+    /// <summary>
+    /// #857: a successful import dispatches "import.completed" outbound —
+    /// not only "import.failed" — gated by the matching NotificationPreferences
+    /// toggle the same way the failure path is gated.
+    /// </summary>
+    [Fact]
+    public async Task ExecuteAsync_dispatches_import_completed_outbound_when_enabled()
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-04-29T08:00:00Z"));
+        await InitializeAllAsync(storage, timeProvider);
+
+        var downloadsPath = Path.Combine(storage.DataRoot, "downloads");
+        var movieRootPath = Path.Combine(storage.DataRoot, "movies");
+        Directory.CreateDirectory(downloadsPath);
+        Directory.CreateDirectory(movieRootPath);
+        var sourcePath = Path.Combine(downloadsPath, "Arrival.2016.WEB.1080p.mkv");
+        await File.WriteAllBytesAsync(sourcePath, Enumerable.Range(0, 4096).Select(value => (byte)(value % 251)).ToArray());
+        File.SetLastWriteTimeUtc(sourcePath, DateTime.UtcNow.AddMinutes(-1));
+
+        var platform = CreatePlatformRepository(storage, timeProvider);
+        var libraries = CreateLibrariesRepository(storage, timeProvider);
+        await SaveSettingsAsync(platform, movieRootPath, downloadsPath);
+        await libraries.CreateLibraryAsync(
+            new CreateLibraryRequest(
+                Name: "Movies",
+                MediaType: "movies",
+                Purpose: "Main",
+                RootPath: movieRootPath,
+                DownloadsPath: downloadsPath,
+                QualityProfileId: null,
+                ImportWorkflow: "standard",
+                ProcessorName: null,
+                ProcessorOutputPath: null,
+                ProcessorTimeoutMinutes: null,
+                ProcessorFailureMode: null,
+                AutoSearchEnabled: true,
+                MissingSearchEnabled: true,
+                UpgradeSearchEnabled: true,
+                SearchIntervalHours: 6,
+                RetryDelayHours: 24,
+                MaxItemsPerRun: 25),
+            CancellationToken.None);
+
+        var movies = new SqliteMovieCatalogRepository(storage.Factory, timeProvider);
+        var outbound = new RecordingOutboundNotificationService();
+        var enabledPrefs = new FakeNotificationService(new NotificationPreferences { ImportCompletedEnabled = true });
+        var service = CreateService(
+            storage, timeProvider, platform, libraries, movies,
+            outboundNotificationService: outbound,
+            notificationService: enabledPrefs);
+
+        var result = await service.ExecuteAsync(
+            new ImportExecuteRequest(
+                Preview: new ImportPreviewRequest(
+                    SourcePath: sourcePath,
+                    FileName: null,
+                    MediaType: "movies",
+                    Title: "Arrival",
+                    Year: 2016,
+                    Genres: ["Drama", "Science Fiction"],
+                    Tags: [],
+                    Studio: "Paramount",
+                    OriginalLanguage: "en",
+                    ImdbId: "tt2543164"),
+                TransferMode: "copy",
+                Overwrite: false,
+                AllowCopyFallback: true),
+            CancellationToken.None);
+
+        Assert.True(result.Succeeded);
+        Assert.Equal(["import.completed"], outbound.DispatchedCategories);
+    }
+
+    /// <summary>
+    /// #857: disabling ImportCompletedEnabled suppresses the outbound
+    /// dispatch, matching how the other lifecycle toggles gate their events.
+    /// </summary>
+    [Fact]
+    public async Task ExecuteAsync_suppresses_import_completed_outbound_when_disabled()
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-04-29T08:00:00Z"));
+        await InitializeAllAsync(storage, timeProvider);
+
+        var downloadsPath = Path.Combine(storage.DataRoot, "downloads");
+        var movieRootPath = Path.Combine(storage.DataRoot, "movies");
+        Directory.CreateDirectory(downloadsPath);
+        Directory.CreateDirectory(movieRootPath);
+        var sourcePath = Path.Combine(downloadsPath, "Arrival.2016.WEB.1080p.mkv");
+        await File.WriteAllBytesAsync(sourcePath, Enumerable.Range(0, 4096).Select(value => (byte)(value % 251)).ToArray());
+        File.SetLastWriteTimeUtc(sourcePath, DateTime.UtcNow.AddMinutes(-1));
+
+        var platform = CreatePlatformRepository(storage, timeProvider);
+        var libraries = CreateLibrariesRepository(storage, timeProvider);
+        await SaveSettingsAsync(platform, movieRootPath, downloadsPath);
+        await libraries.CreateLibraryAsync(
+            new CreateLibraryRequest(
+                Name: "Movies",
+                MediaType: "movies",
+                Purpose: "Main",
+                RootPath: movieRootPath,
+                DownloadsPath: downloadsPath,
+                QualityProfileId: null,
+                ImportWorkflow: "standard",
+                ProcessorName: null,
+                ProcessorOutputPath: null,
+                ProcessorTimeoutMinutes: null,
+                ProcessorFailureMode: null,
+                AutoSearchEnabled: true,
+                MissingSearchEnabled: true,
+                UpgradeSearchEnabled: true,
+                SearchIntervalHours: 6,
+                RetryDelayHours: 24,
+                MaxItemsPerRun: 25),
+            CancellationToken.None);
+
+        var movies = new SqliteMovieCatalogRepository(storage.Factory, timeProvider);
+        var outbound = new RecordingOutboundNotificationService();
+        var disabledPrefs = new FakeNotificationService(new NotificationPreferences { ImportCompletedEnabled = false });
+        var service = CreateService(
+            storage, timeProvider, platform, libraries, movies,
+            outboundNotificationService: outbound,
+            notificationService: disabledPrefs);
+
+        var result = await service.ExecuteAsync(
+            new ImportExecuteRequest(
+                Preview: new ImportPreviewRequest(
+                    SourcePath: sourcePath,
+                    FileName: null,
+                    MediaType: "movies",
+                    Title: "Arrival",
+                    Year: 2016,
+                    Genres: ["Drama", "Science Fiction"],
+                    Tags: [],
+                    Studio: "Paramount",
+                    OriginalLanguage: "en",
+                    ImdbId: "tt2543164"),
+                TransferMode: "copy",
+                Overwrite: false,
+                AllowCopyFallback: true),
+            CancellationToken.None);
+
+        Assert.True(result.Succeeded);
+        Assert.Empty(outbound.DispatchedCategories);
     }
 
     /// <summary>
@@ -4119,7 +4268,9 @@ public sealed class ImportPipelineServiceTests
         IQualityRepository? qualityRepository = null,
         IDownloadDispatchesRepository? downloadDispatchesRepository = null,
         IJobScheduler? mediaServerJobScheduler = null,
-        TimeSpan? settleWindow = null)
+        TimeSpan? settleWindow = null,
+        IOutboundNotificationService? outboundNotificationService = null,
+        INotificationService? notificationService = null)
         => new(
             platform,
             librariesRepository,
@@ -4128,7 +4279,7 @@ public sealed class ImportPipelineServiceTests
             new SqliteJobStore(storage.Factory, timeProvider, new NullRealtimeEventPublisher(), new NullDownloadDispatchesRepository()),
             mediaProbeService ?? new SuccessfulProbeService(),
             new MediaDecisionService(new VersionedMediaPolicyEngine()),
-            null, // IOutboundNotificationService — not needed in tests
+            outboundNotificationService,
             new NullImportResolutionsRepository(),
             downloadDispatchesRepository,
             null,
@@ -4137,7 +4288,8 @@ public sealed class ImportPipelineServiceTests
             null,
             qualityRepository,
             mediaServerJobScheduler: mediaServerJobScheduler,
-            settleWindow: settleWindow ?? TimeSpan.Zero);
+            settleWindow: settleWindow ?? TimeSpan.Zero,
+            notificationService: notificationService);
 
     private static FilesystemReconciliationService CreateReconciliationService(
         TestStorage storage,
@@ -4327,5 +4479,52 @@ public sealed class ImportPipelineServiceTests
     {
         public Task<MediaProbeInfo> ProbeAsync(string path, CancellationToken cancellationToken)
             => throw new InvalidOperationException("ffprobe should not run for an unstable source file.");
+    }
+
+    private sealed class RecordingOutboundNotificationService : IOutboundNotificationService
+    {
+        public List<string> DispatchedCategories { get; } = [];
+
+        public Task DispatchAsync(string eventCategory, string title, string message, string? detailsJson, CancellationToken cancellationToken)
+        {
+            DispatchedCategories.Add(eventCategory);
+            return Task.CompletedTask;
+        }
+
+        public Task<NotificationWebhookDeliveryResult?> DispatchToWebhookAsync(string webhookId, string eventCategory, string title, string message, string? detailsJson, CancellationToken cancellationToken)
+            => throw new NotSupportedException();
+
+        public Task<NotificationWebhookDeliveryResult?> ReplayAsync(string deliveryId, CancellationToken cancellationToken)
+            => throw new NotSupportedException();
+    }
+
+    private sealed class FakeNotificationService(NotificationPreferences preferences) : INotificationService
+    {
+        public Task<NotificationItem> CreateNotificationAsync(string type, string title, string message, string severity, Dictionary<string, object>? metadata = null, CancellationToken cancellationToken = default)
+            => throw new NotSupportedException();
+
+        public Task<List<NotificationItem>> GetNotificationsAsync(int limit = 50, int offset = 0, CancellationToken cancellationToken = default)
+            => throw new NotSupportedException();
+
+        public Task<int> GetUnreadCountAsync(CancellationToken cancellationToken = default)
+            => throw new NotSupportedException();
+
+        public Task MarkAsReadAsync(string notificationId, CancellationToken cancellationToken = default)
+            => throw new NotSupportedException();
+
+        public Task MarkAllAsReadAsync(CancellationToken cancellationToken = default)
+            => throw new NotSupportedException();
+
+        public Task DeleteNotificationAsync(string notificationId, CancellationToken cancellationToken = default)
+            => throw new NotSupportedException();
+
+        public Task ClearAllNotificationsAsync(CancellationToken cancellationToken = default)
+            => throw new NotSupportedException();
+
+        public Task<NotificationPreferences> GetPreferencesAsync(CancellationToken cancellationToken = default)
+            => Task.FromResult(preferences);
+
+        public Task UpdatePreferencesAsync(NotificationPreferences preferences, CancellationToken cancellationToken = default)
+            => throw new NotSupportedException();
     }
 }
