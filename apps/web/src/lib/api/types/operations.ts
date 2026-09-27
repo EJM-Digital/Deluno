@@ -391,6 +391,10 @@ export interface DownloadDispatchItem {
   circuitOpenUntilUtc?: string | null;
   attemptCount?: number | null;
   failure?: IntegrationFailure | null;
+  /** The quality the release was picked for at grab time (#796). */
+  decisionQuality?: string | null;
+  /** The custom-format score the release was picked for at grab time (#796). */
+  decisionCustomFormatScore?: number | null;
 }
 
 export interface DispatchTimelineEvent {

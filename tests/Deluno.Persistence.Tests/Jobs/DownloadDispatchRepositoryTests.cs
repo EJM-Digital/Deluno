@@ -86,6 +86,81 @@ public sealed class DownloadDispatchRepositoryTests
     }
 
     /// <summary>
+    /// The quality and custom-format score a release was grabbed for (#796):
+    /// stored in decision telemetry since #612, but never read back out through
+    /// the repository's own contract before now.
+    /// </summary>
+    [Fact]
+    public async Task GetDispatchAsync_surfaces_the_quality_and_custom_format_score_it_was_grabbed_for()
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-09-27T04:00:00Z"));
+
+        await new JobsSchemaInitializer(
+            storage.Factory,
+            new SqliteDatabaseMigrator(storage.Factory, timeProvider),
+            NullLogger<JobsSchemaInitializer>.Instance).StartAsync(CancellationToken.None);
+
+        var store = new SqliteJobStore(storage.Factory, timeProvider, new NullRealtimeEventPublisher(), new NullDownloadDispatchesRepository());
+        var dispatchId = await store.RecordDownloadDispatchAsync(
+            libraryId: "movies-main",
+            mediaType: "movies",
+            entityType: "movie",
+            entityId: "movie-1",
+            releaseName: "Movie.2026.1080p.WEB-DL-GROUP",
+            indexerName: "test-indexer",
+            downloadClientId: "qbittorrent-main",
+            downloadClientName: "qBittorrent",
+            status: "sent",
+            notesJson:
+                """
+                {
+                  "searchPlan": {
+                    "bestCandidate": {
+                      "releaseName": "Movie.2026.1080p.WEB-DL-GROUP",
+                      "quality": "WEB 1080p",
+                      "customFormatScore": 125
+                    }
+                  }
+                }
+                """,
+            cancellationToken: CancellationToken.None);
+
+        var repository = new SqliteDownloadDispatchesRepository(storage.Factory, timeProvider);
+        var dispatch = await repository.GetDispatchAsync(dispatchId, CancellationToken.None);
+
+        Assert.NotNull(dispatch);
+        Assert.Equal("WEB 1080p", dispatch.DecisionQuality);
+        Assert.Equal(125, dispatch.DecisionCustomFormatScore);
+    }
+
+    /// <summary>
+    /// A release grabbed without decision telemetry (an older dispatch, or one
+    /// the routing service could not score) must not blow up the read model.
+    /// </summary>
+    [Fact]
+    public async Task GetDispatchAsync_leaves_quality_and_custom_format_score_null_when_no_decision_telemetry_was_recorded()
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-09-27T04:00:00Z"));
+
+        await new JobsSchemaInitializer(
+            storage.Factory,
+            new SqliteDatabaseMigrator(storage.Factory, timeProvider),
+            NullLogger<JobsSchemaInitializer>.Instance).StartAsync(CancellationToken.None);
+
+        var repository = new SqliteDownloadDispatchesRepository(storage.Factory, timeProvider);
+        var dispatchId = Guid.CreateVersion7().ToString("N");
+        await InsertDispatchAsync(storage.Factory, dispatchId, "movies-main", "movie-1", "Test.Movie.2024.1080p");
+
+        var dispatch = await repository.GetDispatchAsync(dispatchId, CancellationToken.None);
+
+        Assert.NotNull(dispatch);
+        Assert.Null(dispatch.DecisionQuality);
+        Assert.Null(dispatch.DecisionCustomFormatScore);
+    }
+
+    /// <summary>
     /// The sharing pass reads this link to find both the site whose rule applies
     /// and the library the release landed in — the second of which decides
     /// whether the download client's copy costs any disk at all (#288). Losing
