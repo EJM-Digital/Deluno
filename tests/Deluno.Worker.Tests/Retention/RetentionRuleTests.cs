@@ -387,6 +387,48 @@ public sealed class RetentionRuleTests
         Assert.Equal("e2", Assert.Single(await _store.ListEpisodeRemovalsAsync("s1", CancellationToken.None)).EpisodeId);
     }
 
+    /// <summary>
+    /// #931: "removed outside Deluno" (and the unmonitor that comes with it)
+    /// is FilesystemReconciliationService's own rule for a file the reconciliation
+    /// scan finds gone with no explanation. Retention unmonitors on purpose,
+    /// for its own reason ("Removed by retention rule ..."), by calling
+    /// MarkTrackedFileMissingAsync and UpdateEpisodeMonitoredAsync directly -
+    /// the same primitives, but never through the reconciliation repair path -
+    /// so it must never also write the reconciliation's own sentence.
+    /// </summary>
+    [Fact]
+    public async Task A_season_removed_by_a_rule_never_writes_the_removed_outside_Deluno_line()
+    {
+        SeasonLibrary();
+        var rule = Rule(Keep("server.allEpisodesSeenBy:everyone:")) with { Level = RetentionLevels.Season, WaitDays = 1 };
+        _store.Add(rule);
+        var activity = new Mock<IActivityFeedRepository>();
+        RetentionService ServiceWithCapturedActivity()
+        {
+            var intake = new Mock<IIntakeRepository>();
+            var removal = new TitleRemovalService(_libraries.Object, intake.Object, Mock.Of<IJobQueueRepository>(), activity.Object, _recycleBin.Object);
+            return new RetentionService(_store, Evaluator(), removal, _movies.Object, _series.Object, _libraries.Object, _recycleBin.Object, _exclusions.Object,
+                new MediaServerClientRegistry([_jellyfin.Object]), _seerr, activity.Object, _notifications.Object, _clock, NullLogger<RetentionService>.Instance);
+        }
+
+        await ServiceWithCapturedActivity().CheckAsync(rule, "schedule", CancellationToken.None);
+        _clock.Now = Now.AddDays(2);
+        var run = await ServiceWithCapturedActivity().CheckAsync(rule, "schedule", CancellationToken.None);
+
+        Assert.Equal("s1:s1", Assert.Single(run.Items!, item => item.Outcome == RetentionItemOutcomes.Removed).EntityId);
+        _series.Verify(repo => repo.UpdateEpisodeMonitoredAsync(It.Is<IReadOnlyList<string>>(ids => ids.Order().SequenceEqual(new[] { "e1", "e2" })), false, It.IsAny<CancellationToken>()), Times.Once);
+        activity.Verify(
+            feed => feed.RecordActivityAsync(
+                It.IsAny<string>(),
+                It.Is<string>(message => message.Contains("removed outside Deluno", StringComparison.OrdinalIgnoreCase)),
+                It.IsAny<string?>(),
+                It.IsAny<string?>(),
+                It.IsAny<string?>(),
+                It.IsAny<string?>(),
+                It.IsAny<CancellationToken>()),
+            Times.Never);
+    }
+
     // ------------------------------------------------------------------ Seerr (#522)
 
     [Fact]

@@ -3234,6 +3234,77 @@ public sealed class ImportPipelineServiceTests
         Assert.Contains(payload.Changes, change => change.Path == originalFilePath && change.Kind == MediaServerChangeKind.Deleted);
     }
 
+    /// <summary>
+    /// #931: an upgrade replacing an old file with a better one is Deluno's own
+    /// removal of that old file (recycled via #656/#662, above), never a file
+    /// vanishing outside Deluno. It must stay monitored and the reconciliation's
+    /// "removed outside Deluno" sentence must never appear for it.
+    /// </summary>
+    [Fact]
+    public async Task An_upgrade_replacing_the_old_file_never_writes_the_removed_outside_Deluno_line()
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-09-25T06:00:00Z"));
+        await InitializeAllAsync(storage, timeProvider);
+
+        var downloadsPath = Path.Combine(storage.DataRoot, "downloads");
+        var movieRootPath = Path.Combine(storage.DataRoot, "movies");
+        Directory.CreateDirectory(downloadsPath);
+        Directory.CreateDirectory(movieRootPath);
+
+        var platform = CreatePlatformRepository(storage, timeProvider);
+        var libraries = CreateLibrariesRepository(storage, timeProvider);
+        await SaveSettingsAsync(platform, movieRootPath, downloadsPath);
+        await CreateMovieLibraryAsync(libraries, movieRootPath, downloadsPath);
+        var library = Assert.Single(await libraries.ListLibrariesAsync(CancellationToken.None));
+
+        var jobStore = new SqliteJobStore(storage.Factory, timeProvider, new NullRealtimeEventPublisher(), new NullDownloadDispatchesRepository());
+        var movies = new SqliteMovieCatalogRepository(storage.Factory, timeProvider);
+        var service = CreateService(
+            storage, timeProvider, platform, libraries, movies,
+            downloadDispatchesRepository: new SqliteDownloadDispatchesRepository(storage.Factory, timeProvider));
+        var catalogued = await movies.AddAsync(new CreateMovieRequest("The Wild Robot", 2024, null), CancellationToken.None);
+
+        var firstSource = Path.Combine(downloadsPath, "The.Wild.Robot.2024.WEB.720p.mkv");
+        await File.WriteAllBytesAsync(firstSource, Enumerable.Repeat((byte)0x11, 4096).ToArray());
+        File.SetLastWriteTimeUtc(firstSource, DateTime.UtcNow.AddMinutes(-1));
+        var firstDispatchId = await jobStore.RecordDownloadDispatchAsync(
+            libraryId: library.Id, mediaType: "movies", entityType: "movie", entityId: catalogued.Id,
+            releaseName: "The Wild Robot 2024 WEB 720p", indexerName: "TestIndexer",
+            downloadClientId: "client-1", downloadClientName: "TestClient",
+            status: "sent", notesJson: null, cancellationToken: CancellationToken.None);
+        var firstResult = await service.ExecuteAsync(
+            new ImportExecuteRequest(
+                new ImportPreviewRequest(firstSource, null, "movies", "The Wild Robot", 2024, [], [], null, null),
+                "copy", Overwrite: false, AllowCopyFallback: true, DispatchId: firstDispatchId),
+            CancellationToken.None);
+        Assert.True(firstResult.Succeeded, firstResult.Message);
+
+        var secondDispatchId = await jobStore.RecordDownloadDispatchAsync(
+            libraryId: library.Id, mediaType: "movies", entityType: "movie", entityId: catalogued.Id,
+            releaseName: "The Wild Robot 2024 REPACK 1080p BluRay", indexerName: "TestIndexer",
+            downloadClientId: "client-1", downloadClientName: "TestClient",
+            status: "sent", notesJson: null, cancellationToken: CancellationToken.None);
+        var secondSource = Path.Combine(downloadsPath, "The.Wild.Robot.2024.REPACK.1080p.BluRay.mkv");
+        await File.WriteAllBytesAsync(secondSource, Enumerable.Repeat((byte)0x22, 8192).ToArray());
+        File.SetLastWriteTimeUtc(secondSource, DateTime.UtcNow.AddMinutes(-1));
+        var secondResult = await service.ExecuteAsync(
+            new ImportExecuteRequest(
+                new ImportPreviewRequest(secondSource, null, "movies", "The Wild Robot", 2024, [], [], null, null),
+                "copy", Overwrite: true, AllowCopyFallback: true, ForceReplacement: true, DispatchId: secondDispatchId),
+            CancellationToken.None);
+        Assert.True(secondResult.Succeeded, secondResult.Message);
+
+        var afterUpgrade = Assert.Single(await movies.ListAsync(CancellationToken.None));
+        Assert.True(afterUpgrade.Monitored, "an upgrade must never unmonitor the title it just improved");
+        Assert.True(afterUpgrade.HasFile);
+
+        var activity = await jobStore.ListActivityAsync(50, null, null, CancellationToken.None);
+        Assert.DoesNotContain(
+            activity,
+            entry => entry.Message.Contains("removed outside Deluno", StringComparison.OrdinalIgnoreCase));
+    }
+
     /// <summary>#662: a fresh import queues one media-server refresh naming the new file, and nothing replaced.</summary>
     [Fact]
     public async Task A_fresh_import_queues_a_media_server_refresh_for_the_new_file()
