@@ -240,6 +240,25 @@ public sealed class TheBlocklistTests
     }
 
     /// <summary>
+    /// #882/#883/#885: a release the client itself reported as failed
+    /// (missing articles, an encrypted archive, a damaged unpack) is eligible
+    /// for cleanup too, alongside the reasons Deluno judged for itself —
+    /// RefusedDownloadCleanupService is the one that decides whether the
+    /// user's own cleanup setting actually lets it run.
+    /// </summary>
+    [Fact]
+    public async Task A_client_reported_failure_is_eligible_for_cleanup_too()
+    {
+        using var storage = await StorageAsync();
+        var blocklist = new SqliteBlockedReleaseRepository(storage.Factory, Clock);
+
+        await blocklist.BlockAsync(Release("Arrival.2016.2160p", "NZBGeek", ImportFailurePolicy.ClientReportedFailure), CancellationToken.None);
+
+        var eligible = Assert.Single(await blocklist.ListAwaitingCleanupAsync(CancellationToken.None));
+        Assert.Equal(ImportFailurePolicy.ClientReportedFailure, eligible.ReasonCode);
+    }
+
+    /// <summary>
     /// A second click on an entry that is already refused must not move the
     /// date it happened, which is the only record of when Deluno stopped
     /// trying.
