@@ -56,8 +56,9 @@ public sealed class HealthCheckRunner(
 
     private async Task RunAsync(IEnumerable<IHealthCheck> toRun, CancellationToken cancellationToken)
     {
+        var checksThisPass = toRun.ToArray();
         var outcomes = new List<HealthCheckOutcome>();
-        foreach (var check in toRun)
+        foreach (var check in checksThisPass)
         {
             try
             {
@@ -76,6 +77,16 @@ public sealed class HealthCheckRunner(
                     $"Deluno could not run this check: {exception.Message}"));
             }
         }
+
+        // A check that reports one row per item it currently finds -- a held
+        // processor hand-off, an unexpected file in an output folder -- stops
+        // mentioning an id the moment that item is gone. Nothing else ever told
+        // the repository the row was gone too, so it says a lie the check
+        // itself no longer believes: resolved and dismissed, but still on
+        // Health for ever (#914, #921, #930). Pruned here, once, for every
+        // category this pass actually ran -- never for a category nothing here
+        // was asked about.
+        await PruneStaleRowsAsync(checksThisPass, outcomes, cancellationToken);
 
         if (outcomes.Count == 0)
         {
@@ -104,6 +115,28 @@ public sealed class HealthCheckRunner(
             changed.Any(item => item.Transition == HealthCheckTransition.Started) ? "degraded" : "healthy",
             $"{changed.Count(item => item.Transition == HealthCheckTransition.Started)} problem(s) started, {changed.Count(item => item.Transition == HealthCheckTransition.Cleared)} cleared.",
             cancellationToken);
+    }
+
+    private async Task PruneStaleRowsAsync(
+        IReadOnlyCollection<IHealthCheck> checksThisPass,
+        IReadOnlyList<HealthCheckOutcome> outcomes,
+        CancellationToken cancellationToken)
+    {
+        var categoriesThisPass = checksThisPass.Select(check => check.Category).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        if (categoriesThisPass.Count == 0)
+        {
+            return;
+        }
+
+        var reportedIds = outcomes.Select(outcome => outcome.Id).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var existing = await repository.ListAsync(cancellationToken) ?? [];
+        foreach (var row in existing)
+        {
+            if (categoriesThisPass.Contains(row.Category) && !reportedIds.Contains(row.Id))
+            {
+                await repository.RemoveAsync(row.Id, cancellationToken);
+            }
+        }
     }
 
     private async Task AnnounceAsync(HealthCheckTransitionResult transition, CancellationToken cancellationToken)

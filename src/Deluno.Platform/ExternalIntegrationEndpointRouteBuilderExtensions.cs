@@ -727,6 +727,84 @@ public static class ExternalIntegrationEndpointRouteBuilderExtensions
             return Results.Ok(result);
         });
 
+        // The only way anything in a processor output folder is ever removed
+        // by Deluno itself (#921): a safety-net item a person chose to delete
+        // from System -> Health, never automatic. Scoped to one direct child
+        // of the folder the library actually reads processed output from, so
+        // neither a stray "../" nor a stale request can reach anything else.
+        integrations.MapPost("/processors/output/delete", async (
+            HttpContext httpContext,
+            [FromBody] ProcessorOutputItemRequest request,
+            ILibrariesRepository librariesRepository,
+            IHealthCheckRepository healthCheckRepository,
+            IActivityFeedRepository activityFeed,
+            CancellationToken cancellationToken) =>
+        {
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
+            if (denied is not null) return denied;
+            var scopeDenied = UserAuthorization.RequireApiScope(httpContext, "imports");
+            if (scopeDenied is not null) return scopeDenied;
+
+            var library = (await librariesRepository.ListLibrariesAsync(cancellationToken))
+                .FirstOrDefault(item => string.Equals(item.Id, request.LibraryId, StringComparison.OrdinalIgnoreCase));
+            if (library is null || string.IsNullOrWhiteSpace(library.ProcessorOutputPath))
+            {
+                return Results.NotFound(new { message = "That library, or its processor output folder, no longer exists." });
+            }
+
+            string root;
+            string fullPath;
+            try
+            {
+                root = Path.GetFullPath(library.ProcessorOutputPath);
+                fullPath = Path.GetFullPath(request.Path);
+            }
+            catch (Exception ex) when (ex is ArgumentException or NotSupportedException or PathTooLongException)
+            {
+                return Results.BadRequest(new { message = "That is not a usable path." });
+            }
+
+            if (!string.Equals(Path.GetDirectoryName(fullPath), root, StringComparison.OrdinalIgnoreCase))
+            {
+                return Results.BadRequest(new { message = "Deluno only removes an item directly inside a processor output folder this way." });
+            }
+
+            var name = Path.GetFileName(fullPath);
+            string message;
+            try
+            {
+                if (Directory.Exists(fullPath))
+                {
+                    Directory.Delete(fullPath, recursive: true);
+                    message = $"Deleted the folder {name} from {library.Name}'s processor output folder.";
+                }
+                else if (File.Exists(fullPath))
+                {
+                    File.Delete(fullPath);
+                    message = $"Deleted {name} from {library.Name}'s processor output folder.";
+                }
+                else
+                {
+                    return Results.NotFound(new { message = "That is already gone." });
+                }
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                return Results.Conflict(new { message = $"Deluno could not delete {name}: {ex.Message}" });
+            }
+
+            await healthCheckRepository.RemoveAsync($"processor-output:{library.Id}:{name.ToLowerInvariant()}", cancellationToken);
+            await activityFeed.RecordActivityAsync(
+                "processing.output.deleted",
+                message,
+                JsonSerializer.Serialize(new { LibraryId = library.Id, LibraryName = library.Name, Path = fullPath }),
+                null,
+                "library",
+                library.Id,
+                cancellationToken);
+            return Results.Ok(new { message });
+        });
+
         integrations.MapPost("/processors/events", async (
             HttpContext httpContext,
             [FromBody] ProcessorEventRequest request,
@@ -1205,6 +1283,9 @@ public sealed record ExternalHealthResponse(
     int ActiveJobCount,
     int ProblemCount,
     DateTimeOffset CheckedUtc);
+
+/// <summary>One item Health names inside a library's processor output folder (#921).</summary>
+public sealed record ProcessorOutputItemRequest(string LibraryId, string Path);
 
 public sealed record ExternalQueueResponse(
     IReadOnlyList<JobQueueItem> Jobs,

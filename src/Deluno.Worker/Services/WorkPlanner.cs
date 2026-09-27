@@ -1512,19 +1512,7 @@ public sealed class WorkPlanner(
                 return [];
             }
 
-            var sourceLeaf = Path.GetFileName(Path.TrimEndingDirectorySeparator(sourcePath));
-            if (string.IsNullOrWhiteSpace(sourceLeaf) || sourceLeaf is "." or "..")
-            {
-                return [];
-            }
-
-            var directoryNames = new[]
-            {
-                sourceLeaf,
-                Path.GetFileNameWithoutExtension(sourceLeaf)
-            }
-                .Where(name => !string.IsNullOrWhiteSpace(name))
-                .Distinct(StringComparer.OrdinalIgnoreCase);
+            var directoryNames = ExpectedOutputDirectoryNames(sourcePath);
             var matches = new List<string>();
             foreach (var directoryName in directoryNames)
             {
@@ -1550,8 +1538,34 @@ public sealed class WorkPlanner(
         }
     }
 
-    private static bool IsImportableVideoFile(string path)
+    internal static bool IsImportableVideoFile(string path)
         => Path.GetExtension(path).ToLowerInvariant() is ".mkv" or ".mp4" or ".avi" or ".mov" or ".m4v";
+
+    /// <summary>
+    /// The one or two top-level directory names a processor's output for this
+    /// release could stand under: the final source-folder name, with and
+    /// without its extension (a single-file source names a directory after
+    /// itself minus the extension) -- what the processor output safety-net
+    /// health check also reads, so an active hand-off's own working folder is
+    /// never reported as unexpected (#921).
+    /// </summary>
+    internal static IReadOnlyList<string> ExpectedOutputDirectoryNames(string sourcePath)
+    {
+        var sourceLeaf = Path.GetFileName(Path.TrimEndingDirectorySeparator(sourcePath));
+        if (string.IsNullOrWhiteSpace(sourceLeaf) || sourceLeaf is "." or "..")
+        {
+            return [];
+        }
+
+        return new[]
+        {
+            sourceLeaf,
+            Path.GetFileNameWithoutExtension(sourceLeaf)
+        }
+            .Where(name => !string.IsNullOrWhiteSpace(name))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+    }
 
     private static LibraryItem? ResolveLibraryForQueueItem(
         DownloadQueueItem item,
@@ -1687,7 +1701,7 @@ public sealed class WorkPlanner(
         return routeCategoriesByLibrary;
     }
 
-    private static string? TryReadImportSourcePath(string? payloadJson)
+    internal static string? TryReadImportSourcePath(string? payloadJson)
     {
         if (string.IsNullOrWhiteSpace(payloadJson))
         {
@@ -1821,7 +1835,7 @@ public sealed class WorkPlanner(
         return false;
     }
 
-    private static string NormalizeSourceKey(string value)
+    internal static string NormalizeSourceKey(string value)
         => value.Trim().TrimEnd('\\', '/').Replace('\\', '/');
 
     /// <summary>

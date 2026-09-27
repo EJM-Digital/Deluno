@@ -20,6 +20,7 @@ public sealed class HealthCheckRunnerTests
     public async Task A_check_that_starts_failing_is_recorded_and_announced_once()
     {
         var repository = new Mock<IHealthCheckRepository>();
+        repository.Setup(repo => repo.ListAsync(It.IsAny<CancellationToken>())).ReturnsAsync(Array.Empty<HealthCheckResultItem>());
         repository.Setup(repo => repo.UpsertResultsAsync(It.IsAny<IReadOnlyList<HealthCheckOutcome>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((IReadOnlyList<HealthCheckOutcome> outcomes, CancellationToken _) => outcomes
                 .Select(outcome => new HealthCheckTransitionResult(
@@ -47,6 +48,7 @@ public sealed class HealthCheckRunnerTests
     public async Task An_unchanged_result_is_stored_but_not_announced_again()
     {
         var repository = new Mock<IHealthCheckRepository>();
+        repository.Setup(repo => repo.ListAsync(It.IsAny<CancellationToken>())).ReturnsAsync(Array.Empty<HealthCheckResultItem>());
         repository.Setup(repo => repo.UpsertResultsAsync(It.IsAny<IReadOnlyList<HealthCheckOutcome>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((IReadOnlyList<HealthCheckOutcome> outcomes, CancellationToken _) => outcomes
                 .Select(outcome => new HealthCheckTransitionResult(
@@ -71,6 +73,7 @@ public sealed class HealthCheckRunnerTests
     public async Task A_library_problem_is_not_announced_a_second_time()
     {
         var repository = new Mock<IHealthCheckRepository>();
+        repository.Setup(repo => repo.ListAsync(It.IsAny<CancellationToken>())).ReturnsAsync(Array.Empty<HealthCheckResultItem>());
         repository.Setup(repo => repo.UpsertResultsAsync(It.IsAny<IReadOnlyList<HealthCheckOutcome>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((IReadOnlyList<HealthCheckOutcome> outcomes, CancellationToken _) => outcomes
                 .Select(outcome => new HealthCheckTransitionResult(
@@ -96,6 +99,7 @@ public sealed class HealthCheckRunnerTests
     public async Task Running_only_the_categories_a_setting_affects_skips_the_rest()
     {
         var repository = new Mock<IHealthCheckRepository>();
+        repository.Setup(repo => repo.ListAsync(It.IsAny<CancellationToken>())).ReturnsAsync(Array.Empty<HealthCheckResultItem>());
         var seenCategories = new List<string>();
         repository.Setup(repo => repo.UpsertResultsAsync(It.IsAny<IReadOnlyList<HealthCheckOutcome>>(), It.IsAny<CancellationToken>()))
             .Callback((IReadOnlyList<HealthCheckOutcome> outcomes, CancellationToken _) => seenCategories.AddRange(outcomes.Select(o => o.Category)))
@@ -120,6 +124,40 @@ public sealed class HealthCheckRunnerTests
 
         Assert.Contains(HealthCheckCategories.Indexer, seenCategories);
         Assert.DoesNotContain(HealthCheckCategories.DownloadClient, seenCategories);
+    }
+
+    /// <summary>
+    /// A check that reports one row per item it currently finds -- a held
+    /// processor hand-off, an unexpected file -- stops mentioning an id the
+    /// moment the item is gone. Nothing removed the old row otherwise, so it
+    /// stayed a "problem" on Health for ever (#914, #921, #930).
+    /// </summary>
+    [Fact]
+    public async Task A_row_no_check_in_this_pass_still_mentions_is_removed()
+    {
+        var repository = new Mock<IHealthCheckRepository>();
+        repository.Setup(repo => repo.ListAsync(It.IsAny<CancellationToken>())).ReturnsAsync(
+        [
+            new HealthCheckResultItem("processor-handoff:1", HealthCheckCategories.Processor, "Resolved hand-off", HealthCheckStatuses.Problem, "Held.", null, null, null, DateTimeOffset.UtcNow.AddMinutes(-15), DateTimeOffset.UtcNow.AddMinutes(-15), null),
+            new HealthCheckResultItem("download-client:1", HealthCheckCategories.DownloadClient, "Other category", HealthCheckStatuses.Problem, "Down.", null, null, null, DateTimeOffset.UtcNow.AddMinutes(-15), DateTimeOffset.UtcNow.AddMinutes(-15), null)
+        ]);
+        repository.Setup(repo => repo.UpsertResultsAsync(It.IsAny<IReadOnlyList<HealthCheckOutcome>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyList<HealthCheckOutcome> outcomes, CancellationToken _) => outcomes
+                .Select(outcome => new HealthCheckTransitionResult(
+                    new HealthCheckResultItem(outcome.Id, outcome.Category, outcome.Name, outcome.Status, outcome.Message, outcome.Cause, outcome.Fix, outcome.DetailsJson, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, null),
+                    HealthCheckTransition.Started))
+                .ToArray());
+
+        // This pass's processor check no longer reports "processor-handoff:1" --
+        // it was resolved -- but it does still report a different id.
+        var check = FakeCheck(HealthCheckCategories.Processor, [HealthCheckOutcome.Problem("processor-handoff:2", HealthCheckCategories.Processor, "Still held", "Held.", "cause", "fix")]);
+
+        var runner = new HealthCheckRunner([check], repository.Object, Mock.Of<IActivityFeedRepository>(), Mock.Of<IOutboundNotificationService>(), Mock.Of<IRealtimeEventPublisher>(), NullLogger<HealthCheckRunner>.Instance);
+        await runner.RunAllAsync(CancellationToken.None);
+
+        repository.Verify(repo => repo.RemoveAsync("processor-handoff:1", It.IsAny<CancellationToken>()), Times.Once);
+        // A row in a category nothing this pass ran is left alone.
+        repository.Verify(repo => repo.RemoveAsync("download-client:1", It.IsAny<CancellationToken>()), Times.Never);
     }
 
     private static Deluno.Worker.HealthChecks.IHealthCheck FakeCheck(string category, IReadOnlyList<HealthCheckOutcome> outcomes)
