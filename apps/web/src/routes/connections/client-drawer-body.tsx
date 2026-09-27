@@ -109,6 +109,7 @@ export function ClientDrawerBody({
           </Field>
         </FieldRow>
         <SwitchRow label="Enabled" description="Deluno may send approved releases to this client." checked={form.isEnabled} onCheckedChange={(checked) => setForm((current) => ({ ...current, isEnabled: checked }))} />
+        <SwitchRow label="Add downloads paused" description="New downloads sent to this client start paused instead of active." checked={form.addPaused} onCheckedChange={(checked) => setForm((current) => ({ ...current, addPaused: checked }))} />
       </DrawerSection>
 
       <DrawerSection title="Categories" aside="keep Movies and TV apart in the client">

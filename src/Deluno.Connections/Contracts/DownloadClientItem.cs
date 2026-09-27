@@ -25,7 +25,8 @@ public sealed record DownloadClientItem(
     int? LastHealthLatencyMs,
     DateTimeOffset? LastHealthTestUtc,
     DateTimeOffset CreatedUtc,
-    DateTimeOffset UpdatedUtc)
+    DateTimeOffset UpdatedUtc,
+    bool AddPaused = false)
 {
     /// <summary>Last typed health failure, when the client did not pass its most recent test.</summary>
     public IntegrationFailure? LastHealthFailure { get; init; }

@@ -22,6 +22,10 @@ describe("create form defaults", () => {
     expect(emptyClientForm().useSsl).toBe(false);
     expect(emptyClientForm().urlBase).toBe("");
   });
+
+  it("a new download client defaults Add downloads paused off", () => {
+    expect(emptyClientForm().addPaused).toBe(false);
+  });
 });
 
 // #804: Use SSL and URL Base round-trip through the client form the same way
@@ -37,6 +41,7 @@ describe("client form Use SSL and URL Base", () => {
     endpointUrl: "https://localhost:8080/sabnzbd/",
     useSsl: true,
     urlBase: "sabnzbd",
+    addPaused: false,
     moviesCategory: "movies",
     tvCategory: "tv",
     categoryTemplate: null,
@@ -58,6 +63,11 @@ describe("client form Use SSL and URL Base", () => {
     const form = clientFormFrom({ ...baseItem, useSsl: false, urlBase: null });
     expect(form.useSsl).toBe(false);
     expect(form.urlBase).toBe("");
+  });
+
+  it("reads a saved client's Add downloads paused setting into the form", () => {
+    expect(clientFormFrom({ ...baseItem, addPaused: true }).addPaused).toBe(true);
+    expect(clientFormFrom({ ...baseItem, addPaused: false }).addPaused).toBe(false);
   });
 
   it("a new indexer says what is missing instead of nothing", () => {
