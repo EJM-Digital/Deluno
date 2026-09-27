@@ -28,27 +28,6 @@ function splitGenres(value: string | null | undefined) {
 }
 
 /**
- * The region-specific spellings TMDb's alternative_titles endpoint reported
- * for a title, read back out of the stored metadata blob (#861) — the
- * frontend twin of `CatalogueMetadata.ReadAlternateTitles`, which is what
- * `AlternateTitles` rides along inside on the way in. Kept here, one place,
- * for the same reason that one is one place: the movie and show detail pages
- * would otherwise each grow their own copy of "parse the blob, read this one
- * field out of it".
- */
-export function readAlternateTitles(metadataJson: string | null | undefined): string[] {
-  if (!metadataJson) return [];
-  try {
-    const parsed = JSON.parse(metadataJson) as Record<string, unknown>;
-    const value = parsed.AlternateTitles ?? parsed.alternateTitles;
-    if (!Array.isArray(value)) return [];
-    return value.filter((title): title is string => typeof title === "string" && title.trim().length > 0);
-  } catch {
-    return [];
-  }
-}
-
-/**
  * The stored provider blob, with its keys folded to lower case.
  *
  * **This is a fix, and the defect it fixes was total.** `metadata_json` is
@@ -115,6 +94,35 @@ function readStringArray(meta: Record<string, unknown>, ...keys: string[]) {
     }
   }
   return [];
+}
+
+/**
+ * The region-specific spellings TMDb's alternative_titles endpoint reported
+ * for a title, read back out of the stored metadata blob (#861) — the
+ * frontend twin of `CatalogueMetadata.ReadAlternateTitles`, which is what
+ * `AlternateTitles` rides along inside on the way in. Kept here, one place,
+ * on the same `parseMetadataJson`/`readStringArray` pair every other stored
+ * field goes through, for the same reason that one is one place: the movie
+ * and show detail pages would otherwise each grow their own copy of "parse
+ * the blob, read this one field out of it".
+ */
+export function readAlternateTitles(metadataJson: string | null | undefined): string[] {
+  return readStringArray(parseMetadataJson(metadataJson), "alternateTitles");
+}
+
+/**
+ * A transparent logo/wordmark and extra backdrop stills beyond the poster
+ * and backdrop already shown (#864). `bannerUrl` is deliberately not read
+ * here: TMDb has never reported one (see the comment on
+ * `MetadataSearchResult.BannerUrl`), so there is nothing this would ever
+ * show, and a field that always renders empty is worse than one left out.
+ */
+export function readArtworkExtras(metadataJson: string | null | undefined) {
+  const meta = parseMetadataJson(metadataJson);
+  return {
+    logoUrl: readString(meta, "logoUrl"),
+    screenshots: readStringArray(meta, "screenshots")
+  };
 }
 
 function readRating(
