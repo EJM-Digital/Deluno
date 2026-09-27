@@ -31,7 +31,7 @@ import type { Tone } from "../../lib/status-tones";
 import { Button } from "../ui/button";
 import { Chip } from "../ui/chip";
 import { ConfirmDialog } from "../ui/confirm-dialog";
-import { ListCard, ListNameCell, ListRow, ListTable } from "../ui/list-card";
+import { LIST_TRACK, ListCard, ListNameCell, ListRow, ListTable } from "../ui/list-card";
 
 /**
  * How each kind is coloured, looked up rather than chosen at the point of use —
@@ -143,7 +143,7 @@ export function AcquisitionBlockersCard({
       >
         <ListTable
           chevron={false}
-          columns={[{ label: "Reason" }, { label: "Where", width: "auto", align: "end", mobile: true }]}
+          columns={[{ label: "Reason" }, { label: "Where", width: LIST_TRACK.action, align: "end", mobile: true }]}
         >
           {blockers.blockers.map((blocker) => (
             <ListRow key={`${blocker.kind}:${blocker.source}`}>

@@ -140,7 +140,7 @@ export function BlockedReleasesConsole({
             columns={[
               { label: "Release" },
               { label: "What happened", mobile: true },
-              { label: "", width: "auto", align: "end", mobile: true }
+              { label: "", width: LIST_TRACK.action, align: "end", mobile: true }
             ]}
           >
             {proposed.map((release) => (
@@ -190,7 +190,7 @@ export function BlockedReleasesConsole({
             { label: "Release" },
             { label: "Why", mobile: true },
             { label: "Refused", width: LIST_TRACK.status },
-            { label: "", width: "auto", align: "end", mobile: true }
+            { label: "", width: LIST_TRACK.action, align: "end", mobile: true }
           ]}
         >
           {refused.length === 0 ? (
