@@ -41,8 +41,16 @@ public sealed record PlatformSettingsSnapshot(
     int DownloadHealthStrikeThreshold = 3,
     bool CleanupBlockReleaseAfterThreshold = true,
     bool CleanupQueueReplacementAfterThreshold = true,
-    bool CleanupRemoveClientEntryAfterThreshold = false,
-    bool CleanupPurgePayloadAfterThreshold = false,
+    // #904: on by default from 27 Sep 2026. A release judged bad (genuinely
+    // struck past the threshold — never a setup problem; see #880/#881) is
+    // removed from the client and its files deleted, the same as it is
+    // already blocklisted and replaced. An install that never opened the
+    // cleanup settings and changed these moves to "on" the same way
+    // (SqlitePlatformSettingsRepository reads a missing value the same as
+    // "on", exactly as CleanupBlockReleaseAfterThreshold above already does);
+    // one that explicitly turned either off keeps it off.
+    bool CleanupRemoveClientEntryAfterThreshold = true,
+    bool CleanupPurgePayloadAfterThreshold = true,
     bool WorkflowVerified = false,
     // What Deluno does with the download client's copy once a title is safely
     // in the library (#288). Sits with the cleanup settings above because it is

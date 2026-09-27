@@ -151,8 +151,13 @@ public sealed class AStoppedDownloadIsRefusedOnTheBlocklistTests
                 cancellationToken: CancellationToken.None);
             await dispatches.RecordDetectionAsync(dispatchId, "queue-arrival", 1024, completed: false, CancellationToken.None);
             var blocklist = new SqliteBlockedReleaseRepository(storage.Factory, time);
+            // #904: CleanupRemoveClientEntryAfterThreshold now defaults to on, so
+            // remediation reaches the download-client registry even in these
+            // blocklist-focused tests. An empty registry behaves the way a real
+            // one does for a protocol it has no adapter for: TryGet fails and the
+            // removal is recorded as not done, rather than throwing.
             var service = new DownloadClientTelemetryService(
-                settings, new SqliteDownloadHealthRepository(storage.Factory, time), libraries, connections, null!, null!, time, null!,
+                settings, new SqliteDownloadHealthRepository(storage.Factory, time), libraries, connections, null!, new DownloadClientRegistry([]), time, null!,
                 jobs, dispatches, jobs, new DownloadHealthEvaluator(), null!, blocklist);
             return new World(storage, time, service, client, jobs, blocklist);
         }

@@ -198,8 +198,9 @@ export const emptyPlatformSettingsSnapshot: PlatformSettingsSnapshot = {
   downloadHealthStrikeThreshold: 3,
   cleanupBlockReleaseAfterThreshold: true,
   cleanupQueueReplacementAfterThreshold: true,
-  cleanupRemoveClientEntryAfterThreshold: false,
-  cleanupPurgePayloadAfterThreshold: false,
+  // #904: on by default, matching PlatformSettingsSnapshot's server-side default.
+  cleanupRemoveClientEntryAfterThreshold: true,
+  cleanupPurgePayloadAfterThreshold: true,
   workflowVerified: false,
   sharingMode: "share-then-tidy",
   sharingForHours: 72,

@@ -64,8 +64,12 @@ public sealed class DownloadHealthGrabGuardTests
             cancellationToken: CancellationToken.None);
         await dispatches.RecordDetectionAsync(dispatchId, "queue-arrival", 1024, completed: false, CancellationToken.None);
 
+        // #904: CleanupRemoveClientEntryAfterThreshold now defaults to on, so
+        // remediation reaches the registry even here; an empty one fails the
+        // TryGet the same way a real registry would for an unregistered
+        // protocol, rather than throwing on a null reference.
         var service = new DownloadClientTelemetryService(
-            settingsRepository, healthRepository, librariesRepository, connectionsRepository, null!, null!, time, null!, jobs, dispatches, jobs, new DownloadHealthEvaluator(), null!);
+            settingsRepository, healthRepository, librariesRepository, connectionsRepository, null!, new DownloadClientRegistry([]), time, null!, jobs, dispatches, jobs, new DownloadHealthEvaluator(), null!);
         var finding = new DownloadHealthFinding("critical", "client-stalled", "Stalled", "No progress", "Review", false, false, StrikeCount: 3);
         var item = new DownloadQueueItem("queue-arrival", client.Id, client.Name, client.Protocol, "movies", "Arrival", "Arrival.2016.1080p.WEB",
             "deluno-movies", DownloadQueueStatuses.Stalled, 15, 0, 0, 1024, 128, 0, "Fixture", null, time.GetUtcNow(), HealthFindings: [finding]);
