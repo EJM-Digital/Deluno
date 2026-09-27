@@ -1,0 +1,177 @@
+using Deluno.Connections.Contracts;
+using Deluno.Connections.Data;
+using Deluno.Contracts;
+using Deluno.Infrastructure.Storage.Migrations;
+using Deluno.Integrations.DownloadClients;
+using Deluno.Jobs.Data;
+using Deluno.Libraries.Contracts;
+using Deluno.Libraries.Data;
+using Deluno.Persistence.Tests.Support;
+using Deluno.Platform.Data;
+using Microsoft.Extensions.Logging.Abstractions;
+
+namespace Deluno.Persistence.Tests.Integrations;
+
+/// <summary>
+/// #927: a download that vanishes from the client entirely - gone from both
+/// queue and history - is told once, in plain words, and never blocklisted
+/// or searched for automatically: it may have been removed on purpose.
+/// </summary>
+public sealed class AVanishedDownloadIsAlertedOnceTests
+{
+    private const string Release = "Sintel.2010.1080p.WEB-DL-DELUNO";
+
+    [Fact]
+    public async Task A_download_gone_from_the_client_entirely_is_alerted_and_recorded_in_activity()
+    {
+        using var world = await World.CreateAsync();
+
+        // The client's own next poll lists something else entirely - this
+        // dispatch's item is gone from both its queue and its history.
+        await world.PollWithOtherItemInQueueAsync();
+
+        var alert = Assert.Single(await world.Alerts.GetOpenAlertsAsync(null, 100, CancellationToken.None));
+        Assert.Equal("vanished-downloading", alert.AlertKind);
+        Assert.Equal(world.DispatchId, alert.DispatchId);
+
+        var activities = await world.Activity.ListActivityAsync(10, null, null, CancellationToken.None);
+        var activity = Assert.Single(activities, item => item.Category == "download.vanished");
+        Assert.Contains("vanished", activity.Message, StringComparison.OrdinalIgnoreCase);
+
+        // No automatic action: it may have been removed on purpose (#927).
+        Assert.Empty(await world.Blocklist.ListAsync(CancellationToken.None));
+        Assert.Empty(await world.Jobs.ListAsync(10, CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task The_same_vanished_download_is_not_alerted_twice()
+    {
+        using var world = await World.CreateAsync();
+
+        await world.PollWithOtherItemInQueueAsync();
+        await world.PollWithOtherItemInQueueAsync();
+
+        Assert.Single(await world.Alerts.GetOpenAlertsAsync(null, 100, CancellationToken.None));
+        var activities = await world.Activity.ListActivityAsync(10, null, null, CancellationToken.None);
+        Assert.Single(activities, item => item.Category == "download.vanished");
+    }
+
+    [Fact]
+    public async Task An_entirely_empty_poll_does_not_alert_it_as_vanished()
+    {
+        using var world = await World.CreateAsync();
+
+        await world.PollWithEmptyQueueAndHistoryAsync();
+
+        Assert.Empty(await world.Alerts.GetOpenAlertsAsync(null, 100, CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task A_download_still_present_is_not_alerted()
+    {
+        using var world = await World.CreateAsync();
+
+        await world.PollWithItsOwnItemStillInQueueAsync();
+
+        Assert.Empty(await world.Alerts.GetOpenAlertsAsync(null, 100, CancellationToken.None));
+    }
+
+    private sealed class World : IDisposable
+    {
+        private readonly TestStorage _storage;
+        private readonly DownloadClientTelemetryService _service;
+        private readonly DownloadClientItem _client;
+
+        private World(
+            TestStorage storage,
+            DateTimeOffset now,
+            DownloadClientTelemetryService service,
+            DownloadClientItem client,
+            string dispatchId,
+            SqliteJobStore jobs,
+            SqliteDownloadDispatchesRepository dispatches,
+            SqliteBlockedReleaseRepository blocklist,
+            SqliteDispatchAlertRepository alerts)
+        {
+            _storage = storage;
+            Now = now;
+            _service = service;
+            _client = client;
+            DispatchId = dispatchId;
+            Jobs = jobs;
+            Dispatches = dispatches;
+            Blocklist = blocklist;
+            Alerts = alerts;
+            Activity = jobs;
+        }
+
+        public DateTimeOffset Now { get; }
+
+        public string DispatchId { get; }
+
+        public SqliteJobStore Jobs { get; }
+
+        public SqliteDownloadDispatchesRepository Dispatches { get; }
+
+        public SqliteBlockedReleaseRepository Blocklist { get; }
+
+        public SqliteDispatchAlertRepository Alerts { get; }
+
+        public Deluno.Jobs.Data.IActivityFeedRepository Activity { get; }
+
+        public static async Task<World> CreateAsync()
+        {
+            var storage = TestStorage.Create();
+            var now = DateTimeOffset.Parse("2026-09-27T04:12:00Z");
+            var time = new FixedTimeProvider(now);
+            var migrator = new SqliteDatabaseMigrator(storage.Factory, time);
+            await new PlatformSchemaInitializer(storage.Factory, migrator, NullLogger<PlatformSchemaInitializer>.Instance).StartAsync(CancellationToken.None);
+            await new JobsSchemaInitializer(storage.Factory, migrator, NullLogger<JobsSchemaInitializer>.Instance).StartAsync(CancellationToken.None);
+            var settings = new SqlitePlatformSettingsRepository(storage.Factory, time, TestSecretProtection.Create(storage));
+            var connections = new SqliteConnectionsRepository(storage.Factory, time, TestSecretProtection.Create(storage));
+            var libraries = new SqliteLibrariesRepository(storage.Factory, time);
+            var library = await libraries.CreateLibraryAsync(new CreateLibraryRequest(
+                "Movies", "movies", "library", Path.Combine(storage.DataRoot, "movies"), Path.Combine(storage.DataRoot, "downloads"), null,
+                "direct-import", null, null, null, null, true, true, true, 12, 24, 25), CancellationToken.None);
+            var client = await connections.CreateDownloadClientAsync(new CreateDownloadClientRequest(
+                "qBittorrent", "qbittorrent", "localhost", 8080, null, null, null, "movies", "tv", null, 1, true), CancellationToken.None);
+            var dispatches = new SqliteDownloadDispatchesRepository(storage.Factory, time);
+            var jobs = new SqliteJobStore(storage.Factory, time, new NullRealtimeEventPublisher(), dispatches);
+            var dispatchId = await jobs.RecordDownloadDispatchAsync(
+                library.Id, "movies", "movie", "movie-sintel", Release, "Fixture", client.Id, client.Name, "sent", null,
+                cancellationToken: CancellationToken.None);
+            // The id the client gave this grab, and Deluno has already seen it downloading.
+            await dispatches.RecordDetectionAsync(dispatchId, "hash-1", 1_000_000, completed: false, CancellationToken.None);
+            var blocklist = new SqliteBlockedReleaseRepository(storage.Factory, time);
+            var alerts = new SqliteDispatchAlertRepository(storage.Factory, time);
+            var service = new DownloadClientTelemetryService(
+                settings, new SqliteDownloadHealthRepository(storage.Factory, time), libraries, connections, null!, null!, time, null!,
+                jobs, dispatches, jobs, new Deluno.Recovery.Policies.DownloadHealthEvaluator(), null!, Deluno.Contracts.Connectivity.NullConnectivityMonitor.Instance,
+                blocklist, dispatchAlertRepository: alerts);
+            return new World(storage, now, service, client, dispatchId, jobs, dispatches, blocklist, alerts);
+        }
+
+        public Task PollWithOtherItemInQueueAsync() => PollAsync(queue: [Queued("hash-other")], history: []);
+
+        public Task PollWithEmptyQueueAndHistoryAsync() => PollAsync(queue: [], history: []);
+
+        public Task PollWithItsOwnItemStillInQueueAsync() => PollAsync(queue: [Queued("hash-1")], history: []);
+
+        private async Task PollAsync(IReadOnlyList<DownloadQueueItem> queue, IReadOnlyList<DownloadClientHistoryItem> history)
+        {
+            var snapshot = new DownloadClientTelemetrySnapshot(
+                _client.Id, _client.Name, _client.Protocol, null, "healthy", null,
+                new DownloadClientTelemetryCapabilities(true, true, true, true, false, true, "basic"),
+                new DownloadTelemetrySummary(0, 0, 0, 0, 0, 0, 0),
+                queue, history, Now);
+            var clientDispatches = new[] { (await Dispatches.GetDispatchAsync(DispatchId, CancellationToken.None))! };
+            await _service.RecordWhatTheClientShowsAsync(snapshot, clientDispatches, CancellationToken.None);
+        }
+
+        private DownloadQueueItem Queued(string id)
+            => new(id, _client.Id, _client.Name, "torrent", "movies", "Something Else", "Something.Else.2020.1080p.WEB-DL-DELUNO",
+                "movies", DownloadQueueStatuses.Downloading, 50, 0, 0, 1024, 100, 0, "Fixture", null, Now);
+
+        public void Dispose() => _storage.Dispose();
+    }
+}

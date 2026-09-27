@@ -35,7 +35,8 @@ public sealed class DownloadClientTelemetryService(
     IConnectivityMonitor connectivityMonitor,
     IBlockedReleaseRepository? blockedReleases = null,
     IDownloadHealthConnectivityCheck? connectivityCheck = null,
-    IDispatchTitleUnmonitorService? titleUnmonitorService = null)
+    IDispatchTitleUnmonitorService? titleUnmonitorService = null,
+    IDispatchAlertRepository? dispatchAlertRepository = null)
     : IDownloadClientTelemetryService
 {
     // #824 is off by default, so most callers - including every existing
@@ -1308,6 +1309,26 @@ public sealed class DownloadClientTelemetryService(
         IReadOnlyList<DownloadDispatchItem> clientDispatches,
         CancellationToken cancellationToken)
     {
+        // #927: a download the client no longer lists at all - not in the
+        // queue, not in history - used to be noticed only hours later, by
+        // the grab/detection timeouts ageing out. Comparing against what the
+        // client actually shows, on every poll, notices it in minutes.
+        if (dispatchAlertRepository is not null)
+        {
+            foreach (var dispatch in VanishedFromClient(live, clientDispatches))
+            {
+                try
+                {
+                    await RecordClientVanishedAsync(dispatch, live.ClientName, cancellationToken);
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    // The screen this pass feeds matters more than one record:
+                    // the next pass tries again.
+                }
+            }
+        }
+
         foreach (var sighting in ShownByClient(live, clientDispatches))
         {
             try
@@ -1822,6 +1843,110 @@ public sealed class DownloadClientTelemetryService(
         }
 
         return sightings;
+    }
+
+    /// <summary>
+    /// Dispatches the client no longer lists at all - not in its queue, not
+    /// in its history - that Deluno had already seen and has not imported yet
+    /// (#927). Waiting for the ordinary grab/detection timeouts to notice
+    /// this took hours; comparing against what the client actually shows,
+    /// on every poll, notices it in minutes.
+    ///
+    /// <para><b>K3, the empty-list guard.</b> A client that has just
+    /// restarted, or answered with a momentary empty page, reports an empty
+    /// queue and empty history the same way a client that genuinely lost
+    /// every download would. Reading that as "everything vanished" would
+    /// raise an alert on every tracked download over one bad poll, so an
+    /// entirely empty response is treated as Deluno not yet knowing, never as
+    /// proof.</para>
+    /// </summary>
+    internal static IReadOnlyList<DownloadDispatchItem> VanishedFromClient(
+        DownloadClientTelemetrySnapshot live,
+        IEnumerable<DownloadDispatchItem> clientDispatches)
+    {
+        if (live.Queue.Count == 0 && live.History.Count == 0)
+        {
+            return [];
+        }
+
+        var shownIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var item in live.Queue)
+        {
+            if (!string.IsNullOrWhiteSpace(item.Id))
+            {
+                shownIds.Add(item.Id.Trim());
+            }
+        }
+
+        foreach (var item in live.History)
+        {
+            if (!string.IsNullOrWhiteSpace(item.Id))
+            {
+                shownIds.Add(item.Id.Trim());
+            }
+
+            if (!string.IsNullOrWhiteSpace(item.ExternalId))
+            {
+                shownIds.Add(item.ExternalId.Trim());
+            }
+        }
+
+        var vanished = new List<DownloadDispatchItem>();
+        foreach (var dispatch in clientDispatches)
+        {
+            // Only a download the client had actually shown before, and one
+            // Deluno has not already finished with: never-appeared is the
+            // grab-timeout's own story, and an imported or archived download
+            // has nothing left to vanish from (#927 stage 3: nothing to do).
+            if (dispatch.DetectedUtc is null
+                || dispatch.ImportStatus is not null
+                || string.Equals(dispatch.Status, "archived", StringComparison.OrdinalIgnoreCase)
+                || string.IsNullOrWhiteSpace(dispatch.TorrentHashOrItemId))
+            {
+                continue;
+            }
+
+            if (!shownIds.Contains(dispatch.TorrentHashOrItemId.Trim()))
+            {
+                vanished.Add(dispatch);
+            }
+        }
+
+        return vanished;
+    }
+
+    /// <summary>
+    /// Told once, the first time a still-tracked download is noticed missing
+    /// from the client entirely (#927). No automatic search and nothing
+    /// blocklisted: it may have been removed on purpose, so only a person
+    /// decides what happens next.
+    /// </summary>
+    private async Task RecordClientVanishedAsync(DownloadDispatchItem dispatch, string clientName, CancellationToken cancellationToken)
+    {
+        const string alertKind = "vanished-downloading";
+        if (dispatchAlertRepository is null ||
+            await dispatchAlertRepository.HasUnresolvedAlertAsync(dispatch.Id, alertKind, cancellationToken))
+        {
+            return;
+        }
+
+        await dispatchAlertRepository.CreateAlertAsync(
+            dispatch.Id,
+            dispatch.ReleaseName,
+            $"{dispatch.ReleaseName} is no longer in {clientName}'s queue or history",
+            alertKind,
+            "warning",
+            new Dictionary<string, string> { { "client", clientName } },
+            cancellationToken);
+
+        await activityFeedRepository.RecordActivityAsync(
+            "download.vanished",
+            $"{dispatch.ReleaseName} vanished from {clientName} while it was still downloading. Nothing was blocklisted or searched for automatically.",
+            null,
+            null,
+            dispatch.EntityType,
+            dispatch.EntityId,
+            cancellationToken);
     }
 
     internal static DownloadClientTelemetrySnapshot EnrichWithDispatchHistory(
