@@ -185,6 +185,7 @@ GET /api/search-cycles
 GET /api/search-retry-windows
 GET /api/security/allowed-hosts
 GET /api/seerr-servers/
+GET /api/seerr-servers/{id}/acquisitions
 GET /api/series/calendar
 GET /api/series/controls
 GET /api/series/episodes/wanted
@@ -400,6 +401,7 @@ POST /api/retention/rules/{id}/check
 POST /api/seerr-servers/
 POST /api/seerr-servers/test
 POST /api/seerr-servers/{id}/test
+POST /api/seerr-servers/{id}/webhook
 POST /api/series/
 POST /api/series/bulk
 POST /api/series/bulk/quality-profile
