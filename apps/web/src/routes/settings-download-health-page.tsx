@@ -175,6 +175,69 @@ function StrikeInactivityCard({ settings }: { settings: PlatformSettingsSnapshot
   );
 }
 
+/**
+ * #823: two cadences that used to be fixed constants. Every rule above sets
+ * its own timer now (#905), so the pacing window here only paces a finding
+ * outside the rule engine - client-stalled, and so on.
+ */
+function TimingCard({ settings }: { settings: PlatformSettingsSnapshot }) {
+  const mutation = useApiMutation<PlatformSettingsPatch, PlatformSettingsSnapshot>("/api/settings", "PATCH");
+  const [windowMinutes, setWindowMinutes] = useState(String(settings.downloadHealthDefaultStrikeWindowMinutes));
+  const [samplerMinutes, setSamplerMinutes] = useState(String(settings.downloadThroughputSamplerIntervalMinutes));
+  const [saveState, setSaveState] = useState<"idle" | "saving" | "saved" | "error">("idle");
+  const [errors, setErrors] = useState<{ window?: string; sampler?: string }>({});
+  const dirty = windowMinutes !== String(settings.downloadHealthDefaultStrikeWindowMinutes) ||
+    samplerMinutes !== String(settings.downloadThroughputSamplerIntervalMinutes);
+
+  async function save() {
+    const window = Number(windowMinutes);
+    const sampler = Number(samplerMinutes);
+    const nextErrors: { window?: string; sampler?: string } = {};
+    if (!Number.isFinite(window) || window < 1 || window > 1440) nextErrors.window = "Must be between 1 and 1440 minutes.";
+    if (!Number.isFinite(sampler) || sampler < 1 || sampler > 60) nextErrors.sampler = "Must be between 1 and 60 minutes.";
+    setErrors(nextErrors);
+    if (Object.keys(nextErrors).length > 0) return;
+
+    setSaveState("saving");
+    try {
+      const next = await mutation.mutate({
+        downloadHealthDefaultStrikeWindowMinutes: window,
+        downloadThroughputSamplerIntervalMinutes: sampler
+      });
+      setWindowMinutes(String(next.downloadHealthDefaultStrikeWindowMinutes));
+      setSamplerMinutes(String(next.downloadThroughputSamplerIntervalMinutes));
+      setSaveState("saved");
+    } catch {
+      setSaveState("error");
+    }
+  }
+
+  return (
+    <ListCard title="Timing" count="How often Deluno checks in">
+      <div className="grid gap-[var(--grid-gap)] p-[var(--card-pad-x)]">
+        <FieldRow>
+          <Field label="Strike pacing outside the rules above" error={errors.window} help="Only applies to a finding no rule above covers, such as the client itself reporting stalled or errored. A rule's own timer above is unaffected.">
+            <div className="flex items-center gap-2">
+              <Input type="number" min="1" max="1440" step="1" value={windowMinutes} onChange={(event) => setWindowMinutes(event.target.value)} />
+              <span className="shrink-0 text-[length:var(--type-body-sm)] text-muted-foreground">min</span>
+            </div>
+          </Field>
+          <Field label="Speed chart sampling" error={errors.sampler} help="How often Deluno records a throughput sample for the speed chart.">
+            <div className="flex items-center gap-2">
+              <Input type="number" min="1" max="60" step="1" value={samplerMinutes} onChange={(event) => setSamplerMinutes(event.target.value)} />
+              <span className="shrink-0 text-[length:var(--type-body-sm)] text-muted-foreground">min</span>
+            </div>
+          </Field>
+        </FieldRow>
+        <div>
+          <Button type="button" size="sm" onClick={() => void save()} disabled={!dirty || saveState === "saving"}>Save timing</Button>
+        </div>
+        {saveState === "error" ? <p className="text-[length:var(--type-caption)] text-destructive">Could not save. Try again.</p> : null}
+      </div>
+    </ListCard>
+  );
+}
+
 interface RuleForm {
   kind: string;
   enabled: boolean;
@@ -469,6 +532,8 @@ export function SettingsDownloadHealthPage() {
       <DryRunCard settings={settings} />
 
       <StrikeInactivityCard settings={settings} />
+
+      <TimingCard settings={settings} />
 
       <ListCard title="Strikes">
         <div className="grid gap-[var(--grid-gap)] p-[var(--card-pad-x)] sm:grid-cols-[1fr_auto] sm:items-center">

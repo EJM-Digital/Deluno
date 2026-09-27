@@ -111,6 +111,8 @@ export interface PlatformSettingsSnapshot {
   downloadHealthDryRunEnabled: boolean;
   /** #825: how long a download can go without a fresh strike before its strike count clears, independent of any rule's own timer. 1-720 hours. */
   downloadHealthStrikeInactivityHours: number;
+  /** #823: the pacing window a finding outside the rule engine (client-stalled, and so on) escalates strikes at; a rule-engine finding uses its own timer instead. 1-1440 minutes. */
+  downloadHealthDefaultStrikeWindowMinutes: number;
   /** #823: how often the throughput sampler polls telemetry for the speed chart. 1-60 minutes. */
   downloadThroughputSamplerIntervalMinutes: number;
   /** #909: percent free remaining at which a library root's health check warns, but keeps grabbing and importing. */
@@ -276,6 +278,7 @@ export const emptyPlatformSettingsSnapshot: PlatformSettingsSnapshot = {
   downloadHealthMinPeersMinutes: 30,
   downloadHealthDryRunEnabled: false,
   downloadHealthStrikeInactivityHours: 72,
+  downloadHealthDefaultStrikeWindowMinutes: 30,
   downloadThroughputSamplerIntervalMinutes: 1,
   libraryFreeSpaceWarnPercent: 10,
   libraryFreeSpacePausePercent: 5,
