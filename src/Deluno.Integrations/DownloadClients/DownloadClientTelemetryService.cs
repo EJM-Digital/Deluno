@@ -1321,104 +1321,14 @@ public sealed class DownloadClientTelemetryService(
     /// recorded in its own dispatch notes; retrying each of those by its own
     /// episode id keeps the lift scoped to exactly what failed.</para>
     /// </summary>
-    private async Task QueueReplacementSearchAsync(
+    private Task QueueReplacementSearchAsync(
         DownloadDispatchItem dispatch,
         LibraryItem? library,
         CancellationToken cancellationToken)
-    {
-        var libraryName = library?.Name ?? dispatch.LibraryId;
-        var seasonEpisodeIds = dispatch.EntityType == "series"
-            ? ExtractSeasonEpisodeIds(dispatch.NotesJson)
-            : [];
-
-        if (seasonEpisodeIds.Count > 0)
-        {
-            foreach (var episodeId in seasonEpisodeIds)
-            {
-                await jobScheduler.EnqueueAsync(new EnqueueJobRequest(
-                    LibrarySearchJobTypes.For(dispatch.MediaType),
-                    "download-health",
-                    JsonSerializer.Serialize(new
-                    {
-                        libraryId = dispatch.LibraryId,
-                        libraryName,
-                        mediaType = dispatch.MediaType,
-                        checkMissing = true,
-                        checkUpgrades = true,
-                        maxItems = 1,
-                        retryDelayHours = 24,
-                        triggeredBy = "health-replacement",
-                        targetEntityId = episodeId
-                    }),
-                    "download_dispatch",
-                    dispatch.Id,
-                    IdempotencyKey: $"download-health-replacement:{dispatch.Id}:{episodeId}",
-                    DedupeKey: $"download-health-replacement:{dispatch.Id}:{episodeId}"), cancellationToken);
-            }
-
-            return;
-        }
-
-        await jobScheduler.EnqueueAsync(new EnqueueJobRequest(
-            LibrarySearchJobTypes.For(dispatch.MediaType),
-            "download-health",
-            JsonSerializer.Serialize(new
-            {
-                libraryId = dispatch.LibraryId,
-                libraryName,
-                mediaType = dispatch.MediaType,
-                checkMissing = true,
-                checkUpgrades = true,
-                maxItems = 1,
-                retryDelayHours = 24,
-                triggeredBy = "health-replacement",
-                targetEntityId = dispatch.EntityId
-            }),
-            "download_dispatch",
-            dispatch.Id,
-            IdempotencyKey: $"download-health-replacement:{dispatch.Id}",
-            DedupeKey: $"download-health-replacement:{dispatch.Id}"), cancellationToken);
-    }
-
-    /// <summary>
-    /// The episode ids a season-pack dispatch's own notes recorded it covers
-    /// (<see cref="SeasonSearchExecutor"/>'s <c>episodeIds</c> field). Absent
-    /// or unparsable notes fall back to the series-wide retry rather than
-    /// silently retrying nothing — the same conservative reading as every
-    /// other malformed-notes case in this file.
-    /// </summary>
-    private static IReadOnlyList<string> ExtractSeasonEpisodeIds(string? notesJson)
-    {
-        if (string.IsNullOrWhiteSpace(notesJson))
-        {
-            return [];
-        }
-
-        try
-        {
-            using var document = JsonDocument.Parse(notesJson);
-            if (!document.RootElement.TryGetProperty("episodeIds", out var episodeIds)
-                || episodeIds.ValueKind != JsonValueKind.Array)
-            {
-                return [];
-            }
-
-            var ids = new List<string>();
-            foreach (var element in episodeIds.EnumerateArray())
-            {
-                if (element.ValueKind == JsonValueKind.String && element.GetString() is { Length: > 0 } id)
-                {
-                    ids.Add(id);
-                }
-            }
-
-            return ids;
-        }
-        catch (JsonException)
-        {
-            return [];
-        }
-    }
+        // Shared with ProcessorHandoffWatcher's and UnmatchedImportGiveUpService's
+        // own "search for another release" give-up paths (#914, #929, #888), so
+        // every one of them points a new search at the same title the same way.
+        => ReplacementSearchQueuer.EnqueueAsync(jobScheduler, dispatch, library?.Name ?? dispatch.LibraryId, cancellationToken);
 
     public async Task<DownloadClientActionResult> ReclaimCompletedAsync(
         string clientId,
@@ -2027,19 +1937,9 @@ public sealed class DownloadClientTelemetryService(
             .FirstOrDefault();
     }
 
-    /// <summary>
-    /// Whether <see cref="QueueReplacementSearchAsync"/> can act on this
-    /// dispatch's entity type.
-    ///
-    /// <para>A manual grab dispatches with EntityType <c>"movie"</c> or
-    /// <c>"series"</c>; an automatic per-episode search
-    /// (<c>EpisodeSearchJobHandler</c>) dispatches with <c>"episode"</c>.
-    /// Checking only the first two silently dropped the replacement search for
-    /// every automatically-searched TV episode — the shape #647 was filed
-    /// against.</para>
-    /// </summary>
+    /// <summary>Whether <see cref="QueueReplacementSearchAsync"/> can act on this dispatch's entity type. See <see cref="ReplacementSearchQueuer.Supports"/>.</summary>
     private static bool SupportsReplacementSearch(string entityType)
-        => entityType is "movie" or "series" or "episode";
+        => ReplacementSearchQueuer.Supports(entityType);
 
     /// <summary>#905 decision 2: what each action preset means for the four legacy switches this executor already knew how to apply.</summary>
     private static (bool Block, bool Replacement, bool Remove, bool Purge) ActionsFor(string preset) => preset switch
