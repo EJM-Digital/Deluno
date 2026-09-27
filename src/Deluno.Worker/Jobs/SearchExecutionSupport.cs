@@ -2,6 +2,7 @@ using System.Text.Json;
 using Deluno.Contracts;
 using Deluno.Integrations.DownloadClients;
 using Deluno.Integrations.Search;
+using Deluno.Jobs.Contracts;
 using Deluno.Jobs.Data;
 using Deluno.Quality.Contracts;
 using Deluno.Quality.Data;
@@ -117,6 +118,81 @@ internal static class SearchExecutionSupport
         await activityFeedRepository.RecordActivityAsync(
             "download.release.dead-link",
             $"{grabResult.ReleaseName} could not be sent to {clientName}: {grabResult.Message} Deluno blocklisted it and will pick a different release next search.",
+            null,
+            null,
+            entityType,
+            entityId,
+            cancellationToken);
+    }
+
+    /// <summary>How long Deluno waits before automatically trying the same release again after a connectivity or setup problem (#875).</summary>
+    internal static readonly TimeSpan ConnectivityRetryDelay = TimeSpan.FromMinutes(15);
+
+    /// <summary>
+    /// #875 (cleanup sheet B1): the download client was offline, refused the
+    /// password, or timed out — Deluno's own setup, not the release's fault
+    /// (#880, #901). Nothing here is ever blocklisted; instead the exact same
+    /// title is queued for another try once the client has had a chance to
+    /// come back, rather than leaving it to whatever the next ordinary search
+    /// cycle happens to be, and the problem is written to Activity so it stays
+    /// visible until it clears.
+    ///
+    /// <para>A no-op for a dead release (#876) or an ordinary success — this
+    /// only fires for a failure that says something about reaching the
+    /// client, never about the release itself.</para>
+    /// </summary>
+    internal static async Task RetryConnectivityFailureAsync(
+        IJobScheduler? jobScheduler,
+        IActivityFeedRepository activityFeedRepository,
+        DownloadClientGrabResult grabResult,
+        TimeProvider timeProvider,
+        string libraryId,
+        string mediaType,
+        string entityType,
+        string entityId,
+        string clientName,
+        CancellationToken cancellationToken)
+    {
+        if (jobScheduler is null || grabResult.Succeeded || grabResult.Failure is not { } failure)
+        {
+            return;
+        }
+
+        var isConnectivityOrSetupProblem = failure.Kind is IntegrationFailureKind.Timeout
+            or IntegrationFailureKind.Unavailable
+            or IntegrationFailureKind.Authentication
+            or IntegrationFailureKind.CircuitOpen;
+        if (!isConnectivityOrSetupProblem)
+        {
+            return;
+        }
+
+        var retryAt = timeProvider.GetUtcNow() + ConnectivityRetryDelay;
+        await jobScheduler.EnqueueAsync(
+            new EnqueueJobRequest(
+                LibrarySearchJobTypes.For(mediaType),
+                "download-client-retry",
+                JsonSerializer.Serialize(new
+                {
+                    libraryId,
+                    mediaType,
+                    checkMissing = true,
+                    checkUpgrades = true,
+                    maxItems = 1,
+                    retryDelayHours = 24,
+                    triggeredBy = "connectivity-retry",
+                    targetEntityId = entityId
+                }),
+                entityType,
+                entityId,
+                ScheduledUtc: retryAt,
+                IdempotencyKey: $"download-client-retry:{entityType}:{entityId}",
+                DedupeKey: $"download-client-retry:{entityType}:{entityId}"),
+            cancellationToken);
+
+        await activityFeedRepository.RecordActivityAsync(
+            "download.client.connectivity-retry-scheduled",
+            $"{grabResult.ReleaseName} could not be sent to {clientName}: {grabResult.Message} This is a setup problem, not the release — Deluno will try sending it again once {clientName} is reachable.",
             null,
             null,
             entityType,

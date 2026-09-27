@@ -30,7 +30,8 @@ public abstract class LibrarySearchJobHandler(
     IMediaTagStore? mediaTagStore = null,
     IMediaStateRepository? mediaStateRepository = null,
     IReleasePreferencePlanRepository? releasePreferencePlanRepository = null,
-    IBlockedReleaseRepository? blockedReleases = null) : IJobHandler
+    IBlockedReleaseRepository? blockedReleases = null,
+    IJobScheduler? jobScheduler = null) : IJobHandler
 {
     /// <summary>
     /// Both catalogues run the same handler; only the lane differs.
@@ -289,6 +290,18 @@ public abstract class LibrarySearchJobHandler(
                     candidate.MovieId,
                     candidate.Title,
                     bestCandidate!.IndexerName,
+                    downloadClient.DownloadClientName,
+                    cancellationToken);
+
+                await SearchExecutionSupport.RetryConnectivityFailureAsync(
+                    jobScheduler,
+                    activityFeedRepository,
+                    grabResult,
+                    timeProvider,
+                    payload.LibraryId,
+                    "movies",
+                    "movie",
+                    candidate.MovieId,
                     downloadClient.DownloadClientName,
                     cancellationToken);
 
@@ -789,6 +802,18 @@ public abstract class LibrarySearchJobHandler(
                     candidate.SeriesId,
                     candidate.Title,
                     bestCandidate!.IndexerName,
+                    downloadClient.DownloadClientName,
+                    cancellationToken);
+
+                await SearchExecutionSupport.RetryConnectivityFailureAsync(
+                    jobScheduler,
+                    activityFeedRepository,
+                    grabResult,
+                    timeProvider,
+                    payload.LibraryId,
+                    "tv",
+                    "series",
+                    candidate.SeriesId,
                     downloadClient.DownloadClientName,
                     cancellationToken);
 
