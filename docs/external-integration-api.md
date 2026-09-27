@@ -491,6 +491,8 @@ Deluno accepts a completed event only when all of these are true:
 
 Deluno will not infer a library from `mediaType`, accept a sibling/prefix path, create an unknown hand-off, or queue the same active output import twice. A repeated completed callback reuses the active import job. A callback is optional: the normal watched-output path imports exactly one video below `processed-output/<source-folder>/...` when that folder matches a waiting Deluno hand-off. Ambiguous, unmatched, or top-level files become recovery items for human review rather than being guessed at.
 
+A completed event refused for boundary 3 above, or because the named file demonstrably belongs to another hand-off, is told on Activity immediately (#891) — once per hand-off, not on every repeat of the same broken report — rather than only surfacing once the hand-off's ordinary stall timeout gives up on it, which can take up to a week. Nothing is blocklisted and no file is touched; this is only ever a notice that the processor's path mapping likely needs fixing.
+
 ### Temporary output names (#915)
 
 A processor that reports completion through the callback is safe already: Deluno only ever reads `outputPath`/`outputFiles` once that report arrives. A drop-folder processor — one with no processor connection configured, whose output Deluno watches directly — has no callback to say "this file is finished," so Deluno instead waits for a file's size to stop changing for 20 seconds before treating it as importable.

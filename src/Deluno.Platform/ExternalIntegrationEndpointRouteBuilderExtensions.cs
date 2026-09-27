@@ -873,19 +873,34 @@ public static class ExternalIntegrationEndpointRouteBuilderExtensions
                 !string.IsNullOrWhiteSpace(request.OutputPath);
             var importsOutput = status == "completed" || partialImport;
 
+            // Resolved before the output-path checks below, purely so a
+            // rejection can say which hand-off it was about and tell a person
+            // right away (#891) instead of only via the multi-day stall
+            // timeout that judges a hand-off nothing has been heard about.
+            var handoff = await repository.FindProcessorHandoffAsync(
+                library.Id,
+                request.HandoffId,
+                request.SourcePath,
+                cancellationToken);
+
             if (importsOutput && !ProcessorOutputPathPolicy.IsOutputOwnedByLibrary(request.OutputPath, library.ProcessorOutputPath))
             {
+                if (handoff is not null)
+                {
+                    await TellOutputMisplacedOnceAsync(
+                        activityFeed,
+                        handoff,
+                        library,
+                        $"{processorName} said {handoff.ReleaseName} was ready at {request.OutputPath}, but that is outside {library.Name}'s configured clean output folder. Check the processor's path mapping, then have it send the event again.",
+                        cancellationToken);
+                }
+
                 return Results.ValidationProblem(new Dictionary<string, string[]>
                 {
                     ["outputPath"] = ["Completed output must be inside this library's configured clean output folder. Deluno did not queue an import."]
                 });
             }
 
-            var handoff = await repository.FindProcessorHandoffAsync(
-                library.Id,
-                request.HandoffId,
-                request.SourcePath,
-                cancellationToken);
             if (handoff is null)
             {
                 return Results.Conflict(new
@@ -915,6 +930,15 @@ public static class ExternalIntegrationEndpointRouteBuilderExtensions
                         ProcessorOutputPathPolicy.IsOutputAbout(request.OutputPath, library.ProcessorOutputPath, other.SourcePath));
                 if (claimedBy is not null)
                 {
+                    // #891: told right away rather than left to the stall
+                    // timeout, the same as the misplaced-output case above.
+                    await TellOutputMisplacedOnceAsync(
+                        activityFeed,
+                        handoff,
+                        library,
+                        $"{processorName} said {handoff.ReleaseName} was ready at {request.OutputPath}, but that file is {claimedBy.ReleaseName}, not {handoff.ReleaseName}. Deluno did not import it.",
+                        cancellationToken);
+
                     return Results.ValidationProblem(new Dictionary<string, string[]>
                     {
                         ["outputPath"] = [$"That file is {claimedBy.ReleaseName}, not {handoff.ReleaseName}. Deluno did not queue an import."]
@@ -1178,6 +1202,38 @@ public static class ExternalIntegrationEndpointRouteBuilderExtensions
         }
 
         return errors;
+    }
+
+    /// <summary>
+    /// #891: a processor event rejected because its output isn't where Deluno
+    /// expects is told on Activity immediately, rather than only surfacing
+    /// once the hand-off's ordinary stall timeout gives up on it (which can
+    /// take up to a week). Nothing is blocklisted and no file is touched --
+    /// this is only ever a notice. Told once per hand-off rather than on
+    /// every retry of the same broken report.
+    /// </summary>
+    private static async Task TellOutputMisplacedOnceAsync(
+        IActivityFeedRepository activityFeed,
+        ProcessorHandoffItem handoff,
+        LibraryItem library,
+        string message,
+        CancellationToken cancellationToken)
+    {
+        const string category = "processing.output.misplaced";
+        var told = await activityFeed.ListActivityAsync(20, "processor-handoff", handoff.Id, cancellationToken);
+        if (told.Any(activity => activity.Category == category))
+        {
+            return;
+        }
+
+        await activityFeed.RecordActivityAsync(
+            category,
+            message,
+            JsonSerializer.Serialize(new { HandoffId = handoff.Id, library.Id, library.Name, handoff.ReleaseName }),
+            null,
+            "processor-handoff",
+            handoff.Id,
+            cancellationToken);
     }
 
     private static string NormalizeProcessorPath(string path)
