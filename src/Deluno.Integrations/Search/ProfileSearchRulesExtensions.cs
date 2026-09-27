@@ -17,6 +17,7 @@ public static class ProfileSearchRulesExtensions
             UpgradeUntilCutoff = rules.UpgradeUntilCutoff,
             SizeRules = rules.SizeRules,
             ProfileAcquisition = rules.Acquisition,
-            UpgradeStop = rules.UpgradeStop
+            UpgradeStop = rules.UpgradeStop,
+            ScoreLimits = rules.ScoreLimits
         };
 }

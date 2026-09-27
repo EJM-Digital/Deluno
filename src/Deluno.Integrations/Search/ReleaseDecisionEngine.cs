@@ -289,6 +289,49 @@ public static partial class ReleaseDecisionEngine
             Refuse("Equivalent replacement blocked: the installed file already meets cutoff and this candidate does not improve its upgrade-driving custom formats.");
         }
 
+        // #778: the three TRaSH-style guardrails behind "Never grab copies
+        // rated bad", "Stop upgrading once a copy is..." and "Only replace
+        // when...". These sit beside the legacy and typed-plan paths rather
+        // than inside either: a profile that picked a plain choice gets it
+        // honoured whichever comparator otherwise decided the release, and
+        // every refusal names the plain choice, never the number behind it.
+        var scoreLimits = input.ScoreLimits;
+        if (scoreLimits is not null && !hardReject)
+        {
+            if (scoreLimits.MinFormatScore is { } minScore && input.CustomFormatScore < minScore)
+            {
+                Refuse("Not grabbed: TRaSH rates this copy as bad, and you asked Deluno to never grab those.");
+            }
+
+            if (!hardReject
+                && scoreLimits.CutoffFormatScore is { } cutoffScore
+                && currentRank >= targetRank
+                && qualityDelta <= 0
+                && input.CurrentCustomFormatScore is { } currentScoreForCutoff
+                && currentScoreForCutoff >= cutoffScore)
+            {
+                var cutoffChoice = PlainQualityChoiceMapper.NearestCutoffChoice(
+                    cutoffScore,
+                    scoreLimits.MinFormatScore ?? PlainQualityChoiceMapper.GenericMinFormatScore,
+                    cutoffScore);
+                Refuse($"Stopped upgrading: your copy is already '{PlainQualityChoiceMapper.CutoffLabel(cutoffChoice)}'.");
+            }
+
+            if (!hardReject
+                && scoreLimits.MinUpgradeFormatScore is { } minGain
+                && currentRank >= targetRank
+                && qualityDelta <= 0
+                && input.CurrentCustomFormatScore is { } currentScoreForGain
+                && input.CustomFormatScore > currentScoreForGain
+                && input.CustomFormatScore - currentScoreForGain < minGain)
+            {
+                var gainChoice = PlainQualityChoiceMapper.NearestUpgradeGainChoice(
+                    minGain,
+                    PlainQualityChoiceMapper.GenericMinUpgradeFormatScore);
+                Refuse($"Not grabbed: not {PlainQualityChoiceMapper.UpgradeGainLabel(gainChoice)} than the copy you have, which is what you asked for.");
+            }
+        }
+
         var seederScore = ScoreSeeders(input.Seeders, risks, reasons);
         // A torrent nobody seeds never downloads (#611). It stays in a manual
         // search with this reason, where a person can still force it.
@@ -923,4 +966,12 @@ public sealed record ReleaseDecisionInput(
     /// longer or shorter title (#630). Null or non-positive keeps the fixed
     /// reference runtime as the assumption, exactly as before #630.
     /// </summary>
-    int? RuntimeMinutes = null);
+    int? RuntimeMinutes = null,
+    /// <summary>
+    /// The profile's own minimum, cutoff and minimum-upgrade-gain score
+    /// guardrails behind "Stop upgrading once a copy is", "Only replace when
+    /// clearly better" and "Never grab copies rated bad" (#778). Null means
+    /// this profile has no score opinion, which is the behaviour every profile
+    /// had before it could hold one.
+    /// </summary>
+    ProfileScoreLimits? ScoreLimits = null);

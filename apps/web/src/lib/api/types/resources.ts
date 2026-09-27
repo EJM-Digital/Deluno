@@ -145,8 +145,31 @@ export interface QualityProfileItem {
   formatIntents?: Record<string, string> | null;
   /** How this profile wants a release fetched, and the words it insists on or refuses. */
   acquisition?: ProfileAcquisitionRules | null;
+  /** The minimum, cutoff and minimum-upgrade-gain score guardrails behind the plain choices. */
+  scoreLimits?: ProfileScoreLimits | null;
+  /** "Preferred language" for this profile. */
+  languagePreference?: ProfileLanguagePreference | null;
   createdUtc: string;
   updatedUtc: string;
+}
+
+/**
+ * The TRaSH-style score guardrails behind "Stop upgrading once a copy is",
+ * "Only replace when clearly better" and "Never grab copies rated bad"
+ * (#778). Every field is null when the profile has no opinion.
+ */
+export interface ProfileScoreLimits {
+  minFormatScore?: number | null;
+  cutoffFormatScore?: number | null;
+  minUpgradeFormatScore?: number | null;
+}
+
+/** "Preferred language" for a quality profile (#769). */
+export interface ProfileLanguagePreference {
+  /** Best-first. Empty means no language opinion. */
+  preferredLanguages: string[];
+  /** True: refuse a release explicitly tagged as a different language. */
+  requireLanguage: boolean;
 }
 
 /**

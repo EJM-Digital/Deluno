@@ -48,5 +48,7 @@ public interface IMediaSearchPlanner
         /// definition that only filters server-side by IMDb id needs this to
         /// search the right show at all (#606).
         /// </summary>
-        string? imdbId = null);
+        string? imdbId = null,
+        /// <summary>The profile's own minimum, cutoff and minimum-upgrade-gain score guardrails (#778).</summary>
+        ProfileScoreLimits? scoreLimits = null);
 }

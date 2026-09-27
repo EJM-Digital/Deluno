@@ -130,6 +130,10 @@ export interface GuideQualityProfile {
   minFormatScore: number;
   cutoffFormatScore: number;
   recommendedFormats: GuideRecommendedFormat[];
+  /** TRaSH's own minimum score gain for an upgrade (#778). */
+  minUpgradeFormatScore?: number;
+  /** TRaSH's own language answer for this profile - "Original", "Any", or a specific language (#769). */
+  language?: string | null;
 }
 
 export interface GuideFormatBundleEntry {

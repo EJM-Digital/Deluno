@@ -39,7 +39,7 @@ public sealed class SqliteQualityRepository(
             SELECT
                 id, name, media_type, cutoff_quality, allowed_qualities, custom_format_ids,
                 upgrade_until_cutoff, upgrade_unknown_items, allow_lower_quality_replacements,
-                preset_id, preset_version, release_preference_plan_json, created_utc, updated_utc, size_rules_json, stop_when_cutoff_met, require_format_gain_for_same_quality, format_intents_json, acquisition_json
+                preset_id, preset_version, release_preference_plan_json, created_utc, updated_utc, size_rules_json, stop_when_cutoff_met, require_format_gain_for_same_quality, format_intents_json, acquisition_json, score_limits_json, language_preference_json
             FROM quality_profiles
             ORDER BY sort_order ASC, media_type ASC, name ASC;
             """;
@@ -239,7 +239,9 @@ public sealed class SqliteQualityRepository(
                     .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)),
             UpgradeStop: request.UpgradeStop,
             FormatIntents: ProfileFormatIntents.NormalizeAll(request.FormatIntents),
-            Acquisition: request.Acquisition?.Normalize());
+            Acquisition: request.Acquisition?.Normalize(),
+            ScoreLimits: request.ScoreLimits?.Normalize(),
+            LanguagePreference: request.LanguagePreference?.Normalize());
 
         await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
             DelunoDatabaseNames.Platform,
@@ -295,13 +297,13 @@ public sealed class SqliteQualityRepository(
             INSERT INTO quality_profiles (
                 id, name, media_type, sort_order, cutoff_quality, allowed_qualities, custom_format_ids,
                 upgrade_until_cutoff, upgrade_unknown_items, allow_lower_quality_replacements,
-                preset_id, preset_version, release_preference_plan_json, created_utc, updated_utc, size_rules_json, stop_when_cutoff_met, require_format_gain_for_same_quality, format_intents_json, acquisition_json
+                preset_id, preset_version, release_preference_plan_json, created_utc, updated_utc, size_rules_json, stop_when_cutoff_met, require_format_gain_for_same_quality, format_intents_json, acquisition_json, score_limits_json, language_preference_json
             )
             VALUES (
                 @id, @name, @mediaType, @sortOrder, @cutoffQuality, @allowedQualities, @customFormatIds,
                 @upgradeUntilCutoff, @upgradeUnknownItems, @allowLowerQualityReplacements,
                 @presetId, @presetVersion, @releasePreferencePlan, @createdUtc, @updatedUtc, @sizeRules,
-                @stopWhenCutoffMet, @requireFormatGain, @formatIntents, @acquisition
+                @stopWhenCutoffMet, @requireFormatGain, @formatIntents, @acquisition, @scoreLimits, @languagePreference
             );
             """;
 
@@ -322,6 +324,8 @@ public sealed class SqliteQualityRepository(
         AddParameter(command, "@requireFormatGain", (item.UpgradeStop?.RequireCustomFormatGainForSameQuality ?? true) ? 1 : 0);
         AddParameter(command, "@formatIntents", ProfileFormatIntents.Serialize(item.FormatIntents));
         AddParameter(command, "@acquisition", ProfileAcquisitionRulesCodec.Serialize(item.Acquisition));
+        AddParameter(command, "@scoreLimits", ProfileScoreLimitsCodec.Serialize(item.ScoreLimits));
+        AddParameter(command, "@languagePreference", ProfileLanguagePreferenceCodec.Serialize(item.LanguagePreference));
         AddParameter(command, "@releasePreferencePlan", ReleasePreferencePlanReferenceCodec.Serialize(item.ReleasePreferencePlan));
         AddParameter(command, "@createdUtc", item.CreatedUtc.ToString("O"));
         AddParameter(command, "@updatedUtc", item.UpdatedUtc.ToString("O"));
@@ -480,6 +484,8 @@ public sealed class SqliteQualityRepository(
         // ordinary rename silently wiped the size answers.
         var nextUpgradeStop = request.UpgradeStop ?? current.UpgradeStop;
         var nextAcquisition = request.Acquisition ?? current.Acquisition;
+        var nextScoreLimits = request.ScoreLimits ?? current.ScoreLimits;
+        var nextLanguagePreference = request.LanguagePreference ?? current.LanguagePreference;
 
         // Null leaves the stored answers alone; an empty map clears them back
         // to the guide's recommendations.
@@ -514,6 +520,8 @@ public sealed class SqliteQualityRepository(
                 require_format_gain_for_same_quality = @requireFormatGain,
                 format_intents_json = @formatIntents,
                 acquisition_json = @acquisition,
+                score_limits_json = @scoreLimits,
+                language_preference_json = @languagePreference,
                 updated_utc = @updatedUtc
             WHERE id = @id;
             """;
@@ -531,6 +539,8 @@ public sealed class SqliteQualityRepository(
         AddParameter(command, "@requireFormatGain", (nextUpgradeStop?.RequireCustomFormatGainForSameQuality ?? true) ? 1 : 0);
         AddParameter(command, "@formatIntents", ProfileFormatIntents.Serialize(nextFormatIntents));
         AddParameter(command, "@acquisition", ProfileAcquisitionRulesCodec.Serialize(nextAcquisition));
+        AddParameter(command, "@scoreLimits", ProfileScoreLimitsCodec.Serialize(nextScoreLimits));
+        AddParameter(command, "@languagePreference", ProfileLanguagePreferenceCodec.Serialize(nextLanguagePreference));
         AddParameter(command, "@updatedUtc", now.ToString("O"));
         await command.ExecuteNonQueryAsync(cancellationToken);
 
@@ -929,7 +939,7 @@ public sealed class SqliteQualityRepository(
             SELECT
                 id, name, media_type, cutoff_quality, allowed_qualities, custom_format_ids,
                 upgrade_until_cutoff, upgrade_unknown_items, allow_lower_quality_replacements,
-                preset_id, preset_version, release_preference_plan_json, created_utc, updated_utc, size_rules_json, stop_when_cutoff_met, require_format_gain_for_same_quality, format_intents_json, acquisition_json
+                preset_id, preset_version, release_preference_plan_json, created_utc, updated_utc, size_rules_json, stop_when_cutoff_met, require_format_gain_for_same_quality, format_intents_json, acquisition_json, score_limits_json, language_preference_json
             FROM quality_profiles
             WHERE id = @id
             LIMIT 1;
@@ -1057,6 +1067,12 @@ public sealed class SqliteQualityRepository(
         var acquisition = reader.FieldCount > 18 && !reader.IsDBNull(18)
             ? ProfileAcquisitionRulesCodec.Deserialize(reader.GetString(18))
             : null;
+        var scoreLimits = reader.FieldCount > 19 && !reader.IsDBNull(19)
+            ? ProfileScoreLimitsCodec.Deserialize(reader.GetString(19))
+            : null;
+        var languagePreference = reader.FieldCount > 20 && !reader.IsDBNull(20)
+            ? ProfileLanguagePreferenceCodec.Deserialize(reader.GetString(20))
+            : null;
 
         var presetId = reader.IsDBNull(9) ? null : reader.GetString(9);
         var presetVersion = reader.IsDBNull(10) ? (int?)null : reader.GetInt32(10);
@@ -1090,7 +1106,9 @@ public sealed class SqliteQualityRepository(
             SizeRules: sizeRules,
             UpgradeStop: upgradeStop,
             FormatIntents: formatIntents,
-            Acquisition: acquisition);
+            Acquisition: acquisition,
+            ScoreLimits: scoreLimits,
+            LanguagePreference: languagePreference);
     }
 
     private static CustomFormatItem ReadCustomFormat(System.Data.Common.DbDataReader reader)

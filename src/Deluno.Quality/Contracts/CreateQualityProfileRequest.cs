@@ -19,4 +19,8 @@ public sealed record CreateQualityProfileRequest(
     /// <summary>How much this profile cares about each preference it selected.</summary>
     IReadOnlyDictionary<string, string>? FormatIntents = null,
     /// <summary>How this profile wants a release fetched.</summary>
-    ProfileAcquisitionRules? Acquisition = null);
+    ProfileAcquisitionRules? Acquisition = null,
+    /// <summary>The TRaSH-style score guardrails behind the plain cutoff, upgrade-gain and never-grab-bad choices.</summary>
+    ProfileScoreLimits? ScoreLimits = null,
+    /// <summary>"Preferred language" for this profile.</summary>
+    ProfileLanguagePreference? LanguagePreference = null);

@@ -101,12 +101,14 @@ public static class QualityProfileResolver
         }
 
         var acquisition = profile.Acquisition?.Normalize();
+        var scoreLimits = profile.ScoreLimits?.Normalize();
         return new ProfileSearchRules(
             ParseAllowedQualities(profile.AllowedQualities),
             profile.UpgradeUntilCutoff,
             profile.SizeRules ?? [],
             acquisition is null || acquisition.IsEmpty ? null : acquisition,
-            profile.UpgradeStop);
+            profile.UpgradeStop,
+            scoreLimits is null || scoreLimits.IsEmpty ? null : scoreLimits);
     }
 
     /// <summary>Splits the stored comma-separated tier list.</summary>
@@ -122,8 +124,10 @@ public sealed record ProfileSearchRules(
     bool UpgradeUntilCutoff,
     IReadOnlyList<ProfileSizeRule> SizeRules,
     ProfileAcquisitionRules? Acquisition,
-    QualityUpgradeStopPolicy? UpgradeStop)
+    QualityUpgradeStopPolicy? UpgradeStop,
+    /// <summary>The minimum, cutoff and minimum-upgrade-gain score guardrails this profile set (#778).</summary>
+    ProfileScoreLimits? ScoreLimits = null)
 {
-    /// <summary>No profile: every tier allowed, keep upgrading to the cutoff, no size, acquisition or stop opinion.</summary>
-    public static readonly ProfileSearchRules None = new([], true, [], null, null);
+    /// <summary>No profile: every tier allowed, keep upgrading to the cutoff, no size, acquisition, stop or score opinion.</summary>
+    public static readonly ProfileSearchRules None = new([], true, [], null, null, null);
 }

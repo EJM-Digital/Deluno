@@ -40,4 +40,17 @@ public sealed record QualityProfileItem(
     /// refuses. Null means it has no acquisition opinion; tag-keyed rules still
     /// apply on top. See <c>ProfileAcquisitionRules</c>.
     /// </summary>
-    ProfileAcquisitionRules? Acquisition = null);
+    ProfileAcquisitionRules? Acquisition = null,
+    /// <summary>
+    /// The minimum, cutoff and minimum-upgrade-gain custom-format score
+    /// guardrails behind the plain choices. Null means this profile has no
+    /// score opinion, which is what every profile had before it could hold
+    /// one. See <c>ProfileScoreLimits</c>.
+    /// </summary>
+    ProfileScoreLimits? ScoreLimits = null,
+    /// <summary>
+    /// "Preferred language" for this profile, and whether it is a hard
+    /// requirement. Null means no language opinion. See
+    /// <c>ProfileLanguagePreference</c>.
+    /// </summary>
+    ProfileLanguagePreference? LanguagePreference = null);
