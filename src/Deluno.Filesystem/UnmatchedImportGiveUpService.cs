@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Deluno.Contracts;
 using Deluno.Jobs.Data;
+using Deluno.Libraries.Data;
 using Deluno.Movies.Data;
 using Deluno.Platform.Contracts;
 using Deluno.Platform.Data;
@@ -32,7 +33,13 @@ public sealed class UnmatchedImportGiveUpService(
     IDownloadClientActionGateway? downloadClientActions,
     IActivityFeedRepository activityFeedRepository,
     TimeProvider timeProvider,
-    ILogger<UnmatchedImportGiveUpService> logger)
+    ILogger<UnmatchedImportGiveUpService> logger,
+    // Both optional so an install that never wired a job scheduler here
+    // (or a test that does not need one) still gives up on files and
+    // blocklists releases as before -- only the search-for-another step
+    // (#888) is skipped when either is missing.
+    IJobScheduler? jobScheduler = null,
+    ILibrariesRepository? librariesRepository = null)
     : IUnmatchedImportGiveUpService
 {
     public async Task<int> RunAsync(CancellationToken cancellationToken)
@@ -94,6 +101,7 @@ public sealed class UnmatchedImportGiveUpService(
 
         var removedFromClient = false;
         var blocklisted = false;
+        var searchStarted = false;
         if (!string.IsNullOrWhiteSpace(dispatchId) && downloadDispatchesRepository is not null)
         {
             var dispatch = await downloadDispatchesRepository.GetDispatchAsync(dispatchId, cancellationToken);
@@ -132,11 +140,21 @@ public sealed class UnmatchedImportGiveUpService(
                     blocklisted = true;
                 }
 
-                // A fresh search only makes sense once Deluno knows which
-                // title wanted this download in the first place - an
-                // unmatched release never resolved that, so there is nothing
-                // here to point a new search at. The title's own missing/
-                // wanted search cycle already covers it, unaffected by this.
+                // #888: the dispatch this download was for names the title
+                // that wanted it, so a search is queued for exactly that
+                // title (or, for a season pack, exactly the episodes it
+                // covered) rather than left to the library's own next
+                // missing/upgrade cycle -- which is only the fallback for a
+                // give-up with no dispatch link to point at.
+                if (jobScheduler is not null && ReplacementSearchQueuer.Supports(dispatch.EntityType))
+                {
+                    var library = librariesRepository is null
+                        ? null
+                        : (await librariesRepository.ListLibrariesAsync(cancellationToken))
+                            .FirstOrDefault(item => string.Equals(item.Id, dispatch.LibraryId, StringComparison.OrdinalIgnoreCase));
+                    await ReplacementSearchQueuer.EnqueueAsync(jobScheduler, dispatch, library?.Name ?? dispatch.LibraryId, cancellationToken);
+                    searchStarted = true;
+                }
             }
         }
 
@@ -144,15 +162,18 @@ public sealed class UnmatchedImportGiveUpService(
         {
             deletedFile ? "deleted the file" : null,
             removedFromClient ? "removed it from the download client" : null,
-            blocklisted ? "blocklisted the release" : null
+            blocklisted ? "blocklisted the release" : null,
+            searchStarted ? "started a new search" : null
         }.Where(part => part is not null));
 
         await activityFeedRepository.RecordActivityAsync(
             "filesystem.import.unmatched-given-up",
             summary.Length > 0
-                ? $"Gave up waiting to match {title} by hand: {summary}. A new search will run on its usual schedule."
+                ? searchStarted
+                    ? $"Gave up waiting to match {title} by hand: {summary}."
+                    : $"Gave up waiting to match {title} by hand: {summary}. A new search will run on its usual schedule."
                 : $"Gave up waiting to match {title} by hand, but nothing was left to clean up.",
-            JsonSerializer.Serialize(new { CaseId = caseId, Title = title, DeletedFile = deletedFile, RemovedFromClient = removedFromClient, Blocklisted = blocklisted }),
+            JsonSerializer.Serialize(new { CaseId = caseId, Title = title, DeletedFile = deletedFile, RemovedFromClient = removedFromClient, Blocklisted = blocklisted, SearchStarted = searchStarted }),
             null,
             entityKind,
             null,
