@@ -54,11 +54,20 @@ public sealed class GenuineGuideFormatTests
 
         foreach (var profile in package.QualityProfiles)
         {
-            var mediaType = profile.MediaType == "movies" ? "movies" : "tv";
             foreach (var recommendation in profile.RecommendedFormats)
             {
-                Assert.True(GuideFormatConditions.AppliesTo(byId[recommendation.TrashId], mediaType),
-                    $"{profile.Id} ({mediaType}) recommends {byId[recommendation.TrashId].Name} {recommendation.TrashId}, which is not a {mediaType} format.");
+                var format = byId[recommendation.TrashId];
+                // TRaSH ships anime release-group tiers and version tags twice
+                // over, once scraped from Radarr's guide and once from
+                // Sonarr's, under the same name but a different trashId
+                // (#781). An "anime" profile legitimately recommends whichever
+                // flavour it was curated from, so it accepts either rather
+                // than the single strict bucket a movies or tv profile owes.
+                var appliesToAnime = profile.MediaType == "anime" &&
+                    (GuideFormatConditions.AppliesTo(format, "movies") || GuideFormatConditions.AppliesTo(format, "tv"));
+                var mediaType = profile.MediaType == "movies" ? "movies" : "tv";
+                Assert.True(appliesToAnime || GuideFormatConditions.AppliesTo(format, mediaType),
+                    $"{profile.Id} ({profile.MediaType}) recommends {format.Name} {recommendation.TrashId}, which is not a {(profile.MediaType == "anime" ? "movies or tv" : mediaType)} format.");
             }
         }
 
