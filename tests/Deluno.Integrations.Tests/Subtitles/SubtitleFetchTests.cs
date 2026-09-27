@@ -289,6 +289,43 @@ public sealed class SubtitleFetchTests
     }
 
     [Fact]
+    public async Task Plain_only_takes_a_hearing_impaired_candidate_when_stripping_will_make_it_plain()
+    {
+        // #923's strip-counts-as-plain rule: a language set to plain-only
+        // still refuses hearing-impaired text on disk, but not a candidate
+        // that will no longer be hearing-impaired once the strip runs.
+        var provider = new FakeProvider("first",
+            [Candidate("en") with { HearingImpaired = true }],
+            Encoding.UTF8.GetBytes("1\n00:00:01,000 --> 00:00:03,000\n[MUSIC] Hello.\n"));
+        var writer = new FakeWriter();
+        var service = Build([provider], writer);
+
+        var outcome = await service.FetchAsync(
+            Request(), "en", false, @"D:\Media\Dune\Dune.mkv",
+            SubtitleHearingImpairedPreferences.PlainOnly, CancellationToken.None,
+            new SubtitleContentModificationPolicy(StripHearingImpairedAnnotations: true));
+
+        Assert.True(outcome.Found);
+        // Recorded and named as plain, not as hearing-impaired that merely
+        // reads clean — the two are told apart everywhere this rung is read.
+        Assert.False(outcome.HearingImpaired);
+        Assert.Equal("Dune.en.srt", Path.GetFileName(Assert.Single(writer.Written).Path));
+    }
+
+    [Fact]
+    public async Task Plain_only_still_refuses_hearing_impaired_when_nothing_strips_it()
+    {
+        var provider = new FakeProvider("first", [Candidate("en") with { HearingImpaired = true }], Srt);
+        var service = Build([provider], new FakeWriter());
+
+        var outcome = await service.FetchAsync(
+            Request(), "en", false, @"D:\Media\Dune\Dune.mkv",
+            SubtitleHearingImpairedPreferences.PlainOnly, CancellationToken.None);
+
+        Assert.False(outcome.Found);
+    }
+
+    [Fact]
     public async Task A_rate_limited_provider_is_working_and_is_left_alone()
     {
         var provider = new FakeProvider("first", [], Srt) { RateLimited = true };

@@ -619,6 +619,22 @@ public static class MoviesEndpointRouteBuilderExtensions
             return movie is null ? Results.NotFound() : Results.Ok(movie);
         });
 
+        /*
+          Every subtitle this file has, and which of the three types each one
+          is — plain, hearing-impaired or forced (#923). The rank a fetched
+          subtitle sits on already decides the bar under a poster; this reads
+          the same table for a single title's own page, where "which one did
+          you actually get" is the question.
+        */
+        movies.MapGet("/{id}/subtitles", async (
+            string id,
+            IMediaSubtitleRepository subtitles,
+            CancellationToken cancellationToken) =>
+        {
+            var rows = await subtitles.ListSubtitlesAsync(MediaKind.Movie, id, cancellationToken);
+            return Results.Ok(rows);
+        });
+
         movies.MapPut("/monitoring", async (
             HttpContext httpContext,
             [FromBody] UpdateMovieMonitoringRequest request,

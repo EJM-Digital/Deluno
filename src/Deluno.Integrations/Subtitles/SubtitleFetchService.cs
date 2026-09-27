@@ -134,6 +134,16 @@ public sealed class SubtitleFetchService(
         IReadOnlyCollection<string>? blockedKeys = null)
     {
         var hiPreference = SubtitleHearingImpairedPreferences.Normalize(hearingImpairedPreference);
+        // A hearing-impaired candidate this policy will strip back to plain
+        // text reads as plain to everything downstream of the modifier, so
+        // "plain only" should not refuse it — by the time it is written it is
+        // no longer hearing-impaired (#923). The written outcome still
+        // reports the original track's own flag, from `pick.HearingImpaired`
+        // below, not this rule.
+        var stripsHearingImpaired = contentPolicy?.StripHearingImpairedAnnotations == true;
+        var rankHiPreference = hiPreference == SubtitleHearingImpairedPreferences.PlainOnly && stripsHearingImpaired
+            ? SubtitleHearingImpairedPreferences.PlainPreferred
+            : hiPreference;
         var blocked = blockedKeys is null or { Count: 0 }
             ? null
             : new HashSet<string>(blockedKeys, StringComparer.OrdinalIgnoreCase);
@@ -194,7 +204,7 @@ public sealed class SubtitleFetchService(
                 // candidates, which the old "give up on the first pick" shape
                 // did, nor the rest of this file's languages, which a
                 // provider-level failure would have.
-                var ranked = Rank(candidates, language, hiPreference, videoPath, names)
+                var ranked = Rank(candidates, language, rankHiPreference, videoPath, names)
                     .Where(candidate => blocked is null || !blocked.Contains(SubtitleBlockKeys.For(provider.Key, candidate.DownloadToken)))
                     .ToArray();
 
@@ -231,8 +241,15 @@ public sealed class SubtitleFetchService(
                     operation = "write";
                     var modification = SubtitleContentModifier.Apply(subtitle, contentPolicy);
                     subtitle = modification.Content;
+                    // Stripped back to plain text, so it is written and
+                    // recorded as plain — not as a hearing-impaired track that
+                    // happens to read like one (#923's strip-counts-as-plain
+                    // rule applies to what Deluno wrote, not just to what it
+                    // was willing to pick).
+                    var writtenAsHearingImpaired = pick.HearingImpaired
+                        && !modification.AppliedRules.Contains("hearing-impaired annotations");
                     var written = await fileWriter.WriteAsync(
-                        videoPath, language, pick.HearingImpaired, subtitle, cancellationToken, omitLanguageCode);
+                        videoPath, language, writtenAsHearingImpaired, subtitle, cancellationToken, omitLanguageCode);
 
                     await RecordAsync(connection, "healthy",
                         $"Fetched a {language} subtitle for {request.Title}.", true, null, cancellationToken);
@@ -244,7 +261,7 @@ public sealed class SubtitleFetchService(
                         Found: true,
                         ProviderKey: provider.Key,
                         WrittenPath: written,
-                        HearingImpaired: pick.HearingImpaired,
+                        HearingImpaired: writtenAsHearingImpaired,
                         // The rung is said out loud, because "found it" and "found one
                         // that is in time" are different sentences and only one of
                         // them is worth trusting.
