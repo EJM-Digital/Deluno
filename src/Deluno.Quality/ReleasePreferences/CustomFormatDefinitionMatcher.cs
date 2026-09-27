@@ -697,19 +697,12 @@ public static partial class CustomFormatDefinitionMatcher
             pattern = pattern["regex:".Length..].Trim();
         }
 
-        if (pattern.AsSpan().ContainsAny(['*', '+', '?', '(', '|', '[', '\\', '^', '$']))
+        if (pattern.AsSpan().ContainsAny(['*', '+', '?', '(', '|', '[', '\\', '^', '$'])
+            && TitlePatterns.GetOrAdd(pattern, BuildTitlePattern) is { } regex)
         {
             try
             {
-                return Regex.IsMatch(
-                    releaseName,
-                    pattern,
-                    RegexOptions.IgnoreCase | RegexOptions.CultureInvariant,
-                    TimeSpan.FromMilliseconds(100));
-            }
-            catch (ArgumentException)
-            {
-                // An imported invalid regex remains usable as a literal rule.
+                return regex.IsMatch(releaseName);
             }
             catch (RegexMatchTimeoutException)
             {
@@ -718,6 +711,42 @@ public static partial class CustomFormatDefinitionMatcher
         }
 
         return lower.Contains(pattern.ToLowerInvariant(), StringComparison.Ordinal);
+    }
+
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, Regex?> TitlePatterns = new(StringComparer.Ordinal);
+
+    /// <summary>
+    /// #940: a wall-clock timeout is not a work limit. At 100 ms a thread
+    /// paused by a busy machine timed out on patterns that match in
+    /// microseconds, and the format silently counted as unmatched. The
+    /// linear-time engine cannot run away, so it needs no timeout; only the
+    /// patterns it cannot express (lookarounds, backreferences) use the
+    /// backtracking engine, with a limit no honest match comes near.
+    /// Null means an invalid regex, which stays usable as a literal rule.
+    /// </summary>
+    private static Regex? BuildTitlePattern(string pattern)
+    {
+        const RegexOptions options = RegexOptions.IgnoreCase | RegexOptions.CultureInvariant;
+        try
+        {
+            return new Regex(pattern, options | RegexOptions.NonBacktracking);
+        }
+        catch (NotSupportedException)
+        {
+        }
+        catch (ArgumentException)
+        {
+            return null;
+        }
+
+        try
+        {
+            return new Regex(pattern, options, TimeSpan.FromSeconds(5));
+        }
+        catch (ArgumentException)
+        {
+            return null;
+        }
     }
 
     private static bool MatchSource(string lower, string value)
