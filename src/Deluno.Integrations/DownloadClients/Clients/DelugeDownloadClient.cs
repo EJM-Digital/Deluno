@@ -19,7 +19,7 @@ public sealed class DelugeDownloadClient(IHttpClientFactory httpClientFactory) :
         // Deluge has a call for each kind of release: add_torrent_url fetches a
         // .torrent itself and cannot take a magnet, so a magnet sent there was
         // lost (#606).
-        var options = new Dictionary<string, object>();
+        var options = new Dictionary<string, object> { ["add_paused"] = client.AddPaused };
         var add = request.TorrentFile is { } file
             ? new DelugeRequest("core.add_torrent_file", [SafeFileName(request.ReleaseName) + ".torrent", Convert.ToBase64String(file), options], 2)
             : request.DownloadUrl.StartsWith("magnet:", StringComparison.OrdinalIgnoreCase)

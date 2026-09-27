@@ -104,6 +104,64 @@ public sealed class DownloadClientPersistenceTests
         Assert.Equal("sabnzbd", updated.UrlBase);
     }
 
+    // ── Add paused (#805) ─────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task CreateDownloadClientAsync_defaults_add_paused_to_false()
+    {
+        using var storage = TestStorage.Create();
+        var repo = await CreateRepositoryAsync(storage);
+
+        var created = await repo.CreateDownloadClientAsync(BaseCreateRequest(), CancellationToken.None);
+
+        Assert.False(created.AddPaused);
+    }
+
+    [Fact]
+    public async Task CreateDownloadClientAsync_persists_add_paused()
+    {
+        using var storage = TestStorage.Create();
+        var repo = await CreateRepositoryAsync(storage);
+
+        var created = await repo.CreateDownloadClientAsync(BaseCreateRequest() with { AddPaused = true }, CancellationToken.None);
+
+        Assert.True(created.AddPaused);
+        var reloaded = Assert.Single(await repo.ListDownloadClientsAsync(CancellationToken.None));
+        Assert.True(reloaded.AddPaused);
+    }
+
+    [Fact]
+    public async Task UpdateDownloadClientAsync_can_turn_add_paused_on()
+    {
+        using var storage = TestStorage.Create();
+        var repo = await CreateRepositoryAsync(storage);
+        var created = await repo.CreateDownloadClientAsync(BaseCreateRequest(), CancellationToken.None);
+
+        var updated = await repo.UpdateDownloadClientAsync(
+            created.Id,
+            new UpdateDownloadClientRequest(null, null, null, null, null, null, null, null, null, null, null, null, AddPaused: true),
+            CancellationToken.None);
+
+        Assert.NotNull(updated);
+        Assert.True(updated.AddPaused);
+    }
+
+    [Fact]
+    public async Task UpdateDownloadClientAsync_null_add_paused_preserves_existing_value()
+    {
+        using var storage = TestStorage.Create();
+        var repo = await CreateRepositoryAsync(storage);
+        var created = await repo.CreateDownloadClientAsync(BaseCreateRequest() with { AddPaused = true }, CancellationToken.None);
+
+        var updated = await repo.UpdateDownloadClientAsync(
+            created.Id,
+            new UpdateDownloadClientRequest(Name: "Renamed again", null, null, null, null, null, null, null, null, null, null, null),
+            CancellationToken.None);
+
+        Assert.NotNull(updated);
+        Assert.True(updated.AddPaused);
+    }
+
     // ── CreateDownloadClientAsync ─────────────────────────────────────────────
 
     [Fact]

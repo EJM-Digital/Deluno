@@ -14,4 +14,5 @@ public sealed record CreateDownloadClientRequest(
     int? Priority,
     bool IsEnabled,
     bool UseSsl = false,
-    string? UrlBase = null);
+    string? UrlBase = null,
+    bool AddPaused = false);

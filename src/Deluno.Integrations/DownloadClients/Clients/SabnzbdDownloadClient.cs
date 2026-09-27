@@ -32,7 +32,14 @@ public sealed class SabnzbdDownloadClient(IHttpClientFactory httpClientFactory) 
         // all that is mapped across. Omitted rather than forced to 0/Normal when
         // nothing was asked for, so an unset request still gets SABnzbd's own
         // default priority.
-        if (request.Priority is { } priority && priority != 0)
+        // #805: SABnzbd's own Paused priority (-2) outranks whatever the
+        // release's own urgency asked for — a batch someone queued paused by
+        // hand should stay paused, not jump the queue the moment it starts.
+        if (client.AddPaused)
+        {
+            query["priority"] = "-2";
+        }
+        else if (request.Priority is { } priority && priority != 0)
         {
             query["priority"] = (priority < 0 ? -1 : 1).ToString(CultureInfo.InvariantCulture);
         }

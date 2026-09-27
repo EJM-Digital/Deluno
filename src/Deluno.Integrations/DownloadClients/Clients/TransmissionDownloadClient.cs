@@ -18,7 +18,7 @@ public sealed class TransmissionDownloadClient(IHttpClientFactory httpClientFact
         // A .torrent Deluno fetched goes as metainfo; a URL or magnet as a
         // filename. The label is the category, which is how the queue and
         // import tell a film from an episode (#606).
-        var arguments = new Dictionary<string, object>();
+        var arguments = new Dictionary<string, object> { ["paused"] = client.AddPaused };
         if (request.TorrentFile is { } file)
         {
             arguments["metainfo"] = Convert.ToBase64String(file);

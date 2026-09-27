@@ -383,7 +383,8 @@ export function IndexersPage() {
       tvCategory: clientForm.tvCategory,
       categoryTemplate: clientForm.moviesCategory,
       priority: Number(clientForm.priority || 1),
-      isEnabled: clientForm.isEnabled
+      isEnabled: clientForm.isEnabled,
+      addPaused: clientForm.addPaused
     };
   }
 

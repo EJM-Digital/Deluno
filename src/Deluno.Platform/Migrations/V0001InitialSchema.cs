@@ -76,7 +76,8 @@ public static class PlatformDatabaseMigrations
         new V0068IndexerTrackerDefinition(),
         new V0069MediaServerPathMappings(),
         new V0070HealthChecks(),
-        new V0071DownloadClientSslAndUrlBase()
+        new V0071DownloadClientSslAndUrlBase(),
+        new V0072DownloadClientAddPaused()
     ];
 
     private sealed class V0001InitialSchema : SqliteSqlMigration

@@ -753,6 +753,8 @@ export interface DownloadClientItem {
   useSsl: boolean;
   /** Advanced: path prefix for a usenet client behind a reverse proxy, e.g. "sabnzbd" */
   urlBase?: string | null;
+  /** Add every grab to this client paused/queued instead of starting it immediately */
+  addPaused: boolean;
   /** Category used for movie downloads; maps to a folder/label in the client */
   moviesCategory?: string | null;
   /** Category used for TV show downloads */

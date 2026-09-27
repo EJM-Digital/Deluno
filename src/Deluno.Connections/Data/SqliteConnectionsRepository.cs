@@ -149,7 +149,7 @@ public sealed class SqliteConnectionsRepository(
                 is_enabled, health_status, last_health_message,
                 last_health_failure_category, last_health_latency_ms, last_health_test_utc,
                 created_utc, updated_utc,
-                last_health_failure_json, use_ssl, url_base
+                last_health_failure_json, use_ssl, url_base, add_paused
             FROM download_clients
             ORDER BY priority ASC, name ASC;
             """;
@@ -179,7 +179,8 @@ public sealed class SqliteConnectionsRepository(
                 LastHealthLatencyMs: reader.IsDBNull(16) ? null : reader.GetInt32(16),
                 LastHealthTestUtc: reader.IsDBNull(17) ? null : ParseTimestamp(reader.GetString(17)),
                 CreatedUtc: ParseTimestamp(reader.GetString(18)),
-                UpdatedUtc: ParseTimestamp(reader.GetString(19)))
+                UpdatedUtc: ParseTimestamp(reader.GetString(19)),
+                AddPaused: reader.GetInt64(23) == 1)
             {
                 LastHealthFailure = reader.IsDBNull(20) ? null : DeserializeFailure(reader.GetString(20))
             });
@@ -537,7 +538,8 @@ public sealed class SqliteConnectionsRepository(
             LastHealthLatencyMs: null,
             LastHealthTestUtc: null,
             CreatedUtc: now,
-            UpdatedUtc: now);
+            UpdatedUtc: now,
+            AddPaused: request.AddPaused);
 
         await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
             DelunoDatabaseNames.Platform,
@@ -548,13 +550,13 @@ public sealed class SqliteConnectionsRepository(
             """
             INSERT INTO download_clients (
                 id, name, protocol, host, port, username, secret, endpoint_url,
-                use_ssl, url_base,
+                use_ssl, url_base, add_paused,
                 movies_category, tv_category, category_template, priority,
                 is_enabled, health_status, last_health_message, created_utc, updated_utc
             )
             VALUES (
                 @id, @name, @protocol, @host, @port, @username, @secret, @endpointUrl,
-                @useSsl, @urlBase,
+                @useSsl, @urlBase, @addPaused,
                 @moviesCategory, @tvCategory, @categoryTemplate, @priority,
                 @isEnabled, @healthStatus, @lastHealthMessage, @createdUtc, @updatedUtc
             );
@@ -575,6 +577,7 @@ public sealed class SqliteConnectionsRepository(
         AddParameter(command, "@endpointUrl", item.EndpointUrl);
         AddParameter(command, "@useSsl", item.UseSsl ? 1 : 0);
         AddParameter(command, "@urlBase", item.UrlBase);
+        AddParameter(command, "@addPaused", item.AddPaused ? 1 : 0);
         AddParameter(command, "@moviesCategory", item.MoviesCategory);
         AddParameter(command, "@tvCategory", item.TvCategory);
         AddParameter(command, "@categoryTemplate", item.CategoryTemplate);
@@ -711,6 +714,7 @@ public sealed class SqliteConnectionsRepository(
         var newEndpoint = request.EndpointUrl is not null ? NormalizePath(request.EndpointUrl) : existing.EndpointUrl;
         var newUseSsl   = request.UseSsl ?? existing.UseSsl;
         var newUrlBase  = request.UrlBase is not null ? NormalizePath(request.UrlBase) : existing.UrlBase;
+        var newAddPaused = request.AddPaused ?? existing.AddPaused;
         var newMovieCat = request.MoviesCategory is not null ? NormalizeName(request.MoviesCategory) : existing.MoviesCategory;
         var newTvCat    = request.TvCategory is not null ? NormalizeName(request.TvCategory) : existing.TvCategory;
         var newCatTmpl  = request.CategoryTemplate is not null ? NormalizeName(request.CategoryTemplate) : existing.CategoryTemplate;
@@ -734,6 +738,7 @@ public sealed class SqliteConnectionsRepository(
                 endpoint_url = @endpointUrl,
                 use_ssl = @useSsl,
                 url_base = @urlBase,
+                add_paused = @addPaused,
                 movies_category = @moviesCategory,
                 tv_category = @tvCategory,
                 category_template = @categoryTemplate,
@@ -760,6 +765,7 @@ public sealed class SqliteConnectionsRepository(
         AddParameter(command, "@endpointUrl", newEndpoint);
         AddParameter(command, "@useSsl", newUseSsl ? 1 : 0);
         AddParameter(command, "@urlBase", newUrlBase);
+        AddParameter(command, "@addPaused", newAddPaused ? 1 : 0);
         AddParameter(command, "@moviesCategory", newMovieCat);
         AddParameter(command, "@tvCategory", newTvCat);
         AddParameter(command, "@categoryTemplate", newCatTmpl);
@@ -782,6 +788,7 @@ public sealed class SqliteConnectionsRepository(
             EndpointUrl      = newEndpoint,
             UseSsl           = newUseSsl,
             UrlBase          = newUrlBase,
+            AddPaused        = newAddPaused,
             MoviesCategory   = newMovieCat,
             TvCategory       = newTvCat,
             CategoryTemplate = newCatTmpl,

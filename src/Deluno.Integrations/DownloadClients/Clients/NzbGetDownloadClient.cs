@@ -33,7 +33,7 @@ public sealed class NzbGetDownloadClient(IHttpClientFactory httpClientFactory) :
                 // is low, 0 normal, positive high.
                 request.Priority ?? 0,
                 false,
-                false,
+                client.AddPaused,
                 string.Empty,
                 0,
                 "SCORE",

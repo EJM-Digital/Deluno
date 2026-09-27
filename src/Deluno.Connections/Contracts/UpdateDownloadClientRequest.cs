@@ -18,4 +18,5 @@ public sealed record UpdateDownloadClientRequest(
     int? Priority,
     bool? IsEnabled,
     bool? UseSsl = null,
-    string? UrlBase = null);
+    string? UrlBase = null,
+    bool? AddPaused = null);

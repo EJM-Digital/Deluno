@@ -47,12 +47,14 @@ public sealed class QbittorrentDownloadClient(Func<HttpMessageHandler>? handlerF
             ? new MultipartFormDataContent
             {
                 { new ByteArrayContent(file), "torrents", "release.torrent" },
-                { new StringContent(DownloadClientHelpers.ResolveCategory(client, request)), "category" }
+                { new StringContent(DownloadClientHelpers.ResolveCategory(client, request)), "category" },
+                { new StringContent(client.AddPaused ? "true" : "false"), "paused" }
             }
             : new FormUrlEncodedContent(
             [
                 new KeyValuePair<string, string>("urls", request.DownloadUrl),
-                new KeyValuePair<string, string>("category", DownloadClientHelpers.ResolveCategory(client, request))
+                new KeyValuePair<string, string>("category", DownloadClientHelpers.ResolveCategory(client, request)),
+                new KeyValuePair<string, string>("paused", client.AddPaused ? "true" : "false")
             ]);
         // What was there before, so the answer below can be about what actually
         // happened rather than about what was asked.
