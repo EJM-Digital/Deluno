@@ -143,6 +143,16 @@ public sealed class SqliteSubtitleProviderRepository(
     /// whether "needs you" says anything. A success resets the count — a source
     /// that failed twice last week and works now is a working source, and a
     /// counter that only goes up would eventually disable everything.</para>
+    ///
+    /// <para><b>A wrong login or a used-up quota actually pauses the provider
+    /// (#896).</b> Before this, the row recorded the failure and Deluno kept
+    /// asking it every cycle regardless — wasting a search attempt on a source
+    /// that cannot answer until a person fixes it. <c>is_enabled</c> is turned
+    /// off and <c>disabled_reason</c> is filled in, the same field the screen
+    /// already had a column for and nothing ever wrote to. Off is what
+    /// <see cref="SubtitleProviderConnection.IsAskable"/> already reads, so
+    /// this is the one write that makes "search again: no" true — no second
+    /// check anywhere else needs to know why.</para>
     /// </summary>
     public async Task RecordHealthAsync(
         string providerKey,
@@ -155,6 +165,7 @@ public sealed class SqliteSubtitleProviderRepository(
         IntegrationFailure? failure = null)
     {
         var now = timeProvider.GetUtcNow();
+        var isAuthFailure = !success && failure?.Kind == IntegrationFailureKind.Authentication;
 
         await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
             DelunoDatabaseNames.Platform,
@@ -171,6 +182,8 @@ public sealed class SqliteSubtitleProviderRepository(
                 consecutive_failures = CASE WHEN @success = 1 THEN 0 ELSE consecutive_failures + 1 END,
                 rate_limited_until_utc = COALESCE(@rateLimitedUntil, rate_limited_until_utc),
                 last_health_failure_json = @failureJson,
+                is_enabled = CASE WHEN @isAuthFailure = 1 THEN 0 ELSE is_enabled END,
+                disabled_reason = CASE WHEN @success = 1 THEN NULL WHEN @isAuthFailure = 1 THEN @message ELSE disabled_reason END,
                 updated_utc = @updatedUtc
             WHERE provider_key = @providerKey COLLATE NOCASE;
             """;
@@ -182,6 +195,7 @@ public sealed class SqliteSubtitleProviderRepository(
         AddParameter(command, "@success", success ? 1 : 0);
         AddParameter(command, "@rateLimitedUntil", rateLimitedUntilUtc?.ToString("O"));
         AddParameter(command, "@failureJson", failure is null ? null : JsonSerializer.Serialize(failure));
+        AddParameter(command, "@isAuthFailure", isAuthFailure ? 1 : 0);
         AddParameter(command, "@updatedUtc", now.ToString("O"));
         AddParameter(command, "@providerKey", providerKey);
 

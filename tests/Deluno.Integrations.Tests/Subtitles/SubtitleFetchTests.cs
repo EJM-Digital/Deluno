@@ -6,6 +6,8 @@ using Deluno.Connections.Data;
 using Deluno.Contracts;
 using Deluno.Filesystem;
 using Deluno.Integrations.Subtitles;
+using Deluno.Jobs.Contracts;
+using Deluno.Jobs.Data;
 using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Deluno.Integrations.Tests.Subtitles;
@@ -326,6 +328,48 @@ public sealed class SubtitleFetchTests
     }
 
     [Fact]
+    public async Task An_authentication_failure_is_written_to_activity_once_it_is_recorded()
+    {
+        // #896: the repository is what actually pauses the provider (proven
+        // in IntegrationHealthPersistenceTests); this proves the other half —
+        // that a person is told about it, in Activity, in plain words.
+        var provider = new FakeProvider("first", [], Srt) { ThrownException = new HttpRequestException(
+            "Unauthorized", null, System.Net.HttpStatusCode.Unauthorized) };
+        var repository = new FakeRepository([Connection("first")]);
+        var activity = new RecordingActivityFeedRepository();
+        var service = new SubtitleFetchService(
+            new SubtitleProviderRegistry([provider]), repository, new FakeWriter(),
+            TimeProvider.System, NullLogger<SubtitleFetchService>.Instance, activity);
+
+        await service.FetchAsync(
+            Request(), "en", false, @"D:\Media\Dune\Dune.mkv",
+            SubtitleHearingImpairedPreferences.PlainPreferred, CancellationToken.None);
+
+        var recorded = Assert.Single(activity.Recorded);
+        Assert.Equal("subtitle.provider.paused", recorded.Category);
+        Assert.Contains("first", recorded.Message, StringComparison.Ordinal);
+        Assert.Equal("subtitle-provider", recorded.RelatedEntityType);
+        Assert.Equal("first", recorded.RelatedEntityId);
+    }
+
+    [Fact]
+    public async Task A_non_authentication_failure_is_never_written_to_activity()
+    {
+        var provider = new FakeProvider("first", [], Srt) { Unreachable = true };
+        var repository = new FakeRepository([Connection("first")]);
+        var activity = new RecordingActivityFeedRepository();
+        var service = new SubtitleFetchService(
+            new SubtitleProviderRegistry([provider]), repository, new FakeWriter(),
+            TimeProvider.System, NullLogger<SubtitleFetchService>.Instance, activity);
+
+        await service.FetchAsync(
+            Request(), "en", false, @"D:\Media\Dune\Dune.mkv",
+            SubtitleHearingImpairedPreferences.PlainPreferred, CancellationToken.None);
+
+        Assert.Empty(activity.Recorded);
+    }
+
+    [Fact]
     public async Task A_rate_limited_provider_is_working_and_is_left_alone()
     {
         var provider = new FakeProvider("first", [], Srt) { RateLimited = true };
@@ -574,6 +618,7 @@ public sealed class SubtitleFetchTests
         public bool CredentialsOptional => false;
         public bool RateLimited { get; set; }
         public bool Unreachable { get; set; }
+        public Exception? ThrownException { get; set; }
         public int Searches { get; private set; }
         public string? LastDownloadToken { get; private set; }
 
@@ -586,6 +631,7 @@ public sealed class SubtitleFetchTests
             Searches++;
             if (RateLimited) throw new SubtitleProviderRateLimitedException(key, TimeSpan.FromMinutes(5));
             if (Unreachable) throw new HttpRequestException($"{key} could not be resolved.");
+            if (ThrownException is not null) throw ThrownException;
             return Task.FromResult(results);
         }
 
@@ -655,6 +701,34 @@ public sealed class SubtitleFetchTests
         }
 
         public Task<bool> DeleteAsync(string providerKey, CancellationToken cancellationToken)
+            => throw new NotSupportedException();
+    }
+
+    private sealed class RecordingActivityFeedRepository : IActivityFeedRepository
+    {
+        public List<(string Category, string Message, string? RelatedEntityType, string? RelatedEntityId)> Recorded { get; } = [];
+
+        public Task<IReadOnlyList<ActivityEventItem>> ListActivityAsync(
+            int take, string? relatedEntityType, string? relatedEntityId, CancellationToken cancellationToken)
+            => throw new NotSupportedException();
+
+        public Task<Page<ActivityEventItem>> ListActivityPageAsync(
+            PageRequest request, string? relatedEntityType, string? relatedEntityId, CancellationToken cancellationToken)
+            => throw new NotSupportedException();
+
+        public Task<ActivityEventItem> RecordActivityAsync(
+            string category, string message, string? detailsJson, string? relatedJobId,
+            string? relatedEntityType, string? relatedEntityId, CancellationToken cancellationToken)
+        {
+            Recorded.Add((category, message, relatedEntityType, relatedEntityId));
+            return Task.FromResult(new ActivityEventItem(
+                Id: Guid.NewGuid().ToString("n"), Category: category, Message: message, DetailsJson: detailsJson,
+                RelatedJobId: relatedJobId, RelatedEntityType: relatedEntityType, RelatedEntityId: relatedEntityId,
+                CreatedUtc: DateTimeOffset.UtcNow));
+        }
+
+        public Task<IReadOnlyList<ActivityEventItem>> RecordActivityBatchAsync(
+            IReadOnlyList<ActivityEventItem> activities, CancellationToken cancellationToken)
             => throw new NotSupportedException();
     }
 }
