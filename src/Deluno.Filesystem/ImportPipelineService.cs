@@ -65,7 +65,13 @@ public sealed partial class ImportPipelineService(
     // #765: only a test passes this, to fake a near-full or unreadable
     // volume without needing one. Returns available free bytes for the
     // folder's volume, or null when the filesystem could not report it.
-    Func<string, long?>? freeSpaceBytesProbe = null)
+    Func<string, long?>? freeSpaceBytesProbe = null,
+    // #852: reports a title available back to Seerr once it imports, for
+    // whichever open request(s) turned into this acquisition. All three are
+    // null in every test that does not exercise that path.
+    Deluno.Connections.Data.ISeerrAcquisitionsRepository? seerrAcquisitions = null,
+    Deluno.Connections.Data.ISeerrRepository? seerrRepository = null,
+    Deluno.Integrations.Seerr.ISeerrClient? seerrClient = null)
     : IImportPipelineService
 {
     private readonly TimeSpan _settleWindow = settleWindow ?? ImportFileReadiness.SettleWindow;
@@ -596,6 +602,8 @@ public sealed partial class ImportPipelineService(
                 mediaType == "tv" ? "series" : "movie",
                 catalogImportResult.EntityId,
                 cancellationToken);
+
+            await ReportSeerrAvailabilityAsync(mediaType, catalogImportResult.EntityId, cancellationToken);
 
             await DispatchImportOutcomeNotificationAsync(
                 "import.completed",
@@ -4302,6 +4310,61 @@ public sealed partial class ImportPipelineService(
             network,
             replaceIllegalCharacters: replaceIllegalCharacters,
             colonReplacementMode: colonReplacementMode);
+
+    /// <summary>
+    /// #852: once an import completes for a title Deluno acquired through a
+    /// Seerr approval (#851), tells that Seerr server the title is now
+    /// available — the same call its own scanners make once they see the
+    /// file on disk — instead of leaving Seerr to poll and wait, or leaving
+    /// it never told at all.
+    ///
+    /// <para>A missing acquisitions/repository/client dependency (every test
+    /// that does not exercise this path) is a silent no-op, the same way an
+    /// absent optional notification service is elsewhere in this class.
+    /// Reaching Seerr but failing is logged to the connection's own settings
+    /// card instead, never to the import result: a Seerr outage must never
+    /// fail an import that already landed.</para>
+    /// </summary>
+    private async Task ReportSeerrAvailabilityAsync(string mediaType, string? entityId, CancellationToken cancellationToken)
+    {
+        if (seerrAcquisitions is null || seerrRepository is null || seerrClient is null || string.IsNullOrWhiteSpace(entityId))
+        {
+            return;
+        }
+
+        try
+        {
+            var acquisition = await seerrAcquisitions.FindLatestAddedAsync(mediaType, entityId, cancellationToken);
+            if (acquisition is null)
+            {
+                return;
+            }
+
+            var connection = await seerrRepository.GetAsync(acquisition.ConnectionId, cancellationToken);
+            if (connection is null || !connection.IsEnabled)
+            {
+                return;
+            }
+
+            var answer = await seerrClient.MarkAvailableAsync(connection, acquisition.SeerrMediaId, cancellationToken);
+            if (answer is Deluno.Integrations.MediaServers.MediaServerAnswer<bool>.Reported)
+            {
+                await seerrAcquisitions.UpdateStatusAsync(acquisition.Id, "available", null, cancellationToken);
+            }
+            else
+            {
+                var reason = answer is Deluno.Integrations.MediaServers.MediaServerAnswer<bool>.Unreachable unreachable
+                    ? unreachable.Reason
+                    : "Seerr could not confirm availability.";
+                await seerrAcquisitions.UpdateStatusAsync(acquisition.Id, "available-failed", reason, cancellationToken);
+                logger.LogWarning("Could not report {Title} available back to {Connection}: {Reason}", acquisition.Title, connection.Name, reason);
+            }
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Reporting import completion back to Seerr failed for {MediaType} {EntityId}.", mediaType, entityId);
+        }
+    }
 
     /// <summary>
     /// #762: the per-season subfolder a series folder splits into, or null

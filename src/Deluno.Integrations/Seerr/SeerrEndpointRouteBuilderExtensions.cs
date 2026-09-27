@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Deluno.Connections.Contracts;
 using Deluno.Connections.Data;
 using Deluno.Security;
@@ -75,8 +76,66 @@ public static class SeerrEndpointRouteBuilderExtensions
             return Results.Ok(result);
         });
 
+        servers.MapGet("{id}/acquisitions", async (
+            string id,
+            [FromServices] ISeerrAcquisitionsRepository acquisitions,
+            CancellationToken cancellationToken)
+            => Results.Ok(await acquisitions.ListRecentAsync(id, take: 20, cancellationToken)));
+
+        // #851: Overseerr/Jellyseerr call this on their own webhook agent, one
+        // per request-status change. No Deluno session exists to authorize —
+        // the connection id in the path is what scopes the call, the same way
+        // a scoped API key link would. A server that has never been asked for
+        // is exactly the state every install starts in, so this never sends a
+        // request an install did not itself configure Seerr to make.
+        endpoints.MapPost("/api/seerr-servers/{id}/webhook", async (
+            string id,
+            HttpRequest request,
+            [FromServices] ISeerrRepository repository,
+            [FromServices] ISeerrAcquisitionService acquisitionService,
+            [FromServices] ISeerrAcquisitionsRepository acquisitions,
+            CancellationToken cancellationToken) =>
+        {
+            var connection = await repository.GetAsync(id, cancellationToken);
+            if (connection is null || !connection.IsEnabled)
+            {
+                return Results.NotFound();
+            }
+
+            using var document = await JsonDocument.ParseAsync(request.Body, cancellationToken: cancellationToken);
+            var root = document.RootElement;
+            var notificationType = TextOf(root, "notification_type");
+            if (notificationType is not ("MEDIA_APPROVED" or "MEDIA_AUTO_APPROVED"))
+            {
+                // Every other notification type (pending, declined, available,
+                // a test ping) is acknowledged but never turned into an add.
+                return Results.Ok();
+            }
+
+            if (!root.TryGetProperty("media", out var media))
+            {
+                return Results.Ok();
+            }
+
+            var mediaType = TextOf(media, "media_type") == "tv" ? "tv" : "movies";
+            var tmdbId = TextOf(media, "tmdbId");
+            var tvdbId = TextOf(media, "tvdbId");
+            if (!int.TryParse(TextOf(media, "media_id") ?? TextOf(media, "id"), out var seerrMediaId))
+            {
+                return Results.Ok();
+            }
+
+            var outcome = await acquisitionService.AcquireAsync(connection, mediaType, tmdbId, tvdbId, seerrMediaId, cancellationToken);
+            return Results.Ok(new { outcome.Ok, outcome.Message });
+        });
+
         return endpoints;
     }
+
+    private static string? TextOf(JsonElement element, string name)
+        => element.TryGetProperty(name, out var value) && value.ValueKind is JsonValueKind.String or JsonValueKind.Number
+            ? value.ValueKind == JsonValueKind.String ? value.GetString() : value.GetRawText()
+            : null;
 
     private static SeerrConnection Draft(SaveSeerrRequest request, SeerrConnection? stored)
     {

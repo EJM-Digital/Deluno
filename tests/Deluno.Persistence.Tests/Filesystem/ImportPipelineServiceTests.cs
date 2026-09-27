@@ -114,6 +114,89 @@ public sealed class ImportPipelineServiceTests
     }
 
     /// <summary>
+    /// #852: once a title Deluno acquired through a Seerr approval (#851)
+    /// finishes importing, Deluno reports it available back to that Seerr
+    /// server, the same call Overseerr's own scanners make.
+    /// </summary>
+    [Fact]
+    public async Task ExecuteAsync_reports_the_import_available_back_to_seerr_for_a_seerr_linked_movie()
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-04-29T08:00:00Z"));
+        await InitializeAllAsync(storage, timeProvider);
+
+        var downloadsPath = Path.Combine(storage.DataRoot, "downloads");
+        var movieRootPath = Path.Combine(storage.DataRoot, "movies");
+        Directory.CreateDirectory(downloadsPath);
+        Directory.CreateDirectory(movieRootPath);
+        var sourcePath = Path.Combine(downloadsPath, "Arrival.2016.WEB.1080p.mkv");
+        await File.WriteAllBytesAsync(sourcePath, Enumerable.Range(0, 4096).Select(value => (byte)(value % 251)).ToArray());
+        File.SetLastWriteTimeUtc(sourcePath, DateTime.UtcNow.AddMinutes(-1));
+
+        var platform = CreatePlatformRepository(storage, timeProvider);
+        var libraries = CreateLibrariesRepository(storage, timeProvider);
+        await SaveSettingsAsync(platform, movieRootPath, downloadsPath);
+        await libraries.CreateLibraryAsync(
+            new CreateLibraryRequest(
+                Name: "Movies", MediaType: "movies", Purpose: "Main", RootPath: movieRootPath, DownloadsPath: downloadsPath,
+                QualityProfileId: null, ImportWorkflow: "standard", ProcessorName: null, ProcessorOutputPath: null,
+                ProcessorTimeoutMinutes: null, ProcessorFailureMode: null, AutoSearchEnabled: true, MissingSearchEnabled: true,
+                UpgradeSearchEnabled: true, SearchIntervalHours: 6, RetryDelayHours: 24, MaxItemsPerRun: 25),
+            CancellationToken.None);
+
+        var movies = new SqliteMovieCatalogRepository(storage.Factory, timeProvider);
+        // Pre-existing, the way a title Seerr approved already is by the time
+        // #851 adds it — the import that follows must find this same row.
+        var existing = await movies.AddAsync(new CreateMovieRequest("Arrival", 2016, "tt2543164"), CancellationToken.None);
+
+        var seerrRepository = new SqliteSeerrRepository(storage.Factory, timeProvider, TestSecretProtection.Create(storage));
+        var seerrConnection = await seerrRepository.SaveAsync(null, new SaveSeerrRequest("Lab Seerr", "http://127.0.0.1:5055", "key-1", true), CancellationToken.None);
+        var seerrAcquisitions = new SqliteSeerrAcquisitionsRepository(storage.Factory, timeProvider);
+        await seerrAcquisitions.RecordAsync(seerrConnection!.Id, seerrConnection.Name, "movies", existing.Id, "Arrival", seerrMediaId: 99, "added", null, CancellationToken.None);
+
+        var seerrClient = new RecordingSeerrClient();
+        var service = CreateService(storage, timeProvider, platform, libraries, movies, seerrAcquisitions: seerrAcquisitions, seerrRepository: seerrRepository, seerrClient: seerrClient);
+
+        var result = await service.ExecuteAsync(
+            new ImportExecuteRequest(
+                Preview: new ImportPreviewRequest(
+                    SourcePath: sourcePath, FileName: null, MediaType: "movies", Title: "Arrival", Year: 2016,
+                    Genres: [], Tags: [], Studio: null, OriginalLanguage: null, ImdbId: "tt2543164",
+                    // The catalogue write this import lands on: without a
+                    // grab's own dispatch, this is the only way the import
+                    // pipeline's CatalogImportResult carries back which movie
+                    // row the file belongs to (see MarkCatalogImportedAsync's
+                    // "EntityId = dispatch?.EntityId ?? request.SeriesId").
+                    SeriesId: existing.Id),
+                TransferMode: "copy", Overwrite: false, AllowCopyFallback: true),
+            CancellationToken.None);
+
+        Assert.True(result.Succeeded);
+        Assert.Equal(seerrConnection.Id, Assert.Single(seerrClient.MarkedAvailable).ConnectionId);
+        Assert.Equal(99, Assert.Single(seerrClient.MarkedAvailable).SeerrMediaId);
+
+        var updated = Assert.Single(await seerrAcquisitions.ListRecentAsync(seerrConnection.Id, 10, CancellationToken.None));
+        Assert.Equal("available", updated.Status);
+    }
+
+    private sealed class RecordingSeerrClient : Deluno.Integrations.Seerr.ISeerrClient
+    {
+        public List<(string ConnectionId, int SeerrMediaId)> MarkedAvailable { get; } = [];
+
+        public Task<Deluno.Connections.Contracts.SeerrTestResult> TestAsync(SeerrConnection connection, CancellationToken cancellationToken) => throw new NotSupportedException();
+
+        public Task<Deluno.Integrations.MediaServers.MediaServerAnswer<Deluno.Integrations.Seerr.SeerrLibrary>> ListRequestsAsync(SeerrConnection connection, CancellationToken cancellationToken) => throw new NotSupportedException();
+
+        public Task<Deluno.Integrations.MediaServers.MediaServerAnswer<Deluno.Integrations.Seerr.SeerrClearing>> ClearAsync(SeerrConnection connection, string mediaType, string? tmdbId, string? tvdbId, CancellationToken cancellationToken) => throw new NotSupportedException();
+
+        public Task<Deluno.Integrations.MediaServers.MediaServerAnswer<bool>> MarkAvailableAsync(SeerrConnection connection, int seerrMediaId, CancellationToken cancellationToken)
+        {
+            MarkedAvailable.Add((connection.Id, seerrMediaId));
+            return Task.FromResult<Deluno.Integrations.MediaServers.MediaServerAnswer<bool>>(new Deluno.Integrations.MediaServers.MediaServerAnswer<bool>.Reported(true));
+        }
+    }
+
+    /// <summary>
     /// #764: RenameFoldersOnImport and RenameOnImport are independent -- all
     /// four combinations, against a source that is itself a release folder
     /// (the only case Deluno has a name to keep for).
@@ -6376,7 +6459,10 @@ public sealed class ImportPipelineServiceTests
         Deluno.Recovery.Services.IDownloadClientActionGateway? downloadClientActions = null,
         Func<string, long?>? freeSpaceBytesProbe = null,
         IBlockedReleaseRepository? blockedReleases = null,
-        IImportFailureRuleRepository? failureRules = null)
+        IImportFailureRuleRepository? failureRules = null,
+        Deluno.Connections.Data.ISeerrAcquisitionsRepository? seerrAcquisitions = null,
+        Deluno.Connections.Data.ISeerrRepository? seerrRepository = null,
+        Deluno.Integrations.Seerr.ISeerrClient? seerrClient = null)
         => new(
             platform,
             librariesRepository,
@@ -6403,7 +6489,10 @@ public sealed class ImportPipelineServiceTests
             // fixtures on a real (if nearly full) CI disk never trip the
             // guard by accident; individual tests override it to exercise
             // the guard deliberately.
-            freeSpaceBytesProbe: freeSpaceBytesProbe ?? (_ => long.MaxValue));
+            freeSpaceBytesProbe: freeSpaceBytesProbe ?? (_ => long.MaxValue),
+            seerrAcquisitions: seerrAcquisitions,
+            seerrRepository: seerrRepository,
+            seerrClient: seerrClient);
 
     private static FilesystemReconciliationService CreateReconciliationService(
         TestStorage storage,

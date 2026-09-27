@@ -65,6 +65,67 @@ public sealed class SeerrPersistenceTests
         Assert.Equal(["movies:653", "movies:653", "movies:653"], client.Asked);
     }
 
+    /// <summary>#851: the library/quality-profile mapping a server's approvals should land in round-trips, and stays null (today's "first library of that type" fallback) until set.</summary>
+    [Fact]
+    public async Task A_servers_library_mapping_round_trips_and_defaults_to_unset()
+    {
+        using var storage = TestStorage.Create();
+        var repository = await RepositoryAsync(storage);
+
+        var created = await repository.SaveAsync(null, new SaveSeerrRequest("Lab Seerr", "http://127.0.0.1:5055", "key-1", true), CancellationToken.None);
+        Assert.Null(created!.MovieLibraryId);
+        Assert.Null(created.SeriesLibraryId);
+
+        var mapped = await repository.SaveAsync(
+            created.Id,
+            new SaveSeerrRequest(
+                "Lab Seerr", "http://127.0.0.1:5055", "",
+                IsEnabled: true,
+                MovieLibraryId: "library-movies",
+                MovieQualityProfileId: "profile-movies",
+                SeriesLibraryId: "library-tv",
+                SeriesQualityProfileId: "profile-tv"),
+            CancellationToken.None);
+
+        Assert.Equal(("library-movies", "profile-movies", "library-tv", "profile-tv"),
+            (mapped!.MovieLibraryId, mapped.MovieQualityProfileId, mapped.SeriesLibraryId, mapped.SeriesQualityProfileId));
+
+        var reloaded = await repository.GetAsync(created.Id, CancellationToken.None);
+        Assert.Equal("library-movies", reloaded!.MovieLibraryId);
+    }
+
+    /// <summary>#851/#852: the acquisitions log records an add, is listed newest-first per server, and #852's own lookup finds the latest "added" row by Deluno's entity id.</summary>
+    [Fact]
+    public async Task Acquisitions_are_recorded_listed_and_found_by_entity()
+    {
+        using var storage = TestStorage.Create();
+        var clock = new FixedTimeProvider(DateTimeOffset.Parse("2026-09-17T12:00:00Z"));
+        await new PlatformSchemaInitializer(
+            storage.Factory,
+            new SqliteDatabaseMigrator(storage.Factory, clock),
+            NullLogger<PlatformSchemaInitializer>.Instance).StartAsync(CancellationToken.None);
+        var repository = new SqliteSeerrAcquisitionsRepository(storage.Factory, clock);
+
+        await repository.RecordAsync("conn-1", "Lab Seerr", "movies", "movie-1", "Arrival", 501, "added", null, CancellationToken.None);
+        clock.Advance(TimeSpan.FromMinutes(1));
+        await repository.RecordAsync("conn-1", "Lab Seerr", "movies", "movie-2", "Sicario", 502, "failed", "No provider id", CancellationToken.None);
+
+        var recent = await repository.ListRecentAsync("conn-1", 10, CancellationToken.None);
+        Assert.Equal(2, recent.Count);
+        Assert.Equal("Sicario", recent[0].Title); // newest first
+
+        var found = await repository.FindLatestAddedAsync("movies", "movie-1", CancellationToken.None);
+        Assert.NotNull(found);
+        Assert.Equal(501, found!.SeerrMediaId);
+        Assert.Equal("added", found.Status);
+
+        Assert.Null(await repository.FindLatestAddedAsync("movies", "movie-2", CancellationToken.None)); // only "failed", never "added"
+
+        await repository.UpdateStatusAsync(found.Id, "available", null, CancellationToken.None);
+        var updated = await repository.FindLatestAddedAsync("movies", "movie-1", CancellationToken.None);
+        Assert.Null(updated); // no longer "added" once marked available
+    }
+
     private static async Task<SqliteSeerrRepository> RepositoryAsync(TestStorage storage)
     {
         await new PlatformSchemaInitializer(
@@ -91,5 +152,7 @@ public sealed class SeerrPersistenceTests
                 ? new MediaServerAnswer<SeerrClearing>.Unreachable($"Deluno could not reach {connection.Name}.")
                 : new MediaServerAnswer<SeerrClearing>.Reported(new SeerrClearing(true, "cleared")));
         }
+
+        public Task<MediaServerAnswer<bool>> MarkAvailableAsync(SeerrConnection connection, int seerrMediaId, CancellationToken cancellationToken) => throw new NotSupportedException();
     }
 }
