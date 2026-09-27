@@ -26,6 +26,13 @@ public class NotificationPreferences
     public bool SubtitleUpgradedEnabled { get; set; } = true;
     public bool SubtitleFailedEnabled { get; set; } = true;
 
+    // Lifecycle triggers beyond import-failed (#856). None of these fired
+    // outbound before, so each defaults off -- nothing new fires unannounced.
+    public bool UpgradeEnabled { get; set; } = false;
+    public bool RenameEnabled { get; set; } = false;
+    public bool FileDeletedEnabled { get; set; } = false;
+    public bool ManualInteractionRequiredEnabled { get; set; } = false;
+
     // Delivery methods
     public bool InAppNotificationsEnabled { get; set; } = true;
     public bool EmailNotificationsEnabled { get; set; } = false;
