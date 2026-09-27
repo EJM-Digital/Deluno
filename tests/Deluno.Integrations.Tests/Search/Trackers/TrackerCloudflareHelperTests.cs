@@ -162,6 +162,15 @@ public sealed class TrackerCloudflareHelperTests
                 HelperUserAgent,
                 [new Cookie("cf_clearance", "cleared", "/", url.Host)]));
         }
+
+        public Task<CloudflareSolution?> PostAsync(Uri url, IReadOnlyDictionary<string, string> formData, CancellationToken cancellationToken)
+            => FetchAsync(url, cancellationToken);
+
+        public Task DestroySessionAsync(string host, CancellationToken cancellationToken) => Task.CompletedTask;
+
+        public Task DestroyAllSessionsAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+
+        public Task ReconcileSessionsAsync(IReadOnlyCollection<string> activeHosts, CancellationToken cancellationToken) => Task.CompletedTask;
     }
 
     private sealed class FakeHandler(Func<HttpRequestMessage, HttpResponseMessage> answer) : HttpMessageHandler

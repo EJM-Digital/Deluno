@@ -452,6 +452,11 @@ public static class PlatformEndpointRouteBuilderExtensions
             errors["libraryFreeSpacePausePercent"] = ["Choose a percentage between 1 and 50."];
         }
 
+        if (request.CloudflareHelperTimeoutSeconds is { } helperTimeout && (helperTimeout < 1 || helperTimeout > 180))
+        {
+            errors["cloudflareHelperTimeoutSeconds"] = ["Choose a timeout between 1 and 180 seconds."];
+        }
+
         if (!errors.ContainsKey("libraryFreeSpaceWarnPercent") &&
             !errors.ContainsKey("libraryFreeSpacePausePercent") &&
             request.LibraryFreeSpacePausePercent is { } pauseValue &&

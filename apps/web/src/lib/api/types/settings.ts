@@ -43,6 +43,8 @@ export interface PlatformSettingsSnapshot {
   urlBase: string;
   /** A FlareSolverr-compatible helper for trackers behind a Cloudflare check (#628). */
   cloudflareHelperUrl?: string | null;
+  /** The helper's own request timeout, 1-180 seconds, default 60 (#749). */
+  cloudflareHelperTimeoutSeconds: number;
   requireAuthentication: boolean;
   uiTheme: string;
   uiColorMode: "standard" | "impaired" | string;
@@ -277,6 +279,7 @@ export const emptyPlatformSettingsSnapshot: PlatformSettingsSnapshot = {
   hostPort: 5099,
   urlBase: "",
   cloudflareHelperUrl: null,
+  cloudflareHelperTimeoutSeconds: 60,
   requireAuthentication: true,
   uiTheme: "system",
   uiColorMode: "standard",

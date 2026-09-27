@@ -200,6 +200,10 @@ public sealed class SqlitePlatformSettingsRepository(
         // actually use. Two different bounds would mean the screen could show a
         // cadence Deluno never runs at.
         await UpsertSettingAsync(connection, transaction, "search.cloudflareHelperUrl", NormalizeName(request.CloudflareHelperUrl)?.TrimEnd('/') ?? string.Empty, updatedUtc, cancellationToken);
+        // #749: the helper's own SolveBudget, previously a hard-coded 60
+        // seconds. Clamped the same way on save and on read, so a value that
+        // survives being saved is a value the helper will actually use.
+        await UpsertSettingAsync(connection, transaction, "search.cloudflareHelperTimeoutSeconds", Math.Clamp(request.CloudflareHelperTimeoutSeconds ?? 60, 1, 180).ToString(CultureInfo.InvariantCulture), updatedUtc, cancellationToken);
         // #766: matches Radarr/Sonarr's Permissions section. Off by default
         // (#936); the chmod/chown themselves only ever run on a non-Windows
         // host, in ImportPipelineService, and only when Deluno's own process
@@ -577,6 +581,7 @@ public sealed class SqlitePlatformSettingsRepository(
             ImportRecoveryRetentionDays: int.TryParse(GetValue(settings, "media.importRecoveryRetentionDays"), NumberStyles.Integer, CultureInfo.InvariantCulture, out var retentionDays) && retentionDays > 0 ? retentionDays : 30,
             LibraryFileCheckHours: int.TryParse(GetValue(settings, "library.fileCheckHours"), NumberStyles.Integer, CultureInfo.InvariantCulture, out var fileCheckHours) && fileCheckHours > 0 ? Math.Clamp(fileCheckHours, 1, 168) : 6,
             CloudflareHelperUrl: string.IsNullOrWhiteSpace(GetValue(settings, "search.cloudflareHelperUrl")) ? null : GetValue(settings, "search.cloudflareHelperUrl"),
+            CloudflareHelperTimeoutSeconds: int.TryParse(GetValue(settings, "search.cloudflareHelperTimeoutSeconds"), NumberStyles.Integer, CultureInfo.InvariantCulture, out var helperTimeoutSeconds) && helperTimeoutSeconds > 0 ? Math.Clamp(helperTimeoutSeconds, 1, 180) : 60,
             UpdatedUtc: DateTimeOffset.UtcNow,
             MdbListApiKeyConfigured: !string.IsNullOrWhiteSpace(GetValue(settings, "intake.mdblistApiKey")),
             DownloadHealthStrikeThreshold: ReadDownloadHealthStrikeThreshold(settings),

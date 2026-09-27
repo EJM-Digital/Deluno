@@ -64,6 +64,7 @@ public static class PlatformSettingsPatchMerger
             TimeFormat: patch.TimeFormat ?? current.TimeFormat,
             ShowRelativeDates: patch.ShowRelativeDates ?? current.ShowRelativeDates,
             CloudflareHelperUrl: patch.CloudflareHelperUrl ?? current.CloudflareHelperUrl,
+            CloudflareHelperTimeoutSeconds: patch.CloudflareHelperTimeoutSeconds ?? current.CloudflareHelperTimeoutSeconds,
             DownloadHealthNoProgressEnabled: patch.DownloadHealthNoProgressEnabled ?? current.DownloadHealthNoProgressEnabled,
             DownloadHealthNoProgressMinutes: patch.DownloadHealthNoProgressMinutes ?? current.DownloadHealthNoProgressMinutes,
             DownloadHealthMinSpeedEnabled: patch.DownloadHealthMinSpeedEnabled ?? current.DownloadHealthMinSpeedEnabled,
