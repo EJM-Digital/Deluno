@@ -12,6 +12,7 @@ using Deluno.Media;
 using Deluno.Movies.Contracts;
 using Deluno.Movies.Data;
 using Deluno.Notifications;
+using Deluno.Notifications.Contracts;
 using Deluno.Platform;
 using Deluno.Quality;
 using Deluno.Retention;
@@ -41,6 +42,8 @@ public sealed class RetentionRuleTests
     private readonly Mock<IUnifiedExclusionRepository> _exclusions = new();
     private readonly InMemoryRetentionRepository _store = new();
     private readonly Mock<IOutboundNotificationService> _notifications = new();
+    private readonly Mock<INotificationService> _notificationPreferences = new();
+    private NotificationPreferences _preferences = new();
     private readonly MutableClock _clock = new(Now);
     private readonly Mock<IRecycleBinService> _recycleBin = new();
     private readonly FakeDisk _disk = new();
@@ -66,6 +69,7 @@ public sealed class RetentionRuleTests
             .ReturnsAsync((string id, CancellationToken _) => _catalogue.FirstOrDefault(movie => movie.Id == id));
         _movies.Setup(repo => repo.DeleteAsync(It.IsAny<string>(), It.IsAny<CancellationToken>())).ReturnsAsync(true);
         _servers.Setup(repo => repo.ListAsync(It.IsAny<CancellationToken>())).ReturnsAsync([_server]);
+        _notificationPreferences.Setup(service => service.GetPreferencesAsync(It.IsAny<CancellationToken>())).ReturnsAsync(() => _preferences);
         _qualityModel.Setup(service => service.GetAsync(It.IsAny<CancellationToken>())).ReturnsAsync(new QualityModelSnapshot(
             "quality-model/v2",
             [
@@ -417,6 +421,39 @@ public sealed class RetentionRuleTests
         Assert.Equal("e2", Assert.Single(await _store.ListEpisodeRemovalsAsync("s1", CancellationToken.None)).EpisodeId);
     }
 
+    /// <summary>#856: retention deleting an episode's files fires the same
+    /// "file.deleted" outbound event a manual delete does, gated by the same
+    /// toggle.</summary>
+    [Fact]
+    public async Task A_season_removed_by_a_rule_dispatches_file_deleted_when_the_toggle_is_on()
+    {
+        _preferences = new NotificationPreferences { FileDeletedEnabled = true };
+        SeasonLibrary();
+        var rule = Rule(Keep("server.allEpisodesSeenBy:everyone:")) with { Level = RetentionLevels.Season, WaitDays = 1 };
+        _store.Add(rule);
+        await Service().CheckAsync(rule, "schedule", CancellationToken.None);
+
+        _clock.Now = Now.AddDays(2);
+        await Service().CheckAsync(rule, "schedule", CancellationToken.None);
+
+        _notifications.Verify(service => service.DispatchAsync("file.deleted", It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task A_season_removed_by_a_rule_stays_silent_when_the_file_deleted_toggle_is_off()
+    {
+        _preferences = new NotificationPreferences { FileDeletedEnabled = false };
+        SeasonLibrary();
+        var rule = Rule(Keep("server.allEpisodesSeenBy:everyone:")) with { Level = RetentionLevels.Season, WaitDays = 1 };
+        _store.Add(rule);
+        await Service().CheckAsync(rule, "schedule", CancellationToken.None);
+
+        _clock.Now = Now.AddDays(2);
+        await Service().CheckAsync(rule, "schedule", CancellationToken.None);
+
+        _notifications.Verify(service => service.DispatchAsync("file.deleted", It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
     /// <summary>
     /// #931: "removed outside Deluno" (and the unmonitor that comes with it)
     /// is FilesystemReconciliationService's own rule for a file the reconciliation
@@ -438,7 +475,7 @@ public sealed class RetentionRuleTests
             var intake = new Mock<IIntakeRepository>();
             var removal = new TitleRemovalService(_libraries.Object, intake.Object, Mock.Of<IJobQueueRepository>(), activity.Object, _recycleBin.Object);
             return new RetentionService(_store, Evaluator(), removal, _movies.Object, _series.Object, _libraries.Object, _recycleBin.Object, _exclusions.Object,
-                new MediaServerClientRegistry([_jellyfin.Object]), _seerr, activity.Object, _notifications.Object, _clock, NullLogger<RetentionService>.Instance);
+                new MediaServerClientRegistry([_jellyfin.Object]), _seerr, activity.Object, _notifications.Object, _clock, NullLogger<RetentionService>.Instance, _notificationPreferences.Object);
         }
 
         await ServiceWithCapturedActivity().CheckAsync(rule, "schedule", CancellationToken.None);
@@ -545,7 +582,7 @@ public sealed class RetentionRuleTests
         var intake = new Mock<IIntakeRepository>();
         var removal = new TitleRemovalService(_libraries.Object, intake.Object, Mock.Of<IJobQueueRepository>(), Mock.Of<IActivityFeedRepository>(), _recycleBin.Object);
         return new RetentionService(_store, Evaluator(), removal, _movies.Object, _series.Object, _libraries.Object, _recycleBin.Object, _exclusions.Object,
-            new MediaServerClientRegistry([_jellyfin.Object]), _seerr, Mock.Of<IActivityFeedRepository>(), _notifications.Object, _clock, NullLogger<RetentionService>.Instance);
+            new MediaServerClientRegistry([_jellyfin.Object]), _seerr, Mock.Of<IActivityFeedRepository>(), _notifications.Object, _clock, NullLogger<RetentionService>.Instance, _notificationPreferences.Object);
     }
 
     /// <summary>Breaking Bad: season 1 watched by everyone, season 2 by one person.</summary>

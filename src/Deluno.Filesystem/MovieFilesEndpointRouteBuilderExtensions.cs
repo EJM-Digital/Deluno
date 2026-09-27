@@ -1,12 +1,16 @@
+using System.Text.Json;
 using Deluno.Contracts;
 using Deluno.Jobs.Data;
 using Deluno.Media;
 using Deluno.Movies.Contracts;
 using Deluno.Movies.Data;
+using Deluno.Notifications;
+using Deluno.Notifications.Contracts;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Routing;
+using Microsoft.Extensions.Logging;
 
 namespace Deluno.Filesystem;
 
@@ -244,6 +248,9 @@ public static class MovieFilesEndpointRouteBuilderExtensions
             IMediaSubtitleRepository mediaSubtitleRepository,
             IActivityFeedRepository activityFeedRepository,
             IRealtimeEventPublisher realtimeEventPublisher,
+            ILogger<MovieFileDeleteNotification> logger,
+            [FromServices] IOutboundNotificationService? outboundNotificationService,
+            [FromServices] INotificationService? notificationService,
             CancellationToken cancellationToken) =>
         {
             var movie = await repository.GetByIdAsync(id, cancellationToken);
@@ -259,6 +266,8 @@ public static class MovieFilesEndpointRouteBuilderExtensions
                     ["path"] = ["That file could not be found under this title's own folder."]
                 });
             }
+
+            var fileName = Path.GetFileName(targetPath);
 
             try
             {
@@ -292,6 +301,21 @@ public static class MovieFilesEndpointRouteBuilderExtensions
                 id,
                 cancellationToken);
             await realtimeEventPublisher.PublishEntityChangedAsync("Movie", id, cancellationToken);
+
+            // Same "file delete" concept the import pipeline fires for a
+            // replaced file (#856) - a person deleting a file by hand from
+            // the Files tab is just as much a file being removed.
+            await NotificationOutboundDispatch.DispatchIfEnabledAsync(
+                outboundNotificationService,
+                notificationService,
+                "file.deleted",
+                $"File removed: {fileName}",
+                $"{fileName} was deleted from {movie.Title}'s folder.",
+                JsonSerializer.Serialize(new { fileName, movieId = id, wasPrimary }),
+                prefs => prefs.FileDeletedEnabled,
+                "movie-files-delete",
+                logger,
+                cancellationToken);
 
             return Results.Ok(new { deleted = true, wasPrimary });
         });
@@ -333,6 +357,9 @@ public static class MovieFilesEndpointRouteBuilderExtensions
 /// public, so this rule is tested directly rather than only through the
 /// endpoints that lean on it (#782).
 /// </summary>
+/// <summary>Log-category marker for the movie Files tab's delete endpoint (#856); the endpoint class itself is static and cannot be an ILogger&lt;T&gt; argument.</summary>
+public sealed class MovieFileDeleteNotification;
+
 public static class MovieFilePathSafety
 {
     public static bool TryResolveWithinFolder(string folder, string? requestedPath, out string resolved)

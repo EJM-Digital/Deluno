@@ -6,9 +6,13 @@ using Deluno.Intake.Data;
 using Deluno.Jobs.Contracts;
 using Deluno.Jobs.Data;
 using Deluno.Libraries.Data;
+using Deluno.Notifications;
+using Deluno.Notifications.Contracts;
 using Deluno.Platform;
 using Deluno.Platform.Contracts;
 using Deluno.Platform.Data;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Deluno.Media;
 
@@ -68,7 +72,13 @@ public sealed class TitleRemovalService(
     // never hold up removing a title.
     IJobScheduler? mediaServerJobScheduler = null,
     IDownloadClientTelemetryService? downloadClientTelemetry = null,
-    IMediaSubtitleRepository? subtitleRepository = null)
+    IMediaSubtitleRepository? subtitleRepository = null,
+    // #856: a title removed with its files is the same "file delete" concept
+    // as a replaced file's own delete, whether a person asked for it here or
+    // a retention rule did (the only two callers of this service).
+    IOutboundNotificationService? outboundNotificationService = null,
+    INotificationService? notificationService = null,
+    ILogger<TitleRemovalService>? logger = null)
 {
     public async Task<Dictionary<string, string?>> RemoveAsync(
         TitleToRemove title,
@@ -138,6 +148,23 @@ public sealed class TitleRemovalService(
                         PayloadJson: JsonSerializer.Serialize(payload),
                         RelatedEntityType: title.EntityType,
                         RelatedEntityId: title.Id),
+                    cancellationToken);
+            }
+
+            if (trackedFiles.Count > 0)
+            {
+                await NotificationOutboundDispatch.DispatchIfEnabledAsync(
+                    outboundNotificationService,
+                    notificationService,
+                    "file.deleted",
+                    $"Files removed: {title.Title}",
+                    options.Reason is { Length: > 0 } deleteReason
+                        ? $"{title.Title}'s files were removed: {deleteReason}."
+                        : $"{title.Title}'s files were removed from Deluno.",
+                    JsonSerializer.Serialize(new { title.Title, title.EntityType, title.Id, fileCount = trackedFiles.Count, options.Reason }),
+                    prefs => prefs.FileDeletedEnabled,
+                    "title-removal",
+                    logger ?? NullLogger<TitleRemovalService>.Instance,
                     cancellationToken);
             }
         }
