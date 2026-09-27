@@ -1912,6 +1912,214 @@ public sealed class ImportPipelineServiceTests
         Assert.DoesNotContain(report.Issues, item => item.Kind == "missingTrackedFile");
     }
 
+    /// <summary>
+    /// #913 / cleanup sheet K4, restart mid-copy: a "move" transfer had
+    /// already consumed the original download into the staging file when the
+    /// app stopped, so only the staged copy - not the original - survives.
+    /// The source is "still there" in the sense the acceptance means it: a
+    /// complete file exists to finish importing from.
+    /// </summary>
+    [Fact]
+    public async Task RestartRecovery_finishes_an_import_whose_staged_copy_survived_the_restart()
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-04-29T08:00:00Z"));
+        await InitializeAllAsync(storage, timeProvider);
+
+        var downloadsPath = Path.Combine(storage.DataRoot, "downloads");
+        var movieRootPath = Path.Combine(storage.DataRoot, "movies");
+        Directory.CreateDirectory(downloadsPath);
+        Directory.CreateDirectory(movieRootPath);
+
+        var platform = CreatePlatformRepository(storage, timeProvider);
+        var libraries = CreateLibrariesRepository(storage, timeProvider);
+        await SaveSettingsAsync(platform, movieRootPath, downloadsPath);
+        await CreateMovieLibraryAsync(libraries, movieRootPath, downloadsPath);
+
+        var movies = new SqliteMovieCatalogRepository(storage.Factory, timeProvider);
+        var jobStore = new SqliteJobStore(storage.Factory, timeProvider, new NullRealtimeEventPublisher(), new NullDownloadDispatchesRepository());
+        var service = CreateService(storage, timeProvider, platform, libraries, movies);
+
+        // A "move" transfer already consumed this path into the staging file
+        // below, so the original download no longer exists - only the marker
+        // and the fully-copied staging file remain, exactly as a crash right
+        // after the move-into-staging step would leave them.
+        var sourcePath = Path.Combine(downloadsPath, "Sanctuary.2024.WEB.1080p.mkv");
+        var destinationPath = Path.Combine(movieRootPath, "staged-destination.mkv");
+        var stagingPath = destinationPath + ".deluno-stage-restarttest.tmp";
+        var bytes = Enumerable.Range(0, 4096).Select(value => (byte)(value % 251)).ToArray();
+        await File.WriteAllBytesAsync(stagingPath, bytes);
+        File.SetLastWriteTimeUtc(stagingPath, DateTime.UtcNow.AddMinutes(-1));
+        await File.WriteAllTextAsync(
+            stagingPath + ".deluno-marker.json",
+            JsonSerializer.Serialize(new ImportRestartMarker(sourcePath, destinationPath, stagingPath, "movies", "Sanctuary (2024)")));
+
+        var recovery = CreateRestartRecoveryService(libraries, service, jobStore);
+        var report = await recovery.RecoverAsync(CancellationToken.None);
+
+        Assert.Equal(1, report.Recovered);
+        Assert.Equal(0, report.Abandoned);
+        Assert.False(File.Exists(stagingPath));
+        Assert.False(File.Exists(stagingPath + ".deluno-marker.json"));
+        Assert.False(File.Exists(sourcePath), "the recovered content was consumed by the fresh import, not left behind twice");
+
+        // The reissued import carries no confirmed metadata (the marker only
+        // knows a display title), so - correctly, per #643/#888 - it lands as
+        // an import recovery case rather than guessing a catalogue entry. The
+        // point under test is that the file was placed and the pipeline ran
+        // again at all, which the recovery case proves.
+        Assert.Single((await movies.GetImportRecoverySummaryAsync(CancellationToken.None)).RecentCases);
+
+        var activity = await jobStore.ListActivityAsync(50, null, null, CancellationToken.None);
+        Assert.Contains(activity, entry => entry.Category == "filesystem.import.restart-recovered" &&
+            entry.Message.Contains("Finished an import interrupted by a restart", StringComparison.Ordinal));
+    }
+
+    /// <summary>
+    /// #913: restart mid-copy where a "copy" transfer left the original
+    /// download untouched. Recovery should re-import from that original
+    /// rather than requiring the (possibly incomplete) partial copy.
+    /// </summary>
+    [Fact]
+    public async Task RestartRecovery_finishes_an_import_whose_original_source_survived_the_restart()
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-04-29T08:00:00Z"));
+        await InitializeAllAsync(storage, timeProvider);
+
+        var downloadsPath = Path.Combine(storage.DataRoot, "downloads");
+        var movieRootPath = Path.Combine(storage.DataRoot, "movies");
+        Directory.CreateDirectory(downloadsPath);
+        Directory.CreateDirectory(movieRootPath);
+
+        var platform = CreatePlatformRepository(storage, timeProvider);
+        var libraries = CreateLibrariesRepository(storage, timeProvider);
+        await SaveSettingsAsync(platform, movieRootPath, downloadsPath);
+        await CreateMovieLibraryAsync(libraries, movieRootPath, downloadsPath);
+
+        var movies = new SqliteMovieCatalogRepository(storage.Factory, timeProvider);
+        var jobStore = new SqliteJobStore(storage.Factory, timeProvider, new NullRealtimeEventPublisher(), new NullDownloadDispatchesRepository());
+        var service = CreateService(storage, timeProvider, platform, libraries, movies);
+
+        var sourcePath = Path.Combine(downloadsPath, "Sanctuary.2024.WEB.1080p.mkv");
+        await File.WriteAllBytesAsync(sourcePath, Enumerable.Range(0, 4096).Select(value => (byte)(value % 251)).ToArray());
+        File.SetLastWriteTimeUtc(sourcePath, DateTime.UtcNow.AddMinutes(-1));
+        var destinationPath = Path.Combine(movieRootPath, "staged-destination.mkv");
+        var stagingPath = destinationPath + ".deluno-copy-restarttest.tmp";
+        await File.WriteAllTextAsync(stagingPath, "half-written");
+        await File.WriteAllTextAsync(
+            stagingPath + ".deluno-marker.json",
+            JsonSerializer.Serialize(new ImportRestartMarker(sourcePath, destinationPath, stagingPath, "movies", "Sanctuary (2024)")));
+
+        var recovery = CreateRestartRecoveryService(libraries, service, jobStore);
+        var report = await recovery.RecoverAsync(CancellationToken.None);
+
+        Assert.Equal(1, report.Recovered);
+        Assert.False(File.Exists(stagingPath), "the incomplete partial copy is never left behind");
+        Assert.False(File.Exists(stagingPath + ".deluno-marker.json"));
+
+        // As above: no confirmed metadata means this correctly becomes an
+        // import recovery case rather than a guessed catalogue entry.
+        Assert.Single((await movies.GetImportRecoverySummaryAsync(CancellationToken.None)).RecentCases);
+    }
+
+    /// <summary>
+    /// #913: when neither the original download nor a fully-copied staging
+    /// file survived the restart, Deluno can only remove the leftover and
+    /// say so - never blocklist on nothing but a restart.
+    /// </summary>
+    [Fact]
+    public async Task RestartRecovery_tells_you_when_nothing_survived_the_restart_and_never_blocklists()
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-04-29T08:00:00Z"));
+        await InitializeAllAsync(storage, timeProvider);
+
+        var downloadsPath = Path.Combine(storage.DataRoot, "downloads");
+        var movieRootPath = Path.Combine(storage.DataRoot, "movies");
+        Directory.CreateDirectory(downloadsPath);
+        Directory.CreateDirectory(movieRootPath);
+
+        var platform = CreatePlatformRepository(storage, timeProvider);
+        var libraries = CreateLibrariesRepository(storage, timeProvider);
+        await SaveSettingsAsync(platform, movieRootPath, downloadsPath);
+        await CreateMovieLibraryAsync(libraries, movieRootPath, downloadsPath);
+
+        var movies = new SqliteMovieCatalogRepository(storage.Factory, timeProvider);
+        var jobStore = new SqliteJobStore(storage.Factory, timeProvider, new NullRealtimeEventPublisher(), new NullDownloadDispatchesRepository());
+        var service = CreateService(storage, timeProvider, platform, libraries, movies);
+
+        var sourcePath = Path.Combine(downloadsPath, "Gone.2024.WEB.1080p.mkv");
+        var destinationPath = Path.Combine(movieRootPath, "gone-destination.mkv");
+        var stagingPath = destinationPath + ".deluno-copy-restarttest.tmp";
+        await File.WriteAllTextAsync(
+            stagingPath + ".deluno-marker.json",
+            JsonSerializer.Serialize(new ImportRestartMarker(sourcePath, destinationPath, stagingPath, "movies", "Gone (2024)")));
+        // Neither the incomplete copy nor the original download exists - the
+        // marker is the only trace of the interrupted attempt.
+
+        var recovery = CreateRestartRecoveryService(libraries, service, jobStore);
+        var report = await recovery.RecoverAsync(CancellationToken.None);
+
+        Assert.Equal(0, report.Recovered);
+        Assert.Equal(1, report.Abandoned);
+        Assert.False(File.Exists(stagingPath + ".deluno-marker.json"));
+
+        var activity = await jobStore.ListActivityAsync(50, null, null, CancellationToken.None);
+        Assert.Contains(activity, entry => entry.Category == "filesystem.import.restart-abandoned" &&
+            entry.Message.Contains("Could not finish an import interrupted by a restart", StringComparison.Ordinal) &&
+            entry.Message.Contains("Nothing was blocklisted", StringComparison.Ordinal));
+
+        var summary = await movies.GetImportRecoverySummaryAsync(CancellationToken.None);
+        Assert.Empty(summary.RecentCases);
+    }
+
+    /// <summary>
+    /// #913: a crash between the final move and deleting the marker leaves a
+    /// fully-imported file with a stray marker/staging leftover next to it.
+    /// Recovery must recognise the import already finished rather than
+    /// re-importing on top of it.
+    /// </summary>
+    [Fact]
+    public async Task RestartRecovery_cleans_up_a_marker_left_behind_after_the_file_was_already_placed()
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-04-29T08:00:00Z"));
+        await InitializeAllAsync(storage, timeProvider);
+
+        var downloadsPath = Path.Combine(storage.DataRoot, "downloads");
+        var movieRootPath = Path.Combine(storage.DataRoot, "movies");
+        Directory.CreateDirectory(downloadsPath);
+        Directory.CreateDirectory(movieRootPath);
+
+        var platform = CreatePlatformRepository(storage, timeProvider);
+        var libraries = CreateLibrariesRepository(storage, timeProvider);
+        await SaveSettingsAsync(platform, movieRootPath, downloadsPath);
+        await CreateMovieLibraryAsync(libraries, movieRootPath, downloadsPath);
+
+        var movies = new SqliteMovieCatalogRepository(storage.Factory, timeProvider);
+        var jobStore = new SqliteJobStore(storage.Factory, timeProvider, new NullRealtimeEventPublisher(), new NullDownloadDispatchesRepository());
+        var service = CreateService(storage, timeProvider, platform, libraries, movies);
+
+        var sourcePath = Path.Combine(downloadsPath, "Placed.2024.WEB.1080p.mkv");
+        var destinationPath = Path.Combine(movieRootPath, "placed-destination.mkv");
+        await File.WriteAllTextAsync(destinationPath, "already imported");
+        var stagingPath = destinationPath + ".deluno-stage-restarttest.tmp";
+        await File.WriteAllTextAsync(stagingPath, "stray leftover");
+        await File.WriteAllTextAsync(
+            stagingPath + ".deluno-marker.json",
+            JsonSerializer.Serialize(new ImportRestartMarker(sourcePath, destinationPath, stagingPath, "movies", "Placed (2024)")));
+
+        var recovery = CreateRestartRecoveryService(libraries, service, jobStore);
+        var report = await recovery.RecoverAsync(CancellationToken.None);
+
+        Assert.Equal(1, report.Recovered);
+        Assert.False(File.Exists(stagingPath));
+        Assert.False(File.Exists(stagingPath + ".deluno-marker.json"));
+        Assert.True(File.Exists(destinationPath));
+        Assert.Equal("already imported", await File.ReadAllTextAsync(destinationPath));
+    }
+
     [Fact]
     public async Task Reconciliation_reports_orphans_and_cleans_only_deluno_artifacts_on_explicit_repair()
     {
@@ -5882,6 +6090,16 @@ public sealed class ImportPipelineServiceTests
             new SqliteSeriesCatalogRepository(storage.Factory, timeProvider),
             new SqliteJobStore(storage.Factory, timeProvider, new NullRealtimeEventPublisher(), new NullDownloadDispatchesRepository()),
             timeProvider);
+
+    private static ImportRestartRecoveryService CreateRestartRecoveryService(
+        ILibrariesRepository librariesRepository,
+        IImportPipelineService importPipelineService,
+        IActivityFeedRepository activityFeedRepository)
+        => new(
+            librariesRepository,
+            importPipelineService,
+            activityFeedRepository,
+            NullLogger<ImportRestartRecoveryService>.Instance);
 
     private static async Task CreateMovieLibraryAsync(
         ILibrariesRepository librariesRepository,
