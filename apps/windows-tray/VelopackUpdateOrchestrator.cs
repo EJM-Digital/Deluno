@@ -8,7 +8,7 @@ namespace Deluno.Tray;
 public sealed class VelopackUpdateOrchestrator(ILogger<VelopackUpdateOrchestrator> logger) : IUpdateOrchestrator
 {
     private readonly SemaphoreSlim _gate = new(1, 1);
-    private readonly string _currentVersion = Assembly.GetEntryAssembly()?.GetName().Version?.ToString(3) ?? "0.0.0";
+    private readonly string _currentVersion = Deluno.Api.DelunoVersion.Running;
     private readonly UpdateStateMachine _runtime = new();
     private UpdateManager? _manager;
     private string _managerKey = string.Empty;
