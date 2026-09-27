@@ -83,6 +83,17 @@ public static class DownloadHealthStrikes
     /// <summary>The client says it is stalled, or reports an error.</summary>
     public const string ClientStalled = "client-stalled";
 
+    /// <summary>
+    /// The client itself reports a local setup problem — a full disk, an I/O
+    /// error, a permissions problem, or files missing from disk (#880, #881)
+    /// — rather than anything about the release. Deliberately excluded from
+    /// <see cref="Counts"/>: a strike, a blocklist entry and a replacement
+    /// search all answer "is this release dead", and a setup problem does not
+    /// touch that question. Fixing the machine clears it; nothing here should
+    /// ever remove the download, delete its files, or search for another.
+    /// </summary>
+    public const string ClientSetupProblem = "client-setup-problem";
+
     /// <summary>Nothing has arrived for at least half an hour.</summary>
     public const string NoThroughput = "no-throughput";
 

@@ -158,7 +158,14 @@ public sealed class QbittorrentDownloadClient(Func<HttpMessageHandler>? handlerF
             // completed; it is 0 while still downloading.
             Ratio: item.Ratio,
             SeedingMinutes: item.SeedingTimeSeconds is null ? null : (int)Math.Clamp(item.SeedingTimeSeconds.Value / 60, 0, int.MaxValue),
-            UploadSpeedMbps: Math.Round((item.UploadSpeed ?? 0) / 1_000_000d, 1)))
+            UploadSpeedMbps: Math.Round((item.UploadSpeed ?? 0) / 1_000_000d, 1),
+            // #880/#881: qBittorrent only says something specific in the state
+            // string itself for missingFiles (the payload is gone from disk)
+            // and a bare "error" state (I/O, permissions, disk space). Both
+            // are this machine's problem, not the release's — a plain
+            // stalled/stalledDL state (no seeds, no error text) is left as a
+            // release-side finding.
+            IsSetupProblem: IsSetupProblemState(item.State)))
             .Select(item => DownloadClientHelpers.ReconcileTorrentStatus(item, capturedUtc))
             .ToArray();
         return CreateSnapshot(client, queue, capturedUtc, "healthy", $"Connected to qBittorrent at {baseUri.Host}:{baseUri.Port}.");
@@ -349,6 +356,17 @@ public sealed class QbittorrentDownloadClient(Func<HttpMessageHandler>? handlerF
             : state?.Contains("error", StringComparison.OrdinalIgnoreCase) == true
                 ? state
                 : null;
+
+    /// <summary>
+    /// Whether qBittorrent's own state string is this machine's problem, not
+    /// the release's (#880, #881): the payload missing from disk, or a bare
+    /// "error" state (I/O, permissions, disk space — qBittorrent gives no
+    /// finer detail than the word itself). A plain stalled/stalledDL state,
+    /// with no error text, means no seeds or peers, which is a question about
+    /// the release, so it is not a setup problem.
+    /// </summary>
+    private static bool IsSetupProblemState(string? state)
+        => ErrorMessage(state) is not null;
 
     private static async Task LoginAsync(HttpClient http, DownloadClientItem client, CancellationToken cancellationToken)
     {

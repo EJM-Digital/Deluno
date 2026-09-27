@@ -421,6 +421,13 @@ public sealed class SabnzbdDownloadClient(IHttpClientFactory httpClientFactory) 
     }
 
     private static long ParseHistorySize(JsonElement? value) => value is { ValueKind: JsonValueKind.Number } number && number.TryGetInt64(out var parsed) ? parsed : value is not null && long.TryParse(value.Value.ToString(), NumberStyles.Integer, CultureInfo.InvariantCulture, out parsed) ? parsed : 0;
+    // #880/#881: SABnzbd has no per-item signal for a local setup problem
+    // while a slot is still in the live queue — a full disk shows up as a
+    // client-wide diskspace1 warning (EvaluateDiskSpaceHealth, which already
+    // never strikes an item), and a slot that actually fails repair or
+    // extraction moves to history rather than staying in the queue with this
+    // status. So a queue-level QueueError here stays a release-side finding,
+    // same as before.
     private static string? QueueError(string? status) => string.IsNullOrWhiteSpace(status) ? null : status.Contains("fail", StringComparison.OrdinalIgnoreCase) || status.Contains("error", StringComparison.OrdinalIgnoreCase) || status.Contains("stall", StringComparison.OrdinalIgnoreCase) ? status : null;
     private static string NormalizeHistoryOutcome(string value) => value.Equals("completed", StringComparison.OrdinalIgnoreCase) || value.Equals("succeeded", StringComparison.OrdinalIgnoreCase) || value.Equals("success", StringComparison.OrdinalIgnoreCase) ? DownloadQueueStatuses.Completed : value.Contains("fail", StringComparison.OrdinalIgnoreCase) || value.Contains("error", StringComparison.OrdinalIgnoreCase) ? "failed" : value.Contains("import", StringComparison.OrdinalIgnoreCase) ? DownloadQueueStatuses.ImportReady : value.Length == 0 ? "unknown" : value.Trim().ToLowerInvariant();
 

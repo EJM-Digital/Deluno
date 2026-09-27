@@ -20,11 +20,28 @@ public sealed class DownloadHealthEvaluator : IRecoveryHealthEvaluator
     {
         var findings = new List<RecoveryHealthFinding>();
 
-        if (item.Status == "stalled" || !string.IsNullOrWhiteSpace(item.ErrorMessage))
+        if (item.IsSetupProblem)
+        {
+            // #880/#881: a full disk, an I/O error, a permissions problem, or
+            // files missing from disk is a problem on this machine, not a
+            // dead release. It stays visible until fixed, but it never earns
+            // a strike, and DownloadHealthStrikes.Counts excludes its Kind so
+            // it can never blocklist, replace, remove from the client, or
+            // delete anything on its own.
+            findings.Add(new(
+                Severity: "critical",
+                Kind: DownloadHealthStrikes.ClientSetupProblem,
+                Summary: "This looks like a problem on your machine, not the release.",
+                Evidence: string.IsNullOrWhiteSpace(item.ErrorMessage) ? $"Queue status: {item.Status}." : item.ErrorMessage,
+                RecommendedAction: "Check disk space, folder permissions, and that the client can reach its files, then Resume or Recheck once it's fixed.",
+                CanSafelyRetry: true,
+                CanSafelyRemove: false));
+        }
+        else if (item.Status == "stalled" || !string.IsNullOrWhiteSpace(item.ErrorMessage))
         {
             findings.Add(new(
                 Severity: "critical",
-                Kind: "client-stalled",
+                Kind: DownloadHealthStrikes.ClientStalled,
                 Summary: "Download client reported this item as stalled or errored.",
                 Evidence: string.IsNullOrWhiteSpace(item.ErrorMessage) ? $"Queue status: {item.Status}." : item.ErrorMessage,
                 RecommendedAction: "Inspect the client error, then use Recheck or Resume if the client supports it.",

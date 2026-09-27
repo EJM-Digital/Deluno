@@ -93,6 +93,24 @@ public sealed class TransmissionSharingAndStallTests
         Assert.Equal(DownloadQueueStatuses.Queued, item.Status);
     }
 
+    /// <summary>
+    /// #880/#881: Transmission's own error field distinguishes a local
+    /// problem (3, TR_STAT_LOCAL_ERROR — disk space, permissions) from the
+    /// tracker complaining about the release (1 warning, 2 error). Only the
+    /// local one is a setup problem.
+    /// </summary>
+    [Theory]
+    [InlineData(3, true)]
+    [InlineData(1, false)]
+    [InlineData(2, false)]
+    [InlineData(0, false)]
+    public async Task IsSetupProblem_reflects_only_transmissions_local_error_code(int errorCode, bool expected)
+    {
+        var item = await Snapshot(status: 4, percentDone: 0.4, uploadRatio: null, secondsSeeding: null, peersSendingToUs: 1, isStalled: false, error: errorCode, errorString: errorCode == 0 ? null : "Something went wrong");
+
+        Assert.Equal(expected, item.IsSetupProblem);
+    }
+
     private static async Task<DownloadQueueItem> Snapshot(
         int status,
         double percentDone,
@@ -100,13 +118,16 @@ public sealed class TransmissionSharingAndStallTests
         long? secondsSeeding,
         int peersSendingToUs,
         bool isStalled,
-        int peersConnected = 0)
+        int peersConnected = 0,
+        int error = 0,
+        string? errorString = null)
     {
         var torrentGet = "{\"result\":\"success\",\"arguments\":{\"torrents\":[{\"id\":7,\"name\":\"Sherlock.Jr.1924.1080p.BluRay\","
             + $"\"status\":{status},\"percentDone\":{percentDone.ToString(CultureInfo.InvariantCulture)},"
             + $"\"totalSize\":5000000000,\"downloadedEver\":2000000000,\"peersConnected\":{peersConnected},\"peersSendingToUs\":{peersSendingToUs},"
             + $"\"addedDate\":{DateTimeOffset.UtcNow.AddMinutes(-10).ToUnixTimeSeconds()},\"rateDownload\":0,\"rateUpload\":0,\"eta\":0,"
-            + $"\"isStalled\":{(isStalled ? "true" : "false")}"
+            + $"\"isStalled\":{(isStalled ? "true" : "false")},\"error\":{error}"
+            + (errorString is null ? string.Empty : $",\"errorString\":\"{errorString}\"")
             + (uploadRatio is null ? string.Empty : $",\"uploadRatio\":{uploadRatio.Value.ToString(CultureInfo.InvariantCulture)}")
             + (secondsSeeding is null ? string.Empty : $",\"secondsSeeding\":{secondsSeeding.Value.ToString(CultureInfo.InvariantCulture)}")
             + "}]}}";

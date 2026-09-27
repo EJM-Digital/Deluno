@@ -13,7 +13,18 @@ public sealed record RecoveryQueueSnapshot(
     DateTimeOffset AddedUtc,
     int EtaSeconds,
     string ReleaseName,
-    int Peers = 0);
+    int Peers = 0,
+    /// <summary>
+    /// The client itself said this is a local setup problem — a full disk, an
+    /// I/O error, a permissions problem, or files missing from disk (#880,
+    /// #881) — rather than anything about the release. Each client adapter
+    /// sets this from what it actually reports (qBittorrent's own error
+    /// states, Transmission's local-error code, Deluge's daemon message as
+    /// distinct from a tracker error). A setup problem never counts a strike
+    /// and never blocks or replaces the release: fixing the machine is what
+    /// clears it, not a different download.
+    /// </summary>
+    bool IsSetupProblem = false);
 
 public sealed record RecoveryHealthFinding(
     string Severity,

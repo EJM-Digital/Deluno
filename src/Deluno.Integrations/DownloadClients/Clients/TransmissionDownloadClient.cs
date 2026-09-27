@@ -89,7 +89,15 @@ public sealed class TransmissionDownloadClient(IHttpClientFactory httpClientFact
             // costs no extra request. secondsSeeding is 0 while still downloading.
             Ratio: item.UploadRatio,
             SeedingMinutes: item.SecondsSeeding is null ? null : (int)Math.Clamp(item.SecondsSeeding.Value / 60, 0, int.MaxValue),
-            UploadSpeedMbps: Math.Round((item.RateUpload ?? 0) / 1_000_000d, 1)))
+            UploadSpeedMbps: Math.Round((item.RateUpload ?? 0) / 1_000_000d, 1),
+            // #880/#881: Transmission's own error field distinguishes a local
+            // problem from a tracker one. TR_STAT_LOCAL_ERROR (3) is
+            // Transmission's word for a problem on this machine — disk space,
+            // permissions, a missing file — while TR_STAT_TRACKER_WARNING (1)
+            // and TR_STAT_TRACKER_ERROR (2) are the tracker refusing or
+            // complaining about the release itself, which stays a release-side
+            // finding.
+            IsSetupProblem: item.Error == TrLocalError))
             .Select(item => DownloadClientHelpers.ReconcileTorrentStatus(item, capturedUtc))
             .ToArray();
         return CreateSnapshot(client, queue, capturedUtc, "healthy", $"Connected to Transmission at {baseUri.Host}:{baseUri.Port}.");
@@ -177,6 +185,14 @@ public sealed class TransmissionDownloadClient(IHttpClientFactory httpClientFact
                 $"Deluno could not read Transmission's download folder: {ex.Message}", Supported: true, Found: false);
         }
     }
+
+    /// <summary>
+    /// Transmission's <c>error</c> field: 0 none, 1 tracker warning, 2 tracker
+    /// error, 3 local error (#880, #881) — a problem on this machine, such as
+    /// disk space or permissions, that Transmission distinguishes from
+    /// anything the tracker said about the release.
+    /// </summary>
+    internal const int TrLocalError = 3;
 
     public override string NormalizeStatus(string? nativeStatus, double? progress, int? errorCode = null, string? errorMessage = null)
     {

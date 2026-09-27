@@ -65,6 +65,21 @@ public sealed class QbittorrentStateMappingTests
         Assert.Equal("qBittorrent reports this torrent's data is missing from disk.", item.ErrorMessage);
     }
 
+    /// <summary>#880/#881: missingFiles and a bare "error" state are this machine's problem, never the release's.</summary>
+    [Theory]
+    [InlineData("missingFiles", true)]
+    [InlineData("error", true)]
+    // A plain stalled state, with no error text, means no seeds or peers - a
+    // question about the release, not a setup problem.
+    [InlineData("stalledDL", false)]
+    [InlineData("downloading", false)]
+    public async Task IsSetupProblem_reflects_whether_qbittorrent_reported_a_local_error(string state, bool expected)
+    {
+        var item = await Snapshot(state, 0.4);
+
+        Assert.Equal(expected, item.IsSetupProblem);
+    }
+
     [Fact]
     public async Task Peers_is_seeds_plus_leechers()
     {
