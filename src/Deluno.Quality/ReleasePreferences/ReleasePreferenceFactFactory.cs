@@ -111,7 +111,9 @@ public static class ReleasePreferenceFactFactory
         string? indexerFlags = null,
         // What this indexer's own MULTI tag means (#746), e.g.
         // "Original, French". Null keeps the fixed "Multilingual" default.
-        string? multiLanguages = null)
+        string? multiLanguages = null,
+        // The candidate's total size (#775), for a "size" condition.
+        long? releaseSizeBytes = null)
     {
         ArgumentNullException.ThrowIfNull(plan);
         var facts = new List<PreferenceFact>();
@@ -178,7 +180,7 @@ public static class ReleasePreferenceFactFactory
             AddObserved(facts, "audio.language", DetectLanguage(lower), evidenceSource);
         }
         AddObserved(facts, "unwanted", DetectUnwanted(lower), evidenceSource);
-        AddPlanMatcherFacts(facts, plan, releaseName, indexerFlags);
+        AddPlanMatcherFacts(facts, plan, releaseName, indexerFlags, releaseSizeBytes);
 
         return facts;
     }
@@ -187,9 +189,10 @@ public static class ReleasePreferenceFactFactory
         ICollection<PreferenceFact> facts,
         ReleasePreferencePlan plan,
         string releaseName,
-        string? indexerFlags)
+        string? indexerFlags,
+        long? releaseSizeBytes)
     {
-        foreach (var result in ReleasePreferenceFormatEvidenceFactory.Evaluate(plan, releaseName, indexerFlags: indexerFlags))
+        foreach (var result in ReleasePreferenceFormatEvidenceFactory.Evaluate(plan, releaseName, indexerFlags: indexerFlags, releaseSizeBytes: releaseSizeBytes))
         {
             foreach (var (traitId, state) in result.TraitIds
                          .Select(traitId => (traitId, PreferenceFactState.Present))

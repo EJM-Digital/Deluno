@@ -16,8 +16,9 @@ public static class ReleasePreferenceFormatEvidenceFactory
         string filePath,
         IReadOnlyList<CustomFormatItem>? customFormats,
         GuidePackage? package = null,
-        string? indexerFlags = null)
-        => Evaluate(plan, filePath, customFormats, package, indexerFlags)
+        string? indexerFlags = null,
+        long? releaseSizeBytes = null)
+        => Evaluate(plan, filePath, customFormats, package, indexerFlags, releaseSizeBytes)
             .Where(item => item.IsMatch)
             .ToArray();
 
@@ -35,7 +36,11 @@ public static class ReleasePreferenceFormatEvidenceFactory
         // The flags the indexer reported for this exact release (#745). Null
         // for an installed-file re-evaluation, where there is no indexer left
         // to ask; a fresh search candidate carries its own.
-        string? indexerFlags = null)
+        string? indexerFlags = null,
+        // The release's total size (#775), for a "size" condition. The
+        // caller decides what "size" means for its evidence: a fresh search
+        // candidate's reported size, or an installed file's size on disk.
+        long? releaseSizeBytes = null)
     {
         ArgumentNullException.ThrowIfNull(plan);
         if (string.IsNullOrWhiteSpace(filePath))
@@ -88,7 +93,8 @@ public static class ReleasePreferenceFormatEvidenceFactory
                     source.MatcherDefinition,
                     source.MatcherAny,
                     plan.MediaType,
-                    indexerFlags).IsMatch;
+                    indexerFlags,
+                    releaseSizeBytes).IsMatch;
                 matcherAvailable = true;
             }
             else if (!string.IsNullOrWhiteSpace(customFormat?.TrashId)
@@ -103,7 +109,8 @@ public static class ReleasePreferenceFormatEvidenceFactory
                     GuideFormatConditions.For(guideFormat),
                     anyCondition: !GuideFormatConditions.IsGenuine(guideFormat),
                     plan.MediaType,
-                    indexerFlags).IsMatch;
+                    indexerFlags,
+                    releaseSizeBytes).IsMatch;
                 mappedTraitIds = PreferenceTraitRegistry.Current.CanonicalizeIds(guideFormat.MappedTraitIds);
                 matcherAvailable = true;
             }

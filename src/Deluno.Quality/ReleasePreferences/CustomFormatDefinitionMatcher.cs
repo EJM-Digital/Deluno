@@ -24,7 +24,12 @@ public static partial class CustomFormatDefinitionMatcher
             "language",
             // #745: a flag the indexer itself reports for the release (Freeleech,
             // Double Upload, ...), not anything derived from the release name.
-            "indexerFlag"
+            "indexerFlag",
+            // #775: a min/max range matched against the release's parsed year
+            // or its size in GB. Neither is a text search — see MatchYear and
+            // MatchSize.
+            "year",
+            "size"
         };
 
     /// <summary>
@@ -52,7 +57,12 @@ public static partial class CustomFormatDefinitionMatcher
         // comma-separated list, e.g. "freeleech"), when the caller has them.
         // Null everywhere an "indexerFlag" condition simply never matches —
         // never a guess.
-        string? indexerFlags = null)
+        string? indexerFlags = null,
+        // The release's total size (#775), the same value release scoring
+        // already reads off the indexer response. Null wherever a caller has
+        // no size for this candidate — a "size" condition then never matches,
+        // rather than assuming a value.
+        long? releaseSizeBytes = null)
     {
         if (string.IsNullOrWhiteSpace(releaseName))
         {
@@ -83,7 +93,7 @@ public static partial class CustomFormatDefinitionMatcher
 
         foreach (var condition in conditions)
         {
-            var hit = EvaluateSingleCondition(releaseName, lower, inferredGroup, condition, indexerFlags);
+            var hit = EvaluateSingleCondition(releaseName, lower, inferredGroup, condition, indexerFlags, releaseSizeBytes);
             var effectiveHit = condition.Negate ? !hit : hit;
             var label = $"{condition.Type}:{condition.Value}";
             if (condition.Negate)
@@ -197,7 +207,16 @@ public static partial class CustomFormatDefinitionMatcher
         if (string.IsNullOrWhiteSpace(type))
         {
             var implementation = ReadString(element, "implementation");
-            var external = MapExternalCondition(implementation, ReadExternalFieldValue(element), sonarrNumbering);
+            // Radarr's Year and Size conditions carry a "min" and a "max"
+            // field rather than one "value" — combine them into the one
+            // range string MapExternalCondition and MatchYear/MatchSize
+            // share with the range an owner types here themselves.
+            var isRangeSpecification = string.Equals(implementation, "yearspecification", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(implementation, "sizespecification", StringComparison.OrdinalIgnoreCase);
+            var rawFieldValue = isRangeSpecification
+                ? CombineRange(ReadExternalFieldValue(element, "min"), ReadExternalFieldValue(element, "max"))
+                : ReadExternalFieldValue(element, "value");
+            var external = MapExternalCondition(implementation, rawFieldValue, sonarrNumbering);
             type = external?.Type;
             value = external?.Value;
             externalGroup = implementation;
@@ -240,9 +259,21 @@ public static partial class CustomFormatDefinitionMatcher
             "codecspecification" => ("codec", value),
             "releasegroupspecification" => ("releaseGroup", value),
             "indexerflagspecification" => ("indexerFlag", value),
+            "yearspecification" => ("year", value),
+            "sizespecification" => ("size", value),
             _ => null
         };
     }
+
+    /// <summary>
+    /// "2015-2020", "2015-" (no upper bound) or "-2020" (no lower bound).
+    /// Null only when neither side is present, since a range with nothing in
+    /// it is not a condition.
+    /// </summary>
+    private static string? CombineRange(string? min, string? max)
+        => string.IsNullOrWhiteSpace(min) && string.IsNullOrWhiteSpace(max)
+            ? null
+            : $"{min}-{max}";
 
     /// <summary>
     /// Radarr: 1 cam, 2 telesync, 3 telecine, 4 workprint, 5 DVD, 6 TV,
@@ -286,7 +317,7 @@ public static partial class CustomFormatDefinitionMatcher
             _ => null
         };
 
-    private static string? ReadExternalFieldValue(JsonElement element)
+    private static string? ReadExternalFieldValue(JsonElement element, string fieldName = "value")
     {
         if (TryGetProperty(element, "fields", out var fields))
         {
@@ -294,21 +325,27 @@ public static partial class CustomFormatDefinitionMatcher
             {
                 foreach (var field in fields.EnumerateArray().Where(item => item.ValueKind == JsonValueKind.Object))
                 {
-                    if (string.Equals(ReadString(field, "name"), "value", StringComparison.OrdinalIgnoreCase)
+                    if (string.Equals(ReadString(field, "name"), fieldName, StringComparison.OrdinalIgnoreCase)
                         && TryGetProperty(field, "value", out var fieldValue))
                     {
                         return ReadScalar(fieldValue);
                     }
                 }
 
-                var first = fields.EnumerateArray().FirstOrDefault(item => item.ValueKind == JsonValueKind.Object);
-                if (first.ValueKind == JsonValueKind.Object && TryGetProperty(first, "value", out var firstValue))
+                // A single-field specification (most of them) has no "name" to
+                // match on a second field name like "min"/"max" — only its one
+                // field, taken as "value".
+                if (string.Equals(fieldName, "value", StringComparison.OrdinalIgnoreCase))
                 {
-                    return ReadScalar(firstValue);
+                    var first = fields.EnumerateArray().FirstOrDefault(item => item.ValueKind == JsonValueKind.Object);
+                    if (first.ValueKind == JsonValueKind.Object && TryGetProperty(first, "value", out var firstValue))
+                    {
+                        return ReadScalar(firstValue);
+                    }
                 }
             }
             else if (fields.ValueKind == JsonValueKind.Object
-                     && TryGetProperty(fields, "value", out var fieldValue))
+                     && TryGetProperty(fields, fieldName, out var fieldValue))
             {
                 return ReadScalar(fieldValue);
             }
@@ -324,7 +361,7 @@ public static partial class CustomFormatDefinitionMatcher
         {
             using var document = JsonDocument.Parse(fieldsJson);
             return document.RootElement.ValueKind == JsonValueKind.Object
-                   && TryGetProperty(document.RootElement, "value", out var value)
+                   && TryGetProperty(document.RootElement, fieldName, out var value)
                 ? ReadScalar(value)
                 : null;
         }
@@ -403,7 +440,8 @@ public static partial class CustomFormatDefinitionMatcher
         string lower,
         string? inferredGroup,
         CustomFormatDefinitionCondition condition,
-        string? indexerFlags)
+        string? indexerFlags,
+        long? releaseSizeBytes)
     {
         var value = condition.Value?.Trim() ?? string.Empty;
         if (value.Length == 0)
@@ -421,8 +459,71 @@ public static partial class CustomFormatDefinitionMatcher
             "releasegroup" => MatchReleaseGroup(inferredGroup, value),
             "language" => MatchLanguage(releaseName, value),
             "indexerflag" => MatchIndexerFlag(indexerFlags, value),
+            "year" => MatchYear(releaseName, value),
+            "size" => MatchSize(releaseSizeBytes, value),
             _ => false
         };
+    }
+
+    /// <summary>
+    /// True when the release name's own parsed year (#775) — the last
+    /// word-bounded 1900-2100 token, the same rule
+    /// <c>Deluno.Worker.Services.ReleaseNameParser.InferYear</c> uses for
+    /// naming — falls within the condition's min/max range. A release with no
+    /// recognisable year never matches, rather than being guessed at.
+    /// </summary>
+    private static bool MatchYear(string releaseName, string range)
+        => InferYear(releaseName) is { } year && MatchRange(year, range);
+
+    /// <summary>
+    /// True when the release's total size, in GB (2<sup>30</sup> bytes, matching
+    /// how the settings screen and library list already show file sizes),
+    /// falls within the condition's min/max range. Null when the caller has no
+    /// size for this candidate — never a guess.
+    /// </summary>
+    private static bool MatchSize(long? releaseSizeBytes, string range)
+        => releaseSizeBytes is { } bytes && MatchRange(bytes / 1024d / 1024d / 1024d, range);
+
+    /// <summary>
+    /// Parses "min-max", "min-" (no upper bound) or "-max" (no lower bound)
+    /// and reports whether <paramref name="actual"/> falls inside it. Either
+    /// side missing means that side does not constrain the match.
+    /// </summary>
+    private static bool MatchRange(double actual, string range)
+    {
+        var parts = range.Split('-', 2);
+        var minText = parts[0];
+        var maxText = parts.Length > 1 ? parts[1] : string.Empty;
+        var min = double.TryParse(minText, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var minValue) ? minValue : (double?)null;
+        var max = double.TryParse(maxText, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var maxValue) ? maxValue : (double?)null;
+        if (min is null && max is null)
+        {
+            return false;
+        }
+
+        return (min is null || actual >= min) && (max is null || actual <= max);
+    }
+
+    /// <summary>
+    /// Takes the <em>last</em> year-like token rather than the first, exactly
+    /// as <c>ReleaseNameParser.InferYear</c> does: a title can itself contain a
+    /// number that reads as a year, and it always precedes the real one
+    /// ("Blade.Runner.2049.2017.1080p" is the 2017 release). Duplicated here
+    /// rather than referenced because Deluno.Quality cannot depend on
+    /// Deluno.Worker without a circular project reference.
+    /// </summary>
+    private static int? InferYear(string releaseName)
+    {
+        int? inferred = null;
+        foreach (var part in releaseName.Split(['.', ' ', '-', '_', '[', ']', '(', ')'], StringSplitOptions.RemoveEmptyEntries))
+        {
+            if (part.Length == 4 && int.TryParse(part, out var year) && year is >= 1900 and <= 2100)
+            {
+                inferred = year;
+            }
+        }
+
+        return inferred;
     }
 
     /// <summary>
