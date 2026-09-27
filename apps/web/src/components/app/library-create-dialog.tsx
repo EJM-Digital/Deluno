@@ -134,10 +134,16 @@ export function LibraryCreateDialog({
           ) : null}
 
           <form onSubmit={onCreate} className="flex flex-col gap-3 border-t border-hairline bg-surface-1/70 px-6 py-4 sm:flex-row sm:items-center sm:justify-between">
-            <div className="inline-flex min-h-[1.25rem] items-center gap-2 text-sm text-muted-foreground">
-              <label className="inline-flex select-none items-center gap-2"><Checkbox checked={createForm.monitored} onCheckedChange={(monitored) => setCreateForm((current) => ({ ...current, monitored }))} />Monitor and search automatically</label>
+            <div className="flex flex-col gap-2 text-sm text-muted-foreground">
+              <div className="inline-flex min-h-[1.25rem] flex-wrap items-center gap-x-4 gap-y-2">
+                <label className="inline-flex select-none items-center gap-2"><Checkbox checked={createForm.monitored} onCheckedChange={(monitored) => setCreateForm((current) => ({ ...current, monitored }))} />Monitor and search automatically</label>
 
-              {selectedMetadataCount > 0 ? <span className="inline-flex items-center gap-2 text-xs font-semibold text-primary"><span className="h-1.5 w-1.5 rounded-full bg-primary" />{selectedMetadataCount} {selectedMetadataCount === 1 ? singular : label} selected</span> : null}
+                {selectedMetadataCount > 0 ? <span className="inline-flex items-center gap-2 text-xs font-semibold text-primary"><span className="h-1.5 w-1.5 rounded-full bg-primary" />{selectedMetadataCount} {selectedMetadataCount === 1 ? singular : label} selected</span> : null}
+              </div>
+              <div className="inline-flex flex-wrap items-center gap-x-4 gap-y-2 text-xs">
+                <label className="inline-flex select-none items-center gap-2"><Checkbox checked={createForm.searchForMissingNow} onCheckedChange={(searchForMissingNow) => setCreateForm((current) => ({ ...current, searchForMissingNow }))} />Search for missing now</label>
+                <label className="inline-flex select-none items-center gap-2"><Checkbox checked={createForm.searchForCutoffUnmetNow} onCheckedChange={(searchForCutoffUnmetNow) => setCreateForm((current) => ({ ...current, searchForCutoffUnmetNow }))} />Search for cutoff unmet now</label>
+              </div>
             </div>
             <div className="flex gap-2">
               <Dialog.Close asChild><Button type="button" variant="ghost" disabled={isCreating}>Cancel</Button></Dialog.Close>

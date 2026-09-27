@@ -1778,7 +1778,14 @@ public static class MoviesEndpointRouteBuilderExtensions
                 // Targeted at this one film, the same shape as a recovery retry
                 // or an external redownload: real work for one id, not a fresh
                 // sweep of the library.
-                if (movie.Monitored && WantedStatuses.IsSearchable(decision.WantedStatus))
+                // The add dialog's search-on-add checkboxes (#793) ask for
+                // this one film right away regardless of Monitored - a
+                // person adding an unmonitored title manually can still want
+                // today's search without waiting on tomorrow's automation.
+                var searchOnAddRequested =
+                    (request.SearchForMissingNow && decision.WantedStatus == WantedStatuses.Missing) ||
+                    (request.SearchForCutoffUnmetNow && decision.WantedStatus == WantedStatuses.Upgrade);
+                if (searchOnAddRequested || (movie.Monitored && WantedStatuses.IsSearchable(decision.WantedStatus)))
                 {
                     pendingSearches.Add(new
                     {

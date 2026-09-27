@@ -15,4 +15,8 @@ public sealed record CreateMovieRequest(
     string? Genres = null,
     string? ExternalUrl = null,
     string? MetadataJson = null,
-    string? LibraryId = null);
+    string? LibraryId = null,
+    /// <summary>Search for this film right away if it comes out missing (#793), regardless of Monitored.</summary>
+    bool SearchForMissingNow = false,
+    /// <summary>Search for this film right away if it comes out cutoff-unmet (#793), regardless of Monitored.</summary>
+    bool SearchForCutoffUnmetNow = false);

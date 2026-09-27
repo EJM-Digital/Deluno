@@ -734,6 +734,8 @@ export function LibraryView({
       year: createForm.year,
       imdbId: createForm.imdbId,
       monitored: createForm.monitored,
+      searchForMissingNow: createForm.searchForMissingNow,
+      searchForCutoffUnmetNow: createForm.searchForCutoffUnmetNow,
       metadata: createForm.metadata
     };
   }
@@ -744,6 +746,8 @@ export function LibraryView({
       year: result.year ? String(result.year) : "",
       imdbId: result.imdbId ?? "",
       monitored: createForm.monitored,
+      searchForMissingNow: createForm.searchForMissingNow,
+      searchForCutoffUnmetNow: createForm.searchForCutoffUnmetNow,
       metadata: result
     };
   }
@@ -760,6 +764,8 @@ export function LibraryView({
               releaseYear: draft.year ? Number(draft.year) : null,
               imdbId: draft.imdbId || null,
               monitored: draft.monitored,
+              searchForMissingNow: draft.searchForMissingNow,
+              searchForCutoffUnmetNow: draft.searchForCutoffUnmetNow,
               libraryId: addIntoLibraryId,
               ...metadataCreatePayload(resolvedMetadata)
             }
@@ -768,6 +774,8 @@ export function LibraryView({
               startYear: draft.year ? Number(draft.year) : null,
               imdbId: draft.imdbId || null,
               monitored: draft.monitored,
+              searchForMissingNow: draft.searchForMissingNow,
+              searchForCutoffUnmetNow: draft.searchForCutoffUnmetNow,
               libraryId: addIntoLibraryId,
               ...metadataCreatePayload(resolvedMetadata)
             }

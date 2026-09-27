@@ -8,11 +8,23 @@ export type CreateFormDraft = {
   year: string;
   imdbId: string;
   monitored: boolean;
+  /** Search for this title's missing content right away, once it is added (#793). Off by default. */
+  searchForMissingNow: boolean;
+  /** Search for this title's cutoff-unmet content right away, once it is added (#793). Off by default. */
+  searchForCutoffUnmetNow: boolean;
   metadata: MetadataSearchResult | null;
 };
 
 export function createInitialLibraryForm(): CreateFormDraft {
-  return { title: "", year: "", imdbId: "", monitored: true, metadata: null };
+  return {
+    title: "",
+    year: "",
+    imdbId: "",
+    monitored: true,
+    searchForMissingNow: false,
+    searchForCutoffUnmetNow: false,
+    metadata: null
+  };
 }
 
 export type IdPrefixedSearch = { source: "tmdb" | "imdb" | "tvdb"; id: string };

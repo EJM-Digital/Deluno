@@ -1,9 +1,10 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { createRef } from "react";
+import type { Dispatch, SetStateAction } from "react";
 import { describe, expect, it, vi } from "vitest";
 import type { MetadataSearchResult } from "../../lib/api";
-import type { LibraryVariant } from "../../hooks/use-library-create";
+import type { CreateFormDraft, LibraryVariant } from "../../hooks/use-library-create";
 import { LibraryCreateDialog } from "./library-create-dialog";
 
 /**
@@ -45,6 +46,7 @@ function renderDialog(
 ) {
   const onSelectResult = vi.fn();
   const onOpenHeldResult = vi.fn();
+  const setCreateForm = vi.fn<Dispatch<SetStateAction<CreateFormDraft>>>();
 
   render(
     <LibraryCreateDialog
@@ -55,8 +57,16 @@ function renderDialog(
       singular={variant === "movies" ? "movie" : "show"}
       metadataStatus={null}
       isCreating={false}
-      createForm={{ title: "arrival", year: "", imdbId: "", monitored: true, metadata: null }}
-      setCreateForm={vi.fn()}
+      createForm={{
+        title: "arrival",
+        year: "",
+        imdbId: "",
+        monitored: true,
+        searchForMissingNow: false,
+        searchForCutoffUnmetNow: false,
+        metadata: null
+      }}
+      setCreateForm={setCreateForm}
       metadataResults={metadataResults}
       setMetadataResults={vi.fn()}
       selectedMetadataResults={[]}
@@ -70,7 +80,7 @@ function renderDialog(
     />
   );
 
-  return { onSelectResult, onOpenHeldResult };
+  return { onSelectResult, onOpenHeldResult, setCreateForm };
 }
 
 describe.each([
@@ -130,5 +140,50 @@ describe.each([
 
     expect(screen.getByTitle(`Select ${other}`)).toBeInTheDocument();
     expect(screen.queryByText(/Already in your library/)).not.toBeInTheDocument();
+  });
+});
+
+/**
+ * The search-on-add toggles (#793): off by default, and each one flips
+ * independently of "Monitor and search automatically".
+ */
+describe("search-on-add toggles", () => {
+  it("default off, leaving add-only behaviour unchanged", () => {
+    renderDialog([]);
+
+    expect(screen.getByRole("checkbox", { name: "Search for missing now" })).not.toBeChecked();
+    expect(screen.getByRole("checkbox", { name: "Search for cutoff unmet now" })).not.toBeChecked();
+  });
+
+  it("toggling 'search for missing now' updates only that field", async () => {
+    const user = userEvent.setup();
+    const { setCreateForm } = renderDialog([]);
+
+    await user.click(screen.getByRole("checkbox", { name: "Search for missing now" }));
+
+    expect(setCreateForm).toHaveBeenCalledTimes(1);
+    const updater = setCreateForm.mock.calls[0][0] as (
+      current: { searchForMissingNow: boolean; searchForCutoffUnmetNow: boolean }
+    ) => unknown;
+    expect(updater({ searchForMissingNow: false, searchForCutoffUnmetNow: false })).toMatchObject({
+      searchForMissingNow: true,
+      searchForCutoffUnmetNow: false
+    });
+  });
+
+  it("toggling 'search for cutoff unmet now' updates only that field", async () => {
+    const user = userEvent.setup();
+    const { setCreateForm } = renderDialog([]);
+
+    await user.click(screen.getByRole("checkbox", { name: "Search for cutoff unmet now" }));
+
+    expect(setCreateForm).toHaveBeenCalledTimes(1);
+    const updater = setCreateForm.mock.calls[0][0] as (
+      current: { searchForMissingNow: boolean; searchForCutoffUnmetNow: boolean }
+    ) => unknown;
+    expect(updater({ searchForMissingNow: false, searchForCutoffUnmetNow: false })).toMatchObject({
+      searchForMissingNow: false,
+      searchForCutoffUnmetNow: true
+    });
   });
 });

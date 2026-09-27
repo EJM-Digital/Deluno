@@ -146,6 +146,71 @@ public sealed class NewTitlesSearchRightAwayTests
         Assert.Empty(NoPendingSearchesOr(refreshJob!.PayloadJson));
     }
 
+    /// <summary>
+    /// The add dialog's search-on-add checkboxes (#793) ask for this one title
+    /// right away independently of "Monitor and search automatically" - an
+    /// unmonitored add with "search for missing now" checked still searches.
+    /// </summary>
+    [Theory]
+    [InlineData(MediaKind.Movie)]
+    [InlineData(MediaKind.Series)]
+    public async Task Search_for_missing_now_searches_an_unmonitored_missing_title(MediaKind kind)
+    {
+        await using var app = await ApplicationTestHost.StartAsync();
+        var libraryId = await CreateLibraryAsync(app, kind);
+
+        var id = await AddAsync(
+            app,
+            Route(kind),
+            CreateBody(kind, "Severance", 2022, monitored: false, libraryId, searchForMissingNow: true));
+
+        var refreshJob = await FindJobAsync(app, RefreshJobType(kind), id);
+        Assert.NotNull(refreshJob);
+        using var payload = JsonDocument.Parse(refreshJob!.PayloadJson!);
+        var pending = Assert.Single(payload.RootElement.GetProperty("pendingSearches").EnumerateArray());
+        Assert.Equal(id, pending.GetProperty("targetEntityId").GetString());
+    }
+
+    /// <summary>
+    /// "Search for cutoff unmet now" only fires for a title that came out
+    /// cutoff-unmet. A newly-added, fileless title comes out missing, so the
+    /// cutoff-unmet checkbox alone must not search it - the two checkboxes are
+    /// independent, not two names for the same "search it" switch.
+    /// </summary>
+    [Theory]
+    [InlineData(MediaKind.Movie)]
+    [InlineData(MediaKind.Series)]
+    public async Task Search_for_cutoff_unmet_now_does_not_search_a_missing_title(MediaKind kind)
+    {
+        await using var app = await ApplicationTestHost.StartAsync();
+        var libraryId = await CreateLibraryAsync(app, kind);
+
+        var id = await AddAsync(
+            app,
+            Route(kind),
+            CreateBody(kind, "Severance", 2022, monitored: false, libraryId, searchForCutoffUnmetNow: true));
+
+        var refreshJob = await FindJobAsync(app, RefreshJobType(kind), id);
+        Assert.NotNull(refreshJob);
+        Assert.Empty(NoPendingSearchesOr(refreshJob!.PayloadJson));
+    }
+
+    /// <summary>Both checkboxes default off (#793): an ordinary add asks for neither.</summary>
+    [Theory]
+    [InlineData(MediaKind.Movie)]
+    [InlineData(MediaKind.Series)]
+    public async Task An_unmonitored_add_with_neither_checkbox_does_not_search(MediaKind kind)
+    {
+        await using var app = await ApplicationTestHost.StartAsync();
+        var libraryId = await CreateLibraryAsync(app, kind);
+
+        var id = await AddAsync(app, Route(kind), CreateBody(kind, "Severance", 2022, monitored: false, libraryId));
+
+        var refreshJob = await FindJobAsync(app, RefreshJobType(kind), id);
+        Assert.NotNull(refreshJob);
+        Assert.Empty(NoPendingSearchesOr(refreshJob!.PayloadJson));
+    }
+
     // ------------------------------------------------------------------ helpers
 
     private static string Route(MediaKind kind) => kind == MediaKind.Movie ? "/api/movies/" : "/api/series/";
@@ -156,10 +221,17 @@ public sealed class NewTitlesSearchRightAwayTests
 
     private static string RelatedEntityType(MediaKind kind) => kind == MediaKind.Movie ? "movie" : "series";
 
-    private static object CreateBody(MediaKind kind, string title, int year, bool monitored, string libraryId)
+    private static object CreateBody(
+        MediaKind kind,
+        string title,
+        int year,
+        bool monitored,
+        string libraryId,
+        bool searchForMissingNow = false,
+        bool searchForCutoffUnmetNow = false)
         => kind == MediaKind.Movie
-            ? new { title, releaseYear = year, monitored, libraryId }
-            : new { title, startYear = year, monitored, libraryId };
+            ? new { title, releaseYear = year, monitored, libraryId, searchForMissingNow, searchForCutoffUnmetNow }
+            : new { title, startYear = year, monitored, libraryId, searchForMissingNow, searchForCutoffUnmetNow };
 
     /// <summary>
     /// A title in the catalogue already, monitored, the create endpoint never
