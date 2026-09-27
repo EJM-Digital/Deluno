@@ -1,5 +1,12 @@
-import { describe, expect, it } from "vitest";
-import {
+import { afterEach, describe, expect, it, vi } from "vitest";
+
+const fetchJsonMock = vi.hoisted(() => vi.fn());
+vi.mock("../lib/api", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../lib/api")>()),
+  fetchJson: fetchJsonMock
+}));
+
+const {
   AUTOMATION_QUESTIONS,
   buildAutomationSettingsPayload,
   buildIndexerAutomationFields,
@@ -7,8 +14,10 @@ import {
   getEffectiveFormatGoal,
   hasAnsweredAllAutomationQuestions,
   resolveDraftFormatGoal,
-  type AutomationChoices
-} from "./setup-guide-page";
+  saveAllowedHosts
+} = await import("./setup-guide-page");
+type AutomationChoices = Parameters<typeof buildAutomationSettingsPayload>[0];
+type SecurityForm = Parameters<typeof saveAllowedHosts>[0];
 
 const UNANSWERED: AutomationChoices = {
   searchMissingTitles: null,
@@ -208,5 +217,27 @@ describe("setup guide Automation step (#936)", () => {
     expect(buildAutomationSettingsPayload({ ...ALL_NO, rssGrabs: true }).autoStartJobs).toBe(true);
     expect(buildAutomationSettingsPayload({ ...ALL_NO, qualityUpgrades: true }).autoStartJobs).toBe(true);
     expect(buildAutomationSettingsPayload(ALL_NO).autoStartJobs).toBe(false);
+  });
+});
+
+describe("setup guide Security step (#939)", () => {
+  afterEach(() => {
+    fetchJsonMock.mockReset();
+  });
+
+  it("answering No saves nothing -- a fresh install behaves exactly like before this feature (#936)", async () => {
+    await saveAllowedHosts({ restrictAllowedHosts: false, allowedHostsSelection: [] } as unknown as SecurityForm);
+
+    expect(fetchJsonMock).not.toHaveBeenCalled();
+  });
+
+  it("answering Yes saves the ticked addresses turned on", async () => {
+    await saveAllowedHosts({ restrictAllowedHosts: true, allowedHostsSelection: ["localhost", "my-pc"] } as unknown as SecurityForm);
+
+    expect(fetchJsonMock).toHaveBeenCalledWith("/api/security/allowed-hosts", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ enabled: true, allowedHosts: ["localhost", "my-pc"] })
+    });
   });
 });

@@ -1787,7 +1787,7 @@ async function saveSettings(settings: PlatformSettingsSnapshot, form: GuideForm,
   });
 }
 
-async function saveAllowedHosts(form: GuideForm) {
+export async function saveAllowedHosts(form: GuideForm) {
   if (!form.restrictAllowedHosts) return;
   await fetchJson("/api/security/allowed-hosts", {
     method: "PUT",
