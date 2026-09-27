@@ -228,8 +228,18 @@ public sealed class TransmissionDownloadClient(IHttpClientFactory httpClientFact
     public override string NormalizeStatus(string? nativeStatus, double? progress, int? errorCode = null, string? errorMessage = null)
     {
         if (errorCode is > 0 || !string.IsNullOrWhiteSpace(errorMessage)) return DownloadQueueStatuses.Stalled;
+        var parsed = int.TryParse(nativeStatus, out var status);
+
+        // TR_STATUS_CHECK (2): Transmission is hash-verifying local data. A
+        // torrent that was already fully downloaded before a recheck reports
+        // percentDone at 1 throughout the check, so the progress-based
+        // ImportReady test below must never see this case — otherwise a
+        // re-verify races the import against a file Transmission might still
+        // rewrite (#912).
+        if (parsed && status == 2) return DownloadQueueStatuses.NotTransferring;
+
         if ((progress ?? 0) >= 1) return DownloadQueueStatuses.ImportReady;
-        if (!int.TryParse(nativeStatus, out var status)) return DownloadQueueStatuses.Queued;
+        if (!parsed) return DownloadQueueStatuses.Queued;
         return status switch
         {
             4 => DownloadQueueStatuses.Downloading,

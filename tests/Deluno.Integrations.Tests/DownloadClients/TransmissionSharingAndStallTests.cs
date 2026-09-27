@@ -94,6 +94,20 @@ public sealed class TransmissionSharingAndStallTests
     }
 
     /// <summary>
+    /// #912: a torrent that finished long ago and is now being re-verified
+    /// (TR_STATUS_CHECK) still reports percentDone at 1 throughout the check.
+    /// That must never read as ImportReady — Transmission could still rewrite
+    /// the file underneath an import that raced ahead of the check.
+    /// </summary>
+    [Fact]
+    public async Task Status_two_never_reads_as_import_ready_even_at_full_progress()
+    {
+        var item = await Snapshot(status: 2, percentDone: 1, uploadRatio: null, secondsSeeding: null, peersSendingToUs: 0, isStalled: false);
+
+        Assert.Equal(DownloadQueueStatuses.NotTransferring, item.Status);
+    }
+
+    /// <summary>
     /// #880/#881: Transmission's own error field distinguishes a local
     /// problem (3, TR_STAT_LOCAL_ERROR — disk space, permissions) from the
     /// tracker complaining about the release (1 warning, 2 error). Only the
