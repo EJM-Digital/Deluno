@@ -203,6 +203,14 @@ public sealed class AClientSetupProblemIsSaidInActivityOnceTests
             var blocklist = new SqliteBlockedReleaseRepository(storage.Factory, time);
             var resiliencePolicy = new IntegrationResiliencePolicy(time, storage.Factory, NullLogger<IntegrationResiliencePolicy>.Instance);
 
+            // Deluno itself grabbed this release (#933): the Queue only shows
+            // downloads Deluno recorded dispatching, matched by the id the
+            // client handed back.
+            var dispatchId = await jobs.RecordDownloadDispatchAsync(
+                library.Id, "movies", "movie", "movie-dune", Release, "Fixture Indexer",
+                client.Id, client.Name, "sent", null, cancellationToken: CancellationToken.None);
+            await dispatches.RecordDetectionAsync(dispatchId, "queue-dune", 4_000_000_000, completed: false, CancellationToken.None);
+
             var fakeClient = new SetupProblemClient("qbittorrent", client.Id, client.Name, () => new DownloadQueueItem(
                 "queue-dune", client.Id, client.Name, "qbittorrent", "movies", "Dune Part Two", Release,
                 "deluno-movies", DownloadQueueStatuses.Stalled, 42, 0, 0, 4_000_000_000, 1_600_000_000, 3, "Fixture", "Missing files",

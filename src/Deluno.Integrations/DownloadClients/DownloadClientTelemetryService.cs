@@ -135,10 +135,8 @@ public sealed class DownloadClientTelemetryService(
                 StringComparer.OrdinalIgnoreCase);
 
         var healthAnnotatedSnapshots = await Task.WhenAll(orderedClients.Zip(mappedSnapshots, (client, snapshot) => AttachHealthFindingsAsync(
-            client,
             snapshot,
             dispatchesByClientId.GetValueOrDefault(client.Id, Array.Empty<DownloadDispatchItem>()),
-            routeCategoriesByLibrary,
             platformSettings.DownloadHealthStrikeThreshold,
             platformSettings.CleanupBlockReleaseAfterThreshold,
             downloadHealthRules,
@@ -153,10 +151,9 @@ public sealed class DownloadClientTelemetryService(
             {
                 Queue = snapshot.Queue
                     .Where(item => IsDelunosOwnDownload(
-                        client,
                         item,
                         dispatchesByClientId.GetValueOrDefault(client.Id, Array.Empty<DownloadDispatchItem>()),
-                        routeCategoriesByLibrary))
+                        capturedUtc))
                     .ToArray()
             })
             .ToArray();
@@ -168,22 +165,39 @@ public sealed class DownloadClientTelemetryService(
     }
 
     /// <summary>
+    /// How long a dispatch stays eligible to claim a queue item by release
+    /// name alone, before the client has handed back the hash/item id Deluno
+    /// grabbed with. Long enough to cover the gap between a grab succeeding
+    /// and the client's next poll response actually carrying an id; short
+    /// enough that a coincidentally same-named item added by hand days later
+    /// is never claimed by an old dispatch.
+    /// </summary>
+    private static readonly TimeSpan RecentDispatchWindow = TimeSpan.FromMinutes(15);
+
+    /// <summary>
     /// Whether a client queue row is a download Deluno itself sent (cleanup
     /// sheet row M2, #933). Matched first against the dispatch Deluno
-    /// recorded when it grabbed the release - the hash or item id the client
-    /// gave back - and only when nothing matches there, against the category
-    /// or label Deluno routes its own downloads through, the same test
-    /// <see cref="IsDelunoCategory"/> already applies before cleanup touches a
-    /// client entry. An item added to the client by another tool or by hand
-    /// matches neither and is left off the Queue - and, because this is the
-    /// only place that reads <see cref="DownloadClientTelemetrySnapshot.Queue"/>
-    /// for display, never touched by anything downstream of it either.
+    /// recorded when it grabbed the release - the hash, NZB id or client item
+    /// id the client gave back. A client does not always hand that back the
+    /// instant a grab succeeds, so failing that, an item is still Deluno's
+    /// own when a dispatch on the same client, for the same release name,
+    /// recorded inside <see cref="RecentDispatchWindow"/>, is still waiting
+    /// for its id (<see cref="DownloadDispatchItem.TorrentHashOrItemId"/> is
+    /// unset).
+    ///
+    /// <para>Deliberately never falls back to category or label alone (that
+    /// was the defect #933 fixed): a category is a convention a person can
+    /// reuse by hand, so it proves nothing about who actually sent an item.
+    /// Neither test matching is what leaves an item added by another tool, or
+    /// dropped into Deluno's own category by hand, off the Queue - and,
+    /// because this is the only place that reads
+    /// <see cref="DownloadClientTelemetrySnapshot.Queue"/> for display, never
+    /// touched by anything downstream of it either.</para>
     /// </summary>
     internal static bool IsDelunosOwnDownload(
-        DownloadClientItem client,
         DownloadQueueItem item,
         IReadOnlyList<DownloadDispatchItem> clientDispatches,
-        IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>> routeCategoriesByLibrary)
+        DateTimeOffset now)
     {
         var matchedByDispatch = clientDispatches.Any(dispatch =>
             string.Equals(dispatch.TorrentHashOrItemId, item.Id, StringComparison.OrdinalIgnoreCase) ||
@@ -193,13 +207,10 @@ public sealed class DownloadClientTelemetryService(
             return true;
         }
 
-        var routeCategory = !string.IsNullOrWhiteSpace(item.LibraryId) &&
-            routeCategoriesByLibrary.TryGetValue(item.LibraryId, out var categories) &&
-            categories.TryGetValue(client.Id, out var configuredRouteCategory)
-            ? configuredRouteCategory
-            : null;
-
-        return IsDelunoCategory(client, item.Category, item.MediaType, routeCategory);
+        return clientDispatches.Any(dispatch =>
+            string.IsNullOrWhiteSpace(dispatch.TorrentHashOrItemId) &&
+            string.Equals(dispatch.ReleaseName, item.ReleaseName, StringComparison.OrdinalIgnoreCase) &&
+            now - dispatch.CreatedUtc <= RecentDispatchWindow);
     }
 
     public async Task<DownloadClientActionResult> ExecuteActionAsync(
@@ -636,10 +647,8 @@ public sealed class DownloadClientTelemetryService(
             MinPeersMinutes: settings.DownloadHealthMinPeersMinutes);
 
     private async Task<DownloadClientTelemetrySnapshot> AttachHealthFindingsAsync(
-        DownloadClientItem client,
         DownloadClientTelemetrySnapshot snapshot,
         IReadOnlyList<DownloadDispatchItem> clientDispatches,
-        IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>> routeCategoriesByLibrary,
         int strikeThreshold,
         bool blockReleaseAfterThreshold,
         DownloadHealthRulesSettings rules,
@@ -652,7 +661,7 @@ public sealed class DownloadClientTelemetryService(
             // row M2, #933): no findings are evaluated for it, so it can never
             // reach the strike threshold that "Force remediation" acts on
             // below, and no observation is recorded for it either.
-            if (!IsDelunosOwnDownload(client, item, clientDispatches, routeCategoriesByLibrary))
+            if (!IsDelunosOwnDownload(item, clientDispatches, snapshot.CapturedUtc))
             {
                 annotated.Add((item, []));
                 continue;
