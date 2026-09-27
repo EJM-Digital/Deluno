@@ -64,7 +64,13 @@ public sealed class TrackerDefinitionUpdateService(
             var directory = Path.Combine(Path.GetFullPath(storage.Value.DataRoot), "trackers");
             Directory.CreateDirectory(directory);
 
-            var updated = new List<string>();
+            // Named apart (#754/#756: "naming what changed" means saying which
+            // definitions were added versus which were already there and only
+            // changed) -- a brand-new tracker landing is a different fact from
+            // an existing one's rules being patched, even though both are
+            // "updated" as far as the state this job persists is concerned.
+            var added = new List<string>();
+            var changed = new List<string>();
             foreach (var definition in remote)
             {
                 if (string.IsNullOrWhiteSpace(definition.Id) || string.IsNullOrWhiteSpace(definition.Yaml))
@@ -73,15 +79,18 @@ public sealed class TrackerDefinitionUpdateService(
                 }
 
                 var path = Path.Combine(directory, $"{definition.Id}.yml");
-                var existing = File.Exists(path) ? await File.ReadAllTextAsync(path, cancellationToken) : null;
+                var isNew = !File.Exists(path);
+                var existing = isNew ? null : await File.ReadAllTextAsync(path, cancellationToken);
                 if (string.Equals(existing, definition.Yaml, StringComparison.Ordinal))
                 {
                     continue;
                 }
 
                 await File.WriteAllTextAsync(path, definition.Yaml, cancellationToken);
-                updated.Add(definition.Id);
+                (isNew ? added : changed).Add(definition.Id);
             }
+
+            var updated = added.Concat(changed).ToList();
 
             if (updated.Count > 0)
             {
@@ -90,13 +99,13 @@ public sealed class TrackerDefinitionUpdateService(
                 // without restarting Deluno.
                 catalog.Reload();
 
+                added.Sort(StringComparer.OrdinalIgnoreCase);
+                changed.Sort(StringComparer.OrdinalIgnoreCase);
                 updated.Sort(StringComparer.OrdinalIgnoreCase);
                 await activityFeedRepository.RecordActivityAsync(
                     "trackers.definitions.update",
-                    updated.Count == 1
-                        ? $"Deluno updated the {updated[0]} tracker definition from its remote source."
-                        : $"Deluno updated {updated.Count} tracker definitions from their remote source: {string.Join(", ", updated)}.",
-                    JsonSerializer.Serialize(new { updatedTrackerIds = updated }),
+                    DescribeChange(added, changed),
+                    JsonSerializer.Serialize(new { addedTrackerIds = added, updatedTrackerIds = changed }),
                     null,
                     "trackers",
                     null,
@@ -117,5 +126,26 @@ public sealed class TrackerDefinitionUpdateService(
                 checkedUtc,
                 cancellationToken);
         }
+    }
+
+    /// <summary>The Activity sentence naming which definitions were added and which were only changed (#754/#756).</summary>
+    private static string DescribeChange(IReadOnlyList<string> added, IReadOnlyList<string> changed)
+    {
+        var parts = new List<string>();
+        if (added.Count > 0)
+        {
+            parts.Add(added.Count == 1
+                ? $"added the {added[0]} tracker definition"
+                : $"added {added.Count} tracker definitions ({string.Join(", ", added)})");
+        }
+
+        if (changed.Count > 0)
+        {
+            parts.Add(changed.Count == 1
+                ? $"updated the {changed[0]} tracker definition"
+                : $"updated {changed.Count} tracker definitions ({string.Join(", ", changed)})");
+        }
+
+        return $"Deluno {string.Join(" and ", parts)} from its remote source.";
     }
 }
