@@ -71,6 +71,8 @@ export interface PlatformSettingsSnapshot {
   mdbListApiKeyConfigured: boolean;
   releaseNeverGrabPatterns: string;
   searchScoringMode: "hybrid" | "rules-only" | "ml-only" | string;
+  /** How many days an unresolved manual-import (import-recovery) case is kept before it is cleared away unresolved. */
+  importRecoveryRetentionDays: number;
   downloadHealthStrikeThreshold: number;
   cleanupBlockReleaseAfterThreshold: boolean;
   cleanupQueueReplacementAfterThreshold: boolean;
@@ -269,6 +271,7 @@ export const emptyPlatformSettingsSnapshot: PlatformSettingsSnapshot = {
   mdbListApiKeyConfigured: false,
   releaseNeverGrabPatterns: "cam\ncamrip\ntelesync\ntelecine\nworkprint\nscreener\nsample\ntrailer\nextras",
   searchScoringMode: "hybrid",
+  importRecoveryRetentionDays: 30,
   downloadHealthStrikeThreshold: 3,
   cleanupBlockReleaseAfterThreshold: true,
   cleanupQueueReplacementAfterThreshold: true,
