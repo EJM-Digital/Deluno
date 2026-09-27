@@ -159,7 +159,7 @@ export function needsAction(sources: NeedsActionSources): NeedsAction {
  */
 export function canTryAgain(item: Pick<RecoveryCase, "failureKind" | "detailsJson">): boolean {
   return (
-    (item.failureKind === "downloadFailed" || item.failureKind === "importFailed" || item.failureKind === "vanished-downloading") &&
+    (item.failureKind === "downloadFailed" || item.failureKind === "importFailed" || item.failureKind === "vanished-downloading" || item.failureKind === "processedFileIsLess") &&
     dispatchIdIn(item.detailsJson) !== null
   );
 }
@@ -167,6 +167,17 @@ export function canTryAgain(item: Pick<RecoveryCase, "failureKind" | "detailsJso
 /** A download the client no longer lists at all (#927): Search for another (Try again, relabelled) and Stop wanting it are both offered, beside Dismiss. */
 export function isVanished(item: Pick<RecoveryCase, "failureKind">): boolean {
   return item.failureKind === "vanished-downloading";
+}
+
+/**
+ * A processed file Checkpoint B held back because the processor lost
+ * something the original had (#919). Offered three real actions: Import the
+ * original, Run the processor again (canTryAgain's "Try again"), and Search
+ * for another release -- never a blocklist, since Checkpoint A already
+ * proved the release itself is good.
+ */
+export function isProcessorFault(item: Pick<RecoveryCase, "failureKind">): boolean {
+  return item.failureKind === "processedFileIsLess";
 }
 
 /** The download a recovery case is about, from the details the poller wrote with it. */

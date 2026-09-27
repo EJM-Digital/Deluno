@@ -68,6 +68,11 @@ public static class RecoveryCaseRetry
             // DetectedUtc says - a vanished download was never handed to a
             // processor, so there is nothing for HandOverAgainAsync to do.
             "vanished-downloading" => await SearchAgainAsync(dispatch, dispatches, scheduler, mediaState, libraries, timeProvider, cancellationToken),
+            // #919: Checkpoint B already showed the processor's own output was
+            // less than the original it was made from - "try again" here means
+            // asking the same processor to do it over, not fetching a fresh
+            // download of a release Checkpoint A already proved good.
+            "processedFileIsLess" => await RunProcessorAgainAsync(dispatch, processors, cancellationToken),
             _ => RecoveryRetryOutcome.Refused("This needs a decision rather than another attempt. Dismiss it once it is dealt with.")
         };
     }
@@ -77,7 +82,142 @@ public static class RecoveryCaseRetry
     /// Quality, unmatched and corrupt files need a decision, not another attempt.
     /// </summary>
     public static bool CanRetry(string? failureKind)
-        => failureKind is "downloadFailed" or "importFailed" or "vanished-downloading";
+        => failureKind is "downloadFailed" or "importFailed" or "vanished-downloading" or "processedFileIsLess";
+
+    /// <summary>
+    /// Import the original, unprocessed download instead of waiting on the
+    /// processor again (#919). Offered beside Try again and Search for
+    /// another release on a "processed file is less than the original" case -
+    /// the only failure kind this handles, since it is the only one where
+    /// Checkpoint A already proved the original itself is fine.
+    /// </summary>
+    public static async Task<RecoveryRetryOutcome> ImportOriginalAsync(
+        string failureKind,
+        string? detailsJson,
+        IDownloadDispatchesRepository dispatches,
+        IProcessorRepository processors,
+        CancellationToken cancellationToken)
+    {
+        if (failureKind != "processedFileIsLess")
+        {
+            return RecoveryRetryOutcome.Refused("Importing the original only applies to a processed file Deluno held back. Dismiss this case if it no longer applies.");
+        }
+
+        var (resolved, refused) = await ResolveDispatchAsync(detailsJson, dispatches, cancellationToken);
+        if (refused is not null || resolved is null)
+        {
+            return refused ?? RecoveryRetryOutcome.Refused("Deluno no longer has the download this case is about. Dismiss it.");
+        }
+
+        var dispatch = resolved;
+        var handoff = await FindHandoffAsync(dispatch, processors, cancellationToken);
+        if (handoff is null)
+        {
+            return RecoveryRetryOutcome.Refused($"Deluno cannot find the hand-off {dispatch.ReleaseName} went through, so there is no original left to import here. Import it from its row in Transfers, or dismiss this.");
+        }
+
+        if (ProcessorHandoffStatuses.IsWithProcessor(handoff.Status))
+        {
+            return RecoveryRetryOutcome.Refused($"{handoff.ProcessorName ?? "The processor"} still has {dispatch.ReleaseName}, so there is nothing to import yet.");
+        }
+
+        var released = await processors.UpdateProcessorHandoffAsync(
+            handoff.Id,
+            ProcessorHandoffStatuses.Released,
+            null,
+            null,
+            $"Importing the original of {dispatch.ReleaseName}, unprocessed, as requested.",
+            cancellationToken);
+        return released is null
+            ? RecoveryRetryOutcome.Refused($"Deluno could not find {dispatch.ReleaseName}'s hand-off any more. Dismiss this.")
+            : RecoveryRetryOutcome.Done($"Deluno will import the original of {dispatch.ReleaseName} without processing.");
+    }
+
+    /// <summary>
+    /// Search for a different release entirely (#919). Unlike #914/#929's
+    /// give-up, this never blocklists the release: Checkpoint A already
+    /// showed it is a good release, so nothing about it is at fault, only the
+    /// processor's own copy of it.
+    /// </summary>
+    public static async Task<RecoveryRetryOutcome> SearchAgainWithoutBlocklistingAsync(
+        string failureKind,
+        string? detailsJson,
+        IDownloadDispatchesRepository dispatches,
+        IJobScheduler scheduler,
+        IMediaStateRepository mediaState,
+        ILibrariesRepository libraries,
+        TimeProvider timeProvider,
+        CancellationToken cancellationToken)
+    {
+        if (failureKind != "processedFileIsLess")
+        {
+            return RecoveryRetryOutcome.Refused("Searching for another release only applies to a processed file Deluno held back. Dismiss this case if it no longer applies.");
+        }
+
+        var (dispatch, refused) = await ResolveDispatchAsync(detailsJson, dispatches, cancellationToken);
+        return refused ?? await SearchAgainAsync(dispatch!, dispatches, scheduler, mediaState, libraries, timeProvider, cancellationToken);
+    }
+
+    /// <summary>
+    /// Ask the same processor to do the file over (#919). Unlike the ordinary
+    /// hand-off /retry action, this also accepts a hand-off the processor
+    /// already <em>finished</em> -- exactly the case here, since Checkpoint B
+    /// only runs once the processor has delivered something.
+    /// </summary>
+    private static async Task<RecoveryRetryOutcome> RunProcessorAgainAsync(
+        DownloadDispatchItem dispatch,
+        IProcessorRepository processors,
+        CancellationToken cancellationToken)
+    {
+        var handoff = await FindHandoffAsync(dispatch, processors, cancellationToken);
+        if (handoff is null)
+        {
+            return RecoveryRetryOutcome.Refused($"Deluno cannot find the hand-off {dispatch.ReleaseName} went through, so there is nothing to run again. Dismiss this.");
+        }
+
+        if (ProcessorHandoffStatuses.IsWithProcessor(handoff.Status))
+        {
+            return RecoveryRetryOutcome.Refused($"{handoff.ProcessorName ?? "The processor"} still has {dispatch.ReleaseName}, so there is nothing to run again until it finishes.");
+        }
+
+        var connection = await processors.FindProcessorConnectionByNameAsync(handoff.ProcessorName, cancellationToken);
+        if (connection is not { IsEnabled: true })
+        {
+            return RecoveryRetryOutcome.Refused($"The connection to {handoff.ProcessorName ?? "the processor"} is unavailable. Restore and test it before running {dispatch.ReleaseName} again.");
+        }
+
+        var retried = await processors.UpdateProcessorHandoffAsync(handoff.Id, ProcessorHandoffStatuses.Waiting, null, null, null, cancellationToken);
+        return retried is null
+            ? RecoveryRetryOutcome.Refused($"Deluno could not find {dispatch.ReleaseName}'s hand-off any more. Dismiss this.")
+            : RecoveryRetryOutcome.Done($"Deluno will run {dispatch.ReleaseName} through {connection.Name} again.");
+    }
+
+    /// <summary>The hand-off <paramref name="dispatch"/> went through, if Deluno still has it -- same lookup as the ordinary "hand it over again" retry.</summary>
+    private static async Task<ProcessorHandoffItem?> FindHandoffAsync(
+        DownloadDispatchItem dispatch,
+        IProcessorRepository processors,
+        CancellationToken cancellationToken)
+        => (await processors.ListProcessorHandoffsAsync(dispatch.LibraryId, 250, cancellationToken))
+            .Where(item => string.Equals(item.ClientId, dispatch.DownloadClientId, StringComparison.OrdinalIgnoreCase)
+                           && string.Equals(item.QueueItemId, dispatch.TorrentHashOrItemId, StringComparison.OrdinalIgnoreCase))
+            .OrderByDescending(item => item.UpdatedUtc)
+            .FirstOrDefault();
+
+    private static async Task<(DownloadDispatchItem? Dispatch, RecoveryRetryOutcome? Refused)> ResolveDispatchAsync(
+        string? detailsJson,
+        IDownloadDispatchesRepository dispatches,
+        CancellationToken cancellationToken)
+    {
+        if (DispatchIdIn(detailsJson) is not { } dispatchId)
+        {
+            return (null, RecoveryRetryOutcome.Refused("This case does not say which download it is about, so there is nothing Deluno can do here. Dismiss it."));
+        }
+
+        var dispatch = await dispatches.GetDispatchIncludingArchivedAsync(dispatchId, cancellationToken);
+        return dispatch is null
+            ? (null, RecoveryRetryOutcome.Refused("Deluno no longer has the download this case is about. Dismiss it."))
+            : (dispatch, null);
+    }
 
     /// <summary>
     /// Stop wanting it (#927): the download vanished from its client and a
