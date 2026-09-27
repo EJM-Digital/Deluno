@@ -3,6 +3,7 @@ import { formatDateTime, useDisplayPreferences } from "../../lib/display-prefere
 import { getDispatchStatusLabel as formatDispatchStatus } from "../../lib/job-status-constants";
 import { Drawer, DrawerFacts, DrawerFooter, DrawerSection } from "../ui/drawer";
 import { BlockReleaseAction } from "./block-release-action";
+import { RemoveDownloadAction } from "./remove-download-action";
 
 export function DownloadDispatchDrawer({
   dispatch,
@@ -11,7 +12,7 @@ export function DownloadDispatchDrawer({
 }: {
   dispatch: DownloadDispatchItem | null;
   onClose: () => void;
-  /** Revalidate whatever list this drawer was opened from, once a release is blocked (#925). */
+  /** Revalidate whatever list this drawer was opened from, once a release is blocked (#925) or removed (#924). */
   onBlocked?: () => void;
 }) {
   const { preferences } = useDisplayPreferences();
@@ -32,17 +33,31 @@ export function DownloadDispatchDrawer({
           saveLabel="Close"
           onCancel={onClose}
           extraAction={dispatch ? (
-            <BlockReleaseAction
-              releaseName={dispatch.releaseName}
-              indexerName={dispatch.indexerName}
-              hash={dispatch.torrentHashOrItemId}
-              mediaType={dispatch.mediaType}
-              entityId={dispatch.entityId}
-              onBlocked={() => {
-                onClose();
-                onBlocked?.();
-              }}
-            />
+            <>
+              <RemoveDownloadAction
+                releaseName={dispatch.releaseName}
+                indexerName={dispatch.indexerName}
+                hash={dispatch.torrentHashOrItemId}
+                mediaType={dispatch.mediaType}
+                entityId={dispatch.entityId}
+                title={dispatch.releaseName}
+                onRemoved={() => {
+                  onClose();
+                  onBlocked?.();
+                }}
+              />
+              <BlockReleaseAction
+                releaseName={dispatch.releaseName}
+                indexerName={dispatch.indexerName}
+                hash={dispatch.torrentHashOrItemId}
+                mediaType={dispatch.mediaType}
+                entityId={dispatch.entityId}
+                onBlocked={() => {
+                  onClose();
+                  onBlocked?.();
+                }}
+              />
+            </>
           ) : null}
         />
       }
