@@ -50,5 +50,12 @@ public interface IMediaSearchPlanner
         /// </summary>
         string? imdbId = null,
         /// <summary>The profile's own minimum, cutoff and minimum-upgrade-gain score guardrails (#778).</summary>
-        ProfileScoreLimits? scoreLimits = null);
+        ProfileScoreLimits? scoreLimits = null,
+        /// <summary>
+        /// The title's own genres, comma-separated, when metadata gave them
+        /// (#742). A TV search whose genres name "Anime" queries each
+        /// indexer's AnimeCategories instead of its normal Categories, when
+        /// the indexer has one configured.
+        /// </summary>
+        string? genres = null);
 }

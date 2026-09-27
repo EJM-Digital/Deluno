@@ -95,7 +95,8 @@ public sealed class FeedMediaSearchPlanner(
         /// falling back to a keywords-only request it cannot answer usefully.
         /// </summary>
         string? imdbId = null,
-        ProfileScoreLimits? scoreLimits = null)
+        ProfileScoreLimits? scoreLimits = null,
+        string? genres = null)
     {
         var indexers = await connectionsRepository.ListIndexersAsync(cancellationToken);
         var normalizedSearchKind = AcquisitionSearchKinds.Normalize(searchKind);
@@ -182,7 +183,7 @@ public sealed class FeedMediaSearchPlanner(
                     customFormats, neverGrabPatterns, scoringMode, seasonNumber, episodeNumber, allowedQualities,
                      applicableProfiles, normalizedSearchKind, availableUtc, currentCustomFormatScore, currentReleaseName, upgradeUntilCutoff,
                      numberingScheme, absoluteNumber, airDate, sceneSeasonNumber, sceneEpisodeNumber,
-                     currentPreferenceEvaluation, preferencePlan, currentFilePresent, sizeRules, upgradeStop, runtimeMinutes, imdbId, token, scoreLimits);
+                     currentPreferenceEvaluation, preferencePlan, currentFilePresent, sizeRules, upgradeStop, runtimeMinutes, imdbId, token, scoreLimits, genres);
             });
 
         await RecordQueryTelemetryAsync(searchResults, cancellationToken);
@@ -373,7 +374,8 @@ public sealed class FeedMediaSearchPlanner(
         int? runtimeMinutes,
         string? imdbId,
         CancellationToken cancellationToken,
-        ProfileScoreLimits? scoreLimits = null)
+        ProfileScoreLimits? scoreLimits = null,
+        string? genres = null)
     {
         var startedTimestamp = Stopwatch.GetTimestamp();
         var queryText = BuildQueryText(title, year, seasonNumber, episodeNumber, numberingScheme, absoluteNumber, airDate, sceneSeasonNumber, sceneEpisodeNumber);
@@ -387,7 +389,7 @@ public sealed class FeedMediaSearchPlanner(
         var isTracker = IndexerProtocols.IsTracker(indexer.Protocol);
         var searchAddress = isTracker
             ? indexer.BaseUrl
-            : BuildSearchUrl(indexer, title, year, mediaType, seasonNumber, episodeNumber, numberingScheme, absoluteNumber, airDate, sceneSeasonNumber, sceneEpisodeNumber);
+            : BuildSearchUrl(indexer, title, year, mediaType, seasonNumber, episodeNumber, numberingScheme, absoluteNumber, airDate, sceneSeasonNumber, sceneEpisodeNumber, genres);
         if (!Uri.TryCreate(searchAddress, UriKind.Absolute, out var uri))
         {
             logger.LogWarning(
@@ -1030,7 +1032,8 @@ public sealed class FeedMediaSearchPlanner(
         int? absoluteNumber = null,
         DateOnly? airDate = null,
         int? sceneSeasonNumber = null,
-        int? sceneEpisodeNumber = null)
+        int? sceneEpisodeNumber = null,
+        string? genres = null)
     {
         var builder = new UriBuilder(IndexerApiEndpoint.For(indexer.BaseUrl, indexer.ApiPath));
         var query = ParseQuery(builder.Query);
@@ -1059,8 +1062,20 @@ public sealed class FeedMediaSearchPlanner(
             query["q"] = BuildQueryText(title, year, seasonNumber, episodeNumber, numberingScheme, absoluteNumber, airDate, sceneSeasonNumber, sceneEpisodeNumber);
         }
 
-        return FinishIndexerUrl(builder, query, indexer, isTv ? "5000" : "2000");
+        // #742: an anime search uses this indexer's own anime category
+        // numbers when it has configured them, since anime is often
+        // catalogued separately from normal TV on the same indexer.
+        var categories = isTv && IsAnimeGenre(genres) && !string.IsNullOrWhiteSpace(indexer.AnimeCategories)
+            ? indexer.AnimeCategories
+            : indexer.Categories;
+        return FinishIndexerUrl(builder, query, indexer, isTv ? "5000" : "2000", categories);
     }
+
+    /// <summary>Whether a title's comma-separated genres name it as anime (#742).</summary>
+    private static bool IsAnimeGenre(string? genres)
+        => genres is not null && genres
+            .Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries)
+            .Any(genre => string.Equals(genre, "anime", StringComparison.OrdinalIgnoreCase));
 
     /// <summary>
     /// An indexer's recent-releases feed: the same address as a search, with
@@ -1077,11 +1092,12 @@ public sealed class FeedMediaSearchPlanner(
     }
 
     /// <summary>Categories, limit and key: the same for a search and a feed read.</summary>
-    private static string FinishIndexerUrl(UriBuilder builder, Dictionary<string, string> query, IndexerItem indexer, string defaultCategories)
+    private static string FinishIndexerUrl(UriBuilder builder, Dictionary<string, string> query, IndexerItem indexer, string defaultCategories, string? categories = null)
     {
-        query["cat"] = string.IsNullOrWhiteSpace(indexer.Categories)
+        categories ??= indexer.Categories;
+        query["cat"] = string.IsNullOrWhiteSpace(categories)
             ? defaultCategories
-            : indexer.Categories.Replace(" ", string.Empty, StringComparison.Ordinal);
+            : categories.Replace(" ", string.Empty, StringComparison.Ordinal);
 
         if (!query.ContainsKey("limit"))
         {

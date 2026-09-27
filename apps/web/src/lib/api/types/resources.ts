@@ -605,6 +605,8 @@ export interface IndexerItem {
   apiPath?: string | null;
   /** Extra Newznab/Torznab query parameters some indexers require (#741). */
   additionalParameters?: string | null;
+  /** This indexer's own anime category numbers (#742). Null uses categories for anime too. */
+  animeCategories?: string | null;
   categories: string;
   tags: string;
   isEnabled: boolean;

@@ -76,7 +76,7 @@ public sealed class SqliteConnectionsRepository(
                 minimum_age_minutes, retention_days, maximum_size_mb, prefer_indexer_flags, availability_delay_days,
                 rss_enabled, automatic_search_enabled, interactive_search_enabled,
                 last_health_failure_json, definition_id, definition_settings_json, definition_secrets,
-                api_path, additional_parameters
+                api_path, additional_parameters, anime_categories
             FROM indexer_sources
             ORDER BY priority ASC, name ASC;
             """;
@@ -128,7 +128,8 @@ public sealed class SqliteConnectionsRepository(
                 DefinitionSettings = reader.IsDBNull(37) ? null : ReadStringMap(reader.GetString(37)),
                 DefinitionSecrets = reader.IsDBNull(38) ? null : ReadStringMap(secretProtector.Unprotect("indexer:tracker-secrets", reader.GetString(38))),
                 ApiPath = reader.IsDBNull(39) ? null : reader.GetString(39),
-                AdditionalParameters = reader.IsDBNull(40) ? null : reader.GetString(40)
+                AdditionalParameters = reader.IsDBNull(40) ? null : reader.GetString(40),
+                AnimeCategories = reader.IsDBNull(41) ? null : reader.GetString(41)
             });
         }
 
@@ -266,6 +267,7 @@ public sealed class SqliteConnectionsRepository(
             RequestIntervalSeconds = request.RequestIntervalSeconds,
             ApiPath = NormalizeBlankToNull(request.ApiPath),
             AdditionalParameters = NormalizeBlankToNull(request.AdditionalParameters),
+            AnimeCategories = NormalizeOptionalCsv(request.AnimeCategories),
             SharingMode = request.SharingMode,
             SharingForHours = request.SharingForHours,
             SharingUntilRatio = request.SharingUntilRatio,
@@ -297,7 +299,7 @@ public sealed class SqliteConnectionsRepository(
                 sharing_mode, sharing_for_hours, sharing_until_ratio, sharing_stuck_action, sharing_stuck_after_days,
                 minimum_age_minutes, retention_days, maximum_size_mb, prefer_indexer_flags, availability_delay_days,
                 rss_enabled, automatic_search_enabled, interactive_search_enabled, definition_id,
-                definition_settings_json, definition_secrets, api_path, additional_parameters
+                definition_settings_json, definition_secrets, api_path, additional_parameters, anime_categories
             )
             VALUES (
                 @id, @name, @protocol, @privacy, @baseUrl, @apiKey, @priority, @categories, @tags,
@@ -305,7 +307,7 @@ public sealed class SqliteConnectionsRepository(
                 @sharingMode, @sharingForHours, @sharingUntilRatio, @sharingStuckAction, @sharingStuckAfterDays,
                 @minimumAgeMinutes, @retentionDays, @maximumSizeMb, @preferIndexerFlags, @availabilityDelayDays,
                 @rssEnabled, @automaticSearchEnabled, @interactiveSearchEnabled, @definitionId,
-                @definitionSettings, @definitionSecrets, @apiPath, @additionalParameters
+                @definitionSettings, @definitionSecrets, @apiPath, @additionalParameters, @animeCategories
             );
             """;
 
@@ -347,6 +349,7 @@ public sealed class SqliteConnectionsRepository(
         AddParameter(command, "@updatedUtc", item.UpdatedUtc.ToString("O"));
         AddParameter(command, "@apiPath", item.ApiPath);
         AddParameter(command, "@additionalParameters", item.AdditionalParameters);
+        AddParameter(command, "@animeCategories", item.AnimeCategories);
         await command.ExecuteNonQueryAsync(cancellationToken);
 
         return item;
@@ -387,6 +390,9 @@ public sealed class SqliteConnectionsRepository(
         var newAdditionalParameters = request.ClearAdditionalParameters == true
             ? null
             : NormalizeBlankToNull(request.AdditionalParameters) ?? existing.AdditionalParameters;
+        var newAnimeCategories = request.ClearAnimeCategories == true
+            ? null
+            : NormalizeOptionalCsv(request.AnimeCategories) ?? existing.AnimeCategories;
 
         // Clearing drops the whole override at once rather than field by field:
         // "this source is no different from the rest" is a single intent, and
@@ -433,6 +439,7 @@ public sealed class SqliteConnectionsRepository(
                 request_interval_seconds = @requestIntervalSeconds,
                 api_path = @apiPath,
                 additional_parameters = @additionalParameters,
+                anime_categories = @animeCategories,
                 sharing_mode = @sharingMode,
                 sharing_for_hours = @sharingForHours,
                 sharing_until_ratio = @sharingUntilRatio,
@@ -473,6 +480,7 @@ public sealed class SqliteConnectionsRepository(
         AddParameter(command, "@requestIntervalSeconds", newRequestInterval);
         AddParameter(command, "@apiPath", newApiPath);
         AddParameter(command, "@additionalParameters", newAdditionalParameters);
+        AddParameter(command, "@animeCategories", newAnimeCategories);
         AddParameter(command, "@sharingMode", newSharingMode);
         AddParameter(command, "@sharingForHours", newSharingForHours);
         AddParameter(command, "@sharingUntilRatio", newSharingUntilRatio);
@@ -508,6 +516,7 @@ public sealed class SqliteConnectionsRepository(
             RequestIntervalSeconds = newRequestInterval,
             ApiPath = newApiPath,
             AdditionalParameters = newAdditionalParameters,
+            AnimeCategories = newAnimeCategories,
             SharingMode = newSharingMode,
             SharingForHours = newSharingForHours,
             SharingUntilRatio = newSharingUntilRatio,
@@ -1130,4 +1139,8 @@ public sealed class SqliteConnectionsRepository(
     /// <summary>A blank optional text field is stored as null, not as an empty string.</summary>
     private static string? NormalizeBlankToNull(string? value)
         => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+
+    /// <summary>An optional comma-separated numbers field (#742), stored as null when blank.</summary>
+    private static string? NormalizeOptionalCsv(string? value)
+        => string.IsNullOrWhiteSpace(value) ? null : NormalizeCsv(value);
 }

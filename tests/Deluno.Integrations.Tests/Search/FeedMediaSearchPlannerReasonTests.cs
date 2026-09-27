@@ -410,6 +410,66 @@ public sealed class FeedMediaSearchPlannerReasonTests
         Assert.DoesNotContain("Season%202", handler.Query, StringComparison.OrdinalIgnoreCase);
     }
 
+    /// <summary>#742: an anime title queries the indexer's own anime category numbers when configured.</summary>
+    [Fact]
+    public async Task An_anime_tv_search_uses_the_indexers_anime_categories_when_configured()
+    {
+        var indexer = CreateIndexer("anime-indexer", "Anime indexer", "tv") with { AnimeCategories = "5070" };
+        var handler = new FixedFeedHandler(CreateFeed(1));
+
+        await CreatePlanner(CreateConnections(indexer).Object, handler).BuildPlanAsync(
+            "Example",
+            2026,
+            "tv",
+            null,
+            "WEB 1080p",
+            [CreateSource(indexer)],
+            genres: "Action, Anime",
+            cancellationToken: CancellationToken.None);
+
+        Assert.Contains("cat=5070", handler.Query, StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>An indexer with no anime categories configured keeps using its normal ones for an anime search.</summary>
+    [Fact]
+    public async Task An_anime_tv_search_falls_back_to_normal_categories_when_none_are_configured()
+    {
+        var indexer = CreateIndexer("no-anime-indexer", "No anime indexer", "tv");
+        var handler = new FixedFeedHandler(CreateFeed(1));
+
+        await CreatePlanner(CreateConnections(indexer).Object, handler).BuildPlanAsync(
+            "Example",
+            2026,
+            "tv",
+            null,
+            "WEB 1080p",
+            [CreateSource(indexer)],
+            genres: "Anime",
+            cancellationToken: CancellationToken.None);
+
+        Assert.Contains("cat=2000", handler.Query, StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>A non-anime TV search never uses anime categories, even when the indexer has some configured.</summary>
+    [Fact]
+    public async Task A_non_anime_tv_search_ignores_the_indexers_anime_categories()
+    {
+        var indexer = CreateIndexer("drama-indexer", "Drama indexer", "tv") with { AnimeCategories = "5070" };
+        var handler = new FixedFeedHandler(CreateFeed(1));
+
+        await CreatePlanner(CreateConnections(indexer).Object, handler).BuildPlanAsync(
+            "Example",
+            2026,
+            "tv",
+            null,
+            "WEB 1080p",
+            [CreateSource(indexer)],
+            genres: "Drama",
+            cancellationToken: CancellationToken.None);
+
+        Assert.Contains("cat=2000", handler.Query, StringComparison.OrdinalIgnoreCase);
+    }
+
     [Fact]
     public async Task Typed_search_exposes_and_uses_the_explicit_seeder_tie_break_family()
     {
