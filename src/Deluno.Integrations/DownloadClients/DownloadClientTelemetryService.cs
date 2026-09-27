@@ -14,6 +14,7 @@ using Deluno.Platform.Data;
 using Deluno.Connections.Contracts;
 using Deluno.Connections.Data;
 using Deluno.Contracts;
+using Deluno.Contracts.Connectivity;
 
 namespace Deluno.Integrations.DownloadClients;
 
@@ -31,6 +32,7 @@ public sealed class DownloadClientTelemetryService(
     IActivityFeedRepository activityFeedRepository,
     IRecoveryHealthEvaluator healthEvaluator,
     IProcessorRepository processorRepository,
+    IConnectivityMonitor connectivityMonitor,
     IBlockedReleaseRepository? blockedReleases = null)
     : IDownloadClientTelemetryService
 {
@@ -431,16 +433,30 @@ public sealed class DownloadClientTelemetryService(
             return snapshot;
         }
 
-        return snapshot with
+        var reconciled = new List<DownloadQueueItem>(snapshot.Queue.Count);
+        foreach (var item in snapshot.Queue)
         {
-            Queue = snapshot.Queue
-                .Select(item => DownloadClientHelpers.ReconcileTorrentStatus(
-                    item,
-                    capturedUtc,
-                    lastIncreaseByQueueItemId.TryGetValue(item.Id, out var since) ? since : null,
-                    rules.NoProgressWindow))
-                .ToArray()
-        };
+            // #901: the stall clock itself must stop during an outage. Both
+            // timestamps ReconcileTorrentStatus measures from - AddedUtc for
+            // the no-metadata branch, the last-progress mark for the
+            // no-progress branch - are pushed forward by whatever outage time
+            // they overlap before the comparison, then the real AddedUtc is
+            // restored so nothing downstream sees a fabricated arrival time.
+            var since = lastIncreaseByQueueItemId.TryGetValue(item.Id, out var lastProgressUtc) ? lastProgressUtc : (DateTimeOffset?)null;
+            var effectiveAddedUtc = item.AddedUtc + await connectivityMonitor.OutageOverlapAsync(item.AddedUtc, capturedUtc, cancellationToken);
+            var effectiveSince = since is { } sinceValue
+                ? sinceValue + await connectivityMonitor.OutageOverlapAsync(sinceValue, capturedUtc, cancellationToken)
+                : (DateTimeOffset?)null;
+
+            var reconciledItem = DownloadClientHelpers.ReconcileTorrentStatus(
+                item with { AddedUtc = effectiveAddedUtc },
+                capturedUtc,
+                effectiveSince,
+                rules.NoProgressWindow);
+            reconciled.Add(item with { Status = reconciledItem.Status });
+        }
+
+        return snapshot with { Queue = reconciled };
     }
 
     /// <summary>Builds #659's configurable rules from the platform settings a caller already loaded.</summary>
@@ -462,21 +478,32 @@ public sealed class DownloadClientTelemetryService(
         DownloadHealthRulesSettings rules,
         CancellationToken cancellationToken)
     {
-        var annotated = snapshot.Queue
-            .Select(item => (Item: item, Findings: healthEvaluator.Evaluate(
+        var annotated = new List<(DownloadQueueItem Item, IReadOnlyList<RecoveryHealthFinding> Findings)>(snapshot.Queue.Count);
+        foreach (var item in snapshot.Queue)
+        {
+            // #901: NoProgress/MinSpeed/MinPeers all measure "how long since
+            // AddedUtc" - an outage stretches that clock exactly as long as
+            // it lasted unless the added time itself is pushed forward by
+            // whatever it overlapped, so a download added before an outage
+            // is not judged as though it sat idle through it. Only the value
+            // fed to the evaluator moves; item.AddedUtc keeps showing when it
+            // was actually added.
+            var effectiveAddedUtc = item.AddedUtc + await connectivityMonitor.OutageOverlapAsync(item.AddedUtc, snapshot.CapturedUtc, cancellationToken);
+            var findings = healthEvaluator.Evaluate(
                 new RecoveryQueueSnapshot(
                     item.Status,
                     item.ErrorMessage,
                     item.SourcePath,
                     item.SpeedMbps,
-                    item.AddedUtc,
+                    effectiveAddedUtc,
                     item.EtaSeconds,
                     item.ReleaseName,
                     item.Peers,
                     item.IsSetupProblem),
                 snapshot.CapturedUtc,
-                rules)))
-            .ToArray();
+                rules);
+            annotated.Add((item, findings));
+        }
         var observations = annotated
             .SelectMany(entry => entry.Findings.Select(finding => new DownloadHealthObservation(
                 entry.Item.ClientId, entry.Item.Id, entry.Item.ReleaseName, finding.Kind, finding.Severity, finding.Evidence)))
@@ -532,6 +559,19 @@ public sealed class DownloadClientTelemetryService(
         DownloadTelemetryOverview overview,
         CancellationToken cancellationToken)
     {
+        // #901: refusing a release, removing it from the client, purging its
+        // payload and queuing a replacement search are all judgements that a
+        // release itself has gone bad. During an outage nothing here can tell
+        // a bad release apart from every release simply being unable to make
+        // progress, so the whole pass is skipped rather than acting on
+        // findings it cannot trust - the connectivity banner already says
+        // why, so this stays quiet rather than repeating it per client.
+        var connectivity = await connectivityMonitor.GetStatusAsync(cancellationToken);
+        if (connectivity.IsOutage)
+        {
+            return new DownloadHealthRemediationReport(0, 0, 0, 0, 0, [connectivity.Message]);
+        }
+
         var settings = await platformRepository.GetAsync(cancellationToken);
         var refuseRelease = settings.CleanupBlockReleaseAfterThreshold && blockedReleases is not null;
         if (!refuseRelease &&
