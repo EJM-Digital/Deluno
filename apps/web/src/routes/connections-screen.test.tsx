@@ -168,6 +168,20 @@ describe("indexer save payload prefer magnet (#752)", () => {
   });
 });
 
+// #743: a per-indexer TV search restriction sends through as a plain string,
+// with "both" as the always-present default.
+describe("indexer save payload season-pack search mode (#743)", () => {
+  it("sends the chosen season-pack search mode", () => {
+    const form = { ...emptyIndexerForm(), name: "PrivateHD", baseUrl: "https://tracker.example.test", seasonPackSearchMode: "episodes-only" as const };
+    expect(buildIndexerSavePayload(form, form, true, "").seasonPackSearchMode).toBe("episodes-only");
+  });
+
+  it("defaults to both for a new indexer", () => {
+    const form = { ...emptyIndexerForm(), name: "PrivateHD", baseUrl: "https://tracker.example.test" };
+    expect(buildIndexerSavePayload(form, form, false, "").seasonPackSearchMode).toBe("both");
+  });
+});
+
 /**
  * #807 — Priority existed in the API contract and server-side ordering but the
  * drawer never rendered it, so create/edit always sent a hard-coded fallback

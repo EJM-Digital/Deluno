@@ -146,6 +146,13 @@ public sealed record IndexerItem(
     /// </summary>
     public bool PreferMagnetUrl { get; init; }
 
+    /// <summary>
+    /// Restricts TV searches against this indexer to season packs only,
+    /// episodes only, or both (default) (#743). Null or "both" means no
+    /// restriction.
+    /// </summary>
+    public string? SeasonPackSearchMode { get; init; }
+
     public int? AvailabilityDelayDays { get; init; }
 
     public bool RssEnabled { get; init; } = true;

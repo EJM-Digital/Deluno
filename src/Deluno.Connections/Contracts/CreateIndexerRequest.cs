@@ -49,6 +49,9 @@ public sealed record CreateIndexerRequest(
     // For a torrent indexer, prefer a magnet URL over a .torrent file link
     // when a grab has both (#752). Ignored for usenet. Off by default.
     bool PreferMagnetUrl = false,
+    // Restricts TV searches to season packs only, episodes only, or both
+    // (default) (#743). Null or "both" means no restriction.
+    string? SeasonPackSearchMode = null,
     int? AvailabilityDelayDays = null,
     bool RssEnabled = true,
     bool AutomaticSearchEnabled = true,

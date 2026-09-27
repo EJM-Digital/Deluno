@@ -107,6 +107,7 @@ public sealed class IndexerPersistenceTests
                 GrabLimit = 20,
                 LimitsUnit = "hour",
                 PreferMagnetUrl = true,
+                SeasonPackSearchMode = "episodes-only",
                 AvailabilityDelayDays = 2,
                 RssEnabled = false,
                 AutomaticSearchEnabled = false,
@@ -128,6 +129,7 @@ public sealed class IndexerPersistenceTests
         Assert.Equal(20, persisted.GrabLimit);
         Assert.Equal("hour", persisted.LimitsUnit);
         Assert.True(persisted.PreferMagnetUrl);
+        Assert.Equal("episodes-only", persisted.SeasonPackSearchMode);
         Assert.Equal(2, persisted.AvailabilityDelayDays);
         Assert.False(persisted.RssEnabled);
         Assert.False(persisted.AutomaticSearchEnabled);
@@ -160,6 +162,7 @@ public sealed class IndexerPersistenceTests
                 GrabLimit: 20,
                 LimitsUnit: "hour",
                 PreferMagnetUrl: true,
+                SeasonPackSearchMode: "season-packs-only",
                 AvailabilityDelayDays: 3,
                 RssEnabled: false,
                 AutomaticSearchEnabled: false,
@@ -179,6 +182,7 @@ public sealed class IndexerPersistenceTests
         Assert.Equal(20, updated.GrabLimit);
         Assert.Equal("hour", updated.LimitsUnit);
         Assert.True(updated.PreferMagnetUrl);
+        Assert.Equal("season-packs-only", updated.SeasonPackSearchMode);
         Assert.Equal(3, updated.AvailabilityDelayDays);
         Assert.False(updated.RssEnabled);
         Assert.False(updated.AutomaticSearchEnabled);
@@ -577,5 +581,37 @@ public sealed class IndexerPersistenceTests
         var deleted = await repo.DeleteIndexerAsync("nonexistent-id", CancellationToken.None);
 
         Assert.False(deleted);
+    }
+
+    // ── SeasonPackSearchMode (#743) ───────────────────────────────────────
+
+    [Fact]
+    public async Task CreateIndexerAsync_leaves_season_pack_search_mode_null_when_not_given()
+    {
+        using var storage = TestStorage.Create();
+        var repo = await CreateRepositoryAsync(storage);
+
+        var created = await repo.CreateIndexerAsync(BaseCreateRequest(), CancellationToken.None);
+
+        Assert.Null(created.SeasonPackSearchMode);
+    }
+
+    [Fact]
+    public async Task Setting_season_pack_search_mode_back_to_both_clears_the_restriction()
+    {
+        using var storage = TestStorage.Create();
+        var repo = await CreateRepositoryAsync(storage);
+        var created = await repo.CreateIndexerAsync(
+            BaseCreateRequest() with { SeasonPackSearchMode = "episodes-only" },
+            CancellationToken.None);
+        Assert.Equal("episodes-only", created.SeasonPackSearchMode);
+
+        var updated = await repo.UpdateIndexerAsync(
+            created.Id,
+            new UpdateIndexerRequest(null, null, null, null, null, null, null, null, null, null, SeasonPackSearchMode: "both"),
+            CancellationToken.None);
+
+        Assert.NotNull(updated);
+        Assert.Null(updated.SeasonPackSearchMode);
     }
 }

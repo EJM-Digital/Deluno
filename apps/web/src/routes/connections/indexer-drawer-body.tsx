@@ -157,6 +157,19 @@ export function IndexerDrawerBody({
               <Input value={form.animeCategories} onChange={(event) => setForm((current) => ({ ...current, animeCategories: event.target.value }))} className="font-mono text-[length:var(--type-caption)]" placeholder="5070" />
             </Field>
           ) : null}
+          {form.scope === "tv" || form.scope === "both" ? (
+            <Field label="TV search scope" help="Restrict TV searches against this indexer to season packs, single episodes, or both.">
+              <SegmentedControl<"both" | "season-packs-only" | "episodes-only">
+                value={form.seasonPackSearchMode}
+                onValueChange={(seasonPackSearchMode) => setForm((current) => ({ ...current, seasonPackSearchMode }))}
+                options={[
+                  { value: "both", label: "Both" },
+                  { value: "season-packs-only", label: "Season packs only" },
+                  { value: "episodes-only", label: "Episodes only" }
+                ]}
+              />
+            </Field>
+          ) : null}
         </Disclosure>
         <Disclosure title="Fine-tune" summary="Use Deluno's safe 2-second default, or follow this indexer's published limit." open={fineTuneOpen} onOpenChange={setFineTuneOpen}>
           <Field label="Request interval" error={errors.requestIntervalSeconds} help="Deluno will not query this indexer more often than this. Private trackers usually publish a limit; leave this alone if you are not sure.">

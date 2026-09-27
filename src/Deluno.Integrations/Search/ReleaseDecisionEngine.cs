@@ -201,6 +201,23 @@ public static partial class ReleaseDecisionEngine
             }
         }
 
+        // #743: a per-indexer TV search restriction. Only ever applies to TV;
+        // a movie search against the same indexer is unaffected.
+        if (string.Equals(input.MediaType, "tv", StringComparison.OrdinalIgnoreCase)
+            && input.SeasonPackSearchMode is { } seasonPackSearchMode
+            && !string.Equals(seasonPackSearchMode, "both", StringComparison.OrdinalIgnoreCase))
+        {
+            var isSeasonPackCandidate = SeasonPackDetector.Classify(input.ReleaseName).IsSeason;
+            if (string.Equals(seasonPackSearchMode, "season-packs-only", StringComparison.OrdinalIgnoreCase) && !isSeasonPackCandidate)
+            {
+                Refuse("This indexer is configured for season-pack searches only, and this release is a single episode.");
+            }
+            else if (string.Equals(seasonPackSearchMode, "episodes-only", StringComparison.OrdinalIgnoreCase) && isSeasonPackCandidate)
+            {
+                Refuse("This indexer is configured for episode searches only, and this release is a season pack.");
+            }
+        }
+
         var matchedNeverGrab = MatchNeverGrabPattern(input.ReleaseName, input.NeverGrabPatterns);
         if (!string.IsNullOrWhiteSpace(matchedNeverGrab))
         {
@@ -987,6 +1004,12 @@ public sealed record ReleaseDecisionInput(
     /// French". Null keeps Deluno's fixed "Multilingual" default.
     /// </summary>
     string? MultiLanguages = null,
+    /// <summary>
+    /// Restricts a TV search against this indexer to season packs only,
+    /// episodes only, or both (#743). Null or "both" means no restriction;
+    /// ignored for a movie search.
+    /// </summary>
+    string? SeasonPackSearchMode = null,
     DateTimeOffset? AvailableUtc = null,
     int? AvailabilityDelayDays = null,
     ReleasePreferencePlan? PreferencePlan = null,

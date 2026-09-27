@@ -755,6 +755,8 @@ export interface IndexerItem {
   limitsUnit?: string | null;
   /** For a torrent indexer, prefer a magnet URL over a .torrent file link when a grab has both (#752). Ignored for usenet. */
   preferMagnetUrl?: boolean;
+  /** Restricts TV searches against this indexer to season packs only, episodes only, or both (default) (#743). */
+  seasonPackSearchMode?: "both" | "season-packs-only" | "episodes-only" | null;
   availabilityDelayDays?: number | null;
   rssEnabled?: boolean;
   automaticSearchEnabled?: boolean;
