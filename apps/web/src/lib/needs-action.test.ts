@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import type { DownloadDispatchItem, DownloadTelemetryOverview, MovieImportRecoverySummary, SeriesImportRecoverySummary } from "./api";
 import { canTryAgain, isVanished, needsAction } from "./needs-action";
+import type { DownloadDispatchItem, DownloadTelemetryOverview, MovieImportRecoverySummary, ProcessorHandoffItem, SeriesImportRecoverySummary } from "./api";
+import { canTryAgain, needsAction } from "./needs-action";
 
 function dispatch(overrides: Partial<DownloadDispatchItem> & Pick<DownloadDispatchItem, "id">): DownloadDispatchItem {
   return {
@@ -109,6 +111,47 @@ describe("needsAction", () => {
 
     expect(result.queueAttention.map((item) => item.id)).toEqual(["hash-2"]);
     expect(result.total).toBe(2);
+  });
+
+  // #914, #929: the handoff row carries Import original, Retry, Stop waiting
+  // and Dismiss; the case naming the same hand-off cannot do any of that, and
+  // showed the same problem twice on the rig.
+  it("shows a stalled or lost hand-off once, as the hand-off row that can act on it", () => {
+    const handoff: ProcessorHandoffItem = {
+      id: "handoff-1",
+      libraryId: "library-1",
+      mediaType: "movie",
+      clientId: "client-1",
+      queueItemId: "queue-1",
+      releaseName: "Sintel.2010.1080p",
+      sourcePath: "/downloads/sintel",
+      processorName: "Weir",
+      status: "stalled",
+      outputPath: null,
+      importJobId: null,
+      failureMessage: "Weir reported no change for 2 days.",
+      createdUtc: "2026-09-18T12:00:00Z",
+      updatedUtc: "2026-09-20T09:00:00Z"
+    };
+    const caseAboutTheHandoff = {
+      id: "case-1",
+      title: "Sintel.2010.1080p",
+      failureKind: "processor-stalled",
+      summary: "Weir reported no change for 2 days.",
+      recommendedAction: "Import the original now, keep waiting, ask the processor again, or give up and search for another release.",
+      detailsJson: JSON.stringify({ HandoffId: "handoff-1", LibraryId: "library-1" }),
+      detectedUtc: "2026-09-20T09:00:00Z"
+    };
+
+    const result = needsAction({
+      movieRecovery: { openCount: 1, qualityCount: 0, unmatchedCount: 0, corruptCount: 0, downloadFailedCount: 0, importFailedCount: 0, recentCases: [caseAboutTheHandoff] },
+      seriesRecovery: noSeriesRecovery,
+      handoffs: [handoff]
+    });
+
+    expect(result.recoveryCases).toEqual([]);
+    expect(result.failedHandoffs.map((item) => item.id)).toEqual(["handoff-1"]);
+    expect(result.total).toBe(1);
   });
 
   it("counts each orphaned download folder once, beside everything else (#588)", () => {

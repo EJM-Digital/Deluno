@@ -4368,7 +4368,14 @@ public sealed class SqliteJobStore(
         }
 
         if (category.Contains("warning", StringComparison.OrdinalIgnoreCase) ||
-            category.Contains("attention", StringComparison.OrdinalIgnoreCase))
+            category.Contains("attention", StringComparison.OrdinalIgnoreCase) ||
+            // A processor hand-off Deluno stopped waiting on (#914, #929):
+            // held for a person to decide, not a routine event. None of these
+            // three contain "failed" or "attention", so without this they read
+            // as ordinary news and never lit the bell or a notification.
+            category.Equals("processing.stalled", StringComparison.OrdinalIgnoreCase) ||
+            category.Equals("processing.timed-out", StringComparison.OrdinalIgnoreCase) ||
+            category.Equals("processing.lost", StringComparison.OrdinalIgnoreCase))
         {
             return "warning";
         }

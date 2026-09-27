@@ -1053,6 +1053,31 @@ public sealed class JobStoreTests
         Assert.Contains(activities, activity => activity.Id == single.Id);
     }
 
+    /// <summary>
+    /// #914, #929: a hand-off Deluno stopped waiting on is held for a person to
+    /// decide, not routine news. None of these three category names contain
+    /// "failed" or "attention", so before this fix they were reported at
+    /// severity "info" and never lit the bell or a notification.
+    /// </summary>
+    [Theory]
+    [InlineData("processing.stalled")]
+    [InlineData("processing.timed-out")]
+    [InlineData("processing.lost")]
+    public async Task RecordActivityAsync_reports_a_held_processor_handoff_as_needing_attention(string category)
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-04-29T04:00:00Z"));
+        await InitializeJobsAsync(storage, timeProvider);
+        var realtime = new RecordingRealtimeEventPublisher();
+        var store = new SqliteJobStore(storage.Factory, timeProvider, realtime, new NullDownloadDispatchesRepository());
+
+        await store.RecordActivityAsync(category, "Held for a person to decide.", null, null, null, null, CancellationToken.None);
+
+        var published = Assert.Single(realtime.ActivityEvents);
+        Assert.Equal(category, published.Category);
+        Assert.Equal("warning", published.Severity);
+    }
+
     [Fact]
     public async Task TryClaimScheduledPassAsync_only_the_first_caller_within_the_interval_claims_the_pass()
     {

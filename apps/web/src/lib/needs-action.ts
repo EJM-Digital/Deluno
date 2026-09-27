@@ -92,15 +92,26 @@ export interface NeedsActionSources {
 }
 
 export function needsAction(sources: NeedsActionSources): NeedsAction {
-  const recoveryCases: RecoveryCaseRow[] = [
-    ...(sources.movieRecovery?.recentCases ?? []).map((item) => ({ ...item, mediaType: "movie" as const })),
-    ...(sources.seriesRecovery?.recentCases ?? []).map((item) => ({ ...item, mediaType: "series" as const }))
-  ];
   const unfilteredQueueAttention = (sources.telemetry?.clients ?? []).flatMap((client) => client.queue).filter(queueItemNeedsAttention);
   // A job with another attempt coming is retrying, not waiting on a person (#562).
   const failedImportJobs = (sources.failedJobs ?? [])
     .filter((job) => job.jobType === "filesystem.import.execute" && !isJobRetrying(job));
   const failedHandoffs = (sources.handoffs ?? []).filter(handoffNeedsPerson);
+
+  // A hand-off a case is about is shown once, as the hand-off row: it, not
+  // the case, carries Import original, Retry, Stop waiting and Dismiss
+  // (#914, #929). Without this, a stalled or lost hand-off appeared twice --
+  // once as its case, offering only Try again (which processor cases cannot
+  // do) and Dismiss, and again as the hand-off, with everything that can
+  // actually be done about it.
+  const handoffIdsWithTheirOwnRow = new Set((sources.handoffs ?? []).map((handoff) => handoff.id));
+  const recoveryCases: RecoveryCaseRow[] = [
+    ...(sources.movieRecovery?.recentCases ?? []).map((item) => ({ ...item, mediaType: "movie" as const })),
+    ...(sources.seriesRecovery?.recentCases ?? []).map((item) => ({ ...item, mediaType: "series" as const }))
+  ].filter((item) => {
+    const handoffId = handoffIdIn(item.detailsJson);
+    return handoffId === null || !handoffIdsWithTheirOwnRow.has(handoffId);
+  });
 
   // A download a recovery case is about is shown once, as that case, which is
   // the row that carries Try again and Dismiss.
@@ -166,6 +177,18 @@ function dispatchIdIn(detailsJson: string | null | undefined): string | null {
     // At the top, or inside the retry an import case keeps (#602).
     const retry = (details.RetryRequest ?? details.retryRequest) as Record<string, unknown> | undefined;
     const id = details.DispatchId ?? details.dispatchId ?? retry?.DispatchId ?? retry?.dispatchId;
+    return typeof id === "string" && id.length > 0 ? id : null;
+  } catch {
+    return null;
+  }
+}
+
+/** The processor hand-off a recovery case is about, from the details ProcessorHandoffWatcher wrote with it (#914, #929). */
+function handoffIdIn(detailsJson: string | null | undefined): string | null {
+  if (!detailsJson) return null;
+  try {
+    const details = JSON.parse(detailsJson) as Record<string, unknown>;
+    const id = details.HandoffId ?? details.handoffId;
     return typeof id === "string" && id.length > 0 ? id : null;
   } catch {
     return null;
