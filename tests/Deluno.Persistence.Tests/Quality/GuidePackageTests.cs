@@ -164,6 +164,40 @@ public sealed class GuidePackageTests
     }
 
     [Theory]
+    [InlineData("french")]
+    [InlineData("german")]
+    [InlineData("dutch")]
+    [InlineData("asian")]
+    [InlineData("uk")]
+    public void Regional_upstream_formats_are_reachable_through_a_named_category(string category)
+    {
+        var package = GuidePackageCatalog.Current;
+
+        var regional = package.CustomFormats.Where(format => format.Category == category).ToArray();
+
+        Assert.NotEmpty(regional);
+        Assert.All(regional, format =>
+        {
+            Assert.Equal("trash-guides-upstream-advanced", format.SourceKind);
+            Assert.NotEqual("anime", format.Category);
+        });
+    }
+
+    [Fact]
+    public void Regional_categories_do_not_swallow_the_dedicated_anime_group()
+    {
+        var package = GuidePackageCatalog.Current;
+
+        // "FR Anime Tier 01" belongs only to the upstream "[Release Groups]
+        // French Anime" group, which is deliberately excluded from the
+        // regional map: promoting anime tiers by default is #781's job, not a
+        // regional split.
+        var frenchAnimeTier = Assert.Single(package.CustomFormats,
+            format => format.TrashId == "03520acbc5e46ce326be984534792d28");
+        Assert.Equal("upstream-advanced", frenchAnimeTier.Category);
+    }
+
+    [Theory]
     [InlineData("unwanted.cam", "Movie.Title.2024.CAM.x264-GROUP")]
     [InlineData("unwanted.telesync", "Movie.Title.2024.TELESYNC.x264-GROUP")]
     [InlineData("unwanted.telecine", "Movie.Title.2024.TELECINE.x264-GROUP")]

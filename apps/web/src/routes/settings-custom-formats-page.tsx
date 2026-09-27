@@ -98,6 +98,11 @@ const GUIDE_CATEGORY_ORDER = [
   "groups",
   "anime",
   "language",
+  "french",
+  "german",
+  "dutch",
+  "asian",
+  "uk",
   "unwanted",
   "misc"
 ] as const;
@@ -113,6 +118,11 @@ const GUIDE_CATEGORY_LABELS: Record<string, string> = {
   groups: "Release Groups",
   anime: "Anime",
   language: "Language",
+  french: "French",
+  german: "German",
+  dutch: "Dutch",
+  asian: "Asian",
+  uk: "UK",
   unwanted: "Block / Unwanted",
   misc: "Misc"
 };
