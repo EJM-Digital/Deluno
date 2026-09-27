@@ -101,6 +101,14 @@ public static class IntegrationsServiceCollectionExtensions
         services.AddHttpClient<TmdbMetadataProvider>();
         services.AddScoped<IMetadataProvider>(sp => sp.GetRequiredService<TmdbMetadataProvider>());
         services.AddHostedService<CacheSchemaInitializer>();
+
+        // TheXEM (#863): no account, no key — a title's TVDB id is enough.
+        services.AddHttpClient(Metadata.SceneMapping.XemSceneMappingProvider.HttpClientName, client =>
+        {
+            client.Timeout = TimeSpan.FromSeconds(15);
+            client.DefaultRequestHeaders.UserAgent.ParseAdd("Deluno/1.0 (+https://github.com/jampat000/Deluno)");
+        });
+        services.AddSingleton<Metadata.SceneMapping.ISceneMappingProvider, Metadata.SceneMapping.XemSceneMappingProvider>();
         return services;
     }
 }
