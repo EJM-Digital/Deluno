@@ -236,6 +236,76 @@ public class NotificationEventPublisher : IHostedService
     }
 
     /// <summary>
+    /// Called when a subtitle is fetched for a language that had none yet.
+    /// </summary>
+    public async Task PublishSubtitleDownloadedAsync(
+        string title,
+        string language,
+        CancellationToken cancellationToken = default)
+    {
+        var prefs = await _notificationService.GetPreferencesAsync(cancellationToken);
+        if (!prefs.SubtitleDownloadedEnabled)
+            return;
+
+        var message = $"Subtitle downloaded: {title} ({language})";
+        await _notificationService.CreateNotificationAsync(
+            "subtitle_downloaded",
+            "Subtitle Downloaded",
+            message,
+            "success",
+            new Dictionary<string, object> { { "title", title }, { "language", language } },
+            cancellationToken);
+    }
+
+    /// <summary>
+    /// Called when a fetch replaces a subtitle the language already had.
+    /// </summary>
+    public async Task PublishSubtitleUpgradedAsync(
+        string title,
+        string language,
+        CancellationToken cancellationToken = default)
+    {
+        var prefs = await _notificationService.GetPreferencesAsync(cancellationToken);
+        if (!prefs.SubtitleUpgradedEnabled)
+            return;
+
+        var message = $"Subtitle upgraded: {title} ({language})";
+        await _notificationService.CreateNotificationAsync(
+            "subtitle_upgraded",
+            "Subtitle Upgraded",
+            message,
+            "success",
+            new Dictionary<string, object> { { "title", title }, { "language", language } },
+            cancellationToken);
+    }
+
+    /// <summary>
+    /// Called when a subtitle search for a wanted language finds nothing usable.
+    /// </summary>
+    public async Task PublishSubtitleFailedAsync(
+        string title,
+        string language,
+        string? reason = null,
+        CancellationToken cancellationToken = default)
+    {
+        var prefs = await _notificationService.GetPreferencesAsync(cancellationToken);
+        if (!prefs.SubtitleFailedEnabled)
+            return;
+
+        var message = $"Subtitle search failed: {title} ({language})";
+        if (!string.IsNullOrWhiteSpace(reason))
+            message += $" - {reason}";
+
+        await _notificationService.CreateNotificationAsync(
+            "subtitle_failed",
+            "Subtitle Search Failed",
+            message,
+            "error",
+            new Dictionary<string, object> { { "title", title }, { "language", language }, { "reason", reason ?? string.Empty } },
+            cancellationToken);
+    }
+
+    /// <summary>
     /// Called for system warnings
     /// </summary>
     public async Task PublishSystemWarningAsync(

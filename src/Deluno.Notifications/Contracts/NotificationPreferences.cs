@@ -21,6 +21,11 @@ public class NotificationPreferences
     /// </summary>
     public bool ProviderHealthChangedEnabled { get; set; } = true;
 
+    // Subtitles (#839): nothing fired for subtitle activity before this.
+    public bool SubtitleDownloadedEnabled { get; set; } = true;
+    public bool SubtitleUpgradedEnabled { get; set; } = true;
+    public bool SubtitleFailedEnabled { get; set; } = true;
+
     // Delivery methods
     public bool InAppNotificationsEnabled { get; set; } = true;
     public bool EmailNotificationsEnabled { get; set; } = false;
