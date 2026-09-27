@@ -65,7 +65,7 @@ export default defineConfig({
       command: backendCommand,
       url: `${smokeApiUrl}/health`,
       reuseExistingServer: false,
-      timeout: 90_000,
+      timeout: 180_000,
       env: {
         ...process.env,
         Storage__DataRoot: smokeDataRoot,

@@ -17,7 +17,11 @@ export function trackDataRequests(page: Page) {
   const inFlight = new Map<Request, number>();
   const settle = (request: Request) => inFlight.delete(request);
   page.on("request", (request) => {
-    if (!new URL(request.url()).pathname.startsWith("/hubs/")) {
+    const pathname = new URL(request.url()).pathname;
+    // A Web Worker's own script load (live-ticker.worker-*.js) is not page
+    // data, and Playwright does not always report it finished, which hung
+    // settled() on CI for 60 s with nothing actually outstanding.
+    if (!pathname.startsWith("/hubs/") && !/\.worker-[^/]*\.js$/.test(pathname)) {
       inFlight.set(request, Date.now());
     }
   });
