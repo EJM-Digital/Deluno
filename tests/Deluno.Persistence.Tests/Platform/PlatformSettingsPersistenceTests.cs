@@ -161,6 +161,49 @@ public sealed class PlatformSettingsPersistenceTests
         Assert.Equal(6, (await repository.GetAsync(CancellationToken.None)).LibraryFileCheckHours);
     }
 
+    /// <summary>
+    /// #904: an install that never opened the cleanup settings — no row for
+    /// either key at all — reads both as on, the same way
+    /// CleanupBlockReleaseAfterThreshold already defaults an untouched
+    /// install to on. This is the migration: nothing to run, because a
+    /// missing value already reads as "on" once the comparison flips.
+    /// </summary>
+    [Fact]
+    public async Task Cleanup_removal_and_purge_default_to_on_for_an_untouched_install()
+    {
+        using var storage = TestStorage.Create();
+        var repository = await SettingsAsync(storage);
+
+        var loaded = await repository.GetAsync(CancellationToken.None);
+
+        Assert.True(loaded.CleanupRemoveClientEntryAfterThreshold);
+        Assert.True(loaded.CleanupPurgePayloadAfterThreshold);
+    }
+
+    /// <summary>
+    /// #904: an install that explicitly turned either off before the default
+    /// changed keeps that choice — the flipped comparison only changes what a
+    /// missing value means, not what "false" means.
+    /// </summary>
+    [Fact]
+    public async Task Cleanup_removal_and_purge_stay_off_once_explicitly_turned_off()
+    {
+        using var storage = TestStorage.Create();
+        var repository = await SettingsAsync(storage);
+
+        var merged = PlatformSettingsPatchMerger.Apply(
+            await repository.GetAsync(CancellationToken.None),
+            new PatchPlatformSettingsRequest(
+                CleanupRemoveClientEntryAfterThreshold: false,
+                CleanupPurgePayloadAfterThreshold: false));
+        await repository.SaveAsync(merged, CancellationToken.None);
+
+        var loaded = await repository.GetAsync(CancellationToken.None);
+
+        Assert.False(loaded.CleanupRemoveClientEntryAfterThreshold);
+        Assert.False(loaded.CleanupPurgePayloadAfterThreshold);
+    }
+
     private static async Task<SqlitePlatformSettingsRepository> SettingsAsync(TestStorage storage)
     {
         var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-09-05T01:02:03Z"));

@@ -56,6 +56,8 @@ supplied for the release.
 
 Populate this section from merged changes on the approved candidate. Do not include a capability merely because it was planned or prototyped.
 
+- **A release Deluno judges genuinely bad is now removed from the client and its files deleted by default** (#904). Previously it was only blocklisted and searched again, leaving the dead download and its files behind. Any install that never changed the "remove from client" and "delete files" cleanup settings moves to the new default automatically; one that already set either off keeps that choice. This never applies to a setup problem on your own machine — a full disk, a permissions error, or files missing from disk — which is never treated as a bad release (#880, #881): those stay in the client, keep their files, and are shown as a problem to fix rather than blocklisted, replaced, removed, or deleted.
+
 ## Known Issues
 
 Populate with only validated open items at GA cut time:

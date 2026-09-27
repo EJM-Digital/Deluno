@@ -491,13 +491,19 @@ public sealed class SqlitePlatformSettingsRepository(
             DownloadHealthStrikeThreshold: ReadDownloadHealthStrikeThreshold(settings),
             CleanupBlockReleaseAfterThreshold: !string.Equals(GetValue(settings, "cleanup.blockReleaseAfterThreshold"), "false", StringComparison.OrdinalIgnoreCase),
             CleanupQueueReplacementAfterThreshold: !string.Equals(GetValue(settings, "cleanup.queueReplacementAfterThreshold"), "false", StringComparison.OrdinalIgnoreCase),
-            CleanupRemoveClientEntryAfterThreshold: string.Equals(GetValue(settings, "cleanup.removeClientEntryAfterThreshold"), "true", StringComparison.OrdinalIgnoreCase),
+            // #904: defaults to on. An install that never wrote this key (never
+            // opened the cleanup settings, or upgraded from before this
+            // default changed) reads the same as "on", same as
+            // CleanupBlockReleaseAfterThreshold just above; one that explicitly
+            // set it to "false" stays off.
+            CleanupRemoveClientEntryAfterThreshold: !string.Equals(GetValue(settings, "cleanup.removeClientEntryAfterThreshold"), "false", StringComparison.OrdinalIgnoreCase),
             SharingMode: SharingPolicy.NormalizeMode(GetValue(settings, "sharing.mode")),
             SharingForHours: ReadOptionalInt(GetValue(settings, "sharing.forHours"), SharingPolicy.Default.ForHours),
             SharingUntilRatio: ReadOptionalDouble(GetValue(settings, "sharing.untilRatio")),
             SharingStuckAction: SharingPolicy.NormalizeStuckAction(GetValue(settings, "sharing.stuckAction")),
             SharingStuckAfterDays: ReadOptionalInt(GetValue(settings, "sharing.stuckAfterDays"), SharingPolicy.Default.StuckAfterDays) ?? SharingPolicy.Default.StuckAfterDays,
-            CleanupPurgePayloadAfterThreshold: string.Equals(GetValue(settings, "cleanup.purgePayloadAfterThreshold"), "true", StringComparison.OrdinalIgnoreCase),
+            // #904: defaults to on, same reasoning as CleanupRemoveClientEntryAfterThreshold above.
+            CleanupPurgePayloadAfterThreshold: !string.Equals(GetValue(settings, "cleanup.purgePayloadAfterThreshold"), "false", StringComparison.OrdinalIgnoreCase),
             WorkflowVerified: string.Equals(GetValue(settings, "setup.workflowVerified"), "true", StringComparison.OrdinalIgnoreCase),
             UiColorMode: NormalizeUiColorMode(GetValue(settings, "ui.colorMode")),
             UiLanguage: NormalizeUiLanguage(GetValue(settings, "ui.language")),
