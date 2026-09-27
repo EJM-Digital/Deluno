@@ -208,7 +208,8 @@ public sealed class LibrarySubtitleSearchNotificationTests
             CancellationToken cancellationToken,
             SubtitleContentModificationPolicy? contentPolicy = null,
             SubtitleNamePolicy? namePolicy = null,
-            bool omitLanguageCode = false)
+            bool omitLanguageCode = false,
+            IReadOnlyCollection<string>? blockedKeys = null)
             => Task.FromResult(outcome);
     }
 }
