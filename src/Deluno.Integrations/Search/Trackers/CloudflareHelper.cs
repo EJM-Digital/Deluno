@@ -15,6 +15,15 @@ namespace Deluno.Integrations.Search.Trackers;
 public sealed record CloudflareSolution(Uri Url, HttpStatusCode Status, string Html, string? UserAgent, IReadOnlyList<Cookie> Cookies);
 
 /// <summary>
+/// A configured indexer proxy (#748), resolved to what the helper's own
+/// <c>proxy</c> request parameter needs (#749): the helper -- not Deluno --
+/// makes the request through it, so an HTTP/SOCKS4/SOCKS5 proxy assigned to
+/// the indexer travels with the request instead of being silently dropped
+/// once a Cloudflare helper is in the loop.
+/// </summary>
+public sealed record CloudflareHelperProxy(string Url, string? Username, string? Password);
+
+/// <summary>
 /// Fetches a page that a tracker put behind a Cloudflare check. Deluno does not
 /// solve those checks itself; a helper the person runs does (FlareSolverr, or
 /// Byparr, which answers the same API).
@@ -24,15 +33,19 @@ public interface ICloudflareHelper
     /// <summary>Whether a helper is set up at all.</summary>
     Task<bool> IsConfiguredAsync(CancellationToken cancellationToken);
 
-    /// <summary>The page, or null when there is no helper or it could not get through.</summary>
-    Task<CloudflareSolution?> FetchAsync(Uri url, CancellationToken cancellationToken);
+    /// <summary>
+    /// The page, or null when there is no helper or it could not get through.
+    /// <paramref name="proxy"/> is the indexer's own assigned proxy (#748), if
+    /// it has one, passed to the helper so it makes this request through it.
+    /// </summary>
+    Task<CloudflareSolution?> FetchAsync(Uri url, CancellationToken cancellationToken, CloudflareHelperProxy? proxy = null);
 
     /// <summary>
     /// The page fetched with a POST instead of a GET (#749), for a tracker
     /// whose Cloudflare challenge is only passed by posting form data -- the
     /// helper's own <c>request.post</c> command.
     /// </summary>
-    Task<CloudflareSolution?> PostAsync(Uri url, IReadOnlyDictionary<string, string> formData, CancellationToken cancellationToken);
+    Task<CloudflareSolution?> PostAsync(Uri url, IReadOnlyDictionary<string, string> formData, CancellationToken cancellationToken, CloudflareHelperProxy? proxy = null);
 
     /// <summary>Destroys this helper's session for one host, if it has one (#749), rather than leaving it to accumulate.</summary>
     Task DestroySessionAsync(string host, CancellationToken cancellationToken);
@@ -58,13 +71,13 @@ public sealed class FlareSolverrCloudflareHelper(IHttpClientFactory httpClientFa
     public async Task<bool> IsConfiguredAsync(CancellationToken cancellationToken)
         => !string.IsNullOrWhiteSpace((await settings.GetAsync(cancellationToken)).CloudflareHelperUrl);
 
-    public Task<CloudflareSolution?> FetchAsync(Uri url, CancellationToken cancellationToken)
-        => RequestAsync(url, formData: null, cancellationToken);
+    public Task<CloudflareSolution?> FetchAsync(Uri url, CancellationToken cancellationToken, CloudflareHelperProxy? proxy = null)
+        => RequestAsync(url, formData: null, proxy, cancellationToken);
 
-    public Task<CloudflareSolution?> PostAsync(Uri url, IReadOnlyDictionary<string, string> formData, CancellationToken cancellationToken)
-        => RequestAsync(url, formData, cancellationToken);
+    public Task<CloudflareSolution?> PostAsync(Uri url, IReadOnlyDictionary<string, string> formData, CancellationToken cancellationToken, CloudflareHelperProxy? proxy = null)
+        => RequestAsync(url, formData, proxy, cancellationToken);
 
-    private async Task<CloudflareSolution?> RequestAsync(Uri url, IReadOnlyDictionary<string, string>? formData, CancellationToken cancellationToken)
+    private async Task<CloudflareSolution?> RequestAsync(Uri url, IReadOnlyDictionary<string, string>? formData, CloudflareHelperProxy? proxy, CancellationToken cancellationToken)
     {
         var current = await settings.GetAsync(cancellationToken);
         var baseUrl = current.CloudflareHelperUrl;
@@ -86,7 +99,7 @@ public sealed class FlareSolverrCloudflareHelper(IHttpClientFactory httpClientFa
             sessions[host] = true;
         }
 
-        var answer = await SendAsync(http, endpoint, url, host, formData, solveBudget, cancellationToken);
+        var answer = await SendAsync(http, endpoint, url, host, formData, proxy, solveBudget, cancellationToken);
         if (answer?.Status is not null && !string.Equals(answer.Status, "ok", StringComparison.OrdinalIgnoreCase)
             && answer.Message?.Contains("session", StringComparison.OrdinalIgnoreCase) == true)
         {
@@ -94,18 +107,38 @@ public sealed class FlareSolverrCloudflareHelper(IHttpClientFactory httpClientFa
             sessions.TryRemove(host, out _);
             using var recreated = await http.PostAsJsonAsync(endpoint, new { cmd = "sessions.create", session = SessionName(host) }, cancellationToken);
             sessions[host] = true;
-            answer = await SendAsync(http, endpoint, url, host, formData, solveBudget, cancellationToken);
+            answer = await SendAsync(http, endpoint, url, host, formData, proxy, solveBudget, cancellationToken);
         }
 
         return Read(answer, url);
     }
 
     private static async Task<Answer?> SendAsync(
-        HttpClient http, string endpoint, Uri url, string host, IReadOnlyDictionary<string, string>? formData, TimeSpan solveBudget, CancellationToken cancellationToken)
+        HttpClient http, string endpoint, Uri url, string host, IReadOnlyDictionary<string, string>? formData, CloudflareHelperProxy? proxy, TimeSpan solveBudget, CancellationToken cancellationToken)
     {
-        var command = formData is null
-            ? new { cmd = "request.get", url = url.ToString(), session = SessionName(host), maxTimeout = (int)solveBudget.TotalMilliseconds }
-            : (object)new { cmd = "request.post", url = url.ToString(), session = SessionName(host), maxTimeout = (int)solveBudget.TotalMilliseconds, postData = ToPostDataString(formData) };
+        var command = new Dictionary<string, object?>
+        {
+            ["cmd"] = formData is null ? "request.get" : "request.post",
+            ["url"] = url.ToString(),
+            ["session"] = SessionName(host),
+            ["maxTimeout"] = (int)solveBudget.TotalMilliseconds
+        };
+        if (formData is not null)
+        {
+            command["postData"] = ToPostDataString(formData);
+        }
+
+        // #749: an HTTP/SOCKS4/SOCKS5 proxy assigned to this indexer (#748)
+        // travels with the request -- the helper makes the request, so it is
+        // the helper's own "proxy" parameter that carries it, not Deluno's
+        // own HttpClient.
+        if (proxy is not null)
+        {
+            command["proxy"] = proxy.Username is null
+                ? new { url = proxy.Url }
+                : new { url = proxy.Url, username = proxy.Username, password = proxy.Password };
+        }
+
         using var response = await http.PostAsJsonAsync(endpoint, command, cancellationToken);
         try
         {

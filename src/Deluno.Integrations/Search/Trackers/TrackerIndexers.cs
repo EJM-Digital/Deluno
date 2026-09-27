@@ -14,9 +14,10 @@ public sealed class TrackerIndexers(
     ITrackerDefinitionCatalog catalog,
     ITrackerEngine engine,
     ICloudflareHelper? cloudflareHelper = null,
-    TimeSpan? budget = null) : ITrackerIndexerTester
+    TimeSpan? budget = null,
+    Deluno.Connections.Data.IConnectionsRepository? connections = null) : ITrackerIndexerTester
 {
-    public TrackerConnection Connect(IndexerItem indexer)
+    public async Task<TrackerConnection> ConnectAsync(IndexerItem indexer, CancellationToken cancellationToken)
     {
         // A definition removed or renamed since this indexer was added (or one
         // never installed after a data folder was copied elsewhere) must not
@@ -45,7 +46,34 @@ public sealed class TrackerIndexers(
         }
 
         var baseUrl = string.IsNullOrWhiteSpace(indexer.BaseUrl) ? definition.Links.FirstOrDefault() ?? string.Empty : indexer.BaseUrl;
-        return new TrackerConnection(indexer.Id, definition, baseUrl, settings);
+        return new TrackerConnection(indexer.Id, definition, baseUrl, settings)
+        {
+            HelperProxy = await ResolveHelperProxyAsync(indexer, cancellationToken)
+        };
+    }
+
+    /// <summary>
+    /// This indexer's own assigned proxy (#748), resolved for the Cloudflare
+    /// helper's request (#749). A FlareSolverr/Byparr proxy is not resolved
+    /// here -- that assignment means "put this indexer's requests through
+    /// this other helper", not "tell the Cloudflare helper to nest one behind
+    /// it", and there is no protocol for that.
+    /// </summary>
+    private async Task<CloudflareHelperProxy?> ResolveHelperProxyAsync(IndexerItem indexer, CancellationToken cancellationToken)
+    {
+        if (connections is null || string.IsNullOrWhiteSpace(indexer.ProxyId))
+        {
+            return null;
+        }
+
+        var proxy = (await connections.ListProxiesAsync(cancellationToken))
+            .FirstOrDefault(item => item.IsEnabled && string.Equals(item.Id, indexer.ProxyId, StringComparison.OrdinalIgnoreCase));
+        if (proxy is null || string.Equals(proxy.ProxyType, ProxyTypes.FlareSolverr, StringComparison.OrdinalIgnoreCase))
+        {
+            return null;
+        }
+
+        return new CloudflareHelperProxy(ProxyAddressFormat.ToUrl(proxy.ProxyType, proxy.Address), proxy.Username, proxy.Password);
     }
 
     /// <summary>
@@ -62,19 +90,19 @@ public sealed class TrackerIndexers(
 
     public async Task<XDocument> SearchAsync(IndexerItem indexer, TrackerQuery query, CancellationToken cancellationToken)
     {
-        var result = await engine.SearchAsync(Connect(indexer), query, cancellationToken);
+        var result = await engine.SearchAsync(await ConnectAsync(indexer, cancellationToken), query, cancellationToken);
         return TorznabFeed.Write(result.Releases);
     }
 
-    public Task<TrackerGrab> ResolveAsync(IndexerItem indexer, string link, CancellationToken cancellationToken)
-        => engine.ResolveDownloadAsync(Connect(indexer), link, cancellationToken);
+    public async Task<TrackerGrab> ResolveAsync(IndexerItem indexer, string link, CancellationToken cancellationToken)
+        => await engine.ResolveDownloadAsync(await ConnectAsync(indexer, cancellationToken), link, cancellationToken);
 
     public async Task<(string HealthStatus, string Message, string? FailureCategory)> TestAsync(IndexerItem indexer, CancellationToken cancellationToken)
     {
         TrackerConnection connection;
         try
         {
-            connection = Connect(indexer);
+            connection = await ConnectAsync(indexer, cancellationToken);
         }
         catch (TrackerException exception)
         {

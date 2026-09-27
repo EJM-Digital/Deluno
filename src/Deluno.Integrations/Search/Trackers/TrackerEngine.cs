@@ -30,7 +30,17 @@ public sealed record TrackerConnection(
     string IndexerId,
     TrackerDefinition Definition,
     string BaseUrl,
-    IReadOnlyDictionary<string, string?> Settings);
+    IReadOnlyDictionary<string, string?> Settings)
+{
+    /// <summary>
+    /// This indexer's own assigned proxy (#748), resolved and ready for the
+    /// Cloudflare helper's <c>proxy</c> parameter (#749); null when the
+    /// indexer has no proxy assigned, or its assigned proxy is a FlareSolverr/
+    /// Byparr instance rather than an HTTP/SOCKS one (nesting one helper's
+    /// solve behind another is not what that assignment means).
+    /// </summary>
+    public CloudflareHelperProxy? HelperProxy { get; init; }
+}
 
 /// <summary>A release made ready for a download client: a magnet, or a .torrent file's bytes.</summary>
 public sealed record TrackerGrab(string? MagnetUrl, byte[]? TorrentFile, string SourceUrl);
@@ -367,7 +377,7 @@ public sealed partial class TrackerEngine : ITrackerEngine
             return page;
         }
 
-        var solved = await cloudflareHelper.FetchAsync(request.Uri, cancellationToken);
+        var solved = await cloudflareHelper.FetchAsync(request.Uri, cancellationToken, session.HelperProxy);
         if (solved is null || IsCloudflareBody(solved.Html))
         {
             logger.LogInformation("The Cloudflare helper could not get past {Host}.", request.Uri.Host);
@@ -777,6 +787,7 @@ internal sealed class TrackerSession
     {
         FingerprintValue = fingerprint;
         Http = new HttpClient(handlerFactory(cookies), disposeHandler: true) { Timeout = TimeSpan.FromSeconds(30) };
+        HelperProxy = connection.HelperProxy;
         delay = TimeSpan.FromSeconds(Math.Max(connection.Definition.RequestDelaySeconds ?? 0, 0));
         try
         {
@@ -797,6 +808,9 @@ internal sealed class TrackerSession
     }
 
     public string FingerprintValue { get; }
+
+    /// <summary>This tracker's assigned proxy (#748), if any, for the Cloudflare helper to route through (#749).</summary>
+    public CloudflareHelperProxy? HelperProxy { get; }
 
     public HttpClient Http { get; }
 
