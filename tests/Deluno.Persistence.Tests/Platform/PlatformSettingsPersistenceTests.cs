@@ -293,7 +293,7 @@ public sealed class PlatformSettingsPersistenceTests
         => new(
             AppInstanceName: null, MovieRootPath: null, SeriesRootPath: null, DownloadsPath: null,
             IncompleteDownloadsPath: null, AutoStartJobs: false, EnableNotifications: false, RenameOnImport: false,
-            UseHardlinks: false, CleanupEmptyFolders: false, RemoveCompletedDownloads: false,
+            UseHardlinks: false, CleanupEmptyFolders: false,
             MovieFolderFormat: null, SeriesFolderFormat: null, MovieFileFormat: null, EpisodeFileFormat: null,
             HostBindAddress: null, HostPort: 0, UrlBase: null, RequireAuthentication: false, UiTheme: null,
             DefaultMovieView: null, DefaultShowView: null, MetadataNfoEnabled: false, MetadataArtworkEnabled: false,
