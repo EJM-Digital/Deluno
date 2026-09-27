@@ -41,4 +41,17 @@ public interface IDownloadClientTelemetryService
         string clientId,
         string queueItemId,
         CancellationToken cancellationToken);
+
+    /// <summary>
+    /// The Queue's "why" behind removing a download (cleanup sheet J1/J2,
+    /// #924): one of <see cref="QueueRemovalReasons"/>, each doing everything
+    /// that choice means in one call — the client action, the blocklist entry
+    /// and replacement search for "it's bad", nothing more for "just stop
+    /// tracking it" — and writing it to Activity in plain words.
+    /// </summary>
+    Task<QueueRemovalResult> RemoveWithReasonAsync(
+        string clientId,
+        string queueItemId,
+        string reason,
+        CancellationToken cancellationToken);
 }

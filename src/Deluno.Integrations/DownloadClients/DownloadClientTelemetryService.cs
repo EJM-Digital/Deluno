@@ -157,40 +157,16 @@ public sealed class DownloadClientTelemetryService(
             };
         }
 
-        // An item owned by another downloader can be shared or cross-seeded. Queue
-        // removal is therefore an opt-in, confirmed operation. Deluno does not use
-        // this setting for automatic cleanup, and adapters that support deletion are
-        // still asked to retain payload files wherever their client API permits it.
-        // Deleting is gated; forgetting is not, and the difference is who asked.
-        //
-        // This setting exists so Deluno does not tidy away queue entries the
-        // owner wanted kept — an item can be shared or cross-seeded by another
-        // downloader. Forgetting is never Deluno tidying up: it comes from a
-        // confirmed "force a re-download", or from a refusal the owner can turn
-        // off in the failure console (DESIGN-007 decisions 9 and 16). Gating it
-        // here would make the force silently refuse on the strength of an
-        // unrelated setting, which is the same defect as a button that does not
-        // do what it says.
-        if (action is DownloadClientActions.Delete or DownloadClientActions.DeleteWithData &&
-            !(await platformRepository.GetAsync(cancellationToken)).RemoveCompletedDownloads)
-        {
-            return new DownloadClientActionResult(
-                client.Id,
-                request.QueueItemId,
-                action,
-                false,
-                "Removing downloads from their client is turned off. Turn on \"Allow removing client queue entries\" under Find & Download > Download Clients to remove it from Deluno.")
-            {
-                Failure = IntegrationFailureFactory.FromLegacy(
-                    "download-client",
-                    client.Id,
-                    client.Name,
-                    "action:delete",
-                    "configuration",
-                    "External-client queue removal is disabled.")
-            };
-        }
-
+        // Queue removal used to be gated behind "Allow removing client queue
+        // entries", a setting that hid removal entirely rather than asking
+        // anything. Cleanup sheet J1/J2 (#924) replaced it: the Queue's remove
+        // dialog is now the confirmation, asking why in plain words, and every
+        // choice acts — there is no second toggle left for it to silently
+        // fail against. Adapters that support deletion are still asked to
+        // retain payload files wherever their client API permits it, and an
+        // item owned by another downloader can still be shared or
+        // cross-seeded, which is exactly what the dialog's "just stop
+        // tracking it" choice is for.
         var result = await resiliencePolicy.ExecuteAsync(
             new IntegrationResilienceRequest(
                 DownloadClientHelpers.BuildResilienceKey(client, "action"),
@@ -247,6 +223,113 @@ public sealed class DownloadClientTelemetryService(
             }
             : actionResult;
     }
+
+    public async Task<QueueRemovalResult> RemoveWithReasonAsync(
+        string clientId,
+        string queueItemId,
+        string reason,
+        CancellationToken cancellationToken)
+    {
+        if (!QueueRemovalReasons.IsKnown(reason))
+        {
+            return new QueueRemovalResult(clientId, queueItemId, reason, false, "Unsupported reason.", false, false, null, null)
+            {
+                Failure = IntegrationFailureFactory.FromLegacy(
+                    "download-client", clientId, clientId, "queue:remove", "rejected", "Unsupported removal reason.")
+            };
+        }
+
+        var client = (await connectionsRepository.ListDownloadClientsAsync(cancellationToken))
+            .FirstOrDefault(item => string.Equals(item.Id, clientId, StringComparison.OrdinalIgnoreCase));
+        if (client is null)
+        {
+            return new QueueRemovalResult(clientId, queueItemId, reason, false, "Download client was not found.", false, false, null, null)
+            {
+                Failure = IntegrationFailureFactory.FromLegacy(
+                    "download-client", clientId, clientId, "queue:remove", "notFound", "Download client was not found.")
+            };
+        }
+
+        // The dispatch is how a queue item becomes a title: the queue item
+        // itself carries a release name, not an entity id. Absent for a
+        // download Deluno never grabbed (added by hand, or older than this
+        // dispatch), in which case only the client action below happens —
+        // there is no title to blocklist for or search again.
+        var dispatch = await dispatchesRepository.FindDispatchByHashAsync(client.Id, queueItemId, cancellationToken);
+        var title = dispatch?.ReleaseName ?? queueItemId;
+
+        var clientAction = reason == QueueRemovalReasons.Forget
+            ? DownloadClientActions.Forget
+            : DownloadClientActions.DeleteWithData;
+
+        var actionResult = await ExecuteActionAsync(
+            client.Id,
+            new DownloadClientActionRequest(clientAction, queueItemId),
+            cancellationToken);
+
+        if (!actionResult.Succeeded)
+        {
+            return new QueueRemovalResult(client.Id, queueItemId, reason, false, actionResult.Message, false, false, dispatch?.EntityId, dispatch?.MediaType)
+            {
+                Failure = actionResult.Failure
+            };
+        }
+
+        var blocklisted = false;
+        var searchStarted = false;
+
+        if (reason == QueueRemovalReasons.Failed && blockedReleases is not null && dispatch is not null)
+        {
+            await blockedReleases.BlockAsync(
+                new BlockedRelease(
+                    Guid.NewGuid().ToString("n"),
+                    BlockedReleaseKeys.For(dispatch.ReleaseName, dispatch.IndexerName),
+                    dispatch.ReleaseName,
+                    dispatch.IndexerName,
+                    dispatch.MediaType,
+                    dispatch.EntityId,
+                    title,
+                    ImportFailurePolicy.ManualFailure,
+                    "Marked as failed from the Queue.",
+                    dispatch.TorrentHashOrItemId ?? queueItemId,
+                    client.Id,
+                    client.Name,
+                    DateTimeOffset.MinValue),
+                cancellationToken);
+            blocklisted = true;
+
+            if (SupportsReplacementSearch(dispatch.EntityType))
+            {
+                var library = (await librariesRepository.ListLibrariesAsync(cancellationToken))
+                    .FirstOrDefault(item => string.Equals(item.Id, dispatch.LibraryId, StringComparison.OrdinalIgnoreCase));
+                await QueueReplacementSearchAsync(dispatch, library, cancellationToken);
+                searchStarted = true;
+            }
+        }
+
+        var message = BuildQueueRemovalMessage(reason, title, client.Name, blocklisted, searchStarted);
+        await activityFeedRepository.RecordActivityAsync(
+            "download.queue.removed",
+            message,
+            null,
+            null,
+            dispatch is not null ? dispatch.EntityType : "download_dispatch",
+            dispatch?.EntityId ?? dispatch?.Id ?? queueItemId,
+            cancellationToken);
+
+        return new QueueRemovalResult(client.Id, queueItemId, reason, true, message, blocklisted, searchStarted, dispatch?.EntityId, dispatch?.MediaType);
+    }
+
+    private static string BuildQueueRemovalMessage(string reason, string title, string clientName, bool blocklisted, bool searchStarted)
+        => reason switch
+        {
+            QueueRemovalReasons.Failed => searchStarted
+                ? $"You marked \"{title}\" as bad: removed from {clientName}, deleted its files, blocklisted the release, and started a new search."
+                : $"You marked \"{title}\" as bad: removed from {clientName}, deleted its files, and blocklisted the release.",
+            QueueRemovalReasons.Unwanted =>
+                $"You said you don't want \"{title}\" any more: removed from {clientName} and deleted its files.",
+            _ => $"You told Deluno to stop tracking \"{title}\"; {clientName} still has it, untouched."
+        };
 
     private async Task<DownloadClientTelemetrySnapshot?> TryGetLiveSnapshotAsync(
         DownloadClientItem client,

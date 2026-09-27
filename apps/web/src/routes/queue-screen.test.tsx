@@ -1,7 +1,8 @@
-import { render, screen, within } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { fireEvent, render, screen, within } from "@testing-library/react";
+import { describe, expect, it, vi } from "vitest";
 import type { DownloadDispatchItem, DownloadHealthFinding, DownloadQueueItem, ImportPreviewResponse, LibraryItem } from "../lib/api";
-import { buildImportRequest, findDispatchForQueueItem, ImportPreviewFacts, visibleFindings } from "./queue-screen";
+import { RemovalReasonDialog, type RemovalReason } from "../components/ui/removal-reason-dialog";
+import { buildImportRequest, findDispatchForQueueItem, ImportPreviewFacts, unmonitorRequestFor, visibleFindings } from "./queue-screen";
 
 function packPreview(canExecute: boolean): ImportPreviewResponse {
   return {
@@ -107,6 +108,83 @@ describe("season-pack import preview", () => {
 // it. Dismissing calls the server's existing health/{kind}/ignore endpoint,
 // which sets ignoredUntilUtc — this is what makes that dismissal actually
 // disappear from the drawer instead of the finding just sitting there.
+// Cleanup sheet J1/J2 (#924): removing a download from the Queue asks why,
+// and each of the three plain-word choices maps to a distinct API call.
+describe("the Queue's removal-reason dialog", () => {
+  it("gives every choice its own accessible name, so the smoke test never sees two buttons called the same thing", () => {
+    render(
+      <RemovalReasonDialog
+        open
+        onOpenChange={() => {}}
+        title="Example.Movie.2026.1080p"
+        busyReason={null}
+        onChoose={() => {}}
+      />
+    );
+
+    expect(screen.getByRole("button", { name: /It's bad/ })).toBeVisible();
+    expect(screen.getByRole("button", { name: /I don't want it/ })).toBeVisible();
+    expect(screen.getByRole("button", { name: /Just stop tracking it/ })).toBeVisible();
+  });
+
+  it.each([
+    ["It's bad", "failed"],
+    ["I don't want it", "unwanted"],
+    ["Just stop tracking it", "forget"]
+  ] as const)("choosing \"%s\" calls back with reason \"%s\"", (label, reason) => {
+    const onChoose = vi.fn();
+    render(
+      <RemovalReasonDialog
+        open
+        onOpenChange={() => {}}
+        title="Example.Movie.2026.1080p"
+        busyReason={null}
+        onChoose={onChoose}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: new RegExp(label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")) }));
+
+    expect(onChoose).toHaveBeenCalledWith(reason satisfies RemovalReason);
+  });
+
+  it("disables every choice while one of them is in flight", () => {
+    render(
+      <RemovalReasonDialog
+        open
+        onOpenChange={() => {}}
+        title="Example.Movie.2026.1080p"
+        busyReason="failed"
+        onChoose={() => {}}
+      />
+    );
+
+    expect(screen.getByRole("button", { name: /It's bad/ })).toBeDisabled();
+    expect(screen.getByRole("button", { name: /I don't want it/ })).toBeDisabled();
+    expect(screen.getByRole("button", { name: /Just stop tracking it/ })).toBeDisabled();
+  });
+});
+
+describe("unmonitoring a title after \"I don't want it\"", () => {
+  it("sends a movie to the movies bulk endpoint", () => {
+    expect(unmonitorRequestFor("movie-1", "movie")).toEqual({
+      url: "/api/movies/bulk",
+      body: { movieIds: ["movie-1"], operation: "monitoring", monitored: false }
+    });
+  });
+
+  it("sends a series to the series bulk endpoint", () => {
+    expect(unmonitorRequestFor("series-1", "tv")).toEqual({
+      url: "/api/series/bulk",
+      body: { seriesIds: ["series-1"], operation: "monitoring", monitored: false }
+    });
+  });
+
+  it("treats a null media type as a movie rather than guessing wrong silently", () => {
+    expect(unmonitorRequestFor("movie-2", null).url).toBe("/api/movies/bulk");
+  });
+});
+
 describe("dismissing a health finding", () => {
   function findingAt(ignoredUntilUtc: string | null): DownloadHealthFinding {
     return {

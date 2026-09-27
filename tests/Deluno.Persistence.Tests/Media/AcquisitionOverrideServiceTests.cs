@@ -485,6 +485,8 @@ public sealed class AcquisitionOverrideServiceTests
             => throw new NotSupportedException();
         public Task<DownloadClientActionResult> ReclaimCompletedAsync(string clientId, string queueItemId, CancellationToken cancellationToken)
             => throw new NotSupportedException();
+        public Task<QueueRemovalResult> RemoveWithReasonAsync(string clientId, string queueItemId, string reason, CancellationToken cancellationToken)
+            => throw new NotSupportedException();
     }
 
     private sealed class FakeExclusions : IUnifiedExclusionRepository

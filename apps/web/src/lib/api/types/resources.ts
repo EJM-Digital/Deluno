@@ -852,6 +852,25 @@ export interface DownloadQueueItem {
   failure?: IntegrationFailure | null;
 }
 
+/**
+ * What happened when the Queue's "why" dialog removed a download
+ * (cleanup sheet J1/J2, #924). `entityId`/`mediaType` are the title this
+ * download belonged to, when Deluno can still say — used by the caller to
+ * unmonitor the title itself for the "I don't want it" reason, since that
+ * happens on the movie/series side rather than here.
+ */
+export interface QueueRemovalResult {
+  clientId: string;
+  queueItemId: string;
+  reason: string;
+  succeeded: boolean;
+  message: string;
+  blocklisted: boolean;
+  searchStarted: boolean;
+  entityId: string | null;
+  mediaType: string | null;
+}
+
 /** A client-specific translation from the path it reports to the path Deluno can access. */
 export interface DownloadClientPathMappingItem {
   id: string;
