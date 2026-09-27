@@ -4299,7 +4299,9 @@ public sealed class SqliteJobStore(
             ["movies.collection.sync"] = new(
                 "a movie collection refresh", "Started refreshing a movie collection.", "Movie collection refresh"),
             ["media-servers.refresh"] = new(
-                "a media server refresh", "Started telling your media servers about changed files.", "Media server refresh")
+                "a media server refresh", "Started telling your media servers about changed files.", "Media server refresh"),
+            ["media-servers.refresh-retry"] = new(
+                "a media server refresh retry", "Started retrying a media server that had not answered.", "Media server refresh retry")
         };
 
     private static string? NormalizeJobKey(string? value)
