@@ -36,6 +36,9 @@ const preferences: NotificationPreferences = {
   renameEnabled: false,
   fileDeletedEnabled: false,
   manualInteractionRequiredEnabled: false,
+  grabEnabled: false,
+  addedEnabled: true,
+  updateEnabled: false,
   inAppNotificationsEnabled: true,
   emailNotificationsEnabled: false,
   webhookNotificationsEnabled: false,
@@ -94,5 +97,39 @@ describe("subtitle notification preferences (#839)", () => {
     const body = JSON.parse((init as RequestInit).body as string);
     expect(body.subtitleFailedEnabled).toBe(true);
     expect(body.subtitleDownloadedEnabled).toBe(true);
+  });
+});
+
+describe("lifecycle notification preferences (#856)", () => {
+  afterEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("shows Grab and Title added alongside the other lifecycle triggers with their saved state", () => {
+    renderPage();
+
+    expect(screen.getByText("Grab")).toBeTruthy();
+    expect(screen.getByText("Title added")).toBeTruthy();
+    expect(screen.getByText("Provider health changed")).toBeTruthy();
+
+    expect(screen.getByRole("switch", { name: "Grab" }).getAttribute("aria-checked")).toBe("false");
+    expect(screen.getByRole("switch", { name: "Title added" }).getAttribute("aria-checked")).toBe("true");
+  });
+
+  it("PUTs the full preferences object when Grab is toggled on", async () => {
+    vi.mocked(authedFetch).mockResolvedValue(new Response(null, { status: 200 }));
+    renderPage();
+
+    fireEvent.click(screen.getByRole("switch", { name: "Grab" }));
+
+    await waitFor(() => expect(authedFetch).toHaveBeenCalledWith(
+      "/api/notification-preferences",
+      expect.objectContaining({ method: "PUT" })
+    ));
+
+    const [, init] = vi.mocked(authedFetch).mock.calls[0];
+    const body = JSON.parse((init as RequestInit).body as string);
+    expect(body.grabEnabled).toBe(true);
+    expect(body.addedEnabled).toBe(true);
   });
 });

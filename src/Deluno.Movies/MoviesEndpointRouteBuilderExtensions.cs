@@ -15,6 +15,7 @@ using Deluno.Media;
 using Deluno.Movies.Contracts;
 using Deluno.Movies.Data;
 using Deluno.Movies.Services;
+using Deluno.Notifications;
 using Deluno.Platform.Data;
 using Deluno.Platform.Contracts;
 using Deluno.Platform;
@@ -1772,6 +1773,8 @@ public static class MoviesEndpointRouteBuilderExtensions
             IJobScheduler jobScheduler,
             IRealtimeEventPublisher realtimeEventPublisher,
             IMediaStateRepository mediaState,
+            IOutboundNotificationService notificationService,
+            INotificationService notificationPreferences,
             CancellationToken cancellationToken) =>
         {
             var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
@@ -1793,6 +1796,7 @@ public static class MoviesEndpointRouteBuilderExtensions
                 return Results.ValidationProblem(new Dictionary<string, string[]> { ["libraryId"] = ["Choose one of your movie libraries."] });
             }
 
+            var requestStartedUtc = DateTimeOffset.UtcNow;
             var movie = await repository.AddAsync(request, cancellationToken);
             // Only the library the person chose, or the one it is already in (#530).
             var already = (await mediaState.ListWantedByIdsAsync(MediaKind.Movie, [movie.Id], cancellationToken))
@@ -1890,6 +1894,22 @@ public static class MoviesEndpointRouteBuilderExtensions
                     RelatedEntityId: movie.Id),
                 cancellationToken);
             await realtimeEventPublisher.PublishEntityChangedAsync("Movie", movie.Id, cancellationToken);
+
+            // On Title Added (#856): AddAsync dedupes, so a title already in
+            // the catalogue returns its existing row with its original
+            // CreatedUtc -- only a row created within this request is a
+            // genuinely new title.
+            if (movie.CreatedUtc >= requestStartedUtc &&
+                (await notificationPreferences.GetPreferencesAsync(cancellationToken)).AddedEnabled)
+            {
+                await notificationService.DispatchAsync(
+                    "title.added",
+                    $"Added: {movie.Title}",
+                    $"{movie.Title} was added to the library.",
+                    JsonSerializer.Serialize(new { movie.Id, movie.Title, mediaType = "movies" }),
+                    cancellationToken);
+            }
+
             return Results.Created($"/api/movies/{movie.Id}", movie);
         });
 

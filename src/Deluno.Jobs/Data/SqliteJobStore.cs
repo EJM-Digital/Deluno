@@ -8,6 +8,7 @@ using Deluno.Infrastructure.Storage;
 using Deluno.Jobs.Contracts;
 using Deluno.Jobs.Decisions;
 using Deluno.Quality.ReleasePreferences;
+using Deluno.Notifications;
 using Microsoft.Data.Sqlite;
 
 namespace Deluno.Jobs.Data;
@@ -17,7 +18,9 @@ public sealed class SqliteJobStore(
     TimeProvider timeProvider,
     IRealtimeEventPublisher realtimeEventPublisher,
     IDownloadDispatchesRepository downloadDispatchesRepository,
-    IJobLaneSignal? laneSignal = null)
+    IJobLaneSignal? laneSignal = null,
+    IOutboundNotificationService? outboundNotificationService = null,
+    INotificationService? notificationPreferences = null)
     : IJobScheduler, IJobQueueRepository, IActivityFeedRepository
 {
     private static readonly JsonSerializerOptions PayloadJsonOptions = new()
@@ -2983,6 +2986,27 @@ public sealed class SqliteJobStore(
             SeverityForCategory(activityCategory),
             now.ToString("O"),
             cancellationToken);
+
+        // Radarr/Sonarr's "On Grab" (#856): every release Deluno actually sent
+        // to a download client, manual or automated -- this is the one place
+        // every grab path (manual, automated search, season/episode search)
+        // converges, so it is dispatched once here rather than at each of
+        // those call sites.
+        if (string.Equals(status, "sent", StringComparison.OrdinalIgnoreCase) &&
+            outboundNotificationService is not null)
+        {
+            var enabled = notificationPreferences is null ||
+                (await notificationPreferences.GetPreferencesAsync(cancellationToken)).GrabEnabled;
+            if (enabled)
+            {
+                await outboundNotificationService.DispatchAsync(
+                    "grab",
+                    $"Grabbed: {releaseName}",
+                    $"Deluno sent {releaseName} to {downloadClientName}.",
+                    notesJson,
+                    cancellationToken);
+            }
+        }
 
         return dispatchId;
     }
