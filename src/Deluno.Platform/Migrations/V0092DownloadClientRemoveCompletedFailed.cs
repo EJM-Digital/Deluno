@@ -35,4 +35,14 @@ public sealed class V0092DownloadClientRemoveCompletedFailed : SqliteSqlMigratio
             WHERE setting_key = 'media.removeCompletedDownloads' AND setting_value = 'true'
         );
         """;
+
+    // The first definition, before it carried the old platform-wide flag across.
+    // Only the lab rig ran it; it keeps both columns off.
+    protected override IEnumerable<string> SupersededSql =>
+    [
+        """
+        ALTER TABLE download_clients ADD COLUMN remove_completed INTEGER NOT NULL DEFAULT 0;
+        ALTER TABLE download_clients ADD COLUMN remove_failed INTEGER NOT NULL DEFAULT 0;
+        """
+    ];
 }

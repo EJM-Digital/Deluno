@@ -19,6 +19,13 @@ public interface IDelunoDatabaseMigration
     /// </summary>
     string LegacyChecksum { get; }
 
+    /// <summary>
+    /// Checksums of earlier definitions this migration replaced before any
+    /// release shipped it. A database that already ran one of them is
+    /// re-stamped rather than refused; it keeps what the earlier definition did.
+    /// </summary>
+    IReadOnlyCollection<string> SupersededChecksums => [];
+
     Task UpAsync(
         DbConnection connection,
         DbTransaction transaction,

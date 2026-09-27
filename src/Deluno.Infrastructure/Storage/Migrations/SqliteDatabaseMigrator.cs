@@ -41,6 +41,13 @@ public sealed class SqliteDatabaseMigrator(
 
                 // Stamped by a build that hashed the raw literal. The SQL itself is
                 // unchanged, so adopt the row rather than refusing to start.
+                // Ran an earlier definition that was corrected before release.
+                if (migration.SupersededChecksums.Contains(existing.Checksum, StringComparer.OrdinalIgnoreCase))
+                {
+                    await RestampChecksumAsync(connection, migration, cancellationToken);
+                    continue;
+                }
+
                 if (string.Equals(existing.Checksum, migration.LegacyChecksum, StringComparison.OrdinalIgnoreCase))
                 {
                     await RestampChecksumAsync(connection, migration, cancellationToken);
