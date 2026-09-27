@@ -90,6 +90,26 @@ public static class MediaFileNameFacts
         (Build(@"(english)"), "English")
     ];
 
+    /// <summary>
+    /// Edition tags scene/P2P naming carries as their own token (#772),
+    /// distinct from an edition word merely appearing inside a title.
+    /// Ordered most-specific first: "Director's Cut" also contains "Cut",
+    /// which is not itself a tag Deluno recognises.
+    /// </summary>
+    private static readonly (Regex Pattern, string Value)[] Editions =
+    [
+        (Build(@"(directors?[.\s]?cut)"), "Director's Cut"),
+        (Build(@"(extended[.\s]?(cut|edition)?)"), "Extended"),
+        (Build(@"(theatrical[.\s]?(cut|edition)?)"), "Theatrical"),
+        (Build(@"(ultimate[.\s]?edition)"), "Ultimate Edition"),
+        (Build(@"(special[.\s]?edition)"), "Special Edition"),
+        (Build(@"(redux)"), "Redux"),
+        (Build(@"(remastered)"), "Remastered"),
+        (Build(@"(unrated)"), "Unrated"),
+        (Build(@"(uncut)"), "Uncut"),
+        (Build(@"(imax)"), "IMAX")
+    ];
+
     private static readonly (Regex Pattern, string Value)[] AudioCodecs =
     [
         (BuildAudio(@"(truehd)"), "TrueHD"),
@@ -193,7 +213,8 @@ public static class MediaFileNameFacts
             Source: MatchFirst(Sources, name),
             DynamicRange: MatchFirst(DynamicRanges, name),
             BitDepth: ParseBitDepth(name),
-            Languages: MatchAll(Languages, name));
+            Languages: MatchAll(Languages, name),
+            Editions: MatchAll(Editions, name));
     }
 
     private static string? ParseBitDepth(string name)
@@ -311,9 +332,16 @@ public sealed record MediaFileFacts(
     /// be "MULTI.FRENCH", not just one or the other. Empty, never null, when
     /// the name names no language at all.
     /// </summary>
-    IReadOnlyList<string>? Languages = null)
+    IReadOnlyList<string>? Languages = null,
+    /// <summary>
+    /// Every edition tag the name carries as its own token (#772) — IMAX,
+    /// Extended, Director's Cut, Unrated, ... Empty, never null, when the
+    /// name names no edition at all.
+    /// </summary>
+    IReadOnlyList<string>? Editions = null)
 {
     public IReadOnlyList<string> Languages { get; init; } = Languages ?? [];
+    public IReadOnlyList<string> Editions { get; init; } = Editions ?? [];
 
     public static MediaFileFacts Empty { get; } = new(null, null, null, null);
 

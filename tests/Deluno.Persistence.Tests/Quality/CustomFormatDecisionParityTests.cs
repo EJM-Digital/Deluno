@@ -479,6 +479,46 @@ public sealed class CustomFormatDecisionParityTests
         Assert.False(CustomFormatDefinitionMatcher.Evaluate(releaseName, definition, anyCondition: false, "tv").IsMatch);
     }
 
+    /// <summary>
+    /// Radarr's Edition condition (#772): matches a parsed edition tag, not a
+    /// raw substring, so a title merely containing the word does not fire.
+    /// </summary>
+    [Theory]
+    [InlineData("Movie.2026.IMAX.1080p.BluRay-GRP", "imax", true)]
+    [InlineData("IMAX.Adventure.2026.1080p.WEB-DL-GRP", "imax", true)]
+    [InlineData("Movie.2026.1080p.BluRay-GRP", "imax", false)]
+    [InlineData("Movie.2026.EXTENDED.1080p.BluRay-GRP", "extended", true)]
+    [InlineData("Movie.2026.Directors.Cut.1080p.BluRay-GRP", "director", true)]
+    [InlineData("Movie.2026.UNRATED.1080p.BluRay-GRP", "imax", false)]
+    public void Edition_condition_matches_the_parsed_edition_tag(string releaseName, string edition, bool expected)
+    {
+        var definition = $"[{{\"type\":\"edition\",\"value\":\"{edition}\"}}]";
+
+        Assert.True(CustomFormatDefinitionMatcher.CanEvaluate(definition));
+        Assert.Equal(expected, CustomFormatDefinitionMatcher.Evaluate(releaseName, definition, anyCondition: false).IsMatch);
+    }
+
+    [Fact]
+    public void Negated_edition_condition_flips_the_result()
+    {
+        const string releaseName = "Movie.2026.IMAX.1080p.BluRay-GRP";
+        const string definition = "[{\"type\":\"edition\",\"value\":\"imax\",\"negate\":true}]";
+
+        Assert.True(CustomFormatDefinitionMatcher.CanEvaluate(definition));
+        Assert.False(CustomFormatDefinitionMatcher.Evaluate(releaseName, definition, anyCondition: false).IsMatch);
+    }
+
+    [Fact]
+    public void Imported_edition_specification_maps_onto_the_edition_condition()
+    {
+        const string definition =
+            "[{\"implementation\":\"EditionSpecification\",\"fields\":[{\"name\":\"value\",\"value\":\"imax\"}]}]";
+
+        Assert.True(CustomFormatDefinitionMatcher.CanEvaluate(definition));
+        Assert.True(CustomFormatDefinitionMatcher.Evaluate("Movie.2026.IMAX.1080p.BluRay-GRP", definition, anyCondition: false).IsMatch);
+        Assert.False(CustomFormatDefinitionMatcher.Evaluate("Movie.2026.1080p.BluRay-GRP", definition, anyCondition: false).IsMatch);
+    }
+
     private sealed record MatchCase(
         string Id,
         string Conditions,
