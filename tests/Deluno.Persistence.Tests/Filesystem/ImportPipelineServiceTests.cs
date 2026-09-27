@@ -410,6 +410,10 @@ public sealed class ImportPipelineServiceTests
             LastQueueItemId = queueItemId;
             return Task.FromResult(new Deluno.Recovery.Services.DownloadClientRemovalResult(true, "removed"));
         }
+
+        public Task<Deluno.Recovery.Services.DownloadClientRemovalResult> StopSeedingAsync(
+            string clientId, string queueItemId, CancellationToken cancellationToken)
+            => throw new NotSupportedException();
     }
 
     /// <summary>

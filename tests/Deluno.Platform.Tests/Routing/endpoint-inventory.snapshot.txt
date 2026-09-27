@@ -45,6 +45,7 @@ DELETE /api/series/{id}
 DELETE /api/series/{id}/libraries/{libraryId}
 DELETE /api/series/{id}/subtitles/override
 DELETE /api/setup/draft
+DELETE /api/sharing-rules/{id}
 DELETE /api/subtitle-providers/{key}
 DELETE /api/system/log-files/{name}
 DELETE /api/tags/{id}
@@ -217,6 +218,7 @@ GET /api/series/{id}/workflow-status
 GET /api/settings/
 GET /api/setup/draft
 GET /api/setup/progress
+GET /api/sharing-rules/
 GET /api/stats
 GET /api/subtitle-languages
 GET /api/subtitle-providers/
@@ -444,6 +446,7 @@ POST /api/series/{id}/metadata/refresh
 POST /api/series/{id}/search
 POST /api/series/{id}/seasons/{seasonNumber:int}/search
 POST /api/setup/completed
+POST /api/sharing-rules/
 POST /api/subtitle-providers/{key}/test
 POST /api/system/health/{id}/snooze
 POST /api/system/health/{id}/unsnooze
@@ -526,6 +529,7 @@ PUT /api/settings/
 PUT /api/settings/automation
 PUT /api/setup/draft
 PUT /api/setup/progress
+PUT /api/sharing-rules/{id}
 PUT /api/subtitle-providers/{key}
 PUT /api/system/log-level
 PUT /api/tags/{id}
