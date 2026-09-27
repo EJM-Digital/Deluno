@@ -178,6 +178,8 @@ export interface PlatformSettingsSnapshot {
   minimumFreeSpaceMb: number;
   /** #765: for a filesystem that cannot report free space at all, not a substitute for lowering minimumFreeSpaceMb. */
   skipFreeSpaceCheck: boolean;
+  /** #887: off by default. A still-packed archive is always blocklisted (per-reason, on the failure rules console); this decides whether it is also removed and deleted from the download client. */
+  removeAndDeletePackedArchivesFromClient: boolean;
   updatedUtc: string;
 }
 
@@ -332,5 +334,6 @@ export const emptyPlatformSettingsSnapshot: PlatformSettingsSnapshot = {
   renameFoldersOnImport: false,
   minimumFreeSpaceMb: 100,
   skipFreeSpaceCheck: false,
+  removeAndDeletePackedArchivesFromClient: false,
   updatedUtc: new Date(0).toISOString()
 };

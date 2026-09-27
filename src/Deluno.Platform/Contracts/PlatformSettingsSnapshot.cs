@@ -218,4 +218,10 @@ public sealed record PlatformSettingsSnapshot(
     // layers return nothing usable) rather than for someone who merely
     // disagrees with the floor -- lower MinimumFreeSpaceMb for that instead.
     int MinimumFreeSpaceMb = 100,
-    bool SkipFreeSpaceCheck = false);
+    bool SkipFreeSpaceCheck = false,
+    // #887: a still-packed archive is always blocklisted (governed by the
+    // existing per-reason failure table, Settings -> Failure and blocklist),
+    // but removing it from the download client and deleting its files was
+    // never anybody's choice -- always "no". This is that choice, off by
+    // default so an existing install's disk behaves exactly as before.
+    bool RemoveAndDeletePackedArchivesFromClient = false);

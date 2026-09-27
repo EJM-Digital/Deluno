@@ -111,4 +111,5 @@ public sealed record PatchPlatformSettingsRequest(
     bool? DownloadIntegrityCheckEnabled = null,
     int? DownloadIntegrityMinimumRuntimePercent = null,
     int? MinimumFreeSpaceMb = null,
-    bool? SkipFreeSpaceCheck = null);
+    bool? SkipFreeSpaceCheck = null,
+    bool? RemoveAndDeletePackedArchivesFromClient = null);

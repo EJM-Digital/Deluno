@@ -226,6 +226,27 @@ public sealed class TheBlocklistTests
         Assert.Empty(await blocklist.ListAwaitingCleanupAsync(CancellationToken.None));
     }
 
+    /// <summary>
+    /// #887: a caller's own "shouldDeletePayload" answers instead of the
+    /// shipped table, so a person's "remove and delete packed archives" choice
+    /// can fold a reason in without this repository knowing about settings.
+    /// </summary>
+    [Fact]
+    public async Task A_caller_supplied_delete_rule_overrides_the_shipped_table()
+    {
+        using var storage = await StorageAsync();
+        var blocklist = new SqliteBlockedReleaseRepository(storage.Factory, Clock);
+        await blocklist.BlockAsync(Release("Arrival.2016.2160p", "Nebula", ImportFailurePolicy.UnsupportedFile), CancellationToken.None);
+
+        // The shipped table says no for a packed archive.
+        Assert.Empty(await blocklist.ListAwaitingCleanupAsync(null, CancellationToken.None));
+
+        // The caller's own rule says yes.
+        Assert.Single(await blocklist.ListAwaitingCleanupAsync(
+            reason => reason == ImportFailurePolicy.UnsupportedFile,
+            CancellationToken.None));
+    }
+
     [Fact]
     public async Task Answering_a_proposal_with_yes_makes_searches_skip_it()
     {

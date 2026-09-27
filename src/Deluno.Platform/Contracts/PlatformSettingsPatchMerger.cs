@@ -105,5 +105,6 @@ public static class PlatformSettingsPatchMerger
             DownloadIntegrityCheckEnabled: patch.DownloadIntegrityCheckEnabled ?? current.DownloadIntegrityCheckEnabled,
             DownloadIntegrityMinimumRuntimePercent: patch.DownloadIntegrityMinimumRuntimePercent ?? current.DownloadIntegrityMinimumRuntimePercent,
             MinimumFreeSpaceMb: patch.MinimumFreeSpaceMb ?? current.MinimumFreeSpaceMb,
-            SkipFreeSpaceCheck: patch.SkipFreeSpaceCheck ?? current.SkipFreeSpaceCheck);
+            SkipFreeSpaceCheck: patch.SkipFreeSpaceCheck ?? current.SkipFreeSpaceCheck,
+            RemoveAndDeletePackedArchivesFromClient: patch.RemoveAndDeletePackedArchivesFromClient ?? current.RemoveAndDeletePackedArchivesFromClient);
 }
