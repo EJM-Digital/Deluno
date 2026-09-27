@@ -491,6 +491,37 @@ public sealed class PlatformSettingsPersistenceTests
         Assert.Equal("{Series Title} - {absolute:000}", loaded.AnimeEpisodeFileFormat);
     }
 
+    /// <summary>#762: blank for both by default (today's one flat series folder), and each round-trips independently through a patch.</summary>
+    [Fact]
+    public async Task SeasonAndSpecialsFolderFormat_default_to_blank_and_round_trip_independently()
+    {
+        using var storage = TestStorage.Create();
+        var repository = await SettingsAsync(storage);
+
+        var defaults = await repository.GetAsync(CancellationToken.None);
+        Assert.Equal(string.Empty, defaults.SeasonFolderFormat);
+        Assert.Equal(string.Empty, defaults.SpecialsFolderFormat);
+
+        var merged = PlatformSettingsPatchMerger.Apply(
+            defaults,
+            new PatchPlatformSettingsRequest(SeasonFolderFormat: "Season {Season:00}"));
+        await repository.SaveAsync(merged, CancellationToken.None);
+
+        var afterSeason = await repository.GetAsync(CancellationToken.None);
+        Assert.Equal("Season {Season:00}", afterSeason.SeasonFolderFormat);
+        Assert.Equal(string.Empty, afterSeason.SpecialsFolderFormat);
+
+        var mergedSpecials = PlatformSettingsPatchMerger.Apply(
+            afterSeason,
+            new PatchPlatformSettingsRequest(SpecialsFolderFormat: "Specials"));
+        await repository.SaveAsync(mergedSpecials, CancellationToken.None);
+
+        var reloaded = await SettingsAsync(storage); // a fresh instance: nothing survives but the database
+        var loaded = await reloaded.GetAsync(CancellationToken.None);
+        Assert.Equal("Season {Season:00}", loaded.SeasonFolderFormat);
+        Assert.Equal("Specials", loaded.SpecialsFolderFormat);
+    }
+
     private static async Task<SqlitePlatformSettingsRepository> SettingsAsync(TestStorage storage)
     {
         var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-09-05T01:02:03Z"));

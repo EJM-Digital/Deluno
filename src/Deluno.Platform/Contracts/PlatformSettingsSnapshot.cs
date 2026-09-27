@@ -167,4 +167,11 @@ public sealed record PlatformSettingsSnapshot(
     // setting shipping. Never touches an item unless every hold condition in
     // LeftoverDownloadCleanupService is met, once turned on.
     bool LeftoverDownloadCleanupEnabled = false,
-    int LeftoverDownloadCleanupAgeHours = 24);
+    int LeftoverDownloadCleanupAgeHours = 24,
+    // #762: per-season (and specials, season 0) subfolders under the series
+    // folder, the way Sonarr's Season Folder Format and Specials Folder
+    // Format split one combined series folder. Blank means no subfolder --
+    // today's behaviour for every install that has never opened this
+    // setting.
+    string SeasonFolderFormat = "",
+    string SpecialsFolderFormat = "");

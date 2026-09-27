@@ -92,5 +92,7 @@ public static class PlatformSettingsPatchMerger
             DownloadThroughputSamplerIntervalMinutes: patch.DownloadThroughputSamplerIntervalMinutes ?? current.DownloadThroughputSamplerIntervalMinutes,
             Timezone: patch.Timezone ?? current.Timezone,
             LeftoverDownloadCleanupEnabled: patch.LeftoverDownloadCleanupEnabled ?? current.LeftoverDownloadCleanupEnabled,
-            LeftoverDownloadCleanupAgeHours: patch.LeftoverDownloadCleanupAgeHours ?? current.LeftoverDownloadCleanupAgeHours);
+            LeftoverDownloadCleanupAgeHours: patch.LeftoverDownloadCleanupAgeHours ?? current.LeftoverDownloadCleanupAgeHours,
+            SeasonFolderFormat: patch.SeasonFolderFormat ?? current.SeasonFolderFormat,
+            SpecialsFolderFormat: patch.SpecialsFolderFormat ?? current.SpecialsFolderFormat);
 }

@@ -124,6 +124,12 @@ function FileHandlingPage() {
   const [customDrawer, setCustomDrawer] = useState<CustomPatternDrawerState | null>(null);
   const [saveState, setSaveState] = useState<Exclude<DrawerSaveState, "clean" | "dirty">>();
   const [message, setMessage] = useState<string | null>(null);
+  // #762: a season-subfolder layout is opt-in. Blank formats already mean "no
+  // subfolder" on the server, so this switch is local UI state that shows or
+  // hides the two fields rather than a persisted setting of its own.
+  const [seasonSubfoldersEnabled, setSeasonSubfoldersEnabled] = useState(
+    () => Boolean(settings.seasonFolderFormat.trim() || settings.specialsFolderFormat.trim())
+  );
 
   const dirty = useMemo(() => JSON.stringify(form) !== JSON.stringify(saved), [form, saved]);
   const state: DrawerSaveState = resolveDrawerSaveState(saveState, dirty);
@@ -160,7 +166,9 @@ function FileHandlingPage() {
         renameOnImport: form.renameOnImport,
         useHardlinks: form.useHardlinks,
         replaceIllegalCharacters: form.replaceIllegalCharacters,
-        colonReplacementMode: form.colonReplacementMode
+        colonReplacementMode: form.colonReplacementMode,
+        seasonFolderFormat: seasonSubfoldersEnabled ? form.seasonFolderFormat : "",
+        specialsFolderFormat: seasonSubfoldersEnabled ? form.specialsFolderFormat : ""
       });
       setSaved(nextSettings);
       setForm(nextSettings);
@@ -214,6 +222,33 @@ function FileHandlingPage() {
                 <NamingFormatField kind="episode-file" value={form.episodeFileFormat} onChange={(value) => setForm((current) => ({ ...current, episodeFileFormat: value }))} onCustomModeChange={(active, draftValue, previousValue) => handleCustomMode("episode-file", active, draftValue, previousValue)} placeholder="{Series Title} - S{Season:00}E{Episode:00} - {Episode Title}" showExamples={false} />
               </div>
             </div>
+            <div className="grid gap-[var(--grid-gap)] p-[var(--card-pad-x)]">
+              <SwitchRow
+                label="Split shows into season subfolders"
+                description="Adds a Season 01 folder (and a separate one for specials) inside each show's folder instead of one flat show folder."
+                checked={seasonSubfoldersEnabled}
+                onCheckedChange={(checked) => {
+                  setSeasonSubfoldersEnabled(checked);
+                  if (!checked) setForm((current) => ({ ...current, seasonFolderFormat: "", specialsFolderFormat: "" }));
+                  else
+                    setForm((current) => ({
+                      ...current,
+                      seasonFolderFormat: current.seasonFolderFormat.trim() || "Season {Season:00}",
+                      specialsFolderFormat: current.specialsFolderFormat.trim() || "Specials"
+                    }));
+                }}
+              />
+              {seasonSubfoldersEnabled ? (
+                <div className="grid gap-[var(--grid-gap)] md:grid-cols-2">
+                  <Field label="Season folder" help="Tokens: {Season:00} for a zero-padded number, {Season} for a plain one.">
+                    <Input value={form.seasonFolderFormat} onChange={(event) => setForm((current) => ({ ...current, seasonFolderFormat: event.target.value }))} placeholder="Season {Season:00}" />
+                  </Field>
+                  <Field label="Specials folder" help="Used for season 0 instead of the season format above.">
+                    <Input value={form.specialsFolderFormat} onChange={(event) => setForm((current) => ({ ...current, specialsFolderFormat: event.target.value }))} placeholder="Specials" />
+                  </Field>
+                </div>
+              ) : null}
+            </div>
             <div className="grid gap-[var(--grid-gap)] p-[var(--card-pad-x)] md:grid-cols-2">
               <div className="grid content-start gap-[var(--grid-gap)]">
                 <div className="grid content-start gap-1.5">
@@ -259,8 +294,23 @@ function FileHandlingPage() {
                   <NamingPreview label="Movie folder" value={`Movies\\${previewNamingFormat(form.movieFolderFormat || "{Movie Title} ({Release Year})")}`} />
                 </div>
                 <div className="grid gap-[var(--grid-gap)] border-b border-hairline pb-[var(--grid-gap)] last:border-b-0 last:pb-0">
-                  <NamingPreview label="TV show folder" value={`TV Shows\\${previewNamingFormat(form.seriesFolderFormat || "{Series Title} ({Series Year})")}`} />
+                  <NamingPreview
+                    label="TV show folder"
+                    value={
+                      seasonSubfoldersEnabled
+                        ? `TV Shows\\${previewNamingFormat(form.seriesFolderFormat || "{Series Title} ({Series Year})")}\\${previewSeasonFormat(form.seasonFolderFormat || "Season {Season:00}")}`
+                        : `TV Shows\\${previewNamingFormat(form.seriesFolderFormat || "{Series Title} ({Series Year})")}`
+                    }
+                  />
                 </div>
+                {seasonSubfoldersEnabled ? (
+                  <div className="grid gap-[var(--grid-gap)] border-b border-hairline pb-[var(--grid-gap)] last:border-b-0 last:pb-0">
+                    <NamingPreview
+                      label="Specials folder"
+                      value={`TV Shows\\${previewNamingFormat(form.seriesFolderFormat || "{Series Title} ({Series Year})")}\\${previewSeasonFormat(form.specialsFolderFormat || "Specials", 0)}`}
+                    />
+                  </div>
+                ) : null}
                 <div className="grid gap-[var(--grid-gap)] border-b border-hairline pb-[var(--grid-gap)] last:border-b-0 last:pb-0">
                   <NamingPreview label="Movie file" value={previewNamingFormat(form.movieFileFormat || "{Movie Title} ({Release Year}) [{Quality}] [{Custom Formats}]")} />
                 </div>
@@ -472,6 +522,11 @@ function ImportPolicyFields({
       </div>
     </>
   );
+}
+
+/** #762: mirrors ImportPipelineService.BuildSeasonSubfolder's own two tokens. */
+function previewSeasonFormat(format: string, season = 1) {
+  return format.replaceAll("{Season:00}", season.toString().padStart(2, "0")).replaceAll("{Season}", season.toString());
 }
 
 function NamingPreview({ label, value }: { label: string; value: string }) {

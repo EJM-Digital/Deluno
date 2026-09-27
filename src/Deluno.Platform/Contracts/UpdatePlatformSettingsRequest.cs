@@ -83,4 +83,6 @@ public sealed record UpdatePlatformSettingsRequest(
     int? DownloadThroughputSamplerIntervalMinutes = null,
     string? Timezone = null,
     bool? LeftoverDownloadCleanupEnabled = null,
-    int? LeftoverDownloadCleanupAgeHours = null);
+    int? LeftoverDownloadCleanupAgeHours = null,
+    string? SeasonFolderFormat = null,
+    string? SpecialsFolderFormat = null);

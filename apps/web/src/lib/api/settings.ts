@@ -88,4 +88,7 @@ export interface PlatformSettingsPatch {
   leftoverDownloadCleanupEnabled?: boolean;
   /** #932: how long a leftover must have sat before the task deletes it. Only matters once the switch above is on. */
   leftoverDownloadCleanupAgeHours?: number;
+  /** #762: blank clears the subfolder. */
+  seasonFolderFormat?: string;
+  specialsFolderFormat?: string;
 }

@@ -2887,6 +2887,188 @@ public sealed class ImportPipelineServiceTests
             StringComparison.OrdinalIgnoreCase);
     }
 
+    /// <summary>#762: a normal season lands in its own SeasonFolderFormat subfolder under the series folder.</summary>
+    [Fact]
+    public async Task Preview_places_a_normal_season_episode_in_its_season_subfolder()
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-04-29T08:00:00Z"));
+        await InitializeAllAsync(storage, timeProvider);
+        var downloadsPath = Path.Combine(storage.DataRoot, "downloads");
+        var movieRootPath = Path.Combine(storage.DataRoot, "movies");
+        var seriesRootPath = Path.Combine(storage.DataRoot, "series");
+        Directory.CreateDirectory(downloadsPath);
+        Directory.CreateDirectory(movieRootPath);
+        Directory.CreateDirectory(seriesRootPath);
+        var sourcePath = Path.Combine(downloadsPath, "Severance.S01E03.1080p.WEB-DL.mkv");
+        await File.WriteAllBytesAsync(sourcePath, Enumerable.Range(0, 4096).Select(value => (byte)(value % 251)).ToArray());
+        File.SetLastWriteTimeUtc(sourcePath, DateTime.UtcNow.AddMinutes(-1));
+
+        var platform = CreatePlatformRepository(storage, timeProvider);
+        var libraries = CreateLibrariesRepository(storage, timeProvider);
+        await SaveSettingsAsync(
+            platform,
+            movieRootPath,
+            downloadsPath,
+            seriesRootPath,
+            episodeFileFormat: "{Series Title} - S{season:00}E{episode:00} - {Episode Title}",
+            seasonFolderFormat: "Season {Season:00}",
+            specialsFolderFormat: "Specials");
+        await CreateTvLibraryAsync(libraries, seriesRootPath, downloadsPath);
+
+        var seriesRepository = new SqliteSeriesCatalogRepository(storage.Factory, timeProvider);
+        var series = await seriesRepository.AddAsync(
+            new CreateSeriesRequest("Severance", 2026, "tt1234567"),
+            CancellationToken.None);
+        await seriesRepository.SyncEpisodeCatalogueAsync(
+            series.Id,
+            [new CatalogueEpisodeItem(1, 3, "Good News About Hell", null, timeProvider.GetUtcNow())],
+            "provider",
+            CancellationToken.None);
+
+        var movies = new SqliteMovieCatalogRepository(storage.Factory, timeProvider);
+        var service = CreateService(storage, timeProvider, platform, libraries, movies);
+        var preview = await service.PreviewAsync(
+            new ImportPreviewRequest(
+                SourcePath: sourcePath,
+                FileName: Path.GetFileName(sourcePath),
+                MediaType: "tv",
+                Title: "Severance",
+                Year: 2026,
+                Genres: [],
+                Tags: [],
+                Studio: null,
+                OriginalLanguage: null,
+                SeriesId: series.Id),
+            CancellationToken.None);
+
+        Assert.EndsWith(
+            Path.Combine("Severance (2026)", "Season 01", "Severance - S01E03 - Good News About Hell.mkv"),
+            preview.DestinationPath,
+            StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>#762: season 0 (a special) uses SpecialsFolderFormat instead of SeasonFolderFormat.</summary>
+    [Fact]
+    public async Task Preview_places_a_season_zero_episode_in_the_specials_subfolder()
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-04-29T08:00:00Z"));
+        await InitializeAllAsync(storage, timeProvider);
+        var downloadsPath = Path.Combine(storage.DataRoot, "downloads");
+        var movieRootPath = Path.Combine(storage.DataRoot, "movies");
+        var seriesRootPath = Path.Combine(storage.DataRoot, "series");
+        Directory.CreateDirectory(downloadsPath);
+        Directory.CreateDirectory(movieRootPath);
+        Directory.CreateDirectory(seriesRootPath);
+        var sourcePath = Path.Combine(downloadsPath, "Severance.S00E01.1080p.WEB-DL.mkv");
+        await File.WriteAllBytesAsync(sourcePath, Enumerable.Range(0, 4096).Select(value => (byte)(value % 251)).ToArray());
+        File.SetLastWriteTimeUtc(sourcePath, DateTime.UtcNow.AddMinutes(-1));
+
+        var platform = CreatePlatformRepository(storage, timeProvider);
+        var libraries = CreateLibrariesRepository(storage, timeProvider);
+        await SaveSettingsAsync(
+            platform,
+            movieRootPath,
+            downloadsPath,
+            seriesRootPath,
+            episodeFileFormat: "{Series Title} - S{season:00}E{episode:00} - {Episode Title}",
+            seasonFolderFormat: "Season {Season:00}",
+            specialsFolderFormat: "Specials");
+        await CreateTvLibraryAsync(libraries, seriesRootPath, downloadsPath);
+
+        var seriesRepository = new SqliteSeriesCatalogRepository(storage.Factory, timeProvider);
+        var series = await seriesRepository.AddAsync(
+            new CreateSeriesRequest("Severance", 2026, "tt1234567"),
+            CancellationToken.None);
+        await seriesRepository.SyncEpisodeCatalogueAsync(
+            series.Id,
+            [new CatalogueEpisodeItem(0, 1, "Deleted Scene", null, timeProvider.GetUtcNow())],
+            "provider",
+            CancellationToken.None);
+
+        var movies = new SqliteMovieCatalogRepository(storage.Factory, timeProvider);
+        var service = CreateService(storage, timeProvider, platform, libraries, movies);
+        var preview = await service.PreviewAsync(
+            new ImportPreviewRequest(
+                SourcePath: sourcePath,
+                FileName: Path.GetFileName(sourcePath),
+                MediaType: "tv",
+                Title: "Severance",
+                Year: 2026,
+                Genres: [],
+                Tags: [],
+                Studio: null,
+                OriginalLanguage: null,
+                SeriesId: series.Id),
+            CancellationToken.None);
+
+        Assert.EndsWith(
+            Path.Combine("Severance (2026)", "Specials", "Severance - S00E01 - Deleted Scene.mkv"),
+            preview.DestinationPath,
+            StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>#762: blank SeasonFolderFormat/SpecialsFolderFormat keeps today's flat series folder.</summary>
+    [Fact]
+    public async Task Preview_keeps_a_flat_series_folder_when_season_folder_format_is_blank()
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-04-29T08:00:00Z"));
+        await InitializeAllAsync(storage, timeProvider);
+        var downloadsPath = Path.Combine(storage.DataRoot, "downloads");
+        var movieRootPath = Path.Combine(storage.DataRoot, "movies");
+        var seriesRootPath = Path.Combine(storage.DataRoot, "series");
+        Directory.CreateDirectory(downloadsPath);
+        Directory.CreateDirectory(movieRootPath);
+        Directory.CreateDirectory(seriesRootPath);
+        var sourcePath = Path.Combine(downloadsPath, "Severance.S01E03.1080p.WEB-DL.mkv");
+        await File.WriteAllBytesAsync(sourcePath, Enumerable.Range(0, 4096).Select(value => (byte)(value % 251)).ToArray());
+        File.SetLastWriteTimeUtc(sourcePath, DateTime.UtcNow.AddMinutes(-1));
+
+        var platform = CreatePlatformRepository(storage, timeProvider);
+        var libraries = CreateLibrariesRepository(storage, timeProvider);
+        await SaveSettingsAsync(
+            platform,
+            movieRootPath,
+            downloadsPath,
+            seriesRootPath,
+            episodeFileFormat: "{Series Title} - S{season:00}E{episode:00} - {Episode Title}");
+        await CreateTvLibraryAsync(libraries, seriesRootPath, downloadsPath);
+
+        var seriesRepository = new SqliteSeriesCatalogRepository(storage.Factory, timeProvider);
+        var series = await seriesRepository.AddAsync(
+            new CreateSeriesRequest("Severance", 2026, "tt1234567"),
+            CancellationToken.None);
+        await seriesRepository.SyncEpisodeCatalogueAsync(
+            series.Id,
+            [new CatalogueEpisodeItem(1, 3, "Good News About Hell", null, timeProvider.GetUtcNow())],
+            "provider",
+            CancellationToken.None);
+
+        var movies = new SqliteMovieCatalogRepository(storage.Factory, timeProvider);
+        var service = CreateService(storage, timeProvider, platform, libraries, movies);
+        var preview = await service.PreviewAsync(
+            new ImportPreviewRequest(
+                SourcePath: sourcePath,
+                FileName: Path.GetFileName(sourcePath),
+                MediaType: "tv",
+                Title: "Severance",
+                Year: 2026,
+                Genres: [],
+                Tags: [],
+                Studio: null,
+                OriginalLanguage: null,
+                SeriesId: series.Id),
+            CancellationToken.None);
+
+        Assert.EndsWith(
+            Path.Combine("Severance (2026)", "Severance - S01E03 - Good News About Hell.mkv"),
+            preview.DestinationPath,
+            StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("Season", preview.DestinationPath);
+    }
+
     [Fact]
     public async Task Tv_multi_episode_import_persists_one_library_destination_for_every_episode()
     {
@@ -4840,7 +5022,9 @@ public sealed class ImportPipelineServiceTests
         string? animeEpisodeFileFormat = null,
         bool setPermissionsOnImport = false,
         string? folderChmod = null,
-        string? chownGroup = null)
+        string? chownGroup = null,
+        string? seasonFolderFormat = null,
+        string? specialsFolderFormat = null)
     {
         await platform.SaveAsync(
             new UpdatePlatformSettingsRequest(
@@ -4881,7 +5065,9 @@ public sealed class ImportPipelineServiceTests
                 AnimeEpisodeFileFormat: animeEpisodeFileFormat ?? episodeFileFormat,
                 SetPermissionsOnImport: setPermissionsOnImport,
                 FolderChmod: folderChmod,
-                ChownGroup: chownGroup),
+                ChownGroup: chownGroup,
+                SeasonFolderFormat: seasonFolderFormat,
+                SpecialsFolderFormat: specialsFolderFormat),
             CancellationToken.None);
     }
 

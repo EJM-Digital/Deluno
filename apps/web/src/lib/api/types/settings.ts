@@ -134,6 +134,9 @@ export interface PlatformSettingsSnapshot {
   leftoverDownloadCleanupEnabled: boolean;
   /** #932: how long a leftover must have sat, untouched, before the task deletes it. Only matters once the switch above is on. */
   leftoverDownloadCleanupAgeHours: number;
+  /** #762: per-season and specials (season 0) subfolders under the series folder. Blank means no subfolder, matching a movie/series folder format's own blank behaviour. */
+  seasonFolderFormat: string;
+  specialsFolderFormat: string;
   updatedUtc: string;
 }
 
@@ -270,5 +273,7 @@ export const emptyPlatformSettingsSnapshot: PlatformSettingsSnapshot = {
   // #932/#936: off by default, matching PlatformSettingsSnapshot's server-side default.
   leftoverDownloadCleanupEnabled: false,
   leftoverDownloadCleanupAgeHours: 24,
+  seasonFolderFormat: "",
+  specialsFolderFormat: "",
   updatedUtc: new Date(0).toISOString()
 };
