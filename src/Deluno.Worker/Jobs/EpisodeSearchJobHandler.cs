@@ -26,7 +26,8 @@ public sealed class EpisodeSearchJobHandler(
     IMediaTagStore? mediaTagStore = null,
     IMediaStateRepository? mediaStateRepository = null,
     IReleasePreferencePlanRepository? releasePreferencePlanRepository = null,
-    IBlockedReleaseRepository? blockedReleases = null) : IJobHandler
+    IBlockedReleaseRepository? blockedReleases = null,
+    IJobScheduler? jobScheduler = null) : IJobHandler
 {
     public string JobType => "episode.search";
 
@@ -199,6 +200,18 @@ public sealed class EpisodeSearchJobHandler(
                 payload.EpisodeId,
                 seriesItem?.Title ?? bestCandidate!.ReleaseName,
                 bestCandidate!.IndexerName,
+                downloadClient.DownloadClientName,
+                cancellationToken);
+
+            await SearchExecutionSupport.RetryConnectivityFailureAsync(
+                jobScheduler,
+                activityFeedRepository,
+                grabResult,
+                timeProvider,
+                payload.LibraryId,
+                "tv",
+                "episode",
+                payload.EpisodeId,
                 downloadClient.DownloadClientName,
                 cancellationToken);
 
