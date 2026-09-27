@@ -61,6 +61,27 @@ public sealed class MigrationRunnerTests
     }
 
     [Fact]
+    public async Task ApplyAsync_accepts_a_database_that_ran_a_superseded_definition_and_restamps_it()
+    {
+        using var storage = TestStorage.Create();
+        var migrator = new SqliteDatabaseMigrator(
+            storage.Factory,
+            new FixedTimeProvider(DateTimeOffset.Parse("2026-04-29T05:00:00Z")));
+
+        await migrator.ApplyAsync(
+            DelunoDatabaseNames.Platform,
+            [new CreateProbeTableMigration()],
+            CancellationToken.None);
+
+        var corrected = new CorrectedProbeTableMigration();
+        await migrator.ApplyAsync(DelunoDatabaseNames.Platform, [corrected], CancellationToken.None);
+
+        await using var connection = await storage.Factory.OpenConnectionAsync(DelunoDatabaseNames.Platform);
+        Assert.Equal(corrected.Checksum, await ReadScalarAsync<string>(connection, "SELECT checksum FROM schema_migrations WHERE version = 1;"));
+        Assert.Equal(1, await ReadScalarAsync<int>(connection, "SELECT apply_count FROM migration_probe WHERE id = 1;"));
+    }
+
+    [Fact]
     public async Task Schema_initializers_record_initial_migration_for_each_database()
     {
         using var storage = TestStorage.Create();
@@ -556,5 +577,36 @@ public sealed class MigrationRunnerTests
                 id INTEGER PRIMARY KEY
             );
             """;
+    }
+
+    private sealed class CorrectedProbeTableMigration : SqliteSqlMigration
+    {
+        public override int Version => 1;
+
+        public override string Name => "create_probe";
+
+        protected override string Sql =>
+            """
+            CREATE TABLE migration_probe (
+                id INTEGER PRIMARY KEY,
+                apply_count INTEGER NOT NULL
+            );
+
+            INSERT INTO migration_probe (id, apply_count)
+            VALUES (1, 2);
+            """;
+
+        protected override IEnumerable<string> SupersededSql =>
+        [
+            """
+            CREATE TABLE migration_probe (
+                id INTEGER PRIMARY KEY,
+                apply_count INTEGER NOT NULL
+            );
+
+            INSERT INTO migration_probe (id, apply_count)
+            VALUES (1, 1);
+            """
+        ];
     }
 }
