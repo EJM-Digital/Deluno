@@ -2,7 +2,8 @@ import { describe, expect, it } from "vitest";
 import { CLIENT_PRESETS } from "./presets";
 import type { IndexerItem } from "../../lib/api";
 import type { DownloadClientItem } from "../../lib/api";
-import { clientFormErrors, clientFormFrom, emptyClientForm, emptyIndexerForm, indexerFormErrors, indexerFormFrom, sameIndexer } from "./forms";
+import type { ProxyItem } from "../../lib/api";
+import { clientFormErrors, clientFormFrom, emptyClientForm, emptyIndexerForm, emptyProxyForm, indexerFormErrors, indexerFormFrom, proxyFormErrors, proxyFormFrom, sameIndexer, sameProxy } from "./forms";
 
 /**
  * #293 — a create form opens with values the user is entitled to accept as-is.
@@ -304,5 +305,59 @@ describe("client validation", () => {
     expect(clientFormErrors({ ...emptyClientForm(), priority: "0" }).priority).toBeTruthy();
     expect(clientFormErrors({ ...emptyClientForm(), priority: "51" }).priority).toBeTruthy();
     expect(clientFormErrors({ ...emptyClientForm(), priority: "abc" }).priority).toBeTruthy();
+  });
+});
+
+// #748 — Indexer Proxies: a proxy assignable to an indexer, in place of the
+// single global Cloudflare-helper address.
+describe("proxy form", () => {
+  function proxyItem(overrides: Partial<ProxyItem> = {}): ProxyItem {
+    return {
+      id: "proxy-1",
+      name: "Home SOCKS5",
+      proxyType: "socks5",
+      address: "socks5://192.168.1.1:1080",
+      username: null,
+      hasPassword: false,
+      isEnabled: true,
+      createdUtc: "2026-09-24T00:00:00Z",
+      updatedUtc: "2026-09-24T00:00:00Z",
+      assignedIndexerNames: [],
+      ...overrides
+    };
+  }
+
+  it("a new proxy is not valid until it has a name and an address", () => {
+    expect(proxyFormErrors(emptyProxyForm())).not.toEqual({});
+    expect(proxyFormErrors({ ...emptyProxyForm(), name: "Proxy", address: "http://a.test:8080" })).toEqual({});
+  });
+
+  it("round-trips a saved proxy into the form, with password always blank", () => {
+    const form = proxyFormFrom(proxyItem({ username: "user", hasPassword: true }));
+    expect(form).toEqual({ name: "Home SOCKS5", proxyType: "socks5", address: "socks5://192.168.1.1:1080", username: "user", password: "", isEnabled: true });
+  });
+
+  it("sameProxy ignores nothing but the form's own fields", () => {
+    const a = proxyFormFrom(proxyItem());
+    const b = proxyFormFrom(proxyItem());
+    expect(sameProxy(a, b)).toBe(true);
+    expect(sameProxy(a, { ...b, name: "Renamed" })).toBe(false);
+  });
+});
+
+// #748 — an indexer's own proxy assignment round-trips through the form.
+describe("indexer form proxy assignment", () => {
+  it("defaults to no proxy (direct connection)", () => {
+    expect(emptyIndexerForm().proxyId).toBe("");
+  });
+
+  it("round-trips an assigned proxy id from a saved indexer", () => {
+    const form = indexerFormFrom({ ...savedIndexer(), proxyId: "proxy-1" });
+    expect(form.proxyId).toBe("proxy-1");
+  });
+
+  it("reads a direct connection back as blank, not null", () => {
+    const form = indexerFormFrom({ ...savedIndexer(), proxyId: null });
+    expect(form.proxyId).toBe("");
   });
 });

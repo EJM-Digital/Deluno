@@ -79,7 +79,8 @@ public sealed class SqliteConnectionsRepository(
                 api_path, additional_parameters, anime_categories, minimum_seeders,
                 required_words, ignored_words, multi_languages,
                 vip_expires_utc, vip_warning_acknowledged_expiry_utc,
-                query_limit, grab_limit, limits_unit, prefer_magnet_url, season_pack_search_mode
+                query_limit, grab_limit, limits_unit, prefer_magnet_url, season_pack_search_mode,
+                proxy_id
             FROM indexer_sources
             ORDER BY priority ASC, name ASC;
             """;
@@ -143,7 +144,8 @@ public sealed class SqliteConnectionsRepository(
                 GrabLimit = reader.IsDBNull(49) ? null : reader.GetInt32(49),
                 LimitsUnit = reader.IsDBNull(50) ? null : reader.GetString(50),
                 PreferMagnetUrl = !reader.IsDBNull(51) && reader.GetInt64(51) == 1,
-                SeasonPackSearchMode = reader.IsDBNull(52) ? null : reader.GetString(52)
+                SeasonPackSearchMode = reader.IsDBNull(52) ? null : reader.GetString(52),
+                ProxyId = reader.IsDBNull(53) ? null : reader.GetString(53)
             });
         }
 
@@ -323,7 +325,8 @@ public sealed class SqliteConnectionsRepository(
             InteractiveSearchEnabled = request.InteractiveSearchEnabled,
             DefinitionId = string.IsNullOrWhiteSpace(request.DefinitionId) ? null : request.DefinitionId.Trim().ToLowerInvariant(),
             DefinitionSettings = WithoutBlanks(request.DefinitionSettings),
-            DefinitionSecrets = WithoutBlanks(request.DefinitionSecrets)
+            DefinitionSecrets = WithoutBlanks(request.DefinitionSecrets),
+            ProxyId = NormalizeBlankToNull(request.ProxyId)
         };
 
         await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
@@ -342,7 +345,7 @@ public sealed class SqliteConnectionsRepository(
                 definition_settings_json, definition_secrets, api_path, additional_parameters, anime_categories,
                 minimum_seeders, required_words, ignored_words, multi_languages,
                 vip_expires_utc, query_limit, grab_limit, limits_unit, prefer_magnet_url,
-                season_pack_search_mode
+                season_pack_search_mode, proxy_id
             )
             VALUES (
                 @id, @name, @protocol, @privacy, @baseUrl, @apiKey, @priority, @categories, @tags,
@@ -353,7 +356,7 @@ public sealed class SqliteConnectionsRepository(
                 @definitionSettings, @definitionSecrets, @apiPath, @additionalParameters, @animeCategories,
                 @minimumSeeders, @requiredWords, @ignoredWords, @multiLanguages,
                 @vipExpiresUtc, @queryLimit, @grabLimit, @limitsUnit, @preferMagnetUrl,
-                @seasonPackSearchMode
+                @seasonPackSearchMode, @proxyId
             );
             """;
 
@@ -406,6 +409,7 @@ public sealed class SqliteConnectionsRepository(
         AddParameter(command, "@limitsUnit", item.LimitsUnit);
         AddParameter(command, "@preferMagnetUrl", item.PreferMagnetUrl ? 1 : 0);
         AddParameter(command, "@seasonPackSearchMode", item.SeasonPackSearchMode);
+        AddParameter(command, "@proxyId", item.ProxyId);
         await command.ExecuteNonQueryAsync(cancellationToken);
 
         return item;
@@ -449,6 +453,9 @@ public sealed class SqliteConnectionsRepository(
         var newAnimeCategories = request.ClearAnimeCategories == true
             ? null
             : NormalizeOptionalCsv(request.AnimeCategories) ?? existing.AnimeCategories;
+        var newProxyId = request.ClearProxy == true
+            ? null
+            : NormalizeBlankToNull(request.ProxyId) ?? existing.ProxyId;
 
         // Clearing drops the whole override at once rather than field by field:
         // "this source is no different from the rest" is a single intent, and
@@ -529,6 +536,7 @@ public sealed class SqliteConnectionsRepository(
                 api_path = @apiPath,
                 additional_parameters = @additionalParameters,
                 anime_categories = @animeCategories,
+                proxy_id = @proxyId,
                 sharing_mode = @sharingMode,
                 sharing_for_hours = @sharingForHours,
                 sharing_until_ratio = @sharingUntilRatio,
@@ -581,6 +589,7 @@ public sealed class SqliteConnectionsRepository(
         AddParameter(command, "@apiPath", newApiPath);
         AddParameter(command, "@additionalParameters", newAdditionalParameters);
         AddParameter(command, "@animeCategories", newAnimeCategories);
+        AddParameter(command, "@proxyId", newProxyId);
         AddParameter(command, "@sharingMode", newSharingMode);
         AddParameter(command, "@sharingForHours", newSharingForHours);
         AddParameter(command, "@sharingUntilRatio", newSharingUntilRatio);
@@ -628,6 +637,7 @@ public sealed class SqliteConnectionsRepository(
             ApiPath = newApiPath,
             AdditionalParameters = newAdditionalParameters,
             AnimeCategories = newAnimeCategories,
+            ProxyId = newProxyId,
             SharingMode = newSharingMode,
             SharingForHours = newSharingForHours,
             SharingUntilRatio = newSharingUntilRatio,
@@ -1278,6 +1288,198 @@ public sealed class SqliteConnectionsRepository(
 
         using var command = connection.CreateCommand();
         command.CommandText = "DELETE FROM indexer_sources WHERE id = @id;";
+        AddParameter(command, "@id", id);
+        return await command.ExecuteNonQueryAsync(cancellationToken) > 0;
+    }
+
+    public async Task<IReadOnlyList<ProxyItem>> ListProxiesAsync(CancellationToken cancellationToken)
+    {
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Platform,
+            cancellationToken);
+
+        var items = new List<ProxyItem>();
+
+        using (var command = connection.CreateCommand())
+        {
+            command.CommandText =
+                """
+                SELECT id, name, proxy_type, address, username, password, is_enabled, created_utc, updated_utc
+                FROM indexer_proxies
+                ORDER BY name ASC;
+                """;
+
+            using var reader = await command.ExecuteReaderAsync(cancellationToken);
+            while (await reader.ReadAsync(cancellationToken))
+            {
+                items.Add(new ProxyItem(
+                    Id: reader.GetString(0),
+                    Name: reader.GetString(1),
+                    ProxyType: reader.GetString(2),
+                    Address: reader.GetString(3),
+                    Username: reader.IsDBNull(4) ? null : reader.GetString(4),
+                    Password: reader.IsDBNull(5) ? null : secretProtector.Unprotect("indexer-proxy:password", reader.GetString(5)),
+                    IsEnabled: reader.GetInt64(6) == 1,
+                    CreatedUtc: ParseTimestamp(reader.GetString(7)),
+                    UpdatedUtc: ParseTimestamp(reader.GetString(8))));
+            }
+        }
+
+        if (items.Count == 0)
+        {
+            return items;
+        }
+
+        var assignedNames = new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase);
+        using (var command = connection.CreateCommand())
+        {
+            command.CommandText = "SELECT proxy_id, name FROM indexer_sources WHERE proxy_id IS NOT NULL ORDER BY name ASC;";
+            using var reader = await command.ExecuteReaderAsync(cancellationToken);
+            while (await reader.ReadAsync(cancellationToken))
+            {
+                var proxyId = reader.GetString(0);
+                if (!assignedNames.TryGetValue(proxyId, out var names))
+                {
+                    names = [];
+                    assignedNames[proxyId] = names;
+                }
+
+                names.Add(reader.GetString(1));
+            }
+        }
+
+        return items
+            .Select(item => assignedNames.TryGetValue(item.Id, out var names)
+                ? item with { AssignedIndexerNames = names }
+                : item)
+            .ToArray();
+    }
+
+    public async Task<ProxyItem> CreateProxyAsync(CreateProxyRequest request, CancellationToken cancellationToken)
+    {
+        var now = timeProvider.GetUtcNow();
+        var item = new ProxyItem(
+            Id: Guid.CreateVersion7().ToString("N"),
+            Name: NormalizeName(request.Name) ?? "New proxy",
+            ProxyType: ProxyTypes.Normalize(request.ProxyType),
+            Address: NormalizePath(request.Address) ?? string.Empty,
+            Username: NormalizeBlankToNull(request.Username),
+            Password: NormalizeBlankToNull(request.Password),
+            IsEnabled: request.IsEnabled,
+            CreatedUtc: now,
+            UpdatedUtc: now);
+
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Platform,
+            cancellationToken);
+
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            """
+            INSERT INTO indexer_proxies (
+                id, name, proxy_type, address, username, password, is_enabled, created_utc, updated_utc
+            )
+            VALUES (
+                @id, @name, @proxyType, @address, @username, @password, @isEnabled, @createdUtc, @updatedUtc
+            );
+            """;
+
+        AddParameter(command, "@id", item.Id);
+        AddParameter(command, "@name", item.Name);
+        AddParameter(command, "@proxyType", item.ProxyType);
+        AddParameter(command, "@address", item.Address);
+        AddParameter(command, "@username", item.Username);
+        AddParameter(
+            command,
+            "@password",
+            string.IsNullOrEmpty(item.Password) ? null : secretProtector.Protect("indexer-proxy:password", item.Password));
+        AddParameter(command, "@isEnabled", item.IsEnabled ? 1 : 0);
+        AddParameter(command, "@createdUtc", item.CreatedUtc.ToString("O"));
+        AddParameter(command, "@updatedUtc", item.UpdatedUtc.ToString("O"));
+        await command.ExecuteNonQueryAsync(cancellationToken);
+
+        return item;
+    }
+
+    public async Task<ProxyItem?> UpdateProxyAsync(string id, UpdateProxyRequest request, CancellationToken cancellationToken)
+    {
+        var now = timeProvider.GetUtcNow();
+
+        var existing = (await ListProxiesAsync(cancellationToken))
+            .FirstOrDefault(x => string.Equals(x.Id, id, StringComparison.OrdinalIgnoreCase));
+        if (existing is null) return null;
+
+        var newName = NormalizeName(request.Name) ?? existing.Name;
+        var newType = request.ProxyType is not null ? ProxyTypes.Normalize(request.ProxyType) : existing.ProxyType;
+        var newAddress = NormalizeBlankToNull(request.Address) ?? existing.Address;
+        var newUsername = request.Username is not null ? NormalizeBlankToNull(request.Username) : existing.Username;
+        var newPassword = request.ClearPassword == true
+            ? null
+            : request.Password is not null ? NormalizeBlankToNull(request.Password) : existing.Password;
+        var newEnabled = request.IsEnabled ?? existing.IsEnabled;
+
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Platform,
+            cancellationToken);
+
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            """
+            UPDATE indexer_proxies
+            SET
+                name = @name,
+                proxy_type = @proxyType,
+                address = @address,
+                username = @username,
+                password = @password,
+                is_enabled = @isEnabled,
+                updated_utc = @updatedUtc
+            WHERE id = @id;
+            """;
+
+        AddParameter(command, "@id", id);
+        AddParameter(command, "@name", newName);
+        AddParameter(command, "@proxyType", newType);
+        AddParameter(command, "@address", newAddress);
+        AddParameter(command, "@username", newUsername);
+        AddParameter(
+            command,
+            "@password",
+            string.IsNullOrEmpty(newPassword) ? null : secretProtector.Protect("indexer-proxy:password", newPassword));
+        AddParameter(command, "@isEnabled", newEnabled ? 1 : 0);
+        AddParameter(command, "@updatedUtc", now.ToString("O"));
+
+        if (await command.ExecuteNonQueryAsync(cancellationToken) == 0) return null;
+
+        return existing with
+        {
+            Name = newName,
+            ProxyType = newType,
+            Address = newAddress,
+            Username = newUsername,
+            Password = newPassword,
+            IsEnabled = newEnabled,
+            UpdatedUtc = now
+        };
+    }
+
+    public async Task<bool> DeleteProxyAsync(string id, CancellationToken cancellationToken)
+    {
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Platform,
+            cancellationToken);
+
+        // Unassign first so no indexer is left pointing at a proxy that no
+        // longer exists; a different indexer's proxy is left untouched.
+        using (var unassign = connection.CreateCommand())
+        {
+            unassign.CommandText = "UPDATE indexer_sources SET proxy_id = NULL WHERE proxy_id = @id;";
+            AddParameter(unassign, "@id", id);
+            await unassign.ExecuteNonQueryAsync(cancellationToken);
+        }
+
+        using var command = connection.CreateCommand();
+        command.CommandText = "DELETE FROM indexer_proxies WHERE id = @id;";
         AddParameter(command, "@id", id);
         return await command.ExecuteNonQueryAsync(cancellationToken) > 0;
     }

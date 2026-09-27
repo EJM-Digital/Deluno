@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Loader2, RefreshCw } from "lucide-react";
-import type { IndexerItem, OutboundThrottleHostState, PlatformSettingsSnapshot } from "../../lib/api";
+import type { IndexerItem, OutboundThrottleHostState, PlatformSettingsSnapshot, ProxyItem } from "../../lib/api";
 import { Button } from "../../components/ui/button";
 import { Chip } from "../../components/ui/chip";
 import { Disclosure } from "../../components/ui/disclosure";
@@ -23,6 +23,7 @@ export function IndexerDrawerBody({
   setForm,
   editing,
   settings,
+  proxies,
   throttle,
   errors,
   clearError,
@@ -40,6 +41,8 @@ export function IndexerDrawerBody({
   editing: IndexerItem | null;
   /** Only for stating the user's own sharing rule back to them (#288). */
   settings: PlatformSettingsSnapshot;
+  /** Configured indexer proxies (#748) this indexer can be assigned to. */
+  proxies: ProxyItem[];
   throttle: OutboundThrottleHostState | null;
   errors: Record<string, string>;
   clearError: (key: string) => void;
@@ -208,6 +211,13 @@ export function IndexerDrawerBody({
               <Input value={form.multiLanguages} onChange={(event) => { clearError("multiLanguages"); setForm((current) => ({ ...current, multiLanguages: event.target.value })); }} placeholder="Original, French" />
             </Field>
           ) : null}
+          <Field label="Proxy" help="Send this indexer's requests through one of your configured proxies instead of connecting directly.">
+            <Select
+              value={form.proxyId}
+              onChange={(event) => setForm((current) => ({ ...current, proxyId: event.target.value }))}
+              options={[{ value: "", label: "Direct connection (no proxy)" }, ...proxies.map((proxy) => ({ value: proxy.id, label: proxy.name }))]}
+            />
+          </Field>
         </Disclosure>
       </DrawerSection>
 

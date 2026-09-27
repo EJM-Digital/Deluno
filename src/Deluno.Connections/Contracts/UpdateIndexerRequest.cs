@@ -74,4 +74,8 @@ public sealed record UpdateIndexerRequest(
     // it, and a secret not named is left as it was, because the screen never
     // has it to send back.
     IReadOnlyDictionary<string, string>? DefinitionSettings = null,
-    IReadOnlyDictionary<string, string>? DefinitionSecrets = null);
+    IReadOnlyDictionary<string, string>? DefinitionSecrets = null,
+    // The configured proxy (#748) this indexer's requests go through. Null
+    // means "leave as is"; ClearProxy drops back to a direct connection.
+    string? ProxyId = null,
+    bool? ClearProxy = null);

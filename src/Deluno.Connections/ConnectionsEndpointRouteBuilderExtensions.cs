@@ -43,6 +43,9 @@ public static class ConnectionsEndpointRouteBuilderExtensions
         var indexers = endpoints.MapGroup("/api/indexers")
             .RequireAuthorization(DelunoAuthorizationPolicies.Write);
 
+        var proxies = endpoints.MapGroup("/api/indexer-proxies")
+            .RequireAuthorization(DelunoAuthorizationPolicies.Write);
+
         indexers.MapGet(string.Empty, async ([FromServices] IConnectionsRepository repository, CancellationToken cancellationToken) =>
         {
             var items = await repository.ListIndexersAsync(cancellationToken);
@@ -335,6 +338,84 @@ public static class ConnectionsEndpointRouteBuilderExtensions
                 await realtimeEventPublisher.PublishEntityChangedAsync("Indexer", item.Id, cancellationToken);
             }
             return item is null ? Results.NotFound() : Results.Ok(item);
+        });
+
+        proxies.MapGet(string.Empty, async ([FromServices] IConnectionsRepository repository, CancellationToken cancellationToken) =>
+        {
+            var items = await repository.ListProxiesAsync(cancellationToken);
+            return Results.Ok(items);
+        });
+
+        proxies.MapPost(string.Empty, async (
+            HttpContext httpContext,
+            [FromBody] CreateProxyRequest request,
+            [FromServices] IConnectionsRepository repository,
+            [FromServices] IRealtimeEventPublisher realtimeEventPublisher,
+            CancellationToken cancellationToken) =>
+        {
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
+            if (denied is not null)
+            {
+                return denied;
+            }
+
+            var errors = ValidateProxy(request);
+            if (errors.Count > 0)
+            {
+                return Results.ValidationProblem(errors);
+            }
+
+            var item = await repository.CreateProxyAsync(request, cancellationToken);
+            await realtimeEventPublisher.PublishEntityChangedAsync("IndexerProxy", item.Id, cancellationToken);
+            return Results.Ok(item);
+        });
+
+        proxies.MapPut("{id}", async (
+            string id,
+            HttpContext httpContext,
+            [FromBody] UpdateProxyRequest request,
+            [FromServices] IConnectionsRepository repository,
+            [FromServices] IRealtimeEventPublisher realtimeEventPublisher,
+            CancellationToken cancellationToken) =>
+        {
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
+            if (denied is not null)
+            {
+                return denied;
+            }
+
+            var item = await repository.UpdateProxyAsync(id, request, cancellationToken);
+            if (item is not null)
+            {
+                await realtimeEventPublisher.PublishEntityChangedAsync("IndexerProxy", item.Id, cancellationToken);
+            }
+
+            return item is null ? Results.NotFound() : Results.Ok(item);
+        });
+
+        proxies.MapDelete("{id}", async (
+            string id,
+            HttpContext httpContext,
+            [FromServices] IConnectionsRepository repository,
+            [FromServices] IRealtimeEventPublisher realtimeEventPublisher,
+            CancellationToken cancellationToken) =>
+        {
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
+            if (denied is not null)
+            {
+                return denied;
+            }
+
+            var removed = await repository.DeleteProxyAsync(id, cancellationToken);
+            if (removed)
+            {
+                await realtimeEventPublisher.PublishEntityChangedAsync("IndexerProxy", id, cancellationToken);
+                // An indexer that was assigned to this proxy now runs a
+                // direct connection; the Indexers list reflects that.
+                await realtimeEventPublisher.PublishEntityChangedAsync("Indexer", "*", cancellationToken);
+            }
+
+            return removed ? Results.Ok() : Results.NotFound();
         });
 
         var downloadClients = endpoints.MapGroup("/api/download-clients")
@@ -786,6 +867,28 @@ public static class ConnectionsEndpointRouteBuilderExtensions
             request.IgnoredWords,
             request.MultiLanguages);
         AddQueryGrabLimitErrors(errors, request.QueryLimit, request.GrabLimit);
+
+        return errors;
+    }
+
+    private static Dictionary<string, string[]> ValidateProxy(CreateProxyRequest request)
+    {
+        var errors = new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase);
+
+        if (string.IsNullOrWhiteSpace(request.Name))
+        {
+            errors["name"] = ["Give this proxy a name."];
+        }
+
+        if (string.IsNullOrWhiteSpace(request.ProxyType) || !ProxyTypes.IsKnown(request.ProxyType))
+        {
+            errors["proxyType"] = ["Choose HTTP, SOCKS4, SOCKS5 or FlareSolverr/Byparr."];
+        }
+
+        if (string.IsNullOrWhiteSpace(request.Address))
+        {
+            errors["address"] = ["Add the address Deluno should send requests through."];
+        }
 
         return errors;
     }
