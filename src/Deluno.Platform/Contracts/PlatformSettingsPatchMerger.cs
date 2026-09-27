@@ -73,5 +73,7 @@ public static class PlatformSettingsPatchMerger
             DownloadHealthMinSpeedMinutes: patch.DownloadHealthMinSpeedMinutes ?? current.DownloadHealthMinSpeedMinutes,
             DownloadHealthMinPeersEnabled: patch.DownloadHealthMinPeersEnabled ?? current.DownloadHealthMinPeersEnabled,
             DownloadHealthMinPeers: patch.DownloadHealthMinPeers ?? current.DownloadHealthMinPeers,
-            DownloadHealthMinPeersMinutes: patch.DownloadHealthMinPeersMinutes ?? current.DownloadHealthMinPeersMinutes);
+            DownloadHealthMinPeersMinutes: patch.DownloadHealthMinPeersMinutes ?? current.DownloadHealthMinPeersMinutes,
+            LibraryFreeSpaceWarnPercent: patch.LibraryFreeSpaceWarnPercent ?? current.LibraryFreeSpaceWarnPercent,
+            LibraryFreeSpacePausePercent: patch.LibraryFreeSpacePausePercent ?? current.LibraryFreeSpacePausePercent);
 }

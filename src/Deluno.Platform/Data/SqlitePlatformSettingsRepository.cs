@@ -208,6 +208,12 @@ public sealed class SqlitePlatformSettingsRepository(
         await UpsertSettingAsync(connection, transaction, "download-health.minPeers.enabled", request.DownloadHealthMinPeersEnabled == true ? "true" : "false", updatedUtc, cancellationToken);
         await UpsertSettingAsync(connection, transaction, "download-health.minPeers.count", Math.Clamp(request.DownloadHealthMinPeers ?? 1, 0, 1000).ToString(CultureInfo.InvariantCulture), updatedUtc, cancellationToken);
         await UpsertSettingAsync(connection, transaction, "download-health.minPeers.minutes", Math.Clamp(request.DownloadHealthMinPeersMinutes ?? 30, 1, 1440).ToString(CultureInfo.InvariantCulture), updatedUtc, cancellationToken);
+        // #909: warn and pause both read as "percent free remaining", so pause
+        // must be the smaller number -- clamped here rather than merely
+        // validated, so a stored value can never be read back the wrong way
+        // round even if validation is ever bypassed.
+        await UpsertSettingAsync(connection, transaction, "library.freeSpace.warnPercent", Math.Clamp(request.LibraryFreeSpaceWarnPercent ?? 10, 1, 50).ToString(CultureInfo.InvariantCulture), updatedUtc, cancellationToken);
+        await UpsertSettingAsync(connection, transaction, "library.freeSpace.pausePercent", Math.Clamp(Math.Min(request.LibraryFreeSpacePausePercent ?? 5, request.LibraryFreeSpaceWarnPercent ?? 10), 1, 50).ToString(CultureInfo.InvariantCulture), updatedUtc, cancellationToken);
         // The sharing rule is written only when the caller is actually setting
         // it. Writing it on every settings PATCH meant that saving anything
         // else — a metadata key, a rename format — silently cleared both
@@ -521,7 +527,9 @@ public sealed class SqlitePlatformSettingsRepository(
             DownloadHealthMinSpeedMinutes: ReadPositiveInt(GetValue(settings, "download-health.minSpeed.minutes"), 30, 1, 1440),
             DownloadHealthMinPeersEnabled: string.Equals(GetValue(settings, "download-health.minPeers.enabled"), "true", StringComparison.OrdinalIgnoreCase),
             DownloadHealthMinPeers: ReadPositiveInt(GetValue(settings, "download-health.minPeers.count"), 1, 0, 1000),
-            DownloadHealthMinPeersMinutes: ReadPositiveInt(GetValue(settings, "download-health.minPeers.minutes"), 30, 1, 1440));
+            DownloadHealthMinPeersMinutes: ReadPositiveInt(GetValue(settings, "download-health.minPeers.minutes"), 30, 1, 1440),
+            LibraryFreeSpaceWarnPercent: ReadPositiveInt(GetValue(settings, "library.freeSpace.warnPercent"), 10, 1, 50),
+            LibraryFreeSpacePausePercent: ReadPositiveInt(GetValue(settings, "library.freeSpace.pausePercent"), 5, 1, 50));
     }
 
     private static int ReadPositiveInt(string? value, int fallback, int min, int max)

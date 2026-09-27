@@ -89,4 +89,11 @@ public sealed record PlatformSettingsSnapshot(
     int DownloadHealthMinSpeedMinutes = 30,
     bool DownloadHealthMinPeersEnabled = false,
     int DownloadHealthMinPeers = 1,
-    int DownloadHealthMinPeersMinutes = 30);
+    int DownloadHealthMinPeersMinutes = 30,
+    // A library root running low on space fails title by title, at the worst
+    // possible moment -- mid-import -- with no single place saying why (#909).
+    // Warn is informational; at or below Pause, Deluno stops grabbing and
+    // importing into that library the same way it does for an unreachable
+    // root, and says so once, not per title.
+    int LibraryFreeSpaceWarnPercent = 10,
+    int LibraryFreeSpacePausePercent = 5);

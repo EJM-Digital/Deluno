@@ -84,6 +84,7 @@ public static class SystemTasks
     public const string ProcessorHealth = "processor.health";
     public const string ProcessorOutcomes = "processor.outcomes";
     public const string RssSync = "rss.sync";
+    public const string HealthChecks = "health.checks";
 
     /// <summary>
     /// Ordered as somebody reading the screen would want them: the things that
@@ -175,7 +176,14 @@ public static class SystemTasks
         // pass costs a query (#580).
         new(ProcessorOutcomes, "Tell the processor what became of its files",
             "Says again what became of a processed file when the processor did not hear it the first time, so it can let go of its copy.",
-            TimeSpan.FromMinutes(1))
+            TimeSpan.FromMinutes(1)),
+        // Every health check, on one clock (#909). A setting a check depends on
+        // (a library's root, a download client, a processor connection) also
+        // asks its checks to run right away, so this fifteen minutes is the
+        // worst case, not the only case.
+        new(HealthChecks, "Check system health",
+            "Looks at download clients, indexers, libraries, the processor and other connections for problems, and shows anything wrong on Health, the Dashboard, the bell and a notification.",
+            TimeSpan.FromMinutes(15))
     ];
 
     /// <summary>

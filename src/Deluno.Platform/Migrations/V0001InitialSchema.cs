@@ -74,7 +74,8 @@ public static class PlatformDatabaseMigrations
         new V0066DownloadHealthStrikesV2(),
         new V0067ProcessorHandoffOutcomes(),
         new V0068IndexerTrackerDefinition(),
-        new V0069MediaServerPathMappings()
+        new V0069MediaServerPathMappings(),
+        new V0070HealthChecks()
     ];
 
     private sealed class V0001InitialSchema : SqliteSqlMigration
