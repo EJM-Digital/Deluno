@@ -85,7 +85,8 @@ public static class PlatformDatabaseMigrations
         new V0077ReleaseProfileEnabledAndIndexerScope(),
         new V0078IndexerApiPath(),
         new V0079IndexerAdditionalParameters(),
-        new V0080IndexerAnimeCategories()
+        new V0080IndexerAnimeCategories(),
+        new V0081LibraryRandomizeSearchOrder()
     ];
 
     private sealed class V0001InitialSchema : SqliteSqlMigration

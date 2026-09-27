@@ -2448,6 +2448,7 @@ public sealed class SqliteJobStore(
                     searchKind,
                     maxItems = library.MaxItemsPerRun,
                     retryDelayHours = library.RetryDelayHours,
+                    randomizeSearchOrder = library.RandomizeSearchOrder,
                     triggeredBy = manualRequest ? "manual" : "schedule",
                     scopeId = scope?.Id,
                     scopeName = scope?.Name,

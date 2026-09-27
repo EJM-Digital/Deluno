@@ -25,4 +25,6 @@ public sealed record LibraryAutomationPlanItem(
     /// Saved views that scope scheduled searches for this library. Null or an
     /// empty list means the normal unfiltered cycle remains in effect.
     /// </summary>
-    IReadOnlyList<LibraryAutomationScope>? SearchScopes = null);
+    IReadOnlyList<LibraryAutomationScope>? SearchScopes = null,
+    /// <summary>Shuffles automatic wanted-title search order instead of oldest-added-first (#831).</summary>
+    bool RandomizeSearchOrder = false);

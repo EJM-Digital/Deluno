@@ -115,7 +115,8 @@ public abstract class LibrarySearchJobHandler(
             cancellationToken,
             searchStatus,
             scopeFilters,
-            requireMonitored: !PersonAsked(payload)))
+            requireMonitored: !PersonAsked(payload),
+            randomOrder: payload.RandomizeSearchOrder))
             .Where(candidate => MatchesTarget(payload, candidate.MovieId))
             .ToArray();
         IReadOnlyList<BlockedRelease> refusals = PersonAsked(payload) ? [] : await ListRefusalsAsync(cancellationToken);
@@ -500,7 +501,8 @@ public abstract class LibrarySearchJobHandler(
             cancellationToken,
             searchStatus,
             scopeFilters,
-            requireMonitored: !PersonAsked(payload)))
+            requireMonitored: !PersonAsked(payload),
+            randomOrder: payload.RandomizeSearchOrder))
             .Where(candidate => MatchesTarget(payload, candidate.SeriesId))
             .ToArray();
         var seriesStartedUtc = now;

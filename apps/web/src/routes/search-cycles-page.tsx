@@ -104,6 +104,7 @@ interface AutomationForm {
   maxItemsPerRun: string;
   searchWindowStartHour: string;
   searchWindowEndHour: string;
+  randomizeSearchOrder: boolean;
 }
 
 /**
@@ -214,7 +215,8 @@ export function SearchCyclesPage() {
         retryDelayHours: Number(form.retryDelayHours || 6),
         maxItemsPerRun: Number(form.maxItemsPerRun || 10),
         searchWindowStartHour: form.searchWindowStartHour === "" ? null : Number(form.searchWindowStartHour),
-        searchWindowEndHour: form.searchWindowEndHour === "" ? null : Number(form.searchWindowEndHour)
+        searchWindowEndHour: form.searchWindowEndHour === "" ? null : Number(form.searchWindowEndHour),
+        randomizeSearchOrder: form.randomizeSearchOrder
       })
     });
     if (!response.ok) throw new Error("Automation could not be saved.");
@@ -752,6 +754,12 @@ export function SearchCyclesPage() {
               <Select value={form.searchWindowEndHour} onChange={(event) => setForm((current) => ({ ...current, searchWindowEndHour: event.target.value }))} placeholder="Any time" options={HOUR_OPTIONS} />
             </Field>
           </FieldRow>
+          <SwitchRow
+            label="Search order"
+            description={form.randomizeSearchOrder ? "Random — a new title never waits behind a long backlog." : "Oldest added first."}
+            checked={form.randomizeSearchOrder}
+            onCheckedChange={(checked) => setForm((current) => ({ ...current, randomizeSearchOrder: checked }))}
+          />
         </DrawerSection>
 
         {editing ? (
@@ -795,7 +803,7 @@ function runsLabel(shown: number, total: number) {
 }
 
 function emptyAutomation(): AutomationForm {
-  return { autoSearchEnabled: true, missingSearchEnabled: true, upgradeSearchEnabled: true, searchIntervalHours: "12", retryDelayHours: "6", maxItemsPerRun: "10", searchWindowStartHour: "", searchWindowEndHour: "" };
+  return { autoSearchEnabled: true, missingSearchEnabled: true, upgradeSearchEnabled: true, searchIntervalHours: "12", retryDelayHours: "6", maxItemsPerRun: "10", searchWindowStartHour: "", searchWindowEndHour: "", randomizeSearchOrder: false };
 }
 function automationFrom(library: LibraryItem): AutomationForm {
   return {
@@ -806,7 +814,8 @@ function automationFrom(library: LibraryItem): AutomationForm {
     retryDelayHours: String(library.retryDelayHours),
     maxItemsPerRun: String(library.maxItemsPerRun),
     searchWindowStartHour: library.searchWindowStartHour === null ? "" : String(library.searchWindowStartHour),
-    searchWindowEndHour: library.searchWindowEndHour === null ? "" : String(library.searchWindowEndHour)
+    searchWindowEndHour: library.searchWindowEndHour === null ? "" : String(library.searchWindowEndHour),
+    randomizeSearchOrder: library.randomizeSearchOrder ?? false
   };
 }
 function sharingFrom(settings: PlatformSettingsSnapshot): SharingForm {

@@ -87,4 +87,11 @@ public sealed record LibraryItem(
     /// Whether a subtitle Deluno writes leaves the language code out of its
     /// name, for players that only load <c>Film.srt</c>.
     /// </summary>
-    bool SubtitleOmitLanguageCode = false);
+    bool SubtitleOmitLanguageCode = false,
+    /// <summary>
+    /// Shuffles automatic wanted-title search order instead of always oldest
+    /// added first, so a recently added title is never stuck behind a long
+    /// backlog (#831). Off by default: the order is unchanged from before
+    /// this existed.
+    /// </summary>
+    bool RandomizeSearchOrder = false);

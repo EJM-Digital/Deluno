@@ -226,7 +226,11 @@ public interface ISeriesCatalogRepository : ISeriesImportRecoveryRetentionReposi
         CatalogueFilters? filters = null,
         // See IMediaStateRepository.ListEligibleWantedAsync: false only for a
         // person's own retry of one title (#653).
-        bool requireMonitored = true);
+        bool requireMonitored = true,
+        // Shuffles the tiebreak order within each status tier instead of
+        // oldest-searched-first, so a recently added title is never stuck
+        // behind a long backlog (#831).
+        bool randomOrder = false);
 
     Task<int> CountRetryDelayedWantedAsync(
         string libraryId,

@@ -251,4 +251,40 @@ public sealed class SeriesWantedStatePersistenceTests
         Assert.True(await repository.ConsumeSkipNextWantedSearchAsync(series.Id, "series-main", CancellationToken.None));
         Assert.False(await repository.ConsumeSkipNextWantedSearchAsync(series.Id, "series-main", CancellationToken.None));
     }
+
+    [Fact]
+    public async Task Eligible_wanted_series_can_be_asked_for_in_random_order_instead_of_oldest_first()
+    {
+        using var storage = TestStorage.Create();
+        var now = DateTimeOffset.Parse("2026-08-13T00:00:00Z");
+        var timeProvider = new FixedTimeProvider(now);
+        await new SeriesSchemaInitializer(storage.Factory, new SqliteDatabaseMigrator(storage.Factory, timeProvider), NullLogger<SeriesSchemaInitializer>.Instance).StartAsync(CancellationToken.None);
+        var repository = new SqliteSeriesCatalogRepository(storage.Factory, timeProvider);
+        var seriesIds = new List<string>();
+        for (var i = 0; i < 6; i++)
+        {
+            var series = await repository.AddAsync(new CreateSeriesRequest($"Series {i}", 2022, $"tt{i:0000000}"), CancellationToken.None);
+            await repository.EnsureWantedStateAsync(series.Id, "series-main", "missing", "Needs episodes.", false, null, "WEB 1080p", false, CancellationToken.None);
+            seriesIds.Add(series.Id);
+        }
+
+        async Task<string[]> OrderAsync(bool randomOrder) =>
+            (await repository.ListEligibleWantedAsync("series-main", 10, now, ignoreRetryWindow: true, CancellationToken.None, randomOrder: randomOrder))
+                .Select(item => item.SeriesId)
+                .ToArray();
+
+        var oldestFirst = await OrderAsync(randomOrder: false);
+        Assert.Equal(seriesIds, oldestFirst);
+        Assert.Equal(oldestFirst, await OrderAsync(randomOrder: false));
+
+        var seenOrders = new HashSet<string>();
+        for (var attempt = 0; attempt < 20; attempt++)
+        {
+            var order = await OrderAsync(randomOrder: true);
+            Assert.Equal(seriesIds.OrderBy(id => id), order.OrderBy(id => id));
+            seenOrders.Add(string.Join(",", order));
+        }
+
+        Assert.True(seenOrders.Count > 1, "Random order never varied across 20 attempts.");
+    }
 }

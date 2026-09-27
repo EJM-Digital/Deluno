@@ -347,7 +347,11 @@ public interface IMediaStateRepository
         // target, not because monitoring stopped mattering; defaulting true
         // keeps those automatic callers honest without having to remember to
         // pass it (#653).
-        bool requireMonitored = true);
+        bool requireMonitored = true,
+        // Shuffles the tiebreak order within each status tier instead of
+        // oldest-searched-first, so a recently added title is never stuck
+        // behind a long backlog (#831).
+        bool randomOrder = false);
 
     Task<int> CountRetryDelayedWantedAsync(
         MediaKind kind,

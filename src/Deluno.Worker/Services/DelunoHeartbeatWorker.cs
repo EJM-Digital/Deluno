@@ -261,7 +261,8 @@ public sealed class DelunoHeartbeatWorker(
                     // library still asking for languages is not enough on its
                     // own to plan the job. See SubtitleAutomationGate.
                     WantsSubtitles: SubtitleAutomationGate.WantsSubtitles(settings.SubtitleFetchAutomaticEnabled, library.SubtitleLanguages),
-                    SearchScopes: SearchScopesFor(library, automatedViews)))
+                    SearchScopes: SearchScopesFor(library, automatedViews),
+                    RandomizeSearchOrder: library.RandomizeSearchOrder))
                 .ToArray();
 
             // #901: scheduled and RSS search are both "go and find a release",

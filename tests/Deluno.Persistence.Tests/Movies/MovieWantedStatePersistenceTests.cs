@@ -156,4 +156,40 @@ public sealed class MovieWantedStatePersistenceTests
         Assert.True(await repository.ConsumeSkipNextWantedSearchAsync(movie.Id, "movies-main", CancellationToken.None));
         Assert.False(await repository.ConsumeSkipNextWantedSearchAsync(movie.Id, "movies-main", CancellationToken.None));
     }
+
+    [Fact]
+    public async Task Eligible_wanted_movies_can_be_asked_for_in_random_order_instead_of_oldest_first()
+    {
+        using var storage = TestStorage.Create();
+        var now = DateTimeOffset.Parse("2026-08-13T00:00:00Z");
+        var timeProvider = new FixedTimeProvider(now);
+        await new MoviesSchemaInitializer(storage.Factory, new SqliteDatabaseMigrator(storage.Factory, timeProvider), NullLogger<MoviesSchemaInitializer>.Instance).StartAsync(CancellationToken.None);
+        var repository = new SqliteMovieCatalogRepository(storage.Factory, timeProvider);
+        var movieIds = new List<string>();
+        for (var i = 0; i < 6; i++)
+        {
+            var movie = await repository.AddAsync(new CreateMovieRequest($"Movie {i}", 2024, $"tt{i:0000000}"), CancellationToken.None);
+            await repository.EnsureWantedStateAsync(movie.Id, "movies-main", "missing", "Needs a file.", false, null, "WEB 1080p", false, CancellationToken.None);
+            movieIds.Add(movie.Id);
+        }
+
+        async Task<string[]> OrderAsync(bool randomOrder) =>
+            (await repository.ListEligibleWantedAsync("movies-main", 10, now, ignoreRetryWindow: true, CancellationToken.None, randomOrder: randomOrder))
+                .Select(item => item.MovieId)
+                .ToArray();
+
+        var oldestFirst = await OrderAsync(randomOrder: false);
+        Assert.Equal(movieIds, oldestFirst);
+        Assert.Equal(oldestFirst, await OrderAsync(randomOrder: false));
+
+        var seenOrders = new HashSet<string>();
+        for (var attempt = 0; attempt < 20; attempt++)
+        {
+            var order = await OrderAsync(randomOrder: true);
+            Assert.Equal(movieIds.OrderBy(id => id), order.OrderBy(id => id));
+            seenOrders.Add(string.Join(",", order));
+        }
+
+        Assert.True(seenOrders.Count > 1, "Random order never varied across 20 attempts.");
+    }
 }

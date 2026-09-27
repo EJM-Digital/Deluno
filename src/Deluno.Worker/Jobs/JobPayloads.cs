@@ -23,7 +23,8 @@ internal static class JobPayloads
         string SearchKind = "combined",
         string? ScopeId = null,
         string? ScopeName = null,
-        IReadOnlyList<CatalogueFilterCondition>? ScopeConditions = null);
+        IReadOnlyList<CatalogueFilterCondition>? ScopeConditions = null,
+        bool RandomizeSearchOrder = false);
 
     internal sealed record LibraryQualityPayload(
         string LibraryId,
