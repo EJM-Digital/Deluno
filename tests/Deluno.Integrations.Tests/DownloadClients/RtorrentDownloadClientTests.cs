@@ -205,6 +205,46 @@ public sealed class RtorrentDownloadClientTests
         Assert.Equal("Couldn't open file (disk full)", item.ErrorMessage);
     }
 
+    /// <summary>
+    /// #878, cleanup sheet C5: rTorrent's own d.multicall2 never carries a
+    /// tracker's message, so a tracker's "torrent not registered" answer read
+    /// through t.multicall must map onto the same Unregistered status
+    /// qBittorrent/Transmission/Deluge already produce, not stay Unknown.
+    /// </summary>
+    [Fact]
+    public async Task An_unregistered_tracker_message_is_read_as_unregistered()
+    {
+        var handler = new RtorrentSnapshotHandler(trackerMessage: "torrent not registered with this tracker");
+        var snapshot = await new RtorrentDownloadClient(new StubFactory(handler))
+            .GetSnapshotAsync(Client(), DateTimeOffset.UtcNow, CancellationToken.None);
+
+        var item = Assert.Single(snapshot!.Queue);
+        Assert.Equal(Deluno.Contracts.DownloadTrackerStatuses.Unregistered, item.TrackerStatus);
+    }
+
+    [Fact]
+    public async Task A_healthy_tracker_message_reads_as_ok()
+    {
+        var handler = new RtorrentSnapshotHandler(trackerMessage: string.Empty);
+        var snapshot = await new RtorrentDownloadClient(new StubFactory(handler))
+            .GetSnapshotAsync(Client(), DateTimeOffset.UtcNow, CancellationToken.None);
+
+        var item = Assert.Single(snapshot!.Queue);
+        Assert.Equal(Deluno.Contracts.DownloadTrackerStatuses.Ok, item.TrackerStatus);
+    }
+
+    /// <summary>A tracker rTorrent cannot reach at all is a local/outage problem, never a bad release (#901).</summary>
+    [Fact]
+    public async Task A_tracker_call_that_fails_stays_unknown_rather_than_unregistered()
+    {
+        var handler = new RtorrentSnapshotHandler(trackerCallFails: true);
+        var snapshot = await new RtorrentDownloadClient(new StubFactory(handler))
+            .GetSnapshotAsync(Client(), DateTimeOffset.UtcNow, CancellationToken.None);
+
+        var item = Assert.Single(snapshot!.Queue);
+        Assert.Equal(Deluno.Contracts.DownloadTrackerStatuses.Unknown, item.TrackerStatus);
+    }
+
     [Fact]
     public async Task Basic_auth_is_sent_when_a_username_and_secret_are_configured()
     {
@@ -304,11 +344,30 @@ public sealed class RtorrentDownloadClientTests
         }
     }
 
-    /// <summary>Answers d.multicall2 with one row of canned per-torrent values, in MapRow's own field order.</summary>
-    private sealed class RtorrentSnapshotHandler(string? message = null) : HttpMessageHandler
+    /// <summary>
+    /// Answers d.multicall2 with one row of canned per-torrent values, in
+    /// MapRow's own field order, and t.multicall (#878) with a single
+    /// tracker's own enabled flag and message -- or a failure, when asked to
+    /// simulate a tracker rTorrent cannot reach at all.
+    /// </summary>
+    private sealed class RtorrentSnapshotHandler(string? message = null, string? trackerMessage = null, bool trackerCallFails = false) : HttpMessageHandler
     {
-        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
+            var body = request.Content is null ? string.Empty : await request.Content.ReadAsStringAsync(cancellationToken);
+            var method = MethodNameOf(body);
+
+            if (method == "t.multicall")
+            {
+                if (trackerCallFails)
+                {
+                    return new HttpResponseMessage(HttpStatusCode.InternalServerError);
+                }
+
+                var tracker = AsValue(ArrayOf([AsValue(TypedInt(1)), AsValue(TypedString(trackerMessage ?? string.Empty))]));
+                return XmlResponse(MethodResponse(AsValue(ArrayOf([tracker]))));
+            }
+
             var fields = new[]
             {
                 AsValue(TypedString("abcdef0123456789abcdef0123456789abcdef01")),
@@ -325,7 +384,7 @@ public sealed class RtorrentDownloadClientTests
                 AsValue(TypedString("/downloads/Example.Movie.2024.1080p"))
             };
             var row = AsValue(ArrayOf(fields));
-            return Task.FromResult(XmlResponse(MethodResponse(AsValue(ArrayOf([row])))));
+            return XmlResponse(MethodResponse(AsValue(ArrayOf([row]))));
         }
     }
 
