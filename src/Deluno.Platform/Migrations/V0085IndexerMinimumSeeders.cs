@@ -6,9 +6,9 @@ namespace Deluno.Platform.Migrations;
 /// A per-indexer minimum-seeders floor (#738): a torrent below it is
 /// rejected before grab. Null means unrestricted.
 /// </summary>
-public sealed class V0083IndexerMinimumSeeders : SqliteSqlMigration
+public sealed class V0085IndexerMinimumSeeders : SqliteSqlMigration
 {
-    public override int Version => 83;
+    public override int Version => 85;
 
     public override string Name => "indexer_minimum_seeders";
 

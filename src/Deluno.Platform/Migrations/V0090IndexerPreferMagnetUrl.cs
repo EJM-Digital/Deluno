@@ -6,9 +6,9 @@ namespace Deluno.Platform.Migrations;
 /// A prefer-magnet-over-torrent-file toggle for torrent indexers (#752).
 /// Off by default (#936); ignored for usenet indexers.
 /// </summary>
-public sealed class V0088IndexerPreferMagnetUrl : SqliteSqlMigration
+public sealed class V0090IndexerPreferMagnetUrl : SqliteSqlMigration
 {
-    public override int Version => 88;
+    public override int Version => 90;
 
     public override string Name => "indexer_prefer_magnet_url";
 
