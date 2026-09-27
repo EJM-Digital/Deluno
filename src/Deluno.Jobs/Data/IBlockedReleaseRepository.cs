@@ -41,7 +41,19 @@ public interface IBlockedReleaseRepository
     /// because Deluno could not identify it is not one whose file should be
     /// destroyed.</para>
     /// </summary>
-    Task<IReadOnlyList<BlockedRelease>> ListAwaitingCleanupAsync(CancellationToken cancellationToken);
+    /// <param name="shouldDeletePayload">
+    /// Overrides <see cref="ImportFailurePolicy.ShouldDeletePayload(string)"/> for
+    /// this call, so a caller can fold in a person's own "your call" setting
+    /// (#887) without this repository knowing about platform settings at all.
+    /// Null uses the shipped table unchanged.
+    /// </param>
+    Task<IReadOnlyList<BlockedRelease>> ListAwaitingCleanupAsync(
+        Func<string, bool>? shouldDeletePayload,
+        CancellationToken cancellationToken);
+
+    /// <summary>Equivalent to passing null for <c>shouldDeletePayload</c> to the overload above.</summary>
+    Task<IReadOnlyList<BlockedRelease>> ListAwaitingCleanupAsync(CancellationToken cancellationToken)
+        => ListAwaitingCleanupAsync(null, cancellationToken);
 
     /// <summary>What has been refused for one title.</summary>
     Task<IReadOnlyList<BlockedRelease>> ListForAsync(string mediaType, string entityId, CancellationToken cancellationToken);

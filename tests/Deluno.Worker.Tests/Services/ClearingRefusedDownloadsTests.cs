@@ -45,6 +45,42 @@ public sealed class ClearingRefusedDownloadsTests
     }
 
     /// <summary>
+    /// #887: off by default -- a still-packed archive is blocklisted, but its
+    /// files never used to be an option to clear. Turned on, they are cleared
+    /// exactly the same way any other justified refusal is.
+    /// </summary>
+    [Fact]
+    public async Task A_still_packed_archive_is_left_alone_unless_the_setting_is_turned_on()
+    {
+        var blocklist = Blocklist(RefusedPackedArchive("hash-1"));
+        var clients = Clients();
+
+        await Cleanup(blocklist.Object, clients.Object, Sharing()).CleanUpEverythingAsync(CancellationToken.None);
+        blocklist.Verify(
+            list => list.ListAwaitingCleanupAsync(
+                It.Is<Func<string, bool>>(decide => decide(ImportFailurePolicy.UnsupportedFile) == false),
+                It.IsAny<CancellationToken>()),
+            Times.Once);
+
+        blocklist.Invocations.Clear();
+        await Cleanup(blocklist.Object, clients.Object, Sharing(), removeAndDeletePackedArchivesFromClient: true)
+            .CleanUpEverythingAsync(CancellationToken.None);
+        blocklist.Verify(
+            list => list.ListAwaitingCleanupAsync(
+                It.Is<Func<string, bool>>(decide => decide(ImportFailurePolicy.UnsupportedFile) == true),
+                It.IsAny<CancellationToken>()),
+            Times.Once);
+
+        // The setting only ever adds the packed-archive reason. Everything
+        // the shipped table already says to clear is untouched by it.
+        blocklist.Verify(
+            list => list.ListAwaitingCleanupAsync(
+                It.Is<Func<string, bool>>(decide => decide(ImportFailurePolicy.LikelySample) == true),
+                It.IsAny<CancellationToken>()),
+            Times.Once);
+    }
+
+    /// <summary>
     /// The one that matters. Deluno refused the release; the tracker still
     /// expects the seed. The rule that knows what the site wants wins.
     /// </summary>
@@ -209,29 +245,69 @@ public sealed class ClearingRefusedDownloadsTests
         IBlockedReleaseRepository blocklist,
         IDownloadClientTelemetryService clients,
         IDownloadSharingRepository sharing,
-        bool clientReportedFailureCleanupOn = false)
-        => new(blocklist, clients, sharing, Settings(clientReportedFailureCleanupOn), NullLogger<RefusedDownloadCleanupService>.Instance);
-
-    private static IPlatformSettingsRepository Settings(bool clientReportedFailureCleanupOn)
-    {
-        var settings = new Mock<IPlatformSettingsRepository>();
-        settings.Setup(repository => repository.GetAsync(It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new PlatformSettingsSnapshot(
-                "Deluno", null, null, null, null, false, false, false, false, false,
-                "{Movie Title} ({Year})", "{Series Title}", "{Movie Title} ({Year}) [{Quality}]", "{Series Title} - {Episode}",
-                "0.0.0.0", 8080, "", false, "system", "grid", "grid", false, false, "AU", "en", "prefer-tmdb", "", false, false, false,
-                "", "balanced", 30, DateTimeOffset.UnixEpoch,
-                CleanupRemoveClientEntryAfterThreshold: clientReportedFailureCleanupOn,
-                CleanupPurgePayloadAfterThreshold: clientReportedFailureCleanupOn));
-        return settings.Object;
-    }
+        bool clientReportedFailureCleanupOn = false,
+        bool removeAndDeletePackedArchivesFromClient = false)
+        => new(
+            blocklist,
+            clients,
+            sharing,
+            PlatformSettings(clientReportedFailureCleanupOn, removeAndDeletePackedArchivesFromClient),
+            NullLogger<RefusedDownloadCleanupService>.Instance);
 
     private static Mock<IBlockedReleaseRepository> Blocklist(params BlockedRelease[] pending)
     {
         var blocklist = new Mock<IBlockedReleaseRepository>();
-        blocklist.Setup(list => list.ListAwaitingCleanupAsync(It.IsAny<CancellationToken>()))
+        blocklist.Setup(list => list.ListAwaitingCleanupAsync(It.IsAny<Func<string, bool>?>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(pending);
         return blocklist;
+    }
+
+    /// <summary>#882/#883/#885 and #887: both off unless a test says otherwise.</summary>
+    private static IPlatformSettingsRepository PlatformSettings(
+        bool clientReportedFailureCleanupOn = false,
+        bool removeAndDeletePackedArchivesFromClient = false)
+    {
+        var settings = new Mock<IPlatformSettingsRepository>();
+        settings.Setup(repository => repository.GetAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new PlatformSettingsSnapshot(
+                AppInstanceName: "Deluno",
+                MovieRootPath: null,
+                SeriesRootPath: null,
+                DownloadsPath: null,
+                IncompleteDownloadsPath: null,
+                AutoStartJobs: true,
+                EnableNotifications: true,
+                RenameOnImport: true,
+                UseHardlinks: true,
+                CleanupEmptyFolders: true,
+                MovieFolderFormat: "{Movie}",
+                SeriesFolderFormat: "{Series}",
+                MovieFileFormat: "{Movie}",
+                EpisodeFileFormat: "{Episode}",
+                HostBindAddress: "127.0.0.1",
+                HostPort: 7979,
+                UrlBase: string.Empty,
+                RequireAuthentication: false,
+                UiTheme: "dark",
+                DefaultMovieView: "poster",
+                DefaultShowView: "poster",
+                MetadataNfoEnabled: true,
+                MetadataArtworkEnabled: true,
+                MetadataCertificationCountry: "US",
+                MetadataLanguage: "en",
+                MetadataProviderMode: "auto",
+                MetadataBrokerUrl: string.Empty,
+                MetadataBrokerConfigured: false,
+                MetadataTmdbApiKeyConfigured: false,
+                MetadataOmdbApiKeyConfigured: false,
+                ReleaseNeverGrabPatterns: string.Empty,
+                SearchScoringMode: "balanced",
+                ImportRecoveryRetentionDays: 30,
+                UpdatedUtc: DateTimeOffset.UnixEpoch,
+                CleanupRemoveClientEntryAfterThreshold: clientReportedFailureCleanupOn,
+                CleanupPurgePayloadAfterThreshold: clientReportedFailureCleanupOn,
+                RemoveAndDeletePackedArchivesFromClient: removeAndDeletePackedArchivesFromClient));
+        return settings.Object;
     }
 
     private static Mock<IDownloadClientTelemetryService> Clients()
@@ -290,5 +366,21 @@ public sealed class ClearingRefusedDownloadsTests
             queueItemId,
             "sabnzbd-main",
             "SABnzbd",
+            DateTimeOffset.UnixEpoch);
+
+    private static BlockedRelease RefusedPackedArchive(string queueItemId)
+        => new(
+            "block-1",
+            BlockedReleaseKeys.For("Arrival.2016.2160p", "Nebula"),
+            "Arrival.2016.2160p",
+            "Nebula",
+            "movies",
+            "movie-1",
+            "Arrival",
+            ImportFailurePolicy.UnsupportedFile,
+            "It was still a packed archive.",
+            queueItemId,
+            "qbittorrent-main",
+            "qBittorrent",
             DateTimeOffset.UnixEpoch);
 }

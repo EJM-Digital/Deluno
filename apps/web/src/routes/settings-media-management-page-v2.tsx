@@ -417,6 +417,7 @@ function ImportPolicyPage() {
         libraryFreeSpacePausePercent: form.libraryFreeSpacePausePercent,
         minimumFreeSpaceMb: form.minimumFreeSpaceMb,
         skipFreeSpaceCheck: form.skipFreeSpaceCheck,
+        removeAndDeletePackedArchivesFromClient: form.removeAndDeletePackedArchivesFromClient,
         setPermissionsOnImport: form.setPermissionsOnImport,
         folderChmod: form.folderChmod,
         chownGroup: form.chownGroup,
@@ -545,6 +546,13 @@ function ImportPolicyFields({
             </div>
           </Field>
         ) : null}
+      </div>
+      <div className="border-t border-hairline p-[var(--card-pad-x)]">
+        <div className="grid content-start gap-1.5 pb-[var(--grid-gap)]">
+          <p className="text-[length:var(--type-body-sm)] font-medium leading-tight text-foreground">Still-packed archives</p>
+          <p className="text-[length:var(--type-caption)] leading-snug text-muted-foreground">A download that is still a packed archive nothing can open is always blocklisted (change that per-reason on Search &amp; Cycles -&gt; Failure and blocklist). Removing and deleting it from the download client is your call (#887).</p>
+        </div>
+        <SwitchRow label="Remove and delete still-packed archives from the download client" description="Off keeps the packed files in the client, using disk space, the same as today." checked={form.removeAndDeletePackedArchivesFromClient} onCheckedChange={(checked) => onFormChange((current) => ({ ...current, removeAndDeletePackedArchivesFromClient: checked }))} />
       </div>
       <div className="border-t border-hairline p-[var(--card-pad-x)]">
         <div className="grid content-start gap-1.5 pb-[var(--grid-gap)]">

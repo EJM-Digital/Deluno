@@ -120,4 +120,6 @@ export interface PlatformSettingsPatch {
   minimumFreeSpaceMb?: number;
   /** #765: for a filesystem that cannot report free space at all. */
   skipFreeSpaceCheck?: boolean;
+  /** #887: off by default. A still-packed archive is always blocklisted (governed separately, per-reason); this decides whether it is also removed and deleted from the download client. */
+  removeAndDeletePackedArchivesFromClient?: boolean;
 }

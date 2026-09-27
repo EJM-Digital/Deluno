@@ -87,7 +87,7 @@ public sealed class RefusedDownloadCleanupService(
 {
     public async Task<RefusedDownloadCleanupResult> CleanUpEverythingAsync(CancellationToken cancellationToken)
     {
-        var pending = await blockedReleases.ListAwaitingCleanupAsync(cancellationToken);
+        var pending = await blockedReleases.ListAwaitingCleanupAsync(await ShouldDeletePayloadAsync(cancellationToken), cancellationToken);
         if (pending.Count == 0)
         {
             return new RefusedDownloadCleanupResult(0, 0, 0);
@@ -134,7 +134,7 @@ public sealed class RefusedDownloadCleanupService(
     /// </summary>
     public async Task<string> CleanUpOneAsync(string blockedReleaseId, CancellationToken cancellationToken)
     {
-        var release = (await blockedReleases.ListAwaitingCleanupAsync(cancellationToken))
+        var release = (await blockedReleases.ListAwaitingCleanupAsync(await ShouldDeletePayloadAsync(cancellationToken), cancellationToken))
             .FirstOrDefault(candidate => string.Equals(candidate.Id, blockedReleaseId, StringComparison.Ordinal));
 
         if (release is null)
@@ -153,6 +153,24 @@ public sealed class RefusedDownloadCleanupService(
             await SharingHoldsAsync(cancellationToken),
             await ClientReportedFailureCleanupIsOnAsync(cancellationToken),
             cancellationToken);
+    }
+
+    /// <summary>
+    /// The shipped table, with a still-packed archive folded in only when the
+    /// person has turned that on (#887). Everything else the table already
+    /// says to clear is untouched by this setting.
+    /// </summary>
+    private async Task<Func<string, bool>> ShouldDeletePayloadAsync(CancellationToken cancellationToken)
+    {
+        var settings = await platformRepository.GetAsync(cancellationToken);
+        if (!settings.RemoveAndDeletePackedArchivesFromClient)
+        {
+            return ImportFailurePolicy.ShouldDeletePayload;
+        }
+
+        return reasonCode =>
+            ImportFailurePolicy.ShouldDeletePayload(reasonCode) ||
+            reasonCode == ImportFailurePolicy.UnsupportedFile;
     }
 
     private async Task<HashSet<string>> SharingHoldsAsync(CancellationToken cancellationToken)

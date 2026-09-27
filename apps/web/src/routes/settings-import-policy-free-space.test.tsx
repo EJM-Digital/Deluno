@@ -126,3 +126,42 @@ describe("import-time minimum free space (#765)", () => {
     }));
   });
 });
+
+/**
+ * #887: whether a still-packed archive is also removed and deleted from the
+ * download client, off by default -- blocklisting it stays a separate,
+ * per-reason choice on the failure rules console.
+ */
+describe("still-packed archive cleanup (#887)", () => {
+  afterEach(() => {
+    mutate.mockReset();
+  });
+
+  it("shows the switch off by default", () => {
+    render(
+      <MemoryRouter>
+        <SettingsMediaManagementPage />
+      </MemoryRouter>
+    );
+
+    expect(screen.getByRole("switch", { name: /^Remove and delete still-packed archives/ })).not.toBeChecked();
+  });
+
+  it("saves the switch when turned on", async () => {
+    mutate.mockResolvedValueOnce({ ...settings, removeAndDeletePackedArchivesFromClient: true });
+
+    render(
+      <MemoryRouter>
+        <SettingsMediaManagementPage />
+      </MemoryRouter>
+    );
+
+    fireEvent.click(screen.getByRole("switch", { name: /^Remove and delete still-packed archives/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Save import settings" }));
+
+    await vi.waitFor(() => expect(mutate).toHaveBeenCalled());
+    expect(mutate).toHaveBeenCalledWith(expect.objectContaining({
+      removeAndDeletePackedArchivesFromClient: true
+    }));
+  });
+});

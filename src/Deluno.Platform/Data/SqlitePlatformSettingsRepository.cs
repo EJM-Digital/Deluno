@@ -275,6 +275,9 @@ public sealed class SqlitePlatformSettingsRepository(
         // report free space at all, not a substitute for lowering the floor.
         await UpsertSettingAsync(connection, transaction, "import.minimumFreeSpaceMb", Math.Max(request.MinimumFreeSpaceMb ?? 100, 0).ToString(CultureInfo.InvariantCulture), updatedUtc, cancellationToken);
         await UpsertSettingAsync(connection, transaction, "import.skipFreeSpaceCheck", request.SkipFreeSpaceCheck == true ? "true" : "false", updatedUtc, cancellationToken);
+        // #887: off by default -- a still-packed archive is always blocklisted,
+        // but removing/deleting it from the client was never anybody's choice.
+        await UpsertSettingAsync(connection, transaction, "cleanup.removeAndDeletePackedArchivesFromClient", request.RemoveAndDeletePackedArchivesFromClient == true ? "true" : "false", updatedUtc, cancellationToken);
         // #909: warn and pause both read as "percent free remaining", so pause
         // must be the smaller number -- clamped here rather than merely
         // validated, so a stored value can never be read back the wrong way
@@ -641,7 +644,8 @@ public sealed class SqlitePlatformSettingsRepository(
             DownloadIntegrityCheckEnabled: string.Equals(GetValue(settings, "download-integrity.checkEnabled"), "true", StringComparison.OrdinalIgnoreCase),
             DownloadIntegrityMinimumRuntimePercent: ReadPositiveInt(GetValue(settings, "download-integrity.minimumRuntimePercent"), 80, 1, 100),
             MinimumFreeSpaceMb: ReadPositiveInt(GetValue(settings, "import.minimumFreeSpaceMb"), 100, 0, int.MaxValue),
-            SkipFreeSpaceCheck: string.Equals(GetValue(settings, "import.skipFreeSpaceCheck"), "true", StringComparison.OrdinalIgnoreCase));
+            SkipFreeSpaceCheck: string.Equals(GetValue(settings, "import.skipFreeSpaceCheck"), "true", StringComparison.OrdinalIgnoreCase),
+            RemoveAndDeletePackedArchivesFromClient: string.Equals(GetValue(settings, "cleanup.removeAndDeletePackedArchivesFromClient"), "true", StringComparison.OrdinalIgnoreCase));
     }
 
     private static string NormalizeMultiEpisodeStyle(string? value)
