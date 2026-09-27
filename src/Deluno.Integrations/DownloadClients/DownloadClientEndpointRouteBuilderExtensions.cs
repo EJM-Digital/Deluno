@@ -150,12 +150,26 @@ public static class DownloadClientEndpointRouteBuilderExtensions
         endpoints.MapPost("/api/download-health/purge-strikes", async (
             HttpContext httpContext,
             IDownloadHealthRepository platformRepository,
+            IActivityFeedRepository activityFeedRepository,
             CancellationToken cancellationToken) =>
         {
             var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
             if (denied is not null) return denied;
 
             var purged = await platformRepository.PurgeAllDownloadHealthStrikesAsync(cancellationToken);
+            // #826: irreversible, so it is said in plain words the same way
+            // every other destructive action Deluno takes on its own already
+            // is - here, one this installation's one person asked for directly.
+            await activityFeedRepository.RecordActivityAsync(
+                "download.health.strikes-purged",
+                purged > 0
+                    ? $"All recorded download-health strikes were cleared: {purged} download{(purged == 1 ? "" : "s")} reset to zero."
+                    : "All recorded download-health strikes were cleared. There was nothing to clear.",
+                null,
+                null,
+                null,
+                null,
+                cancellationToken);
             return Results.Ok(new PurgeDownloadHealthStrikesResult(purged));
         });
 
