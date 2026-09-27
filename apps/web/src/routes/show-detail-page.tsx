@@ -1577,7 +1577,15 @@ export function ShowDetailPage() {
                   ...(openEpisode.sceneSeasonNumber !== null && openEpisode.sceneSeasonNumber !== undefined && openEpisode.sceneEpisodeNumber !== null && openEpisode.sceneEpisodeNumber !== undefined
                     ? [{ label: "Scene", value: `S${String(openEpisode.sceneSeasonNumber).padStart(2, "0")}E${String(openEpisode.sceneEpisodeNumber).padStart(2, "0")}` }]
                     : []),
-                  ...(openEpisode.airDate ? [{ label: "Air-date key", value: openEpisode.airDate }] : [])
+                  ...(openEpisode.airDate ? [{ label: "Air-date key", value: openEpisode.airDate }] : []),
+                  // Where the numbers above came from, once there is one worth
+                  // naming: an untouched provider default is not news, but an
+                  // owner correction or an automatic scene-mapping fetch is
+                  // exactly the kind of decision the North Star asks Deluno to
+                  // explain rather than leave silent.
+                  ...(openEpisode.numberingSource && openEpisode.numberingSource !== "provider"
+                    ? [{ label: "Numbering source", value: formatNumberingSource(openEpisode.numberingSource) }]
+                    : [])
                 ]}
               />
             </DrawerSection>
@@ -1891,7 +1899,11 @@ function formatNumberingScheme(value: string | null | undefined) {
 }
 
 function formatNumberingSource(value: string | null | undefined) {
-  return value?.toLowerCase() === "owner" ? "Owner mapping" : "Provider metadata";
+  switch (value?.toLowerCase()) {
+    case "owner": return "Owner mapping";
+    case "scene-map": return "Scene mapping (auto)";
+    default: return "Provider metadata";
+  }
 }
 
 function matchesEpisodeFilter(episode: SeriesEpisodeInventoryItem, filter: EpisodeFilter, query: string) {
