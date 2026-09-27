@@ -845,10 +845,14 @@ public sealed partial class ImportPipelineService(
                 preview = await EnrichPreviewWithMediaProbeAsync(preview, cancellationToken);
             }
 
-            var warnings = new List<string>();
+            // #889: a problem that belongs to the whole pack (a setup gap or
+            // an outage, never this file's fault) still blocks every file, the
+            // same as before - a local problem does not deserve the same
+            // reach the setup-or-outage rule protects everything else from.
+            var packWideWarnings = new List<string>();
             if (!preview.SourceExists)
             {
-                warnings.Add("Source file is no longer present.");
+                packWideWarnings.Add("Source file is no longer present.");
             }
             else if (!ImportFileReadiness.IsReady(preview.SourcePath))
             {
@@ -856,31 +860,39 @@ public sealed partial class ImportPipelineService(
                 // (see ExecuteTvPackAsync) before this method is ever called, so
                 // this only fires from a preview - it is informational there,
                 // not something a still-arriving file should be skipped over.
-                warnings.Add("Source file is still being written or locked.");
+                packWideWarnings.Add("Source file is still being written or locked.");
             }
             if (!Path.IsPathRooted(preview.DestinationPath))
             {
-                warnings.Add("No rooted TV library destination is configured.");
+                packWideWarnings.Add("No rooted TV library destination is configured.");
             }
+
+            // #889 (cleanup sheet E9): a problem that belongs to this one
+            // file - it is corrupt, too short, the wrong type, or would land
+            // on its own source - no longer stops the rest of the pack. The
+            // file is treated the same as an unmatched extra: left alone,
+            // named, and searched for again on its own, while every other
+            // episode in the pack still imports.
+            var fileOwnWarnings = new List<string>();
             if (!preview.IsSupportedMediaFile)
             {
-                warnings.Add("The destination extension is not an importable video type.");
+                fileOwnWarnings.Add("The destination extension is not an importable video type.");
             }
             if (IsSamePath(preview.SourcePath, preview.DestinationPath))
             {
-                warnings.Add("Source and destination resolve to the same file.");
+                fileOwnWarnings.Add("Source and destination resolve to the same file.");
             }
             if (preview.MediaProbe is { Status: "failed" })
             {
-                warnings.Add(preview.MediaProbe.Message ?? "Media probing failed.");
+                fileOwnWarnings.Add(preview.MediaProbe.Message ?? "Media probing failed.");
             }
             if (preview.MediaProbe is { Status: "succeeded", VideoStreams.Count: 0 })
             {
-                warnings.Add("No video stream was detected.");
+                fileOwnWarnings.Add("No video stream was detected.");
             }
             if (preview.MediaProbe?.DurationSeconds is > 0 and < 120)
             {
-                warnings.Add("The runtime is under two minutes and looks like a sample.");
+                fileOwnWarnings.Add("The runtime is under two minutes and looks like a sample.");
             }
 
             var fileNumbers = ParseTvImportNumbers(
@@ -909,14 +921,28 @@ public sealed partial class ImportPipelineService(
             }
             if (declaredSeasons.Length == 1 && fileNumbers.Episodes.Any(episode => episode.SeasonNumber != declaredSeasons[0]))
             {
-                warnings.Add($"The file resolves outside season {declaredSeasons[0]:00} named by the download folder.");
+                packWideWarnings.Add($"The file resolves outside season {declaredSeasons[0]:00} named by the download folder.");
             }
 
-            if (warnings.Count > 0)
+            if (packWideWarnings.Count > 0)
             {
-                blockReasons.Add($"{Path.GetFileName(sourcePath)}: {string.Join(" ", warnings)}");
+                blockReasons.Add($"{Path.GetFileName(sourcePath)}: {string.Join(" ", packWideWarnings)}");
+                continue;
             }
-            files.Add(new TvPackFilePlan(fileRequest, preview, fileNumbers, warnings));
+
+            if (fileOwnWarnings.Count > 0)
+            {
+                var episodeKeys = string.Join(", ", fileNumbers.Episodes
+                    .Select(episode => EpisodeKey(episode.SeasonNumber, episode.EpisodeNumber))
+                    .Distinct(StringComparer.Ordinal)
+                    .OrderBy(key => key, StringComparer.Ordinal));
+                skippedFiles.Add(new TvPackSkippedFilePlan(
+                    preview,
+                    $"Matched to episode(s) {episodeKeys} but not imported: {string.Join(" ", fileOwnWarnings)}"));
+                continue;
+            }
+
+            files.Add(new TvPackFilePlan(fileRequest, preview, fileNumbers, []));
         }
 
         if (files.Count == 0)
