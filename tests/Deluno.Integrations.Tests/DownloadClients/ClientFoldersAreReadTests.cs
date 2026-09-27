@@ -20,7 +20,10 @@ public sealed class ClientFoldersAreReadTests
     [Theory]
     [InlineData("SUCCESS/UNPACK", "completed")]
     [InlineData("SUCCESS/ALL", "completed")]
-    [InlineData("WARNING/SCRIPT", "completed")]
+    // #910: a post-processing script problem is the user's script, not the
+    // release, so it is its own outcome rather than a folded-in success or a
+    // bad-release failure (see DownloadClientHistoryOutcomes.ScriptWarning).
+    [InlineData("WARNING/SCRIPT", "scriptWarning")]
     [InlineData("FAILURE/PAR", "failed")]
     [InlineData("WARNING/DAMAGED", "failed")]
     [InlineData("DELETED/MANUAL", "failed")]
