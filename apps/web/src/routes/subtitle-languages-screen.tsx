@@ -176,7 +176,7 @@ export function SubtitleLanguagesPage() {
       <PageToolbar tabs={TABS} />
 
       <ListCard title="Fetching">
-        <div className="flex items-start justify-between gap-4 px-1 py-1">
+        <div className="flex items-start justify-between gap-[var(--grid-gap)] px-1 py-1">
           <div>
             <p className="font-medium text-foreground">Fetch subtitles automatically</p>
             <p className="text-[length:var(--type-caption)] text-muted-foreground">
