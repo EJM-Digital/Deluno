@@ -280,6 +280,12 @@ public sealed class CustomFormatDecisionParityTests
     [InlineData(4, "Movie.2026.1080p.WEB-DL-GRP", false)]
     [InlineData(5, "Movie.2026.1080p.BluRay.REMUX-GRP", true)]
     [InlineData(5, "Movie.2026.1080p.BluRay-GRP", false)]
+    [InlineData(6, "Movie.2026.1080p.WEB-DL.PROPER-GRP", true)]
+    [InlineData(6, "Movie.2026.1080p.WEB-DL-GRP", false)]
+    [InlineData(7, "Movie.2026.1080p.WEB-DL.REPACK-GRP", true)]
+    [InlineData(7, "Movie.2026.1080p.WEB-DL-GRP", false)]
+    [InlineData(8, "Movie.2026.1080p.WEB-DL.REAL-GRP", true)]
+    [InlineData(8, "Movie.2026.1080p.WEB-DL-GRP", false)]
     public void Every_quality_modifier_value_maps_to_an_evaluable_source_condition(
         int modifierValue,
         string releaseName,
