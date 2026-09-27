@@ -58,7 +58,9 @@ public abstract class DownloadClientBase : IDownloadClient
         string? message,
         IReadOnlyList<DownloadClientHistoryItem>? history = null,
         IntegrationFailure? failure = null,
-        long? freeSpaceBytes = null)
+        long? freeSpaceBytes = null,
+        bool? clientPaused = null,
+        string? clientVersion = null)
     {
         var normalizedQueue = (queue ?? [])
             .Select(DownloadClientHelpers.NormalizeQueueFailure)
@@ -81,7 +83,9 @@ public abstract class DownloadClientBase : IDownloadClient
             HistoryTruncated: historyItems.Length > DownloadClientTelemetryLimits.HistoryWindow)
         {
             LastFailure = failure,
-            FreeSpaceBytes = freeSpaceBytes
+            FreeSpaceBytes = freeSpaceBytes,
+            ClientPaused = clientPaused,
+            ClientVersion = clientVersion
         };
     }
 

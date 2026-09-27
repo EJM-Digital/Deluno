@@ -369,6 +369,18 @@ public sealed record DownloadClientTelemetrySnapshot(
     /// (uTorrent's WebUI) rather than a guess dressed up as a reading.
     /// </summary>
     public long? FreeSpaceBytes { get; init; }
+
+    /// <summary>
+    /// The client itself reports it is paused or on standby (#812) -- SABnzbd's
+    /// global pause flag, or NZBGet's ServerStandBy/DownloadPaused/PostPaused/
+    /// ScanPaused. Distinct from Deluno being unable to reach the client: this
+    /// is the client's own choice, not a connection problem, and null when the
+    /// protocol has no such reading.
+    /// </summary>
+    public bool? ClientPaused { get; init; }
+
+    /// <summary>The client's own reported version (#812), read alongside its queue/status. Null when not yet read or the protocol has no version call.</summary>
+    public string? ClientVersion { get; init; }
 }
 
 public sealed record DownloadTelemetryOverview(

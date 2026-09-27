@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Net.Http.Json;
+using System.Text.Json;
 using System.Text.Json.Serialization;
 using Deluno.Connections.Contracts;
 
@@ -90,7 +91,16 @@ public sealed class NzbGetDownloadClient(IHttpClientFactory httpClientFactory) :
             $"Connected to NZBGet at {baseUri.Host}:{baseUri.Port}.",
             freeSpaceBytes,
             null);
-        return CreateSnapshot(client, queue, capturedUtc, health, message, history.Count > 0 ? history : null, freeSpaceBytes: freeSpaceBytes);
+        // #812: DownloadPaused/PostPaused/ScanPaused are the client's own
+        // "someone paused this" flags. ServerStandBy alone just means nothing
+        // is downloading right now, which the empty queue already shows -- it
+        // is not treated as Paused here so an idle-but-running client is not
+        // mislabelled as paused.
+        var clientPaused = status is { } value && (value.DownloadPaused == true || value.PostPaused == true || value.ScanPaused == true);
+        var clientVersion = await GetVersionAsync(http, baseUri, cancellationToken);
+        return CreateSnapshot(
+            client, queue, capturedUtc, health, message, history.Count > 0 ? history : null,
+            freeSpaceBytes: freeSpaceBytes, clientPaused: clientPaused, clientVersion: clientVersion);
     }
 
     public override async Task<IReadOnlyList<DownloadClientHistoryItem>> GetHistoryAsync(DownloadClientItem client, DateTimeOffset capturedUtc, CancellationToken cancellationToken)
@@ -271,6 +281,21 @@ public sealed class NzbGetDownloadClient(IHttpClientFactory httpClientFactory) :
     private static async Task<NzbGetStatus?> GetStatusAsync(HttpClient http, Uri baseUri, CancellationToken cancellationToken)
     {
         return (await DownloadClientHelpers.PostJsonAsync<NzbGetResponse<NzbGetStatus>>(http, new Uri(baseUri, "jsonrpc"), new NzbGetRequest("status", []), cancellationToken))?.Result;
+    }
+
+    // #812: version() is its own RPC method, distinct from status(). A
+    // failure here should never take down the whole snapshot.
+    private static async Task<string?> GetVersionAsync(HttpClient http, Uri baseUri, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var result = await DownloadClientHelpers.PostJsonAsync<NzbGetResponse<string>>(http, new Uri(baseUri, "jsonrpc"), new NzbGetRequest("version", []), cancellationToken);
+            return string.IsNullOrWhiteSpace(result?.Result) ? null : result.Result;
+        }
+        catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException or JsonException)
+        {
+            return null;
+        }
     }
 
     private static int CalculateEta(long remainingBytes, long? bytesPerSecond) => remainingBytes <= 0 || bytesPerSecond is null or <= 0 ? 0 : Convert.ToInt32(Math.Clamp(remainingBytes / (double)bytesPerSecond.Value, 0, int.MaxValue));
@@ -457,5 +482,13 @@ public sealed class NzbGetDownloadClient(IHttpClientFactory httpClientFactory) :
     // FreeDiskSpaceMB (#663): the one field the health check never read, so a
     // client filling its disk stayed "healthy" right up until every download
     // in the queue started failing.
-    private sealed record NzbGetStatus([property: JsonPropertyName("DownloadRate")] long? DownloadRate, [property: JsonPropertyName("FreeDiskSpaceMB")] long? FreeDiskSpaceMB);
+    private sealed record NzbGetStatus(
+        [property: JsonPropertyName("DownloadRate")] long? DownloadRate,
+        [property: JsonPropertyName("FreeDiskSpaceMB")] long? FreeDiskSpaceMB,
+        // #812: true when nothing is downloading (idle, not unhealthy), and
+        // the three separate pause flags NZBGet also reports.
+        [property: JsonPropertyName("ServerStandBy")] bool? ServerStandBy = null,
+        [property: JsonPropertyName("DownloadPaused")] bool? DownloadPaused = null,
+        [property: JsonPropertyName("PostPaused")] bool? PostPaused = null,
+        [property: JsonPropertyName("ScanPaused")] bool? ScanPaused = null);
 }

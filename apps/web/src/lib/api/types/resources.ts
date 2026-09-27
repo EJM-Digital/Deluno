@@ -1274,6 +1274,10 @@ export interface DownloadClientTelemetrySnapshot {
   capturedUtc: string;
   historyTruncated: boolean;
   lastFailure?: IntegrationFailure | null;
+  /** True when the client itself reports it is paused or on standby (SABnzbd's global pause, NZBGet's ServerStandBy/DownloadPaused/PostPaused/ScanPaused) — distinct from Deluno being unable to reach it. */
+  clientPaused?: boolean | null;
+  /** The client's own reported version, read alongside its queue/status (#812). Null when not yet read or the protocol has no version call. */
+  clientVersion?: string | null;
 }
 
 /** One stored reading of combined throughput, both directions. */
