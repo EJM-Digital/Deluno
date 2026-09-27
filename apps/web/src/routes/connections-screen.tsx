@@ -16,7 +16,8 @@ import {
   type OutboundThrottleHostState,
   type OutboundThrottleSnapshot,
   type PlatformSettingsSnapshot,
-  type ProxyItem
+  type ProxyItem,
+  type QbittorrentBlocklistSyncState
 } from "../lib/api";
 import type { PlatformSettingsPatch } from "../lib/api/settings";
 import { useApiMutation } from "../lib/use-api-mutation";
@@ -79,6 +80,7 @@ interface LoaderData {
   outboundThrottle: OutboundThrottleSnapshot;
   scoreboard: IndexerScoreboardSnapshot;
   proxies: ProxyItem[];
+  qbittorrentBlocklistSync: Record<string, QbittorrentBlocklistSyncState>;
 }
 
 type RouteCategories = Record<string, string>;
@@ -89,7 +91,7 @@ function sameRouteCategories(left: RouteCategories, right: RouteCategories) {
 }
 
 export async function indexersLoader(): Promise<LoaderData> {
-  const [indexers, clients, libraries, settings, telemetry, outboundThrottle, scoreboard, proxies] = await Promise.all([
+  const [indexers, clients, libraries, settings, telemetry, outboundThrottle, scoreboard, proxies, qbittorrentBlocklistSync] = await Promise.all([
     fetchJson<IndexerItem[]>("/api/indexers"),
     fetchJson<DownloadClientItem[]>("/api/download-clients"),
     fetchJson<LibraryItem[]>("/api/libraries"),
@@ -97,7 +99,10 @@ export async function indexersLoader(): Promise<LoaderData> {
     fetchJson<DownloadTelemetryOverview>("/api/download-clients/telemetry").catch(() => null),
     fetchJson<OutboundThrottleSnapshot>("/api/integrations/outbound-throttle").catch(() => ({ hosts: [] })),
     fetchJson<IndexerScoreboardSnapshot>("/api/indexers/scoreboard?days=30").catch(() => emptyScoreboard()),
-    fetchJson<ProxyItem[]>("/api/indexer-proxies").catch(() => [])
+    fetchJson<ProxyItem[]>("/api/indexer-proxies").catch(() => []),
+    // #822: the qBittorrent "Excluded file names" sync's own last-attempt
+    // state per client, for the Connections screen's client drawer.
+    fetchJson<Record<string, QbittorrentBlocklistSyncState>>("/api/download-health/content-blocklist/qbittorrent-sync-status").catch(() => ({}))
   ]);
   const routing = await Promise.all(
     libraries.map((lib) =>
@@ -107,7 +112,7 @@ export async function indexersLoader(): Promise<LoaderData> {
   const pathMappings = (
     await Promise.all(clients.map((client) => fetchJson<DownloadClientPathMappingItem[]>(`/api/download-clients/${client.id}/path-mappings`).catch(() => [])))
   ).flat();
-  return { clients, pathMappings, indexers, libraries, routing, settings, telemetry, outboundThrottle, scoreboard, proxies };
+  return { clients, pathMappings, indexers, libraries, routing, settings, telemetry, outboundThrottle, scoreboard, proxies, qbittorrentBlocklistSync };
 }
 
 function emptyScoreboard(): IndexerScoreboardSnapshot {
@@ -295,7 +300,7 @@ export function buildProxySavePayload(form: ProxyForm) {
 }
 
 export function IndexersPage() {
-  const { clients, pathMappings, indexers, libraries, routing, settings, telemetry, outboundThrottle, scoreboard, proxies } = useLoaderData() as LoaderData;
+  const { clients, pathMappings, indexers, libraries, routing, settings, telemetry, outboundThrottle, scoreboard, proxies, qbittorrentBlocklistSync } = useLoaderData() as LoaderData;
   const location = useLocation();
   const navigate = useNavigate();
   const revalidator = useRevalidator();
@@ -1098,6 +1103,7 @@ export function IndexersPage() {
             onRemoveMapping={(mappingId) => editingClient && void run(`mapping:remove:${mappingId}`, () => send(`/api/download-clients/${editingClient.id}/path-mappings/${mappingId}`, "DELETE", undefined, "File location link could not be removed."), "File location link removed")}
             onTestMapping={(mappingId) => editingClient && void testMapping(editingClient.id, mappingId)}
             onRemove={() => setConfirmRemove(true)}
+            blocklistSync={editingClient ? qbittorrentBlocklistSync[editingClient.id] ?? null : null}
           />
         ) : null}
         {drawer.kind === "proxy" ? (

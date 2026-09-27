@@ -90,7 +90,13 @@ public sealed class QbittorrentBlocklistSyncService(
             }
 
             var (succeeded, message) = await syncClient.PushExcludedFileNamesAsync(client, patterns, cancellationToken);
-            await healthRepository.RecordQbittorrentBlocklistSyncAsync(client.Id, hash, succeeded, message, cancellationToken);
+            // #822: a plain-words count for the Connections screen, not just a
+            // silent success - "3 patterns" answers "did anything happen"
+            // without the reader having to open the blocklist settings too.
+            var recordedMessage = succeeded
+                ? $"Pushed {patterns.Count} {(patterns.Count == 1 ? "pattern" : "patterns")} into qBittorrent's Excluded file names."
+                : message;
+            await healthRepository.RecordQbittorrentBlocklistSyncAsync(client.Id, hash, succeeded, recordedMessage, cancellationToken);
             if (!succeeded)
             {
                 logger.LogWarning("Could not push the content blocklist into {ClientName}'s Excluded file names: {Message}", client.Name, message);
