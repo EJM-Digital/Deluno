@@ -74,4 +74,5 @@ public sealed record PatchPlatformSettingsRequest(
     int? LibraryFreeSpaceWarnPercent = null,
     int? LibraryFreeSpacePausePercent = null,
     bool? SubtitleFetchAutomaticEnabled = null,
-    bool? ReplaceIllegalCharacters = null);
+    bool? ReplaceIllegalCharacters = null,
+    string? ColonReplacementMode = null);

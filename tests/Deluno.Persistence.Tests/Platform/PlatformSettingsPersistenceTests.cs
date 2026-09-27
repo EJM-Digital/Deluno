@@ -276,6 +276,30 @@ public sealed class PlatformSettingsPersistenceTests
         Assert.False((await repository.GetAsync(CancellationToken.None)).ReplaceIllegalCharacters);
     }
 
+    /// <summary>#759: Smart Replace by default, and an unrecognised value normalizes back to it rather than being stored verbatim.</summary>
+    [Fact]
+    public async Task ColonReplacementMode_defaults_to_smart_replace_and_normalizes_an_unknown_value()
+    {
+        using var storage = TestStorage.Create();
+        var repository = await SettingsAsync(storage);
+
+        Assert.Equal(ColonReplacementModes.SmartReplace, (await repository.GetAsync(CancellationToken.None)).ColonReplacementMode);
+
+        var merged = PlatformSettingsPatchMerger.Apply(
+            await repository.GetAsync(CancellationToken.None),
+            new PatchPlatformSettingsRequest(ColonReplacementMode: ColonReplacementModes.SpaceDashSpace));
+        await repository.SaveAsync(merged, CancellationToken.None);
+
+        Assert.Equal(ColonReplacementModes.SpaceDashSpace, (await repository.GetAsync(CancellationToken.None)).ColonReplacementMode);
+
+        var invalid = PlatformSettingsPatchMerger.Apply(
+            await repository.GetAsync(CancellationToken.None),
+            new PatchPlatformSettingsRequest(ColonReplacementMode: "not-a-real-mode"));
+        await repository.SaveAsync(invalid, CancellationToken.None);
+
+        Assert.Equal(ColonReplacementModes.SmartReplace, (await repository.GetAsync(CancellationToken.None)).ColonReplacementMode);
+    }
+
     private static async Task<SqlitePlatformSettingsRepository> SettingsAsync(TestStorage storage)
     {
         var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-09-05T01:02:03Z"));

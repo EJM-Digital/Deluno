@@ -71,4 +71,6 @@ export interface PlatformSettingsPatch {
   subtitleFetchAutomaticEnabled?: boolean;
   /** #757: on (default) turns an illegal filename character into a dash; off removes it instead. */
   replaceIllegalCharacters?: boolean;
+  /** #759: one of "smart" (default) | "delete" | "dash" | "space-dash" | "space-dash-space". */
+  colonReplacementMode?: string;
 }
