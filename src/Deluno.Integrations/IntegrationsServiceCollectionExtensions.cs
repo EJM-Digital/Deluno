@@ -101,6 +101,12 @@ public static class IntegrationsServiceCollectionExtensions
         services.AddSingleton<Subtitles.ISubtitleProvider, Subtitles.Providers.SubDlSubtitleProvider>();
         services.AddSingleton<Subtitles.ISubtitleProvider, Subtitles.Providers.SubSourceSubtitleProvider>();
         services.AddSingleton<Subtitles.ISubtitleProvider, Subtitles.Providers.Subf2mSubtitleProvider>();
+        // #837: three more from Bazarr's 50+, chosen for real regional and
+        // language coverage the first six do not have — Balkan, Chinese and
+        // Hungarian, not an arbitrary count.
+        services.AddSingleton<Subtitles.ISubtitleProvider, Subtitles.Providers.TitloviSubtitleProvider>();
+        services.AddSingleton<Subtitles.ISubtitleProvider, Subtitles.Providers.AssrtSubtitleProvider>();
+        services.AddSingleton<Subtitles.ISubtitleProvider, Subtitles.Providers.SupersubtitlesSubtitleProvider>();
         services.AddSingleton<Subtitles.ISubtitleProviderRegistry, Subtitles.SubtitleProviderRegistry>();
         services.AddSingleton<Subtitles.ISubtitleFetchService, Subtitles.SubtitleFetchService>();
 
