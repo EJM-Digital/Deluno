@@ -576,6 +576,7 @@ public sealed class WorkPlanner(
         SharingReclaimService reclaimService,
         IHardlinkInspector hardlinkInspector,
         IDownloadHealthRepository healthRepository,
+        Deluno.Integrations.DownloadClients.IDownloadHealthConnectivityCheck connectivityCheck,
         CancellationToken cancellationToken)
     {
         await RunScheduledPassAsync(
@@ -583,6 +584,24 @@ public sealed class WorkPlanner(
             async () =>
             {
         var settings = await platformSettingsRepository.GetAsync(cancellationToken);
+
+        // #824: the same person-configured reachability guard the
+        // strike/blocklist executor already honours - a failed check skips
+        // this pass entirely, so nothing is reclaimed while it lasts.
+        if (settings.DownloadHealthConnectivityCheckEnabled &&
+            !await connectivityCheck.AnyReachableAsync(settings.DownloadHealthConnectivityCheckUrls, cancellationToken))
+        {
+            await activityFeedRepository.RecordActivityAsync(
+                "download.health.connectivity-check-skipped",
+                "Connectivity check found no reachable URL; the seeding reclaim pass was skipped and nothing was reclaimed.",
+                null,
+                null,
+                "download_client",
+                "connectivity-check",
+                cancellationToken);
+            return;
+        }
+
         var globalPolicy = new SharingPolicy(
             settings.SharingMode,
             settings.SharingForHours,

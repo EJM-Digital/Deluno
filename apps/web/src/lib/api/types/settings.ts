@@ -111,6 +111,16 @@ export interface PlatformSettingsSnapshot {
   downloadHealthDryRunEnabled: boolean;
   /** #825: how long a download can go without a fresh strike before its strike count clears, independent of any rule's own timer. 1-720 hours. */
   downloadHealthStrikeInactivityHours: number;
+  /**
+   * #824: a person's own reachability guard, separate from #901's built-in
+   * outage detector. Off by default; when on, a failed check skips the
+   * strike/blocklist pass, the seeding-reclaim pass, and this poll's own
+   * strike evaluation entirely - nothing is struck, blocklisted, or
+   * reclaimed while it lasts.
+   */
+  downloadHealthConnectivityCheckEnabled: boolean;
+  /** #824: comma-separated URLs; at least one must answer 2xx to proceed. */
+  downloadHealthConnectivityCheckUrls: string;
   /** #823: the pacing window a finding outside the rule engine (client-stalled, and so on) escalates strikes at; a rule-engine finding uses its own timer instead. 1-1440 minutes. */
   downloadHealthDefaultStrikeWindowMinutes: number;
   /** #823: how often the throughput sampler polls telemetry for the speed chart. 1-60 minutes. */
@@ -280,6 +290,8 @@ export const emptyPlatformSettingsSnapshot: PlatformSettingsSnapshot = {
   downloadHealthMinPeersMinutes: 30,
   downloadHealthDryRunEnabled: false,
   downloadHealthStrikeInactivityHours: 72,
+  downloadHealthConnectivityCheckEnabled: false,
+  downloadHealthConnectivityCheckUrls: "",
   downloadHealthDefaultStrikeWindowMinutes: 30,
   downloadThroughputSamplerIntervalMinutes: 1,
   historyRetentionDays: 365,

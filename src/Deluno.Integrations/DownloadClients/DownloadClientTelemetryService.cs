@@ -153,6 +153,12 @@ public sealed class DownloadClientTelemetryService(
         // as a holding file, by design (M1): that pass reads the client's
         // download folder directly, not this ownership test.
         //
+        // #824: one probe per poll, shared across every client, rather than
+        // once per client - the person's own URLs answer "is the internet up
+        // at all", not "is this one client reachable".
+        var connectivityCheckOk = !platformSettings.DownloadHealthConnectivityCheckEnabled ||
+            await _connectivityCheck.AnyReachableAsync(platformSettings.DownloadHealthConnectivityCheckUrls, cancellationToken);
+
         // settledDispatchesByClientId (built above, per client) is what
         // ownership is matched against - it includes archived dispatches,
         // which a finished-but-still-seeding download still needs to be
@@ -163,6 +169,7 @@ public sealed class DownloadClientTelemetryService(
             platformSettings,
             downloadHealthRules,
             downloadHealthIgnoreList,
+            connectivityCheckOk,
             cancellationToken)));
 
         // The free-space/connectivity summary is still read off the client's
@@ -679,6 +686,7 @@ public sealed class DownloadClientTelemetryService(
         PlatformSettingsSnapshot settings,
         IReadOnlyList<DownloadHealthRule> rules,
         IReadOnlyList<DownloadHealthIgnoreEntry> ignoreList,
+        bool connectivityCheckOk,
         CancellationToken cancellationToken)
     {
         var strikeThreshold = settings.DownloadHealthStrikeThreshold;
@@ -686,63 +694,87 @@ public sealed class DownloadClientTelemetryService(
         var defaultStrikeWindow = TimeSpan.FromMinutes(Math.Clamp(settings.DownloadHealthDefaultStrikeWindowMinutes, 1, 1440));
         var strikeInactivityWindow = TimeSpan.FromHours(Math.Clamp(settings.DownloadHealthStrikeInactivityHours, 1, 720));
         var annotated = new List<(DownloadQueueItem Item, IReadOnlyList<RecoveryHealthFinding> Findings)>(snapshot.Queue.Count);
-        foreach (var item in snapshot.Queue)
+
+        // #824: a failed connectivity check skips this poll's evaluation
+        // entirely for every item on this client - not adjusted the way an
+        // #901 outage adjusts elapsed time, but skipped outright, because a
+        // person's own probe URLs are opt-in and its failure must never be
+        // read as "every download here just started stalling". Nothing is
+        // recorded this poll (no RecordDownloadHealthObservationsAsync call
+        // below), so an already-accruing strike is frozen, never cleared and
+        // never advanced, while it lasts.
+        if (connectivityCheckOk)
         {
-            // A download nobody at Deluno sent is never struck (cleanup sheet
-            // row M2, #933): no findings are evaluated for it, so it can never
-            // reach the strike threshold that "Force remediation" acts on
-            // below, and no observation is recorded for it either.
-            //
-            // #817: a download on the ignore list is treated the same way -
-            // exempt from every health rule, with no finding and no strike.
-            if (!IsDelunosOwnDownload(item, clientDispatches, snapshot.CapturedUtc) ||
-                ignoreList.Any(entry => entry.Matches(item.Id, item.Category, item.IndexerName)))
+            foreach (var item in snapshot.Queue)
+            {
+                // A download nobody at Deluno sent is never struck (cleanup sheet
+                // row M2, #933): no findings are evaluated for it, so it can never
+                // reach the strike threshold that "Force remediation" acts on
+                // below, and no observation is recorded for it either.
+                //
+                // #817: a download on the ignore list is treated the same way -
+                // exempt from every health rule, with no finding and no strike.
+                if (!IsDelunosOwnDownload(item, clientDispatches, snapshot.CapturedUtc) ||
+                    ignoreList.Any(entry => entry.Matches(item.Id, item.Category, item.IndexerName)))
+                {
+                    annotated.Add((item, []));
+                    continue;
+                }
+
+                // #901: every timed rule measures "how long since AddedUtc" - an
+                // outage stretches that clock exactly as long as it lasted unless
+                // the added time itself is pushed forward by whatever it
+                // overlapped, so a download added before an outage is not judged
+                // as though it sat idle through it. Only the value fed to the
+                // evaluator moves; item.AddedUtc keeps showing when it was
+                // actually added.
+                var effectiveAddedUtc = item.AddedUtc + await connectivityMonitor.OutageOverlapAsync(item.AddedUtc, snapshot.CapturedUtc, cancellationToken);
+                var findings = healthEvaluator.Evaluate(
+                    new RecoveryQueueSnapshot(
+                        item.Status,
+                        item.ErrorMessage,
+                        item.SourcePath,
+                        item.SpeedMbps,
+                        effectiveAddedUtc,
+                        item.EtaSeconds,
+                        item.ReleaseName,
+                        item.Peers,
+                        item.IsSetupProblem,
+                        item.Progress,
+                        DownloadClientHelpers.IsUsenetProtocol(item.Protocol)),
+                    snapshot.CapturedUtc,
+                    rules);
+                annotated.Add((item, findings));
+            }
+        }
+        else
+        {
+            foreach (var item in snapshot.Queue)
             {
                 annotated.Add((item, []));
-                continue;
             }
-
-            // #901: every timed rule measures "how long since AddedUtc" - an
-            // outage stretches that clock exactly as long as it lasted unless
-            // the added time itself is pushed forward by whatever it
-            // overlapped, so a download added before an outage is not judged
-            // as though it sat idle through it. Only the value fed to the
-            // evaluator moves; item.AddedUtc keeps showing when it was
-            // actually added.
-            var effectiveAddedUtc = item.AddedUtc + await connectivityMonitor.OutageOverlapAsync(item.AddedUtc, snapshot.CapturedUtc, cancellationToken);
-            var findings = healthEvaluator.Evaluate(
-                new RecoveryQueueSnapshot(
-                    item.Status,
-                    item.ErrorMessage,
-                    item.SourcePath,
-                    item.SpeedMbps,
-                    effectiveAddedUtc,
-                    item.EtaSeconds,
-                    item.ReleaseName,
-                    item.Peers,
-                    item.IsSetupProblem,
-                    item.Progress,
-                    DownloadClientHelpers.IsUsenetProtocol(item.Protocol)),
-                snapshot.CapturedUtc,
-                rules);
-            annotated.Add((item, findings));
         }
-        var observations = annotated
-            .SelectMany(entry => entry.Findings.Select(finding => new DownloadHealthObservation(
-                entry.Item.ClientId, entry.Item.Id, entry.Item.ReleaseName, finding.Kind, finding.Severity, finding.Evidence,
-                finding.RuleId, finding.RuleStrikeLimit, finding.RuleTimerMinutes, finding.RuleActionPreset)))
-            .ToArray();
-        // The full id list here (not only Deluno's own) is what lets a stale
-        // strike recorded before this guard existed finally clear: an id that
-        // is listed but produced no observation this pass reads as "seen and
-        // clean", the same way a genuinely recovered download does.
-        var records = await healthRepository.RecordDownloadHealthObservationsAsync(
-            snapshot.ClientId,
-            snapshot.Queue.Select(item => item.Id).ToArray(),
-            observations,
-            defaultStrikeWindow,
-            strikeInactivityWindow,
-            cancellationToken);
+
+        var records = Array.Empty<DownloadHealthRecord>();
+        if (connectivityCheckOk)
+        {
+            var observations = annotated
+                .SelectMany(entry => entry.Findings.Select(finding => new DownloadHealthObservation(
+                    entry.Item.ClientId, entry.Item.Id, entry.Item.ReleaseName, finding.Kind, finding.Severity, finding.Evidence,
+                    finding.RuleId, finding.RuleStrikeLimit, finding.RuleTimerMinutes, finding.RuleActionPreset)))
+                .ToArray();
+            // The full id list here (not only Deluno's own) is what lets a stale
+            // strike recorded before this guard existed finally clear: an id that
+            // is listed but produced no observation this pass reads as "seen and
+            // clean", the same way a genuinely recovered download does.
+            records = (await healthRepository.RecordDownloadHealthObservationsAsync(
+                snapshot.ClientId,
+                snapshot.Queue.Select(item => item.Id).ToArray(),
+                observations,
+                defaultStrikeWindow,
+                strikeInactivityWindow,
+                cancellationToken)).ToArray();
+        }
         var recordsByFinding = records.ToDictionary(
             record => $"{record.ClientId}\u001f{record.QueueItemId}\u001f{record.Kind}",
             StringComparer.OrdinalIgnoreCase);
