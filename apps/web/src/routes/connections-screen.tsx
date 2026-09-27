@@ -30,6 +30,8 @@ import { Button } from "../components/ui/button";
 import { ConnectionTestResult, type ConnectionTestOutcome } from "./connections/connection-test-result";
 import { Chip } from "../components/ui/chip";
 import { Checkbox } from "../components/ui/checkbox";
+import { Input } from "../components/ui/input";
+import { Select } from "../components/ui/select";
 import { ConfirmDialog } from "../components/ui/confirm-dialog";
 import { Drawer, DrawerFooter, type DrawerSaveState } from "../components/ui/drawer";
 import { ListCard, ListCell, ListEmpty, ListNameCell, ListRow, ListTable, LIST_TRACK } from "../components/ui/list-card";
@@ -38,7 +40,7 @@ import { Switch } from "../components/ui/switch";
 import { toast } from "../components/shell/toaster";
 import { useUnsavedChanges } from "../hooks/use-unsaved-changes";
 import { CLIENT_PRESETS, type MediaScope } from "./connections/presets";
-import { STRICT_SHARING, clientFormErrors, clientFormFrom, emptyClientForm, emptyIndexerForm, emptyProxyForm, indexerFormErrors, indexerFormFrom, proxyFormErrors, proxyFormFrom, sameClient, sameIndexer, sameProxy, sameSet, sharingRuleFrom, type ClientForm, type DrawerState, type IndexerForm, type ProxyForm, type Section } from "./connections/forms";
+import { STRICT_SHARING, clientFormErrors, clientFormFrom, clientsForPathMapping, emptyClientForm, emptyIndexerForm, emptyProxyForm, indexerFormErrors, indexerFormFrom, proxyFormErrors, proxyFormFrom, sameClient, sameIndexer, sameProxy, sameSet, sharingRuleFrom, type ClientForm, type DrawerState, type IndexerForm, type ProxyForm, type Section } from "./connections/forms";
 import { formatSeconds, healthChip, indexerHost, protocolLabel, relative, scopeLabel, unusedChip } from "./connections/format";
 import { ClientDrawerBody } from "./connections/client-drawer-body";
 import { IndexerDrawerBody } from "./connections/indexer-drawer-body";
@@ -91,7 +93,7 @@ function sameRouteCategories(left: RouteCategories, right: RouteCategories) {
 }
 
 export async function indexersLoader(): Promise<LoaderData> {
-  const [indexers, clients, libraries, settings, telemetry, outboundThrottle, scoreboard, proxies, qbittorrentBlocklistSync] = await Promise.all([
+  const [indexers, clients, libraries, settings, telemetry, outboundThrottle, scoreboard, proxies, qbittorrentBlocklistSync, pathMappings] = await Promise.all([
     fetchJson<IndexerItem[]>("/api/indexers"),
     fetchJson<DownloadClientItem[]>("/api/download-clients"),
     fetchJson<LibraryItem[]>("/api/libraries"),
@@ -102,16 +104,17 @@ export async function indexersLoader(): Promise<LoaderData> {
     fetchJson<ProxyItem[]>("/api/indexer-proxies").catch(() => []),
     // #822: the qBittorrent "Excluded file names" sync's own last-attempt
     // state per client, for the Connections screen's client drawer.
-    fetchJson<Record<string, QbittorrentBlocklistSyncState>>("/api/download-health/content-blocklist/qbittorrent-sync-status").catch(() => ({}))
+    fetchJson<Record<string, QbittorrentBlocklistSyncState>>("/api/download-health/content-blocklist/qbittorrent-sync-status").catch(() => ({})),
+    // The one shared list (#809): every mapping, across every host, rather
+    // than each client's own drawer view flattened together — which would
+    // show the same mapping twice the moment two clients share a host.
+    fetchJson<DownloadClientPathMappingItem[]>("/api/download-clients/path-mappings").catch(() => [])
   ]);
   const routing = await Promise.all(
     libraries.map((lib) =>
       fetchJson<LibraryRoutingSnapshot>(`/api/libraries/${lib.id}/routing`).catch(() => ({ libraryId: lib.id, libraryName: lib.name, sources: [], downloadClients: [] }))
     )
   );
-  const pathMappings = (
-    await Promise.all(clients.map((client) => fetchJson<DownloadClientPathMappingItem[]>(`/api/download-clients/${client.id}/path-mappings`).catch(() => [])))
-  ).flat();
   return { clients, pathMappings, indexers, libraries, routing, settings, telemetry, outboundThrottle, scoreboard, proxies, qbittorrentBlocklistSync };
 }
 
@@ -308,7 +311,7 @@ export function IndexersPage() {
   const lastTelemetryRefresh = useRef(0);
   const [liveOutboundThrottle, setLiveOutboundThrottle] = useState(outboundThrottle);
 
-  const section: Section = location.pathname.endsWith("/scoreboard") ? "scoreboard" : location.pathname.endsWith("/download-clients") ? "clients" : location.pathname.endsWith("/library-routing") ? "routing" : location.pathname.endsWith("/proxies") ? "proxies" : "indexers";
+  const section: Section = location.pathname.endsWith("/scoreboard") ? "scoreboard" : location.pathname.endsWith("/download-clients") ? "clients" : location.pathname.endsWith("/path-mappings") ? "pathMappings" : location.pathname.endsWith("/library-routing") ? "routing" : location.pathname.endsWith("/proxies") ? "proxies" : "indexers";
 
   useEffect(() => {
     setLiveOutboundThrottle(outboundThrottle);
@@ -339,6 +342,9 @@ export function IndexersPage() {
     for (const mapping of pathMappings) map.set(mapping.downloadClientId, [...(map.get(mapping.downloadClientId) ?? []), mapping]);
     return map;
   }, [pathMappings]);
+  function clientsForMapping(mapping: DownloadClientPathMappingItem): DownloadClientItem[] {
+    return clientsForPathMapping(mapping, clients);
+  }
 
   const [indexerSort, setIndexerSort] = useState<IndexerSortState | null>(null);
   const [indexerFilters, setIndexerFilters] = useState<IndexerFilters>(emptyIndexerFilters);
@@ -433,6 +439,20 @@ export function IndexersPage() {
   const [showKey, setShowKey] = useState(false);
   const [fineTuneOpen, setFineTuneOpen] = useState(false);
   const [newMapping, setNewMapping] = useState({ remotePath: "", localPath: "" });
+  // The shared Remote Path Mappings screen (#809). `anchorClientId` is
+  // whichever client the mapping is filed under — required by the existing
+  // per-client add/remove API — and `editingId` is set while this form
+  // stands in for an existing row: there is no update endpoint, so an edit
+  // creates the replacement first and only deletes the original once that
+  // succeeds, so a failed save never loses the row it was changing.
+  const [sharedMappingForm, setSharedMappingForm] = useState({
+    editingId: null as string | null,
+    anchorClientId: "",
+    host: "",
+    remotePath: "",
+    localPath: "",
+    priority: "10"
+  });
   // Set by openDetectedClient once a drawer opens pre-filled from a detected
   // component (#640), so it shows as tested before the person even reaches
   // Save — the same test a manual "Test" click runs, just run once for them.
@@ -764,6 +784,56 @@ export function IndexersPage() {
     });
   }
 
+  function editSharedMapping(mapping: DownloadClientPathMappingItem) {
+    setSharedMappingForm({
+      editingId: mapping.id,
+      anchorClientId: mapping.downloadClientId,
+      host: mapping.host ?? "",
+      remotePath: mapping.remotePath,
+      localPath: mapping.localPath,
+      priority: String(mapping.priority)
+    });
+  }
+  function cancelSharedMappingEdit() {
+    setSharedMappingForm({ editingId: null, anchorClientId: "", host: "", remotePath: "", localPath: "", priority: "10" });
+  }
+  async function saveSharedMapping() {
+    const form = sharedMappingForm;
+    const anchorClientId = form.anchorClientId || clients[0]?.id;
+    if (!anchorClientId || !form.remotePath.trim() || !form.localPath.trim()) return;
+    const priority = Number(form.priority);
+    const payload = {
+      remotePath: form.remotePath.trim(),
+      localPath: form.localPath.trim(),
+      isEnabled: true,
+      priority: Number.isFinite(priority) && priority >= 1 ? priority : 10,
+      host: form.host.trim() || undefined
+    };
+    const ok = await run(
+      form.editingId ? "shared-mapping:save" : "shared-mapping:add",
+      async () => {
+        await send(`/api/download-clients/${anchorClientId}/path-mappings`, "POST", payload, "Remote path mapping could not be saved.");
+        // Only removed once the replacement exists (see the note by
+        // sharedMappingForm's declaration) — an edit that fails to create
+        // leaves the original mapping exactly as it was.
+        if (form.editingId) {
+          const owner = pathMappings.find((item) => item.id === form.editingId)?.downloadClientId ?? form.anchorClientId;
+          await send(`/api/download-clients/${owner}/path-mappings/${form.editingId}`, "DELETE", undefined, "The old mapping could not be removed.");
+        }
+      },
+      form.editingId ? "Remote path mapping updated" : "Remote path mapping added"
+    );
+    if (ok) cancelSharedMappingEdit();
+  }
+  async function removeSharedMapping(mapping: DownloadClientPathMappingItem) {
+    await run(
+      `shared-mapping:remove:${mapping.id}`,
+      () => send(`/api/download-clients/${mapping.downloadClientId}/path-mappings/${mapping.id}`, "DELETE", undefined, "Remote path mapping could not be removed."),
+      "Remote path mapping removed"
+    );
+    if (sharedMappingForm.editingId === mapping.id) cancelSharedMappingEdit();
+  }
+
   async function checkCategory(clientId: string) {
     const category = routeCategories[clientId]?.trim();
     if (!category) return;
@@ -958,6 +1028,106 @@ export function IndexersPage() {
                 })}
               </ListTable>
             )}
+          </ListCard>
+        </>
+      ) : null}
+
+      {section === "pathMappings" ? (
+        <>
+          <ListCard
+            title="Remote Path Mappings"
+            count={pathMappings.length ? `${pathMappings.length} ${pathMappings.length === 1 ? "mapping" : "mappings"}` : undefined}
+          >
+            <p className="px-[var(--card-pad-x)] pb-3 text-[length:var(--type-caption)] text-muted-foreground">
+              Only needed when a download client reports a path Deluno cannot use directly — for example a container reports <code className="font-mono">/downloads/complete</code> while Deluno reads <code className="font-mono">D:\Downloads\complete</code>. A mapping applies to every download client at its host (#809), so it only needs adding once per host, however many clients share it.
+            </p>
+            {clients.length === 0 ? (
+              <ListEmpty title="No download client yet" description="Add a download client first, then a remote path mapping can be filed under its host." />
+            ) : pathMappings.length === 0 ? (
+              <ListEmpty title="No remote path mappings yet" description="Add one below if a client's reported path does not match what Deluno sees." />
+            ) : (
+              <ListTable columns={[{ label: "Host" }, { label: "Client path" }, { label: "Deluno path" }, { label: "Applies to" }, { label: "", width: LIST_TRACK.status }]}>
+                {pathMappings.map((mapping) => {
+                  const appliesTo = clientsForMapping(mapping);
+                  return (
+                    <ListRow key={mapping.id}>
+                      <ListCell mono primary={mapping.host ?? "—"} />
+                      <ListCell mono primary={mapping.remotePath} />
+                      <ListCell mono primary={mapping.localPath} />
+                      <ListCell primary={appliesTo.length ? appliesTo.map((client) => client.name).join(", ") : "No client at this host yet"} />
+                      <ListCell>
+                        <div className="flex items-center gap-1.5">
+                          <Button type="button" variant="outline" size="sm" className="h-7 px-2" onClick={() => testMapping(mapping.downloadClientId, mapping.id)} disabled={busy !== null}>
+                            {busy === `mapping:test:${mapping.id}` ? <Loader2 className="h-3 w-3 animate-spin" /> : "Test"}
+                          </Button>
+                          <Button type="button" variant="outline" size="sm" className="h-7 px-2" onClick={() => editSharedMapping(mapping)} disabled={busy !== null}>
+                            Edit
+                          </Button>
+                          <Button type="button" variant="ghost" size="icon" className="h-7 w-7" aria-label={`Remove the ${mapping.host ?? mapping.remotePath} mapping`} onClick={() => void removeSharedMapping(mapping)} disabled={busy !== null}>
+                            {busy === `shared-mapping:remove:${mapping.id}` ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : "×"}
+                          </Button>
+                        </div>
+                      </ListCell>
+                    </ListRow>
+                  );
+                })}
+              </ListTable>
+            )}
+            {clients.length > 0 ? (
+              <div className="flex flex-col gap-2 border-t border-hairline px-[var(--card-pad-x)] py-3">
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-5">
+                  <Select
+                    aria-label="Download client this mapping is filed under"
+                    value={sharedMappingForm.anchorClientId || clients[0]?.id || ""}
+                    onChange={(event) => setSharedMappingForm({ ...sharedMappingForm, anchorClientId: event.target.value })}
+                    options={clients.map((client) => ({ value: client.id, label: client.name }))}
+                  />
+                  <Input
+                    aria-label="Host (leave blank to use the selected client's own host)"
+                    value={sharedMappingForm.host}
+                    onChange={(event) => setSharedMappingForm({ ...sharedMappingForm, host: event.target.value })}
+                    placeholder="Host (defaults to the client's own)"
+                    className="font-mono text-[length:var(--type-caption)]"
+                  />
+                  <Input
+                    aria-label="Client path"
+                    value={sharedMappingForm.remotePath}
+                    onChange={(event) => setSharedMappingForm({ ...sharedMappingForm, remotePath: event.target.value })}
+                    placeholder="/downloads/complete"
+                    className="font-mono text-[length:var(--type-caption)]"
+                  />
+                  <Input
+                    aria-label="Deluno path"
+                    value={sharedMappingForm.localPath}
+                    onChange={(event) => setSharedMappingForm({ ...sharedMappingForm, localPath: event.target.value })}
+                    placeholder="D:\Downloads\complete"
+                    className="font-mono text-[length:var(--type-caption)]"
+                  />
+                  <div className="flex items-center gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="w-max"
+                      onClick={() => void saveSharedMapping()}
+                      disabled={busy !== null || !sharedMappingForm.remotePath.trim() || !sharedMappingForm.localPath.trim()}
+                    >
+                      {busy === "shared-mapping:add" || busy === "shared-mapping:save" ? (
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      ) : sharedMappingForm.editingId ? null : (
+                        <Plus className="h-3.5 w-3.5" />
+                      )}
+                      {sharedMappingForm.editingId ? "Save changes" : "Add mapping"}
+                    </Button>
+                    {sharedMappingForm.editingId ? (
+                      <Button type="button" variant="ghost" size="sm" onClick={cancelSharedMappingEdit} disabled={busy !== null}>
+                        Cancel
+                      </Button>
+                    ) : null}
+                  </div>
+                </div>
+              </div>
+            ) : null}
           </ListCard>
         </>
       ) : null}

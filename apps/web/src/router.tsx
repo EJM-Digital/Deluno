@@ -311,6 +311,15 @@ export const router = createBrowserRouter([
         })
       },
       {
+        // The shared Remote Path Mappings list (#809): every host's mappings
+        // in one place, reachable from Download Clients settings.
+        path: "indexers/path-mappings",
+        lazy: withSkeleton(async () => {
+          const module = await import("./routes/connections-screen");
+          return { loader: module.indexersLoader, Component: module.IndexersPage };
+        })
+      },
+      {
         path: "indexers/library-routing",
         lazy: withSkeleton(async () => {
           const module = await import("./routes/connections-screen");

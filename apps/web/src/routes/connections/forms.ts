@@ -1,4 +1,4 @@
-import type { DownloadClientItem, IndexerItem, ProxyItem } from "../../lib/api";
+import type { DownloadClientItem, DownloadClientPathMappingItem, IndexerItem, ProxyItem } from "../../lib/api";
 import { CLIENT_PRESETS, INDEXER_PRESETS, type IndexerProtocol, type MediaScope } from "./presets";
 
 /**
@@ -153,7 +153,28 @@ export function indexerFormErrors(form: IndexerForm, creating: boolean): Record<
   return errors;
 }
 
-export type Section = "indexers" | "scoreboard" | "clients" | "routing" | "proxies";
+export type Section = "indexers" | "scoreboard" | "clients" | "routing" | "proxies" | "pathMappings";
+
+/**
+ * Which clients a shared Remote Path Mapping (#809) actually applies to: every
+ * client at its host, falling back to just the client it was created under
+ * when that client has no host recorded — the same fallback
+ * ListDownloadClientPathMappingsAsync itself uses server-side, so the shared
+ * settings screen's "Applies to" column never claims more than the backend
+ * will actually match a release's reported path against.
+ */
+export function clientsForPathMapping(
+  mapping: DownloadClientPathMappingItem,
+  clients: DownloadClientItem[]
+): DownloadClientItem[] {
+  const host = mapping.host?.trim().toLowerCase();
+  if (host) {
+    const atHost = clients.filter((client) => client.host?.trim().toLowerCase() === host);
+    if (atHost.length > 0) return atHost;
+  }
+  const owner = clients.find((client) => client.id === mapping.downloadClientId);
+  return owner ? [owner] : [];
+}
 export type DrawerState = { kind: "closed" } | { kind: "indexer"; id: string | null } | { kind: "client"; id: string | null } | { kind: "routing"; libraryId: string } | { kind: "proxy"; id: string | null };
 export function sameSet(a: string[], b: string[]) { return a.length === b.length && b.every((item) => new Set(a).has(item)); }
 

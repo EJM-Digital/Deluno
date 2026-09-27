@@ -1196,6 +1196,8 @@ export interface DownloadClientPathMappingItem {
   priority: number;
   createdUtc: string;
   updatedUtc: string;
+  /** The host of the client this mapping was created under (#809); a mapping applies to every client at that host, not only downloadClientId. */
+  host?: string | null;
 }
 
 /** One entry in the seeding-rule matrix (#820): see SharingRuleItem.cs. */
