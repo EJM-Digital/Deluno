@@ -25,7 +25,30 @@ public sealed record NamingDecision(
     string? Quality = null,
     string? ReleaseGroup = null,
     IReadOnlyList<string>? CustomFormats = null,
-    IReadOnlyList<string>? Editions = null)
+    IReadOnlyList<string>? Editions = null,
+    // #760: the title in its original language, from metadata -- not
+    // re-derived from the release name, which usually only carries the
+    // English/library title.
+    string? OriginalTitle = null,
+    // #760: the incoming file's own name (no extension), for a token that
+    // keeps a trace of what a release was actually called.
+    string? OriginalFileName = null,
+    // #760: a short, stable identifier for the release this decision came
+    // from -- not read back from the destination name, so a template that
+    // includes it still tells two same-titled releases apart.
+    string? ReleaseHash = null,
+    // #760: MediaInfo tokens. Parsed from the release/file name, the same
+    // source MediaFileNameFacts already reads Quality's codec/audio evidence
+    // from -- null wherever the name says nothing about it.
+    string? VideoCodec = null,
+    string? AudioCodec = null,
+    string? AudioChannels = null,
+    string? VideoDynamicRangeType = null,
+    string? VideoBitDepth = null,
+    // #760/#761: an episode's own dated or absolute number, for daily and
+    // anime naming.
+    DateOnly? AirDate = null,
+    int? AbsoluteEpisodeNumber = null)
 {
     public static NamingDecision None { get; } = new();
 
@@ -117,6 +140,16 @@ public static partial class NamingTemplateRenderer
             "{genre}" => SanitizeSegment(genre, replaceIllegalCharacters, colonReplacementMode),
             "{tag}" => SanitizeSegment(tag, replaceIllegalCharacters, colonReplacementMode),
             "{network}" => SanitizeSegment(network, replaceIllegalCharacters, colonReplacementMode),
+            "{original title}" => SanitizeSegment(decision.OriginalTitle, replaceIllegalCharacters, colonReplacementMode),
+            "{original filename}" => SanitizeSegment(decision.OriginalFileName, replaceIllegalCharacters, colonReplacementMode),
+            "{release hash}" => decision.ReleaseHash ?? string.Empty,
+            "{mediainfo videocodec}" => decision.VideoCodec ?? string.Empty,
+            "{mediainfo audiocodec}" => decision.AudioCodec ?? string.Empty,
+            "{mediainfo audiochannels}" => decision.AudioChannels ?? string.Empty,
+            "{mediainfo videodynamicrangetype}" => decision.VideoDynamicRangeType ?? string.Empty,
+            "{mediainfo videobitdepth}" => decision.VideoBitDepth ?? string.Empty,
+            "{air-date}" or "{air date}" => decision.AirDate?.ToString("yyyy-MM-dd") ?? string.Empty,
+            "{absolute:000}" => decision.AbsoluteEpisodeNumber?.ToString("D3") ?? string.Empty,
             // Keep a custom token visible. It is safer to show an unsupported
             // pattern than to silently turn a user's deliberate text into a
             // different name.

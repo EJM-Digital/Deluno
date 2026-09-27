@@ -81,7 +81,17 @@ const TOKENS: Record<NamingFormatKind, FormatToken[]> = {
     { label: "Episode title", value: "{Episode Title}" },
     { label: "Quality", value: "{Quality}" },
     { label: "Custom formats", value: "{Custom Formats}" },
-    { label: "Release group", value: "{Release Group}" }
+    { label: "Release group", value: "{Release Group}" },
+    { label: "Air date", value: "{Air-Date}" },
+    { label: "Absolute episode 001", value: "{absolute:000}" },
+    { label: "Original title", value: "{Original Title}" },
+    { label: "Original filename", value: "{Original Filename}" },
+    { label: "Release hash", value: "{Release Hash}" },
+    { label: "Video codec", value: "{MediaInfo VideoCodec}" },
+    { label: "Audio codec", value: "{MediaInfo AudioCodec}" },
+    { label: "Audio channels", value: "{MediaInfo AudioChannels}" },
+    { label: "Dynamic range", value: "{MediaInfo VideoDynamicRangeType}" },
+    { label: "Bit depth", value: "{MediaInfo VideoBitDepth}" }
   ],
   "movie-file": [
     { label: "Movie title", value: "{Movie Title}" },
@@ -89,7 +99,15 @@ const TOKENS: Record<NamingFormatKind, FormatToken[]> = {
     { label: "Quality", value: "{Quality}" },
     { label: "Custom formats", value: "{Custom Formats}" },
     { label: "Release group", value: "{Release Group}" },
-    { label: "Edition", value: "{Edition}" }
+    { label: "Edition", value: "{Edition}" },
+    { label: "Original title", value: "{Original Title}" },
+    { label: "Original filename", value: "{Original Filename}" },
+    { label: "Release hash", value: "{Release Hash}" },
+    { label: "Video codec", value: "{MediaInfo VideoCodec}" },
+    { label: "Audio codec", value: "{MediaInfo AudioCodec}" },
+    { label: "Audio channels", value: "{MediaInfo AudioChannels}" },
+    { label: "Dynamic range", value: "{MediaInfo VideoDynamicRangeType}" },
+    { label: "Bit depth", value: "{MediaInfo VideoBitDepth}" }
   ],
   "destination-movie": [
     { label: "Movie title", value: "{Movie Title}" },
@@ -318,5 +336,16 @@ export function previewNamingFormat(format: string) {
     .replaceAll("{Release Group}", "FLUX")
     .replaceAll("{Edition}", "IMAX")
     .replaceAll("{Genre}", "Sci-Fi")
-    .replaceAll("{Tag}", "premium");
+    .replaceAll("{Tag}", "premium")
+    .replaceAll("{Air-Date}", "2022-09-30")
+    .replaceAll("{Air Date}", "2022-09-30")
+    .replaceAll("{absolute:000}", "042")
+    .replaceAll("{Original Title}", "El Laberinto del Fauno")
+    .replaceAll("{Original Filename}", "arrival.2016.1080p.web-dl-flux")
+    .replaceAll("{Release Hash}", "a1b2c3d4")
+    .replaceAll("{MediaInfo VideoCodec}", "H.264")
+    .replaceAll("{MediaInfo AudioCodec}", "DTS-HD")
+    .replaceAll("{MediaInfo AudioChannels}", "5.1")
+    .replaceAll("{MediaInfo VideoDynamicRangeType}", "HDR10")
+    .replaceAll("{MediaInfo VideoBitDepth}", "10-bit");
 }
