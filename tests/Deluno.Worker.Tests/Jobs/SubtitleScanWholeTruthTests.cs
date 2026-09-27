@@ -82,4 +82,71 @@ public sealed class SubtitleScanWholeTruthTests
 
     private static MediaSubtitleRow Sidecar(string language)
         => new(language, SubtitleSources.External, false, false, $@"D:\Media\Film.{language}.srt", null, "srt", null);
+
+    private static MediaSubtitleRow Fetched(string language, string sourceKey)
+        => new(language, SubtitleSources.Fetched, false, false, $@"D:\Media\Film.{language}.srt", null, "srt",
+            "gestdown", MatchRung: 0, SourceKey: sourceKey);
+}
+
+/// <summary>
+/// A fetched subtitle that has gone missing from the folder (#895): Deluno's
+/// own work disappearing is you rejecting it, not the file forgetting itself.
+/// </summary>
+public sealed class SubtitleScanRemovedTests
+{
+    [Fact]
+    public void A_fetched_subtitle_no_longer_beside_the_video_is_removed()
+    {
+        var recorded = new[] { Fetched("en", "gestdown|abc") };
+
+        var removed = LibrarySubtitleScanJobHandler.Removed(recorded, rows: []);
+
+        var row = Assert.Single(removed);
+        Assert.Equal("en", row.Language);
+        Assert.Equal("gestdown|abc", row.SourceKey);
+    }
+
+    [Fact]
+    public void A_fetched_subtitle_still_present_is_not_removed()
+    {
+        var recorded = new[] { Fetched("en", "gestdown|abc") };
+        var rows = new[] { Fetched("en", "gestdown|abc") };
+
+        Assert.Empty(LibrarySubtitleScanJobHandler.Removed(recorded, rows));
+    }
+
+    /// <summary>
+    /// An embedded or sidecar track Deluno never fetched has no candidate to
+    /// blocklist, and disappearing is not you rejecting a choice Deluno made.
+    /// </summary>
+    [Fact]
+    public void A_track_Deluno_did_not_fetch_is_never_reported_as_removed()
+    {
+        var recorded = new[] { Embedded("de"), Sidecar("fr") };
+
+        Assert.Empty(LibrarySubtitleScanJobHandler.Removed(recorded, rows: []));
+    }
+
+    /// <summary>A fetched row before this feature existed has no candidate identity to refuse again.</summary>
+    [Fact]
+    public void A_fetched_row_with_no_source_key_is_an_honest_gap_not_a_removal()
+    {
+        var recorded = new[]
+        {
+            new MediaSubtitleRow("en", SubtitleSources.Fetched, false, false, @"D:\Media\Film.en.srt", null, "srt",
+                "gestdown", MatchRung: 0, SourceKey: null)
+        };
+
+        Assert.Empty(LibrarySubtitleScanJobHandler.Removed(recorded, rows: []));
+    }
+
+    private static MediaSubtitleRow Embedded(string language)
+        => new(language, SubtitleSources.Embedded, false, false, null, 2, "subrip", null);
+
+    private static MediaSubtitleRow Sidecar(string language)
+        => new(language, SubtitleSources.External, false, false, $@"D:\Media\Film.{language}.srt", null, "srt", null);
+
+    private static MediaSubtitleRow Fetched(string language, string sourceKey)
+        => new(language, SubtitleSources.Fetched, false, false, $@"D:\Media\Film.{language}.srt", null, "srt",
+            "gestdown", MatchRung: 0, SourceKey: sourceKey);
 }
