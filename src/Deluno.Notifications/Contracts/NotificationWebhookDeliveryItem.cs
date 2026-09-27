@@ -46,4 +46,6 @@ public sealed record NotificationWebhookDeliveryRecord(
     NotificationWebhookDeliveryItem Item,
     string? WebhookUrl,
     string Message,
-    string? DetailsJson);
+    string? DetailsJson,
+    string WebhookProvider = NotificationProviders.Generic,
+    string? WebhookConfigJson = null);

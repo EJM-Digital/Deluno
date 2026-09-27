@@ -105,7 +105,8 @@ public static class PlatformDatabaseMigrations
         new V0097LibraryMissingUpgradeCaps(),
         new V0098LibrarySearchWindowDays(),
         new V0099IntakeSourceMinimumAvailability(),
-        new V0100TraktConnection()
+        new V0100TraktConnection(),
+        new V0101NotificationWebhookProviders()
     ];
 
     private sealed class V0001InitialSchema : SqliteSqlMigration

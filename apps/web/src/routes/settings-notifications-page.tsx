@@ -24,7 +24,7 @@ import { systemSettingsNavItems } from "../components/app/settings-shell";
 import { Select } from "../components/ui/select";
 import { Switch, SwitchRow } from "../components/ui/switch";
 import { toast } from "../components/shell/toaster";
-import { fetchJson, type NotificationPreferences, type NotificationWebhookDeliveryItem, type NotificationWebhookItem, type PlatformSettingsSnapshot } from "../lib/api";
+import { fetchJson, type NotificationPreferences, type NotificationProvider, type NotificationProviderConfig, type NotificationWebhookDeliveryItem, type NotificationWebhookItem, type PlatformSettingsSnapshot } from "../lib/api";
 import type { PlatformSettingsPatch } from "../lib/api/settings";
 import { useApiMutation } from "../lib/use-api-mutation";
 import { authedFetch } from "../lib/use-auth";
@@ -104,6 +104,46 @@ interface WebhookForm {
   url: string;
   eventFilters: string;
   isEnabled: boolean;
+  provider: NotificationProvider;
+  config: NotificationProviderConfig;
+}
+
+const PROVIDER_OPTIONS: Array<{ value: NotificationProvider; label: string }> = [
+  { value: "generic", label: "Generic webhook" },
+  { value: "discord", label: "Discord" },
+  { value: "slack", label: "Slack" },
+  { value: "telegram", label: "Telegram" },
+  { value: "pushover", label: "Pushover" },
+  { value: "ntfy", label: "ntfy" },
+  { value: "gotify", label: "Gotify" },
+  { value: "apprise", label: "Apprise (generic URL)" }
+];
+
+/** Providers that need a target URL, vs. ones addressed purely by credentials. */
+function providerNeedsUrl(provider: NotificationProvider): boolean {
+  return provider !== "telegram" && provider !== "pushover";
+}
+function providerUrlLabel(provider: NotificationProvider): string {
+  switch (provider) {
+    case "ntfy":
+      return "Topic URL";
+    case "gotify":
+      return "Server URL";
+    default:
+      return "URL";
+  }
+}
+function providerUrlPlaceholder(provider: NotificationProvider): string {
+  switch (provider) {
+    case "ntfy":
+      return "https://ntfy.sh/my-deluno-topic";
+    case "gotify":
+      return "https://gotify.example.com";
+    case "slack":
+      return "https://hooks.slack.com/services/…";
+    default:
+      return "https://example.com/hooks/deluno";
+  }
 }
 
 type DrawerMode = { kind: "closed" } | { kind: "create" } | { kind: "edit"; id: string };
@@ -154,7 +194,14 @@ export function SettingsNotificationsPage() {
 
   const isOpen = mode.kind !== "closed";
   const editing = mode.kind === "edit" ? webhooks.find((webhook) => webhook.id === mode.id) ?? null : null;
-  const dirty = isOpen && (form.name !== initialForm.name || form.url !== initialForm.url || form.eventFilters !== initialForm.eventFilters || form.isEnabled !== initialForm.isEnabled);
+  const dirty = isOpen && (
+    form.name !== initialForm.name ||
+    form.url !== initialForm.url ||
+    form.eventFilters !== initialForm.eventFilters ||
+    form.isEnabled !== initialForm.isEnabled ||
+    form.provider !== initialForm.provider ||
+    JSON.stringify(form.config) !== JSON.stringify(initialForm.config)
+  );
   const footerState: DrawerSaveState = resolveDrawerSaveState(saveState, dirty);
   useUnsavedChanges(dirty);
   useEffect(() => {
@@ -162,7 +209,16 @@ export function SettingsNotificationsPage() {
   }, [dirty, saveState]);
 
   function open(webhook: NotificationWebhookItem | null) {
-    const next = webhook ? { name: webhook.name, url: webhook.url, eventFilters: webhook.eventFilters || "all", isEnabled: webhook.isEnabled } : emptyForm();
+    const next = webhook
+      ? {
+          name: webhook.name,
+          url: webhook.url,
+          eventFilters: webhook.eventFilters || "all",
+          isEnabled: webhook.isEnabled,
+          provider: webhook.provider ?? "generic",
+          config: parseConfig(webhook.configJson)
+        }
+      : emptyForm();
     setMode(webhook ? { kind: "edit", id: webhook.id } : { kind: "create" });
     setForm(next);
     setInitialForm(next);
@@ -181,15 +237,23 @@ export function SettingsNotificationsPage() {
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!isOpen || busy) return;
-    if (!form.url.trim()) {
+    if (providerNeedsUrl(form.provider) && !form.url.trim()) {
       setUrlError("Paste the URL Deluno should POST to.");
       return;
     }
     setBusy("save");
     setSaveState("saving");
     try {
-      const payload = { name: form.name.trim() || "Webhook", url: form.url.trim(), eventFilters: form.eventFilters, isEnabled: form.isEnabled };
-      const response = await authedFetch(mode.kind === "edit" ? `/api/notification-webhooks/${mode.id}` : "/api/notification-webhooks", { method: mode.kind === "edit" ? "PUT" : "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+      const nextForm: WebhookForm = {
+        name: form.name.trim() || "Webhook",
+        url: form.url.trim(),
+        eventFilters: form.eventFilters,
+        isEnabled: form.isEnabled,
+        provider: form.provider,
+        config: form.config
+      };
+      const requestBody = { ...nextForm, configJson: serializeConfig(form.config) };
+      const response = await authedFetch(mode.kind === "edit" ? `/api/notification-webhooks/${mode.id}` : "/api/notification-webhooks", { method: mode.kind === "edit" ? "PUT" : "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(requestBody) });
       if (!response.ok) throw new Error(mode.kind === "edit" ? "Webhook could not be saved." : "Webhook could not be added.");
       if (mode.kind === "create") {
         const created = (await response.json()) as NotificationWebhookItem;
@@ -198,8 +262,8 @@ export function SettingsNotificationsPage() {
       } else {
         setSaveMessage("Saved just now");
       }
-      setForm(payload);
-      setInitialForm(payload);
+      setForm(nextForm);
+      setInitialForm(nextForm);
       setSaveState("saved");
       revalidator.revalidate();
     } catch (error) {
@@ -240,7 +304,7 @@ export function SettingsNotificationsPage() {
 
   async function toggleWebhook(webhook: NotificationWebhookItem, isEnabled: boolean) {
     await run(`toggle:${webhook.id}`, async () => {
-      const response = await authedFetch(`/api/notification-webhooks/${webhook.id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: webhook.name, url: webhook.url, eventFilters: webhook.eventFilters, isEnabled }) });
+      const response = await authedFetch(`/api/notification-webhooks/${webhook.id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: webhook.name, url: webhook.url, eventFilters: webhook.eventFilters, isEnabled, provider: webhook.provider, configJson: webhook.configJson }) });
       if (!response.ok) throw new Error(`Could not ${isEnabled ? "enable" : "pause"} ${webhook.name}.`);
     });
     if (mode.kind === "edit" && mode.id === webhook.id && !dirty) {
@@ -302,8 +366,8 @@ export function SettingsNotificationsPage() {
               const chip = statusChip(webhook, settings.enableNotifications);
               return (
                 <ListRow key={webhook.id} onClick={() => open(webhook)} selected={mode.kind === "edit" && mode.id === webhook.id}>
-                  <ListNameCell name={webhook.name} sub={webhook.lastError ? "Last delivery failed" : "Outbound webhook"} />
-                  <ListCell mono primary={webhook.url} />
+                  <ListNameCell name={webhook.name} sub={webhook.lastError ? "Last delivery failed" : providerLabel(webhook.provider)} />
+                  <ListCell mono primary={webhook.url || providerLabel(webhook.provider)} />
                   <ListCell primary={eventLabel(webhook.eventFilters)} secondary={webhook.eventFilters === "all" ? "Every event type" : "Filtered"} />
                   <ListCell numeric primary={webhook.lastFiredUtc ? relative(webhook.lastFiredUtc) : <span className="text-muted-foreground">Never</span>} secondary={webhook.lastError ?? undefined} />
                   <ListCell mobile>
@@ -434,13 +498,52 @@ export function SettingsNotificationsPage() {
             <Field label="Name">
               <Input value={form.name} onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))} placeholder="Home Assistant" autoComplete="off" />
             </Field>
-            <Field label="Events" help="Which events trigger a POST.">
-              <Select value={form.eventFilters} onChange={(event) => setForm((current) => ({ ...current, eventFilters: event.target.value }))} options={EVENT_OPTIONS} />
+            <Field label="Provider" help="Each provider gets its own payload shape.">
+              <Select
+                value={form.provider}
+                onChange={(event) => setForm((current) => ({ ...current, provider: event.target.value as NotificationProvider }))}
+                options={PROVIDER_OPTIONS}
+              />
             </Field>
           </FieldRow>
-          <Field label="URL" error={urlError} help="Deluno sends a JSON body; no authentication headers are added.">
-            <Input value={form.url} onChange={(event) => { setUrlError(null); setForm((current) => ({ ...current, url: event.target.value })); }} placeholder="https://example.com/hooks/deluno" className="font-mono text-[length:var(--type-caption)]" autoComplete="off" spellCheck={false} />
+          <Field label="Events" help="Which events trigger a send.">
+            <Select value={form.eventFilters} onChange={(event) => setForm((current) => ({ ...current, eventFilters: event.target.value }))} options={EVENT_OPTIONS} />
           </Field>
+          {providerNeedsUrl(form.provider) ? (
+            <Field label={providerUrlLabel(form.provider)} error={urlError} help={form.provider === "generic" ? "Deluno sends a JSON body; no authentication headers are added." : undefined}>
+              <Input value={form.url} onChange={(event) => { setUrlError(null); setForm((current) => ({ ...current, url: event.target.value })); }} placeholder={providerUrlPlaceholder(form.provider)} className="font-mono text-[length:var(--type-caption)]" autoComplete="off" spellCheck={false} />
+            </Field>
+          ) : null}
+          {form.provider === "telegram" ? (
+            <FieldRow>
+              <Field label="Bot token" help="From @BotFather.">
+                <Input value={form.config.botToken ?? ""} onChange={(event) => setForm((current) => ({ ...current, config: { ...current.config, botToken: event.target.value } }))} className="font-mono text-[length:var(--type-caption)]" autoComplete="off" spellCheck={false} />
+              </Field>
+              <Field label="Chat ID">
+                <Input value={form.config.chatId ?? ""} onChange={(event) => setForm((current) => ({ ...current, config: { ...current.config, chatId: event.target.value } }))} className="font-mono text-[length:var(--type-caption)]" autoComplete="off" spellCheck={false} />
+              </Field>
+            </FieldRow>
+          ) : null}
+          {form.provider === "pushover" ? (
+            <FieldRow>
+              <Field label="App token">
+                <Input value={form.config.appToken ?? ""} onChange={(event) => setForm((current) => ({ ...current, config: { ...current.config, appToken: event.target.value } }))} className="font-mono text-[length:var(--type-caption)]" autoComplete="off" spellCheck={false} />
+              </Field>
+              <Field label="User key">
+                <Input value={form.config.userKey ?? ""} onChange={(event) => setForm((current) => ({ ...current, config: { ...current.config, userKey: event.target.value } }))} className="font-mono text-[length:var(--type-caption)]" autoComplete="off" spellCheck={false} />
+              </Field>
+            </FieldRow>
+          ) : null}
+          {form.provider === "gotify" ? (
+            <Field label="App token">
+              <Input value={form.config.appToken ?? ""} onChange={(event) => setForm((current) => ({ ...current, config: { ...current.config, appToken: event.target.value } }))} className="font-mono text-[length:var(--type-caption)]" autoComplete="off" spellCheck={false} />
+            </Field>
+          ) : null}
+          {form.provider === "ntfy" ? (
+            <Field label="Access token" help="Only needed for a protected topic.">
+              <Input value={form.config.accessToken ?? ""} onChange={(event) => setForm((current) => ({ ...current, config: { ...current.config, accessToken: event.target.value } }))} className="font-mono text-[length:var(--type-caption)]" autoComplete="off" spellCheck={false} />
+            </Field>
+          ) : null}
           <SwitchRow label="Enabled" description="Paused webhooks stay configured but never fire." checked={form.isEnabled} onCheckedChange={(checked) => setForm((current) => ({ ...current, isEnabled: checked }))} />
         </DrawerSection>
 
@@ -485,7 +588,22 @@ export function SettingsNotificationsPage() {
 /* --------------------------------------------------------------- utils */
 
 function emptyForm(): WebhookForm {
-  return { name: "", url: "", eventFilters: "all", isEnabled: true };
+  return { name: "", url: "", eventFilters: "all", isEnabled: true, provider: "generic", config: {} };
+}
+function parseConfig(configJson: string | null): NotificationProviderConfig {
+  if (!configJson) return {};
+  try {
+    return JSON.parse(configJson) as NotificationProviderConfig;
+  } catch {
+    return {};
+  }
+}
+function serializeConfig(config: NotificationProviderConfig): string | null {
+  const entries = Object.entries(config).filter(([, value]) => Boolean(value && String(value).trim()));
+  return entries.length ? JSON.stringify(Object.fromEntries(entries)) : null;
+}
+function providerLabel(provider: NotificationProvider): string {
+  return PROVIDER_OPTIONS.find((option) => option.value === provider)?.label ?? "Outbound webhook";
 }
 function eventLabel(value: string) {
   return EVENT_OPTIONS.find((option) => option.value === value)?.label.split(" — ")[0] ?? value;

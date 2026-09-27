@@ -9,16 +9,22 @@ public sealed record NotificationWebhookItem(
     DateTimeOffset? LastFiredUtc,
     string? LastError,
     DateTimeOffset CreatedUtc,
-    DateTimeOffset UpdatedUtc);
+    DateTimeOffset UpdatedUtc,
+    string Provider = NotificationProviders.Generic,
+    string? ConfigJson = null);
 
 public sealed record CreateNotificationWebhookRequest(
     string? Name,
     string? Url,
     string? EventFilters,
-    bool IsEnabled);
+    bool IsEnabled,
+    string? Provider = null,
+    string? ConfigJson = null);
 
 public sealed record UpdateNotificationWebhookRequest(
     string? Name,
     string? Url,
     string? EventFilters,
-    bool IsEnabled);
+    bool IsEnabled,
+    string? Provider = null,
+    string? ConfigJson = null);
