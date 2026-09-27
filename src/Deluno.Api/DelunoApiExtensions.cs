@@ -85,6 +85,7 @@ public static class DelunoApiExtensions
         api.MapDelunoConnectivityEndpoints();
         api.MapDelunoBundledComponentsEndpoints();
         api.MapDelunoSystemLogLevelEndpoints();
+        api.MapDelunoSystemLogFilesEndpoints();
 
         if (includeOperationalEndpoints)
         {

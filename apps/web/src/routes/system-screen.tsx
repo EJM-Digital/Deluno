@@ -18,6 +18,7 @@ import {
 import { JOB_STATUS, type JobStatus, isJobActive, isJobFailed, isJobSuccessful } from "../lib/job-status-constants";
 import { SystemShell } from "../components/app/settings-shell";
 import { LanAccessNotice, type LanAccessStatus } from "../components/app/lan-access-notice";
+import { LogFilesCard } from "../components/app/log-files-card";
 import { MetadataMaintenanceCard } from "../components/app/metadata-maintenance-card";
 import { ProviderHealthDrawer, type ProviderHealthSelection } from "../components/app/provider-health-drawer";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card";
@@ -321,6 +322,7 @@ export function SystemPage() {
       <AutomationCard automation={automation} cycles={searchCycles} retryWindows={retryWindows} onRefresh={() => revalidator.revalidate()} />
       {jobsCard}
       {runtimeCard}
+      <LogFilesCard />
     </SystemShell>
   );
 }

@@ -437,7 +437,13 @@ public sealed class DelunoFileLoggerProvider : ILoggerProvider, ISupportExternal
         @"\b(?:api[_-]?key|apikey|password|passwd|access[_-]?token|token|secret)\s*[=:]\s*\{(?<name>[^}:,]+)",
         System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.CultureInvariant);
 
-    private static string ResolveDirectory(string dataRoot, string? configured)
+    /// <summary>
+    /// Where log files live for a given data root and configured directory,
+    /// without needing a live <see cref="DelunoFileLoggerProvider"/> instance
+    /// -- the Log Files list (#867) and the file prefix/extension constants
+    /// above are enough to enumerate them from an endpoint.
+    /// </summary>
+    public static string ResolveDirectory(string dataRoot, string? configured)
         => string.IsNullOrWhiteSpace(configured)
             ? Path.Combine(dataRoot, "logs")
             : Path.GetFullPath(configured, dataRoot);
