@@ -42,6 +42,16 @@ public static class ProcessorHandoffCancellation
     /// <see cref="ProcessorHandoffStatuses.Dismissed"/>: settling its cases and
     /// leaving a counted row behind would just move the problem (#563).
     /// </param>
+    /// <param name="discardEvenIfBusy">
+    /// End the hand-off even when the processor says it has already started
+    /// work, rather than leaving it running (#903). Interrupting the
+    /// processor is still not attempted — that can leave the same file
+    /// imported twice — but there is no title left for its output to be
+    /// imported into, so the hand-off is dismissed now and a late completion
+    /// report is refused as one arriving after the hand-off already ended
+    /// (see the processor-events endpoint), rather than left <c>started</c>
+    /// forever waiting for output nobody will use.
+    /// </param>
     public static async Task<ProcessorHandoffStopped> StopWaitingAsync(
         IProcessorRepository repository,
         IProcessorConnectionService? processorConnections,
@@ -49,24 +59,28 @@ public static class ProcessorHandoffCancellation
         ProcessorHandoffItem handoff,
         Func<string, string> why,
         CancellationToken cancellationToken,
-        string ending = ProcessorHandoffStatuses.Cancelled)
+        string ending = ProcessorHandoffStatuses.Cancelled,
+        bool discardEvenIfBusy = false)
     {
         var connection = await repository.FindProcessorConnectionByNameAsync(handoff.ProcessorName, cancellationToken);
         var told = connection is { IsEnabled: true } && processorConnections is not null
             ? await processorConnections.CancelHandoffAsync(connection, handoff.Id, cancellationToken)
             : null;
         var processorName = connection?.Name ?? handoff.ProcessorName ?? "the processor";
-        if (told?.Answer == ProcessorAnswer.Busy)
+        var busy = told?.Answer == ProcessorAnswer.Busy;
+        if (busy && !discardEvenIfBusy)
         {
             return new ProcessorHandoffStopped(
                 null,
                 Busy: true,
-                $"{processorName} has started work on {handoff.ReleaseName}, so Deluno will not interrupt it. {told.Message}".TrimEnd());
+                $"{processorName} has started work on {handoff.ReleaseName}, so Deluno will not interrupt it. {told!.Message}".TrimEnd());
         }
 
-        var summary = told?.Answer == ProcessorAnswer.Answered
-            ? $"{why(processorName)}, and it was asked to drop {handoff.ReleaseName}."
-            : $"{why(processorName)}. It could not be told, so it may still have {handoff.ReleaseName}.";
+        var summary = busy
+            ? $"{why(processorName)}. {processorName} had already started work on {handoff.ReleaseName}; its output will not be imported and Deluno will not wait for it."
+            : told?.Answer == ProcessorAnswer.Answered
+                ? $"{why(processorName)}, and it was asked to drop {handoff.ReleaseName}."
+                : $"{why(processorName)}. It could not be told, so it may still have {handoff.ReleaseName}.";
 
         var ended = await repository.UpdateProcessorHandoffAsync(
             handoff.Id,
@@ -77,7 +91,7 @@ public static class ProcessorHandoffCancellation
             cancellationToken);
         if (ended is null)
         {
-            return new ProcessorHandoffStopped(null, Busy: false, summary);
+            return new ProcessorHandoffStopped(null, Busy: busy, summary);
         }
 
         await activityFeed.RecordActivityAsync(
@@ -98,7 +112,7 @@ public static class ProcessorHandoffCancellation
             handoff.Id,
             cancellationToken);
 
-        return new ProcessorHandoffStopped(ended, Busy: false, summary);
+        return new ProcessorHandoffStopped(ended, Busy: busy, summary);
     }
 
 }
