@@ -152,7 +152,7 @@ public sealed class TrackerCloudflareHelperTests
 
         public Task<bool> IsConfiguredAsync(CancellationToken cancellationToken) => Task.FromResult(true);
 
-        public Task<CloudflareSolution?> FetchAsync(Uri url, CancellationToken cancellationToken)
+        public Task<CloudflareSolution?> FetchAsync(Uri url, CancellationToken cancellationToken, CloudflareHelperProxy? proxy = null)
         {
             Calls++;
             return Task.FromResult<CloudflareSolution?>(new CloudflareSolution(
@@ -163,8 +163,8 @@ public sealed class TrackerCloudflareHelperTests
                 [new Cookie("cf_clearance", "cleared", "/", url.Host)]));
         }
 
-        public Task<CloudflareSolution?> PostAsync(Uri url, IReadOnlyDictionary<string, string> formData, CancellationToken cancellationToken)
-            => FetchAsync(url, cancellationToken);
+        public Task<CloudflareSolution?> PostAsync(Uri url, IReadOnlyDictionary<string, string> formData, CancellationToken cancellationToken, CloudflareHelperProxy? proxy = null)
+            => FetchAsync(url, cancellationToken, proxy);
 
         public Task DestroySessionAsync(string host, CancellationToken cancellationToken) => Task.CompletedTask;
 

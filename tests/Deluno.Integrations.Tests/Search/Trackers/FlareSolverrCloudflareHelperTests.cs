@@ -112,6 +112,46 @@ public sealed class FlareSolverrCloudflareHelperTests
     }
 
     [Fact]
+    public async Task A_fetch_with_an_assigned_proxy_attaches_it_to_the_helpers_request()
+    {
+        var recorder = new RecordingHandler(new { status = "ok", solution = new { url = TargetUrl.ToString(), status = 200, response = "<html/>" } });
+        var (helper, _) = CreateHelper(recorder, timeoutSeconds: 60);
+
+        await helper.FetchAsync(TargetUrl, CancellationToken.None, new CloudflareHelperProxy("http://192.168.1.1:8080", "user", "pass"));
+
+        var request = Assert.Single(recorder.Requests, request => request.Cmd == "request.get");
+        Assert.NotNull(request.Proxy);
+        Assert.Equal("http://192.168.1.1:8080", request.Proxy!.Url);
+        Assert.Equal("user", request.Proxy.Username);
+        Assert.Equal("pass", request.Proxy.Password);
+    }
+
+    [Fact]
+    public async Task A_fetch_with_no_assigned_proxy_sends_no_proxy_parameter()
+    {
+        var recorder = new RecordingHandler(new { status = "ok", solution = new { url = TargetUrl.ToString(), status = 200, response = "<html/>" } });
+        var (helper, _) = CreateHelper(recorder, timeoutSeconds: 60);
+
+        await helper.FetchAsync(TargetUrl, CancellationToken.None);
+
+        var request = Assert.Single(recorder.Requests, request => request.Cmd == "request.get");
+        Assert.Null(request.Proxy);
+    }
+
+    [Fact]
+    public async Task A_proxy_with_no_credentials_sends_only_its_url()
+    {
+        var recorder = new RecordingHandler(new { status = "ok", solution = new { url = TargetUrl.ToString(), status = 200, response = "<html/>" } });
+        var (helper, _) = CreateHelper(recorder, timeoutSeconds: 60);
+
+        await helper.FetchAsync(TargetUrl, CancellationToken.None, new CloudflareHelperProxy("socks5://192.168.1.1:1080", null, null));
+
+        var request = Assert.Single(recorder.Requests, request => request.Cmd == "request.get");
+        Assert.Equal("socks5://192.168.1.1:1080", request.Proxy!.Url);
+        Assert.Null(request.Proxy.Username);
+    }
+
+    [Fact]
     public async Task No_helper_configured_returns_null_and_sends_nothing()
     {
         var recorder = new RecordingHandler(new { status = "ok" });
@@ -190,7 +230,13 @@ public sealed class FlareSolverrCloudflareHelperTests
                 root.GetProperty("cmd").GetString()!,
                 root.TryGetProperty("session", out var session) ? session.GetString() : null,
                 root.TryGetProperty("maxTimeout", out var maxTimeout) ? maxTimeout.GetInt32() : null,
-                root.TryGetProperty("postData", out var postData) ? postData.GetString() : null));
+                root.TryGetProperty("postData", out var postData) ? postData.GetString() : null,
+                root.TryGetProperty("proxy", out var proxy)
+                    ? new RecordedProxy(
+                        proxy.GetProperty("url").GetString()!,
+                        proxy.TryGetProperty("username", out var username) ? username.GetString() : null,
+                        proxy.TryGetProperty("password", out var password) ? password.GetString() : null)
+                    : null));
 
             return new HttpResponseMessage(HttpStatusCode.OK)
             {
@@ -199,5 +245,7 @@ public sealed class FlareSolverrCloudflareHelperTests
         }
     }
 
-    private sealed record RecordedCommand(string Cmd, string? Session, int? MaxTimeout, string? PostData);
+    private sealed record RecordedCommand(string Cmd, string? Session, int? MaxTimeout, string? PostData, RecordedProxy? Proxy);
+
+    private sealed record RecordedProxy(string Url, string? Username, string? Password);
 }
