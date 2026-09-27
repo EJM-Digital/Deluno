@@ -2335,7 +2335,21 @@ public sealed partial class ImportPipelineService(
             // rule this out on its own any more.
             var overrides = failureRules is null
                 ? new Dictionary<string, BlockDecision>()
-                : await failureRules.GetOverridesAsync(cancellationToken);
+                : new Dictionary<string, BlockDecision>(await failureRules.GetOverridesAsync(cancellationToken));
+
+            // #888: "unmatched" has no shipped answer in the table at all
+            // (Deluno cannot say whose fault an unidentified file is), so
+            // James's dedicated setting fills it in instead of the generic
+            // per-reason table -- unless the user has already set an explicit
+            // override for it there, which always wins.
+            if (failureKind == ImportFailurePolicy.Unmatched && !overrides.ContainsKey(failureKind))
+            {
+                var unmatchedPolicy = (await platformRepository.GetAsync(cancellationToken)).UnmatchedImportPolicy;
+                if (unmatchedPolicy == UnmatchedImportPolicies.RetryOnceThenBad)
+                {
+                    overrides[failureKind] = BlockDecision.AfterOneRetry;
+                }
+            }
 
             var decision = ImportFailurePolicy.BlockFor(failureKind, overrides);
             if (decision == BlockDecision.Never)

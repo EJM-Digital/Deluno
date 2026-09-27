@@ -224,4 +224,32 @@ public sealed record PlatformSettingsSnapshot(
     // but removing it from the download client and deleting its files was
     // never anybody's choice -- always "no". This is that choice, off by
     // default so an existing install's disk behaves exactly as before.
-    bool RemoveAndDeletePackedArchivesFromClient = false);
+    bool RemoveAndDeletePackedArchivesFromClient = false,
+    // #888 (cleanup sheet E5): what Deluno does with a file it downloaded but
+    // could not match to a title or episode. "hold" is today's only
+    // behaviour -- kept on Transfers for manual import, nothing else touched
+    // -- so it stays the default for every existing and new install. The
+    // same setting governs G4 (a processed file that no longer matches).
+    string UnmatchedImportPolicy = UnmatchedImportPolicies.Hold,
+    // How many days "give-up-after-days" waits before Deluno removes the
+    // download, deletes the file, blocklists the release and searches again.
+    int UnmatchedImportGiveUpDays = 7);
+
+/// <summary>The choices behind <see cref="PlatformSettingsSnapshot.UnmatchedImportPolicy"/> (#888).</summary>
+public static class UnmatchedImportPolicies
+{
+    /// <summary>Today's only behaviour: hold it on Transfers for manual import.</summary>
+    public const string Hold = "hold";
+
+    /// <summary>Retry the match once, then treat it like any other bad release.</summary>
+    public const string RetryOnceThenBad = "retry-once-then-bad";
+
+    /// <summary>
+    /// After <see cref="PlatformSettingsSnapshot.UnmatchedImportGiveUpDays"/>
+    /// with nobody acting on it: remove the download, delete the file,
+    /// blocklist the release, and search again.
+    /// </summary>
+    public const string GiveUpAfterDays = "give-up-after-days";
+
+    public static bool IsKnown(string value) => value is Hold or RetryOnceThenBad or GiveUpAfterDays;
+}

@@ -112,4 +112,7 @@ public sealed record PatchPlatformSettingsRequest(
     int? DownloadIntegrityMinimumRuntimePercent = null,
     int? MinimumFreeSpaceMb = null,
     bool? SkipFreeSpaceCheck = null,
-    bool? RemoveAndDeletePackedArchivesFromClient = null);
+    bool? RemoveAndDeletePackedArchivesFromClient = null,
+    /// <summary>#888: hold for manual import (default), give up after N days, or retry once then treat it as bad.</summary>
+    string? UnmatchedImportPolicy = null,
+    int? UnmatchedImportGiveUpDays = null);

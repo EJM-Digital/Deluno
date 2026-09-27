@@ -1058,6 +1058,57 @@ public sealed class PlatformSettingsPersistenceTests
         Assert.Equal(75, loaded.MaxSearchesPerHour);
     }
 
+    /// <summary>
+    /// #888: "hold" (today's only behaviour) is every install's default until
+    /// somebody chooses otherwise, existing or new.
+    /// </summary>
+    [Fact]
+    public async Task UnmatchedImportPolicy_defaults_to_hold_for_seven_days()
+    {
+        using var storage = TestStorage.Create();
+        var repository = await SettingsAsync(storage);
+
+        var loaded = await repository.GetAsync(CancellationToken.None);
+
+        Assert.Equal(UnmatchedImportPolicies.Hold, loaded.UnmatchedImportPolicy);
+        Assert.Equal(7, loaded.UnmatchedImportGiveUpDays);
+    }
+
+    [Fact]
+    public async Task UnmatchedImportPolicy_round_trips_through_a_patch_and_survives_being_reloaded()
+    {
+        using var storage = TestStorage.Create();
+        var repository = await SettingsAsync(storage);
+
+        var merged = PlatformSettingsPatchMerger.Apply(
+            await repository.GetAsync(CancellationToken.None),
+            new PatchPlatformSettingsRequest(
+                UnmatchedImportPolicy: UnmatchedImportPolicies.GiveUpAfterDays,
+                UnmatchedImportGiveUpDays: 3));
+        await repository.SaveAsync(merged, CancellationToken.None);
+
+        var reloaded = await SettingsAsync(storage);
+        var loaded = await reloaded.GetAsync(CancellationToken.None);
+
+        Assert.Equal(UnmatchedImportPolicies.GiveUpAfterDays, loaded.UnmatchedImportPolicy);
+        Assert.Equal(3, loaded.UnmatchedImportGiveUpDays);
+    }
+
+    [Fact]
+    public async Task UnmatchedImportPolicy_ignores_an_unknown_value_and_falls_back_to_hold()
+    {
+        using var storage = TestStorage.Create();
+        var repository = await SettingsAsync(storage);
+
+        var merged = PlatformSettingsPatchMerger.Apply(
+            await repository.GetAsync(CancellationToken.None),
+            new PatchPlatformSettingsRequest(UnmatchedImportPolicy: "not-a-real-policy"));
+        await repository.SaveAsync(merged, CancellationToken.None);
+
+        var loaded = await repository.GetAsync(CancellationToken.None);
+        Assert.Equal(UnmatchedImportPolicies.Hold, loaded.UnmatchedImportPolicy);
+    }
+
     [Fact]
     public async Task Each_download_health_rule_can_be_switched_off_independently()
     {

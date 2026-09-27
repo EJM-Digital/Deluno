@@ -97,4 +97,6 @@ public sealed record UpdatePlatformSettingsRequest(
     int? DownloadIntegrityMinimumRuntimePercent = null,
     int? MinimumFreeSpaceMb = null,
     bool? SkipFreeSpaceCheck = null,
-    bool? RemoveAndDeletePackedArchivesFromClient = null);
+    bool? RemoveAndDeletePackedArchivesFromClient = null,
+    string? UnmatchedImportPolicy = null,
+    int? UnmatchedImportGiveUpDays = null);
