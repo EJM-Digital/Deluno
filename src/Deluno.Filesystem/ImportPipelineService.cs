@@ -4529,6 +4529,7 @@ public sealed partial class ImportPipelineService(
             return new NamingDecision(
                 quality,
                 releaseGroup,
+                OriginalTitle: request.OriginalTitle,
                 OriginalFileName: originalFileName,
                 ReleaseHash: releaseHash,
                 VideoCodec: mediaFacts.VideoCodec,
@@ -4552,6 +4553,7 @@ public sealed partial class ImportPipelineService(
             return new NamingDecision(
                 quality,
                 releaseGroup,
+                OriginalTitle: request.OriginalTitle,
                 OriginalFileName: originalFileName,
                 ReleaseHash: releaseHash,
                 VideoCodec: mediaFacts.VideoCodec,
@@ -4597,6 +4599,7 @@ public sealed partial class ImportPipelineService(
             releaseGroup,
             names.OrderBy(name => name, StringComparer.Ordinal).ToArray(),
             editions.OrderBy(name => name, StringComparer.Ordinal).ToArray(),
+            OriginalTitle: request.OriginalTitle,
             OriginalFileName: originalFileName,
             ReleaseHash: releaseHash,
             VideoCodec: mediaFacts.VideoCodec,

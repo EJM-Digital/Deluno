@@ -3282,6 +3282,92 @@ public sealed class ImportPipelineServiceTests
             Path.GetFileName(result.Response!.Preview.DestinationPath));
     }
 
+    /// <summary>
+    /// #760: {Original Title} is sourced from the catalogue the automatic
+    /// import path resolved, via ImportPreviewRequest.OriginalTitle -- never
+    /// re-derived from the release name, which usually carries only the
+    /// library's own title.
+    /// </summary>
+    [Fact]
+    public async Task ExecuteAsync_renders_the_original_title_token_from_the_request()
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.UtcNow);
+        await InitializeAllAsync(storage, timeProvider);
+        var downloadsPath = Path.Combine(storage.DataRoot, "downloads");
+        var movieRootPath = Path.Combine(storage.DataRoot, "movies");
+        Directory.CreateDirectory(downloadsPath);
+        Directory.CreateDirectory(movieRootPath);
+        const string releaseName = "Pans.Labyrinth.2006.1080p.BluRay.DTS.x264-GRP";
+        var sourcePath = Path.Combine(downloadsPath, releaseName + ".mkv");
+        await File.WriteAllBytesAsync(sourcePath, Enumerable.Repeat((byte)0x21, 4096).ToArray());
+        File.SetLastWriteTimeUtc(sourcePath, DateTime.UtcNow.AddMinutes(-1));
+
+        var platform = CreatePlatformRepository(storage, timeProvider);
+        var libraries = CreateLibrariesRepository(storage, timeProvider);
+        await SaveSettingsAsync(
+            platform,
+            movieRootPath,
+            downloadsPath,
+            movieFileFormat: "{Movie Title} ({Release Year}) - {Original Title}");
+        await CreateMovieLibraryAsync(libraries, movieRootPath, downloadsPath);
+        var movies = new SqliteMovieCatalogRepository(storage.Factory, timeProvider);
+        var service = CreateService(storage, timeProvider, platform, libraries, movies);
+
+        var result = await service.ExecuteAsync(
+            new ImportExecuteRequest(
+                new ImportPreviewRequest(sourcePath, null, "movies", "Pan's Labyrinth", 2006, [], [], null, null,
+                    OriginalTitle: "El Laberinto del Fauno"),
+                "copy",
+                Overwrite: false,
+                AllowCopyFallback: true),
+            CancellationToken.None);
+
+        Assert.True(result.Succeeded, result.Message);
+        Assert.Equal(
+            "Pan's Labyrinth (2006) - El Laberinto del Fauno.mkv",
+            Path.GetFileName(result.Response!.Preview.DestinationPath));
+    }
+
+    /// <summary>#760: with no original title supplied, the token falls back to nothing rather than an error or the literal token.</summary>
+    [Fact]
+    public async Task ExecuteAsync_falls_back_to_empty_for_the_original_title_token_with_no_data()
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.UtcNow);
+        await InitializeAllAsync(storage, timeProvider);
+        var downloadsPath = Path.Combine(storage.DataRoot, "downloads");
+        var movieRootPath = Path.Combine(storage.DataRoot, "movies");
+        Directory.CreateDirectory(downloadsPath);
+        Directory.CreateDirectory(movieRootPath);
+        const string releaseName = "Arrival.2016.1080p.BluRay.DTS.x264-GRP";
+        var sourcePath = Path.Combine(downloadsPath, releaseName + ".mkv");
+        await File.WriteAllBytesAsync(sourcePath, Enumerable.Repeat((byte)0x21, 4096).ToArray());
+        File.SetLastWriteTimeUtc(sourcePath, DateTime.UtcNow.AddMinutes(-1));
+
+        var platform = CreatePlatformRepository(storage, timeProvider);
+        var libraries = CreateLibrariesRepository(storage, timeProvider);
+        await SaveSettingsAsync(
+            platform,
+            movieRootPath,
+            downloadsPath,
+            movieFileFormat: "{Movie Title} ({Release Year}) [{Original Title}]");
+        await CreateMovieLibraryAsync(libraries, movieRootPath, downloadsPath);
+        var movies = new SqliteMovieCatalogRepository(storage.Factory, timeProvider);
+        var service = CreateService(storage, timeProvider, platform, libraries, movies);
+
+        var result = await service.ExecuteAsync(
+            new ImportExecuteRequest(
+                new ImportPreviewRequest(sourcePath, null, "movies", "Arrival", 2016, [], [], null, null),
+                "copy",
+                Overwrite: false,
+                AllowCopyFallback: true),
+            CancellationToken.None);
+
+        Assert.True(result.Succeeded, result.Message);
+        Assert.Equal("Arrival (2016).mkv", Path.GetFileName(result.Response!.Preview.DestinationPath));
+    }
+
     [Fact]
     public async Task Where_a_copy_came_from_outlives_the_dispatch_that_brought_it()
     {
