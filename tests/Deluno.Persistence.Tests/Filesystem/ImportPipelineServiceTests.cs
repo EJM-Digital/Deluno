@@ -179,6 +179,76 @@ public sealed class ImportPipelineServiceTests
         Assert.Equal("available", updated.Status);
     }
 
+    /// <summary>
+    /// #852: a Seerr outage while reporting availability must never fail an
+    /// import that already landed — the failure is recorded on the
+    /// acquisition (so the Seerr settings card shows it) instead.
+    /// </summary>
+    [Fact]
+    public async Task ExecuteAsync_records_an_available_failed_status_when_seerr_cannot_be_reached()
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-04-29T08:00:00Z"));
+        await InitializeAllAsync(storage, timeProvider);
+
+        var downloadsPath = Path.Combine(storage.DataRoot, "downloads");
+        var movieRootPath = Path.Combine(storage.DataRoot, "movies");
+        Directory.CreateDirectory(downloadsPath);
+        Directory.CreateDirectory(movieRootPath);
+        var sourcePath = Path.Combine(downloadsPath, "Arrival.2016.WEB.1080p.mkv");
+        await File.WriteAllBytesAsync(sourcePath, Enumerable.Range(0, 4096).Select(value => (byte)(value % 251)).ToArray());
+        File.SetLastWriteTimeUtc(sourcePath, DateTime.UtcNow.AddMinutes(-1));
+
+        var platform = CreatePlatformRepository(storage, timeProvider);
+        var libraries = CreateLibrariesRepository(storage, timeProvider);
+        await SaveSettingsAsync(platform, movieRootPath, downloadsPath);
+        await libraries.CreateLibraryAsync(
+            new CreateLibraryRequest(
+                Name: "Movies", MediaType: "movies", Purpose: "Main", RootPath: movieRootPath, DownloadsPath: downloadsPath,
+                QualityProfileId: null, ImportWorkflow: "standard", ProcessorName: null, ProcessorOutputPath: null,
+                ProcessorTimeoutMinutes: null, ProcessorFailureMode: null, AutoSearchEnabled: true, MissingSearchEnabled: true,
+                UpgradeSearchEnabled: true, SearchIntervalHours: 6, RetryDelayHours: 24, MaxItemsPerRun: 25),
+            CancellationToken.None);
+
+        var movies = new SqliteMovieCatalogRepository(storage.Factory, timeProvider);
+        var existing = await movies.AddAsync(new CreateMovieRequest("Arrival", 2016, "tt2543164"), CancellationToken.None);
+
+        var seerrRepository = new SqliteSeerrRepository(storage.Factory, timeProvider, TestSecretProtection.Create(storage));
+        var seerrConnection = await seerrRepository.SaveAsync(null, new SaveSeerrRequest("Lab Seerr", "http://127.0.0.1:5055", "key-1", true), CancellationToken.None);
+        var seerrAcquisitions = new SqliteSeerrAcquisitionsRepository(storage.Factory, timeProvider);
+        await seerrAcquisitions.RecordAsync(seerrConnection!.Id, seerrConnection.Name, "movies", existing.Id, "Arrival", seerrMediaId: 99, "added", null, CancellationToken.None);
+
+        var seerrClient = new UnreachableSeerrClient();
+        var service = CreateService(storage, timeProvider, platform, libraries, movies, seerrAcquisitions: seerrAcquisitions, seerrRepository: seerrRepository, seerrClient: seerrClient);
+
+        var result = await service.ExecuteAsync(
+            new ImportExecuteRequest(
+                Preview: new ImportPreviewRequest(
+                    SourcePath: sourcePath, FileName: null, MediaType: "movies", Title: "Arrival", Year: 2016,
+                    Genres: [], Tags: [], Studio: null, OriginalLanguage: null, ImdbId: "tt2543164",
+                    SeriesId: existing.Id),
+                TransferMode: "copy", Overwrite: false, AllowCopyFallback: true),
+            CancellationToken.None);
+
+        Assert.True(result.Succeeded);
+
+        var updated = Assert.Single(await seerrAcquisitions.ListRecentAsync(seerrConnection.Id, 10, CancellationToken.None));
+        Assert.Equal("available-failed", updated.Status);
+        Assert.Equal("Lab Seerr is unreachable", updated.Message);
+    }
+
+    private sealed class UnreachableSeerrClient : Deluno.Integrations.Seerr.ISeerrClient
+    {
+        public Task<Deluno.Connections.Contracts.SeerrTestResult> TestAsync(SeerrConnection connection, CancellationToken cancellationToken) => throw new NotSupportedException();
+
+        public Task<Deluno.Integrations.MediaServers.MediaServerAnswer<Deluno.Integrations.Seerr.SeerrLibrary>> ListRequestsAsync(SeerrConnection connection, CancellationToken cancellationToken) => throw new NotSupportedException();
+
+        public Task<Deluno.Integrations.MediaServers.MediaServerAnswer<Deluno.Integrations.Seerr.SeerrClearing>> ClearAsync(SeerrConnection connection, string mediaType, string? tmdbId, string? tvdbId, CancellationToken cancellationToken) => throw new NotSupportedException();
+
+        public Task<Deluno.Integrations.MediaServers.MediaServerAnswer<bool>> MarkAvailableAsync(SeerrConnection connection, int seerrMediaId, CancellationToken cancellationToken)
+            => Task.FromResult<Deluno.Integrations.MediaServers.MediaServerAnswer<bool>>(new Deluno.Integrations.MediaServers.MediaServerAnswer<bool>.Unreachable($"{connection.Name} is unreachable"));
+    }
+
     private sealed class RecordingSeerrClient : Deluno.Integrations.Seerr.ISeerrClient
     {
         public List<(string ConnectionId, int SeerrMediaId)> MarkedAvailable { get; } = [];
