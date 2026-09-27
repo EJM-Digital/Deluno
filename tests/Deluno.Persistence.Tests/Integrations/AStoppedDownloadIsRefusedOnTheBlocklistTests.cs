@@ -40,6 +40,9 @@ public sealed class AStoppedDownloadIsRefusedOnTheBlocklistTests
         Assert.Equal(ImportFailurePolicy.DownloadStalled, refused.ReasonCode);
         Assert.Equal(BlockedReleaseStates.Refused, refused.State);
         Assert.Equal("movie-arrival", refused.EntityId);
+        // #800: Deluno decided this on its own, from a health strike, not a
+        // person clicking Refuse.
+        Assert.Equal(BlockedReleaseOrigins.Automatic, refused.Origin);
         Assert.Equal("External qBittorrent showed it stalled or in error for an hour, so Deluno stopped waiting for it and will not pick it again.", refused.Reason);
         var keys = await world.Blocklist.ListKeysAsync(CancellationToken.None);
         Assert.Contains(BlockedReleaseKeys.For(Release, "Fixture"), keys);

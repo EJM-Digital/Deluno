@@ -77,6 +77,12 @@ export interface BlockedRelease {
    * identity across every indexer, whatever the refusal reason.
    */
   everyIndexer?: boolean;
+  /**
+   * Whether a person clicked Refuse (or removed a download from the Queue and
+   * said it failed) or Deluno decided this on its own (#800): "manual" or
+   * "automatic".
+   */
+  origin?: string;
 }
 
 export interface AcquisitionOverrideResponse {

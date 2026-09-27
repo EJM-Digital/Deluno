@@ -219,6 +219,72 @@ describe("the blocklist", () => {
     });
   });
 
+  /**
+   * #800: a person clicking Refuse and Deluno deciding on its own must not
+   * read the same, or the list is back to being silent about which one
+   * happened.
+   */
+  describe("who blocked it", () => {
+    it("says a person blocked a manually-refused release", () => {
+      render(<BlockedReleasesConsole {...schedules()} releases={[release({ origin: "manual" })]} rules={[]} onChanged={vi.fn()} />);
+
+      expect(screen.getByText("You blocked it")).toBeInTheDocument();
+      expect(screen.queryByText("Deluno blocked it")).not.toBeInTheDocument();
+    });
+
+    it("says Deluno blocked an automatic refusal", () => {
+      render(<BlockedReleasesConsole {...schedules()} releases={[release({ origin: "automatic" })]} rules={[]} onChanged={vi.fn()} />);
+
+      expect(screen.getByText("Deluno blocked it")).toBeInTheDocument();
+    });
+  });
+
+  /**
+   * The bulk half of "Clean up now" (#800): a single confirmation naming the
+   * count, then the same per-release cleanup for every refused release.
+   */
+  describe("cleaning up the whole blocklist", () => {
+    it("names how many releases will be cleaned up before doing it", async () => {
+      render(
+        <BlockedReleasesConsole
+          {...schedules()}
+          releases={[release(), release({ id: "block-2", releaseName: "Dune.2021.2160p" })]}
+          rules={[]}
+          onChanged={vi.fn()}
+        />
+      );
+
+      await userEvent.click(screen.getByRole("button", { name: /clean up all/i }));
+
+      expect(screen.getByText(/clears 2 refused releases/i)).toBeInTheDocument();
+      // Not yet sent: confirmation has not been given.
+      expect(authedFetch).not.toHaveBeenCalled();
+    });
+
+    it("runs the bulk route once confirmed, and reports what happened", async () => {
+      vi.mocked(authedFetch).mockResolvedValue({
+        ok: true,
+        json: async () => ({ cleared: 2, waitingOnSharing: 0, failed: 0 })
+      } as Response);
+      const onChanged = vi.fn();
+
+      render(<BlockedReleasesConsole {...schedules()} releases={[release()]} rules={[]} onChanged={onChanged} />);
+      await userEvent.click(screen.getByRole("button", { name: /clean up all/i }));
+      const dialog = screen.getByRole("dialog");
+      await userEvent.click(within(dialog).getByRole("button", { name: "Clean up all" }));
+
+      expect(authedFetch).toHaveBeenCalledWith("/api/blocked-releases/cleanup-all", { method: "POST" });
+      expect(toasts.success).toHaveBeenCalledWith(expect.stringContaining("Cleared 2 releases"));
+      expect(onChanged).toHaveBeenCalled();
+    });
+
+    it("does not offer a bulk clean up when nothing is refused", () => {
+      render(<BlockedReleasesConsole {...schedules()} releases={[]} rules={[]} onChanged={vi.fn()} />);
+
+      expect(screen.queryByRole("button", { name: /clean up all/i })).not.toBeInTheDocument();
+    });
+  });
+
   /// The rules are set once and then left alone; the list answers "why has my
   /// film not arrived". Seventeen rules above the list would bury it.
   it("keeps the rules folded away, and says how many you have changed", () => {

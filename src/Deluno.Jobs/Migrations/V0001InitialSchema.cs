@@ -39,7 +39,8 @@ public static class JobsDatabaseMigrations
         new V0031DispatchAlertResolution(),
         new V0032DispatchClientCompleted(),
         new V0033OrphanGrabRetryJobs(),
-        new V0034IntegrationCircuitEscalationLevel()
+        new V0034IntegrationCircuitEscalationLevel(),
+        new V0035BlockedReleaseOrigin()
     ];
 
     private sealed class V0001InitialSchema : SqliteSqlMigration

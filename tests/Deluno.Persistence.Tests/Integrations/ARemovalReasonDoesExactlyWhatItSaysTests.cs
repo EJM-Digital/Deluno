@@ -55,6 +55,9 @@ public sealed class ARemovalReasonDoesExactlyWhatItSaysTests
         Assert.Equal(ImportFailurePolicy.ManualFailure, refused.ReasonCode);
         Assert.Equal(BlockedReleaseStates.Refused, refused.State);
         Assert.Equal(world.EntityId, refused.EntityId);
+        // #800: a person chose "It's bad" from the Queue, so this is a manual
+        // block, the same origin as blocking a release straight from a search.
+        Assert.Equal(BlockedReleaseOrigins.Manual, refused.Origin);
         // #874: "It's bad" refuses the release from every indexer, not only
         // the one it was downloaded from.
         Assert.True(refused.EveryIndexer);
