@@ -84,7 +84,9 @@ public sealed class SqliteReleaseProfileRepository(
             request.MustNotContain,
             request.PreferredTerms,
             now,
-            now);
+            now,
+            request.Enabled ?? true,
+            request.IndexerIds);
 
         await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
             DelunoDatabaseNames.Platform,
@@ -95,12 +97,14 @@ public sealed class SqliteReleaseProfileRepository(
             INSERT INTO release_profiles (
                 id, name, tag_name, preferred_protocol, usenet_delay_minutes,
                 torrent_delay_minutes, must_contain, must_not_contain,
-                preferred_terms_json, created_utc, updated_utc
+                preferred_terms_json, created_utc, updated_utc,
+                enabled, indexer_ids_json
             )
             VALUES (
                 @id, @name, @tagName, @preferredProtocol, @usenetDelay,
                 @torrentDelay, @mustContain, @mustNotContain,
-                @preferredTerms, @createdUtc, @updatedUtc
+                @preferredTerms, @createdUtc, @updatedUtc,
+                @enabled, @indexerIds
             );
             """;
         Bind(command, item);
@@ -131,7 +135,9 @@ public sealed class SqliteReleaseProfileRepository(
             request.MustNotContain ?? existing.MustNotContain,
             request.PreferredTerms ?? existing.PreferredTerms,
             existing.CreatedUtc,
-            now);
+            now,
+            request.Enabled ?? existing.Enabled,
+            request.IndexerIds ?? existing.IndexerIds);
 
         await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
             DelunoDatabaseNames.Platform,
@@ -148,7 +154,9 @@ public sealed class SqliteReleaseProfileRepository(
                 must_contain = @mustContain,
                 must_not_contain = @mustNotContain,
                 preferred_terms_json = @preferredTerms,
-                updated_utc = @updatedUtc
+                updated_utc = @updatedUtc,
+                enabled = @enabled,
+                indexer_ids_json = @indexerIds
             WHERE id = @id;
             """;
         Bind(command, item);
@@ -168,7 +176,8 @@ public sealed class SqliteReleaseProfileRepository(
 
     private static readonly string SelectSql =
         "SELECT id, name, tag_name, preferred_protocol, usenet_delay_minutes, torrent_delay_minutes, "
-        + "must_contain, must_not_contain, preferred_terms_json, created_utc, updated_utc "
+        + "must_contain, must_not_contain, preferred_terms_json, created_utc, updated_utc, "
+        + "enabled, indexer_ids_json "
         + "FROM release_profiles";
 
     private static async Task<IReadOnlyList<ReleaseProfileItem>> ReadManyAsync(
@@ -192,6 +201,19 @@ public sealed class SqliteReleaseProfileRepository(
                 terms = [];
             }
 
+            IReadOnlyList<string> indexerIds;
+            try
+            {
+                indexerIds = JsonSerializer.Deserialize<List<string>>(
+                                 reader.IsDBNull(12) ? "[]" : reader.GetString(12),
+                                 JsonOptions)
+                             ?? [];
+            }
+            catch (JsonException)
+            {
+                indexerIds = [];
+            }
+
             items.Add(new ReleaseProfileItem(
                 reader.GetString(0),
                 reader.GetString(1),
@@ -203,7 +225,9 @@ public sealed class SqliteReleaseProfileRepository(
                 reader.GetString(7),
                 terms,
                 ParseTimestamp(reader.GetString(9)),
-                ParseTimestamp(reader.GetString(10))));
+                ParseTimestamp(reader.GetString(10)),
+                reader.GetInt32(11) != 0,
+                indexerIds));
         }
 
         return items;
@@ -220,7 +244,9 @@ public sealed class SqliteReleaseProfileRepository(
         string? mustNotContain,
         IReadOnlyList<ReleaseTermScore>? preferredTerms,
         DateTimeOffset createdUtc,
-        DateTimeOffset updatedUtc)
+        DateTimeOffset updatedUtc,
+        bool enabled,
+        IReadOnlyList<string>? indexerIds)
         => new(
             id,
             string.IsNullOrWhiteSpace(name) ? "Release profile" : name.Trim(),
@@ -232,7 +258,17 @@ public sealed class SqliteReleaseProfileRepository(
             NormalizeTerms(mustNotContain),
             NormalizePreferredTerms(preferredTerms),
             createdUtc,
-            updatedUtc);
+            updatedUtc,
+            enabled,
+            NormalizeIndexerIds(indexerIds));
+
+    private static IReadOnlyList<string> NormalizeIndexerIds(IReadOnlyList<string>? indexerIds)
+        => (indexerIds ?? [])
+            .Where(item => !string.IsNullOrWhiteSpace(item))
+            .Select(item => item.Trim())
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(item => item, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
 
     private static string NormalizeTagName(string? value) => value?.Trim() ?? string.Empty;
 
@@ -276,5 +312,7 @@ public sealed class SqliteReleaseProfileRepository(
         AddParameter(command, "@preferredTerms", JsonSerializer.Serialize(item.PreferredTerms, JsonOptions));
         AddParameter(command, "@createdUtc", item.CreatedUtc.ToString("O"));
         AddParameter(command, "@updatedUtc", item.UpdatedUtc.ToString("O"));
+        AddParameter(command, "@enabled", item.Enabled ? 1 : 0);
+        AddParameter(command, "@indexerIds", JsonSerializer.Serialize(item.IndexerIds, JsonOptions));
     }
 }

@@ -19,6 +19,7 @@ public sealed class ReleaseDecisionEngineTests
         IReadOnlyList<string>? allowedQualities = null,
         IReadOnlyList<ReleaseProfileItem>? releaseProfiles = null,
         string? indexerProtocol = null,
+        string? indexerId = null,
         double? releaseAgeHours = null,
         int? minimumAgeMinutes = null,
         int? retentionDays = null,
@@ -39,6 +40,7 @@ public sealed class ReleaseDecisionEngineTests
             AllowedQualities: allowedQualities,
             ReleaseProfiles: releaseProfiles,
             IndexerProtocol: indexerProtocol,
+            IndexerId: indexerId,
             ReleaseAgeHours: releaseAgeHours,
             MinimumAgeMinutes: minimumAgeMinutes,
             RetentionDays: retentionDays,
@@ -607,6 +609,37 @@ public sealed class ReleaseDecisionEngineTests
     }
 
     [Fact]
+    public void Decide_ignores_a_disabled_release_profile()
+    {
+        var decision = ReleaseDecisionEngine.Decide(GoodInput(
+            releaseName: "Movie.2024.1080p.WEB-DL.BADGROUP-GRP",
+            releaseProfiles: [Profile(mustNotContain: "BADGROUP", enabled: false)]));
+
+        Assert.NotEqual("rejected", decision.Status);
+        Assert.DoesNotContain(decision.RiskFlags, risk => risk.Contains("excluded term 'BADGROUP'", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void Decide_applies_an_indexer_scoped_profile_only_to_a_release_from_its_own_indexer()
+    {
+        var scoped = Profile(mustNotContain: "BADGROUP", indexerIds: ["indexer-a"]);
+
+        var fromScopedIndexer = ReleaseDecisionEngine.Decide(GoodInput(
+            releaseName: "Movie.2024.1080p.WEB-DL.BADGROUP-GRP",
+            releaseProfiles: [scoped],
+            indexerId: "indexer-a"));
+        Assert.Equal("rejected", fromScopedIndexer.Status);
+        Assert.Contains(fromScopedIndexer.RiskFlags, risk => risk.Contains("excluded term 'BADGROUP'", StringComparison.OrdinalIgnoreCase));
+
+        var fromOtherIndexer = ReleaseDecisionEngine.Decide(GoodInput(
+            releaseName: "Movie.2024.1080p.WEB-DL.BADGROUP-GRP",
+            releaseProfiles: [scoped],
+            indexerId: "indexer-b"));
+        Assert.NotEqual("rejected", fromOtherIndexer.Status);
+        Assert.DoesNotContain(fromOtherIndexer.RiskFlags, risk => risk.Contains("excluded term 'BADGROUP'", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
     public void Decide_holds_a_release_until_the_profile_delay_clears()
     {
         var decision = ReleaseDecisionEngine.Decide(GoodInput(
@@ -915,7 +948,9 @@ public sealed class ReleaseDecisionEngineTests
         int usenetDelayMinutes = 0,
         string mustContain = "",
         string mustNotContain = "",
-        IReadOnlyList<ReleaseTermScore>? preferredTerms = null)
+        IReadOnlyList<ReleaseTermScore>? preferredTerms = null,
+        bool enabled = true,
+        IReadOnlyList<string>? indexerIds = null)
         => new(
             Id: Guid.NewGuid().ToString("N"),
             Name: "Test profile",
@@ -927,5 +962,7 @@ public sealed class ReleaseDecisionEngineTests
             MustNotContain: mustNotContain,
             PreferredTerms: preferredTerms ?? [],
             CreatedUtc: DateTimeOffset.UnixEpoch,
-            UpdatedUtc: DateTimeOffset.UnixEpoch);
+            UpdatedUtc: DateTimeOffset.UnixEpoch,
+            Enabled: enabled,
+            IndexerIds: indexerIds ?? []);
 }

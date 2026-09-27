@@ -24,7 +24,14 @@ public sealed record ReleaseProfileItem(
     string MustNotContain,
     IReadOnlyList<ReleaseTermScore> PreferredTerms,
     DateTimeOffset CreatedUtc,
-    DateTimeOffset UpdatedUtc);
+    DateTimeOffset UpdatedUtc,
+    /// <summary>A disabled profile is skipped entirely during acquisition evaluation.</summary>
+    bool Enabled,
+    /// <summary>
+    /// Indexer ids this profile is scoped to. Empty means every indexer,
+    /// matching every profile's behaviour before scoping existed.
+    /// </summary>
+    IReadOnlyList<string> IndexerIds);
 
 public sealed record CreateReleaseProfileRequest(
     string? Name,
@@ -34,7 +41,9 @@ public sealed record CreateReleaseProfileRequest(
     int? TorrentDelayMinutes,
     string? MustContain,
     string? MustNotContain,
-    IReadOnlyList<ReleaseTermScore>? PreferredTerms);
+    IReadOnlyList<ReleaseTermScore>? PreferredTerms,
+    bool? Enabled = null,
+    IReadOnlyList<string>? IndexerIds = null);
 
 /// <summary>
 /// PUT is a full edit of the profile. Empty strings and an empty term list
@@ -49,7 +58,9 @@ public sealed record UpdateReleaseProfileRequest(
     int? TorrentDelayMinutes,
     string? MustContain,
     string? MustNotContain,
-    IReadOnlyList<ReleaseTermScore>? PreferredTerms);
+    IReadOnlyList<ReleaseTermScore>? PreferredTerms,
+    bool? Enabled = null,
+    IReadOnlyList<string>? IndexerIds = null);
 
 public static class AcquisitionSearchKinds
 {

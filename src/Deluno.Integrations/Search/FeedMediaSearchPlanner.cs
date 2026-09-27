@@ -942,6 +942,7 @@ public sealed class FeedMediaSearchPlanner(
                 UpgradeStop: upgradeStop,
                 ReleaseProfiles: releaseProfiles,
                 IndexerProtocol: indexer.Protocol,
+                IndexerId: indexer.Id,
                 ReleaseAgeHours: releaseAgeHours,
                 MinimumAgeMinutes: indexer.MinimumAgeMinutes,
                 RetentionDays: indexer.RetentionDays,

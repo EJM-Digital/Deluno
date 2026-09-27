@@ -27,11 +27,36 @@ public sealed record EffectiveReleaseProfileRules(
 
 public static class ReleaseProfileRuleEvaluator
 {
-    public static EffectiveReleaseProfileRules Combine(
-        IReadOnlyList<ReleaseProfileItem>? profiles,
-        string indexerProtocol)
+    /// <summary>
+    /// A disabled profile never applies, and a profile scoped to specific
+    /// indexers only applies to a release from one of them; an unscoped
+    /// (empty) list keeps applying everywhere, exactly as it always has (#770).
+    /// </summary>
+    public static bool AppliesToIndexer(ReleaseProfileItem profile, string? indexerId)
     {
-        if (profiles is not { Count: > 0 })
+        if (!profile.Enabled)
+        {
+            return false;
+        }
+
+        if (profile.IndexerIds is not { Count: > 0 } scopedIndexerIds)
+        {
+            return true;
+        }
+
+        return !string.IsNullOrWhiteSpace(indexerId)
+            && scopedIndexerIds.Contains(indexerId, StringComparer.OrdinalIgnoreCase);
+    }
+
+    public static EffectiveReleaseProfileRules Combine(
+        IReadOnlyList<ReleaseProfileItem>? allProfiles,
+        string indexerProtocol,
+        string? indexerId = null)
+    {
+        var profiles = (allProfiles ?? [])
+            .Where(profile => AppliesToIndexer(profile, indexerId))
+            .ToArray();
+        if (profiles is not { Length: > 0 })
         {
             return EffectiveReleaseProfileRules.Empty;
         }
