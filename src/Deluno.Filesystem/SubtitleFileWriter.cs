@@ -1,4 +1,7 @@
+using System.Text;
 using Deluno.Contracts;
+using Deluno.Filesystem.Subtitles;
+using Deluno.Platform.Data;
 using Microsoft.Extensions.Logging;
 
 namespace Deluno.Filesystem;
@@ -18,8 +21,18 @@ namespace Deluno.Filesystem;
 /// <c>.srt</c> is a file a player will happily open and show nothing from, and
 /// the scan would count it as held. The move is atomic on both filesystems
 /// Deluno supports.</para>
+///
+/// <para><b>Always forced to UTF-8, whatever a provider actually sent
+/// (#838).</b> Bazarr recommends this on and Deluno makes it the only
+/// behaviour rather than a toggle nobody would turn off: a provider that
+/// answers in Windows-1252 today can answer in UTF-8 tomorrow, and a player
+/// reading the wrong encoding turns curly quotes and accented names into
+/// mojibake with nothing on screen to say why.</para>
 /// </summary>
-public sealed class SubtitleFileWriter(ILogger<SubtitleFileWriter> logger) : ISubtitleFileWriter
+public sealed class SubtitleFileWriter(
+    ILogger<SubtitleFileWriter> logger,
+    IPlatformSettingsRepository platformSettingsRepository)
+    : ISubtitleFileWriter
 {
     public async Task<string> WriteAsync(
         string videoPath,
@@ -47,11 +60,35 @@ public sealed class SubtitleFileWriter(ILogger<SubtitleFileWriter> logger) : ISu
             directory, SubtitleFileNaming.For(videoPath, language, hearingImpaired, omitLanguageCode, forced));
         var temporary = target + ".partial";
 
-        await File.WriteAllBytesAsync(temporary, subtitle, cancellationToken);
+        await File.WriteAllBytesAsync(temporary, ToUtf8(subtitle), cancellationToken);
         File.Move(temporary, target, overwrite: true);
+
+        // Permissions after the write, not before: chmod on a path that does
+        // not exist yet is nothing, and the same rule an imported media file
+        // gets (#766) — one setting, read the same way everywhere it applies.
+        var settings = await platformSettingsRepository.GetAsync(cancellationToken);
+        await FilePermissions.ApplyAsync(target, settings, logger, cancellationToken);
 
         logger.LogInformation("Wrote a {Language} subtitle to {Path}.", language, target);
         return target;
+    }
+
+    /// <summary>
+    /// Reads the subtitle's actual encoding — UTF-8 with or without its BOM,
+    /// UTF-16, or Windows-1252 — and always returns UTF-8 without a BOM,
+    /// which is what every player Deluno targets expects an <c>.srt</c> to be.
+    /// A no-op for a subtitle that was already plain UTF-8, so this never
+    /// changes bytes that were already correct.
+    /// </summary>
+    private static byte[] ToUtf8(byte[] subtitle)
+    {
+        if (subtitle.Length == 0)
+        {
+            return subtitle;
+        }
+
+        var text = SubtitleTimeline.Decode(subtitle);
+        return new UTF8Encoding(encoderShouldEmitUTF8Identifier: false).GetBytes(text);
     }
 }
 

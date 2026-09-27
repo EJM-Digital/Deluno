@@ -156,4 +156,22 @@ describe("Subtitle languages: per-language hearing-impaired preference (#836)", 
     const body = JSON.parse((call![1] as RequestInit).body as string);
     expect(body.languageTypePreferences).toEqual([{ language: "en", hearingImpaired: "plain-preferred", includeForced: true }]);
   });
+
+  it("names the configured chmod when Set Permissions is on (#838)", async () => {
+    Object.assign(loaderData, {
+      ...libraryLoaderData,
+      settings: { ...emptyPlatformSettingsSnapshot, setPermissionsOnImport: true, folderChmod: "755" }
+    });
+
+    render(
+      <MemoryRouter>
+        <SubtitleLanguagesPage />
+      </MemoryRouter>
+    );
+
+    fireEvent.click(screen.getByRole("row", { name: /Movies/ }));
+    expect(screen.getByText((_, element) =>
+      element?.tagName === "P" && /Set Permissions.*chmod \(755\)/.test(element.textContent ?? "")
+    )).toBeInTheDocument();
+  });
 });

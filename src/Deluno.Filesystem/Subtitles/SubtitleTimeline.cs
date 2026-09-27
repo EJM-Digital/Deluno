@@ -266,7 +266,15 @@ public static class SubtitleTimeline
         return true;
     }
 
-    private static string Decode(byte[] bytes)
+    /// <summary>
+    /// Reads a subtitle's bytes as text, whatever encoding they were written
+    /// in — UTF-8 with or without its BOM, UTF-16 either way round, or the
+    /// Windows-1252 a great many older <c>.srt</c> files are actually in.
+    /// Internal rather than private so <see cref="SubtitleFileWriter"/> can
+    /// use the same detection when forcing a written subtitle to UTF-8
+    /// (#838), rather than a second copy of this table disagreeing with it.
+    /// </summary>
+    internal static string Decode(byte[] bytes)
     {
         if (bytes.Length >= 3 && bytes[0] == 0xEF && bytes[1] == 0xBB && bytes[2] == 0xBF)
         {
