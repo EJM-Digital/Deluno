@@ -418,6 +418,7 @@ POST /api/seerr-servers/
 POST /api/seerr-servers/test
 POST /api/seerr-servers/{id}/test
 POST /api/seerr-servers/{id}/webhook
+POST /api/seerr-servers/{id}/webhook-secret
 POST /api/series/
 POST /api/series/bulk
 POST /api/series/bulk/quality-profile
