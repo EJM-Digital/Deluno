@@ -36,6 +36,14 @@ public class NotificationPreferences
     public bool AddedEnabled { get; set; } = false;
     public bool UpdateEnabled { get; set; } = false;
 
+    // Deluno's own recovery/cleanup actions (#858): each already lands in
+    // Activity; these gate the same actions reaching the outbound path too.
+    // Off by default, matching the conservative default for every other
+    // automation-triggered toggle.
+    public bool StalledDownloadHandledEnabled { get; set; } = false;
+    public bool QueueItemRemovedEnabled { get; set; } = false;
+    public bool OrphanedDownloadRemovedEnabled { get; set; } = false;
+
     // Delivery methods
     public bool InAppNotificationsEnabled { get; set; } = true;
     public bool EmailNotificationsEnabled { get; set; } = false;

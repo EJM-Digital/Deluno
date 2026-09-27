@@ -1,5 +1,6 @@
 using Deluno.Jobs.Data;
 using Deluno.Libraries.Data;
+using Deluno.Notifications;
 using Deluno.Platform.Data;
 using Microsoft.Extensions.Logging;
 
@@ -37,7 +38,9 @@ public sealed class OrphanedDownloadService(
     IKeptDownloadsRepository keptDownloadsRepository,
     IActivityFeedRepository activityFeedRepository,
     TimeProvider timeProvider,
-    ILogger<OrphanedDownloadService> logger)
+    ILogger<OrphanedDownloadService> logger,
+    IOutboundNotificationService? outboundNotificationService = null,
+    INotificationService? notificationPreferences = null)
     : IOrphanedDownloadService
 {
     public async Task<IReadOnlyList<OrphanedDownloadItem>> ListAsync(CancellationToken cancellationToken)
@@ -147,14 +150,34 @@ public sealed class OrphanedDownloadService(
         }
 
         var noticeSuffix = reason is { Length: > 0 } ? $", {reason}." : ".";
+        var message = $"{item.Name} was removed from {item.LibraryName}'s download folder ({FormatSize(item.SizeBytes)}). No client, import or hand-off was using it{noticeSuffix}";
         await activityFeedRepository.RecordActivityAsync(
             "download.orphan.removed",
-            $"{item.Name} was removed from {item.LibraryName}'s download folder ({FormatSize(item.SizeBytes)}). No client, import or hand-off was using it{noticeSuffix}",
+            message,
             null,
             null,
             "library",
             item.LibraryId,
             cancellationToken);
+
+        // Deluno's own recovery/cleanup actions get an outbound category too
+        // (#858), not just an Activity entry. Never lets a misconfigured
+        // webhook affect the cleanup itself.
+        if (outboundNotificationService is not null)
+        {
+            var enabled = notificationPreferences is null ||
+                (await notificationPreferences.GetPreferencesAsync(cancellationToken)).OrphanedDownloadRemovedEnabled;
+            if (enabled)
+            {
+                await outboundNotificationService.DispatchAsync(
+                    "download.orphan.removed",
+                    $"Orphaned download removed: {item.Name}",
+                    message,
+                    null,
+                    cancellationToken);
+            }
+        }
+
         return new OrphanedDownloadAction(true, $"Removed {item.Name}.");
     }
 
