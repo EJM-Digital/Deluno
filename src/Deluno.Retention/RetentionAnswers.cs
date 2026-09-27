@@ -60,13 +60,16 @@ public sealed class RetentionDiskSpace : IRetentionDiskSpace
 
 /// <summary>Answers the rule fields that are not library filters.</summary>
 /// <param name="seerr">Every connected Seerr server's requests; null when none is connected.</param>
+/// <param name="qualityRanks">Quality tier name to rank, for <c>part.qualityRank</c> (#834). Empty when the model could not be read.</param>
 public sealed class RetentionFieldAnswers(
     IReadOnlyList<RetentionServerIndex> servers,
     IRetentionDiskSpace disk,
     DateTimeOffset now,
-    RetentionSeerrIndex? seerr = null)
+    RetentionSeerrIndex? seerr = null,
+    IReadOnlyDictionary<string, int>? qualityRanks = null)
 {
     private readonly Dictionary<string, (long FreeBytes, long TotalBytes)?> _drives = new(StringComparer.OrdinalIgnoreCase);
+    private readonly IReadOnlyDictionary<string, int> _qualityRanks = qualityRanks ?? new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
 
     public RetentionAnswer Answer(RetentionUnit unit, RetentionFieldDefinition field, string op, string? value)
         => field.Source switch
@@ -104,7 +107,12 @@ public sealed class RetentionFieldAnswers(
                     return RetentionAnswer.CannotSay($"{field.Label}: {where} could not be asked for its watchlist.");
                 }
 
-                var people = Users(field.Id, matches);
+                if (IsSinceAdded(field.Id) && unit.AddedUtc is null)
+                {
+                    return RetentionAnswer.CannotSay($"{field.Label}: Deluno does not know when it was added.");
+                }
+
+                var people = Users(field.Id, matches, IsSinceAdded(field.Id) ? unit.AddedUtc : null);
                 var everyone = matches.SelectMany(match => match.Users).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
                 // "Watched by nobody" needs no ": nobody" after it.
                 var said = people.Count == 0 ? (op == RetentionOperators.Nobody ? string.Empty : ": nobody") : $": {string.Join(", ", people)}";
@@ -137,17 +145,26 @@ public sealed class RetentionFieldAnswers(
         }
     }
 
-    private static IReadOnlyList<string> Users(string fieldId, IReadOnlyList<RetentionServerMatch> matches)
+    /// <summary>A field a rule can ask "since added" instead of all-time (#834).</summary>
+    private static bool IsSinceAdded(string fieldId) => fieldId.EndsWith("SinceAdded", StringComparison.Ordinal);
+
+    /// <param name="sinceAdded">
+    /// Set only for the *SinceAdded fields: a play only counts if it happened
+    /// after this. Null means every play counts, same as the all-time field.
+    /// </param>
+    private static IReadOnlyList<string> Users(string fieldId, IReadOnlyList<RetentionServerMatch> matches, DateTimeOffset? sinceAdded = null)
     {
+        bool Counts(MediaServerViewer viewer) => sinceAdded is null || (viewer.LastPlayedUtc is { } when && when > sinceAdded);
+
         IEnumerable<string> people = fieldId switch
         {
-            "server.watchedBy" => matches.SelectMany(match => match.Item.Viewers.Where(viewer => viewer.Played).Select(viewer => viewer.User)),
+            "server.watchedBy" or "server.watchedBySinceAdded" => matches.SelectMany(match => match.Item.Viewers.Where(viewer => viewer.Played && Counts(viewer)).Select(viewer => viewer.User)),
             "server.favouritedBy" => matches.SelectMany(match => match.Item.Viewers.Where(viewer => viewer.Favourite == true).Select(viewer => viewer.User)),
             "server.watchlistedBy" => matches.SelectMany(match => match.Item.WatchlistedBy ?? []),
-            "server.watchers" => matches.SelectMany(match => match.Episodes.SelectMany(episode => episode.Viewers.Where(viewer => viewer.Played).Select(viewer => viewer.User))),
-            "server.allEpisodesSeenBy" => matches.SelectMany(match => match.Users.Where(user =>
+            "server.watchers" or "server.watchersSinceAdded" => matches.SelectMany(match => match.Episodes.SelectMany(episode => episode.Viewers.Where(viewer => viewer.Played && Counts(viewer)).Select(viewer => viewer.User))),
+            "server.allEpisodesSeenBy" or "server.allEpisodesSeenBySinceAdded" => matches.SelectMany(match => match.Users.Where(user =>
                 match.Episodes.Count > 0 &&
-                match.Episodes.All(episode => episode.Viewers.Any(viewer => viewer.Played && string.Equals(viewer.User, user, StringComparison.OrdinalIgnoreCase))))),
+                match.Episodes.All(episode => episode.Viewers.Any(viewer => viewer.Played && Counts(viewer) && string.Equals(viewer.User, user, StringComparison.OrdinalIgnoreCase))))),
             _ => []
         };
         return people.Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
@@ -171,7 +188,11 @@ public sealed class RetentionFieldAnswers(
     {
         IEnumerable<DateTimeOffset?> dates = fieldId switch
         {
-            "server.lastViewed" => matches.SelectMany(match => match.Item.Viewers.Concat(match.Episodes.SelectMany(episode => episode.Viewers)).Select(viewer => viewer.LastPlayedUtc)
+            // Finished only: a play attempt that was never completed does not count.
+            "server.lastViewed" => matches.SelectMany(match => match.Item.Viewers.Where(viewer => viewer.Played).Concat(match.Episodes.SelectMany(episode => episode.Viewers.Where(viewer => viewer.Played))).Select(viewer => viewer.LastPlayedUtc)
+                .Append(match.Item.Watch.PlayedByAnyone ? match.Item.Watch.LastPlayedUtc : null)),
+            // Finished or not: whoever last touched it at all, including an unfinished attempt.
+            "server.lastPlayed" => matches.SelectMany(match => match.Item.Viewers.Concat(match.Episodes.SelectMany(episode => episode.Viewers)).Select(viewer => viewer.LastPlayedUtc)
                 .Append(match.Item.Watch.LastPlayedUtc)),
             "server.newestEpisodeViewed" => matches.SelectMany(match => match.Episodes.SelectMany(episode => episode.Viewers).Select(viewer => viewer.LastPlayedUtc)),
             // The earliest a server saw it: it has been there since then.
@@ -313,12 +334,19 @@ public sealed class RetentionFieldAnswers(
             "part.airDate" => Holds(Date(op, value, part.AirDate), $"{phrase}: {part.AirDate?.ToString("d MMM yyyy", CultureInfo.InvariantCulture) ?? "not known"}"),
             "part.imported" => Holds(Date(op, value, part.Imported), $"{phrase}: {part.Imported?.ToString("d MMM yyyy", CultureInfo.InvariantCulture) ?? "not known"}"),
             "part.quality" => Holds(Text(op, value, part.Quality), $"{phrase}: {part.Quality ?? "not known"}"),
+            "part.qualityRank" => QualityRank(part.Quality) is { } rank
+                ? Holds(Number(op, value, rank, 1), $"{phrase}: {rank.ToString(CultureInfo.InvariantCulture)}")
+                : RetentionAnswer.CannotSay($"{field.Label}: not known."),
             "part.path" => Holds(Text(op, value, part.Path), $"{phrase}: {part.Path ?? "not known"}"),
             "part.cutoffMet" => part.CutoffMet is { } met ? Holds(Boolean(value, met), $"{phrase}: {(met ? "yes" : "no")}") : RetentionAnswer.CannotSay($"{field.Label}: not known."),
             "part.monitored" => part.Monitored is { } monitored ? Holds(Boolean(value, monitored), $"{phrase}: {(monitored ? "yes" : "no")}") : RetentionAnswer.CannotSay($"{field.Label}: not known."),
             _ => RetentionAnswer.CannotSay($"{field.Label} is not something Deluno can answer.")
         };
     }
+
+    /// <summary>The quality model's rank for a tier name, so a rule can threshold on it numerically (#834).</summary>
+    private int? QualityRank(string? quality)
+        => quality is not null && _qualityRanks.TryGetValue(quality, out var rank) ? rank : null;
 
     // -------------------------------------------------------------- operators
     private const long GigaByte = 1L << 30;

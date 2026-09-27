@@ -3,6 +3,7 @@ using Deluno.Connections.Contracts;
 using Deluno.Connections.Data;
 using Deluno.Contracts;
 using Deluno.Integrations.MediaServers;
+using Deluno.Quality;
 
 namespace Deluno.Retention;
 
@@ -67,7 +68,8 @@ public sealed class RetentionEvaluator(
     IMediaServerClientRegistry clients,
     IRetentionDiskSpace disk,
     IRetentionSeerr seerr,
-    TimeProvider timeProvider)
+    TimeProvider timeProvider,
+    IQualityModelService? qualityModel = null)
 {
     /// <param name="seerrServers">Enabled Seerr servers; null when the caller does not know, and request fields are not checked for one.</param>
     public static IReadOnlyList<string> Validate(SaveRetentionRuleRequest request, IReadOnlyList<MediaServerConnection> servers, int? seerrServers = null)
@@ -219,7 +221,10 @@ public sealed class RetentionEvaluator(
         }
 
         var all = await units.ReadAsync(level, cancellationToken);
-        var answers = new RetentionFieldAnswers(indexes, disk, timeProvider.GetUtcNow(), requests);
+        var qualityRanks = qualityModel is null
+            ? null
+            : (await qualityModel.GetAsync(cancellationToken)).Tiers.ToDictionary(tier => tier.Name, tier => tier.Rank, StringComparer.OrdinalIgnoreCase);
+        var answers = new RetentionFieldAnswers(indexes, disk, timeProvider.GetUtcNow(), requests, qualityRanks);
 
         // Library filter conditions are asked of the catalogue once each; a
         // season or episode carries its show's answer.

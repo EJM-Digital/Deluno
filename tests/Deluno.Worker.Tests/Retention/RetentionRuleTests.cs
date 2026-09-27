@@ -13,6 +13,7 @@ using Deluno.Movies.Contracts;
 using Deluno.Movies.Data;
 using Deluno.Notifications;
 using Deluno.Platform;
+using Deluno.Quality;
 using Deluno.Retention;
 using Deluno.Series.Contracts;
 using Deluno.Series.Data;
@@ -44,6 +45,7 @@ public sealed class RetentionRuleTests
     private readonly Mock<IRecycleBinService> _recycleBin = new();
     private readonly FakeDisk _disk = new();
     private readonly FakeRetentionSeerr _seerr = new();
+    private readonly Mock<IQualityModelService> _qualityModel = new();
     private readonly List<MovieListItem> _catalogue = [];
     private readonly MediaServerConnection _server = new("server-1", "jellyfin", "Rig lab Jellyfin", "http://127.0.0.1:8096", "key", true, "healthy", null, null, null, "WIN-RIG", "id", Now, Now);
 
@@ -64,6 +66,11 @@ public sealed class RetentionRuleTests
             .ReturnsAsync((string id, CancellationToken _) => _catalogue.FirstOrDefault(movie => movie.Id == id));
         _movies.Setup(repo => repo.DeleteAsync(It.IsAny<string>(), It.IsAny<CancellationToken>())).ReturnsAsync(true);
         _servers.Setup(repo => repo.ListAsync(It.IsAny<CancellationToken>())).ReturnsAsync([_server]);
+        _qualityModel.Setup(service => service.GetAsync(It.IsAny<CancellationToken>())).ReturnsAsync(new QualityModelSnapshot(
+            "quality-model/v2",
+            [new QualityTierDefinition("SD", 1, 0, 2, 0, 400, 100), new QualityTierDefinition("HD-1080p", 5, 4, 12, 800, 3000, 100)],
+            new QualityUpgradeStopPolicy(true, false),
+            Now));
         _jellyfin.SetupGet(client => client.Kind).Returns("jellyfin");
         _recycleBin.Setup(bin => bin.MoveAsync(It.IsAny<IReadOnlyList<TrackedLibraryFile>>(), It.IsAny<IReadOnlyList<LibraryItem>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new RecycleBinMoveResult(1, 1, [], []));
@@ -158,7 +165,7 @@ public sealed class RetentionRuleTests
 
         var never = Assert.Single(evaluation.Matched);
         Assert.Equal("m1", never.EntityId);
-        Assert.Equal(["Last viewed: never"], never.Reasons);
+        Assert.Equal(["Last viewed (finished): never"], never.Reasons);
         Assert.Equal("m3", Assert.Single(evaluation.Candidates, item => item.Outcome == RetentionItemOutcomes.Undecided).EntityId);
     }
 
@@ -527,7 +534,8 @@ public sealed class RetentionRuleTests
             new MediaServerClientRegistry([_jellyfin.Object]),
             _disk,
             _seerr,
-            _clock);
+            _clock,
+            _qualityModel.Object);
 
     private RetentionService Service()
     {

@@ -43,7 +43,14 @@ public sealed record RetentionUnit(
     long? SizeBytes,
     IReadOnlyList<string> Paths,
     IReadOnlyList<string> LibraryRoots,
-    RetentionPartFacts? Part = null)
+    RetentionPartFacts? Part = null,
+    /// <summary>
+    /// When it joined Deluno (a season or episode carries its show's date, the
+    /// same inheritance every other show-level field uses). Feeds the
+    /// *SinceAdded server fields (#834): activity only counts once it is set
+    /// and falls after this.
+    /// </summary>
+    DateTimeOffset? AddedUtc = null)
 {
     /// <summary>The movie or show the catalogue answers for.</summary>
     public string CatalogueId => ShowId ?? EntityId;
@@ -122,7 +129,8 @@ public sealed class RetentionUnitReader(
                     RetentionLevels.Movie, item.Id, null, null, null, item.Title, item.Title, item.ReleaseYear, item.ImdbId,
                     Tmdb(item.MetadataProvider, item.MetadataProviderId), null, item.FileSizeBytes,
                     held.Select(file => file.Path).ToArray(),
-                    RootsOf(held.Select(file => file.LibraryId), roots)));
+                    RootsOf(held.Select(file => file.LibraryId), roots),
+                    AddedUtc: item.CreatedUtc));
             }
 
             token = page.HasMore ? page.NextPageToken : null;
@@ -159,7 +167,8 @@ public sealed class RetentionUnitReader(
                 {
                     units.Add(new RetentionUnit(
                         RetentionLevels.Show, show.Id, null, null, null, show.Title, show.Title, show.StartYear, show.ImdbId, tmdb, null,
-                        show.FileSizeBytes, held.Select(file => file.File.FilePath).ToArray(), showRoots));
+                        show.FileSizeBytes, held.Select(file => file.File.FilePath).ToArray(), showRoots,
+                        AddedUtc: show.CreatedUtc));
                     continue;
                 }
 
@@ -188,7 +197,8 @@ public sealed class RetentionUnitReader(
                             new RetentionPartFacts(
                                 season.Key == latestSeason, Unaired(season.Key), episodeIds.Length, null,
                                 season.Select(file => file.File.ImportedUtc).Where(when => when is not null).Max(),
-                                null, null, null, null, episodeIds)));
+                                null, null, null, null, episodeIds),
+                            AddedUtc: show.CreatedUtc));
                     }
 
                     continue;
@@ -206,7 +216,8 @@ public sealed class RetentionUnitReader(
                         file.File.FileSizeBytes, [file.File.FilePath], showRoots,
                         new RetentionPartFacts(
                             season == latestSeason, Unaired(season), 1, episode?.AirDateUtc, file.File.ImportedUtc,
-                            episode?.CurrentQuality, episode?.QualityCutoffMet, episode?.Monitored, file.File.FilePath, [file.File.EpisodeId!])));
+                            episode?.CurrentQuality, episode?.QualityCutoffMet, episode?.Monitored, file.File.FilePath, [file.File.EpisodeId!]),
+                        AddedUtc: show.CreatedUtc));
                 }
             }
 
