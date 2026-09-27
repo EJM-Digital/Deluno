@@ -100,6 +100,7 @@ public static class DelunoApiExtensions
         endpoints.MapDelunoBlockedReleaseEndpoints();
         endpoints.MapDelunoImportFailureRuleEndpoints();
         endpoints.MapDelunoIndexerHistoryEndpoints();
+        endpoints.MapDelunoSubtitleWantedEndpoints();
 
         return endpoints;
     }

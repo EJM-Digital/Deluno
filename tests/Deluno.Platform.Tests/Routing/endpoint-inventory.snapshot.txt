@@ -225,6 +225,7 @@ GET /api/sharing-rules/
 GET /api/stats
 GET /api/subtitle-languages
 GET /api/subtitle-providers/
+GET /api/subtitles/wanted
 GET /api/system/bundled-components
 GET /api/system/connectivity
 GET /api/system/health/
@@ -465,6 +466,7 @@ POST /api/series/{id}/seasons/{seasonNumber:int}/search
 POST /api/setup/completed
 POST /api/sharing-rules/
 POST /api/subtitle-providers/{key}/test
+POST /api/subtitles/wanted/search-all
 POST /api/system/health/{id}/snooze
 POST /api/system/health/{id}/unsnooze
 POST /api/system/lan-access/allow
