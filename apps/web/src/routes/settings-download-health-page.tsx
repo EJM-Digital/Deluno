@@ -130,6 +130,51 @@ function DryRunCard({ settings }: { settings: PlatformSettingsSnapshot }) {
   );
 }
 
+/**
+ * #825: independent of any rule's own timer - a download can go this long
+ * without a fresh strike before its count clears entirely, rather than the
+ * spell continuing forever at whatever pace it last accrued at.
+ */
+function StrikeInactivityCard({ settings }: { settings: PlatformSettingsSnapshot }) {
+  const mutation = useApiMutation<PlatformSettingsPatch, PlatformSettingsSnapshot>("/api/settings", "PATCH");
+  const [hours, setHours] = useState(String(settings.downloadHealthStrikeInactivityHours));
+  const [saveState, setSaveState] = useState<"idle" | "saving" | "saved" | "error">("idle");
+  const [error, setError] = useState<string | null>(null);
+  const dirty = hours !== String(settings.downloadHealthStrikeInactivityHours);
+
+  async function save() {
+    const value = Number(hours);
+    if (!Number.isFinite(value) || value < 1 || value > 720) {
+      setError("Must be between 1 and 720 hours.");
+      return;
+    }
+    setError(null);
+    setSaveState("saving");
+    try {
+      const next = await mutation.mutate({ downloadHealthStrikeInactivityHours: value });
+      setHours(String(next.downloadHealthStrikeInactivityHours));
+      setSaveState("saved");
+    } catch {
+      setSaveState("error");
+    }
+  }
+
+  return (
+    <ListCard title="Strike inactivity window" count="When a quiet download's strikes clear entirely">
+      <div className="grid gap-[var(--grid-gap)] p-[var(--card-pad-x)] sm:grid-cols-[1fr_auto] sm:items-end">
+        <Field label="Clear strikes after this long without a new one" error={error ?? undefined} help="Separate from any rule's own timer - a download that goes this long without tripping any rule again starts from zero.">
+          <div className="flex items-center gap-2">
+            <Input type="number" min="1" max="720" step="1" value={hours} onChange={(event) => setHours(event.target.value)} className="max-w-[8rem]" />
+            <span className="shrink-0 text-[length:var(--type-body-sm)] text-muted-foreground">hours</span>
+          </div>
+        </Field>
+        <Button type="button" size="sm" onClick={() => void save()} disabled={!dirty || saveState === "saving"}>Save</Button>
+      </div>
+      {saveState === "error" ? <p className="px-[var(--card-pad-x)] pb-[var(--card-pad-x)] text-[length:var(--type-caption)] text-destructive">Could not save. Try again.</p> : null}
+    </ListCard>
+  );
+}
+
 interface RuleForm {
   kind: string;
   enabled: boolean;
@@ -422,6 +467,8 @@ export function SettingsDownloadHealthPage() {
       </ListCard>
 
       <DryRunCard settings={settings} />
+
+      <StrikeInactivityCard settings={settings} />
 
       <ListCard title="Strikes">
         <div className="grid gap-[var(--grid-gap)] p-[var(--card-pad-x)] sm:grid-cols-[1fr_auto] sm:items-center">
