@@ -217,7 +217,7 @@ public sealed class ClearingRefusedDownloadsTests
         var settings = new Mock<IPlatformSettingsRepository>();
         settings.Setup(repository => repository.GetAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(new PlatformSettingsSnapshot(
-                "Deluno", null, null, null, null, false, false, false, false, false, false,
+                "Deluno", null, null, null, null, false, false, false, false, false,
                 "{Movie Title} ({Year})", "{Series Title}", "{Movie Title} ({Year}) [{Quality}]", "{Series Title} - {Episode}",
                 "0.0.0.0", 8080, "", false, "system", "grid", "grid", false, false, "AU", "en", "prefer-tmdb", "", false, false, false,
                 "", "balanced", 30, DateTimeOffset.UnixEpoch,
