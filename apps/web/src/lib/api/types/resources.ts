@@ -688,6 +688,8 @@ export interface ReleaseProfileItem {
   preferredTerms: ReleaseTermScore[];
   createdUtc: string;
   updatedUtc: string;
+  enabled: boolean;
+  indexerIds: string[];
 }
 
 export interface IndexerScoreboardRow {

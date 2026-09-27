@@ -44,7 +44,8 @@ public static partial class ReleaseDecisionEngine
         var delayed = false;
         var profileRules = ReleaseProfileRuleEvaluator.Combine(
             input.ReleaseProfiles,
-            input.IndexerProtocol ?? "torznab");
+            input.IndexerProtocol ?? "torznab",
+            input.IndexerId);
 
         if (string.IsNullOrWhiteSpace(input.DownloadUrl))
         {
@@ -926,6 +927,7 @@ public sealed record ReleaseDecisionInput(
     QualityUpgradeStopPolicy? UpgradeStop = null,
     IReadOnlyList<ReleaseProfileItem>? ReleaseProfiles = null,
     string? IndexerProtocol = null,
+    string? IndexerId = null,
     double? ReleaseAgeHours = null,
     int? MinimumAgeMinutes = null,
     int? RetentionDays = null,

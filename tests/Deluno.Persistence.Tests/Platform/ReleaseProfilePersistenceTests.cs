@@ -90,6 +90,49 @@ public sealed class ReleaseProfilePersistenceTests
     }
 
     [Fact]
+    public async Task Release_profiles_default_to_enabled_and_every_indexer_then_round_trip_a_narrower_scope()
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-01-01T00:00:00Z"));
+        await new PlatformSchemaInitializer(
+            storage.Factory,
+            new SqliteDatabaseMigrator(storage.Factory, timeProvider),
+            NullLogger<PlatformSchemaInitializer>.Instance).StartAsync(CancellationToken.None);
+
+        var repository = new SqliteReleaseProfileRepository(storage.Factory, timeProvider);
+        var created = await repository.CreateAsync(
+            new CreateReleaseProfileRequest("Rule", "Archive", "any", 0, 0, "", "", []),
+            CancellationToken.None);
+
+        Assert.True(created.Enabled);
+        Assert.Empty(created.IndexerIds);
+
+        var scoped = await repository.UpdateAsync(
+            created.Id,
+            new UpdateReleaseProfileRequest(
+                Name: null,
+                TagName: null,
+                PreferredProtocol: null,
+                UsenetDelayMinutes: null,
+                TorrentDelayMinutes: null,
+                MustContain: null,
+                MustNotContain: null,
+                PreferredTerms: null,
+                Enabled: false,
+                IndexerIds: ["indexer-b", "indexer-a"]),
+            CancellationToken.None);
+
+        Assert.NotNull(scoped);
+        Assert.False(scoped.Enabled);
+        Assert.Equal(["indexer-a", "indexer-b"], scoped.IndexerIds);
+
+        var reloaded = await repository.GetAsync(created.Id, CancellationToken.None);
+        Assert.NotNull(reloaded);
+        Assert.False(reloaded.Enabled);
+        Assert.Equal(["indexer-a", "indexer-b"], reloaded.IndexerIds);
+    }
+
+    [Fact]
     public async Task Release_profiles_reject_duplicate_tag_names_at_the_database_boundary()
     {
         using var storage = TestStorage.Create();

@@ -9,6 +9,7 @@
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { useLoaderData, useRevalidator } from "react-router-dom";
 import { Button } from "../components/ui/button";
+import { Checkbox } from "../components/ui/checkbox";
 import { ConfirmDialog } from "../components/ui/confirm-dialog";
 import { Disclosure } from "../components/ui/disclosure";
 import { Drawer, DrawerDanger, DrawerFooter, DrawerSection, type DrawerSaveState } from "../components/ui/drawer";
@@ -17,18 +18,20 @@ import { Input } from "../components/ui/input";
 import { ListCard, ListCell, ListEmpty, ListNameCell, ListRow, ListTable } from "../components/ui/list-card";
 import { PageToolbar, PageToolbarAction } from "../components/ui/page-toolbar";
 import { Select } from "../components/ui/select";
+import { SwitchRow } from "../components/ui/switch";
 import { Textarea } from "../components/ui/textarea";
 import { configurationNavAreas } from "../components/app/settings-shell";
 import { toast } from "../components/shell/toaster";
 import { useUnsavedChanges } from "../hooks/use-unsaved-changes";
 import { authedFetch } from "../lib/use-auth";
-import { fetchJson, type ReleaseProfileItem, type ReleaseTermScore } from "../lib/api";
+import { fetchJson, type IndexerItem, type ReleaseProfileItem, type ReleaseTermScore } from "../lib/api";
 import { resolveDrawerSaveState, shouldClearSaveState } from "../lib/drawer-save-state";
 
 const TABS = configurationNavAreas.find((area) => area.label === "Quality & Release")?.items ?? [];
 
 interface LoaderData {
   profiles: ReleaseProfileItem[];
+  indexers: IndexerItem[];
 }
 
 interface ProfileForm {
@@ -40,16 +43,22 @@ interface ProfileForm {
   mustContain: string;
   mustNotContain: string;
   preferredTerms: string;
+  enabled: boolean;
+  indexerIds: string[];
 }
 
 type DrawerMode = { kind: "closed" } | { kind: "create" } | { kind: "edit"; id: string };
 
 export async function settingsReleaseRulesLoader(): Promise<LoaderData> {
-  return { profiles: await fetchJson<ReleaseProfileItem[]>("/api/release-profiles") };
+  const [profiles, indexers] = await Promise.all([
+    fetchJson<ReleaseProfileItem[]>("/api/release-profiles"),
+    fetchJson<IndexerItem[]>("/api/indexers")
+  ]);
+  return { profiles, indexers };
 }
 
 export function SettingsReleaseRulesPage() {
-  const { profiles } = useLoaderData() as LoaderData;
+  const { profiles, indexers } = useLoaderData() as LoaderData;
   const revalidator = useRevalidator();
   const [mode, setMode] = useState<DrawerMode>({ kind: "closed" });
   const [form, setForm] = useState<ProfileForm>(emptyForm());
@@ -116,7 +125,9 @@ export function SettingsReleaseRulesPage() {
         torrentDelayMinutes: Number(form.torrentDelayMinutes || 0),
         mustContain: form.mustContain.trim(),
         mustNotContain: form.mustNotContain.trim(),
-        preferredTerms: parsePreferredTerms(form.preferredTerms)
+        preferredTerms: parsePreferredTerms(form.preferredTerms),
+        enabled: form.enabled,
+        indexerIds: form.indexerIds
       });
       const response = await authedFetch(
         mode.kind === "edit" ? `/api/release-profiles/${mode.id}` : "/api/release-profiles",
@@ -184,8 +195,8 @@ export function SettingsReleaseRulesPage() {
           >
             {sorted.map((profile) => (
               <ListRow key={profile.id} onClick={() => openProfile(profile)} selected={mode.kind === "edit" && mode.id === profile.id}>
-                <ListNameCell name={profile.name} sub={profile.tagName ? "Tag profile" : "Global profile"} />
-                <ListCell primary={profile.tagName || "Every title"} secondary={profile.tagName ? "Matching title tag" : "No tag required"} />
+                <ListNameCell name={profile.name} sub={profile.enabled ? (profile.tagName ? "Tag profile" : "Global profile") : "Disabled"} />
+                <ListCell primary={profile.tagName || "Every title"} secondary={indexerScopeLabel(profile, indexers)} />
                 <ListCell primary={protocolLabel(profile.preferredProtocol)} />
                 <ListCell primary={formatTiming(profile)} secondary={formatAvailability(profile)} />
                 <ListCell primary={termSummary(profile)} secondary={profile.preferredTerms.length ? `${profile.preferredTerms.length} weighted preference${profile.preferredTerms.length === 1 ? "" : "s"}` : undefined} />
@@ -216,6 +227,39 @@ export function SettingsReleaseRulesPage() {
           </FieldRow>
           <Field label="Preferred protocol" help="A matching protocol gets a ranking lift; the rule does not exclude the other protocol unless its delay or terms hold it.">
             <Select value={form.preferredProtocol} onChange={(event) => setForm((current) => ({ ...current, preferredProtocol: event.target.value }))} options={[{ value: "any", label: "Any protocol" }, { value: "usenet", label: "Usenet first" }, { value: "torrent", label: "Torrent first" }]} />
+          </Field>
+          <SwitchRow
+            label="Rule enabled"
+            description="Off: this rule is kept but skipped entirely, as if it did not exist. On: it applies to every matching search."
+            checked={form.enabled}
+            onCheckedChange={(checked) => setForm((current) => ({ ...current, enabled: checked }))}
+          />
+          <Field label="Indexers" optional help="Leave every indexer unchecked to apply this rule everywhere. Check one or more to scope it to just those indexers.">
+            {indexers.length === 0 ? (
+              <p className="text-[length:var(--type-body-sm)] text-muted-foreground">No indexers configured yet.</p>
+            ) : (
+              <div className="grid gap-1.5">
+                {indexers.map((indexer) => {
+                  const id = `release-rule-indexer-${indexer.id}`;
+                  const checked = form.indexerIds.includes(indexer.id);
+                  return (
+                    <label key={indexer.id} htmlFor={id} className="flex cursor-pointer items-center gap-2 text-[length:var(--type-body-sm)] text-foreground">
+                      <Checkbox
+                        id={id}
+                        checked={checked}
+                        onCheckedChange={(nextChecked) => setForm((current) => ({
+                          ...current,
+                          indexerIds: nextChecked
+                            ? [...current.indexerIds, indexer.id]
+                            : current.indexerIds.filter((existingId) => existingId !== indexer.id)
+                        }))}
+                      />
+                      {indexer.name}
+                    </label>
+                  );
+                })}
+              </div>
+            )}
           </Field>
         </DrawerSection>
 
@@ -284,7 +328,7 @@ export function SettingsReleaseRulesPage() {
 }
 
 function emptyForm(): ProfileForm {
-  return { name: "", tagName: "", preferredProtocol: "any", usenetDelayMinutes: "", torrentDelayMinutes: "", mustContain: "", mustNotContain: "", preferredTerms: "" };
+  return { name: "", tagName: "", preferredProtocol: "any", usenetDelayMinutes: "", torrentDelayMinutes: "", mustContain: "", mustNotContain: "", preferredTerms: "", enabled: true, indexerIds: [] };
 }
 
 function formFrom(profile: ReleaseProfileItem): ProfileForm {
@@ -296,12 +340,18 @@ function formFrom(profile: ReleaseProfileItem): ProfileForm {
     torrentDelayMinutes: String(profile.torrentDelayMinutes || ""),
     mustContain: profile.mustContain,
     mustNotContain: profile.mustNotContain,
-    preferredTerms: profile.preferredTerms.map((term) => `${term.term} = ${term.score}`).join("\n")
+    preferredTerms: profile.preferredTerms.map((term) => `${term.term} = ${term.score}`).join("\n"),
+    enabled: profile.enabled,
+    indexerIds: profile.indexerIds
   };
 }
 
 function sameForm(left: ProfileForm, right: ProfileForm) {
-  return left.name === right.name && left.tagName === right.tagName && left.preferredProtocol === right.preferredProtocol && left.usenetDelayMinutes === right.usenetDelayMinutes && left.torrentDelayMinutes === right.torrentDelayMinutes && left.mustContain === right.mustContain && left.mustNotContain === right.mustNotContain && left.preferredTerms === right.preferredTerms;
+  return left.name === right.name && left.tagName === right.tagName && left.preferredProtocol === right.preferredProtocol && left.usenetDelayMinutes === right.usenetDelayMinutes && left.torrentDelayMinutes === right.torrentDelayMinutes && left.mustContain === right.mustContain && left.mustNotContain === right.mustNotContain && left.preferredTerms === right.preferredTerms && left.enabled === right.enabled && sameIds(left.indexerIds, right.indexerIds);
+}
+
+function sameIds(left: string[], right: string[]) {
+  return left.length === right.length && left.every((id) => right.includes(id));
 }
 
 function validate(form: ProfileForm): Record<string, string> {
@@ -331,6 +381,14 @@ function parsePreferredTerms(value: string): ReleaseTermScore[] {
     terms.push({ term: match[1].trim(), score });
   }
   return terms;
+}
+
+function indexerScopeLabel(profile: ReleaseProfileItem, indexers: IndexerItem[]) {
+  if (profile.indexerIds.length === 0) return "Every indexer";
+  const names = profile.indexerIds
+    .map((id) => indexers.find((indexer) => indexer.id === id)?.name ?? null)
+    .filter((name): name is string => Boolean(name));
+  return names.length ? names.join(", ") : `${profile.indexerIds.length} indexer${profile.indexerIds.length === 1 ? "" : "s"}`;
 }
 
 function protocolLabel(value: string) {

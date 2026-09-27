@@ -81,7 +81,8 @@ public static class PlatformDatabaseMigrations
         new V0073AutomationDefaultsOff(),
         new V0074ProfileScoreLimits(),
         new V0075ProfileLanguagePreference(),
-        new V0076SubtitleFetchDefaultsExisting()
+        new V0076SubtitleFetchDefaultsExisting(),
+        new V0077ReleaseProfileEnabledAndIndexerScope()
     ];
 
     private sealed class V0001InitialSchema : SqliteSqlMigration
