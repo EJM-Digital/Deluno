@@ -5554,6 +5554,56 @@ public sealed class ImportPipelineServiceTests
         Assert.False(File.Exists(scene.ProcessedFilePath));
     }
 
+    /// <summary>
+    /// #919: "lost every track in a wanted language" -- the original had a
+    /// Japanese track, and the library's profile requires one, but the
+    /// processed file has only English. A fault, held the same way any other
+    /// processor loss is.
+    /// </summary>
+    [Fact]
+    public async Task A_processed_file_that_lost_the_librarys_wanted_language_is_a_fault()
+    {
+        var scene = await ProcessedSceneAsync(
+            processedSeconds: 7200,
+            sourceAudioLanguage: "jpn",
+            processedAudioLanguage: "eng",
+            requireLanguage: "ja");
+
+        var result = await scene.ImportAsync();
+
+        Assert.False(result.Succeeded);
+        Assert.Contains("no audio track in Japanese", result.Message);
+    }
+
+    /// <summary>The same library requirement, but the processed file kept the wanted track -- no fault.</summary>
+    [Fact]
+    public async Task A_processed_file_that_kept_the_librarys_wanted_language_is_not_a_fault()
+    {
+        var scene = await ProcessedSceneAsync(
+            processedSeconds: 7200,
+            sourceAudioLanguage: "jpn",
+            processedAudioLanguage: "jpn",
+            requireLanguage: "ja");
+
+        var result = await scene.ImportAsync();
+
+        Assert.True(result.Succeeded, result.Message);
+    }
+
+    /// <summary>A library with no language requirement never faults over a language it never asked for.</summary>
+    [Fact]
+    public async Task A_processed_file_with_a_different_language_is_not_a_fault_when_nothing_requires_one()
+    {
+        var scene = await ProcessedSceneAsync(
+            processedSeconds: 7200,
+            sourceAudioLanguage: "jpn",
+            processedAudioLanguage: "eng");
+
+        var result = await scene.ImportAsync();
+
+        Assert.True(result.Succeeded, result.Message);
+    }
+
     private sealed record ProcessedScene(
         Func<Task<ImportPipelineResult>> Import,
         string DestinationPath,
@@ -5625,7 +5675,11 @@ public sealed class ImportPipelineServiceTests
         int sourceAudioTracks = 2,
         bool processedHasVideo = true,
         int processedWidth = 1920,
-        int processedHeight = 1080)
+        int processedHeight = 1080,
+        string sourceAudioLanguage = "eng",
+        string processedAudioLanguage = "eng",
+        // A #769 code ("ja", "en", ...) the library's profile requires, or null for no language opinion.
+        string? requireLanguage = null)
     {
         var storage = TestStorage.Create();
         var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-09-23T08:00:00Z"));
@@ -5649,9 +5703,25 @@ public sealed class ImportPipelineServiceTests
         var platform = CreatePlatformRepository(storage, timeProvider);
         var libraries = CreateLibrariesRepository(storage, timeProvider);
         await SaveSettingsAsync(platform, movieRootPath, downloadsPath);
-        await CreateMovieLibraryAsync(libraries, movieRootPath, downloadsPath);
 
-        var probe = new ProcessedProbeService(sourceFile, processed, processedSeconds, processedAudioTracks, sourceAudioTracks, processedHasVideo, processedWidth, processedHeight);
+        IQualityRepository? qualityRepository = null;
+        string? qualityProfileId = null;
+        if (requireLanguage is not null)
+        {
+            var quality = new SqliteQualityRepository(storage.Factory, timeProvider);
+            var profile = await quality.CreateQualityProfileAsync(
+                new CreateQualityProfileRequest(
+                    "Requires a language", "movies", "WEB 1080p", "WEB 1080p", null,
+                    UpgradeUntilCutoff: true, UpgradeUnknownItems: true,
+                    LanguagePreference: new ProfileLanguagePreference([requireLanguage], RequireLanguage: true)),
+                CancellationToken.None);
+            qualityRepository = quality;
+            qualityProfileId = profile.Id;
+        }
+
+        await CreateMovieLibraryAsync(libraries, movieRootPath, downloadsPath, qualityProfileId: qualityProfileId);
+
+        var probe = new ProcessedProbeService(sourceFile, processed, processedSeconds, processedAudioTracks, sourceAudioTracks, processedHasVideo, processedWidth, processedHeight, sourceAudioLanguage, processedAudioLanguage);
         var movies = new SqliteMovieCatalogRepository(storage.Factory, timeProvider);
         var service = new ImportPipelineService(
             platform, libraries,
@@ -5665,8 +5735,10 @@ public sealed class ImportPipelineServiceTests
             new SqliteDownloadDispatchesRepository(storage.Factory, timeProvider),
             new SqliteConnectionsRepository(storage.Factory, timeProvider, TestSecretProtection.Create(storage)),
             NullLogger<ImportPipelineService>.Instance,
-            null);
+            null,
+            qualityRepository: qualityRepository);
 
+        var libraryId = Assert.Single(await libraries.ListLibrariesAsync(CancellationToken.None)).Id;
         var destination = Path.Combine(movieRootPath, "Interstellar (2014)", "Interstellar (2014).mkv");
         return new ProcessedScene(
             () => service.ExecuteAsync(
@@ -5674,7 +5746,7 @@ public sealed class ImportPipelineServiceTests
                     Preview: new ImportPreviewRequest(
                         SourcePath: processed, FileName: null, MediaType: "movies",
                         Title: "Interstellar", Year: 2014, Genres: null, Tags: null,
-                        Studio: null, OriginalLanguage: null),
+                        Studio: null, OriginalLanguage: null, LibraryId: libraryId),
                     TransferMode: "copy", Overwrite: false, AllowCopyFallback: true,
                     ProcessedFromPath: download),
                 CancellationToken.None),
@@ -5692,7 +5764,9 @@ public sealed class ImportPipelineServiceTests
         int sourceAudioTracks,
         bool processedHasVideo = true,
         int processedWidth = 1920,
-        int processedHeight = 1080) : IMediaProbeService
+        int processedHeight = 1080,
+        string sourceAudioLanguage = "eng",
+        string processedAudioLanguage = "eng") : IMediaProbeService
     {
         public Task<MediaProbeInfo> ProbeAsync(string path, CancellationToken cancellationToken)
         {
@@ -5717,7 +5791,7 @@ public sealed class ImportPipelineServiceTests
                     ? [new MediaVideoStreamInfo(0, "h264", "High", width, height, "yuv420p", 23.976, 10_000_000, "eng")]
                     : [],
                 AudioStreams: Enumerable.Range(0, isProcessed ? processedAudioTracks : sourceAudioTracks)
-                    .Select(index => new MediaAudioStreamInfo(index + 1, "eac3", null, 6, "5.1", 48_000, 640_000, "eng"))
+                    .Select(index => new MediaAudioStreamInfo(index + 1, "eac3", null, 6, "5.1", 48_000, 640_000, isProcessed ? processedAudioLanguage : sourceAudioLanguage))
                     .ToArray(),
                 SubtitleStreams: []));
         }
