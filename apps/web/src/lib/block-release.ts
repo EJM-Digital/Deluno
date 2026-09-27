@@ -73,6 +73,38 @@ export async function checkQueueMatch(identity: ReleaseIdentity): Promise<QueueM
   }
 }
 
+/**
+ * Whether this release is already refused, so "Block this release" can
+ * become "Lift the block" wherever blocking is offered (#925) — search
+ * results, the Queue, a title's history, and Activity — not only on the
+ * Blocklist screen. Matched the same way as the queue: by hash first, then
+ * by release name. A proposal (Deluno's own "ask me" case) is not a
+ * decided block, so it does not count here. Best-effort, like the queue
+ * check above: a read that fails just means no lift is offered.
+ */
+export async function checkBlockedMatch(identity: ReleaseIdentity): Promise<BlockedRelease | null> {
+  try {
+    const releases = await fetchJson<BlockedRelease[]>("/api/blocked-releases");
+    const hash = identity.hash?.trim().toLowerCase() || null;
+    const name = identity.releaseName.trim().toLowerCase();
+    return (
+      releases.find((release) => {
+        if (release.state === "proposed") return false;
+        const releaseHash = release.torrentHashOrItemId?.trim().toLowerCase();
+        const releaseName = release.releaseName?.trim().toLowerCase();
+        return (Boolean(hash) && releaseHash === hash) || releaseName === name;
+      }) ?? null
+    );
+  } catch {
+    return null;
+  }
+}
+
+/** Lifts an existing block. Never starts a search — that is a person's own decision (DESIGN-007 decision 8). */
+export async function liftBlock(id: string): Promise<Response> {
+  return authedFetch(`/api/blocked-releases/${encodeURIComponent(id)}`, { method: "DELETE" });
+}
+
 /** Block only. Nothing is stopped or deleted; see stopBlockAndSearchAgain for that. */
 export async function blockReleaseOnly(identity: ReleaseIdentity): Promise<{ response: Response; blocked: BlockedRelease | null }> {
   const response = await authedFetch("/api/blocked-releases", {

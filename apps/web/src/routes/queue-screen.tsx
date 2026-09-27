@@ -60,6 +60,7 @@ import { Chip, type ChipProps } from "../components/ui/chip";
 import { Drawer, DrawerDanger, DrawerFooter, DrawerSection } from "../components/ui/drawer";
 import { RemovalReasonDialog, type RemovalReason } from "../components/ui/removal-reason-dialog";
 import { submitQueueRemoval, unmonitorTitleAfterRemoval } from "../lib/remove-download";
+import { BlockReleaseAction } from "../components/app/block-release-action";
 import { Field, FieldRow } from "../components/ui/field";
 import { Input } from "../components/ui/input";
 import { ListCard, ListCell, ListEmpty, ListNameCell, ListRow, ListTable, LIST_TRACK } from "../components/ui/list-card";
@@ -1009,6 +1010,20 @@ export function QueuePage() {
                 <Button type="button" variant="outline" size="sm" onClick={() => void previewCleanup(openQueueItem)} disabled={busyKey !== null}>
                   What would removing do?
                 </Button>
+                {/* Standalone from #924's "It's bad" removal reason (#925):
+                    blocks the release without also removing, deleting or
+                    re-searching. Matched against this same queue item by its
+                    id (torrent hash / NZB item id), so it opens straight into
+                    the "found downloading" stop-too option. */}
+                <BlockReleaseAction
+                  releaseName={openQueueItem.releaseName}
+                  indexerName={openQueueItem.indexerName}
+                  hash={openQueueItem.id}
+                  mediaType={openQueueItem.mediaType}
+                  entityId={findDispatchForQueueItem(openQueueItem, dispatches)?.entityId ?? null}
+                  title={openQueueItem.title}
+                  onBlocked={() => revalidator.revalidate()}
+                />
                 <Button type="button" variant="destructive" size="sm" onClick={() => setPendingRemoval(openQueueItem)} disabled={busyKey !== null}>
                   <Trash2 className="h-3.5 w-3.5" />
                   Remove from client

@@ -34,6 +34,28 @@ function emptyOverview(): DownloadTelemetryOverview {
   };
 }
 
+function blockedReleaseList(overrides: { id?: string; releaseName?: string; hash?: string | null } = {}) {
+  return [
+    {
+      id: overrides.id ?? "blocked-1",
+      releaseKey: "key-1",
+      releaseName: overrides.releaseName ?? "Arrival.2016.2160p.UHD.BluRay",
+      indexerName: "Nebula",
+      mediaType: "movie",
+      entityId: "movie-1",
+      title: "Arrival",
+      reasonCode: "manualFailure",
+      reason: "You blocked this release from Deluno.",
+      torrentHashOrItemId: overrides.hash ?? null,
+      downloadClientId: null,
+      downloadClientName: null,
+      blockedUtc: "2026-09-27T08:00:00Z",
+      state: "refused",
+      everyIndexer: true
+    }
+  ];
+}
+
 function overviewWithQueueItem(overrides: { id?: string; releaseName?: string } = {}): DownloadTelemetryOverview {
   return {
     ...emptyOverview(),
@@ -157,7 +179,7 @@ describe("blocking a release from anywhere it is named", () => {
     expect(onBlocked).toHaveBeenCalled();
   });
 
-  it("offers to stop a release found downloading, matched from title history by name", async () => {
+  it("offers to stop a release found downloading, ticked by default, matched from title history by name", async () => {
     vi.mocked(fetchJson).mockResolvedValue(overviewWithQueueItem({ releaseName: "Some.Show.S01E01.1080p.WEB-DL" }));
     vi.mocked(authedFetch).mockResolvedValue({ ok: true, json: async () => ({}) } as Response);
     const onBlocked = vi.fn();
@@ -175,9 +197,13 @@ describe("blocking a release from anywhere it is named", () => {
 
     await userEvent.click(screen.getByRole("button", { name: 'Block "Some Show"' }));
 
-    const stopButton = await screen.findByRole("button", { name: "Stop it, delete its files and find another" });
-    expect(screen.getByRole("button", { name: "Just block it" })).toBeInTheDocument();
+    // #925: "Stop it, delete it and find another" is a checkbox, ticked by
+    // default, not a second button — the fuller action is what happens
+    // unless a person opts out of it.
+    const stopCheckbox = await screen.findByRole("checkbox", { name: /Stop it, delete it and find another/ });
+    expect(stopCheckbox).toBeChecked();
 
+    const stopButton = screen.getByRole("button", { name: "Stop it, delete its files and find another" });
     await userEvent.click(stopButton);
 
     expect(authedFetch).toHaveBeenCalledWith(
@@ -190,7 +216,7 @@ describe("blocking a release from anywhere it is named", () => {
     expect(onBlocked).toHaveBeenCalled();
   });
 
-  it("matches an Activity dispatch entry by its known hash, and 'just block it' never stops the download", async () => {
+  it("matches an Activity dispatch entry by its known hash, and unticking the checkbox never stops the download", async () => {
     vi.mocked(fetchJson).mockResolvedValue(overviewWithQueueItem({ id: "ABCDEF0123456789" }));
     vi.mocked(authedFetch).mockResolvedValue({ ok: true, json: async () => ({}) } as Response);
     const onBlocked = vi.fn();
@@ -207,7 +233,11 @@ describe("blocking a release from anywhere it is named", () => {
     );
 
     await userEvent.click(screen.getByRole("button", { name: 'Block "Arrival.2016.2160p.UHD.BluRay"' }));
-    await screen.findByRole("button", { name: "Stop it, delete its files and find another" });
+    const stopCheckbox = await screen.findByRole("checkbox", { name: /Stop it, delete it and find another/ });
+    expect(stopCheckbox).toBeChecked();
+
+    await userEvent.click(stopCheckbox);
+    expect(stopCheckbox).not.toBeChecked();
 
     await userEvent.click(screen.getByRole("button", { name: "Just block it" }));
 
@@ -220,5 +250,81 @@ describe("blocking a release from anywhere it is named", () => {
       expect.anything()
     );
     expect(onBlocked).toHaveBeenCalled();
+  });
+});
+
+/**
+ * Lifting a block (#925): offered from every one of those same places, by
+ * the same component switching to "Lift the block" once it finds this exact
+ * release already refused. Never starts a search (DESIGN-007 decision 8).
+ */
+describe("lifting a block from anywhere it can be blocked", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("shows 'Lift the block' instead, once it finds this release already refused", async () => {
+    vi.mocked(fetchJson).mockResolvedValue(blockedReleaseList());
+
+    render(
+      <BlockReleaseAction
+        releaseName="Arrival.2016.2160p.UHD.BluRay"
+        indexerName="Nebula"
+        mediaType="movie"
+        entityId="movie-1"
+        title="Arrival"
+      />
+    );
+
+    expect(await screen.findByRole("button", { name: 'Lift the block on "Arrival"' })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: 'Block "Arrival"' })).not.toBeInTheDocument();
+  });
+
+  it("lifts a block without starting a search, matched by hash", async () => {
+    vi.mocked(fetchJson).mockResolvedValue(blockedReleaseList({ id: "blocked-9", hash: "abcdef0123456789" }));
+    vi.mocked(authedFetch).mockResolvedValue({ ok: true } as Response);
+    const onBlocked = vi.fn();
+
+    render(
+      <BlockReleaseAction
+        releaseName="Arrival.2016.2160p.UHD.BluRay"
+        indexerName="Nebula"
+        hash="abcdef0123456789"
+        mediaType="movie"
+        entityId="movie-1"
+        title="Arrival"
+        onBlocked={onBlocked}
+      />
+    );
+
+    const trigger = await screen.findByRole("button", { name: 'Lift the block on "Arrival"' });
+    await userEvent.click(trigger);
+
+    const confirm = await screen.findByRole("button", { name: "Lift the block" });
+    await userEvent.click(confirm);
+
+    expect(authedFetch).toHaveBeenCalledWith("/api/blocked-releases/blocked-9", expect.objectContaining({ method: "DELETE" }));
+    // Never a search: no queue or grab call made alongside the lift.
+    expect(authedFetch).not.toHaveBeenCalledWith(expect.stringContaining("/queue/"), expect.anything());
+    expect(authedFetch).not.toHaveBeenCalledWith(expect.stringContaining("/grab"), expect.anything());
+    expect(toasts.success).toHaveBeenCalled();
+    expect(onBlocked).toHaveBeenCalled();
+  });
+
+  it("does not offer to lift a release nobody has blocked", async () => {
+    vi.mocked(fetchJson).mockResolvedValue([]);
+
+    render(
+      <BlockReleaseAction
+        releaseName="Arrival.2016.2160p.UHD.BluRay"
+        indexerName="Nebula"
+        mediaType="movie"
+        entityId="movie-1"
+        title="Arrival"
+      />
+    );
+
+    expect(await screen.findByRole("button", { name: 'Block "Arrival"' })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /lift the block/i })).not.toBeInTheDocument();
   });
 });
