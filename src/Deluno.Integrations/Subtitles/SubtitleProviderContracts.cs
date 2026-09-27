@@ -165,9 +165,9 @@ public interface ISubtitleProvider
 /// <summary>
 /// Every provider Deluno ships, by key.
 ///
-/// <para>Eight, each with health and a test, each saying plainly what an account
-/// buys you — rather than the forty Bazarr offers. DESIGN-002: <i>"a provider
-/// that fails silently is worse than one that is absent."</i></para>
+/// <para>Eleven, each with health and a test, each saying plainly what an
+/// account buys you — rather than the fifty-plus Bazarr offers. DESIGN-002:
+/// <i>"a provider that fails silently is worse than one that is absent."</i></para>
 /// </summary>
 public interface ISubtitleProviderRegistry
 {
