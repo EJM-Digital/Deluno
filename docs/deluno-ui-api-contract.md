@@ -540,6 +540,7 @@ Implemented core operational endpoints:
 
 - `GET /api/jobs?pageSize=n&pageToken=…`
 - `GET /api/activity?pageSize=n&pageToken=…`
+- `GET /api/stats?window=24h|7d|30d`
 - `GET /api/decisions?pageSize=n&pageToken=…`
 - `GET /api/library-automation?pageSize=n&pageToken=…`
 - `GET /api/search-cycles?pageSize=n&pageToken=…`
@@ -554,6 +555,26 @@ Implemented core operational endpoints:
 - `GET /api/integrations/external/activity`
 - `POST /api/integrations/external/trigger-refresh`
 - `POST /api/integrations/processors/events`
+
+`GET /api/stats` (#827) aggregates the same facts the Activity feed already
+writes in plain words, over a time window, for an external dashboard widget
+(Homepage, Homarr) as well as the Dashboard's own "Live activity" summary.
+Single-user, so there is no API key or per-caller scoping — every count is
+everything this instance logged in the window. `window` defaults to `24h`
+when omitted or unrecognised. Response shape:
+
+```json
+{
+  "sinceUtc": "2026-09-26T12:00:00Z",
+  "generatedUtc": "2026-09-27T12:00:00Z",
+  "windowHours": 24,
+  "searchesRun": 12,
+  "downloadsStarted": 3,
+  "importsCompleted": 3,
+  "cleanupRemovals": 1,
+  "retentionRemovals": 0
+}
+```
 
 Current UI contract expectations:
 

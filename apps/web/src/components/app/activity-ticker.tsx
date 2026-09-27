@@ -18,7 +18,7 @@ import { Button } from "../ui/button";
 import { ListCard, ListEmpty } from "../ui/list-card";
 import { StatusLed } from "../ui/status-led";
 import { cn } from "../../lib/utils";
-import type { ActivityEventItem } from "../../lib/api";
+import type { ActivityEventItem, ActivityStatsSnapshot } from "../../lib/api";
 import { useLiveInterval } from "../../hooks/use-live-interval";
 import { RealtimeGroups, useSignalREvent, useSignalRStatus } from "../../lib/use-signalr";
 import { useDisplayPreferences } from "../../lib/display-preferences";
@@ -36,7 +36,7 @@ interface TickerEvent {
   repeats?: number;
 }
 
-export function ActivityTicker({ seed, limit = 10 }: { seed: ActivityEventItem[]; limit?: number }) {
+export function ActivityTicker({ seed, limit = 10, stats }: { seed: ActivityEventItem[]; limit?: number; stats?: ActivityStatsSnapshot }) {
   const status = useSignalRStatus();
   const { preferences } = useDisplayPreferences();
   const [live, setLive] = useState<TickerEvent[]>([]);
@@ -127,6 +127,19 @@ export function ActivityTicker({ seed, limit = 10 }: { seed: ActivityEventItem[]
           ))}
         </div>
       )}
+      {stats ? (
+        <div
+          className="flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-hairline px-[var(--card-pad-x)] py-2 text-[length:var(--type-micro)] text-muted-foreground"
+          aria-label="Automation counts for the last 24 hours"
+        >
+          <span>Last 24h:</span>
+          <span>{stats.searchesRun} {stats.searchesRun === 1 ? "search" : "searches"}</span>
+          <span>{stats.downloadsStarted} {stats.downloadsStarted === 1 ? "download" : "downloads"}</span>
+          <span>{stats.importsCompleted} {stats.importsCompleted === 1 ? "import" : "imports"}</span>
+          <span>{stats.cleanupRemovals} cleaned up</span>
+          <span>{stats.retentionRemovals} retention</span>
+        </div>
+      ) : null}
     </ListCard>
   );
 }

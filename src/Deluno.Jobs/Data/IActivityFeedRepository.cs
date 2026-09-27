@@ -47,4 +47,10 @@ public interface IActivityFeedRepository
     /// -- there is nothing else it lives in to spare.
     /// </summary>
     Task<int> ClearActivityAsync(CancellationToken cancellationToken);
+
+    /// <summary>Aggregated counts of what happened since <paramref name="sinceUtc"/>, a window <paramref name="windowHours"/> long (#827).</summary>
+    Task<ActivityStatsSnapshot> GetActivityStatsAsync(
+        DateTimeOffset sinceUtc,
+        int windowHours,
+        CancellationToken cancellationToken);
 }

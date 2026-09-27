@@ -7,6 +7,7 @@ import {
   emptyPlatformSettingsSnapshot,
   fetchJson, fetchPageItems,
   type ActivityEventItem,
+  type ActivityStatsSnapshot,
   type DownloadClientItem,
   type DownloadSharingSnapshot,
   type DownloadTelemetryOverview,
@@ -91,6 +92,8 @@ interface DashboardLoaderData {
   healthChecks: HealthCheckListResponse | null;
   /** Seeds the live ticker so it is populated before the first push arrives. */
   activity: ActivityEventItem[];
+  /** The same facts as activity, counted over the last 24 hours (#827). */
+  activityStats: ActivityStatsSnapshot;
   /** Whether any post-processor connection is enabled. */
   hasProcessor: boolean;
   /** Stored throughput readings for the speed chart. */
@@ -147,6 +150,7 @@ interface DashboardSources {
   monitoring: MonitoringDashboardSnapshot | null;
   healthChecks: HealthCheckListResponse | null;
   activity: ActivityEventItem[];
+  activityStats: ActivityStatsSnapshot;
   /** Only used to decide whether the pipeline has a Processing stage at all. */
   processors: ProcessorConnectionItem[];
   /** Stored throughput readings — what the speed has been, not what it is now. */
@@ -165,7 +169,7 @@ function emptyDashboardSources(): DashboardSources {
     indexers: [], clients: [], libraries: [], automation: [], searchCycles: [], retryWindows: [], upcomingEpisodes: [],
     setupProgress: EMPTY_SETUP_PROGRESS,
     settings: emptyPlatformSettingsSnapshot,
-    policySets: [], qualityProfiles: [], metrics: null, monitoring: null, healthChecks: null, activity: [], processors: [], throughput: null,
+    policySets: [], qualityProfiles: [], metrics: null, monitoring: null, healthChecks: null, activity: [], activityStats: EMPTY_ACTIVITY_STATS, processors: [], throughput: null,
     sharing: EMPTY_SHARING
   };
 }
@@ -191,6 +195,16 @@ const EMPTY_TELEMETRY: DownloadTelemetryOverview = {
 };
 const EMPTY_SHARING: DownloadSharingSnapshot = { holds: [], extraBytes: 0, driveNote: null, observedUtc: null };
 const EMPTY_SETUP_PROGRESS: SetupProgressItem = { lastCompletedStep: 0, isSkipped: false, isCompleted: false, updatedUtc: new Date(0).toISOString() };
+const EMPTY_ACTIVITY_STATS: ActivityStatsSnapshot = {
+  sinceUtc: new Date(0).toISOString(),
+  generatedUtc: new Date(0).toISOString(),
+  windowHours: 24,
+  searchesRun: 0,
+  downloadsStarted: 0,
+  importsCompleted: 0,
+  cleanupRemovals: 0,
+  retentionRemovals: 0
+};
 
 /**
  * The loader only seeds the page's queries: every field is read through its own
@@ -234,11 +248,12 @@ export async function dashboardLoader(): Promise<DashboardLoaderData> {
 
   // A dashboard that cannot draw its charts or read its own health still has to
   // render, so these degrade to a stated gap rather than an error page.
-  const [metrics, monitoring, healthChecks, activity, processors, throughput, sharing] = await Promise.all([
+  const [metrics, monitoring, healthChecks, activity, activityStats, processors, throughput, sharing] = await Promise.all([
     fetchJson<DashboardMetrics>("/api/dashboard/metrics?days=30").catch(() => null),
     fetchJson<MonitoringDashboardSnapshot>("/api/monitoring/dashboard").catch(() => null),
     fetchJson<HealthCheckListResponse>("/api/system/health").catch(() => null),
     fetchPageItems<ActivityEventItem>("/api/activity?pageSize=10").catch((): ActivityEventItem[] => []),
+    fetchJson<ActivityStatsSnapshot>("/api/stats?window=24h").catch(() => EMPTY_ACTIVITY_STATS),
     fetchJson<ProcessorConnectionItem[]>("/api/integrations/processors/connections").catch((): ProcessorConnectionItem[] => []),
     fetchJson<DownloadThroughputWindow>("/api/download-clients/throughput?hours=6").catch(() => null),
     fetchJson<DownloadSharingSnapshot>("/api/download-clients/sharing").catch(() => EMPTY_SHARING)
@@ -247,7 +262,7 @@ export async function dashboardLoader(): Promise<DashboardLoaderData> {
   return buildDashboardData({
     moviePage, movieWanted, showPage, showWanted, telemetry, indexers, clients,
     libraries, automation, searchCycles, retryWindows, upcomingEpisodes,
-    setupProgress, settings, policySets, qualityProfiles, metrics, monitoring, healthChecks, activity, processors, throughput, sharing
+    setupProgress, settings, policySets, qualityProfiles, metrics, monitoring, healthChecks, activity, activityStats, processors, throughput, sharing
   });
 }
 
@@ -276,7 +291,7 @@ function buildDashboardData(sources: DashboardSources): DashboardLoaderData {
   const {
     moviePage, movieWanted, showPage, showWanted, telemetry, indexers, clients,
     libraries, automation, searchCycles, retryWindows, upcomingEpisodes,
-    setupProgress, settings, policySets, qualityProfiles, metrics, monitoring, healthChecks, activity, processors, throughput, sharing
+    setupProgress, settings, policySets, qualityProfiles, metrics, monitoring, healthChecks, activity, activityStats, processors, throughput, sharing
   } = sources;
   const displayPreferences = displayPreferencesFromSettings(settings);
   const adaptedMovies = adaptMovieItems(moviePage.items);
@@ -292,6 +307,7 @@ function buildDashboardData(sources: DashboardSources): DashboardLoaderData {
     monitoring,
     healthChecks,
     activity,
+    activityStats,
     // A Processing stage only makes sense where something is actually
     // refining media before import.
     hasProcessor: processors.some((processor) => processor.isEnabled),
@@ -389,6 +405,7 @@ function useDashboardData(initial: DashboardLoaderData, historyDays: HistoryDays
   const policySets = useQuery({ ...DASHBOARD_REFRESH, queryKey: ["policy-sets"], queryFn: () => fetchJson<PolicySetItem[]>("/api/policy-sets").catch((): PolicySetItem[] => []), initialData: source.policySets });
   const qualityProfiles = useQuery({ ...DASHBOARD_REFRESH, queryKey: ["quality-profiles"], queryFn: () => fetchJson<QualityProfileItem[]>("/api/quality-profiles").catch((): QualityProfileItem[] => []), initialData: source.qualityProfiles });
   const activity = useQuery({ ...DASHBOARD_REFRESH, queryKey: ["activity", "dashboard"], queryFn: () => fetchPageItems<ActivityEventItem>("/api/activity?pageSize=10").catch((): ActivityEventItem[] => []), initialData: source.activity });
+  const activityStats = useQuery({ ...DASHBOARD_REFRESH, queryKey: ["activity-stats", "24h"], queryFn: () => fetchJson<ActivityStatsSnapshot>("/api/stats?window=24h").catch(() => EMPTY_ACTIVITY_STATS), initialData: source.activityStats });
   const processors = useQuery({ ...DASHBOARD_REFRESH, queryKey: ["processor-connections"], queryFn: () => fetchJson<ProcessorConnectionItem[]>("/api/integrations/processors/connections").catch((): ProcessorConnectionItem[] => []), initialData: source.processors });
 
   // Health moves on its own clock — see MONITORING_REFRESH.
@@ -452,6 +469,7 @@ function useDashboardData(initial: DashboardLoaderData, historyDays: HistoryDays
     monitoring: monitoring.data ?? source.monitoring,
     healthChecks: healthChecks.data ?? source.healthChecks,
     activity: activity.data ?? source.activity,
+    activityStats: activityStats.data ?? source.activityStats,
     processors: processors.data ?? source.processors,
     throughput: throughput.data ?? source.throughput,
     sharing: sharing.data ?? source.sharing
@@ -781,7 +799,7 @@ export function DashboardPage() {
           result — the three answers that follow the pipeline above, and the
           ring leads straight into Recently added below it. */}
       <div className="grid gap-[var(--grid-gap)] xl:grid-cols-3">
-        <ActivityTicker seed={data.activity} limit={6} />
+        <ActivityTicker seed={data.activity} limit={6} stats={data.activityStats} />
 
         <ListCard
           // This card carries episode air dates *and* scheduled search retries,
