@@ -94,7 +94,6 @@ public static class RetentionFieldCatalog
     private static readonly IReadOnlyList<string> Episodes = [RetentionLevels.Episode];
     private static readonly IReadOnlyList<string> Seasons = [RetentionLevels.Season];
     private static readonly IReadOnlyList<string> Parts = [RetentionLevels.Season, RetentionLevels.Episode];
-    private static readonly IReadOnlyList<string> NotPlex = [MediaServerKinds.Plex];
     private static readonly IReadOnlyList<string> PlexOnly = [MediaServerKinds.Jellyfin, MediaServerKinds.Emby];
 
     private const string Watching = "watching";
@@ -111,7 +110,7 @@ public static class RetentionFieldCatalog
         new("server.playAttempts", "Play attempts (unfinished)", "People who started it and stopped part way.", Watching, RetentionValueKinds.Integer, RetentionFieldSources.Server, Everywhere),
         new("server.lastViewed", "Last viewed (finished)", "The most recent time anyone finished it.", Watching, RetentionValueKinds.Date, RetentionFieldSources.Server, Everywhere),
         new("server.lastPlayed", "Last played (finished or not)", "The most recent time anyone played it at all, whether or not they finished.", Watching, RetentionValueKinds.Date, RetentionFieldSources.Server, Everywhere),
-        new("server.favouritedBy", "Favourited by", "Who marked it a favourite.", Watching, RetentionValueKinds.Users, RetentionFieldSources.Server, Everywhere, NotPlex),
+        new("server.favouritedBy", "Favourited by", "Who marked it a favourite.", Watching, RetentionValueKinds.Users, RetentionFieldSources.Server, Everywhere),
         new("server.watchlistedBy", "Watchlisted by", "Who has it on their watchlist.", Watching, RetentionValueKinds.Users, RetentionFieldSources.Server, Everywhere, PlexOnly),
         new("server.userRating", "User rating", "The highest score anyone gave it, out of ten.", Watching, RetentionValueKinds.Rating, RetentionFieldSources.Server, Everywhere),
         new("server.allEpisodesSeenBy", "All episodes seen by", "Who has finished every episode.", Watching, RetentionValueKinds.Users, RetentionFieldSources.Server, Totals),

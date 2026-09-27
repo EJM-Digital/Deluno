@@ -268,7 +268,7 @@ public sealed class MediaServerClientTests
         Assert.False(sintel.Watch.PerUserKnown);
         Assert.Equal(DateTimeOffset.FromUnixTimeSeconds(1757530800), sintel.Watch.LastPlayedUtc);
         var viewer = Assert.Single(sintel.Viewers);
-        Assert.Equal(("jampat", true, 2, (bool?)null, 9d), (viewer.User, viewer.Played, viewer.PlayCount, viewer.Favourite, viewer.Rating));
+        Assert.Equal(("jampat", true, 2, (bool?)false, 9d), (viewer.User, viewer.Played, viewer.PlayCount, viewer.Favourite, viewer.Rating));
         Assert.Equal(new MediaServerRatings(8.8, 7.2, 7.4, 8.8, 7.9, 7.1), sintel.Ratings);
         Assert.Equal(["Halina Reijn", "Colin Levy"], sintel.People);
         Assert.Equal(["Animation"], sintel.Genres);
@@ -277,6 +277,54 @@ public sealed class MediaServerClientTests
         Assert.Equal(["Friday night"], sintel.Playlists);
         Assert.Equal(["jampat"], sintel.WatchlistedBy);
         Assert.Equal(new MediaServerVideo("1080p", 4200, "h264"), sintel.Video);
+    }
+
+    [Fact]
+    public async Task A_Plex_item_rated_the_maximum_is_read_as_a_favourite()
+    {
+        var client = new PlexMediaServerClient(Factory(request =>
+        {
+            if (request.RequestUri!.Host == "discover.provider.plex.tv") return new HttpResponseMessage(HttpStatusCode.Unauthorized);
+            return request.RequestUri!.AbsolutePath switch
+            {
+                "/library/sections" => Json("""{"MediaContainer":{"Directory":[{"key":"1","type":"movie"}]}}"""),
+                "/library/sections/1/all" => Json(
+                    """{"MediaContainer":{"totalSize":1,"Metadata":[{"ratingKey":"101","type":"movie","title":"Sintel","userRating":10}]}}"""),
+                "/library/metadata/101" => Json("""{"MediaContainer":{"Metadata":[{"ratingKey":"101"}]}}"""),
+                "/playlists" => Json("""{"MediaContainer":{"totalSize":0}}"""),
+                _ => new HttpResponseMessage(HttpStatusCode.NotFound)
+            };
+        }));
+
+        var answer = await client.ListItemsAsync(Server(MediaServerKinds.Plex, "http://192.168.1.51:32400"), "movies", CancellationToken.None);
+
+        var sintel = Assert.Single(Assert.IsType<MediaServerAnswer<MediaServerLibrary>.Reported>(answer).Value.Items);
+        var viewer = Assert.Single(sintel.Viewers);
+        Assert.True(viewer.Favourite);
+    }
+
+    [Fact]
+    public async Task A_Plex_item_never_rated_reports_favourite_as_unknown()
+    {
+        var client = new PlexMediaServerClient(Factory(request =>
+        {
+            if (request.RequestUri!.Host == "discover.provider.plex.tv") return new HttpResponseMessage(HttpStatusCode.Unauthorized);
+            return request.RequestUri!.AbsolutePath switch
+            {
+                "/library/sections" => Json("""{"MediaContainer":{"Directory":[{"key":"1","type":"movie"}]}}"""),
+                "/library/sections/1/all" => Json(
+                    """{"MediaContainer":{"totalSize":1,"Metadata":[{"ratingKey":"101","type":"movie","title":"Sintel","viewCount":1}]}}"""),
+                "/library/metadata/101" => Json("""{"MediaContainer":{"Metadata":[{"ratingKey":"101"}]}}"""),
+                "/playlists" => Json("""{"MediaContainer":{"totalSize":0}}"""),
+                _ => new HttpResponseMessage(HttpStatusCode.NotFound)
+            };
+        }));
+
+        var answer = await client.ListItemsAsync(Server(MediaServerKinds.Plex, "http://192.168.1.51:32400"), "movies", CancellationToken.None);
+
+        var sintel = Assert.Single(Assert.IsType<MediaServerAnswer<MediaServerLibrary>.Reported>(answer).Value.Items);
+        var viewer = Assert.Single(sintel.Viewers);
+        Assert.Null(viewer.Favourite);
     }
 
     [Fact]
