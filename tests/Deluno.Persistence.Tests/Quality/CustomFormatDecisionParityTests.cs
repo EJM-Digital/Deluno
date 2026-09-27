@@ -209,6 +209,43 @@ public sealed class CustomFormatDecisionParityTests
         Assert.Equal(expected, CustomFormatDefinitionMatcher.Evaluate(releaseName, definition, anyCondition: false).IsMatch);
     }
 
+    /// <summary>
+    /// Radarr's Quality Modifier has five real values (#774); only Remux (5)
+    /// was ever mapped before, silently dropping every imported condition
+    /// using the other four.
+    /// </summary>
+    [Theory]
+    [InlineData(1, "Movie.2026.1080p.REGIONAL.WEB-DL-GRP", true)]
+    [InlineData(1, "Movie.2026.1080p.WEB-DL-GRP", false)]
+    [InlineData(2, "Movie.2026.1080p.SCREENER-GRP", true)]
+    [InlineData(2, "Movie.2026.1080p.WEB-DL-GRP", false)]
+    [InlineData(3, "Movie.2026.RAWHD-GRP", true)]
+    [InlineData(3, "Movie.2026.1080p.WEB-DL-GRP", false)]
+    [InlineData(4, "Movie.2026.BRDISK-GRP", true)]
+    [InlineData(4, "Movie.2026.1080p.WEB-DL-GRP", false)]
+    [InlineData(5, "Movie.2026.1080p.BluRay.REMUX-GRP", true)]
+    [InlineData(5, "Movie.2026.1080p.BluRay-GRP", false)]
+    public void Every_quality_modifier_value_maps_to_an_evaluable_source_condition(
+        int modifierValue,
+        string releaseName,
+        bool expected)
+    {
+        var definition =
+            $"[{{\"implementation\":\"QualityModifierSpecification\",\"fields\":{{\"value\":{modifierValue}}}}}]";
+
+        Assert.True(CustomFormatDefinitionMatcher.CanEvaluate(definition));
+        Assert.Equal(expected, CustomFormatDefinitionMatcher.Evaluate(releaseName, definition, anyCondition: false).IsMatch);
+    }
+
+    [Fact]
+    public void An_undocumented_quality_modifier_value_is_left_review_only()
+    {
+        const string definition =
+            "[{\"implementation\":\"QualityModifierSpecification\",\"fields\":{\"value\":99}}]";
+
+        Assert.False(CustomFormatDefinitionMatcher.CanEvaluate(definition));
+    }
+
     private sealed record MatchCase(
         string Id,
         string Conditions,
