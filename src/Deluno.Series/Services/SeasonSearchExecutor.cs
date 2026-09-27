@@ -379,6 +379,28 @@ public sealed class SeasonSearchExecutor(
 
             // A season's release puts the show on its way, as any grab does (#555).
             await mediaStateRepository.MarkDownloadingIfSentAsync(MediaKind.Series, seriesItem.Id, grabResult.Status, now, cancellationToken);
+
+            // #808: the same plain-English tag-routing reason a manual grab
+            // explains in Activity, carried into the automatic season path.
+            // Null for the ordinary case of an untagged client.
+            if (grabResult.Succeeded)
+            {
+                var seasonRoutingReason = await acquisitionPipeline.ExplainDownloadClientRoutingAsync(
+                    downloadClient.DownloadClientId,
+                    tagNames,
+                    cancellationToken);
+                if (seasonRoutingReason is not null)
+                {
+                    await activityFeedRepository.RecordActivityAsync(
+                        "series.release.grabbed",
+                        $"{bestCandidate.ReleaseName} was automatically sent to {downloadClient.DownloadClientName}. {seasonRoutingReason}",
+                        null,
+                        null,
+                        "series",
+                        seriesItem.Id,
+                        cancellationToken);
+                }
+            }
         }
 
         foreach (var episode in seasonEpisodes)

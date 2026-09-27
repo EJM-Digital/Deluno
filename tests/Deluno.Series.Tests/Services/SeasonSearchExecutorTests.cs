@@ -88,6 +88,54 @@ public sealed class SeasonSearchExecutorTests
             It.IsAny<IReadOnlyList<DispatchReplacementTarget>?>(), It.IsAny<string?>()), Times.Never);
     }
 
+    /// <summary>
+    /// #808: the season path is the one automatic-search path that lives
+    /// outside <c>Deluno.Worker</c> (it cannot reference
+    /// <c>SearchExecutionSupport</c>), so it explains tag-based routing
+    /// inline. Prove it reaches Activity the same way the library and
+    /// episode paths do through the shared helper.
+    /// </summary>
+    [Fact]
+    public async Task A_tag_routed_client_is_explained_in_activity()
+    {
+        var world = new World("Pioneer.One.S01.1080p.WEB-DL");
+        world.Pipeline
+            .Setup(pipeline => pipeline.ExplainDownloadClientRoutingAsync("client-1", It.IsAny<IReadOnlyList<string>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync("Sent to SABnzbd because this series is tagged anime, which only SABnzbd accepts.");
+
+        var result = await world.Executor.ExecuteAsync("series-1", 1, "automatic-season", "was searched.", CancellationToken.None);
+
+        Assert.True(result.Dispatched);
+        world.ActivityFeed.Verify(
+            feed => feed.RecordActivityAsync(
+                "series.release.grabbed",
+                It.Is<string>(message => message.Contains("SABnzbd") && message.Contains("tagged anime")),
+                null,
+                null,
+                "series",
+                "series-1",
+                It.IsAny<CancellationToken>()),
+            Times.Once);
+    }
+
+    [Fact]
+    public async Task An_untagged_client_writes_no_extra_routing_activity()
+    {
+        var world = new World("Pioneer.One.S01.1080p.WEB-DL");
+        world.Pipeline
+            .Setup(pipeline => pipeline.ExplainDownloadClientRoutingAsync(It.IsAny<string>(), It.IsAny<IReadOnlyList<string>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((string?)null);
+
+        var result = await world.Executor.ExecuteAsync("series-1", 1, "automatic-season", "was searched.", CancellationToken.None);
+
+        Assert.True(result.Dispatched);
+        world.ActivityFeed.Verify(
+            feed => feed.RecordActivityAsync(
+                "series.release.grabbed",
+                It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()),
+            Times.Never);
+    }
+
     /// <summary>One series with one season of two missing episodes, a search that finds one release, and a client that takes it.</summary>
     private sealed class World
     {
@@ -168,6 +216,8 @@ public sealed class SeasonSearchExecutorTests
                     []));
             Grabs.Setup(grab => grab.GrabAsync(It.IsAny<string>(), It.IsAny<DownloadClientGrabRequest>(), It.IsAny<CancellationToken>()))
                 .ReturnsAsync(new DownloadClientGrabResult("client-1", bestCandidateReleaseName, true, "sent", "sent") { ExternalId = "nzo-1" });
+            Pipeline.Setup(pipeline => pipeline.ExplainDownloadClientRoutingAsync(It.IsAny<string>(), It.IsAny<IReadOnlyList<string>>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync((string?)null);
 
             Jobs.Setup(jobs => jobs.RecordDownloadDispatchAsync(
                     It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(),
