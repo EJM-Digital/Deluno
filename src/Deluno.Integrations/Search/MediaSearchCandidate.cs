@@ -25,4 +25,10 @@ public sealed record MediaSearchCandidate(
     string PolicyVersion = Deluno.Quality.MediaPolicyCatalog.CurrentVersion,
     IReadOnlyList<CustomFormatMatchResult>? MatchedCustomFormats = null,
     PreferenceEvaluation? PreferenceEvaluation = null,
-    PreferenceComparison? PreferenceComparison = null);
+    PreferenceComparison? PreferenceComparison = null,
+    // The torrent's info hash or the NZB's id/GUID, when the indexer's
+    // listing already names one — a torznab infohash attribute, a magnet
+    // link, or a newznab item's GUID (#802, #874). Null for a release only
+    // offered as a .torrent link, since nothing names its hash before it is
+    // fetched.
+    string? TorrentHashOrItemId = null);

@@ -900,6 +900,7 @@ public sealed class FeedMediaSearchPlanner(
             var attrs = item.Elements(torznab + "attr").Concat(item.Elements(newznab + "attr")).ToArray();
             var size = ReadLongAttr(attrs, "size") ?? ReadLong(item.Elements("enclosure").FirstOrDefault()?.Attribute("length")?.Value);
             var seeders = ReadIntAttr(attrs, "seeders");
+            var torrentHashOrItemId = ReadHashOrItemId(attrs, item, indexer.Protocol, downloadUrl);
             var releaseAgeHours = ReadReleaseAgeHours(item);
             var indexerFlags = string.Join(", ", attrs
                 .Where(attr => string.Equals(attr.Attribute("name")?.Value, "flags", StringComparison.OrdinalIgnoreCase)
@@ -995,7 +996,8 @@ public sealed class FeedMediaSearchPlanner(
                 PolicyVersion: decision.PolicyVersion,
                 MatchedCustomFormats: matchedFormats,
                 PreferenceEvaluation: decision.PreferenceEvaluation,
-                PreferenceComparison: decision.PreferenceComparison));
+                PreferenceComparison: decision.PreferenceComparison,
+                TorrentHashOrItemId: torrentHashOrItemId));
         }
 
         return new ParsedCandidates(results, feedItems.Length == requestedLimit);
@@ -1191,6 +1193,37 @@ public sealed class FeedMediaSearchPlanner(
         => ReadPublishedUtc(item) is { } published
             ? Math.Max(0, (DateTimeOffset.UtcNow - published).TotalHours)
             : null;
+
+    /// <summary>
+    /// A candidate's info hash or NZB id/GUID, when the indexer's listing
+    /// already names one (#802, #874): a torznab "infohash" attribute, the
+    /// magnet the release links to, or — for a usenet indexer, which has no
+    /// hash — the item's own GUID. Null for a torrent offered only as a
+    /// .torrent link, since nothing names its hash before it is fetched.
+    /// </summary>
+    private static string? ReadHashOrItemId(IEnumerable<XElement> attrs, XElement item, string? protocol, string? downloadUrl)
+    {
+        var infoHash = attrs.FirstOrDefault(attr =>
+                string.Equals(attr.Attribute("name")?.Value, "infohash", StringComparison.OrdinalIgnoreCase))
+            ?.Attribute("value")?.Value;
+        if (!string.IsNullOrWhiteSpace(infoHash))
+        {
+            return infoHash.Trim();
+        }
+
+        if (TrackerMagnet.InfoHashOf(downloadUrl) is { Length: >= 32 } magnetHash)
+        {
+            return magnetHash;
+        }
+
+        if (IndexerProtocols.Normalize(protocol) == IndexerProtocols.Newznab)
+        {
+            var guid = item.Element("guid")?.Value?.Trim();
+            return string.IsNullOrWhiteSpace(guid) ? null : guid;
+        }
+
+        return null;
+    }
 
     private static long? ReadLongAttr(IEnumerable<XElement> attrs, string name)
         => ReadLong(attrs.FirstOrDefault(attr => string.Equals(attr.Attribute("name")?.Value, name, StringComparison.OrdinalIgnoreCase))?.Attribute("value")?.Value);

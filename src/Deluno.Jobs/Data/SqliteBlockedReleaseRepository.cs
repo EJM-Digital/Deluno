@@ -106,7 +106,7 @@ public sealed class SqliteBlockedReleaseRepository(
         // decided, and a search that quietly skipped an undecided release
         // would be making the decision by omission — the exact thing the
         // option exists to prevent.
-        command.CommandText = "SELECT release_key, release_name, reason_code FROM blocked_releases WHERE state = 'refused';";
+        command.CommandText = "SELECT release_key, release_name, reason_code, torrent_hash_or_item_id FROM blocked_releases WHERE state = 'refused';";
 
         var keys = new HashSet<string>(StringComparer.Ordinal);
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
@@ -120,6 +120,20 @@ public sealed class SqliteBlockedReleaseRepository(
             if (ImportFailurePolicy.RefusesEveryCopy(reader.GetString(2)))
             {
                 keys.Add(BlockedReleaseKeys.ForEveryIndexer(reader.GetString(1)));
+            }
+
+            // The hash/GUID key, added the same way (#802, #874): derived at
+            // read time from the column every block already stores, so old
+            // rows match on it with nothing to migrate, and no reason code is
+            // exempt — a release's identity is its content, whatever failed
+            // about this attempt at it.
+            if (!reader.IsDBNull(3))
+            {
+                var hash = reader.GetString(3);
+                if (!string.IsNullOrWhiteSpace(hash))
+                {
+                    keys.Add(BlockedReleaseKeys.ForHash(hash));
+                }
             }
         }
 

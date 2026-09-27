@@ -103,6 +103,85 @@ public sealed class SkippingBlockedReleasesTests
         Assert.Null(result.BestCandidate);
     }
 
+    /// <summary>
+    /// #802, #874: the same content re-offered by a different indexer, under
+    /// its own name, is still refused — a blocked release does not get a free
+    /// pass by turning up somewhere else with a hash that matches.
+    /// </summary>
+    [Fact]
+    public void A_hash_blocked_on_one_indexer_is_skipped_from_another()
+    {
+        var plan = Plan(
+            Candidate("Arrival.2016.2160p-GROUP1", "Nebula", hash: "ABCDEF0123456789ABCDEF0123456789ABCDEF01"),
+            Candidate("Arrival.2016.1080p", "Orbit"));
+
+        var result = AcquisitionDecisionPipeline.ApplyBlocklist(
+            plan,
+            new HashSet<string>(StringComparer.Ordinal)
+            {
+                BlockedReleaseKeys.ForHash("ABCDEF0123456789ABCDEF0123456789ABCDEF01")
+            });
+
+        Assert.Equal("Arrival.2016.1080p", result.BestCandidate!.ReleaseName);
+        Assert.Single(result.Candidates);
+    }
+
+    /// <summary>
+    /// #802: a retitled re-upload of exactly the same file is still that
+    /// file. The name a different re-uploader gave it does not matter — the
+    /// hash is the release's identity.
+    /// </summary>
+    [Fact]
+    public void The_same_hash_under_a_different_name_is_still_refused()
+    {
+        var plan = Plan(Candidate("Arrival.2016.2160p.RETITLED-GROUP2", "Orbit", hash: "abcdef0123456789abcdef0123456789abcdef01"));
+
+        var result = AcquisitionDecisionPipeline.ApplyBlocklist(
+            plan,
+            new HashSet<string>(StringComparer.Ordinal)
+            {
+                BlockedReleaseKeys.ForHash("ABCDEF0123456789ABCDEF0123456789ABCDEF01")
+            });
+
+        Assert.Null(result.BestCandidate);
+        Assert.Empty(result.Candidates);
+    }
+
+    /// <summary>
+    /// A block made before #874 shipped only ever had a name+indexer key.
+    /// Reading it must keep refusing exactly as it did — nothing about an old
+    /// row's matching regresses just because a hash key can now exist too.
+    /// </summary>
+    [Fact]
+    public void An_old_name_and_indexer_only_key_still_matches()
+    {
+        var plan = Plan(Candidate("Arrival.2016.2160p", "Nebula"));
+
+        var result = AcquisitionDecisionPipeline.ApplyBlocklist(plan, Keys("Arrival.2016.2160p", "Nebula"));
+
+        Assert.Null(result.BestCandidate);
+    }
+
+    /// <summary>
+    /// A hash on the blocklist says nothing about a release that neither
+    /// shares it nor the blocked name.
+    /// </summary>
+    [Fact]
+    public void An_unrelated_release_with_its_own_hash_is_not_refused()
+    {
+        var plan = Plan(Candidate("Some.Other.Movie.2020.1080p", "Nebula", hash: "1111111111111111111111111111111111111111"));
+
+        var result = AcquisitionDecisionPipeline.ApplyBlocklist(
+            plan,
+            new HashSet<string>(StringComparer.Ordinal)
+            {
+                BlockedReleaseKeys.ForHash("ABCDEF0123456789ABCDEF0123456789ABCDEF01")
+            });
+
+        Assert.Equal("Some.Other.Movie.2020.1080p", result.BestCandidate!.ReleaseName);
+        Assert.Single(result.Candidates);
+    }
+
     // ------------------------------------------------------------------ helpers
 
     private static HashSet<string> Keys(string releaseName, string indexerName)
@@ -116,7 +195,7 @@ public sealed class SkippingBlockedReleasesTests
                 ? "Nothing found."
                 : $"Best feed candidate is {candidates[0].ReleaseName} from {candidates[0].IndexerName}.");
 
-    private static MediaSearchCandidate Candidate(string releaseName, string indexerName)
+    private static MediaSearchCandidate Candidate(string releaseName, string indexerName, string? hash = null)
         => new(
             releaseName,
             indexerName.ToLowerInvariant(),
@@ -124,5 +203,6 @@ public sealed class SkippingBlockedReleasesTests
             "WEB 1080p",
             100,
             MeetsCutoff: true,
-            Summary: releaseName);
+            Summary: releaseName,
+            TorrentHashOrItemId: hash);
 }

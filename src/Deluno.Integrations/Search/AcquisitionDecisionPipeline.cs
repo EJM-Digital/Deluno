@@ -329,11 +329,16 @@ public sealed class AcquisitionDecisionPipeline : IAcquisitionDecisionPipeline
             return plan;
         }
 
-        // From that indexer, or from any indexer when the refusal was about the
-        // file itself (#585).
+        // Hash/GUID first, whatever indexer or name it shows up under this
+        // time (#802, #874); then the name from that indexer, or from any
+        // indexer when the refusal was about the file itself (#585). A
+        // candidate with no known hash yet only has the name-based keys to
+        // check.
         var kept = plan.Candidates
             .Where(candidate =>
-                !blockedKeys.Contains(BlockedReleaseKeys.For(candidate.ReleaseName, candidate.IndexerName))
+                !(!string.IsNullOrWhiteSpace(candidate.TorrentHashOrItemId)
+                    && blockedKeys.Contains(BlockedReleaseKeys.ForHash(candidate.TorrentHashOrItemId)))
+                && !blockedKeys.Contains(BlockedReleaseKeys.For(candidate.ReleaseName, candidate.IndexerName))
                 && !blockedKeys.Contains(BlockedReleaseKeys.ForEveryIndexer(candidate.ReleaseName)))
             .ToArray();
 
