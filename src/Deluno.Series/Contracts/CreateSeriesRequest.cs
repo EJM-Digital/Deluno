@@ -18,4 +18,8 @@ public sealed record CreateSeriesRequest(
     string? SeriesType = SeriesTypes.Standard,
     string? NumberingScheme = null,
     string? NumberingSource = "provider",
-    string? LibraryId = null);
+    string? LibraryId = null,
+    /// <summary>Search for this show right away if it comes out missing (#793), regardless of Monitored.</summary>
+    bool SearchForMissingNow = false,
+    /// <summary>Search for this show right away if it comes out cutoff-unmet (#793), regardless of Monitored.</summary>
+    bool SearchForCutoffUnmetNow = false);
