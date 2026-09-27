@@ -5563,6 +5563,62 @@ public sealed class ImportPipelineServiceTests
         public Task<ImportPipelineResult> ImportAsync() => Import();
     }
 
+    /// <summary>
+    /// #918, cleanup sheet E4: a file that opens and is found broken is a bad
+    /// release the reader is told about in plain words, not left to the log
+    /// alone — the same activity trail every other import failure already
+    /// gets.
+    /// </summary>
+    [Fact]
+    public async Task A_file_the_probe_rejects_writes_the_reason_to_activity()
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-04-29T08:00:00Z"));
+        await InitializeAllAsync(storage, timeProvider);
+
+        var downloadsPath = Path.Combine(storage.DataRoot, "downloads");
+        var movieRootPath = Path.Combine(storage.DataRoot, "movies");
+        Directory.CreateDirectory(downloadsPath);
+        Directory.CreateDirectory(movieRootPath);
+        var sourcePath = Path.Combine(downloadsPath, "Arrival.2016.WEB.1080p.mkv");
+        await File.WriteAllBytesAsync(sourcePath, new byte[4096]);
+        File.SetLastWriteTimeUtc(sourcePath, DateTime.UtcNow.AddMinutes(-1));
+
+        var platform = CreatePlatformRepository(storage, timeProvider);
+        var libraries = CreateLibrariesRepository(storage, timeProvider);
+        await SaveSettingsAsync(platform, movieRootPath, downloadsPath);
+        await CreateMovieLibraryAsync(libraries, movieRootPath, downloadsPath);
+
+        var movies = new SqliteMovieCatalogRepository(storage.Factory, timeProvider);
+        var probe = new RejectingProbeService("Corrupt container; no readable video or audio.");
+        var service = CreateService(storage, timeProvider, platform, libraries, movies, mediaProbeService: probe);
+
+        var result = await service.ExecuteAsync(
+            new ImportExecuteRequest(
+                Preview: new ImportPreviewRequest(
+                    SourcePath: sourcePath, FileName: null, MediaType: "movies",
+                    Title: "Arrival", Year: 2016, Genres: null, Tags: null,
+                    Studio: null, OriginalLanguage: null),
+                TransferMode: "copy", Overwrite: false, AllowCopyFallback: true),
+            CancellationToken.None);
+
+        Assert.False(result.Succeeded);
+
+        // The service wrote Activity through its own internal SqliteJobStore;
+        // reading it back through a second instance against the same
+        // database is how a test outside that instance confirms it landed.
+        var activity = new SqliteJobStore(storage.Factory, timeProvider, new NullRealtimeEventPublisher(), new NullDownloadDispatchesRepository());
+        var recorded = await activity.ListActivityAsync(10, null, null, CancellationToken.None);
+        var entry = Assert.Single(recorded, item => item.Category == "filesystem.import.failed");
+        Assert.Contains("Corrupt container", entry.Message, StringComparison.Ordinal);
+    }
+
+    private sealed class RejectingProbeService(string message) : IMediaProbeService
+    {
+        public Task<MediaProbeInfo> ProbeAsync(string path, CancellationToken cancellationToken)
+            => Task.FromResult(new MediaProbeInfo("failed", "test", message, null, null, null, [], [], []));
+    }
+
     private static async Task<ProcessedScene> ProcessedSceneAsync(
         double processedSeconds,
         int processedAudioTracks = 2,
