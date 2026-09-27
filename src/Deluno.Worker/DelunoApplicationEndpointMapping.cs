@@ -112,6 +112,7 @@ public static class DelunoApplicationEndpointMapping
         writeEndpoints.MapDelunoJobsEndpoints();
         queueEndpoints.MapDelunoDownloadClientIntegrationEndpoints();
         writeEndpoints.MapDelunoSearchEndpoints();
+        writeEndpoints.MapDelunoManualSearchEndpoints();
         endpoints.MapDelunoMetadataEndpoints();
         importsEndpoints.MapDelunoFilesystemEndpoints();
         queueEndpoints.MapDownloadDispatchesEndpoints();

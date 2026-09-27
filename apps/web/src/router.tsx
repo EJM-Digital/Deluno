@@ -262,6 +262,13 @@ export const router = createBrowserRouter([
         })
       },
       {
+        path: "search",
+        lazy: withSkeleton(async () => {
+          const module = await import("./routes/search-page");
+          return { Component: module.SearchPage };
+        })
+      },
+      {
         path: "activity",
         lazy: withSkeleton(async () => {
           const module = await import("./routes/activity-page");
