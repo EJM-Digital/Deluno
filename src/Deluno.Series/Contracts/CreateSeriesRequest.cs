@@ -22,4 +22,8 @@ public sealed record CreateSeriesRequest(
     /// <summary>Search for this show right away if it comes out missing (#793), regardless of Monitored.</summary>
     bool SearchForMissingNow = false,
     /// <summary>Search for this show right away if it comes out cutoff-unmet (#793), regardless of Monitored.</summary>
-    bool SearchForCutoffUnmetNow = false);
+    bool SearchForCutoffUnmetNow = false,
+    /// <summary>See <see cref="Deluno.Series.Contracts.SeriesNumberingDetail.SeasonFolder"/> (#850). Null follows the global Media Management format, exactly today's behaviour.</summary>
+    bool? SeasonFolder = null,
+    /// <summary>See <see cref="Deluno.Series.Contracts.SeriesNumberingDetail.ListMonitorMode"/> (#848). Null means this series was not added from a list, or the list chose "All".</summary>
+    string? ListMonitorMode = null);

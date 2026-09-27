@@ -17,4 +17,10 @@ public sealed record UpdateIntakeSourceRequest(
     bool SearchOnAdd,
     bool IsEnabled,
     /// <summary>See <see cref="CreateIntakeSourceRequest.MinimumAvailability"/> (#849).</summary>
-    string? MinimumAvailability = null);
+    string? MinimumAvailability = null,
+    /// <summary>See <see cref="CreateIntakeSourceRequest.MonitorMode"/> (#848).</summary>
+    string? MonitorMode = null,
+    /// <summary>See <see cref="CreateIntakeSourceRequest.SeriesType"/> (#850).</summary>
+    string? SeriesType = null,
+    /// <summary>See <see cref="CreateIntakeSourceRequest.SeasonFolder"/> (#850).</summary>
+    bool? SeasonFolder = null);

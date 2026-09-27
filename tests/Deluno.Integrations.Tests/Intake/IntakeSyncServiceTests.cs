@@ -12,6 +12,7 @@ using Deluno.Libraries.Data;
 using Deluno.Platform.Contracts;
 using Deluno.Platform.Data;
 using Deluno.Quality;
+using Deluno.Series.Contracts;
 using Deluno.Series.Data;
 using Deluno.Worker.Intake;
 using Microsoft.Extensions.Configuration;
@@ -258,6 +259,161 @@ public sealed class IntakeSyncServiceTests
         Assert.Equal(1, result.DuplicateCount);
         movies.Verify(repo => repo.AddAsync(It.IsAny<CreateMovieRequest>(), It.IsAny<CancellationToken>()), Times.Never);
         movies.Verify(repo => repo.ListAsync(It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    /// <summary>#848: a movie source with monitor mode "None" adds the title unmonitored instead of Deluno's old hardcoded fully-monitored add.</summary>
+    [Fact]
+    public async Task RunAsync_adds_a_movie_unmonitored_when_the_list_chooses_the_none_monitor_mode()
+    {
+        var source = CreateWatchlistSource() with { MonitorMode = "none" };
+        var library = CreateMovieLibrary();
+        var platform = new Mock<IPlatformSettingsRepository>();
+        var libraries = new Mock<ILibrariesRepository>();
+        var intake = new Mock<IIntakeRepository>();
+        var movies = new Mock<IMovieCatalogRepository>();
+        var metadata = new Mock<IMetadataProvider>();
+        var decisions = new Mock<IMediaDecisionService>();
+        CreateMovieRequest? addedMovie = null;
+
+        intake.Setup(repo => repo.GetIntakeSourceAsync(source.Id, It.IsAny<CancellationToken>())).ReturnsAsync(source);
+        libraries.Setup(repo => repo.ListLibrariesAsync(It.IsAny<CancellationToken>())).ReturnsAsync([library]);
+        intake.Setup(repo => repo.ListActiveIntakeListExclusionsAsync(source.Id, It.IsAny<CancellationToken>())).ReturnsAsync([]);
+        intake.Setup(repo => repo.RecordIntakeTitleOriginAsync(It.IsAny<CreateIntakeTitleOriginRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IntakeTitleOriginItem?)null);
+        intake.Setup(repo => repo.RecordIntakeSourceSyncResultAsync(
+                source.Id, It.IsAny<DateTimeOffset>(), It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IntakeSourceItem?)null);
+        metadata.Setup(provider => provider.SearchAsync(It.IsAny<MetadataLookupRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync([]);
+        decisions.Setup(service => service.DecideWantedState(It.IsAny<MediaWantedDecisionInput>()))
+            .Returns(new LibraryQualityDecision("missing", "Missing from the library.", false, null, "WEBDL-1080p", "test"));
+
+        movies.Setup(repo => repo.FindExistingIdAsync(
+                It.IsAny<string>(), It.IsAny<int?>(), It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((string?)null);
+        movies.Setup(repo => repo.AddAsync(It.IsAny<CreateMovieRequest>(), It.IsAny<CancellationToken>()))
+            .Callback<CreateMovieRequest, CancellationToken>((request, _) => addedMovie = request)
+            .ReturnsAsync(new MovieListItem(
+                "movie-arrival", "Arrival", 2016, null, false, false, null, null, null, null, null, null, null,
+                [], null, null, null, null, DateTimeOffset.UnixEpoch, DateTimeOffset.UnixEpoch));
+        movies.Setup(repo => repo.EnsureWantedStateAsync(
+                "movie-arrival", library.Id, It.IsAny<string>(), It.IsAny<string>(), false,
+                It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<bool>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+
+        var service = new IntakeSyncService(
+            platform.Object,
+            libraries.Object,
+            intake.Object,
+            new Mock<IJobScheduler>().Object,
+            new Mock<IJobQueueRepository>().Object,
+            movies.Object,
+            new Mock<ISeriesCatalogRepository>().Object,
+            metadata.Object,
+            decisions.Object,
+            new Mock<IActivityFeedRepository>().Object,
+            new ConfigurationBuilder().Build(),
+            TimeProvider.System,
+            new SingleClientFactory(new StubHttpMessageHandler()),
+            NullLogger<IntakeSyncService>.Instance);
+
+        var result = await service.RunAsync(source.Id, relatedJobId: null, manual: true, CancellationToken.None);
+
+        Assert.Equal("success", result.Status);
+        Assert.Equal(1, result.AddedCount);
+        Assert.NotNull(addedMovie);
+        Assert.False(addedMovie!.Monitored);
+    }
+
+    /// <summary>#848/#850: a TV source carries its chosen monitor mode, series type and season folder override onto the series it adds.</summary>
+    [Fact]
+    public async Task RunAsync_adds_a_series_with_the_lists_monitor_mode_series_type_and_season_folder()
+    {
+        var source = CreateWatchlistSource() with
+        {
+            MediaType = "tv",
+            LibraryId = "library-tv",
+            MonitorMode = "future",
+            SeriesType = "anime",
+            SeasonFolder = true
+        };
+        var library = CreateMovieLibrary() with { Id = "library-tv", MediaType = "tv" };
+        var platform = new Mock<IPlatformSettingsRepository>();
+        var libraries = new Mock<ILibrariesRepository>();
+        var intake = new Mock<IIntakeRepository>();
+        var series = new Mock<ISeriesCatalogRepository>();
+        var metadata = new Mock<IMetadataProvider>();
+        var decisions = new Mock<IMediaDecisionService>();
+        CreateSeriesRequest? addedSeries = null;
+
+        intake.Setup(repo => repo.GetIntakeSourceAsync(source.Id, It.IsAny<CancellationToken>())).ReturnsAsync(source);
+        libraries.Setup(repo => repo.ListLibrariesAsync(It.IsAny<CancellationToken>())).ReturnsAsync([library]);
+        intake.Setup(repo => repo.ListActiveIntakeListExclusionsAsync(source.Id, It.IsAny<CancellationToken>())).ReturnsAsync([]);
+        intake.Setup(repo => repo.RecordIntakeTitleOriginAsync(It.IsAny<CreateIntakeTitleOriginRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IntakeTitleOriginItem?)null);
+        intake.Setup(repo => repo.RecordIntakeSourceSyncResultAsync(
+                source.Id, It.IsAny<DateTimeOffset>(), It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IntakeSourceItem?)null);
+        metadata.Setup(provider => provider.SearchAsync(It.IsAny<MetadataLookupRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync([]);
+        decisions.Setup(service => service.DecideWantedState(It.IsAny<MediaWantedDecisionInput>()))
+            .Returns(new LibraryQualityDecision("missing", "Missing from the library.", false, null, "WEBDL-1080p", "test"));
+
+        series.Setup(repo => repo.FindExistingIdAsync(
+                It.IsAny<string>(), It.IsAny<int?>(), It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((string?)null);
+        series.Setup(repo => repo.AddAsync(It.IsAny<CreateSeriesRequest>(), It.IsAny<CancellationToken>()))
+            .Callback<CreateSeriesRequest, CancellationToken>((request, _) => addedSeries = request)
+            .ReturnsAsync(new SeriesListItem(
+                Id: "series-arrival",
+                Title: "Arrival",
+                StartYear: 2016,
+                ImdbId: null,
+                Monitored: true,
+                HasFile: false,
+                MetadataProvider: null,
+                MetadataProviderId: null,
+                OriginalTitle: null,
+                Overview: null,
+                PosterUrl: null,
+                BackdropUrl: null,
+                Rating: null,
+                Ratings: [],
+                Genres: null,
+                ExternalUrl: null,
+                MetadataJson: null,
+                MetadataUpdatedUtc: null,
+                CreatedUtc: DateTimeOffset.UnixEpoch,
+                UpdatedUtc: DateTimeOffset.UnixEpoch));
+        series.Setup(repo => repo.EnsureWantedStateAsync(
+                "series-arrival", library.Id, It.IsAny<string>(), It.IsAny<string>(), false,
+                It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<bool>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+
+        var service = new IntakeSyncService(
+            platform.Object,
+            libraries.Object,
+            intake.Object,
+            new Mock<IJobScheduler>().Object,
+            new Mock<IJobQueueRepository>().Object,
+            new Mock<IMovieCatalogRepository>().Object,
+            series.Object,
+            metadata.Object,
+            decisions.Object,
+            new Mock<IActivityFeedRepository>().Object,
+            new ConfigurationBuilder().Build(),
+            TimeProvider.System,
+            new SingleClientFactory(new StubHttpMessageHandler()),
+            NullLogger<IntakeSyncService>.Instance);
+
+        var result = await service.RunAsync(source.Id, relatedJobId: null, manual: true, CancellationToken.None);
+
+        Assert.Equal("success", result.Status);
+        Assert.Equal(1, result.AddedCount);
+        Assert.NotNull(addedSeries);
+        Assert.Equal("future", addedSeries!.ListMonitorMode);
+        Assert.Equal("anime", addedSeries.SeriesType);
+        Assert.True(addedSeries.SeasonFolder);
     }
 
     private static IntakeSourceItem CreateWatchlistSource()

@@ -495,4 +495,44 @@ public sealed class SeriesNumberingPersistenceTests
             2,
             detail.Episodes.Count(item => item.SeasonNumber == 1 && item.HasFile));
     }
+
+    /// <summary>
+    /// #850: a series can override the global Media Management season-folder
+    /// format on its own, set either directly (SeasonFolder on
+    /// CreateSeriesRequest, e.g. from a list add) or later through
+    /// UpdateNumberingAsync. Null throughout means "no override" — every
+    /// series added before #850 existed.
+    /// </summary>
+    [Fact]
+    public async Task SeasonFolder_override_round_trips_through_add_and_update()
+    {
+        var storage = TestStorage.Create();
+        using var _ = storage;
+        var now = DateTimeOffset.Parse("2026-09-27T02:00:00Z");
+        var timeProvider = new FixedTimeProvider(now);
+
+        await new SeriesSchemaInitializer(
+            storage.Factory,
+            new SqliteDatabaseMigrator(storage.Factory, timeProvider),
+            NullLogger<SeriesSchemaInitializer>.Instance).StartAsync(CancellationToken.None);
+
+        var repository = new SqliteSeriesCatalogRepository(storage.Factory, timeProvider);
+
+        var plain = await repository.AddAsync(new CreateSeriesRequest("Plain Show", 2024, "tt0000001"), CancellationToken.None);
+        var plainNumbering = await repository.GetNumberingAsync(plain.Id, CancellationToken.None);
+        Assert.Null(plainNumbering!.SeasonFolder);
+
+        var forcedOn = await repository.AddAsync(
+            new CreateSeriesRequest("Forced On Show", 2024, "tt0000002", SeasonFolder: true),
+            CancellationToken.None);
+        var forcedOnNumbering = await repository.GetNumberingAsync(forcedOn.Id, CancellationToken.None);
+        Assert.True(forcedOnNumbering!.SeasonFolder);
+
+        var updated = await repository.UpdateNumberingAsync(
+            forcedOn.Id,
+            new UpdateSeriesNumberingRequest(SeasonFolder: false),
+            CancellationToken.None);
+        Assert.NotNull(updated);
+        Assert.False(updated!.SeasonFolder);
+    }
 }

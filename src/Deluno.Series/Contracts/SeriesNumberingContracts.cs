@@ -202,7 +202,21 @@ public sealed record SeriesNumberingDetail(
     /// not resolve episodes by yet (a story arc or production order, say) -
     /// shown for information only, never selectable.
     /// </summary>
-    IReadOnlyList<string>? OtherNumberingSchemeNames = null);
+    IReadOnlyList<string>? OtherNumberingSchemeNames = null,
+    /// <summary>
+    /// The per-series Season Folder override (#850): null follows the global
+    /// Media Management format, true/false forces a season subfolder on or
+    /// off for this series regardless of that format. Carried on the same
+    /// row as the numbering fields because the import pipeline already loads
+    /// this detail once per file to decide how to place it.
+    /// </summary>
+    bool? SeasonFolder = null,
+    /// <summary>
+    /// The list monitor mode (#848) this series was added under, or null if
+    /// it was never added from a list (or predates #848). Read only when
+    /// populating this series' episode catalogue for the first time.
+    /// </summary>
+    string? ListMonitorMode = null);
 
 /// <summary>
 /// Alternate numbers attached to an episode. Canonical season/episode remains
@@ -266,7 +280,11 @@ public sealed record UpdateSeriesNumberingRequest(
     string? SeriesType = null,
     string? NumberingScheme = null,
     string? NumberingSource = null,
-    IReadOnlyList<SeriesNumberingMapping>? Mappings = null);
+    IReadOnlyList<SeriesNumberingMapping>? Mappings = null,
+    /// <summary>See <see cref="SeriesNumberingDetail.SeasonFolder"/> (#850). Null leaves today's value unchanged.</summary>
+    bool? SeasonFolder = null,
+    /// <summary>See <see cref="SeriesNumberingDetail.ListMonitorMode"/> (#848). Null leaves today's value unchanged.</summary>
+    string? ListMonitorMode = null);
 
 /// <summary>One number parsed from a file name, before catalogue matching.</summary>
 public sealed record ParsedSeriesEpisodeNumber(

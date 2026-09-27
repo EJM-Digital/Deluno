@@ -287,6 +287,12 @@ export interface IntakeSourceItem {
   updatedUtc: string;
   /** Minimum release stage (movies only) a list-added title must reach before Deluno searches for it (#849). */
   minimumAvailability?: "announced" | "inCinemas" | "released" | string;
+  /** How much of a newly added title to actually watch for (#848): All/Future/Missing/Existing/Recent for TV, Movie/None for movies. */
+  monitorMode?: "all" | "future" | "missing" | "existing" | "recent" | "movie" | "none" | string;
+  /** TV only (#850): Standard/Daily/Anime, mirroring the same choice on a direct series add. */
+  seriesType?: "standard" | "daily" | "anime" | string | null;
+  /** TV only (#850): true/false forces a season subfolder on or off; null/unset follows the global Media Management format. */
+  seasonFolder?: boolean | null;
 }
 
 export interface IntakeListExclusionItem {

@@ -3777,6 +3777,127 @@ public sealed class ImportPipelineServiceTests
         Assert.DoesNotContain("Season", preview.DestinationPath);
     }
 
+    /// <summary>#850: a series' own SeasonFolder override forces a subfolder even when the global format is blank.</summary>
+    [Fact]
+    public async Task Preview_forces_a_season_subfolder_when_the_series_overrides_a_blank_global_format()
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-04-29T08:00:00Z"));
+        await InitializeAllAsync(storage, timeProvider);
+        var downloadsPath = Path.Combine(storage.DataRoot, "downloads");
+        var movieRootPath = Path.Combine(storage.DataRoot, "movies");
+        var seriesRootPath = Path.Combine(storage.DataRoot, "series");
+        Directory.CreateDirectory(downloadsPath);
+        Directory.CreateDirectory(movieRootPath);
+        Directory.CreateDirectory(seriesRootPath);
+        var sourcePath = Path.Combine(downloadsPath, "Severance.S01E03.1080p.WEB-DL.mkv");
+        await File.WriteAllBytesAsync(sourcePath, Enumerable.Range(0, 4096).Select(value => (byte)(value % 251)).ToArray());
+        File.SetLastWriteTimeUtc(sourcePath, DateTime.UtcNow.AddMinutes(-1));
+
+        var platform = CreatePlatformRepository(storage, timeProvider);
+        var libraries = CreateLibrariesRepository(storage, timeProvider);
+        await SaveSettingsAsync(
+            platform,
+            movieRootPath,
+            downloadsPath,
+            seriesRootPath,
+            episodeFileFormat: "{Series Title} - S{season:00}E{episode:00} - {Episode Title}");
+        await CreateTvLibraryAsync(libraries, seriesRootPath, downloadsPath);
+
+        var seriesRepository = new SqliteSeriesCatalogRepository(storage.Factory, timeProvider);
+        var series = await seriesRepository.AddAsync(
+            new CreateSeriesRequest("Severance", 2026, "tt1234567", SeasonFolder: true),
+            CancellationToken.None);
+        await seriesRepository.SyncEpisodeCatalogueAsync(
+            series.Id,
+            [new CatalogueEpisodeItem(1, 3, "Good News About Hell", null, timeProvider.GetUtcNow())],
+            "provider",
+            CancellationToken.None);
+
+        var movies = new SqliteMovieCatalogRepository(storage.Factory, timeProvider);
+        var service = CreateService(storage, timeProvider, platform, libraries, movies);
+        var preview = await service.PreviewAsync(
+            new ImportPreviewRequest(
+                SourcePath: sourcePath,
+                FileName: Path.GetFileName(sourcePath),
+                MediaType: "tv",
+                Title: "Severance",
+                Year: 2026,
+                Genres: [],
+                Tags: [],
+                Studio: null,
+                OriginalLanguage: null,
+                SeriesId: series.Id),
+            CancellationToken.None);
+
+        Assert.EndsWith(
+            Path.Combine("Severance (2026)", "Season 01", "Severance - S01E03 - Good News About Hell.mkv"),
+            preview.DestinationPath,
+            StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>#850: a series' own SeasonFolder override flattens the folder even when the global format is set.</summary>
+    [Fact]
+    public async Task Preview_keeps_a_flat_series_folder_when_the_series_overrides_a_configured_global_format()
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-04-29T08:00:00Z"));
+        await InitializeAllAsync(storage, timeProvider);
+        var downloadsPath = Path.Combine(storage.DataRoot, "downloads");
+        var movieRootPath = Path.Combine(storage.DataRoot, "movies");
+        var seriesRootPath = Path.Combine(storage.DataRoot, "series");
+        Directory.CreateDirectory(downloadsPath);
+        Directory.CreateDirectory(movieRootPath);
+        Directory.CreateDirectory(seriesRootPath);
+        var sourcePath = Path.Combine(downloadsPath, "Severance.S01E03.1080p.WEB-DL.mkv");
+        await File.WriteAllBytesAsync(sourcePath, Enumerable.Range(0, 4096).Select(value => (byte)(value % 251)).ToArray());
+        File.SetLastWriteTimeUtc(sourcePath, DateTime.UtcNow.AddMinutes(-1));
+
+        var platform = CreatePlatformRepository(storage, timeProvider);
+        var libraries = CreateLibrariesRepository(storage, timeProvider);
+        await SaveSettingsAsync(
+            platform,
+            movieRootPath,
+            downloadsPath,
+            seriesRootPath,
+            episodeFileFormat: "{Series Title} - S{season:00}E{episode:00} - {Episode Title}",
+            seasonFolderFormat: "Season {Season:00}",
+            specialsFolderFormat: "Specials");
+        await CreateTvLibraryAsync(libraries, seriesRootPath, downloadsPath);
+
+        var seriesRepository = new SqliteSeriesCatalogRepository(storage.Factory, timeProvider);
+        var series = await seriesRepository.AddAsync(
+            new CreateSeriesRequest("Severance", 2026, "tt1234567", SeasonFolder: false),
+            CancellationToken.None);
+        await seriesRepository.SyncEpisodeCatalogueAsync(
+            series.Id,
+            [new CatalogueEpisodeItem(1, 3, "Good News About Hell", null, timeProvider.GetUtcNow())],
+            "provider",
+            CancellationToken.None);
+
+        var movies = new SqliteMovieCatalogRepository(storage.Factory, timeProvider);
+        var service = CreateService(storage, timeProvider, platform, libraries, movies);
+        var preview = await service.PreviewAsync(
+            new ImportPreviewRequest(
+                SourcePath: sourcePath,
+                FileName: Path.GetFileName(sourcePath),
+                MediaType: "tv",
+                Title: "Severance",
+                Year: 2026,
+                Genres: [],
+                Tags: [],
+                Studio: null,
+                OriginalLanguage: null,
+                SeriesId: series.Id),
+            CancellationToken.None);
+
+        Assert.EndsWith(
+            Path.Combine("Severance (2026)", "Severance - S01E03 - Good News About Hell.mkv"),
+            preview.DestinationPath,
+            StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("Season", preview.DestinationPath);
+    }
+
     [Fact]
     public async Task Tv_multi_episode_import_persists_one_library_destination_for_every_episode()
     {

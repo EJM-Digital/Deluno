@@ -3,6 +3,7 @@ using ArtworkCacheKeys = Deluno.Integrations.Metadata.ArtworkCacheKeys;
 using MetadataProviderIssue = Deluno.Integrations.Metadata.MetadataProviderIssue;
 using MetadataIdentityConflict = Deluno.Integrations.Metadata.MetadataIdentityConflict;
 using Deluno.Contracts;
+using Deluno.Intake.Contracts;
 using Deluno.Platform.Contracts;
 using Deluno.Platform.Data;
 using System.Data.Common;
@@ -73,11 +74,18 @@ public sealed class SqliteSeriesCatalogRepository(
             // series when a legacy caller omitted the new optional fields.
             if (seriesType != SeriesTypes.Standard ||
                 numberingScheme != SeriesNumberingSchemes.Standard ||
-                numberingSource != SeriesNumberingSources.Provider)
+                numberingSource != SeriesNumberingSources.Provider ||
+                request.SeasonFolder is not null ||
+                request.ListMonitorMode is not null)
             {
                 await UpdateNumberingAsync(
                     id,
-                    new UpdateSeriesNumberingRequest(seriesType, numberingScheme, numberingSource),
+                    new UpdateSeriesNumberingRequest(
+                        seriesType,
+                        numberingScheme,
+                        numberingSource,
+                        SeasonFolder: request.SeasonFolder,
+                        ListMonitorMode: request.ListMonitorMode),
                     cancellationToken);
             }
 
@@ -158,7 +166,9 @@ public sealed class SqliteSeriesCatalogRepository(
                 series_type,
                 numbering_scheme,
                 numbering_source,
-                numbering_updated_utc
+                numbering_updated_utc,
+                season_folder,
+                list_monitor_mode
             )
             VALUES (
                 @id,
@@ -182,7 +192,9 @@ public sealed class SqliteSeriesCatalogRepository(
                 @seriesType,
                 @numberingScheme,
                 @numberingSource,
-                @numberingUpdatedUtc
+                @numberingUpdatedUtc,
+                @seasonFolder,
+                @listMonitorMode
             );
             """;
 
@@ -208,6 +220,8 @@ public sealed class SqliteSeriesCatalogRepository(
         AddParameter(command, "@numberingScheme", series.NumberingScheme);
         AddParameter(command, "@numberingSource", series.NumberingSource);
         AddParameter(command, "@numberingUpdatedUtc", series.NumberingSource == SeriesNumberingSources.Owner ? series.UpdatedUtc.ToString("O") : null);
+        AddParameter(command, "@seasonFolder", request.SeasonFolder is bool seasonFolder ? (seasonFolder ? 1 : 0) : null);
+        AddParameter(command, "@listMonitorMode", request.ListMonitorMode);
 
         try
         {
@@ -396,6 +410,8 @@ public sealed class SqliteSeriesCatalogRepository(
         DateTimeOffset? updatedUtc;
         IReadOnlyList<string> availableSchemes;
         IReadOnlyList<string> otherSchemeNames;
+        bool? seasonFolder;
+        string? listMonitorMode;
 
         using (var series = connection.CreateCommand())
         {
@@ -407,7 +423,9 @@ public sealed class SqliteSeriesCatalogRepository(
                     COALESCE(numbering_source, 'provider'),
                     numbering_updated_utc,
                     available_numbering_schemes,
-                    other_numbering_scheme_names
+                    other_numbering_scheme_names,
+                    season_folder,
+                    list_monitor_mode
                 FROM series_entries
                 WHERE id = @seriesId
                 LIMIT 1;
@@ -426,6 +444,8 @@ public sealed class SqliteSeriesCatalogRepository(
             updatedUtc = reader.IsDBNull(3) ? null : ParseTimestamp(reader.GetString(3));
             availableSchemes = SplitCsv(reader.IsDBNull(4) ? null : reader.GetString(4));
             otherSchemeNames = SplitCsv(reader.IsDBNull(5) ? null : reader.GetString(5));
+            seasonFolder = reader.IsDBNull(6) ? null : reader.GetInt64(6) == 1;
+            listMonitorMode = reader.IsDBNull(7) ? null : reader.GetString(7);
         }
 
         availableSchemes = MergeAvailableSchemes(seriesType, numberingScheme, availableSchemes);
@@ -479,7 +499,9 @@ public sealed class SqliteSeriesCatalogRepository(
             updatedUtc,
             episodes,
             availableSchemes,
-            otherSchemeNames);
+            otherSchemeNames,
+            seasonFolder,
+            listMonitorMode);
     }
 
     /// <summary>
@@ -529,6 +551,8 @@ public sealed class SqliteSeriesCatalogRepository(
         string currentType;
         string currentScheme;
         string currentSource;
+        bool? currentSeasonFolder;
+        string? currentListMonitorMode;
         using (var current = connection.CreateCommand())
         {
             current.Transaction = transaction;
@@ -537,7 +561,9 @@ public sealed class SqliteSeriesCatalogRepository(
                 SELECT
                     COALESCE(series_type, 'standard'),
                     COALESCE(numbering_scheme, 'standard'),
-                    COALESCE(numbering_source, 'provider')
+                    COALESCE(numbering_source, 'provider'),
+                    season_folder,
+                    list_monitor_mode
                 FROM series_entries
                 WHERE id = @seriesId
                 LIMIT 1;
@@ -553,6 +579,8 @@ public sealed class SqliteSeriesCatalogRepository(
             currentType = SeriesTypes.Normalize(reader.GetString(0));
             currentScheme = SeriesNumberingSchemes.Normalize(reader.GetString(1));
             currentSource = SeriesNumberingSources.Normalize(reader.GetString(2));
+            currentSeasonFolder = reader.IsDBNull(3) ? null : reader.GetInt64(3) == 1;
+            currentListMonitorMode = reader.IsDBNull(4) ? null : reader.GetString(4);
         }
 
         var seriesType = request.SeriesType is null ? currentType : SeriesTypes.Normalize(request.SeriesType);
@@ -562,6 +590,8 @@ public sealed class SqliteSeriesCatalogRepository(
         var numberingSource = request.NumberingSource is null
             ? request.Mappings is not null ? SeriesNumberingSources.Owner : currentSource
             : SeriesNumberingSources.Normalize(request.NumberingSource);
+        var seasonFolder = request.SeasonFolder ?? currentSeasonFolder;
+        var listMonitorMode = request.ListMonitorMode ?? currentListMonitorMode;
         var now = timeProvider.GetUtcNow();
 
         using (var update = connection.CreateCommand())
@@ -574,7 +604,9 @@ public sealed class SqliteSeriesCatalogRepository(
                     numbering_scheme = @numberingScheme,
                     numbering_source = @numberingSource,
                     numbering_updated_utc = @numberingUpdatedUtc,
-                    updated_utc = @updatedUtc
+                    updated_utc = @updatedUtc,
+                    season_folder = @seasonFolder,
+                    list_monitor_mode = @listMonitorMode
                 WHERE id = @seriesId;
                 """;
             AddParameter(update, "@seriesId", seriesId);
@@ -583,6 +615,8 @@ public sealed class SqliteSeriesCatalogRepository(
             AddParameter(update, "@numberingSource", numberingSource);
             AddParameter(update, "@numberingUpdatedUtc", now.ToString("O"));
             AddParameter(update, "@updatedUtc", now.ToString("O"));
+            AddParameter(update, "@seasonFolder", seasonFolder is bool sf ? (sf ? 1 : 0) : null);
+            AddParameter(update, "@listMonitorMode", listMonitorMode);
             await update.ExecuteNonQueryAsync(cancellationToken);
         }
 
@@ -4827,6 +4861,11 @@ public sealed class SqliteSeriesCatalogRepository(
         // out unmonitored, independently of the series itself being monitored.
         // Read once per sync for the same reason seriesMonitored is.
         var monitorNewEpisodes = await ShouldMonitorNewEpisodesAsync(connection, transaction, seriesId, cancellationToken);
+        // #848: a series added from a list can ask for less than "every
+        // episode" up front. Only ever narrows the two checks above — it
+        // never turns a switched-off series or preset back on.
+        var listMonitorMode = await GetListMonitorModeAsync(connection, transaction, seriesId, cancellationToken);
+        var mostRecentSeason = episodes.Max(item => item.SeasonNumber);
 
         foreach (var seasonNumber in episodes.Select(item => item.SeasonNumber).Distinct().OrderBy(item => item))
         {
@@ -4884,7 +4923,8 @@ public sealed class SqliteSeriesCatalogRepository(
                 // episodes are never wanted until the series itself is
                 // monitored again (#653). Only the default differs — the
                 // per-episode switch still governs from here on.
-                AddParameter(upsert, "@monitored", episode.SeasonNumber == 0 || !seriesMonitored || !monitorNewEpisodes ? 0 : 1);
+                var listModeAllows = ListMonitorModeAllows(listMonitorMode, episode, mostRecentSeason, now);
+                AddParameter(upsert, "@monitored", episode.SeasonNumber == 0 || !seriesMonitored || !monitorNewEpisodes || !listModeAllows ? 0 : 1);
                 AddParameter(upsert, "@title", NormalizeText(episode.Title));
                 AddParameter(upsert, "@overview", NormalizeText(episode.Overview));
                 AddParameter(upsert, "@airDateUtc", episode.AirDateUtc?.ToString("O"));
@@ -5250,6 +5290,49 @@ public sealed class SqliteSeriesCatalogRepository(
         var result = await command.ExecuteScalarAsync(cancellationToken);
         return result is not long value || value == 1;
     }
+
+    /// <summary>
+    /// The list monitor mode (#848) this series was added under, or null if
+    /// it was not added from a list (or the list chose "All"). Read once per
+    /// sync, the same as <see cref="ShouldMonitorNewEpisodesAsync"/>.
+    /// </summary>
+    private static async Task<string?> GetListMonitorModeAsync(
+        System.Data.Common.DbConnection connection,
+        System.Data.Common.DbTransaction transaction,
+        string seriesId,
+        CancellationToken cancellationToken)
+    {
+        using var command = connection.CreateCommand();
+        command.Transaction = transaction;
+        command.CommandText = "SELECT list_monitor_mode FROM series_entries WHERE id = @seriesId LIMIT 1;";
+        AddParameter(command, "@seriesId", seriesId);
+        var result = await command.ExecuteScalarAsync(cancellationToken);
+        return result as string;
+    }
+
+    /// <summary>
+    /// Whether a newly discovered episode passes the list's chosen monitor
+    /// mode (#848). Null (not added from a list, or the list chose "All")
+    /// and <see cref="Deluno.Intake.Contracts.IntakeMonitorModes.All"/> both
+    /// always pass — today's behaviour. Every episode this show discovers is
+    /// freshly inserted with no file yet, so "Missing" and "All" agree here;
+    /// "Existing" is the mirror of that and never passes for a brand new
+    /// episode, by design — it is for a list added over a title Deluno
+    /// already holds files for.
+    /// </summary>
+    private static bool ListMonitorModeAllows(
+        string? listMonitorMode,
+        CatalogueEpisodeItem episode,
+        int mostRecentSeason,
+        DateTimeOffset now)
+        => listMonitorMode switch
+        {
+            null or IntakeMonitorModes.All or IntakeMonitorModes.Missing => true,
+            IntakeMonitorModes.Future => episode.AirDateUtc is null || episode.AirDateUtc > now,
+            IntakeMonitorModes.Existing => false,
+            IntakeMonitorModes.Recent => episode.SeasonNumber == mostRecentSeason,
+            _ => true
+        };
 
     private static async Task<string> EnsureSeasonAsync(
         System.Data.Common.DbConnection connection,

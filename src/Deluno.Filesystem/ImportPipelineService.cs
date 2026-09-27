@@ -2217,7 +2217,7 @@ public sealed partial class ImportPipelineService(
         // configured. Resolved after the file name so the subfolder uses the
         // exact same season this import already matched against the
         // catalogue, rather than re-parsing the incoming name a second time.
-        var seasonSubfolder = mediaType == "tv" ? BuildSeasonSubfolder(settings, resolvedName.SeasonNumber) : null;
+        var seasonSubfolder = mediaType == "tv" ? BuildSeasonSubfolder(settings, resolvedName.SeasonNumber, seriesNumbering?.SeasonFolder) : null;
         var destinationFolder = string.IsNullOrWhiteSpace(rootPath)
             ? (seasonSubfolder is null ? folder : Path.Combine(folder, seasonSubfolder))
             : (seasonSubfolder is null ? Path.Combine(rootPath, folder) : Path.Combine(rootPath, folder, seasonSubfolder));
@@ -4310,10 +4310,24 @@ public sealed partial class ImportPipelineService(
     /// for every install that has never opened this setting. Season 0 (a
     /// specials episode) uses SpecialsFolderFormat instead of
     /// SeasonFolderFormat, the way Sonarr splits the two.
+    ///
+    /// <para>
+    /// #850: a series can override this globally-configured behaviour.
+    /// <paramref name="perSeriesSeasonFolder"/> null (every series that has
+    /// never opted in) changes nothing. false forces episodes flat into the
+    /// series folder even when the global format is set. true forces a
+    /// season subfolder even when the global format is blank, falling back
+    /// to Sonarr's own default pattern so "on" always does something.
+    /// </para>
     /// </summary>
-    private static string? BuildSeasonSubfolder(PlatformSettingsSnapshot settings, int? seasonNumber)
+    private static string? BuildSeasonSubfolder(PlatformSettingsSnapshot settings, int? seasonNumber, bool? perSeriesSeasonFolder = null)
     {
         if (seasonNumber is not int season)
+        {
+            return null;
+        }
+
+        if (perSeriesSeasonFolder is false)
         {
             return null;
         }
@@ -4321,7 +4335,12 @@ public sealed partial class ImportPipelineService(
         var template = season == 0 ? settings.SpecialsFolderFormat : settings.SeasonFolderFormat;
         if (string.IsNullOrWhiteSpace(template))
         {
-            return null;
+            if (perSeriesSeasonFolder is not true)
+            {
+                return null;
+            }
+
+            template = season == 0 ? "Specials" : "Season {season:00}";
         }
 
         var withSeason = template
