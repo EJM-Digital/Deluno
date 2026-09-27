@@ -180,6 +180,7 @@ GET /api/seerr-servers/
 GET /api/series/calendar
 GET /api/series/controls
 GET /api/series/episodes/wanted
+GET /api/series/episodes/{episodeId}/subtitles
 GET /api/series/genres
 GET /api/series/import-recovery
 GET /api/series/inventory
