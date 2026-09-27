@@ -253,6 +253,84 @@ public sealed class SqliteMediaSubtitleRepository(
     }
 
     /// <summary>
+    /// One title's own wanted languages, for a person-triggered search right
+    /// now (#840) rather than the library's own bounded slice — so it reads
+    /// the title regardless of whether it is mid-backoff, which is exactly
+    /// what asking for it "now" means.
+    /// </summary>
+    public async Task<MediaSubtitleWantedItem?> GetWantedItemAsync(
+        MediaKind kind,
+        string mediaId,
+        IReadOnlyList<string> languages,
+        bool embeddedCounts,
+        CancellationToken cancellationToken)
+    {
+        if (languages.Count == 0)
+        {
+            return null;
+        }
+
+        var map = MediaTableMap.For(kind);
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            map.DatabaseName,
+            cancellationToken);
+
+        var heldPredicate = CatalogueSubtitleRollup.HeldPredicate(embeddedCounts);
+        var settledPredicate = $"{heldPredicate} AND (sub.source = '{SubtitleSources.Embedded}' OR sub.match_rung >= @cutoff)";
+
+        using var command = connection.CreateCommand();
+        command.CommandText = $"""
+            SELECT
+                {map.SubtitleFileIdColumn},
+                f.file_path,
+                {map.SubtitleSearchColumns},
+                (
+                    SELECT GROUP_CONCAT(sub.language)
+                    FROM {map.SubtitleTable} sub
+                    WHERE sub.{map.SubtitleMediaIdColumn} = {map.SubtitleFileIdColumn}
+                      AND {settledPredicate}
+                ),
+                ov.languages
+            FROM {map.SubtitleFileSource}
+            {map.SubtitleSearchJoin}
+            LEFT JOIN {map.SubtitleOverrideTable} ov ON ov.{map.TagMediaIdColumn} = {map.SubtitleOverrideFileTitleIdColumn}
+            WHERE {map.SubtitleFileIdColumn} = @mediaId
+              AND f.has_file = 1
+              AND f.file_path IS NOT NULL;
+            """;
+
+        AddParameter(command, "@mediaId", mediaId);
+        AddParameter(command, "@cutoff", (int)SubtitleCutoff.Rung);
+
+        using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        if (!await reader.ReadAsync(cancellationToken))
+        {
+            return null;
+        }
+
+        var held = Split(reader, 8);
+        var overrideLanguages = reader.IsDBNull(9)
+            ? null
+            : reader.GetString(9).Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        var effectiveLanguages = overrideLanguages is { Length: > 0 } ? overrideLanguages : languages;
+
+        var missing = effectiveLanguages
+            .Where(language => !held.Contains(language, StringComparer.OrdinalIgnoreCase))
+            .ToArray();
+
+        return new MediaSubtitleWantedItem(
+            MediaId: reader.GetString(0),
+            FilePath: reader.GetString(1),
+            Title: reader.IsDBNull(2) ? string.Empty : reader.GetString(2),
+            Year: reader.IsDBNull(3) ? null : reader.GetInt32(3),
+            SeasonNumber: reader.IsDBNull(4) ? null : reader.GetInt32(4),
+            EpisodeNumber: reader.IsDBNull(5) ? null : reader.GetInt32(5),
+            EpisodeTitle: reader.IsDBNull(6) ? null : reader.GetString(6),
+            ReleaseName: reader.IsDBNull(7) ? null : reader.GetString(7),
+            LanguagesToFetch: missing);
+    }
+
+    /// <summary>
     /// Remembers that Deluno looked and did not find it, and when to look again.
     ///
     /// <para>The delay doubles from the library's own <c>RetryDelayHours</c> —
