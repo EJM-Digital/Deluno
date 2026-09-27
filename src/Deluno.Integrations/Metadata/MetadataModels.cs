@@ -88,7 +88,14 @@ public sealed record MetadataSearchResult(
     /// its external-id response; keeping it beside IMDb lets the TV folder
     /// naming preset work without pretending a TMDb id is a TVDb id.
     /// </summary>
-    string? TvDbId = null)
+    string? TvDbId = null,
+    /// <summary>
+    /// Region-specific spellings TMDb's alternative_titles endpoint reports,
+    /// beyond <see cref="Title"/> and <see cref="OriginalTitle"/>. A release
+    /// filed under one of these ("Ne Zha 2" listed as "哪吒之魔童闹海" on a
+    /// tracker) has nothing to match against without them (#861).
+    /// </summary>
+    IReadOnlyList<string>? AlternateTitles = null)
 {
     /// <summary>
     /// The catalogue entry Deluno would land on if this result were added, when

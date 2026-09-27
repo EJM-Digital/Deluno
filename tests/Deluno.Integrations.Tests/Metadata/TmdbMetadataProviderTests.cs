@@ -858,6 +858,105 @@ public sealed class TmdbMetadataProviderTests : IDisposable
         Assert.Equal(expectedCertification, lookup.Result?.Certification);
     }
 
+    /// <summary>
+    /// #861: a release can be filed under a region-specific alternate title
+    /// TMDb's alternative_titles carries beyond Title/OriginalTitle. The
+    /// primary and original titles are excluded from the stored list — they
+    /// are matched already — and the same spelling reported for more than one
+    /// country is kept only once.
+    /// </summary>
+    [Theory]
+    [InlineData("movies")]
+    [InlineData("tv")]
+    public async Task ResolveProviderRecordAsync_stores_alternate_titles_without_the_primary_or_duplicates(string mediaType)
+    {
+        var settings = new Mock<IPlatformSettingsRepository>();
+        settings.Setup(repo => repo.GetAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(CreateSettingsSnapshot("direct", string.Empty));
+
+        var storageOptions = Options.Create(new StoragePathOptions { DataRoot = _dataRoot });
+        var factory = new SqliteDatabaseConnectionFactory(storageOptions);
+        var timeProvider = new FakeTimeProvider(DateTimeOffset.Parse("2026-09-25T00:00:00Z"));
+        await new CacheSchemaInitializer(
+            factory,
+            new SqliteDatabaseMigrator(factory, timeProvider),
+            NullLogger<CacheSchemaInitializer>.Instance).StartAsync(CancellationToken.None);
+
+        var provider = new TmdbMetadataProvider(
+            new HttpClient(new StubHttpMessageHandler(request =>
+            {
+                var uri = request.RequestUri!;
+                string payload;
+                if (uri.AbsolutePath.Contains("/movie/", StringComparison.Ordinal))
+                {
+                    payload = """
+                    {
+                      "id": 603,
+                      "title": "The Matrix",
+                      "original_title": "The Matrix",
+                      "release_date": "1999-03-30",
+                      "alternative_titles": {
+                        "titles": [
+                          { "iso_3166_1": "US", "title": "The Matrix" },
+                          { "iso_3166_1": "FR", "title": "Matrix" },
+                          { "iso_3166_1": "DE", "title": "Matrix" }
+                        ]
+                      }
+                    }
+                    """;
+                }
+                else if (uri.AbsolutePath.Contains("/tv/", StringComparison.Ordinal))
+                {
+                    payload = """
+                    {
+                      "id": 1399,
+                      "name": "Game of Thrones",
+                      "original_name": "Game of Thrones",
+                      "first_air_date": "2011-04-17",
+                      "alternative_titles": {
+                        "results": [
+                          { "iso_3166_1": "US", "title": "Game of Thrones" },
+                          { "iso_3166_1": "FR", "title": "Le Trone de Fer" },
+                          { "iso_3166_1": "DE", "title": "Le Trone de Fer" }
+                        ]
+                      }
+                    }
+                    """;
+                }
+                else
+                {
+                    return new HttpResponseMessage(HttpStatusCode.NotFound);
+                }
+
+                return new HttpResponseMessage(HttpStatusCode.OK)
+                {
+                    Content = new StringContent(payload, Encoding.UTF8, "application/json")
+                };
+            })),
+            new ConfigurationBuilder()
+                .AddInMemoryCollection(new Dictionary<string, string?>
+                {
+                    ["Deluno:Metadata:TMDbApiKey"] = "test-key"
+                })
+                .Build(),
+            settings.Object,
+            factory,
+            storageOptions,
+            timeProvider,
+            new PassthroughResiliencePolicy(),
+            new OutboundRequestThrottle(timeProvider, NullLogger<OutboundRequestThrottle>.Instance),
+            NullLogger<TmdbMetadataProvider>.Instance);
+
+        var providerId = mediaType == "tv" ? "1399" : "603";
+        var lookup = await provider.ResolveProviderRecordAsync(
+            new MetadataLookupRequest(null, mediaType, null, providerId),
+            CancellationToken.None);
+
+        Assert.Equal(MetadataProviderRecordStatus.Found, lookup.Status);
+        var expected = mediaType == "tv" ? "Le Trone de Fer" : "Matrix";
+        Assert.Equal([expected], lookup.Result?.AlternateTitles);
+    }
+
     private static PlatformSettingsSnapshot CreateSettingsSnapshot(
         string providerMode,
         string brokerUrl,

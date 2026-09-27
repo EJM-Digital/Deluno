@@ -1439,8 +1439,8 @@ public sealed class TmdbMetadataProvider(
         // type costs nothing — TMDb answers null for it, the same as any other
         // append the title does not carry.
         var appends = mediaType == "tv"
-            ? "external_ids,credits,keywords,content_ratings"
-            : "external_ids,credits,keywords,release_dates";
+            ? "external_ids,credits,keywords,content_ratings,alternative_titles"
+            : "external_ids,credits,keywords,release_dates,alternative_titles";
         var url = $"https://api.themoviedb.org/3/{path}/{id}?api_key={Uri.EscapeDataString(apiKey)}&append_to_response={appends}";
         if (!string.IsNullOrWhiteSpace(language))
         {
@@ -1512,7 +1512,8 @@ public sealed class TmdbMetadataProvider(
             TvDbId: detail.ExternalIds?.TvDbId,
             Status: string.IsNullOrWhiteSpace(detail.Status) ? null : detail.Status,
             Keywords: detail.Keywords?.Names ?? [],
-            Certification: ResolveCertification(mediaType, certificationCountry, detail.ReleaseDates, detail.ContentRatings));
+            Certification: ResolveCertification(mediaType, certificationCountry, detail.ReleaseDates, detail.ContentRatings),
+            AlternateTitles: detail.AlternativeTitles?.Names(title, detail.OriginalTitle ?? detail.OriginalName));
     }
 
     /// <summary>
@@ -2619,7 +2620,43 @@ public sealed class TmdbMetadataProvider(
         // for a movie, content_ratings for a show — the other appended value
         // simply comes back null.
         [property: JsonPropertyName("release_dates")] TmdbReleaseDatesResponse? ReleaseDates = null,
-        [property: JsonPropertyName("content_ratings")] TmdbContentRatingsResponse? ContentRatings = null);
+        [property: JsonPropertyName("content_ratings")] TmdbContentRatingsResponse? ContentRatings = null,
+        [property: JsonPropertyName("alternative_titles")] TmdbAlternativeTitles? AlternativeTitles = null);
+
+    /// <summary>
+    /// TMDb answers <c>alternative_titles.titles</c> for a film and
+    /// <c>alternative_titles.results</c> for a show — the same shape split
+    /// across two names, like <see cref="TmdbKeywords"/>.
+    /// </summary>
+    private sealed record TmdbAlternativeTitles(
+        [property: JsonPropertyName("titles")] IReadOnlyList<TmdbAlternativeTitle>? Movie,
+        [property: JsonPropertyName("results")] IReadOnlyList<TmdbAlternativeTitle>? Series)
+    {
+        /// <summary>
+        /// Every distinct alternate spelling TMDb reported for this title,
+        /// beyond the primary and original titles a release could already be
+        /// matched against — a title can carry the same alternate spelling
+        /// for several countries, and a release under that spelling is one
+        /// release, not several.
+        /// </summary>
+        public IReadOnlyList<string> Names(string? primaryTitle, string? originalTitle)
+        {
+            var exclude = new[] { primaryTitle, originalTitle }
+                .Where(value => !string.IsNullOrWhiteSpace(value))
+                .Select(value => value!.Trim())
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+            return [.. (Movie ?? Series ?? [])
+                .Select(entry => entry.Title?.Trim())
+                .Where(title => !string.IsNullOrWhiteSpace(title) && !exclude.Contains(title!))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .Take(25)
+                .Select(title => title!)];
+        }
+    }
+
+    private sealed record TmdbAlternativeTitle(
+        [property: JsonPropertyName("iso_3166_1")] string? Country,
+        [property: JsonPropertyName("title")] string? Title);
 
     /// <summary>
     /// TMDb answers <c>keywords.keywords</c> for a film and

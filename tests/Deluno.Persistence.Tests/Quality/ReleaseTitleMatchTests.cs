@@ -72,6 +72,24 @@ public sealed class ReleaseTitleMatchTests
     public void A_season_search_takes_that_season(string name, string? expected)
         => Assert.Equal(expected, ReleaseTitleMatch.Mismatch(name, new ReleaseTitleExpectation("Pioneer One", 2010, IsTv: true, Season: 1)));
 
+    /// <summary>
+    /// #861: a release filed under a region-specific alternate title has
+    /// nothing to match against unless the search also checks the metadata
+    /// provider's other spellings for the title, not only Title/OriginalTitle.
+    /// The alternate spelling here is deliberately unlike the primary title,
+    /// so the release could only ever match through <c>OtherTitles</c>.
+    /// </summary>
+    [Fact]
+    public void A_release_named_only_by_an_alternate_title_still_matches()
+    {
+        var withoutAlternates = new ReleaseTitleExpectation("The Wandering Earth II", 2023, IsTv: false);
+        var withAlternates = withoutAlternates with { OtherTitles = ["Liu Lang Di Qiu 2"] };
+        const string releaseName = "Liu.Lang.Di.Qiu.2.2023.1080p.WEB-DL";
+
+        Assert.StartsWith("This release is for something else", ReleaseTitleMatch.Mismatch(releaseName, withoutAlternates));
+        Assert.Null(ReleaseTitleMatch.Mismatch(releaseName, withAlternates));
+    }
+
     [Fact]
     public void An_anime_named_by_its_absolute_number_is_checked_on_it()
     {
