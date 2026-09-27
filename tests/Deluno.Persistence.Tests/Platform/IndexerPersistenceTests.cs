@@ -103,6 +103,9 @@ public sealed class IndexerPersistenceTests
                 IgnoredWords = "cam, korsub",
                 MultiLanguages = "Original, French",
                 VipExpiresUtc = DateTimeOffset.Parse("2026-12-01T00:00:00Z"),
+                QueryLimit = 100,
+                GrabLimit = 20,
+                LimitsUnit = "hour",
                 AvailabilityDelayDays = 2,
                 RssEnabled = false,
                 AutomaticSearchEnabled = false,
@@ -120,6 +123,9 @@ public sealed class IndexerPersistenceTests
         Assert.Equal("cam, korsub", persisted.IgnoredWords);
         Assert.Equal("Original, French", persisted.MultiLanguages);
         Assert.Equal(DateTimeOffset.Parse("2026-12-01T00:00:00Z"), persisted.VipExpiresUtc);
+        Assert.Equal(100, persisted.QueryLimit);
+        Assert.Equal(20, persisted.GrabLimit);
+        Assert.Equal("hour", persisted.LimitsUnit);
         Assert.Equal(2, persisted.AvailabilityDelayDays);
         Assert.False(persisted.RssEnabled);
         Assert.False(persisted.AutomaticSearchEnabled);
@@ -148,6 +154,9 @@ public sealed class IndexerPersistenceTests
                 RequiredWords: "remux",
                 IgnoredWords: "cam",
                 MultiLanguages: "Original, French",
+                QueryLimit: 100,
+                GrabLimit: 20,
+                LimitsUnit: "hour",
                 AvailabilityDelayDays: 3,
                 RssEnabled: false,
                 AutomaticSearchEnabled: false,
@@ -163,6 +172,9 @@ public sealed class IndexerPersistenceTests
         Assert.Equal("remux", updated.RequiredWords);
         Assert.Equal("cam", updated.IgnoredWords);
         Assert.Equal("Original, French", updated.MultiLanguages);
+        Assert.Equal(100, updated.QueryLimit);
+        Assert.Equal(20, updated.GrabLimit);
+        Assert.Equal("hour", updated.LimitsUnit);
         Assert.Equal(3, updated.AvailabilityDelayDays);
         Assert.False(updated.RssEnabled);
         Assert.False(updated.AutomaticSearchEnabled);
@@ -179,6 +191,8 @@ public sealed class IndexerPersistenceTests
                 ClearRequiredWords: true,
                 ClearIgnoredWords: true,
                 ClearMultiLanguages: true,
+                ClearQueryLimit: true,
+                ClearGrabLimit: true,
                 ClearAvailabilityDelay: true),
             CancellationToken.None);
 
@@ -191,6 +205,8 @@ public sealed class IndexerPersistenceTests
         Assert.Null(cleared.RequiredWords);
         Assert.Null(cleared.IgnoredWords);
         Assert.Null(cleared.MultiLanguages);
+        Assert.Null(cleared.QueryLimit);
+        Assert.Null(cleared.GrabLimit);
         Assert.Null(cleared.AvailabilityDelayDays);
         Assert.False(cleared.RssEnabled);
         Assert.False(cleared.AutomaticSearchEnabled);

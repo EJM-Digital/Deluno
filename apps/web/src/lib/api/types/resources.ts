@@ -747,6 +747,12 @@ export interface IndexerItem {
   vipExpiresUtc?: string | null;
   /** Which vipExpiresUtc value the user last acknowledged a warning for (#747). */
   vipWarningAcknowledgedExpiryUtc?: string | null;
+  /** A hard ceiling on searches sent to this indexer per limitsUnit (#750), in addition to requestIntervalSeconds' pacing. Null means unrestricted. */
+  queryLimit?: number | null;
+  /** A hard ceiling on grabs sent to this indexer per limitsUnit (#750). Null means unrestricted. */
+  grabLimit?: number | null;
+  /** "day" (default) or "hour" — the window queryLimit and grabLimit count against (#750). */
+  limitsUnit?: string | null;
   availabilityDelayDays?: number | null;
   rssEnabled?: boolean;
   automaticSearchEnabled?: boolean;

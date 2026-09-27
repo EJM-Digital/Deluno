@@ -41,6 +41,11 @@ public sealed record CreateIndexerRequest(
     // The recorded VIP/subscription expiry date for a private-tracker
     // indexer (#747). Null means nothing is tracked.
     DateTimeOffset? VipExpiresUtc = null,
+    // A hard ceiling on searches/grabs per day (default) or hour, in
+    // addition to RequestIntervalSeconds' pacing (#750).
+    int? QueryLimit = null,
+    int? GrabLimit = null,
+    string? LimitsUnit = null,
     int? AvailabilityDelayDays = null,
     bool RssEnabled = true,
     bool AutomaticSearchEnabled = true,

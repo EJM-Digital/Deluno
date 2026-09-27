@@ -11,6 +11,7 @@ using Deluno.Libraries.Data;
 using Deluno.Notifications;
 using Deluno.Platform.Contracts;
 using Deluno.Platform.Data;
+using Deluno.Connections;
 using Deluno.Connections.Contracts;
 using Deluno.Connections.Data;
 using Microsoft.Extensions.Logging;
@@ -28,7 +29,8 @@ public sealed class DownloadClientGrabService(
     IHealthCheckRepository? healthCheckRepository = null,
     IActivityFeedRepository? activityFeedRepository = null,
     IOutboundNotificationService? notificationService = null,
-    ILogger<DownloadClientGrabService>? logger = null)
+    ILogger<DownloadClientGrabService>? logger = null,
+    IIndexerCallLimiter? indexerCallLimiter = null)
     : IDownloadClientGrabService
 {
     public async Task<DownloadClientGrabResult> GrabAsync(
@@ -62,6 +64,27 @@ public sealed class DownloadClientGrabService(
         if (string.IsNullOrWhiteSpace(request.DownloadUrl))
         {
             return Failed(client.Id, request, "planned", "No downloadable URL was available for this release.");
+        }
+
+        // #750: an indexer's own grab cap, checked before any network call
+        // this grab would make - a refused grab must never count as one.
+        if (indexerCallLimiter is not null && !string.IsNullOrWhiteSpace(request.IndexerId))
+        {
+            var indexerForLimit = (await connectionsRepository.ListIndexersAsync(cancellationToken))
+                .FirstOrDefault(item => string.Equals(item.Id, request.IndexerId, StringComparison.OrdinalIgnoreCase));
+            if (indexerForLimit is not null)
+            {
+                var limitResult = indexerCallLimiter.TryConsumeGrab(indexerForLimit, DateTimeOffset.UtcNow);
+                if (!limitResult.Allowed)
+                {
+                    return Failed(
+                        client.Id,
+                        request,
+                        "unavailable",
+                        $"{indexerForLimit.Name}'s grab limit ({limitResult.Limit} per {limitResult.Unit}) is reached for now.",
+                        category: "indexer");
+                }
+            }
         }
 
         // Before the client's circuit: a tracker that will not hand over a

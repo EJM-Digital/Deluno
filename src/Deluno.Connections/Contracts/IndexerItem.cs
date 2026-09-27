@@ -125,6 +125,19 @@ public sealed record IndexerItem(
     /// </summary>
     public DateTimeOffset? VipWarningAcknowledgedExpiryUtc { get; init; }
 
+    /// <summary>
+    /// A hard ceiling on searches sent to this indexer per <see cref="LimitsUnit"/>
+    /// (#750), in addition to <see cref="RequestIntervalSeconds"/>'s pacing.
+    /// Null means unrestricted.
+    /// </summary>
+    public int? QueryLimit { get; init; }
+
+    /// <summary>A hard ceiling on grabs sent to this indexer per <see cref="LimitsUnit"/> (#750). Null means unrestricted.</summary>
+    public int? GrabLimit { get; init; }
+
+    /// <summary>"day" (default) or "hour" — the window <see cref="QueryLimit"/> and <see cref="GrabLimit"/> count against (#750).</summary>
+    public string? LimitsUnit { get; init; }
+
     public int? AvailabilityDelayDays { get; init; }
 
     public bool RssEnabled { get; init; } = true;

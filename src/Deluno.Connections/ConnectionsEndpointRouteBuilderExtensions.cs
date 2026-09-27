@@ -144,6 +144,9 @@ public static class ConnectionsEndpointRouteBuilderExtensions
                 IgnoredWords = request.IgnoredWords,
                 MultiLanguages = request.MultiLanguages,
                 VipExpiresUtc = request.VipExpiresUtc,
+                QueryLimit = request.QueryLimit,
+                GrabLimit = request.GrabLimit,
+                LimitsUnit = request.LimitsUnit,
                 AvailabilityDelayDays = request.AvailabilityDelayDays,
                 RssEnabled = request.RssEnabled,
                 AutomaticSearchEnabled = request.AutomaticSearchEnabled,
@@ -771,6 +774,7 @@ public static class ConnectionsEndpointRouteBuilderExtensions
             request.RequiredWords,
             request.IgnoredWords,
             request.MultiLanguages);
+        AddQueryGrabLimitErrors(errors, request.QueryLimit, request.GrabLimit);
 
         return errors;
     }
@@ -823,6 +827,16 @@ public static class ConnectionsEndpointRouteBuilderExtensions
         {
             errors["multiLanguages"] = ["Multi-language meaning must be 200 characters or fewer."];
         }
+
+        if (request.ClearQueryLimit != true && request.QueryLimit is not null)
+        {
+            AddNonNegativeError(errors, "queryLimit", request.QueryLimit, "Query limit cannot be negative.");
+        }
+
+        if (request.ClearGrabLimit != true && request.GrabLimit is not null)
+        {
+            AddNonNegativeError(errors, "grabLimit", request.GrabLimit, "Grab limit cannot be negative.");
+        }
         return errors;
     }
 
@@ -862,6 +876,12 @@ public static class ConnectionsEndpointRouteBuilderExtensions
         {
             errors["multiLanguages"] = ["Multi-language meaning must be 200 characters or fewer."];
         }
+    }
+
+    private static void AddQueryGrabLimitErrors(Dictionary<string, string[]> errors, int? queryLimit, int? grabLimit)
+    {
+        AddNonNegativeError(errors, "queryLimit", queryLimit, "Query limit cannot be negative.");
+        AddNonNegativeError(errors, "grabLimit", grabLimit, "Grab limit cannot be negative.");
     }
 
     private static void AddNonNegativeError(
