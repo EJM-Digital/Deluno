@@ -231,6 +231,25 @@ export interface CreatedApiKeyResponse {
   apiKey: string;
 }
 
+/** One address Deluno noticed it could be reached on, and why it's offered (#939). */
+export interface DetectedHostCandidate {
+  host: string;
+  reason: string;
+}
+
+/** System -> Security -> Allowed Hosts: what's saved, what's detected, and the address answering this request. */
+export interface AllowedHostsOverview {
+  enabled: boolean;
+  allowedHosts: string[];
+  detectedHosts: DetectedHostCandidate[];
+  currentHost: string;
+}
+
+export interface UpdateAllowedHostsRequest {
+  enabled: boolean;
+  allowedHosts: string[];
+}
+
 export const emptyPlatformSettingsSnapshot: PlatformSettingsSnapshot = {
   appInstanceName: "Deluno",
   movieRootPath: null,

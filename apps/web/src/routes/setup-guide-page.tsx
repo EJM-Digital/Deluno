@@ -34,14 +34,16 @@ import {
   type CustomFormatItem,
   type GuideCustomFormat,
   type GuideFormatBundle,
-  type GuidePackage, readErrorText } from "../lib/api";
+  type GuidePackage,
+  type AllowedHostsOverview,
+  readErrorText } from "../lib/api";
 import { metadataCreatePayload } from "../hooks/use-library-create";
 import { createRuleFromGuide, guideBundleTargets } from "../lib/guide-formats";
 import { authedFetch } from "../lib/use-auth";
 import { cn } from "../lib/utils";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
-import { Checkbox } from "../components/ui/checkbox";
+import { Checkbox, CheckboxRow } from "../components/ui/checkbox";
 import { Field } from "../components/ui/field";
 import { PathInput } from "../components/ui/path-input";
 import { Select } from "../components/ui/select";
@@ -51,7 +53,7 @@ import { Chip } from "../components/ui/chip";
 import { ListCard, ListCell, ListNameCell, ListRow, ListTable, LIST_TRACK } from "../components/ui/list-card";
 import { SummaryStrip } from "../components/ui/summary-strip";
 
-type StepId = "mode" | "folders" | "quality" | "services" | "automation" | "finish";
+type StepId = "mode" | "folders" | "quality" | "services" | "automation" | "security" | "finish";
 
 /** One Yes/No question on the Automation step. Nothing is pre-selected (#936). */
 type AutomationChoiceKey =
@@ -138,6 +140,7 @@ interface SetupGuideLoaderData {
   progress: SetupProgressItem;
   draft: SetupDraftItem;
   guide: GuidePackage;
+  allowedHosts: AllowedHostsOverview;
 }
 
 interface GuideForm {
@@ -164,6 +167,9 @@ interface GuideForm {
   firstTitleMonitored: boolean;
   firstTitleMetadata: MetadataSearchResult | null;
   automation: AutomationChoices;
+  /** #939: "Only answer on the addresses you use?" Off leaves today's behaviour (#936). */
+  restrictAllowedHosts: boolean;
+  allowedHostsSelection: string[];
 }
 
 type ServiceTestState = {
@@ -258,6 +264,7 @@ const STEPS: { id: StepId; label: string; copy: string }[] = [
   { id: "quality", label: "Library Profiles", copy: "Choose the quality and release experience you want." },
   { id: "services", label: "Find & Download", copy: "Connect search sources and downloads when you are ready." },
   { id: "automation", label: "Automation", copy: "What should Deluno do by itself?" },
+  { id: "security", label: "Security", copy: "Choose which addresses Deluno should answer on." },
   { id: "finish", label: "Start", copy: "Create your plan and open the Dashboard." }
 ];
 
@@ -362,7 +369,7 @@ const CLIENT_SETUP_PRESETS = [
 ] as const;
 
 export async function setupGuideLoader(): Promise<SetupGuideLoaderData> {
-  const [settings, libraries, qualityProfiles, customFormats, indexers, clients, metadataStatus, progress, draft, guide] = await Promise.all([
+  const [settings, libraries, qualityProfiles, customFormats, indexers, clients, metadataStatus, progress, draft, guide, allowedHosts] = await Promise.all([
     fetchJson<PlatformSettingsSnapshot>("/api/settings"),
     fetchJson<LibraryItem[]>("/api/libraries"),
     fetchJson<QualityProfileItem[]>("/api/quality-profiles"),
@@ -372,10 +379,13 @@ export async function setupGuideLoader(): Promise<SetupGuideLoaderData> {
     fetchJson<MetadataProviderStatus>("/api/metadata/status").catch(() => null),
     fetchJson<SetupProgressItem>("/api/setup/progress"),
     fetchJson<SetupDraftItem>("/api/setup/draft"),
-    fetchTrashGuidePackage()
+    fetchTrashGuidePackage(),
+    // #939: the Security step shows these detected addresses rather than
+    // asking anyone to type one in.
+    fetchJson<AllowedHostsOverview>("/api/security/allowed-hosts")
   ]);
 
-  return { clients, customFormats, draft, guide, indexers, libraries, metadataStatus, progress, qualityProfiles, settings };
+  return { allowedHosts, clients, customFormats, draft, guide, indexers, libraries, metadataStatus, progress, qualityProfiles, settings };
 }
 
 export function SetupGuidePage() {
@@ -420,7 +430,11 @@ export function SetupGuidePage() {
     firstTitleYear: data.draft.firstTitleYear,
     firstTitleMonitored: data.draft.firstTitleMonitored,
     firstTitleMetadata: null,
-    automation: { ...AUTOMATION_UNANSWERED }
+    automation: { ...AUTOMATION_UNANSWERED },
+    restrictAllowedHosts: data.allowedHosts.enabled,
+    allowedHostsSelection: data.allowedHosts.allowedHosts.length
+      ? data.allowedHosts.allowedHosts
+      : [data.allowedHosts.currentHost]
   }));
 
   const current = STEPS[stepIndex];
@@ -540,6 +554,10 @@ export function SetupGuidePage() {
     const createdEntities: CreatedEntity[] = [];
     try {
       await saveSettings(data.settings, form, form.automation);
+      // #939: only ever turned on by an explicit Yes here, and refused
+      // server-side (so left off) if the address answering this very
+      // request was not ticked -- setup can never lock itself out.
+      await saveAllowedHosts(form).catch(() => undefined);
       const qualityProfileCache = [...data.qualityProfiles];
       const customFormatCache = [...data.customFormats];
       const movieCustomFormatIds = hasMovies ? await ensureCustomFormats(customFormatCache, "movies", form, data.guide, createdEntities) : [];
@@ -770,6 +788,7 @@ export function SetupGuidePage() {
               />
             ) : null}
             {current.id === "automation" ? <AutomationStep form={form} patch={patch} /> : null}
+            {current.id === "security" ? <SecurityStep form={form} patch={patch} candidates={data.allowedHosts.detectedHosts} currentHost={data.allowedHosts.currentHost} /> : null}
             {current.id === "finish" ? (
           <FinishStep
             form={form}
@@ -1217,6 +1236,89 @@ function AutomationStep({
           );
         })}
       </div>
+    </FieldShell>
+  );
+}
+
+/**
+ * #939, asked the same "nothing chosen yet" way #936 asks automation
+ * questions. Every address offered is detected, never typed, and answering
+ * No here (or leaving the guide before this step) leaves Deluno exactly as
+ * it has always behaved -- it is only turned on if this is answered Yes.
+ */
+function SecurityStep({
+  form,
+  patch,
+  candidates,
+  currentHost
+}: {
+  form: GuideForm;
+  patch: (patchValue: Partial<GuideForm>) => void;
+  candidates: { host: string; reason: string }[];
+  currentHost: string;
+}) {
+  function toggleHost(host: string, checked: boolean) {
+    patch({
+      allowedHostsSelection: checked
+        ? [...form.allowedHostsSelection, host]
+        : form.allowedHostsSelection.filter((item) => item.toLowerCase() !== host.toLowerCase())
+    });
+  }
+
+  const currentHostChecked = form.allowedHostsSelection.some((host) => host.toLowerCase() === currentHost.toLowerCase());
+
+  return (
+    <FieldShell
+      icon={ShieldCheck}
+      label="Only answer on the addresses you use?"
+      copy="Off, Deluno answers on any address -- exactly what it has always done. Yes, it only answers on what you tick below, which is safer if this computer is ever reachable from somewhere you don't control."
+    >
+      <div className="mb-4 flex gap-2" role="radiogroup" aria-label="Only answer on the addresses you use?">
+        <Button
+          type="button"
+          variant={form.restrictAllowedHosts === true ? "default" : "outline"}
+          size="sm"
+          role="radio"
+          aria-checked={form.restrictAllowedHosts === true}
+          aria-label="Only answer on the addresses you use? Yes"
+          onClick={() => patch({ restrictAllowedHosts: true })}
+        >
+          Yes
+        </Button>
+        <Button
+          type="button"
+          variant={form.restrictAllowedHosts === false ? "default" : "outline"}
+          size="sm"
+          role="radio"
+          aria-checked={form.restrictAllowedHosts === false}
+          aria-label="Only answer on the addresses you use? No"
+          onClick={() => patch({ restrictAllowedHosts: false })}
+        >
+          No
+        </Button>
+      </div>
+
+      {form.restrictAllowedHosts ? (
+        <div className="space-y-1">
+          {candidates.map((candidate) => (
+            <CheckboxRow
+              key={candidate.host}
+              label={candidate.host}
+              description={candidate.reason}
+              checked={form.allowedHostsSelection.some((host) => host.toLowerCase() === candidate.host.toLowerCase())}
+              onCheckedChange={(checked) => toggleHost(candidate.host, checked)}
+            />
+          ))}
+          {!currentHostChecked ? (
+            <p className="mt-2 rounded-lg border border-warning/35 bg-warning/10 px-3 py-2 text-xs leading-relaxed text-warning">
+              Tick {currentHost} -- the address you're using right now -- or finishing setup will leave this turned off rather than lock you out.
+            </p>
+          ) : null}
+          <p className="mt-2 text-xs text-muted-foreground">
+            localhost always works from this computer. Change this anytime from System &rarr; Security.
+          </p>
+        </div>
+      ) : null}
     </FieldShell>
   );
 }
@@ -1682,6 +1784,15 @@ async function saveSettings(settings: PlatformSettingsSnapshot, form: GuideForm,
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload)
+  });
+}
+
+async function saveAllowedHosts(form: GuideForm) {
+  if (!form.restrictAllowedHosts) return;
+  await fetchJson("/api/security/allowed-hosts", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ enabled: true, allowedHosts: form.allowedHostsSelection })
   });
 }
 
