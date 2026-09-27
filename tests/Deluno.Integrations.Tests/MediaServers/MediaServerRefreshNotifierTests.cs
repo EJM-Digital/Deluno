@@ -269,6 +269,9 @@ public sealed class MediaServerRefreshNotifierTests
     {
         public List<(string Category, string Message)> Recorded { get; } = [];
 
+        public Task<int> PruneActivityAsync(DateTimeOffset olderThan, CancellationToken cancellationToken)
+            => throw new NotSupportedException();
+
         public Task<IReadOnlyList<ActivityEventItem>> ListActivityAsync(int take, string? relatedEntityType, string? relatedEntityId, CancellationToken cancellationToken)
             => throw new NotSupportedException();
 
