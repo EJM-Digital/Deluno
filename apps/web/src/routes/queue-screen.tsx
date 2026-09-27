@@ -58,7 +58,7 @@ import { dismissFailedJob, fetchFailedJobs } from "../lib/failed-jobs";
 import { JOB_STATUS, isJobActive, isJobDeadLettered, isJobFailed, isJobRetrying, type JobStatus } from "../lib/job-status-constants";
 import { downloadQueueStatuses, isImportReadyStatus, isProcessingStatus, queueStatusLabel } from "../lib/download-telemetry";
 import { parseImportJobPayload } from "../lib/import-job-payload";
-import { canTryAgain, handoffNeedsPerson, isDispatchFailure, isProcessorFailure, isWithProcessor, needsAction } from "../lib/needs-action";
+import { canTryAgain, handoffNeedsPerson, isDispatchFailure, isProcessorFailure, isVanished, isWithProcessor, needsAction } from "../lib/needs-action";
 import { processorOutcomeSummary } from "../lib/processor-outcome";
 import { Button } from "../components/ui/button";
 import { Checkbox } from "../components/ui/checkbox";
@@ -451,6 +451,17 @@ export function QueuePage() {
       if (!response.ok) throw new Error(await readErrorText(response, "That could not be tried again."));
       const body = (await response.json().catch(() => null)) as { message?: string } | null;
       toast.success(body?.message ?? `${item.title} is being tried again.`);
+    });
+  }
+
+  /** Stop wanting it (#927): offered beside Search for another on a vanished download's own case. */
+  async function stopWantingRecovery(item: (typeof recoveryCases)[number]) {
+    const collection = item.mediaType === "movie" ? "movies" : "series";
+    await run(`recovery:stop-wanting:${item.id}`, async () => {
+      const response = await authedFetch(`/api/${collection}/import-recovery/${item.id}/stop-wanting`, { method: "POST" });
+      if (!response.ok) throw new Error(await readErrorText(response, "That could not be stopped."));
+      const body = (await response.json().catch(() => null)) as { message?: string } | null;
+      toast.success(body?.message ?? `Deluno stopped wanting ${item.title}.`);
     });
   }
 
@@ -999,7 +1010,13 @@ export function QueuePage() {
                     {canTryAgain(item) ? (
                       <Button type="button" variant="outline" size="sm" onClick={() => void retryRecovery(item)} disabled={busyKey !== null}>
                         {busyKey === `recovery:retry:${item.id}` ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
-                        Try again
+                        {isVanished(item) ? "Search for another" : "Try again"}
+                      </Button>
+                    ) : null}
+                    {isVanished(item) ? (
+                      <Button type="button" variant="outline" size="sm" onClick={() => void stopWantingRecovery(item)} disabled={busyKey !== null}>
+                        {busyKey === `recovery:stop-wanting:${item.id}` ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
+                        Stop wanting it
                       </Button>
                     ) : null}
                     <Button type="button" variant="outline" size="sm" onClick={() => void dismissRecovery(item)} disabled={busyKey !== null}>

@@ -416,6 +416,47 @@ public static class SeriesEndpointRouteBuilderExtensions
             return Results.Ok(new { message = outcome.Message });
         });
 
+        // Stop wanting it (#927): offered beside Search for another on a
+        // vanished download's own case - ends the download and unmonitors
+        // the title (an episode, not its whole series), rather than
+        // searching for a different copy of it.
+        series.MapPost("/import-recovery/{id}/stop-wanting", async (
+            string id,
+            HttpContext httpContext,
+            ISeriesCatalogRepository repository,
+            IDispatchAlertRepository alertRepository,
+            IDownloadDispatchesRepository dispatchesRepository,
+            IDispatchTitleUnmonitorService titleUnmonitorService,
+            CancellationToken cancellationToken) =>
+        {
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
+            if (denied is not null)
+            {
+                return denied;
+            }
+
+            var recoveryCase = await repository.GetImportRecoveryCaseAsync(id, cancellationToken);
+            if (recoveryCase is null || !string.Equals(recoveryCase.Status, "open", StringComparison.OrdinalIgnoreCase))
+            {
+                return Results.NotFound();
+            }
+
+            var outcome = await RecoveryCaseRetry.StopWantingAsync(
+                recoveryCase.DetailsJson,
+                dispatchesRepository,
+                titleUnmonitorService,
+                cancellationToken);
+            if (!outcome.Retried)
+            {
+                return Results.Conflict(new { message = outcome.Message });
+            }
+
+            await repository.ResolveImportRecoveryCaseAsync(id, "resolved", cancellationToken);
+            await RecoveryCaseAlerts.AcknowledgeAsync(recoveryCase.DetailsJson, alertRepository, cancellationToken, dispatchesRepository);
+            await repository.AddImportRecoveryEventAsync(id, "case_stopped_wanting", outcome.Message, null, cancellationToken);
+            return Results.Ok(new { message = outcome.Message });
+        });
+
         series.MapDelete("/import-recovery/{id}", async (
             string id,
             HttpContext httpContext,

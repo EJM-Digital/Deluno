@@ -64,6 +64,10 @@ public static class RecoveryCaseRetry
                 ? await SearchAgainAsync(dispatch, dispatches, scheduler, mediaState, libraries, timeProvider, cancellationToken)
                 : await HandOverAgainAsync(dispatch, processors, cancellationToken),
             "importFailed" or "import-failed" or "import-timeout" => await ImportAgainAsync(dispatch, jobs, cancellationToken),
+            // #927: always ends the download and searches again, whatever
+            // DetectedUtc says - a vanished download was never handed to a
+            // processor, so there is nothing for HandOverAgainAsync to do.
+            "vanished-downloading" => await SearchAgainAsync(dispatch, dispatches, scheduler, mediaState, libraries, timeProvider, cancellationToken),
             _ => RecoveryRetryOutcome.Refused("This needs a decision rather than another attempt. Dismiss it once it is dealt with.")
         };
     }
@@ -73,7 +77,46 @@ public static class RecoveryCaseRetry
     /// Quality, unmatched and corrupt files need a decision, not another attempt.
     /// </summary>
     public static bool CanRetry(string? failureKind)
-        => failureKind is "downloadFailed" or "importFailed";
+        => failureKind is "downloadFailed" or "importFailed" or "vanished-downloading";
+
+    /// <summary>
+    /// Stop wanting it (#927): the download vanished from its client and a
+    /// person decided the title itself is not wanted right now, rather than
+    /// searching for another copy. Ends the download and unmonitors exactly
+    /// the title the dispatch names - an episode, not its whole series.
+    /// </summary>
+    public static async Task<RecoveryRetryOutcome> StopWantingAsync(
+        string? detailsJson,
+        IDownloadDispatchesRepository dispatches,
+        IDispatchTitleUnmonitorService titleUnmonitor,
+        CancellationToken cancellationToken)
+    {
+        if (DispatchIdIn(detailsJson) is not { } dispatchId)
+        {
+            return RecoveryRetryOutcome.Refused("This case does not say which download it is about, so there is nothing to stop wanting. Dismiss it.");
+        }
+
+        var dispatch = await dispatches.GetDispatchIncludingArchivedAsync(dispatchId, cancellationToken);
+        if (dispatch is null)
+        {
+            return RecoveryRetryOutcome.Refused("Deluno no longer has the download this case is about. Dismiss it.");
+        }
+
+        if (!titleUnmonitor.CanHandle(dispatch.EntityType))
+        {
+            return RecoveryRetryOutcome.Refused("Deluno cannot unmonitor this by itself. Dismiss this and adjust monitoring by hand.");
+        }
+
+        if (!string.Equals(dispatch.Status, "archived", StringComparison.OrdinalIgnoreCase))
+        {
+            await dispatches.ArchiveDispatchAsync(dispatch.Id, "stopped-wanting", cancellationToken);
+        }
+
+        var unmonitored = await titleUnmonitor.UnmonitorAsync(dispatch.EntityType, dispatch.EntityId, cancellationToken);
+        return RecoveryRetryOutcome.Done(unmonitored
+            ? $"Deluno stopped wanting {dispatch.ReleaseName} and ended the download."
+            : $"Deluno ended the download; {dispatch.ReleaseName} was not being monitored any more anyway.");
+    }
 
     /// <summary>
     /// The client never showed the download, so it is over: end it, put its

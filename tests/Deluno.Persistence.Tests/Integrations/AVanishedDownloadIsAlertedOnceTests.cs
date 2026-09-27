@@ -76,6 +76,23 @@ public sealed class AVanishedDownloadIsAlertedOnceTests
         Assert.Empty(await world.Alerts.GetOpenAlertsAsync(null, 100, CancellationToken.None));
     }
 
+    /// <summary>
+    /// #927: the recovery case (Search for another / Stop wanting it /
+    /// Dismiss) is a separate signal from the alert - this is what puts the
+    /// three buttons on the Transfers screen.
+    /// </summary>
+    [Fact]
+    public async Task A_vanished_download_also_raises_its_own_recovery_case()
+    {
+        using var world = await World.CreateAsync();
+
+        await world.PollWithOtherItemInQueueAsync();
+
+        var call = Assert.Single(world.RecoveryHandler.VanishedCalls);
+        Assert.Equal((Release, "movies", world.ClientId, "qBittorrent", Release, "movie-sintel"), (call.Title, call.MediaType, call.ClientId, call.ClientName, call.ReleaseName, call.EntityId));
+        Assert.Contains(world.DispatchId, call.DetailsJson);
+    }
+
     private sealed class World : IDisposable
     {
         private readonly TestStorage _storage;
@@ -91,7 +108,8 @@ public sealed class AVanishedDownloadIsAlertedOnceTests
             SqliteJobStore jobs,
             SqliteDownloadDispatchesRepository dispatches,
             SqliteBlockedReleaseRepository blocklist,
-            SqliteDispatchAlertRepository alerts)
+            SqliteDispatchAlertRepository alerts,
+            FakeDispatchRecoveryHandler recoveryHandler)
         {
             _storage = storage;
             Now = now;
@@ -103,11 +121,14 @@ public sealed class AVanishedDownloadIsAlertedOnceTests
             Blocklist = blocklist;
             Alerts = alerts;
             Activity = jobs;
+            RecoveryHandler = recoveryHandler;
         }
 
         public DateTimeOffset Now { get; }
 
         public string DispatchId { get; }
+
+        public string ClientId => _client.Id;
 
         public SqliteJobStore Jobs { get; }
 
@@ -116,6 +137,8 @@ public sealed class AVanishedDownloadIsAlertedOnceTests
         public SqliteBlockedReleaseRepository Blocklist { get; }
 
         public SqliteDispatchAlertRepository Alerts { get; }
+
+        public FakeDispatchRecoveryHandler RecoveryHandler { get; }
 
         public Deluno.Jobs.Data.IActivityFeedRepository Activity { get; }
 
@@ -144,11 +167,12 @@ public sealed class AVanishedDownloadIsAlertedOnceTests
             await dispatches.RecordDetectionAsync(dispatchId, "hash-1", 1_000_000, completed: false, CancellationToken.None);
             var blocklist = new SqliteBlockedReleaseRepository(storage.Factory, time);
             var alerts = new SqliteDispatchAlertRepository(storage.Factory, time);
+            var recoveryHandler = new FakeDispatchRecoveryHandler();
             var service = new DownloadClientTelemetryService(
                 settings, new SqliteDownloadHealthRepository(storage.Factory, time), libraries, connections, null!, null!, time, null!,
                 jobs, dispatches, jobs, new Deluno.Recovery.Policies.DownloadHealthEvaluator(), null!, Deluno.Contracts.Connectivity.NullConnectivityMonitor.Instance,
-                blocklist, dispatchAlertRepository: alerts);
-            return new World(storage, now, service, client, dispatchId, jobs, dispatches, blocklist, alerts);
+                blocklist, dispatchAlertRepository: alerts, recoveryHandler: recoveryHandler);
+            return new World(storage, now, service, client, dispatchId, jobs, dispatches, blocklist, alerts, recoveryHandler);
         }
 
         public Task PollWithOtherItemInQueueAsync() => PollAsync(queue: [Queued("hash-other")], history: []);
@@ -173,5 +197,28 @@ public sealed class AVanishedDownloadIsAlertedOnceTests
                 "movies", DownloadQueueStatuses.Downloading, 50, 0, 0, 1024, 100, 0, "Fixture", null, Now);
 
         public void Dispose() => _storage.Dispose();
+    }
+
+    private sealed class FakeDispatchRecoveryHandler : IDispatchRecoveryHandler
+    {
+        public List<(string Title, string MediaType, string ClientId, string ClientName, string ReleaseName, string EntityId, string DetailsJson)> VanishedCalls { get; } = [];
+
+        public Task HandleGrabTimeoutAsync(string title, string mediaType, string downloadClientId, string downloadClientName, string releaseName, string detailsJson, CancellationToken cancellationToken)
+            => Task.CompletedTask;
+
+        public Task HandleDetectionTimeoutAsync(string title, string mediaType, string downloadClientId, string downloadClientName, string releaseName, string entityId, string detailsJson, CancellationToken cancellationToken)
+            => Task.CompletedTask;
+
+        public Task HandleImportTimeoutAsync(string title, string mediaType, string downloadClientId, string downloadClientName, string releaseName, string entityId, string detailsJson, CancellationToken cancellationToken)
+            => Task.CompletedTask;
+
+        public Task HandleImportFailureAsync(string title, string mediaType, string downloadClientId, string downloadClientName, string releaseName, string entityId, string importFailureCode, string importFailureMessage, string detailsJson, CancellationToken cancellationToken)
+            => Task.CompletedTask;
+
+        public Task HandleVanishedDownloadingAsync(string title, string mediaType, string downloadClientId, string downloadClientName, string releaseName, string entityId, string detailsJson, CancellationToken cancellationToken)
+        {
+            VanishedCalls.Add((title, mediaType, downloadClientId, downloadClientName, releaseName, entityId, detailsJson));
+            return Task.CompletedTask;
+        }
     }
 }

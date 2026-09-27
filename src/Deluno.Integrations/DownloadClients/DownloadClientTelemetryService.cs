@@ -36,7 +36,8 @@ public sealed class DownloadClientTelemetryService(
     IBlockedReleaseRepository? blockedReleases = null,
     IDownloadHealthConnectivityCheck? connectivityCheck = null,
     IDispatchTitleUnmonitorService? titleUnmonitorService = null,
-    IDispatchAlertRepository? dispatchAlertRepository = null)
+    IDispatchAlertRepository? dispatchAlertRepository = null,
+    IDispatchRecoveryHandler? recoveryHandler = null)
     : IDownloadClientTelemetryService
 {
     // #824 is off by default, so most callers - including every existing
@@ -1992,6 +1993,31 @@ public sealed class DownloadClientTelemetryService(
             dispatch.EntityType,
             dispatch.EntityId,
             cancellationToken);
+
+        // The Transfers recovery case: Search for another, Stop wanting it,
+        // Dismiss (#927). The alert above is the System Health/Activity
+        // signal; this is what puts the three buttons on screen.
+        if (recoveryHandler is not null)
+        {
+            var detailsJson = JsonSerializer.Serialize(new
+            {
+                DispatchId = dispatch.Id,
+                dispatch.DownloadClientId,
+                dispatch.DownloadClientName,
+                dispatch.ReleaseName,
+                dispatch.MediaType,
+                dispatch.EntityId
+            });
+            await recoveryHandler.HandleVanishedDownloadingAsync(
+                dispatch.ReleaseName,
+                dispatch.MediaType,
+                dispatch.DownloadClientId,
+                dispatch.DownloadClientName,
+                dispatch.ReleaseName,
+                dispatch.EntityId,
+                detailsJson,
+                cancellationToken);
+        }
     }
 
     internal static DownloadClientTelemetrySnapshot EnrichWithDispatchHistory(

@@ -147,7 +147,15 @@ export function needsAction(sources: NeedsActionSources): NeedsAction {
  * the button could only say "dismiss it". It is not offered there.
  */
 export function canTryAgain(item: Pick<RecoveryCase, "failureKind" | "detailsJson">): boolean {
-  return (item.failureKind === "downloadFailed" || item.failureKind === "importFailed") && dispatchIdIn(item.detailsJson) !== null;
+  return (
+    (item.failureKind === "downloadFailed" || item.failureKind === "importFailed" || item.failureKind === "vanished-downloading") &&
+    dispatchIdIn(item.detailsJson) !== null
+  );
+}
+
+/** A download the client no longer lists at all (#927): Search for another (Try again, relabelled) and Stop wanting it are both offered, beside Dismiss. */
+export function isVanished(item: Pick<RecoveryCase, "failureKind">): boolean {
+  return item.failureKind === "vanished-downloading";
 }
 
 /** The download a recovery case is about, from the details the poller wrote with it. */

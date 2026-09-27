@@ -90,6 +90,26 @@ public sealed class MovieDispatchRecoveryHandler(IMovieCatalogRepository catalog
             cancellationToken);
     }
 
+    public async Task HandleVanishedDownloadingAsync(
+        string title,
+        string mediaType,
+        string downloadClientId,
+        string downloadClientName,
+        string releaseName,
+        string entityId,
+        string detailsJson,
+        CancellationToken cancellationToken)
+    {
+        if (DelunoValueNormalizers.NormalizeMediaType(mediaType) != "movies")
+            return;
+
+        var summary = $"{downloadClientName} no longer lists this download at all.";
+        var recommended = "It may have been removed on purpose. Search for another copy, stop wanting this title, or dismiss this.";
+        await catalogRepository.AddImportRecoveryCaseAsync(
+            new CreateMovieImportRecoveryCaseRequest(title, "vanished-downloading", summary, recommended, detailsJson),
+            cancellationToken);
+    }
+
     /// <summary>The download recovered, so the cases written about it close with the reason (#559).</summary>
     public Task HandleDispatchSettledAsync(string dispatchId, string reason, CancellationToken cancellationToken)
         => catalogRepository.SettleImportRecoveryCasesAsync(ImportRecoveryCaseScope.ForDispatch(dispatchId), reason, cancellationToken);

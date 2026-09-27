@@ -24,10 +24,27 @@ public sealed class StuckMovieDownloadsGetARecoveryCaseTests
         await handler.HandleDetectionTimeoutAsync("Sintel", mediaType, "qb", "qBittorrent", "Sintel.2010", "m1", "{}", CancellationToken.None);
         await handler.HandleImportTimeoutAsync("Sintel", mediaType, "qb", "qBittorrent", "Sintel.2010", "m1", "{}", CancellationToken.None);
         await handler.HandleImportFailureAsync("Sintel", mediaType, "qb", "qBittorrent", "Sintel.2010", "m1", "importFailed", "Unreadable", "{}", CancellationToken.None);
+        await handler.HandleVanishedDownloadingAsync("Sintel", mediaType, "qb", "qBittorrent", "Sintel.2010", "m1", "{}", CancellationToken.None);
 
         catalog.Verify(
             repo => repo.AddImportRecoveryCaseAsync(It.IsAny<CreateMovieImportRecoveryCaseRequest>(), It.IsAny<CancellationToken>()),
-            Times.Exactly(4));
+            Times.Exactly(5));
+    }
+
+    /// <summary>#927: the case is raised under its own kind, not folded into another one, so Search for another and Stop wanting it are offered rather than Try again's ordinary two branches.</summary>
+    [Fact]
+    public async Task A_vanished_download_records_its_own_kind()
+    {
+        CreateMovieImportRecoveryCaseRequest? captured = null;
+        var catalog = new Mock<IMovieCatalogRepository>();
+        catalog.Setup(repo => repo.AddImportRecoveryCaseAsync(It.IsAny<CreateMovieImportRecoveryCaseRequest>(), It.IsAny<CancellationToken>()))
+            .Callback<CreateMovieImportRecoveryCaseRequest, CancellationToken>((request, _) => captured = request)
+            .ReturnsAsync((MovieImportRecoveryCase)null!);
+        var handler = new MovieDispatchRecoveryHandler(catalog.Object);
+
+        await handler.HandleVanishedDownloadingAsync("Sintel", "movies", "qb", "qBittorrent", "Sintel.2010", "m1", "{}", CancellationToken.None);
+
+        Assert.Equal("vanished-downloading", captured!.FailureKind);
     }
 
     [Fact]
