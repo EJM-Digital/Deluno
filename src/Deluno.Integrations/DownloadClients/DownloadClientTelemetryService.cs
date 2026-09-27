@@ -814,10 +814,13 @@ public sealed class DownloadClientTelemetryService(
                 // actually added.
                 var effectiveAddedUtc = item.AddedUtc + await connectivityMonitor.OutageOverlapAsync(item.AddedUtc, snapshot.CapturedUtc, cancellationToken);
                 // #816: only asked for once a download is actually being
-                // evaluated (Deluno's own, not ignored) and the feature is on.
-                // Null (not one word about it) means "unknown", not "empty" -
-                // Evaluate then falls back to matching the release name itself.
-                var files = downloadClient is not null
+                // evaluated (Deluno's own, not ignored) and the feature is on -
+                // an extra HTTP round trip per download per poll that nobody
+                // asked for is exactly the kind of automatic behaviour #936
+                // says stays off until a person turns the check on. Null (not
+                // one word about it) means "unknown", not "empty" - Evaluate
+                // then falls back to matching the release name itself.
+                var files = downloadClient is not null && contentBlocklist.Enabled
                     ? await downloadClient.GetFilesAsync(client, item.Id, cancellationToken)
                     : null;
                 var findings = healthEvaluator.Evaluate(
