@@ -75,7 +75,11 @@ export default defineConfig({
         // Same reasoning for the global API limiter: 189 tests driving the
         // whole UI from one process would otherwise trip the 600/min default.
         Security__Api__PermitLimit: "1000000",
-        Server__Port: String(smokeApiPort)
+        Server__Port: String(smokeApiPort),
+        // #934 — only this disposable smoke process ever sees this key, which
+        // is what keeps large-library-chips.spec.ts's seeding route out of a
+        // real install. See MoviesLargeLibrarySeedEndpoints's doc comment.
+        Testing__EnableLargeLibrarySeedEndpoint: "true"
       }
     },
     {
