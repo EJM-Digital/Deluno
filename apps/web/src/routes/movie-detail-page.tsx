@@ -33,6 +33,7 @@ import {
 import { AcquisitionBlockersCard } from "../components/app/acquisition-blockers-card";
 import { LibraryMembershipCard, type LibraryMembership } from "../components/app/library-membership-card";
 import { RetentionTitleCard } from "../components/app/retention-title-card";
+import { CountryReleaseRow } from "../components/app/country-release-row";
 import { CreditsRow, readStoredCredits } from "../components/app/credits-row";
 import { DownloadDispatchDrawer } from "../components/app/download-dispatch-drawer";
 import { BlockReleaseAction } from "../components/app/block-release-action";
@@ -72,7 +73,7 @@ import { Switch } from "../components/ui/switch";
 import { toast } from "../components/shell/toaster";
 import { TitleMarkLabel } from "../components/ui/title-mark";
 import { formatDateTime as formatPreferenceDateTime, formatRuntime, formatShortDate, useDisplayPreferences } from "../lib/display-preferences";
-import { readAlternateTitles, readArtworkExtras } from "../lib/ui-adapters";
+import { readAlternateTitles, readArtworkExtras, readReleaseFactsByCountry, selectCountryFacts } from "../lib/ui-adapters";
 
 /**
  * What Deluno recorded about the copy it holds: the release it came from, what
@@ -169,7 +170,7 @@ export function MovieDetailPage() {
   const { acquisitionBlockers, activity, copy, decisions, dispatches, importRecovery, libraries, memberships, metadataIssue, movie, origins, removalPreview, searchHistory, workflowStatus } = loaderData;
   const navigate = useNavigate();
   const revalidator = useRevalidator();
-  const { preferences } = useDisplayPreferences();
+  const { preferences, certificationCountry } = useDisplayPreferences();
 
   const [busyAction, setBusyAction] = useState<string | null>(null);
   const [isRemoveConfirmationOpen, setIsRemoveConfirmationOpen] = useState(false);
@@ -225,6 +226,11 @@ export function MovieDetailPage() {
   // poster and backdrop already shown above. No banner: TMDb has never
   // reported one, so there is nothing here to show for it.
   const { logoUrl, screenshots } = readArtworkExtras(movie.metadataJson);
+  // #862: every country TMDb answered for, unreduced, so the certification
+  // country setting can pick between them without a re-fetch.
+  const releaseFactsByCountry = readReleaseFactsByCountry(movie.metadataJson);
+  const selectedCountryFacts = selectCountryFacts(releaseFactsByCountry, certificationCountry);
+  const otherCountryFacts = releaseFactsByCountry.filter((entry) => entry !== selectedCountryFacts);
   const openSearch = movieSearches.find((item) => item.id === openSearchId) ?? null;
   const openDispatch = movieDispatches.find((item) => item.id === openDispatchId) ?? null;
   /*
@@ -865,6 +871,27 @@ export function MovieDetailPage() {
             <div className="mt-2 flex gap-3 overflow-x-auto pb-1">
               {screenshots.map((url) => (
                 <img key={url} src={url} alt="" className="h-32 w-56 shrink-0 rounded-lg border border-hairline object-cover" />
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      ) : null}
+      {/*
+        #862: TMDb reports a release date and certification per country;
+        Deluno used to keep only the single earliest date and a single
+        certification-country choice, discarding the rest. The selected
+        country (Settings -> Media management -> Certification country)
+        leads; every other country TMDb had something for stays reachable
+        underneath rather than being thrown away.
+      */}
+      {releaseFactsByCountry.length ? (
+        <Card>
+          <CardContent className="p-4">
+            <p className="text-[length:var(--type-micro)] font-bold uppercase tracking-[0.18em] text-muted-foreground">Release dates &amp; certification</p>
+            <div className="mt-2 space-y-2 text-sm">
+              {selectedCountryFacts ? <CountryReleaseRow facts={selectedCountryFacts} preferences={preferences} highlighted /> : null}
+              {otherCountryFacts.map((facts) => (
+                <CountryReleaseRow key={facts.country} facts={facts} preferences={preferences} />
               ))}
             </div>
           </CardContent>

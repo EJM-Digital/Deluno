@@ -125,6 +125,63 @@ export function readArtworkExtras(metadataJson: string | null | undefined) {
   };
 }
 
+/** One country's release dates and certification, exactly as TMDb reported them (#862). */
+export interface CountryReleaseFacts {
+  country: string;
+  inCinemas: string | null;
+  digital: string | null;
+  physical: string | null;
+  certification: string | null;
+}
+
+/**
+ * Every country TMDb answered for, read back out of the stored metadata blob
+ * (#862) — the frontend twin of the backend's `MetadataCountryFacts`. The top
+ * level of the blob is case-folded by `parseMetadataJson`, but the objects
+ * inside this array are not (that fold only walks one level), so the field
+ * names within each entry are read directly, PascalCase, the same as every
+ * other nested shape `JsonSerializer.Serialize` produced them in.
+ */
+export function readReleaseFactsByCountry(metadataJson: string | null | undefined): CountryReleaseFacts[] {
+  const meta = parseMetadataJson(metadataJson);
+  const raw = meta["releasefactsbycountry"];
+  if (!Array.isArray(raw)) return [];
+
+  const text = (entry: Record<string, unknown>, key: string) => {
+    const value = entry[key];
+    return typeof value === "string" && value.trim() ? value.trim() : null;
+  };
+
+  return raw
+    .map((entry) => (entry && typeof entry === "object" ? (entry as Record<string, unknown>) : null))
+    .filter((entry): entry is Record<string, unknown> => entry !== null)
+    .map((entry) => ({
+      country: text(entry, "Country") ?? "",
+      inCinemas: text(entry, "InCinemas"),
+      digital: text(entry, "Digital"),
+      physical: text(entry, "Physical"),
+      certification: text(entry, "Certification")
+    }))
+    .filter((entry) => entry.country.length > 0);
+}
+
+/**
+ * Which of the stored countries' facts to surface for a chosen certification
+ * country (#862) — a pure pick over data already on hand, so changing the
+ * setting changes what is shown without re-fetching TMDb. Falls back to US
+ * the same way the backend's own certification resolution does, then to
+ * whatever was stored first rather than showing nothing.
+ */
+export function selectCountryFacts(facts: CountryReleaseFacts[], country: string): CountryReleaseFacts | null {
+  const wanted = country.trim().toUpperCase();
+  return (
+    facts.find((entry) => entry.country.toUpperCase() === wanted) ??
+    facts.find((entry) => entry.country.toUpperCase() === "US") ??
+    facts[0] ??
+    null
+  );
+}
+
 function readRating(
   item: { ratings?: Array<{ source: string; score: number | null; maxScore: number | null }> | null },
   source: string,

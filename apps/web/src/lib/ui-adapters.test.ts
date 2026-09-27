@@ -1,6 +1,16 @@
 import { describe, expect, it } from "vitest";
 import type { DownloadClientItem, DownloadDispatchItem, DownloadTelemetryOverview, IndexerItem, MovieListItem, SeriesListItem } from "./api";
-import { adaptActiveDownloads, adaptIndexerHealth, adaptMovieItems, adaptSeriesItems, adaptTelemetryDownloads, readAlternateTitles, readArtworkExtras } from "./ui-adapters";
+import {
+  adaptActiveDownloads,
+  adaptIndexerHealth,
+  adaptMovieItems,
+  adaptSeriesItems,
+  adaptTelemetryDownloads,
+  readAlternateTitles,
+  readArtworkExtras,
+  readReleaseFactsByCountry,
+  selectCountryFacts
+} from "./ui-adapters";
 
 describe("UI adapters", () => {
   it("adapts representative movie and series data and accepts empty lists", () => {
@@ -19,6 +29,27 @@ describe("UI adapters", () => {
     expect(readAlternateTitles("{}")).toEqual([]);
     expect(readAlternateTitles(null)).toEqual([]);
     expect(readAlternateTitles("not json")).toEqual([]);
+  });
+
+  it("reads per-country release facts and picks the certification-country setting's row without re-fetching (#862)", () => {
+    const blob = JSON.stringify({
+      ReleaseFactsByCountry: [
+        { Country: "US", InCinemas: "2026-03-01", Digital: "2026-04-01", Physical: null, Certification: "PG-13" },
+        { Country: "GB", InCinemas: "2026-03-08", Digital: null, Physical: null, Certification: "12A" },
+        { Country: "AU", InCinemas: null, Digital: null, Physical: null, Certification: "M" }
+      ]
+    });
+
+    const facts = readReleaseFactsByCountry(blob);
+    expect(facts).toHaveLength(3);
+
+    // Switching the setting picks a different already-stored row — no refetch.
+    expect(selectCountryFacts(facts, "GB")).toMatchObject({ country: "GB", inCinemas: "2026-03-08", certification: "12A" });
+    expect(selectCountryFacts(facts, "AU")).toMatchObject({ country: "AU", certification: "M" });
+    // A country nothing was stored for falls back to US, the same as the backend.
+    expect(selectCountryFacts(facts, "DE")).toMatchObject({ country: "US", certification: "PG-13" });
+    expect(readReleaseFactsByCountry("{}")).toEqual([]);
+    expect(readReleaseFactsByCountry(null)).toEqual([]);
   });
 
   it("reads a logo and screenshots out of the stored metadata blob, and never a banner (#864)", () => {

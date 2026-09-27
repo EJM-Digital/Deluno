@@ -110,7 +110,19 @@ public sealed record MetadataSearchResult(
     /// Extra backdrop/fanart stills beyond <see cref="BackdropUrl"/>, for a
     /// gallery view rather than the single hero image (#864).
     /// </summary>
-    IReadOnlyList<string>? Screenshots = null)
+    IReadOnlyList<string>? Screenshots = null,
+    /// <summary>
+    /// Every country TMDb reported a release date or certification for,
+    /// unreduced (#862). <see cref="Certification"/> and the top-level
+    /// <see cref="InCinemasDate"/>/<see cref="DigitalReleaseDate"/>/
+    /// <see cref="PhysicalReleaseDate"/> stay exactly what they were —
+    /// whichever single country/earliest-date choice the rest of Deluno
+    /// (availability decisions, the meta-line badge) already reads — so nothing
+    /// that reads those has to change. This is the fuller data those are
+    /// picked from, kept so a changed "certification country" setting can
+    /// choose a different stored country's facts instead of re-fetching TMDb.
+    /// </summary>
+    IReadOnlyList<MetadataCountryFacts>? ReleaseFactsByCountry = null)
 {
     /// <summary>
     /// The catalogue entry Deluno would land on if this result were added, when
@@ -148,6 +160,18 @@ public sealed record MetadataReleaseDates(
 
     public bool HasAny => InCinemas is not null || Digital is not null || Physical is not null;
 }
+
+/// <summary>
+/// One country's release dates and certification for a title, exactly as
+/// TMDb reported them, before Deluno reduces them to a single earliest date
+/// or a single certification-country choice (#862).
+/// </summary>
+public sealed record MetadataCountryFacts(
+    string Country,
+    DateOnly? InCinemas,
+    DateOnly? Digital,
+    DateOnly? Physical,
+    string? Certification);
 
 /// <summary>A provider collection and its full movie membership.</summary>
 public sealed record MetadataCollection(
