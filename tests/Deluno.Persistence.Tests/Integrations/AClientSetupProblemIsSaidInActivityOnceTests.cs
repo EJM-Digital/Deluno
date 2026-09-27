@@ -75,6 +75,38 @@ public sealed class AClientSetupProblemIsSaidInActivityOnceTests
         Assert.True(File.Exists(item.SourcePath));
     }
 
+    /// <summary>
+    /// #881's other half: not only does the passive poll leave a setup
+    /// problem alone, remediation - the pass that actually removes, deletes,
+    /// blocks and re-searches struck downloads - must too, with every one of
+    /// its settings switched on. <see cref="DownloadHealthStrikes.Counts"/>
+    /// deliberately excludes <c>client-setup-problem</c>, so nothing here is
+    /// ever "struck" and remediation should never reach it at all.
+    /// </summary>
+    [Fact]
+    public async Task Remediation_with_every_cleanup_setting_on_still_leaves_it_alone()
+    {
+        using var world = await World.CreateAsync();
+        await world.EnableEveryCleanupSettingAsync();
+
+        var overview = await world.PollAsync();
+        world.Time.Advance(TimeSpan.FromMinutes(10));
+        var report = await world.RunRemediationAsync(overview);
+
+        Assert.Equal(0, report.Evaluated);
+        Assert.Equal(0, report.ReleasesRefused);
+        Assert.Equal(0, report.ReplacementSearchesQueued);
+        Assert.Equal(0, report.ClientEntriesRemoved);
+        Assert.Equal(0, report.PayloadsPurged);
+        Assert.Empty(await world.Blocklist.ListAsync(CancellationToken.None));
+
+        var afterRemediation = await world.PollAsync();
+        var item = Assert.Single(Assert.Single(afterRemediation.Clients).Queue);
+        Assert.Contains(item.HealthFindings!, finding => finding.Kind == DownloadHealthStrikes.ClientSetupProblem);
+        Assert.NotNull(item.SourcePath);
+        Assert.True(File.Exists(item.SourcePath));
+    }
+
     private sealed class SetupProblemClient(string protocol, string clientId, string clientName, Func<DownloadQueueItem> queueItemFactory) : IDownloadClient
     {
         public string Protocol => protocol;
@@ -110,12 +142,14 @@ public sealed class AClientSetupProblemIsSaidInActivityOnceTests
     {
         private readonly TestStorage _storage;
         private readonly DownloadClientTelemetryService _service;
+        private readonly SqlitePlatformSettingsRepository _settings;
         private readonly string _sourcePath;
 
         private World(
             TestStorage storage,
             FixedTimeProvider time,
             DownloadClientTelemetryService service,
+            SqlitePlatformSettingsRepository settings,
             DownloadClientItem client,
             SqliteJobStore jobs,
             SqliteBlockedReleaseRepository blocklist,
@@ -124,6 +158,7 @@ public sealed class AClientSetupProblemIsSaidInActivityOnceTests
             _storage = storage;
             Time = time;
             _service = service;
+            _settings = settings;
             ClientId = client.Id;
             ClientName = client.Name;
             Jobs = jobs;
@@ -179,10 +214,32 @@ public sealed class AClientSetupProblemIsSaidInActivityOnceTests
                 jobs, registry, time, resiliencePolicy, jobs, dispatches, jobs,
                 new DownloadHealthEvaluator(), processors, NullConnectivityMonitor.Instance, blocklist);
 
-            return new World(storage, time, service, client, jobs, blocklist, sourcePath);
+            return new World(storage, time, service, settings, client, jobs, blocklist, sourcePath);
         }
 
         public Task<DownloadTelemetryOverview> PollAsync() => _service.GetOverviewAsync(CancellationToken.None);
+
+        public Task<DownloadHealthRemediationReport> RunRemediationAsync(DownloadTelemetryOverview overview)
+            => _service.RunConfiguredHealthRemediationAsync(overview, CancellationToken.None);
+
+        /// <summary>
+        /// Every setting that decides what remediation does to a struck
+        /// download, switched on - the strongest configuration #881 must
+        /// still leave a setup problem alone under.
+        /// </summary>
+        public async Task EnableEveryCleanupSettingAsync()
+        {
+            var current = await _settings.GetAsync(CancellationToken.None);
+            await _settings.SaveAsync(
+                PlatformSettingsPatchMerger.Apply(
+                    current,
+                    new PatchPlatformSettingsRequest(
+                        CleanupBlockReleaseAfterThreshold: true,
+                        CleanupQueueReplacementAfterThreshold: true,
+                        CleanupRemoveClientEntryAfterThreshold: true,
+                        CleanupPurgePayloadAfterThreshold: true)),
+                CancellationToken.None);
+        }
 
         public void Dispose() => _storage.Dispose();
     }
