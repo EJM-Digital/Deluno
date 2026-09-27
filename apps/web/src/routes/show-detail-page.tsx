@@ -33,7 +33,8 @@ import {
   type AcquisitionBlockersResponse,
   type MediaSubtitleRow
 } from "../lib/api";
-import { subtitleTypeLabel, subtitleSourceLabel } from "../lib/subtitle-display";
+import { subtitleTypeLabel, subtitleSourceLabel, timingStatusLabel } from "../lib/subtitle-display";
+import { SubtitleTimingActions } from "../components/app/subtitle-timing-actions";
 import { authedFetch } from "../lib/use-auth";
 import { cn } from "../lib/utils";
 import { isEpisodeMissing, isEpisodeUpcoming, summariseEpisodes } from "../lib/episode-progress";
@@ -301,6 +302,15 @@ export function ShowDetailPage() {
       cancelled = true;
     };
   }, [openEpisodeId, episodeSubtitles]);
+
+  // Re-reads one episode's subtitle rows after a resync or an out-of-sync
+  // action changes them — the cache above only fills on first open, so an
+  // action taken from an already-open drawer needs its own refresh.
+  function refetchEpisodeSubtitles(episodeId: string) {
+    fetchJson<MediaSubtitleRow[]>(`/api/series/episodes/${episodeId}/subtitles`)
+      .then((rows) => setEpisodeSubtitles((current) => ({ ...current, [episodeId]: rows })))
+      .catch(() => {});
+  }
 
   // A full catalogue can be hundreds of episodes — The Simpsons is 885 — so
   // seasons collapse. The ones with something missing open by default, capped,
@@ -1842,12 +1852,32 @@ export function ShowDetailPage() {
 
             {(episodeSubtitles[openEpisode.episodeId]?.length ?? 0) > 0 ? (
               <DrawerSection title="Subtitles" aside={`${episodeSubtitles[openEpisode.episodeId]!.length} on disk`}>
-                <ListTable chevron={false} columns={[{ label: "Language" }, { label: "Type" }, { label: "Source", mobile: true }]}>
+                <ListTable
+                  chevron={false}
+                  columns={[
+                    { label: "Language" },
+                    { label: "Type" },
+                    { label: "Source", mobile: true },
+                    { label: "Timing", mobile: true },
+                    { label: "Action", width: LIST_TRACK.action, align: "end", mobile: true }
+                  ]}
+                >
                   {episodeSubtitles[openEpisode.episodeId]!.map((subtitle, index) => (
                     <ListRow key={`${subtitle.language}-${subtitle.forced}-${subtitle.hearingImpaired}-${index}`}>
                       <ListNameCell name={subtitle.language.toUpperCase()} />
                       <ListCell primary={subtitleTypeLabel(subtitle)} />
                       <ListCell primary={subtitle.provider ?? subtitleSourceLabel(subtitle.source)} mobile />
+                      <ListCell primary={timingStatusLabel(subtitle)} secondary={subtitle.timingReason ?? undefined} mobile />
+                      <div role="cell">
+                        {!subtitle.forced ? (
+                          <SubtitleTimingActions
+                            basePath={`/api/series/episodes/${openEpisode.episodeId}`}
+                            language={subtitle.language}
+                            timingStatus={subtitle.timingStatus}
+                            onChanged={() => refetchEpisodeSubtitles(openEpisode.episodeId)}
+                          />
+                        ) : null}
+                      </div>
                     </ListRow>
                   ))}
                 </ListTable>

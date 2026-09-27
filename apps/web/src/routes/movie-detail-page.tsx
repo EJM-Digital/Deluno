@@ -31,7 +31,8 @@ import {
   type AcquisitionBlockersResponse,
   type MediaSubtitleRow
 } from "../lib/api";
-import { subtitleTypeLabel, subtitleSourceLabel } from "../lib/subtitle-display";
+import { subtitleTypeLabel, subtitleSourceLabel, timingStatusLabel } from "../lib/subtitle-display";
+import { SubtitleTimingActions } from "../components/app/subtitle-timing-actions";
 import { AcquisitionBlockersCard } from "../components/app/acquisition-blockers-card";
 import { LibraryMembershipCard, type LibraryMembership } from "../components/app/library-membership-card";
 import { RetentionTitleCard } from "../components/app/retention-title-card";
@@ -1153,12 +1154,32 @@ export function MovieDetailPage() {
 
           {subtitles.length > 0 ? (
             <ListCard title="Subtitles" count={`${subtitles.length} on disk`}>
-              <ListTable chevron={false} columns={[{ label: "Language" }, { label: "Type" }, { label: "Source", mobile: true }]}>
+              <ListTable
+                chevron={false}
+                columns={[
+                  { label: "Language" },
+                  { label: "Type" },
+                  { label: "Source", mobile: true },
+                  { label: "Timing", mobile: true },
+                  { label: "Action", width: LIST_TRACK.action, align: "end", mobile: true }
+                ]}
+              >
                 {subtitles.map((subtitle, index) => (
                   <ListRow key={`${subtitle.language}-${subtitle.forced}-${subtitle.hearingImpaired}-${index}`}>
                     <ListNameCell name={subtitle.language.toUpperCase()} />
                     <ListCell primary={subtitleTypeLabel(subtitle)} />
                     <ListCell primary={subtitle.provider ?? subtitleSourceLabel(subtitle.source)} mobile />
+                    <ListCell primary={timingStatusLabel(subtitle)} secondary={subtitle.timingReason ?? undefined} mobile />
+                    <div role="cell">
+                      {!subtitle.forced ? (
+                        <SubtitleTimingActions
+                          basePath={`/api/movies/${movie.id}`}
+                          language={subtitle.language}
+                          timingStatus={subtitle.timingStatus}
+                          onChanged={() => revalidator.revalidate()}
+                        />
+                      ) : null}
+                    </div>
                   </ListRow>
                 ))}
               </ListTable>
