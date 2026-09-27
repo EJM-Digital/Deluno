@@ -20,11 +20,6 @@ public sealed class FilesystemReconciliationService(
     TimeProvider timeProvider)
     : IFilesystemReconciliationService
 {
-    private static readonly HashSet<string> VideoExtensions = new(StringComparer.OrdinalIgnoreCase)
-    {
-        ".mkv", ".mp4", ".m4v", ".avi", ".mov", ".wmv", ".ts", ".m2ts"
-    };
-
     private static readonly string[] ArtifactMarkers =
     [
         ".deluno-stage-",
@@ -455,7 +450,7 @@ public sealed class FilesystemReconciliationService(
     }
 
     private static bool IsVideoFile(string path)
-        => VideoExtensions.Contains(Path.GetExtension(path));
+        => SupportedVideoExtensions.Contains(path);
 
     private static bool IsDelunoArtifact(string path)
         => ArtifactMarkers.Any(marker => Path.GetFileName(path).Contains(marker, StringComparison.OrdinalIgnoreCase));

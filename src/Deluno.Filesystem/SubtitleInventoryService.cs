@@ -97,11 +97,6 @@ public sealed class SubtitleInventoryService(IMediaProbeService mediaProbeServic
         ".srt", ".ass", ".ssa", ".vtt", ".sub", ".idx", ".sup", ".smi"
     };
 
-    private static readonly HashSet<string> VideoExtensions = new(StringComparer.OrdinalIgnoreCase)
-    {
-        ".mkv", ".mp4", ".m4v", ".avi", ".mov", ".wmv", ".ts", ".m2ts"
-    };
-
     /// <summary>
     /// The Plex and Bazarr convention for keeping subtitles out of the way.
     /// One level, by name, because walking a library root looking for loose
@@ -224,7 +219,7 @@ public sealed class SubtitleInventoryService(IMediaProbeService mediaProbeServic
             yield break;
         }
 
-        var soleVideo = entries.Count(entry => VideoExtensions.Contains(Path.GetExtension(entry))) == 1;
+        var soleVideo = entries.Count(entry => SupportedVideoExtensions.Contains(entry)) == 1;
 
         foreach (var candidate in EnumerateCandidates(directory, entries))
         {
