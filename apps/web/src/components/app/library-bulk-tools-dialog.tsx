@@ -1,6 +1,7 @@
 import type { BulkRenamePreviewItem, BulkTagMode, BulkWorkflowOperation } from "../../hooks/use-bulk-edit";
 import type { LibraryVariant } from "../../hooks/use-library-create";
 import { Button } from "../ui/button";
+import { CheckboxRow } from "../ui/checkbox";
 import { Field } from "../ui/field";
 import { Input } from "../ui/input";
 import { Select } from "../ui/select";
@@ -80,10 +81,7 @@ export function LibraryBulkToolsDialog({
         {operation === "reassignLibrary" ? <>
           <Field label="Destination library" help="Reassign selected titles to a different library/root."><Select value={targetLibraryId} onChange={(event) => onTargetLibraryChange(event.target.value)}><option value="">Choose library</option>{libraries.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</Select></Field>
           <Field label="Files" help={moveFiles ? "Files physically move to the new library's root." : "Only the record moves; files stay under the old root."}>
-            <label className="flex min-h-[var(--library-toolbar-height)] items-center gap-2 text-sm text-foreground">
-              <input type="checkbox" checked={moveFiles} onChange={(event) => onMoveFilesChange(event.target.checked)} />
-              Move the files to the new root
-            </label>
+            <CheckboxRow label="Move the files to the new root" checked={moveFiles} onCheckedChange={onMoveFilesChange} />
           </Field>
         </> : null}
         {operation === "tags" ? <Field label="Tags" help="Comma-separated tags. Add keeps existing tags; Remove drops only these; Replace wipes the rest.">

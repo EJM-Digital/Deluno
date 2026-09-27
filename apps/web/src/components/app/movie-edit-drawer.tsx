@@ -16,6 +16,7 @@ import { authedFetch } from "../../lib/use-auth";
 import { useUnsavedChanges } from "../../hooks/use-unsaved-changes";
 import { Drawer, DrawerFooter, DrawerSection, type DrawerSaveState } from "../ui/drawer";
 import { Field } from "../ui/field";
+import { CheckboxRow } from "../ui/checkbox";
 import { Select } from "../ui/select";
 import { Switch } from "../ui/switch";
 import { TitleTagsEditor } from "./title-tags-editor";
@@ -228,10 +229,7 @@ export function MovieEditDrawer({
 
         {pathChanging ? (
           <Field label="Files" help={moveFiles ? "The file physically moves to the new library's root." : "Only the record moves; the file stays under the old root."}>
-            <label className="flex min-h-[var(--library-toolbar-height)] items-center gap-2 text-sm text-foreground">
-              <input type="checkbox" checked={moveFiles} onChange={(event) => { setMoveFiles(event.target.checked); edit(); }} />
-              Move the file to the new root
-            </label>
+            <CheckboxRow label="Move the file to the new root" checked={moveFiles} onCheckedChange={(checked) => { setMoveFiles(checked); edit(); }} />
           </Field>
         ) : null}
 
