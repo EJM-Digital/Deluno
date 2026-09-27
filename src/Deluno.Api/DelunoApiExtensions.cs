@@ -37,6 +37,7 @@ public static class DelunoApiExtensions
         services.TryAddSingleton<IBundledComponentDetection, UncheckedBundledComponentDetection>();
         services.AddSingleton<IIndexerHistoryEventStore, SqliteIndexerHistoryEventStore>();
         services.AddSingleton<IIndexerHistoryService, IndexerHistoryService>();
+        services.AddSingleton<Deluno.Contracts.IIndexerAuthFailureRecorder, IndexerHistoryAuthFailureRecorder>();
         return services;
     }
 
