@@ -92,8 +92,14 @@ public sealed class DownloadThroughputSampler(
         }
     }
 
-    /// <summary>Samples once and returns the interval to wait before the next one.</summary>
-    private async Task<TimeSpan> SampleAsync(CancellationToken cancellationToken)
+    /// <summary>
+    /// Samples once and returns the interval to wait before the next one.
+    /// Internal, rather than private, so a test can prove #823's own claim -
+    /// a custom <see cref="Deluno.Platform.Contracts.PlatformSettingsSnapshot.DownloadThroughputSamplerIntervalMinutes"/>
+    /// changes the returned cadence - without standing up the whole
+    /// BackgroundService loop.
+    /// </summary>
+    internal async Task<TimeSpan> SampleAsync(CancellationToken cancellationToken)
     {
         using var scope = scopeFactory.CreateScope();
         var telemetry = scope.ServiceProvider.GetRequiredService<IDownloadClientTelemetryService>();
