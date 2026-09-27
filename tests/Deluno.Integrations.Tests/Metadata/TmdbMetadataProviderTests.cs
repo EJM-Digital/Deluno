@@ -447,6 +447,189 @@ public sealed class TmdbMetadataProviderTests : IDisposable
         Assert.NotEmpty(result.Crew);
     }
 
+    /// <summary>
+    /// A `tmdb:<id>` prefix (#792) is the same identity assertion the add
+    /// dialog already sends once a title is selected from search results -
+    /// it goes straight to the detail lookup, never through `search/movie`.
+    /// </summary>
+    [Fact]
+    public async Task SearchAsync_resolves_a_tmdb_prefixed_id_directly()
+    {
+        var settings = new Mock<IPlatformSettingsRepository>();
+        settings.Setup(repo => repo.GetAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(CreateSettingsSnapshot("direct", string.Empty));
+
+        var requestedUrls = new List<string>();
+        var storageOptions = Options.Create(new StoragePathOptions { DataRoot = _dataRoot });
+        var factory = new SqliteDatabaseConnectionFactory(storageOptions);
+        var timeProvider = new FakeTimeProvider(DateTimeOffset.Parse("2026-05-14T00:00:00Z"));
+        await new CacheSchemaInitializer(
+            factory,
+            new SqliteDatabaseMigrator(factory, timeProvider),
+            NullLogger<CacheSchemaInitializer>.Instance).StartAsync(CancellationToken.None);
+
+        var provider = new TmdbMetadataProvider(
+            new HttpClient(new StubHttpMessageHandler(request =>
+            {
+                var uri = request.RequestUri!.ToString();
+                requestedUrls.Add(uri);
+                if (uri.Contains("/movie/157336", StringComparison.Ordinal))
+                {
+                    return new HttpResponseMessage(HttpStatusCode.OK)
+                    {
+                        Content = new StringContent(
+                            """{ "id": 157336, "title": "Interstellar", "release_date": "2014-11-05" }""",
+                            Encoding.UTF8,
+                            "application/json")
+                    };
+                }
+
+                return new HttpResponseMessage(HttpStatusCode.NotFound);
+            })),
+            new ConfigurationBuilder()
+                .AddInMemoryCollection(new Dictionary<string, string?> { ["Deluno:Metadata:TMDbApiKey"] = "test-key" })
+                .Build(),
+            settings.Object,
+            factory,
+            storageOptions,
+            timeProvider,
+            new PassthroughResiliencePolicy(),
+            new OutboundRequestThrottle(timeProvider, NullLogger<OutboundRequestThrottle>.Instance),
+            NullLogger<TmdbMetadataProvider>.Instance);
+
+        var result = Assert.Single(await provider.SearchAsync(
+            new MetadataLookupRequest(null, "movies", null, "157336", "tmdb"),
+            CancellationToken.None));
+
+        Assert.Equal("Interstellar", result.Title);
+        Assert.Equal("157336", result.ProviderId);
+        Assert.DoesNotContain(requestedUrls, url => url.Contains("/search/", StringComparison.Ordinal));
+    }
+
+    /// <summary>
+    /// An `imdb:<id>` or `tvdb:<id>` prefix (#792) has no TMDb numeric id to
+    /// look up directly, so it goes through TMDb's `/find` endpoint first and
+    /// then fetches the full detail record for whichever bucket answered.
+    /// </summary>
+    [Theory]
+    [InlineData("imdb", "tt0816692", "imdb_id", "movies", "movie_results")]
+    [InlineData("tvdb", "121361", "tvdb_id", "tv", "tv_results")]
+    public async Task SearchAsync_resolves_an_external_id_prefix_via_the_find_endpoint(
+        string idSource,
+        string externalId,
+        string expectedExternalSource,
+        string mediaType,
+        string resultsBucket)
+    {
+        var settings = new Mock<IPlatformSettingsRepository>();
+        settings.Setup(repo => repo.GetAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(CreateSettingsSnapshot("direct", string.Empty));
+
+        var storageOptions = Options.Create(new StoragePathOptions { DataRoot = _dataRoot });
+        var factory = new SqliteDatabaseConnectionFactory(storageOptions);
+        var timeProvider = new FakeTimeProvider(DateTimeOffset.Parse("2026-05-14T00:00:00Z"));
+        await new CacheSchemaInitializer(
+            factory,
+            new SqliteDatabaseMigrator(factory, timeProvider),
+            NullLogger<CacheSchemaInitializer>.Instance).StartAsync(CancellationToken.None);
+
+        var provider = new TmdbMetadataProvider(
+            new HttpClient(new StubHttpMessageHandler(request =>
+            {
+                var uri = request.RequestUri!.ToString();
+                if (uri.Contains($"/find/{externalId}", StringComparison.Ordinal))
+                {
+                    Assert.Contains($"external_source={expectedExternalSource}", uri, StringComparison.Ordinal);
+                    return new HttpResponseMessage(HttpStatusCode.OK)
+                    {
+                        Content = new StringContent(
+                            $$"""{ "{{resultsBucket}}": [{ "id": 42 }] }""",
+                            Encoding.UTF8,
+                            "application/json")
+                    };
+                }
+
+                if (uri.Contains(mediaType == "tv" ? "/tv/42" : "/movie/42", StringComparison.Ordinal))
+                {
+                    return new HttpResponseMessage(HttpStatusCode.OK)
+                    {
+                        Content = new StringContent(
+                            mediaType == "tv"
+                                ? """{ "id": 42, "name": "Doctor Who", "first_air_date": "2005-03-26" }"""
+                                : """{ "id": 42, "title": "Interstellar", "release_date": "2014-11-05" }""",
+                            Encoding.UTF8,
+                            "application/json")
+                    };
+                }
+
+                return new HttpResponseMessage(HttpStatusCode.NotFound);
+            })),
+            new ConfigurationBuilder()
+                .AddInMemoryCollection(new Dictionary<string, string?> { ["Deluno:Metadata:TMDbApiKey"] = "test-key" })
+                .Build(),
+            settings.Object,
+            factory,
+            storageOptions,
+            timeProvider,
+            new PassthroughResiliencePolicy(),
+            new OutboundRequestThrottle(timeProvider, NullLogger<OutboundRequestThrottle>.Instance),
+            NullLogger<TmdbMetadataProvider>.Instance);
+
+        var result = Assert.Single(await provider.SearchAsync(
+            new MetadataLookupRequest(null, mediaType, null, externalId, idSource),
+            CancellationToken.None));
+
+        Assert.Equal("42", result.ProviderId);
+    }
+
+    /// <summary>An id prefix that TMDb has never heard of returns nothing - never a fuzzy fallback list.</summary>
+    [Fact]
+    public async Task SearchAsync_returns_no_results_for_an_id_prefix_tmdb_does_not_recognize()
+    {
+        var settings = new Mock<IPlatformSettingsRepository>();
+        settings.Setup(repo => repo.GetAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(CreateSettingsSnapshot("direct", string.Empty));
+
+        var storageOptions = Options.Create(new StoragePathOptions { DataRoot = _dataRoot });
+        var factory = new SqliteDatabaseConnectionFactory(storageOptions);
+        var timeProvider = new FakeTimeProvider(DateTimeOffset.Parse("2026-05-14T00:00:00Z"));
+        await new CacheSchemaInitializer(
+            factory,
+            new SqliteDatabaseMigrator(factory, timeProvider),
+            NullLogger<CacheSchemaInitializer>.Instance).StartAsync(CancellationToken.None);
+
+        var provider = new TmdbMetadataProvider(
+            new HttpClient(new StubHttpMessageHandler(request =>
+            {
+                var uri = request.RequestUri!.ToString();
+                if (uri.Contains("/find/tt9999999", StringComparison.Ordinal))
+                {
+                    return new HttpResponseMessage(HttpStatusCode.OK)
+                    {
+                        Content = new StringContent("""{ "movie_results": [], "tv_results": [] }""", Encoding.UTF8, "application/json")
+                    };
+                }
+
+                return new HttpResponseMessage(HttpStatusCode.NotFound);
+            })),
+            new ConfigurationBuilder()
+                .AddInMemoryCollection(new Dictionary<string, string?> { ["Deluno:Metadata:TMDbApiKey"] = "test-key" })
+                .Build(),
+            settings.Object,
+            factory,
+            storageOptions,
+            timeProvider,
+            new PassthroughResiliencePolicy(),
+            new OutboundRequestThrottle(timeProvider, NullLogger<OutboundRequestThrottle>.Instance),
+            NullLogger<TmdbMetadataProvider>.Instance);
+
+        var results = await provider.SearchAsync(
+            new MetadataLookupRequest(null, "movies", null, "tt9999999", "imdb"),
+            CancellationToken.None);
+
+        Assert.Empty(results);
+    }
+
     [Fact]
     public async Task SearchAsync_retains_a_typed_provider_failure_in_status()
     {

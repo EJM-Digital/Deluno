@@ -164,7 +164,73 @@ public sealed class TmdbMetadataProvider(
     public Task<IReadOnlyList<MetadataSearchResult>> SearchAsync(
         MetadataLookupRequest request,
         CancellationToken cancellationToken)
-        => SearchWithTypedYearAsync(request, SearchByQueryAsync, cancellationToken);
+        => !string.IsNullOrWhiteSpace(request.IdSource)
+            ? SearchByExternalIdAsync(request, cancellationToken)
+            : SearchWithTypedYearAsync(request, SearchByQueryAsync, cancellationToken);
+
+    /// <summary>
+    /// A prefixed id (tmdb:/imdb:/tvdb:) typed into the add-title search box.
+    /// This is an identity assertion, not a search hint: it returns the one
+    /// matching title, or nothing at all - never a fuzzy list of near
+    /// matches for an id that does not resolve.
+    /// </summary>
+    private async Task<IReadOnlyList<MetadataSearchResult>> SearchByExternalIdAsync(
+        MetadataLookupRequest request,
+        CancellationToken cancellationToken)
+    {
+        var externalId = request.ProviderId?.Trim();
+        if (string.IsNullOrWhiteSpace(externalId))
+        {
+            return [];
+        }
+
+        var config = await GetMetadataConfigurationAsync(cancellationToken);
+        var apiKey = config.TmdbApiKey ?? await GetApiKeyAsync(cancellationToken);
+        if (string.IsNullOrWhiteSpace(apiKey))
+        {
+            return [];
+        }
+
+        var mediaType = NormalizeMediaType(request.MediaType);
+
+        if (string.Equals(request.IdSource, "tmdb", StringComparison.OrdinalIgnoreCase))
+        {
+            if (!int.TryParse(externalId, NumberStyles.Integer, CultureInfo.InvariantCulture, out var tmdbId))
+            {
+                return [];
+            }
+
+            var exact = await GetDetailsByIdAsync(tmdbId, mediaType, apiKey, config.Language, config.CertificationCountry, cancellationToken);
+            return exact is null ? [] : await LocalizeArtworkAsync([exact], cancellationToken);
+        }
+
+        var externalSource = string.Equals(request.IdSource, "tvdb", StringComparison.OrdinalIgnoreCase)
+            ? "tvdb_id"
+            : "imdb_id";
+        var url = $"https://api.themoviedb.org/3/find/{Uri.EscapeDataString(externalId)}?api_key={Uri.EscapeDataString(apiKey)}&external_source={externalSource}";
+        var found = await GetJsonWithResilienceAsync<TmdbFindResponse>(
+            url,
+            "metadata:tmdb:find",
+            "metadata.tmdb.find",
+            cancellationToken);
+
+        // The find endpoint answers whichever bucket matches, regardless of
+        // what mediaType was asked for - a tvdb id is always a TV show, and
+        // an imdb id can be either, so the movie/tv media type the caller
+        // sent is only a preference when both buckets somehow have a hit.
+        var tvHit = found?.TvResults?.FirstOrDefault();
+        var movieHit = found?.MovieResults?.FirstOrDefault();
+        var (hit, resolvedMediaType) = mediaType == "tv"
+            ? (tvHit is not null ? (tvHit, "tv") : (movieHit, "movies"))
+            : (movieHit is not null ? (movieHit, "movies") : (tvHit, "tv"));
+        if (hit is null)
+        {
+            return [];
+        }
+
+        var detail = await GetDetailsByIdAsync(hit.Id, resolvedMediaType, apiKey, config.Language, config.CertificationCountry, cancellationToken);
+        return detail is null ? [] : await LocalizeArtworkAsync([detail], cancellationToken);
+    }
 
     /// <summary>
     /// Runs a title search with any year the person typed moved into the
@@ -2674,6 +2740,10 @@ public sealed class TmdbMetadataProvider(
 
     private sealed record TmdbSearchResponse(
         [property: JsonPropertyName("results")] IReadOnlyList<TmdbSearchItem>? Results);
+
+    private sealed record TmdbFindResponse(
+        [property: JsonPropertyName("movie_results")] IReadOnlyList<TmdbSearchItem>? MovieResults,
+        [property: JsonPropertyName("tv_results")] IReadOnlyList<TmdbSearchItem>? TvResults);
 
     private sealed record TmdbSearchItem(
         [property: JsonPropertyName("id")] int Id,
