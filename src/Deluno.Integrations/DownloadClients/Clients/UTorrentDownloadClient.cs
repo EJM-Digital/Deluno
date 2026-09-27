@@ -85,6 +85,24 @@ public sealed class UTorrentDownloadClient(Func<HttpMessageHandler>? handlerFact
             using var labelResponse = await http.GetAsync(
                 $"gui/?token={Uri.EscapeDataString(token)}&action=setprops&hash={Uri.EscapeDataString(added)}&s=label&v={Uri.EscapeDataString(category)}",
                 cancellationToken);
+            return DownloadClientHelpers.GrabSuccess(client, request, successMessage) with { ExternalId = added };
+        }
+
+        // #877/#911: no new hash appearing is also what a link uTorrent could
+        // not read looks like, so only a hash Deluno already knows and finds
+        // in uTorrent's own list beforehand is a genuine duplicate — the same
+        // check qBittorrent, Deluge and rTorrent's adapters make.
+        var knownHash = Search.Trackers.TrackerMagnet.InfoHashOf(request.DownloadUrl);
+        if (before is not null && knownHash is { Length: 40 } duplicateHash && before.Contains(duplicateHash, StringComparer.OrdinalIgnoreCase))
+        {
+            return DownloadClientHelpers.GrabSuccess(
+                client,
+                request,
+                "uTorrent already holds this release. Deluno is following the copy it has instead of sending another.") with
+            {
+                ExternalId = duplicateHash,
+                IsDuplicateFollow = true
+            };
         }
 
         return DownloadClientHelpers.GrabSuccess(client, request, successMessage) with { ExternalId = added };

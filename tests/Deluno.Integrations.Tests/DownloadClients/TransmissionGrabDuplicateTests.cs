@@ -1,0 +1,80 @@
+using System.Net;
+using System.Text;
+using Deluno.Connections.Contracts;
+using Deluno.Integrations.DownloadClients;
+using Deluno.Integrations.DownloadClients.Clients;
+
+namespace Deluno.Integrations.Tests.DownloadClients;
+
+/// <summary>
+/// #877/#911, cleanup sheet B3: Transmission's own <c>torrent-add</c> RPC
+/// says outright, in <c>torrent-duplicate</c>, when it already held this
+/// exact torrent — no before/after hash guessing needed, unlike qBittorrent,
+/// Deluge, rTorrent and uTorrent. Deluno now reads that signal and follows
+/// the existing item with a plain-words message, instead of reporting a
+/// generic "sent".
+/// </summary>
+public sealed class TransmissionGrabDuplicateTests
+{
+    [Fact]
+    public async Task A_transmission_duplicate_answer_is_followed_instead_of_reported_as_an_ordinary_send()
+    {
+        var handler = new TransmissionDuplicateHandler();
+        var result = await new TransmissionDownloadClient(new StubFactory(handler))
+            .GrabAsync(Client(), Request(), CancellationToken.None);
+
+        Assert.True(result.Succeeded, result.Message);
+        Assert.Equal("7", result.ExternalId);
+        Assert.True(result.IsDuplicateFollow);
+        Assert.Contains("already holds this release", result.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task An_ordinary_added_torrent_is_not_read_as_a_duplicate()
+    {
+        var handler = new TransmissionAddedHandler();
+        var result = await new TransmissionDownloadClient(new StubFactory(handler))
+            .GrabAsync(Client(), Request(), CancellationToken.None);
+
+        Assert.True(result.Succeeded, result.Message);
+        Assert.False(result.IsDuplicateFollow);
+        Assert.DoesNotContain("already holds this release", result.Message, StringComparison.Ordinal);
+    }
+
+    private static DownloadClientGrabRequest Request()
+        => new("Example.Movie.2024.1080p", "http://indexer.test/download/1", "movies", "movies", "Fixture indexer");
+
+    private static DownloadClientItem Client()
+        => new(
+            "client-1", "Transmission", "transmission", "localhost", 9091, null, null, "http://localhost:9091/", false, null,
+            "movies", "tv", null, 1, true, "healthy", null, null, null, null, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow);
+
+    private sealed class StubFactory(HttpMessageHandler handler) : IHttpClientFactory
+    {
+        public HttpClient CreateClient(string name) => new(handler, disposeHandler: false);
+    }
+
+    private sealed class TransmissionDuplicateHandler : HttpMessageHandler
+    {
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            var body = request.Content is null ? string.Empty : await request.Content.ReadAsStringAsync(cancellationToken);
+            var reply = body.Contains("\"torrent-add\"", StringComparison.Ordinal)
+                ? """{"result":"success","arguments":{"torrent-duplicate":{"id":7,"hashString":"abc"}}}"""
+                : """{"result":"success","arguments":{}}""";
+            return new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(reply, Encoding.UTF8, "application/json") };
+        }
+    }
+
+    private sealed class TransmissionAddedHandler : HttpMessageHandler
+    {
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            var body = request.Content is null ? string.Empty : await request.Content.ReadAsStringAsync(cancellationToken);
+            var reply = body.Contains("\"torrent-add\"", StringComparison.Ordinal)
+                ? """{"result":"success","arguments":{"torrent-added":{"id":7,"hashString":"abc"}}}"""
+                : """{"result":"success","arguments":{}}""";
+            return new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(reply, Encoding.UTF8, "application/json") };
+        }
+    }
+}
