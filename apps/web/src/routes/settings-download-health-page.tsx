@@ -31,7 +31,9 @@ import { automationNavItems } from "../components/app/settings-shell";
 import { toast } from "../components/shell/toaster";
 import { useUnsavedChanges } from "../hooks/use-unsaved-changes";
 import { authedFetch } from "../lib/use-auth";
-import { fetchJson, type DownloadHealthIgnoreEntry, type DownloadHealthRule } from "../lib/api";
+import { fetchJson, type DownloadHealthIgnoreEntry, type DownloadHealthRule, type PlatformSettingsSnapshot } from "../lib/api";
+import type { PlatformSettingsPatch } from "../lib/api/settings";
+import { useApiMutation } from "../lib/use-api-mutation";
 import { resolveDrawerSaveState, shouldClearSaveState } from "../lib/drawer-save-state";
 
 const RULE_KIND_COPY: Record<string, { label: string; description: string; thresholdLabel?: string; thresholdUnit?: string; thresholdHelp?: string }> = {
@@ -77,14 +79,55 @@ const APPLIES_TO_OPTIONS = [
 interface LoaderData {
   rules: DownloadHealthRule[];
   ignoreEntries: DownloadHealthIgnoreEntry[];
+  settings: PlatformSettingsSnapshot;
 }
 
 export async function settingsDownloadHealthLoader(): Promise<LoaderData> {
-  const [rules, ignoreEntries] = await Promise.all([
+  const [rules, ignoreEntries, settings] = await Promise.all([
     fetchJson<DownloadHealthRule[]>("/api/download-health/rules"),
-    fetchJson<DownloadHealthIgnoreEntry[]>("/api/download-health/ignore-list")
+    fetchJson<DownloadHealthIgnoreEntry[]>("/api/download-health/ignore-list"),
+    fetchJson<PlatformSettingsSnapshot>("/api/settings")
   ]);
-  return { rules, ignoreEntries };
+  return { rules, ignoreEntries, settings };
+}
+
+/**
+ * #814: the single sandbox switch shared by the strike/blocklist executor
+ * and the seeding-cleanup executor. Its own small card, saved on its own -
+ * it is a pipeline-wide behaviour, not a per-rule one, so it does not belong
+ * inside the rule drawer above.
+ */
+function DryRunCard({ settings }: { settings: PlatformSettingsSnapshot }) {
+  const mutation = useApiMutation<PlatformSettingsPatch, PlatformSettingsSnapshot>("/api/settings", "PATCH");
+  const [enabled, setEnabled] = useState(settings.downloadHealthDryRunEnabled);
+  const [saveState, setSaveState] = useState<"idle" | "saving" | "saved" | "error">("idle");
+
+  async function onChange(checked: boolean) {
+    setEnabled(checked);
+    setSaveState("saving");
+    try {
+      const next = await mutation.mutate({ downloadHealthDryRunEnabled: checked });
+      setEnabled(next.downloadHealthDryRunEnabled);
+      setSaveState("saved");
+    } catch {
+      setEnabled(settings.downloadHealthDryRunEnabled);
+      setSaveState("error");
+    }
+  }
+
+  return (
+    <ListCard title="Dry run" count="Sandbox mode for every rule above">
+      <div className="grid gap-[var(--grid-gap)] p-[var(--card-pad-x)]">
+        <SwitchRow
+          label="Dry run"
+          description="Every rule still watches and still counts strikes, but nothing is removed, blocklisted, searched for, or reclaimed. Each action it would have taken is logged to Activity as a preview instead."
+          checked={enabled}
+          onCheckedChange={(checked) => void onChange(checked)}
+        />
+        {saveState === "error" ? <p className="text-[length:var(--type-caption)] text-destructive">Could not save. Try again.</p> : null}
+      </div>
+    </ListCard>
+  );
 }
 
 interface RuleForm {
@@ -141,7 +184,7 @@ function actionLabel(preset: string) {
 }
 
 export function SettingsDownloadHealthPage() {
-  const { rules, ignoreEntries } = useLoaderData() as LoaderData;
+  const { rules, ignoreEntries, settings } = useLoaderData() as LoaderData;
   const revalidator = useRevalidator();
   const [mode, setMode] = useState<DrawerMode>({ kind: "closed" });
   const [form, setForm] = useState<RuleForm>(emptyForm("no-progress"));
@@ -377,6 +420,8 @@ export function SettingsDownloadHealthPage() {
           )}
         </div>
       </ListCard>
+
+      <DryRunCard settings={settings} />
 
       <ListCard title="Strikes">
         <div className="grid gap-[var(--grid-gap)] p-[var(--card-pad-x)] sm:grid-cols-[1fr_auto] sm:items-center">

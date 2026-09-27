@@ -103,6 +103,16 @@ export interface PlatformSettingsSnapshot {
   downloadHealthMinPeersEnabled: boolean;
   downloadHealthMinPeers: number;
   downloadHealthMinPeersMinutes: number;
+  /**
+   * #814: one sandbox switch, shared by the strike/blocklist executor and
+   * the seeding-cleanup executor. On, both log the action they would have
+   * taken and make no real change. Off by default.
+   */
+  downloadHealthDryRunEnabled: boolean;
+  /** #825: how long a download can go without a fresh strike before its strike count clears, independent of any rule's own timer. 1-720 hours. */
+  downloadHealthStrikeInactivityHours: number;
+  /** #823: how often the throughput sampler polls telemetry for the speed chart. 1-60 minutes. */
+  downloadThroughputSamplerIntervalMinutes: number;
   /** #909: percent free remaining at which a library root's health check warns, but keeps grabbing and importing. */
   libraryFreeSpaceWarnPercent: number;
   /** #909: percent free remaining at or below which Deluno pauses a library's grabs and imports, the same way an unreachable root does. */
@@ -264,6 +274,9 @@ export const emptyPlatformSettingsSnapshot: PlatformSettingsSnapshot = {
   downloadHealthMinPeersEnabled: false,
   downloadHealthMinPeers: 1,
   downloadHealthMinPeersMinutes: 30,
+  downloadHealthDryRunEnabled: false,
+  downloadHealthStrikeInactivityHours: 72,
+  downloadThroughputSamplerIntervalMinutes: 1,
   libraryFreeSpaceWarnPercent: 10,
   libraryFreeSpacePausePercent: 5,
   // #936: off by default, matching PlatformSettingsSnapshot's server-side default.
