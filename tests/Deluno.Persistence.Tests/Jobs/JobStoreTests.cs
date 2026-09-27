@@ -665,6 +665,34 @@ public sealed class JobStoreTests
     }
 
     /// <summary>
+    /// #871: the Activity timeline's Clear action. It wipes every stored row
+    /// -- there is no separate table sparing decision-explanation history --
+    /// so the caller records a fresh note afterwards saying the clear
+    /// happened, and this proves both halves.
+    /// </summary>
+    [Fact]
+    public async Task ClearActivityAsync_removes_every_stored_row()
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-09-27T05:00:00Z"));
+        await InitializeJobsAsync(storage, timeProvider);
+        var store = new SqliteJobStore(storage.Factory, timeProvider, new NullRealtimeEventPublisher(), new NullDownloadDispatchesRepository());
+
+        await store.RecordActivityAsync("test.one", "First event", null, null, null, null, CancellationToken.None);
+        await store.RecordActivityAsync("test.two", "Second event", null, null, null, null, CancellationToken.None);
+
+        var removed = await store.ClearActivityAsync(CancellationToken.None);
+        Assert.Equal(2, removed);
+
+        var remaining = await store.ListActivityAsync(10, null, null, CancellationToken.None);
+        Assert.Empty(remaining);
+
+        await store.RecordActivityAsync("activity.cleared", "Activity history was cleared (2 entries removed).", null, null, null, null, CancellationToken.None);
+        var afterNote = await store.ListActivityAsync(10, null, null, CancellationToken.None);
+        Assert.Single(afterNote, activity => activity.Category == "activity.cleared");
+    }
+
+    /// <summary>
     /// #916: "Added a media read to the queue." and "Started reading what your
     /// files actually are." said nothing about which library, so the routine
     /// media-probe pass filled Activity with six near-identical unlabelled

@@ -85,6 +85,51 @@ public static class JobsEndpointRouteBuilderExtensions
             return Results.Ok(page);
         });
 
+        endpoints.MapGet("/api/activity/display-settings", (
+            IActivityDisplaySettingsStore store) =>
+        {
+            return Results.Ok(new { pageSize = store.PageSize });
+        });
+
+        endpoints.MapPut("/api/activity/display-settings", async (
+            ActivityDisplaySettingsRequest request,
+            IActivityDisplaySettingsStore store,
+            CancellationToken cancellationToken) =>
+        {
+            if (request.PageSize < FileActivityDisplaySettingsStore.MinPageSize ||
+                request.PageSize > FileActivityDisplaySettingsStore.MaxPageSize)
+            {
+                return Results.ValidationProblem(new Dictionary<string, string[]>
+                {
+                    ["pageSize"] = [$"Page size must be between {FileActivityDisplaySettingsStore.MinPageSize} and {FileActivityDisplaySettingsStore.MaxPageSize}."]
+                });
+            }
+
+            await store.SetPageSizeAsync(request.PageSize, cancellationToken);
+            return Results.Ok(new { pageSize = store.PageSize });
+        });
+
+        // #871: wipes the stored Activity feed. The same table backs decision
+        // explanations, so this also clears that automation-decision history --
+        // there is nothing else it lives in to spare. The one row left behind
+        // records that the clear happened, so the timeline is never silently
+        // empty with no explanation.
+        endpoints.MapPost("/api/activity/clear", async (
+            IActivityFeedRepository repository,
+            CancellationToken cancellationToken) =>
+        {
+            var removed = await repository.ClearActivityAsync(cancellationToken);
+            var note = await repository.RecordActivityAsync(
+                "activity.cleared",
+                $"Activity history was cleared ({removed} {(removed == 1 ? "entry" : "entries")} removed).",
+                null,
+                null,
+                null,
+                null,
+                cancellationToken);
+            return Results.Ok(new { removed, note });
+        });
+
         endpoints.MapGet("/api/decisions", async (
             int? pageSize,
             string? pageToken,
