@@ -58,6 +58,45 @@ public static class CatalogueMetadata
             metadata.Keywords is { Count: > 0 } keywords ? string.Join(", ", keywords) : null);
 
     /// <summary>
+    /// The alternate titles a search should also match a release against,
+    /// read back out of the stored metadata blob (#861). Every field on
+    /// <see cref="MetadataSearchResult"/> rides along in
+    /// <see cref="MediaMetadataUpdate.MetadataJson"/> already; this is the one
+    /// place that reads <c>AlternateTitles</c> back out of it, the same way
+    /// <see cref="ToUpdate"/> is the one place that writes it in.
+    /// </summary>
+    public static IReadOnlyList<string>? ReadAlternateTitles(string? metadataJson)
+    {
+        if (string.IsNullOrWhiteSpace(metadataJson))
+        {
+            return null;
+        }
+
+        try
+        {
+            using var document = JsonDocument.Parse(metadataJson);
+            if (!document.RootElement.TryGetProperty(nameof(MetadataSearchResult.AlternateTitles), out var property)
+                || property.ValueKind != JsonValueKind.Array)
+            {
+                return null;
+            }
+
+            var titles = property.EnumerateArray()
+                .Where(entry => entry.ValueKind == JsonValueKind.String)
+                .Select(entry => entry.GetString())
+                .Where(title => !string.IsNullOrWhiteSpace(title))
+                .Select(title => title!)
+                .ToArray();
+            return titles.Length == 0 ? null : titles;
+        }
+        catch (JsonException)
+        {
+            // A malformed stored metadata blob cannot make a search crash.
+            return null;
+        }
+    }
+
+    /// <summary>
     /// The scores Deluno keeps a column for, and only those.
     ///
     /// <para>A provider may answer with sources Deluno has no column for. They

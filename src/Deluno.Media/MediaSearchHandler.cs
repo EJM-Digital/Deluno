@@ -131,7 +131,8 @@ public static class MediaSearchHandler
                 PreferencePlan: preferencePlan,
                 CurrentPreferenceEvaluation: currentPreferenceEvaluation,
                 RuntimeMinutes: item.RuntimeMinutes,
-                ImdbId: wantedItem.ImdbId).WithProfile(profileRules),
+                ImdbId: wantedItem.ImdbId,
+                OtherTitles: CatalogueMetadata.ReadAlternateTitles(item.MetadataJson)).WithProfile(profileRules),
             cancellationToken);
         var searchPlan = decisionPlan.SearchPlan;
         var bestCandidate = searchPlan.BestCandidate;

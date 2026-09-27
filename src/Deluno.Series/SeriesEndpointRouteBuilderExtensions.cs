@@ -1486,7 +1486,8 @@ public static class SeriesEndpointRouteBuilderExtensions
                         PreferencePlan: preferencePlan,
                         RuntimeMinutes: seriesItem.RuntimeMinutes,
                         ImdbId: seriesItem.ImdbId,
-                        Genres: seriesItem.Genres).WithProfile(profileRules),
+                        Genres: seriesItem.Genres,
+                        OtherTitles: CatalogueMetadata.ReadAlternateTitles(seriesItem.MetadataJson)).WithProfile(profileRules),
                     cancellationToken);
                 var searchPlan = decisionPlan.SearchPlan;
                 var bestCandidate = searchPlan.BestCandidate;

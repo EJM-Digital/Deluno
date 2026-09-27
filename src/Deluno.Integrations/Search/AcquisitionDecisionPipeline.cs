@@ -118,7 +118,8 @@ public sealed class AcquisitionDecisionPipeline : IAcquisitionDecisionPipeline
                 request.RuntimeMinutes,
                 request.ImdbId,
                 request.ScoreLimits,
-                request.Genres);
+                request.Genres,
+                request.OtherTitles);
 
         searchPlan = await SkipBlockedReleasesAsync(searchPlan, cancellationToken);
         searchPlan = LeaveEpisodesToTheirOwnSearch(searchPlan, request);
@@ -725,7 +726,9 @@ public sealed record AcquisitionDecisionRequest(
     /// (#742). A TV search whose genres name "Anime" queries each indexer's
     /// own anime categories instead of its normal ones, when configured.
     /// </summary>
-    string? Genres = null);
+    string? Genres = null,
+    /// <summary>Region-specific spellings metadata gave for this title, beyond <see cref="Title"/> itself (#861).</summary>
+    IReadOnlyList<string>? OtherTitles = null);
 
 public sealed record AcquisitionDecisionPlan(
     MediaSearchPlan SearchPlan,

@@ -57,5 +57,7 @@ public interface IMediaSearchPlanner
         /// indexer's AnimeCategories instead of its normal Categories, when
         /// the indexer has one configured.
         /// </summary>
-        string? genres = null);
+        string? genres = null,
+        /// <summary>Region-specific spellings metadata gave for this title, beyond <paramref name="title"/> itself (#861).</summary>
+        IReadOnlyList<string>? otherTitles = null);
 }
