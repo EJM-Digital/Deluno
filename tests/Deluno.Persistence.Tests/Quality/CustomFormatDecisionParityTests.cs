@@ -436,6 +436,49 @@ public sealed class CustomFormatDecisionParityTests
             releaseSizeBytes: 3_000_000_000L).IsMatch);
     }
 
+    /// <summary>
+    /// Sonarr's Release Type condition (#776): single episode, multi-episode
+    /// or season pack, reusing Deluno's own SeasonPackDetector/
+    /// ReleaseEpisodeClassifier classification rather than re-implementing it.
+    /// </summary>
+    [Theory]
+    [InlineData("Show.Name.S01E05.1080p.WEB-DL-GRP", "single episode", true)]
+    [InlineData("Show.Name.S01E05.1080p.WEB-DL-GRP", "multi-episode", false)]
+    [InlineData("Show.Name.S01E05.1080p.WEB-DL-GRP", "season pack", false)]
+    [InlineData("Show.Name.S01E05E06.1080p.WEB-DL-GRP", "multi-episode", true)]
+    [InlineData("Show.Name.S01E05E06.1080p.WEB-DL-GRP", "single episode", false)]
+    [InlineData("Show.Name.S01.1080p.WEB-DL-GRP", "season pack", true)]
+    [InlineData("Show.Name.S01.1080p.WEB-DL-GRP", "single episode", false)]
+    [InlineData("Show.Name.1080p.WEB-DL-GRP", "single episode", false)]
+    public void Release_type_condition_matches_deluno_own_episode_classification(string releaseName, string releaseType, bool expected)
+    {
+        var definition = $"[{{\"type\":\"releaseType\",\"value\":\"{releaseType}\"}}]";
+
+        Assert.True(CustomFormatDefinitionMatcher.CanEvaluate(definition, "tv"));
+        Assert.Equal(expected, CustomFormatDefinitionMatcher.Evaluate(releaseName, definition, anyCondition: false, "tv").IsMatch);
+    }
+
+    [Fact]
+    public void Imported_sonarr_release_type_specification_maps_onto_the_release_type_condition()
+    {
+        const string definition =
+            "[{\"implementation\":\"ReleaseTypeSpecification\",\"fields\":[{\"name\":\"value\",\"value\":3}]}]";
+
+        Assert.True(CustomFormatDefinitionMatcher.CanEvaluate(definition, "tv"));
+        Assert.True(CustomFormatDefinitionMatcher.Evaluate("Show.Name.S01.1080p.WEB-DL-GRP", definition, anyCondition: false, "tv").IsMatch);
+        Assert.False(CustomFormatDefinitionMatcher.Evaluate("Show.Name.S01E05.1080p.WEB-DL-GRP", definition, anyCondition: false, "tv").IsMatch);
+    }
+
+    [Fact]
+    public void Negated_release_type_condition_flips_the_result()
+    {
+        const string releaseName = "Show.Name.S01.1080p.WEB-DL-GRP";
+        const string definition = "[{\"type\":\"releaseType\",\"value\":\"season pack\",\"negate\":true}]";
+
+        Assert.True(CustomFormatDefinitionMatcher.CanEvaluate(definition, "tv"));
+        Assert.False(CustomFormatDefinitionMatcher.Evaluate(releaseName, definition, anyCondition: false, "tv").IsMatch);
+    }
+
     private sealed record MatchCase(
         string Id,
         string Conditions,
