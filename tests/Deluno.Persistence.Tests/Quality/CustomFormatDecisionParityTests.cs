@@ -187,6 +187,28 @@ public sealed class CustomFormatDecisionParityTests
         Assert.False(CustomFormatDefinitionMatcher.CanEvaluate(definition));
     }
 
+    /// <summary>
+    /// The language condition matches the release name's parsed language tag,
+    /// not a raw substring search (#758): a language word fused into an
+    /// unrelated token ("LeFrenchKiss") no longer claims a French audio
+    /// track, and a release naming more than one language matches a
+    /// condition for either.
+    /// </summary>
+    [Theory]
+    [InlineData("Movie.2026.FRENCH.1080p.WEB-DL-GRP", "french", true)]
+    [InlineData("LeFrenchKiss.2026.1080p.WEB-DL-GRP", "french", false)]
+    [InlineData("Movie.2026.MULTI.FRENCH.1080p.WEB-DL-GRP", "german", false)]
+    [InlineData("Movie.2026.MULTI.GERMAN.1080p.WEB-DL-GRP", "multi", true)]
+    [InlineData("Movie.2026.MULTI.GERMAN.1080p.WEB-DL-GRP", "german", true)]
+    [InlineData("Movie.2026.1080p.WEB-DL-GRP", "french", false)]
+    public void Language_condition_matches_the_parsed_language_tag(string releaseName, string language, bool expected)
+    {
+        var definition = $"[{{\"type\":\"language\",\"value\":\"{language}\"}}]";
+
+        Assert.True(CustomFormatDefinitionMatcher.CanEvaluate(definition));
+        Assert.Equal(expected, CustomFormatDefinitionMatcher.Evaluate(releaseName, definition, anyCondition: false).IsMatch);
+    }
+
     private sealed record MatchCase(
         string Id,
         string Conditions,

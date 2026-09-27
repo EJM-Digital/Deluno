@@ -77,6 +77,16 @@ public sealed class MediaFileNameFactsTests
     }
 
     [Theory]
+    [InlineData("Movie.2026.FRENCH.1080p.WEB-DL-GRP", new[] { "French" })]
+    [InlineData("Movie.2026.MULTI.GERMAN.1080p.WEB-DL-GRP", new[] { "Multi", "German" })]
+    [InlineData("Movie.2026.VOSTFR.1080p.WEB-DL-GRP", new[] { "French" })]
+    [InlineData("Movie.2026.1080p.WEB-DL-GRP", new string[0])]
+    // A language word fused into an unrelated token is not a language tag.
+    [InlineData("LeFrenchKiss.2026.1080p.WEB-DL-GRP", new string[0])]
+    public void Language_tags_are_read_as_their_own_token(string name, string[] expected)
+        => Assert.Equal(expected, MediaFileNameFacts.Parse(name).Languages);
+
+    [Theory]
     [InlineData(null)]
     [InlineData("")]
     [InlineData("   ")]

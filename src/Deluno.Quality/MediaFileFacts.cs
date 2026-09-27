@@ -72,6 +72,24 @@ public static class MediaFileNameFacts
     private static readonly Regex BitDepthPattern =
         new(@"(?<![A-Za-z0-9])(?<bits>8|10|12)-?bit(?![A-Za-z0-9])", RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
+    /// <summary>
+    /// Language tags scene/P2P naming carries as their own token, distinct
+    /// from a language word that merely appears inside a title. Word-bounded
+    /// like every other pattern here, so "LeFrenchKiss" (a single fused
+    /// token) never claims the release is French the way a raw substring
+    /// search would (#758).
+    /// </summary>
+    private static readonly (Regex Pattern, string Value)[] Languages =
+    [
+        (Build(@"(multi|multilanguage)"), "Multi"),
+        (Build(@"(dual|dubbed)"), "Dubbed"),
+        (Build(@"(vostfr|vff|vfq|vf2|truefrench|french)"), "French"),
+        (Build(@"(deutsch|german)"), "German"),
+        (Build(@"(jpn|jap|japanese)"), "Japanese"),
+        (Build(@"(castellano|latino|spanish)"), "Spanish"),
+        (Build(@"(english)"), "English")
+    ];
+
     private static readonly (Regex Pattern, string Value)[] AudioCodecs =
     [
         (BuildAudio(@"(truehd)"), "TrueHD"),
@@ -174,7 +192,8 @@ public static class MediaFileNameFacts
             ReleaseGroup: ParseReleaseGroup(name),
             Source: MatchFirst(Sources, name),
             DynamicRange: MatchFirst(DynamicRanges, name),
-            BitDepth: ParseBitDepth(name));
+            BitDepth: ParseBitDepth(name),
+            Languages: MatchAll(Languages, name));
     }
 
     private static string? ParseBitDepth(string name)
@@ -214,6 +233,20 @@ public static class MediaFileNameFacts
         }
 
         return null;
+    }
+
+    private static IReadOnlyList<string> MatchAll((Regex Pattern, string Value)[] candidates, string name)
+    {
+        var found = new List<string>();
+        foreach (var (pattern, value) in candidates)
+        {
+            if (pattern.IsMatch(name) && !found.Contains(value))
+            {
+                found.Add(value);
+            }
+        }
+
+        return found;
     }
 
     private static string? ParseChannels(string name)
@@ -272,8 +305,16 @@ public sealed record MediaFileFacts(
     /// <summary>HDR10+, Dolby Vision, HDR10 or HDR -- null when the name says nothing about it (most files do not).</summary>
     string? DynamicRange = null,
     /// <summary>"8-bit", "10-bit" or "12-bit" -- null when the name says nothing about it.</summary>
-    string? BitDepth = null)
+    string? BitDepth = null,
+    /// <summary>
+    /// Every language tag the name carries as its own token — a release can
+    /// be "MULTI.FRENCH", not just one or the other. Empty, never null, when
+    /// the name names no language at all.
+    /// </summary>
+    IReadOnlyList<string>? Languages = null)
 {
+    public IReadOnlyList<string> Languages { get; init; } = Languages ?? [];
+
     public static MediaFileFacts Empty { get; } = new(null, null, null, null);
 
     /// <summary>
