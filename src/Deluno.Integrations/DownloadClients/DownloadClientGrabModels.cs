@@ -58,4 +58,13 @@ public sealed record DownloadClientGrabResult(
     /// completes between Deluno polling intervals.
     /// </summary>
     public string? ExternalId { get; init; }
+
+    /// <summary>
+    /// Whether this success is a torrent client saying it already holds this
+    /// release — Deluno follows the copy it already has instead of sending
+    /// another (#877, cleanup sheet B3). Kept distinct from an ordinary new
+    /// send so the caller can still write Activity in plain words about what
+    /// actually happened, even though nothing here failed.
+    /// </summary>
+    public bool IsDuplicateFollow { get; init; }
 }
