@@ -136,11 +136,49 @@ public sealed class DelunoFileLoggerTests : IDisposable
 
     private string LogDirectory => Path.Combine(dataRoot, "logs");
 
-    private DelunoFileLoggerProvider CreateProvider(DelunoFileLogOptions? options = null)
+    /// <summary>
+    /// #866: changing the Log Level setting takes effect immediately for
+    /// new log lines, without a restart, by consulting the same
+    /// IRuntimeLogLevelStore instance the Settings endpoint writes to.
+    /// </summary>
+    [Fact]
+    public void Raising_the_runtime_log_level_stops_lower_level_lines_without_a_restart()
+    {
+        var store = new RecordingRuntimeLogLevelStore(LogLevel.Information);
+        using (var provider = CreateProvider(runtimeLogLevelStore: store))
+        using (var factory = LoggerFactory.Create(builder => builder.AddProvider(provider)))
+        {
+            var logger = factory.CreateLogger("Deluno.Test");
+
+            logger.LogInformation("Before raising the level.");
+            store.Current = LogLevel.Warning;
+            logger.LogInformation("After raising the level -- must not appear.");
+            logger.LogWarning("After raising the level -- must appear.");
+        }
+
+        var lines = ReadLines();
+        Assert.Contains(lines, line => line.Contains("Before raising the level."));
+        Assert.DoesNotContain(lines, line => line.Contains("must not appear"));
+        Assert.Contains(lines, line => line.Contains("must appear"));
+    }
+
+    private sealed class RecordingRuntimeLogLevelStore(LogLevel initial) : IRuntimeLogLevelStore
+    {
+        public LogLevel Current { get; set; } = initial;
+
+        public Task SetAsync(LogLevel level, CancellationToken cancellationToken)
+        {
+            Current = level;
+            return Task.CompletedTask;
+        }
+    }
+
+    private DelunoFileLoggerProvider CreateProvider(DelunoFileLogOptions? options = null, IRuntimeLogLevelStore? runtimeLogLevelStore = null)
         => new(
             Options.Create(new StoragePathOptions { DataRoot = dataRoot }),
             Options.Create(options ?? new DelunoFileLogOptions()),
-            TimeProvider.System);
+            TimeProvider.System,
+            runtimeLogLevelStore);
 
     private List<string> ReadLines()
         => Directory.GetFiles(LogDirectory, "deluno-*.jsonl")

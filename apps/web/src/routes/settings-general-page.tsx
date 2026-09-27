@@ -16,6 +16,7 @@ import { Input } from "../components/ui/input";
 import { ListCard, ListCell, ListNameCell, ListRow, ListTable } from "../components/ui/list-card";
 import { PageFooter } from "../components/ui/page-footer";
 import { PageToolbar } from "../components/ui/page-toolbar";
+import { Select } from "../components/ui/select";
 import { systemSettingsNavItems } from "../components/app/settings-shell";
 import { useUnsavedChanges } from "../hooks/use-unsaved-changes";
 import type { DrawerSaveState } from "../components/ui/drawer";
@@ -24,6 +25,8 @@ import { fetchJson, type LibraryItem, type PlatformSettingsSnapshot, type Qualit
 import type { PlatformSettingsPatch } from "../lib/api/settings";
 import type { LanAccessStatus } from "../components/app/lan-access-notice";
 import { useApiMutation } from "../lib/use-api-mutation";
+import { authedFetch } from "../lib/use-auth";
+import { toast } from "../components/shell/toaster";
 import { resolveDrawerSaveState, shouldClearSaveState } from "../lib/drawer-save-state";
 
 interface LoaderData {
@@ -119,6 +122,8 @@ export function SettingsGeneralPage() {
 
       <ReachabilityCard />
 
+      <LogLevelCard />
+
       <ListCard title="Cloudflare helper" count="For trackers behind a Cloudflare check">
         <div className="grid gap-[var(--grid-gap)] p-[var(--card-pad-x)]">
           <Field label="Helper address" optional help="Some trackers, such as 1337x, put a Cloudflare check in front of every page. Deluno does not solve those checks itself: run FlareSolverr or Byparr and give its address here, and Deluno asks it for a page only when a tracker is behind a check." error={settingsMutation.fieldErrors.cloudflareHelperUrl}>
@@ -199,6 +204,76 @@ function ReachabilityCard() {
         Docker Compose), or the equivalent command-line arguments for a manual run. Change either there and restart
         Deluno.
       </p>
+    </ListCard>
+  );
+}
+
+const LOG_LEVEL_OPTIONS = [
+  { value: "Trace", label: "Trace" },
+  { value: "Debug", label: "Debug" },
+  { value: "Information", label: "Info" },
+  { value: "Warning", label: "Warning" },
+  { value: "Error", label: "Error" }
+];
+
+/**
+ * A runtime-configurable Log Level (#866): Deluno's own log file used to
+ * take its level only from appsettings.json on disk, so changing it meant
+ * stopping the app, editing a file, and restarting. This reads and writes
+ * /api/system/log-level, which DelunoFileLogger consults for every new log
+ * line without a restart.
+ */
+function LogLevelCard() {
+  const [level, setLevel] = useState<string | null>(null);
+  const [loadFailed, setLoadFailed] = useState(false);
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    void fetchJson<{ level: string }>("/api/system/log-level")
+      .then((next) => { if (active) setLevel(next.level); })
+      .catch(() => { if (active) setLoadFailed(true); });
+    return () => { active = false; };
+  }, []);
+
+  async function changeLevel(next: string) {
+    const previous = level;
+    setLevel(next);
+    setBusy(true);
+    try {
+      const response = await authedFetch("/api/system/log-level", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ level: next })
+      });
+      if (!response.ok) throw new Error("The log level could not be changed.");
+      toast.success(`Log level set to ${next} — takes effect immediately.`);
+    } catch (error) {
+      setLevel(previous);
+      toast.error(error instanceof Error ? error.message : "The log level could not be changed.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <ListCard title="Log level" count="Changes what Deluno's own log file records, right away">
+      <ListTable columns={[{ label: "Setting" }, { label: "Value", width: "minmax(0,1.4fr)", align: "end" }]} chevron={false}>
+        <ListRow>
+          <ListNameCell name="Current effective level" sub="Takes effect for new log lines immediately, and persists across restarts." />
+          <ListCell numeric align="end" primary={
+            level ? (
+              <Select
+                value={level}
+                onChange={(event) => void changeLevel(event.target.value)}
+                options={LOG_LEVEL_OPTIONS}
+                disabled={busy}
+                aria-label="Log level"
+              />
+            ) : loadFailed ? "Unavailable" : "Loading…"
+          } />
+        </ListRow>
+      </ListTable>
     </ListCard>
   );
 }

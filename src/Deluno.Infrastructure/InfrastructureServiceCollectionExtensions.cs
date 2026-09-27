@@ -34,6 +34,7 @@ public static class InfrastructureServiceCollectionExtensions
         services
             .AddOptions<DelunoFileLogOptions>()
             .Bind(configuration.GetSection(DelunoFileLogOptions.SectionName));
+        services.TryAddSingleton<IRuntimeLogLevelStore, FileRuntimeLogLevelStore>();
         services.TryAddEnumerable(ServiceDescriptor.Singleton<ILoggerProvider, DelunoFileLoggerProvider>());
 
         services.AddSingleton<IDelunoDatabaseConnectionFactory, SqliteDatabaseConnectionFactory>();

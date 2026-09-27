@@ -24,6 +24,13 @@ public sealed class DelunoFileLogOptions
 
     /// <summary>A day's file rolls to a numbered sibling once it reaches this size.</summary>
     public long MaxFileBytes { get; set; } = 50L * 1024 * 1024;
+
+    /// <summary>
+    /// The level a fresh start boots with, before any runtime change made
+    /// through the Settings screen (#866) is read from its own persisted
+    /// file. Matches Radarr's own default.
+    /// </summary>
+    public LogLevel MinLevel { get; set; } = LogLevel.Information;
 }
 
 /// <summary>
@@ -62,13 +69,17 @@ public sealed class DelunoFileLoggerProvider : ILoggerProvider, ISupportExternal
     private IExternalScopeProvider scopeProvider = new LoggerExternalScopeProvider();
     private long dropped;
 
+    private readonly IRuntimeLogLevelStore? runtimeLogLevelStore;
+
     public DelunoFileLoggerProvider(
         IOptions<StoragePathOptions> storage,
         IOptions<DelunoFileLogOptions> options,
-        TimeProvider timeProvider)
+        TimeProvider timeProvider,
+        IRuntimeLogLevelStore? runtimeLogLevelStore = null)
     {
         this.options = options.Value;
         this.timeProvider = timeProvider;
+        this.runtimeLogLevelStore = runtimeLogLevelStore;
         LogDirectory = ResolveDirectory(storage.Value.DataRoot, this.options.Directory);
         queue = Channel.CreateBounded<string>(new BoundedChannelOptions(10_000)
         {
@@ -101,6 +112,9 @@ public sealed class DelunoFileLoggerProvider : ILoggerProvider, ISupportExternal
     }
 
     internal bool IsEnabled => options.Enabled;
+
+    internal bool MeetsMinLevel(LogLevel logLevel)
+        => runtimeLogLevelStore is null || logLevel >= runtimeLogLevelStore.Current;
 
     internal void Enqueue<TState>(
         string category,
@@ -433,7 +447,7 @@ public sealed class DelunoFileLoggerProvider : ILoggerProvider, ISupportExternal
         public IDisposable? BeginScope<TState>(TState state) where TState : notnull
             => provider.scopeProvider.Push(state);
 
-        public bool IsEnabled(LogLevel logLevel) => provider.IsEnabled && logLevel != LogLevel.None;
+        public bool IsEnabled(LogLevel logLevel) => provider.IsEnabled && logLevel != LogLevel.None && provider.MeetsMinLevel(logLevel);
 
         public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
         {
