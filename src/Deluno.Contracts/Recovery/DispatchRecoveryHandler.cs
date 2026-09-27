@@ -44,6 +44,23 @@ public interface IDispatchRecoveryHandler
         CancellationToken cancellationToken);
 
     /// <summary>
+    /// A tracked download vanished from its client entirely - not in its
+    /// queue, not in its history - while it was still downloading, or after
+    /// finishing with nothing found on disk to import instead (#927). No
+    /// automatic search: it may have been removed on purpose, so a person
+    /// chooses Search for another, Stop wanting it, or Dismiss.
+    /// </summary>
+    Task HandleVanishedDownloadingAsync(
+        string title,
+        string mediaType,
+        string downloadClientId,
+        string downloadClientName,
+        string releaseName,
+        string entityId,
+        string detailsJson,
+        CancellationToken cancellationToken) => Task.CompletedTask;
+
+    /// <summary>
     /// The download moved past the problem an alert described, so the recovery
     /// case written beside it no longer says anything true (#559). Only the
     /// handlers that write cases close them.

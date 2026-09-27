@@ -3284,6 +3284,12 @@ public sealed class SqliteMovieCatalogRepository(
             "detection-timeout" => "downloadFailed",
             "importfailed" => "importFailed",
             "import failed" => "importFailed",
+            // Kept as its own kind rather than folded into "downloadFailed"
+            // (#927): Try again always searches for another copy here, never
+            // the hand-off-again branch "downloadFailed" takes once a
+            // download has been detected - a vanished download has nothing
+            // left with a processor to hand off.
+            "vanished-downloading" => "vanished-downloading",
             _ => "importFailed"
         };
     }

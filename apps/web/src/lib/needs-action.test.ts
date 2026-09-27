@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { DownloadDispatchItem, DownloadTelemetryOverview, MovieImportRecoverySummary, SeriesImportRecoverySummary } from "./api";
-import { canTryAgain, needsAction } from "./needs-action";
+import { canTryAgain, isVanished, needsAction } from "./needs-action";
 
 function dispatch(overrides: Partial<DownloadDispatchItem> & Pick<DownloadDispatchItem, "id">): DownloadDispatchItem {
   return {
@@ -152,6 +152,11 @@ describe("canTryAgain", () => {
     expect(canTryAgain({ failureKind: "importFailed", detailsJson: named })).toBe(true);
   });
 
+  // #927: search for another is offered the same way a failed download is.
+  it("offers it for a vanished download too", () => {
+    expect(canTryAgain({ failureKind: "vanished-downloading", detailsJson: named })).toBe(true);
+  });
+
   // Seen on the rig: a processor failure names a hand-off, and Try again could only say "dismiss it".
   it("does not offer it for a case that names no download", () => {
     expect(canTryAgain({ failureKind: "importFailed", detailsJson: JSON.stringify({ HandoffId: "handoff-1" }) })).toBe(false);
@@ -160,5 +165,12 @@ describe("canTryAgain", () => {
 
   it("does not offer it where a decision is needed", () => {
     expect(canTryAgain({ failureKind: "quality", detailsJson: named })).toBe(false);
+  });
+});
+
+describe("isVanished", () => {
+  it("is true only for a vanished-downloading case", () => {
+    expect(isVanished({ failureKind: "vanished-downloading" })).toBe(true);
+    expect(isVanished({ failureKind: "downloadFailed" })).toBe(false);
   });
 });

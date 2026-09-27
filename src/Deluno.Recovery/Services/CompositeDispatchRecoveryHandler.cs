@@ -70,6 +70,22 @@ public sealed class CompositeDispatchRecoveryHandler(IEnumerable<IDispatchRecove
         }
     }
 
+    public async Task HandleVanishedDownloadingAsync(
+        string title,
+        string mediaType,
+        string downloadClientId,
+        string downloadClientName,
+        string releaseName,
+        string entityId,
+        string detailsJson,
+        CancellationToken cancellationToken)
+    {
+        foreach (var handler in handlers)
+        {
+            await handler.HandleVanishedDownloadingAsync(title, mediaType, downloadClientId, downloadClientName, releaseName, entityId, detailsJson, cancellationToken);
+        }
+    }
+
     public async Task HandleDispatchSettledAsync(string dispatchId, string reason, CancellationToken cancellationToken)
     {
         foreach (var handler in handlers)

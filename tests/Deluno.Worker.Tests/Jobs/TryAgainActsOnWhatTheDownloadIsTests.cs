@@ -106,11 +106,69 @@ public sealed class TryAgainActsOnWhatTheDownloadIsTests
     [Theory]
     [InlineData("downloadFailed", true)]
     [InlineData("importFailed", true)]
+    [InlineData("vanished-downloading", true)]
     [InlineData("quality", false)]
     [InlineData("unmatched", false)]
     [InlineData("corrupt", false)]
     public void Try_again_is_offered_only_where_it_can_act(string kind, bool offered)
         => Assert.Equal(offered, RecoveryCaseRetry.CanRetry(kind));
+
+    /// <summary>
+    /// #927: a vanished download always searches again, whatever DetectedUtc
+    /// says - it was already detected downloading, but never handed to a
+    /// processor, so the "downloadFailed" hand-over-again branch does not apply.
+    /// </summary>
+    [Fact]
+    public async Task Search_for_another_on_a_vanished_download_ends_it_and_searches_again_even_though_it_was_detected()
+    {
+        var world = new World(detected: true, handoffStatus: null);
+
+        var outcome = await world.RetryAsync("vanished-downloading");
+
+        Assert.True(outcome.Retried);
+        world.Dispatches.Verify(repository => repository.ArchiveDispatchAsync("d1", "retried", It.IsAny<CancellationToken>()), Times.Once);
+        world.Scheduler.Verify(scheduler => scheduler.EnqueueAsync(
+            It.Is<EnqueueJobRequest>(request => request.JobType == LibrarySearchJobTypes.For("movies") && request.PayloadJson!.Contains("\"targetEntityId\":\"movie-1\"")),
+            It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task Stop_wanting_it_ends_the_download_and_unmonitors_exactly_the_title_named()
+    {
+        var world = new World(detected: true, handoffStatus: null);
+        var unmonitor = new Mock<IDispatchTitleUnmonitorService>();
+        unmonitor.Setup(service => service.CanHandle("movie")).Returns(true);
+        unmonitor.Setup(service => service.UnmonitorAsync("movie", "movie-1", It.IsAny<CancellationToken>())).ReturnsAsync(true);
+
+        var outcome = await RecoveryCaseRetry.StopWantingAsync(
+            JsonSerializer.Serialize(new { DispatchId = "d1" }),
+            world.Dispatches.Object,
+            unmonitor.Object,
+            CancellationToken.None);
+
+        Assert.True(outcome.Retried);
+        Assert.Contains("stopped wanting", outcome.Message, StringComparison.OrdinalIgnoreCase);
+        world.Dispatches.Verify(repository => repository.ArchiveDispatchAsync("d1", "stopped-wanting", It.IsAny<CancellationToken>()), Times.Once);
+        unmonitor.Verify(service => service.UnmonitorAsync("movie", "movie-1", It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task Stop_wanting_it_is_refused_when_nothing_can_unmonitor_this_entity_type()
+    {
+        var world = new World(detected: true, handoffStatus: null);
+        var unmonitor = new Mock<IDispatchTitleUnmonitorService>();
+        unmonitor.Setup(service => service.CanHandle("movie")).Returns(false);
+
+        var outcome = await RecoveryCaseRetry.StopWantingAsync(
+            JsonSerializer.Serialize(new { DispatchId = "d1" }),
+            world.Dispatches.Object,
+            unmonitor.Object,
+            CancellationToken.None);
+
+        Assert.False(outcome.Retried);
+        unmonitor.Verify(service => service.UnmonitorAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+        world.Dispatches.Verify(repository => repository.ArchiveDispatchAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
 
     private sealed class World
     {
