@@ -183,7 +183,17 @@ const CONDITION_TYPES = [
   { value: "indexerFlag", label: "Indexer flag" },
   // #775: a min/max range against the release's parsed year or its size.
   { value: "year", label: "Year" },
-  { value: "size", label: "Size" }
+  { value: "size", label: "Size" },
+  // #776: TV only — filtered out for a movie rule below.
+  { value: "releaseType", label: "Release type" }
+] as const;
+
+// #776: single episode / multi-episode / season pack, exactly the values
+// Deluno's own ReleaseEpisodeClassifier reports.
+const RELEASE_TYPE_OPTIONS = [
+  { value: "single episode", label: "Single episode" },
+  { value: "multi-episode", label: "Multi-episode" },
+  { value: "season pack", label: "Season pack" }
 ] as const;
 
 type ConditionType = (typeof CONDITION_TYPES)[number]["value"];
@@ -1173,7 +1183,10 @@ export function SettingsCustomFormatsPage() {
                     <Select
                       value={condition.type}
                       onChange={(event) => updateCondition(setForm, index, { type: event.target.value as ConditionType, value: "" })}
-                      options={CONDITION_TYPES.map((type) => ({ value: type.value, label: type.label }))}
+                      options={CONDITION_TYPES
+                        // #776: Release Type only makes sense for a TV rule.
+                        .filter((type) => type.value !== "releaseType" || form.mediaType === "tv")
+                        .map((type) => ({ value: type.value, label: type.label }))}
                     />
                   </Field>
                   <Field label="Rule">
@@ -1208,6 +1221,15 @@ export function SettingsCustomFormatsPage() {
                       />
                     </Field>
                   </FieldRow>
+                ) : condition.type === "releaseType" ? (
+                  <Field label="Release type">
+                    <Select
+                      value={condition.value}
+                      onChange={(event) => updateCondition(setForm, index, { value: event.target.value })}
+                      placeholder="Choose a release type"
+                      options={RELEASE_TYPE_OPTIONS.map((option) => ({ value: option.value, label: option.label }))}
+                    />
+                  </Field>
                 ) : condition.type === "indexerFlag" ? (
                   // #773: a picker of the flags an indexer actually reports,
                   // not free text — the same known-flag list the indexer form
