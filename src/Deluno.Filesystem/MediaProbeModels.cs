@@ -14,7 +14,16 @@ public sealed record MediaProbeInfo(
     long? Bitrate,
     IReadOnlyList<MediaVideoStreamInfo> VideoStreams,
     IReadOnlyList<MediaAudioStreamInfo> AudioStreams,
-    IReadOnlyList<MediaSubtitleStreamInfo> SubtitleStreams);
+    IReadOnlyList<MediaSubtitleStreamInfo> SubtitleStreams,
+    /// <summary>
+    /// The file's own embedded title tag (the container-level "title", not a
+    /// subtitle track's), when it has one. Used by
+    /// <see cref="DownloadIntegrityCheck"/>'s "not the film/episode the title
+    /// says" rule (#917): a file that names a different film in its own
+    /// metadata is strong evidence, unlike everything else that rule reads,
+    /// which is only ever circumstantial.
+    /// </summary>
+    string? EmbeddedTitle = null);
 
 public sealed record MediaVideoStreamInfo(
     int Index,
