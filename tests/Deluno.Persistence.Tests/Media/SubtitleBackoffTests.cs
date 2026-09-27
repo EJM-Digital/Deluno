@@ -208,7 +208,6 @@ public sealed class SubtitleBackoffTests
                     CurrentQuality: "WEB 2160p",
                     TargetQuality: "WEB 2160p",
                     QualityCutoffMet: true,
-                    UnmonitorWhenCutoffMet: false,
                     FilePath: $@"D:\Media\{title}\{title}.mkv",
                     FileSizeBytes: 8_000_000_000)
             ],

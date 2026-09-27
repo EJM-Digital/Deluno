@@ -1465,7 +1465,6 @@ async function saveSettings(settings: PlatformSettingsSnapshot, form: GuideForm)
     useHardlinks: settings.useHardlinks,
     cleanupEmptyFolders: true,
     removeCompletedDownloads: settings.removeCompletedDownloads,
-    unmonitorWhenCutoffMet: settings.unmonitorWhenCutoffMet,
     movieFolderFormat: settings.movieFolderFormat || "{Movie Title} ({Release Year})",
     seriesFolderFormat: settings.seriesFolderFormat || "{Series Title} ({Series Year})",
     episodeFileFormat: settings.episodeFileFormat || "{Series Title} - S{season:00}E{episode:00} - {Episode Title}",

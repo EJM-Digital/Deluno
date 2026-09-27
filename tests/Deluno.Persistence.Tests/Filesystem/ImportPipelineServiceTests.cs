@@ -3854,7 +3854,6 @@ public sealed class ImportPipelineServiceTests
                 UseHardlinks: false,
                 CleanupEmptyFolders: false,
                 RemoveCompletedDownloads: false,
-                UnmonitorWhenCutoffMet: false,
                 MovieFolderFormat: "{Movie Title} ({Release Year})",
                 SeriesFolderFormat: "{Series Title} ({Series Year})",
                 MovieFileFormat: movieFileFormat,

@@ -17,7 +17,6 @@ public static class PlatformSettingsPatchMerger
             UseHardlinks: patch.UseHardlinks ?? current.UseHardlinks,
             CleanupEmptyFolders: patch.CleanupEmptyFolders ?? current.CleanupEmptyFolders,
             RemoveCompletedDownloads: patch.RemoveCompletedDownloads ?? current.RemoveCompletedDownloads,
-            UnmonitorWhenCutoffMet: patch.UnmonitorWhenCutoffMet ?? current.UnmonitorWhenCutoffMet,
             MovieFolderFormat: patch.MovieFolderFormat ?? current.MovieFolderFormat,
             SeriesFolderFormat: patch.SeriesFolderFormat ?? current.SeriesFolderFormat,
             MovieFileFormat: patch.MovieFileFormat ?? current.MovieFileFormat,

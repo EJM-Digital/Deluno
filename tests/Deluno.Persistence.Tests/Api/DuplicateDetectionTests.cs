@@ -110,7 +110,6 @@ public sealed class DuplicateDetectionTests
             "WEB 1080p",
             "WEB 1080p",
             true,
-            false,
             Path.Combine(app.DataRoot, "films", $"{title} ({year})", $"{title} ({year}).mkv"),
             1024,
             CancellationToken.None);

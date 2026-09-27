@@ -200,7 +200,6 @@ public sealed class CatalogueSortableFactsTests
                     CurrentQuality: quality,
                     TargetQuality: quality,
                     QualityCutoffMet: true,
-                    UnmonitorWhenCutoffMet: false,
                     FilePath: $@"D:\Media\{title}\{title}.mkv",
                     FileSizeBytes: (long)(sizeGb * 1024 * 1024 * 1024))
             ],

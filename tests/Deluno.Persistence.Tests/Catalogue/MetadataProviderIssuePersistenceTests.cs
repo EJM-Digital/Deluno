@@ -109,7 +109,6 @@ public sealed class MetadataProviderIssuePersistenceTests
             currentQuality: "Bluray-1080p",
             targetQuality: "Bluray-1080p",
             qualityCutoffMet: true,
-            unmonitorWhenCutoffMet: false,
             filePath: filePath,
             fileSizeBytes: 8_123_456_789,
             cancellationToken: CancellationToken.None));
@@ -177,7 +176,6 @@ public sealed class MetadataProviderIssuePersistenceTests
             currentQuality: "WEB 1080p",
             targetQuality: "WEB 1080p",
             qualityCutoffMet: true,
-            unmonitorWhenCutoffMet: false,
             filePath: filePath,
             fileSizeBytes: 1_234_567_890,
             episodes: [new ImportedEpisodeItem(1, 1, HasFile: true, FilePath: filePath, FileSizeBytes: 1_234_567_890)],

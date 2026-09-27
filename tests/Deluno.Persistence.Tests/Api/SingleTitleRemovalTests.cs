@@ -65,7 +65,6 @@ public sealed class SingleTitleRemovalTests
             "WEB 1080p",
             "WEB 1080p",
             true,
-            false,
             Path.Combine(app.DataRoot, "films", "Arrival (2016)", "Arrival (2016).mkv"),
             1024,
             CancellationToken.None);
@@ -116,7 +115,7 @@ public sealed class SingleTitleRemovalTests
         var movies = app.Services.GetRequiredService<IMovieCatalogRepository>();
         await movies.ImportExistingAsync(
             libraryId, "Arrival", 2016, "covered", "It is on disk.",
-            "WEB 1080p", "WEB 1080p", true, false, file, 1024, CancellationToken.None);
+            "WEB 1080p", "WEB 1080p", true, file, 1024, CancellationToken.None);
         var created = Assert.Single(await movies.ListAsync(CancellationToken.None));
 
         Assert.Equal(HttpStatusCode.NoContent, (await app.Client.DeleteAsync($"/api/movies/{created.Id}")).StatusCode);

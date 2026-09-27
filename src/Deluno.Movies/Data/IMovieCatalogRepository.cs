@@ -201,7 +201,6 @@ public interface IMovieCatalogRepository : IMovieImportRecoveryRetentionReposito
         string? currentQuality,
         string? targetQuality,
         bool qualityCutoffMet,
-        bool unmonitorWhenCutoffMet,
         string? filePath,
         long? fileSizeBytes,
         CancellationToken cancellationToken,

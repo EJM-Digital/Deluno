@@ -469,7 +469,6 @@ public sealed class SubtitleBarPersistenceTests
                     CurrentQuality: "Bluray-1080p",
                     TargetQuality: "Bluray-1080p",
                     QualityCutoffMet: true,
-                    UnmonitorWhenCutoffMet: false,
                     FilePath: filePath,
                     FileSizeBytes: sizeBytes)
             ],
