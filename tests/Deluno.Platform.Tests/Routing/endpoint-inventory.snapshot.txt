@@ -237,6 +237,7 @@ GET /api/system/tasks
 GET /api/tags/
 GET /api/tags/usage
 GET /api/trackers
+GET /api/trackers/definitions/update-check
 GET /api/trakt/status
 GET /api/updates/preferences
 GET /api/updates/status
@@ -461,6 +462,7 @@ POST /api/system/health/{id}/unsnooze
 POST /api/system/lan-access/allow
 POST /api/tags/
 POST /api/trackers/cloudflare-helper/test
+POST /api/trackers/definitions/update-check/run
 POST /api/trakt/connect
 POST /api/trakt/connect/poll
 POST /api/trakt/credentials
@@ -541,5 +543,6 @@ PUT /api/sharing-rules/{id}
 PUT /api/subtitle-providers/{key}
 PUT /api/system/log-level
 PUT /api/tags/{id}
+PUT /api/trackers/definitions/update-check
 PUT /api/updates/preferences
 PUT /api/v1/guides/trash/update-check/settings

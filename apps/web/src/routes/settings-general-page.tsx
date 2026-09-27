@@ -10,13 +10,14 @@
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { useLoaderData } from "react-router-dom";
 import { Field } from "../components/ui/field";
-import { Loader2, Wifi } from "lucide-react";
+import { Loader2, RefreshCw, Wifi } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { ListCard, ListCell, ListNameCell, ListRow, ListTable } from "../components/ui/list-card";
 import { PageFooter } from "../components/ui/page-footer";
 import { PageToolbar } from "../components/ui/page-toolbar";
 import { Select } from "../components/ui/select";
+import { Switch } from "../components/ui/switch";
 import { systemSettingsNavItems } from "../components/app/settings-shell";
 import { useUnsavedChanges } from "../hooks/use-unsaved-changes";
 import type { DrawerSaveState } from "../components/ui/drawer";
@@ -28,6 +29,7 @@ import { useApiMutation } from "../lib/use-api-mutation";
 import { authedFetch } from "../lib/use-auth";
 import { toast } from "../components/shell/toaster";
 import { resolveDrawerSaveState, shouldClearSaveState } from "../lib/drawer-save-state";
+import { formatDateTime, useDisplayPreferences } from "../lib/display-preferences";
 
 interface LoaderData {
   libraries: LibraryItem[];
@@ -147,6 +149,8 @@ export function SettingsGeneralPage() {
         </div>
       </ListCard>
 
+      <TrackerDefinitionsCard />
+
       <PageFooter state={state} message={message} saveLabel="Save general settings" />
     </form>
   );
@@ -213,6 +217,140 @@ function ReachabilityCard() {
         Docker Compose), or the equivalent command-line arguments for a manual run. Change either there and restart
         Deluno.
       </p>
+    </ListCard>
+  );
+}
+
+interface TrackerDefinitionUpdateState {
+  isEnabled: boolean;
+  intervalHours: number;
+  lastCheckedUtc: string | null;
+  lastUpdatedUtc: string | null;
+  status: string;
+  error: string | null;
+  updatedTrackerIds: string[];
+}
+
+/**
+ * #756: the scheduled tracker-definition update -- off by default (#936).
+ * Turning it on lets Deluno pull updated Cardigann-style tracker definitions
+ * from its remote source on its own schedule, the same override
+ * TrackerDefinitionCatalog already treats a hand-dropped YAML file as.
+ */
+function TrackerDefinitionsCard() {
+  const { preferences } = useDisplayPreferences();
+  const [state, setState] = useState<TrackerDefinitionUpdateState | null>(null);
+  const [loadFailed, setLoadFailed] = useState(false);
+  const [intervalInput, setIntervalInput] = useState("24");
+  const [busy, setBusy] = useState(false);
+  const [running, setRunning] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    void fetchJson<TrackerDefinitionUpdateState>("/api/trackers/definitions/update-check")
+      .then((next) => {
+        if (!active) return;
+        setState(next);
+        setIntervalInput(String(next.intervalHours));
+      })
+      .catch(() => { if (active) setLoadFailed(true); });
+    return () => { active = false; };
+  }, []);
+
+  async function saveSettings(isEnabled: boolean, intervalHours: number) {
+    setBusy(true);
+    try {
+      const next = await fetchJson<TrackerDefinitionUpdateState>("/api/trackers/definitions/update-check", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ isEnabled, intervalHours })
+      });
+      setState(next);
+      setIntervalInput(String(next.intervalHours));
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "The tracker-definition update setting could not be saved.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function updateNow() {
+    setRunning(true);
+    try {
+      const next = await fetchJson<TrackerDefinitionUpdateState>("/api/trackers/definitions/update-check/run", { method: "POST" });
+      setState(next);
+      if (next.status === "failed") {
+        toast.error(next.error ?? "The tracker definitions could not be updated.");
+      } else if (next.updatedTrackerIds.length > 0) {
+        toast.success(`Updated ${next.updatedTrackerIds.length} tracker definition${next.updatedTrackerIds.length === 1 ? "" : "s"}.`);
+      } else {
+        toast.success("Tracker definitions are already up to date.");
+      }
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "The tracker definitions could not be updated.");
+    } finally {
+      setRunning(false);
+    }
+  }
+
+  const lastUpdatedLabel = state?.lastUpdatedUtc
+    ? formatDateTime(state.lastUpdatedUtc, preferences)
+    : state?.lastCheckedUtc
+      ? "No changes found yet"
+      : "Never";
+
+  return (
+    <ListCard title="Tracker definitions" count="Keeps native tracker definitions current on their own">
+      <div className="grid gap-[var(--grid-gap)] p-[var(--card-pad-x)]">
+        <p className="text-[length:var(--type-body-sm)] text-muted-foreground">
+          Deluno's built-in tracker definitions only change when a new release ships. Turning this on fetches updated
+          definitions from Deluno's remote source on the schedule below, and writes them the same way a hand-dropped
+          file in the data folder's trackers directory already overrides one. Off by default.
+        </p>
+        <div className="flex items-center justify-between gap-3">
+          <div className="grid gap-0.5">
+            <span className="text-[length:var(--type-body-sm)] font-medium text-foreground">Update definitions automatically</span>
+            <span className="text-[length:var(--type-caption)] text-muted-foreground">Every change is written to Activity, naming what was updated.</span>
+          </div>
+          <Switch
+            checked={state?.isEnabled ?? false}
+            disabled={!state || busy}
+            onCheckedChange={(checked) => void saveSettings(checked, Number(intervalInput) || 24)}
+            aria-label="Update tracker definitions automatically"
+          />
+        </div>
+        {state?.isEnabled ? (
+          <Field label="Check every" help="How often Deluno checks the remote source for an updated definition.">
+            <div className="flex items-center gap-2">
+              <Input
+                type="number"
+                min="1"
+                max="168"
+                step="1"
+                value={intervalInput}
+                onChange={(event) => setIntervalInput(event.target.value)}
+                onBlur={() => void saveSettings(true, Number(intervalInput) || 24)}
+                disabled={busy}
+                className="max-w-[8rem]"
+              />
+              <span className="shrink-0 text-[length:var(--type-body-sm)] text-muted-foreground">hours</span>
+            </div>
+          </Field>
+        ) : null}
+        <ListTable columns={[{ label: "Setting" }, { label: "Value", width: "minmax(0,1.4fr)", align: "end" }]} chevron={false}>
+          <ListRow>
+            <ListNameCell name="Definitions last updated" />
+            <ListCell numeric align="end" primary={state ? lastUpdatedLabel : loadFailed ? "Unavailable" : "Loading…"} />
+          </ListRow>
+        </ListTable>
+        <div className="flex flex-wrap items-center gap-3">
+          <Button type="button" variant="outline" size="sm" onClick={() => void updateNow()} disabled={running || !state}>
+            {running ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
+            Update now
+          </Button>
+          {state?.status === "failed" && state.error ? <span role="status" className="text-destructive">{state.error}</span> : null}
+        </div>
+      </div>
     </ListCard>
   );
 }

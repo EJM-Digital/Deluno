@@ -34,6 +34,14 @@ public interface ITrackerDefinitionCatalog
     IReadOnlyList<TrackerDefinitionSummary> List();
 
     TrackerDefinition? Find(string? id);
+
+    /// <summary>
+    /// Re-reads the built-in and data-folder definitions from disk (#756):
+    /// what the scheduled or manual tracker-definition update calls after
+    /// writing a fetched YAML file, so a fresh definition is offered without
+    /// restarting Deluno.
+    /// </summary>
+    void Reload();
 }
 
 /// <summary>
@@ -48,7 +56,8 @@ public sealed class TrackerDefinitionCatalog : ITrackerDefinitionCatalog
 
     private readonly string? overrideDirectory;
     private readonly ILogger<TrackerDefinitionCatalog> logger;
-    private readonly Lazy<Loaded> loaded;
+    private readonly object gate = new();
+    private Loaded? loadedValue;
 
     public TrackerDefinitionCatalog(IOptions<StoragePathOptions> storage, ILogger<TrackerDefinitionCatalog> logger)
         : this(Path.Combine(Path.GetFullPath(storage.Value.DataRoot), "trackers"), logger)
@@ -59,13 +68,31 @@ public sealed class TrackerDefinitionCatalog : ITrackerDefinitionCatalog
     {
         this.overrideDirectory = overrideDirectory;
         this.logger = logger;
-        loaded = new Lazy<Loaded>(Load, LazyThreadSafetyMode.ExecutionAndPublication);
     }
 
-    public IReadOnlyList<TrackerDefinitionSummary> List() => loaded.Value.Summaries;
+    private Loaded Current
+    {
+        get
+        {
+            lock (gate)
+            {
+                return loadedValue ??= Load();
+            }
+        }
+    }
+
+    public IReadOnlyList<TrackerDefinitionSummary> List() => Current.Summaries;
 
     public TrackerDefinition? Find(string? id)
-        => id is not null && loaded.Value.Definitions.TryGetValue(id.Trim().ToLowerInvariant(), out var definition) ? definition : null;
+        => id is not null && Current.Definitions.TryGetValue(id.Trim().ToLowerInvariant(), out var definition) ? definition : null;
+
+    public void Reload()
+    {
+        lock (gate)
+        {
+            loadedValue = Load();
+        }
+    }
 
     /// <summary>The built-in definitions' YAML, by id.</summary>
     public static IEnumerable<(string Id, string Yaml)> BuiltIn()
