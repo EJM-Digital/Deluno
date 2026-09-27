@@ -25,12 +25,16 @@ public sealed class SqliteDownloadHealthRepository(
     // trusted; V0066 removes the v1 key rather than carry them forward.
     private const string DownloadHealthRecordsSettingKey = "download-health.records.v2";
     private const string DownloadProgressRecordsSettingKey = "download-health.progress.v1";
+    private const string DownloadHealthRulesSettingKey = "download-health.rules.v1";
+    private const string DownloadHealthIgnoreListSettingKey = "download-health.ignore-list.v1";
     private static readonly TimeSpan DownloadHealthRetention = TimeSpan.FromDays(90);
 
     public async Task<IReadOnlyList<DownloadHealthRecord>> RecordDownloadHealthObservationsAsync(
         string clientId,
         IReadOnlyCollection<string> listedQueueItemIds,
         IReadOnlyList<DownloadHealthObservation> observations,
+        TimeSpan defaultStrikeWindow,
+        TimeSpan strikeInactivityWindow,
         CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(clientId) || (observations.Count == 0 && listedQueueItemIds.Count == 0))
@@ -48,12 +52,12 @@ public sealed class SqliteDownloadHealthRepository(
         // Listed now without a finding it had: that problem is over.
         var listed = listedQueueItemIds.ToHashSet(StringComparer.OrdinalIgnoreCase);
         var stillSeen = observations
-            .Select(observation => $"{observation.QueueItemId}{observation.Kind}")
+            .Select(observation => $"{observation.QueueItemId}{observation.Kind}")
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
         var ended = records.RemoveAll(record =>
             string.Equals(record.ClientId, clientId, StringComparison.OrdinalIgnoreCase) &&
             listed.Contains(record.QueueItemId) &&
-            !stillSeen.Contains($"{record.QueueItemId}{record.Kind}"));
+            !stillSeen.Contains($"{record.QueueItemId}{record.Kind}"));
 
         foreach (var observation in observations)
         {
@@ -71,12 +75,17 @@ public sealed class SqliteDownloadHealthRepository(
                 string.Equals(record.Kind, observation.Kind, StringComparison.OrdinalIgnoreCase));
             var record = index >= 0 ? records[index] : null;
 
-            // Seen again after a gap longer than a strike, Deluno was not
-            // watching in between and cannot say the problem lasted, so the
-            // spell starts again. That gap is also what separates two downloads
-            // of the same torrent: its infohash is the queue item id.
-            var continuing = record is not null && now - record.LastObservedUtc <= DownloadHealthStrikes.Window;
+            // #825: a gap longer than the (independently configurable) strike
+            // inactivity window means Deluno was not watching closely enough
+            // to say the problem lasted, so the spell starts again - the same
+            // as two downloads of the same torrent sharing one queue item id.
+            // A shorter gap keeps the spell going; strikes still accrue at
+            // the rule's own (usually much tighter) timer, not this window.
+            var continuing = record is not null && now - record.LastObservedUtc <= strikeInactivityWindow;
             var since = continuing ? record!.FirstObservedUtc : now;
+            var window = observation.RuleTimerMinutes is { } ruleMinutes
+                ? TimeSpan.FromMinutes(Math.Clamp(ruleMinutes, 1, 1440))
+                : defaultStrikeWindow;
             // #901: strikes are time, and outage time is not held against a
             // download. FirstObservedUtc itself is left true to when the
             // problem was actually first seen (evidence still reads right);
@@ -86,7 +95,8 @@ public sealed class SqliteDownloadHealthRepository(
             var updated = new DownloadHealthRecord(
                 observation.ClientId.Trim(), observation.QueueItemId.Trim(), observation.ReleaseName.Trim(), releaseKey,
                 observation.Kind.Trim(), observation.Severity.Trim(), SanitizeDownloadHealthEvidence(observation.Evidence),
-                since, now, DownloadHealthStrikes.For(since + outageOverlap, now), record?.IgnoredUntilUtc);
+                since, now, DownloadHealthStrikes.For(since + outageOverlap, now, window), record?.IgnoredUntilUtc,
+                observation.RuleId, observation.RuleStrikeLimit, observation.RuleTimerMinutes, observation.RuleActionPreset);
 
             if (index >= 0) records[index] = updated; else records.Add(updated);
             touched.Add(updated);
@@ -202,6 +212,20 @@ public sealed class SqliteDownloadHealthRepository(
         return updated;
     }
 
+    public async Task<int> PurgeAllDownloadHealthStrikesAsync(CancellationToken cancellationToken)
+    {
+        var now = timeProvider.GetUtcNow();
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(DelunoDatabaseNames.Platform, cancellationToken);
+        await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+        var settings = await ReadSettingsAsync(connection, cancellationToken);
+        var records = ReadDownloadHealthRecords(settings);
+        if (records.Count == 0) return 0;
+
+        await UpsertSettingAsync(connection, transaction, DownloadHealthRecordsSettingKey, JsonSerializer.Serialize(Array.Empty<DownloadHealthRecord>()), now, cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+        return records.Count;
+    }
+
     public async Task<IReadOnlyDictionary<string, DateTimeOffset>> RecordDownloadProgressAsync(
         string clientId,
         IReadOnlyList<(string QueueItemId, long DownloadedBytes)> observations,
@@ -252,6 +276,180 @@ public sealed class SqliteDownloadHealthRepository(
         return result;
     }
 
+    public async Task<IReadOnlyList<DownloadHealthRule>> GetDownloadHealthRulesAsync(
+        PlatformSettingsSnapshot legacySettings,
+        CancellationToken cancellationToken)
+    {
+        var now = timeProvider.GetUtcNow();
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(DelunoDatabaseNames.Platform, cancellationToken);
+        var settings = await ReadSettingsAsync(connection, cancellationToken);
+        if (settings.TryGetValue(DownloadHealthRulesSettingKey, out var json) && !string.IsNullOrWhiteSpace(json))
+        {
+            try
+            {
+                var stored = JsonSerializer.Deserialize<List<DownloadHealthRule>>(json);
+                if (stored is not null) return stored;
+            }
+            catch (JsonException)
+            {
+                // Fall through to a fresh migration rather than fail the request.
+            }
+        }
+
+        // First time this installation reads its rules (#905): synthesize the
+        // equivalent of its existing flat toggles so nothing changes until it
+        // opens the new screen, then persist that as the starting point.
+        var migrated = LegacyRulesFrom(legacySettings, now);
+        await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+        await UpsertSettingAsync(connection, transaction, DownloadHealthRulesSettingKey, JsonSerializer.Serialize(migrated), now, cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+        return migrated;
+    }
+
+    public async Task<(IReadOnlyList<DownloadHealthRule> Rules, string? Error)> SaveDownloadHealthRuleAsync(
+        DownloadHealthRule rule,
+        PlatformSettingsSnapshot legacySettings,
+        CancellationToken cancellationToken)
+    {
+        var now = timeProvider.GetUtcNow();
+        var existing = (await GetDownloadHealthRulesAsync(legacySettings, cancellationToken)).ToList();
+        var others = existing.Where(candidate => !string.Equals(candidate.Id, rule.Id, StringComparison.OrdinalIgnoreCase)).ToArray();
+        var error = DownloadHealthRuleValidator.Validate(rule, others);
+        if (error is not null)
+        {
+            return (existing, error);
+        }
+
+        var index = existing.FindIndex(candidate => string.Equals(candidate.Id, rule.Id, StringComparison.OrdinalIgnoreCase));
+        var saved = rule with
+        {
+            CreatedUtc = index >= 0 ? existing[index].CreatedUtc : now,
+            UpdatedUtc = now
+        };
+        if (index >= 0) existing[index] = saved; else existing.Add(saved);
+
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(DelunoDatabaseNames.Platform, cancellationToken);
+        await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+        await UpsertSettingAsync(connection, transaction, DownloadHealthRulesSettingKey, JsonSerializer.Serialize(existing), now, cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+        return (existing, null);
+    }
+
+    public async Task<IReadOnlyList<DownloadHealthRule>> DeleteDownloadHealthRuleAsync(
+        string ruleId,
+        CancellationToken cancellationToken)
+    {
+        var now = timeProvider.GetUtcNow();
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(DelunoDatabaseNames.Platform, cancellationToken);
+        var settings = await ReadSettingsAsync(connection, cancellationToken);
+        var existing = settings.TryGetValue(DownloadHealthRulesSettingKey, out var json) && !string.IsNullOrWhiteSpace(json)
+            ? SafeDeserialize<DownloadHealthRule>(json)
+            : [];
+        var remaining = existing.Where(rule => !string.Equals(rule.Id, ruleId, StringComparison.OrdinalIgnoreCase)).ToArray();
+        if (remaining.Length == existing.Count) return existing;
+
+        await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+        await UpsertSettingAsync(connection, transaction, DownloadHealthRulesSettingKey, JsonSerializer.Serialize(remaining), now, cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+        return remaining;
+    }
+
+    public async Task<IReadOnlyList<DownloadHealthIgnoreEntry>> ListDownloadHealthIgnoreEntriesAsync(CancellationToken cancellationToken)
+    {
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(DelunoDatabaseNames.Platform, cancellationToken);
+        var settings = await ReadSettingsAsync(connection, cancellationToken);
+        return settings.TryGetValue(DownloadHealthIgnoreListSettingKey, out var json) && !string.IsNullOrWhiteSpace(json)
+            ? SafeDeserialize<DownloadHealthIgnoreEntry>(json)
+            : [];
+    }
+
+    public async Task<IReadOnlyList<DownloadHealthIgnoreEntry>> AddDownloadHealthIgnoreEntryAsync(
+        DownloadHealthIgnoreEntry entry,
+        CancellationToken cancellationToken)
+    {
+        var now = timeProvider.GetUtcNow();
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(DelunoDatabaseNames.Platform, cancellationToken);
+        await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+        var settings = await ReadSettingsAsync(connection, cancellationToken);
+        var existing = settings.TryGetValue(DownloadHealthIgnoreListSettingKey, out var json) && !string.IsNullOrWhiteSpace(json)
+            ? SafeDeserialize<DownloadHealthIgnoreEntry>(json).ToList()
+            : [];
+        existing.Add(entry with { CreatedUtc = now });
+        await UpsertSettingAsync(connection, transaction, DownloadHealthIgnoreListSettingKey, JsonSerializer.Serialize(existing), now, cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+        return existing;
+    }
+
+    public async Task<IReadOnlyList<DownloadHealthIgnoreEntry>> RemoveDownloadHealthIgnoreEntryAsync(
+        string entryId,
+        CancellationToken cancellationToken)
+    {
+        var now = timeProvider.GetUtcNow();
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(DelunoDatabaseNames.Platform, cancellationToken);
+        var settings = await ReadSettingsAsync(connection, cancellationToken);
+        var existing = settings.TryGetValue(DownloadHealthIgnoreListSettingKey, out var json) && !string.IsNullOrWhiteSpace(json)
+            ? SafeDeserialize<DownloadHealthIgnoreEntry>(json)
+            : [];
+        var remaining = existing.Where(entry => !string.Equals(entry.Id, entryId, StringComparison.OrdinalIgnoreCase)).ToArray();
+        if (remaining.Length == existing.Count) return existing;
+
+        await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+        await UpsertSettingAsync(connection, transaction, DownloadHealthIgnoreListSettingKey, JsonSerializer.Serialize(remaining), now, cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+        return remaining;
+    }
+
+    /// <summary>
+    /// #905's own equivalent of every flat toggle Deluno shipped before it:
+    /// one rule per kind, "dead torrent" off (it has no legacy toggle - #818
+    /// is new), the rest carrying over their old enabled state, threshold and
+    /// timer exactly. The shared strike threshold and cleanup-action booleans
+    /// become each rule's own <see cref="DownloadHealthRule.StrikeLimit"/> and
+    /// <see cref="DownloadHealthRule.ActionPreset"/>, identical across every
+    /// migrated rule since the old system had only one of each for all kinds.
+    /// </summary>
+    private static IReadOnlyList<DownloadHealthRule> LegacyRulesFrom(PlatformSettingsSnapshot legacy, DateTimeOffset now)
+    {
+        var strikeLimit = Math.Clamp(legacy.DownloadHealthStrikeThreshold, 1, 20);
+        var actionPreset = LegacyActionPreset(legacy);
+
+        DownloadHealthRule Rule(string id, string kind, bool enabled, int timerMinutes, double threshold) => new(
+            Id: id,
+            Kind: kind,
+            Enabled: enabled,
+            StrikeLimit: strikeLimit,
+            TimerMinutes: Math.Clamp(timerMinutes, 1, 1440),
+            AppliesTo: DownloadHealthAppliesTo.Both,
+            MinCompletionPercent: 0,
+            MaxCompletionPercent: 100,
+            ResetStrikesOnProgress: true,
+            ActionPreset: actionPreset,
+            CreatedUtc: now,
+            UpdatedUtc: now,
+            Threshold: threshold);
+
+        return
+        [
+            Rule("legacy-no-progress", DownloadHealthRuleKinds.NoProgress, legacy.DownloadHealthNoProgressEnabled, legacy.DownloadHealthNoProgressMinutes, 0),
+            Rule("legacy-too-slow", DownloadHealthRuleKinds.TooSlow, legacy.DownloadHealthMinSpeedEnabled, legacy.DownloadHealthMinSpeedMinutes, legacy.DownloadHealthMinSpeedKbps),
+            Rule("legacy-low-peers", DownloadHealthRuleKinds.LowPeers, legacy.DownloadHealthMinPeersEnabled, legacy.DownloadHealthMinPeersMinutes, legacy.DownloadHealthMinPeers),
+            Rule("legacy-dead-torrent", DownloadHealthRuleKinds.DeadTorrent, false, 30, 60)
+        ];
+    }
+
+    private static string LegacyActionPreset(PlatformSettingsSnapshot legacy)
+    {
+        if (legacy.CleanupRemoveClientEntryAfterThreshold || legacy.CleanupPurgePayloadAfterThreshold)
+        {
+            return DownloadHealthActionPresets.Replace;
+        }
+        if (legacy.CleanupBlockReleaseAfterThreshold || legacy.CleanupQueueReplacementAfterThreshold)
+        {
+            return DownloadHealthActionPresets.RetryElsewhere;
+        }
+        return DownloadHealthActionPresets.JustTellMe;
+    }
+
     private static IReadOnlyList<DownloadProgressRecord> ReadDownloadProgressRecords(IReadOnlyDictionary<string, string> settings)
     {
         if (!settings.TryGetValue(DownloadProgressRecordsSettingKey, out var json) || string.IsNullOrWhiteSpace(json)) return [];
@@ -281,6 +479,12 @@ public sealed class SqliteDownloadHealthRepository(
     {
         if (!settings.TryGetValue(DownloadHealthRecordsSettingKey, out var json) || string.IsNullOrWhiteSpace(json)) return [];
         try { return JsonSerializer.Deserialize<List<DownloadHealthRecord>>(json) ?? []; }
+        catch (JsonException) { return []; }
+    }
+
+    private static IReadOnlyList<T> SafeDeserialize<T>(string json)
+    {
+        try { return JsonSerializer.Deserialize<List<T>>(json) ?? []; }
         catch (JsonException) { return []; }
     }
 
@@ -325,7 +529,4 @@ public sealed class SqliteDownloadHealthRepository(
         AddParameter(command, "@updatedUtc", updatedUtc.ToString("O"));
         await command.ExecuteNonQueryAsync(cancellationToken);
     }
-
-    private static string? GetValue(IReadOnlyDictionary<string, string> values, string key)
-        => values.TryGetValue(key, out var value) ? value : null;
 }

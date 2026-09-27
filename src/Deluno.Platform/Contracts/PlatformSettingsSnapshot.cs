@@ -135,4 +135,20 @@ public sealed record PlatformSettingsSnapshot(
     // built-in scoring off entirely, leaving it to the user's own Custom
     // Formats. Read by ReleasePreferencePlanFactory when it compiles a
     // profile's guide-shipped Repack/Proper custom formats into a plan.
-    string ProperRepackAcquisitionMode = "prefer-and-upgrade");
+    string ProperRepackAcquisitionMode = "prefer-and-upgrade",
+    // #905's remaining global settings, alongside the per-rule engine
+    // (download-health.rules.v1, in IDownloadHealthRepository): the strike
+    // pacing for a finding outside the rule engine (#823), a download's
+    // grace period for going quiet before Deluno treats its problem as over
+    // rather than merely paused (#825), a sandbox switch for the whole
+    // strike/blocklist/seeding-cleanup pipeline (#814), and an internet
+    // reachability guard before any cleanup pass runs at all (#824). Off/at
+    // their old defaults so an existing install is unaffected (#936).
+    bool DownloadHealthDryRunEnabled = false,
+    int DownloadHealthDefaultStrikeWindowMinutes = 30,
+    int DownloadHealthStrikeInactivityHours = 72,
+    bool DownloadHealthConnectivityCheckEnabled = false,
+    string DownloadHealthConnectivityCheckUrls = "",
+    // #823's other half: the queue-throughput poll cadence, previously a
+    // hardcoded PeriodicTimer interval.
+    int DownloadThroughputSamplerIntervalMinutes = 1);

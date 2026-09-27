@@ -74,4 +74,10 @@ public sealed record UpdatePlatformSettingsRequest(
     bool? SetPermissionsOnImport = null,
     string? FolderChmod = null,
     string? ChownGroup = null,
-    string? ProperRepackAcquisitionMode = null);
+    string? ProperRepackAcquisitionMode = null,
+    bool? DownloadHealthDryRunEnabled = null,
+    int? DownloadHealthDefaultStrikeWindowMinutes = null,
+    int? DownloadHealthStrikeInactivityHours = null,
+    bool? DownloadHealthConnectivityCheckEnabled = null,
+    string? DownloadHealthConnectivityCheckUrls = null,
+    int? DownloadThroughputSamplerIntervalMinutes = null);

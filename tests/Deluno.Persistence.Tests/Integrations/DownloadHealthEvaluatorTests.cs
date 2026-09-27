@@ -65,7 +65,7 @@ public sealed class DownloadHealthEvaluatorTests
             speedMbps: 0));
 
         var finding = Assert.Single(findings);
-        Assert.Equal("no-throughput", finding.Kind);
+        Assert.Equal(DownloadHealthStrikes.NoThroughput, finding.Kind);
         Assert.Equal("warning", finding.Severity);
         Assert.True(finding.CanSafelyRetry);
         Assert.False(finding.CanSafelyRemove);
@@ -184,7 +184,7 @@ public sealed class DownloadHealthEvaluatorTests
                 item.Peers,
                 item.IsSetupProblem),
             CapturedUtc,
-            DownloadHealthRulesSettings.Default)
+            DownloadHealthRules.Defaults)
         .Select(finding => new DownloadHealthFinding(
             finding.Severity,
             finding.Kind,

@@ -285,7 +285,11 @@ public sealed record DownloadHealthFinding(
     bool CanSafelyRemove,
     int StrikeCount = 0,
     bool CandidateBlocked = false,
-    DateTimeOffset? IgnoredUntilUtc = null);
+    DateTimeOffset? IgnoredUntilUtc = null,
+    /// <summary>The configured rule (#905) driving this finding's strikes, when one matched.</summary>
+    string? RuleId = null,
+    string? RuleActionPreset = null,
+    DateTimeOffset? NextStrikeUtc = null);
 
 public sealed record DownloadClientHistoryItem(
     string Id,

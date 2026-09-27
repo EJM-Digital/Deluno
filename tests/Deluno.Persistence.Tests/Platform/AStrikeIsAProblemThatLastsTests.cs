@@ -78,8 +78,15 @@ public sealed class AStrikeIsAProblemThatLastsTests
         Assert.Single(await world.RecordsAsync());
     }
 
+    /// <summary>
+    /// #825: the gap that continues a spell (the strike-inactivity window) is
+    /// now independent of, and normally far longer than, the per-kind pacing
+    /// window strikes accrue at. A gap of a few hours - once enough on its own
+    /// to reset a stalled torrent's strikes to one - keeps the same spell
+    /// going, still accruing at the pacing window's own pace.
+    /// </summary>
     [Fact]
-    public async Task Seen_again_after_Deluno_stopped_watching_it_starts_again()
+    public async Task A_gap_shorter_than_the_inactivity_window_keeps_the_same_spell_going()
     {
         using var world = await World.CreateAsync();
         await world.SeeAsync(Start, Stalled());
@@ -87,8 +94,22 @@ public sealed class AStrikeIsAProblemThatLastsTests
 
         var seen = Assert.Single(await world.SeeAsync(Start.AddHours(3), Stalled()));
 
+        Assert.Equal(Start, seen.FirstObservedUtc);
+        Assert.Equal(7, seen.StrikeCount); // 1 + floor(180 minutes / 30-minute window)
+    }
+
+    /// <summary>Only a gap past the (independently configurable) inactivity window itself starts a new spell.</summary>
+    [Fact]
+    public async Task Seen_again_after_the_inactivity_window_elapses_starts_again()
+    {
+        using var world = await World.CreateAsync();
+        await world.SeeAsync(Start, Stalled());
+        await world.SeeAsync(Start.AddMinutes(20), Stalled());
+
+        var seen = Assert.Single(await world.SeeAsync(Start.AddHours(73), Stalled()));
+
         Assert.Equal(1, seen.StrikeCount);
-        Assert.Equal(Start.AddHours(3), seen.FirstObservedUtc);
+        Assert.Equal(Start.AddHours(73), seen.FirstObservedUtc);
     }
 
     [Fact]
@@ -97,7 +118,7 @@ public sealed class AStrikeIsAProblemThatLastsTests
         using var world = await World.CreateAsync();
         await world.SeeAsync(Start, Stalled());
 
-        await world.Repository(Start.AddMinutes(5)).RecordDownloadHealthObservationsAsync("client-2", [Torrent], [], CancellationToken.None);
+        await world.Repository(Start.AddMinutes(5)).RecordDownloadHealthObservationsAsync("client-2", [Torrent], [], DownloadHealthStrikes.DefaultWindow, TimeSpan.FromHours(72), CancellationToken.None);
 
         Assert.Single(await world.RecordsAsync());
     }
@@ -187,11 +208,11 @@ public sealed class AStrikeIsAProblemThatLastsTests
 
         /// <summary>One snapshot of the client listing the torrent, with these findings.</summary>
         public Task<IReadOnlyList<DownloadHealthRecord>> SeeAsync(DateTimeOffset at, params DownloadHealthObservation[] findings)
-            => Repository(at).RecordDownloadHealthObservationsAsync(Client, [Torrent], findings, CancellationToken.None);
+            => Repository(at).RecordDownloadHealthObservationsAsync(Client, [Torrent], findings, DownloadHealthStrikes.DefaultWindow, TimeSpan.FromHours(72), CancellationToken.None);
 
         /// <summary>One snapshot listing exactly these downloads, none with a finding.</summary>
         public Task<IReadOnlyList<DownloadHealthRecord>> SeeAsync(DateTimeOffset at, IReadOnlyCollection<string> listed)
-            => Repository(at).RecordDownloadHealthObservationsAsync(Client, listed, [], CancellationToken.None);
+            => Repository(at).RecordDownloadHealthObservationsAsync(Client, listed, [], DownloadHealthStrikes.DefaultWindow, TimeSpan.FromHours(72), CancellationToken.None);
 
         public Task<IReadOnlyList<DownloadHealthRecord>> RecordsAsync()
             => Repository(Start.AddDays(2)).ListDownloadHealthRecordsAsync(50, CancellationToken.None);

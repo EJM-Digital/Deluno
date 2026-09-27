@@ -1,3 +1,5 @@
+using Deluno.Contracts;
+
 namespace Deluno.Platform.Contracts;
 
 /// <summary>
@@ -10,7 +12,17 @@ public sealed record DownloadHealthObservation(
     string ReleaseName,
     string Kind,
     string Severity,
-    string Evidence);
+    string Evidence,
+    /// <summary>
+    /// The specific configured rule (#905) this observation came from, and the
+    /// strike/timer/action it carries at the moment it was observed. Null for
+    /// findings outside the rule engine, which fall back to the platform's
+    /// global strike settings.
+    /// </summary>
+    string? RuleId = null,
+    int? RuleStrikeLimit = null,
+    int? RuleTimerMinutes = null,
+    string? RuleActionPreset = null);
 
 /// <summary>
 /// One problem with one download, for as long as it lasts.
@@ -33,12 +45,27 @@ public sealed record DownloadHealthRecord(
     DateTimeOffset FirstObservedUtc,
     DateTimeOffset LastObservedUtc,
     int StrikeCount,
-    DateTimeOffset? IgnoredUntilUtc)
+    DateTimeOffset? IgnoredUntilUtc,
+    string? RuleId = null,
+    int? RuleStrikeLimit = null,
+    int? RuleTimerMinutes = null,
+    string? RuleActionPreset = null)
 {
     public bool IsIgnored(DateTimeOffset now) => IgnoredUntilUtc is { } ignoredUntil && ignoredUntil > now;
 
-    public bool BlocksCandidate(DateTimeOffset now, int threshold = 3)
-        => DownloadHealthStrikes.Counts(Kind) && StrikeCount >= Math.Clamp(threshold, 1, 20) && !IsIgnored(now);
+    /// <summary>
+    /// <paramref name="fallbackThreshold"/> is the platform-wide strike
+    /// threshold, used only for findings outside the rule engine (#905) -
+    /// every rule-engine finding carries its own <see cref="RuleStrikeLimit"/>.
+    /// </summary>
+    public bool BlocksCandidate(DateTimeOffset now, int fallbackThreshold = 3)
+        => DownloadHealthStrikes.Counts(Kind) &&
+           StrikeCount >= Math.Clamp(RuleStrikeLimit ?? fallbackThreshold, 1, 20) &&
+           !IsIgnored(now);
+
+    /// <summary>When the next strike is due, given the timer that produced <see cref="StrikeCount"/>.</summary>
+    public DateTimeOffset NextStrikeUtc(int fallbackTimerMinutes = 30)
+        => FirstObservedUtc + TimeSpan.FromMinutes(Math.Clamp(RuleTimerMinutes ?? fallbackTimerMinutes, 1, 1440) * StrikeCount);
 }
 
 /// <summary>
@@ -61,8 +88,9 @@ public sealed record DownloadProgressRecord(
 /// What a strike is (#560).
 ///
 /// <para><b>A strike is time, not a sighting.</b> One strike when a problem is
-/// first seen, and one more for every half hour it is still there. A problem
-/// that clears is over, and its strikes go with it. The first version counted
+/// first seen, and one more for every timer window it is still there - the
+/// rule engine (#905) gives each rule its own timer; findings outside the
+/// rule engine use <see cref="DefaultWindow"/>. The first version counted
 /// sightings more than half an hour apart. So a download that stayed stalled
 /// never passed one strike, while a torrent that was "stalled" for a few seconds
 /// at the start of three healthy downloads, days apart, had its release blocked
@@ -77,8 +105,12 @@ public sealed record DownloadProgressRecord(
 /// </summary>
 public static class DownloadHealthStrikes
 {
-    /// <summary>How long a problem must last for each further strike.</summary>
-    public static readonly TimeSpan Window = TimeSpan.FromMinutes(30);
+    /// <summary>
+    /// How long a problem must last for each further strike, for a finding
+    /// outside the rule engine (#823 makes this a setting rather than a
+    /// constant; every rule-engine finding uses its own rule's timer instead).
+    /// </summary>
+    public static readonly TimeSpan DefaultWindow = TimeSpan.FromMinutes(30);
 
     /// <summary>The client says it is stalled, or reports an error.</summary>
     public const string ClientStalled = "client-stalled";
@@ -105,22 +137,26 @@ public static class DownloadHealthStrikes
     /// </summary>
     public const string ClientScriptFailed = "client-script-failed";
 
-    /// <summary>Nothing has arrived for at least half an hour.</summary>
-    public const string NoThroughput = "no-throughput";
+    /// <summary>Nothing has arrived for at least the rule's timer.</summary>
+    public const string NoThroughput = "no-progress";
 
     /// <summary>Slower than the configured floor for longer than allowed (#659, off by default).</summary>
-    public const string LowSpeed = "low-speed";
+    public const string LowSpeed = "too-slow";
 
     /// <summary>Fewer peers or seeders than the configured floor for longer than allowed (#659, off by default).</summary>
     public const string LowPeers = "low-peers";
+
+    /// <summary>Zero peers or seeders past the rule's grace period (#818, off by default).</summary>
+    public const string DeadTorrent = "dead-torrent";
 
     public static bool Counts(string kind)
         => string.Equals(kind, ClientStalled, StringComparison.OrdinalIgnoreCase) ||
            string.Equals(kind, NoThroughput, StringComparison.OrdinalIgnoreCase) ||
            string.Equals(kind, LowSpeed, StringComparison.OrdinalIgnoreCase) ||
-           string.Equals(kind, LowPeers, StringComparison.OrdinalIgnoreCase);
+           string.Equals(kind, LowPeers, StringComparison.OrdinalIgnoreCase) ||
+           string.Equals(kind, DeadTorrent, StringComparison.OrdinalIgnoreCase);
 
-    /// <summary>Strikes for a problem seen without a break since <paramref name="since"/>.</summary>
-    public static int For(DateTimeOffset since, DateTimeOffset now)
-        => 1 + (int)Math.Clamp(Math.Floor((now - since) / Window), 0, 10_000);
+    /// <summary>Strikes for a problem seen without a break since <paramref name="since"/>, under <paramref name="window"/>.</summary>
+    public static int For(DateTimeOffset since, DateTimeOffset now, TimeSpan window)
+        => 1 + (int)Math.Clamp(Math.Floor((now - since) / window), 0, 10_000);
 }

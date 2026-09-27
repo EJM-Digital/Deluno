@@ -125,6 +125,8 @@ public sealed class DeletingSomethingEndsWhatItWasDoingTests
                 client.Id,
                 ["item-1"],
                 [new DownloadHealthObservation(client.Id, "item-1", Release, DownloadHealthStrikes.ClientStalled, "warning", "No throughput for 30 minutes.")],
+                DownloadHealthStrikes.DefaultWindow,
+                TimeSpan.FromHours(72),
                 CancellationToken.None);
         }
 
