@@ -106,6 +106,14 @@ public sealed record MediaTableMap(
     /// </summary>
     string SubtitleOverrideTable,
     /// <summary>
+    /// The override table's key, read off one wanted-file row: the movie's
+    /// own id for a movie, and the episode's <c>series_id</c> for an episode
+    /// — never the episode's own id, because the override belongs to the
+    /// show. Used by <c>ListWantedAsync</c> to find a title's override
+    /// without a caller having to ask twice.
+    /// </summary>
+    string SubtitleOverrideFileTitleIdColumn,
+    /// <summary>
     /// The catalogue-local join table for user-owned platform tags. The table
     /// name is shared; the database and entry table are the two mapped parts.
     /// </summary>
