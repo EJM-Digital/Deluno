@@ -29,6 +29,10 @@ public static partial class ReleaseNotesParser
             return sections;
         }
 
+        // The embedded file keeps whatever line endings the checkout gave it
+        // (CRLF on Windows, LF on Linux); notes read the same either way.
+        markdown = markdown.Replace("\r\n", "\n").Replace('\r', '\n');
+
         var matches = VersionHeadingPattern().Matches(markdown);
         for (var i = 0; i < matches.Count; i++)
         {
