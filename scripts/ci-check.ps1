@@ -269,6 +269,17 @@ if ($closingKeywords.ExitCode -eq 0) {
     Write-Fail "commit message closes no issue by accident"
 }
 
+# BACKLOG-SWEEP.md is the audit source of truth (#844): a row narrating
+# another issue's children as closed must agree with that issue's own row,
+# or the document is lying to whoever reads it next.
+$backlogSweep = Invoke-LoggedCommand -FilePath $powerShellPath -Arguments @("-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "scripts/check-backlog-sweep-consistency.ps1")
+if ($backlogSweep.ExitCode -eq 0) {
+    Write-Ok "BACKLOG-SWEEP.md agrees with itself"
+} else {
+    if ($backlogSweep.Output) { Write-Host $backlogSweep.Output }
+    Write-Fail "BACKLOG-SWEEP.md agrees with itself"
+}
+
 Write-Host ""
 Write-Host "--------------------------------------"
 Write-Host "  Passed: $passCount  Warned: $warnCount  Failed: $failCount"
