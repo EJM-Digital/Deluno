@@ -348,6 +348,109 @@ public sealed class ProcessorHandoffWatcherTests
         Assert.Equal(expected, Assert.Single(_updates).Status);
     }
 
+    /// <summary>
+    /// #890 (cleanup sheet F7): the processor reporting failure outright is
+    /// one of the two moments Deluno may treat a partial output as abandoned.
+    /// A file still growing (zero-length here, the least flaky way to force
+    /// "not ready") is deleted and the deletion is folded into the same
+    /// failure entry.
+    /// </summary>
+    [Fact]
+    public async Task A_processor_reporting_failure_deletes_its_crashed_partial_output()
+    {
+        var outputPath = Path.Combine(Path.GetTempPath(), $"deluno-partial-{Guid.NewGuid():n}.mkv");
+        File.WriteAllBytes(outputPath, []);
+        try
+        {
+            GivenHandoff(updated: Now.AddHours(-1), previous: null, outputPath: outputPath);
+            Answers(ProcessorHandoffStates.Failed, lastChanged: Now.AddMinutes(-10));
+
+            await Watch();
+
+            var (status, message) = Assert.Single(_updates);
+            Assert.Equal(ProcessorHandoffStatuses.Failed, status);
+            Assert.Contains("Deleted the processor's partial output", message);
+            Assert.False(File.Exists(outputPath));
+        }
+        finally
+        {
+            if (File.Exists(outputPath))
+            {
+                File.Delete(outputPath);
+            }
+        }
+    }
+
+    /// <summary>
+    /// #890: a complete, stable file sitting at the hand-off's output path is
+    /// not what crashed - it is a different problem (#891/#929/#921) and
+    /// giving up here must never delete it.
+    /// </summary>
+    [Fact]
+    public async Task Giving_up_never_deletes_a_complete_stable_output()
+    {
+        var outputPath = Path.Combine(Path.GetTempPath(), $"deluno-complete-{Guid.NewGuid():n}.mkv");
+        File.WriteAllBytes(outputPath, [1, 2, 3, 4]);
+        File.SetLastWriteTimeUtc(outputPath, DateTime.UtcNow.AddMinutes(-10));
+        try
+        {
+            GivenHandoff(
+                updated: Now.AddMinutes(-5),
+                previous: Answering(since: Now.AddMinutes(-5)),
+                mode: "block",
+                created: Now.AddDays(-9),
+                outputPath: outputPath);
+            Answers(ProcessorHandoffStates.Queued, lastChanged: Now.AddMinutes(-5), queuePosition: 2);
+
+            await Watch();
+
+            var (status, message) = Assert.Single(_updates);
+            Assert.Equal(ProcessorHandoffStatuses.TimedOut, status);
+            Assert.DoesNotContain("Deleted the processor's partial output", message);
+            Assert.True(File.Exists(outputPath));
+        }
+        finally
+        {
+            File.Delete(outputPath);
+        }
+    }
+
+    /// <summary>
+    /// #890: giving up on a hand-off is the other of the two moments a
+    /// partial output may be treated as abandoned - here via the "no change
+    /// for the limit" path rather than an outright failure report.
+    /// </summary>
+    [Fact]
+    public async Task Giving_up_on_a_stalled_hand_off_deletes_its_crashed_partial_output()
+    {
+        var outputPath = Path.Combine(Path.GetTempPath(), $"deluno-partial-{Guid.NewGuid():n}.mkv");
+        File.WriteAllBytes(outputPath, []);
+        try
+        {
+            GivenHandoff(
+                updated: Now.AddMinutes(-5),
+                previous: Answering(since: Now.AddMinutes(-5)),
+                mode: "block",
+                created: Now.AddDays(-9),
+                outputPath: outputPath);
+            Answers(ProcessorHandoffStates.Queued, lastChanged: Now.AddMinutes(-5), queuePosition: 2);
+
+            await Watch();
+
+            var (status, message) = Assert.Single(_updates);
+            Assert.Equal(ProcessorHandoffStatuses.TimedOut, status);
+            Assert.Contains("Deleted the processor's partial output", message);
+            Assert.False(File.Exists(outputPath));
+        }
+        finally
+        {
+            if (File.Exists(outputPath))
+            {
+                File.Delete(outputPath);
+            }
+        }
+    }
+
     [Fact]
     public async Task A_processor_that_cannot_be_asked_is_judged_from_the_hand_off_last_change()
     {
@@ -431,7 +534,8 @@ public sealed class ProcessorHandoffWatcherTests
         ProcessorHandoffObservation? previous,
         string mode = "import-original",
         int stallMinutes = ProcessorStallLimits.DefaultMinutes,
-        DateTimeOffset? created = null)
+        DateTimeOffset? created = null,
+        string? outputPath = null)
     {
         _mode = mode;
         _stallMinutes = stallMinutes;
@@ -439,7 +543,7 @@ public sealed class ProcessorHandoffWatcherTests
             .ReturnsAsync([
                 new ProcessorHandoffItem(
                     "handoff-1", "library-1", "movies", "qbittorrent", "hash-1", "Sintel.2010.1080p",
-                    @"D:\Downloads\Sintel.2010.1080p", "Weir", ProcessorHandoffStatuses.Started, null, null, null,
+                    @"D:\Downloads\Sintel.2010.1080p", "Weir", ProcessorHandoffStatuses.Started, outputPath, null, null,
                     created ?? updated.AddHours(-1), updated, previous)
             ]);
     }

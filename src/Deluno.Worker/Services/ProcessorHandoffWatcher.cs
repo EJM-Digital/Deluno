@@ -260,6 +260,10 @@ public sealed class ProcessorHandoffWatcher(
                 var reason = answer.Message is { Length: > 0 } said
                     ? $"{connection.Name} reports {answer.State} for {handoff.ReleaseName}: {said}"
                     : $"{connection.Name} reports {answer.State} for {handoff.ReleaseName}.";
+                // #890: the processor just told Deluno the file is done for -
+                // one of the two moments this is allowed to act on a partial
+                // output (the other is GiveUpAsync below). Never on time alone.
+                reason += await DeleteCrashedPartialOutputAsync(handoff, cancellationToken);
                 await EndAsync(handoff, ProcessorHandoffStatuses.Failed, reason, cancellationToken);
                 await RaiseRecoveryCaseAsync(
                     handoff,
@@ -446,6 +450,12 @@ public sealed class ProcessorHandoffWatcher(
         string summary,
         CancellationToken cancellationToken)
     {
+        // #890: giving up is one of the only two moments (the other is the
+        // processor reporting failure outright, above) a partial output is
+        // allowed to be treated as abandoned - never by time alone, only
+        // because the hand-off itself is ending right here.
+        summary += await DeleteCrashedPartialOutputAsync(handoff, cancellationToken);
+
         if (string.Equals(library.ProcessorFailureMode, "import-original", StringComparison.OrdinalIgnoreCase))
         {
             await EndAsync(
@@ -466,6 +476,45 @@ public sealed class ProcessorHandoffWatcher(
                 ? "Open Queue to import the original, retry the hand-off, or dismiss it."
                 : "Check the processor, then retry the hand-off. Queue can import the original if it is acceptable.",
             cancellationToken);
+    }
+
+    /// <summary>
+    /// #890 (cleanup sheet F7): deletes a processor's crashed, partial output
+    /// once the hand-off it belongs to is actually over - never on time
+    /// alone. Called from exactly the two places a hand-off is allowed to
+    /// end that way: the processor reporting failure outright, and
+    /// <see cref="GiveUpAsync"/>. A complete file sitting unclaimed is a
+    /// different problem (#891/#929/#921) and is left alone here.
+    /// </summary>
+    /// <returns>
+    /// A sentence to fold into the same timeout/failure entry, or empty when
+    /// there was nothing to delete.
+    /// </returns>
+    private async Task<string> DeleteCrashedPartialOutputAsync(ProcessorHandoffItem handoff, CancellationToken cancellationToken)
+    {
+        var path = handoff.OutputPath;
+        if (string.IsNullOrWhiteSpace(path) || !File.Exists(path))
+        {
+            return string.Empty;
+        }
+
+        if (ProcessorOutputReadiness.IsReady(path))
+        {
+            // A complete file is not what crashed - leave it for the loose-
+            // output safety net to name instead of deleting it here.
+            return string.Empty;
+        }
+
+        try
+        {
+            File.Delete(path);
+        }
+        catch (Exception exception)
+        {
+            return $" Its partial output could not be deleted: {exception.Message}";
+        }
+
+        return " Deleted the processor's partial output so a re-run starts clean.";
     }
 
     private async Task EndAsync(ProcessorHandoffItem handoff, string status, string message, CancellationToken cancellationToken)
