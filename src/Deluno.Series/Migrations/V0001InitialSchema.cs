@@ -56,7 +56,8 @@ public static class SeriesDatabaseMigrations
         new V0045SeriesEpisodeGroupOrdering(),
         new V0046SeriesSeasonFolder(),
         new V0047SeriesListMonitorMode(),
-        new V0048SeriesSubtitleTimingStatus()
+        new V0048SeriesSubtitleTimingStatus(),
+        new MediaSubtitleOverrideMigration(MediaKind.Series, 49)
     ];
 
     private sealed class V0001InitialSchema : SqliteSqlMigration

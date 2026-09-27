@@ -38,6 +38,7 @@ public static class MoviesServiceCollectionExtensions
         services.TryAddSingleton<ILiveDownloadLookup, DispatchLiveDownloadLookup>();
         services.TryAddSingleton<IDownloadStateReconciler, DownloadStateReconciler>();
         services.TryAddSingleton<IMediaSubtitleRepository, SqliteMediaSubtitleRepository>();
+        services.TryAddSingleton<IMediaSubtitleOverrideRepository, SqliteMediaSubtitleOverrideRepository>();
         services.AddSingleton<IMovieCatalogRepository, SqliteMovieCatalogRepository>();
         services.AddSingleton<IMovieCollectionsRepository, SqliteMovieCollectionsRepository>();
         // The quality ladder has to reach this catalogue's own database for a

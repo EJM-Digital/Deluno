@@ -110,4 +110,13 @@ public sealed record MovieListItem(
     /// was write-only before, with nothing reading it back for the movie
     /// detail page's edit surface to show as the current value.
     /// </summary>
-    string? QualityProfileId = null);
+    string? QualityProfileId = null,
+    /// <summary>
+    /// This movie's own subtitle-language override (#843), when it has set
+    /// one — replacing the library's <c>Languages</c>/<c>Mode</c> for this
+    /// title only. Null means it follows the library exactly as before.
+    /// Populated on a single title's own fetch; the paged grid does not
+    /// carry it, the same as the file's own codec facts above.
+    /// </summary>
+    IReadOnlyList<string>? SubtitleLanguagesOverride = null,
+    string? SubtitleModeOverride = null);

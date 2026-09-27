@@ -98,6 +98,14 @@ public sealed record MediaTableMap(
     /// </summary>
     string SubtitleBlockTable,
     /// <summary>
+    /// A title's own subtitle-language override (#843): title-level, not
+    /// per-file — a movie is one file already, and a show's override belongs
+    /// to the show, not to one episode. Keyed the same way
+    /// <see cref="TagTable"/> is, which is why it shares that column name
+    /// rather than <see cref="SubtitleMediaIdColumn"/>.
+    /// </summary>
+    string SubtitleOverrideTable,
+    /// <summary>
     /// The catalogue-local join table for user-owned platform tags. The table
     /// name is shared; the database and entry table are the two mapped parts.
     /// </summary>
@@ -140,6 +148,7 @@ public sealed record MediaTableMap(
                 "t.title, t.release_year, NULL, NULL, NULL, f.release_group",
                 "movie_subtitle_attempt",
                 "movie_subtitle_block",
+                "media_subtitle_override",
                 "media_tags",
                 "media_id",
                 "media_preference_evaluations"),
@@ -182,6 +191,7 @@ public sealed record MediaTableMap(
                 "t.title, t.start_year, f.season_number, f.episode_number, f.title, NULL",
                 "episode_subtitle_attempt",
                 "episode_subtitle_block",
+                "media_subtitle_override",
                 "media_tags",
                 "media_id",
                 "media_preference_evaluations"),
