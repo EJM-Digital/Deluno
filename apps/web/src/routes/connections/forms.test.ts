@@ -128,6 +128,14 @@ describe("client form Use SSL and URL Base", () => {
     expect(indexerFormErrors({ ...base, multiLanguages: "Original, French" }, false)).toEqual({});
     expect(Object.keys(indexerFormErrors({ ...base, multiLanguages: "a".repeat(201) }, false))).toEqual(["multiLanguages"]);
   });
+
+  // #750: query/grab limits validated like the other numeric acquisition fields.
+  it("accepts whole-number query/grab limits and refuses negative ones", () => {
+    const base = { ...emptyIndexerForm(), name: "NZBGeek", baseUrl: "https://api.nzbgeek.info" };
+    expect(indexerFormErrors({ ...base, queryLimit: "100", grabLimit: "20" }, false)).toEqual({});
+    expect(Object.keys(indexerFormErrors({ ...base, queryLimit: "-1", grabLimit: "-2" }, false)).sort())
+      .toEqual(["grabLimit", "queryLimit"]);
+  });
 });
 
 // #606: a built-in tracker is chosen from Deluno's list, not typed as a URL.

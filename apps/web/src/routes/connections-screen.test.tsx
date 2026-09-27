@@ -131,6 +131,29 @@ describe("indexer save payload VIP expiry (#747)", () => {
   });
 });
 
+// #750: query/grab limits and their unit round-trip the same clear-flag way
+// as the other acquisition fields.
+describe("indexer save payload query/grab limits (#750)", () => {
+  it("sends typed query/grab limits and the chosen unit", () => {
+    const form = { ...emptyIndexerForm(), name: "PrivateHD", baseUrl: "https://tracker.example.test", queryLimit: "100", grabLimit: "20", limitsUnit: "hour" as const };
+    const payload = buildIndexerSavePayload(form, form, true, "");
+    expect(payload.queryLimit).toBe(100);
+    expect(payload.grabLimit).toBe(20);
+    expect(payload.limitsUnit).toBe("hour");
+    expect(payload.clearQueryLimit).toBe(false);
+    expect(payload.clearGrabLimit).toBe(false);
+  });
+
+  it("clears query/grab limits on an edit when emptied", () => {
+    const form = { ...emptyIndexerForm(), name: "PrivateHD", baseUrl: "https://tracker.example.test" };
+    const payload = buildIndexerSavePayload(form, form, true, "");
+    expect(payload.queryLimit).toBeNull();
+    expect(payload.grabLimit).toBeNull();
+    expect(payload.clearQueryLimit).toBe(true);
+    expect(payload.clearGrabLimit).toBe(true);
+  });
+});
+
 /**
  * #807 — Priority existed in the API contract and server-side ordering but the
  * drawer never rendered it, so create/edit always sent a hard-coded fallback

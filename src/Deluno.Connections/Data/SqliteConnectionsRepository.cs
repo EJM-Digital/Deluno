@@ -78,7 +78,8 @@ public sealed class SqliteConnectionsRepository(
                 last_health_failure_json, definition_id, definition_settings_json, definition_secrets,
                 api_path, additional_parameters, anime_categories, minimum_seeders,
                 required_words, ignored_words, multi_languages,
-                vip_expires_utc, vip_warning_acknowledged_expiry_utc
+                vip_expires_utc, vip_warning_acknowledged_expiry_utc,
+                query_limit, grab_limit, limits_unit
             FROM indexer_sources
             ORDER BY priority ASC, name ASC;
             """;
@@ -137,7 +138,10 @@ public sealed class SqliteConnectionsRepository(
                 IgnoredWords = reader.IsDBNull(44) ? null : reader.GetString(44),
                 MultiLanguages = reader.IsDBNull(45) ? null : reader.GetString(45),
                 VipExpiresUtc = reader.IsDBNull(46) ? null : ParseTimestamp(reader.GetString(46)),
-                VipWarningAcknowledgedExpiryUtc = reader.IsDBNull(47) ? null : ParseTimestamp(reader.GetString(47))
+                VipWarningAcknowledgedExpiryUtc = reader.IsDBNull(47) ? null : ParseTimestamp(reader.GetString(47)),
+                QueryLimit = reader.IsDBNull(48) ? null : reader.GetInt32(48),
+                GrabLimit = reader.IsDBNull(49) ? null : reader.GetInt32(49),
+                LimitsUnit = reader.IsDBNull(50) ? null : reader.GetString(50)
             });
         }
 
@@ -291,6 +295,9 @@ public sealed class SqliteConnectionsRepository(
             IgnoredWords = NormalizeBlankToNull(request.IgnoredWords),
             MultiLanguages = NormalizeBlankToNull(request.MultiLanguages),
             VipExpiresUtc = request.VipExpiresUtc,
+            QueryLimit = request.QueryLimit,
+            GrabLimit = request.GrabLimit,
+            LimitsUnit = string.IsNullOrWhiteSpace(request.LimitsUnit) ? null : IndexerLimitsUnits.Normalize(request.LimitsUnit),
             AvailabilityDelayDays = request.AvailabilityDelayDays,
             RssEnabled = request.RssEnabled,
             AutomaticSearchEnabled = request.AutomaticSearchEnabled,
@@ -315,7 +322,7 @@ public sealed class SqliteConnectionsRepository(
                 rss_enabled, automatic_search_enabled, interactive_search_enabled, definition_id,
                 definition_settings_json, definition_secrets, api_path, additional_parameters, anime_categories,
                 minimum_seeders, required_words, ignored_words, multi_languages,
-                vip_expires_utc
+                vip_expires_utc, query_limit, grab_limit, limits_unit
             )
             VALUES (
                 @id, @name, @protocol, @privacy, @baseUrl, @apiKey, @priority, @categories, @tags,
@@ -325,7 +332,7 @@ public sealed class SqliteConnectionsRepository(
                 @rssEnabled, @automaticSearchEnabled, @interactiveSearchEnabled, @definitionId,
                 @definitionSettings, @definitionSecrets, @apiPath, @additionalParameters, @animeCategories,
                 @minimumSeeders, @requiredWords, @ignoredWords, @multiLanguages,
-                @vipExpiresUtc
+                @vipExpiresUtc, @queryLimit, @grabLimit, @limitsUnit
             );
             """;
 
@@ -373,6 +380,9 @@ public sealed class SqliteConnectionsRepository(
         AddParameter(command, "@ignoredWords", item.IgnoredWords);
         AddParameter(command, "@multiLanguages", item.MultiLanguages);
         AddParameter(command, "@vipExpiresUtc", item.VipExpiresUtc?.ToString("O"));
+        AddParameter(command, "@queryLimit", item.QueryLimit);
+        AddParameter(command, "@grabLimit", item.GrabLimit);
+        AddParameter(command, "@limitsUnit", item.LimitsUnit);
         await command.ExecuteNonQueryAsync(cancellationToken);
 
         return item;
@@ -454,6 +464,11 @@ public sealed class SqliteConnectionsRepository(
             : request.AcknowledgeVipExpiry == true
                 ? newVipExpiresUtc
                 : existing.VipWarningAcknowledgedExpiryUtc;
+        var newQueryLimit = request.ClearQueryLimit == true ? null : request.QueryLimit ?? existing.QueryLimit;
+        var newGrabLimit = request.ClearGrabLimit == true ? null : request.GrabLimit ?? existing.GrabLimit;
+        var newLimitsUnit = string.IsNullOrWhiteSpace(request.LimitsUnit)
+            ? existing.LimitsUnit
+            : IndexerLimitsUnits.Normalize(request.LimitsUnit);
         var newAvailabilityDelay = request.ClearAvailabilityDelay == true
             ? null
             : request.AvailabilityDelayDays ?? existing.AvailabilityDelayDays;
@@ -499,6 +514,9 @@ public sealed class SqliteConnectionsRepository(
                 multi_languages = @multiLanguages,
                 vip_expires_utc = @vipExpiresUtc,
                 vip_warning_acknowledged_expiry_utc = @vipWarningAcknowledgedExpiryUtc,
+                query_limit = @queryLimit,
+                grab_limit = @grabLimit,
+                limits_unit = @limitsUnit,
                 prefer_indexer_flags = @preferIndexerFlags,
                 availability_delay_days = @availabilityDelayDays,
                 rss_enabled = @rssEnabled,
@@ -546,6 +564,9 @@ public sealed class SqliteConnectionsRepository(
         AddParameter(command, "@multiLanguages", newMultiLanguages);
         AddParameter(command, "@vipExpiresUtc", newVipExpiresUtc?.ToString("O"));
         AddParameter(command, "@vipWarningAcknowledgedExpiryUtc", newVipWarningAcknowledged?.ToString("O"));
+        AddParameter(command, "@queryLimit", newQueryLimit);
+        AddParameter(command, "@grabLimit", newGrabLimit);
+        AddParameter(command, "@limitsUnit", newLimitsUnit);
         AddParameter(command, "@preferIndexerFlags", newPreferIndexerFlags);
         AddParameter(command, "@availabilityDelayDays", newAvailabilityDelay);
         AddParameter(command, "@rssEnabled", newRssEnabled ? 1 : 0);
@@ -588,6 +609,9 @@ public sealed class SqliteConnectionsRepository(
             MultiLanguages = newMultiLanguages,
             VipExpiresUtc = newVipExpiresUtc,
             VipWarningAcknowledgedExpiryUtc = newVipWarningAcknowledged,
+            QueryLimit = newQueryLimit,
+            GrabLimit = newGrabLimit,
+            LimitsUnit = newLimitsUnit,
             PreferIndexerFlags = newPreferIndexerFlags,
             AvailabilityDelayDays = newAvailabilityDelay,
             RssEnabled = newRssEnabled,

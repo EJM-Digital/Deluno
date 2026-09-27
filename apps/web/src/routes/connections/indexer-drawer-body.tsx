@@ -166,6 +166,23 @@ export function IndexerDrawerBody({
             </div>
           </Field>
           <p className="text-[length:var(--type-caption)] text-muted-foreground">Custom intervals must be between 2 and 60 seconds. The default is 2 seconds.</p>
+          <FieldRow>
+            <Field label="Query limit" error={errors.queryLimit} help="A cap on searches sent to this indexer, in addition to the request interval above.">
+              <Input type="number" min="0" step="1" value={form.queryLimit} onChange={(event) => { clearError("queryLimit"); setForm((current) => ({ ...current, queryLimit: event.target.value })); }} placeholder="No cap" />
+            </Field>
+            <Field label="Grab limit" error={errors.grabLimit} help="A cap on grabs sent to this indexer.">
+              <Input type="number" min="0" step="1" value={form.grabLimit} onChange={(event) => { clearError("grabLimit"); setForm((current) => ({ ...current, grabLimit: event.target.value })); }} placeholder="No cap" />
+            </Field>
+          </FieldRow>
+          {form.queryLimit.trim() || form.grabLimit.trim() ? (
+            <Field label="Limits unit" help="Whether the query and grab limits above count per day or per hour.">
+              <SegmentedControl<"day" | "hour">
+                value={form.limitsUnit}
+                onValueChange={(limitsUnit) => setForm((current) => ({ ...current, limitsUnit }))}
+                options={[{ value: "day", label: "Per day" }, { value: "hour", label: "Per hour" }]}
+              />
+            </Field>
+          ) : null}
           {form.protocol === "newznab" || form.protocol === "torznab" ? (
             <Field label="Additional parameters" help="Extra query parameters some indexers require, such as a site-specific token or flag.">
               <Input value={form.additionalParameters} onChange={(event) => setForm((current) => ({ ...current, additionalParameters: event.target.value }))} className="font-mono text-[length:var(--type-caption)]" placeholder="token=abc123" autoComplete="off" spellCheck={false} />

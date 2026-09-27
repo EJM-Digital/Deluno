@@ -57,6 +57,11 @@ public sealed record UpdateIndexerRequest(
     // or this same request's own new value), silencing its warning until
     // the date changes again (#747).
     bool? AcknowledgeVipExpiry = null,
+    int? QueryLimit = null,
+    bool? ClearQueryLimit = null,
+    int? GrabLimit = null,
+    bool? ClearGrabLimit = null,
+    string? LimitsUnit = null,
     int? AvailabilityDelayDays = null,
     bool? ClearAvailabilityDelay = null,
     bool? RssEnabled = null,

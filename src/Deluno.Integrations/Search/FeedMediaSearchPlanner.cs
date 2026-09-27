@@ -12,6 +12,7 @@ using Deluno.Platform.Data;
 using Deluno.Quality;
 using Deluno.Quality.Contracts;
 using Deluno.Quality.Guides;
+using Deluno.Connections;
 using Deluno.Connections.Contracts;
 using Deluno.Connections.Data;
 using Deluno.Quality.ReleasePreferences;
@@ -31,7 +32,8 @@ public sealed class FeedMediaSearchPlanner(
     IIndexerQueryStatsRepository? indexerQueryStatsRepository = null,
     IReleaseProfileRepository? releaseProfileRepository = null,
     IGuidePackageStore? guidePackageStore = null,
-    TrackerIndexers? trackerIndexers = null)
+    TrackerIndexers? trackerIndexers = null,
+    IIndexerCallLimiter? indexerCallLimiter = null)
     : IMediaSearchPlanner
 {
     private const int IndexerResultLimit = 100;
@@ -460,6 +462,38 @@ public sealed class FeedMediaSearchPlanner(
         if (waited > TimeSpan.FromSeconds(1))
         {
             logger.LogDebug("Waited {Wait} before querying {Host}.", waited, uri.Host);
+        }
+
+        // #750: a hard cap in addition to the pacing above. Checked after
+        // the interval throttle (so a skip there is reported first) and
+        // before the resilience-wrapped request itself, since a refused
+        // call must never count as a query attempt.
+        if (indexerCallLimiter is not null)
+        {
+            var limitResult = indexerCallLimiter.TryConsumeQuery(indexer, DateTimeOffset.UtcNow);
+            if (!limitResult.Allowed)
+            {
+                logger.LogInformation(
+                    "Skipped {IndexerName}: its {Limit}-query-per-{Unit} cap is reached; resets {ResetsAtUtc}.",
+                    indexer.Name,
+                    limitResult.Limit,
+                    limitResult.Unit,
+                    limitResult.ResetsAtUtc);
+
+                return WithTelemetry(
+                    new IndexerSearchOutcome(
+                        [],
+                        CandidatesTruncatedByIndexer: false,
+                        Failed: false,
+                        CircuitOpen: false,
+                        Outcome: "query_limit_reached",
+                        ErrorMessage: $"{indexer.Name}'s query limit ({limitResult.Limit} per {limitResult.Unit}) is reached for now."),
+                    indexer,
+                    queryText,
+                    mediaType,
+                    queryKind,
+                    startedTimestamp);
+            }
         }
 
         var result = await resiliencePolicy.ExecuteAsync(

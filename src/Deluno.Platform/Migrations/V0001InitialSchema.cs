@@ -94,7 +94,8 @@ public static class PlatformDatabaseMigrations
         new V0083IndexerMinimumSeeders(),
         new V0084IndexerRequiredIgnoredWords(),
         new V0085IndexerMultiLanguages(),
-        new V0086IndexerVipExpiry()
+        new V0086IndexerVipExpiry(),
+        new V0087IndexerQueryGrabLimits()
     ];
 
     private sealed class V0001InitialSchema : SqliteSqlMigration
