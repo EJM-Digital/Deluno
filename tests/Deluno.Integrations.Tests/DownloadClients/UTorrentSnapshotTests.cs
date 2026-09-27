@@ -47,6 +47,28 @@ public sealed class UTorrentSnapshotTests
         Assert.Null(item.ErrorMessage);
     }
 
+    /// <summary>
+    /// #880/#881: uTorrent's bitfield gives no tracker-vs-local distinction
+    /// the way Transmission's error code does, so the Error bit is read the
+    /// same way qBittorrent's bare "error" state is — a problem on this
+    /// machine, not the release.
+    /// </summary>
+    [Fact]
+    public async Task Errored_torrent_is_a_setup_problem()
+    {
+        var item = await Snapshot(statusBits: Error, progress: 0, speed: 0, statusMessage: "Access is denied.");
+
+        Assert.True(item.IsSetupProblem);
+    }
+
+    [Fact]
+    public async Task Non_errored_torrent_is_not_a_setup_problem()
+    {
+        var item = await Snapshot(statusBits: Started, progress: 50, speed: 1_000_000, statusMessage: string.Empty);
+
+        Assert.False(item.IsSetupProblem);
+    }
+
     [Fact]
     public async Task Paused_torrent_reads_as_queued()
     {

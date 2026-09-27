@@ -268,6 +268,11 @@ public sealed class NzbGetDownloadClient(IHttpClientFactory httpClientFactory) :
     }
 
     private static int CalculateEta(long remainingBytes, long? bytesPerSecond) => remainingBytes <= 0 || bytesPerSecond is null or <= 0 ? 0 : Convert.ToInt32(Math.Clamp(remainingBytes / (double)bytesPerSecond.Value, 0, int.MaxValue));
+    // #880/#881: like SABnzbd, NZBGet has no per-item setup-problem signal
+    // while a group is still in the live queue — WARNING/SPACE (disk full) is
+    // a history status for a finished download whose unpack stopped, already
+    // handled as DownloadClientHistoryOutcomes.NeedsAttention rather than a
+    // failure. A live-queue QueueError stays a release-side finding.
     private static string? QueueError(string? status) => string.IsNullOrWhiteSpace(status) ? null : status.Contains("fail", StringComparison.OrdinalIgnoreCase) || status.Contains("error", StringComparison.OrdinalIgnoreCase) || status.Contains("stall", StringComparison.OrdinalIgnoreCase) ? status : null;
     /// <summary>
     /// NZBGet's history status is MAIN/DETAIL: SUCCESS/UNPACK, FAILURE/PAR,

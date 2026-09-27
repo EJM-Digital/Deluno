@@ -472,7 +472,8 @@ public sealed class DownloadClientTelemetryService(
                     item.AddedUtc,
                     item.EtaSeconds,
                     item.ReleaseName,
-                    item.Peers),
+                    item.Peers,
+                    item.IsSetupProblem),
                 snapshot.CapturedUtc,
                 rules)))
             .ToArray();

@@ -62,7 +62,13 @@ public sealed class DelugeDownloadClient(IHttpClientFactory httpClientFactory) :
                 // the torrent completed; it is 0 while still downloading.
                 Ratio: item.Ratio,
                 SeedingMinutes: item.SeedingTime is null ? null : (int)Math.Clamp(Convert.ToInt64(item.SeedingTime.Value) / 60, 0, int.MaxValue),
-                UploadSpeedMbps: Math.Round((item.UploadPayloadRate ?? 0) / 1_000_000d, 1));
+                UploadSpeedMbps: Math.Round((item.UploadPayloadRate ?? 0) / 1_000_000d, 1),
+                // #880/#881: tracker_status carries a tracker banning,
+                // unregistering, or dropping the release — a release-side
+                // finding. Deluge's own message field is the daemon speaking
+                // for itself (a move that failed, a path it could not write
+                // to), which is this machine's problem.
+                IsSetupProblem: TrackerError(item.TrackerStatus) is null && DelugeMessage(item.Message) is not null);
         })
             .Select(item => DownloadClientHelpers.ReconcileTorrentStatus(item, capturedUtc))
             .ToArray();

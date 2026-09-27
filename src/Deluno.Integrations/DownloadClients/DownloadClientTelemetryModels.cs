@@ -190,7 +190,15 @@ public sealed record DownloadQueueItem(
     /// which has nothing to upload.
     /// </summary>
     double UploadSpeedMbps = 0,
-    IntegrationFailure? Failure = null);
+    IntegrationFailure? Failure = null,
+    /// <summary>
+    /// Set by the client adapter when the client itself reports a local setup
+    /// problem — a full disk, an I/O error, a permissions problem, or files
+    /// missing from disk — rather than anything about the release (#880,
+    /// #881). Carried through to <see cref="Deluno.Contracts.RecoveryQueueSnapshot"/>
+    /// so it never earns a strike or triggers the cleanup remediation path.
+    /// </summary>
+    bool IsSetupProblem = false);
 
 /// <summary>
 /// An observational queue-health signal. These findings never cause Deluno to remove

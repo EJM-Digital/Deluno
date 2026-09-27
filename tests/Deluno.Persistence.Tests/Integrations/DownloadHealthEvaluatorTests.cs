@@ -1,5 +1,6 @@
 using Deluno.Contracts;
 using Deluno.Integrations.DownloadClients;
+using Deluno.Platform.Contracts;
 using Deluno.Recovery.Policies;
 
 namespace Deluno.Persistence.Tests.Integrations;
@@ -22,6 +23,38 @@ public sealed class DownloadHealthEvaluatorTests
         Assert.True(finding.CanSafelyRetry);
         Assert.False(finding.CanSafelyRemove);
         Assert.Contains("Tracker timed out", finding.Evidence);
+    }
+
+    /// <summary>#880/#881: a local setup problem never strikes, so it must be its own Kind, never "client-stalled".</summary>
+    [Fact]
+    public void Evaluate_SetupProblem_IsItsOwnKindAndNeverCountsAStrike()
+    {
+        var findings = Evaluate(CreateItem(
+            status: DownloadQueueStatuses.Stalled,
+            errorMessage: "qBittorrent reports this torrent's data is missing from disk.",
+            isSetupProblem: true));
+
+        var finding = Assert.Single(findings);
+        Assert.Equal(DownloadHealthStrikes.ClientSetupProblem, finding.Kind);
+        Assert.False(DownloadHealthStrikes.Counts(finding.Kind));
+        Assert.Equal("critical", finding.Severity);
+        Assert.True(finding.CanSafelyRetry);
+        Assert.False(finding.CanSafelyRemove);
+        Assert.Contains("machine", finding.Summary, StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>The same stalled/errored item, without the client's setup-problem signal, keeps the old strike-counting behavior.</summary>
+    [Fact]
+    public void Evaluate_StalledClientItem_WithoutSetupSignal_StillCountsAsClientStalled()
+    {
+        var findings = Evaluate(CreateItem(
+            status: DownloadQueueStatuses.Stalled,
+            errorMessage: "No seeds found.",
+            isSetupProblem: false));
+
+        var finding = Assert.Single(findings);
+        Assert.Equal(DownloadHealthStrikes.ClientStalled, finding.Kind);
+        Assert.True(DownloadHealthStrikes.Counts(finding.Kind));
     }
 
     [Fact]
@@ -114,7 +147,8 @@ public sealed class DownloadHealthEvaluatorTests
         DateTimeOffset? addedUtc = null,
         double speedMbps = 1.2,
         int etaSeconds = 600,
-        string? sourcePath = "D:\\downloads\\example.mkv")
+        string? sourcePath = "D:\\downloads\\example.mkv",
+        bool isSetupProblem = false)
         => new(
             Id: "queue-1",
             ClientId: "client-1",
@@ -134,7 +168,8 @@ public sealed class DownloadHealthEvaluatorTests
             IndexerName: "Test indexer",
             ErrorMessage: errorMessage,
             AddedUtc: addedUtc ?? CapturedUtc.AddMinutes(-10),
-            SourcePath: sourcePath);
+            SourcePath: sourcePath,
+            IsSetupProblem: isSetupProblem);
 
     private static IReadOnlyList<DownloadHealthFinding> Evaluate(DownloadQueueItem item) =>
         Evaluator.Evaluate(
@@ -146,7 +181,8 @@ public sealed class DownloadHealthEvaluatorTests
                 item.AddedUtc,
                 item.EtaSeconds,
                 item.ReleaseName,
-                item.Peers),
+                item.Peers,
+                item.IsSetupProblem),
             CapturedUtc,
             DownloadHealthRulesSettings.Default)
         .Select(finding => new DownloadHealthFinding(

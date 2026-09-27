@@ -127,7 +127,13 @@ public sealed class UTorrentDownloadClient(Func<HttpMessageHandler>? handlerFact
                 SourcePath: string.IsNullOrWhiteSpace(savePath) ? null : savePath,
                 UploadSpeedMbps: Math.Round(uploadSpeed, 1),
                 Ratio: ratioPerMille is null ? null : Math.Round(ratioPerMille.Value / 1000d, 3),
-                SeedingMinutes: seedingMinutesByHash.TryGetValue(hash, out var minutes) ? minutes : null);
+                SeedingMinutes: seedingMinutesByHash.TryGetValue(hash, out var minutes) ? minutes : null,
+                // #880/#881: uTorrent's status bitfield gives no tracker-vs-local
+                // distinction the way Transmission's error code does — the Error
+                // bit is the only signal, same as qBittorrent's bare "error"
+                // state, so it is read the same way: a problem on this machine
+                // (disk, permissions), not the release.
+                IsSetupProblem: errored);
 
             // The one rule every torrent adapter applies (#650). uTorrent's own
             // status is decoded above rather than guessed from progress/speed,

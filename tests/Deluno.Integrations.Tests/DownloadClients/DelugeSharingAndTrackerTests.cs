@@ -63,6 +63,25 @@ public sealed class DelugeSharingAndTrackerTests
         Assert.Null(item.ErrorMessage);
     }
 
+    /// <summary>#880/#881: a tracker banning or unregistering the release is the release's problem, not this machine's.</summary>
+    [Fact]
+    public async Task A_tracker_error_is_not_a_setup_problem()
+    {
+        var item = await Snapshot(state: "Downloading", ratio: null, seedingTime: null, trackerStatus: "Error: torrent banned");
+
+        Assert.False(item.IsSetupProblem);
+    }
+
+    /// <summary>#880/#881: Deluge's own message field, once it says anything besides "OK", is the daemon speaking for itself — a local problem.</summary>
+    [Fact]
+    public async Task Deluges_own_message_is_a_setup_problem()
+    {
+        var item = await Snapshot(state: "Error", ratio: null, seedingTime: null, trackerStatus: "Announce sent", message: "queue failed: Errno 28 No space left on device");
+
+        Assert.True(item.IsSetupProblem);
+        Assert.Equal("queue failed: Errno 28 No space left on device", item.ErrorMessage);
+    }
+
     [Fact]
     public async Task Paused_by_a_person_is_distinct_from_queued()
     {
@@ -91,12 +110,12 @@ public sealed class DelugeSharingAndTrackerTests
                 item.ReleaseName),
             capturedUtc: item.AddedUtc);
 
-    private static async Task<DownloadQueueItem> Snapshot(string state, double? ratio, double? seedingTime, string trackerStatus)
+    private static async Task<DownloadQueueItem> Snapshot(string state, double? ratio, double? seedingTime, string trackerStatus, string message = "OK")
     {
         var savePath = @"C:\Deluno\Downloads\Deluge";
         var torrent = "{\"result\":{\"torrents\":{\"abc123\":{\"name\":\"Sherlock.Jr.1924.1080p.BluRay\",\"state\":" + Json(state)
             + ",\"progress\":40.0,\"download_payload_rate\":0,\"upload_payload_rate\":0,\"eta\":0,\"total_size\":5000000000,\"total_done\":2000000000,\"num_peers\":2,"
-            + "\"time_added\":1727000000,\"label\":\"movies\",\"message\":\"OK\",\"save_path\":" + Json(savePath)
+            + "\"time_added\":1727000000,\"label\":\"movies\",\"message\":" + Json(message) + ",\"save_path\":" + Json(savePath)
             + (ratio is null ? string.Empty : $",\"ratio\":{ratio.Value.ToString(System.Globalization.CultureInfo.InvariantCulture)}")
             + (seedingTime is null ? string.Empty : $",\"seeding_time\":{seedingTime.Value.ToString(System.Globalization.CultureInfo.InvariantCulture)}")
             + ",\"tracker_status\":" + Json(trackerStatus)
