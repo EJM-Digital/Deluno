@@ -157,7 +157,7 @@ describe("Subtitle languages: per-language hearing-impaired preference (#836)", 
     expect(body.languageTypePreferences).toEqual([{ language: "en", hearingImpaired: "plain-preferred", includeForced: true }]);
   });
 
-  it("names the configured chmod when Set Permissions is on (#838)", async () => {
+  it("names the configured chmod when permissions are on (#838)", async () => {
     Object.assign(loaderData, {
       ...libraryLoaderData,
       settings: { ...emptyPlatformSettingsSnapshot, setPermissionsOnImport: true, folderChmod: "755" }
@@ -171,7 +171,89 @@ describe("Subtitle languages: per-language hearing-impaired preference (#836)", 
 
     fireEvent.click(screen.getByRole("row", { name: /Movies/ }));
     expect(screen.getByText((_, element) =>
-      element?.tagName === "P" && /Set Permissions.*chmod \(755\)/.test(element.textContent ?? "")
+      element?.tagName === "P" && /Set permissions on written subtitles.*chmod \(755\)/.test(element.textContent ?? "")
     )).toBeInTheDocument();
+  });
+});
+
+/**
+ * #838: the chmod/chown setting Import Policy already has for imported media
+ * is also a control in the Subtitles settings area itself, not only a status
+ * line pointing elsewhere — because the issue's own words are "in the
+ * Subtitles settings area". It PATCHes the same /api/settings fields Import
+ * Policy's own Permissions section writes, so there is one value, not two
+ * that could disagree.
+ */
+describe("Subtitle languages: permission control lives in this screen too (#838)", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("reflects the saved switch and chmod", () => {
+    Object.assign(loaderData, {
+      libraries: [],
+      languages: [],
+      settings: { ...emptyPlatformSettingsSnapshot, setPermissionsOnImport: true, folderChmod: "750", chownGroup: "media" }
+    });
+
+    render(
+      <MemoryRouter>
+        <SubtitleLanguagesPage />
+      </MemoryRouter>
+    );
+
+    expect(screen.getByRole("switch", { name: /^Set permissions on written subtitles/ })).toBeChecked();
+    expect(screen.getByLabelText("Chmod")).toHaveValue("750");
+    expect(screen.getByLabelText("Chown group")).toHaveValue("media");
+  });
+
+  it("saves a settings PATCH turning the switch on", async () => {
+    Object.assign(loaderData, {
+      libraries: [],
+      languages: [],
+      settings: { ...emptyPlatformSettingsSnapshot, setPermissionsOnImport: false }
+    });
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => ({}) });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(
+      <MemoryRouter>
+        <SubtitleLanguagesPage />
+      </MemoryRouter>
+    );
+
+    fireEvent.click(screen.getByRole("switch", { name: /^Set permissions on written subtitles/ }));
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toContain("/api/settings");
+    expect(init.method).toBe("PATCH");
+    expect(JSON.parse(init.body as string)).toEqual({ setPermissionsOnImport: true, folderChmod: "", chownGroup: "" });
+  });
+
+  it("saves a typed chmod value on blur", async () => {
+    Object.assign(loaderData, {
+      libraries: [],
+      languages: [],
+      settings: { ...emptyPlatformSettingsSnapshot, setPermissionsOnImport: true, folderChmod: "" }
+    });
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => ({}) });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(
+      <MemoryRouter>
+        <SubtitleLanguagesPage />
+      </MemoryRouter>
+    );
+
+    const chmod = screen.getByLabelText("Chmod");
+    fireEvent.change(chmod, { target: { value: "755" } });
+    fireEvent.blur(chmod);
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toContain("/api/settings");
+    expect(init.method).toBe("PATCH");
+    expect(JSON.parse(init.body as string)).toEqual({ setPermissionsOnImport: true, folderChmod: "755", chownGroup: "" });
   });
 });
