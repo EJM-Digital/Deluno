@@ -524,7 +524,8 @@ public sealed partial class ImportPipelineService(
             var cleanup = ApplyWorkflowCleanup(
                 preview.SourcePath,
                 matchedLibrary,
-                await IsStillSharedByClientAsync(request.DispatchId, cancellationToken));
+                await IsStillSharedByClientAsync(request.DispatchId, cancellationToken),
+                mode);
             var provenance = BuildImportProvenance(
                 request,
                 preview.SourcePath,
@@ -1480,7 +1481,9 @@ public sealed partial class ImportPipelineService(
             var cleanup = placements.Select(placement => ApplyWorkflowCleanup(
                 placement.File.Preview.SourcePath,
                 ResolveLibraryForImport(placement.File.Preview.DestinationPath, "tv", libraries),
-                sharedByClient)).ToArray();
+                sharedByClient,
+                modeUsed,
+                enforceCopyCleanup: false)).ToArray();
             var matchedLibrary = ResolveLibraryForImport(plan.Summary.DestinationPath, "tv", libraries);
             var provenance = BuildImportProvenance(
                 request,
@@ -3829,9 +3832,30 @@ public sealed partial class ImportPipelineService(
         return Normalize(path).StartsWith(Normalize(folder) + "/", StringComparison.OrdinalIgnoreCase);
     }
 
-    private WorkflowCleanupResult ApplyWorkflowCleanup(string sourcePath, LibraryItem? library, bool stillSharedByClient)
+    private WorkflowCleanupResult ApplyWorkflowCleanup(
+        string sourcePath,
+        LibraryItem? library,
+        bool stillSharedByClient,
+        string transferModeUsed,
+        // #892 is scoped to a single file's own source: a season pack's
+        // already-committed retry re-derives its answer by re-hashing each
+        // source file against its destination, which needs the pack's
+        // sources to still be there. Packs keep the opt-in setting below
+        // unchanged until that check no longer needs the files themselves.
+        bool enforceCopyCleanup = true)
     {
-        if (library is null || !string.Equals(library.CleanupMode, "remove-source-after-import", StringComparison.OrdinalIgnoreCase))
+        // #892: a copy import leaves a second, full copy of the data on disk -
+        // the source and the library file no longer share anything. A hardlink
+        // import's "source" is the same bytes under a second name, so removing
+        // it is the opt-in housekeeping setting below and nothing changes for
+        // an install that never turned it on. A copy import gets no such
+        // choice: once the copy is verified (it is, or this method would not
+        // have been reached) the original is checked and cleared, subject to
+        // the same sharing rule as everything else.
+        var cleanupEnabled = (enforceCopyCleanup && string.Equals(transferModeUsed, "copy", StringComparison.OrdinalIgnoreCase))
+            || (library is not null && string.Equals(library.CleanupMode, "remove-source-after-import", StringComparison.OrdinalIgnoreCase));
+
+        if (library is null || !cleanupEnabled)
         {
             return new WorkflowCleanupResult("keep-source", false, 0, "Source kept because this workflow is configured to retain completed downloads.");
         }
