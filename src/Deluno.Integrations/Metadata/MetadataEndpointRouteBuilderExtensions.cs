@@ -50,6 +50,11 @@ public static class MetadataEndpointRouteBuilderExtensions
             // last resort ignores it, correctly - there is no TMDb record to
             // fetch when there is no TMDb.
             string? providerId,
+            // Set by the add-title search box when the person typed an
+            // explicit tmdb:/imdb:/tvdb: prefix rather than a title (#792).
+            // `providerId` then carries the raw id and this says which
+            // catalogue it names.
+            string? idSource,
             IMetadataProvider provider,
             IMetadataLibraryPresence libraryPresence,
             CancellationToken cancellationToken) =>
@@ -60,7 +65,7 @@ public static class MetadataEndpointRouteBuilderExtensions
                 return denied;
             }
 
-            var request = new MetadataLookupRequest(query, mediaType, year, providerId);
+            var request = new MetadataLookupRequest(query, mediaType, year, providerId, idSource);
             var results = await provider.SearchAsync(request, cancellationToken);
 
             // After the provider, never inside it. The provider caches what it

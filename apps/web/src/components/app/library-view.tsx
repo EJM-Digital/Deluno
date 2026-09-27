@@ -32,7 +32,7 @@ import {
 import { useLibraryFilters } from "../../hooks/use-library-filters";
 import { useLatestRequest } from "../../hooks/use-latest-request";
 import { useBulkEdit } from "../../hooks/use-bulk-edit";
-import { createInitialLibraryForm, metadataCreatePayload, useLibraryCreate, type CreateFormDraft } from "../../hooks/use-library-create";
+import { createInitialLibraryForm, metadataCreatePayload, parseIdPrefixedSearch, useLibraryCreate, type CreateFormDraft } from "../../hooks/use-library-create";
 import { authedFetch } from "../../lib/use-auth";
 import { describeRequestFailure } from "../../lib/search-reasons";
 import { toast } from "../shell/toaster";
@@ -660,16 +660,23 @@ export function LibraryView({
       return;
     }
 
+    const idSearch = parseIdPrefixedSearch(searchTitle);
+
     const searchSequence = metadataSearchSequence.current + 1;
     metadataSearchSequence.current = searchSequence;
     setIsSearchingMetadata(true);
     try {
       const params = new URLSearchParams({
-        mediaType: variant === "movies" ? "movies" : "tv",
-        query: searchTitle
+        mediaType: variant === "movies" ? "movies" : "tv"
       });
-      if (createForm.year) {
-        params.set("year", createForm.year);
+      if (idSearch) {
+        params.set("providerId", idSearch.id);
+        params.set("idSource", idSearch.source);
+      } else {
+        params.set("query", searchTitle);
+        if (createForm.year) {
+          params.set("year", createForm.year);
+        }
       }
 
       const results = await fetchJson<MetadataSearchResult[]>(`/api/metadata/search?${params.toString()}`);
@@ -679,7 +686,13 @@ export function LibraryView({
 
       setMetadataResults(results);
       if (results.length === 0 && !options.silent) {
-        toast.info(metadataStatus?.isConfigured === false ? "Title matching is temporarily unavailable." : "No metadata matches found.");
+        toast.info(
+          metadataStatus?.isConfigured === false
+            ? "Title matching is temporarily unavailable."
+            : idSearch
+              ? `No title found for ${idSearch.source}:${idSearch.id}.`
+              : "No metadata matches found."
+        );
       }
     } catch (error) {
       const message =

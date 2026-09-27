@@ -15,6 +15,24 @@ export function createInitialLibraryForm(): CreateFormDraft {
   return { title: "", year: "", imdbId: "", monitored: true, metadata: null };
 }
 
+export type IdPrefixedSearch = { source: "tmdb" | "imdb" | "tvdb"; id: string };
+
+/**
+ * Recognizes an explicit `tmdb:<id>`, `imdb:<id>` or `tvdb:<id>` prefix typed
+ * into the add-title search box (#792), the same syntax Sonarr's add-series
+ * search accepts. A recognized prefix is an identity assertion - it is routed
+ * to a direct id lookup instead of a title search - so this only matches text
+ * that starts with one of the three prefixes, never a bare id or a title that
+ * happens to contain a colon.
+ */
+export function parseIdPrefixedSearch(text: string): IdPrefixedSearch | null {
+  const match = /^(tmdb|imdb|tvdb):\s*(\S+)$/i.exec(text.trim());
+  if (!match) return null;
+  const id = match[2].trim();
+  if (!id) return null;
+  return { source: match[1].toLowerCase() as IdPrefixedSearch["source"], id };
+}
+
 export function metadataCreatePayload(metadata: MetadataSearchResult | null) {
   if (!metadata) return {};
   // `libraryEntryId` is this install's answer right now, not a fact about the

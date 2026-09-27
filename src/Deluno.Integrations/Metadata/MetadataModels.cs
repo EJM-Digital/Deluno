@@ -235,7 +235,15 @@ public sealed record MetadataLookupRequest(
     string? Query,
     string? MediaType,
     int? Year,
-    string? ProviderId);
+    string? ProviderId,
+    /// <summary>
+    /// Set when <see cref="ProviderId"/> is an id typed with an explicit
+    /// prefix (tmdb:/imdb:/tvdb:) rather than a title the person is
+    /// searching for. "tmdb", "imdb" or "tvdb" - null means the ordinary
+    /// title-search path. An id search is an identity assertion: it returns
+    /// the single matching title or nothing, never a fuzzy result list.
+    /// </summary>
+    string? IdSource = null);
 
 /// <summary>
 /// The result of resolving a title Deluno has already linked to a provider.
