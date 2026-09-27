@@ -100,7 +100,38 @@ public sealed class TransmissionDownloadClient(IHttpClientFactory httpClientFact
             IsSetupProblem: item.Error == TrLocalError))
             .Select(item => DownloadClientHelpers.ReconcileTorrentStatus(item, capturedUtc))
             .ToArray();
-        return CreateSnapshot(client, queue, capturedUtc, "healthy", $"Connected to Transmission at {baseUri.Host}:{baseUri.Port}.");
+        var freeSpaceBytes = await GetFreeSpaceBytesAsync(client, baseUri, cancellationToken);
+        var (health, message) = DownloadClientHelpers.EvaluateDiskSpaceHealth(
+            $"Connected to Transmission at {baseUri.Host}:{baseUri.Port}.",
+            freeSpaceBytes,
+            null);
+        return CreateSnapshot(client, queue, capturedUtc, health, message, freeSpaceBytes: freeSpaceBytes);
+    }
+
+    /// <summary>
+    /// Transmission's <c>free-space</c> RPC method, asked about its own
+    /// download folder (#909). A daemon too old to know the method, or one
+    /// with nothing configured to ask about, reports nothing rather than a
+    /// guessed number.
+    /// </summary>
+    private async Task<long?> GetFreeSpaceBytesAsync(DownloadClientItem client, Uri baseUri, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var session = await SendAsync(client, baseUri, new TransmissionRequest("session-get", new() { ["fields"] = new[] { "download-dir" } }), cancellationToken);
+            var downloadDir = session.Arguments?.DownloadDir;
+            if (string.IsNullOrWhiteSpace(downloadDir))
+            {
+                return null;
+            }
+
+            var freeSpace = await SendAsync(client, baseUri, new TransmissionRequest("free-space", new() { ["path"] = downloadDir }), cancellationToken);
+            return freeSpace.Arguments?.SizeBytes;
+        }
+        catch (Exception exception) when (exception is HttpRequestException or System.Text.Json.JsonException or TaskCanceledException)
+        {
+            return null;
+        }
     }
 
     /// <summary>
@@ -255,7 +286,8 @@ public sealed class TransmissionDownloadClient(IHttpClientFactory httpClientFact
         [property: JsonPropertyName("torrents")] IReadOnlyList<TransmissionTorrent>? Torrents,
         [property: JsonPropertyName("torrent-added")] TransmissionAdded? Added = null,
         [property: JsonPropertyName("torrent-duplicate")] TransmissionAdded? Duplicate = null,
-        [property: JsonPropertyName("download-dir")] string? DownloadDir = null);
+        [property: JsonPropertyName("download-dir")] string? DownloadDir = null,
+        [property: JsonPropertyName("size-bytes")] long? SizeBytes = null);
     private sealed record TransmissionAdded([property: JsonPropertyName("id")] int? Id, [property: JsonPropertyName("hashString")] string? HashString);
     private sealed record TransmissionTorrent([property: JsonPropertyName("id")] int? Id, [property: JsonPropertyName("name")] string? Name, [property: JsonPropertyName("status")] int? Status, [property: JsonPropertyName("percentDone")] double? PercentDone, [property: JsonPropertyName("rateDownload")] long? RateDownload, [property: JsonPropertyName("rateUpload")] long? RateUpload, [property: JsonPropertyName("eta")] int? Eta, [property: JsonPropertyName("totalSize")] long? TotalSize, [property: JsonPropertyName("downloadedEver")] long? DownloadedEver, [property: JsonPropertyName("peersConnected")] int? PeersConnected, [property: JsonPropertyName("addedDate")] long? AddedDate, [property: JsonPropertyName("downloadDir")] string? DownloadDir, [property: JsonPropertyName("labels")] IReadOnlyList<string>? Labels, [property: JsonPropertyName("error")] int? Error, [property: JsonPropertyName("errorString")] string? ErrorString, [property: JsonPropertyName("peersSendingToUs")] int? PeersSendingToUs = null, [property: JsonPropertyName("isStalled")] bool? IsStalled = null, [property: JsonPropertyName("uploadRatio")] double? UploadRatio = null, [property: JsonPropertyName("secondsSeeding")] long? SecondsSeeding = null);
 }

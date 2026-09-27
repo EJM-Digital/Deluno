@@ -261,6 +261,13 @@ public sealed record DownloadClientTelemetrySnapshot(
 {
     /// <summary>Last live integration failure, if this snapshot is degraded.</summary>
     public IntegrationFailure? LastFailure { get; init; }
+
+    /// <summary>
+    /// Free space on the client's own download volume, exactly as the client's
+    /// API reports it (#909) -- null when the protocol has no such call
+    /// (uTorrent's WebUI) rather than a guess dressed up as a reading.
+    /// </summary>
+    public long? FreeSpaceBytes { get; init; }
 }
 
 public sealed record DownloadTelemetryOverview(

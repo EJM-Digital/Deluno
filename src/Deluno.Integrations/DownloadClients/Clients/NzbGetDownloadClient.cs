@@ -81,11 +81,12 @@ public sealed class NzbGetDownloadClient(IHttpClientFactory httpClientFactory) :
                 CalculateEta(remaining, status?.DownloadRate), size, downloaded, 0, "NZBGet", QueueError(item.Status), capturedUtc, JobFolder(item.DestDir));
         }).ToArray();
         var history = await GetHistoryCoreAsync(http, client, baseUri, capturedUtc, cancellationToken);
+        var freeSpaceBytes = status?.FreeDiskSpaceMB is > 0 ? status.FreeDiskSpaceMB.Value * 1_000_000L : (long?)null;
         var (health, message) = DownloadClientHelpers.EvaluateDiskSpaceHealth(
             $"Connected to NZBGet at {baseUri.Host}:{baseUri.Port}.",
-            status?.FreeDiskSpaceMB is > 0 ? status.FreeDiskSpaceMB.Value * 1_000_000L : null,
+            freeSpaceBytes,
             null);
-        return CreateSnapshot(client, queue, capturedUtc, health, message, history.Count > 0 ? history : null);
+        return CreateSnapshot(client, queue, capturedUtc, health, message, history.Count > 0 ? history : null, freeSpaceBytes: freeSpaceBytes);
     }
 
     public override async Task<IReadOnlyList<DownloadClientHistoryItem>> GetHistoryAsync(DownloadClientItem client, DateTimeOffset capturedUtc, CancellationToken cancellationToken)
