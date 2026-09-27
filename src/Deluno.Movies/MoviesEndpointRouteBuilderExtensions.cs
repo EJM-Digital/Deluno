@@ -2145,6 +2145,93 @@ public static class MoviesEndpointRouteBuilderExtensions
             });
         });
 
+        /*
+          #842: a per-file, run-now resync - not the bulk button, which only
+          forgets the scan record and answers "queued". This runs the actual
+          timing logic synchronously and answers "done" with what it found,
+          the same as Bazarr's per-file force-sync.
+        */
+        movies.MapPost("/{id}/subtitles/{language}/resync", async (
+            HttpContext httpContext,
+            string id,
+            string language,
+            IMovieCatalogRepository repository,
+            ILibrariesRepository librariesRepository,
+            IMediaSubtitleRepository subtitles,
+            IActivityFeedRepository activity,
+            ISubtitleTimingSync timingSync,
+            IRealtimeEventPublisher realtimeEventPublisher,
+            CancellationToken cancellationToken) =>
+        {
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
+            if (denied is not null)
+            {
+                return denied;
+            }
+
+            var movie = await repository.GetByIdAsync(id, cancellationToken);
+            if (movie is null)
+            {
+                return Results.NotFound();
+            }
+
+            if (string.IsNullOrWhiteSpace(movie.FilePath))
+            {
+                return Results.NotFound(new { message = "This movie has no file on disk to resync a subtitle against." });
+            }
+
+            var held = (await subtitles.ListSubtitlesAsync(MediaKind.Movie, id, cancellationToken))
+                .FirstOrDefault(row => string.Equals(row.Language, language, StringComparison.OrdinalIgnoreCase) && !row.Forced);
+            if (held is null || held.FilePath is null)
+            {
+                return Results.NotFound(new { message = $"There is no {language} subtitle held for this movie." });
+            }
+
+            var libraries = await librariesRepository.ListLibrariesAsync(cancellationToken);
+            var library = libraries.FirstOrDefault(item => item.Id == movie.LibraryId);
+            var policy = SubtitleTimingPolicyCodec.Normalize(library?.SubtitleTimingPolicy) ?? new SubtitleTimingPolicy();
+            // A run-now request is a person asking right now. Honouring a
+            // disabled policy here would make the button lie about doing
+            // something when it silently did nothing, so this one override
+            // is deliberate: enabled for this one call, whatever the library
+            // otherwise defaults to.
+            policy = policy with { Enabled = true };
+
+            var result = await timingSync.SyncAsync(
+                movie.FilePath, held.FilePath, originalLanguage: null, cancellationToken, policy);
+
+            if (result.Outcome == SubtitleTimingOutcome.Mismatched)
+            {
+                await SubtitleRejection.RejectAsync(
+                    subtitles, activity, MediaKind.Movie, id, movie.Title, language,
+                    forced: false, held.HearingImpaired, held.FilePath, held.SourceKey, held.Provider,
+                    releaseName: null, result.Reason, cancellationToken);
+            }
+            else
+            {
+                await subtitles.RecordTimingStatusAsync(
+                    MediaKind.Movie, id, language, forced: false, held.HearingImpaired,
+                    result.Outcome switch
+                    {
+                        SubtitleTimingOutcome.Moved => "moved",
+                        SubtitleTimingOutcome.AlreadyInTime => "already_in_time",
+                        _ => "not_checked"
+                    },
+                    result.Reason,
+                    cancellationToken);
+            }
+
+            await realtimeEventPublisher.PublishEntityChangedAsync("Movie", id, cancellationToken);
+
+            return Results.Ok(new
+            {
+                done = true,
+                outcome = result.Outcome.ToString(),
+                moved = result.Adjusted,
+                message = result.Reason
+            });
+        });
+
         movies.MapPost("/bulk/quality-profile", async (
             HttpContext httpContext,
             [FromBody] BulkQualityProfileRequest request,

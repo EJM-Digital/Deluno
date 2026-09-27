@@ -2094,6 +2094,91 @@ public static class SeriesEndpointRouteBuilderExtensions
             });
         });
 
+        /*
+          #842: a per-file, run-now resync for one episode's subtitle - see
+          the movies twin for why this answers "done" rather than "queued".
+        */
+        series.MapPost("/episodes/{episodeId}/subtitles/{language}/resync", async (
+            HttpContext httpContext,
+            string episodeId,
+            string language,
+            ISeriesCatalogRepository repository,
+            ILibrariesRepository librariesRepository,
+            IMediaSubtitleRepository subtitles,
+            IActivityFeedRepository activity,
+            ISubtitleTimingSync timingSync,
+            IRealtimeEventPublisher realtimeEventPublisher,
+            CancellationToken cancellationToken) =>
+        {
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
+            if (denied is not null)
+            {
+                return denied;
+            }
+
+            var seriesId = await repository.GetEpisodeSeriesIdAsync(episodeId, cancellationToken);
+            if (seriesId is null)
+            {
+                return Results.NotFound();
+            }
+
+            var videoPath = await repository.GetEpisodeFilePathAsync(episodeId, cancellationToken);
+            if (string.IsNullOrWhiteSpace(videoPath))
+            {
+                return Results.NotFound(new { message = "This episode has no file on disk to resync a subtitle against." });
+            }
+
+            var held = (await subtitles.ListSubtitlesAsync(MediaKind.Series, episodeId, cancellationToken))
+                .FirstOrDefault(row => string.Equals(row.Language, language, StringComparison.OrdinalIgnoreCase) && !row.Forced);
+            if (held is null || held.FilePath is null)
+            {
+                return Results.NotFound(new { message = $"There is no {language} subtitle held for this episode." });
+            }
+
+            var show = await repository.GetByIdAsync(seriesId, cancellationToken);
+            var libraries = await librariesRepository.ListLibrariesAsync(cancellationToken);
+            var library = libraries.FirstOrDefault(item => item.Id == show!.LibraryId);
+            var policy = SubtitleTimingPolicyCodec.Normalize(library?.SubtitleTimingPolicy) ?? new SubtitleTimingPolicy();
+            // See the movies twin: a run-now request overrides a disabled
+            // library policy for this one call rather than silently doing
+            // nothing.
+            policy = policy with { Enabled = true };
+
+            var result = await timingSync.SyncAsync(
+                videoPath!, held.FilePath, originalLanguage: null, cancellationToken, policy);
+
+            if (result.Outcome == SubtitleTimingOutcome.Mismatched)
+            {
+                await SubtitleRejection.RejectAsync(
+                    subtitles, activity, MediaKind.Series, episodeId, show?.Title ?? "this show", language,
+                    forced: false, held.HearingImpaired, held.FilePath, held.SourceKey, held.Provider,
+                    releaseName: null, result.Reason, cancellationToken);
+            }
+            else
+            {
+                await subtitles.RecordTimingStatusAsync(
+                    MediaKind.Series, episodeId, language, forced: false, held.HearingImpaired,
+                    result.Outcome switch
+                    {
+                        SubtitleTimingOutcome.Moved => "moved",
+                        SubtitleTimingOutcome.AlreadyInTime => "already_in_time",
+                        _ => "not_checked"
+                    },
+                    result.Reason,
+                    cancellationToken);
+            }
+
+            await realtimeEventPublisher.PublishEntityChangedAsync("Episode", episodeId, cancellationToken);
+
+            return Results.Ok(new
+            {
+                done = true,
+                outcome = result.Outcome.ToString(),
+                moved = result.Adjusted,
+                message = result.Reason
+            });
+        });
+
         series.MapPost("/bulk/quality-profile", async (
             HttpContext httpContext,
             [FromBody] BulkQualityProfileRequest request,
