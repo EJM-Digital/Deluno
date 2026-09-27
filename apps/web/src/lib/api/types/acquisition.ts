@@ -73,7 +73,8 @@ export interface BlockedRelease {
   state: string;
   /**
    * Searches skip this release from every indexer, not only the one it came
-   * from, because the refusal was about the file itself (#585).
+   * from. Always true (#585, #874): the blocklist key is the release's
+   * identity across every indexer, whatever the refusal reason.
    */
   everyIndexer?: boolean;
 }

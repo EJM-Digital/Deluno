@@ -45,10 +45,16 @@ public sealed record BlockedRelease(
 {
     /// <summary>
     /// Whether searches skip this release from every indexer rather than only
-    /// the one it came from (#585). Sent so the blocklist can say so without a
-    /// second copy of the rule.
+    /// the one it came from.
+    ///
+    /// <para>Always true (#874). James decided the key is the release's
+    /// identity — its hash when one is known, and its name everywhere else —
+    /// whatever the refusal reason: a stall on one indexer is exactly as
+    /// disqualifying on another. Kept as a property rather than a literal so
+    /// the blocklist screen and its tests read the same true it always was
+    /// under #585, without a client-side rule to keep in sync.</para>
     /// </summary>
-    public bool EveryIndexer => ImportFailurePolicy.RefusesEveryCopy(ReasonCode);
+    public bool EveryIndexer => true;
 }
 
 /// <summary>
@@ -86,12 +92,15 @@ public static class BlockedReleaseKeys
         => $"{releaseName.Trim().ToLowerInvariant()}|{(indexerName ?? string.Empty).Trim().ToLowerInvariant()}";
 
     /// <summary>
-    /// The key that matches this release from any indexer (#585).
+    /// The key that matches this release from any indexer (#585, #874).
     ///
-    /// <para>Never stored: it is added when the blocklist is read, for a
-    /// refusal whose reason is about the file itself
-    /// (<see cref="ImportFailurePolicy.RefusesEveryCopy"/>). <c>*</c> stands in
-    /// for the indexer, which no real indexer is named.</para>
+    /// <para>Never stored: it is added when the blocklist is read, for every
+    /// refused release, whatever the reason. James decided the blocklist key
+    /// is the release's identity across every indexer, not a judgement about
+    /// which reasons are "about the file" — a stall on one indexer is refused
+    /// the same as a bad file on another, and searches are told the same
+    /// either way. <c>*</c> stands in for the indexer, which no real indexer
+    /// is named.</para>
     /// </summary>
     public static string ForEveryIndexer(string releaseName)
         => For(releaseName, "*");

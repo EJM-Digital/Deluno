@@ -39,22 +39,24 @@ describe("the blocklist", () => {
     expect(screen.getByText("Arrival.2016.2160p")).toBeInTheDocument();
   });
 
-  /// #585: a refusal about the file holds the release from every indexer, so
-  /// naming only the one it came from would say it could still arrive.
-  it("says when a refusal holds the release from every indexer", () => {
+  /// #585, #874: every refusal holds the release from every indexer, whatever
+  /// the reason — so naming only the one it came from would say it could
+  /// still arrive.
+  it("says every refusal holds the release from every indexer", () => {
     render(
       <BlockedReleasesConsole
         {...schedules()}
-        releases={[release(), release({ id: "block-2", releaseName: "Arrival.2016.1080p", reasonCode: "downloadStalled", everyIndexer: false })].map(
-          (item, index) => (index === 0 ? { ...item, everyIndexer: true } : item)
-        )}
+        releases={[
+          release(),
+          release({ id: "block-2", releaseName: "Arrival.2016.1080p", indexerName: "Orbit", reasonCode: "downloadStalled" })
+        ]}
         rules={[]}
         onChanged={vi.fn()}
       />
     );
 
     expect(screen.getByText("Arrival · every indexer (found on Nebula)")).toBeInTheDocument();
-    expect(screen.getByText("Arrival · Nebula")).toBeInTheDocument();
+    expect(screen.getByText("Arrival · every indexer (found on Orbit)")).toBeInTheDocument();
   });
 
   /// A code you can search for beats a word that tells you nothing.

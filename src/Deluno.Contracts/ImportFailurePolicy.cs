@@ -247,21 +247,6 @@ public static class ImportFailurePolicy
         => reasonCode is NoVideoStream or LikelySample or ReplacementRejected or ProcessorRejected;
 
     /// <summary>
-    /// Whether a refusal is about the file itself, so the same release from
-    /// another indexer is the same refusal (#585).
-    ///
-    /// <para>The table above already says so in words: "a second attempt at
-    /// the same release fetches the same bytes", "every copy of it lies the same
-    /// way", and a processor read the file and could not use it. A refusal keyed
-    /// on the indexer too let the next indexer that listed the release deliver
-    /// it again. Everything else - a stalled download, a failure Deluno cannot
-    /// place - may belong to that indexer's copy, and stays scoped to it.</para>
-    /// </summary>
-    public static bool RefusesEveryCopy(string? reasonCode)
-        => reasonCode is not null
-           && (CategoryFor(reasonCode) == FailureCategories.BadFile || reasonCode is ReplacementRejected);
-
-    /// <summary>
     /// Whether this counts against the download client's health record.
     ///
     /// <para>Exactly one does. The client said the download was complete and

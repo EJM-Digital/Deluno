@@ -332,10 +332,9 @@ public sealed class AcquisitionDecisionPipeline : IAcquisitionDecisionPipeline
         }
 
         // Hash/GUID first, whatever indexer or name it shows up under this
-        // time (#802, #874); then the name from that indexer, or from any
-        // indexer when the refusal was about the file itself (#585). A
-        // candidate with no known hash yet only has the name-based keys to
-        // check.
+        // time (#802, #874); then the name from any indexer, for every
+        // refusal reason (#585, #874). A candidate with no known hash yet
+        // only has the name-based keys to check.
         var kept = plan.Candidates
             .Where(candidate =>
                 !(!string.IsNullOrWhiteSpace(candidate.TorrentHashOrItemId)

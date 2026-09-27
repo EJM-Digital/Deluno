@@ -106,7 +106,7 @@ public sealed class SqliteBlockedReleaseRepository(
         // decided, and a search that quietly skipped an undecided release
         // would be making the decision by omission — the exact thing the
         // option exists to prevent.
-        command.CommandText = "SELECT release_key, release_name, reason_code, torrent_hash_or_item_id FROM blocked_releases WHERE state = 'refused';";
+        command.CommandText = "SELECT release_key, release_name, torrent_hash_or_item_id FROM blocked_releases WHERE state = 'refused';";
 
         var keys = new HashSet<string>(StringComparer.Ordinal);
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
@@ -114,22 +114,23 @@ public sealed class SqliteBlockedReleaseRepository(
         {
             keys.Add(reader.GetString(0));
 
-            // A refusal about the file itself holds whichever indexer offers
-            // the release next (#585). Derived from the reason on the row, so
-            // no stored key changes and nothing needs migrating.
-            if (ImportFailurePolicy.RefusesEveryCopy(reader.GetString(2)))
-            {
-                keys.Add(BlockedReleaseKeys.ForEveryIndexer(reader.GetString(1)));
-            }
+            // Every refusal holds whichever indexer offers the release next
+            // (#585, #874). James decided the key is the release's identity —
+            // its hash when one is known, its name everywhere else — for
+            // every refusal reason, not only the ones about the file itself:
+            // a stall on one indexer is exactly as disqualifying from another.
+            // Derived from the name on the row, so no stored key changes and
+            // nothing needs migrating.
+            keys.Add(BlockedReleaseKeys.ForEveryIndexer(reader.GetString(1)));
 
             // The hash/GUID key, added the same way (#802, #874): derived at
             // read time from the column every block already stores, so old
             // rows match on it with nothing to migrate, and no reason code is
             // exempt — a release's identity is its content, whatever failed
             // about this attempt at it.
-            if (!reader.IsDBNull(3))
+            if (!reader.IsDBNull(2))
             {
-                var hash = reader.GetString(3);
+                var hash = reader.GetString(2);
                 if (!string.IsNullOrWhiteSpace(hash))
                 {
                     keys.Add(BlockedReleaseKeys.ForHash(hash));

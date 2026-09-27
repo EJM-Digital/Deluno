@@ -41,7 +41,12 @@ public sealed class AStoppedDownloadIsRefusedOnTheBlocklistTests
         Assert.Equal(BlockedReleaseStates.Refused, refused.State);
         Assert.Equal("movie-arrival", refused.EntityId);
         Assert.Equal("External qBittorrent showed it stalled or in error for an hour, so Deluno stopped waiting for it and will not pick it again.", refused.Reason);
-        Assert.Contains(BlockedReleaseKeys.For(Release, "Fixture"), await world.Blocklist.ListKeysAsync(CancellationToken.None));
+        var keys = await world.Blocklist.ListKeysAsync(CancellationToken.None);
+        Assert.Contains(BlockedReleaseKeys.For(Release, "Fixture"), keys);
+        // #874: a stall holds the release from every indexer too, not only
+        // the one it stalled on — the same release offered by a different
+        // indexer, under the same name, is refused just the same.
+        Assert.Contains(BlockedReleaseKeys.ForEveryIndexer(Release), keys);
         // Nothing was imported, so nothing says the copy is junk: it stays in the client.
         Assert.Empty(await world.Blocklist.ListAwaitingCleanupAsync(CancellationToken.None));
         Assert.Equal(1, report.ReplacementSearchesQueued);
