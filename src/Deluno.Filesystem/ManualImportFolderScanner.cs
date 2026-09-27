@@ -18,11 +18,6 @@ namespace Deluno.Filesystem;
 /// </summary>
 public static class ManualImportFolderScanner
 {
-    private static readonly string[] VideoExtensions =
-    [
-        ".mkv", ".mp4", ".avi", ".mov", ".wmv", ".m4v", ".ts", ".m2ts"
-    ];
-
     /// <summary>A 4-digit year between 1900 and 2099, the same window the release parser elsewhere in Deluno uses.</summary>
     private static readonly Regex YearPattern = new(@"(?<!\d)(19\d{2}|20\d{2})(?!\d)", RegexOptions.Compiled);
 
@@ -43,7 +38,7 @@ public static class ManualImportFolderScanner
     /// </summary>
     public static IReadOnlyList<string> FindVideoFiles(string folderPath, int take = 500)
         => Directory.EnumerateFiles(folderPath, "*", SearchOption.AllDirectories)
-            .Where(path => VideoExtensions.Contains(Path.GetExtension(path), StringComparer.OrdinalIgnoreCase))
+            .Where(SupportedVideoExtensions.Contains)
             .OrderBy(path => path, StringComparer.OrdinalIgnoreCase)
             .Take(take)
             .ToArray();

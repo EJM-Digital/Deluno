@@ -71,11 +71,6 @@ public sealed partial class ImportPipelineService(
     private readonly TimeSpan _settleWindow = settleWindow ?? ImportFileReadiness.SettleWindow;
     private readonly Func<string, long?> _freeSpaceBytesProbe = freeSpaceBytesProbe ?? DefaultFreeSpaceBytesProbe;
 
-    private static readonly HashSet<string> SupportedVideoExtensions = new(StringComparer.OrdinalIgnoreCase)
-    {
-        ".mkv", ".mp4", ".m4v", ".avi", ".mov", ".wmv", ".ts", ".m2ts"
-    };
-
     public async Task<ImportPreviewResponse> PreviewAsync(ImportPreviewRequest request, CancellationToken cancellationToken)
     {
         // Named as the import will be named, from its grab (#617).
@@ -192,7 +187,7 @@ public sealed partial class ImportPipelineService(
 
         var extension = Path.GetExtension(preview.DestinationPath);
 
-        if (!SupportedVideoExtensions.Contains(extension))
+        if (!SupportedVideoExtensions.Extensions.Contains(extension))
         {
             var message = $"The file extension '{extension}' is not configured as an importable video file.";
             await RecordImportFailureAsync(
@@ -2043,7 +2038,7 @@ public sealed partial class ImportPipelineService(
         {
             resolved = Directory
                 .EnumerateFiles(request.SourcePath, "*.*", SearchOption.AllDirectories)
-                .Where(path => SupportedVideoExtensions.Contains(Path.GetExtension(path)))
+                .Where(path => SupportedVideoExtensions.Extensions.Contains(Path.GetExtension(path)))
                 .Where(path => !SampleTokenPattern().IsMatch(Path.GetFileNameWithoutExtension(path)))
                 .OrderByDescending(path => new FileInfo(path).Length)
                 .FirstOrDefault();
@@ -2082,7 +2077,7 @@ public sealed partial class ImportPipelineService(
         {
             return Directory
                 .EnumerateFiles(sourcePath, "*.*", SearchOption.AllDirectories)
-                .Where(path => SupportedVideoExtensions.Contains(Path.GetExtension(path)))
+                .Where(path => SupportedVideoExtensions.Extensions.Contains(Path.GetExtension(path)))
                 .Where(path => !SampleTokenPattern().IsMatch(Path.GetFileNameWithoutExtension(path)))
                 .OrderBy(path => path, StringComparer.OrdinalIgnoreCase)
                 .ToArray();
@@ -2199,7 +2194,7 @@ public sealed partial class ImportPipelineService(
         var destinationExists = File.Exists(destinationPath);
         var sourceSize = sourceExists ? new FileInfo(request.SourcePath).Length : 0;
         var destinationSize = destinationExists ? new FileInfo(destinationPath).Length : 0;
-        var isSupportedMediaFile = SupportedVideoExtensions.Contains(Path.GetExtension(destinationPath));
+        var isSupportedMediaFile = SupportedVideoExtensions.Extensions.Contains(Path.GetExtension(destinationPath));
         var warnings = BuildImportWarnings(request.SourcePath, destinationPath, sourceExists, destinationExists, canHardlink, isSupportedMediaFile).ToList();
         if (!string.IsNullOrWhiteSpace(resolvedName.Warning))
         {

@@ -62,11 +62,6 @@ public sealed class ExistingLibraryImportService(
 {
     private readonly LibraryImportSliceOptions _slice = sliceOptions ?? LibraryImportSliceOptions.Default;
 
-    private static readonly string[] VideoExtensions =
-    [
-        ".mkv", ".mp4", ".avi", ".mov", ".wmv", ".m4v", ".ts"
-    ];
-
     private static readonly Regex YearPattern = new(@"\b(19|20)\d{2}\b", RegexOptions.Compiled);
 
     /// <summary>
@@ -1071,7 +1066,7 @@ public sealed class ExistingLibraryImportService(
     }
 
     private static bool IsVideoFile(string path)
-        => VideoExtensions.Contains(Path.GetExtension(path), StringComparer.OrdinalIgnoreCase);
+        => SupportedVideoExtensions.Contains(path);
 
     private IEnumerable<string> EnumerateVideoFiles(string path)
         => Directory.EnumerateFiles(path, "*.*", SearchOption.AllDirectories).Where(IsVideoFile);
