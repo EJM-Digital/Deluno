@@ -138,6 +138,54 @@ public sealed class IndexerPersistenceTests
     }
 
     [Fact]
+    public async Task CreateIndexerAsync_persists_a_season_pack_seed_time()
+    {
+        using var storage = TestStorage.Create();
+        var repo = await CreateRepositoryAsync(storage);
+
+        var created = await repo.CreateIndexerAsync(
+            BaseCreateRequest() with { SharingForHours = 168, SeasonPackSeedForHours = 720 },
+            CancellationToken.None);
+
+        var persisted = Assert.Single(await repo.ListIndexersAsync(CancellationToken.None));
+        Assert.Equal(168, persisted.SharingForHours);
+        Assert.Equal(720, persisted.SeasonPackSeedForHours);
+        Assert.Equal(created.Id, persisted.Id);
+    }
+
+    [Fact]
+    public async Task UpdateIndexerAsync_can_set_and_clear_the_season_pack_seed_time_independently_of_the_normal_rule()
+    {
+        using var storage = TestStorage.Create();
+        var repo = await CreateRepositoryAsync(storage);
+        var created = await repo.CreateIndexerAsync(
+            BaseCreateRequest() with { SharingForHours = 168 },
+            CancellationToken.None);
+
+        var updated = await repo.UpdateIndexerAsync(
+            created.Id,
+            new UpdateIndexerRequest(
+                null, null, null, null, null, null, null, null, null, null,
+                SeasonPackSeedForHours: 720),
+            CancellationToken.None);
+
+        Assert.NotNull(updated);
+        Assert.Equal(168, updated.SharingForHours);
+        Assert.Equal(720, updated.SeasonPackSeedForHours);
+
+        var cleared = await repo.UpdateIndexerAsync(
+            created.Id,
+            new UpdateIndexerRequest(
+                null, null, null, null, null, null, null, null, null, null,
+                ClearSeasonPackSeedForHours: true),
+            CancellationToken.None);
+
+        Assert.NotNull(cleared);
+        Assert.Equal(168, cleared.SharingForHours);
+        Assert.Null(cleared.SeasonPackSeedForHours);
+    }
+
+    [Fact]
     public async Task UpdateIndexerAsync_can_change_and_clear_acquisition_controls()
     {
         using var storage = TestStorage.Create();

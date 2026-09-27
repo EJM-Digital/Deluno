@@ -787,6 +787,12 @@ export interface IndexerItem {
   sharingUntilRatio?: number | null;
   sharingStuckAction?: string | null;
   sharingStuckAfterDays?: number | null;
+  /**
+   * A separate seed time, in hours, used instead of sharingForHours when the
+   * completed download is a season pack rather than a single episode (#739).
+   * Null falls back to the normal seed time.
+   */
+  seasonPackSeedForHours?: number | null;
   minimumAgeMinutes?: number | null;
   retentionDays?: number | null;
   maximumSizeMb?: number | null;

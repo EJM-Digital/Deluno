@@ -24,6 +24,8 @@ public sealed record CreateIndexerRequest(
     double? SharingUntilRatio = null,
     string? SharingStuckAction = null,
     int? SharingStuckAfterDays = null,
+    // A longer seed time used for season packs instead of SharingForHours (#739).
+    int? SeasonPackSeedForHours = null,
     int? MinimumAgeMinutes = null,
     int? RetentionDays = null,
     int? MaximumSizeMb = null,

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { STRICT_SHARING, sharingRuleFrom } from "../routes/connections/forms";
 import { emptyPlatformSettingsSnapshot, type IndexerItem, type PlatformSettingsSnapshot } from "./api";
-import { describeGlobalSharingRule, describeStrictSharingRule } from "./sharing-rule";
+import { describeCustomSharingRule, describeGlobalSharingRule, describeSeasonPackSeedTime, describeStrictSharingRule } from "./sharing-rule";
 
 function settings(overrides: Partial<PlatformSettingsSnapshot>): PlatformSettingsSnapshot {
   return { ...emptyPlatformSettingsSnapshot, ...overrides };
@@ -54,6 +54,23 @@ describe("sharing rule copy", () => {
     // "ratio 1.0" means nothing to someone joining their first tracker.
     expect(copy).not.toContain("ratio");
   });
+
+  // A private tracker's own numbers, typed exactly rather than approximated
+  // by the canned strict preset (#739).
+  it("states the custom rule using the numbers typed for this source", () => {
+    expect(describeCustomSharingRule(720, 2)).toBe(
+      "Deluno keeps sharing for 30 days and until ratio 2.00, using the numbers you typed for this source."
+    );
+  });
+
+  it("prompts for numbers when custom is chosen but nothing is typed yet", () => {
+    expect(describeCustomSharingRule(null, null)).toBe("Type this tracker's published seed ratio and/or seed time below.");
+  });
+
+  it("describes the season-pack seed time only when it differs from the normal one", () => {
+    expect(describeSeasonPackSeedTime(720, 168)).toBe("Season packs from this source seed for 30 days instead of the normal seed time.");
+    expect(describeSeasonPackSeedTime(null, 168)).toContain("same seed time as everything else: 7 days");
+  });
 });
 
 describe("reading a source's sharing answer back", () => {
@@ -66,9 +83,28 @@ describe("reading a source's sharing answer back", () => {
    */
   it("only reports a source that differs from the normal rule", () => {
     expect(sharingRuleFrom(base)).toBe("inherit");
-    expect(sharingRuleFrom({ ...base, sharingMode: "share-then-tidy" })).toBe("strict");
-    expect(sharingRuleFrom({ ...base, sharingUntilRatio: 1 })).toBe("strict");
-    expect(sharingRuleFrom({ ...base, sharingForHours: 336 })).toBe("strict");
+    expect(sharingRuleFrom({ ...base, sharingMode: "share-then-tidy" })).toBe("custom");
+    expect(sharingRuleFrom({ ...base, sharingUntilRatio: 1 })).toBe("custom");
+    expect(sharingRuleFrom({ ...base, sharingForHours: 336 })).toBe("custom");
+  });
+
+  /**
+   * A source hand-tuned to numbers other than the strict preset's own is
+   * reported as "custom", not silently rounded to "strict" (#739) — a private
+   * tracker asking for ratio 2.0 is not the same commitment as one asking for
+   * ratio 1.0, even though both are "stricter than normal".
+   */
+  it("reports a hand-tuned rule as custom, not strict, when the numbers differ", () => {
+    expect(
+      sharingRuleFrom({
+        ...base,
+        sharingMode: "share-then-tidy",
+        sharingForHours: 720,
+        sharingUntilRatio: 2.0,
+        sharingStuckAction: "keep-waiting",
+        sharingStuckAfterDays: 14
+      })
+    ).toBe("custom");
   });
 
   /**

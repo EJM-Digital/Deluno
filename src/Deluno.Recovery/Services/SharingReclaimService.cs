@@ -1,5 +1,6 @@
 using Deluno.Connections.Contracts;
 using Deluno.Contracts;
+using Deluno.Integrations.Search;
 using Deluno.Platform.Contracts;
 using Deluno.Recovery.Policies;
 
@@ -69,7 +70,7 @@ public sealed class SharingReclaimService(IDownloadClientActionGateway actions)
         bool dryRun,
         CancellationToken cancellationToken)
     {
-        var policy = EffectivePolicyFor(globalPolicy, source);
+        var policy = EffectivePolicyFor(globalPolicy, source, candidate.IsSeasonPack);
         var decision = SharingPolicyEvaluator.Evaluate(
             policy,
             candidate.SupportsSharing,
@@ -130,8 +131,14 @@ public sealed class SharingReclaimService(IDownloadClientActionGateway actions)
     /// The global rule, with whatever the source chose to say differently laid
     /// over it. A source that has never been given its own rule contributes
     /// nothing and the global one applies unchanged.
+    ///
+    /// When <paramref name="isSeasonPack"/> is true and the source has its own
+    /// <see cref="IndexerItem.SeasonPackSeedForHours"/>, that value takes the
+    /// place of the normal seed time for this evaluation (#739): a pack is
+    /// usually worth more to a private tracker, so it is asked to seed for
+    /// longer than a single episode from the same source.
     /// </summary>
-    public static SharingPolicy EffectivePolicyFor(SharingPolicy globalPolicy, IndexerItem? source)
+    public static SharingPolicy EffectivePolicyFor(SharingPolicy globalPolicy, IndexerItem? source, bool isSeasonPack = false)
     {
         if (source is null)
         {
@@ -145,17 +152,21 @@ public sealed class SharingReclaimService(IDownloadClientActionGateway actions)
             !string.IsNullOrWhiteSpace(source.SharingStuckAction) ||
             source.SharingStuckAfterDays is not null;
 
-        if (!hasOverride)
+        var effective = hasOverride
+            ? new SharingPolicy(
+                source.SharingMode ?? string.Empty,
+                source.SharingForHours,
+                source.SharingUntilRatio,
+                source.SharingStuckAction ?? string.Empty,
+                source.SharingStuckAfterDays ?? 0).InheritFrom(globalPolicy)
+            : globalPolicy;
+
+        if (isSeasonPack && source.SeasonPackSeedForHours is > 0)
         {
-            return globalPolicy;
+            effective = effective with { ForHours = source.SeasonPackSeedForHours };
         }
 
-        return new SharingPolicy(
-            source.SharingMode ?? string.Empty,
-            source.SharingForHours,
-            source.SharingUntilRatio,
-            source.SharingStuckAction ?? string.Empty,
-            source.SharingStuckAfterDays ?? 0).InheritFrom(globalPolicy);
+        return effective;
     }
 }
 
@@ -169,7 +180,13 @@ public sealed record SharingReclaimCandidate(
     double? Ratio,
     int? SeedingMinutes,
     /// <summary>The torrent's own reported tracker privacy (#815). Null when unknown.</summary>
-    bool? IsPrivate = null)
+    bool? IsPrivate = null,
+    /// <summary>
+    /// The release name as the client/indexer sent it, used only to tell a
+    /// season pack from a single episode (#739). Falls back to <see cref="Title"/>
+    /// when a caller has nothing more specific.
+    /// </summary>
+    string? ReleaseName = null)
 {
     /// <summary>
     /// Usenet has no sharing phase, so there is no obligation to discharge and
@@ -178,6 +195,9 @@ public sealed record SharingReclaimCandidate(
     /// (<see cref="DownloadProtocols.HasSharingPhase"/>) rather than twice.
     /// </summary>
     public bool SupportsSharing => DownloadProtocols.HasSharingPhase(Protocol);
+
+    /// <summary>Whether this download is a whole-season release rather than a single episode (#739).</summary>
+    public bool IsSeasonPack => SeasonPackDetector.Classify(ReleaseName ?? Title).IsSeason;
 }
 
 /// <summary>

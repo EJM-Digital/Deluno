@@ -21,15 +21,17 @@ public sealed class SharingReclaimServiceTests
     private static SharingReclaimCandidate Candidate(
         double? ratio = null,
         int? seedingMinutes = 0,
-        string protocol = "qbittorrent")
-        => new("hash-1", "client-1", "qBittorrent", "Sintel (2010)", protocol, ratio, seedingMinutes);
+        string protocol = "qbittorrent",
+        string? releaseName = null)
+        => new("hash-1", "client-1", "qBittorrent", "Sintel (2010)", protocol, ratio, seedingMinutes, releaseName);
 
     private static IndexerItem Source(
         string? mode = null,
         int? forHours = null,
         double? untilRatio = null,
         string? stuck = null,
-        int? stuckDays = null)
+        int? stuckDays = null,
+        int? seasonPackSeedForHours = null)
         => new(
             Id: "src-1", Name: "A tracker", Protocol: "torznab", Privacy: "private",
             BaseUrl: "http://localhost/api", ApiKey: null, Priority: 1, Categories: "2000",
@@ -42,7 +44,8 @@ public sealed class SharingReclaimServiceTests
             SharingForHours = forHours,
             SharingUntilRatio = untilRatio,
             SharingStuckAction = stuck,
-            SharingStuckAfterDays = stuckDays
+            SharingStuckAfterDays = stuckDays,
+            SeasonPackSeedForHours = seasonPackSeedForHours
         };
 
     // ── Which rule applies ────────────────────────────────────────────────
@@ -69,6 +72,61 @@ public sealed class SharingReclaimServiceTests
         Assert.Equal(72, effective.ForHours);
         Assert.Equal(SharingPolicy.ModeShareThenTidy, effective.Mode);
         Assert.Equal(14, effective.StuckAfterDays);
+    }
+
+    // ── Season-pack seed time (#739) ──────────────────────────────────────
+
+    [Fact]
+    public void A_season_pack_uses_the_sources_season_pack_seed_time_when_set()
+    {
+        var global = new SharingPolicy(SharingPolicy.ModeShareThenTidy, 72, null, SharingPolicy.StuckGiveUp, 14);
+        var source = Source(forHours: 168, seasonPackSeedForHours: 720);
+
+        var effective = SharingReclaimService.EffectivePolicyFor(global, source, isSeasonPack: true);
+
+        Assert.Equal(720, effective.ForHours);
+    }
+
+    [Fact]
+    public void A_season_pack_falls_back_to_the_normal_seed_time_when_no_season_pack_time_is_set()
+    {
+        var global = new SharingPolicy(SharingPolicy.ModeShareThenTidy, 72, null, SharingPolicy.StuckGiveUp, 14);
+        var source = Source(forHours: 168);
+
+        var effective = SharingReclaimService.EffectivePolicyFor(global, source, isSeasonPack: true);
+
+        Assert.Equal(168, effective.ForHours);
+    }
+
+    [Fact]
+    public void A_single_episode_never_uses_the_season_pack_seed_time()
+    {
+        var global = new SharingPolicy(SharingPolicy.ModeShareThenTidy, 72, null, SharingPolicy.StuckGiveUp, 14);
+        var source = Source(forHours: 168, seasonPackSeedForHours: 720);
+
+        var effective = SharingReclaimService.EffectivePolicyFor(global, source, isSeasonPack: false);
+
+        Assert.Equal(168, effective.ForHours);
+    }
+
+    [Fact]
+    public async Task Reconciling_a_season_pack_release_name_applies_the_season_pack_seed_time()
+    {
+        var gateway = new RecordingGateway();
+        var service = new SharingReclaimService(gateway);
+        var global = new SharingPolicy(SharingPolicy.ModeShareThenTidy, 72, null, SharingPolicy.StuckGiveUp, 14);
+        var source = Source(forHours: 72, seasonPackSeedForHours: 240);
+
+        // 200 hours shared: past the normal 72-hour target, but short of the
+        // 240-hour season-pack target this source asks for.
+        var outcome = await service.ReconcileAsync(
+            Candidate(seedingMinutes: 200 * 60, releaseName: "Show.Name.S02.1080p.WEB-DL"),
+            global,
+            source,
+            CancellationToken.None);
+
+        Assert.Equal(SharingAction.Wait, outcome.Action);
+        Assert.Empty(gateway.Calls);
     }
 
     // ── Acting on the decision ────────────────────────────────────────────

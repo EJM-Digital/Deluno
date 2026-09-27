@@ -72,6 +72,15 @@ public sealed record IndexerItem(
     public int? SharingStuckAfterDays { get; init; }
 
     /// <summary>
+    /// A separate seed time, in hours, used instead of <see cref="SharingForHours"/>
+    /// when the completed download is a season pack rather than a single episode
+    /// (#739). Sonarr keeps this distinct because a pack is usually worth more to
+    /// a private tracker and so is asked to seed for longer. Null falls back to
+    /// the indexer's normal seed time (and, from there, to the global one).
+    /// </summary>
+    public int? SeasonPackSeedForHours { get; init; }
+
+    /// <summary>
     /// Acquisition controls are nullable where an empty value means
     /// "unlimited" or "use the release profile". The three search-kind flags
     /// are true by default so existing indexers keep their current behaviour.

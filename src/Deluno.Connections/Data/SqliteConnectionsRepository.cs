@@ -80,7 +80,7 @@ public sealed class SqliteConnectionsRepository(
                 required_words, ignored_words, multi_languages,
                 vip_expires_utc, vip_warning_acknowledged_expiry_utc,
                 query_limit, grab_limit, limits_unit, prefer_magnet_url, season_pack_search_mode,
-                proxy_id
+                season_pack_seed_for_hours, proxy_id
             FROM indexer_sources
             ORDER BY priority ASC, name ASC;
             """;
@@ -145,7 +145,8 @@ public sealed class SqliteConnectionsRepository(
                 LimitsUnit = reader.IsDBNull(50) ? null : reader.GetString(50),
                 PreferMagnetUrl = !reader.IsDBNull(51) && reader.GetInt64(51) == 1,
                 SeasonPackSearchMode = reader.IsDBNull(52) ? null : reader.GetString(52),
-                ProxyId = reader.IsDBNull(53) ? null : reader.GetString(53)
+                SeasonPackSeedForHours = reader.IsDBNull(53) ? null : reader.GetInt32(53),
+                ProxyId = reader.IsDBNull(54) ? null : reader.GetString(54)
             });
         }
 
@@ -303,6 +304,7 @@ public sealed class SqliteConnectionsRepository(
             SharingUntilRatio = request.SharingUntilRatio,
             SharingStuckAction = request.SharingStuckAction,
             SharingStuckAfterDays = request.SharingStuckAfterDays,
+            SeasonPackSeedForHours = request.SeasonPackSeedForHours,
             MinimumAgeMinutes = request.MinimumAgeMinutes,
             RetentionDays = request.RetentionDays,
             MaximumSizeMb = request.MaximumSizeMb,
@@ -345,7 +347,7 @@ public sealed class SqliteConnectionsRepository(
                 definition_settings_json, definition_secrets, api_path, additional_parameters, anime_categories,
                 minimum_seeders, required_words, ignored_words, multi_languages,
                 vip_expires_utc, query_limit, grab_limit, limits_unit, prefer_magnet_url,
-                season_pack_search_mode, proxy_id
+                season_pack_search_mode, season_pack_seed_for_hours, proxy_id
             )
             VALUES (
                 @id, @name, @protocol, @privacy, @baseUrl, @apiKey, @priority, @categories, @tags,
@@ -356,7 +358,7 @@ public sealed class SqliteConnectionsRepository(
                 @definitionSettings, @definitionSecrets, @apiPath, @additionalParameters, @animeCategories,
                 @minimumSeeders, @requiredWords, @ignoredWords, @multiLanguages,
                 @vipExpiresUtc, @queryLimit, @grabLimit, @limitsUnit, @preferMagnetUrl,
-                @seasonPackSearchMode, @proxyId
+                @seasonPackSearchMode, @seasonPackSeedForHours, @proxyId
             );
             """;
 
@@ -366,6 +368,7 @@ public sealed class SqliteConnectionsRepository(
         AddParameter(command, "@sharingUntilRatio", item.SharingUntilRatio);
         AddParameter(command, "@sharingStuckAction", item.SharingStuckAction);
         AddParameter(command, "@sharingStuckAfterDays", item.SharingStuckAfterDays);
+        AddParameter(command, "@seasonPackSeedForHours", item.SeasonPackSeedForHours);
         AddParameter(command, "@minimumAgeMinutes", item.MinimumAgeMinutes);
         AddParameter(command, "@retentionDays", item.RetentionDays);
         AddParameter(command, "@maximumSizeMb", item.MaximumSizeMb);
@@ -466,6 +469,9 @@ public sealed class SqliteConnectionsRepository(
         var newSharingUntilRatio  = clearSharing ? null : request.SharingUntilRatio ?? existing.SharingUntilRatio;
         var newSharingStuckAction = clearSharing ? null : request.SharingStuckAction ?? existing.SharingStuckAction;
         var newSharingStuckDays   = clearSharing ? null : request.SharingStuckAfterDays ?? existing.SharingStuckAfterDays;
+        var newSeasonPackSeedForHours = request.ClearSeasonPackSeedForHours == true
+            ? null
+            : request.SeasonPackSeedForHours ?? existing.SeasonPackSeedForHours;
         var newMinimumAge = request.ClearMinimumAge == true ? null : request.MinimumAgeMinutes ?? existing.MinimumAgeMinutes;
         var newRetention = request.ClearRetention == true ? null : request.RetentionDays ?? existing.RetentionDays;
         var newMaximumSize = request.ClearMaximumSize == true ? null : request.MaximumSizeMb ?? existing.MaximumSizeMb;
@@ -542,6 +548,7 @@ public sealed class SqliteConnectionsRepository(
                 sharing_until_ratio = @sharingUntilRatio,
                 sharing_stuck_action = @sharingStuckAction,
                 sharing_stuck_after_days = @sharingStuckAfterDays,
+                season_pack_seed_for_hours = @seasonPackSeedForHours,
                 minimum_age_minutes = @minimumAgeMinutes,
                 retention_days = @retentionDays,
                 maximum_size_mb = @maximumSizeMb,
@@ -595,6 +602,7 @@ public sealed class SqliteConnectionsRepository(
         AddParameter(command, "@sharingUntilRatio", newSharingUntilRatio);
         AddParameter(command, "@sharingStuckAction", newSharingStuckAction);
         AddParameter(command, "@sharingStuckAfterDays", newSharingStuckDays);
+        AddParameter(command, "@seasonPackSeedForHours", newSeasonPackSeedForHours);
         AddParameter(command, "@minimumAgeMinutes", newMinimumAge);
         AddParameter(command, "@retentionDays", newRetention);
         AddParameter(command, "@maximumSizeMb", newMaximumSize);
@@ -643,6 +651,7 @@ public sealed class SqliteConnectionsRepository(
             SharingUntilRatio = newSharingUntilRatio,
             SharingStuckAction = newSharingStuckAction,
             SharingStuckAfterDays = newSharingStuckDays,
+            SeasonPackSeedForHours = newSeasonPackSeedForHours,
             MinimumAgeMinutes = newMinimumAge,
             RetentionDays = newRetention,
             MaximumSizeMb = newMaximumSize,
