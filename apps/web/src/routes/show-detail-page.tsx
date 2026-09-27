@@ -12,7 +12,7 @@
  */
 import { getDispatchStatusLabel as formatDispatchStatus } from "../lib/job-status-constants";
 import type { Tone } from "../lib/status-tones";
-import { Fragment, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import { Link, useLoaderData, useNavigate, useRevalidator } from "react-router-dom";
 import { ArrowLeft, LoaderCircle, RefreshCw, Search, Trash2, ShieldCheck, ShieldOff
 } from "lucide-react";
@@ -30,8 +30,10 @@ import {
   type SeriesListItem,
   type MetadataProviderIssue,
   type SeriesSearchHistoryItem,
-  type AcquisitionBlockersResponse
+  type AcquisitionBlockersResponse,
+  type MediaSubtitleRow
 } from "../lib/api";
+import { subtitleTypeLabel, subtitleSourceLabel } from "../lib/subtitle-display";
 import { authedFetch } from "../lib/use-auth";
 import { cn } from "../lib/utils";
 import { isEpisodeMissing, isEpisodeUpcoming, summariseEpisodes } from "../lib/episode-progress";
@@ -169,6 +171,11 @@ export function ShowDetailPage() {
   const [openCandidate, setOpenCandidate] = useState<SearchPlanCandidate | null>(null);
   const [forceReason, setForceReason] = useState<string | null>(null);
   const [openEpisodeId, setOpenEpisodeId] = useState<string | null>(null);
+  // Which of the three types (plain / hearing-impaired / forced, #923) each
+  // subtitle this episode's file has is — cached per episode so reopening the
+  // same row does not refetch, the same way the movie page's loader gives it
+  // for free but an episode drawer opens on demand.
+  const [episodeSubtitles, setEpisodeSubtitles] = useState<Record<string, MediaSubtitleRow[]>>({});
   const [openSearchId, setOpenSearchId] = useState<string | null>(null);
   const [openDispatchId, setOpenDispatchId] = useState<string | null>(null);
   const [episodeFilter, setEpisodeFilter] = useState<EpisodeFilter>("all");
@@ -255,6 +262,31 @@ export function ShowDetailPage() {
   const upgradeCount = progress.upgradable;
   const monitoredCount = inventory.episodes.filter((item) => item.monitored).length;
   const openEpisode = inventory.episodes.find((item) => item.episodeId === openEpisodeId) ?? null;
+
+  // Subtitles belong to the episode's own file, not the series (a show's
+  // wanted-state bar rolls episodes up, but "which type is this one" is a
+  // per-file question) — so the drawer fetches on open rather than the
+  // series loader pulling every episode's rows up front.
+  useEffect(() => {
+    if (!openEpisodeId || episodeSubtitles[openEpisodeId]) {
+      return;
+    }
+    let cancelled = false;
+    fetchJson<MediaSubtitleRow[]>(`/api/series/episodes/${openEpisodeId}/subtitles`)
+      .then((rows) => {
+        if (!cancelled) {
+          setEpisodeSubtitles((current) => ({ ...current, [openEpisodeId]: rows }));
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setEpisodeSubtitles((current) => ({ ...current, [openEpisodeId]: [] }));
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [openEpisodeId, episodeSubtitles]);
 
   // A full catalogue can be hundreds of episodes — The Simpsons is 885 — so
   // seasons collapse. The ones with something missing open by default, capped,
@@ -1750,6 +1782,20 @@ export function ShowDetailPage() {
                 ]}
               />
             </DrawerSection>
+
+            {(episodeSubtitles[openEpisode.episodeId]?.length ?? 0) > 0 ? (
+              <DrawerSection title="Subtitles" aside={`${episodeSubtitles[openEpisode.episodeId]!.length} on disk`}>
+                <ListTable chevron={false} columns={[{ label: "Language" }, { label: "Type" }, { label: "Source", mobile: true }]}>
+                  {episodeSubtitles[openEpisode.episodeId]!.map((subtitle, index) => (
+                    <ListRow key={`${subtitle.language}-${subtitle.forced}-${subtitle.hearingImpaired}-${index}`}>
+                      <ListNameCell name={subtitle.language.toUpperCase()} />
+                      <ListCell primary={subtitleTypeLabel(subtitle)} />
+                      <ListCell primary={subtitle.provider ?? subtitleSourceLabel(subtitle.source)} mobile />
+                    </ListRow>
+                  ))}
+                </ListTable>
+              </DrawerSection>
+            ) : null}
 
             <DrawerSection title="Automation" aside={wantedStatusPresentation(openEpisode.wantedStatus).label}>
               <div className="flex min-h-[var(--control-height)] items-center justify-between gap-[var(--grid-gap)]">

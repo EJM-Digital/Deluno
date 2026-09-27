@@ -170,6 +170,45 @@ public sealed class SubtitleBarPersistenceTests
         Assert.Equal(3, item.SubtitleLanguagesHeld);
     }
 
+    /// <summary>
+    /// #923: an episode's own page reads its subtitles the same way a movie's
+    /// does — <c>GET /api/series/episodes/{episodeId}/subtitles</c> calls this
+    /// same repository method keyed on the episode rather than the show, so
+    /// the type each row carries (plain / hearing-impaired / forced) must
+    /// belong to that one episode's file and never another episode's.
+    /// </summary>
+    [Fact]
+    public async Task Listing_an_episodes_subtitles_reads_only_that_episodes_rows_with_their_types()
+    {
+        using var storage = TestStorage.Create();
+        var preferences = new StubPreferences(("library-tv", ["en", "ja"], SubtitleLanguageModes.All));
+        var timeProvider = new FixedTimeProvider(Now);
+        var series = await CreateSeriesAsync(storage, timeProvider, preferences);
+        var subtitles = new SqliteMediaSubtitleRepository(storage.Factory, TimeProvider.System);
+
+        var show = await series.AddAsync(new CreateSeriesRequest("Shogun", 2024, "tt2788316"), CancellationToken.None);
+        await AttachLibraryAsync(storage, show.Id, "library-tv");
+
+        var episodeOne = await InsertEpisodeAsync(storage, show.Id, 1, Now.AddDays(-10), hasFile: true);
+        var episodeTwo = await InsertEpisodeAsync(storage, show.Id, 2, Now.AddDays(-10), hasFile: true);
+
+        await RecordAsync(subtitles, MediaKind.Series, episodeOne, [
+            Embedded("en"),
+            Embedded("en", forced: true),
+            Embedded("ja", hearingImpaired: true)
+        ]);
+        await RecordAsync(subtitles, MediaKind.Series, episodeTwo, [Embedded("en")]);
+
+        var rows = await subtitles.ListSubtitlesAsync(MediaKind.Series, episodeOne, CancellationToken.None);
+
+        // Episode two's single English row must not leak into episode one's
+        // list, and each of episode one's three rows must keep its own type.
+        Assert.Equal(3, rows.Count);
+        Assert.Contains(rows, row => row.Language == "en" && !row.Forced && !row.HearingImpaired);
+        Assert.Contains(rows, row => row.Language == "en" && row.Forced);
+        Assert.Contains(rows, row => row.Language == "ja" && row.HearingImpaired);
+    }
+
     [Fact]
     public async Task A_rescan_replaces_what_the_file_has_and_keeps_what_Deluno_fetched()
     {

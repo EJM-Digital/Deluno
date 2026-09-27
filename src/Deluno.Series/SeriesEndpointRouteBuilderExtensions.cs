@@ -220,6 +220,23 @@ public static class SeriesEndpointRouteBuilderExtensions
             return Results.Ok(items);
         });
 
+        /*
+          Every subtitle a single episode's file has, and which of the three
+          types each one is — plain, hearing-impaired or forced (#923). A
+          show's subtitle belongs to the episode, not the series (see
+          MediaTableMap's SubtitleMediaIdColumn), so this reads the same
+          table the movie page reads keyed on the episode instead of the
+          title, mirroring GET /api/movies/{id}/subtitles.
+        */
+        series.MapGet("/episodes/{episodeId}/subtitles", async (
+            string episodeId,
+            IMediaSubtitleRepository subtitles,
+            CancellationToken cancellationToken) =>
+        {
+            var rows = await subtitles.ListSubtitlesAsync(MediaKind.Series, episodeId, cancellationToken);
+            return Results.Ok(rows);
+        });
+
         series.MapGet("/calendar", async (
             DateTimeOffset? from,
             DateTimeOffset? to,
