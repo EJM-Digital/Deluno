@@ -171,6 +171,8 @@ export function buildIndexerSavePayload(form: IndexerForm, initial: IndexerForm,
     clearIgnoredWords: editing && !form.ignoredWords.trim(),
     multiLanguages: form.multiLanguages.trim() || null,
     clearMultiLanguages: editing && !form.multiLanguages.trim(),
+    vipExpiresUtc: form.vipExpiresUtc.trim() ? new Date(`${form.vipExpiresUtc.trim()}T00:00:00.000Z`).toISOString() : null,
+    clearVipExpiry: editing && !form.vipExpiresUtc.trim(),
     availabilityDelayDays: form.availabilityDelayDays.trim() ? Number(form.availabilityDelayDays) : null,
     clearAvailabilityDelay: editing && !form.availabilityDelayDays.trim(),
     rssEnabled: form.rssEnabled,
@@ -920,6 +922,7 @@ export function IndexersPage() {
             setFineTuneOpen={setFineTuneOpen}
             busy={busy}
             onReset={() => editingIndexer && void run(`reset:${editingIndexer.id}`, () => send(`/api/indexers/${editingIndexer.id}/reset-circuit`, "POST", undefined, "Could not reset."), `Circuit reset for ${editingIndexer.name}`)}
+            onAcknowledgeVip={() => editingIndexer && void run(`acknowledge-vip:${editingIndexer.id}`, () => send(`/api/indexers/${editingIndexer.id}`, "PUT", { acknowledgeVipExpiry: true }, "Could not acknowledge."), `VIP warning acknowledged for ${editingIndexer.name}`)}
             onRemove={() => setConfirmRemove(true)}
           />
         ) : null}

@@ -14,7 +14,7 @@ import { SwitchRow } from "../../components/ui/switch";
 import { INDEXER_PRESETS, PRIORITY_OPTIONS, type IndexerProtocol, type MediaScope } from "./presets";
 import type { IndexerForm, SharingRule } from "./forms";
 import { describeGlobalSharingRule, describeStrictSharingRule } from "../../lib/sharing-rule";
-import { formatSeconds, healthChip, relative } from "./format";
+import { formatSeconds, healthChip, relative, vipWarningActive } from "./format";
 import { IndexerFlagPicker } from "./indexer-flag-picker";
 import { TrackerFields } from "./tracker-fields";
 export function IndexerDrawerBody({
@@ -31,6 +31,7 @@ export function IndexerDrawerBody({
   setFineTuneOpen,
   busy,
   onReset,
+  onAcknowledgeVip,
   onRemove
 }: {
   form: IndexerForm;
@@ -47,6 +48,7 @@ export function IndexerDrawerBody({
   setFineTuneOpen: (value: boolean) => void;
   busy: string | null;
   onReset: () => void;
+  onAcknowledgeVip: () => void;
   onRemove: () => void;
 }) {
   const preset = INDEXER_PRESETS.find((item) => item.protocol === form.protocol)!;
@@ -244,6 +246,20 @@ export function IndexerDrawerBody({
 
       {editing && chip ? (
         <DrawerSection title="Health">
+          <Field label="VIP/subscription expiry" error={errors.vipExpiresUtc} help="For a private tracker with a VIP or membership tier. Deluno warns starting 7 days before this date and until you update it or acknowledge the warning.">
+            <Input type="date" value={form.vipExpiresUtc} onChange={(event) => { clearError("vipExpiresUtc"); setForm((current) => ({ ...current, vipExpiresUtc: event.target.value })); }} />
+          </Field>
+          {vipWarningActive(editing) ? (
+            <div className="flex items-center gap-2">
+              <Chip tone={new Date(editing.vipExpiresUtc!).getTime() <= Date.now() ? "bad" : "warn"}>
+                {new Date(editing.vipExpiresUtc!).getTime() <= Date.now() ? "VIP expired" : "VIP expiring soon"}
+              </Chip>
+              <Button type="button" variant="outline" size="sm" onClick={onAcknowledgeVip} disabled={busy !== null}>
+                {busy === `acknowledge-vip:${editing.id}` ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
+                Acknowledge
+              </Button>
+            </div>
+          ) : null}
           <dl className="grid grid-cols-[120px_1fr] items-center gap-x-[var(--grid-gap)] gap-y-2 text-[length:var(--type-body-sm)]">
             <dt className="text-muted-foreground">Last test</dt>
             <dd className="flex items-center gap-2"><Chip tone={chip.tone}>{chip.label}</Chip><span className="text-muted-foreground">{relative(editing.lastHealthTestUtc)}{editing.lastHealthLatencyMs != null ? ` · ${editing.lastHealthLatencyMs} ms` : ""}</span></dd>

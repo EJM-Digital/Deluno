@@ -102,6 +102,7 @@ public sealed class IndexerPersistenceTests
                 RequiredWords = "remux",
                 IgnoredWords = "cam, korsub",
                 MultiLanguages = "Original, French",
+                VipExpiresUtc = DateTimeOffset.Parse("2026-12-01T00:00:00Z"),
                 AvailabilityDelayDays = 2,
                 RssEnabled = false,
                 AutomaticSearchEnabled = false,
@@ -118,6 +119,7 @@ public sealed class IndexerPersistenceTests
         Assert.Equal("remux", persisted.RequiredWords);
         Assert.Equal("cam, korsub", persisted.IgnoredWords);
         Assert.Equal("Original, French", persisted.MultiLanguages);
+        Assert.Equal(DateTimeOffset.Parse("2026-12-01T00:00:00Z"), persisted.VipExpiresUtc);
         Assert.Equal(2, persisted.AvailabilityDelayDays);
         Assert.False(persisted.RssEnabled);
         Assert.False(persisted.AutomaticSearchEnabled);

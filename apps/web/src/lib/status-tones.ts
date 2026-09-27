@@ -105,6 +105,11 @@ export const STATUS_PRESENTATION = {
   "connection.circuitOpen": { tone: "info", label: "Paused after failures" },
   // A configuration fact, not motion.
   "connection.categoryRoute": { tone: "idle", label: "Routed" },
+  // #747: the recorded VIP/subscription date is within its 7-day warning
+  // window, or has already lapsed. Dismissable once acknowledged or the
+  // date is updated; nothing else about the indexer's health changed.
+  "connection.vipExpiring": { tone: "warn", label: "VIP expiring soon" },
+  "connection.vipExpired": { tone: "bad", label: "VIP expired" },
 
   // ── Retention ───────────────────────────────────────────────────────────
   // Counting down to its day: motion, and anyone may keep it.

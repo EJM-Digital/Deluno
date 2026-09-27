@@ -143,6 +143,7 @@ public static class ConnectionsEndpointRouteBuilderExtensions
                 RequiredWords = request.RequiredWords,
                 IgnoredWords = request.IgnoredWords,
                 MultiLanguages = request.MultiLanguages,
+                VipExpiresUtc = request.VipExpiresUtc,
                 AvailabilityDelayDays = request.AvailabilityDelayDays,
                 RssEnabled = request.RssEnabled,
                 AutomaticSearchEnabled = request.AutomaticSearchEnabled,

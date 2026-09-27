@@ -111,6 +111,20 @@ public sealed record IndexerItem(
     /// </summary>
     public string? MultiLanguages { get; init; }
 
+    /// <summary>
+    /// The recorded VIP/subscription expiry date for a private-tracker
+    /// indexer (#747). Null means nothing is tracked.
+    /// </summary>
+    public DateTimeOffset? VipExpiresUtc { get; init; }
+
+    /// <summary>
+    /// Which <see cref="VipExpiresUtc"/> value the user last acknowledged a
+    /// warning for (#747). The warning clears once this matches the current
+    /// value, whether from an explicit acknowledgement or from the date
+    /// itself being updated.
+    /// </summary>
+    public DateTimeOffset? VipWarningAcknowledgedExpiryUtc { get; init; }
+
     public int? AvailabilityDelayDays { get; init; }
 
     public bool RssEnabled { get; init; } = true;
