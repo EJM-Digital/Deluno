@@ -93,6 +93,49 @@ public sealed class DownloadHealthRulesApiSurfaceTests
         Assert.DoesNotContain(afterRemove, item => item.Id == "entry-1");
     }
 
+    /// <summary>
+    /// #828: a background job physically deletes history rows older than the
+    /// person's configured window, rather than only hiding them from a
+    /// listing past the fixed 90-day ceiling every read already applies.
+    /// </summary>
+    [Fact]
+    public async Task Pruning_history_removes_only_records_older_than_the_configured_window()
+    {
+        using var world = await World.CreateAsync();
+        await world.HealthRepository.RecordDownloadHealthObservationsAsync(
+            "client-old",
+            ["queue-old"],
+            [new DownloadHealthObservation("client-old", "queue-old", "Old.Release.2020", DownloadHealthStrikes.NoThroughput, "warning", "0 MB/s")],
+            TimeSpan.FromMinutes(30),
+            TimeSpan.FromHours(6),
+            CancellationToken.None);
+        await world.HealthRepository.RecordDownloadProgressAsync("client-old", [("queue-old", 100)], CancellationToken.None);
+
+        var cutoff = Now.AddDays(1);
+        var removed = await world.HealthRepository.PruneDownloadHealthHistoryAsync(cutoff, CancellationToken.None);
+
+        Assert.Equal(2, removed); // one health record, one progress record
+        Assert.Empty(await world.HealthRepository.ListDownloadHealthRecordsAsync(10, CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task Pruning_history_leaves_records_at_or_after_the_cutoff_alone()
+    {
+        using var world = await World.CreateAsync();
+        await world.HealthRepository.RecordDownloadHealthObservationsAsync(
+            "client-recent",
+            ["queue-recent"],
+            [new DownloadHealthObservation("client-recent", "queue-recent", "Recent.Release.2026", DownloadHealthStrikes.NoThroughput, "warning", "0 MB/s")],
+            TimeSpan.FromMinutes(30),
+            TimeSpan.FromHours(6),
+            CancellationToken.None);
+
+        var removed = await world.HealthRepository.PruneDownloadHealthHistoryAsync(Now.AddDays(-1), CancellationToken.None);
+
+        Assert.Equal(0, removed);
+        Assert.Single(await world.HealthRepository.ListDownloadHealthRecordsAsync(10, CancellationToken.None));
+    }
+
     [Fact]
     public async Task Purge_all_strikes_clears_every_record_and_reports_how_many()
     {

@@ -100,4 +100,12 @@ public interface IDownloadHealthRepository
     Task<IReadOnlyList<DownloadHealthIgnoreEntry>> RemoveDownloadHealthIgnoreEntryAsync(
         string entryId,
         CancellationToken cancellationToken);
+
+    /// <summary>
+    /// #828: physically deletes every download-health record and progress
+    /// record last observed before <paramref name="olderThan"/>, on the
+    /// user's own configured window rather than the fixed 90-day ceiling
+    /// every read already applies. Returns how many rows were removed.
+    /// </summary>
+    Task<int> PruneDownloadHealthHistoryAsync(DateTimeOffset olderThan, CancellationToken cancellationToken);
 }

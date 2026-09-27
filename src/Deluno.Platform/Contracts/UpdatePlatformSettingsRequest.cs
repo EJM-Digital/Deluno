@@ -87,4 +87,5 @@ public sealed record UpdatePlatformSettingsRequest(
     string? SeasonFolderFormat = null,
     string? SpecialsFolderFormat = null,
     string? MultiEpisodeStyle = null,
-    bool? RenameFoldersOnImport = null);
+    bool? RenameFoldersOnImport = null,
+    int? HistoryRetentionDays = null);

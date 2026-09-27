@@ -100,4 +100,6 @@ public sealed record PatchPlatformSettingsRequest(
     string? SpecialsFolderFormat = null,
     // #763: one of Deluno.Series.Contracts.MultiEpisodeStyles.
     string? MultiEpisodeStyle = null,
-    bool? RenameFoldersOnImport = null);
+    bool? RenameFoldersOnImport = null,
+    /// <summary>#828: 1-3650 days of Deluno's own event/strike history before a background job prunes it.</summary>
+    int? HistoryRetentionDays = null);

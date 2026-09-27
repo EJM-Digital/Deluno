@@ -640,6 +640,30 @@ public sealed class JobStoreTests
         Assert.Equal(expectedCategory, dispatch.Category);
     }
 
+    /// <summary>
+    /// #828: the background retention job's own delete, not the read-time
+    /// filtering any listing already does past its own window - this
+    /// actually removes the rows.
+    /// </summary>
+    [Fact]
+    public async Task PruneActivityAsync_removes_only_rows_older_than_the_cutoff()
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-05-13T05:00:00Z"));
+        await InitializeJobsAsync(storage, timeProvider);
+        var store = new SqliteJobStore(storage.Factory, timeProvider, new NullRealtimeEventPublisher(), new NullDownloadDispatchesRepository());
+
+        await store.RecordActivityAsync("test.old", "An old event", null, null, null, null, CancellationToken.None);
+        timeProvider.Advance(TimeSpan.FromDays(400));
+        await store.RecordActivityAsync("test.recent", "A recent event", null, null, null, null, CancellationToken.None);
+
+        var removed = await store.PruneActivityAsync(timeProvider.GetUtcNow() - TimeSpan.FromDays(365), CancellationToken.None);
+
+        Assert.Equal(1, removed);
+        var remaining = await store.ListActivityAsync(10, null, null, CancellationToken.None);
+        Assert.Single(remaining, activity => activity.Category == "test.recent");
+    }
+
     [Fact]
     public async Task RecordDownloadDispatchAsync_retains_the_external_id_returned_by_the_client()
     {

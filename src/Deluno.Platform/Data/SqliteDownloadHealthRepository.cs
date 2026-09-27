@@ -226,6 +226,33 @@ public sealed class SqliteDownloadHealthRepository(
         return records.Count;
     }
 
+    public async Task<int> PruneDownloadHealthHistoryAsync(DateTimeOffset olderThan, CancellationToken cancellationToken)
+    {
+        var now = timeProvider.GetUtcNow();
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(DelunoDatabaseNames.Platform, cancellationToken);
+        await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+        var settings = await ReadSettingsAsync(connection, cancellationToken);
+
+        var records = ReadDownloadHealthRecords(settings).ToList();
+        var removedRecords = records.RemoveAll(record => record.LastObservedUtc < olderThan);
+
+        var progressRecords = ReadDownloadProgressRecords(settings).ToList();
+        var removedProgress = progressRecords.RemoveAll(record => record.LastObservedUtc < olderThan);
+
+        if (removedRecords == 0 && removedProgress == 0) return 0;
+
+        if (removedRecords > 0)
+        {
+            await UpsertSettingAsync(connection, transaction, DownloadHealthRecordsSettingKey, JsonSerializer.Serialize(records), now, cancellationToken);
+        }
+        if (removedProgress > 0)
+        {
+            await UpsertSettingAsync(connection, transaction, DownloadProgressRecordsSettingKey, JsonSerializer.Serialize(progressRecords), now, cancellationToken);
+        }
+        await transaction.CommitAsync(cancellationToken);
+        return removedRecords + removedProgress;
+    }
+
     public async Task<IReadOnlyDictionary<string, DateTimeOffset>> RecordDownloadProgressAsync(
         string clientId,
         IReadOnlyList<(string QueueItemId, long DownloadedBytes)> observations,

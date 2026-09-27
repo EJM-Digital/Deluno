@@ -259,6 +259,48 @@ public sealed class PlatformSettingsPersistenceTests
         Assert.Equal(30, loaded.ImportRecoveryRetentionDays);
     }
 
+    /// <summary>#828: Deluno's own event/strike history window, same pattern as ImportRecoveryRetentionDays.</summary>
+    [Fact]
+    public async Task HistoryRetentionDays_defaults_to_365_and_persists_within_its_bounds()
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-04-29T01:02:03Z"));
+
+        await new PlatformSchemaInitializer(
+            storage.Factory,
+            new SqliteDatabaseMigrator(storage.Factory, timeProvider),
+            NullLogger<PlatformSchemaInitializer>.Instance).StartAsync(CancellationToken.None);
+
+        var repository = new SqlitePlatformSettingsRepository(
+            storage.Factory,
+            timeProvider,
+            TestSecretProtection.Create(storage));
+
+        Assert.Equal(365, (await repository.GetAsync(CancellationToken.None)).HistoryRetentionDays);
+
+        await repository.SaveAsync(MinimalRequest(90), CancellationToken.None);
+        Assert.Equal(90, (await repository.GetAsync(CancellationToken.None)).HistoryRetentionDays);
+
+        // Out of range in either direction clamps rather than fails.
+        await repository.SaveAsync(MinimalRequest(0), CancellationToken.None);
+        Assert.Equal(1, (await repository.GetAsync(CancellationToken.None)).HistoryRetentionDays);
+
+        await repository.SaveAsync(MinimalRequest(999_999), CancellationToken.None);
+        Assert.Equal(3650, (await repository.GetAsync(CancellationToken.None)).HistoryRetentionDays);
+    }
+
+    private static UpdatePlatformSettingsRequest MinimalRequest(int historyRetentionDays)
+        => new(
+            AppInstanceName: null, MovieRootPath: null, SeriesRootPath: null, DownloadsPath: null,
+            IncompleteDownloadsPath: null, AutoStartJobs: false, EnableNotifications: false, RenameOnImport: false,
+            UseHardlinks: false, CleanupEmptyFolders: false, RemoveCompletedDownloads: false,
+            MovieFolderFormat: null, SeriesFolderFormat: null, MovieFileFormat: null, EpisodeFileFormat: null,
+            HostBindAddress: null, HostPort: 0, UrlBase: null, RequireAuthentication: false, UiTheme: null,
+            DefaultMovieView: null, DefaultShowView: null, MetadataNfoEnabled: false, MetadataArtworkEnabled: false,
+            MetadataCertificationCountry: null, MetadataLanguage: null, MetadataProviderMode: null,
+            MetadataBrokerUrl: null, MetadataTmdbApiKey: null, MetadataOmdbApiKey: null, ReleaseNeverGrabPatterns: null,
+            HistoryRetentionDays: historyRetentionDays);
+
     /// <summary>
     /// How often Deluno looks at whether the files it thinks you have are still
     /// there. Declared configurable since the day the pass was written and

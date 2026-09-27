@@ -600,6 +600,22 @@ public sealed class SqliteJobStore(
         return await command.ExecuteNonQueryAsync(cancellationToken);
     }
 
+    public async Task<int> PruneActivityAsync(DateTimeOffset olderThan, CancellationToken cancellationToken)
+    {
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Jobs,
+            cancellationToken);
+
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            """
+            DELETE FROM activity_events
+            WHERE created_utc < @olderThan;
+            """;
+        AddParameter(command, "@olderThan", olderThan.ToString("O"));
+        return await command.ExecuteNonQueryAsync(cancellationToken);
+    }
+
     public async Task<int> CancelPendingForRelatedEntityAsync(
         string relatedEntityType,
         string relatedEntityId,
