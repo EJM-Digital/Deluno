@@ -133,6 +133,7 @@ public sealed class LibrarySubtitleScanJobHandler(
         var withSubtitles = 0;
         var missingFiles = 0;
         var probeUnavailable = 0;
+        var rejectedByHand = 0;
 
         foreach (var candidate in candidates)
         {
@@ -183,6 +184,31 @@ public sealed class LibrarySubtitleScanJobHandler(
 
             var rows = WholeTruth(candidate.VideoChanged, recorded, found);
 
+            // A subtitle Deluno fetched itself that is no longer beside the
+            // video was not lost — it was removed. Before #895 the next scan
+            // simply forgot the row, so the language looked wanted again and
+            // the ordinary search could refetch the exact file somebody just
+            // got rid of. Only meaningful when this pass actually compared
+            // against the old list (recorded is deliberately empty when the
+            // video itself changed — see WholeTruth — and a replaced upgrade
+            // is not a rejection).
+            if (!candidate.VideoChanged)
+            {
+                foreach (var gone in Removed(recorded, rows))
+                {
+                    await mediaSubtitleRepository.BlockSubtitleAsync(
+                        kind,
+                        candidate.MediaId,
+                        gone.Language,
+                        gone.SourceKey!,
+                        gone.Provider,
+                        releaseName: null,
+                        reason: "You removed this subtitle file, so Deluno will not fetch it again.",
+                        cancellationToken);
+                    rejectedByHand++;
+                }
+            }
+
             await mediaSubtitleRepository.RecordScanAsync(
                 kind,
                 candidate.MediaId,
@@ -215,7 +241,27 @@ public sealed class LibrarySubtitleScanJobHandler(
                 cancellationToken);
         }
 
-        return BuildSummary(library.Name, scanned, withSubtitles, missingFiles, probeUnavailable);
+        return BuildSummary(library.Name, scanned, withSubtitles, missingFiles, probeUnavailable, rejectedByHand);
+    }
+
+    /// <summary>
+    /// Fetched subtitles that were beside the video last time and are not any
+    /// more — the file somebody deleted, not a track a cheap rescan simply
+    /// cannot see (that is what the embedded carve-out in <see cref="WholeTruth"/>
+    /// already handles) and not one another candidate has since replaced it
+    /// with (present in <paramref name="rows"/> under the same key).
+    /// </summary>
+    public static IEnumerable<MediaSubtitleRow> Removed(
+        IReadOnlyList<MediaSubtitleRow> recorded, IReadOnlyList<MediaSubtitleRow> rows)
+    {
+        var kept = rows
+            .Select(row => (row.Language, row.Forced, row.HearingImpaired))
+            .ToHashSet();
+
+        return recorded.Where(row =>
+            row.Source == SubtitleSources.Fetched
+            && row.SourceKey is not null
+            && !kept.Contains((row.Language, row.Forced, row.HearingImpaired)));
     }
 
     /// <summary>
@@ -253,7 +299,8 @@ public sealed class LibrarySubtitleScanJobHandler(
     /// ffprobe is missing, because that install can only ever see half the
     /// subtitles it owns and nothing else would say so.
     /// </summary>
-    private static string BuildSummary(string libraryName, int scanned, int withSubtitles, int missingFiles, int probeUnavailable)
+    private static string BuildSummary(
+        string libraryName, int scanned, int withSubtitles, int missingFiles, int probeUnavailable, int rejectedByHand = 0)
     {
         if (scanned == 0)
         {
@@ -266,6 +313,15 @@ public sealed class LibrarySubtitleScanJobHandler(
         if (missingFiles > 0)
         {
             summary += $" {missingFiles} tracked file(s) were not on disk.";
+        }
+
+        if (rejectedByHand > 0)
+        {
+            // Written for the person reading Activity, so a subtitle they
+            // deleted on purpose does not look like it vanished on its own.
+            summary += rejectedByHand == 1
+                ? " You removed 1 subtitle; Deluno will not fetch it again, and is free to find a different one."
+                : $" You removed {rejectedByHand} subtitles; Deluno will not fetch them again, and is free to find different ones.";
         }
 
         if (probeUnavailable > 0)
