@@ -31,10 +31,12 @@ import {
   type MetadataProviderIssue,
   type SeriesSearchHistoryItem,
   type AcquisitionBlockersResponse,
-  type MediaSubtitleRow
+  type MediaSubtitleRow,
+  type SubtitleLanguageOption
 } from "../lib/api";
 import { subtitleTypeLabel, subtitleSourceLabel, timingStatusLabel } from "../lib/subtitle-display";
 import { SubtitleTimingActions } from "../components/app/subtitle-timing-actions";
+import { SubtitleOverrideCard } from "../components/app/subtitle-override-card";
 import { authedFetch } from "../lib/use-auth";
 import { cn } from "../lib/utils";
 import { isEpisodeMissing, isEpisodeUpcoming, summariseEpisodes } from "../lib/episode-progress";
@@ -107,6 +109,7 @@ interface ShowDetailLoaderData {
   searchHistory: SeriesSearchHistoryItem[];
   series: SeriesListItem;
   metadataIssue: MetadataProviderIssue | null;
+  subtitleLanguageOptions: SubtitleLanguageOption[];
 }
 
 type DetailSection = "episodes" | "destination" | "history";
@@ -134,7 +137,7 @@ export async function showDetailLoader({
   params: { id?: string };
 }): Promise<ShowDetailLoaderData> {
   const id = params.id!;
-  const [series, metadataIssue, searchHistory, dispatches, importRecovery, inventory, activity, decisions, libraries, origins, removalPreview, acquisitionBlockers, memberships] =
+  const [series, metadataIssue, searchHistory, dispatches, importRecovery, inventory, activity, decisions, libraries, origins, removalPreview, acquisitionBlockers, memberships, subtitleLanguageOptions] =
     await Promise.all([
       fetchJson<SeriesListItem>(`/api/series/${id}`),
       fetchJson<MetadataProviderIssue | null>(`/api/series/${id}/metadata/issue`).catch(() => null),
@@ -158,15 +161,18 @@ export async function showDetailLoader({
       // page that simply does not mention it.
       fetchJson<AcquisitionBlockersResponse>(`/api/series/${id}/acquisition-blockers`).catch(() => null),
       // The library this show is in, as a person chose it (#530).
-      fetchJson<LibraryMembership[]>(`/api/series/${id}/libraries/`).catch(() => [] as LibraryMembership[])
+      fetchJson<LibraryMembership[]>(`/api/series/${id}/libraries/`).catch(() => [] as LibraryMembership[]),
+      // For the per-title override picker (#843) — the same names the
+      // library's own subtitle-languages screen uses.
+      fetchJson<SubtitleLanguageOption[]>("/api/subtitle-languages").catch(() => [] as SubtitleLanguageOption[])
     ]);
 
-  return { acquisitionBlockers, activity, decisions, importRecovery, inventory, libraries, memberships, metadataIssue, origins, removalPreview, searchHistory, series, dispatches };
+  return { acquisitionBlockers, activity, decisions, importRecovery, inventory, libraries, memberships, metadataIssue, origins, removalPreview, searchHistory, series, dispatches, subtitleLanguageOptions };
 }
 
 export function ShowDetailPage() {
   const loaderData = useLoaderData() as ShowDetailLoaderData;
-  const { acquisitionBlockers, activity, decisions, dispatches, importRecovery, inventory, libraries, memberships, metadataIssue, origins, removalPreview, searchHistory, series } = loaderData;
+  const { acquisitionBlockers, activity, decisions, dispatches, importRecovery, inventory, libraries, memberships, metadataIssue, origins, removalPreview, searchHistory, series, subtitleLanguageOptions } = loaderData;
   const navigate = useNavigate();
   const revalidator = useRevalidator();
   const { preferences, certificationCountry } = useDisplayPreferences();
@@ -1469,6 +1475,15 @@ export function ShowDetailPage() {
               ))}
             </ListTable>
           </ListCard>
+
+          <SubtitleOverrideCard
+            basePath={`/api/series/${series.id}`}
+            languages={series.subtitleLanguagesOverride}
+            mode={series.subtitleModeOverride}
+            libraryLanguages={library?.subtitleLanguages ?? []}
+            options={subtitleLanguageOptions}
+            onChanged={() => revalidator.revalidate()}
+          />
 
           <ListCard title="Automation" count={series.monitored ? "Monitored" : "Unmonitored"}>
             <ListTable chevron={false} columns={[{ label: "Control" }, { label: "Action", width: LIST_TRACK.action, align: "end", mobile: true }]}>

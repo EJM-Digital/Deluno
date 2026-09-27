@@ -29,10 +29,12 @@ import {
   type MetadataProviderIssue,
   type MovieSearchHistoryItem,
   type AcquisitionBlockersResponse,
-  type MediaSubtitleRow
+  type MediaSubtitleRow,
+  type SubtitleLanguageOption
 } from "../lib/api";
 import { subtitleTypeLabel, subtitleSourceLabel, timingStatusLabel } from "../lib/subtitle-display";
 import { SubtitleTimingActions } from "../components/app/subtitle-timing-actions";
+import { SubtitleOverrideCard } from "../components/app/subtitle-override-card";
 import { AcquisitionBlockersCard } from "../components/app/acquisition-blockers-card";
 import { LibraryMembershipCard, type LibraryMembership } from "../components/app/library-membership-card";
 import { RetentionTitleCard } from "../components/app/retention-title-card";
@@ -127,6 +129,7 @@ interface MovieDetailLoaderData {
   removalPreview: MediaRemovalPreview;
   searchHistory: MovieSearchHistoryItem[];
   subtitles: MediaSubtitleRow[];
+  subtitleLanguageOptions: SubtitleLanguageOption[];
   workflowStatus: MovieWorkflowStatus | null;
 }
 
@@ -152,7 +155,7 @@ export async function movieDetailLoader({
   params: { id?: string };
 }): Promise<MovieDetailLoaderData> {
   const id = params.id!;
-  const [movie, metadataIssue, searchHistory, dispatches, importRecovery, activity, decisions, libraries, workflowStatus, origins, removalPreview, acquisitionBlockers, copy, memberships, subtitles] = await Promise.all([
+  const [movie, metadataIssue, searchHistory, dispatches, importRecovery, activity, decisions, libraries, workflowStatus, origins, removalPreview, acquisitionBlockers, copy, memberships, subtitles, subtitleLanguageOptions] = await Promise.all([
     fetchJson<MovieListItem>(`/api/movies/${id}`),
     fetchJson<MetadataProviderIssue | null>(`/api/movies/${id}/metadata/issue`).catch(() => null),
     fetchJson<MovieSearchHistoryItem[]>("/api/movies/search-history"),
@@ -180,15 +183,18 @@ export async function movieDetailLoader({
     // Which type each held subtitle is — plain, hearing-impaired or forced
     // (#923). Caught rather than awaited into the failure: a page that
     // cannot show its subtitle types is not a page that should not open.
-    fetchJson<MediaSubtitleRow[]>(`/api/movies/${id}/subtitles`).catch(() => [] as MediaSubtitleRow[])
+    fetchJson<MediaSubtitleRow[]>(`/api/movies/${id}/subtitles`).catch(() => [] as MediaSubtitleRow[]),
+    // For the per-title override picker (#843) — the same names the
+    // library's own subtitle-languages screen uses.
+    fetchJson<SubtitleLanguageOption[]>("/api/subtitle-languages").catch(() => [] as SubtitleLanguageOption[])
   ]);
 
-  return { acquisitionBlockers, activity, copy, decisions, dispatches, importRecovery, libraries, memberships, metadataIssue, movie, origins, removalPreview, searchHistory, subtitles, workflowStatus };
+  return { acquisitionBlockers, activity, copy, decisions, dispatches, importRecovery, libraries, memberships, metadataIssue, movie, origins, removalPreview, searchHistory, subtitles, subtitleLanguageOptions, workflowStatus };
 }
 
 export function MovieDetailPage() {
   const loaderData = useLoaderData() as MovieDetailLoaderData;
-  const { acquisitionBlockers, activity, copy, decisions, dispatches, importRecovery, libraries, memberships, metadataIssue, movie, origins, removalPreview, searchHistory, subtitles, workflowStatus } = loaderData;
+  const { acquisitionBlockers, activity, copy, decisions, dispatches, importRecovery, libraries, memberships, metadataIssue, movie, origins, removalPreview, searchHistory, subtitles, subtitleLanguageOptions, workflowStatus } = loaderData;
   const navigate = useNavigate();
   const revalidator = useRevalidator();
   const { preferences, certificationCountry } = useDisplayPreferences();
@@ -1151,6 +1157,15 @@ export function MovieDetailPage() {
               ))}
             </ListTable>
           </ListCard>
+
+          <SubtitleOverrideCard
+            basePath={`/api/movies/${movie.id}`}
+            languages={movie.subtitleLanguagesOverride}
+            mode={movie.subtitleModeOverride}
+            libraryLanguages={library?.subtitleLanguages ?? []}
+            options={subtitleLanguageOptions}
+            onChanged={() => revalidator.revalidate()}
+          />
 
           {subtitles.length > 0 ? (
             <ListCard title="Subtitles" count={`${subtitles.length} on disk`}>
