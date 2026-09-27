@@ -126,7 +126,7 @@ public sealed class AnOutageStopsCleanupAndSearchTests
             var blocklist = new SqliteBlockedReleaseRepository(storage.Factory, time);
             var connectivity = new FakeConnectivityMonitor { IsOutage = isOutage };
             var service = new DownloadClientTelemetryService(
-                settings, new SqliteDownloadHealthRepository(storage.Factory, time), libraries, connections, null!, null!, time, null!,
+                settings, new SqliteDownloadHealthRepository(storage.Factory, time), libraries, connections, null!, new DownloadClientRegistry([]), time, null!,
                 jobs, dispatches, jobs, new DownloadHealthEvaluator(), null!, connectivity, blocklist);
             return new World(storage, time, service, client, jobs, blocklist, connectivity);
         }
