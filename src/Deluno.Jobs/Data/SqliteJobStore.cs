@@ -4351,7 +4351,9 @@ public sealed class SqliteJobStore(
             ["media-servers.refresh"] = new(
                 "a media server refresh", "Started telling your media servers about changed files.", "Media server refresh"),
             ["media-servers.refresh-retry"] = new(
-                "a media server refresh retry", "Started retrying a media server that had not answered.", "Media server refresh retry")
+                "a media server refresh retry", "Started retrying a media server that had not answered.", "Media server refresh retry"),
+            ["download-client.retry-grab"] = new(
+                "a download client retry", "Started resending a release to a download client that had not answered.", "Download client retry")
         };
 
     private static string? NormalizeJobKey(string? value)

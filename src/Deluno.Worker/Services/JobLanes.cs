@@ -1,5 +1,6 @@
 using Deluno.Contracts;
 using Deluno.Jobs.Contracts;
+using Deluno.Worker.Jobs;
 
 namespace Deluno.Worker.Services;
 
@@ -184,6 +185,13 @@ public static class JobLanes
         // #920: a failed refresh retries on its own lane, so a server that stays
         // down never starves the ordinary post-import refresh.
         new("media-servers.retry", [MediaServerJobTypes.RefreshRetry], BatchSize: RemoteWidth, MaxConcurrency: RemoteWidth / 2),
+
+        // #875: resending the exact same release to a download client that
+        // was offline, refused the password, or timed out. Its own lane for
+        // the same reason as the media-server retry above — a slow or dead
+        // client's retries must never crowd out, or be crowded out by, an
+        // ordinary search.
+        new("download-clients.retry", [SearchExecutionSupport.DownloadClientRetryGrabJobType], BatchSize: RemoteWidth, MaxConcurrency: RemoteWidth / 2),
 
         // Indexers, one lane per catalogue so neither can starve the other.
         //
