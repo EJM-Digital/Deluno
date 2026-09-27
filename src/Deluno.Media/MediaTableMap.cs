@@ -114,6 +114,15 @@ public sealed record MediaTableMap(
     /// </summary>
     string SubtitleOverrideFileTitleIdColumn,
     /// <summary>
+    /// Every subtitle search attempt for one file, kept append-only rather
+    /// than upserted like <see cref="SubtitleAttemptTable"/> — a retry
+    /// history a person can actually read (#840), not just the one row that
+    /// decides when the next try is due. Keyed the same way
+    /// <see cref="SubtitleAttemptTable"/> is: the movie for a film, the
+    /// episode for a show.
+    /// </summary>
+    string SubtitleAttemptHistoryTable,
+    /// <summary>
     /// The catalogue-local join table for user-owned platform tags. The table
     /// name is shared; the database and entry table are the two mapped parts.
     /// </summary>
@@ -158,6 +167,7 @@ public sealed record MediaTableMap(
                 "movie_subtitle_block",
                 "media_subtitle_override",
                 "f.movie_id",
+                "movie_subtitle_attempt_history",
                 "media_tags",
                 "media_id",
                 "media_preference_evaluations"),
@@ -202,6 +212,7 @@ public sealed record MediaTableMap(
                 "episode_subtitle_block",
                 "media_subtitle_override",
                 "f.series_id",
+                "episode_subtitle_attempt_history",
                 "media_tags",
                 "media_id",
                 "media_preference_evaluations"),
