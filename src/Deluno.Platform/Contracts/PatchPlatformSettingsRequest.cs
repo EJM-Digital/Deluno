@@ -91,4 +91,6 @@ public sealed record PatchPlatformSettingsRequest(
     // #860: the IANA zone (e.g. "Australia/Sydney") episode air times are
     // converted into for display. Empty clears it, which falls back to the
     // browser/OS timezone rather than UTC.
-    string? Timezone = null);
+    string? Timezone = null,
+    bool? LeftoverDownloadCleanupEnabled = null,
+    int? LeftoverDownloadCleanupAgeHours = null);

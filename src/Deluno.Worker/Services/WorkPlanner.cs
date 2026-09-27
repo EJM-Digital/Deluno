@@ -329,6 +329,27 @@ public sealed class WorkPlanner(
             cancellationToken);
 
     /// <summary>
+    /// #932: the scheduled half of the leftover-downloads list on Queue. The
+    /// service itself reads the enabled switch and age threshold, so a run
+    /// while it is switched off is simply a pass that removes nothing.
+    /// </summary>
+    public Task RunLeftoverDownloadCleanupAsync(
+        ILeftoverDownloadCleanupService leftoverCleanup,
+        CancellationToken cancellationToken)
+        => RunScheduledPassAsync(
+            SystemTasks.DownloadLeftoverCleanup,
+            async () =>
+            {
+                var result = await leftoverCleanup.RunAsync(cancellationToken);
+                if (result.Removed > 0)
+                {
+                    logger.LogInformation("Leftover-download cleanup removed {RemovedCount} item(s); {HeldCount} held back by a hold condition.", result.Removed, result.Held);
+                }
+            },
+            "Leftover-download cleanup pass failed.",
+            cancellationToken);
+
+    /// <summary>
     /// Keeps a metadata queue topped up to <see cref="MetadataQueueTargetDepth"/>
     /// rather than queueing a fixed number per pass.
     ///

@@ -17,7 +17,12 @@ public interface IOrphanedDownloadService
 
     Task<OrphanedDownloadAction> KeepAsync(string path, CancellationToken cancellationToken);
 
-    Task<OrphanedDownloadAction> RemoveAsync(string path, CancellationToken cancellationToken);
+    /// <param name="reason">
+    /// Why this counted as a leftover, said in Activity alongside the file
+    /// (#932). Null for a person's own click on the Remove button, where the
+    /// screen they clicked from already says why.
+    /// </param>
+    Task<OrphanedDownloadAction> RemoveAsync(string path, CancellationToken cancellationToken, string? reason = null);
 }
 
 /// <summary>What happened when a person acted on an orphaned download.</summary>
@@ -101,7 +106,7 @@ public sealed class OrphanedDownloadService(
         return new OrphanedDownloadAction(true, $"Kept {item.Name}.");
     }
 
-    public async Task<OrphanedDownloadAction> RemoveAsync(string path, CancellationToken cancellationToken)
+    public async Task<OrphanedDownloadAction> RemoveAsync(string path, CancellationToken cancellationToken, string? reason = null)
     {
         var item = await FindAsync(path, cancellationToken);
         if (item is null)
@@ -141,9 +146,10 @@ public sealed class OrphanedDownloadService(
             return new OrphanedDownloadAction(false, $"Deluno could not remove {item.Name}: {exception.Message}");
         }
 
+        var noticeSuffix = reason is { Length: > 0 } ? $", {reason}." : ".";
         await activityFeedRepository.RecordActivityAsync(
             "download.orphan.removed",
-            $"{item.Name} was removed from {item.LibraryName}'s download folder ({FormatSize(item.SizeBytes)}). No client, import or hand-off was using it.",
+            $"{item.Name} was removed from {item.LibraryName}'s download folder ({FormatSize(item.SizeBytes)}). No client, import or hand-off was using it{noticeSuffix}",
             null,
             null,
             "library",

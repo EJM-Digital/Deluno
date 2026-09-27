@@ -59,6 +59,7 @@ public static class IntegrationsServiceCollectionExtensions
         services.AddSingleton<IDownloadClientRegistry, DownloadClientRegistry>();
         services.AddScoped<IDownloadClientTelemetryService, DownloadClientTelemetryService>();
         services.AddScoped<IOrphanedDownloadService, OrphanedDownloadService>();
+        services.AddScoped<ILeftoverDownloadCleanupService, LeftoverDownloadCleanupService>();
         services.AddScoped<IDownloadClientGrabService, DownloadClientGrabService>();
         services.AddScoped<IFolderChainService, FolderChainService>();
         // Scoped, because the telemetry service it drives is. The schedule and

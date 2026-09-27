@@ -86,6 +86,7 @@ public static class SystemTasks
     public const string RssSync = "rss.sync";
     public const string HealthChecks = "health.checks";
     public const string SceneMappingRefresh = "scene.mapping.refresh";
+    public const string DownloadLeftoverCleanup = "download.leftover.cleanup";
 
     /// <summary>
     /// Ordered as somebody reading the screen would want them: the things that
@@ -190,7 +191,16 @@ public static class SystemTasks
         // TheXEM's courtesy rather than for freshness (#863).
         new(SceneMappingRefresh, "Refresh anime scene numbering",
             "Checks TheXEM for scene-numbering corrections on your anime titles, so a release named by fansub order still matches the right episode.",
-            TimeSpan.FromHours(12))
+            TimeSpan.FromHours(12)),
+        // #932 (cleanup sheet row M1): on by default, unlike the setup-guide
+        // automation questions this is not one of - its own row says so. An
+        // hour, the same cadence as dispatch-recovery polling: leftovers are
+        // not urgent, but a day-old default age threshold means most of them
+        // are already eligible the first time this runs.
+        new(DownloadLeftoverCleanup, "Clean up leftover downloads",
+            "Deletes a download-folder leftover nothing is using once it is old enough, with the reason written to Activity.",
+            TimeSpan.FromHours(1),
+            IsConfigurable: true)
     ];
 
     /// <summary>
