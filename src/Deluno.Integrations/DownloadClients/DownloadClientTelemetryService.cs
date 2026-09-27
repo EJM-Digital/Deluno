@@ -741,7 +741,8 @@ public sealed class DownloadClientTelemetryService(
                         item.Peers,
                         item.IsSetupProblem,
                         item.Progress,
-                        DownloadClientHelpers.IsUsenetProtocol(item.Protocol)),
+                        DownloadClientHelpers.IsUsenetProtocol(item.Protocol),
+                        item.IsPrivate),
                     snapshot.CapturedUtc,
                     rules);
                 annotated.Add((item, findings));

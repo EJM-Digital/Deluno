@@ -986,6 +986,8 @@ export interface DownloadQueueItem {
   libraryId: string | null;
   healthFindings: DownloadHealthFinding[] | null;
   failure?: IntegrationFailure | null;
+  /** #815: the torrent's own reported tracker privacy. Null when the client did not say (an older client, or Usenet, which has no tracker). */
+  isPrivate?: boolean | null;
 }
 
 /**
@@ -1060,6 +1062,8 @@ export interface DownloadHealthRule {
   createdUtc: string;
   updatedUtc: string;
   threshold: number;
+  /** #815: which tracker-privacy downloads this rule watches. */
+  privacyScope: "public" | "private" | "both" | string;
 }
 
 /** One entry exempting a download from every health rule (#817). */

@@ -259,6 +259,7 @@ public sealed class SqlitePlatformSettingsRepository(
         await UpsertSettingAsync(connection, transaction, "media.renameFoldersOnImport", request.RenameFoldersOnImport == true ? "true" : "false", updatedUtc, cancellationToken);
         // #828: Deluno's own event/strike history, not RetentionService's title-removal marks.
         await UpsertSettingAsync(connection, transaction, "history.retentionDays", Math.Clamp(request.HistoryRetentionDays ?? 365, 1, 3650).ToString(CultureInfo.InvariantCulture), updatedUtc, cancellationToken);
+        await UpsertSettingAsync(connection, transaction, "sharing.privacyScope", DownloadHealthPrivacyScopes.IsKnown(request.SharingPrivacyScope ?? string.Empty) ? request.SharingPrivacyScope! : DownloadHealthPrivacyScopes.Both, updatedUtc, cancellationToken);
         // #909: warn and pause both read as "percent free remaining", so pause
         // must be the smaller number -- clamped here rather than merely
         // validated, so a stored value can never be read back the wrong way
@@ -615,7 +616,11 @@ public sealed class SqlitePlatformSettingsRepository(
             SpecialsFolderFormat: GetValue(settings, "media.specialsFolderFormat") ?? string.Empty,
             MultiEpisodeStyle: NormalizeMultiEpisodeStyle(GetValue(settings, "media.multiEpisodeStyle")),
             RenameFoldersOnImport: string.Equals(GetValue(settings, "media.renameFoldersOnImport"), "true", StringComparison.OrdinalIgnoreCase),
-            HistoryRetentionDays: ReadPositiveInt(GetValue(settings, "history.retentionDays"), 365, 1, 3650));
+            HistoryRetentionDays: ReadPositiveInt(GetValue(settings, "history.retentionDays"), 365, 1, 3650),
+            HistoryRetentionDays: ReadPositiveInt(GetValue(settings, "history.retentionDays"), 365, 1, 3650),
+            SharingPrivacyScope: DownloadHealthPrivacyScopes.IsKnown(GetValue(settings, "sharing.privacyScope") ?? string.Empty)
+                ? GetValue(settings, "sharing.privacyScope")!
+                : DownloadHealthPrivacyScopes.Both);
     }
 
     private static string NormalizeMultiEpisodeStyle(string? value)

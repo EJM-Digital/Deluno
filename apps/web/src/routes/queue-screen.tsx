@@ -1184,6 +1184,7 @@ export function QueuePage() {
                 <Fact label="Time left" value={openQueueItem.etaSeconds > 0 ? formatEta(openQueueItem.etaSeconds) : "Unknown"} />
                 <Fact label="Peers" value={String(openQueueItem.peers)} />
                 <Fact label="From" value={openQueueItem.indexerName || "Unknown source"} />
+                <Fact label="Tracker privacy" value={privacyLabel(openQueueItem.isPrivate)} />
                 <Fact label="Release" value={openQueueItem.releaseName} mono />
               </div>
               <div className="flex justify-end">
@@ -2489,6 +2490,11 @@ function actionLabel(action: QueueAction) {
 
 function isHealthyClient(status: string) {
   return status === "healthy" || status === "ok";
+}
+
+/** #815: the torrent's own reported tracker privacy, or "Unknown" when the client did not say. */
+function privacyLabel(isPrivate: boolean | null | undefined) {
+  return isPrivate === true ? "Private" : isPrivate === false ? "Public" : "Unknown";
 }
 
 function formatEta(seconds: number) {

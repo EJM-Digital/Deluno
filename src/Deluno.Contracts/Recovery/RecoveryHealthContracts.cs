@@ -28,7 +28,9 @@ public sealed record RecoveryQueueSnapshot(
     /// <summary>Percent complete (0-100), for a rule's completion-range scope (#905).</summary>
     double ProgressPercent = 0,
     /// <summary>Usenet has no peers or seeders, so peer/seed-based rules never apply to it.</summary>
-    bool IsUsenetProtocol = false);
+    bool IsUsenetProtocol = false,
+    /// <summary>Whether the tracker is private, as the client itself reports it (#815). Null when unknown; a rule scoped to public-only or private-only never matches an unknown privacy.</summary>
+    bool? IsPrivate = null);
 
 public sealed record RecoveryHealthFinding(
     string Severity,

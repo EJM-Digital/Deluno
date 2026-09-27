@@ -47,7 +47,7 @@ public sealed class DelugeDownloadClient(IHttpClientFactory httpClientFactory) :
         // seen as met for Deluge. tracker_status: the field that actually
         // carries a ban/unregistered/offline tracker error; message is blanked
         // whenever it reads "OK" and says nothing else useful.
-        var payload = new DelugeRequest("web.update_ui", [new[] { "name", "state", "progress", "download_payload_rate", "upload_payload_rate", "eta", "total_size", "total_done", "num_peers", "time_added", "label", "message", "save_path", "move_completed", "move_completed_path", "ratio", "seeding_time", "tracker_status" }, new Dictionary<string, object>()], 2);
+        var payload = new DelugeRequest("web.update_ui", [new[] { "name", "state", "progress", "download_payload_rate", "upload_payload_rate", "eta", "total_size", "total_done", "num_peers", "time_added", "label", "message", "save_path", "move_completed", "move_completed_path", "ratio", "seeding_time", "tracker_status", "private" }, new Dictionary<string, object>()], 2);
         var response = await DownloadClientHelpers.PostJsonAsync<DelugeResponse<DelugeUpdateResult>>(http, new Uri(baseUri, "json"), payload, cancellationToken);
         var queue = (response?.Result?.Torrents ?? new Dictionary<string, DelugeTorrent>()).Select(pair =>
         {
@@ -68,7 +68,8 @@ public sealed class DelugeDownloadClient(IHttpClientFactory httpClientFactory) :
                 // finding. Deluge's own message field is the daemon speaking
                 // for itself (a move that failed, a path it could not write
                 // to), which is this machine's problem.
-                IsSetupProblem: TrackerError(item.TrackerStatus) is null && DelugeMessage(item.Message) is not null);
+                IsSetupProblem: TrackerError(item.TrackerStatus) is null && DelugeMessage(item.Message) is not null,
+                IsPrivate: item.Private);
         })
             .Select(item => DownloadClientHelpers.ReconcileTorrentStatus(item, capturedUtc))
             .ToArray();
@@ -313,5 +314,5 @@ public sealed class DelugeDownloadClient(IHttpClientFactory httpClientFactory) :
     private sealed record DelugeResponse<T>([property: JsonPropertyName("result")] T? Result, [property: JsonPropertyName("error")] DelugeError? Error = null);
     private sealed record DelugeError([property: JsonPropertyName("message")] string? Message);
     private sealed record DelugeUpdateResult([property: JsonPropertyName("torrents")] IReadOnlyDictionary<string, DelugeTorrent>? Torrents);
-    private sealed record DelugeTorrent([property: JsonPropertyName("name")] string? Name, [property: JsonPropertyName("state")] string? State, [property: JsonPropertyName("progress")] double? Progress, [property: JsonPropertyName("download_payload_rate")] double? DownloadPayloadRate, [property: JsonPropertyName("upload_payload_rate")] double? UploadPayloadRate, [property: JsonPropertyName("eta")] double? Eta, [property: JsonPropertyName("total_size")] double? TotalSize, [property: JsonPropertyName("total_done")] double? TotalDone, [property: JsonPropertyName("num_peers")] int? NumPeers, [property: JsonPropertyName("time_added")] double? TimeAdded, [property: JsonPropertyName("label")] string? Label, [property: JsonPropertyName("message")] string? Message, [property: JsonPropertyName("save_path")] string? SavePath, [property: JsonPropertyName("move_completed")] bool? MoveCompleted = null, [property: JsonPropertyName("move_completed_path")] string? MoveCompletedPath = null, [property: JsonPropertyName("ratio")] double? Ratio = null, [property: JsonPropertyName("seeding_time")] double? SeedingTime = null, [property: JsonPropertyName("tracker_status")] string? TrackerStatus = null);
+    private sealed record DelugeTorrent([property: JsonPropertyName("name")] string? Name, [property: JsonPropertyName("state")] string? State, [property: JsonPropertyName("progress")] double? Progress, [property: JsonPropertyName("download_payload_rate")] double? DownloadPayloadRate, [property: JsonPropertyName("upload_payload_rate")] double? UploadPayloadRate, [property: JsonPropertyName("eta")] double? Eta, [property: JsonPropertyName("total_size")] double? TotalSize, [property: JsonPropertyName("total_done")] double? TotalDone, [property: JsonPropertyName("num_peers")] int? NumPeers, [property: JsonPropertyName("time_added")] double? TimeAdded, [property: JsonPropertyName("label")] string? Label, [property: JsonPropertyName("message")] string? Message, [property: JsonPropertyName("save_path")] string? SavePath, [property: JsonPropertyName("move_completed")] bool? MoveCompleted = null, [property: JsonPropertyName("move_completed_path")] string? MoveCompletedPath = null, [property: JsonPropertyName("ratio")] double? Ratio = null, [property: JsonPropertyName("seeding_time")] double? SeedingTime = null, [property: JsonPropertyName("tracker_status")] string? TrackerStatus = null, [property: JsonPropertyName("private")] bool? Private = null);
 }

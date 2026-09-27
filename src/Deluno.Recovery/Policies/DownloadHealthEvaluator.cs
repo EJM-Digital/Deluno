@@ -199,7 +199,8 @@ public sealed class DownloadHealthEvaluator : IRecoveryHealthEvaluator
             rule.Enabled &&
             string.Equals(rule.Kind, kind, StringComparison.OrdinalIgnoreCase) &&
             rule.AppliesToProtocol(item.IsUsenetProtocol) &&
-            rule.CoversCompletion(item.ProgressPercent));
+            rule.CoversCompletion(item.ProgressPercent) &&
+            rule.AppliesToPrivacy(item.IsPrivate));
 
     private static RecoveryHealthFinding RuleFinding(
         DownloadHealthRule rule,

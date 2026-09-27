@@ -74,7 +74,8 @@ public sealed class SharingReclaimService(IDownloadClientActionGateway actions)
             policy,
             candidate.SupportsSharing,
             candidate.Ratio,
-            candidate.SeedingMinutes);
+            candidate.SeedingMinutes,
+            candidate.IsPrivate);
 
         if (decision.Action != SharingAction.Reclaim)
         {
@@ -166,7 +167,9 @@ public sealed record SharingReclaimCandidate(
     string Title,
     string Protocol,
     double? Ratio,
-    int? SeedingMinutes)
+    int? SeedingMinutes,
+    /// <summary>The torrent's own reported tracker privacy (#815). Null when unknown.</summary>
+    bool? IsPrivate = null)
 {
     /// <summary>
     /// Usenet has no sharing phase, so there is no obligation to discharge and

@@ -150,6 +150,67 @@ public sealed class DownloadHealthRulesAreConfigurableTests
         Assert.DoesNotContain(findings, finding => finding.Kind == DownloadHealthStrikes.LowSpeed);
     }
 
+    /// <summary>#815: a private-only rule never strikes a public download.</summary>
+    [Fact]
+    public void A_rule_scoped_to_private_only_never_matches_a_public_download()
+    {
+        var rules = new[] { TooSlowRule(kbps: 100, timerMinutes: 30) with { PrivacyScope = DownloadHealthPrivacyScopes.Private } };
+        var findings = Evaluate(CreateItem(speedMbps: 0.001, addedUtc: CapturedUtc.AddMinutes(-60), isPrivate: false), rules);
+
+        Assert.DoesNotContain(findings, finding => finding.Kind == DownloadHealthStrikes.LowSpeed);
+    }
+
+    /// <summary>#815: a public-only rule never strikes a private download.</summary>
+    [Fact]
+    public void A_rule_scoped_to_public_only_never_matches_a_private_download()
+    {
+        var rules = new[] { TooSlowRule(kbps: 100, timerMinutes: 30) with { PrivacyScope = DownloadHealthPrivacyScopes.Public } };
+        var findings = Evaluate(CreateItem(speedMbps: 0.001, addedUtc: CapturedUtc.AddMinutes(-60), isPrivate: true), rules);
+
+        Assert.DoesNotContain(findings, finding => finding.Kind == DownloadHealthStrikes.LowSpeed);
+    }
+
+    /// <summary>The flip side: a rule matching the download's actual privacy does still strike it.</summary>
+    [Fact]
+    public void A_rule_scoped_to_the_downloads_own_privacy_still_matches()
+    {
+        var rules = new[] { TooSlowRule(kbps: 100, timerMinutes: 30) with { PrivacyScope = DownloadHealthPrivacyScopes.Private } };
+        var findings = Evaluate(CreateItem(speedMbps: 0.001, addedUtc: CapturedUtc.AddMinutes(-60), isPrivate: true), rules);
+
+        Assert.Contains(findings, finding => finding.Kind == DownloadHealthStrikes.LowSpeed);
+    }
+
+    /// <summary>An unknown privacy never satisfies a scoped rule - only "both" is safe to assume nothing about.</summary>
+    [Fact]
+    public void A_scoped_rule_never_matches_an_unknown_privacy()
+    {
+        var rules = new[] { TooSlowRule(kbps: 100, timerMinutes: 30) with { PrivacyScope = DownloadHealthPrivacyScopes.Private } };
+        var findings = Evaluate(CreateItem(speedMbps: 0.001, addedUtc: CapturedUtc.AddMinutes(-60), isPrivate: null), rules);
+
+        Assert.DoesNotContain(findings, finding => finding.Kind == DownloadHealthStrikes.LowSpeed);
+    }
+
+    [Fact]
+    public void Two_privacy_scoped_rules_of_the_same_kind_and_range_can_both_be_saved()
+    {
+        var privateRule = TooSlowRule(kbps: 200, timerMinutes: 30) with { Id = "private-rule", PrivacyScope = DownloadHealthPrivacyScopes.Private };
+        var publicRule = TooSlowRule(kbps: 50, timerMinutes: 30) with { Id = "public-rule", PrivacyScope = DownloadHealthPrivacyScopes.Public };
+
+        Assert.Null(DownloadHealthRuleValidator.Validate(privateRule, [publicRule]));
+        Assert.Null(DownloadHealthRuleValidator.Validate(publicRule, [privateRule]));
+    }
+
+    [Fact]
+    public void Two_overlapping_privacy_scopes_of_the_same_kind_and_range_are_refused()
+    {
+        var first = TooSlowRule(kbps: 200, timerMinutes: 30) with { Id = "first", PrivacyScope = DownloadHealthPrivacyScopes.Both };
+        var second = TooSlowRule(kbps: 50, timerMinutes: 30) with { Id = "second", PrivacyScope = DownloadHealthPrivacyScopes.Private };
+
+        var error = DownloadHealthRuleValidator.Validate(second, [first]);
+
+        Assert.NotNull(error);
+    }
+
     [Fact]
     public void Two_non_overlapping_rules_of_the_same_kind_can_both_be_saved()
     {
@@ -208,7 +269,8 @@ public sealed class DownloadHealthRulesAreConfigurableTests
                 item.ReleaseName,
                 item.Peers,
                 ProgressPercent: item.Progress,
-                IsUsenetProtocol: string.Equals(item.Protocol, "sabnzbd", StringComparison.OrdinalIgnoreCase)),
+                IsUsenetProtocol: string.Equals(item.Protocol, "sabnzbd", StringComparison.OrdinalIgnoreCase),
+                IsPrivate: item.IsPrivate),
             CapturedUtc,
             rules);
 
@@ -217,7 +279,8 @@ public sealed class DownloadHealthRulesAreConfigurableTests
         int peers = 4,
         DateTimeOffset? addedUtc = null,
         double progressPercent = 50,
-        bool isUsenet = false)
+        bool isUsenet = false,
+        bool? isPrivate = null)
         => new(
             Id: "queue-1",
             ClientId: "client-1",
@@ -237,5 +300,6 @@ public sealed class DownloadHealthRulesAreConfigurableTests
             IndexerName: "Test indexer",
             ErrorMessage: null,
             AddedUtc: addedUtc ?? CapturedUtc.AddMinutes(-10),
-            SourcePath: "D:\\downloads\\example.mkv");
+            SourcePath: "D:\\downloads\\example.mkv",
+            IsPrivate: isPrivate);
 }

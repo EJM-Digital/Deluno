@@ -80,6 +80,36 @@ public static class DownloadHealthAppliesTo
 }
 
 /// <summary>
+/// Which tracker-privacy downloads a rule watches (#815). Cleanuparr's
+/// "Privacy Type" per rule, plus its "Ignore Private"/"Delete Private"
+/// toggles: a private-tracker account can be permanently banned for early
+/// removal or a hit-and-run, so a person may want a gentler rule - or none
+/// at all - for private trackers specifically.
+/// </summary>
+public static class DownloadHealthPrivacyScopes
+{
+    public const string Public = "public";
+    public const string Private = "private";
+    public const string Both = "both";
+
+    public static readonly IReadOnlyList<string> All = [Public, Private, Both];
+
+    public static bool IsKnown(string value) => All.Contains(value, StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// <paramref name="isPrivate"/> null means the client never said - a rule
+    /// scoped to public-only or private-only never matches an unknown
+    /// privacy, only "both" does, so an unreadable flag can never wrongly
+    /// narrow a private-tracker download's protection.
+    /// </summary>
+    public static bool Matches(string scope, bool? isPrivate)
+        => string.Equals(scope, Both, StringComparison.OrdinalIgnoreCase) ||
+           (isPrivate is { } known &&
+            ((known && string.Equals(scope, Private, StringComparison.OrdinalIgnoreCase)) ||
+             (!known && string.Equals(scope, Public, StringComparison.OrdinalIgnoreCase))));
+}
+
+/// <summary>
 /// One configured download-health rule (#905). Deluno can hold more than one
 /// rule of the same <see cref="Kind"/> at once - for example a stricter "too
 /// slow" floor for the first half of a download and a gentler one once it is
@@ -113,7 +143,9 @@ public sealed record DownloadHealthRule(
     /// minutes since the download was added. Unused by
     /// <see cref="DownloadHealthRuleKinds.NoProgress"/>.
     /// </summary>
-    double Threshold = 0)
+    double Threshold = 0,
+    /// <summary>#815: which tracker-privacy downloads this rule watches. "both" (the default) is every existing rule's value, so nothing narrows for an existing install until it is edited.</summary>
+    string PrivacyScope = DownloadHealthPrivacyScopes.Both)
 {
     public TimeSpan Timer => TimeSpan.FromMinutes(Math.Clamp(TimerMinutes, 1, 1440));
 
@@ -122,26 +154,30 @@ public sealed record DownloadHealthRule(
 
     public bool AppliesToProtocol(bool protocolIsUsenet) => DownloadHealthAppliesTo.Matches(AppliesTo, protocolIsUsenet);
 
+    /// <summary>#815: whether this rule's privacy scope covers a download with this reported privacy.</summary>
+    public bool AppliesToPrivacy(bool? isPrivate) => DownloadHealthPrivacyScopes.Matches(PrivacyScope, isPrivate);
+
     /// <summary>
     /// Whether this rule and <paramref name="other"/> could both match the
     /// same download at once: same kind, both enabled, overlapping protocol
-    /// scope, overlapping completion range. Saving a rule that overlaps an
-    /// existing one is refused (#905 decision 1) - two rules racing to strike
-    /// the same download would leave whichever one is checked last winning by
-    /// accident, with no way for a person reading the settings screen to know
-    /// which that would be.
+    /// scope, overlapping completion range, overlapping privacy scope.
+    /// Saving a rule that overlaps an existing one is refused (#905 decision
+    /// 1) - two rules racing to strike the same download would leave
+    /// whichever one is checked last winning by accident, with no way for a
+    /// person reading the settings screen to know which that would be.
     /// </summary>
     public bool Overlaps(DownloadHealthRule other)
         => !string.Equals(Id, other.Id, StringComparison.OrdinalIgnoreCase) &&
            string.Equals(Kind, other.Kind, StringComparison.OrdinalIgnoreCase) &&
            Enabled && other.Enabled &&
-           ScopeOverlaps(AppliesTo, other.AppliesTo) &&
+           ScopeOverlaps(AppliesTo, other.AppliesTo, DownloadHealthAppliesTo.Both) &&
+           ScopeOverlaps(PrivacyScope, other.PrivacyScope, DownloadHealthPrivacyScopes.Both) &&
            MinCompletionPercent <= other.MaxCompletionPercent &&
            other.MinCompletionPercent <= MaxCompletionPercent;
 
-    private static bool ScopeOverlaps(string a, string b)
-        => string.Equals(a, DownloadHealthAppliesTo.Both, StringComparison.OrdinalIgnoreCase) ||
-           string.Equals(b, DownloadHealthAppliesTo.Both, StringComparison.OrdinalIgnoreCase) ||
+    private static bool ScopeOverlaps(string a, string b, string both)
+        => string.Equals(a, both, StringComparison.OrdinalIgnoreCase) ||
+           string.Equals(b, both, StringComparison.OrdinalIgnoreCase) ||
            string.Equals(a, b, StringComparison.OrdinalIgnoreCase);
 }
 
@@ -164,6 +200,11 @@ public static class DownloadHealthRuleValidator
         if (!DownloadHealthAppliesTo.IsKnown(candidate.AppliesTo))
         {
             return "Choose torrents, Usenet, or both for this rule.";
+        }
+
+        if (!DownloadHealthPrivacyScopes.IsKnown(candidate.PrivacyScope))
+        {
+            return "Choose public, private, or both for this rule.";
         }
 
         if (candidate.MinCompletionPercent < 0 || candidate.MaxCompletionPercent > 100 ||

@@ -83,6 +83,8 @@ export interface PlatformSettingsSnapshot {
   sharingUntilRatio: number | null;
   sharingStuckAction: string;
   sharingStuckAfterDays: number;
+  /** #815: which tracker-privacy downloads the global sharing policy covers. */
+  sharingPrivacyScope: "public" | "private" | "both" | string;
   /**
    * How often Deluno looks at whether the files it thinks you have are still
    * on disk. The right answer depends on the disk: a local pool can afford
@@ -279,6 +281,7 @@ export const emptyPlatformSettingsSnapshot: PlatformSettingsSnapshot = {
   sharingUntilRatio: null,
   sharingStuckAction: "give-up",
   sharingStuckAfterDays: 14,
+  sharingPrivacyScope: "both",
   libraryFileCheckHours: 6,
   downloadHealthNoProgressEnabled: true,
   downloadHealthNoProgressMinutes: 30,

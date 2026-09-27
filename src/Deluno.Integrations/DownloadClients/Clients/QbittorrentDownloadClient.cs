@@ -195,7 +195,8 @@ public sealed class QbittorrentDownloadClient(Func<HttpMessageHandler>? handlerF
             // are this machine's problem, not the release's — a plain
             // stalled/stalledDL state (no seeds, no error text) is left as a
             // release-side finding.
-            IsSetupProblem: IsSetupProblemState(item.State)))
+            IsSetupProblem: IsSetupProblemState(item.State),
+            IsPrivate: item.Private))
             .Select(item => DownloadClientHelpers.ReconcileTorrentStatus(item, capturedUtc))
             .ToArray();
         var freeSpaceBytes = await GetFreeSpaceBytesAsync(http, cancellationToken);
@@ -516,7 +517,12 @@ public sealed class QbittorrentDownloadClient(Func<HttpMessageHandler>? handlerF
         [property: JsonPropertyName("save_path")] string? SavePath,
         [property: JsonPropertyName("content_path")] string? ContentPath,
         [property: JsonPropertyName("ratio")] double? Ratio = null,
-        [property: JsonPropertyName("seeding_time")] long? SeedingTimeSeconds = null);
+        [property: JsonPropertyName("seeding_time")] long? SeedingTimeSeconds = null,
+        // #815: added to torrents/info in a later WebAPI version than the
+        // rest of this call's fields. Null on an older qBittorrent that does
+        // not send it, which DownloadHealthPrivacyScopes reads as "unknown"
+        // rather than guessing either way.
+        [property: JsonPropertyName("private")] bool? Private = null);
 
     private sealed record QbitMainData([property: JsonPropertyName("server_state")] QbitServerState? ServerState);
 

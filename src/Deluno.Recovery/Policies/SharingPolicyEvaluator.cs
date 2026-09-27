@@ -53,19 +53,30 @@ public static class SharingPolicyEvaluator
     /// <summary>
     /// <paramref name="ratio"/> and <paramref name="seedingMinutes"/> are what the
     /// download client reports. Both are null for protocols with no sharing
-    /// phase — usenet — where there is nothing to wait for.
+    /// phase — usenet — where there is nothing to wait for. <paramref name="isPrivate"/>
+    /// is the torrent's own reported tracker privacy (#815; null when unknown).
     /// </summary>
     public static SharingDecision Evaluate(
         SharingPolicy policy,
         bool supportsSharing,
         double? ratio,
-        int? seedingMinutes)
+        int? seedingMinutes,
+        bool? isPrivate = null)
     {
         var mode = SharingPolicy.NormalizeMode(policy.Mode);
 
         if (mode == SharingPolicy.ModeLeaveAlone)
         {
             return new(SharingAction.Leave, "Deluno is not managing this download client.");
+        }
+
+        // #815: a policy scoped to public-only or private-only never reclaims
+        // a download outside its scope - left alone the same way "leave
+        // alone" mode is, so a private-tracker account is never put at risk
+        // by a rule that was never meant to cover it.
+        if (!policy.AppliesToPrivacy(isPrivate))
+        {
+            return new(SharingAction.Leave, "This policy does not cover this download's tracker privacy.");
         }
 
         if (mode == SharingPolicy.ModeTidyNow)

@@ -102,4 +102,6 @@ public sealed record PatchPlatformSettingsRequest(
     string? MultiEpisodeStyle = null,
     bool? RenameFoldersOnImport = null,
     /// <summary>#828: 1-3650 days of Deluno's own event/strike history before a background job prunes it.</summary>
-    int? HistoryRetentionDays = null);
+    int? HistoryRetentionDays = null,
+    /// <summary>#815: which tracker-privacy downloads the global sharing policy covers.</summary>
+    string? SharingPrivacyScope = null);
