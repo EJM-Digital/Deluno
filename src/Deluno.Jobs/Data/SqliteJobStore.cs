@@ -4470,6 +4470,10 @@ public sealed class SqliteJobStore(
                 "a subtitle timing check",
                 "Started timing a subtitle against the video's audio.",
                 "Subtitle timing"),
+            ["subtitle.title.search"] = new(
+                "a subtitle search",
+                "Started looking for the subtitles you asked to search for.",
+                "Subtitle search"),
             ["movies.catalog.refresh"] = new(
                 "a movie check", "Started checking your movie library.", "Movie check"),
             ["series.catalog.refresh"] = new(
