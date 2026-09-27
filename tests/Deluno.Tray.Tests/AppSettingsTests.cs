@@ -98,6 +98,24 @@ public sealed class AppSettingsTests : IDisposable
         Assert.Equal(customDataRoot, persisted!.DataRoot);
     }
 
+    /// <summary>
+    /// #939: the tray's "Let any address in" recovery action round-trips
+    /// through Save/Load the same as every other setting, so
+    /// DelunoServer/ServiceHost see it on the next start.
+    /// </summary>
+    [Fact]
+    public void Save_and_load_round_trips_AllowedHostsForceDisabled()
+    {
+        var settings = AppSettings.Load();
+        Assert.False(settings.AllowedHostsForceDisabled);
+
+        settings.AllowedHostsForceDisabled = true;
+        settings.Save();
+
+        var reloaded = AppSettings.Load();
+        Assert.True(reloaded.AllowedHostsForceDisabled);
+    }
+
     public void Dispose()
     {
         Environment.SetEnvironmentVariable("DELUNO_TEST_LOCALAPPDATA", _originalLocalAppData);

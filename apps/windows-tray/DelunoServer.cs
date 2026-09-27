@@ -54,6 +54,16 @@ public sealed class DelunoServer : IDisposable
 
         // Override config values with resolved Windows paths
         builder.Configuration["Storage:DataRoot"] = settings.DataRoot;
+
+        // The tray's "Let any address in" recovery action (#939): the same
+        // config override docs/security-allowed-hosts.md documents, written
+        // here instead of by hand so the next restart honours it without a
+        // working web UI. AllowedHostsSettingsCache checks this key on every
+        // request, ahead of whatever is saved in the database.
+        if (settings.AllowedHostsForceDisabled)
+        {
+            builder.Configuration["Security:AllowedHosts:ForceDisabled"] = "true";
+        }
         // NOTE: do NOT also set Kestrel:EndPoints:Http:Url — that adds a SECOND
         // listener on the same port, which on Windows fails with WSAEADDRINUSE
         // because [::]:port and http://+:port overlap. The explicit

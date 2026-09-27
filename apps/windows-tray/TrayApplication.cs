@@ -23,6 +23,7 @@ public sealed class TrayApplication : ApplicationContext
     private readonly ToolStripMenuItem _startStopItem;
     private readonly ToolStripMenuItem _serviceModeItem;
     private readonly ToolStripMenuItem _allowLanItem;
+    private readonly ToolStripMenuItem _letAnyAddressInItem;
     private readonly DelunoServer _server;
     private TrayState _state = TrayState.Starting;
 
@@ -36,6 +37,7 @@ public sealed class TrayApplication : ApplicationContext
         _startStopItem = new ToolStripMenuItem("Stop", null, OnStartStop) { Enabled = false };
         _serviceModeItem = new ToolStripMenuItem("Run as Service...", null, OnServiceMode);
         _allowLanItem = new ToolStripMenuItem("Allow other devices on your network...", null, OnAllowLan) { Visible = false };
+        _letAnyAddressInItem = new ToolStripMenuItem("Let any address in...", null, OnLetAnyAddressIn);
 
         var version = Assembly.GetEntryAssembly()?.GetName().Version;
         var aboutItem = new ToolStripMenuItem($"Deluno v{version?.ToString(3) ?? "0.1.0"}") { Enabled = false };
@@ -50,6 +52,7 @@ public sealed class TrayApplication : ApplicationContext
             _startStopItem,
             new ToolStripSeparator(),
             _serviceModeItem,
+            _letAnyAddressInItem,
             new ToolStripSeparator(),
             aboutItem,
             new ToolStripMenuItem("Quit", null, OnQuit)
@@ -173,6 +176,45 @@ public sealed class TrayApplication : ApplicationContext
                 status.State == LanAccessStates.Open ? "Other devices can reach Deluno" : "Other devices still cannot reach Deluno",
                 status.Message,
                 status.State == LanAccessStates.Open ? ToolTipIcon.Info : ToolTipIcon.Warning);
+        });
+    }
+
+    /// <summary>
+    /// The Windows tray recovery action for Allowed Hosts (#939): if every
+    /// address Deluno can be reached on ends up refused, this needs no
+    /// working web UI to fix -- it writes the same
+    /// <c>Security:AllowedHosts:ForceDisabled</c> override
+    /// docs/security-allowed-hosts.md documents for the config file, then
+    /// restarts the embedded server so it takes effect immediately.
+    /// </summary>
+    private async void OnLetAnyAddressIn(object? sender, EventArgs e)
+    {
+        var confirmed = MessageBox.Show(
+            "Deluno will answer requests on any address again, exactly as it did before Allowed Hosts existed. " +
+            "You can turn Allowed Hosts back on from System → Security once you can reach Deluno again.",
+            "Let any address in?",
+            MessageBoxButtons.OKCancel,
+            MessageBoxIcon.Warning);
+        if (confirmed != DialogResult.OK)
+        {
+            return;
+        }
+
+        var settings = AppSettings.Load();
+        settings.AllowedHostsForceDisabled = true;
+        settings.Save();
+
+        _letAnyAddressInItem.Enabled = false;
+        await _server.StopAsync();
+        await StartServerAsync();
+        InvokeOnUiThread(() =>
+        {
+            _letAnyAddressInItem.Enabled = true;
+            _notify.ShowBalloonTip(
+                10000,
+                "Deluno answers on any address again",
+                "Allowed Hosts is off until you turn it back on from System → Security.",
+                ToolTipIcon.Info);
         });
     }
 

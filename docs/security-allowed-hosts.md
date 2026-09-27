@@ -48,10 +48,15 @@ routes get you back in without a browser session:
    already saved in the database is touched. Remove the override and
    restart again once you've fixed the list from the Security page, and
    your saved choices come back exactly as they were.
-2. **The tray, on Windows.** The tray needs no web page to reach: after
-   setting the override above, use the tray icon's **Restart** menu item to
-   apply it. The tray keeps working even while the web UI itself is
-   refusing every address you can reach it on.
+2. **The tray, on Windows.** Right-click the tray icon and choose
+   **Let any address in...**. It needs no web page to reach: it writes the
+   same `Security:AllowedHosts:ForceDisabled` override described above into
+   the tray's own settings file, then restarts the embedded server itself --
+   no manual config edit and no separate Restart click required. The tray
+   keeps working even while the web UI itself is refusing every address you
+   can reach it on. Turn Allowed Hosts back on from System &rarr; Security
+   once you can reach Deluno again; the tray action does not touch anything
+   saved there.
 
 ## Enforcement
 

@@ -106,6 +106,57 @@ public sealed class DelunoAllowedHostsMiddlewareTests
         Assert.True(called);
     }
 
+    /// <summary>
+    /// #939 acceptance: "it's enforced for everything: the UI, the API,
+    /// SignalR/websockets...". The middleware runs ahead of
+    /// <c>UseRouting</c> in both Deluno.Host/Program.cs and the Windows
+    /// tray's embedded server, so a SignalR negotiation or websocket upgrade
+    /// to <c>/hubs/...</c> passes through the exact same check as any other
+    /// request -- there is no special-cased bypass for it.
+    /// </summary>
+    [Fact]
+    public async Task Enabled_refuses_a_websocket_upgrade_to_a_hub_from_an_unlisted_host_the_same_as_any_other_request()
+    {
+        var called = false;
+        RequestDelegate next = _ => { called = true; return Task.CompletedTask; };
+        var middleware = new DelunoAllowedHostsMiddleware(
+            next,
+            new FakeCache(new AllowedHostsSettings(true, ["my-pc"])),
+            new ForwardedHostTracker(),
+            NullLogger<DelunoAllowedHostsMiddleware>.Instance);
+
+        var context = HttpContextFor("evil.example.com");
+        context.Request.Path = "/hubs/activity";
+        context.Request.Headers["Connection"] = "Upgrade";
+        context.Request.Headers["Upgrade"] = "websocket";
+
+        await middleware.InvokeAsync(context);
+
+        Assert.False(called);
+        Assert.Equal(StatusCodes.Status400BadRequest, context.Response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Enabled_allows_a_websocket_upgrade_to_a_hub_from_a_listed_host()
+    {
+        var called = false;
+        RequestDelegate next = _ => { called = true; return Task.CompletedTask; };
+        var middleware = new DelunoAllowedHostsMiddleware(
+            next,
+            new FakeCache(new AllowedHostsSettings(true, ["my-pc"])),
+            new ForwardedHostTracker(),
+            NullLogger<DelunoAllowedHostsMiddleware>.Instance);
+
+        var context = HttpContextFor("my-pc:5099");
+        context.Request.Path = "/hubs/activity";
+        context.Request.Headers["Connection"] = "Upgrade";
+        context.Request.Headers["Upgrade"] = "websocket";
+
+        await middleware.InvokeAsync(context);
+
+        Assert.True(called);
+    }
+
     [Fact]
     public async Task A_forwarded_host_header_is_recorded_as_a_candidate_even_while_disabled()
     {

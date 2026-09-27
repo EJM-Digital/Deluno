@@ -16,6 +16,20 @@ public sealed class AppSettings
     public bool AutoCheckUpdates { get; set; } = true;
     public string UpdateSource { get; set; } = "https://github.com/jampat000/Deluno";
 
+    /// <summary>
+    /// The tray's own "Let any address in" recovery action (#939): written by
+    /// <see cref="Deluno.Tray.TrayApplication"/> when every address Deluno can
+    /// be reached on ends up refused by Allowed Hosts, with no working web UI
+    /// left to fix it from. <see cref="DelunoServer"/> and
+    /// <see cref="ServiceHost"/> apply it the same way the documented
+    /// config-file override works (docs/security-allowed-hosts.md): by
+    /// setting <c>Security:AllowedHosts:ForceDisabled</c> in configuration
+    /// before the app builds, so Allowed Hosts enforcement is off exactly as
+    /// it always was before the feature existed. Off by default (#936); never
+    /// true unless this recovery action was used.
+    /// </summary>
+    public bool AllowedHostsForceDisabled { get; set; }
+
     public static AppSettingsPathState InspectPathState()
     {
         return new AppSettingsPathState(
@@ -144,7 +158,8 @@ public sealed class AppSettings
                 UpdateMode = settings.UpdateMode,
                 UpdateChannel = settings.UpdateChannel,
                 AutoCheckUpdates = settings.AutoCheckUpdates,
-                UpdateSource = settings.UpdateSource
+                UpdateSource = settings.UpdateSource,
+                AllowedHostsForceDisabled = settings.AllowedHostsForceDisabled
             };
             File.WriteAllText(configPath, JsonSerializer.Serialize(normalized, JsonOptions));
         }
