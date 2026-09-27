@@ -94,6 +94,23 @@ public interface ISubtitleFetchService
         // (#898), a rejection the person made themselves (#841), or a
         // subtitle they deleted from disk (#895). Never offered again.
         IReadOnlyCollection<string>? blockedKeys = null);
+
+    /// <summary>
+    /// Finds a forced track for one language and writes it as an extra file
+    /// alongside the full subtitle, when the library asked for it (#835,
+    /// #923). Never counted as coverage — the caller records it with
+    /// <c>Forced: true</c>, which the held-language rollup already excludes.
+    /// </summary>
+    Task<SubtitleFetchOutcome> FetchForcedAsync(
+        SubtitleSearchRequest request,
+        string language,
+        bool isEpisodeMedia,
+        string videoPath,
+        CancellationToken cancellationToken,
+        SubtitleContentModificationPolicy? contentPolicy = null,
+        SubtitleNamePolicy? namePolicy = null,
+        bool omitLanguageCode = false,
+        IReadOnlyCollection<string>? blockedKeys = null);
 }
 
 public sealed class SubtitleFetchService(
@@ -283,6 +300,115 @@ public sealed class SubtitleFetchService(
             reason,
             Failures: failures.ToArray(),
             RejectedCandidates: rejected.Count == 0 ? null : rejected.ToArray());
+    }
+
+    /// <summary>
+    /// Same shape as <see cref="FetchAsync"/> — priority order, first usable
+    /// candidate wins, a malformed download is blocklisted and the next one
+    /// tried — but ranking only ever considers a forced candidate, and the
+    /// file is written with <c>forced: true</c> so it never overwrites the
+    /// full subtitle for the same language and is never read back as
+    /// coverage.
+    /// </summary>
+    public async Task<SubtitleFetchOutcome> FetchForcedAsync(
+        SubtitleSearchRequest request,
+        string language,
+        bool isEpisodeMedia,
+        string videoPath,
+        CancellationToken cancellationToken,
+        SubtitleContentModificationPolicy? contentPolicy = null,
+        SubtitleNamePolicy? namePolicy = null,
+        bool omitLanguageCode = false,
+        IReadOnlyCollection<string>? blockedKeys = null)
+    {
+        var blocked = blockedKeys is null or { Count: 0 }
+            ? null
+            : new HashSet<string>(blockedKeys, StringComparer.OrdinalIgnoreCase);
+        var now = timeProvider.GetUtcNow();
+        var names = SubtitleNamePolicyCodec.Normalize(namePolicy);
+        var configured = await repository.ListAsync(cancellationToken);
+
+        var askable = configured
+            .Where(item => item.IsAskable(now))
+            .OrderBy(item => item.Priority)
+            .Select(item => (Connection: item, Provider: registry.Find(item.ProviderKey)))
+            .Where(pair => pair.Provider is not null && Serves(pair.Provider!, isEpisodeMedia))
+            .ToArray();
+
+        var failures = new List<IntegrationFailure>();
+
+        foreach (var (connection, provider) in askable)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            try
+            {
+                var candidates = await provider!.SearchAsync(
+                    request with { Languages = [language] },
+                    Credentials(connection),
+                    cancellationToken);
+
+                var ranked = candidates
+                    .Where(candidate => candidate.Forced)
+                    .Where(candidate => namePolicy?.Accepts(candidate.ReleaseName) ?? true)
+                    .Where(candidate => candidate.Language.StartsWith(language[..Math.Min(2, language.Length)], StringComparison.OrdinalIgnoreCase))
+                    .OrderByDescending(candidate => SubtitleMatchRanking.Rank(candidate.ReleaseName, videoPath))
+                    .ThenByDescending(candidate => candidate.DownloadCount ?? 0)
+                    .Where(candidate => blocked is null || !blocked.Contains(SubtitleBlockKeys.For(provider.Key, candidate.DownloadToken)))
+                    .ToArray();
+
+                foreach (var pick in ranked)
+                {
+                    var blockKey = SubtitleBlockKeys.For(provider.Key, pick.DownloadToken);
+                    var payload = await provider.DownloadAsync(pick, Credentials(connection), cancellationToken);
+                    var subtitle = SubtitleArchive.Extract(payload);
+
+                    if (subtitle is null || !SubtitleArchive.LooksLikeSubtitle(subtitle))
+                    {
+                        var badFailure = IntegrationFailureFactory.FromLegacy(
+                            "subtitle", provider.Key, provider.DisplayName, "download", "malformed-response",
+                            $"{provider.DisplayName} returned something that is not a subtitle.");
+                        failures.Add(badFailure);
+                        continue;
+                    }
+
+                    var modification = SubtitleContentModifier.Apply(subtitle, contentPolicy);
+                    subtitle = modification.Content;
+                    var written = await fileWriter.WriteAsync(
+                        videoPath, language, hearingImpaired: false, subtitle, cancellationToken, omitLanguageCode, forced: true);
+
+                    return new SubtitleFetchOutcome(
+                        Language: language,
+                        Found: true,
+                        ProviderKey: provider.Key,
+                        WrittenPath: written,
+                        HearingImpaired: false,
+                        Reason: $"Fetched a forced {language} track from {provider.DisplayName}.",
+                        Match: SubtitleMatchRanking.Rank(pick.ReleaseName, videoPath),
+                        Failures: failures.Count == 0 ? null : failures.ToArray(),
+                        AppliedModifications: modification.AppliedRules.Count == 0 ? null : modification.AppliedRules,
+                        SourceKey: blockKey);
+                }
+            }
+            catch (SubtitleProviderRateLimitedException)
+            {
+                // A forced fetch never counts against a provider's health —
+                // the main-language fetch for this same provider already
+                // will, and recording it twice would double-count one busy
+                // minute as two.
+            }
+            catch (Exception exception) when (exception is not OperationCanceledException)
+            {
+                logger.LogWarning(exception, "Forced-subtitle provider {Provider} failed for {Title}.", provider!.Key, request.Title);
+                failures.Add(IntegrationFailureFactory.FromException(
+                    "subtitle", provider.Key, provider.DisplayName, "search", exception, retryScheduled: true));
+            }
+        }
+
+        return new SubtitleFetchOutcome(
+            language, false, null, null, false,
+            $"No forced {language} track was found.",
+            Failures: failures.Count == 0 ? null : failures.ToArray());
     }
 
     /// <summary>

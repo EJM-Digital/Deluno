@@ -27,7 +27,8 @@ public sealed class SubtitleFileWriter(ILogger<SubtitleFileWriter> logger) : ISu
         bool hearingImpaired,
         byte[] subtitle,
         CancellationToken cancellationToken,
-        bool omitLanguageCode = false)
+        bool omitLanguageCode = false,
+        bool forced = false)
     {
         var directory = Path.GetDirectoryName(videoPath);
         if (string.IsNullOrWhiteSpace(directory))
@@ -43,7 +44,7 @@ public sealed class SubtitleFileWriter(ILogger<SubtitleFileWriter> logger) : ISu
         }
 
         var target = Path.Combine(
-            directory, SubtitleFileNaming.For(videoPath, language, hearingImpaired, omitLanguageCode));
+            directory, SubtitleFileNaming.For(videoPath, language, hearingImpaired, omitLanguageCode, forced));
         var temporary = target + ".partial";
 
         await File.WriteAllBytesAsync(temporary, subtitle, cancellationToken);
@@ -81,11 +82,15 @@ public static class SubtitleFileNaming
     /// unknown-language setting.</para>
     /// </summary>
     public static string For(
-        string videoPath, string language, bool hearingImpaired, bool omitLanguageCode = false)
+        string videoPath, string language, bool hearingImpaired, bool omitLanguageCode = false, bool forced = false)
     {
         var stem = MediaPath.FileNameWithoutExtension(videoPath);
         var code = SubtitleLanguages.Normalize(language) ?? SubtitleLanguages.Unknown;
-        var variant = hearingImpaired ? ".sdh" : string.Empty;
+        // Forced and hearing-impaired never occur together — a forced track
+        // is never counted as coverage, so the write path never asks for both
+        // at once — but forced wins if it ever did, since that is the rarer
+        // and more deliberate of the two.
+        var variant = forced ? ".forced" : hearingImpaired ? ".sdh" : string.Empty;
 
         // The variant is kept even without the code: a plain and a hearing-
         // impaired subtitle for the same film are two different files, and

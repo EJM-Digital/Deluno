@@ -342,28 +342,42 @@ export function SubtitleLanguagesPage() {
                   </p>
                   {form.languages.map((code) => {
                     const preference = typePreferenceFor(form.languageTypePreferences, code);
+                    function updatePreference(next: Partial<SubtitleLanguageTypePreference>) {
+                      setForm({
+                        ...form,
+                        languageTypePreferences: [
+                          ...form.languageTypePreferences.filter((item) => item.language !== code),
+                          { ...preference, ...next }
+                        ]
+                      });
+                    }
+
                     return (
-                      <Field key={code} label={nameOf(code, languages)}>
-                        <MenuSelect
-                          label={`Hearing-impaired subtitles for ${nameOf(code, languages)}`}
-                          value={preference.hearingImpaired}
-                          onChange={(hearingImpaired: string) =>
-                            setForm({
-                              ...form,
-                              languageTypePreferences: [
-                                ...form.languageTypePreferences.filter((item) => item.language !== code),
-                                { ...preference, hearingImpaired }
-                              ]
-                            })
-                          }
-                          options={[
-                            { value: "plain-preferred", label: "Plain preferred", hint: "Either is coverage. A plain track wins a tie — the default." },
-                            { value: "plain-only", label: "Plain only", hint: "Never take a hearing-impaired track for this language." },
-                            { value: "hi-preferred", label: "Hearing-impaired preferred", hint: "Either is coverage, but hearing-impaired wins a tie." }
-                          ]}
-                          className="max-w-sm"
-                        />
-                      </Field>
+                      <div key={code} className="grid gap-2">
+                        <Field label={nameOf(code, languages)}>
+                          <MenuSelect
+                            label={`Hearing-impaired subtitles for ${nameOf(code, languages)}`}
+                            value={preference.hearingImpaired}
+                            onChange={(hearingImpaired: string) => updatePreference({ hearingImpaired })}
+                            options={[
+                              { value: "plain-preferred", label: "Plain preferred", hint: "Either is coverage. A plain track wins a tie — the default." },
+                              { value: "plain-only", label: "Plain only", hint: "Never take a hearing-impaired track for this language." },
+                              { value: "hi-preferred", label: "Hearing-impaired preferred", hint: "Either is coverage, but hearing-impaired wins a tie." }
+                            ]}
+                            className="max-w-sm"
+                          />
+                        </Field>
+                        <Field
+                          label={`Also fetch forced ${nameOf(code, languages)} subtitles`}
+                          help="A forced track carries only foreign-language lines — the four lines of Elvish in an English film. Written as an extra file alongside the full subtitle, and never counted as coverage."
+                        >
+                          <Switch
+                            checked={preference.includeForced}
+                            disabled={busy}
+                            onCheckedChange={(includeForced) => updatePreference({ includeForced })}
+                          />
+                        </Field>
+                      </div>
                     );
                   })}
                 </DrawerSection>

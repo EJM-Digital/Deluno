@@ -115,6 +115,50 @@ public sealed class LibrarySubtitleTypePreferenceTests
         Assert.Equal(SubtitleHearingImpairedPreferences.PlainOnly, Assert.Single(recorder.PreferencesAsked));
     }
 
+    [Fact]
+    public async Task A_wanted_forced_track_is_fetched_and_recorded_as_forced_never_as_coverage()
+    {
+        var (libraries, libraryId, movies, jobs) = await CreateAsync();
+        await libraries.UpdateLibrarySubtitlesAsync(
+            libraryId,
+            new UpdateLibrarySubtitlesRequest(
+                Languages: ["en"],
+                Mode: "all",
+                LanguageTypePreferences: [new SubtitleLanguageTypePreference("en", IncludeForced: true)]),
+            CancellationToken.None);
+
+        await movies.ImportExistingBatchAsync(
+            libraryId,
+            [
+                new ExistingMovieImportRequest(
+                    Title: "Dune",
+                    ReleaseYear: 2021,
+                    WantedStatus: WantedStatuses.Covered,
+                    WantedReason: "Imported from your existing library.",
+                    CurrentQuality: "WEB 2160p",
+                    TargetQuality: "WEB 2160p",
+                    QualityCutoffMet: true,
+                    FilePath: @"D:\Media\Dune\Dune.mkv",
+                    FileSizeBytes: 8_000_000_000)
+            ],
+            CancellationToken.None);
+
+        var subtitles = new SqliteMediaSubtitleRepository(jobs.Storage, jobs.TimeProvider);
+        var fetchService = new ForcedFoundFetchService();
+        var handler = new LibrarySubtitleSearchJobHandler(
+            libraries, subtitles, fetchService, jobs.JobStore,
+            new NotificationEventPublisher(new InMemoryNotificationService(), new NullRealtimeEventPublisher()));
+
+        await handler.HandleAsync(JobFor(libraryId), CancellationToken.None);
+
+        var movieId = (await movies.ListPageAsync(new CatalogueQuery(Search: "Dune"), CancellationToken.None)).Items.Single().Id;
+        var stored = await subtitles.ListSubtitlesAsync(MediaKind.Movie, movieId, CancellationToken.None);
+        var forced = Assert.Single(stored, row => row.Forced);
+        Assert.Equal("en", forced.Language);
+        Assert.False(forced.HearingImpaired);
+        Assert.True(fetchService.ForcedAsked);
+    }
+
     private static JobQueueItem JobFor(string libraryId)
         => new(
             Id: "job-1",
@@ -200,6 +244,54 @@ public sealed class LibrarySubtitleTypePreferenceTests
             return Task.FromResult(new SubtitleFetchOutcome(
                 language, Found: false, ProviderKey: null, WrittenPath: null, HearingImpaired: false,
                 Reason: "No provider had it."));
+        }
+
+        public Task<SubtitleFetchOutcome> FetchForcedAsync(
+            SubtitleSearchRequest request,
+            string language,
+            bool isEpisodeMedia,
+            string videoPath,
+            CancellationToken cancellationToken,
+            SubtitleContentModificationPolicy? contentPolicy = null,
+            SubtitleNamePolicy? namePolicy = null,
+            bool omitLanguageCode = false,
+            IReadOnlyCollection<string>? blockedKeys = null)
+            => Task.FromResult(new SubtitleFetchOutcome(language, Found: false, ProviderKey: null, WrittenPath: null, HearingImpaired: false, Reason: "Not asked for in this test."));
+    }
+
+    /// <summary>Never finds the full subtitle, but always finds a forced one — so the recorded row can only have come from the forced path.</summary>
+    private sealed class ForcedFoundFetchService : ISubtitleFetchService
+    {
+        public bool ForcedAsked { get; private set; }
+
+        public Task<SubtitleFetchOutcome> FetchAsync(
+            SubtitleSearchRequest request,
+            string language,
+            bool isEpisodeMedia,
+            string videoPath,
+            string hearingImpairedPreference,
+            CancellationToken cancellationToken,
+            SubtitleContentModificationPolicy? contentPolicy = null,
+            SubtitleNamePolicy? namePolicy = null,
+            bool omitLanguageCode = false,
+            IReadOnlyCollection<string>? blockedKeys = null)
+            => Task.FromResult(new SubtitleFetchOutcome(language, Found: false, ProviderKey: null, WrittenPath: null, HearingImpaired: false, Reason: "No provider had it."));
+
+        public Task<SubtitleFetchOutcome> FetchForcedAsync(
+            SubtitleSearchRequest request,
+            string language,
+            bool isEpisodeMedia,
+            string videoPath,
+            CancellationToken cancellationToken,
+            SubtitleContentModificationPolicy? contentPolicy = null,
+            SubtitleNamePolicy? namePolicy = null,
+            bool omitLanguageCode = false,
+            IReadOnlyCollection<string>? blockedKeys = null)
+        {
+            ForcedAsked = true;
+            return Task.FromResult(new SubtitleFetchOutcome(
+                language, Found: true, ProviderKey: "gestdown", WrittenPath: $"{videoPath}.{language}.forced.srt",
+                HearingImpaired: false, Reason: "Fetched.", Match: SubtitleMatch.AnyRelease));
         }
     }
 }
