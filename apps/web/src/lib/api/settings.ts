@@ -73,6 +73,8 @@ export interface PlatformSettingsPatch {
   downloadHealthDryRunEnabled?: boolean;
   /** #825: hours a download can go without a fresh strike before its strike count clears. 1-720. */
   downloadHealthStrikeInactivityHours?: number;
+  /** #823: the pacing window a finding outside the rule engine escalates strikes at, in minutes. 1-1440. */
+  downloadHealthDefaultStrikeWindowMinutes?: number;
   /** #823: how often the throughput sampler polls telemetry for the speed chart, in minutes. 1-60. */
   downloadThroughputSamplerIntervalMinutes?: number;
   /** #909: percent free remaining at which a library root's health check warns, but keeps grabbing and importing. */

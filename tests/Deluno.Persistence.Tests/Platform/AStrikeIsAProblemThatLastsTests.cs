@@ -112,6 +112,28 @@ public sealed class AStrikeIsAProblemThatLastsTests
         Assert.Equal(Start.AddHours(73), seen.FirstObservedUtc);
     }
 
+    /// <summary>
+    /// #823: the pacing window itself (DownloadHealthDefaultStrikeWindowMinutes)
+    /// is a setting, not a constant - for a finding outside the rule engine
+    /// (client-stalled, and so on; a rule-engine finding already proves this
+    /// with its own per-rule timer in DownloadHealthRulesAreConfigurableTests).
+    /// </summary>
+    [Fact]
+    public async Task A_custom_pacing_window_changes_how_fast_strikes_escalate()
+    {
+        using var world = await World.CreateAsync();
+        var customWindow = TimeSpan.FromMinutes(10);
+
+        var strikes = new List<int>();
+        for (var minute = 0; minute <= 30; minute += 10)
+        {
+            strikes.Add(Assert.Single(await world.SeeAsync(Start.AddMinutes(minute), customWindow, Stalled())).StrikeCount);
+        }
+
+        // Every 10 minutes with a 10-minute window, one further strike each time.
+        Assert.Equal([1, 2, 3, 4], strikes);
+    }
+
     [Fact]
     public async Task One_client_answering_changes_nothing_about_another()
     {
@@ -208,7 +230,11 @@ public sealed class AStrikeIsAProblemThatLastsTests
 
         /// <summary>One snapshot of the client listing the torrent, with these findings.</summary>
         public Task<IReadOnlyList<DownloadHealthRecord>> SeeAsync(DateTimeOffset at, params DownloadHealthObservation[] findings)
-            => Repository(at).RecordDownloadHealthObservationsAsync(Client, [Torrent], findings, DownloadHealthStrikes.DefaultWindow, TimeSpan.FromHours(72), CancellationToken.None);
+            => SeeAsync(at, DownloadHealthStrikes.DefaultWindow, findings);
+
+        /// <summary>The same, with a pacing window other than the default (#823).</summary>
+        public Task<IReadOnlyList<DownloadHealthRecord>> SeeAsync(DateTimeOffset at, TimeSpan window, params DownloadHealthObservation[] findings)
+            => Repository(at).RecordDownloadHealthObservationsAsync(Client, [Torrent], findings, window, TimeSpan.FromHours(72), CancellationToken.None);
 
         /// <summary>One snapshot listing exactly these downloads, none with a finding.</summary>
         public Task<IReadOnlyList<DownloadHealthRecord>> SeeAsync(DateTimeOffset at, IReadOnlyCollection<string> listed)
