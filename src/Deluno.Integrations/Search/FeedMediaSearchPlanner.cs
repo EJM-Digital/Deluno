@@ -94,7 +94,8 @@ public sealed class FeedMediaSearchPlanner(
         /// API, #606) needs this to search the right show at all, rather than
         /// falling back to a keywords-only request it cannot answer usefully.
         /// </summary>
-        string? imdbId = null)
+        string? imdbId = null,
+        ProfileScoreLimits? scoreLimits = null)
     {
         var indexers = await connectionsRepository.ListIndexersAsync(cancellationToken);
         var normalizedSearchKind = AcquisitionSearchKinds.Normalize(searchKind);
@@ -181,7 +182,7 @@ public sealed class FeedMediaSearchPlanner(
                     customFormats, neverGrabPatterns, scoringMode, seasonNumber, episodeNumber, allowedQualities,
                      applicableProfiles, normalizedSearchKind, availableUtc, currentCustomFormatScore, currentReleaseName, upgradeUntilCutoff,
                      numberingScheme, absoluteNumber, airDate, sceneSeasonNumber, sceneEpisodeNumber,
-                     currentPreferenceEvaluation, preferencePlan, currentFilePresent, sizeRules, upgradeStop, runtimeMinutes, imdbId, token);
+                     currentPreferenceEvaluation, preferencePlan, currentFilePresent, sizeRules, upgradeStop, runtimeMinutes, imdbId, token, scoreLimits);
             });
 
         await RecordQueryTelemetryAsync(searchResults, cancellationToken);
@@ -371,7 +372,8 @@ public sealed class FeedMediaSearchPlanner(
         QualityUpgradeStopPolicy? upgradeStop,
         int? runtimeMinutes,
         string? imdbId,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        ProfileScoreLimits? scoreLimits = null)
     {
         var startedTimestamp = Stopwatch.GetTimestamp();
         var queryText = BuildQueryText(title, year, seasonNumber, episodeNumber, numberingScheme, absoluteNumber, airDate, sceneSeasonNumber, sceneEpisodeNumber);
@@ -592,7 +594,8 @@ public sealed class FeedMediaSearchPlanner(
                         upgradeStop: upgradeStop,
                         mediaType: mediaType,
                         expectation: TitleExpectation(title, year, mediaType, seasonNumber, episodeNumber, numberingScheme, absoluteNumber, airDate, sceneSeasonNumber, sceneEpisodeNumber),
-                        runtimeMinutes: runtimeMinutes);
+                        runtimeMinutes: runtimeMinutes,
+                        scoreLimits: scoreLimits);
                     return new IndexerSearchOutcome(
                         parsed.Candidates,
                         parsed.CandidatesTruncatedByIndexer,
@@ -873,7 +876,8 @@ public sealed class FeedMediaSearchPlanner(
         QualityUpgradeStopPolicy? upgradeStop = null,
         string? mediaType = null,
         ReleaseTitleExpectation? expectation = null,
-        int? runtimeMinutes = null)
+        int? runtimeMinutes = null,
+        ProfileScoreLimits? scoreLimits = null)
     {
         XNamespace torznab = "http://torznab.com/schemas/2015/feed";
         XNamespace newznab = "http://www.newznab.com/DTD/2010/feeds/attributes/";
@@ -952,7 +956,8 @@ public sealed class FeedMediaSearchPlanner(
                  CurrentFilePresent: currentFilePresent,
                  MediaType: mediaType,
                  TitleMismatch: expectation is null ? null : ReleaseTitleMatch.Mismatch(releaseName, expectation),
-                 RuntimeMinutes: runtimeMinutes));
+                 RuntimeMinutes: runtimeMinutes,
+                 ScoreLimits: scoreLimits));
 
             var boost = rankingModelService.Score(new ReleaseRankingFeatures(
                 Seeders: seeders,

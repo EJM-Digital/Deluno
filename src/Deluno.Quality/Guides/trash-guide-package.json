@@ -2188,6 +2188,8 @@
       "upgradeAllowed": true,
       "minFormatScore": 0,
       "cutoffFormatScore": 10000,
+      "minUpgradeFormatScore": 1,
+      "language": "Any",
       "recommendedFormats": [
         {
           "trashId": "e7718d7a3ce595f289bfee26adc178f5",
@@ -2237,6 +2239,8 @@
       "upgradeAllowed": true,
       "minFormatScore": 0,
       "cutoffFormatScore": 10000,
+      "minUpgradeFormatScore": 1,
+      "language": "Any",
       "recommendedFormats": [
         {
           "trashId": "ed27ebfef2f323e964fb1f61391bcb35",
@@ -2302,6 +2306,8 @@
       "upgradeAllowed": true,
       "minFormatScore": 0,
       "cutoffFormatScore": 10000,
+      "minUpgradeFormatScore": 1,
+      "language": "Any",
       "recommendedFormats": [
         {
           "trashId": "493b6d1dbec3c3364c59d7607f7e3405",
@@ -2364,6 +2370,8 @@
       "upgradeAllowed": true,
       "minFormatScore": 0,
       "cutoffFormatScore": 10000,
+      "minUpgradeFormatScore": 1,
+      "language": "Any",
       "recommendedFormats": [
         {
           "trashId": "493b6d1dbec3c3364c59d7607f7e3405",
@@ -2432,6 +2440,8 @@
       "upgradeAllowed": true,
       "minFormatScore": 0,
       "cutoffFormatScore": 10000,
+      "minUpgradeFormatScore": 1,
+      "language": "Any",
       "recommendedFormats": [
         {
           "trashId": "e6258996055b9fbab7e9cb2f75819294",
@@ -2481,6 +2491,8 @@
       "upgradeAllowed": true,
       "minFormatScore": 0,
       "cutoffFormatScore": 10000,
+      "minUpgradeFormatScore": 1,
+      "language": "Any",
       "recommendedFormats": [
         {
           "trashId": "851bd64e04c9374c51102be3dd9ae4cc",

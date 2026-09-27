@@ -116,7 +116,8 @@ public sealed class AcquisitionDecisionPipeline : IAcquisitionDecisionPipeline
                 request.UpgradeStop,
                 request.ProfileAcquisition,
                 request.RuntimeMinutes,
-                request.ImdbId);
+                request.ImdbId,
+                request.ScoreLimits);
 
         searchPlan = await SkipBlockedReleasesAsync(searchPlan, cancellationToken);
         searchPlan = LeaveEpisodesToTheirOwnSearch(searchPlan, request);
@@ -215,7 +216,8 @@ public sealed class AcquisitionDecisionPipeline : IAcquisitionDecisionPipeline
             CurrentPreferenceEvaluation: WithInstalledSizeFloor(request.CurrentPreferenceEvaluation, request.CurrentQuality, request.SizeRules, request.MediaType, episodeScope: false),
             CurrentFilePresent: request.CurrentFilePresent,
             MediaType: request.MediaType,
-            RuntimeMinutes: request.RuntimeMinutes));
+            RuntimeMinutes: request.RuntimeMinutes,
+            ScoreLimits: request.ScoreLimits));
         var boost = rankingModelService.Score(new ReleaseRankingFeatures(
             Seeders: request.Seeders,
             SizeBytes: request.SizeBytes,
@@ -683,6 +685,8 @@ public sealed record AcquisitionDecisionRequest(
     QualityUpgradeStopPolicy? UpgradeStop = null,
     /// <summary>This profile's own acquisition answer, as a combinable rule.</summary>
     ProfileAcquisitionRules? ProfileAcquisition = null,
+    /// <summary>The minimum, cutoff and minimum-upgrade-gain score guardrails this profile set (#778).</summary>
+    ProfileScoreLimits? ScoreLimits = null,
     IReadOnlyList<string>? TagNames = null,
     string SearchKind = AcquisitionSearchKinds.Automatic,
     DateTimeOffset? AvailableUtc = null,
@@ -768,7 +772,13 @@ public sealed record AcquisitionSelectedReleaseRequest(
     /// judged against the same runtime-scaled Size Rules an automatic search
     /// would have used (#630).
     /// </summary>
-    int? RuntimeMinutes = null);
+    int? RuntimeMinutes = null,
+    /// <summary>
+    /// The profile's own score guardrails, so a release picked by hand honours
+    /// the same minimum, cutoff and upgrade-gain limits an automatic search
+    /// would have used (#778).
+    /// </summary>
+    ProfileScoreLimits? ScoreLimits = null);
 
 public sealed record AcquisitionSelectedReleaseDecision(
     MediaSearchCandidate Candidate,

@@ -80,7 +80,20 @@ public sealed record GuideQualityProfile(
     bool UpgradeAllowed,
     int MinFormatScore,
     int CutoffFormatScore,
-    IReadOnlyList<GuideRecommendedFormat> RecommendedFormats);
+    IReadOnlyList<GuideRecommendedFormat> RecommendedFormats,
+    /// <summary>
+    /// TRaSH's own minimum score gain for an upgrade (#778). Every pinned
+    /// upstream profile agrees this is 1 - any positive gain counts - so a
+    /// missing value defaults to 1 rather than 0, which would read as "no
+    /// preference has ever been an upgrade".
+    /// </summary>
+    int MinUpgradeFormatScore = 1,
+    /// <summary>
+    /// TRaSH's own language answer for this profile - "Original", "Any", or a
+    /// specific language name (#769). Null or "Any" means no language
+    /// preference is set when a profile starts from this guide profile.
+    /// </summary>
+    string? Language = null);
 
 public sealed record GuideRecommendedFormat(
     string TrashId,
