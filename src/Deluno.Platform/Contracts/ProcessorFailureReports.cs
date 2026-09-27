@@ -39,6 +39,20 @@ public sealed record ProcessorFailureReport(
     string Message,
     string? FailureClass);
 
+/// <summary>
+/// A processor said it made these files, and some of them are not there
+/// (#930). The good files still import; this is only about naming what did
+/// not, somewhere a person can act on it.
+/// </summary>
+public sealed record ProcessorMissingOutputReport(
+    LibraryItem Library,
+    string? EntityId,
+    string ProcessorName,
+    string ReleaseName,
+    string OutputPath,
+    IReadOnlyList<string> MissingFiles,
+    int TotalOutputFiles);
+
 /// <param name="Acted">
 /// Whether the release is now refused. A processor deletes its copy only on a
 /// success answer, so anything short of a committed refusal has to say no.
@@ -70,5 +84,14 @@ public interface IProcessorFailureReportHandler
     /// </summary>
     Task HandleHeldAsync(
         ProcessorFailureReport report,
+        CancellationToken cancellationToken);
+
+    /// <summary>
+    /// A processor named files it produced that are not on disk (#930): shown
+    /// where a person can act on it -- the title/season page and Health -- not
+    /// only in Activity.
+    /// </summary>
+    Task HandleOutputsMissingAsync(
+        ProcessorMissingOutputReport report,
         CancellationToken cancellationToken);
 }

@@ -162,6 +162,90 @@ public sealed class ProcessorFailureReportHandler(
         }
     }
 
+    /// <summary>
+    /// Names each missing file where a person can act on it (#930), not only
+    /// in Activity. When a missing file's own name resolves to a canonical
+    /// episode, the case names that episode and offers to search for it or
+    /// import manually; otherwise -- a movie, or a TV file that does not
+    /// resolve -- it names what the processor said and what is missing.
+    /// </summary>
+    public async Task HandleOutputsMissingAsync(
+        ProcessorMissingOutputReport report,
+        CancellationToken cancellationToken)
+    {
+        var mediaType = DelunoValueNormalizers.NormalizeMediaType(report.Library.MediaType);
+        var imported = report.TotalOutputFiles - report.MissingFiles.Count;
+
+        if (mediaType == "tv" && report.EntityId is { Length: > 0 } seriesId)
+        {
+            var detail = await seriesCatalogRepository.GetInventoryDetailAsync(seriesId, cancellationToken);
+            if (detail is not null)
+            {
+                var resolvedAny = false;
+                foreach (var missingFile in report.MissingFiles)
+                {
+                    var parsed = SeriesNumberingResolver.ParseFileName(Path.GetFileName(missingFile)).Matches
+                        .FirstOrDefault(match => match.SeasonNumber is not null && match.EpisodeNumber is not null);
+                    var episode = parsed is null
+                        ? null
+                        : detail.Episodes.FirstOrDefault(item =>
+                            item.SeasonNumber == parsed.SeasonNumber && item.EpisodeNumber == parsed.EpisodeNumber);
+                    if (parsed is null || episode is null)
+                    {
+                        continue;
+                    }
+
+                    resolvedAny = true;
+                    var summary = $"{detail.Title} S{parsed.SeasonNumber:D2}: {imported} of {report.TotalOutputFiles} imported, E{parsed.EpisodeNumber:D2} missing from {report.ProcessorName}'s output.";
+                    var details = JsonSerializer.Serialize(new
+                    {
+                        libraryId = report.Library.Id,
+                        seriesId,
+                        episodeId = episode.EpisodeId,
+                        seasonNumber = parsed.SeasonNumber,
+                        episodeNumber = parsed.EpisodeNumber,
+                        outputPath = report.OutputPath,
+                        missingFile
+                    });
+                    await seriesCatalogRepository.AddImportRecoveryCaseAsync(
+                        new CreateSeriesImportRecoveryCaseRequest(
+                            detail.Title, "processor-output-missing", summary, "Search for this episode, or import it manually.", details),
+                        cancellationToken);
+                }
+
+                if (resolvedAny)
+                {
+                    return;
+                }
+            }
+        }
+
+        // A movie, or a TV file whose own name does not resolve to a
+        // canonical episode: name what is known rather than nothing.
+        var fallbackSummary = $"{report.ProcessorName} named {report.MissingFiles.Count} of its {report.TotalOutputFiles} output files that Deluno cannot find: {string.Join(", ", report.MissingFiles.Select(Path.GetFileName))}.";
+        var fallbackDetails = JsonSerializer.Serialize(new
+        {
+            libraryId = report.Library.Id,
+            entityId = report.EntityId,
+            outputPath = report.OutputPath,
+            missingFiles = report.MissingFiles
+        });
+        if (mediaType == "tv")
+        {
+            await seriesCatalogRepository.AddImportRecoveryCaseAsync(
+                new CreateSeriesImportRecoveryCaseRequest(
+                    report.ReleaseName, "processor-output-missing", fallbackSummary, "Import what is there manually, or search again.", fallbackDetails),
+                cancellationToken);
+        }
+        else
+        {
+            await movieCatalogRepository.AddImportRecoveryCaseAsync(
+                new CreateMovieImportRecoveryCaseRequest(
+                    report.ReleaseName, "processor-output-missing", fallbackSummary, "Import what is there manually, or search again.", fallbackDetails),
+                cancellationToken);
+        }
+    }
+
     public async Task HandleHeldAsync(
         ProcessorFailureReport report,
         CancellationToken cancellationToken)

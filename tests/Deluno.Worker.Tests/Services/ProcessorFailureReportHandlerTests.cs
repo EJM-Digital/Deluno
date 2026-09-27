@@ -247,4 +247,73 @@ public sealed class ProcessorFailureReportHandlerTests
         var job = (JobQueueItem)System.Runtime.CompilerServices.RuntimeHelpers.GetUninitializedObject(typeof(JobQueueItem));
         return job with { Id = id };
     }
+
+    private static LibraryItem TvLibrary()
+    {
+        var library = (LibraryItem)System.Runtime.CompilerServices.RuntimeHelpers.GetUninitializedObject(typeof(LibraryItem));
+        return library with { Id = "library-tv", Name = "TV", MediaType = "tv" };
+    }
+
+    private static SeriesEpisodeInventoryItem Episode(string episodeId, int season, int episode)
+    {
+        var item = (SeriesEpisodeInventoryItem)System.Runtime.CompilerServices.RuntimeHelpers.GetUninitializedObject(typeof(SeriesEpisodeInventoryItem));
+        return item with { EpisodeId = episodeId, SeasonNumber = season, EpisodeNumber = episode };
+    }
+
+    private static SeriesInventoryDetail SeriesDetail(string title, params SeriesEpisodeInventoryItem[] episodes)
+    {
+        var detail = (SeriesInventoryDetail)System.Runtime.CompilerServices.RuntimeHelpers.GetUninitializedObject(typeof(SeriesInventoryDetail));
+        return detail with { Title = title, Episodes = episodes };
+    }
+
+    /// <summary>
+    /// #930: a missing output file's own name resolves to a canonical episode,
+    /// so the case names that episode rather than only the filename.
+    /// </summary>
+    [Fact]
+    public async Task A_missing_file_that_names_an_episode_is_reported_against_that_episode()
+    {
+        _series.Setup(repo => repo.GetInventoryDetailAsync("series-1", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(SeriesDetail("Lioness", Episode("episode-7", 2, 7)));
+        CreateSeriesImportRecoveryCaseRequest? raised = null;
+        _series.Setup(repo => repo.AddImportRecoveryCaseAsync(It.IsAny<CreateSeriesImportRecoveryCaseRequest>(), It.IsAny<CancellationToken>()))
+            .Callback<CreateSeriesImportRecoveryCaseRequest, CancellationToken>((request, _) => raised = request)
+            .ReturnsAsync((SeriesImportRecoveryCase)null!);
+
+        await Handler().HandleOutputsMissingAsync(
+            new ProcessorMissingOutputReport(
+                TvLibrary(), "series-1", "Weir", "Lioness.S02.1080p", @"D:\Processed\Lioness.S02",
+                [@"D:\Processed\Lioness.S02\Lioness.S02E07.1080p.mkv"], 10),
+            CancellationToken.None);
+
+        Assert.NotNull(raised);
+        Assert.Equal("processor-output-missing", raised!.FailureKind);
+        Assert.Equal("Lioness S02: 9 of 10 imported, E07 missing from Weir's output.", raised.Summary);
+        Assert.Contains("Search for this episode", raised.RecommendedAction);
+        using var details = JsonDocument.Parse(raised.DetailsJson!);
+        Assert.Equal("episode-7", details.RootElement.GetProperty("episodeId").GetString());
+    }
+
+    /// <summary>A movie has no episode to resolve against, so the case names the file instead.</summary>
+    [Fact]
+    public async Task A_missing_file_for_a_movie_is_reported_by_name()
+    {
+        CreateMovieImportRecoveryCaseRequest? raised = null;
+        _movies.Setup(repo => repo.AddImportRecoveryCaseAsync(It.IsAny<CreateMovieImportRecoveryCaseRequest>(), It.IsAny<CancellationToken>()))
+            .Callback<CreateMovieImportRecoveryCaseRequest, CancellationToken>((request, _) => raised = request)
+            .ReturnsAsync((MovieImportRecoveryCase)null!);
+        var movieLibrary = (LibraryItem)System.Runtime.CompilerServices.RuntimeHelpers.GetUninitializedObject(typeof(LibraryItem));
+
+        await Handler().HandleOutputsMissingAsync(
+            new ProcessorMissingOutputReport(
+                movieLibrary with { Id = "library-movies", Name = "Movies", MediaType = "movies" },
+                "movie-1", "Weir", "Sintel.2010.1080p", @"D:\Processed\Sintel",
+                [@"D:\Processed\Sintel\Sintel.2010.1080p.mkv"], 1),
+            CancellationToken.None);
+
+        Assert.NotNull(raised);
+        Assert.Equal("processor-output-missing", raised!.FailureKind);
+        Assert.Contains("Sintel.2010.1080p.mkv", raised.Summary);
+        _series.Verify(repo => repo.AddImportRecoveryCaseAsync(It.IsAny<CreateSeriesImportRecoveryCaseRequest>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
 }
