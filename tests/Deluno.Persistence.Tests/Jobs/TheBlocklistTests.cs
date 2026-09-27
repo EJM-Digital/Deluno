@@ -80,6 +80,43 @@ public sealed class TheBlocklistTests
     }
 
     /// <summary>
+    /// #802, #874: the hash recorded at grab time is its own key, so the same
+    /// content is refused wherever it turns up next, not only under the name
+    /// and indexer it was first blocked from.
+    /// </summary>
+    [Fact]
+    public async Task The_hash_recorded_at_grab_time_is_its_own_key()
+    {
+        using var storage = await StorageAsync();
+        var blocklist = new SqliteBlockedReleaseRepository(storage.Factory, Clock);
+
+        await blocklist.BlockAsync(Release("Arrival.2016.2160p", "Nebula", "likelySample") with { TorrentHashOrItemId = "ABCDEF0123456789ABCDEF0123456789ABCDEF01" }, CancellationToken.None);
+
+        var keys = await blocklist.ListKeysAsync(CancellationToken.None);
+        Assert.Contains(BlockedReleaseKeys.ForHash("ABCDEF0123456789ABCDEF0123456789ABCDEF01"), keys);
+        // Case and surrounding space fall out the same way the name key's do.
+        Assert.Contains(BlockedReleaseKeys.ForHash("  abcdef0123456789abcdef0123456789abcdef01  "), keys);
+    }
+
+    /// <summary>
+    /// A block made before #874 shipped either predates the hash column or
+    /// was made from a source that never had one. Reading it back must not
+    /// throw, and it must keep matching by name+indexer exactly as before —
+    /// nothing here is a migration that could drop a row's ability to match.
+    /// </summary>
+    [Fact]
+    public async Task A_release_blocked_with_no_known_hash_still_matches_by_name()
+    {
+        using var storage = await StorageAsync();
+        var blocklist = new SqliteBlockedReleaseRepository(storage.Factory, Clock);
+
+        await blocklist.BlockAsync(Release("Arrival.2016.2160p", "Nebula", "likelySample") with { TorrentHashOrItemId = null }, CancellationToken.None);
+
+        var keys = await blocklist.ListKeysAsync(CancellationToken.None);
+        Assert.Contains(BlockedReleaseKeys.For("Arrival.2016.2160p", "Nebula"), keys);
+    }
+
+    /// <summary>
     /// #585: a refusal about the file itself also holds the release from every
     /// other indexer; one about the download holds only that indexer's copy.
     /// </summary>

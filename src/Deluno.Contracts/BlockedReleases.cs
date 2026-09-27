@@ -10,9 +10,11 @@ namespace Deluno.Contracts;
 /// is listed, with its reason, and can be undone.</para>
 /// </summary>
 /// <param name="ReleaseKey">
-/// What a search candidate is matched against: the release name and the
-/// indexer, normalised. Not the infohash — a candidate does not have one yet,
-/// and by the time it does the decision has already been made.
+/// What a search candidate is matched against when no hash is known: the
+/// release name and the indexer, normalised. Kept even now that a hash key
+/// also exists (<see cref="BlockedReleaseKeys.ForHash"/>), because a search
+/// candidate does not always carry one yet, and every block made before #874
+/// only has this key stored.
 /// </param>
 /// <param name="Title">
 /// Recorded for the person reading the list rather than for matching. A file
@@ -93,4 +95,19 @@ public static class BlockedReleaseKeys
     /// </summary>
     public static string ForEveryIndexer(string releaseName)
         => For(releaseName, "*");
+
+    /// <summary>
+    /// The key a torrent's info hash or an NZB's id/GUID matches on, whatever
+    /// indexer offers it and whatever the release is named this time (#802,
+    /// #874). The owner decided the identity of a release is its content, not its
+    /// listing: a retitled re-upload of the same file is still that file, and
+    /// the same title with a different hash is a different file.
+    ///
+    /// <para>Checked before <see cref="For"/> and <see cref="ForEveryIndexer"/>,
+    /// never instead of them — a candidate with no known hash yet (a torrent
+    /// offered only as a .torrent link, or an indexer that prints no GUID) has
+    /// nothing to check this against, and still needs the name-based keys.</para>
+    /// </summary>
+    public static string ForHash(string torrentHashOrItemId)
+        => $"hash|{torrentHashOrItemId.Trim().ToLowerInvariant()}";
 }
