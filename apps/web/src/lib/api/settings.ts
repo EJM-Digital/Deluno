@@ -90,6 +90,9 @@ export interface PlatformSettingsPatch {
   /** #818: zero seeders, or the tracker itself saying unregistered, past a grace period since the download was added. Off by default. */
   downloadHealthDeadTorrentEnabled?: boolean;
   downloadHealthDeadTorrentGraceMinutes?: number;
+  /** Checkpoint A (#917): opens a finished download and checks it before a processor or the library ever sees it. Off by default (#936). */
+  downloadIntegrityCheckEnabled?: boolean;
+  downloadIntegrityMinimumRuntimePercent?: number;
   /** #909: percent free remaining at which a library root's health check warns, but keeps grabbing and importing. */
   libraryFreeSpaceWarnPercent?: number;
   /** #909: percent free remaining at or below which Deluno pauses a library's grabs and imports, the same way an unreachable root does. */

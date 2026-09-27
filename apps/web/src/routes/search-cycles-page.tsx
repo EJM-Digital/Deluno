@@ -151,6 +151,11 @@ interface CleanupForm {
   // grace period since the download was added. Off by default (#936).
   deadTorrentEnabled: boolean;
   deadTorrentGraceMinutes: string;
+  // Checkpoint A (#917): opens a finished download and checks its resolution,
+  // runtime and playability against what its name and the catalogue claim,
+  // before a processor or the library ever sees it. Off by default (#936).
+  downloadIntegrityCheckEnabled: boolean;
+  downloadIntegrityMinimumRuntimePercent: string;
 }
 
 export function SearchCyclesPage() {
@@ -350,6 +355,8 @@ export function SearchCyclesPage() {
             maxSearchesPerHour: Math.max(1, Math.min(100_000, Number(cleanup.maxSearchesPerHour || 200))),
             downloadHealthDeadTorrentEnabled: cleanup.deadTorrentEnabled,
             downloadHealthDeadTorrentGraceMinutes: Math.max(0, Math.min(1440, Number(cleanup.deadTorrentGraceMinutes || 60))),
+            downloadIntegrityCheckEnabled: cleanup.downloadIntegrityCheckEnabled,
+            downloadIntegrityMinimumRuntimePercent: Math.max(1, Math.min(100, Number(cleanup.downloadIntegrityMinimumRuntimePercent || 80))),
             sharingMode: sharing.mode,
             // A blank target is sent as null, which the API stores as
             // "deliberately not part of this rule" rather than "never set".
@@ -626,6 +633,30 @@ export function SearchCyclesPage() {
               />
             </Field>
           </div>
+
+          <div className="grid gap-[var(--grid-gap)] border-t border-hairline pt-[var(--grid-gap)] sm:grid-cols-[auto_1fr] sm:items-start">
+            <SwitchRow
+              label="Download integrity check"
+              description="Before a finished download reaches a processor or the library, open the file and check its resolution, runtime and playability against what its name and Deluno's own records claim. A file that fails is removed from its client, deleted, blocklisted and searched for again. Off until you turn it on."
+              checked={cleanup.downloadIntegrityCheckEnabled}
+              onCheckedChange={(checked) => setCleanup((current) => ({ ...current, downloadIntegrityCheckEnabled: checked }))}
+            />
+            <Field label="Minimum runtime" help="A file running under this share of the known length is treated as a sample or a cut-off copy." className="max-w-[12rem] sm:pl-[var(--grid-gap)]">
+              <PresetField
+                inputType="number"
+                value={cleanup.downloadIntegrityMinimumRuntimePercent}
+                onChange={(value) => setCleanup((current) => ({ ...current, downloadIntegrityMinimumRuntimePercent: value }))}
+                disabled={!cleanup.downloadIntegrityCheckEnabled}
+                options={[
+                  { value: "70", label: "70%" },
+                  { value: "80", label: "80%" },
+                  { value: "90", label: "90%" }
+                ]}
+                customLabel="Custom"
+                customPlaceholder="1–100"
+              />
+            </Field>
+          </div>
         </div>
       </ListCard> : null}
 
@@ -811,7 +842,9 @@ function cleanupFrom(settings: PlatformSettingsSnapshot): CleanupForm {
     maxSearchesPerHourEnabled: settings.maxSearchesPerHourEnabled,
     maxSearchesPerHour: String(settings.maxSearchesPerHour ?? 200),
     deadTorrentEnabled: settings.downloadHealthDeadTorrentEnabled,
-    deadTorrentGraceMinutes: String(settings.downloadHealthDeadTorrentGraceMinutes ?? 60)
+    deadTorrentGraceMinutes: String(settings.downloadHealthDeadTorrentGraceMinutes ?? 60),
+    downloadIntegrityCheckEnabled: settings.downloadIntegrityCheckEnabled,
+    downloadIntegrityMinimumRuntimePercent: String(settings.downloadIntegrityMinimumRuntimePercent ?? 80)
   };
 }
 function nextSearchLabel(view: string, library: LibraryItem, state: LibraryAutomationStateItem | undefined): string | null {
