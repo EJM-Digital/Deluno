@@ -26,6 +26,22 @@ public interface ICloudflareHelper
 
     /// <summary>The page, or null when there is no helper or it could not get through.</summary>
     Task<CloudflareSolution?> FetchAsync(Uri url, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// The page fetched with a POST instead of a GET (#749), for a tracker
+    /// whose Cloudflare challenge is only passed by posting form data -- the
+    /// helper's own <c>request.post</c> command.
+    /// </summary>
+    Task<CloudflareSolution?> PostAsync(Uri url, IReadOnlyDictionary<string, string> formData, CancellationToken cancellationToken);
+
+    /// <summary>Destroys this helper's session for one host, if it has one (#749), rather than leaving it to accumulate.</summary>
+    Task DestroySessionAsync(string host, CancellationToken cancellationToken);
+
+    /// <summary>Destroys every session this helper is holding (#749) -- Deluno's own shutdown hook.</summary>
+    Task DestroyAllSessionsAsync(CancellationToken cancellationToken);
+
+    /// <summary>Destroys a session for any host not in <paramref name="activeHosts"/> (#749) -- how a removed indexer's session is cleaned up.</summary>
+    Task ReconcileSessionsAsync(IReadOnlyCollection<string> activeHosts, CancellationToken cancellationToken);
 }
 
 /// <summary>The FlareSolverr <c>/v1</c> API, at the address in Settings.</summary>
@@ -33,56 +49,64 @@ public sealed class FlareSolverrCloudflareHelper(IHttpClientFactory httpClientFa
 {
     public const string HttpClientName = "cloudflare-helper";
 
-    // A challenge can take FlareSolverr a while; the tracker request that
-    // needed it has already waited for the first answer.
-    private static readonly TimeSpan SolveBudget = TimeSpan.FromSeconds(60);
-
     // One helper browser session per site (#628). A fresh one solves the check
     // from scratch each time, which took 49 seconds for 1337x on the rig; a kept
     // one still holds its clearance, and the next page comes back in seconds.
+    // Keyed by host, so reconciliation can compare against a plain host list.
     private readonly ConcurrentDictionary<string, bool> sessions = new(StringComparer.OrdinalIgnoreCase);
 
     public async Task<bool> IsConfiguredAsync(CancellationToken cancellationToken)
         => !string.IsNullOrWhiteSpace((await settings.GetAsync(cancellationToken)).CloudflareHelperUrl);
 
-    public async Task<CloudflareSolution?> FetchAsync(Uri url, CancellationToken cancellationToken)
+    public Task<CloudflareSolution?> FetchAsync(Uri url, CancellationToken cancellationToken)
+        => RequestAsync(url, formData: null, cancellationToken);
+
+    public Task<CloudflareSolution?> PostAsync(Uri url, IReadOnlyDictionary<string, string> formData, CancellationToken cancellationToken)
+        => RequestAsync(url, formData, cancellationToken);
+
+    private async Task<CloudflareSolution?> RequestAsync(Uri url, IReadOnlyDictionary<string, string>? formData, CancellationToken cancellationToken)
     {
-        var baseUrl = (await settings.GetAsync(cancellationToken)).CloudflareHelperUrl;
+        var current = await settings.GetAsync(cancellationToken);
+        var baseUrl = current.CloudflareHelperUrl;
         if (string.IsNullOrWhiteSpace(baseUrl))
         {
             return null;
         }
 
+        // #749: previously a hard-coded 60-second SolveBudget; now the value
+        // the person configured (1-180 seconds, clamped the same way on save).
+        var solveBudget = TimeSpan.FromSeconds(Math.Clamp(current.CloudflareHelperTimeoutSeconds, 1, 180));
         var endpoint = baseUrl.TrimEnd('/').EndsWith("/v1", StringComparison.OrdinalIgnoreCase) ? baseUrl.TrimEnd('/') : baseUrl.TrimEnd('/') + "/v1";
         var http = httpClientFactory.CreateClient(HttpClientName);
-        var session = "deluno-" + url.Host;
-        if (!sessions.ContainsKey(session))
+        var host = url.Host;
+        if (!sessions.ContainsKey(host))
         {
             // An error here usually means the session is already there, which is fine.
-            using var created = await http.PostAsJsonAsync(endpoint, new { cmd = "sessions.create", session }, cancellationToken);
-            sessions[session] = true;
+            using var created = await http.PostAsJsonAsync(endpoint, new { cmd = "sessions.create", session = SessionName(host) }, cancellationToken);
+            sessions[host] = true;
         }
 
-        var answer = await GetAsync(http, endpoint, url, session, cancellationToken);
+        var answer = await SendAsync(http, endpoint, url, host, formData, solveBudget, cancellationToken);
         if (answer?.Status is not null && !string.Equals(answer.Status, "ok", StringComparison.OrdinalIgnoreCase)
             && answer.Message?.Contains("session", StringComparison.OrdinalIgnoreCase) == true)
         {
             // The helper restarted and lost its sessions: start this one again.
-            sessions.TryRemove(session, out _);
-            using var recreated = await http.PostAsJsonAsync(endpoint, new { cmd = "sessions.create", session }, cancellationToken);
-            sessions[session] = true;
-            answer = await GetAsync(http, endpoint, url, session, cancellationToken);
+            sessions.TryRemove(host, out _);
+            using var recreated = await http.PostAsJsonAsync(endpoint, new { cmd = "sessions.create", session = SessionName(host) }, cancellationToken);
+            sessions[host] = true;
+            answer = await SendAsync(http, endpoint, url, host, formData, solveBudget, cancellationToken);
         }
 
         return Read(answer, url);
     }
 
-    private static async Task<Answer?> GetAsync(HttpClient http, string endpoint, Uri url, string session, CancellationToken cancellationToken)
+    private static async Task<Answer?> SendAsync(
+        HttpClient http, string endpoint, Uri url, string host, IReadOnlyDictionary<string, string>? formData, TimeSpan solveBudget, CancellationToken cancellationToken)
     {
-        using var response = await http.PostAsJsonAsync(
-            endpoint,
-            new { cmd = "request.get", url = url.ToString(), session, maxTimeout = (int)SolveBudget.TotalMilliseconds },
-            cancellationToken);
+        var command = formData is null
+            ? new { cmd = "request.get", url = url.ToString(), session = SessionName(host), maxTimeout = (int)solveBudget.TotalMilliseconds }
+            : (object)new { cmd = "request.post", url = url.ToString(), session = SessionName(host), maxTimeout = (int)solveBudget.TotalMilliseconds, postData = ToPostDataString(formData) };
+        using var response = await http.PostAsJsonAsync(endpoint, command, cancellationToken);
         try
         {
             return await response.Content.ReadFromJsonAsync<Answer>(cancellationToken);
@@ -93,6 +117,58 @@ public sealed class FlareSolverrCloudflareHelper(IHttpClientFactory httpClientFa
             return null;
         }
     }
+
+    private static string ToPostDataString(IReadOnlyDictionary<string, string> formData)
+        => string.Join('&', formData.Select(pair => $"{Uri.EscapeDataString(pair.Key)}={Uri.EscapeDataString(pair.Value)}"));
+
+    public async Task DestroySessionAsync(string host, CancellationToken cancellationToken)
+    {
+        if (!sessions.TryRemove(host, out _))
+        {
+            return;
+        }
+
+        var baseUrl = (await settings.GetAsync(cancellationToken)).CloudflareHelperUrl;
+        if (string.IsNullOrWhiteSpace(baseUrl))
+        {
+            return;
+        }
+
+        var endpoint = baseUrl.TrimEnd('/').EndsWith("/v1", StringComparison.OrdinalIgnoreCase) ? baseUrl.TrimEnd('/') : baseUrl.TrimEnd('/') + "/v1";
+        var http = httpClientFactory.CreateClient(HttpClientName);
+        try
+        {
+            using var response = await http.PostAsJsonAsync(endpoint, new { cmd = "sessions.destroy", session = SessionName(host) }, cancellationToken);
+        }
+        catch (HttpRequestException)
+        {
+            // The helper is not reachable right now; the in-memory record is
+            // already gone, and there is nothing more useful to do than try
+            // again the next time a session for this host is needed.
+        }
+    }
+
+    public async Task DestroyAllSessionsAsync(CancellationToken cancellationToken)
+    {
+        foreach (var host in sessions.Keys.ToArray())
+        {
+            await DestroySessionAsync(host, cancellationToken);
+        }
+    }
+
+    public async Task ReconcileSessionsAsync(IReadOnlyCollection<string> activeHosts, CancellationToken cancellationToken)
+    {
+        var active = new HashSet<string>(activeHosts, StringComparer.OrdinalIgnoreCase);
+        foreach (var host in sessions.Keys.ToArray())
+        {
+            if (!active.Contains(host))
+            {
+                await DestroySessionAsync(host, cancellationToken);
+            }
+        }
+    }
+
+    private static string SessionName(string host) => "deluno-" + host;
 
     /// <summary>A helper's answer, read; null unless it says it got the page.</summary>
     public static CloudflareSolution? Read(Answer? answer, Uri requested)

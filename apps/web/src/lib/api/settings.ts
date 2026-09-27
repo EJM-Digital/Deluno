@@ -21,6 +21,8 @@ export interface PlatformSettingsPatch {
   hostPort?: number;
   urlBase?: string;
   cloudflareHelperUrl?: string;
+  /** The helper's own request timeout, 1-180 seconds (#749). */
+  cloudflareHelperTimeoutSeconds?: number;
   requireAuthentication?: boolean;
   uiTheme?: string;
   uiColorMode?: string;

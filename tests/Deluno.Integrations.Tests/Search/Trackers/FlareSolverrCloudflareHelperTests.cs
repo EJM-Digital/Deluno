@@ -1,0 +1,203 @@
+using System.Net;
+using System.Net.Http.Json;
+using System.Text.Json;
+using Deluno.Integrations.Search.Trackers;
+using Deluno.Platform.Contracts;
+using Deluno.Platform.Data;
+using Moq;
+
+namespace Deluno.Integrations.Tests.Search.Trackers;
+
+/// <summary>
+/// #749: the Cloudflare helper's own protocol completeness -- a configurable
+/// timeout instead of a hard-coded 60 seconds, <c>request.post</c> for a
+/// tracker whose challenge needs one, and <c>sessions.destroy</c> so a
+/// session does not accumulate forever.
+/// </summary>
+public sealed class FlareSolverrCloudflareHelperTests
+{
+    private static readonly Uri TargetUrl = new("https://tracker.example.test/search");
+
+    [Fact]
+    public async Task Uses_the_configured_timeout_as_the_helpers_maxTimeout()
+    {
+        var recorder = new RecordingHandler(new { status = "ok", solution = new { url = TargetUrl.ToString(), status = 200, response = "<html/>" } });
+        var (helper, _) = CreateHelper(recorder, timeoutSeconds: 42);
+
+        await helper.FetchAsync(TargetUrl, CancellationToken.None);
+
+        var request = Assert.Single(recorder.Requests, request => request.Cmd == "request.get");
+        Assert.Equal(42_000, request.MaxTimeout);
+    }
+
+    [Fact]
+    public async Task Clamps_an_out_of_range_configured_timeout_into_1_to_180_seconds()
+    {
+        var recorder = new RecordingHandler(new { status = "ok", solution = new { url = TargetUrl.ToString(), status = 200, response = "<html/>" } });
+        var (helper, _) = CreateHelper(recorder, timeoutSeconds: 999);
+
+        await helper.FetchAsync(TargetUrl, CancellationToken.None);
+
+        var request = Assert.Single(recorder.Requests, request => request.Cmd == "request.get");
+        Assert.Equal(180_000, request.MaxTimeout);
+    }
+
+    [Fact]
+    public async Task A_post_fetch_sends_request_post_with_the_given_form_data()
+    {
+        var recorder = new RecordingHandler(new { status = "ok", solution = new { url = TargetUrl.ToString(), status = 200, response = "<html/>" } });
+        var (helper, _) = CreateHelper(recorder, timeoutSeconds: 60);
+
+        var solution = await helper.PostAsync(TargetUrl, new Dictionary<string, string> { ["user"] = "me", ["pass"] = "secret" }, CancellationToken.None);
+
+        Assert.NotNull(solution);
+        var request = Assert.Single(recorder.Requests, request => request.Cmd == "request.post");
+        Assert.Contains("user=me", request.PostData);
+        Assert.Contains("pass=secret", request.PostData);
+    }
+
+    [Fact]
+    public async Task Destroys_the_session_it_created_when_asked_to_clean_up()
+    {
+        var recorder = new RecordingHandler(new { status = "ok", solution = new { url = TargetUrl.ToString(), status = 200, response = "<html/>" } });
+        var (helper, _) = CreateHelper(recorder, timeoutSeconds: 60);
+        await helper.FetchAsync(TargetUrl, CancellationToken.None);
+        Assert.Contains(recorder.Requests, request => request.Cmd == "sessions.create");
+
+        await helper.DestroySessionAsync(TargetUrl.Host, CancellationToken.None);
+
+        var destroy = Assert.Single(recorder.Requests, request => request.Cmd == "sessions.destroy");
+        Assert.Equal($"deluno-{TargetUrl.Host}", destroy.Session);
+    }
+
+    [Fact]
+    public async Task Destroying_a_host_with_no_session_sends_nothing()
+    {
+        var recorder = new RecordingHandler(new { status = "ok" });
+        var (helper, _) = CreateHelper(recorder, timeoutSeconds: 60);
+
+        await helper.DestroySessionAsync("never-fetched.example.test", CancellationToken.None);
+
+        Assert.Empty(recorder.Requests);
+    }
+
+    [Fact]
+    public async Task DestroyAllSessions_destroys_every_session_that_was_created()
+    {
+        var recorder = new RecordingHandler(new { status = "ok", solution = new { url = TargetUrl.ToString(), status = 200, response = "<html/>" } });
+        var (helper, _) = CreateHelper(recorder, timeoutSeconds: 60);
+        await helper.FetchAsync(TargetUrl, CancellationToken.None);
+        await helper.FetchAsync(new Uri("https://other.example.test/"), CancellationToken.None);
+
+        await helper.DestroyAllSessionsAsync(CancellationToken.None);
+
+        var destroyed = recorder.Requests.Where(request => request.Cmd == "sessions.destroy").Select(request => request.Session).ToArray();
+        Assert.Contains($"deluno-{TargetUrl.Host}", destroyed);
+        Assert.Contains("deluno-other.example.test", destroyed);
+    }
+
+    [Fact]
+    public async Task Reconcile_destroys_only_sessions_for_hosts_no_longer_active()
+    {
+        var recorder = new RecordingHandler(new { status = "ok", solution = new { url = TargetUrl.ToString(), status = 200, response = "<html/>" } });
+        var (helper, _) = CreateHelper(recorder, timeoutSeconds: 60);
+        await helper.FetchAsync(TargetUrl, CancellationToken.None);
+        await helper.FetchAsync(new Uri("https://removed.example.test/"), CancellationToken.None);
+
+        await helper.ReconcileSessionsAsync([TargetUrl.Host], CancellationToken.None);
+
+        var destroyed = recorder.Requests.Where(request => request.Cmd == "sessions.destroy").Select(request => request.Session).ToArray();
+        Assert.DoesNotContain($"deluno-{TargetUrl.Host}", destroyed);
+        Assert.Contains("deluno-removed.example.test", destroyed);
+    }
+
+    [Fact]
+    public async Task No_helper_configured_returns_null_and_sends_nothing()
+    {
+        var recorder = new RecordingHandler(new { status = "ok" });
+        var (helper, _) = CreateHelper(recorder, timeoutSeconds: 60, helperUrl: null);
+
+        var solution = await helper.FetchAsync(TargetUrl, CancellationToken.None);
+
+        Assert.Null(solution);
+        Assert.Empty(recorder.Requests);
+    }
+
+    private static (FlareSolverrCloudflareHelper Helper, RecordingHandler Handler) CreateHelper(
+        RecordingHandler handler, int timeoutSeconds, string? helperUrl = "http://127.0.0.1:8191")
+    {
+        var settings = new Mock<IPlatformSettingsRepository>();
+        settings.Setup(instance => instance.GetAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new PlatformSettingsSnapshot(
+                AppInstanceName: "Test",
+                MovieRootPath: null,
+                SeriesRootPath: null,
+                DownloadsPath: null,
+                IncompleteDownloadsPath: null,
+                AutoStartJobs: true,
+                EnableNotifications: true,
+                RenameOnImport: true,
+                UseHardlinks: false,
+                CleanupEmptyFolders: true,
+                RemoveCompletedDownloads: false,
+                MovieFolderFormat: "{Movie Title} ({Release Year})",
+                SeriesFolderFormat: "{Series Title} ({Series Year})",
+                MovieFileFormat: "{Movie Title} ({Release Year}) [{Quality}] [{Custom Formats}]",
+                EpisodeFileFormat: "{Series Title} - S{season:00}E{episode:00} - {Episode Title}",
+                HostBindAddress: "127.0.0.1",
+                HostPort: 5099,
+                UrlBase: string.Empty,
+                RequireAuthentication: true,
+                UiTheme: "system",
+                DefaultMovieView: "grid",
+                DefaultShowView: "grid",
+                MetadataNfoEnabled: false,
+                MetadataArtworkEnabled: true,
+                MetadataCertificationCountry: "US",
+                MetadataLanguage: "en",
+                MetadataProviderMode: "direct",
+                MetadataBrokerUrl: string.Empty,
+                MetadataBrokerConfigured: false,
+                MetadataTmdbApiKeyConfigured: false,
+                MetadataOmdbApiKeyConfigured: true,
+                ReleaseNeverGrabPatterns: string.Empty,
+                SearchScoringMode: SearchScoringModes.Hybrid,
+                ImportRecoveryRetentionDays: 30,
+                UpdatedUtc: DateTimeOffset.UtcNow)
+            {
+                CloudflareHelperUrl = helperUrl,
+                CloudflareHelperTimeoutSeconds = timeoutSeconds
+            });
+
+        var httpClientFactory = new Mock<IHttpClientFactory>();
+        httpClientFactory.Setup(instance => instance.CreateClient(FlareSolverrCloudflareHelper.HttpClientName))
+            .Returns(new HttpClient(handler));
+
+        return (new FlareSolverrCloudflareHelper(httpClientFactory.Object, settings.Object), handler);
+    }
+
+    /// <summary>Records every command sent to the helper's own API and always answers with the given body.</summary>
+    private sealed class RecordingHandler(object responseBody) : HttpMessageHandler
+    {
+        public List<RecordedCommand> Requests { get; } = [];
+
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            var body = await request.Content!.ReadAsStringAsync(cancellationToken);
+            using var document = JsonDocument.Parse(body);
+            var root = document.RootElement;
+            Requests.Add(new RecordedCommand(
+                root.GetProperty("cmd").GetString()!,
+                root.TryGetProperty("session", out var session) ? session.GetString() : null,
+                root.TryGetProperty("maxTimeout", out var maxTimeout) ? maxTimeout.GetInt32() : null,
+                root.TryGetProperty("postData", out var postData) ? postData.GetString() : null));
+
+            return new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = JsonContent.Create(responseBody)
+            };
+        }
+    }
+
+    private sealed record RecordedCommand(string Cmd, string? Session, int? MaxTimeout, string? PostData);
+}

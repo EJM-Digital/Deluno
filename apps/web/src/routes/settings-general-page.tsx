@@ -40,6 +40,7 @@ export const settingsGeneralLoader = settingsOverviewLoader;
 interface GeneralForm {
   appInstanceName: string;
   cloudflareHelperUrl: string;
+  cloudflareHelperTimeoutSeconds: string;
 }
 
 export function SettingsGeneralPage() {
@@ -91,7 +92,8 @@ export function SettingsGeneralPage() {
     try {
       await settingsMutation.mutate({
         appInstanceName: form.appInstanceName.trim(),
-        cloudflareHelperUrl: form.cloudflareHelperUrl.trim()
+        cloudflareHelperUrl: form.cloudflareHelperUrl.trim(),
+        cloudflareHelperTimeoutSeconds: form.cloudflareHelperTimeoutSeconds.trim() ? Number(form.cloudflareHelperTimeoutSeconds) : 60
       });
       setSavedForm(form);
       setSaveState("saved");
@@ -129,6 +131,12 @@ export function SettingsGeneralPage() {
           <Field label="Helper address" optional help="Some trackers, such as 1337x, put a Cloudflare check in front of every page. Deluno does not solve those checks itself: run FlareSolverr or Byparr and give its address here, and Deluno asks it for a page only when a tracker is behind a check." error={settingsMutation.fieldErrors.cloudflareHelperUrl}>
             <Input value={form.cloudflareHelperUrl} onChange={(event) => { setHelperResult(null); setForm((current) => ({ ...current, cloudflareHelperUrl: event.target.value })); }} placeholder="http://127.0.0.1:8191" className="font-mono" autoComplete="off" spellCheck={false} />
           </Field>
+          <Field label="Helper timeout" optional help="How long Deluno waits for the helper to solve a check before giving up, in seconds (1-180)." error={settingsMutation.fieldErrors.cloudflareHelperTimeoutSeconds}>
+            <div className="flex items-center gap-2">
+              <Input type="number" min="1" max="180" step="1" value={form.cloudflareHelperTimeoutSeconds} onChange={(event) => setForm((current) => ({ ...current, cloudflareHelperTimeoutSeconds: event.target.value }))} placeholder="60" className="max-w-[8rem]" />
+              <span className="shrink-0 text-[length:var(--type-body-sm)] text-muted-foreground">seconds</span>
+            </div>
+          </Field>
           <div className="flex flex-wrap items-center gap-3">
             <Button type="button" variant="outline" size="sm" onClick={() => void testHelper()} disabled={helperBusy || !form.cloudflareHelperUrl.trim()}>
               {helperBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Wifi className="h-3.5 w-3.5" />}
@@ -153,7 +161,8 @@ function same<T>(a: T, b: T) {
 function formFrom(settings: PlatformSettingsSnapshot): GeneralForm {
   return {
     appInstanceName: settings.appInstanceName,
-    cloudflareHelperUrl: settings.cloudflareHelperUrl ?? ""
+    cloudflareHelperUrl: settings.cloudflareHelperUrl ?? "",
+    cloudflareHelperTimeoutSeconds: String(settings.cloudflareHelperTimeoutSeconds ?? 60)
   };
 }
 

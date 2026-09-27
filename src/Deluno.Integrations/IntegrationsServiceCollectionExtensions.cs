@@ -28,6 +28,7 @@ public static class IntegrationsServiceCollectionExtensions
         // A helper the person runs, for trackers behind a Cloudflare check (#628).
         services.AddHttpClient(Search.Trackers.FlareSolverrCloudflareHelper.HttpClientName, client => client.Timeout = TimeSpan.FromSeconds(75));
         services.AddSingleton<Search.Trackers.ICloudflareHelper, Search.Trackers.FlareSolverrCloudflareHelper>();
+        services.AddHostedService<Search.Trackers.CloudflareHelperSessionCleanupService>();
         services.AddSingleton<Search.Trackers.ITrackerEngine, Search.Trackers.TrackerEngine>();
         services.AddSingleton<Search.Trackers.TrackerIndexers>();
         services.AddSingleton<Deluno.Connections.Contracts.ITrackerIndexerTester>(provider => provider.GetRequiredService<Search.Trackers.TrackerIndexers>());

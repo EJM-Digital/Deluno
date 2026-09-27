@@ -76,6 +76,9 @@ public sealed record PlatformSettingsSnapshot(
     // A FlareSolverr-compatible service that gets trackers past a Cloudflare
     // check (#628). Deluno does not solve those checks itself.
     string? CloudflareHelperUrl = null,
+    // The helper's own request timeout (#749), 1-180 seconds; the helper's
+    // hard-coded 60-second SolveBudget before this was user-configurable.
+    int CloudflareHelperTimeoutSeconds = 60,
     // Download health (#659): configurable in the same spirit as Cleanuparr's
     // thresholds. Defaults match what #659 originally hard-coded, so an
     // install that never opens the settings screen behaves the same as

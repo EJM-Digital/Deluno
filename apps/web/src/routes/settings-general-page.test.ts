@@ -37,4 +37,11 @@ describe("general settings page", () => {
     expect(source).toMatch(/Server:Port/);
     expect(source).toMatch(/Server:AllowLan/);
   });
+
+  // #749: the helper's timeout became configurable instead of a hard-coded
+  // 60-second SolveBudget.
+  it("offers a Cloudflare helper timeout field next to the helper address", () => {
+    expect(source).toMatch(/label="Helper timeout"/);
+    expect(source).toMatch(/cloudflareHelperTimeoutSeconds/);
+  });
 });
