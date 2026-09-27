@@ -455,28 +455,8 @@ public sealed class MonitoringService(
         }
     }
 
-    private static string SeverityForCategory(string category)
-    {
-        if (category.Contains("failed", StringComparison.OrdinalIgnoreCase) ||
-            category.Contains("dead-letter", StringComparison.OrdinalIgnoreCase) ||
-            category.Contains("error", StringComparison.OrdinalIgnoreCase))
-        {
-            return "error";
-        }
-
-        if (category.Contains("warning", StringComparison.OrdinalIgnoreCase) ||
-            category.Contains("attention", StringComparison.OrdinalIgnoreCase))
-        {
-            return "warning";
-        }
-
-        if (category.Contains("completed", StringComparison.OrdinalIgnoreCase))
-        {
-            return "success";
-        }
-
-        return "info";
-    }
+    /// <summary>The one shared rule (Deluno.Contracts), so Monitoring and Jobs cannot drift apart again.</summary>
+    private static string SeverityForCategory(string category) => ActivityEventSeverity.For(category);
 
     private static void AddParameter(DbCommand command, string name, object? value)
     {

@@ -4358,35 +4358,8 @@ public sealed class SqliteJobStore(
         return delay > MaxRetryDelay ? MaxRetryDelay : delay;
     }
 
-    private static string SeverityForCategory(string category)
-    {
-        if (category.Contains("failed", StringComparison.OrdinalIgnoreCase) ||
-            category.Contains("dead-letter", StringComparison.OrdinalIgnoreCase) ||
-            category.Contains("error", StringComparison.OrdinalIgnoreCase))
-        {
-            return "error";
-        }
-
-        if (category.Contains("warning", StringComparison.OrdinalIgnoreCase) ||
-            category.Contains("attention", StringComparison.OrdinalIgnoreCase) ||
-            // A processor hand-off Deluno stopped waiting on (#914, #929):
-            // held for a person to decide, not a routine event. None of these
-            // three contain "failed" or "attention", so without this they read
-            // as ordinary news and never lit the bell or a notification.
-            category.Equals("processing.stalled", StringComparison.OrdinalIgnoreCase) ||
-            category.Equals("processing.timed-out", StringComparison.OrdinalIgnoreCase) ||
-            category.Equals("processing.lost", StringComparison.OrdinalIgnoreCase))
-        {
-            return "warning";
-        }
-
-        if (category.Contains("completed", StringComparison.OrdinalIgnoreCase))
-        {
-            return "success";
-        }
-
-        return "info";
-    }
+    /// <summary>The one shared rule (Deluno.Contracts), so Jobs and Monitoring cannot drift apart again.</summary>
+    private static string SeverityForCategory(string category) => ActivityEventSeverity.For(category);
 
     private static string FormatSourceName(string source)
     {
