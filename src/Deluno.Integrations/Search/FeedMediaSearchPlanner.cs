@@ -33,7 +33,8 @@ public sealed class FeedMediaSearchPlanner(
     IReleaseProfileRepository? releaseProfileRepository = null,
     IGuidePackageStore? guidePackageStore = null,
     TrackerIndexers? trackerIndexers = null,
-    IIndexerCallLimiter? indexerCallLimiter = null)
+    IIndexerCallLimiter? indexerCallLimiter = null,
+    IIndexerAuthFailureRecorder? indexerAuthFailureRecorder = null)
     : IMediaSearchPlanner
 {
     private const int IndexerResultLimit = 100;
@@ -730,6 +731,23 @@ public sealed class FeedMediaSearchPlanner(
             ErrorMessage = result.FailureMessage ?? resolved.ErrorMessage,
             Failure = result.Failure ?? resolved.Failure
         };
+
+        // #754: a search (interactive or automatic -- this one method serves
+        // both) that hits a bad key or a dead login writes to the same
+        // combined Indexer History an RSS sync already does, through the same
+        // shared recorder, rather than only being visible inside this one
+        // search's own result.
+        if (indexerAuthFailureRecorder is not null && final.Failure?.Kind == IntegrationFailureKind.Authentication)
+        {
+            await indexerAuthFailureRecorder.RecordAsync(
+                indexer.Id,
+                indexer.Name,
+                "search",
+                final.Failure.Message,
+                null,
+                cancellationToken);
+        }
+
         return WithTelemetry(final, indexer, queryText, mediaType, queryKind, startedTimestamp);
     }
 

@@ -991,6 +991,64 @@ public sealed class FeedMediaSearchPlannerReasonTests
             Deluno.Integrations.Search.Trackers.TrackerConnection connection, string link, CancellationToken cancellationToken) => throw new NotSupportedException();
     }
 
+    /// <summary>#754: a search that hits a bad key or a dead login (HTTP 401/403) writes the same combined Indexer History row an RSS sync's own auth failure does, through the shared recorder.</summary>
+    [Fact]
+    public async Task A_search_that_hits_an_indexer_auth_failure_records_it_to_the_shared_indexer_history()
+    {
+        var indexer = CreateIndexer("locked-indexer", "Locked indexer");
+        var handler = new FixedStatusHandler(HttpStatusCode.Unauthorized);
+        var recorder = new RecordingAuthFailureRecorder();
+
+        await CreatePlanner(CreateConnections(indexer).Object, handler, authFailureRecorder: recorder).BuildPlanAsync(
+            "Example",
+            2026,
+            "movies",
+            null,
+            "WEB 1080p",
+            [CreateSource(indexer)],
+            cancellationToken: CancellationToken.None);
+
+        var recorded = Assert.Single(recorder.Recorded);
+        Assert.Equal("locked-indexer", recorded.IndexerId);
+        Assert.Equal("search", recorded.Action);
+    }
+
+    [Fact]
+    public async Task A_search_that_hits_a_non_auth_failure_does_not_record_an_auth_failure()
+    {
+        var indexer = CreateIndexer("broken-indexer", "Broken indexer");
+        var handler = new FixedStatusHandler(HttpStatusCode.BadRequest);
+        var recorder = new RecordingAuthFailureRecorder();
+
+        await CreatePlanner(CreateConnections(indexer).Object, handler, authFailureRecorder: recorder).BuildPlanAsync(
+            "Example",
+            2026,
+            "movies",
+            null,
+            "WEB 1080p",
+            [CreateSource(indexer)],
+            cancellationToken: CancellationToken.None);
+
+        Assert.Empty(recorder.Recorded);
+    }
+
+    private sealed class FixedStatusHandler(HttpStatusCode statusCode) : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+            => Task.FromResult(new HttpResponseMessage(statusCode));
+    }
+
+    private sealed class RecordingAuthFailureRecorder : IIndexerAuthFailureRecorder
+    {
+        public List<(string? IndexerId, string IndexerName, string Action, string Message)> Recorded { get; } = [];
+
+        public Task RecordAsync(string? indexerId, string indexerName, string action, string message, string? detailsJson, CancellationToken cancellationToken)
+        {
+            Recorded.Add((indexerId, indexerName, action, message));
+            return Task.CompletedTask;
+        }
+    }
+
     private static FeedMediaSearchPlanner CreatePlanner(
         IConnectionsRepository connections,
         HttpMessageHandler? handler = null,
@@ -998,7 +1056,8 @@ public sealed class FeedMediaSearchPlannerReasonTests
         IGuidePackageStore? guidePackageStore = null,
         IIntegrationResiliencePolicy? resiliencePolicy = null,
         bool indexersBusy = false,
-        Deluno.Integrations.Search.Trackers.TrackerIndexers? trackerIndexers = null)
+        Deluno.Integrations.Search.Trackers.TrackerIndexers? trackerIndexers = null,
+        IIndexerAuthFailureRecorder? authFailureRecorder = null)
     {
         var platform = new Mock<IPlatformSettingsRepository>();
         platform
@@ -1033,7 +1092,8 @@ public sealed class FeedMediaSearchPlannerReasonTests
             throttle.Object,
             logger ?? NullLogger<FeedMediaSearchPlanner>.Instance,
             guidePackageStore: guidePackageStore,
-            trackerIndexers: trackerIndexers);
+            trackerIndexers: trackerIndexers,
+            indexerAuthFailureRecorder: authFailureRecorder);
     }
 
     private static Mock<IConnectionsRepository> CreateConnections(IndexerItem indexer)

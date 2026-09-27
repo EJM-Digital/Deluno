@@ -30,7 +30,8 @@ public sealed class DownloadClientGrabService(
     IActivityFeedRepository? activityFeedRepository = null,
     IOutboundNotificationService? notificationService = null,
     ILogger<DownloadClientGrabService>? logger = null,
-    IIndexerCallLimiter? indexerCallLimiter = null)
+    IIndexerCallLimiter? indexerCallLimiter = null,
+    IIndexerAuthFailureRecorder? indexerAuthFailureRecorder = null)
     : IDownloadClientGrabService
 {
     public async Task<DownloadClientGrabResult> GrabAsync(
@@ -412,7 +413,17 @@ public sealed class DownloadClientGrabService(
         }
         catch (Exception exception) when (exception is Deluno.Integrations.Search.Trackers.TrackerException or HttpRequestException or Deluno.Integrations.Search.Trackers.TrackerFieldException or FormatException || exception is TaskCanceledException && !cancellationToken.IsCancellationRequested)
         {
-            return (request, $"{indexer.Name} would not hand over this release: {exception.Message}");
+            var message = $"{indexer.Name} would not hand over this release: {exception.Message}";
+
+            // #754: a grab that could not fetch a tracker's release because its
+            // sign-in has gone bad writes the same combined Indexer History row
+            // an RSS sync's own auth failure does, through the same recorder.
+            if (indexerAuthFailureRecorder is not null && IndexerAuthFailureText.LooksLikeAuthFailure(exception.Message))
+            {
+                await indexerAuthFailureRecorder.RecordAsync(indexer.Id, indexer.Name, "grab", message, null, cancellationToken);
+            }
+
+            return (request, message);
         }
     }
 
