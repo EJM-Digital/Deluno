@@ -319,6 +319,7 @@ public sealed class DelunoHeartbeatWorker(
                 movieCatalogRepository,
                 seriesCatalogRepository,
                 services.GetRequiredService<SharingReclaimService>(),
+                services.GetRequiredService<IHardlinkInspector>(),
                 stoppingToken);
         }
 

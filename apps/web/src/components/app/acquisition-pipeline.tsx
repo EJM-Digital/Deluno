@@ -18,10 +18,16 @@
  */
 import { statusTone } from "../../lib/status-tones";
 import { Link } from "react-router-dom";
+import { useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
+import { X } from "lucide-react";
 import { CountUp } from "../ui/count-up";
 import { StatusLed, type LedTone } from "../ui/status-led";
+import { Button } from "../ui/button";
 import { cn, formatBytes } from "../../lib/utils";
-import type { DownloadSharingSnapshot, DownloadTelemetrySummary, MonitoringPerformanceSummary } from "../../lib/api";
+import { toast } from "../shell/toaster";
+import { submitQueueRemoval } from "../../lib/remove-download";
+import type { DownloadSharingHold, DownloadSharingSnapshot, DownloadTelemetrySummary, MonitoringPerformanceSummary } from "../../lib/api";
 import type { ActiveDownload } from "../../lib/media-types";
 
 interface Stage {
@@ -230,6 +236,21 @@ export function AcquisitionPipeline({
 function SharingHolds({ sharing }: { sharing: DownloadSharingSnapshot }) {
   const { holds, extraBytes, driveNote } = sharing;
   const needsYou = holds.some((hold) => hold.needsYou);
+  const queryClient = useQueryClient();
+  const [stopping, setStopping] = useState<string | null>(null);
+
+  async function stopSeeding(hold: DownloadSharingHold) {
+    setStopping(hold.queueItemId);
+    try {
+      const result = await submitQueueRemoval(hold.clientId, hold.queueItemId, "unwanted");
+      toast.success(result.message);
+      await queryClient.invalidateQueries({ queryKey: ["download-sharing"] });
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "That could not be stopped.");
+    } finally {
+      setStopping(null);
+    }
+  }
 
   return (
     <div className="relative border-t border-hairline">
@@ -267,6 +288,18 @@ function SharingHolds({ sharing }: { sharing: DownloadSharingSnapshot }) {
             <span className="shrink-0 text-[length:var(--type-micro)] tabular-nums text-muted-foreground">
               {hold.sharesLibraryCopy ? "shares your copy" : formatBytes(hold.sizeBytes)}
             </span>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="h-5 shrink-0 gap-1 px-1.5 text-[length:var(--type-micro)] text-muted-foreground hover:text-destructive"
+              aria-label={`Stop seeding and delete "${hold.title}" now`}
+              disabled={stopping === hold.queueItemId}
+              onClick={() => void stopSeeding(hold)}
+            >
+              <X className="h-3 w-3" />
+              Stop &amp; delete
+            </Button>
           </li>
         ))}
       </ul>

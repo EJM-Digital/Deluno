@@ -28,6 +28,11 @@ public static class FilesystemServiceCollectionExtensions
         // which libraries it has already announced. A scoped copy per tick
         // would probe every library every time and say so every time.
         services.AddSingleton<ILibraryAvailabilityService, LibraryAvailabilityService>();
+        // #819/#926's shared check: does a download's file still share its
+        // data with the library's copy, read from disk rather than guessed
+        // from configuration.
+        services.AddSingleton<IFileIdentity, FileIdentity>();
+        services.AddSingleton<IHardlinkInspector, HardlinkInspector>();
         return services;
     }
 }
