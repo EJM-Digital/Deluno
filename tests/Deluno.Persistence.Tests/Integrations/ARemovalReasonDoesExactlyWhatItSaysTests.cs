@@ -62,6 +62,12 @@ public sealed class ARemovalReasonDoesExactlyWhatItSaysTests
         Assert.Contains("bad", activity.Message, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("blocklisted", activity.Message, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("search", activity.Message, StringComparison.OrdinalIgnoreCase);
+        // #799's last line: the removal, blocklist entry and new search this
+        // reason triggers are attributed to a person's own action, not an
+        // automatic one. Deluno's convention for that attribution is the
+        // message's own wording — "You marked/said/told…" — rather than a
+        // separate flag on the activity record itself.
+        Assert.StartsWith("You marked", activity.Message, StringComparison.Ordinal);
     }
 
     [Theory]
