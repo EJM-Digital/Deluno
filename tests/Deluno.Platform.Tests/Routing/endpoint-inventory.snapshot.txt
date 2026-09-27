@@ -28,6 +28,7 @@ DELETE /api/movies/import-recovery/{id}
 DELETE /api/movies/{id}
 DELETE /api/movies/{id}/files
 DELETE /api/movies/{id}/libraries/{libraryId}
+DELETE /api/movies/{id}/subtitles/override
 DELETE /api/notification-webhooks/{id}
 DELETE /api/notifications/
 DELETE /api/notifications/{notificationId}
@@ -42,6 +43,7 @@ DELETE /api/seerr-servers/{id}
 DELETE /api/series/import-recovery/{id}
 DELETE /api/series/{id}
 DELETE /api/series/{id}/libraries/{libraryId}
+DELETE /api/series/{id}/subtitles/override
 DELETE /api/setup/draft
 DELETE /api/subtitle-providers/{key}
 DELETE /api/system/log-files/{name}
@@ -494,6 +496,7 @@ PUT /api/movies/{id}/files/quality
 PUT /api/movies/{id}/libraries/{libraryId}
 PUT /api/movies/{id}/metadata/override
 PUT /api/movies/{id}/replacement-protection
+PUT /api/movies/{id}/subtitles/override
 PUT /api/notification-preferences/
 PUT /api/notification-webhooks/{id}
 PUT /api/policy-sets/{id}
@@ -513,6 +516,7 @@ PUT /api/series/{id}/metadata/override
 PUT /api/series/{id}/monitor-new-episodes
 PUT /api/series/{id}/numbering
 PUT /api/series/{id}/replacement-protection
+PUT /api/series/{id}/subtitles/override
 PUT /api/settings/
 PUT /api/settings/automation
 PUT /api/setup/draft

@@ -515,10 +515,31 @@ public static class SeriesEndpointRouteBuilderExtensions
             return snapshot is null ? Results.NotFound() : Results.Ok(snapshot);
         });
 
-        series.MapGet("/{id}", async (string id, ISeriesCatalogRepository repository, CancellationToken cancellationToken) =>
+        series.MapGet("/{id}", async (
+            string id,
+            ISeriesCatalogRepository repository,
+            IMediaSubtitleOverrideRepository overrides,
+            CancellationToken cancellationToken) =>
         {
             var item = await repository.GetByIdAsync(id, cancellationToken);
-            return item is null ? Results.NotFound() : Results.Ok(item);
+            if (item is null)
+            {
+                return Results.NotFound();
+            }
+
+            // #843: a show's own subtitle-language override, when it has set
+            // one - at the show level, not per episode.
+            var @override = await overrides.GetAsync(MediaKind.Series, id, cancellationToken);
+            if (@override is not null)
+            {
+                item = item with
+                {
+                    SubtitleLanguagesOverride = @override.Languages,
+                    SubtitleModeOverride = @override.Mode
+                };
+            }
+
+            return Results.Ok(item);
         });
 
         series.MapPut("/monitoring", async (
@@ -2179,6 +2200,68 @@ public static class SeriesEndpointRouteBuilderExtensions
             });
         });
 
+        /*
+          #843: one show's own subtitle-language override, at the show
+          level - not per episode, and replacing the library's Languages/
+          Mode for this title only. Unset (never called, or cleared) means
+          it follows the library exactly as before.
+        */
+        series.MapPut("/{id}/subtitles/override", async (
+            HttpContext httpContext,
+            string id,
+            [FromBody] SetSubtitleLanguageOverrideRequest request,
+            ISeriesCatalogRepository repository,
+            IMediaSubtitleOverrideRepository overrides,
+            CancellationToken cancellationToken) =>
+        {
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
+            if (denied is not null)
+            {
+                return denied;
+            }
+
+            if (await repository.GetByIdAsync(id, cancellationToken) is null)
+            {
+                return Results.NotFound();
+            }
+
+            if (request.Languages is not { Count: > 0 })
+            {
+                return Results.ValidationProblem(new Dictionary<string, string[]>
+                {
+                    ["languages"] = ["Choose at least one language, or delete the override to remove it."]
+                });
+            }
+
+            var mode = string.Equals(request.Mode, "first", StringComparison.OrdinalIgnoreCase) ? "first" : "all";
+            await overrides.SetAsync(MediaKind.Series, id, new SubtitleLanguageOverride(request.Languages, mode), cancellationToken);
+
+            return Results.Ok(new { languages = request.Languages, mode });
+        });
+
+        series.MapDelete("/{id}/subtitles/override", async (
+            HttpContext httpContext,
+            string id,
+            ISeriesCatalogRepository repository,
+            IMediaSubtitleOverrideRepository overrides,
+            CancellationToken cancellationToken) =>
+        {
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
+            if (denied is not null)
+            {
+                return denied;
+            }
+
+            if (await repository.GetByIdAsync(id, cancellationToken) is null)
+            {
+                return Results.NotFound();
+            }
+
+            await overrides.ClearAsync(MediaKind.Series, id, cancellationToken);
+
+            return Results.Ok(new { message = "This show now follows its library's subtitle languages again." });
+        });
+
         series.MapPost("/bulk/quality-profile", async (
             HttpContext httpContext,
             [FromBody] BulkQualityProfileRequest request,
@@ -3601,6 +3684,8 @@ public static class SeriesEndpointRouteBuilderExtensions
     private sealed record UpdateSeriesMonitorNewEpisodesRequest(bool MonitorNewEpisodes);
 
     private sealed record BulkSubtitleRescanRequest(IReadOnlyList<string>? SeriesIds);
+
+    private sealed record SetSubtitleLanguageOverrideRequest(IReadOnlyList<string>? Languages, string? Mode);
 
     private sealed record BulkQualityProfileRequest(
         IReadOnlyList<string>? SeriesIds,

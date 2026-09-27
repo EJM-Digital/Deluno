@@ -32,6 +32,7 @@ public static class SeriesServiceCollectionExtensions
         services.TryAddScoped<AcquisitionOverrideService>();
         services.TryAddScoped<TitleRemovalService>();
         services.TryAddSingleton<IMediaSubtitleRepository, SqliteMediaSubtitleRepository>();
+        services.TryAddSingleton<IMediaSubtitleOverrideRepository, SqliteMediaSubtitleOverrideRepository>();
         services.AddSingleton<ISeriesCatalogRepository, SqliteSeriesCatalogRepository>();
         // The quality ladder has to reach this catalogue's own database for a
         // shelf to be sortable by quality; the model service pushes it here on

@@ -614,7 +614,11 @@ public static class MoviesEndpointRouteBuilderExtensions
             return snapshot is null ? Results.NotFound() : Results.Ok(snapshot);
         });
 
-        movies.MapGet("/{id}", async (string id, IMovieCatalogRepository repository, CancellationToken cancellationToken) =>
+        movies.MapGet("/{id}", async (
+            string id,
+            IMovieCatalogRepository repository,
+            IMediaSubtitleOverrideRepository overrides,
+            CancellationToken cancellationToken) =>
         {
             var movie = await repository.GetByIdAsync(id, cancellationToken);
             if (movie is null)
@@ -627,7 +631,23 @@ public static class MoviesEndpointRouteBuilderExtensions
             // edit surface asking "what is this title's profile right now"
             // had nothing to read.
             var qualityProfileId = await repository.GetQualityProfileIdAsync(id, cancellationToken);
-            return Results.Ok(movie with { QualityProfileId = qualityProfileId });
+            movie = movie with { QualityProfileId = qualityProfileId };
+
+            // #843: a single title's own fetch carries its subtitle-language
+            // override, when it has set one. The paged grid does not - same
+            // as the file's own codec facts above, which is why this is one
+            // extra lookup here rather than a join the grid also pays for.
+            var @override = await overrides.GetAsync(MediaKind.Movie, id, cancellationToken);
+            if (@override is not null)
+            {
+                movie = movie with
+                {
+                    SubtitleLanguagesOverride = @override.Languages,
+                    SubtitleModeOverride = @override.Mode
+                };
+            }
+
+            return Results.Ok(movie);
         });
 
         /*
@@ -2232,6 +2252,68 @@ public static class MoviesEndpointRouteBuilderExtensions
             });
         });
 
+        /*
+          #843: one movie's own subtitle-language override, replacing the
+          library's Languages/Mode for this title only. Unset (never
+          called, or cleared) means it follows the library exactly as
+          before - nothing here changes that default path.
+        */
+        movies.MapPut("/{id}/subtitles/override", async (
+            HttpContext httpContext,
+            string id,
+            [FromBody] SetSubtitleLanguageOverrideRequest request,
+            IMovieCatalogRepository repository,
+            IMediaSubtitleOverrideRepository overrides,
+            CancellationToken cancellationToken) =>
+        {
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
+            if (denied is not null)
+            {
+                return denied;
+            }
+
+            if (await repository.GetByIdAsync(id, cancellationToken) is null)
+            {
+                return Results.NotFound();
+            }
+
+            if (request.Languages is not { Count: > 0 })
+            {
+                return Results.ValidationProblem(new Dictionary<string, string[]>
+                {
+                    ["languages"] = ["Choose at least one language, or delete the override to remove it."]
+                });
+            }
+
+            var mode = string.Equals(request.Mode, "first", StringComparison.OrdinalIgnoreCase) ? "first" : "all";
+            await overrides.SetAsync(MediaKind.Movie, id, new SubtitleLanguageOverride(request.Languages, mode), cancellationToken);
+
+            return Results.Ok(new { languages = request.Languages, mode });
+        });
+
+        movies.MapDelete("/{id}/subtitles/override", async (
+            HttpContext httpContext,
+            string id,
+            IMovieCatalogRepository repository,
+            IMediaSubtitleOverrideRepository overrides,
+            CancellationToken cancellationToken) =>
+        {
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
+            if (denied is not null)
+            {
+                return denied;
+            }
+
+            if (await repository.GetByIdAsync(id, cancellationToken) is null)
+            {
+                return Results.NotFound();
+            }
+
+            await overrides.ClearAsync(MediaKind.Movie, id, cancellationToken);
+
+            return Results.Ok(new { message = "This movie now follows its library's subtitle languages again." });
+        });
+
         movies.MapPost("/bulk/quality-profile", async (
             HttpContext httpContext,
             [FromBody] BulkQualityProfileRequest request,
@@ -3116,6 +3198,8 @@ public static class MoviesEndpointRouteBuilderExtensions
         string? MinimumAvailability);
 
     private sealed record BulkSubtitleRescanRequest(IReadOnlyList<string>? MovieIds);
+
+    private sealed record SetSubtitleLanguageOverrideRequest(IReadOnlyList<string>? Languages, string? Mode);
 
     private sealed record BulkQualityProfileRequest(
         IReadOnlyList<string>? MovieIds,

@@ -126,4 +126,13 @@ public sealed record SeriesListItem(
     /// to on, matching how every series behaved before this preset existed:
     /// a newly discovered episode was always monitored.
     /// </summary>
-    bool MonitorNewEpisodes = true);
+    bool MonitorNewEpisodes = true,
+    /// <summary>
+    /// This show's own subtitle-language override (#843), when it has set
+    /// one — replacing the library's <c>Languages</c>/<c>Mode</c> for this
+    /// title only, at the show level rather than per episode. Null means it
+    /// follows the library exactly as before. Populated on a single show's
+    /// own fetch, not the paged grid.
+    /// </summary>
+    IReadOnlyList<string>? SubtitleLanguagesOverride = null,
+    string? SubtitleModeOverride = null);
