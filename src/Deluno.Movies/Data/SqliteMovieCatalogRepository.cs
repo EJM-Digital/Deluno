@@ -3461,10 +3461,18 @@ public sealed class SqliteMovieCatalogRepository(
             Libraries: kvp.Value.Entries)).ToArray();
     }
 
+    public Task<int> ReassignLibraryAsync(
+        IReadOnlyList<string> movieIds,
+        string fromLibraryId,
+        string toLibraryId,
+        CancellationToken cancellationToken)
+        => ReassignLibraryAsync(movieIds, fromLibraryId, toLibraryId, movedFilePathsByMovieId: null, cancellationToken);
+
     public async Task<int> ReassignLibraryAsync(
         IReadOnlyList<string> movieIds,
         string fromLibraryId,
         string toLibraryId,
+        IReadOnlyDictionary<string, string>? movedFilePathsByMovieId,
         CancellationToken cancellationToken)
     {
         if (movieIds.Count == 0)
@@ -3476,24 +3484,63 @@ public sealed class SqliteMovieCatalogRepository(
             DelunoDatabaseNames.Movies,
             cancellationToken);
 
-        var ids = string.Join(",", movieIds.Select((_, i) => $"@id{i}"));
-        using var command = connection.CreateCommand();
-        command.CommandText =
-            $"""
-            UPDATE movie_wanted_state
-            SET library_id = @toLibraryId
-            WHERE library_id = @fromLibraryId
-              AND movie_id IN ({ids});
-            """;
-
-        AddParameter(command, "@fromLibraryId", fromLibraryId);
-        AddParameter(command, "@toLibraryId", toLibraryId);
-        for (var i = 0; i < movieIds.Count; i++)
+        // The plain bulk path stays a single statement: nothing here needs a
+        // per-row file path, so there is nothing a loop would buy. The moment
+        // even one moved file needs recording, every row goes through its own
+        // statement so each can carry its own (possibly absent) new path.
+        if (movedFilePathsByMovieId is null || movedFilePathsByMovieId.Count == 0)
         {
-            AddParameter(command, $"@id{i}", movieIds[i]);
+            var ids = string.Join(",", movieIds.Select((_, i) => $"@id{i}"));
+            using var command = connection.CreateCommand();
+            command.CommandText =
+                $"""
+                UPDATE movie_wanted_state
+                SET library_id = @toLibraryId
+                WHERE library_id = @fromLibraryId
+                  AND movie_id IN ({ids});
+                """;
+
+            AddParameter(command, "@fromLibraryId", fromLibraryId);
+            AddParameter(command, "@toLibraryId", toLibraryId);
+            for (var i = 0; i < movieIds.Count; i++)
+            {
+                AddParameter(command, $"@id{i}", movieIds[i]);
+            }
+
+            return await command.ExecuteNonQueryAsync(cancellationToken);
         }
 
-        return await command.ExecuteNonQueryAsync(cancellationToken);
+        await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+        var updated = 0;
+        foreach (var movieId in movieIds)
+        {
+            var hasMovedPath = movedFilePathsByMovieId.TryGetValue(movieId, out var movedPath);
+            using var command = connection.CreateCommand();
+            command.Transaction = transaction;
+            command.CommandText = hasMovedPath
+                ? """
+                  UPDATE movie_wanted_state
+                  SET library_id = @toLibraryId, file_path = @filePath
+                  WHERE library_id = @fromLibraryId AND movie_id = @movieId;
+                  """
+                : """
+                  UPDATE movie_wanted_state
+                  SET library_id = @toLibraryId
+                  WHERE library_id = @fromLibraryId AND movie_id = @movieId;
+                  """;
+            AddParameter(command, "@fromLibraryId", fromLibraryId);
+            AddParameter(command, "@toLibraryId", toLibraryId);
+            AddParameter(command, "@movieId", movieId);
+            if (hasMovedPath)
+            {
+                AddParameter(command, "@filePath", movedPath);
+            }
+
+            updated += await command.ExecuteNonQueryAsync(cancellationToken);
+        }
+
+        await transaction.CommitAsync(cancellationToken);
+        return updated;
     }
 
     private static MovieWantedItem MapWanted(MediaWantedItem item)

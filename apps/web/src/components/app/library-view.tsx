@@ -189,7 +189,9 @@ export function LibraryView({
     selectedIds, setSelectedIds, isBulkUpdating, setIsBulkUpdating, isBulkToolsOpen, setIsBulkToolsOpen,
     isRemovalConfirmationOpen, setIsRemovalConfirmationOpen, bulkOperation, setBulkOperation,
     bulkMonitored, setBulkMonitored, bulkQualityProfileId, setBulkQualityProfileId,
-    bulkTargetLibraryId, setBulkTargetLibraryId, bulkTagsInput, setBulkTagsInput,
+    bulkMinimumAvailability, setBulkMinimumAvailability,
+    bulkTargetLibraryId, setBulkTargetLibraryId, bulkMoveFiles, setBulkMoveFiles,
+    bulkTagsInput, setBulkTagsInput,
     bulkTagsMode, setBulkTagsMode,
     bulkRenameTemplate, setBulkRenameTemplate, bulkRenamePreview, setBulkRenamePreview,
     bulkConfirming, setBulkConfirming, bulkError, setBulkError, bulkLibraries, bulkQualityProfiles,
@@ -1164,7 +1166,9 @@ export function LibraryView({
         operation={bulkOperation}
         monitored={bulkMonitored}
         qualityProfileId={bulkQualityProfileId}
+        minimumAvailability={bulkMinimumAvailability}
         targetLibraryId={bulkTargetLibraryId}
+        moveFiles={bulkMoveFiles}
         tags={bulkTagsInput}
         tagsMode={bulkTagsMode}
         renameTemplate={bulkRenameTemplate}
@@ -1185,7 +1189,9 @@ export function LibraryView({
         }}
         onMonitoredChange={setBulkMonitored}
         onQualityProfileChange={setBulkQualityProfileId}
+        onMinimumAvailabilityChange={setBulkMinimumAvailability}
         onTargetLibraryChange={setBulkTargetLibraryId}
+        onMoveFilesChange={setBulkMoveFiles}
         onTagsChange={setBulkTagsInput}
         onTagsModeChange={setBulkTagsMode}
         onRenameTemplateChange={setBulkRenameTemplate}

@@ -15,7 +15,9 @@ type LibraryBulkToolsDialogProps = {
   operation: BulkWorkflowOperation;
   monitored: boolean;
   qualityProfileId: string;
+  minimumAvailability: string;
   targetLibraryId: string;
+  moveFiles: boolean;
   tags: string;
   tagsMode: BulkTagMode;
   renameTemplate: string;
@@ -31,18 +33,27 @@ type LibraryBulkToolsDialogProps = {
   onOperationChange: (operation: BulkWorkflowOperation) => void;
   onMonitoredChange: (value: boolean) => void;
   onQualityProfileChange: (value: string) => void;
+  onMinimumAvailabilityChange: (value: string) => void;
   onTargetLibraryChange: (value: string) => void;
+  onMoveFilesChange: (value: boolean) => void;
   onTagsChange: (value: string) => void;
   onTagsModeChange: (value: BulkTagMode) => void;
   onRenameTemplateChange: (value: string) => void;
   onExecute: () => void;
 };
 
+const MINIMUM_AVAILABILITY_OPTIONS: NamedOption[] = [
+  { id: "announced", name: "Announced" },
+  { id: "inCinemas", name: "In cinemas" },
+  { id: "released", name: "Released" }
+];
+
 export function LibraryBulkToolsDialog({
   open, selectedCount, variant, isUpdating, operation, monitored, qualityProfileId,
-  targetLibraryId, tags, tagsMode, renameTemplate, renamePreview, confirming, error, libraries,
+  minimumAvailability, targetLibraryId, moveFiles, tags, tagsMode, renameTemplate, renamePreview, confirming, error, libraries,
   qualityProfiles, isOptionsLoading, undoCount, redoCount, onClose, onOperationChange,
-  onMonitoredChange, onQualityProfileChange, onTargetLibraryChange, onTagsChange, onTagsModeChange,
+  onMonitoredChange, onQualityProfileChange, onMinimumAvailabilityChange, onTargetLibraryChange,
+  onMoveFilesChange, onTagsChange, onTagsModeChange,
   onRenameTemplateChange, onExecute,
 }: LibraryBulkToolsDialogProps) {
   if (!open) return null;
@@ -57,12 +68,21 @@ export function LibraryBulkToolsDialog({
       <div className="grid gap-[var(--grid-gap)] md:grid-cols-2">
         <Field label="Operation" help="Choose the bulk action to run.">
           <Select value={operation} onChange={(event) => onOperationChange(event.target.value as BulkWorkflowOperation)}>
-          <option value="monitoring">Monitor or unmonitor</option><option value="quality">Set quality profile</option><option value="reassignLibrary">Assign library/root</option><option value="tags">Apply tags</option><option value="search">Search now</option><option value="renamePreview">Rename preview</option>
+          <option value="monitoring">Monitor or unmonitor</option><option value="quality">Set quality profile</option>{variant === "movies" ? <option value="minimumAvailability">Set minimum availability</option> : null}<option value="reassignLibrary">Assign library/root</option><option value="tags">Apply tags</option><option value="search">Search now</option><option value="renamePreview">Rename preview</option>
           </Select>
         </Field>
         {operation === "monitoring" ? <Field label="Monitoring state" help="Apply monitored or unmonitored to the selection."><Select value={monitored ? "true" : "false"} onChange={(event) => onMonitoredChange(event.target.value === "true")}><option value="true">Monitored</option><option value="false">Unmonitored</option></Select></Field> : null}
         {operation === "quality" ? <Field label="Quality profile" help="Set one quality profile for all selected titles."><Select value={qualityProfileId} onChange={(event) => onQualityProfileChange(event.target.value)}><option value="">Choose a quality profile</option>{qualityProfiles.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</Select></Field> : null}
-        {operation === "reassignLibrary" ? <Field label="Destination library" help="Reassign selected titles to a different library/root."><Select value={targetLibraryId} onChange={(event) => onTargetLibraryChange(event.target.value)}><option value="">Choose library</option>{libraries.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</Select></Field> : null}
+        {operation === "minimumAvailability" ? <Field label="Minimum availability" help="The point Deluno is allowed to start looking for these titles."><Select value={minimumAvailability} onChange={(event) => onMinimumAvailabilityChange(event.target.value)}>{MINIMUM_AVAILABILITY_OPTIONS.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</Select></Field> : null}
+        {operation === "reassignLibrary" ? <>
+          <Field label="Destination library" help="Reassign selected titles to a different library/root."><Select value={targetLibraryId} onChange={(event) => onTargetLibraryChange(event.target.value)}><option value="">Choose library</option>{libraries.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</Select></Field>
+          <Field label="Files" help={moveFiles ? "Files physically move to the new library's root." : "Only the record moves; files stay under the old root."}>
+            <label className="flex min-h-[var(--library-toolbar-height)] items-center gap-2 text-sm text-foreground">
+              <input type="checkbox" checked={moveFiles} onChange={(event) => onMoveFilesChange(event.target.checked)} />
+              Move the files to the new root
+            </label>
+          </Field>
+        </> : null}
         {operation === "tags" ? <Field label="Tags" help="Comma-separated tags. Add keeps existing tags; Remove drops only these; Replace wipes the rest.">
           <div className="flex items-center gap-2">
             <Input value={tags} onChange={(event) => onTagsChange(event.target.value)} placeholder="e.g. favourites, weekend, 4k" />

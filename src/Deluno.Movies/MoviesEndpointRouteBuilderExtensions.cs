@@ -2154,6 +2154,8 @@ public static class MoviesEndpointRouteBuilderExtensions
             HttpContext httpContext,
             [FromBody] BulkReassignLibraryRequest request,
             IMovieCatalogRepository repository,
+            ILibrariesRepository librariesRepository,
+            IActivityFeedRepository activityFeedRepository,
             IRealtimeEventPublisher realtimeEventPublisher,
             CancellationToken cancellationToken) =>
         {
@@ -2179,14 +2181,123 @@ public static class MoviesEndpointRouteBuilderExtensions
                 });
             }
 
-            var count = await repository.ReassignLibraryAsync(
-                request.MovieIds, request.FromLibraryId, request.ToLibraryId, cancellationToken);
+            // "Move the files" is opt in. Left off, the record is reassigned
+            // and nothing on disk changes - the acceptance for #787 requires
+            // that to be stated plainly rather than left for the user to
+            // discover as an orphaned folder under the old root.
+            if (!request.MoveFiles)
+            {
+                var reassignedOnly = await repository.ReassignLibraryAsync(
+                    request.MovieIds, request.FromLibraryId, request.ToLibraryId, cancellationToken);
+
+                if (reassignedOnly > 0)
+                    foreach (var movieId in request.MovieIds.Distinct(StringComparer.OrdinalIgnoreCase))
+                        await realtimeEventPublisher.PublishEntityChangedAsync("Movie", movieId, cancellationToken);
+
+                return Results.Ok(new { reassigned = reassignedOnly, filesMoved = 0, moveFailures = Array.Empty<string>() });
+            }
+
+            var libraries = await librariesRepository.ListLibrariesAsync(cancellationToken);
+            var toLibrary = libraries.FirstOrDefault(item => item.Id == request.ToLibraryId);
+            var fromLibrary = libraries.FirstOrDefault(item => item.Id == request.FromLibraryId);
+            if (toLibrary is null || fromLibrary is null)
+            {
+                return Results.ValidationProblem(new Dictionary<string, string[]>
+                {
+                    ["libraryId"] = ["Both libraries must exist to move files between them."]
+                });
+            }
+
+            var movedFilePaths = new Dictionary<string, string>(StringComparer.Ordinal);
+            var failedMovieIds = new HashSet<string>(StringComparer.Ordinal);
+            var moveFailureTitles = new List<string>();
+            foreach (var movieId in request.MovieIds)
+            {
+                var movie = await repository.GetByIdAsync(movieId, cancellationToken);
+                if (movie?.FilePath is not { Length: > 0 } filePath)
+                {
+                    // Nothing on disk to move; the library reassignment below
+                    // still applies to it, same as any title with no file.
+                    continue;
+                }
+
+                try
+                {
+                    // The whole title folder moves, not only the tracked file -
+                    // extras and subtitles sitting beside it would otherwise be
+                    // orphaned under the old root, exactly the failure mode
+                    // #787 exists to close. The decision itself lives in
+                    // MovieFileRelocationPlanner so it can be tested without a
+                    // filesystem; only the actual move happens here.
+                    var plan = MovieFileRelocationPlanner.Plan(filePath, fromLibrary.RootPath, toLibrary.RootPath);
+                    if (plan is null)
+                    {
+                        failedMovieIds.Add(movieId);
+                        moveFailureTitles.Add(movie.Title);
+                        continue;
+                    }
+
+                    if (plan.MovesWholeFolder && Directory.Exists(plan.DestinationDirectory))
+                    {
+                        failedMovieIds.Add(movieId);
+                        moveFailureTitles.Add(movie.Title);
+                        continue;
+                    }
+
+                    if (plan.MovesWholeFolder)
+                    {
+                        var destinationParent = Path.GetDirectoryName(plan.DestinationDirectory);
+                        if (destinationParent is { Length: > 0 })
+                        {
+                            Directory.CreateDirectory(destinationParent);
+                        }
+                        Directory.Move(plan.SourceDirectory, plan.DestinationDirectory);
+                    }
+                    else
+                    {
+                        Directory.CreateDirectory(plan.DestinationDirectory);
+                        File.Move(filePath, Path.Combine(plan.DestinationDirectory, Path.GetFileName(filePath)), overwrite: false);
+                    }
+
+                    movedFilePaths[movieId] = Path.Combine(plan.DestinationDirectory, Path.GetFileName(filePath));
+                }
+                catch (IOException)
+                {
+                    failedMovieIds.Add(movieId);
+                    moveFailureTitles.Add(movie.Title);
+                }
+                catch (UnauthorizedAccessException)
+                {
+                    failedMovieIds.Add(movieId);
+                    moveFailureTitles.Add(movie.Title);
+                }
+            }
+
+            // A movie whose move failed keeps its record where it was - the
+            // file did not move, so the database must not say it did.
+            var idsToReassign = request.MovieIds.Where(id => !failedMovieIds.Contains(id)).ToArray();
+
+            var count = idsToReassign.Length == 0
+                ? 0
+                : await repository.ReassignLibraryAsync(
+                    idsToReassign, request.FromLibraryId, request.ToLibraryId, movedFilePaths, cancellationToken);
 
             if (count > 0)
-                foreach (var movieId in request.MovieIds.Distinct(StringComparer.OrdinalIgnoreCase))
+                foreach (var movieId in idsToReassign.Distinct(StringComparer.OrdinalIgnoreCase))
                     await realtimeEventPublisher.PublishEntityChangedAsync("Movie", movieId, cancellationToken);
 
-            return Results.Ok(new { reassigned = count });
+            await activityFeedRepository.RecordActivityAsync(
+                "library.movie.reassigned",
+                moveFailureTitles.Count == 0
+                    ? $"{count} movie{(count == 1 ? "" : "s")} moved from {fromLibrary.Name} to {toLibrary.Name}."
+                    : $"{count} movie{(count == 1 ? "" : "s")} moved to {toLibrary.Name}; {moveFailureTitles.Count} file{(moveFailureTitles.Count == 1 ? "" : "s")} could not be moved and stayed in {fromLibrary.Name}.",
+                JsonSerializer.Serialize(new { filesMoved = movedFilePaths.Count, moveFailureTitles }),
+                null,
+                "library",
+                request.ToLibraryId,
+                cancellationToken);
+
+            return Results.Ok(new { reassigned = count, filesMoved = movedFilePaths.Count, moveFailures = moveFailureTitles });
         });
 
         movies.MapPost("/bulk/tags", async (
@@ -2720,7 +2831,8 @@ public static class MoviesEndpointRouteBuilderExtensions
     private sealed record BulkReassignLibraryRequest(
         IReadOnlyList<string>? MovieIds,
         string? FromLibraryId,
-        string? ToLibraryId);
+        string? ToLibraryId,
+        bool MoveFiles = false);
 
     private sealed record BulkMinimumAvailabilityRequest(
         IReadOnlyList<string>? MovieIds,
