@@ -88,7 +88,7 @@ public sealed class UpdateAppliedTriggerTests
             var options = Options.Create(new StoragePathOptions { DataRoot = dataRoot });
             var outbound = new FakeOutboundNotificationService();
             var notifications = new FakeNotificationService { Preferences = new() { UpdateEnabled = true } };
-            var currentVersion = System.Reflection.Assembly.GetEntryAssembly()?.GetName().Version?.ToString(3) ?? "0.0.0";
+            var currentVersion = Deluno.Api.DelunoVersion.Running;
             var releaseNotes = new FakeReleaseNotesProvider(new Dictionary<string, string>
             {
                 [currentVersion] = "- Made the thing better."

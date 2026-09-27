@@ -37,7 +37,7 @@ public sealed class DefaultUpdateOrchestrator : IUpdateOrchestrator
         IReleaseNotesProvider? releaseNotesProvider = null,
         TimeProvider? timeProvider = null)
     {
-        _currentVersion = Assembly.GetEntryAssembly()?.GetName().Version?.ToString(3) ?? "0.0.0";
+        _currentVersion = DelunoVersion.Running;
         _installKind = IsRunningInDocker() ? UpdateInstallKinds.Docker : UpdateInstallKinds.Manual;
         var dataRoot = Path.GetFullPath(storageOptions.Value.DataRoot);
         _preferencesPath = Path.Combine(dataRoot, "update-preferences.json");
