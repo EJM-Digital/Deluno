@@ -5,7 +5,7 @@ import { authedFetch } from "../lib/use-auth";
 import { toast } from "../components/shell/toaster";
 import { describeRequestFailure, RequestFailedError } from "../lib/search-reasons";
 
-export type BulkWorkflowOperation = "monitoring" | "quality" | "reassignLibrary" | "tags" | "search" | "renamePreview";
+export type BulkWorkflowOperation = "monitoring" | "quality" | "minimumAvailability" | "reassignLibrary" | "tags" | "search" | "renamePreview";
 
 export type BulkTagMode = "add" | "remove" | "replace";
 
@@ -39,7 +39,13 @@ export function useBulkEdit({
   const [bulkOperation, setBulkOperation] = useState<BulkWorkflowOperation>("monitoring");
   const [bulkMonitored, setBulkMonitored] = useState(true);
   const [bulkQualityProfileId, setBulkQualityProfileId] = useState("");
+  const [bulkMinimumAvailability, setBulkMinimumAvailability] = useState("released");
   const [bulkTargetLibraryId, setBulkTargetLibraryId] = useState("");
+  // Reassigning a library only re-points the record by default (#787): files
+  // stay under the old root unless this is explicitly turned on, so a bulk
+  // move can never orphan a title's files as a side effect of tidying up
+  // where it is filed.
+  const [bulkMoveFiles, setBulkMoveFiles] = useState(false);
   const [bulkTagsInput, setBulkTagsInput] = useState("");
   const [bulkTagsMode, setBulkTagsMode] = useState<BulkTagMode>("add");
   const [bulkRenameTemplate, setBulkRenameTemplate] = useState("");
@@ -180,7 +186,7 @@ export function useBulkEdit({
     return merged;
   }
 
-  async function applyReassignLibrary(ids: string[], fromLibraryId: string, toLibraryId: string) {
+  async function applyReassignLibrary(ids: string[], fromLibraryId: string, toLibraryId: string, moveFiles = false) {
     const endpoint = variant === "movies"
       ? "/api/movies/bulk/reassign-library"
       : "/api/series/bulk/reassign-library";
@@ -190,13 +196,27 @@ export function useBulkEdit({
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(
         variant === "movies"
-          ? { movieIds: ids, fromLibraryId, toLibraryId }
-          : { seriesIds: ids, fromLibraryId, toLibraryId }
+          ? { movieIds: ids, fromLibraryId, toLibraryId, moveFiles }
+          : { seriesIds: ids, fromLibraryId, toLibraryId, moveFiles }
       )
     });
 
     if (!response.ok) {
       throw new Error("bulk-reassign-failed");
+    }
+
+    return await response.json() as { reassigned?: number; filesMoved?: number; moveFailures?: string[] };
+  }
+
+  async function applyMinimumAvailability(ids: string[], minimumAvailability: string) {
+    const response = await authedFetch("/api/movies/bulk/minimum-availability", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ movieIds: ids, minimumAvailability })
+    });
+
+    if (!response.ok) {
+      throw new Error("bulk-minimum-availability-failed");
     }
   }
 
@@ -364,6 +384,7 @@ export function useBulkEdit({
     setBulkOperation(operation);
     setBulkMonitored(monitored);
     setBulkTagsMode("add");
+    setBulkMoveFiles(false);
     setBulkConfirming(false);
     setBulkError(null);
     setBulkRenamePreview([]);
@@ -474,11 +495,16 @@ export function useBulkEdit({
           previousByLibrary.set(item.libraryId, current);
         });
 
+        const moveFiles = bulkMoveFiles;
+        let totalFilesMoved = 0;
+        let allMoveFailures: string[] = [];
         for (const [fromLibraryId, ids] of previousByLibrary) {
           if (fromLibraryId === bulkTargetLibraryId) {
             continue;
           }
-          await applyReassignLibrary(ids, fromLibraryId, bulkTargetLibraryId);
+          const result = await applyReassignLibrary(ids, fromLibraryId, bulkTargetLibraryId, moveFiles);
+          totalFilesMoved += result.filesMoved ?? 0;
+          allMoveFailures = [...allMoveFailures, ...(result.moveFailures ?? [])];
         }
 
         setLibraryItems((current) =>
@@ -493,7 +519,7 @@ export function useBulkEdit({
           redoLabel: "Library reassignment re-applied",
           undo: async () => {
             for (const [oldLibraryId, ids] of previousByLibrary) {
-              await applyReassignLibrary(ids, bulkTargetLibraryId, oldLibraryId);
+              await applyReassignLibrary(ids, bulkTargetLibraryId, oldLibraryId, moveFiles);
             }
             setLibraryItems((current) =>
               current.map((item) => {
@@ -508,14 +534,70 @@ export function useBulkEdit({
           },
           redo: async () => {
             for (const [fromLibraryId, ids] of previousByLibrary) {
-              await applyReassignLibrary(ids, fromLibraryId, bulkTargetLibraryId);
+              await applyReassignLibrary(ids, fromLibraryId, bulkTargetLibraryId, moveFiles);
             }
             setLibraryItems((current) =>
               current.map((item) => selectedIds.includes(item.id) ? { ...item, libraryId: bulkTargetLibraryId } : item)
             );
           }
         });
-        toast.success("Library assignment updated.");
+        // Plain words about what actually happened to the files, not only the
+        // record — "only the record was reassigned" is the whole point of
+        // #787 when moveFiles was left off.
+        if (!moveFiles) {
+          toast.success("Library assignment updated. Files were left where they are.");
+        } else if (allMoveFailures.length === 0) {
+          toast.success(`Library assignment updated. ${totalFilesMoved} file${totalFilesMoved === 1 ? "" : "s"} moved.`);
+        } else {
+          toast.success(`Library assignment updated. ${totalFilesMoved} file${totalFilesMoved === 1 ? "" : "s"} moved.`);
+          toast.error(`${allMoveFailures.length} file${allMoveFailures.length === 1 ? "" : "s"} could not be moved and stayed put: ${allMoveFailures.join(", ")}`);
+        }
+      }
+      else if (bulkOperation === "minimumAvailability") {
+        const previousByAvailability = new Map<string, string[]>();
+        selectedItems.forEach((item) => {
+          const value = item.minimumAvailability ?? "released";
+          const current = previousByAvailability.get(value) ?? [];
+          current.push(item.id);
+          previousByAvailability.set(value, current);
+        });
+
+        await applyMinimumAvailability(selectedIds, bulkMinimumAvailability);
+        setLibraryItems((current) =>
+          current.map((item) =>
+            selectedIds.includes(item.id) ? { ...item, minimumAvailability: bulkMinimumAvailability } : item
+          )
+        );
+
+        pushHistory({
+          label: "Set minimum availability",
+          undoLabel: "Minimum availability reverted",
+          redoLabel: "Minimum availability re-applied",
+          undo: async () => {
+            for (const [value, ids] of previousByAvailability) {
+              await applyMinimumAvailability(ids, value);
+            }
+            setLibraryItems((current) =>
+              current.map((item) => {
+                for (const [value, ids] of previousByAvailability) {
+                  if (ids.includes(item.id)) {
+                    return { ...item, minimumAvailability: value };
+                  }
+                }
+                return item;
+              })
+            );
+          },
+          redo: async () => {
+            await applyMinimumAvailability(selectedIds, bulkMinimumAvailability);
+            setLibraryItems((current) =>
+              current.map((item) =>
+                selectedIds.includes(item.id) ? { ...item, minimumAvailability: bulkMinimumAvailability } : item
+              )
+            );
+          }
+        });
+        toast.success("Minimum availability updated.");
       }
       else if (bulkOperation === "tags") {
         const normalizedTags = normalizeBulkTags(bulkTagsInput);
@@ -642,7 +724,9 @@ export function useBulkEdit({
     selectedIds, setSelectedIds, isBulkUpdating, setIsBulkUpdating, isBulkToolsOpen, setIsBulkToolsOpen,
     isRemovalConfirmationOpen, setIsRemovalConfirmationOpen, bulkOperation, setBulkOperation,
     bulkMonitored, setBulkMonitored, bulkQualityProfileId, setBulkQualityProfileId,
-    bulkTargetLibraryId, setBulkTargetLibraryId, bulkTagsInput, setBulkTagsInput,
+    bulkMinimumAvailability, setBulkMinimumAvailability,
+    bulkTargetLibraryId, setBulkTargetLibraryId, bulkMoveFiles, setBulkMoveFiles,
+    bulkTagsInput, setBulkTagsInput,
     bulkTagsMode, setBulkTagsMode,
     bulkRenameTemplate, setBulkRenameTemplate, bulkRenamePreview, setBulkRenamePreview,
     bulkConfirming, setBulkConfirming, bulkError, setBulkError, bulkLibraries, bulkQualityProfiles,

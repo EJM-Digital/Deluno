@@ -331,6 +331,22 @@ public interface IMovieCatalogRepository : IMovieImportRecoveryRetentionReposito
 
     Task<int> ReassignLibraryAsync(IReadOnlyList<string> movieIds, string fromLibraryId, string toLibraryId, CancellationToken cancellationToken);
 
+    /// <summary>
+    /// Reassigns a selection to another library/root and, for the ids present
+    /// in <paramref name="movedFilePathsByMovieId"/>, records the new on-disk
+    /// path in the same row — the caller has already moved the file itself
+    /// before calling this, so the database and the disk agree the moment this
+    /// returns. A movie with no entry in the map keeps its stored path;
+    /// callers only pass one in when they actually moved that movie's file
+    /// (#787).
+    /// </summary>
+    Task<int> ReassignLibraryAsync(
+        IReadOnlyList<string> movieIds,
+        string fromLibraryId,
+        string toLibraryId,
+        IReadOnlyDictionary<string, string>? movedFilePathsByMovieId,
+        CancellationToken cancellationToken);
+
     /// <summary>Delete a movie and all its related data</summary>
     Task<bool> DeleteAsync(string movieId, CancellationToken cancellationToken);
 
