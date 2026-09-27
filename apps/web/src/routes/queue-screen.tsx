@@ -44,7 +44,6 @@ import {
   type ProcessorConnectionItem,
   type ProcessorHandoffItem,
   type ProcessorOutcomeRecord,
-  type QueueRemovalResult,
   type SeriesImportRecoverySummary, readErrorText } from "../lib/api";
 import { authedFetch } from "../lib/use-auth";
 import { formatBytes } from "../lib/utils";
@@ -60,6 +59,7 @@ import { Button } from "../components/ui/button";
 import { Chip, type ChipProps } from "../components/ui/chip";
 import { Drawer, DrawerDanger, DrawerFooter, DrawerSection } from "../components/ui/drawer";
 import { RemovalReasonDialog, type RemovalReason } from "../components/ui/removal-reason-dialog";
+import { submitQueueRemoval, unmonitorTitleAfterRemoval } from "../lib/remove-download";
 import { Field, FieldRow } from "../components/ui/field";
 import { Input } from "../components/ui/input";
 import { ListCard, ListCell, ListEmpty, ListNameCell, ListRow, ListTable, LIST_TRACK } from "../components/ui/list-card";
@@ -289,21 +289,10 @@ export function QueuePage() {
   async function removeWithReason(item: DownloadQueueItem, reason: RemovalReason) {
     setRemovalReasonBusy(reason);
     try {
-      const response = await authedFetch(
-        `/api/download-clients/${item.clientId}/queue/${encodeURIComponent(item.id)}/remove`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ reason })
-        }
-      );
-      const result = (await response.json().catch(() => null)) as QueueRemovalResult | null;
-      if (!response.ok || !result?.succeeded) {
-        throw new Error(result?.message || (await readErrorText(response, "That removal could not be completed.")));
-      }
+      const result = await submitQueueRemoval(item.clientId, item.id, reason);
 
       if (reason === "unwanted" && result.entityId) {
-        await unmonitorTitle(result.entityId, result.mediaType);
+        await unmonitorTitleAfterRemoval(result.entityId, result.mediaType);
       }
 
       toast.success(result.message);
@@ -314,22 +303,6 @@ export function QueuePage() {
       toast.error(error instanceof Error ? error.message : "That removal could not be completed.");
     } finally {
       setRemovalReasonBusy(null);
-    }
-  }
-
-  async function unmonitorTitle(entityId: string, mediaType: string | null) {
-    const { url, body } = unmonitorRequestFor(entityId, mediaType);
-    try {
-      await fetchJson(url, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body)
-      });
-    } catch {
-      // Best-effort: the download is already gone and its files deleted,
-      // which is the part that matters. A title left monitored is visible
-      // and easy to fix by hand; silently failing the whole removal over it
-      // would not be.
     }
   }
 
@@ -1989,18 +1962,9 @@ export function buildImportRequest(
   };
 }
 
-/**
- * Where "I don't want it" unmonitors the title, and what it sends — a pure
- * mapping so the choice can be tested without a render (#924). Movie and TV
- * engines stay separate, so this picks between their two, otherwise
- * identical, bulk endpoints rather than one shared one.
- */
-export function unmonitorRequestFor(entityId: string, mediaType: string | null): { url: string; body: Record<string, unknown> } {
-  const isTv = mediaType === "tv" || mediaType === "series";
-  return isTv
-    ? { url: "/api/series/bulk", body: { seriesIds: [entityId], operation: "monitoring", monitored: false } }
-    : { url: "/api/movies/bulk", body: { movieIds: [entityId], operation: "monitoring", monitored: false } };
-}
+// Moved to lib/remove-download.ts so the title pages' and Activity's own
+// removal actions (#924) can reuse it instead of duplicating the mapping.
+export { unmonitorRequestFor } from "../lib/remove-download";
 
 export function findDispatchForQueueItem(
   item: DownloadQueueItem,

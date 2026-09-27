@@ -36,6 +36,7 @@ import { RetentionTitleCard } from "../components/app/retention-title-card";
 import { CreditsRow, readStoredCredits } from "../components/app/credits-row";
 import { DownloadDispatchDrawer } from "../components/app/download-dispatch-drawer";
 import { BlockReleaseAction } from "../components/app/block-release-action";
+import { RemoveDownloadAction } from "../components/app/remove-download-action";
 import { TitleTagsEditor } from "../components/app/title-tags-editor";
 import { authedFetch } from "../lib/use-auth";
 import { cn } from "../lib/utils";
@@ -1359,17 +1360,30 @@ export function MovieDetailPage() {
             saveLabel="Close"
             onCancel={() => setOpenSearchId(null)}
             extraAction={openSearch?.releaseName ? (
-              <BlockReleaseAction
-                releaseName={openSearch.releaseName}
-                indexerName={openSearch.indexerName}
-                mediaType="movie"
-                entityId={movie.id}
-                title={movie.title}
-                onBlocked={() => {
-                  setOpenSearchId(null);
-                  revalidator.revalidate();
-                }}
-              />
+              <>
+                <RemoveDownloadAction
+                  releaseName={openSearch.releaseName}
+                  indexerName={openSearch.indexerName}
+                  mediaType="movie"
+                  entityId={movie.id}
+                  title={movie.title}
+                  onRemoved={() => {
+                    setOpenSearchId(null);
+                    revalidator.revalidate();
+                  }}
+                />
+                <BlockReleaseAction
+                  releaseName={openSearch.releaseName}
+                  indexerName={openSearch.indexerName}
+                  mediaType="movie"
+                  entityId={movie.id}
+                  title={movie.title}
+                  onBlocked={() => {
+                    setOpenSearchId(null);
+                    revalidator.revalidate();
+                  }}
+                />
+              </>
             ) : null}
           />
         }
