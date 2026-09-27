@@ -1027,6 +1027,7 @@ public sealed class FeedMediaSearchPlanner(
                 RequiredWords: indexer.RequiredWords,
                 IgnoredWords: indexer.IgnoredWords,
                 MultiLanguages: indexer.MultiLanguages,
+                SeasonPackSearchMode: indexer.SeasonPackSearchMode,
                 AvailableUtc: availableUtc,
                 AvailabilityDelayDays: indexer.AvailabilityDelayDays,
                  PreferencePlan: preferencePlan,

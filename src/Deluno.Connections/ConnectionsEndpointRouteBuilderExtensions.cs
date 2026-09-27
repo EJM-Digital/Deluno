@@ -150,6 +150,7 @@ public static class ConnectionsEndpointRouteBuilderExtensions
                 GrabLimit = request.GrabLimit,
                 LimitsUnit = request.LimitsUnit,
                 PreferMagnetUrl = request.PreferMagnetUrl,
+                SeasonPackSearchMode = request.SeasonPackSearchMode,
                 AvailabilityDelayDays = request.AvailabilityDelayDays,
                 RssEnabled = request.RssEnabled,
                 AutomaticSearchEnabled = request.AutomaticSearchEnabled,

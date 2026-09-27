@@ -63,6 +63,7 @@ public sealed record UpdateIndexerRequest(
     bool? ClearGrabLimit = null,
     string? LimitsUnit = null,
     bool? PreferMagnetUrl = null,
+    string? SeasonPackSearchMode = null,
     int? AvailabilityDelayDays = null,
     bool? ClearAvailabilityDelay = null,
     bool? RssEnabled = null,

@@ -281,6 +281,7 @@ public static class SearchEndpointRouteBuilderExtensions
                 RequiredWords: request.RequiredWords,
                 IgnoredWords: request.IgnoredWords,
                 MultiLanguages: request.MultiLanguages,
+                SeasonPackSearchMode: request.SeasonPackSearchMode,
                 AvailableUtc: request.AvailableUtc,
                 AvailabilityDelayDays: request.AvailabilityDelayDays));
 
@@ -643,6 +644,7 @@ file sealed record ReleaseExplainRequest(
     string? RequiredWords = null,
     string? IgnoredWords = null,
     string? MultiLanguages = null,
+    string? SeasonPackSearchMode = null,
     DateTimeOffset? AvailableUtc = null,
     int? AvailabilityDelayDays = null);
 

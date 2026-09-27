@@ -28,7 +28,9 @@ public sealed class ReleaseDecisionEngineTests
         string? indexerFlags = null,
         string? preferIndexerFlags = null,
         string? requiredWords = null,
-        string? ignoredWords = null)
+        string? ignoredWords = null,
+        string? mediaType = null,
+        string? seasonPackSearchMode = null)
         => new(
             ReleaseName: releaseName,
             Quality: quality,
@@ -52,7 +54,9 @@ public sealed class ReleaseDecisionEngineTests
             IndexerFlags: indexerFlags,
             PreferIndexerFlags: preferIndexerFlags,
             RequiredWords: requiredWords,
-            IgnoredWords: ignoredWords);
+            IgnoredWords: ignoredWords,
+            MediaType: mediaType,
+            SeasonPackSearchMode: seasonPackSearchMode);
 
     // ── Allowed qualities (#283) ──────────────────────────────────────────
 
@@ -466,6 +470,80 @@ public sealed class ReleaseDecisionEngineTests
             releaseName: "Movie.2024.1080p.WEB-DL.REMUX.DDP5.1-GRP",
             requiredWords: "remux",
             ignoredWords: "cam, korsub"));
+
+        Assert.NotEqual("rejected", decision.Status);
+    }
+
+    // ── Season-pack search toggle (#743) ────────────────────────────────────
+
+    [Fact]
+    public void Decide_rejects_a_single_episode_when_the_indexer_is_season_packs_only()
+    {
+        var decision = ReleaseDecisionEngine.Decide(GoodInput(
+            releaseName: "Show.Name.S01E01.1080p.WEB-DL.DDP5.1-GRP",
+            sizeBytes: 1_500_000_000,
+            mediaType: "tv",
+            seasonPackSearchMode: "season-packs-only"));
+
+        Assert.Equal("rejected", decision.Status);
+        Assert.Contains(decision.RiskFlags, r => r.Contains("season-pack searches only", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void Decide_accepts_a_season_pack_when_the_indexer_is_season_packs_only()
+    {
+        var decision = ReleaseDecisionEngine.Decide(GoodInput(
+            releaseName: "Show.Name.S01.1080p.WEB-DL.DDP5.1-GRP",
+            mediaType: "tv",
+            seasonPackSearchMode: "season-packs-only"));
+
+        Assert.NotEqual("rejected", decision.Status);
+    }
+
+    [Fact]
+    public void Decide_rejects_a_season_pack_when_the_indexer_is_episodes_only()
+    {
+        var decision = ReleaseDecisionEngine.Decide(GoodInput(
+            releaseName: "Show.Name.S01.1080p.WEB-DL.DDP5.1-GRP",
+            mediaType: "tv",
+            seasonPackSearchMode: "episodes-only"));
+
+        Assert.Equal("rejected", decision.Status);
+        Assert.Contains(decision.RiskFlags, r => r.Contains("episode searches only", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void Decide_accepts_a_single_episode_when_the_indexer_is_episodes_only()
+    {
+        var decision = ReleaseDecisionEngine.Decide(GoodInput(
+            releaseName: "Show.Name.S01E01.1080p.WEB-DL.DDP5.1-GRP",
+            sizeBytes: 1_500_000_000,
+            mediaType: "tv",
+            seasonPackSearchMode: "episodes-only"));
+
+        Assert.NotEqual("rejected", decision.Status);
+    }
+
+    [Fact]
+    public void Decide_allows_both_season_packs_and_episodes_when_the_mode_is_both()
+    {
+        Assert.NotEqual("rejected", ReleaseDecisionEngine.Decide(GoodInput(
+            releaseName: "Show.Name.S01.1080p.WEB-DL.DDP5.1-GRP",
+            mediaType: "tv",
+            seasonPackSearchMode: "both")).Status);
+        Assert.NotEqual("rejected", ReleaseDecisionEngine.Decide(GoodInput(
+            releaseName: "Show.Name.S01E01.1080p.WEB-DL.DDP5.1-GRP",
+            sizeBytes: 1_500_000_000,
+            mediaType: "tv",
+            seasonPackSearchMode: "both")).Status);
+    }
+
+    [Fact]
+    public void Decide_ignores_the_season_pack_mode_for_a_movie_search()
+    {
+        var decision = ReleaseDecisionEngine.Decide(GoodInput(
+            mediaType: "movies",
+            seasonPackSearchMode: "episodes-only"));
 
         Assert.NotEqual("rejected", decision.Status);
     }
