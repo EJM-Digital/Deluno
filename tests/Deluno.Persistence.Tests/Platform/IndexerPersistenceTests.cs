@@ -377,6 +377,57 @@ public sealed class IndexerPersistenceTests
         Assert.Equal("healthy", updated.HealthStatus);
     }
 
+    // ── ApiPath (#740) ───────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task CreateIndexerAsync_persists_a_custom_api_path()
+    {
+        using var storage = TestStorage.Create();
+        var repo = await CreateRepositoryAsync(storage);
+
+        var created = await repo.CreateIndexerAsync(
+            BaseCreateRequest() with { ApiPath = "/api/v2" },
+            CancellationToken.None);
+
+        Assert.Equal("/api/v2", created.ApiPath);
+        var persisted = Assert.Single(await repo.ListIndexersAsync(CancellationToken.None));
+        Assert.Equal("/api/v2", persisted.ApiPath);
+    }
+
+    [Fact]
+    public async Task CreateIndexerAsync_leaves_api_path_null_when_not_given()
+    {
+        using var storage = TestStorage.Create();
+        var repo = await CreateRepositoryAsync(storage);
+
+        var created = await repo.CreateIndexerAsync(BaseCreateRequest(), CancellationToken.None);
+
+        Assert.Null(created.ApiPath);
+    }
+
+    [Fact]
+    public async Task UpdateIndexerAsync_can_set_and_clear_the_api_path()
+    {
+        using var storage = TestStorage.Create();
+        var repo = await CreateRepositoryAsync(storage);
+        var created = await repo.CreateIndexerAsync(BaseCreateRequest(), CancellationToken.None);
+
+        var updated = await repo.UpdateIndexerAsync(
+            created.Id,
+            new UpdateIndexerRequest(null, null, null, null, null, null, null, null, null, null, ApiPath: "/api/v2"),
+            CancellationToken.None);
+        Assert.NotNull(updated);
+        Assert.Equal("/api/v2", updated.ApiPath);
+
+        var cleared = await repo.UpdateIndexerAsync(
+            created.Id,
+            new UpdateIndexerRequest(null, null, null, null, null, null, null, null, null, null, ClearApiPath: true),
+            CancellationToken.None);
+        Assert.NotNull(cleared);
+        Assert.Null(cleared.ApiPath);
+        Assert.Null(Assert.Single(await repo.ListIndexersAsync(CancellationToken.None)).ApiPath);
+    }
+
     // ── DeleteIndexerAsync ────────────────────────────────────────────────────
 
     [Fact]

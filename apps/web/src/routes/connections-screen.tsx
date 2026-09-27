@@ -132,6 +132,8 @@ export function buildIndexerSavePayload(form: IndexerForm, initial: IndexerForm,
     // change behaviour.
     baseUrl: form.baseUrl.trim(),
     apiKey: form.apiKey.trim() || undefined,
+    apiPath: form.apiPath.trim() || null,
+    clearApiPath: editing && !form.apiPath.trim(),
     priority: Number(form.priority || 10),
     requestIntervalSeconds: form.requestIntervalSeconds.trim() ? Number(form.requestIntervalSeconds) : null,
     clearRequestInterval: editing && !form.requestIntervalSeconds.trim(),

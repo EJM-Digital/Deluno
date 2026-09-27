@@ -12,6 +12,8 @@ public sealed record CreateIndexerRequest(
     string? MediaScope,
     bool IsEnabled,
     int? RequestIntervalSeconds = null,
+    // Non-default Newznab/Torznab API path (#740). Null/blank uses /api.
+    string? ApiPath = null,
     // Null means "inherit the global sharing rule" (#288).
     string? SharingMode = null,
     int? SharingForHours = null,

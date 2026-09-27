@@ -22,16 +22,30 @@ public static class IndexerApiEndpoint
     /// The base URL with <c>/api</c> on the end, unless it already has it or
     /// carries its own query, which means someone gave the full endpoint.
     /// </summary>
-    public static string For(string baseUrl)
+    public static string For(string baseUrl) => For(baseUrl, apiPath: null);
+
+    /// <summary>
+    /// The base URL with <paramref name="apiPath"/> on the end (#740), so a
+    /// Newznab/Torznab server whose API does not live at the default
+    /// <c>/api</c> can still be reached without folding a custom path into
+    /// the base URL itself. A blank path keeps the existing default
+    /// behaviour.
+    /// </summary>
+    public static string For(string baseUrl, string? apiPath)
     {
         var trimmed = NormalizeBaseUrl(baseUrl) ?? string.Empty;
-        if (trimmed.Contains('?', StringComparison.Ordinal) ||
-            trimmed.TrimEnd('/').EndsWith("/api", StringComparison.OrdinalIgnoreCase))
+        if (trimmed.Contains('?', StringComparison.Ordinal))
         {
             return trimmed;
         }
 
-        return trimmed.TrimEnd('/') + "/api";
+        var path = string.IsNullOrWhiteSpace(apiPath) ? "/api" : "/" + apiPath.Trim().Trim('/');
+        if (trimmed.TrimEnd('/').EndsWith(path, StringComparison.OrdinalIgnoreCase))
+        {
+            return trimmed;
+        }
+
+        return trimmed.TrimEnd('/') + path;
     }
 
     /// <summary>

@@ -113,6 +113,24 @@ describe("built-in trackers", () => {
   });
 });
 
+// #740: a non-default API path round-trips through the form the same way
+// every other saved field does.
+describe("indexer form API path", () => {
+  it("reads a saved indexer's custom API path into the form", () => {
+    const form = indexerFormFrom({ ...savedIndexer(), apiPath: "/api/v2" });
+    expect(form.apiPath).toBe("/api/v2");
+  });
+
+  it("reads an indexer with no custom path as blank, not null", () => {
+    const form = indexerFormFrom({ ...savedIndexer(), apiPath: null });
+    expect(form.apiPath).toBe("");
+  });
+
+  it("defaults a new indexer's API path to blank", () => {
+    expect(emptyIndexerForm().apiPath).toBe("");
+  });
+});
+
 function savedIndexer(): IndexerItem {
   return {
     id: "1", name: "TorrentLeech", protocol: "torznab", privacy: "private", baseUrl: "https://www.torrentleech.org/", priority: 10, categories: "2000", tags: "",

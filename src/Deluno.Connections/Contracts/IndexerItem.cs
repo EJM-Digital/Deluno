@@ -34,6 +34,13 @@ public sealed record IndexerItem(
     public int? RequestIntervalSeconds { get; init; }
 
     /// <summary>
+    /// A non-default Newznab/Torznab API path (#740), such as
+    /// <c>/api/v2</c>. Null or blank uses the protocol's standard
+    /// <c>/api</c> path.
+    /// </summary>
+    public string? ApiPath { get; init; }
+
+    /// <summary>
     /// This source's own sharing rule (#288). Every field is null by default,
     /// meaning "inherit the global setting", so a source only has to state what
     /// makes it different — a private tracker that wants a ratio, say, on an
