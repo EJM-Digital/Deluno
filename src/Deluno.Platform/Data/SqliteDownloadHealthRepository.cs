@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Text;
 using System.Text.Json;
 using Deluno.Contracts;
+using Deluno.Contracts.Connectivity;
 using Deluno.Infrastructure.Storage;
 using Deluno.Platform.Contracts;
 using static Deluno.Infrastructure.Storage.SqliteRecordHelpers;
@@ -10,9 +11,15 @@ namespace Deluno.Platform.Data;
 
 public sealed class SqliteDownloadHealthRepository(
     IDelunoDatabaseConnectionFactory databaseConnectionFactory,
-    TimeProvider timeProvider)
+    TimeProvider timeProvider,
+    IConnectivityMonitor? connectivityMonitor = null)
     : IDownloadHealthRepository
 {
+    // Tests, and any caller that predates #901, construct this without a
+    // monitor. "Never seen an outage" is the correct default: strikes accrue
+    // exactly as they always have until something actually wires one up.
+    private readonly IConnectivityMonitor _connectivityMonitor = connectivityMonitor ?? NullConnectivityMonitor.Instance;
+
     // v2 since #560. Records written under the first strike rule counted
     // sightings rather than time, so their strikes and start times cannot be
     // trusted; V0066 removes the v1 key rather than carry them forward.
@@ -70,10 +77,16 @@ public sealed class SqliteDownloadHealthRepository(
             // of the same torrent: its infohash is the queue item id.
             var continuing = record is not null && now - record.LastObservedUtc <= DownloadHealthStrikes.Window;
             var since = continuing ? record!.FirstObservedUtc : now;
+            // #901: strikes are time, and outage time is not held against a
+            // download. FirstObservedUtc itself is left true to when the
+            // problem was actually first seen (evidence still reads right);
+            // only the elapsed span the strike count is built from skips
+            // whatever part of it was an outage rather than a bad release.
+            var outageOverlap = await _connectivityMonitor.OutageOverlapAsync(since, now, cancellationToken);
             var updated = new DownloadHealthRecord(
                 observation.ClientId.Trim(), observation.QueueItemId.Trim(), observation.ReleaseName.Trim(), releaseKey,
                 observation.Kind.Trim(), observation.Severity.Trim(), SanitizeDownloadHealthEvidence(observation.Evidence),
-                since, now, DownloadHealthStrikes.For(since, now), record?.IgnoredUntilUtc);
+                since, now, DownloadHealthStrikes.For(since + outageOverlap, now), record?.IgnoredUntilUtc);
 
             if (index >= 0) records[index] = updated; else records.Add(updated);
             touched.Add(updated);

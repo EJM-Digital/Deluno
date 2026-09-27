@@ -158,7 +158,7 @@ public sealed class AStoppedDownloadIsRefusedOnTheBlocklistTests
             // removal is recorded as not done, rather than throwing.
             var service = new DownloadClientTelemetryService(
                 settings, new SqliteDownloadHealthRepository(storage.Factory, time), libraries, connections, null!, new DownloadClientRegistry([]), time, null!,
-                jobs, dispatches, jobs, new DownloadHealthEvaluator(), null!, blocklist);
+                jobs, dispatches, jobs, new DownloadHealthEvaluator(), null!, Deluno.Contracts.Connectivity.NullConnectivityMonitor.Instance, blocklist);
             return new World(storage, time, service, client, jobs, blocklist);
         }
 

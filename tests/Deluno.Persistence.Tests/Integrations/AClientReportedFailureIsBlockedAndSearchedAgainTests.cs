@@ -243,7 +243,7 @@ public sealed class AClientReportedFailureIsBlockedAndSearchedAgainTests
             var blocklist = new SqliteBlockedReleaseRepository(storage.Factory, time);
             var service = new DownloadClientTelemetryService(
                 settings, new SqliteDownloadHealthRepository(storage.Factory, time), libraries, connections, null!, null!, time, null!,
-                jobs, dispatches, jobs, new Deluno.Recovery.Policies.DownloadHealthEvaluator(), null!, blocklist);
+                jobs, dispatches, jobs, new Deluno.Recovery.Policies.DownloadHealthEvaluator(), null!, Deluno.Contracts.Connectivity.NullConnectivityMonitor.Instance, blocklist);
             return new World(storage, now, service, client, dispatchId, jobs, dispatches, blocklist);
         }
 
