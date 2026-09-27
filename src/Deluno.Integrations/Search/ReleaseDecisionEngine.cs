@@ -888,7 +888,7 @@ public static partial class ReleaseDecisionEngine
     [GeneratedRegex(@"(^|[.\s_-])(sample|trailer|extras?|proof)([.\s_-]|$)", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
     private static partial Regex SampleTokenRegex();
 
-    [GeneratedRegex(@"(^|[.\s_-])(cam|hdcam|hd-cam|camrip|ts|hdts|hd-ts|telesync|tc|telecine|wp|workprint|scr|screener)([.\s_-]|$)", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
+    [GeneratedRegex(@"(^|[.\s_-])(cam|hdcam|hd-cam|camrip|ts|hdts|hd-ts|telesync|tc|telecine|wp|workprint|scr|screener|dvdscr|bdscr|r5|vhsrip)([.\s_-]|$)", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
     private static partial Regex BlockedTokenRegex();
 
     [GeneratedRegex(@"-(?<group>[A-Za-z0-9]{2,20})$")]
