@@ -72,6 +72,7 @@ import { Switch } from "../components/ui/switch";
 import { toast } from "../components/shell/toaster";
 import { TitleMarkLabel } from "../components/ui/title-mark";
 import { formatDateTime as formatPreferenceDateTime, formatRuntime, formatShortDate, useDisplayPreferences } from "../lib/display-preferences";
+import { readAlternateTitles } from "../lib/ui-adapters";
 
 /**
  * What Deluno recorded about the copy it holds: the release it came from, what
@@ -214,6 +215,12 @@ export function MovieDetailPage() {
     (item) => item.title.trim().toLowerCase() === movie.title.trim().toLowerCase()
   );
   const { cast, crew } = readStoredCredits(movie.metadataJson);
+  // #861: region-specific spellings TMDb's alternative_titles endpoint
+  // reported, beyond the original title already shown above. A release filed
+  // under one of these has nothing else on the page saying it is a match.
+  const alternateTitles = readAlternateTitles(movie.metadataJson).filter(
+    (candidate) => candidate !== movie.title && candidate !== movie.originalTitle
+  );
   const openSearch = movieSearches.find((item) => item.id === openSearchId) ?? null;
   const openDispatch = movieDispatches.find((item) => item.id === openDispatchId) ?? null;
   /*
@@ -692,6 +699,11 @@ export function MovieDetailPage() {
                 </button>
               </div>
               {movie.originalTitle && movie.originalTitle !== movie.title ? <p className="mt-1 text-sm text-muted-foreground">Also known as {movie.originalTitle}</p> : null}
+              {alternateTitles.length ? (
+                <p className="mt-1 text-sm text-muted-foreground" title="Used to match a release filed under a region-specific spelling">
+                  Alternate titles: {alternateTitles.join(", ")}
+                </p>
+              ) : null}
               <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-muted-foreground">
                 {metaText("Certification") ? (
                   <span

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { DownloadClientItem, DownloadDispatchItem, DownloadTelemetryOverview, IndexerItem, MovieListItem, SeriesListItem } from "./api";
-import { adaptActiveDownloads, adaptIndexerHealth, adaptMovieItems, adaptSeriesItems, adaptTelemetryDownloads } from "./ui-adapters";
+import { adaptActiveDownloads, adaptIndexerHealth, adaptMovieItems, adaptSeriesItems, adaptTelemetryDownloads, readAlternateTitles } from "./ui-adapters";
 
 describe("UI adapters", () => {
   it("adapts representative movie and series data and accepts empty lists", () => {
@@ -11,6 +11,14 @@ describe("UI adapters", () => {
     expect(adaptSeriesItems([series])[0]).toMatchObject({ id: "series-1", type: "show", monitored: false });
     expect(adaptMovieItems([])).toEqual([]);
     expect(adaptSeriesItems([])).toEqual([]);
+  });
+
+  it("reads alternate titles out of the stored metadata blob and stays safe when it has none (#861)", () => {
+    expect(readAlternateTitles('{"AlternateTitles":["哪吒之魔童闹海","Nezha 2"]}')).toEqual(["哪吒之魔童闹海", "Nezha 2"]);
+    expect(readAlternateTitles('{"alternateTitles":["Le Fabuleux Destin d\'Amélie Poulain"]}')).toEqual(["Le Fabuleux Destin d'Amélie Poulain"]);
+    expect(readAlternateTitles("{}")).toEqual([]);
+    expect(readAlternateTitles(null)).toEqual([]);
+    expect(readAlternateTitles("not json")).toEqual([]);
   });
 
   /**
