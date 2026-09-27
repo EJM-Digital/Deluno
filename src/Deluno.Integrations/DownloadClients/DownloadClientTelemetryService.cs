@@ -34,7 +34,8 @@ public sealed class DownloadClientTelemetryService(
     IProcessorRepository processorRepository,
     IConnectivityMonitor connectivityMonitor,
     IBlockedReleaseRepository? blockedReleases = null,
-    IDownloadHealthConnectivityCheck? connectivityCheck = null)
+    IDownloadHealthConnectivityCheck? connectivityCheck = null,
+    IDispatchTitleUnmonitorService? titleUnmonitorService = null)
     : IDownloadClientTelemetryService
 {
     // #824 is off by default, so most callers - including every existing
@@ -390,6 +391,17 @@ public sealed class DownloadClientTelemetryService(
 
         var blocklisted = false;
         var searchStarted = false;
+        var unmonitored = false;
+
+        // "I don't want this title any more" (#924): stop wanting it too, so
+        // an automatic search never brings back the thing just deleted. Done
+        // here rather than left to the caller so an API caller that skips the
+        // web client's own follow-up call gets the same outcome, and so this
+        // is the one place Activity has to say it happened.
+        if (reason == QueueRemovalReasons.Unwanted && dispatch is not null && titleUnmonitorService is not null)
+        {
+            unmonitored = await titleUnmonitorService.UnmonitorAsync(dispatch.EntityType, dispatch.EntityId, cancellationToken);
+        }
 
         if (reason == QueueRemovalReasons.Failed && blockedReleases is not null && dispatch is not null)
         {
@@ -420,7 +432,7 @@ public sealed class DownloadClientTelemetryService(
             }
         }
 
-        var message = BuildQueueRemovalMessage(reason, title, client.Name, blocklisted, searchStarted);
+        var message = BuildQueueRemovalMessage(reason, title, client.Name, blocklisted, searchStarted, unmonitored);
         await activityFeedRepository.RecordActivityAsync(
             "download.queue.removed",
             message,
@@ -433,14 +445,15 @@ public sealed class DownloadClientTelemetryService(
         return new QueueRemovalResult(client.Id, queueItemId, reason, true, message, blocklisted, searchStarted, dispatch?.EntityId, dispatch?.MediaType);
     }
 
-    private static string BuildQueueRemovalMessage(string reason, string title, string clientName, bool blocklisted, bool searchStarted)
+    private static string BuildQueueRemovalMessage(string reason, string title, string clientName, bool blocklisted, bool searchStarted, bool unmonitored)
         => reason switch
         {
             QueueRemovalReasons.Failed => searchStarted
                 ? $"You marked \"{title}\" as bad: removed from {clientName}, deleted its files, blocklisted the release, and started a new search."
                 : $"You marked \"{title}\" as bad: removed from {clientName}, deleted its files, and blocklisted the release.",
-            QueueRemovalReasons.Unwanted =>
-                $"You said you don't want \"{title}\" any more: removed from {clientName} and deleted its files.",
+            QueueRemovalReasons.Unwanted => unmonitored
+                ? $"You said you don't want \"{title}\" any more: removed from {clientName}, deleted its files, and stopped wanting it."
+                : $"You said you don't want \"{title}\" any more: removed from {clientName} and deleted its files.",
             _ => $"You told Deluno to stop tracking \"{title}\"; {clientName} still has it, untouched."
         };
 
