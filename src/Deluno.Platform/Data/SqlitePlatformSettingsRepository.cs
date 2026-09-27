@@ -235,6 +235,11 @@ public sealed class SqlitePlatformSettingsRepository(
         await UpsertSettingAsync(connection, transaction, "download-health.connectivityCheck.enabled", request.DownloadHealthConnectivityCheckEnabled == true ? "true" : "false", updatedUtc, cancellationToken);
         await UpsertSettingAsync(connection, transaction, "download-health.connectivityCheck.urls", request.DownloadHealthConnectivityCheckUrls ?? string.Empty, updatedUtc, cancellationToken);
         await UpsertSettingAsync(connection, transaction, "download-health.throughputSampler.intervalMinutes", Math.Clamp(request.DownloadThroughputSamplerIntervalMinutes ?? 1, 1, 60).ToString(CultureInfo.InvariantCulture), updatedUtc, cancellationToken);
+        // #860: an IANA zone id, or empty to fall back to the browser/OS
+        // timezone at display time. Validated loosely (TimeZoneInfo does the
+        // real check) so a typo clears to "unset" rather than storing garbage
+        // silently mistaken for a real zone.
+        await UpsertSettingAsync(connection, transaction, "ui.timezone", NormalizeTimezone(request.Timezone), updatedUtc, cancellationToken);
         // #909: warn and pause both read as "percent free remaining", so pause
         // must be the smaller number -- clamped here rather than merely
         // validated, so a stored value can never be read back the wrong way
@@ -583,7 +588,8 @@ public sealed class SqlitePlatformSettingsRepository(
             DownloadHealthStrikeInactivityHours: ReadPositiveInt(GetValue(settings, "download-health.strikeInactivityHours"), 72, 1, 720),
             DownloadHealthConnectivityCheckEnabled: string.Equals(GetValue(settings, "download-health.connectivityCheck.enabled"), "true", StringComparison.OrdinalIgnoreCase),
             DownloadHealthConnectivityCheckUrls: GetValue(settings, "download-health.connectivityCheck.urls") ?? string.Empty,
-            DownloadThroughputSamplerIntervalMinutes: ReadPositiveInt(GetValue(settings, "download-health.throughputSampler.intervalMinutes"), 1, 1, 60));
+            DownloadThroughputSamplerIntervalMinutes: ReadPositiveInt(GetValue(settings, "download-health.throughputSampler.intervalMinutes"), 1, 1, 60),
+            Timezone: GetValue(settings, "ui.timezone") ?? string.Empty);
     }
 
     private static string NormalizeProperRepackAcquisitionMode(string? value)
@@ -824,6 +830,31 @@ public sealed class SqlitePlatformSettingsRepository(
 
     private static string NormalizeTimeFormat(string? value)
         => string.Equals(value?.Trim(), "24", StringComparison.OrdinalIgnoreCase) ? "24" : "12";
+
+    /// <summary>
+    /// An IANA zone id, or empty. Not every host ships the same tz database
+    /// entries (Windows vs Linux CI), so this only refuses what
+    /// <see cref="TimeZoneInfo"/> itself refuses on this host, rather than
+    /// keeping its own allow-list that would drift from either.
+    /// </summary>
+    private static string NormalizeTimezone(string? value)
+    {
+        var trimmed = value?.Trim();
+        if (string.IsNullOrEmpty(trimmed))
+        {
+            return string.Empty;
+        }
+
+        try
+        {
+            TimeZoneInfo.FindSystemTimeZoneById(trimmed);
+            return trimmed;
+        }
+        catch (Exception ex) when (ex is TimeZoneNotFoundException or InvalidTimeZoneException)
+        {
+            return string.Empty;
+        }
+    }
 
     private static string NormalizeMetadataProviderMode(string? value)
     {

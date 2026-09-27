@@ -30,7 +30,7 @@ import { SummaryStrip } from "../components/ui/summary-strip";
 import { toast } from "../components/shell/toaster";
 import { TitleMarkLabel } from "../components/ui/title-mark";
 import { describeRequestFailure, describeSearchReason } from "../lib/search-reasons";
-import { formatDateTime as formatPreferenceDateTime, formatShortDate, useDisplayPreferences } from "../lib/display-preferences";
+import { formatAirDateTime, formatDateTime as formatPreferenceDateTime, useDisplayPreferences } from "../lib/display-preferences";
 
 interface WantedEpisode {
   episodeId: string;
@@ -249,7 +249,7 @@ export function EpisodeSearchPage() {
                   return (
                     <ListRow key={episode.episodeId} onClick={() => navigate(`/tv/${episode.seriesId}`)}>
                       <ListNameCell name={code(episode)} sub={episode.title ?? "Episode title pending"} />
-                      <ListCell primary={episode.airDateUtc ? formatShortDate(episode.airDateUtc, { ...preferences, showRelativeDates: false }) : "Not announced"} />
+                      <ListCell primary={episode.airDateUtc ? formatAirDateTime(episode.airDateUtc, preferences) : "Not announced"} />
                       <ListCell primary={episode.lastSearchUtc ? formatPreferenceDateTime(episode.lastSearchUtc, preferences) : "Never"} />
                       <ListCell primary={episode.nextEligibleSearchUtc ? formatPreferenceDateTime(episode.nextEligibleSearchUtc, preferences) : "Any time"} />
                       <ListCell>

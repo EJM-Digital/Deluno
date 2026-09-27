@@ -87,4 +87,8 @@ public sealed record PatchPlatformSettingsRequest(
     int? DownloadHealthStrikeInactivityHours = null,
     bool? DownloadHealthConnectivityCheckEnabled = null,
     string? DownloadHealthConnectivityCheckUrls = null,
-    int? DownloadThroughputSamplerIntervalMinutes = null);
+    int? DownloadThroughputSamplerIntervalMinutes = null,
+    // #860: the IANA zone (e.g. "Australia/Sydney") episode air times are
+    // converted into for display. Empty clears it, which falls back to the
+    // browser/OS timezone rather than UTC.
+    string? Timezone = null);

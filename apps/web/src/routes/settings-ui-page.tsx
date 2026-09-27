@@ -11,7 +11,9 @@
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { useTheme } from "next-themes";
 import { useLoaderData } from "react-router-dom";
+import { Button } from "../components/ui/button";
 import { Field, FieldRow } from "../components/ui/field";
+import { Input } from "../components/ui/input";
 import { ListCard } from "../components/ui/list-card";
 import { PageFooter } from "../components/ui/page-footer";
 import { PageToolbar } from "../components/ui/page-toolbar";
@@ -48,6 +50,7 @@ interface UiForm {
   longDateFormat: string;
   timeFormat: string;
   showRelativeDates: boolean;
+  timezone: string;
 }
 
 export function SettingsUiPage() {
@@ -100,7 +103,8 @@ export function SettingsUiPage() {
         shortDateFormat: form.shortDateFormat,
         longDateFormat: form.longDateFormat,
         timeFormat: form.timeFormat,
-        showRelativeDates: form.showRelativeDates
+        showRelativeDates: form.showRelativeDates,
+        timezone: form.timezone
       });
       setSavedForm(form);
       setSavedColorMode(colorModeDraft);
@@ -255,6 +259,35 @@ export function SettingsUiPage() {
               <span className="text-[length:var(--type-body-sm)] text-muted-foreground">Use relative labels where they improve scanning</span>
             </div>
           </Field>
+          {/*
+            #860: a show's air date/time is stored the network's real
+            broadcast instant where a source has one; this is the zone
+            Deluno converts it into for display. Left blank, every screen
+            that shows an air time falls back to the browser/OS timezone
+            rather than showing UTC.
+          */}
+          <Field label="Timezone" help="Converts episode air times to when they actually air for you. Leave blank to use this browser's timezone.">
+            <div className="flex max-w-[28rem] items-center gap-2">
+              <Input
+                aria-label="Timezone"
+                placeholder="e.g. Australia/Sydney"
+                value={form.timezone}
+                onChange={(event) => setForm((current) => ({ ...current, timezone: event.target.value }))}
+              />
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() =>
+                  setForm((current) => ({
+                    ...current,
+                    timezone: Intl.DateTimeFormat().resolvedOptions().timeZone
+                  }))
+                }
+              >
+                Use this browser
+              </Button>
+            </div>
+          </Field>
         </div>
       </ListCard>
 
@@ -308,6 +341,7 @@ function formFrom(settings: PlatformSettingsSnapshot): UiForm {
     shortDateFormat: settings.shortDateFormat,
     longDateFormat: settings.longDateFormat,
     timeFormat: settings.timeFormat,
-    showRelativeDates: settings.showRelativeDates
+    showRelativeDates: settings.showRelativeDates,
+    timezone: settings.timezone
   };
 }

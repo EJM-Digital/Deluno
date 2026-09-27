@@ -33,6 +33,8 @@ export interface PlatformSettingsPatch {
   longDateFormat?: string;
   timeFormat?: string;
   showRelativeDates?: boolean;
+  /** #860: the IANA zone episode air times convert into; empty clears it back to the browser/OS timezone. */
+  timezone?: string;
   defaultMovieView?: string;
   defaultShowView?: string;
   metadataNfoEnabled?: boolean;
