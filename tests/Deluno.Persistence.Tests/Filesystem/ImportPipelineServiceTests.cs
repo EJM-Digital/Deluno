@@ -5061,6 +5061,8 @@ public sealed class ImportPipelineServiceTests
 
         Assert.Equal(expectedTitle, title);
         Assert.Equal(expectedYear, year);
+    }
+
     [Fact]
     public async Task A_processed_file_with_no_video_at_all_is_not_imported()
     {
