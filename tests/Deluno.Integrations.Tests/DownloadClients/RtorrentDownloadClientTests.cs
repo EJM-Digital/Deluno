@@ -86,7 +86,6 @@ public sealed class RtorrentDownloadClientTests
     [InlineData(DownloadClientActions.Resume, "d.resume")]
     [InlineData(DownloadClientActions.Recheck, "d.check_hash")]
     [InlineData(DownloadClientActions.Delete, "d.erase")]
-    [InlineData(DownloadClientActions.DeleteWithData, "d.erase")]
     [InlineData(DownloadClientActions.Forget, "d.erase")]
     public async Task Every_verb_maps_to_its_own_rtorrent_method(string action, string expectedMethod)
     {
@@ -97,6 +96,72 @@ public sealed class RtorrentDownloadClientTests
         Assert.True(result.Succeeded, result.Message);
         var sent = Assert.Single(handler.Requests, request => request.Contains($"<methodName>{expectedMethod}</methodName>", StringComparison.Ordinal));
         Assert.Contains("abc123hash", sent, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// #803: rTorrent has no delete-with-data of its own. Deluno asks
+    /// d.base_path for the download's own folder, releases rTorrent's hold
+    /// with d.erase, and deletes exactly that folder itself.
+    /// </summary>
+    [Fact]
+    public async Task DeleteWithData_asks_rtorrent_for_the_path_and_deletes_it_itself()
+    {
+        var directory = Directory.CreateDirectory(Path.Combine(Path.GetTempPath(), $"deluno-rtorrent-{Guid.NewGuid():N}"));
+        await File.WriteAllTextAsync(Path.Combine(directory.FullName, "movie.mkv"), "content");
+        try
+        {
+            var handler = new RtorrentDeleteWithDataHandler(directory.FullName);
+            var result = await new RtorrentDownloadClient(new StubFactory(handler))
+                .ExecuteActionAsync(Client(), DownloadClientActions.DeleteWithData, "abc123hash", CancellationToken.None);
+
+            Assert.True(result.Succeeded, result.Message);
+            Assert.Contains("d.base_path", string.Join(' ', handler.Methods));
+            Assert.Contains("d.erase", handler.Methods);
+            Assert.False(Directory.Exists(directory.FullName));
+            Assert.Contains(directory.FullName, result.Message, StringComparison.Ordinal);
+        }
+        finally
+        {
+            if (Directory.Exists(directory.FullName))
+            {
+                Directory.Delete(directory.FullName, recursive: true);
+            }
+        }
+    }
+
+    /// <summary>
+    /// A path rTorrent cannot be trusted on -- here, one that simply does not
+    /// exist on this machine, the same as a remote rTorrent Deluno cannot see
+    /// the files of -- is never deleted. rTorrent's own hold is still
+    /// released, and the limit is stated rather than silently doing nothing.
+    /// </summary>
+    [Fact]
+    public async Task DeleteWithData_states_the_limit_when_the_path_cannot_be_safely_deleted()
+    {
+        var missingPath = Path.Combine(Path.GetTempPath(), $"deluno-rtorrent-missing-{Guid.NewGuid():N}");
+        var handler = new RtorrentDeleteWithDataHandler(missingPath);
+
+        var result = await new RtorrentDownloadClient(new StubFactory(handler))
+            .ExecuteActionAsync(Client(), DownloadClientActions.DeleteWithData, "abc123hash", CancellationToken.None);
+
+        Assert.True(result.Succeeded, result.Message);
+        Assert.Contains("d.erase", handler.Methods);
+        Assert.Contains("left on disk", result.Message, StringComparison.Ordinal);
+    }
+
+    /// <summary>rTorrent reporting its own filesystem root is a misconfiguration, never this download's own path.</summary>
+    [Theory]
+    [InlineData("/")]
+    [InlineData("C:\\")]
+    public async Task DeleteWithData_never_deletes_a_filesystem_root(string root)
+    {
+        var handler = new RtorrentDeleteWithDataHandler(root);
+
+        var result = await new RtorrentDownloadClient(new StubFactory(handler))
+            .ExecuteActionAsync(Client(), DownloadClientActions.DeleteWithData, "abc123hash", CancellationToken.None);
+
+        Assert.True(result.Succeeded, result.Message);
+        Assert.Contains("left on disk", result.Message, StringComparison.Ordinal);
     }
 
     [Theory]
@@ -213,6 +278,26 @@ public sealed class RtorrentDownloadClientTests
                 var hashes = _loaded ? downloadListAfter : downloadListBefore;
                 var values = hashes.Trim('[', ']').Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).Select(value => value.Trim('"'));
                 return XmlResponse(MethodResponse(AsValue(ArrayOf(values.Select(hash => AsValue(TypedString(hash)))))));
+            }
+
+            return XmlResponse(IntResponse(0));
+        }
+    }
+
+    /// <summary>Answers d.base_path with a fixed path and everything else (d.erase) with success, recording every method called.</summary>
+    private sealed class RtorrentDeleteWithDataHandler(string basePath) : HttpMessageHandler
+    {
+        public List<string> Methods { get; } = [];
+
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            var body = request.Content is null ? string.Empty : await request.Content.ReadAsStringAsync(cancellationToken);
+            var method = MethodNameOf(body);
+            Methods.Add(method);
+
+            if (method == "d.base_path")
+            {
+                return XmlResponse(MethodResponse(AsValue(TypedString(basePath))));
             }
 
             return XmlResponse(IntResponse(0));
