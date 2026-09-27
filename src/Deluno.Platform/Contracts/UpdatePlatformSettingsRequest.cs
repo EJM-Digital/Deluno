@@ -89,4 +89,6 @@ public sealed record UpdatePlatformSettingsRequest(
     string? MultiEpisodeStyle = null,
     bool? RenameFoldersOnImport = null,
     int? HistoryRetentionDays = null,
-    string? SharingPrivacyScope = null);
+    string? SharingPrivacyScope = null,
+    bool? MaxSearchesPerHourEnabled = null,
+    int? MaxSearchesPerHour = null);

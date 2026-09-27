@@ -98,5 +98,7 @@ public static class PlatformSettingsPatchMerger
             MultiEpisodeStyle: patch.MultiEpisodeStyle ?? current.MultiEpisodeStyle,
             RenameFoldersOnImport: patch.RenameFoldersOnImport ?? current.RenameFoldersOnImport,
             HistoryRetentionDays: patch.HistoryRetentionDays ?? current.HistoryRetentionDays,
-            SharingPrivacyScope: patch.SharingPrivacyScope ?? current.SharingPrivacyScope);
+            SharingPrivacyScope: patch.SharingPrivacyScope ?? current.SharingPrivacyScope,
+            MaxSearchesPerHourEnabled: patch.MaxSearchesPerHourEnabled ?? current.MaxSearchesPerHourEnabled,
+            MaxSearchesPerHour: patch.MaxSearchesPerHour ?? current.MaxSearchesPerHour);
 }

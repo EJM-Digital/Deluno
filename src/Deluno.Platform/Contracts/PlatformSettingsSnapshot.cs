@@ -195,4 +195,10 @@ public sealed record PlatformSettingsSnapshot(
     // about what happened. Same pattern as ImportRecoveryRetentionDays.
     int HistoryRetentionDays = 365,
     /// <summary>#815: which tracker-privacy downloads the global sharing policy covers ("public" | "private" | "both"). "both" is every existing install's value, so nothing narrows until it is edited.</summary>
-    string SharingPrivacyScope = DownloadHealthPrivacyScopes.Both);
+    string SharingPrivacyScope = DownloadHealthPrivacyScopes.Both,
+    // #829: a single hourly search-call ceiling across every indexer
+    // combined, alongside a library's own MaxItemsPerRun. Off by default
+    // (#936); when on, the search scheduler defers a query once the
+    // instance's rolling-hour total reaches this number.
+    bool MaxSearchesPerHourEnabled = false,
+    int MaxSearchesPerHour = 200);

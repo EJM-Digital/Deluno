@@ -974,6 +974,42 @@ public sealed class PlatformSettingsPersistenceTests
         Assert.Equal(20, loaded.DownloadHealthMinPeersMinutes);
     }
 
+    /// <summary>
+    /// #829/#936: an install that never opens this setting keeps the
+    /// instance-wide hourly search cap off.
+    /// </summary>
+    [Fact]
+    public async Task Hourly_search_cap_defaults_to_off()
+    {
+        using var storage = TestStorage.Create();
+        var repository = await SettingsAsync(storage);
+
+        var loaded = await repository.GetAsync(CancellationToken.None);
+
+        Assert.False(loaded.MaxSearchesPerHourEnabled);
+        Assert.Equal(200, loaded.MaxSearchesPerHour);
+    }
+
+    [Fact]
+    public async Task Hourly_search_cap_round_trips_through_a_patch_and_survives_being_reloaded()
+    {
+        using var storage = TestStorage.Create();
+        var repository = await SettingsAsync(storage);
+
+        var merged = PlatformSettingsPatchMerger.Apply(
+            await repository.GetAsync(CancellationToken.None),
+            new PatchPlatformSettingsRequest(
+                MaxSearchesPerHourEnabled: true,
+                MaxSearchesPerHour: 75));
+        await repository.SaveAsync(merged, CancellationToken.None);
+
+        var reloaded = await SettingsAsync(storage);
+        var loaded = await reloaded.GetAsync(CancellationToken.None);
+
+        Assert.True(loaded.MaxSearchesPerHourEnabled);
+        Assert.Equal(75, loaded.MaxSearchesPerHour);
+    }
+
     [Fact]
     public async Task Each_download_health_rule_can_be_switched_off_independently()
     {
