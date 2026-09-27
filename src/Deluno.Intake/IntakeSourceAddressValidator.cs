@@ -42,6 +42,9 @@ public static partial class IntakeSourceAddressValidator
                 => null,
             "rss" => "Use a public HTTP or HTTPS RSS/Atom feed URL.",
             "url-list" => "Use a public HTTP or HTTPS URL containing one title per line.",
+            "stevenlu" when IsHttpUrl(value)
+                => null,
+            "stevenlu" => "Use a public HTTP or HTTPS URL to a StevenLu-format JSON feed.",
             _ => "Choose a supported import-list provider."
         };
     }
