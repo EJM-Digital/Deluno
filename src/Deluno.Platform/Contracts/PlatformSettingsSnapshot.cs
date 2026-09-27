@@ -40,13 +40,13 @@ public sealed record PlatformSettingsSnapshot(
     int DownloadHealthStrikeThreshold = 3,
     bool CleanupBlockReleaseAfterThreshold = true,
     bool CleanupQueueReplacementAfterThreshold = true,
-    // #936 (27 Sep 2026): off by default. #904 had made these on by default;
-    // the owner reversed that so a brand-new install starts with nothing
-    // automatic, including removing a bad download from the client and
-    // deleting its files. An install that already existed when #936 shipped
-    // keeps behaving as before — V0071AutomationDefaultsOff froze an
-    // explicit "true" for it — this default is only what a snapshot built
-    // without reading the database (e.g. a test fixture) gets.
+    // #936 (27 Sep 2026): off by default. #904 (commit 2e9f2125) had tried to
+    // make these on by default, but that change never shipped in a release —
+    // v1.0.0-rc.22 already read a missing key as off for both — so there is
+    // no existing install anywhere whose behaviour depended on it, and
+    // nothing needs freezing at the migration level for either key. This
+    // default is only what a snapshot built without reading the database
+    // (e.g. a test fixture) gets.
     bool CleanupRemoveClientEntryAfterThreshold = false,
     bool CleanupPurgePayloadAfterThreshold = false,
     bool WorkflowVerified = false,

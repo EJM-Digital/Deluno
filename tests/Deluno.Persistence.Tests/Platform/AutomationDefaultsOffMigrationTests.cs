@@ -4,13 +4,24 @@ using Microsoft.Data.Sqlite;
 namespace Deluno.Persistence.Tests.Platform;
 
 /// <summary>
-/// #936 reverses #904's "on unless explicitly turned off" reading of
-/// <c>media.renameOnImport</c>, <c>cleanup.removeClientEntryAfterThreshold</c>
-/// and <c>cleanup.purgePayloadAfterThreshold</c> back to "off unless
-/// explicitly turned on". <see cref="V0071AutomationDefaultsOff"/> is the
-/// migration that keeps an install that already existed reading exactly as
-/// it did before, by writing an explicit "true" for any of the three keys
-/// that install had not already stored a value for.
+/// #936 reverses the "on unless explicitly turned off" reading of
+/// <c>media.renameOnImport</c> back to "off unless explicitly turned on".
+/// <see cref="V0071AutomationDefaultsOff"/> is the migration that keeps an
+/// install that already existed reading exactly as it did before, by writing
+/// an explicit "true" for that one key if the install had not already stored
+/// a value for it.
+///
+/// <para><c>cleanup.removeClientEntryAfterThreshold</c> and
+/// <c>cleanup.purgePayloadAfterThreshold</c> are deliberately NOT frozen:
+/// <c>v1.0.0-rc.22</c> (the last release) already read a missing value for
+/// both as OFF — <c>string.Equals(value, "true", ...)</c>, not the "unless
+/// false" shape <c>media.renameOnImport</c> uses. #904's "default on" change
+/// for those two never shipped in a release, so no existing install's
+/// effective behaviour ever depended on a missing key reading as on for
+/// either of them. Freezing them to "true" here would switch removal and
+/// deletion on for every existing install that never explicitly saved
+/// either key — exactly the silent flip this migration exists to prevent.
+/// </para>
 /// </summary>
 public sealed class AutomationDefaultsOffMigrationTests
 {
@@ -25,7 +36,7 @@ public sealed class AutomationDefaultsOffMigrationTests
     }
 
     [Fact]
-    public async Task A_database_that_already_had_some_other_setting_is_an_existing_install_and_keeps_reading_on()
+    public async Task A_database_that_already_had_some_other_setting_is_an_existing_install_and_keeps_reading_rename_on_import_on()
     {
         await using var connection = await OpenWithSettingsTableAsync();
         await InsertSettingAsync(connection, "app.instanceName", "My Deluno");
@@ -34,45 +45,73 @@ public sealed class AutomationDefaultsOffMigrationTests
 
         var settings = await ReadSettingsAsync(connection);
         Assert.Equal("true", settings["media.renameOnImport"]);
-        Assert.Equal("true", settings["cleanup.removeClientEntryAfterThreshold"]);
-        Assert.Equal("true", settings["cleanup.purgePayloadAfterThreshold"]);
         // The setting that made this an "existing install" in the first place
         // is untouched.
         Assert.Equal("My Deluno", settings["app.instanceName"]);
     }
 
+    /// <summary>
+    /// The core of the coordinator's correction: rc.22 already read a missing
+    /// cleanup key as off, so an existing install must not get either cleanup
+    /// key written at all — writing "true" would switch removal/deletion on
+    /// for an install that never asked for it.
+    /// </summary>
     [Fact]
-    public async Task An_existing_install_that_already_explicitly_turned_one_off_keeps_that_choice()
+    public async Task An_existing_install_never_gets_either_cleanup_key_written_and_so_keeps_reading_them_off()
     {
         await using var connection = await OpenWithSettingsTableAsync();
         await InsertSettingAsync(connection, "app.instanceName", "My Deluno");
-        await InsertSettingAsync(connection, "cleanup.removeClientEntryAfterThreshold", "false");
 
         await MigrateAsync(connection);
 
         var settings = await ReadSettingsAsync(connection);
-        Assert.Equal("false", settings["cleanup.removeClientEntryAfterThreshold"]);
-        // The other two keys were never explicitly set on this install, so
-        // they are still frozen to "true".
-        Assert.Equal("true", settings["media.renameOnImport"]);
-        Assert.Equal("true", settings["cleanup.purgePayloadAfterThreshold"]);
+        Assert.False(settings.ContainsKey("cleanup.removeClientEntryAfterThreshold"));
+        Assert.False(settings.ContainsKey("cleanup.purgePayloadAfterThreshold"));
     }
 
     [Fact]
-    public async Task An_existing_install_that_already_explicitly_turned_all_three_on_is_unaffected()
+    public async Task An_existing_install_that_already_explicitly_turned_rename_on_import_off_keeps_that_choice()
+    {
+        await using var connection = await OpenWithSettingsTableAsync();
+        await InsertSettingAsync(connection, "app.instanceName", "My Deluno");
+        await InsertSettingAsync(connection, "media.renameOnImport", "false");
+
+        await MigrateAsync(connection);
+
+        var settings = await ReadSettingsAsync(connection);
+        Assert.Equal("false", settings["media.renameOnImport"]);
+    }
+
+    [Fact]
+    public async Task An_existing_install_that_already_explicitly_turned_rename_on_import_on_is_unaffected()
     {
         await using var connection = await OpenWithSettingsTableAsync();
         await InsertSettingAsync(connection, "app.instanceName", "My Deluno");
         await InsertSettingAsync(connection, "media.renameOnImport", "true");
-        await InsertSettingAsync(connection, "cleanup.removeClientEntryAfterThreshold", "true");
-        await InsertSettingAsync(connection, "cleanup.purgePayloadAfterThreshold", "true");
 
         await MigrateAsync(connection);
 
         var settings = await ReadSettingsAsync(connection);
         Assert.Equal("true", settings["media.renameOnImport"]);
+    }
+
+    /// <summary>
+    /// An existing install that had already explicitly turned a cleanup key
+    /// on for itself (through the settings screen, before #936) keeps reading
+    /// that stored value — the migration just never manufactures one.
+    /// </summary>
+    [Fact]
+    public async Task An_existing_install_that_already_explicitly_turned_a_cleanup_key_on_keeps_that_value()
+    {
+        await using var connection = await OpenWithSettingsTableAsync();
+        await InsertSettingAsync(connection, "app.instanceName", "My Deluno");
+        await InsertSettingAsync(connection, "cleanup.removeClientEntryAfterThreshold", "true");
+
+        await MigrateAsync(connection);
+
+        var settings = await ReadSettingsAsync(connection);
         Assert.Equal("true", settings["cleanup.removeClientEntryAfterThreshold"]);
-        Assert.Equal("true", settings["cleanup.purgePayloadAfterThreshold"]);
+        Assert.False(settings.ContainsKey("cleanup.purgePayloadAfterThreshold"));
     }
 
     private static async Task<SqliteConnection> OpenWithSettingsTableAsync()

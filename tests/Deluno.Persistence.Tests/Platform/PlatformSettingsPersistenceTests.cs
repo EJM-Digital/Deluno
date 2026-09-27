@@ -160,11 +160,15 @@ public sealed class PlatformSettingsPersistenceTests
     }
 
     /// <summary>
-    /// #936 reverses #904: a brand-new install (a freshly created database,
-    /// with no setting stored at all) has never had the chance to explicitly
-    /// turn these on, so both read off. See
-    /// AutomationDefaultsOffMigrationTests for the "install that already
-    /// existed keeps reading on" half of this, at the migration level.
+    /// #904's "on by default" (commit 2e9f2125) never shipped in a release —
+    /// v1.0.0-rc.22 already read a missing value here as off — so #936 does
+    /// not change this pair's behaviour at all, only reaffirms it and closes
+    /// off the possibility of the never-released "on by default" ever
+    /// landing. A brand-new install (a freshly created database, with no
+    /// setting stored at all) reads both off, exactly as every released
+    /// build has. See AutomationDefaultsOffMigrationTests for why the
+    /// migration deliberately does not freeze either of these two keys, only
+    /// media.renameOnImport.
     /// </summary>
     [Fact]
     public async Task Cleanup_removal_and_purge_default_to_off_for_a_new_install()
