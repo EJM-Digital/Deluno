@@ -210,6 +210,100 @@ public sealed class CataloguePagingTests
         Assert.Equal(1, eitherWay.Facets.Unmonitored);
     }
 
+    /// <summary>
+    /// #934: the number on a chip and the number of titles it shows have to
+    /// agree, for every chip, once loaded — not just the one you happened to
+    /// click through in a manual pass.
+    ///
+    /// One query with no status narrows nothing, so its facets are the whole
+    /// searched set's per-state counts — the same numbers every chip in the
+    /// row prints regardless of which one is selected. This asserts each of
+    /// those printed numbers against a *separate* query actually filtered to
+    /// that status, comparing against the rows that query actually returned
+    /// (<c>Items.Count</c>) — not its own <c>TotalCount</c>, which is
+    /// <c>facets.TotalFor(status)</c> read straight back by construction and so
+    /// would agree even if the WHERE clause filtered nothing at all. That is
+    /// exactly the shape the Airing chip's bug took — see
+    /// <see cref="Facet_totals_match_the_filtered_page_for_every_status_series"/>.
+    /// </summary>
+    [Fact]
+    public async Task Facet_totals_match_the_filtered_page_for_every_status_movies()
+    {
+        using var storage = TestStorage.Create();
+        var movies = await CreateMoviesAsync(storage);
+
+        var missing = await movies.AddAsync(new CreateMovieRequest("Missing Reel", 2019, null), CancellationToken.None);
+        await movies.EnsureWantedStateAsync(missing.Id, "library-films", WantedStatuses.Missing, "Needs a file.", false, null, "WEB 1080p", false, CancellationToken.None);
+
+        var upgrade = await movies.AddAsync(new CreateMovieRequest("Upgradable Reel", 2020, null), CancellationToken.None);
+        await movies.EnsureWantedStateAsync(upgrade.Id, "library-films", WantedStatuses.Upgrade, "Could be better.", true, "WEB 1080p", "Remux 2160p", false, CancellationToken.None);
+
+        var covered = await movies.AddAsync(new CreateMovieRequest("Covered Reel", 2021, null), CancellationToken.None);
+        await movies.EnsureWantedStateAsync(covered.Id, "library-films", WantedStatuses.Covered, "At target.", true, "Remux 2160p", "Remux 2160p", true, CancellationToken.None);
+
+        var upcoming = await movies.AddAsync(new CreateMovieRequest("Upcoming Reel", 2030, null), CancellationToken.None);
+        await movies.EnsureWantedStateAsync(upcoming.Id, "library-films", WantedStatuses.Upcoming, "Not out yet.", false, null, "WEB 1080p", false, CancellationToken.None);
+
+        var downloading = await movies.AddAsync(new CreateMovieRequest("Downloading Reel", 2022, null), CancellationToken.None);
+        await movies.EnsureWantedStateAsync(downloading.Id, "library-films", WantedStatuses.Downloading, "On its way.", false, null, "WEB 1080p", false, CancellationToken.None);
+
+        var underAll = await movies.ListPageAsync(new CatalogueQuery(), CancellationToken.None);
+        var facets = underAll.Facets!;
+
+        foreach (var status in new[]
+        {
+            CatalogueStatusFilters.Missing,
+            CatalogueStatusFilters.Upgrades,
+            CatalogueStatusFilters.Covered,
+            CatalogueStatusFilters.Upcoming,
+            CatalogueStatusFilters.Downloading
+        })
+        {
+            var underStatus = await movies.ListPageAsync(new CatalogueQuery(Status: status, PageSize: 100), CancellationToken.None);
+            Assert.True(
+                facets.TotalFor(status) == underStatus.Items.Count,
+                $"Movies: the '{status}' chip said {facets.TotalFor(status)} but filtering to it returned {underStatus.Items.Count} rows.");
+        }
+    }
+
+    /// <summary>
+    /// The other axis, the same guarantee: the Unmonitored badge is the count
+    /// of unmonitored titles *within the currently selected chip*, not the
+    /// whole library's unmonitored total — so turning the toggle on can never
+    /// show fewer titles than the number it just promised (#934).
+    /// </summary>
+    [Fact]
+    public async Task Unmonitored_facet_matches_the_filtered_page_under_every_status()
+    {
+        using var storage = TestStorage.Create();
+        var movies = await CreateMoviesAsync(storage);
+
+        var missingUnmonitored = await movies.AddAsync(new CreateMovieRequest("Missing And Ignored", 2015, null), CancellationToken.None);
+        await movies.EnsureWantedStateAsync(missingUnmonitored.Id, "library-films", WantedStatuses.Missing, "Needs a file.", false, null, "WEB 1080p", false, CancellationToken.None);
+        await movies.UpdateMonitoredAsync([missingUnmonitored.Id], monitored: false, CancellationToken.None);
+
+        var upcomingMonitored = await movies.AddAsync(new CreateMovieRequest("Not Yet Released", 2030, null), CancellationToken.None);
+        await movies.EnsureWantedStateAsync(upcomingMonitored.Id, "library-films", WantedStatuses.Upcoming, "Not out yet.", false, null, "WEB 1080p", false, CancellationToken.None);
+
+        foreach (var status in new[] { CatalogueStatusFilters.All, CatalogueStatusFilters.Missing, CatalogueStatusFilters.Upcoming })
+        {
+            var underStatus = await movies.ListPageAsync(new CatalogueQuery(Status: status), CancellationToken.None);
+            var unmonitoredFacet = underStatus.Facets!.Unmonitored;
+
+            // Against the rows the grid actually draws once the toggle is on
+            // (`Items.Count`), not `TotalCount` — which is `facets.TotalFor`
+            // read straight back and so cannot expose a WHERE clause that
+            // silently disagrees with what the facet counted.
+            var underStatusAndUnmonitored = await movies.ListPageAsync(
+                new CatalogueQuery(Status: status, Monitored: false, PageSize: 100),
+                CancellationToken.None);
+
+            Assert.True(
+                unmonitoredFacet == underStatusAndUnmonitored.Items.Count,
+                $"Under '{status}', the Unmonitored badge said {unmonitoredFacet} but turning it on returned {underStatusAndUnmonitored.Items.Count} rows.");
+        }
+    }
+
     [Fact]
     public async Task Library_filter_narrows_movie_rows_and_facets_in_sql()
     {
@@ -320,6 +414,60 @@ public sealed class CataloguePagingTests
         Assert.Equal(1, page.TotalCount);
         Assert.Equal(1, page.Facets!.Downloaded);
         Assert.Equal(0, page.Facets.Missing);
+    }
+
+    /// <summary>
+    /// The series counterpart of
+    /// <see cref="Facet_totals_match_the_filtered_page_for_every_status_movies"/>,
+    /// and the one that would have caught #934 directly: <c>Airing</c> is a TV-only
+    /// chip, and <c>ListPageAsync</c>'s own status filter used to omit the airing
+    /// predicate it hands the facets query a few lines below — so picking
+    /// "Continuing" filtered nothing while the chip beside it, computed with the
+    /// predicate actually present, correctly said zero. Same query, same status,
+    /// two different answers.
+    /// </summary>
+    [Fact]
+    public async Task Facet_totals_match_the_filtered_page_for_every_status_series()
+    {
+        using var storage = TestStorage.Create();
+        var series = await CreateSeriesAsync(storage);
+
+        var missing = await series.AddAsync(new CreateSeriesRequest("Missing Show", 2019, null), CancellationToken.None);
+        await series.EnsureWantedStateAsync(missing.Id, "library-shows", WantedStatuses.Missing, "Needs a file.", false, null, "WEB 1080p", false, CancellationToken.None);
+
+        var upgrade = await series.AddAsync(new CreateSeriesRequest("Upgradable Show", 2020, null), CancellationToken.None);
+        await series.EnsureWantedStateAsync(upgrade.Id, "library-shows", WantedStatuses.Upgrade, "Could be better.", true, "WEB 1080p", "Remux 2160p", false, CancellationToken.None);
+
+        var covered = await series.AddAsync(new CreateSeriesRequest("Covered Show", 2021, null), CancellationToken.None);
+        await series.EnsureWantedStateAsync(covered.Id, "library-shows", WantedStatuses.Covered, "At target.", true, "Remux 2160p", "Remux 2160p", true, CancellationToken.None);
+
+        var upcoming = await series.AddAsync(new CreateSeriesRequest("Upcoming Show", 2030, null), CancellationToken.None);
+        await series.EnsureWantedStateAsync(upcoming.Id, "library-shows", WantedStatuses.Upcoming, "Not out yet.", false, null, "WEB 1080p", false, CancellationToken.None);
+
+        var downloading = await series.AddAsync(new CreateSeriesRequest("Downloading Show", 2022, null), CancellationToken.None);
+        await series.EnsureWantedStateAsync(downloading.Id, "library-shows", WantedStatuses.Downloading, "On its way.", false, null, "WEB 1080p", false, CancellationToken.None);
+
+        var airing = await series.AddAsync(new CreateSeriesRequest("Continuing Show", 2018, null), CancellationToken.None);
+        await series.EnsureWantedStateAsync(airing.Id, "library-shows", WantedStatuses.Airing, "More is coming.", true, "WEB 1080p", "WEB 1080p", true, CancellationToken.None);
+
+        var underAll = await series.ListPageAsync(new CatalogueQuery(), CancellationToken.None);
+        var facets = underAll.Facets!;
+
+        foreach (var status in new[]
+        {
+            CatalogueStatusFilters.Missing,
+            CatalogueStatusFilters.Upgrades,
+            CatalogueStatusFilters.Covered,
+            CatalogueStatusFilters.Upcoming,
+            CatalogueStatusFilters.Downloading,
+            CatalogueStatusFilters.Airing
+        })
+        {
+            var underStatus = await series.ListPageAsync(new CatalogueQuery(Status: status, PageSize: 100), CancellationToken.None);
+            Assert.True(
+                facets.TotalFor(status) == underStatus.Items.Count,
+                $"Series: the '{status}' chip said {facets.TotalFor(status)} but filtering to it returned {underStatus.Items.Count} rows.");
+        }
     }
 
     private static async Task SeedAsync(IMovieCatalogRepository movies, int count)
