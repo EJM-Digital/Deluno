@@ -260,8 +260,20 @@ public sealed class DelunoHeartbeatWorker(
                     SearchScopes: SearchScopesFor(library, automatedViews)))
                 .ToArray();
 
-            await jobQueueRepository.PlanLibrarySearchesAsync(automationPlans, stoppingToken);
-            await workPlanner.RunRssSyncPassAsync(services.GetRequiredService<RssSyncService>(), stoppingToken);
+            // #901: scheduled and RSS search are both "go and find a release",
+            // and every indexer call they would make is going to fail anyway
+            // while the internet is down - worse, a search that appears to
+            // come back empty looks exactly like nothing being available,
+            // which is not what is happening. Everything else on this lane
+            // (collection sync, intake, media probe) is not a search and
+            // keeps running.
+            var connectivity = await services.GetRequiredService<Deluno.Contracts.Connectivity.IConnectivityMonitor>()
+                .GetStatusAsync(stoppingToken);
+            if (!connectivity.IsOutage)
+            {
+                await jobQueueRepository.PlanLibrarySearchesAsync(automationPlans, stoppingToken);
+                await workPlanner.RunRssSyncPassAsync(services.GetRequiredService<RssSyncService>(), stoppingToken);
+            }
             await workPlanner.PlanMovieCollectionSyncAsync(
                 jobScheduler,
                 movieCollectionsRepository,
