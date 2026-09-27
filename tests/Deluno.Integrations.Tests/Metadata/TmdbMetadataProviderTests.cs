@@ -957,6 +957,148 @@ public sealed class TmdbMetadataProviderTests : IDisposable
         Assert.Equal([expected], lookup.Result?.AlternateTitles);
     }
 
+    /// <summary>
+    /// #864: TMDb's images append gives a logo and extra backdrops beyond the
+    /// single poster/backdrop pair Deluno already stores. The primary
+    /// backdrop must not be repeated in the gallery, and a title with none of
+    /// this must leave both fields null rather than empty placeholders.
+    /// </summary>
+    [Fact]
+    public async Task ResolveProviderRecordAsync_maps_logo_and_extra_backdrops_when_tmdb_has_them()
+    {
+        var settings = new Mock<IPlatformSettingsRepository>();
+        settings.Setup(repo => repo.GetAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(CreateSettingsSnapshot("direct", string.Empty));
+
+        var storageOptions = Options.Create(new StoragePathOptions { DataRoot = _dataRoot });
+        var factory = new SqliteDatabaseConnectionFactory(storageOptions);
+        var timeProvider = new FakeTimeProvider(DateTimeOffset.Parse("2026-09-25T00:00:00Z"));
+        await new CacheSchemaInitializer(
+            factory,
+            new SqliteDatabaseMigrator(factory, timeProvider),
+            NullLogger<CacheSchemaInitializer>.Instance).StartAsync(CancellationToken.None);
+
+        var provider = new TmdbMetadataProvider(
+            new HttpClient(new StubHttpMessageHandler(request =>
+            {
+                var uri = request.RequestUri!;
+                if (!uri.AbsolutePath.Contains("/movie/", StringComparison.Ordinal))
+                {
+                    return new HttpResponseMessage(HttpStatusCode.NotFound);
+                }
+
+                const string payload = """
+                {
+                  "id": 603,
+                  "title": "The Matrix",
+                  "release_date": "1999-03-30",
+                  "backdrop_path": "/primary-backdrop.jpg",
+                  "images": {
+                    "backdrops": [
+                      { "file_path": "/primary-backdrop.jpg" },
+                      { "file_path": "/extra-backdrop-1.jpg" },
+                      { "file_path": "/extra-backdrop-2.jpg" }
+                    ],
+                    "logos": [
+                      { "file_path": "/matrix-logo.png" }
+                    ]
+                  }
+                }
+                """;
+                return new HttpResponseMessage(HttpStatusCode.OK)
+                {
+                    Content = new StringContent(payload, Encoding.UTF8, "application/json")
+                };
+            })),
+            new ConfigurationBuilder()
+                .AddInMemoryCollection(new Dictionary<string, string?>
+                {
+                    ["Deluno:Metadata:TMDbApiKey"] = "test-key"
+                })
+                .Build(),
+            settings.Object,
+            factory,
+            storageOptions,
+            timeProvider,
+            new PassthroughResiliencePolicy(),
+            new OutboundRequestThrottle(timeProvider, NullLogger<OutboundRequestThrottle>.Instance),
+            NullLogger<TmdbMetadataProvider>.Instance);
+
+        var lookup = await provider.ResolveProviderRecordAsync(
+            new MetadataLookupRequest(null, "movies", null, "603"),
+            CancellationToken.None);
+
+        Assert.Equal(MetadataProviderRecordStatus.Found, lookup.Status);
+        Assert.Equal("https://image.tmdb.org/t/p/w300/matrix-logo.png", lookup.Result?.LogoUrl);
+        Assert.Equal(
+            [
+                "https://image.tmdb.org/t/p/original/extra-backdrop-1.jpg",
+                "https://image.tmdb.org/t/p/original/extra-backdrop-2.jpg"
+            ],
+            lookup.Result?.Screenshots);
+        Assert.Null(lookup.Result?.BannerUrl);
+    }
+
+    [Fact]
+    public async Task ResolveProviderRecordAsync_leaves_logo_and_screenshots_null_when_tmdb_has_none()
+    {
+        var settings = new Mock<IPlatformSettingsRepository>();
+        settings.Setup(repo => repo.GetAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(CreateSettingsSnapshot("direct", string.Empty));
+
+        var storageOptions = Options.Create(new StoragePathOptions { DataRoot = _dataRoot });
+        var factory = new SqliteDatabaseConnectionFactory(storageOptions);
+        var timeProvider = new FakeTimeProvider(DateTimeOffset.Parse("2026-09-25T00:00:00Z"));
+        await new CacheSchemaInitializer(
+            factory,
+            new SqliteDatabaseMigrator(factory, timeProvider),
+            NullLogger<CacheSchemaInitializer>.Instance).StartAsync(CancellationToken.None);
+
+        var provider = new TmdbMetadataProvider(
+            new HttpClient(new StubHttpMessageHandler(request =>
+            {
+                var uri = request.RequestUri!;
+                if (!uri.AbsolutePath.Contains("/movie/", StringComparison.Ordinal))
+                {
+                    return new HttpResponseMessage(HttpStatusCode.NotFound);
+                }
+
+                const string payload = """
+                {
+                  "id": 603,
+                  "title": "The Matrix",
+                  "release_date": "1999-03-30"
+                }
+                """;
+                return new HttpResponseMessage(HttpStatusCode.OK)
+                {
+                    Content = new StringContent(payload, Encoding.UTF8, "application/json")
+                };
+            })),
+            new ConfigurationBuilder()
+                .AddInMemoryCollection(new Dictionary<string, string?>
+                {
+                    ["Deluno:Metadata:TMDbApiKey"] = "test-key"
+                })
+                .Build(),
+            settings.Object,
+            factory,
+            storageOptions,
+            timeProvider,
+            new PassthroughResiliencePolicy(),
+            new OutboundRequestThrottle(timeProvider, NullLogger<OutboundRequestThrottle>.Instance),
+            NullLogger<TmdbMetadataProvider>.Instance);
+
+        var lookup = await provider.ResolveProviderRecordAsync(
+            new MetadataLookupRequest(null, "movies", null, "603"),
+            CancellationToken.None);
+
+        Assert.Equal(MetadataProviderRecordStatus.Found, lookup.Status);
+        Assert.Null(lookup.Result?.LogoUrl);
+        Assert.Null(lookup.Result?.Screenshots);
+        Assert.Null(lookup.Result?.BannerUrl);
+    }
+
     private static PlatformSettingsSnapshot CreateSettingsSnapshot(
         string providerMode,
         string brokerUrl,

@@ -61,4 +61,11 @@ public static class ArtworkSizes
     /// the page nobody looks closely at.
     /// </summary>
     public const string Portrait = "w185";
+
+    /// <summary>
+    /// A logo/wordmark is drawn small next to a title, not full-width like a
+    /// backdrop — TMDb's own w300 is already well past any DPR&#160;2 card
+    /// that shows one (#864).
+    /// </summary>
+    public const string Logo = "w300";
 }

@@ -1439,8 +1439,8 @@ public sealed class TmdbMetadataProvider(
         // type costs nothing — TMDb answers null for it, the same as any other
         // append the title does not carry.
         var appends = mediaType == "tv"
-            ? "external_ids,credits,keywords,content_ratings,alternative_titles"
-            : "external_ids,credits,keywords,release_dates,alternative_titles";
+            ? "external_ids,credits,keywords,content_ratings,alternative_titles,images"
+            : "external_ids,credits,keywords,release_dates,alternative_titles,images";
         var url = $"https://api.themoviedb.org/3/{path}/{id}?api_key={Uri.EscapeDataString(apiKey)}&append_to_response={appends}";
         if (!string.IsNullOrWhiteSpace(language))
         {
@@ -1513,7 +1513,9 @@ public sealed class TmdbMetadataProvider(
             Status: string.IsNullOrWhiteSpace(detail.Status) ? null : detail.Status,
             Keywords: detail.Keywords?.Names ?? [],
             Certification: ResolveCertification(mediaType, certificationCountry, detail.ReleaseDates, detail.ContentRatings),
-            AlternateTitles: detail.AlternativeTitles?.Names(title, detail.OriginalTitle ?? detail.OriginalName));
+            AlternateTitles: detail.AlternativeTitles?.Names(title, detail.OriginalTitle ?? detail.OriginalName),
+            LogoUrl: BuildTmdbArtworkUrl(detail.Images?.Logos?.FirstOrDefault()?.FilePath, ArtworkSizes.Logo),
+            Screenshots: BuildScreenshotUrls(detail.Images?.Backdrops, detail.BackdropPath));
     }
 
     /// <summary>
@@ -1815,6 +1817,31 @@ public sealed class TmdbMetadataProvider(
         => string.IsNullOrWhiteSpace(path)
             ? null
             : $"https://image.tmdb.org/t/p/{size}{path}";
+
+    /// <summary>
+    /// A gallery beyond the single hero backdrop: every other backdrop TMDb
+    /// has, skipping whichever path was already chosen as the primary one so
+    /// the gallery does not repeat it (#864).
+    /// </summary>
+    private static IReadOnlyList<string>? BuildScreenshotUrls(
+        IReadOnlyList<TmdbImage>? backdrops,
+        string? primaryBackdropPath)
+    {
+        if (backdrops is null || backdrops.Count == 0)
+        {
+            return null;
+        }
+
+        var urls = backdrops
+            .Where(image => !string.IsNullOrWhiteSpace(image.FilePath)
+                && !string.Equals(image.FilePath, primaryBackdropPath, StringComparison.Ordinal))
+            .Select(image => BuildTmdbArtworkUrl(image.FilePath, ArtworkSizes.Backdrop))
+            .Where(url => url is not null)
+            .Take(10)
+            .Select(url => url!)
+            .ToArray();
+        return urls.Length == 0 ? null : urls;
+    }
 
     private async Task<IReadOnlyList<MetadataSeason>> GetTmdbCatalogueAsync(
         int id,
@@ -2621,7 +2648,8 @@ public sealed class TmdbMetadataProvider(
         // simply comes back null.
         [property: JsonPropertyName("release_dates")] TmdbReleaseDatesResponse? ReleaseDates = null,
         [property: JsonPropertyName("content_ratings")] TmdbContentRatingsResponse? ContentRatings = null,
-        [property: JsonPropertyName("alternative_titles")] TmdbAlternativeTitles? AlternativeTitles = null);
+        [property: JsonPropertyName("alternative_titles")] TmdbAlternativeTitles? AlternativeTitles = null,
+        [property: JsonPropertyName("images")] TmdbImages? Images = null);
 
     /// <summary>
     /// TMDb answers <c>alternative_titles.titles</c> for a film and
@@ -2657,6 +2685,14 @@ public sealed class TmdbMetadataProvider(
     private sealed record TmdbAlternativeTitle(
         [property: JsonPropertyName("iso_3166_1")] string? Country,
         [property: JsonPropertyName("title")] string? Title);
+
+    /// <summary>Everything the <c>images</c> append gives beyond the primary poster/backdrop (#864).</summary>
+    private sealed record TmdbImages(
+        [property: JsonPropertyName("backdrops")] IReadOnlyList<TmdbImage>? Backdrops,
+        [property: JsonPropertyName("logos")] IReadOnlyList<TmdbImage>? Logos);
+
+    private sealed record TmdbImage(
+        [property: JsonPropertyName("file_path")] string? FilePath);
 
     /// <summary>
     /// TMDb answers <c>keywords.keywords</c> for a film and
