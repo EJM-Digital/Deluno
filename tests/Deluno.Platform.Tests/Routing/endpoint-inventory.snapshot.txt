@@ -47,6 +47,7 @@ DELETE /api/tags/{id}
 DELETE /api/v1/download-dispatches/{dispatchId}
 GET /api/
 GET /api/activity
+GET /api/activity/display-settings
 GET /api/api-keys/
 GET /api/api-keys/scope-templates
 GET /api/auth/bootstrap-status
@@ -245,6 +246,7 @@ GET /api/v1/release-preferences/plans/{planId}
 GET /api/v1/release-preferences/registry
 GET /health
 PATCH /api/settings/
+POST /api/activity/clear
 POST /api/api-keys/
 POST /api/auth/bootstrap
 POST /api/auth/login
@@ -446,6 +448,7 @@ POST /api/v1/guides/trash/versions/{version:int}/activate
 POST /api/v1/release-preferences/judge-draft
 POST /api/v1/release-preferences/plans
 POST /api/v1/release-preferences/preview
+PUT /api/activity/display-settings
 PUT /api/auth/password
 PUT /api/backups/settings
 PUT /api/custom-formats/{id}
