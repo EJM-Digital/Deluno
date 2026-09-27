@@ -1440,18 +1440,36 @@ export function ShowDetailPage() {
           {importCases.length ? (
             <ListCard title="Import issues" count={`${importCases.length} open`}>
               <ListTable chevron={false} columns={[{ label: "Issue" }, { label: "What to do", width: "minmax(0,1.4fr)" }, { label: "Action", width: LIST_TRACK.action, align: "end", mobile: true }]}>
-                {importCases.map((item) => (
-                  <ListRow key={item.id}>
-                    <ListNameCell name={formatFailureKind(item.failureKind)} sub={item.summary} />
-                    <ListCell primary={item.recommendedAction} />
-                    <div role="cell" className="flex justify-end">
-                      <Button type="button" size="sm" variant="outline" onClick={() => void handleDismissImportCase(item.id)} disabled={busyAction === `import-${item.id}`}>
-                        {busyAction === `import-${item.id}` ? <LoaderCircle className="h-3.5 w-3.5 animate-spin" /> : null}
-                        Dismiss
-                      </Button>
-                    </div>
-                  </ListRow>
-                ))}
+                {importCases.map((item) => {
+                  // #930: a file missing from a processor's output whose own
+                  // name resolved to a canonical episode carries that episode's
+                  // id, so Search can act on it directly rather than sending a
+                  // person to look it up themselves.
+                  const missingEpisodeId = item.failureKind === "processor-output-missing" ? episodeIdIn(item.detailsJson) : null;
+                  return (
+                    <ListRow key={item.id}>
+                      <ListNameCell name={formatFailureKind(item.failureKind)} sub={item.summary} />
+                      <ListCell primary={item.recommendedAction} />
+                      <div role="cell" className="flex justify-end gap-2">
+                        {missingEpisodeId ? (
+                          <Button type="button" size="sm" variant="outline" onClick={() => void handleEpisodeSearch([missingEpisodeId])} disabled={busyAction !== null}>
+                            {busyAction === "episode-search" ? <LoaderCircle className="h-3.5 w-3.5 animate-spin" /> : null}
+                            Search
+                          </Button>
+                        ) : null}
+                        {item.failureKind === "processor-output-missing" ? (
+                          <Button type="button" size="sm" variant="outline" onClick={() => navigate("/queue?manualImportMediaType=tv")}>
+                            Import manually
+                          </Button>
+                        ) : null}
+                        <Button type="button" size="sm" variant="outline" onClick={() => void handleDismissImportCase(item.id)} disabled={busyAction === `import-${item.id}`}>
+                          {busyAction === `import-${item.id}` ? <LoaderCircle className="h-3.5 w-3.5 animate-spin" /> : null}
+                          Dismiss
+                        </Button>
+                      </div>
+                    </ListRow>
+                  );
+                })}
               </ListTable>
             </ListCard>
           ) : null}
@@ -2178,8 +2196,22 @@ function formatFailureKind(value: string) {
       return "Download failed";
     case "importFailed":
       return "Import failed";
+    case "processor-output-missing":
+      return "Missing from processor output";
     default:
       return "Needs review";
+  }
+}
+
+/** The episode a "missing from a processor's output" case named, if its file name resolved to one (#930). */
+function episodeIdIn(detailsJson: string | null | undefined): string | null {
+  if (!detailsJson) return null;
+  try {
+    const details = JSON.parse(detailsJson) as Record<string, unknown>;
+    const id = details.episodeId;
+    return typeof id === "string" && id.length > 0 ? id : null;
+  } catch {
+    return null;
   }
 }
 

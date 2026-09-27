@@ -1100,6 +1100,22 @@ public static class ExternalIntegrationEndpointRouteBuilderExtensions
                     "processor-handoff",
                     handoff.Id,
                     cancellationToken);
+
+                // Named in Activity above; also shown where a person can act on
+                // it -- the title/season page and Health -- not only there (#930).
+                if (missing.Length > 0)
+                {
+                    await failureReports.HandleOutputsMissingAsync(
+                        new ProcessorMissingOutputReport(
+                            library,
+                            entityId,
+                            processorName,
+                            handoff.ReleaseName,
+                            outputPath,
+                            missing,
+                            request.OutputFiles!.Count),
+                        cancellationToken);
+                }
             }
 
             return Results.Json(new { status, handoffId = handoff.Id, activityId = activity.Id, importJobId = importJob?.JobId }, statusCode: StatusCodes.Status202Accepted);
