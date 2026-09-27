@@ -58,6 +58,31 @@ public sealed class UTorrentGrabLabelTests
         Assert.DoesNotContain(handler.SentPaths, path => path.Contains("action=setprops", StringComparison.Ordinal));
     }
 
+    /// <summary>
+    /// #877/#911, cleanup sheet B3: uTorrent already holding the release is
+    /// nobody's fault — Deluno should follow the copy it has, the way
+    /// qBittorrent, Deluge and rTorrent already do, rather than reporting a
+    /// generic "sent" with no external id the queue can never follow up on.
+    /// </summary>
+    [Fact]
+    public async Task A_magnet_utorrent_already_holds_is_followed_instead_of_reported_generically()
+    {
+        const string hash = "ABCDEF0123456789ABCDEF0123456789ABCDEF01";
+        var handler = new SequencedHandler(
+            beforeHashes: $$"""{"torrents":[["{{hash}}"]]}""",
+            afterHashes: $$"""{"torrents":[["{{hash}}"]]}""");
+
+        var result = await new UTorrentDownloadClient(() => handler).GrabAsync(
+            CreateClient(),
+            new DownloadClientGrabRequest(
+                "Example.Movie.2024.1080p", $"magnet:?xt=urn:btih:{hash}&dn=Example", "movies", null, "Lab Torznab"),
+            CancellationToken.None);
+
+        Assert.True(result.Succeeded, result.Message);
+        Assert.Equal(hash, result.ExternalId, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("already holds this release", result.Message, StringComparison.Ordinal);
+    }
+
     private static Task<DownloadClientGrabResult> Grab(HttpMessageHandler handler, string mediaType)
         => new UTorrentDownloadClient(() => handler).GrabAsync(
             CreateClient(),

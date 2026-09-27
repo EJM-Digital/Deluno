@@ -53,11 +53,22 @@ public sealed class TransmissionDownloadClient(IHttpClientFactory httpClientFact
             return DownloadClientHelpers.GrabFailure(client, request, $"Transmission did not add the release: {result.GetString()}.");
         }
 
-        // Its id, as the queue reports it, so the import can find this grab by it (#617).
-        var added = response.Arguments?.Added ?? response.Arguments?.Duplicate;
-        return DownloadClientHelpers.GrabSuccess(client, request, request.TorrentFile is null ? "Release URL sent to Transmission." : "Torrent file sent to Transmission.") with
+        // Its id, as the queue reports it, so the import can find this grab by
+        // it (#617). Transmission's own RPC says outright, in
+        // torrent-duplicate, when it already held this exact torrent (#877,
+        // #911) — no before/after hash guessing needed, unlike every other
+        // torrent client here.
+        var duplicate = response.Arguments?.Duplicate;
+        var added = response.Arguments?.Added ?? duplicate;
+        return DownloadClientHelpers.GrabSuccess(
+            client,
+            request,
+            duplicate is not null
+                ? "Transmission already holds this release. Deluno is following the copy it has instead of sending another."
+                : request.TorrentFile is null ? "Release URL sent to Transmission." : "Torrent file sent to Transmission.") with
         {
-            ExternalId = added?.Id?.ToString(CultureInfo.InvariantCulture)
+            ExternalId = added?.Id?.ToString(CultureInfo.InvariantCulture),
+            IsDuplicateFollow = duplicate is not null
         };
     }
 
