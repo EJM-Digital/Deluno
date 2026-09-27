@@ -189,6 +189,21 @@ public static class GuidePlanCompiler
                 continue;
             }
 
+            if (!GuideFormatConditions.AppliesTo(format, normalizedMediaType))
+            {
+                // TRaSH ships most anime formats twice - once scraped from
+                // Radarr's guide, once from Sonarr's - under different ids
+                // (#781). A profile such as "anime" is compiled once per real
+                // title kind, so it legitimately recommends both flavours. The
+                // one that does not match what is actually being compiled must
+                // still be accounted for, never silently dropped, but its
+                // Radarr- or Sonarr-shaped specification must never build a
+                // rule under the other app's compiled plan.
+                advanced.Add(AdvancedRule(profile, format.TrashId, format.OriginalScore, format,
+                    $"This guide rule is TRaSH's {(format.MediaTypes is { Count: > 0 } ? string.Join('/', format.MediaTypes) : "other")}-flavoured specification for the same recommendation; it plays no part in a plan compiled for '{normalizedMediaType}'."));
+                continue;
+            }
+
             sources.Add(new PreferencePlanProvenance(
                 SourceKind: format.SourceKind,
                 SourceId: format.TrashId,

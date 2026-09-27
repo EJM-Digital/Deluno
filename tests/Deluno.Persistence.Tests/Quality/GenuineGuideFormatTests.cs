@@ -52,22 +52,13 @@ public sealed class GenuineGuideFormatTests
         var package = GuidePackageCatalog.Current;
         var byId = package.CustomFormats.ToDictionary(format => format.TrashId, StringComparer.OrdinalIgnoreCase);
 
-        foreach (var profile in package.QualityProfiles)
+        foreach (var profile in package.QualityProfiles.Where(profile => profile.MediaType is "movies" or "tv"))
         {
             foreach (var recommendation in profile.RecommendedFormats)
             {
                 var format = byId[recommendation.TrashId];
-                // TRaSH ships anime release-group tiers and version tags twice
-                // over, once scraped from Radarr's guide and once from
-                // Sonarr's, under the same name but a different trashId
-                // (#781). An "anime" profile legitimately recommends whichever
-                // flavour it was curated from, so it accepts either rather
-                // than the single strict bucket a movies or tv profile owes.
-                var appliesToAnime = profile.MediaType == "anime" &&
-                    (GuideFormatConditions.AppliesTo(format, "movies") || GuideFormatConditions.AppliesTo(format, "tv"));
-                var mediaType = profile.MediaType == "movies" ? "movies" : "tv";
-                Assert.True(appliesToAnime || GuideFormatConditions.AppliesTo(format, mediaType),
-                    $"{profile.Id} ({profile.MediaType}) recommends {format.Name} {recommendation.TrashId}, which is not a {(profile.MediaType == "anime" ? "movies or tv" : mediaType)} format.");
+                Assert.True(GuideFormatConditions.AppliesTo(format, profile.MediaType),
+                    $"{profile.Id} ({profile.MediaType}) recommends {format.Name} {recommendation.TrashId}, which is not a {profile.MediaType} format.");
             }
         }
 
@@ -76,6 +67,84 @@ public sealed class GenuineGuideFormatTests
             Assert.All(bundle.Includes, entry => Assert.True(
                 GuideFormatConditions.AppliesTo(byId[entry.TrashId], bundle.MediaType),
                 $"{bundle.Id} includes {entry.TrashId}, which is not a {bundle.MediaType} format."));
+        }
+    }
+
+    /// <summary>
+    /// TRaSH ships anime release-group tiers and the Anime Versions (v0-v4)
+    /// set twice over - once scraped from Radarr's guide, once from Sonarr's -
+    /// under the same name but a different trashId, the same way it already
+    /// did for the anime formats that predate #781 (BD/Web Tier 01, Raws,
+    /// Uncensored, 10bit, Anime Dual Audio). An "anime" profile is compiled
+    /// once per real title kind (#781), so it must recommend both flavours
+    /// and the compiler must pick only the one that matches what is actually
+    /// being compiled - never the Radarr-shaped specification under a
+    /// tv-compiled plan, or vice versa.
+    /// </summary>
+    [Fact]
+    public void Anime_profile_bundles_both_trash_flavours_and_compiles_the_matching_one()
+    {
+        var package = GuidePackageCatalog.Current;
+        var byId = package.CustomFormats.ToDictionary(format => format.TrashId, StringComparer.OrdinalIgnoreCase);
+        var profile = Assert.Single(package.QualityProfiles, item => item.MediaType == "anime");
+
+        var recommendedAnimeFormats = profile.RecommendedFormats
+            .Select(recommendation => byId[recommendation.TrashId])
+            .Where(format => format.Category == "anime")
+            .ToArray();
+        Assert.NotEmpty(recommendedAnimeFormats);
+
+        foreach (var format in recommendedAnimeFormats)
+        {
+            // Every genuine anime tier/version format names exactly one
+            // TRaSH-shaped flavour; a profile that names the movies id
+            // without its tv twin (or vice versa) leaves one real title kind
+            // with no rule at all - this is exactly what #781 shipped wrong.
+            Assert.True(format.MediaTypes is { Count: 1 },
+                $"{format.Name} ({format.TrashId}) should name exactly one media type, not {format.MediaTypes?.Count ?? 0}.");
+        }
+
+        var byNameAndMediaType = recommendedAnimeFormats
+            .GroupBy(format => format.Name, StringComparer.Ordinal)
+            .ToDictionary(group => group.Key, group => group.ToDictionary(
+                format => format.MediaTypes![0],
+                StringComparer.OrdinalIgnoreCase),
+                StringComparer.Ordinal);
+        foreach (var (name, flavours) in byNameAndMediaType)
+        {
+            Assert.True(flavours.ContainsKey("movies"), $"{name} has no movies-flavoured recommendation for the anime profile.");
+            Assert.True(flavours.ContainsKey("tv"), $"{name} has no tv-flavoured recommendation for the anime profile.");
+        }
+
+        foreach (var mediaType in new[] { "movies", "tv" })
+        {
+            var compilation = GuidePlanCompiler.Compile(profile.Id, mediaType, package);
+            Assert.Equal(mediaType, compilation.Plan.MediaType);
+
+            var compiledAnimeIds = (compilation.Plan.Sources ?? [])
+                .Where(source => source.SourceKind == GuidePackageCatalog.GenuineSourceKind
+                    && byId.TryGetValue(source.SourceId, out var sourceFormat)
+                    && sourceFormat.Category == "anime")
+                .Select(source => source.SourceId)
+                .ToArray();
+
+            // Every recommended anime format of the compiled flavour must
+            // have been picked up, and none of the other flavour may have
+            // slipped in under it - the exact defect #781 shipped.
+            var expected = byNameAndMediaType.Values.Select(flavours => flavours[mediaType].TrashId).ToHashSet(StringComparer.OrdinalIgnoreCase);
+            var wrongFlavour = byNameAndMediaType.Values
+                .Select(flavours => flavours[mediaType == "movies" ? "tv" : "movies"].TrashId)
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+            foreach (var trashId in expected)
+            {
+                Assert.Contains(trashId, compiledAnimeIds);
+            }
+
+            foreach (var trashId in compiledAnimeIds)
+            {
+                Assert.DoesNotContain(trashId, wrongFlavour);
+            }
         }
     }
 
