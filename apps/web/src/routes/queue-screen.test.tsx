@@ -2,13 +2,6 @@ import { fireEvent, render, screen, waitFor, within } from "@testing-library/rea
 import { MemoryRouter } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
 import type { DownloadDispatchItem, DownloadHealthFinding, DownloadQueueItem, ImportPreviewResponse, LibraryItem, MediaProbeInfo } from "../lib/api";
-import type {
-  DownloadDispatchItem,
-  DownloadHealthFinding,
-  DownloadQueueItem,
-  ImportPreviewResponse,
-  LibraryItem
-} from "../lib/api";
 import { emptyPlatformSettingsSnapshot } from "../lib/api";
 import { RemovalReasonDialog, type RemovalReason } from "../components/ui/removal-reason-dialog";
 import { buildImportRequest, findDispatchForQueueItem, ImportPreviewFacts, QueuePage, visibleFindings } from "./queue-screen";
