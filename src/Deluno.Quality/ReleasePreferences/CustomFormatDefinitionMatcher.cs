@@ -29,7 +29,11 @@ public static partial class CustomFormatDefinitionMatcher
             // or its size in GB. Neither is a text search — see MatchYear and
             // MatchSize.
             "year",
-            "size"
+            "size",
+            // #776: single episode / multi-episode / season pack, from the
+            // same classification SeasonPackDetector already computes for TV
+            // search and import (see ReleaseEpisodeClassifier).
+            "releaseType"
         };
 
     /// <summary>
@@ -261,9 +265,24 @@ public static partial class CustomFormatDefinitionMatcher
             "indexerflagspecification" => ("indexerFlag", value),
             "yearspecification" => ("year", value),
             "sizespecification" => ("size", value),
+            "releasetypespecification" when MapReleaseType(value) is { } releaseType => ("releaseType", releaseType),
             _ => null
         };
     }
+
+    /// <summary>
+    /// Sonarr's ReleaseType enum: 0 Unknown, 1 Single Episode, 2 Multi
+    /// Episode, 3 Season Pack. Unknown is never claimed — it means Sonarr's
+    /// own condition would not have matched anything either.
+    /// </summary>
+    private static string? MapReleaseType(string value)
+        => value switch
+        {
+            "1" => "single episode",
+            "2" => "multi-episode",
+            "3" => "season pack",
+            _ => null
+        };
 
     /// <summary>
     /// "2015-2020", "2015-" (no upper bound) or "-2020" (no lower bound).
@@ -461,9 +480,19 @@ public static partial class CustomFormatDefinitionMatcher
             "indexerflag" => MatchIndexerFlag(indexerFlags, value),
             "year" => MatchYear(releaseName, value),
             "size" => MatchSize(releaseSizeBytes, value),
+            "releasetype" => MatchReleaseType(releaseName, value),
             _ => false
         };
     }
+
+    /// <summary>
+    /// True when Deluno's own episode classification (#776) — the same one
+    /// TV search and import already use — reports the chosen release type
+    /// for this name. Matches "single episode"/"multi-episode"/"season pack"
+    /// (case-insensitively); a name carrying none of those never matches.
+    /// </summary>
+    private static bool MatchReleaseType(string releaseName, string value)
+        => string.Equals(ReleaseEpisodeClassifier.ReleaseType(releaseName), value, StringComparison.OrdinalIgnoreCase);
 
     /// <summary>
     /// True when the release name's own parsed year (#775) — the last
