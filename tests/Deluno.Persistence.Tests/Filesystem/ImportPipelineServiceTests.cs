@@ -1125,7 +1125,12 @@ public sealed class ImportPipelineServiceTests
 
         var platform = CreatePlatformRepository(storage, timeProvider);
         var libraries = CreateLibrariesRepository(storage, timeProvider);
-        await SaveSettingsAsync(platform, movieRootPath, downloadsPath);
+        // #764: this test is about resolving the video inside a folder-shaped
+        // source, not about the folder-rename toggle -- give it the
+        // existing-install setting (V0083 freezes existing installs to this)
+        // so its destination path keeps asserting the templated folder name
+        // it always has.
+        await SaveSettingsAsync(platform, movieRootPath, downloadsPath, renameFoldersOnImport: true);
 
         var movies = new SqliteMovieCatalogRepository(storage.Factory, timeProvider);
         var service = CreateService(storage, timeProvider, platform, libraries, movies);
@@ -1148,10 +1153,7 @@ public sealed class ImportPipelineServiceTests
             CancellationToken.None);
 
         Assert.True(result.Succeeded, result.Message);
-        // #764: RenameFoldersOnImport defaults to off, so the release folder
-        // Deluno was handed keeps its own name; the file inside it is still
-        // renamed (RenameOnImport defaults to on in this test helper).
-        var destinationPath = Path.Combine(movieRootPath, "Arrival.2016.1080p.WEB-VERIFY", "Arrival (2016) [WEB 1080p].mkv");
+        var destinationPath = Path.Combine(movieRootPath, "Arrival (2016)", "Arrival (2016) [WEB 1080p].mkv");
         Assert.True(File.Exists(destinationPath));
         Assert.Equal(new FileInfo(featurePath).Length, new FileInfo(destinationPath).Length);
     }

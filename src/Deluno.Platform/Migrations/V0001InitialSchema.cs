@@ -88,7 +88,8 @@ public static class PlatformDatabaseMigrations
         new V0080IndexerAnimeCategories(),
         new V0081LibraryRandomizeSearchOrder(),
         new V0082DownloadClientTags(),
-        new V0083MediaServerRefreshBacklog()
+        new V0083MediaServerRefreshBacklog(),
+        new V0084RenameFoldersOnImportDefaultsExisting()
     ];
 
     private sealed class V0001InitialSchema : SqliteSqlMigration
