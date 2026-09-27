@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Link, useLoaderData, useRevalidator } from "react-router-dom";
+import { useLoaderData, useRevalidator } from "react-router-dom";
 import { Check } from "lucide-react";
 import { toast } from "sonner";
 import { fetchJson, type PlatformSettingsSnapshot } from "../lib/api";
@@ -9,12 +9,12 @@ import { SubtitleLanguagePicker } from "../components/app/subtitle-language-pick
 import { Button } from "../components/ui/button";
 import { Chip } from "../components/ui/chip";
 import { Drawer, DrawerSection } from "../components/ui/drawer";
-import { Field } from "../components/ui/field";
+import { Field, FieldRow } from "../components/ui/field";
 import { Input } from "../components/ui/input";
 import { LIST_TRACK, ListCard, ListCell, ListEmpty, ListNameCell, ListRow, ListTable } from "../components/ui/list-card";
 import { MenuSelect } from "../components/ui/menu-select";
 import { PageToolbar } from "../components/ui/page-toolbar";
-import { Switch } from "../components/ui/switch";
+import { Switch, SwitchRow } from "../components/ui/switch";
 import type {
   LibraryItem,
   SubtitleContentModificationPolicy,
@@ -131,6 +131,47 @@ export function SubtitleLanguagesPage() {
     }
   }
 
+  // #838's chmod setting: not a second value beside Import Policy's own
+  // SetPermissionsOnImport/FolderChmod/ChownGroup, but the same three fields,
+  // patched through the same /api/settings endpoint, shown here too because a
+  // written subtitle is exactly the file this control decides the permissions
+  // of. Local, editable draft so typing a chmod value does not PATCH on every
+  // keystroke; the switch itself still saves immediately, matching the
+  // automatic-fetching toggle above.
+  const [permissionsForm, setPermissionsForm] = useState({
+    setPermissionsOnImport: settings.setPermissionsOnImport,
+    folderChmod: settings.folderChmod ?? "",
+    chownGroup: settings.chownGroup ?? ""
+  });
+  const [permissionsBusy, setPermissionsBusy] = useState(false);
+
+  async function commitPermissions(next: typeof permissionsForm) {
+    setPermissionsBusy(true);
+    try {
+      const response = await authedFetch("/api/settings", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          setPermissionsOnImport: next.setPermissionsOnImport,
+          folderChmod: next.folderChmod,
+          chownGroup: next.chownGroup
+        })
+      });
+      if (!response.ok) throw new Error("Those permissions could not be saved.");
+      revalidator.revalidate();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Those permissions could not be saved.");
+    } finally {
+      setPermissionsBusy(false);
+    }
+  }
+
+  function togglePermissions(checked: boolean) {
+    const next = { ...permissionsForm, setPermissionsOnImport: checked };
+    setPermissionsForm(next);
+    void commitPermissions(next);
+  }
+
   const [editing, setEditing] = useState<LibraryItem | null>(null);
   const [form, setForm] = useState<Form>({
     languages: [],
@@ -207,6 +248,44 @@ export function SubtitleLanguagesPage() {
             disabled={automaticBusy}
             onCheckedChange={(checked) => void toggleAutomaticFetching(checked)}
           />
+        </div>
+      </ListCard>
+
+      <ListCard title="File encoding and permissions">
+        <div className="grid gap-[var(--grid-gap)] px-1 py-1">
+          <p className="text-[length:var(--type-caption)] leading-relaxed text-muted-foreground">
+            Every subtitle Deluno writes is saved as UTF-8, whatever encoding the provider actually sent — always on, not a setting, because a wrong-encoding file reads as accented names and curly quotes turned to mismatched symbols with nothing on screen to say why (#838).
+          </p>
+          <SwitchRow
+            label="Set permissions on written subtitles"
+            description="The same chmod and group Import Policy applies to imported media files, applied to a written subtitle too — one setting, not two that could disagree. Non-Windows hosts only."
+            checked={permissionsForm.setPermissionsOnImport}
+            disabled={permissionsBusy}
+            onCheckedChange={togglePermissions}
+          />
+          {permissionsForm.setPermissionsOnImport ? (
+            <FieldRow>
+              <Field label="Chmod" help="Octal file mode, such as 755 or 0644.">
+                <Input
+                  value={permissionsForm.folderChmod}
+                  disabled={permissionsBusy}
+                  placeholder="755"
+                  className="max-w-[7rem]"
+                  onChange={(event) => setPermissionsForm({ ...permissionsForm, folderChmod: event.target.value })}
+                  onBlur={() => void commitPermissions(permissionsForm)}
+                />
+              </Field>
+              <Field label="Chown group" help="Group name or GID. Leave blank to leave group ownership unchanged.">
+                <Input
+                  value={permissionsForm.chownGroup}
+                  disabled={permissionsBusy}
+                  placeholder="media"
+                  onChange={(event) => setPermissionsForm({ ...permissionsForm, chownGroup: event.target.value })}
+                  onBlur={() => void commitPermissions(permissionsForm)}
+                />
+              </Field>
+            </FieldRow>
+          ) : null}
         </div>
       </ListCard>
 
@@ -506,11 +585,9 @@ export function SubtitleLanguagesPage() {
                   </p>
                   <p className="text-[length:var(--type-caption)] leading-relaxed text-muted-foreground">
                     {settings.setPermissionsOnImport
-                      ? `A written subtitle also gets the "Set Permissions" chmod${settings.folderChmod ? ` (${settings.folderChmod})` : ""}${settings.chownGroup ? ` and group ${settings.chownGroup}` : ""} from Import Policy, on non-Windows hosts.`
-                      : "\"Set Permissions\" is off, so a written subtitle's file permissions are left as the operating system default."}{" "}
-                    <Link to="/settings/media-management" className="underline underline-offset-2">
-                      Change it under Import Policy.
-                    </Link>
+                      ? `A written subtitle also gets the "Set permissions on written subtitles" chmod${settings.folderChmod ? ` (${settings.folderChmod})` : ""}${settings.chownGroup ? ` and group ${settings.chownGroup}` : ""}, on non-Windows hosts.`
+                      : "\"Set permissions on written subtitles\" is off, so a written subtitle's file permissions are left as the operating system default."}{" "}
+                    Applies to every library — see "File encoding and permissions" above, not per library.
                   </p>
                 </DrawerSection>
 
