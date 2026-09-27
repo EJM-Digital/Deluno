@@ -3,6 +3,7 @@ using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using System.Xml.Linq;
+using Deluno.Contracts;
 using Deluno.Integrations.Metadata;
 using Deluno.Jobs.Contracts;
 using Deluno.Jobs.Data;
@@ -419,13 +420,31 @@ public sealed class IntakeSyncService(
                         resolvedImdb),
                     cancellationToken);
 
+                // #849: a movie stays gated below its list's chosen minimum
+                // availability (Announced/In Cinemas/Released), the same
+                // release-date gate movie collections and manual adds already
+                // use. TV has no such concept here, so it is always treated
+                // as released.
+                var isAvailable = mediaType == "tv" || MovieAvailability.IsAvailable(
+                    source.MinimumAvailability,
+                    ToDateOnly(entry.ReleaseDateUtc),
+                    digital: null,
+                    physical: null,
+                    DateOnly.FromDateTime(timeProvider.GetUtcNow().UtcDateTime));
+
                 var decision = mediaDecisionService.DecideWantedState(new MediaWantedDecisionInput(
                     MediaType: targetLibrary.MediaType,
                     HasFile: false,
                     CurrentQuality: null,
                     CutoffQuality: targetLibrary.CutoffQuality,
                     UpgradeUntilCutoff: targetLibrary.UpgradeUntilCutoff,
-                    UpgradeUnknownItems: targetLibrary.UpgradeUnknownItems));
+                    UpgradeUnknownItems: targetLibrary.UpgradeUnknownItems,
+                    IsReleased: isAvailable));
+
+                if (mediaType != "tv" && !string.Equals(source.MinimumAvailability, MovieAvailability.Announced, StringComparison.OrdinalIgnoreCase))
+                {
+                    await movieCatalogRepository.UpdateMinimumAvailabilityAsync(existingId!, source.MinimumAvailability, cancellationToken);
+                }
 
                 if (mediaType == "tv")
                 {
@@ -464,7 +483,7 @@ public sealed class IntakeSyncService(
                     }
                 }
 
-                shouldRequestSearch = shouldRequestSearch || (searchOnAddOverride ?? source.SearchOnAdd);
+                shouldRequestSearch = shouldRequestSearch || ((searchOnAddOverride ?? source.SearchOnAdd) && isAvailable);
             }
             catch (Exception ex)
             {
@@ -1405,6 +1424,10 @@ public sealed class IntakeSyncService(
 
         return int.TryParse(match.Groups[1].Value, out var year) ? year : null;
     }
+
+    /// <summary>An intake entry only carries one release date, so it stands in for MovieAvailability's cinema date when gating a list-added movie's minimum availability (#849).</summary>
+    private static DateOnly? ToDateOnly(DateTimeOffset? value)
+        => value is null ? null : DateOnly.FromDateTime(value.Value.UtcDateTime);
 
     private static DateTimeOffset? ParseDate(string? value)
     {

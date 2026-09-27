@@ -285,6 +285,8 @@ export interface IntakeSourceItem {
   isEnabled: boolean;
   createdUtc: string;
   updatedUtc: string;
+  /** Minimum release stage (movies only) a list-added title must reach before Deluno searches for it (#849). */
+  minimumAvailability?: "announced" | "inCinemas" | "released" | string;
 }
 
 export interface IntakeListExclusionItem {
