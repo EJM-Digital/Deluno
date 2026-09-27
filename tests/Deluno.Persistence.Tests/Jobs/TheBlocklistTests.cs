@@ -117,19 +117,23 @@ public sealed class TheBlocklistTests
     }
 
     /// <summary>
-    /// #585: a refusal about the file itself also holds the release from every
-    /// other indexer; one about the download holds only that indexer's copy.
+    /// #874: The owner decided the blocklist key is the release's identity across
+    /// every indexer for every refusal reason, not only the ones about the
+    /// file itself. A stall on one indexer is exactly as disqualifying on
+    /// another, so every reason code — including the ones Deluno cannot place
+    /// and the ones that are only about this attempt — adds the every-indexer
+    /// key.
     /// </summary>
     [Theory]
-    [InlineData(ImportFailurePolicy.ProcessorRejected, true)]
-    [InlineData(ImportFailurePolicy.NoVideoStream, true)]
-    [InlineData(ImportFailurePolicy.LikelySample, true)]
-    [InlineData(ImportFailurePolicy.MediaProbeRejected, true)]
-    [InlineData(ImportFailurePolicy.ReplacementRejected, true)]
-    [InlineData(ImportFailurePolicy.DownloadStalled, false)]
-    [InlineData(ImportFailurePolicy.ImportFailed, false)]
-    [InlineData(ImportFailurePolicy.MediaProbeUnreadable, false)]
-    public async Task A_refusal_about_the_file_holds_the_release_from_every_indexer(string reasonCode, bool everyIndexer)
+    [InlineData(ImportFailurePolicy.ProcessorRejected)]
+    [InlineData(ImportFailurePolicy.NoVideoStream)]
+    [InlineData(ImportFailurePolicy.LikelySample)]
+    [InlineData(ImportFailurePolicy.MediaProbeRejected)]
+    [InlineData(ImportFailurePolicy.ReplacementRejected)]
+    [InlineData(ImportFailurePolicy.DownloadStalled)]
+    [InlineData(ImportFailurePolicy.ImportFailed)]
+    [InlineData(ImportFailurePolicy.MediaProbeUnreadable)]
+    public async Task Every_refusal_holds_the_release_from_every_indexer(string reasonCode)
     {
         using var storage = await StorageAsync();
         var blocklist = new SqliteBlockedReleaseRepository(storage.Factory, Clock);
@@ -138,7 +142,28 @@ public sealed class TheBlocklistTests
 
         var keys = await blocklist.ListKeysAsync(CancellationToken.None);
         Assert.Contains(BlockedReleaseKeys.For("Arrival.2016.2160p", "Nebula"), keys);
-        Assert.Equal(everyIndexer, keys.Contains(BlockedReleaseKeys.ForEveryIndexer("Arrival.2016.2160p")));
+        Assert.Contains(BlockedReleaseKeys.ForEveryIndexer("Arrival.2016.2160p"), keys);
+    }
+
+    /// <summary>
+    /// The exact scenario #874 was raised over: a release refused for
+    /// stalling on one indexer, with no hash recorded, must not be free to
+    /// grab under the same name from a different indexer.
+    /// </summary>
+    [Fact]
+    public async Task A_stall_with_no_hash_still_blocks_the_same_name_from_another_indexer()
+    {
+        using var storage = await StorageAsync();
+        var blocklist = new SqliteBlockedReleaseRepository(storage.Factory, Clock);
+
+        await blocklist.BlockAsync(
+            Release("Arrival.2016.2160p", "Nebula", ImportFailurePolicy.DownloadStalled) with { TorrentHashOrItemId = null },
+            CancellationToken.None);
+
+        var keys = await blocklist.ListKeysAsync(CancellationToken.None);
+        Assert.Contains(BlockedReleaseKeys.ForEveryIndexer("Arrival.2016.2160p"), keys);
+        // An unrelated name is not swept up by the every-indexer key.
+        Assert.DoesNotContain(BlockedReleaseKeys.ForEveryIndexer("Some.Other.Movie.2020.1080p"), keys);
     }
 
     /// <summary>

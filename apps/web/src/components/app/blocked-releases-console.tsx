@@ -52,12 +52,12 @@ export interface BlockedReleasesConsoleProps {
 }
 
 /**
- * Which indexers a refusal holds. A refusal about the file itself holds the
- * release from all of them, and saying only the one it came from would tell
- * the reader it could still arrive from another (#585).
+ * Which indexers a refusal holds. Every refusal holds the release from all of
+ * them (#585, #874), and saying only the one it came from would tell the
+ * reader it could still arrive from another.
  */
 function whereItIsRefused(release: BlockedRelease) {
-  return release.everyIndexer ? `every indexer (found on ${release.indexerName})` : release.indexerName;
+  return `every indexer (found on ${release.indexerName})`;
 }
 
 export function BlockedReleasesConsole({

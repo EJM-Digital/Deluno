@@ -59,23 +59,47 @@ public sealed class SkippingBlockedReleasesTests
     }
 
     /// <summary>
-    /// A refusal about one indexer's copy — a stalled download, a failure
-    /// Deluno cannot place — says nothing about another indexer's.
+    /// #874: The owner decided the blocklist key is the release's identity across
+    /// every indexer for every refusal reason — a stall on one indexer or a
+    /// failure Deluno cannot place is exactly as disqualifying on another,
+    /// not only a refusal about the file itself. This is the every-indexer
+    /// key <see cref="Deluno.Jobs.Data.SqliteBlockedReleaseRepository.ListKeysAsync"/>
+    /// now adds for every reason, so it is included here the same way it
+    /// would be read back from a real block.
     /// </summary>
     [Fact]
-    public void Blocking_one_indexers_copy_leaves_anothers_alone()
+    public void A_release_refused_for_stalling_is_skipped_from_every_indexer_too()
     {
         var plan = Plan(Candidate("Arrival.2016.2160p", "Nebula"), Candidate("Arrival.2016.2160p", "Orbit"));
 
-        var result = AcquisitionDecisionPipeline.ApplyBlocklist(plan, Keys("Arrival.2016.2160p", "Nebula"));
+        var result = AcquisitionDecisionPipeline.ApplyBlocklist(
+            plan,
+            Keys("Arrival.2016.2160p", "Nebula").Append(BlockedReleaseKeys.ForEveryIndexer("Arrival.2016.2160p")).ToHashSet(StringComparer.Ordinal));
 
-        Assert.Equal("Orbit", result.BestCandidate!.IndexerName);
+        Assert.Null(result.BestCandidate);
+        Assert.Empty(result.Candidates);
     }
 
     /// <summary>
-    /// #585: a refusal about the file itself holds the release whichever
-    /// indexer offers it. On the rig both soak indexers list the same names,
-    /// one as a torrent and one as Usenet.
+    /// An unrelated release keeps its own indexer's copy: the every-indexer
+    /// key only ever matches its own name.
+    /// </summary>
+    [Fact]
+    public void A_stall_on_one_release_does_not_touch_an_unrelated_release()
+    {
+        var plan = Plan(Candidate("Arrival.2016.2160p", "Orbit"), Candidate("Some.Other.Movie.2020.1080p", "Orbit"));
+
+        var result = AcquisitionDecisionPipeline.ApplyBlocklist(
+            plan,
+            new HashSet<string>(StringComparer.Ordinal) { BlockedReleaseKeys.ForEveryIndexer("Arrival.2016.2160p") });
+
+        Assert.Equal("Some.Other.Movie.2020.1080p", result.BestCandidate!.ReleaseName);
+    }
+
+    /// <summary>
+    /// #585, #874: a refusal holds the release whichever indexer offers it.
+    /// On the rig both soak indexers list the same names, one as a torrent
+    /// and one as Usenet.
     /// </summary>
     [Fact]
     public void A_release_refused_for_its_content_is_skipped_from_every_indexer()

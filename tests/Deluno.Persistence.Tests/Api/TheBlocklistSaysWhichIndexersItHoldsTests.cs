@@ -7,15 +7,16 @@ using Microsoft.Extensions.DependencyInjection;
 namespace Deluno.Persistence.Tests.Api;
 
 /// <summary>
-/// #585: the blocklist says when a refusal holds a release from every indexer.
-/// The screen reads it from here rather than keeping a second copy of the rule.
+/// #585, #874: the blocklist says every refusal holds a release from every
+/// indexer, whatever the reason. The screen reads it from here rather than
+/// keeping a second copy of the rule.
 /// </summary>
 public sealed class TheBlocklistSaysWhichIndexersItHoldsTests
 {
     [Theory]
-    [InlineData(ImportFailurePolicy.ProcessorRejected, true)]
-    [InlineData(ImportFailurePolicy.DownloadStalled, false)]
-    public async Task Each_refusal_says_whether_it_holds_every_indexer(string reasonCode, bool everyIndexer)
+    [InlineData(ImportFailurePolicy.ProcessorRejected)]
+    [InlineData(ImportFailurePolicy.DownloadStalled)]
+    public async Task Each_refusal_says_it_holds_every_indexer(string reasonCode)
     {
         await using var app = await ApplicationTestHost.StartAsync();
         await app.Services.GetRequiredService<IBlockedReleaseRepository>().BlockAsync(
@@ -43,6 +44,6 @@ public sealed class TheBlocklistSaysWhichIndexersItHoldsTests
         var list = document.RootElement.ValueKind == JsonValueKind.Array
             ? document.RootElement
             : document.RootElement.GetProperty("items");
-        Assert.Equal(everyIndexer, Assert.Single(list.EnumerateArray()).GetProperty("everyIndexer").GetBoolean());
+        Assert.True(Assert.Single(list.EnumerateArray()).GetProperty("everyIndexer").GetBoolean());
     }
 }
