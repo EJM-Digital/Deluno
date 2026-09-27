@@ -35,6 +35,21 @@ import { QUALITY_STEPS, type QualityStep } from "../lib/quality-steps";
 import { createRuleFromGuide, guideFormatAppliesTo } from "../lib/guide-formats";
 import { friendlyRuleName } from "../lib/guide-names";
 import {
+  CUTOFF_LABELS,
+  GENERIC_MIN_FORMAT_SCORE,
+  GENERIC_CUTOFF_FORMAT_SCORE,
+  GENERIC_MIN_UPGRADE_FORMAT_SCORE,
+  LANGUAGE_LABELS,
+  UPGRADE_GAIN_LABELS,
+  mapCutoffScore,
+  mapMinScore,
+  mapUpgradeGainScore,
+  nearestCutoffChoice,
+  nearestUpgradeGainChoice,
+  type QualityCutoffChoice,
+  type QualityUpgradeGainChoice
+} from "../lib/quality-limits";
+import {
   compileQualityProfilePreferences,
   fetchTrashGuidePackage,
   fetchJson,
@@ -49,6 +64,8 @@ import {
   type QualityUpgradeStopPolicy,
   type ProfileSizeRule,
   type ProfileAcquisitionRules,
+  type ProfileScoreLimits,
+  type ProfileLanguagePreference,
   type ReleasePreferencePlanCompilation
 } from "../lib/api";
 import { settingsOverviewLoader } from "./settings-overview-page";
@@ -81,6 +98,25 @@ interface ProfileForm {
   requireFormatGain: boolean;
   formatIntents: Record<string, string>;
   acquisition: ProfileAcquisitionRules;
+  /** "Never grab copies TRaSH rates as bad." */
+  neverGrabBad: boolean;
+  /** "Stop upgrading once a copy is..." */
+  cutoffChoice: QualityCutoffChoice;
+  /** "Only replace a file when the new copy is..." */
+  upgradeGainChoice: QualityUpgradeGainChoice;
+  /** Preferred languages, best-first. Empty means no language opinion. */
+  languageCodes: string[];
+  /** "Require" the most preferred language rather than merely prefer it. */
+  requireLanguage: boolean;
+  /**
+   * The numbers behind the three plain choices above, editable only under
+   * "Show the numbers" (#938). Null means "use the plain choice's own
+   * mapping" - a person who never opens that section never sets these by
+   * hand.
+   */
+  minFormatScore: number | null;
+  cutoffFormatScore: number | null;
+  minUpgradeFormatScore: number | null;
 }
 
 const EMPTY_ACQUISITION: ProfileAcquisitionRules = {
@@ -89,6 +125,17 @@ const EMPTY_ACQUISITION: ProfileAcquisitionRules = {
   torrentDelayMinutes: 0,
   mustContain: "",
   mustNotContain: ""
+};
+
+const QUALITY_LIMITS_DEFAULTS = {
+  neverGrabBad: false,
+  cutoffChoice: "best" as QualityCutoffChoice,
+  upgradeGainChoice: "aLittle" as QualityUpgradeGainChoice,
+  languageCodes: [] as string[],
+  requireLanguage: false,
+  minFormatScore: null as number | null,
+  cutoffFormatScore: null as number | null,
+  minUpgradeFormatScore: null as number | null
 };
 
 type DrawerMode = { kind: "closed" } | { kind: "create" } | { kind: "edit"; id: string };
@@ -128,6 +175,7 @@ export function SettingsProfilesPage() {
   const [starterId, setStarterId] = useState("");
   const [addRecommended, setAddRecommended] = useState(true);
   const [fineTuneOpen, setFineTuneOpen] = useState(false);
+  const [showNumbersOpen, setShowNumbersOpen] = useState(false);
   const [saveState, setSaveState] = useState<Exclude<DrawerSaveState, "clean" | "dirty">>();
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
   const [errors, setErrors] = useState<{ name?: string; allowed?: string; cutoff?: string }>({});
@@ -268,7 +316,22 @@ export function SettingsProfilesPage() {
       name: current.name.trim() ? current.name : `${starter.mediaType === "tv" ? "TV Shows" : "Movies"} / ${starter.label}`,
       mediaType: starter.mediaType,
       allowed: starter.allowed.filter((name) => tiers.some((tier) => tier.name === name)),
-      cutoff: starter.cutoff
+      cutoff: starter.cutoff,
+      // A TRaSH-based plan sets the plain choices to what TRaSH recommends
+      // (#938): the numbers stay hidden, but they are not blank - they are
+      // this profile's guide answer, round-tripped through the same mapping
+      // "Show the numbers" would show.
+      neverGrabBad: starter.minFormatScore > 0,
+      cutoffChoice: nearestCutoffChoice(starter.cutoffFormatScore, starter.minFormatScore, starter.cutoffFormatScore),
+      upgradeGainChoice: nearestUpgradeGainChoice(starter.minUpgradeFormatScore, GENERIC_MIN_UPGRADE_FORMAT_SCORE),
+      languageCodes: languageCodeFromGuideLanguage(starter.language),
+      requireLanguage: false,
+      // The guide's own numbers, so they save as this profile's real answer
+      // (visible, and editable, only under "Show the numbers") rather than
+      // being re-derived from the generic defaults on save.
+      minFormatScore: starter.minFormatScore > 0 ? starter.minFormatScore : null,
+      cutoffFormatScore: starter.cutoffFormatScore,
+      minUpgradeFormatScore: starter.minUpgradeFormatScore
     }));
   }
 
@@ -367,7 +430,12 @@ export function SettingsProfilesPage() {
         // answer with it rather than leaving an orphan.
         formatIntents: Object.fromEntries(
           Object.entries({ ...starterIntents, ...form.formatIntents }).filter(([id]) => formatIds.includes(id))),
-        acquisition: form.acquisition
+        acquisition: form.acquisition,
+        scoreLimits: scoreLimitsFromForm(form),
+        languagePreference: {
+          preferredLanguages: form.languageCodes,
+          requireLanguage: form.requireLanguage
+        } satisfies ProfileLanguagePreference
       };
       const response = await authedFetch(mode.kind === "edit" ? `/api/quality-profiles/${mode.id}` : "/api/quality-profiles", { method: mode.kind === "edit" ? "PUT" : "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
       if (!response.ok) {
@@ -565,6 +633,87 @@ export function SettingsProfilesPage() {
             </Field>
           </FieldRow>
           <SwitchRow label="Upgrade until cutoff" description="On: Deluno chases better copies until the tier you stop at, then leaves the file alone. Off: it takes what it finds and never looks again." checked={form.upgradeUntilCutoff} onCheckedChange={(checked) => setForm((current) => ({ ...current, upgradeUntilCutoff: checked }))} />
+
+          {/*
+            #938: rules plus TRaSH points, behind plain choices. The numbers
+            these three controls stand for stay hidden unless "Show the
+            numbers" is opened below - James's direction in #938 is that no
+            one should need to know what a custom-format score is to use
+            Deluno.
+          */}
+          <FieldRow>
+            <Field label="Stop upgrading once a copy is" help="Once the installed file reaches this, Deluno stops looking for something better.">
+              <Select
+                value={form.cutoffChoice}
+                onChange={(event) => setForm((current) => ({ ...current, cutoffChoice: event.target.value as QualityCutoffChoice, cutoffFormatScore: null }))}
+                options={(Object.keys(CUTOFF_LABELS) as QualityCutoffChoice[]).map((choice) => ({ value: choice, label: CUTOFF_LABELS[choice] }))}
+              />
+            </Field>
+            <Field label="Only replace a file when the new copy is" help="Below this, a same-quality replacement is not grabbed.">
+              <Select
+                value={form.upgradeGainChoice}
+                onChange={(event) => setForm((current) => ({ ...current, upgradeGainChoice: event.target.value as QualityUpgradeGainChoice, minUpgradeFormatScore: null }))}
+                options={(Object.keys(UPGRADE_GAIN_LABELS) as QualityUpgradeGainChoice[]).map((choice) => ({ value: choice, label: UPGRADE_GAIN_LABELS[choice] }))}
+              />
+            </Field>
+          </FieldRow>
+          <SwitchRow
+            label="Never grab copies TRaSH rates as bad"
+            description="Refuses a release outright when TRaSH's own guide calls it a bad copy, whatever else it offers."
+            checked={form.neverGrabBad}
+            onCheckedChange={(checked) => setForm((current) => ({ ...current, neverGrabBad: checked, minFormatScore: null }))}
+          />
+          <Field label="Preferred language" help="Ranks a release in this language above one that names a different language. Does not refuse an untagged release.">
+            <Select
+              value={form.languageCodes[0] ?? ""}
+              onChange={(event) => setForm((current) => ({ ...current, languageCodes: event.target.value ? [event.target.value] : [] }))}
+              placeholder="No preference"
+              options={Object.entries(LANGUAGE_LABELS).map(([code, label]) => ({ value: code, label }))}
+            />
+          </Field>
+          <SwitchRow
+            label="Require this language"
+            description="Refuses a release explicitly tagged as a different language, rather than merely ranking it lower."
+            checked={form.requireLanguage}
+            disabled={form.languageCodes.length === 0}
+            onCheckedChange={(checked) => setForm((current) => ({ ...current, requireLanguage: checked }))}
+          />
+          <Disclosure
+            title="Show the numbers"
+            summary="TRaSH custom-format scores behind the choices above"
+            open={showNumbersOpen}
+            onOpenChange={setShowNumbersOpen}
+          >
+            <FieldRow>
+              <Field label="Minimum score to grab" help="Blank uses the plain choice above.">
+                <Input
+                  type="number"
+                  aria-label="Minimum custom-format score to grab"
+                  value={form.minFormatScore ?? ""}
+                  placeholder={String(GENERIC_MIN_FORMAT_SCORE)}
+                  onChange={(event) => setForm((current) => ({ ...current, minFormatScore: event.target.value === "" ? null : Number(event.target.value) }))}
+                />
+              </Field>
+              <Field label="Cutoff score to stop upgrading" help="Blank uses the plain choice above.">
+                <Input
+                  type="number"
+                  aria-label="Cutoff custom-format score to stop upgrading"
+                  value={form.cutoffFormatScore ?? ""}
+                  placeholder={String(GENERIC_CUTOFF_FORMAT_SCORE)}
+                  onChange={(event) => setForm((current) => ({ ...current, cutoffFormatScore: event.target.value === "" ? null : Number(event.target.value) }))}
+                />
+              </Field>
+              <Field label="Minimum score gain to upgrade" help="Blank uses the plain choice above.">
+                <Input
+                  type="number"
+                  aria-label="Minimum custom-format score gain required for an upgrade"
+                  value={form.minUpgradeFormatScore ?? ""}
+                  placeholder={String(GENERIC_MIN_UPGRADE_FORMAT_SCORE)}
+                  onChange={(event) => setForm((current) => ({ ...current, minUpgradeFormatScore: event.target.value === "" ? null : Number(event.target.value) }))}
+                />
+              </Field>
+            </FieldRow>
+          </Disclosure>
               </div>
             )}
             renderSizeControls={() => (
@@ -937,7 +1086,8 @@ function defaultForm(
     sizeRules: [],
     requireFormatGain: true,
     formatIntents: {},
-    acquisition: EMPTY_ACQUISITION
+    acquisition: EMPTY_ACQUISITION,
+    ...QUALITY_LIMITS_DEFAULTS
   };
 
   const balanced =
@@ -963,8 +1113,45 @@ function defaultForm(
 }
 
 function emptyForm(): ProfileForm {
-  return { name: "", mediaType: "movies", allowed: [], cutoff: "", customFormatIds: [], upgradeUntilCutoff: true, upgradeUnknownItems: false, sizeRules: [], requireFormatGain: true, formatIntents: {}, acquisition: EMPTY_ACQUISITION };
+  return { name: "", mediaType: "movies", allowed: [], cutoff: "", customFormatIds: [], upgradeUntilCutoff: true, upgradeUnknownItems: false, sizeRules: [], requireFormatGain: true, formatIntents: {}, acquisition: EMPTY_ACQUISITION, ...QUALITY_LIMITS_DEFAULTS };
 }
+
+/**
+ * The numbers behind the three plain choices, for saving. A hand-edited
+ * number under "Show the numbers" is sent as-is; otherwise the plain choice
+ * is mapped using the generic TRaSH defaults, since nothing here is measured
+ * against a specific guide profile once the profile is being edited directly.
+ */
+function scoreLimitsFromForm(form: ProfileForm): ProfileScoreLimits {
+  const floor = form.minFormatScore ?? GENERIC_MIN_FORMAT_SCORE;
+  const ceiling = form.cutoffFormatScore ?? GENERIC_CUTOFF_FORMAT_SCORE;
+  return {
+    minFormatScore: mapMinScore(form.neverGrabBad, floor),
+    cutoffFormatScore: form.cutoffFormatScore ?? mapCutoffScore(form.cutoffChoice, floor, ceiling),
+    minUpgradeFormatScore: form.minUpgradeFormatScore ?? mapUpgradeGainScore(form.upgradeGainChoice, GENERIC_MIN_UPGRADE_FORMAT_SCORE)
+  };
+}
+
+/** The plain choice nearest a saved score, or the default when nothing was ever saved. */
+function scoreLimitsToForm(limits: ProfileScoreLimits | null | undefined) {
+  const minFormatScore = limits?.minFormatScore ?? null;
+  const cutoffFormatScore = limits?.cutoffFormatScore ?? null;
+  const minUpgradeFormatScore = limits?.minUpgradeFormatScore ?? null;
+  const floor = minFormatScore ?? GENERIC_MIN_FORMAT_SCORE;
+  return {
+    neverGrabBad: minFormatScore !== null && minFormatScore > 0,
+    cutoffChoice: cutoffFormatScore === null
+      ? QUALITY_LIMITS_DEFAULTS.cutoffChoice
+      : nearestCutoffChoice(cutoffFormatScore, floor, cutoffFormatScore),
+    upgradeGainChoice: minUpgradeFormatScore === null
+      ? QUALITY_LIMITS_DEFAULTS.upgradeGainChoice
+      : nearestUpgradeGainChoice(minUpgradeFormatScore, GENERIC_MIN_UPGRADE_FORMAT_SCORE),
+    minFormatScore,
+    cutoffFormatScore,
+    minUpgradeFormatScore
+  };
+}
+
 function formFrom(profile: QualityProfileItem): ProfileForm {
   return {
     name: profile.name,
@@ -977,12 +1164,18 @@ function formFrom(profile: QualityProfileItem): ProfileForm {
     sizeRules: profile.sizeRules ?? [],
     requireFormatGain: profile.upgradeStop?.requireCustomFormatGainForSameQuality ?? true,
     formatIntents: { ...(profile.formatIntents ?? {}) },
-    acquisition: { ...EMPTY_ACQUISITION, ...(profile.acquisition ?? {}) }
+    acquisition: { ...EMPTY_ACQUISITION, ...(profile.acquisition ?? {}) },
+    ...scoreLimitsToForm(profile.scoreLimits),
+    languageCodes: profile.languagePreference?.preferredLanguages ?? [],
+    requireLanguage: profile.languagePreference?.requireLanguage ?? false
   };
 }
 function sameForm(a: ProfileForm, b: ProfileForm) {
   return a.name === b.name && a.mediaType === b.mediaType && a.cutoff === b.cutoff && a.upgradeUntilCutoff === b.upgradeUntilCutoff && a.upgradeUnknownItems === b.upgradeUnknownItems && a.allowed.join("|") === b.allowed.join("|") && sameIds(a.customFormatIds, b.customFormatIds) && sameSizeRules(a.sizeRules, b.sizeRules) && a.requireFormatGain === b.requireFormatGain && sameIntents(a.formatIntents, b.formatIntents)
-    && JSON.stringify(a.acquisition) === JSON.stringify(b.acquisition);
+    && JSON.stringify(a.acquisition) === JSON.stringify(b.acquisition)
+    && a.neverGrabBad === b.neverGrabBad && a.cutoffChoice === b.cutoffChoice && a.upgradeGainChoice === b.upgradeGainChoice
+    && a.requireLanguage === b.requireLanguage && a.languageCodes.join("|") === b.languageCodes.join("|")
+    && a.minFormatScore === b.minFormatScore && a.cutoffFormatScore === b.cutoffFormatScore && a.minUpgradeFormatScore === b.minUpgradeFormatScore;
 }
 
 /** Changing how much you care has to count as a change, like any other answer. */
@@ -1020,6 +1213,11 @@ interface ProfileStarter {
   allowed: string[];
   cutoff: string;
   summary: string;
+  /** TRaSH's own score guardrails and language answer for this guide profile (#778, #769). */
+  minFormatScore: number;
+  cutoffFormatScore: number;
+  minUpgradeFormatScore: number;
+  language: string | null;
 }
 
 /**
@@ -1055,9 +1253,30 @@ function guideStarters(guide: GuidePackage, tiers: { name: string; rank: number 
       mediaType: profile.mediaType === "movies" ? "movies" : "tv",
       allowed: allowedBestFirst.reverse(),
       cutoff,
-      summary: profile.description
+      summary: profile.description,
+      minFormatScore: profile.minFormatScore,
+      cutoffFormatScore: profile.cutoffFormatScore,
+      minUpgradeFormatScore: profile.minUpgradeFormatScore ?? GENERIC_MIN_UPGRADE_FORMAT_SCORE,
+      language: profile.language ?? null
     };
   });
+}
+
+/**
+ * TRaSH's own "language" answer for a guide profile is a display name
+ * ("Original", "Any", "French", ...); a profile's preferred-language codes are
+ * the same lowercase codes the typed preference system and this page's
+ * language select already use. "Any" means no language opinion.
+ */
+function languageCodeFromGuideLanguage(language: string | null): string[] {
+  if (!language || language.trim().toLowerCase() === "any") return [];
+  const match = Object.entries(LANGUAGE_LABELS).find(
+    ([, label]) => label.toLowerCase() === language.trim().toLowerCase()
+  );
+  if (match) return [match[0]];
+  // "Original" is the guide's most common non-"Any" answer and maps to the
+  // "original language" code directly rather than a specific ISO language.
+  return language.trim().toLowerCase() === "original" ? ["original"] : [];
 }
 
 function recommendedFormatsFor(starterId: string, guide: GuidePackage) {
