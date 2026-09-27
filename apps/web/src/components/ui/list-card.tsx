@@ -73,6 +73,14 @@ export interface ListColumn {
 /** Fixed tracks so Status / On / › land in the same place on every page. */
 export const LIST_TRACK = {
   status: "150px",
+  /**
+   * A trailing button column. Rows are laid out one grid at a time, so a
+   * track sized "auto" is as wide as that row's own button: rows without one
+   * collapsed it and their other columns sat further right than the row that
+   * had it (System → System tasks, "Check library files"). A fixed track keeps
+   * every row's columns in line, with room for a short label at 4K scaling.
+   */
+  action: "11.5rem",
   toggle: "56px",
   chevron: "40px"
 } as const;
