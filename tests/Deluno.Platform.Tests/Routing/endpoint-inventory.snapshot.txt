@@ -10,6 +10,8 @@ DELETE /api/custom-formats/{id}
 DELETE /api/destination-rules/{id}
 DELETE /api/download-clients/{id}
 DELETE /api/download-clients/{id}/path-mappings/{mappingId}
+DELETE /api/download-health/ignore-list/{id}
+DELETE /api/download-health/rules/{id}
 DELETE /api/exclusions/{id}
 DELETE /api/failure-rules/{reasonCode}
 DELETE /api/indexers/{id}
@@ -61,6 +63,7 @@ GET /api/dashboard/metrics
 GET /api/decisions
 GET /api/destination-rules/
 GET /api/diagnostics/secrets-backend
+GET /api/discover/
 GET /api/download-clients/
 GET /api/download-clients/orphans
 GET /api/download-clients/sharing
@@ -70,6 +73,8 @@ GET /api/download-clients/{clientId}/queue/{queueItemId}/cleanup-preview
 GET /api/download-clients/{id}/path-mappings
 GET /api/download-dispatches
 GET /api/download-health
+GET /api/download-health/ignore-list
+GET /api/download-health/rules
 GET /api/exclusions
 GET /api/failure-rules
 GET /api/filesystem/directories
@@ -178,6 +183,7 @@ GET /api/series/import-recovery
 GET /api/series/inventory
 GET /api/series/page
 GET /api/series/search-history
+GET /api/series/season-pass
 GET /api/series/upcoming
 GET /api/series/wanted
 GET /api/series/{id}
@@ -245,7 +251,9 @@ POST /api/custom-formats/
 POST /api/custom-formats/dry-run
 POST /api/destination-rules/
 POST /api/destination-rules/resolve
+POST /api/discover/add
 POST /api/download-clients/
+POST /api/download-clients/leftovers/cleanup
 POST /api/download-clients/orphans/keep
 POST /api/download-clients/orphans/remove
 POST /api/download-clients/test
@@ -258,10 +266,14 @@ POST /api/download-clients/{clientId}/webhook
 POST /api/download-clients/{id}/path-mappings
 POST /api/download-clients/{id}/path-mappings/{mappingId}/test
 POST /api/download-clients/{id}/test
+POST /api/download-health/ignore-list
+POST /api/download-health/purge-strikes
 POST /api/filesystem/file-check
 POST /api/filesystem/import/execute
+POST /api/filesystem/import/execute-batch
 POST /api/filesystem/import/jobs
 POST /api/filesystem/import/preview
+POST /api/filesystem/import/scan-folder
 POST /api/filesystem/native-folder-picker
 POST /api/filesystem/path-diagnostics
 POST /api/filesystem/reconciliation/repair
@@ -286,6 +298,7 @@ POST /api/integrations/processors/handoffs/{id}/import-original
 POST /api/integrations/processors/handoffs/{id}/outcome/send-again
 POST /api/integrations/processors/handoffs/{id}/retry
 POST /api/integrations/processors/handoffs/{id}/stop-waiting
+POST /api/integrations/processors/output/delete
 POST /api/intelligent-routing/recommend-release
 POST /api/jobs/retry-failed
 POST /api/jobs/{id}/dismiss
@@ -323,6 +336,7 @@ POST /api/movies/import-recovery
 POST /api/movies/import-recovery/{id}/dismiss
 POST /api/movies/import-recovery/{id}/resolve
 POST /api/movies/import-recovery/{id}/retry
+POST /api/movies/import-recovery/{id}/stop-wanting
 POST /api/movies/metadata/jobs
 POST /api/movies/{id}/automation/defer
 POST /api/movies/{id}/automation/skip-once
@@ -373,6 +387,7 @@ POST /api/series/import-recovery
 POST /api/series/import-recovery/{id}/dismiss
 POST /api/series/import-recovery/{id}/resolve
 POST /api/series/import-recovery/{id}/retry
+POST /api/series/import-recovery/{id}/stop-wanting
 POST /api/series/metadata/jobs
 POST /api/series/{id}/automation/defer
 POST /api/series/{id}/automation/skip-once
@@ -416,6 +431,7 @@ PUT /api/backups/settings
 PUT /api/custom-formats/{id}
 PUT /api/destination-rules/{id}
 PUT /api/download-clients/{id}
+PUT /api/download-health/rules/{id}
 PUT /api/failure-rules/{reasonCode}
 PUT /api/indexers/{id}
 PUT /api/intake-sources/{id}
@@ -447,8 +463,10 @@ PUT /api/retention/rules/{id}
 PUT /api/seerr-servers/{id}
 PUT /api/series/episodes/monitoring
 PUT /api/series/monitoring
+PUT /api/series/season-pass/monitoring
 PUT /api/series/{id}/libraries/{libraryId}
 PUT /api/series/{id}/metadata/override
+PUT /api/series/{id}/monitor-new-episodes
 PUT /api/series/{id}/numbering
 PUT /api/series/{id}/replacement-protection
 PUT /api/settings/
