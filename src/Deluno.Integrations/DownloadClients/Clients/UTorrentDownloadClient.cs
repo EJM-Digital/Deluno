@@ -231,8 +231,13 @@ public sealed class UTorrentDownloadClient(Func<HttpMessageHandler>? handlerFact
         // torrent sitting at 100% with the error bit set is not ready to
         // import, it is broken.
         if ((bits & UTorrentStatus.Error) != 0) return DownloadQueueStatuses.Stalled;
-        if (progress >= 100) return DownloadQueueStatuses.ImportReady;
+        // Checked ahead of the progress-based ImportReady test (#912): a
+        // torrent already at 100% before uTorrent re-checks it (a restart, a
+        // moved data folder) still carries the Checking bit while it verifies,
+        // and reading progress first raced the import against a file uTorrent
+        // was still hashing.
         if ((bits & UTorrentStatus.Checking) != 0) return DownloadQueueStatuses.Downloading;
+        if (progress >= 100) return DownloadQueueStatuses.ImportReady;
         if ((bits & (UTorrentStatus.Paused | UTorrentStatus.Queued)) != 0) return DownloadQueueStatuses.Queued;
         if ((bits & UTorrentStatus.Started) != 0) return DownloadQueueStatuses.Downloading;
         return DownloadQueueStatuses.Queued;
