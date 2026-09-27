@@ -84,6 +84,51 @@ public sealed class ABlockedReleaseCanBeAddedFromAnywhereTests
     }
 
     [Fact]
+    public async Task Lifting_a_block_writes_activity_as_a_manual_action_and_never_queues_a_search()
+    {
+        await using var app = await ApplicationTestHost.StartAsync();
+
+        var blockResponse = await app.Client.PostAsJsonAsync(
+            "/api/blocked-releases",
+            new BlockReleaseRequest("Arrival.2016.2160p.UHD.BluRay", "Nebula", MediaType: "movie", EntityId: "movie-1", Title: "Arrival"));
+        Assert.True(blockResponse.IsSuccessStatusCode, await blockResponse.Content.ReadAsStringAsync());
+        var blocked = await blockResponse.Content.ReadFromJsonAsync<JsonElement>();
+        var id = blocked.GetProperty("id").GetString()!;
+
+        var jobsBefore = await app.Services.GetRequiredService<IJobQueueRepository>().ListAsync(50, CancellationToken.None);
+
+        var liftResponse = await app.Client.DeleteAsync($"/api/blocked-releases/{id}");
+        Assert.True(liftResponse.IsSuccessStatusCode, await liftResponse.Content.ReadAsStringAsync());
+
+        var blocklist = app.Services.GetRequiredService<IBlockedReleaseRepository>();
+        Assert.Empty(await blocklist.ListAsync(CancellationToken.None));
+
+        // DESIGN-007 decision 8: lifting never starts a search by itself.
+        var jobsAfter = await app.Services.GetRequiredService<IJobQueueRepository>().ListAsync(50, CancellationToken.None);
+        Assert.Equal(jobsBefore.Count, jobsAfter.Count);
+
+        var activityFeed = app.Services.GetRequiredService<IActivityFeedRepository>();
+        var activity = Assert.Single(
+            await activityFeed.ListActivityAsync(10, null, null, CancellationToken.None),
+            entry => entry.Category == "release.block-lifted");
+        Assert.Contains("Arrival", activity.Message);
+        // Attributed to a person's own action, the same way #924's "It's
+        // bad" removal reason is (see ARemovalReasonDoesExactlyWhatItSaysTests) —
+        // through the message's own wording rather than a separate flag.
+        Assert.StartsWith("You lifted", activity.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Lifting_an_unknown_block_is_not_found()
+    {
+        await using var app = await ApplicationTestHost.StartAsync();
+
+        var response = await app.Client.DeleteAsync("/api/blocked-releases/does-not-exist");
+
+        Assert.Equal(System.Net.HttpStatusCode.NotFound, response.StatusCode);
+    }
+
+    [Fact]
     public async Task A_release_name_is_required()
     {
         await using var app = await ApplicationTestHost.StartAsync();

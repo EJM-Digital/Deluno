@@ -8,7 +8,7 @@ interface ConfirmDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   title: string;
-  description: string;
+  description: React.ReactNode;
   confirmLabel?: string;
   confirmVariant?: "destructive" | "default";
   presentation?: "default" | "decision";
@@ -17,6 +17,8 @@ interface ConfirmDialogProps {
   busy?: boolean;
   onConfirm: () => void;
   onSecondary?: () => void;
+  /** Extra content between the description and the buttons — a checkbox, for instance. */
+  extraContent?: React.ReactNode;
 }
 
 export function ConfirmDialog({
@@ -32,6 +34,7 @@ export function ConfirmDialog({
   busy = false,
   onConfirm,
   onSecondary,
+  extraContent,
 }: ConfirmDialogProps) {
   const isDecision = presentation === "decision";
 
@@ -83,6 +86,8 @@ export function ConfirmDialog({
                 </p>
               </div>
             </div>
+
+            {extraContent ? <div className="mb-4">{extraContent}</div> : null}
 
             <div
               className={cn(

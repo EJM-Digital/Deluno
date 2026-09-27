@@ -98,10 +98,15 @@ public static class BlockedReleasesEndpointRouteBuilderExtensions
             return denied ?? Results.Ok(await repository.ListAsync(cancellationToken));
         });
 
+        // Lifting a block (#925): offered from the same places blocking itself
+        // is offered — search results, the Queue, a title's history, Activity
+        // — and on the Blocklist screen (blocked-releases-console.tsx's own
+        // "Un-refuse"). Both call this one route.
         endpoints.MapDelete("/api/blocked-releases/{id}", async (
             string id,
             HttpContext httpContext,
             [FromServices] IBlockedReleaseRepository repository,
+            [FromServices] IActivityFeedRepository activityFeedRepository,
             CancellationToken cancellationToken) =>
         {
             var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
@@ -110,14 +115,35 @@ public static class BlockedReleasesEndpointRouteBuilderExtensions
                 return denied;
             }
 
+            // Read before unblocking so the Activity entry can name what was
+            // lifted even after the row itself is gone.
+            var existing = (await repository.ListAsync(cancellationToken))
+                .FirstOrDefault(release => release.Id == id);
+
             // Unblocking starts nothing. James: "there could be a number of
             // scenarios when the blocklist is being cleared and if an
             // individual title is removed the user is going to manually
             // trigger the search anyway" — so clearing in bulk cannot become a
             // storm of searches. DESIGN-007 decision 8.
-            return await repository.UnblockAsync(id, cancellationToken)
-                ? Results.NoContent()
-                : Results.NotFound();
+            if (!await repository.UnblockAsync(id, cancellationToken))
+            {
+                return Results.NotFound();
+            }
+
+            if (existing is not null)
+            {
+                var title = existing.Title ?? existing.ReleaseName;
+                await activityFeedRepository.RecordActivityAsync(
+                    "release.block-lifted",
+                    $"You lifted the block on \"{title}\"; Deluno will consider it again. No search was started.",
+                    null,
+                    null,
+                    existing.EntityId is not null ? existing.MediaType : "blocked_release",
+                    existing.EntityId ?? existing.Id,
+                    cancellationToken);
+            }
+
+            return Results.NoContent();
         });
 
         // Answering a proposal. The other answer is the DELETE above — allowing
