@@ -153,7 +153,14 @@ function AppLayoutInner() {
       // Deluno stays live while its tab is hidden (#641), so there is nothing
       // to catch up on when it is looked at again. Refetching on focus would
       // put back the refresh-on-return #641 removed.
-      queries: { retry: 1, refetchOnWindowFocus: false }
+      //
+      // refetchIntervalInBackground is a global default (#937): any query
+      // that sets its own `refetchInterval` is a safety net behind realtime
+      // (SignalR events keep the real data current, hidden or not -- see
+      // use-signalr.tsx), so it is safe for this poll to keep running while
+      // hidden too rather than pausing and catching up on return. A query
+      // that opts out can still set the option to false itself.
+      queries: { retry: 1, refetchOnWindowFocus: false, refetchIntervalInBackground: true }
     }
   }));
   return (

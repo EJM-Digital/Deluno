@@ -29,6 +29,19 @@
  * through `realtimeToast` (components/shell/toaster.tsx), which drops it
  * rather than replaying it later.
  *
+ * Staying connected relies on more than the socket itself staying open
+ * (#937). Chrome throttles a hidden, occluded, or minimised tab's own
+ * `setInterval`/`setTimeout` timers -- including the one this client's
+ * keep-alive ping runs on -- to at most one firing a minute after about
+ * five minutes. Left alone, that eventually misses the server's
+ * `ClientTimeoutInterval` and gets the connection dropped, which then
+ * reconnects and replays or resyncs: a catch-up. A dedicated Worker isn't
+ * throttled that way, so a periodic `Ping` invoke driven from the shared
+ * worker ticker (lib/live-ticker.ts) keeps reaching the server on schedule
+ * regardless of visibility, alongside a server `ClientTimeoutInterval`
+ * tolerant of one throttled cycle (see RealtimeServiceCollectionExtensions.cs).
+ * A genuine outage still stops both kinds of traffic and is still caught.
+ *
  * Events emitted by the hub (mirror backend contracts):
  *   DownloadProgress        { id, title, progress, speedMbps, eta, status }
  *   QueueItemAdded          { id, title, type, status }
@@ -57,6 +70,7 @@ import {
   type ReactNode
 } from "react";
 import * as signalR from "@microsoft/signalr";
+import { subscribeTick } from "./live-ticker";
 
 /* ── Typed event map ─────────────────────────────────────────────── */
 export interface DownloadProgressEvent {
@@ -381,6 +395,26 @@ export function SignalRProvider({
 
     connectionRef.current = builder;
 
+    // Worker-driven keep-alive nudge (#937): the SignalR client's own
+    // keep-alive ping runs on a page timer, which Chrome throttles to at
+    // most one firing a minute once this tab has been hidden, occluded, or
+    // minimised for about five minutes -- long enough for the ping to miss
+    // the server's ClientTimeoutInterval and get the connection dropped
+    // (see RealtimeServiceCollectionExtensions.cs for the matching
+    // server-side timeouts). A dedicated Worker isn't subject to that
+    // throttling, so invoking the hub's no-op `Ping` off its clock keeps
+    // reaching the server on schedule regardless of visibility. Any
+    // invocation counts as client activity to the server, so this alone is
+    // enough -- it does not depend on the framework's own keep-alive timer
+    // also getting through.
+    const stopPingNudge = subscribeTick(20_000, () => {
+      if (builder.state === signalR.HubConnectionState.Connected) {
+        void builder.invoke("Ping").catch(() => {
+          if (DEBUG) console.debug("[WS] ping nudge failed");
+        });
+      }
+    });
+
     let disposed = false;
     const startWithRetry = async () => {
       for (let attempt = 0; attempt < INITIAL_START_RETRY_DELAYS_MS.length; attempt++) {
@@ -413,6 +447,7 @@ export function SignalRProvider({
 
     return () => {
       disposed = true;
+      stopPingNudge();
       void builder.stop();
       connectionRef.current = null;
     };

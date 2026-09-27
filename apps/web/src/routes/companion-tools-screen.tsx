@@ -3,6 +3,7 @@ import { useLoaderData, useRevalidator } from "react-router-dom";
 import { Copy, Eye, Loader2 } from "lucide-react";
 import { fetchJson } from "../lib/api";
 import { authedFetch } from "../lib/use-auth";
+import { useLiveInterval } from "../hooks/use-live-interval";
 import { configurationNavAreas } from "../components/app/settings-shell";
 import { Button } from "../components/ui/button";
 import { Checkbox } from "../components/ui/checkbox";
@@ -71,13 +72,13 @@ export function CompanionToolsPage() {
   useEffect(() => setData(loaded), [loaded]);
 
   const working = data.tools.some((tool) => tool.job?.status === "running" || tool.job?.status === "queued");
-  useEffect(() => {
+  // Worker-driven (#937): a setup left running in a backgrounded or
+  // minimised window still polls at its real 2 s rate, so a finished or
+  // failed job shows up without waiting for the tab to be looked at again.
+  useLiveInterval(() => {
     if (!working) return;
-    const timer = window.setInterval(() => {
-      void fetchJson<CompanionToolsResponse>("/api/companion-tools").then(setData).catch(() => undefined);
-    }, 2000);
-    return () => window.clearInterval(timer);
-  }, [working]);
+    void fetchJson<CompanionToolsResponse>("/api/companion-tools").then(setData).catch(() => undefined);
+  }, 2000);
 
   const open = data.tools.find((tool) => tool.id === openId) ?? null;
   const selectable = (tool: CompanionTool) => data.availability.available && tool.state !== "connected" && !working;

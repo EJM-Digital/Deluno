@@ -53,6 +53,19 @@ public sealed class ActivityHub(IRealtimeResumeSource resumeSource) : Hub
         return resumeSource.Resume(lastSeq, GetSubjects());
     }
 
+    /// <summary>
+    /// A no-op the client invokes on a worker-driven schedule, not a page
+    /// timer, so it keeps arriving on time even while the tab sits hidden,
+    /// occluded, or minimised (#937) -- Chrome throttles a background page's
+    /// own <c>setInterval</c>/<c>setTimeout</c> calls, which is what the
+    /// framework's own client keep-alive ping runs on. Any message from the
+    /// client resets the server's idle-connection clock, so this invoke
+    /// alone is enough to keep the connection alive through throttling;
+    /// see <see cref="RealtimeServiceCollectionExtensions"/> for the
+    /// matching <c>ClientTimeoutInterval</c>.
+    /// </summary>
+    public Task Ping() => Task.CompletedTask;
+
     private HashSet<string> GetSubjects()
     {
         if (Context.Items.TryGetValue(SubjectsKey, out var value) && value is HashSet<string> subjects)
