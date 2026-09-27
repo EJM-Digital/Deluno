@@ -52,7 +52,14 @@ import { DownloadDispatchDrawer } from "../components/app/download-dispatch-draw
 import { useLiveInterval } from "../hooks/use-live-interval";
 import { RealtimeGroups, useSignalREvent } from "../lib/use-signalr";
 import { formatDateTime as formatPreferenceDateTime, useDisplayPreferences } from "../lib/display-preferences";
-import { ACTIVITY_EVENT_TYPE_LABELS, activityEventType, categoryLabel, foldRoutineJobEvents, type ActivityEventType } from "../lib/activity-format";
+import {
+  ACTIVITY_EVENT_TYPE_LABELS,
+  activityEventType,
+  categoryLabel,
+  foldCrossMediaJobRuns,
+  foldRoutineJobEvents,
+  type ActivityEventType
+} from "../lib/activity-format";
 import { reasonWords } from "../lib/failure-reasons";
 import { useColumnVisibility, type ColumnDefinition } from "../lib/use-column-visibility";
 
@@ -143,14 +150,18 @@ export function ActivityPage() {
 
   const openJob = failed.find((job) => job.id === openJobId) ?? jobs.find((job) => job.id === openJobId) ?? null;
   const openDispatch = dispatches.find((dispatch) => dispatch.id === openDispatchId) ?? null;
-  const openEvent = activity.find((event) => event.id === openEventId) ?? null;
   const openImportCase = importCases.find((item) => `${item.mediaLabel}-${item.id}` === openImportCaseId) ?? null;
 
   // #916: a routine background job's queued/started/completed rows fold into
   // the one that answers "what happened" (its completion, or its start while
-  // still running), with the other two kept for the drawer.
-  const foldedActivity = useMemo(() => foldRoutineJobEvents(activity), [activity]);
-  const openEventFoldedFrom = foldedActivity.find((folded) => folded.event.id === openEventId)?.foldedFrom ?? [];
+  // still running), with the other two kept for the drawer. On top of that,
+  // a Movies run and a TV run of the same job finishing within fifteen
+  // minutes of each other fold into one line too (James, 27 Sep 2026) — the
+  // drawer is where either original run's own wording still shows.
+  const foldedActivity = useMemo(() => foldCrossMediaJobRuns(foldRoutineJobEvents(activity)), [activity]);
+  const openEventEntry = foldedActivity.find((folded) => folded.event.id === openEventId);
+  const openEvent = openEventEntry?.event ?? activity.find((event) => event.id === openEventId) ?? null;
+  const openEventFoldedFrom = openEventEntry?.foldedFrom ?? [];
 
   // Only the types actually present are offered (#798): a dropdown of eight
   // options where six are always empty is not a filter, it is a maze.
