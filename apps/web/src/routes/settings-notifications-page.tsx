@@ -24,7 +24,7 @@ import { systemSettingsNavItems } from "../components/app/settings-shell";
 import { Select } from "../components/ui/select";
 import { Switch, SwitchRow } from "../components/ui/switch";
 import { toast } from "../components/shell/toaster";
-import { fetchJson, type NotificationWebhookDeliveryItem, type NotificationWebhookItem, type PlatformSettingsSnapshot } from "../lib/api";
+import { fetchJson, type NotificationPreferences, type NotificationWebhookDeliveryItem, type NotificationWebhookItem, type PlatformSettingsSnapshot } from "../lib/api";
 import type { PlatformSettingsPatch } from "../lib/api/settings";
 import { useApiMutation } from "../lib/use-api-mutation";
 import { authedFetch } from "../lib/use-auth";
@@ -45,7 +45,23 @@ interface LoaderData {
   settings: PlatformSettingsSnapshot;
   webhooks: NotificationWebhookItem[];
   deliveries: NotificationWebhookDeliveryItem[];
+  preferences: NotificationPreferences;
 }
+
+/**
+ * One row per subtitle notification kind (#839). Nothing else in Deluno
+ * fired for subtitle activity before this, so this section only ever grows
+ * when a new subtitle event kind ships alongside it.
+ */
+const SUBTITLE_PREFERENCE_ROWS: Array<{
+  key: keyof NotificationPreferences;
+  name: string;
+  description: string;
+}> = [
+  { key: "subtitleDownloadedEnabled", name: "Subtitle downloaded", description: "A subtitle was found and saved for a language that had none yet." },
+  { key: "subtitleUpgradedEnabled", name: "Subtitle upgraded", description: "A better-scoring subtitle replaced one already held." },
+  { key: "subtitleFailedEnabled", name: "Subtitle search failed", description: "A wanted language could not be found after trying every provider." }
+];
 
 interface WebhookForm {
   name: string;
@@ -57,19 +73,38 @@ interface WebhookForm {
 type DrawerMode = { kind: "closed" } | { kind: "create" } | { kind: "edit"; id: string };
 
 export async function settingsNotificationsLoader(): Promise<LoaderData> {
-  const [settings, webhooks, deliveries] = await Promise.all([
+  const [settings, webhooks, deliveries, preferences] = await Promise.all([
     fetchJson<PlatformSettingsSnapshot>("/api/settings"),
     fetchJson<NotificationWebhookItem[]>("/api/notification-webhooks"),
-    fetchJson<NotificationWebhookDeliveryItem[]>("/api/notification-webhooks/deliveries?take=100")
+    fetchJson<NotificationWebhookDeliveryItem[]>("/api/notification-webhooks/deliveries?take=100"),
+    fetchJson<NotificationPreferences>("/api/notification-preferences")
   ]);
-  return { settings, webhooks, deliveries };
+  return { settings, webhooks, deliveries, preferences };
 }
 
 export function SettingsNotificationsPage() {
-  const { settings, webhooks, deliveries } = useLoaderData() as LoaderData;
+  const { settings, webhooks, deliveries, preferences } = useLoaderData() as LoaderData;
   const revalidator = useRevalidator();
   const settingsMutation = useApiMutation<PlatformSettingsPatch, PlatformSettingsSnapshot>("/api/settings", "PATCH");
   const sorted = useMemo(() => [...webhooks].sort((a, b) => a.name.localeCompare(b.name)), [webhooks]);
+  const [busyPreference, setBusyPreference] = useState<string | null>(null);
+
+  async function togglePreference(key: keyof NotificationPreferences, checked: boolean) {
+    setBusyPreference(key);
+    try {
+      const response = await authedFetch("/api/notification-preferences", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...preferences, [key]: checked })
+      });
+      if (!response.ok) throw new Error("Could not save this preference.");
+      revalidator.revalidate();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not save this preference.");
+    } finally {
+      setBusyPreference(null);
+    }
+  }
 
   const [mode, setMode] = useState<DrawerMode>({ kind: "closed" });
   const [form, setForm] = useState<WebhookForm>(emptyForm);
@@ -260,6 +295,26 @@ export function SettingsNotificationsPage() {
               <Switch size="sm" aria-label="Send notifications" checked={settings.enableNotifications} disabled={busy === "global"} onCheckedChange={(checked) => void toggleGlobal(checked)} />
             </ListCell>
           </ListRow>
+        </ListTable>
+      </ListCard>
+
+      <ListCard title="Subtitle notifications" count="Independently toggleable, like every other notification kind below">
+        <ListTable columns={[{ label: "Event" }, { label: "Fires when" }, { label: "On", width: LIST_TRACK.toggle, mobile: true }]} chevron={false}>
+          {SUBTITLE_PREFERENCE_ROWS.map((row) => (
+            <ListRow key={row.key}>
+              <ListNameCell name={row.name} />
+              <ListCell primary={row.description} />
+              <ListCell mobile>
+                <Switch
+                  size="sm"
+                  aria-label={row.name}
+                  checked={Boolean(preferences[row.key])}
+                  disabled={busyPreference === row.key}
+                  onCheckedChange={(checked) => void togglePreference(row.key, checked)}
+                />
+              </ListCell>
+            </ListRow>
+          ))}
         </ListTable>
       </ListCard>
 

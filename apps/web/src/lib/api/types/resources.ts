@@ -938,6 +938,33 @@ export interface NotificationWebhookDeliveryItem {
   updatedUtc: string;
 }
 
+/** GET/PUT /api/notification-preferences — in-app "bell" kinds plus the
+ * outbound-dispatch gates that share these same toggles. */
+export interface NotificationPreferences {
+  searchCompletionEnabled: boolean;
+  downloadStartedEnabled: boolean;
+  downloadProgressEnabled: boolean;
+  downloadCompletedEnabled: boolean;
+  importStartedEnabled: boolean;
+  importCompletedEnabled: boolean;
+  importFailedEnabled: boolean;
+  automationErrorEnabled: boolean;
+  systemWarningsEnabled: boolean;
+  providerHealthChangedEnabled: boolean;
+  subtitleDownloadedEnabled: boolean;
+  subtitleUpgradedEnabled: boolean;
+  subtitleFailedEnabled: boolean;
+  upgradeEnabled: boolean;
+  renameEnabled: boolean;
+  fileDeletedEnabled: boolean;
+  manualInteractionRequiredEnabled: boolean;
+  inAppNotificationsEnabled: boolean;
+  emailNotificationsEnabled: boolean;
+  webhookNotificationsEnabled: boolean;
+  emailAddress: string | null;
+  webhookUrl: string | null;
+}
+
 export interface DownloadClientItem {
   id: string;
   name: string;
