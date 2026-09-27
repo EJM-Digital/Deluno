@@ -191,7 +191,7 @@ public sealed class LibrarySubtitleSearchNotificationTests
 
         var notificationService = new InMemoryNotificationService();
         var publisher = new NotificationEventPublisher(notificationService, new NullRealtimeEventPublisher());
-        var handler = new LibrarySubtitleSearchJobHandler(libraries, subtitles, fetchService, jobStore, publisher);
+        var handler = new LibrarySubtitleSearchJobHandler(libraries, subtitles, fetchService, jobStore, publisher, jobStore);
 
         return (handler, movies, subtitles, notificationService, library!);
     }
