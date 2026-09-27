@@ -227,7 +227,7 @@ public static partial class CustomFormatDefinitionMatcher
             "sourcespecification" when MapQualitySource(value, sonarrNumbering) is { } source => ("source", source),
             // Both apps store a resolution as its line count: 2160, not 2160p.
             "resolutionspecification" => ("resolution", value.All(char.IsAsciiDigit) ? value + "p" : value),
-            "qualitymodifierspecification" when value == "5" => ("source", "remux"),
+            "qualitymodifierspecification" when MapQualityModifier(value) is { } modifier => ("source", modifier),
             "hdrspecification" => ("hdr", value),
             "codecspecification" => ("codec", value),
             "releasegroupspecification" => ("releaseGroup", value),
@@ -255,6 +255,25 @@ public static partial class CustomFormatDefinitionMatcher
             "9" when !sonarrNumbering => "bluray",
             "cam" or "telesync" or "telecine" or "workprint" or "dvd" or "hdtv"
                 or "web" or "web-dl" or "webdl" or "webrip" or "bluray" or "blu-ray" => value,
+            _ => null
+        };
+
+    /// <summary>
+    /// Radarr's Quality Modifier disambiguates a source/resolution pair with
+    /// exactly five values (source: wiki.servarr.com/radarr/settings,
+    /// confirmed against the shipped Modifier enum): 1 Regional, 2 Screener,
+    /// 3 Raw-HD, 4 BR-DISK, 5 Remux. Only value 5 was ever mapped before
+    /// (#774); an unrecognized value returns null and is left for the
+    /// generic review-only path rather than guessed at.
+    /// </summary>
+    private static string? MapQualityModifier(string value)
+        => value switch
+        {
+            "1" => "regional",
+            "2" => "screener",
+            "3" => "rawhd",
+            "4" => "brdisk",
+            "5" => "remux",
             _ => null
         };
 
@@ -439,6 +458,9 @@ public static partial class CustomFormatDefinitionMatcher
                       || lower.Contains("sdtv", StringComparison.Ordinal)
                       || lower.Contains("tvrip", StringComparison.Ordinal),
             "rawhd" => lower.Contains("raw-hd", StringComparison.Ordinal) || lower.Contains("rawhd", StringComparison.Ordinal),
+            "regional" => lower.Contains("regional", StringComparison.Ordinal),
+            "screener" => lower.Contains("screener", StringComparison.Ordinal) || lower.Contains(".scr.", StringComparison.Ordinal),
+            "brdisk" => lower.Contains("brdisk", StringComparison.Ordinal) || lower.Contains("br-disk", StringComparison.Ordinal),
             // Sonarr's Blu-ray source excludes the remux, which it numbers apart.
             "bluray-encode" => (lower.Contains("bluray", StringComparison.Ordinal) || lower.Contains("blu-ray", StringComparison.Ordinal))
                                && !lower.Contains("remux", StringComparison.Ordinal),
