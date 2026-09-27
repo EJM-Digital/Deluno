@@ -9,7 +9,7 @@ namespace Deluno.Integrations.DownloadClients.Clients;
 public sealed class DelugeDownloadClient(IHttpClientFactory httpClientFactory) : DownloadClientBase
 {
     public override string Protocol => "deluge";
-    public override DownloadClientTelemetryCapabilities Capabilities { get; } = new(true, false, true, true, true, true, "password");
+    public override DownloadClientTelemetryCapabilities Capabilities { get; } = new(true, false, true, true, true, true, "password", SupportsQueueReorder: true);
 
     public override async Task<DownloadClientGrabResult> GrabAsync(DownloadClientItem client, DownloadClientGrabRequest request, CancellationToken cancellationToken)
     {
@@ -127,6 +127,11 @@ public sealed class DelugeDownloadClient(IHttpClientFactory httpClientFactory) :
             DownloadClientActions.Delete => ("core.remove_torrent", false),
             DownloadClientActions.DeleteWithData => ("core.remove_torrent", true),
             DownloadClientActions.Forget => ("core.remove_torrent", true),
+            // #810: Deluge's own core.queue_* methods.
+            DownloadClientActions.MoveToTop => ("core.queue_top", null),
+            DownloadClientActions.MoveUp => ("core.queue_up", null),
+            DownloadClientActions.MoveDown => ("core.queue_down", null),
+            DownloadClientActions.MoveToBottom => ("core.queue_bottom", null),
             _ => (null, null)
         };
         if (method is null) return DownloadClientHelpers.Unsupported(client, queueItemId, action, "Deluge");

@@ -280,6 +280,29 @@ public sealed class DownloadClientTelemetryService(
             };
         }
 
+        // #810/#933: queue priority/reorder and force-start act on a download
+        // Deluno itself dispatched, never a foreign item merely sharing the
+        // client — the Queue screen already only lists Deluno's own
+        // downloads, but this is the backend's own guarantee of it, not only
+        // a UI convention.
+        if (DownloadClientActions.IsQueuePriorityOrForceStart(action))
+        {
+            var owningDispatch = await dispatchesRepository.FindDispatchByHashAsync(client.Id, request.QueueItemId, cancellationToken);
+            if (owningDispatch is null)
+            {
+                return new DownloadClientActionResult(client.Id, request.QueueItemId, action, false, "Deluno did not dispatch this download, so it will not reorder or force-start it.")
+                {
+                    Failure = IntegrationFailureFactory.FromLegacy(
+                        "download-client",
+                        client.Id,
+                        client.Name,
+                        $"action:{action}",
+                        "rejected",
+                        "Not a Deluno dispatch.")
+                };
+            }
+        }
+
         // Queue removal used to be gated behind "Allow removing client queue
         // entries", a setting that hid removal entirely rather than asking
         // anything. Cleanup sheet J1/J2 (#924) replaced it: the Queue's remove
@@ -2820,6 +2843,12 @@ public sealed class DownloadClientTelemetryService(
             "delete-with-data" => DownloadClientActions.DeleteWithData,
             "forget" => DownloadClientActions.Forget,
             "recheck" or "force-recheck" => DownloadClientActions.Recheck,
+            // #810: queue priority/reorder and force-start.
+            "move-to-top" or "movetotop" or "top" => DownloadClientActions.MoveToTop,
+            "move-up" or "moveup" => DownloadClientActions.MoveUp,
+            "move-down" or "movedown" => DownloadClientActions.MoveDown,
+            "move-to-bottom" or "movetobottom" or "bottom" => DownloadClientActions.MoveToBottom,
+            "force-start" or "forcestart" => DownloadClientActions.ForceStart,
             _ => null
         };
 

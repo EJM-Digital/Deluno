@@ -13,7 +13,7 @@ public sealed class SabnzbdDownloadClient(IHttpClientFactory httpClientFactory) 
 
     public override DownloadClientTelemetryCapabilities Capabilities { get; } = new(
         SupportsQueue: true, SupportsHistory: true, SupportsPauseResume: true, SupportsRemove: true,
-        SupportsRecheck: false, SupportsImportPath: true, AuthMode: "api-key");
+        SupportsRecheck: false, SupportsImportPath: true, AuthMode: "api-key", SupportsQueueReorder: true);
 
     public override async Task<DownloadClientGrabResult> GrabAsync(DownloadClientItem client, DownloadClientGrabRequest request, CancellationToken cancellationToken)
     {
@@ -316,13 +316,31 @@ public sealed class SabnzbdDownloadClient(IHttpClientFactory httpClientFactory) 
             DownloadClientActions.Resume => "queue&name=resume",
             DownloadClientActions.Delete => "queue&name=delete",
             DownloadClientActions.DeleteWithData => "queue&name=delete&del_files=1",
+            // #810: SABnzbd has no move-up/move-down of its own -- only the
+            // discrete priority tiers below, set with mode=queue&name=priority.
+            // Move up/down map onto the nearest tier in that direction rather
+            // than a true one-slot move; move-to-bottom lands on the same Low
+            // tier move-down does, since there is nothing lower short of
+            // Paused, which would stop the download rather than reorder it.
+            DownloadClientActions.MoveToTop => "queue&name=priority",
+            DownloadClientActions.MoveUp => "queue&name=priority",
+            DownloadClientActions.MoveDown => "queue&name=priority",
+            DownloadClientActions.MoveToBottom => "queue&name=priority",
             // SABnzbd verifies its own downloads and exposes no per-item
             // recheck, so that verb is refused rather than quietly mapped onto
             // something adjacent.
             _ => null
         };
         if (mode is null) return DownloadClientHelpers.Unsupported(client, queueItemId, action, "SABnzbd");
-        using var response = await http.GetAsync(new Uri(baseUri, $"api?mode={mode}&value={Uri.EscapeDataString(queueItemId)}&apikey={Uri.EscapeDataString(client.Secret)}&output=json"), cancellationToken);
+        var priorityValue = action switch
+        {
+            DownloadClientActions.MoveToTop => "&value2=2",
+            DownloadClientActions.MoveUp => "&value2=1",
+            DownloadClientActions.MoveDown => "&value2=-2",
+            DownloadClientActions.MoveToBottom => "&value2=-2",
+            _ => string.Empty
+        };
+        using var response = await http.GetAsync(new Uri(baseUri, $"api?mode={mode}&value={Uri.EscapeDataString(queueItemId)}{priorityValue}&apikey={Uri.EscapeDataString(client.Secret)}&output=json"), cancellationToken);
         if (response.IsSuccessStatusCode)
         {
             return DownloadClientHelpers.ActionSuccess(client, queueItemId, action, "SABnzbd action sent.");

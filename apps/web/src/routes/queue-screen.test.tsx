@@ -1,10 +1,10 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
-import type { DownloadDispatchItem, DownloadHealthFinding, DownloadQueueItem, ImportPreviewResponse, LibraryItem, MediaProbeInfo } from "../lib/api";
+import type { DownloadClientTelemetrySnapshot, DownloadDispatchItem, DownloadHealthFinding, DownloadQueueItem, ImportPreviewResponse, LibraryItem, MediaProbeInfo } from "../lib/api";
 import { emptyPlatformSettingsSnapshot } from "../lib/api";
 import { RemovalReasonDialog, type RemovalReason } from "../components/ui/removal-reason-dialog";
-import { buildImportRequest, findDispatchForQueueItem, ImportPreviewFacts, QueuePage, visibleFindings } from "./queue-screen";
+import { buildImportRequest, findDispatchForQueueItem, ImportPreviewFacts, QueuePage, reorderControlsFor, visibleFindings } from "./queue-screen";
 
 const authedFetchMock = vi.fn();
 vi.mock("../lib/use-auth", () => ({ authedFetch: (...args: unknown[]) => authedFetchMock(...args) }));
@@ -39,6 +39,34 @@ vi.mock("react-router-dom", async (importOriginal) => ({
   useRevalidator: () => ({ revalidate: revalidateMock, state: "idle" }),
   useNavigate: () => vi.fn()
 }));
+
+// #810: reorder/force-start controls are shown only when the client's own
+// reported capabilities say so, never guessed at per protocol.
+describe("reorderControlsFor (#810)", () => {
+  const capabilities = (overrides: Partial<DownloadClientTelemetrySnapshot["capabilities"]>): Pick<DownloadClientTelemetrySnapshot, "capabilities"> => ({
+    capabilities: {
+      supportsQueue: true, supportsHistory: true, supportsPauseResume: true, supportsRemove: true,
+      supportsRecheck: true, supportsImportPath: true, authMode: "form",
+      ...overrides
+    }
+  });
+
+  it("shows nothing for a missing client", () => {
+    expect(reorderControlsFor(null)).toEqual({ canReorder: false, canForceStart: false });
+  });
+
+  it("hides reorder controls for a client that could not confirm its queue API (uTorrent)", () => {
+    expect(reorderControlsFor(capabilities({}))).toEqual({ canReorder: false, canForceStart: false });
+  });
+
+  it("shows reorder controls without force-start for a torrent/usenet client other than qBittorrent", () => {
+    expect(reorderControlsFor(capabilities({ supportsQueueReorder: true }))).toEqual({ canReorder: true, canForceStart: false });
+  });
+
+  it("shows both reorder and force-start for qBittorrent", () => {
+    expect(reorderControlsFor(capabilities({ supportsQueueReorder: true, supportsForceStart: true }))).toEqual({ canReorder: true, canForceStart: true });
+  });
+});
 
 function packPreview(canExecute: boolean): ImportPreviewResponse {
   return {

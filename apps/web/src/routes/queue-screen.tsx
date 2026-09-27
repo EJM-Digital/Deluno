@@ -20,7 +20,7 @@
 import { statusPresentation, statusTone } from "../lib/status-tones";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useLoaderData, useRevalidator, useSearchParams } from "react-router-dom";
-import { Loader2, Pause, Play, RefreshCw, RotateCw, Trash2, Upload } from "lucide-react";
+import { ArrowDownToLine, ArrowUpToLine, ChevronDown, ChevronUp, Loader2, Pause, Play, RefreshCw, RotateCw, Trash2, Upload, Zap } from "lucide-react";
 import {
   ApiRequestError,
   fetchJson, fetchPageItems,
@@ -29,6 +29,7 @@ import {
   type DownloadHealthFinding,
   type DownloadHealthRecord,
   type DownloadDispatchItem,
+  type DownloadClientTelemetrySnapshot,
   type DownloadQueueItem,
   type DownloadTelemetryOverview,
   type IntegrationFailure,
@@ -80,7 +81,7 @@ import { realtimeToast, toast } from "../components/shell/toaster";
 import { RealtimeGroups, useSignalREvent } from "../lib/use-signalr";
 import { formatDateTime as formatPreferenceDateTime, useDisplayPreferences } from "../lib/display-preferences";
 
-type QueueAction = "pause" | "resume" | "recheck";
+type QueueAction = "pause" | "resume" | "recheck" | "move-to-top" | "move-up" | "move-down" | "move-to-bottom" | "force-start";
 
 interface ManualImportForm {
   sourcePath: string;
@@ -285,6 +286,12 @@ export function QueuePage() {
   );
   const visibleActivity = activityKind === "all" ? activity : activity.filter((entry) => entry.kind === activityKind);
   const openQueueItem = drawer?.kind === "queue" ? queue.find((item) => item.id === drawer.id) ?? null : null;
+  // #810: whether this item's own client can reorder its queue or force-start
+  // a transfer, read straight from the client's own reported capabilities
+  // rather than guessed at per protocol, so a control never shows for a
+  // client that would just refuse it.
+  const openQueueClient = openQueueItem ? telemetry.clients.find((client) => client.clientId === openQueueItem.clientId) ?? null : null;
+  const { canReorder, canForceStart } = reorderControlsFor(openQueueClient);
   // The newest hand-off of this download, so its drawer can say what the processor said (#616).
   const openQueueHandoff = openQueueItem
     ? processorHandoffs
@@ -1322,6 +1329,36 @@ export function QueuePage() {
                   <RotateCw className="h-3.5 w-3.5" />
                   Re-check
                 </Button>
+                {canReorder ? (
+                  <>
+                    <Button type="button" variant="outline" size="sm" title="Move to top" aria-label="Move to top of queue" onClick={() => void queueAction(openQueueItem, "move-to-top")} disabled={busyKey !== null}>
+                      <ArrowUpToLine className="h-3.5 w-3.5" />
+                    </Button>
+                    <Button type="button" variant="outline" size="sm" title="Move up" aria-label="Move up in queue" onClick={() => void queueAction(openQueueItem, "move-up")} disabled={busyKey !== null}>
+                      <ChevronUp className="h-3.5 w-3.5" />
+                    </Button>
+                    <Button type="button" variant="outline" size="sm" title="Move down" aria-label="Move down in queue" onClick={() => void queueAction(openQueueItem, "move-down")} disabled={busyKey !== null}>
+                      <ChevronDown className="h-3.5 w-3.5" />
+                    </Button>
+                    <Button type="button" variant="outline" size="sm" title="Move to bottom" aria-label="Move to bottom of queue" onClick={() => void queueAction(openQueueItem, "move-to-bottom")} disabled={busyKey !== null}>
+                      <ArrowDownToLine className="h-3.5 w-3.5" />
+                    </Button>
+                  </>
+                ) : (
+                  // #810: uTorrent's queue-reorder API could not be
+                  // independently confirmed this session (closed-source, no
+                  // public source repo), so the control is hidden rather than
+                  // guessed at — with a plain reason rather than nothing.
+                  <p className="text-[length:var(--type-caption)] text-muted-foreground basis-full">
+                    Reordering the queue is not available for {openQueueItem.clientName}.
+                  </p>
+                )}
+                {canForceStart ? (
+                  <Button type="button" variant="outline" size="sm" onClick={() => void queueAction(openQueueItem, "force-start")} disabled={busyKey !== null}>
+                    <Zap className="h-3.5 w-3.5" />
+                    Force start
+                  </Button>
+                ) : null}
                 <Button type="button" variant="outline" size="sm" onClick={() => void previewCleanup(openQueueItem)} disabled={busyKey !== null}>
                   What would removing do?
                 </Button>
@@ -1976,6 +2013,20 @@ export function visibleFindings(item: DownloadQueueItem): DownloadHealthFinding[
   return (item.healthFindings ?? []).filter((finding) => !finding.ignoredUntilUtc || new Date(finding.ignoredUntilUtc).getTime() <= now);
 }
 
+/**
+ * #810: whether a queue item's own client can reorder its queue or
+ * force-start a transfer, read from the client's own reported capabilities
+ * rather than guessed at per protocol — a client whose queue API this
+ * session could not confirm (uTorrent) reports neither, and the control is
+ * hidden with a plain reason instead of failing when clicked.
+ */
+export function reorderControlsFor(client: Pick<DownloadClientTelemetrySnapshot, "capabilities"> | null): { canReorder: boolean; canForceStart: boolean } {
+  return {
+    canReorder: client?.capabilities.supportsQueueReorder ?? false,
+    canForceStart: client?.capabilities.supportsForceStart ?? false
+  };
+}
+
 function queueChip(item: DownloadQueueItem): { tone: NonNullable<ChipProps["tone"]>; label: string } {
   if (item.failure) return { tone: integrationFailureTone(item.failure), label: integrationFailureShortLabel(item.failure) };
   if (item.errorMessage || item.status === downloadQueueStatuses.stalled) return { tone: statusTone("transfer.stalled"), label: queueStatusLabel(item.status) };
@@ -2523,6 +2574,16 @@ function actionLabel(action: QueueAction) {
       return "Resume";
     case "recheck":
       return "Re-check";
+    case "move-to-top":
+      return "Move to top";
+    case "move-up":
+      return "Move up";
+    case "move-down":
+      return "Move down";
+    case "move-to-bottom":
+      return "Move to bottom";
+    case "force-start":
+      return "Force start";
     default:
       return "Remove";
   }
