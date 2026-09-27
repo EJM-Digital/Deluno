@@ -146,13 +146,85 @@ public sealed class ClearingRefusedDownloadsTests
             await cleanup.CleanUpOneAsync("never-blocked", CancellationToken.None));
     }
 
+    /// <summary>
+    /// #882/#883/#885, cleanup sheet D1/D2/D4: a release the client itself
+    /// reported as failed (missing articles, an encrypted archive, a damaged
+    /// unpack) is removed from the client with its data once the user's own
+    /// "remove a bad download" and "delete its files" switches are on.
+    /// </summary>
+    [Fact]
+    public async Task A_client_reported_failure_is_removed_with_its_data_once_cleanup_is_turned_on()
+    {
+        var blocklist = Blocklist(RefusedForClientReportedFailure("nzo-1"));
+        var clients = Clients();
+
+        await Cleanup(blocklist.Object, clients.Object, Sharing(), clientReportedFailureCleanupOn: true)
+            .CleanUpEverythingAsync(CancellationToken.None);
+
+        clients.Verify(
+            service => service.ExecuteActionAsync(
+                "sabnzbd-main",
+                It.Is<DownloadClientActionRequest>(request => request.Action == DownloadClientActions.Forget),
+                It.IsAny<CancellationToken>()),
+            Times.Once);
+        blocklist.Verify(list => list.MarkCleanedUpAsync("block-1", It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    /// <summary>
+    /// #936: nothing automatic is on by default, and an existing install is
+    /// never flipped on. With the switches off, the release stays exactly
+    /// where it is — still blocklisted and still shown (the Blocklist screen
+    /// already says why), but not removed and not deleted.
+    /// </summary>
+    [Fact]
+    public async Task A_client_reported_failure_is_left_alone_while_cleanup_is_off()
+    {
+        var blocklist = Blocklist(RefusedForClientReportedFailure("nzo-1"));
+        var clients = Clients();
+
+        await Cleanup(blocklist.Object, clients.Object, Sharing(), clientReportedFailureCleanupOn: false)
+            .CleanUpEverythingAsync(CancellationToken.None);
+
+        clients.VerifyNoOtherCalls();
+        blocklist.Verify(list => list.MarkCleanedUpAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    /// <summary>The manual "Clean up now" button answers to the same setting as the automatic pass.</summary>
+    [Fact]
+    public async Task Clearing_a_client_reported_failure_by_hand_still_respects_the_setting()
+    {
+        var blocklist = Blocklist(RefusedForClientReportedFailure("nzo-1"));
+        var clients = Clients();
+
+        var outcome = await Cleanup(blocklist.Object, clients.Object, Sharing(), clientReportedFailureCleanupOn: false)
+            .CleanUpOneAsync("block-1", CancellationToken.None);
+
+        Assert.Equal(RefusedDownloadCleanupOutcomes.CleanupDisabled, outcome);
+        clients.VerifyNoOtherCalls();
+    }
+
     // ------------------------------------------------------------------ helpers
 
     private static RefusedDownloadCleanupService Cleanup(
         IBlockedReleaseRepository blocklist,
         IDownloadClientTelemetryService clients,
-        IDownloadSharingRepository sharing)
-        => new(blocklist, clients, sharing, NullLogger<RefusedDownloadCleanupService>.Instance);
+        IDownloadSharingRepository sharing,
+        bool clientReportedFailureCleanupOn = false)
+        => new(blocklist, clients, sharing, Settings(clientReportedFailureCleanupOn), NullLogger<RefusedDownloadCleanupService>.Instance);
+
+    private static IPlatformSettingsRepository Settings(bool clientReportedFailureCleanupOn)
+    {
+        var settings = new Mock<IPlatformSettingsRepository>();
+        settings.Setup(repository => repository.GetAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new PlatformSettingsSnapshot(
+                "Deluno", null, null, null, null, false, false, false, false, false, false,
+                "{Movie Title} ({Year})", "{Series Title}", "{Movie Title} ({Year}) [{Quality}]", "{Series Title} - {Episode}",
+                "0.0.0.0", 8080, "", false, "system", "grid", "grid", false, false, "AU", "en", "prefer-tmdb", "", false, false, false,
+                "", "balanced", 30, DateTimeOffset.UnixEpoch,
+                CleanupRemoveClientEntryAfterThreshold: clientReportedFailureCleanupOn,
+                CleanupPurgePayloadAfterThreshold: clientReportedFailureCleanupOn));
+        return settings.Object;
+    }
 
     private static Mock<IBlockedReleaseRepository> Blocklist(params BlockedRelease[] pending)
     {
@@ -201,5 +273,22 @@ public sealed class ClearingRefusedDownloadsTests
             queueItemId,
             "qbittorrent-main",
             "qBittorrent",
+            DateTimeOffset.UnixEpoch);
+
+    /// <summary>A release SABnzbd or NZBGet itself reported as failed (#882/#883/#885) — missing articles, an encrypted archive, or a damaged unpack.</summary>
+    private static BlockedRelease RefusedForClientReportedFailure(string queueItemId)
+        => new(
+            "block-1",
+            BlockedReleaseKeys.For("Arrival.2016.2160p", "NZBGeek"),
+            "Arrival.2016.2160p",
+            "NZBGeek",
+            "movies",
+            "movie-1",
+            "Arrival",
+            ImportFailurePolicy.ClientReportedFailure,
+            "SABnzbd could not download it: too many articles are missing.",
+            queueItemId,
+            "sabnzbd-main",
+            "SABnzbd",
             DateTimeOffset.UnixEpoch);
 }

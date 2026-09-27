@@ -157,11 +157,19 @@ public sealed class SqliteBlockedReleaseRepository(
     public async Task<IReadOnlyList<BlockedRelease>> ListAwaitingCleanupAsync(CancellationToken cancellationToken)
         // A proposal's copy is left where it is. Destroying the evidence
         // before the question is answered would make "allow it" a lie.
+        //
+        // ClientReportedFailure (cleanup sheet D1/D2/D4, #882/#883/#885) is
+        // included alongside ShouldDeletePayload's own reasons: unlike those,
+        // whether it is actually cleared depends on the user's own cleanup
+        // setting, so RefusedDownloadCleanupService decides that part — this
+        // list is only "which refusals could ever be eligible."
         => (await ListWhereAsync(
                 "state = 'refused' AND cleaned_up_utc IS NULL "
                 + "AND download_client_id IS NOT NULL AND torrent_hash_or_item_id IS NOT NULL",
                 cancellationToken))
-            .Where(release => ImportFailurePolicy.ShouldDeletePayload(release.ReasonCode))
+            .Where(release =>
+                ImportFailurePolicy.ShouldDeletePayload(release.ReasonCode) ||
+                release.ReasonCode == ImportFailurePolicy.ClientReportedFailure)
             .ToArray();
 
     public async Task<bool> RefuseAsync(string id, CancellationToken cancellationToken)

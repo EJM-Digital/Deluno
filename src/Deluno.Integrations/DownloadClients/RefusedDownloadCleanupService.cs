@@ -28,6 +28,13 @@ public static class RefusedDownloadCleanupOutcomes
     public const string ClientUnavailable = "clientUnavailable";
 
     public const string NotFound = "notFound";
+
+    /// <summary>
+    /// A release the client itself reported as failed (#882/#883/#885) is
+    /// left exactly where it is, because the user's cleanup setting is off
+    /// (#936: off by default, and an existing install is never flipped on).
+    /// </summary>
+    public const string CleanupDisabled = "cleanupDisabled";
 }
 
 public interface IRefusedDownloadCleanupService
@@ -58,11 +65,24 @@ public interface IRefusedDownloadCleanupService
 /// <para>A service rather than a method on the worker, because the schedule and
 /// the <b>Clean up now</b> button on a blocklist row have to do the identical
 /// thing. DESIGN-007: "nothing automatic is only automatic".</para>
+///
+/// <para><b>A release the client itself reported as failed is different
+/// (#882/#883/#885, cleanup sheet D1/D2/D4).</b> Deluno already knows those
+/// files are junk, but destroying a download without being asked is exactly
+/// what #936 says nothing does by default: it only clears one once the
+/// user's own "remove a bad download" and "delete a bad download's files"
+/// switches (<see cref="Deluno.Platform.Contracts.PlatformSettingsSnapshot.CleanupRemoveClientEntryAfterThreshold"/>
+/// and <see cref="Deluno.Platform.Contracts.PlatformSettingsSnapshot.CleanupPurgePayloadAfterThreshold"/>,
+/// the same pair the setup guide already asks about) are both on. Off, the
+/// refusal is left exactly where it is — still visible and still explained
+/// on the Blocklist screen, which is where "the screen says so" is already
+/// satisfied for a refused release.</para>
 /// </summary>
 public sealed class RefusedDownloadCleanupService(
     IBlockedReleaseRepository blockedReleases,
     IDownloadClientTelemetryService downloadClients,
     IDownloadSharingRepository sharingRepository,
+    Deluno.Platform.Data.IPlatformSettingsRepository platformRepository,
     ILogger<RefusedDownloadCleanupService> logger) : IRefusedDownloadCleanupService
 {
     public async Task<RefusedDownloadCleanupResult> CleanUpEverythingAsync(CancellationToken cancellationToken)
@@ -74,13 +94,14 @@ public sealed class RefusedDownloadCleanupService(
         }
 
         var holds = await SharingHoldsAsync(cancellationToken);
+        var clientReportedFailureCleanupOn = await ClientReportedFailureCleanupIsOnAsync(cancellationToken);
         var cleared = 0;
         var waiting = 0;
         var failed = 0;
 
         foreach (var release in pending)
         {
-            switch (await ClearAsync(release, holds, cancellationToken))
+            switch (await ClearAsync(release, holds, clientReportedFailureCleanupOn, cancellationToken))
             {
                 case RefusedDownloadCleanupOutcomes.Cleared:
                     cleared++;
@@ -127,7 +148,11 @@ public sealed class RefusedDownloadCleanupService(
                 : RefusedDownloadCleanupOutcomes.NotFound;
         }
 
-        return await ClearAsync(release, await SharingHoldsAsync(cancellationToken), cancellationToken);
+        return await ClearAsync(
+            release,
+            await SharingHoldsAsync(cancellationToken),
+            await ClientReportedFailureCleanupIsOnAsync(cancellationToken),
+            cancellationToken);
     }
 
     private async Task<HashSet<string>> SharingHoldsAsync(CancellationToken cancellationToken)
@@ -135,15 +160,37 @@ public sealed class RefusedDownloadCleanupService(
             .Select(hold => hold.QueueItemId)
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
+    /// <summary>
+    /// the owner's cleanup setting for a download Deluno has judged bad — the same
+    /// "remove a bad download" / "delete a bad download's files" pair the
+    /// setup guide already asks about. A release the client itself reported
+    /// as failed only ever gets both done together, so both have to be on.
+    /// </summary>
+    private async Task<bool> ClientReportedFailureCleanupIsOnAsync(CancellationToken cancellationToken)
+    {
+        var settings = await platformRepository.GetAsync(cancellationToken);
+        return settings.CleanupRemoveClientEntryAfterThreshold && settings.CleanupPurgePayloadAfterThreshold;
+    }
+
     private async Task<string> ClearAsync(
         BlockedRelease release,
         HashSet<string> holds,
+        bool clientReportedFailureCleanupOn,
         CancellationToken cancellationToken)
     {
         if (release.TorrentHashOrItemId is not { Length: > 0 } queueItemId ||
             release.DownloadClientId is not { Length: > 0 } clientId)
         {
             return RefusedDownloadCleanupOutcomes.NothingToClear;
+        }
+
+        // #882/#883/#885: unlike a file Deluno read for itself, clearing one
+        // the client merely reported as failed is only ever automatic when
+        // the user turned that on (#936). Left alone rather than marked
+        // cleaned, so turning the setting on later still finds it.
+        if (release.ReasonCode == ImportFailurePolicy.ClientReportedFailure && !clientReportedFailureCleanupOn)
+        {
+            return RefusedDownloadCleanupOutcomes.CleanupDisabled;
         }
 
         if (holds.Contains(queueItemId))
