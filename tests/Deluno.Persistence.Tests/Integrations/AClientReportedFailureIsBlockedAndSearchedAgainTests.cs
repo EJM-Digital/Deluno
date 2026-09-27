@@ -87,6 +87,43 @@ public sealed class AClientReportedFailureIsBlockedAndSearchedAgainTests
         Assert.Single(await world.Jobs.ListAsync(10, CancellationToken.None));
     }
 
+    /// <summary>
+    /// #806: Remove failed is a per-client choice, off by default. Left off,
+    /// nothing here changes — the failed entry stays in NZBGet exactly as it
+    /// does today.
+    /// </summary>
+    [Fact]
+    public async Task Remove_failed_left_off_leaves_the_clients_own_entry_alone()
+    {
+        using var world = await World.CreateAsync(removeFailed: false);
+
+        await world.ShowHistoryAsync(NzbGetHistory("FAILURE/HEALTH"));
+
+        Assert.Null(world.FakeDownloadClient.LastAction);
+    }
+
+    /// <summary>
+    /// #806: turned on for this client, a client-reported failure also asks
+    /// the client to delete the entry and its data — distinct from
+    /// ImportFailurePolicy above, which decides whether the release is
+    /// blocklisted and searched again regardless of this toggle.
+    /// </summary>
+    [Fact]
+    public async Task Remove_failed_turned_on_deletes_the_failed_entry_from_the_client()
+    {
+        using var world = await World.CreateAsync(removeFailed: true);
+
+        await world.ShowHistoryAsync(NzbGetHistory("FAILURE/HEALTH"));
+
+        Assert.Equal("delete-with-data", world.FakeDownloadClient.LastAction);
+        Assert.Equal("331", world.FakeDownloadClient.LastQueueItemId);
+
+        // Still blocked and searched again — Remove failed only decides the
+        // client's own queue entry, not the release-level outcome.
+        Assert.Single(await world.Blocklist.ListAsync(CancellationToken.None));
+        Assert.Single(await world.Jobs.ListAsync(10, CancellationToken.None));
+    }
+
     [Fact]
     public async Task A_failure_already_recorded_is_not_blocked_or_searched_twice()
     {
@@ -179,6 +216,40 @@ public sealed class AClientReportedFailureIsBlockedAndSearchedAgainTests
             HistorySource: "native", ExternalId: "331");
     }
 
+    /// <summary>Records the last action asked of it, without touching any real client.</summary>
+    private sealed class FakeClient(string protocol) : Deluno.Integrations.DownloadClients.IDownloadClient
+    {
+        public string Protocol => protocol;
+
+        public string? LastAction { get; private set; }
+
+        public string? LastQueueItemId { get; private set; }
+
+        public DownloadClientTelemetryCapabilities Capabilities { get; } = new(true, true, true, true, true, true, protocol);
+
+        public Task<DownloadClientGrabResult> GrabAsync(DownloadClientItem client, DownloadClientGrabRequest request, CancellationToken cancellationToken)
+            => throw new NotSupportedException();
+
+        public Task<DownloadClientTelemetrySnapshot?> GetSnapshotAsync(DownloadClientItem client, DateTimeOffset capturedUtc, CancellationToken cancellationToken)
+            => throw new NotSupportedException();
+
+        public Task<DownloadClientActionResult> ExecuteActionAsync(DownloadClientItem client, string action, string queueItemId, CancellationToken cancellationToken)
+        {
+            LastAction = action;
+            LastQueueItemId = queueItemId;
+            return Task.FromResult(new DownloadClientActionResult(client.Id, queueItemId, action, true, $"{action} sent to {client.Name}"));
+        }
+
+        public Task<IReadOnlyList<DownloadClientHistoryItem>> GetHistoryAsync(DownloadClientItem client, DateTimeOffset capturedUtc, CancellationToken cancellationToken)
+            => throw new NotSupportedException();
+
+        public Task<DownloadClientCategoryCheckResult> CheckCategoryAsync(DownloadClientItem client, string category, CancellationToken cancellationToken)
+            => throw new NotSupportedException();
+
+        public string NormalizeStatus(string? nativeStatus, double? progress, int? errorCode = null, string? errorMessage = null)
+            => nativeStatus ?? "unknown";
+    }
+
     private sealed class World : IDisposable
     {
         private readonly TestStorage _storage;
@@ -193,7 +264,8 @@ public sealed class AClientReportedFailureIsBlockedAndSearchedAgainTests
             string dispatchId,
             SqliteJobStore jobs,
             SqliteDownloadDispatchesRepository dispatches,
-            SqliteBlockedReleaseRepository blocklist)
+            SqliteBlockedReleaseRepository blocklist,
+            FakeClient fakeClient)
         {
             _storage = storage;
             Now = now;
@@ -203,7 +275,10 @@ public sealed class AClientReportedFailureIsBlockedAndSearchedAgainTests
             Jobs = jobs;
             Dispatches = dispatches;
             Blocklist = blocklist;
+            FakeDownloadClient = fakeClient;
         }
+
+        public FakeClient FakeDownloadClient { get; }
 
         public DateTimeOffset Now { get; }
 
@@ -217,7 +292,9 @@ public sealed class AClientReportedFailureIsBlockedAndSearchedAgainTests
 
         public SqliteBlockedReleaseRepository Blocklist { get; }
 
-        public static async Task<World> CreateAsync()
+        public static Task<World> CreateAsync() => CreateAsync(removeFailed: false);
+
+        public static async Task<World> CreateAsync(bool removeFailed)
         {
             var storage = TestStorage.Create();
             var now = DateTimeOffset.Parse("2026-09-25T04:12:00Z");
@@ -232,7 +309,7 @@ public sealed class AClientReportedFailureIsBlockedAndSearchedAgainTests
                 "TV", "tv", "library", Path.Combine(storage.DataRoot, "tv"), Path.Combine(storage.DataRoot, "downloads"), null,
                 "direct-import", null, null, null, null, true, true, true, 12, 24, 25), CancellationToken.None);
             var client = await connections.CreateDownloadClientAsync(new CreateDownloadClientRequest(
-                "NZBGet", "nzbget", "localhost", 6789, null, null, null, "movies", "tv", null, 1, true), CancellationToken.None);
+                "NZBGet", "nzbget", "localhost", 6789, null, null, null, "movies", "tv", null, 1, true, RemoveFailed: removeFailed), CancellationToken.None);
             var dispatches = new SqliteDownloadDispatchesRepository(storage.Factory, time);
             var jobs = new SqliteJobStore(storage.Factory, time, new NullRealtimeEventPublisher(), dispatches);
             var dispatchId = await jobs.RecordDownloadDispatchAsync(
@@ -241,10 +318,12 @@ public sealed class AClientReportedFailureIsBlockedAndSearchedAgainTests
             // The id NZBGet gave this grab, so history matches it back to the dispatch.
             await dispatches.RecordDetectionAsync(dispatchId, "331", null, completed: false, CancellationToken.None);
             var blocklist = new SqliteBlockedReleaseRepository(storage.Factory, time);
+            var fakeClient = new FakeClient("nzbget");
             var service = new DownloadClientTelemetryService(
-                settings, new SqliteDownloadHealthRepository(storage.Factory, time), libraries, connections, null!, null!, time, null!,
+                settings, new SqliteDownloadHealthRepository(storage.Factory, time), libraries, connections, null!,
+                new Deluno.Integrations.DownloadClients.DownloadClientRegistry([fakeClient]), time, null!,
                 jobs, dispatches, jobs, new Deluno.Recovery.Policies.DownloadHealthEvaluator(), null!, Deluno.Contracts.Connectivity.NullConnectivityMonitor.Instance, blocklist);
-            return new World(storage, now, service, client, dispatchId, jobs, dispatches, blocklist);
+            return new World(storage, now, service, client, dispatchId, jobs, dispatches, blocklist, fakeClient);
         }
 
         public Task ShowHistoryAsync(DownloadClientHistoryItem history)

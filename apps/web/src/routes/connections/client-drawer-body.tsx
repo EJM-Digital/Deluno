@@ -136,6 +136,21 @@ export function ClientDrawerBody({
         </FieldRow>
       </DrawerSection>
 
+      <DrawerSection title="Completed Download Handling" aside="off unless you turn it on for this client">
+        <SwitchRow
+          label="Remove completed"
+          description="Once Deluno imports a download from this client successfully, remove it from the client's queue."
+          checked={form.removeCompleted}
+          onCheckedChange={(checked) => setForm((current) => ({ ...current, removeCompleted: checked }))}
+        />
+        <SwitchRow
+          label="Remove failed"
+          description="Once a download from this client is recorded as failed, remove it from the client's queue. Separate from whether the release is blocked and searched again — that is decided by the import failure rules, not by this switch."
+          checked={form.removeFailed}
+          onCheckedChange={(checked) => setForm((current) => ({ ...current, removeFailed: checked }))}
+        />
+      </DrawerSection>
+
       <Disclosure title="Advanced" summary={`Priority ${form.priority || "1"}`} open={advancedOpen} onOpenChange={setAdvancedOpen}>
         <Field label="Priority" error={errors.priority} help="1 (highest) to 50 (lowest). Used to order same-type clients when Deluno round-robins downloads between them.">
           <Input type="number" min={1} max={50} value={form.priority} onChange={(event) => { clearError("priority"); setForm((current) => ({ ...current, priority: event.target.value })); }} />

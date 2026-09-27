@@ -21,4 +21,8 @@ public sealed record UpdateDownloadClientRequest(
     string? UrlBase = null,
     bool? AddPaused = null,
     /// <summary>Comma-separated tag names. Null leaves the saved tags unchanged; an empty string clears them.</summary>
-    string? Tags = null);
+    string? Tags = null,
+    /// <summary>Remove a download from this client once Deluno has imported it successfully (#806). Null leaves the saved value unchanged.</summary>
+    bool? RemoveCompleted = null,
+    /// <summary>Remove a download from this client once Deluno records it as failed (#806). Null leaves the saved value unchanged.</summary>
+    bool? RemoveFailed = null);
