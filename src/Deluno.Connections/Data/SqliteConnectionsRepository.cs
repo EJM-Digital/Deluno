@@ -79,7 +79,7 @@ public sealed class SqliteConnectionsRepository(
                 api_path, additional_parameters, anime_categories, minimum_seeders,
                 required_words, ignored_words, multi_languages,
                 vip_expires_utc, vip_warning_acknowledged_expiry_utc,
-                query_limit, grab_limit, limits_unit
+                query_limit, grab_limit, limits_unit, prefer_magnet_url
             FROM indexer_sources
             ORDER BY priority ASC, name ASC;
             """;
@@ -141,7 +141,8 @@ public sealed class SqliteConnectionsRepository(
                 VipWarningAcknowledgedExpiryUtc = reader.IsDBNull(47) ? null : ParseTimestamp(reader.GetString(47)),
                 QueryLimit = reader.IsDBNull(48) ? null : reader.GetInt32(48),
                 GrabLimit = reader.IsDBNull(49) ? null : reader.GetInt32(49),
-                LimitsUnit = reader.IsDBNull(50) ? null : reader.GetString(50)
+                LimitsUnit = reader.IsDBNull(50) ? null : reader.GetString(50),
+                PreferMagnetUrl = !reader.IsDBNull(51) && reader.GetInt64(51) == 1
             });
         }
 
@@ -298,6 +299,7 @@ public sealed class SqliteConnectionsRepository(
             QueryLimit = request.QueryLimit,
             GrabLimit = request.GrabLimit,
             LimitsUnit = string.IsNullOrWhiteSpace(request.LimitsUnit) ? null : IndexerLimitsUnits.Normalize(request.LimitsUnit),
+            PreferMagnetUrl = request.PreferMagnetUrl,
             AvailabilityDelayDays = request.AvailabilityDelayDays,
             RssEnabled = request.RssEnabled,
             AutomaticSearchEnabled = request.AutomaticSearchEnabled,
@@ -322,7 +324,7 @@ public sealed class SqliteConnectionsRepository(
                 rss_enabled, automatic_search_enabled, interactive_search_enabled, definition_id,
                 definition_settings_json, definition_secrets, api_path, additional_parameters, anime_categories,
                 minimum_seeders, required_words, ignored_words, multi_languages,
-                vip_expires_utc, query_limit, grab_limit, limits_unit
+                vip_expires_utc, query_limit, grab_limit, limits_unit, prefer_magnet_url
             )
             VALUES (
                 @id, @name, @protocol, @privacy, @baseUrl, @apiKey, @priority, @categories, @tags,
@@ -332,7 +334,7 @@ public sealed class SqliteConnectionsRepository(
                 @rssEnabled, @automaticSearchEnabled, @interactiveSearchEnabled, @definitionId,
                 @definitionSettings, @definitionSecrets, @apiPath, @additionalParameters, @animeCategories,
                 @minimumSeeders, @requiredWords, @ignoredWords, @multiLanguages,
-                @vipExpiresUtc, @queryLimit, @grabLimit, @limitsUnit
+                @vipExpiresUtc, @queryLimit, @grabLimit, @limitsUnit, @preferMagnetUrl
             );
             """;
 
@@ -383,6 +385,7 @@ public sealed class SqliteConnectionsRepository(
         AddParameter(command, "@queryLimit", item.QueryLimit);
         AddParameter(command, "@grabLimit", item.GrabLimit);
         AddParameter(command, "@limitsUnit", item.LimitsUnit);
+        AddParameter(command, "@preferMagnetUrl", item.PreferMagnetUrl ? 1 : 0);
         await command.ExecuteNonQueryAsync(cancellationToken);
 
         return item;
@@ -469,6 +472,7 @@ public sealed class SqliteConnectionsRepository(
         var newLimitsUnit = string.IsNullOrWhiteSpace(request.LimitsUnit)
             ? existing.LimitsUnit
             : IndexerLimitsUnits.Normalize(request.LimitsUnit);
+        var newPreferMagnetUrl = request.PreferMagnetUrl ?? existing.PreferMagnetUrl;
         var newAvailabilityDelay = request.ClearAvailabilityDelay == true
             ? null
             : request.AvailabilityDelayDays ?? existing.AvailabilityDelayDays;
@@ -517,6 +521,7 @@ public sealed class SqliteConnectionsRepository(
                 query_limit = @queryLimit,
                 grab_limit = @grabLimit,
                 limits_unit = @limitsUnit,
+                prefer_magnet_url = @preferMagnetUrl,
                 prefer_indexer_flags = @preferIndexerFlags,
                 availability_delay_days = @availabilityDelayDays,
                 rss_enabled = @rssEnabled,
@@ -567,6 +572,7 @@ public sealed class SqliteConnectionsRepository(
         AddParameter(command, "@queryLimit", newQueryLimit);
         AddParameter(command, "@grabLimit", newGrabLimit);
         AddParameter(command, "@limitsUnit", newLimitsUnit);
+        AddParameter(command, "@preferMagnetUrl", newPreferMagnetUrl ? 1 : 0);
         AddParameter(command, "@preferIndexerFlags", newPreferIndexerFlags);
         AddParameter(command, "@availabilityDelayDays", newAvailabilityDelay);
         AddParameter(command, "@rssEnabled", newRssEnabled ? 1 : 0);
@@ -612,6 +618,7 @@ public sealed class SqliteConnectionsRepository(
             QueryLimit = newQueryLimit,
             GrabLimit = newGrabLimit,
             LimitsUnit = newLimitsUnit,
+            PreferMagnetUrl = newPreferMagnetUrl,
             PreferIndexerFlags = newPreferIndexerFlags,
             AvailabilityDelayDays = newAvailabilityDelay,
             RssEnabled = newRssEnabled,

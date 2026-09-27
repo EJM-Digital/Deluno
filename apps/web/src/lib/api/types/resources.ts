@@ -753,6 +753,8 @@ export interface IndexerItem {
   grabLimit?: number | null;
   /** "day" (default) or "hour" — the window queryLimit and grabLimit count against (#750). */
   limitsUnit?: string | null;
+  /** For a torrent indexer, prefer a magnet URL over a .torrent file link when a grab has both (#752). Ignored for usenet. */
+  preferMagnetUrl?: boolean;
   availabilityDelayDays?: number | null;
   rssEnabled?: boolean;
   automaticSearchEnabled?: boolean;

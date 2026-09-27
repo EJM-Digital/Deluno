@@ -405,9 +405,10 @@ public sealed class DownloadClientGrabService(
         try
         {
             var grab = await trackerIndexers.ResolveAsync(indexer, request.DownloadUrl, cancellationToken);
-            return grab.MagnetUrl is { } magnet
+            var chosen = GrabLinkPreference.Choose(grab, indexer.PreferMagnetUrl);
+            return chosen.MagnetUrl is { } magnet
                 ? (request with { DownloadUrl = magnet }, null)
-                : (request with { TorrentFile = grab.TorrentFile }, null);
+                : (request with { TorrentFile = chosen.TorrentFile }, null);
         }
         catch (Exception exception) when (exception is Deluno.Integrations.Search.Trackers.TrackerException or HttpRequestException or Deluno.Integrations.Search.Trackers.TrackerFieldException or FormatException || exception is TaskCanceledException && !cancellationToken.IsCancellationRequested)
         {

@@ -138,6 +138,14 @@ public sealed record IndexerItem(
     /// <summary>"day" (default) or "hour" — the window <see cref="QueryLimit"/> and <see cref="GrabLimit"/> count against (#750).</summary>
     public string? LimitsUnit { get; init; }
 
+    /// <summary>
+    /// For a torrent indexer, whether Deluno should pass a magnet URL to the
+    /// download client over a .torrent file link when a grab has both
+    /// (#752). Ignored for usenet indexers, which have neither. Off by
+    /// default (#936).
+    /// </summary>
+    public bool PreferMagnetUrl { get; init; }
+
     public int? AvailabilityDelayDays { get; init; }
 
     public bool RssEnabled { get; init; } = true;

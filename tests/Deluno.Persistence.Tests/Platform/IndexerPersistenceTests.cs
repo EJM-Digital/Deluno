@@ -106,6 +106,7 @@ public sealed class IndexerPersistenceTests
                 QueryLimit = 100,
                 GrabLimit = 20,
                 LimitsUnit = "hour",
+                PreferMagnetUrl = true,
                 AvailabilityDelayDays = 2,
                 RssEnabled = false,
                 AutomaticSearchEnabled = false,
@@ -126,6 +127,7 @@ public sealed class IndexerPersistenceTests
         Assert.Equal(100, persisted.QueryLimit);
         Assert.Equal(20, persisted.GrabLimit);
         Assert.Equal("hour", persisted.LimitsUnit);
+        Assert.True(persisted.PreferMagnetUrl);
         Assert.Equal(2, persisted.AvailabilityDelayDays);
         Assert.False(persisted.RssEnabled);
         Assert.False(persisted.AutomaticSearchEnabled);
@@ -157,6 +159,7 @@ public sealed class IndexerPersistenceTests
                 QueryLimit: 100,
                 GrabLimit: 20,
                 LimitsUnit: "hour",
+                PreferMagnetUrl: true,
                 AvailabilityDelayDays: 3,
                 RssEnabled: false,
                 AutomaticSearchEnabled: false,
@@ -175,6 +178,7 @@ public sealed class IndexerPersistenceTests
         Assert.Equal(100, updated.QueryLimit);
         Assert.Equal(20, updated.GrabLimit);
         Assert.Equal("hour", updated.LimitsUnit);
+        Assert.True(updated.PreferMagnetUrl);
         Assert.Equal(3, updated.AvailabilityDelayDays);
         Assert.False(updated.RssEnabled);
         Assert.False(updated.AutomaticSearchEnabled);
