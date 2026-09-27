@@ -240,7 +240,16 @@ export function buildClientSavePayload(form: ClientForm) {
     addPaused: form.addPaused,
     tags: form.tags.trim(),
     removeCompleted: form.removeCompleted,
-    removeFailed: form.removeFailed
+    removeFailed: form.removeFailed,
+    skipHashCheck: form.skipHashCheck,
+    sequentialDownload: form.sequentialDownload,
+    firstLastPiecePrio: form.firstLastPiecePrio,
+    shareRatioLimit: form.shareRatioLimit.trim() ? Number(form.shareRatioLimit) : null,
+    clearShareRatioLimit: !form.shareRatioLimit.trim(),
+    shareSeedingTimeLimitMinutes: form.shareSeedingTimeLimitMinutes.trim() ? Number(form.shareSeedingTimeLimitMinutes) : null,
+    clearShareSeedingTimeLimitMinutes: !form.shareSeedingTimeLimitMinutes.trim(),
+    shareInactiveSeedingTimeLimitMinutes: form.shareInactiveSeedingTimeLimitMinutes.trim() ? Number(form.shareInactiveSeedingTimeLimitMinutes) : null,
+    clearShareInactiveSeedingTimeLimitMinutes: !form.shareInactiveSeedingTimeLimitMinutes.trim()
   };
 }
 

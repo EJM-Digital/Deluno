@@ -94,6 +94,43 @@ describe("client form Use SSL and URL Base", () => {
     expect(clientFormFrom({ ...baseItem, removeFailed: true }).removeFailed).toBe(true);
   });
 
+  // #811 — qBittorrent's add-time toggles and share limits, all off/blank
+  // unless set, and reading back whatever was actually saved.
+  it("reads a saved client's qBittorrent add-time toggles and share limits into the form on reopen", () => {
+    const empty = clientFormFrom(baseItem);
+    expect(empty.skipHashCheck).toBe(false);
+    expect(empty.sequentialDownload).toBe(false);
+    expect(empty.firstLastPiecePrio).toBe(false);
+    expect(empty.shareRatioLimit).toBe("");
+    expect(empty.shareSeedingTimeLimitMinutes).toBe("");
+    expect(empty.shareInactiveSeedingTimeLimitMinutes).toBe("");
+
+    const set = clientFormFrom({
+      ...baseItem,
+      skipHashCheck: true,
+      sequentialDownload: true,
+      firstLastPiecePrio: true,
+      shareRatioLimit: 2.5,
+      shareSeedingTimeLimitMinutes: 4320,
+      shareInactiveSeedingTimeLimitMinutes: 60
+    });
+    expect(set.skipHashCheck).toBe(true);
+    expect(set.sequentialDownload).toBe(true);
+    expect(set.firstLastPiecePrio).toBe(true);
+    expect(set.shareRatioLimit).toBe("2.5");
+    expect(set.shareSeedingTimeLimitMinutes).toBe("4320");
+    expect(set.shareInactiveSeedingTimeLimitMinutes).toBe("60");
+  });
+
+  it("rejects a negative or non-numeric share limit but accepts a blank one", () => {
+    const base = { ...emptyClientForm(), name: "qBittorrent", host: "localhost" };
+    expect(clientFormErrors({ ...base, shareRatioLimit: "" })).toEqual({});
+    expect(clientFormErrors({ ...base, shareRatioLimit: "2.5" })).toEqual({});
+    expect(Object.keys(clientFormErrors({ ...base, shareRatioLimit: "-1" }))).toContain("shareRatioLimit");
+    expect(Object.keys(clientFormErrors({ ...base, shareSeedingTimeLimitMinutes: "12.5" }))).toContain("shareSeedingTimeLimitMinutes");
+    expect(Object.keys(clientFormErrors({ ...base, shareInactiveSeedingTimeLimitMinutes: "-5" }))).toContain("shareInactiveSeedingTimeLimitMinutes");
+  });
+
   // #808 — no Tags field existed at all; reopening a saved client has to show
   // whatever tags it carries, and an untagged client reads back blank.
   it("reads a saved client's tags into the form on reopen", () => {

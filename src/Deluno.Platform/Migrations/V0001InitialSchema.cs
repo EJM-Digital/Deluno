@@ -98,7 +98,8 @@ public static class PlatformDatabaseMigrations
         new V0090IndexerPreferMagnetUrl(),
         new V0091IndexerSeasonPackSearchMode(),
         new V0092DownloadClientRemoveCompletedFailed(),
-        new V0093DropGlobalRemoveCompletedDownloads()
+        new V0093DropGlobalRemoveCompletedDownloads(),
+        new V0094QbittorrentAddTimeAndShareLimits()
     ];
 
     private sealed class V0001InitialSchema : SqliteSqlMigration

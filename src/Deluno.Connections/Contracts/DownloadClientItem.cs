@@ -32,7 +32,19 @@ public sealed record DownloadClientItem(
     /// <summary>Remove a download from this client once Deluno has imported it successfully (#806). Off by default (#936); replaces the old platform-wide RemoveCompletedDownloads flag per client.</summary>
     bool RemoveCompleted = false,
     /// <summary>Remove a download from this client once Deluno records it as failed (#806). Distinct from ImportFailurePolicy, which decides whether the release is blocklisted and searched again; this only decides whether the client keeps the failed entry. Off by default (#936).</summary>
-    bool RemoveFailed = false)
+    bool RemoveFailed = false,
+    /// <summary>#811 (qBittorrent only): skip hash-checking a grab at add time. Off by default.</summary>
+    bool SkipHashCheck = false,
+    /// <summary>#811 (qBittorrent only): download pieces in order rather than rarest-first. Off by default.</summary>
+    bool SequentialDownload = false,
+    /// <summary>#811 (qBittorrent only): prioritize the first and last pieces, so a video can be previewed before it finishes. Off by default.</summary>
+    bool FirstLastPiecePrio = false,
+    /// <summary>#811 (qBittorrent only): ratio at which this client's own share limits stop seeding a grab. Null leaves the client's own default; -1 tells qBittorrent "no limit" the same way it does.</summary>
+    double? ShareRatioLimit = null,
+    /// <summary>#811 (qBittorrent only): minutes to seed before the client's own share limits stop it, independent of ratio.</summary>
+    int? ShareSeedingTimeLimitMinutes = null,
+    /// <summary>#811 (qBittorrent only): minutes of no upload activity before the client's own share limits stop seeding, regardless of ratio or total seeding time.</summary>
+    int? ShareInactiveSeedingTimeLimitMinutes = null)
 {
     /// <summary>Last typed health failure, when the client did not pass its most recent test.</summary>
     public IntegrationFailure? LastHealthFailure { get; init; }

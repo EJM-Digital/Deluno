@@ -268,6 +268,40 @@ describe("client save payload completed-download handling (#806)", () => {
 });
 
 /**
+ * #811 — qBittorrent's add-time toggles and share limits. Blank share-limit
+ * fields send null plus a clear flag, so an edit that blanks a previously
+ * saved limit actually clears it rather than leaving the old value in place.
+ */
+describe("client save payload qBittorrent options (#811)", () => {
+  it("sends the add-time toggles as booleans", () => {
+    const form = { ...emptyClientForm(), name: "qBittorrent", host: "localhost", skipHashCheck: true, sequentialDownload: true, firstLastPiecePrio: true };
+    expect(buildClientSavePayload(form)).toMatchObject({ skipHashCheck: true, sequentialDownload: true, firstLastPiecePrio: true });
+  });
+
+  it("sends null and a clear flag for a blank share limit", () => {
+    const form = { ...emptyClientForm(), name: "qBittorrent", host: "localhost" };
+    const payload = buildClientSavePayload(form);
+    expect(payload.shareRatioLimit).toBeNull();
+    expect(payload.clearShareRatioLimit).toBe(true);
+    expect(payload.shareSeedingTimeLimitMinutes).toBeNull();
+    expect(payload.clearShareSeedingTimeLimitMinutes).toBe(true);
+    expect(payload.shareInactiveSeedingTimeLimitMinutes).toBeNull();
+    expect(payload.clearShareInactiveSeedingTimeLimitMinutes).toBe(true);
+  });
+
+  it("sends a typed share limit as a number, with the clear flag off", () => {
+    const form = { ...emptyClientForm(), name: "qBittorrent", host: "localhost", shareRatioLimit: "2.5", shareSeedingTimeLimitMinutes: "4320", shareInactiveSeedingTimeLimitMinutes: "60" };
+    const payload = buildClientSavePayload(form);
+    expect(payload.shareRatioLimit).toBe(2.5);
+    expect(payload.clearShareRatioLimit).toBe(false);
+    expect(payload.shareSeedingTimeLimitMinutes).toBe(4320);
+    expect(payload.clearShareSeedingTimeLimitMinutes).toBe(false);
+    expect(payload.shareInactiveSeedingTimeLimitMinutes).toBe(60);
+    expect(payload.clearShareInactiveSeedingTimeLimitMinutes).toBe(false);
+  });
+});
+
+/**
  * #808 — Radarr/Sonarr route a tagged title only to a client sharing its tag;
  * an untagged client stays usable for anything. The drawer had no field for
  * this at all, so the payload always sent nothing.

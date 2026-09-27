@@ -79,9 +79,9 @@ export function sameIndexer(a: IndexerForm, b: IndexerForm) { return (Object.key
 /** The same values, ignoring keys that are blank on one side and missing on the other. */
 function sameRecord(a: Record<string, string>, b: Record<string, string>) { return [...new Set([...Object.keys(a), ...Object.keys(b)])].every((key) => (a[key] ?? "") === (b[key] ?? "")); }
 
-export interface ClientForm { name: string; protocol: string; host: string; port: string; username: string; password: string; moviesCategory: string; tvCategory: string; priority: string; isEnabled: boolean; useSsl: boolean; urlBase: string; addPaused: boolean; tags: string; removeCompleted: boolean; removeFailed: boolean; }
-export function emptyClientForm(): ClientForm { const preset = CLIENT_PRESETS[0]!; return { name: preset.label, protocol: preset.protocol, host: "localhost", port: String(preset.defaultPort), username: "", password: "", moviesCategory: preset.defaultMoviesCategory, tvCategory: preset.defaultTvCategory, priority: "1", isEnabled: true, useSsl: false, urlBase: "", addPaused: false, tags: "", removeCompleted: false, removeFailed: false }; }
-export function clientFormFrom(item: DownloadClientItem): ClientForm { return { name: item.name, protocol: item.protocol, host: item.host ?? "", port: item.port ? String(item.port) : "", username: item.username ?? "", password: "", moviesCategory: item.moviesCategory ?? item.categoryTemplate ?? "", tvCategory: item.tvCategory ?? "", priority: String(item.priority), isEnabled: item.isEnabled, useSsl: item.useSsl, urlBase: item.urlBase ?? "", addPaused: item.addPaused, tags: item.tags ?? "", removeCompleted: item.removeCompleted ?? false, removeFailed: item.removeFailed ?? false }; }
+export interface ClientForm { name: string; protocol: string; host: string; port: string; username: string; password: string; moviesCategory: string; tvCategory: string; priority: string; isEnabled: boolean; useSsl: boolean; urlBase: string; addPaused: boolean; tags: string; removeCompleted: boolean; removeFailed: boolean; skipHashCheck: boolean; sequentialDownload: boolean; firstLastPiecePrio: boolean; shareRatioLimit: string; shareSeedingTimeLimitMinutes: string; shareInactiveSeedingTimeLimitMinutes: string; }
+export function emptyClientForm(): ClientForm { const preset = CLIENT_PRESETS[0]!; return { name: preset.label, protocol: preset.protocol, host: "localhost", port: String(preset.defaultPort), username: "", password: "", moviesCategory: preset.defaultMoviesCategory, tvCategory: preset.defaultTvCategory, priority: "1", isEnabled: true, useSsl: false, urlBase: "", addPaused: false, tags: "", removeCompleted: false, removeFailed: false, skipHashCheck: false, sequentialDownload: false, firstLastPiecePrio: false, shareRatioLimit: "", shareSeedingTimeLimitMinutes: "", shareInactiveSeedingTimeLimitMinutes: "" }; }
+export function clientFormFrom(item: DownloadClientItem): ClientForm { return { name: item.name, protocol: item.protocol, host: item.host ?? "", port: item.port ? String(item.port) : "", username: item.username ?? "", password: "", moviesCategory: item.moviesCategory ?? item.categoryTemplate ?? "", tvCategory: item.tvCategory ?? "", priority: String(item.priority), isEnabled: item.isEnabled, useSsl: item.useSsl, urlBase: item.urlBase ?? "", addPaused: item.addPaused, tags: item.tags ?? "", removeCompleted: item.removeCompleted ?? false, removeFailed: item.removeFailed ?? false, skipHashCheck: item.skipHashCheck ?? false, sequentialDownload: item.sequentialDownload ?? false, firstLastPiecePrio: item.firstLastPiecePrio ?? false, shareRatioLimit: item.shareRatioLimit == null ? "" : String(item.shareRatioLimit), shareSeedingTimeLimitMinutes: item.shareSeedingTimeLimitMinutes == null ? "" : String(item.shareSeedingTimeLimitMinutes), shareInactiveSeedingTimeLimitMinutes: item.shareInactiveSeedingTimeLimitMinutes == null ? "" : String(item.shareInactiveSeedingTimeLimitMinutes) }; }
 export function sameClient(a: ClientForm, b: ClientForm) { return (Object.keys(a) as (keyof ClientForm)[]).every((key) => a[key] === b[key]); }
 
 /**
@@ -102,6 +102,16 @@ export function clientFormErrors(form: ClientForm): Record<string, string> {
   if (!form.port.trim() || Number.isNaN(Number(form.port))) errors.port = "Enter a port number.";
   if (form.priority.trim() && (!/^\d+$/.test(form.priority.trim()) || Number(form.priority) < 1 || Number(form.priority) > 50)) {
     errors.priority = "Priority must be between 1 (highest) and 50 (lowest).";
+  }
+  // #811: qBittorrent's own share limits, sent only when set.
+  if (form.shareRatioLimit.trim() && (Number.isNaN(Number(form.shareRatioLimit)) || Number(form.shareRatioLimit) < 0)) {
+    errors.shareRatioLimit = "Enter a ratio of 0 or higher.";
+  }
+  if (form.shareSeedingTimeLimitMinutes.trim() && (!/^\d+$/.test(form.shareSeedingTimeLimitMinutes.trim()) || Number(form.shareSeedingTimeLimitMinutes) < 0)) {
+    errors.shareSeedingTimeLimitMinutes = "Enter a whole number of minutes, 0 or higher.";
+  }
+  if (form.shareInactiveSeedingTimeLimitMinutes.trim() && (!/^\d+$/.test(form.shareInactiveSeedingTimeLimitMinutes.trim()) || Number(form.shareInactiveSeedingTimeLimitMinutes) < 0)) {
+    errors.shareInactiveSeedingTimeLimitMinutes = "Enter a whole number of minutes, 0 or higher.";
   }
   return errors;
 }

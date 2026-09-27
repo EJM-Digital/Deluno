@@ -25,4 +25,19 @@ public sealed record UpdateDownloadClientRequest(
     /// <summary>Remove a download from this client once Deluno has imported it successfully (#806). Null leaves the saved value unchanged.</summary>
     bool? RemoveCompleted = null,
     /// <summary>Remove a download from this client once Deluno records it as failed (#806). Null leaves the saved value unchanged.</summary>
-    bool? RemoveFailed = null);
+    bool? RemoveFailed = null,
+    /// <summary>#811 (qBittorrent only): skip hash-checking a grab at add time. Null leaves the saved value unchanged.</summary>
+    bool? SkipHashCheck = null,
+    /// <summary>#811 (qBittorrent only): download pieces in order rather than rarest-first. Null leaves the saved value unchanged.</summary>
+    bool? SequentialDownload = null,
+    /// <summary>#811 (qBittorrent only): prioritize the first and last pieces. Null leaves the saved value unchanged.</summary>
+    bool? FirstLastPiecePrio = null,
+    /// <summary>#811 (qBittorrent only): ratio at which this client's own share limits stop seeding. Null leaves the saved value unchanged; combine with ClearShareRatioLimit to clear it.</summary>
+    double? ShareRatioLimit = null,
+    bool ClearShareRatioLimit = false,
+    /// <summary>#811 (qBittorrent only): minutes to seed before the client's own share limits stop it. Null leaves the saved value unchanged; combine with ClearShareSeedingTimeLimitMinutes to clear it.</summary>
+    int? ShareSeedingTimeLimitMinutes = null,
+    bool ClearShareSeedingTimeLimitMinutes = false,
+    /// <summary>#811 (qBittorrent only): minutes of no upload activity before the client's own share limits stop seeding. Null leaves the saved value unchanged; combine with ClearShareInactiveSeedingTimeLimitMinutes to clear it.</summary>
+    int? ShareInactiveSeedingTimeLimitMinutes = null,
+    bool ClearShareInactiveSeedingTimeLimitMinutes = false);

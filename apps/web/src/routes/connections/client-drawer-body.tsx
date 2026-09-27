@@ -151,6 +151,40 @@ export function ClientDrawerBody({
         />
       </DrawerSection>
 
+      {form.protocol === "qbittorrent" ? (
+        <DrawerSection title="qBittorrent options" aside="add-time options and this client's own share limits">
+          <SwitchRow
+            label="Skip hash check"
+            description="Skip qBittorrent's own hash check on a new grab. Only useful if you already trust the data is correct."
+            checked={form.skipHashCheck}
+            onCheckedChange={(checked) => setForm((current) => ({ ...current, skipHashCheck: checked }))}
+          />
+          <SwitchRow
+            label="Sequential download"
+            description="Download pieces in order rather than rarest-first, so the file plays back from the start sooner."
+            checked={form.sequentialDownload}
+            onCheckedChange={(checked) => setForm((current) => ({ ...current, sequentialDownload: checked }))}
+          />
+          <SwitchRow
+            label="Prioritize first and last pieces"
+            description="Fetch the first and last pieces first, so a video can be previewed before it finishes."
+            checked={form.firstLastPiecePrio}
+            onCheckedChange={(checked) => setForm((current) => ({ ...current, firstLastPiecePrio: checked }))}
+          />
+          <FieldRow>
+            <Field label="Seed ratio limit" optional error={errors.shareRatioLimit} help="Leave blank to use qBittorrent's own default.">
+              <Input inputMode="decimal" value={form.shareRatioLimit} onChange={(event) => { clearError("shareRatioLimit"); setForm((current) => ({ ...current, shareRatioLimit: event.target.value })); }} placeholder="e.g. 2.0" />
+            </Field>
+            <Field label="Seed time limit (minutes)" optional error={errors.shareSeedingTimeLimitMinutes} help="Leave blank to use qBittorrent's own default.">
+              <Input inputMode="numeric" value={form.shareSeedingTimeLimitMinutes} onChange={(event) => { clearError("shareSeedingTimeLimitMinutes"); setForm((current) => ({ ...current, shareSeedingTimeLimitMinutes: event.target.value })); }} placeholder="e.g. 4320" />
+            </Field>
+          </FieldRow>
+          <Field label="Inactive seed time limit (minutes)" optional error={errors.shareInactiveSeedingTimeLimitMinutes} help="Stop seeding after this many minutes with no upload activity, regardless of ratio or total seeding time. Leave blank to use qBittorrent's own default.">
+            <Input inputMode="numeric" value={form.shareInactiveSeedingTimeLimitMinutes} onChange={(event) => { clearError("shareInactiveSeedingTimeLimitMinutes"); setForm((current) => ({ ...current, shareInactiveSeedingTimeLimitMinutes: event.target.value })); }} placeholder="e.g. 60" />
+          </Field>
+        </DrawerSection>
+      ) : null}
+
       <Disclosure title="Advanced" summary={`Priority ${form.priority || "1"}`} open={advancedOpen} onOpenChange={setAdvancedOpen}>
         <Field label="Priority" error={errors.priority} help="1 (highest) to 50 (lowest). Used to order same-type clients when Deluno round-robins downloads between them.">
           <Input type="number" min={1} max={50} value={form.priority} onChange={(event) => { clearError("priority"); setForm((current) => ({ ...current, priority: event.target.value })); }} />
