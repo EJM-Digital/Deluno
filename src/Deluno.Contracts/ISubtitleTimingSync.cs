@@ -1,6 +1,39 @@
 namespace Deluno.Contracts;
 
 /// <summary>
+/// Which of the sync attempt's outcomes this one was, for #922's "Timing: not
+/// checked" mark and #897's automatic reject-and-refetch.
+/// </summary>
+public enum SubtitleTimingOutcome
+{
+    /// <summary>The file was rewritten — shifted, rescaled, or both.</summary>
+    Moved,
+    /// <summary>A confident answer, and the answer was "already fine".</summary>
+    AlreadyInTime,
+    /// <summary>
+    /// No confident answer either way — too little dialogue, a video or
+    /// subtitle that could not be read, or a correlation with no clear peak.
+    /// #922: kept exactly as it was, marked "Timing: not checked", with a
+    /// one-click way for a person to say it is wrong (which uses
+    /// <see cref="Mismatched"/>'s own mechanism).
+    ///
+    /// <para><b>Never confused with a setup problem or an outage</b> — those are
+    /// still Inconclusive, not Mismatched, because #897 requires a local setup
+    /// problem or an internet outage to never be treated as a bad release.</para>
+    /// </summary>
+    Inconclusive,
+    /// <summary>
+    /// A confident answer that this file is not a fit for this subtitle at
+    /// all — the correlation's best point sits at the very edge of the
+    /// searchable window, which is what a subtitle authored for a materially
+    /// different cut or release looks like rather than a subtitle that is
+    /// merely a little late. #897: rejected, deleted, blocklisted, and the
+    /// next best candidate is fetched in its place.
+    /// </summary>
+    Mismatched
+}
+
+/// <summary>
 /// What happened when Deluno tried to put a subtitle in time with its video.
 /// </summary>
 /// <param name="Adjusted">Whether the file on disk was rewritten.</param>
@@ -14,7 +47,16 @@ namespace Deluno.Contracts;
 /// page. This is the whole point of the feature being explainable: "moved 2.4 s
 /// later" is a fact somebody can check against the film, where "synced" is not.
 /// </param>
-public sealed record SubtitleTimingResult(bool Adjusted, TimeSpan Offset, string Reason);
+/// <param name="Outcome">
+/// Which of the four shapes this attempt took. Defaults to
+/// <see cref="SubtitleTimingOutcome.Inconclusive"/> so a caller built before
+/// this existed keeps its old, safe "leave it alone" behaviour.
+/// </param>
+public sealed record SubtitleTimingResult(
+    bool Adjusted,
+    TimeSpan Offset,
+    string Reason,
+    SubtitleTimingOutcome Outcome = SubtitleTimingOutcome.Inconclusive);
 
 /// <summary>
 /// Puts a subtitle in time with the video it belongs to.

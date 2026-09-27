@@ -178,25 +178,43 @@ public sealed class SubtitleTimingSyncService(
 
         if (best.PeakSigma < effectivePolicy.RequiredPeakSigma)
         {
+            // #922: not "no", "not checked" - kept exactly as it was, with a
+            // one-click way for a person to say it is wrong once they have
+            // watched enough of it to judge.
             return new SubtitleTimingResult(false, TimeSpan.Zero,
-                "This subtitle does not line up with the video's dialogue at any one point, so it has been left exactly as it was.");
+                "This subtitle does not line up with the video's dialogue at any one point, so it has been left exactly as it was.",
+                SubtitleTimingOutcome.Inconclusive);
         }
 
         var offset = best.Shift;
         var stretched = Math.Abs(stretch - 1.0) > double.Epsilon;
+
+        // A confident peak sitting right at the edge of the searchable window
+        // is not "a little late" - it is the search running out of room before
+        // it found the real alignment, which is what a subtitle authored for a
+        // materially different cut or release looks like (#897). Moving it
+        // there would be trusting an extrapolation, not a fit.
+        if (!stretched && offset.Duration() >= maxOffset - SmallestWorthMoving)
+        {
+            return new SubtitleTimingResult(false, TimeSpan.Zero,
+                "This subtitle's dialogue never lines up with the video within a trustworthy range, which usually means it is timed for a different release. Rejected so the next best subtitle can be fetched.",
+                SubtitleTimingOutcome.Mismatched);
+        }
 
         // Both gates are about not moving a file that is already fine. A stretch
         // is a different finding - the drift is real however small the offset at
         // the start happens to be - so neither gate applies once one is owed.
         if (!stretched && offset.Duration() < SmallestWorthMoving)
         {
-            return new SubtitleTimingResult(false, TimeSpan.Zero, "This subtitle is already in time.");
+            return new SubtitleTimingResult(false, TimeSpan.Zero, "This subtitle is already in time.",
+                SubtitleTimingOutcome.AlreadyInTime);
         }
 
         if (!stretched && best.Improvement < RequiredImprovement)
         {
             return new SubtitleTimingResult(false, TimeSpan.Zero,
-                "Moving this subtitle would not clearly improve it, so it has been left alone.");
+                "Moving this subtitle would not clearly improve it, so it has been left alone.",
+                SubtitleTimingOutcome.AlreadyInTime);
         }
 
         // Written to a temporary name and moved, for the reason the fetch writer
@@ -211,7 +229,8 @@ public sealed class SubtitleTimingSyncService(
         if (!stretched)
         {
             logger.LogInformation("Moved {Subtitle} {Description} to match the audio.", subtitlePath, described);
-            return new SubtitleTimingResult(true, offset, $"Timed against the video's audio and moved {described}.");
+            return new SubtitleTimingResult(true, offset, $"Timed against the video's audio and moved {described}.",
+                SubtitleTimingOutcome.Moved);
         }
 
         var pace = DescribeStretch(stretch);
@@ -221,7 +240,8 @@ public sealed class SubtitleTimingSyncService(
         return new SubtitleTimingResult(
             true,
             offset,
-            $"This subtitle was written for a copy running at a different speed. It has been {pace} and moved {described}.");
+            $"This subtitle was written for a copy running at a different speed. It has been {pace} and moved {described}.",
+            SubtitleTimingOutcome.Moved);
     }
 
     /// <summary>

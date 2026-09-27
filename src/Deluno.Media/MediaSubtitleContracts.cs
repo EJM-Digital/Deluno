@@ -41,7 +41,16 @@ public sealed record MediaSubtitleRow(
     /// name, and for a subtitle fetched before this column existed, which is
     /// an honest gap rather than one worth inventing history for.</para>
     /// </summary>
-    string? SourceKey = null);
+    string? SourceKey = null,
+    /// <summary>
+    /// What the last timing sync attempt found — <c>"moved"</c>,
+    /// <c>"already_in_time"</c>, or <c>"not_checked"</c> when it could not
+    /// decide either way (#922). Null for a subtitle no sync has run against
+    /// yet.
+    /// </summary>
+    string? TimingStatus = null,
+    /// <summary>The one-sentence reason behind <see cref="TimingStatus"/>, for the title's own page.</summary>
+    string? TimingReason = null);
 
 /// <summary>
 /// When a file was last read for subtitles, and what it looked like at the
@@ -262,5 +271,33 @@ public interface IMediaSubtitleRepository
         MediaKind kind,
         string mediaId,
         string blockKey,
+        CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Records what the last timing sync attempt found for one subtitle
+    /// (#922) — moved, already in time, or unable to decide either way.
+    /// </summary>
+    Task RecordTimingStatusAsync(
+        MediaKind kind,
+        string mediaId,
+        string language,
+        bool forced,
+        bool hearingImpaired,
+        string status,
+        string reason,
+        CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Drops one held subtitle row — used when a subtitle turns out to be for
+    /// the wrong release or is otherwise rejected (#897, #922) and the
+    /// language should go back to being searched for, not merely re-timed.
+    /// Deleting the file itself is the caller's job, same as blocking one.
+    /// </summary>
+    Task RemoveSubtitleAsync(
+        MediaKind kind,
+        string mediaId,
+        string language,
+        bool forced,
+        bool hearingImpaired,
         CancellationToken cancellationToken);
 }

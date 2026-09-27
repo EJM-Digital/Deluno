@@ -351,7 +351,15 @@ public sealed class LibrarySubtitleSearchJobHandler(
                                         // the original. What it cannot get right is
                                         // a foreign-language film muxed dub-first.
                                         null,
-                                        timingPolicy),
+                                        timingPolicy,
+                                        new SubtitleSyncJobHandler.SubtitleSyncIdentity(
+                                            kind,
+                                            item.MediaId,
+                                            item.Title,
+                                            language,
+                                            outcome.HearingImpaired,
+                                            outcome.ProviderKey,
+                                            outcome.SourceKey)),
                                     JobPayloads.Options),
                                 RelatedEntityType: "library",
                                 RelatedEntityId: library.Id,

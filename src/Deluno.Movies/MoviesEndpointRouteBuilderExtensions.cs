@@ -2084,6 +2084,67 @@ public static class MoviesEndpointRouteBuilderExtensions
             return Results.Ok(new { queued = request.MovieIds.Count, cleared });
         });
 
+        /*
+          #922's one-click "This is out of sync": a person's own judgment,
+          fed through #897's mechanism. Deletes the file, blocklists it so it
+          is never offered again, and drops the held row so the language is
+          missing again - which is what puts it back in front of the
+          library's own next subtitle search.
+        */
+        movies.MapPost("/{id}/subtitles/{language}/reject", async (
+            HttpContext httpContext,
+            string id,
+            string language,
+            IMovieCatalogRepository repository,
+            IMediaSubtitleRepository subtitles,
+            IActivityFeedRepository activity,
+            IRealtimeEventPublisher realtimeEventPublisher,
+            CancellationToken cancellationToken) =>
+        {
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
+            if (denied is not null)
+            {
+                return denied;
+            }
+
+            var movie = await repository.GetByIdAsync(id, cancellationToken);
+            if (movie is null)
+            {
+                return Results.NotFound();
+            }
+
+            var held = (await subtitles.ListSubtitlesAsync(MediaKind.Movie, id, cancellationToken))
+                .FirstOrDefault(row => string.Equals(row.Language, language, StringComparison.OrdinalIgnoreCase) && !row.Forced);
+            if (held is null || held.FilePath is null)
+            {
+                return Results.NotFound(new { message = $"There is no {language} subtitle held for this movie." });
+            }
+
+            await SubtitleRejection.RejectAsync(
+                subtitles,
+                activity,
+                MediaKind.Movie,
+                id,
+                movie.Title,
+                language,
+                forced: false,
+                held.HearingImpaired,
+                held.FilePath,
+                held.SourceKey,
+                held.Provider,
+                releaseName: null,
+                "You marked this subtitle as out of sync.",
+                cancellationToken);
+
+            await realtimeEventPublisher.PublishEntityChangedAsync("Movie", id, cancellationToken);
+
+            return Results.Ok(new
+            {
+                rejected = true,
+                message = $"The {language} subtitle was removed and blocklisted; the next library subtitle search will fetch a replacement."
+            });
+        });
+
         movies.MapPost("/bulk/quality-profile", async (
             HttpContext httpContext,
             [FromBody] BulkQualityProfileRequest request,

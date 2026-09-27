@@ -1,6 +1,8 @@
 using System.Text.Json;
 using Deluno.Contracts;
 using Deluno.Jobs.Contracts;
+using Deluno.Jobs.Data;
+using Deluno.Media;
 
 namespace Deluno.Worker.Jobs;
 
@@ -32,8 +34,18 @@ namespace Deluno.Worker.Jobs;
 /// identical from the outside, and this codebase has already shipped that
 /// confusion once — a library asked for English every day and never got it, in
 /// silence.</para>
+///
+/// <para><b>#897 and #922 added a fifth outcome.</b> Not every "did nothing"
+/// is the same "did nothing": a confident mismatch is rejected, deleted,
+/// blocklisted and refetched (#897), and an inconclusive one is kept and
+/// marked "Timing: not checked" (#922) rather than looking identical to a
+/// subtitle nobody has ever asked about.</para>
 /// </summary>
-public sealed class SubtitleSyncJobHandler(ISubtitleTimingSync timingSync) : IJobHandler
+public sealed class SubtitleSyncJobHandler(
+    ISubtitleTimingSync timingSync,
+    IMediaSubtitleRepository mediaSubtitleRepository,
+    IActivityFeedRepository activityFeedRepository)
+    : IJobHandler
 {
     public string JobType => "subtitle.sync";
 
@@ -52,12 +64,57 @@ public sealed class SubtitleSyncJobHandler(ISubtitleTimingSync timingSync) : IJo
             cancellationToken,
             payload.Policy);
 
+        // Identity is optional so an old queued job (from before #897/#922)
+        // still runs the sync itself; it just cannot record or act on the
+        // outcome against a media row it was never told about.
+        if (payload.Identity is { } identity)
+        {
+            if (result.Outcome == SubtitleTimingOutcome.Mismatched)
+            {
+                await SubtitleRejection.RejectAsync(
+                    mediaSubtitleRepository,
+                    activityFeedRepository,
+                    identity.Kind,
+                    identity.MediaId,
+                    identity.Title,
+                    identity.Language,
+                    forced: false,
+                    hearingImpaired: identity.HearingImpaired,
+                    payload.SubtitlePath,
+                    identity.SourceKey,
+                    identity.ProviderKey,
+                    releaseName: null,
+                    result.Reason,
+                    cancellationToken);
+            }
+            else
+            {
+                await mediaSubtitleRepository.RecordTimingStatusAsync(
+                    identity.Kind,
+                    identity.MediaId,
+                    identity.Language,
+                    forced: false,
+                    hearingImpaired: identity.HearingImpaired,
+                    StoredTimingStatus(result.Outcome),
+                    result.Reason,
+                    cancellationToken);
+            }
+        }
+
         // The path came out of a stored job payload, not off this filesystem,
         // so it is read by its shape. A job queued on Windows and run by the
-        // container otherwise reports "D:\Mediailm.en.srt" as the name.
+        // container otherwise reports "D:\Mediailm.en.srt" as the name.
         var name = MediaPath.FileName(payload.SubtitlePath);
         return $"{name}: {result.Reason}";
     }
+
+    private static string StoredTimingStatus(SubtitleTimingOutcome outcome)
+        => outcome switch
+        {
+            SubtitleTimingOutcome.Moved => "moved",
+            SubtitleTimingOutcome.AlreadyInTime => "already_in_time",
+            _ => "not_checked"
+        };
 
     private static SubtitleSyncPayload? ParsePayload(string? payloadJson)
     {
@@ -72,18 +129,30 @@ public sealed class SubtitleSyncJobHandler(ISubtitleTimingSync timingSync) : IJo
     }
 
     /// <summary>
-    /// Paths rather than identifiers.
-    ///
-    /// <para>The alternative — a media id the handler resolves back to a file —
-    /// would be one more place that knows how to turn a catalogue row into a
-    /// path, and the enqueuing code has the path already because it just wrote
-    /// the file. A path that has moved by the time this runs is handled where it
-    /// should be: the service checks the file is there and says so if it is
-    /// not.</para>
+    /// Which title and language this file is for, and the exact candidate it
+    /// was fetched as — everything #897's automatic reject and #922's
+    /// "Timing: not checked" mark need that a path alone cannot say.
+    /// </summary>
+    public sealed record SubtitleSyncIdentity(
+        MediaKind Kind,
+        string MediaId,
+        string Title,
+        string Language,
+        bool HearingImpaired,
+        string? ProviderKey,
+        string? SourceKey);
+
+    /// <summary>
+    /// Paths, plus — since #897 and #922 — the identity a rejection or a
+    /// timing mark needs to act on. The paths remain primary because the
+    /// enqueuing code has them already from writing the file, and a path that
+    /// has since moved is handled where it should be: the sync service checks
+    /// the file is there and says so if it is not.
     /// </summary>
     public sealed record SubtitleSyncPayload(
         string VideoPath,
         string SubtitlePath,
         string? OriginalLanguage,
-        SubtitleTimingPolicy? Policy = null);
+        SubtitleTimingPolicy? Policy = null,
+        SubtitleSyncIdentity? Identity = null);
 }
