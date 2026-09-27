@@ -55,6 +55,11 @@ public sealed class EveryVerbMeansSomethingDifferentTests
     [InlineData(DownloadClientActions.Delete)]
     [InlineData(DownloadClientActions.DeleteWithData)]
     [InlineData(DownloadClientActions.Forget)]
+    [InlineData(DownloadClientActions.MoveToTop)]
+    [InlineData(DownloadClientActions.MoveUp)]
+    [InlineData(DownloadClientActions.MoveDown)]
+    [InlineData(DownloadClientActions.MoveToBottom)]
+    [InlineData(DownloadClientActions.ForceStart)]
     public void The_gateway_passes_on_every_verb_the_clients_implement(string verb)
     {
         var source = File.ReadAllText(GatewaySourcePath());
@@ -118,6 +123,99 @@ public sealed class EveryVerbMeansSomethingDifferentTests
 
         Assert.NotEmpty(sent);
         Assert.Contains(sent, request => request.Contains(QueueItemId(protocol), StringComparison.OrdinalIgnoreCase));
+    }
+
+    /// <summary>
+    /// #810: move to top/up/down/bottom are each their own request against
+    /// the clients whose queue API this session could confirm -- not one verb
+    /// silently standing in for another the way pause/delete used to.
+    /// SABnzbd's own API has no true reorder, only discrete priority tiers
+    /// (#810's own scope note), so move-down and move-to-bottom land on the
+    /// same Low tier there and are excluded from the "all four distinct"
+    /// check; its own dedicated test below covers that.
+    /// </summary>
+    [Theory]
+    [InlineData("qbittorrent")]
+    [InlineData("deluge")]
+    [InlineData("transmission")]
+    [InlineData("nzbget")]
+    public async Task Queue_reorder_actions_are_four_distinct_requests(string protocol)
+    {
+        var top = await CaptureAsync(protocol, DownloadClientActions.MoveToTop);
+        var up = await CaptureAsync(protocol, DownloadClientActions.MoveUp);
+        var down = await CaptureAsync(protocol, DownloadClientActions.MoveDown);
+        var bottom = await CaptureAsync(protocol, DownloadClientActions.MoveToBottom);
+
+        var requests = new[] { top, up, down, bottom };
+        foreach (var request in requests) Assert.NotEmpty(request);
+        Assert.Equal(4, requests.Select(r => string.Join('|', r)).Distinct().Count());
+    }
+
+    /// <summary>
+    /// SABnzbd has no one-slot move of its own -- only Force/High/Low
+    /// priority tiers, set with mode=queue&amp;name=priority. Move-to-top and
+    /// move-up land on distinct, higher tiers; move-down and move-to-bottom
+    /// share the same Low tier, since there is nothing lower short of Paused,
+    /// which would stop the download rather than reorder it.
+    /// </summary>
+    [Fact]
+    public async Task Sabnzbd_move_actions_use_its_own_priority_tiers()
+    {
+        var top = Assert.Single(await CaptureAsync("sabnzbd", DownloadClientActions.MoveToTop));
+        var up = Assert.Single(await CaptureAsync("sabnzbd", DownloadClientActions.MoveUp));
+        var down = Assert.Single(await CaptureAsync("sabnzbd", DownloadClientActions.MoveDown));
+        var bottom = Assert.Single(await CaptureAsync("sabnzbd", DownloadClientActions.MoveToBottom));
+
+        Assert.Contains("value2=2", top, StringComparison.Ordinal);
+        Assert.Contains("value2=1", up, StringComparison.Ordinal);
+        Assert.Contains("value2=-2", down, StringComparison.Ordinal);
+        Assert.Contains("value2=-2", bottom, StringComparison.Ordinal);
+    }
+
+    /// <summary>uTorrent's queue API could not be independently confirmed this session (#810), so it is refused rather than guessed at.</summary>
+    [Theory]
+    [InlineData(DownloadClientActions.MoveToTop)]
+    [InlineData(DownloadClientActions.MoveUp)]
+    [InlineData(DownloadClientActions.MoveDown)]
+    [InlineData(DownloadClientActions.MoveToBottom)]
+    [InlineData(DownloadClientActions.ForceStart)]
+    public async Task Utorrent_refuses_every_reorder_and_force_start_action(string action)
+    {
+        var handler = new RecordingHandler([]);
+        var result = await new UTorrentDownloadClient(() => handler)
+            .ExecuteActionAsync(Client("utorrent"), action, QueueItemId("utorrent"), CancellationToken.None);
+
+        Assert.False(result.Succeeded);
+    }
+
+    /// <summary>qBittorrent only: force-start bypasses its own seed/ratio thresholds, sent as setForceStart with value=true.</summary>
+    [Fact]
+    public async Task Qbittorrent_force_start_sets_value_true()
+    {
+        var sent = await CaptureAsync("qbittorrent", DownloadClientActions.ForceStart);
+
+        Assert.Contains(sent, request => request.Contains("setForceStart", StringComparison.Ordinal) && request.Contains("value=true", StringComparison.Ordinal));
+    }
+
+    /// <summary>The other clients have no force-start of their own, so it is refused rather than mapped onto something adjacent.</summary>
+    [Theory]
+    [InlineData("deluge")]
+    [InlineData("transmission")]
+    [InlineData("sabnzbd")]
+    [InlineData("nzbget")]
+    public async Task Only_qbittorrent_supports_force_start(string protocol)
+    {
+        var handler = new RecordingHandler([]);
+        var result = protocol switch
+        {
+            "deluge" => await new DelugeDownloadClient(new StubHttpClientFactory(handler)).ExecuteActionAsync(Client(protocol), DownloadClientActions.ForceStart, QueueItemId(protocol), CancellationToken.None),
+            "transmission" => await new TransmissionDownloadClient(new StubHttpClientFactory(handler)).ExecuteActionAsync(Client(protocol), DownloadClientActions.ForceStart, QueueItemId(protocol), CancellationToken.None),
+            "sabnzbd" => await new SabnzbdDownloadClient(new StubHttpClientFactory(handler)).ExecuteActionAsync(Client(protocol), DownloadClientActions.ForceStart, QueueItemId(protocol), CancellationToken.None),
+            "nzbget" => await new NzbGetDownloadClient(new StubHttpClientFactory(handler)).ExecuteActionAsync(Client(protocol), DownloadClientActions.ForceStart, QueueItemId(protocol), CancellationToken.None),
+            _ => throw new ArgumentOutOfRangeException(nameof(protocol))
+        };
+
+        Assert.False(result.Succeeded);
     }
 
     /// <summary>

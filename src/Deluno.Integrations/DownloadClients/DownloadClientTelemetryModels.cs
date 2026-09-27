@@ -35,6 +35,29 @@ public static class DownloadClientActions
     /// back in.</para>
     /// </summary>
     public const string Forget = "forget";
+
+    // #810: queue priority/reorder. Each adapter that supports queueing maps
+    // these onto its own native call (increasePrio/topPriority for
+    // qBittorrent, queue-move-* for Transmission, queue_top/up/down/bottom for
+    // Deluge, the priority parameter for SABnzbd, GroupMoveTop/GroupMoveBottom/
+    // GroupSetPriority for NZBGet). uTorrent is left without these: its queue
+    // API could not be independently confirmed this session (closed-source,
+    // no public source repo).
+    public const string MoveToTop = "move-to-top";
+    public const string MoveUp = "move-up";
+    public const string MoveDown = "move-down";
+    public const string MoveToBottom = "move-to-bottom";
+
+    /// <summary>qBittorrent only: bypass its own seed/ratio thresholds and force the transfer to start now.</summary>
+    public const string ForceStart = "force-start";
+
+    private static readonly HashSet<string> QueuePriorityOrForceStartActions = new(StringComparer.Ordinal)
+    {
+        MoveToTop, MoveUp, MoveDown, MoveToBottom, ForceStart
+    };
+
+    /// <summary>#810/#933: whether this action is one of the queue-reorder/force-start verbs, which are only ever allowed against a download Deluno itself dispatched.</summary>
+    public static bool IsQueuePriorityOrForceStart(string action) => QueuePriorityOrForceStartActions.Contains(action);
 }
 
 /// <summary>
@@ -355,7 +378,11 @@ public sealed record DownloadClientTelemetryCapabilities(
     bool SupportsRemove,
     bool SupportsRecheck,
     bool SupportsImportPath,
-    string AuthMode);
+    string AuthMode,
+    /// <summary>#810: this client's own queue can be reordered (move to top/up/down/bottom). False for a protocol whose queue API could not be confirmed (uTorrent).</summary>
+    bool SupportsQueueReorder = false,
+    /// <summary>#810: qBittorrent only -- bypass its own seed/ratio thresholds and force a transfer to start now.</summary>
+    bool SupportsForceStart = false);
 
 public sealed record DownloadClientTelemetrySnapshot(
     string ClientId,

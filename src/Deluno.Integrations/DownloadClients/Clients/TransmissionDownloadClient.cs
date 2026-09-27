@@ -10,7 +10,7 @@ namespace Deluno.Integrations.DownloadClients.Clients;
 public sealed class TransmissionDownloadClient(IHttpClientFactory httpClientFactory) : DownloadClientBase
 {
     public override string Protocol => "transmission";
-    public override DownloadClientTelemetryCapabilities Capabilities { get; } = new(true, false, true, true, true, true, "basic");
+    public override DownloadClientTelemetryCapabilities Capabilities { get; } = new(true, false, true, true, true, true, "basic", SupportsQueueReorder: true);
 
     public override async Task<DownloadClientGrabResult> GrabAsync(DownloadClientItem client, DownloadClientGrabRequest request, CancellationToken cancellationToken)
     {
@@ -192,6 +192,11 @@ public sealed class TransmissionDownloadClient(IHttpClientFactory httpClientFact
             DownloadClientActions.Delete => ("torrent-remove", false),
             DownloadClientActions.DeleteWithData => ("torrent-remove", true),
             DownloadClientActions.Forget => ("torrent-remove", true),
+            // #810: Transmission's own queue-move-* RPC methods.
+            DownloadClientActions.MoveToTop => ("queue-move-top", null),
+            DownloadClientActions.MoveUp => ("queue-move-up", null),
+            DownloadClientActions.MoveDown => ("queue-move-down", null),
+            DownloadClientActions.MoveToBottom => ("queue-move-bottom", null),
             _ => (null, null)
         };
         if (method is null) return DownloadClientHelpers.Unsupported(client, queueItemId, action, "Transmission");

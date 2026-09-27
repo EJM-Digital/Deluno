@@ -1270,6 +1270,10 @@ export interface DownloadClientTelemetryCapabilities {
   supportsRecheck: boolean;
   supportsImportPath: boolean;
   authMode: string;
+  /** #810: this client's own queue can be reordered (move to top/up/down/bottom). False for a protocol whose queue API could not be confirmed (uTorrent). */
+  supportsQueueReorder?: boolean;
+  /** #810: qBittorrent only — bypass its own seed/ratio thresholds and force a transfer to start now. */
+  supportsForceStart?: boolean;
 }
 
 export interface DownloadClientTelemetrySnapshot {

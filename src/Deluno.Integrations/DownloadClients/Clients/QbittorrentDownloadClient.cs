@@ -32,7 +32,9 @@ public sealed class QbittorrentDownloadClient(Func<HttpMessageHandler>? handlerF
         SupportsRemove: true,
         SupportsRecheck: true,
         SupportsImportPath: true,
-        AuthMode: "form");
+        AuthMode: "form",
+        SupportsQueueReorder: true,
+        SupportsForceStart: true);
 
     public override async Task<DownloadClientGrabResult> GrabAsync(DownloadClientItem client, DownloadClientGrabRequest request, CancellationToken cancellationToken)
     {
@@ -421,6 +423,12 @@ public sealed class QbittorrentDownloadClient(Func<HttpMessageHandler>? handlerF
             DownloadClientActions.Delete => (new[] { "api/v2/torrents/delete" }, false),
             DownloadClientActions.DeleteWithData => (new[] { "api/v2/torrents/delete" }, true),
             DownloadClientActions.Forget => (new[] { "api/v2/torrents/delete" }, true),
+            // #810: queue priority/reorder and force-start.
+            DownloadClientActions.MoveToTop => (new[] { "api/v2/torrents/topPrio" }, null),
+            DownloadClientActions.MoveUp => (new[] { "api/v2/torrents/increasePrio" }, null),
+            DownloadClientActions.MoveDown => (new[] { "api/v2/torrents/decreasePrio" }, null),
+            DownloadClientActions.MoveToBottom => (new[] { "api/v2/torrents/bottomPrio" }, null),
+            DownloadClientActions.ForceStart => (new[] { "api/v2/torrents/setForceStart" }, null),
             _ => (null, null)
         };
         if (endpoints is null) return DownloadClientHelpers.Unsupported(client, queueItemId, action, "qBittorrent");
@@ -428,6 +436,10 @@ public sealed class QbittorrentDownloadClient(Func<HttpMessageHandler>? handlerF
         if (deleteFiles is { } wipe)
         {
             pairs.Add(new("deleteFiles", wipe ? "true" : "false"));
+        }
+        if (action == DownloadClientActions.ForceStart)
+        {
+            pairs.Add(new("value", "true"));
         }
         HttpResponseMessage? lastResponse = null;
         foreach (var endpoint in endpoints)

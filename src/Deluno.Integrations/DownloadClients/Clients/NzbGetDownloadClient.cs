@@ -9,7 +9,7 @@ namespace Deluno.Integrations.DownloadClients.Clients;
 public sealed class NzbGetDownloadClient(IHttpClientFactory httpClientFactory) : DownloadClientBase
 {
     public override string Protocol => "nzbget";
-    public override DownloadClientTelemetryCapabilities Capabilities { get; } = new(true, true, true, true, false, true, "basic");
+    public override DownloadClientTelemetryCapabilities Capabilities { get; } = new(true, true, true, true, false, true, "basic", SupportsQueueReorder: true);
 
     public override async Task<DownloadClientGrabResult> GrabAsync(DownloadClientItem client, DownloadClientGrabRequest request, CancellationToken cancellationToken)
     {
@@ -143,9 +143,9 @@ public sealed class NzbGetDownloadClient(IHttpClientFactory httpClientFactory) :
         var http = CreateHttp(client);
         var endpoint = new Uri(baseUri, "jsonrpc");
 
-        async Task Edit(string command) =>
+        async Task Edit(string command, int offset = 0) =>
             await DownloadClientHelpers.PostJsonAsync<NzbGetResponse<object>>(
-                http, endpoint, new NzbGetRequest("editqueue", [command, 0, "", new[] { id }]), cancellationToken);
+                http, endpoint, new NzbGetRequest("editqueue", [command, offset, "", new[] { id }]), cancellationToken);
 
         switch (action)
         {
@@ -177,6 +177,26 @@ public sealed class NzbGetDownloadClient(IHttpClientFactory httpClientFactory) :
                 await Edit("GroupFinalDelete");
                 await Edit("HistoryFinalDelete");
                 return Sent(client, queueItemId, action, "Removed this download and its history entry from NZBGet, so it will accept this release again.");
+
+            // #810: GroupMoveTop/GroupMoveBottom are NZBGet's own edit-queue
+            // commands for the ends of the queue; GroupMoveOffset moves it by
+            // one position in either direction for up/down, the same
+            // editqueue call the pause/delete commands above already use.
+            case DownloadClientActions.MoveToTop:
+                await Edit("GroupMoveTop");
+                return Sent(client, queueItemId, action, "Moved this download to the top of NZBGet's queue.");
+
+            case DownloadClientActions.MoveUp:
+                await Edit("GroupMoveOffset", -1);
+                return Sent(client, queueItemId, action, "Moved this download up in NZBGet's queue.");
+
+            case DownloadClientActions.MoveDown:
+                await Edit("GroupMoveOffset", 1);
+                return Sent(client, queueItemId, action, "Moved this download down in NZBGet's queue.");
+
+            case DownloadClientActions.MoveToBottom:
+                await Edit("GroupMoveBottom");
+                return Sent(client, queueItemId, action, "Moved this download to the bottom of NZBGet's queue.");
 
             // NZBGet verifies a download itself and exposes no per-item recheck,
             // so this is refused rather than quietly mapped to something else.
