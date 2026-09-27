@@ -4,6 +4,15 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <LangVersion>preview</LangVersion>
+    <!--
+      The version currently being built. scripts/pack-windows-installer.ps1
+      overrides this with -p:Version for an actual release build, so this is
+      really "the version in progress"; bump it when starting work toward
+      the next release. scripts/check-release-notes-version.ps1 (run from
+      ci:check) warns when RELEASE_NOTES.md has no "## <this version>"
+      section yet, so a release doesn't ship without notes (#870).
+    -->
+    <Version>1.0.0-rc.23</Version>
   </PropertyGroup>
 
   <ItemGroup Condition="'$(MSBuildProjectName)' != 'Deluno.Contracts' and '$(MSBuildProjectName)' != 'Deluno.Host' and '$(MSBuildProjectName)' != 'Deluno.Tray'">

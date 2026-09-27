@@ -1232,6 +1232,37 @@ function BackupCard({
   );
 }
 
+/**
+ * Renders a release-notes body as plain text with the lightest possible
+ * markdown: a line starting with "- " becomes a bullet, "**bold**" becomes
+ * bold text. Never HTML -- the text comes from RELEASE_NOTES.md in the build,
+ * but it is still rendered as data, not injected as markup (#870).
+ */
+function ReleaseNotesBody({ text }: { text: string }) {
+  const lines = text.split("\n").filter((line) => line.trim().length > 0);
+  const renderInline = (line: string) =>
+    line.split(/(\*\*[^*]+\*\*)/g).map((part, index) =>
+      part.startsWith("**") && part.endsWith("**") ? (
+        <strong key={index} className="font-semibold text-foreground">{part.slice(2, -2)}</strong>
+      ) : (
+        <span key={index}>{part}</span>
+      )
+    );
+
+  return (
+    <ul className="space-y-1">
+      {lines.map((line, index) => {
+        const bullet = line.trim().replace(/^-\s+/, "");
+        return (
+          <li key={index} className="list-disc pl-4">
+            {renderInline(bullet)}
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
 function UpgradeCard({ status, children }: { status: UpdateStatusResponse; children: ReactNode }) {
   const [current, setCurrent] = useState(status);
   const [savedPreferences, setSavedPreferences] = useState<UpdatePreferencesResponse | null>(null);
@@ -1419,9 +1450,21 @@ function UpgradeCard({ status, children }: { status: UpdateStatusResponse; child
             <p className="text-sm font-semibold text-foreground">Update history</p>
             <ul className="space-y-1">
               {current.appliedUpdates.map((entry) => (
-                <li key={`${entry.version}-${entry.appliedAtUtc}`} className="flex items-center justify-between rounded-xl border border-hairline bg-surface-1 px-3 py-2 text-xs">
-                  <span className="font-medium text-foreground">{entry.version}</span>
-                  <span className="text-muted-foreground">{new Date(entry.appliedAtUtc).toLocaleString()}</span>
+                <li key={`${entry.version}-${entry.appliedAtUtc}`} className="rounded-xl border border-hairline bg-surface-1 px-3 py-2 text-xs">
+                  <div className="flex items-center justify-between">
+                    <span className="font-medium text-foreground">{entry.version}</span>
+                    <span className="text-muted-foreground">{new Date(entry.appliedAtUtc).toLocaleString()}</span>
+                  </div>
+                  {entry.notes ? (
+                    <details className="mt-1">
+                      <summary className="cursor-pointer text-muted-foreground">What changed</summary>
+                      <div className="mt-1 text-muted-foreground">
+                        <ReleaseNotesBody text={entry.notes} />
+                      </div>
+                    </details>
+                  ) : (
+                    <p className="mt-1 text-muted-foreground">No notes for this version.</p>
+                  )}
                 </li>
               ))}
             </ul>

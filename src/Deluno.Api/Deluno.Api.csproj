@@ -10,5 +10,11 @@
     <ProjectReference Include="..\Deluno.Movies\Deluno.Movies.csproj" />
     <ProjectReference Include="..\Deluno.Series\Deluno.Series.csproj" />
   </ItemGroup>
+  <ItemGroup>
+    <!-- Plain-language per-version notes (#870), read at runtime by
+         ReleaseNotes.EmbeddedReleaseNotesProvider and attached to each
+         applied update on the Updates card. -->
+    <EmbeddedResource Include="..\..\RELEASE_NOTES.md" LogicalName="Deluno.Api.RELEASE_NOTES.md" />
+  </ItemGroup>
 </Project>
 

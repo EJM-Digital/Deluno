@@ -280,6 +280,18 @@ if ($backlogSweep.ExitCode -eq 0) {
     Write-Fail "BACKLOG-SWEEP.md agrees with itself"
 }
 
+# RELEASE_NOTES.md ships inside the build so an install can show what
+# changed without reading GitHub (#870, the repo stays private). This is a
+# warning, not a failure: it is easy to forget the notes section while
+# mid-feature, and the real gate is the release checklist, not this push.
+$releaseNotes = Invoke-LoggedCommand -FilePath $powerShellPath -Arguments @("-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "scripts/check-release-notes-version.ps1")
+if ($releaseNotes.ExitCode -eq 0) {
+    Write-Ok "RELEASE_NOTES.md covers the version being built"
+} else {
+    if ($releaseNotes.Output) { Write-Host $releaseNotes.Output }
+    Write-Warn "RELEASE_NOTES.md has no section for the version being built yet"
+}
+
 Write-Host ""
 Write-Host "--------------------------------------"
 Write-Host "  Passed: $passCount  Warned: $warnCount  Failed: $failCount"

@@ -76,6 +76,74 @@ public sealed class UpdateAppliedTriggerTests
     }
 
     [Fact]
+    public async Task An_applied_update_carries_its_own_release_notes()
+    {
+        var dataRoot = CreateDataRoot();
+        try
+        {
+            await File.WriteAllTextAsync(
+                Path.Combine(dataRoot, "update-history.json"),
+                JsonSerializer.Serialize(new { lastKnownVersion = "0.0.1-previous-fixture", applied = Array.Empty<object>() }));
+
+            var options = Options.Create(new StoragePathOptions { DataRoot = dataRoot });
+            var outbound = new FakeOutboundNotificationService();
+            var notifications = new FakeNotificationService { Preferences = new() { UpdateEnabled = true } };
+            var currentVersion = System.Reflection.Assembly.GetEntryAssembly()?.GetName().Version?.ToString(3) ?? "0.0.0";
+            var releaseNotes = new FakeReleaseNotesProvider(new Dictionary<string, string>
+            {
+                [currentVersion] = "- Made the thing better."
+            });
+            var orchestrator = new DefaultUpdateOrchestrator(options, notifications, outbound, releaseNotes);
+
+            var status = await orchestrator.GetStatusAsync(CancellationToken.None);
+
+            var applied = Assert.Single(status.AppliedUpdates ?? []);
+            Assert.Equal("- Made the thing better.", applied.Notes);
+
+            // The pending-update Changelog has nowhere to point yet: there is
+            // no update checker, so LatestVersion is always null (#870).
+            Assert.Null(status.Changelog);
+            Assert.Null(status.LatestVersion);
+        }
+        finally
+        {
+            Directory.Delete(dataRoot, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task An_applied_version_with_no_notes_section_carries_null_notes()
+    {
+        var dataRoot = CreateDataRoot();
+        try
+        {
+            await File.WriteAllTextAsync(
+                Path.Combine(dataRoot, "update-history.json"),
+                JsonSerializer.Serialize(new { lastKnownVersion = "0.0.1-previous-fixture", applied = Array.Empty<object>() }));
+
+            var options = Options.Create(new StoragePathOptions { DataRoot = dataRoot });
+            var outbound = new FakeOutboundNotificationService();
+            var notifications = new FakeNotificationService { Preferences = new() { UpdateEnabled = true } };
+            var releaseNotes = new FakeReleaseNotesProvider(new Dictionary<string, string>());
+            var orchestrator = new DefaultUpdateOrchestrator(options, notifications, outbound, releaseNotes);
+
+            var status = await orchestrator.GetStatusAsync(CancellationToken.None);
+
+            var applied = Assert.Single(status.AppliedUpdates ?? []);
+            Assert.Null(applied.Notes);
+        }
+        finally
+        {
+            Directory.Delete(dataRoot, recursive: true);
+        }
+    }
+
+    private sealed class FakeReleaseNotesProvider(IReadOnlyDictionary<string, string> notesByVersion) : IReleaseNotesProvider
+    {
+        public string? GetNotes(string version) => notesByVersion.TryGetValue(version, out var notes) ? notes : null;
+    }
+
+    [Fact]
     public async Task A_version_change_stays_silent_when_the_toggle_is_off()
     {
         var dataRoot = CreateDataRoot();

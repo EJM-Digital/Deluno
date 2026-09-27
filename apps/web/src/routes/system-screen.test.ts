@@ -57,6 +57,13 @@ describe("system screen updates card release notes and history (#870)", () => {
     expect(source).toMatch(/entry\.version/);
     expect(source).toMatch(/entry\.appliedAtUtc/);
   });
+
+  it("shows each applied version's own notes collapsed by default, with no HTML injection and a message when a version has none", () => {
+    expect(source).toMatch(/entry\.notes/);
+    expect(source).toMatch(/<details/);
+    expect(source).not.toMatch(/dangerouslySetInnerHTML/);
+    expect(source).toMatch(/No notes for this version\./);
+  });
 });
 
 /**

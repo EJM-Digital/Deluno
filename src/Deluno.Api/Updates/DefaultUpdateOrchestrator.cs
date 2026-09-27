@@ -26,6 +26,7 @@ public sealed class DefaultUpdateOrchestrator : IUpdateOrchestrator
     private readonly SemaphoreSlim _historyGate = new(1, 1);
     private readonly INotificationService _notificationService;
     private readonly IOutboundNotificationService _outboundNotificationService;
+    private readonly IReleaseNotesProvider _releaseNotesProvider;
     private readonly TimeProvider _timeProvider;
     private bool _versionCheckedThisRun;
 
@@ -33,6 +34,7 @@ public sealed class DefaultUpdateOrchestrator : IUpdateOrchestrator
         IOptions<StoragePathOptions> storageOptions,
         INotificationService notificationService,
         IOutboundNotificationService outboundNotificationService,
+        IReleaseNotesProvider? releaseNotesProvider = null,
         TimeProvider? timeProvider = null)
     {
         _currentVersion = Assembly.GetEntryAssembly()?.GetName().Version?.ToString(3) ?? "0.0.0";
@@ -45,6 +47,7 @@ public sealed class DefaultUpdateOrchestrator : IUpdateOrchestrator
             ?? ExtractImageDigest(_currentImageRef);
         _notificationService = notificationService;
         _outboundNotificationService = outboundNotificationService;
+        _releaseNotesProvider = releaseNotesProvider ?? new EmbeddedReleaseNotesProvider();
         _timeProvider = timeProvider ?? TimeProvider.System;
     }
 
@@ -287,6 +290,14 @@ public sealed class DefaultUpdateOrchestrator : IUpdateOrchestrator
 
     private UpdateStatusResponse BuildStatus(UpdateHistoryState? history = null)
     {
+        // Notes are looked up fresh here rather than stored on the entries in
+        // update-history.json, so a later edit to RELEASE_NOTES.md (a typo
+        // fix, for example) shows up immediately without rewriting history
+        // already on disk (#870).
+        var appliedWithNotes = history?.Applied
+            .Select(entry => entry with { Notes = _releaseNotesProvider.GetNotes(entry.Version) })
+            .ToList();
+
         var message = _installKind == UpdateInstallKinds.Docker
             ? "Docker installs do not support in-place binary updates. Pull a newer image tag and recreate the container."
             : "This runtime is not a Velopack-managed Windows install. Update by installing a newer build package.";
@@ -326,8 +337,11 @@ public sealed class DefaultUpdateOrchestrator : IUpdateOrchestrator
             Notes: notes,
             CurrentImageRef: _currentImageRef,
             CurrentImageDigest: _currentImageDigest,
+            // See the Changelog comment on UpdateStatusResponse: there is no
+            // update checker, so LatestVersion is always null and this stays
+            // null with it.
             Changelog: null,
-            AppliedUpdates: history?.Applied ?? []);
+            AppliedUpdates: appliedWithNotes ?? []);
     }
 
     private static bool IsRunningInDocker()

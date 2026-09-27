@@ -213,6 +213,8 @@ export interface UpdateStatusResponse {
 export interface AppliedUpdateEntry {
   version: string;
   appliedAtUtc: string;
+  /** This version's plain-language release notes, or null when the build has no section for it. */
+  notes?: string | null;
 }
 
 export interface QualityTierDefinition {
