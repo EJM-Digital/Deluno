@@ -106,14 +106,18 @@ public static class RetentionFieldCatalog
     public static readonly IReadOnlyList<RetentionFieldDefinition> Fields =
     [
         new("server.watchedBy", "Watched by", "Who has finished it. A show or season counts once every episode in it has been.", Watching, RetentionValueKinds.Users, RetentionFieldSources.Server, Everywhere),
+        new("server.watchedBySinceAdded", "Watched by, since added", "Who has finished it, counting only plays after it joined Deluno.", Watching, RetentionValueKinds.Users, RetentionFieldSources.Server, Everywhere),
         new("server.timesViewed", "Times viewed", "How many times it has been finished, added up across people.", Watching, RetentionValueKinds.Integer, RetentionFieldSources.Server, Everywhere),
         new("server.playAttempts", "Play attempts (unfinished)", "People who started it and stopped part way.", Watching, RetentionValueKinds.Integer, RetentionFieldSources.Server, Everywhere),
-        new("server.lastViewed", "Last viewed", "The most recent time anyone played it.", Watching, RetentionValueKinds.Date, RetentionFieldSources.Server, Everywhere),
+        new("server.lastViewed", "Last viewed (finished)", "The most recent time anyone finished it.", Watching, RetentionValueKinds.Date, RetentionFieldSources.Server, Everywhere),
+        new("server.lastPlayed", "Last played (finished or not)", "The most recent time anyone played it at all, whether or not they finished.", Watching, RetentionValueKinds.Date, RetentionFieldSources.Server, Everywhere),
         new("server.favouritedBy", "Favourited by", "Who marked it a favourite.", Watching, RetentionValueKinds.Users, RetentionFieldSources.Server, Everywhere, NotPlex),
         new("server.watchlistedBy", "Watchlisted by", "Who has it on their watchlist.", Watching, RetentionValueKinds.Users, RetentionFieldSources.Server, Everywhere, PlexOnly),
         new("server.userRating", "User rating", "The highest score anyone gave it, out of ten.", Watching, RetentionValueKinds.Rating, RetentionFieldSources.Server, Everywhere),
         new("server.allEpisodesSeenBy", "All episodes seen by", "Who has finished every episode.", Watching, RetentionValueKinds.Users, RetentionFieldSources.Server, Totals),
+        new("server.allEpisodesSeenBySinceAdded", "All episodes seen by, since added", "Who has finished every episode, counting only plays after the show joined Deluno.", Watching, RetentionValueKinds.Users, RetentionFieldSources.Server, Totals),
         new("server.watchers", "Watchers", "Who has finished at least one episode.", Watching, RetentionValueKinds.Users, RetentionFieldSources.Server, Totals),
+        new("server.watchersSinceAdded", "Watchers, since added", "Who has finished at least one episode, counting only plays after the show joined Deluno.", Watching, RetentionValueKinds.Users, RetentionFieldSources.Server, Totals),
         new("server.watchedEpisodes", "Watched episodes", "Episodes somebody has finished.", Watching, RetentionValueKinds.Integer, RetentionFieldSources.Server, Totals),
         new("server.totalViews", "Total views", "Every finished viewing of every episode, added up.", Watching, RetentionValueKinds.Integer, RetentionFieldSources.Server, Totals),
         new("server.newestEpisodeViewed", "Newest episode view", "The most recent time anyone played an episode.", Watching, RetentionValueKinds.Date, RetentionFieldSources.Server, Totals),
@@ -159,6 +163,7 @@ public static class RetentionFieldCatalog
         new("part.airDate", "Air date", "When the episode went to air.", Part, RetentionValueKinds.Date, RetentionFieldSources.Deluno, Episodes),
         new("part.imported", "File imported", "When the copy Deluno holds arrived.", Part, RetentionValueKinds.Date, RetentionFieldSources.Deluno, Parts),
         new("part.quality", "Quality", "The tier the episode's file is.", Part, RetentionValueKinds.Text, RetentionFieldSources.Deluno, Episodes),
+        new("part.qualityRank", "Quality (number)", "The same tier, as a number, so a rule can compare thresholds rather than just names.", Part, RetentionValueKinds.Integer, RetentionFieldSources.Deluno, Episodes),
         new("part.cutoffMet", "Quality cutoff met", "Whether Deluno has stopped looking for a better copy.", Part, RetentionValueKinds.Boolean, RetentionFieldSources.Deluno, Episodes),
         new("part.monitored", "Monitored", "Whether Deluno is watching for it.", Part, RetentionValueKinds.Boolean, RetentionFieldSources.Deluno, Episodes),
         new("part.path", "File path", "Where the episode's file sits.", Part, RetentionValueKinds.Text, RetentionFieldSources.Deluno, Episodes)
