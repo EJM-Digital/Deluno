@@ -48,7 +48,8 @@ public sealed class LibrarySubtitleSearchJobHandler(
     IMediaSubtitleRepository mediaSubtitleRepository,
     ISubtitleFetchService subtitleFetchService,
     IJobScheduler jobScheduler,
-    NotificationEventPublisher notificationEventPublisher)
+    NotificationEventPublisher notificationEventPublisher,
+    IActivityFeedRepository activityFeedRepository)
     : IJobHandler
 {
     public string JobType => "library.subtitles.search";
@@ -201,6 +202,20 @@ public sealed class LibrarySubtitleSearchJobHandler(
                     await mediaSubtitleRepository.BlockSubtitleAsync(
                         kind, item.MediaId, candidate.Language, candidate.BlockKey,
                         candidate.ProviderKey, candidate.ReleaseName, candidate.Reason, cancellationToken);
+
+                    // #898: the job summary already says how many titles were
+                    // searched, but not which subtitle was bad or why. Named
+                    // here, once, so Activity reads "this exact file was
+                    // rejected and will not be offered again" rather than
+                    // leaving that only in the blocklist table.
+                    await activityFeedRepository.RecordActivityAsync(
+                        "subtitle.rejected",
+                        $"Rejected a {candidate.Language} subtitle for {item.Title} from {candidate.ProviderKey}: {candidate.Reason} It will not be fetched again; the next search tries the next candidate.",
+                        null,
+                        job.Id,
+                        kind == MediaKind.Series ? "series" : "movie",
+                        item.MediaId,
+                        cancellationToken);
                 }
 
                 if (outcome.Reason.StartsWith("No subtitle providers", StringComparison.Ordinal))
