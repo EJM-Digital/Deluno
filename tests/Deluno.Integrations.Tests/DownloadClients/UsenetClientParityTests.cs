@@ -266,6 +266,50 @@ public sealed class UsenetClientParityTests
         Assert.False(snapshot!.ClientPaused);
     }
 
+    // ── SABnzbd's own queue-level warnings (#813) ────────────────────────────
+
+    [Fact]
+    public async Task Sabnzbd_snapshot_reads_have_warnings_and_folds_them_into_health()
+    {
+        var handler = new RoutedSabWarningsHandler(
+            queue: """{"queue":{"speed":"0","slots":[],"diskspace1":"925.3","diskspacetotal1":"2000.0","have_warnings":"1"}}""",
+            history: """{"history":{"slots":[]}}""",
+            warnings: """{"warnings":["WARNING: Disk full"]}""");
+
+        var snapshot = await new SabnzbdDownloadClient(new StubHttpClientFactory(handler)).GetSnapshotAsync(SabClient(), DateTimeOffset.UtcNow, CancellationToken.None);
+
+        Assert.Equal("degraded", snapshot!.HealthStatus);
+        Assert.Contains("WARNING: Disk full", snapshot.LastHealthMessage);
+        Assert.Equal(["WARNING: Disk full"], snapshot.ClientWarnings);
+    }
+
+    [Fact]
+    public async Task Sabnzbd_snapshot_does_not_call_warnings_when_have_warnings_is_zero()
+    {
+        var handler = new RoutedSabWarningsHandler(
+            queue: """{"queue":{"speed":"0","slots":[],"diskspace1":"925.3","diskspacetotal1":"2000.0","have_warnings":"0"}}""",
+            history: """{"history":{"slots":[]}}""",
+            warnings: """{"warnings":["should never be fetched"]}""");
+
+        var snapshot = await new SabnzbdDownloadClient(new StubHttpClientFactory(handler)).GetSnapshotAsync(SabClient(), DateTimeOffset.UtcNow, CancellationToken.None);
+
+        Assert.Equal("healthy", snapshot!.HealthStatus);
+        Assert.Null(snapshot.ClientWarnings);
+        Assert.False(handler.WarningsCalled);
+    }
+
+    [Fact]
+    public async Task Sabnzbd_clear_warnings_calls_the_clear_api()
+    {
+        var handler = new RecordingSabClearHandler();
+
+        var cleared = await new SabnzbdDownloadClient(new StubHttpClientFactory(handler)).ClearWarningsAsync(SabClient(), CancellationToken.None);
+
+        Assert.True(cleared);
+        Assert.Contains("mode=warnings", handler.LastQuery);
+        Assert.Contains("name=clear", handler.LastQuery);
+    }
+
     // ── Fixtures ─────────────────────────────────────────────────────────────
 
     private static DownloadClientItem NzbGetClient()
@@ -325,6 +369,38 @@ public sealed class UsenetClientParityTests
                     ? version ?? """{"version":""}"""
                     : queue;
             return Task.FromResult(JsonResponse(body));
+        }
+    }
+
+    /// <summary>Answers SABnzbd's queue/history/version/warnings calls, tracking whether warnings was ever asked for.</summary>
+    private sealed class RoutedSabWarningsHandler(string queue, string history, string warnings) : HttpMessageHandler
+    {
+        public bool WarningsCalled { get; private set; }
+
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            var query = request.RequestUri?.Query ?? string.Empty;
+            if (query.Contains("mode=history", StringComparison.OrdinalIgnoreCase)) return Task.FromResult(JsonResponse(history));
+            if (query.Contains("mode=version", StringComparison.OrdinalIgnoreCase)) return Task.FromResult(JsonResponse("""{"version":""}"""));
+            if (query.Contains("mode=warnings", StringComparison.OrdinalIgnoreCase))
+            {
+                WarningsCalled = true;
+                return Task.FromResult(JsonResponse(warnings));
+            }
+
+            return Task.FromResult(JsonResponse(queue));
+        }
+    }
+
+    /// <summary>Records the query string of the one call ClearWarningsAsync makes.</summary>
+    private sealed class RecordingSabClearHandler : HttpMessageHandler
+    {
+        public string? LastQuery { get; private set; }
+
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            LastQuery = request.RequestUri?.Query;
+            return Task.FromResult(JsonResponse("{}"));
         }
     }
 }

@@ -128,9 +128,72 @@ public sealed class SabnzbdDownloadClient(IHttpClientFactory httpClientFactory) 
         // call rather than a second request.
         var clientPaused = payload?.Queue?.Paused;
         var clientVersion = await GetVersionAsync(http, baseUri, apiKey, cancellationToken);
+
+        // #813: SABnzbd's own queue-level warnings (disk-full, a failed
+        // unpack, and the like). have_warnings is a non-zero count string
+        // once SABnzbd has one waiting; only fetched then, so a client with
+        // nothing to say costs no extra call. Folded into the same
+        // health/message a low-disk reading uses (#663) rather than a
+        // separate alert: it clears itself the moment the warning is cleared
+        // at SABnzbd (or a fresh one replaces it), the same as disk space
+        // freeing up, with no ignore-list bookkeeping needed on Deluno's side.
+        string[] warnings = [];
+        if (!string.IsNullOrWhiteSpace(payload?.Queue?.HaveWarnings) && payload.Queue.HaveWarnings != "0")
+        {
+            warnings = await GetWarningsAsync(http, baseUri, apiKey, cancellationToken);
+            if (warnings.Length > 0)
+            {
+                var warningText = $"SABnzbd reported: {string.Join(" ", warnings)}";
+                message = health == "degraded" ? $"{message} {warningText}" : warningText;
+                health = "degraded";
+            }
+        }
+
         return CreateSnapshot(
             client, queue, capturedUtc, health, message, history.Count > 0 ? history : null,
-            freeSpaceBytes: freeSpaceBytes, clientPaused: clientPaused, clientVersion: clientVersion);
+            freeSpaceBytes: freeSpaceBytes, clientPaused: clientPaused, clientVersion: clientVersion,
+            clientWarnings: warnings.Length > 0 ? warnings : null);
+    }
+
+    /// <summary>#813: clears SABnzbd's own queue-level warnings so they do not reappear once handled.</summary>
+    public override async Task<bool> ClearWarningsAsync(DownloadClientItem client, CancellationToken cancellationToken)
+    {
+        var baseUri = DownloadClientHelpers.ResolveEndpoint(client);
+        if (baseUri is null || string.IsNullOrWhiteSpace(client.Secret)) return false;
+        var http = httpClientFactory.CreateClient("download-clients");
+        http.Timeout = TimeSpan.FromSeconds(8);
+        using var response = await http.GetAsync(
+            new Uri(baseUri, $"api?mode=warnings&name=clear&output=json&apikey={Uri.EscapeDataString(client.Secret)}"),
+            cancellationToken);
+        return response.IsSuccessStatusCode;
+    }
+
+    // #813: mode=warnings returns the active warnings as an array of plain
+    // strings (or objects on some versions); either shape is read as text.
+    private static async Task<string[]> GetWarningsAsync(HttpClient http, Uri baseUri, string apiKey, CancellationToken cancellationToken)
+    {
+        try
+        {
+            using var response = await http.GetAsync(new Uri(baseUri, $"api?mode=warnings&output=json&apikey={Uri.EscapeDataString(apiKey)}"), cancellationToken);
+            if (!response.IsSuccessStatusCode) return [];
+            using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync(cancellationToken));
+            if (!document.RootElement.TryGetProperty("warnings", out var warnings) || warnings.ValueKind != JsonValueKind.Array)
+            {
+                return [];
+            }
+
+            return warnings.EnumerateArray()
+                .Select(entry => entry.ValueKind == JsonValueKind.String
+                    ? entry.GetString()
+                    : entry.TryGetProperty("text", out var text) ? text.GetString() : null)
+                .Where(text => !string.IsNullOrWhiteSpace(text))
+                .Select(text => text!)
+                .ToArray();
+        }
+        catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException or JsonException)
+        {
+            return [];
+        }
     }
 
     public override async Task<IReadOnlyList<DownloadClientHistoryItem>> GetHistoryAsync(DownloadClientItem client, DateTimeOffset capturedUtc, CancellationToken cancellationToken)

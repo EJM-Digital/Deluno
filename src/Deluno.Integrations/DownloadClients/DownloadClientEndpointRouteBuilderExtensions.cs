@@ -287,6 +287,24 @@ public static class DownloadClientEndpointRouteBuilderExtensions
             return result.Succeeded ? Results.Ok(result) : Results.BadRequest(result);
         });
 
+        // #813: dismissing a SABnzbd queue-level warning in Deluno also
+        // clears it at SABnzbd, so it does not reappear next poll.
+        endpoints.MapPost("/api/download-clients/{clientId}/warnings/clear", async (
+            string clientId,
+            HttpContext httpContext,
+            IDownloadClientTelemetryService telemetryService,
+            CancellationToken cancellationToken) =>
+        {
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
+            if (denied is not null)
+            {
+                return denied;
+            }
+
+            var cleared = await telemetryService.ClearClientWarningsAsync(clientId, cancellationToken);
+            return cleared ? Results.Ok() : Results.BadRequest(new { message = "Could not clear this client's warnings." });
+        });
+
         // The Queue's "why" behind removing a download (cleanup sheet J1/J2,
         // #924): one of QueueRemovalReasons, in plain words on the dialog
         // that asks it. Replaces the old single confirm and the "Allow

@@ -658,6 +658,11 @@ export function IndexersPage() {
       setClientInitial(next);
     }
   }
+  // #813: dismissing a SABnzbd queue-level warning also clears it at
+  // SABnzbd, so it does not reappear next poll.
+  async function clearClientWarnings(item: DownloadClientItem) {
+    await run(`warnings:clear:${item.id}`, () => send(`/api/download-clients/${item.id}/warnings/clear`, "POST", undefined, `Could not clear ${item.name}'s warnings.`), `Cleared ${item.name}'s warnings`);
+  }
   async function addMapping(clientId: string) {
     if (!newMapping.remotePath.trim() || !newMapping.localPath.trim()) return;
     const ok = await run("mapping:add", () => send(`/api/download-clients/${clientId}/path-mappings`, "POST", { remotePath: newMapping.remotePath.trim(), localPath: newMapping.localPath.trim(), isEnabled: true, priority: 10 }, "File location link could not be saved."), "File location linked");
@@ -838,7 +843,23 @@ export function IndexersPage() {
                       <ListCell mono primary={[movies, tv].filter(Boolean).join(" · ") || "—"} secondary={movies && tv && movies === tv ? "Same for both — files will mix" : mappings.length ? `${mappings.length} file-location link${mappings.length === 1 ? "" : "s"}` : "Movies · TV"} />
                       <ListCell numeric primary={live ? `${live.summary.activeCount} active` : <span className="text-muted-foreground">—</span>} secondary={live ? `${live.summary.totalSpeedMbps.toFixed(1)} MB/s · ${live.summary.importReadyCount} ready to import` : item.lastHealthTestUtc ? `Tested ${relative(item.lastHealthTestUtc)}` : "Not tested"} />
                       <ListCell mobile>
-                        <Chip tone={chip.tone}>{chip.label}</Chip>
+                        <div className="flex items-center gap-1.5">
+                          <Chip tone={chip.tone}>{chip.label}</Chip>
+                          {/* #813: a SABnzbd queue-level warning, cleared at SABnzbd (not just hidden here) so it does not reappear next poll. */}
+                          {live?.clientWarnings?.length ? (
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="ghost"
+                              aria-label={`Clear ${item.name}'s warnings`}
+                              title={live.clientWarnings.join(" ")}
+                              disabled={busy === `warnings:clear:${item.id}`}
+                              onClick={(event) => { event.stopPropagation(); void clearClientWarnings(item); }}
+                            >
+                              {busy === `warnings:clear:${item.id}` ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : "Clear warnings"}
+                            </Button>
+                          ) : null}
+                        </div>
                       </ListCell>
                       <ListCell mobile>
                         <Switch size="sm" aria-label={`${item.isEnabled ? "Pause" : "Enable"} ${item.name}`} checked={item.isEnabled} disabled={busy === `toggle:${item.id}`} onCheckedChange={(checked) => void toggleClient(item, checked)} />

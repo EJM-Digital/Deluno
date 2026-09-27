@@ -54,4 +54,12 @@ public interface IDownloadClientTelemetryService
         string queueItemId,
         string reason,
         CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Clears a client's own queue-level warnings (#813) — SABnzbd's
+    /// mode=warnings&amp;name=clear — so it does not keep reporting one Deluno
+    /// already showed and the person handled. False for a client whose
+    /// protocol has no such concept, or that could not be reached.
+    /// </summary>
+    Task<bool> ClearClientWarningsAsync(string clientId, CancellationToken cancellationToken);
 }

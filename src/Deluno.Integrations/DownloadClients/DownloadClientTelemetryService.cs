@@ -1294,6 +1294,25 @@ public sealed class DownloadClientTelemetryService(
         return await ExecuteActionCoreAsync(client, "delete-with-data", queueItemId, cancellationToken);
     }
 
+    public async Task<bool> ClearClientWarningsAsync(string clientId, CancellationToken cancellationToken)
+    {
+        var client = (await connectionsRepository.ListDownloadClientsAsync(cancellationToken))
+            .FirstOrDefault(item => string.Equals(item.Id, clientId, StringComparison.OrdinalIgnoreCase));
+        if (client is null || !downloadClientRegistry.TryGet(client.Protocol, out var implementation))
+        {
+            return false;
+        }
+
+        try
+        {
+            return await implementation.ClearWarningsAsync(client, cancellationToken);
+        }
+        catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException or IOException)
+        {
+            return false;
+        }
+    }
+
     private Task<DownloadClientActionResult> ExecuteOwnedRemediationRemovalAsync(
         DownloadClientItem client,
         string queueItemId,
