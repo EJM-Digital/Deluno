@@ -488,6 +488,54 @@ public static class ExternalIntegrationEndpointRouteBuilderExtensions
             return Results.Accepted($"/api/integrations/processors/handoffs?libraryId={Uri.EscapeDataString(handoff.LibraryId)}", retried);
         });
 
+        // #914/#929: giving up ends the wait, but the processor may still be
+        // doing something sensible with the file - a person who has seen the
+        // reason may just want longer, without resubmitting anything. Unlike
+        // /retry, this does not tell the processor about the file again; it
+        // only resumes watching it, so the next pass reads a fresh answer.
+        integrations.MapPost("/processors/handoffs/{id}/keep-waiting", async (
+            string id,
+            HttpContext httpContext,
+            IProcessorRepository repository,
+            IActivityFeedRepository activityFeed,
+            CancellationToken cancellationToken) =>
+        {
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
+            if (denied is not null) return denied;
+            var scopeDenied = UserAuthorization.RequireApiScope(httpContext, "imports");
+            if (scopeDenied is not null) return scopeDenied;
+
+            var handoff = await repository.GetProcessorHandoffAsync(id, cancellationToken);
+            if (handoff is null) return Results.NotFound();
+            if (!ProcessorHandoffStatuses.CanReleaseOriginal(handoff.Status))
+            {
+                return Results.Conflict(new
+                {
+                    message = "Only a hand-off Deluno stopped waiting on can be given a new limit. This one is still with the processor or has already finished."
+                });
+            }
+
+            var resumed = await repository.UpdateProcessorHandoffAsync(
+                handoff.Id,
+                ProcessorHandoffStatuses.Started,
+                null,
+                null,
+                null,
+                cancellationToken);
+            if (resumed is null) return Results.NotFound();
+
+            await activityFeed.RecordActivityAsync(
+                "processing.kept-waiting",
+                $"You asked Deluno to keep waiting for {handoff.ReleaseName}. It will watch the hand-off again from here.",
+                JsonSerializer.Serialize(new { HandoffId = handoff.Id, handoff.LibraryId, PreviousStatus = handoff.Status }),
+                null,
+                "processor-handoff",
+                handoff.Id,
+                cancellationToken);
+
+            return Results.Ok(new { message = $"Deluno will keep waiting for {handoff.ReleaseName}.", handoff = resumed });
+        });
+
         // Waiting is the processor's to end, until a person says otherwise (#566).
         //
         // Deluno waits while a processor says it is queued, scheduled or working,
