@@ -473,7 +473,7 @@ public sealed class SqlitePlatformSettingsRepository(
             // #936 reverses this to "off unless explicitly turned on". A
             // brand-new install reads a missing key as off; an install that
             // existed before #936 shipped keeps its old "on" behaviour
-            // because V0071AutomationDefaultsOff wrote an explicit "true" for
+            // because V0073AutomationDefaultsOff wrote an explicit "true" for
             // any such install that had not already stored a value.
             RenameOnImport: string.Equals(GetValue(settings, "media.renameOnImport"), "true", StringComparison.OrdinalIgnoreCase),
             UseHardlinks: !string.Equals(GetValue(settings, "media.useHardlinks"), "false", StringComparison.OrdinalIgnoreCase),
