@@ -115,7 +115,16 @@ public sealed class LibrarySubtitleSearchJobHandler(
             // had a row decides "downloaded" from "upgraded" once the fetch
             // below succeeds, and a fetch's own RecordFetchedAsync call would
             // have already overwritten that answer.
-            var languagesAlreadyHeld = (await mediaSubtitleRepository.ListSubtitlesAsync(kind, item.MediaId, cancellationToken))
+            var existingSubtitles = await mediaSubtitleRepository.ListSubtitlesAsync(kind, item.MediaId, cancellationToken);
+            var languagesAlreadyHeld = existingSubtitles
+                .Select(subtitle => subtitle.Language)
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+            // A forced track is fetched once and left alone after that — it is
+            // never re-checked against the cutoff the way the full subtitle is,
+            // because "made for this file" means nothing for four lines of
+            // Elvish (#835, #923).
+            var forcedAlreadyHeld = existingSubtitles
+                .Where(subtitle => subtitle.Forced)
                 .Select(subtitle => subtitle.Language)
                 .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
@@ -134,6 +143,38 @@ public sealed class LibrarySubtitleSearchJobHandler(
             {
                 var blockedKeys = await mediaSubtitleRepository.ListBlockedKeysAsync(kind, item.MediaId, cancellationToken);
                 var typePreference = SubtitleLanguageTypePreferenceCodec.For(typePreferences, language);
+
+                // Independent of the full subtitle below: asked for once and
+                // recorded with Forced: true, which never counts as coverage
+                // and is never re-checked against the timing cutoff (#835,
+                // #923). Done first so a failure or a skip further down this
+                // loop can never skip it by falling through a `continue`.
+                if (typePreference.IncludeForced && !forcedAlreadyHeld.Contains(language))
+                {
+                    var forcedOutcome = await subtitleFetchService.FetchForcedAsync(
+                        request, language, isEpisodeMedia: kind == MediaKind.Series, videoPath: item.FilePath,
+                        cancellationToken, library.SubtitleContentPolicy, library.SubtitleNamePolicy, library.SubtitleOmitLanguageCode, blockedKeys);
+
+                    if (forcedOutcome.Found && forcedOutcome.WrittenPath is not null)
+                    {
+                        await mediaSubtitleRepository.RecordFetchedAsync(
+                            kind, item.MediaId,
+                            new MediaSubtitleRow(
+                                Language: forcedOutcome.Language,
+                                Source: "fetched",
+                                Forced: true,
+                                HearingImpaired: false,
+                                FilePath: forcedOutcome.WrittenPath,
+                                StreamIndex: null,
+                                Codec: "srt",
+                                Provider: forcedOutcome.ProviderKey,
+                                MatchRung: (int)forcedOutcome.Match,
+                                SourceKey: forcedOutcome.SourceKey),
+                            cancellationToken);
+                        await notificationEventPublisher.PublishSubtitleDownloadedAsync(item.Title, $"{language} (forced)", cancellationToken);
+                        forcedAlreadyHeld.Add(language);
+                    }
+                }
 
                 var outcome = await subtitleFetchService.FetchAsync(
                     request,

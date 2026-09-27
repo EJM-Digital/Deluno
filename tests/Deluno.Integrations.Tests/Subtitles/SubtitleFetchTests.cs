@@ -260,6 +260,35 @@ public sealed class SubtitleFetchTests
     }
 
     [Fact]
+    public async Task FetchForcedAsync_only_takes_a_forced_candidate_and_writes_it_as_an_extra_file()
+    {
+        var provider = new FakeProvider("first",
+        [
+            Candidate("en") with { DownloadToken = "plain", DownloadCount = 999 },
+            Candidate("en") with { Forced = true, DownloadToken = "forced", DownloadCount = 1 }
+        ], Srt);
+        var writer = new FakeWriter();
+        var service = Build([provider], writer);
+
+        var outcome = await service.FetchForcedAsync(Request(), "en", false, @"D:\Media\Dune\Dune.mkv", CancellationToken.None);
+
+        Assert.True(outcome.Found);
+        Assert.Equal("forced", provider.LastDownloadToken);
+        Assert.Equal("Dune.en.forced.srt", Path.GetFileName(Assert.Single(writer.Written).Path));
+    }
+
+    [Fact]
+    public async Task FetchForcedAsync_reports_no_subtitle_when_nothing_is_forced()
+    {
+        var provider = new FakeProvider("first", [Candidate("en")], Srt);
+        var service = Build([provider], new FakeWriter());
+
+        var outcome = await service.FetchForcedAsync(Request(), "en", false, @"D:\Media\Dune\Dune.mkv", CancellationToken.None);
+
+        Assert.False(outcome.Found);
+    }
+
+    [Fact]
     public async Task A_rate_limited_provider_is_working_and_is_left_alone()
     {
         var provider = new FakeProvider("first", [], Srt) { RateLimited = true };
@@ -438,6 +467,12 @@ public sealed class SubtitleFetchTests
             SubtitleFileNaming.For(@"D:\Media\Dune\Dune (2021).mkv", language, hearingImpaired, omitLanguageCode));
     }
 
+    [Fact]
+    public void A_forced_track_never_overwrites_the_full_subtitle_for_the_same_language()
+        => Assert.Equal(
+            "Dune (2021).en.forced.srt",
+            SubtitleFileNaming.For(@"D:\Media\Dune\Dune (2021).mkv", "en", hearingImpaired: false, forced: true));
+
     /// <summary>
     /// The same video is given the same subtitle name wherever Deluno runs.
     ///
@@ -546,13 +581,14 @@ public sealed class SubtitleFetchTests
             bool hearingImpaired,
             byte[] subtitle,
             CancellationToken cancellationToken,
-            bool omitLanguageCode = false)
+            bool omitLanguageCode = false,
+            bool forced = false)
         {
             // Through the real naming rule rather than a second copy of it, so
             // this fake cannot quietly disagree with what lands on disk.
             var path = Path.Combine(
                 Path.GetDirectoryName(videoPath)!,
-                SubtitleFileNaming.For(videoPath, language, hearingImpaired, omitLanguageCode));
+                SubtitleFileNaming.For(videoPath, language, hearingImpaired, omitLanguageCode, forced));
 
             Written.Add((path, subtitle));
             return Task.FromResult(path);

@@ -32,5 +32,10 @@ public interface ISubtitleFileWriter
         bool hearingImpaired,
         byte[] subtitle,
         CancellationToken cancellationToken,
-        bool omitLanguageCode = false);
+        bool omitLanguageCode = false,
+        // A forced track, fetched as an extra file alongside the full
+        // subtitle for the same language (#835, #923). Never combined with
+        // hearingImpaired — a forced track is never counted as coverage, so
+        // the two variants cannot be confused with each other.
+        bool forced = false);
 }

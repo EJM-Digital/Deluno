@@ -135,4 +135,25 @@ describe("Subtitle languages: per-language hearing-impaired preference (#836)", 
     const body = JSON.parse((call![1] as RequestInit).body as string);
     expect(body.languageTypePreferences).toEqual([{ language: "en", hearingImpaired: "plain-only", includeForced: false }]);
   });
+
+  it("saves the forced-subtitle toggle for a language (#835)", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => ({}) });
+    vi.stubGlobal("fetch", fetchMock);
+    Object.assign(loaderData, libraryLoaderData);
+
+    render(
+      <MemoryRouter>
+        <SubtitleLanguagesPage />
+      </MemoryRouter>
+    );
+
+    fireEvent.click(screen.getByRole("row", { name: /Movies/ }));
+    fireEvent.click(await screen.findByRole("switch", { name: "Also fetch forced English subtitles" }));
+    fireEvent.click(screen.getByRole("button", { name: /Save/ }));
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+    const call = fetchMock.mock.calls.find(([url]) => (url as string).includes("/subtitles"));
+    const body = JSON.parse((call![1] as RequestInit).body as string);
+    expect(body.languageTypePreferences).toEqual([{ language: "en", hearingImpaired: "plain-preferred", includeForced: true }]);
+  });
 });
