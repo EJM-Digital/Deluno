@@ -179,7 +179,6 @@ public sealed class FlareSolverrCloudflareHelperTests
                 RenameOnImport: true,
                 UseHardlinks: false,
                 CleanupEmptyFolders: true,
-                RemoveCompletedDownloads: false,
                 MovieFolderFormat: "{Movie Title} ({Release Year})",
                 SeriesFolderFormat: "{Series Title} ({Series Year})",
                 MovieFileFormat: "{Movie Title} ({Release Year}) [{Quality}] [{Custom Formats}]",
