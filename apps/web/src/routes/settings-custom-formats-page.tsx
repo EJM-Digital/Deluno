@@ -256,6 +256,7 @@ type DrawerMode =
   | { kind: "preset"; id: string }
   | { kind: "test" }
   | { kind: "guide-move" }
+  | { kind: "import" }
   | null;
 
 export function SettingsCustomFormatsPage() {
@@ -510,6 +511,88 @@ export function SettingsCustomFormatsPage() {
     }
   }
 
+  /* ------------------------------------------------- JSON import/export */
+  // #777: a plain download, not a copy-to-clipboard box — the same file a
+  // person would keep as a backup or hand to someone else.
+  async function exportRule(format: CustomFormatItem) {
+    setBusy(`export:${format.id}`);
+    try {
+      const body = await fetchJson<unknown>(`/api/custom-formats/${format.id}/export`);
+      downloadJson(body, `${slugForFileName(format.name)}.json`);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not export this rule.");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function exportAllRules() {
+    setBusy("export-all");
+    try {
+      const body = await fetchJson<unknown>("/api/custom-formats/export");
+      downloadJson(body, "deluno-custom-formats.json");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not export the custom formats.");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  const [importText, setImportText] = useState("");
+  const [importResults, setImportResults] = useState<CustomFormatImportResult[] | null>(null);
+  const [importState, setImportState] = useState<Exclude<DrawerSaveState, "clean" | "dirty">>();
+  const [importMessage, setImportMessage] = useState<string | null>(null);
+
+  function openImportDrawer() {
+    setImportText("");
+    setImportResults(null);
+    setImportState(undefined);
+    setImportMessage(null);
+    setDrawer({ kind: "import" });
+  }
+
+  async function readImportFile(file: File) {
+    setImportText(await file.text());
+  }
+
+  async function runImport() {
+    let payload: unknown;
+    try {
+      payload = JSON.parse(importText);
+    } catch {
+      setImportState("error");
+      setImportMessage("That is not valid JSON. Paste what Export produced, unchanged.");
+      return;
+    }
+
+    setImportState("saving");
+    setImportMessage(null);
+    setImportResults(null);
+    try {
+      const response = await authedFetch("/api/custom-formats/import", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      });
+      if (!response.ok) {
+        const detail = await response.text().catch(() => "");
+        throw new Error(readErrorMessage(detail, response.url || "/api/custom-formats/import", response.status));
+      }
+      const results = (await response.json()) as CustomFormatImportResult[];
+      setImportResults(results);
+      const imported = results.filter((result) => result.imported).length;
+      setImportState(imported === results.length ? "saved" : "error");
+      setImportMessage(
+        `Imported ${imported} of ${results.length} ${results.length === 1 ? "rule" : "rules"}.`
+        + (results.some((result) => result.droppedConditions.length) ? " Some conditions could not be understood — see below." : "")
+      );
+      revalidator.revalidate();
+    } catch (error) {
+      setImportState("error");
+      setImportMessage(error instanceof Error ? error.message : "Could not import.");
+    }
+  }
+
   /* ----------------------------------------------------------- presets */
   const appliedTrashIds = useMemo(
     () => new Set(customFormats.filter((format) => format.trashId).map((format) => `${format.mediaType}:${format.trashId}`)),
@@ -717,6 +800,14 @@ export function SettingsCustomFormatsPage() {
             <Button type="button" variant="outline" onClick={openTestDrawer}>
               <FlaskConical className="h-4 w-4" />
               Test a release
+            </Button>
+            {/* #777: JSON import/export, separate from a TRaSH guide sync. */}
+            <Button type="button" variant="outline" onClick={openImportDrawer}>
+              Import
+            </Button>
+            <Button type="button" variant="outline" onClick={() => void exportAllRules()} disabled={busy === "export-all" || customFormats.length === 0}>
+              {busy === "export-all" ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+              Export all
             </Button>
             <PageToolbarAction onClick={() => openRule(null)}>New custom rule</PageToolbarAction>
           </>
@@ -1292,6 +1383,18 @@ export function SettingsCustomFormatsPage() {
         ) : null}
 
         {editing ? (
+          <DrawerSection title="Share or back up this rule">
+            <p className="text-[length:var(--type-caption)] text-muted-foreground">Download this rule as JSON to back it up or hand it to someone else. Import it back here, or on another Deluno install, from Import above.</p>
+            <div>
+              <Button type="button" variant="outline" size="sm" onClick={() => void exportRule(editing)} disabled={busy !== null}>
+                {busy === `export:${editing.id}` ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
+                Export this rule
+              </Button>
+            </div>
+          </DrawerSection>
+        ) : null}
+
+        {editing ? (
           <DrawerSection>
             <DrawerDanger
               title="Remove this rule"
@@ -1358,6 +1461,71 @@ export function SettingsCustomFormatsPage() {
             })}
           </div>
         </DrawerSection>
+      </Drawer>
+
+      {/* --------------------------------------------------- import drawer */}
+      <Drawer
+        open={drawer?.kind === "import"}
+        onOpenChange={(open) => {
+          if (!open) setDrawer(null);
+        }}
+        title="Import custom formats"
+        description="Paste or upload what Export produced — a single rule or a whole file"
+        footer={
+          <DrawerFooter
+            state={importState ?? "clean"}
+            message={importMessage}
+            saveLabel="Import"
+            saveType="button"
+            saveEnabled={importText.trim().length > 0}
+            onSave={() => void runImport()}
+            onCancel={() => setDrawer(null)}
+            disabled={importState === "saving"}
+          />
+        }
+      >
+        <DrawerSection title="JSON to import">
+          <Field label="File" optional help="Or paste the JSON below directly.">
+            <Input
+              type="file"
+              accept=".json,application/json"
+              onChange={(event) => {
+                const file = event.target.files?.[0];
+                if (file) void readImportFile(file);
+              }}
+            />
+          </Field>
+          <Field label="Custom format JSON" hideLabel>
+            <textarea
+              value={importText}
+              onChange={(event) => setImportText(event.target.value)}
+              placeholder='{"name": "...", "mediaType": "movies", "conditions": [...] }  or  [ {...}, {...} ]'
+              rows={10}
+              className="w-full rounded-[10px] border border-hairline bg-surface-2/40 p-3 font-mono text-[length:var(--type-caption)] text-foreground"
+            />
+          </Field>
+        </DrawerSection>
+
+        {importResults ? (
+          <DrawerSection title="Result" aside={`${importResults.filter((result) => result.imported).length} of ${importResults.length} imported`}>
+            <div className="grid gap-1.5">
+              {importResults.map((result, index) => (
+                <div key={`${result.name ?? "unnamed"}-${index}`} className="grid gap-1 border-b border-hairline py-2 last:border-b-0">
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="min-w-0 truncate text-[length:var(--type-body-sm)] text-foreground">{result.name ?? "(unnamed)"}</span>
+                    <Chip tone={result.imported ? "ok" : "bad"}>{result.imported ? "Imported" : "Not imported"}</Chip>
+                  </div>
+                  {result.error ? <p className="text-[length:var(--type-caption)] text-destructive">{result.error}</p> : null}
+                  {result.droppedConditions.length ? (
+                    <p className="text-[length:var(--type-caption)] text-warning">
+                      Could not understand: {result.droppedConditions.join(", ")}
+                    </p>
+                  ) : null}
+                </div>
+              ))}
+            </div>
+          </DrawerSection>
+        ) : null}
       </Drawer>
 
       {/* ------------------------------------------------- preset drawer */}
@@ -1581,6 +1749,30 @@ interface DryRunResult {
   isMatch: boolean;
   matchedConditions: string[];
   missedConditions: string[];
+}
+
+/** One imported format's outcome (#777, #774) from POST /api/custom-formats/import. */
+interface CustomFormatImportResult {
+  name: string | null;
+  imported: boolean;
+  id: string | null;
+  droppedConditions: string[];
+  error: string | null;
+}
+
+/** Triggers a browser download of `data` as pretty-printed JSON (#777). */
+function downloadJson(data: unknown, fileName: string) {
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = fileName;
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
+function slugForFileName(name: string) {
+  return name.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "custom-format";
 }
 
 function same<T>(a: T, b: T) {
