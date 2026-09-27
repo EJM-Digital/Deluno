@@ -50,6 +50,9 @@ describe("the one status table", () => {
       // Healthy, and no library's routing lists it: nothing will ever use it
       // until someone routes it.
       "connection.notRouted",
+      // A private tracker's VIP/subscription runs out soon (#747): nothing
+      // renews it until someone does.
+      "connection.vipExpiring",
       "job.deadLetter",
       // A rule that asks first: nothing is removed until someone confirms.
       "retention.ready",
