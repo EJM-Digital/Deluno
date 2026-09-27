@@ -216,6 +216,15 @@ export interface ContentBlocklistSettings {
   updatedUtc: string;
 }
 
+/** #822: one qBittorrent client's last content-blocklist sync attempt, keyed by download-client id on the response object. */
+export interface QbittorrentBlocklistSyncState {
+  clientId: string;
+  blocklistHash: string;
+  succeeded: boolean;
+  message: string | null;
+  syncedUtc: string;
+}
+
 export const emptyContentBlocklistSettings: ContentBlocklistSettings = {
   enabled: false,
   mode: "blacklist",

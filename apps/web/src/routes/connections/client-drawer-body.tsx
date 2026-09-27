@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Loader2, Plus, Trash2 } from "lucide-react";
-import { fetchJson, type DownloadClientItem, type DownloadClientPathMappingItem, type SharingRuleItem, type TagItem } from "../../lib/api";
+import { fetchJson, type DownloadClientItem, type DownloadClientPathMappingItem, type QbittorrentBlocklistSyncState, type SharingRuleItem, type TagItem } from "../../lib/api";
 import { Button } from "../../components/ui/button";
 import { Chip } from "../../components/ui/chip";
 import { Disclosure } from "../../components/ui/disclosure";
@@ -27,7 +27,8 @@ export function ClientDrawerBody({
   onAddMapping,
   onRemoveMapping,
   onTestMapping,
-  onRemove
+  onRemove,
+  blocklistSync
 }: {
   form: ClientForm;
   setForm: (updater: (current: ClientForm) => ClientForm) => void;
@@ -42,6 +43,8 @@ export function ClientDrawerBody({
   onRemoveMapping: (mappingId: string) => void;
   onTestMapping: (mappingId: string) => void;
   onRemove: () => void;
+  /** #822: this client's last content-blocklist "Excluded file names" sync attempt, or null when it has never run. */
+  blocklistSync?: QbittorrentBlocklistSyncState | null;
 }) {
   const [pathMappingOpen, setPathMappingOpen] = useState(false);
   const [advancedOpen, setAdvancedOpen] = useState(false);
@@ -186,6 +189,25 @@ export function ClientDrawerBody({
           <Field label="Save path" optional help="Where qBittorrent should save this client's downloads. Leave blank to use qBittorrent's own default, or its category's save path.">
             <PathInput value={form.location} onChange={(value) => setForm((current) => ({ ...current, location: value }))} placeholder="e.g. D:\Downloads\Movies" />
           </Field>
+          {editing ? (
+            <div className="flex items-start justify-between gap-3 rounded-[10px] border border-hairline px-[var(--field-pad-x)] py-2">
+              <div className="min-w-0">
+                <p className="text-[length:var(--type-body-sm)] text-foreground">Content blocklist sync</p>
+                <p className="mt-0.5 text-[length:var(--type-caption)] text-muted-foreground">
+                  {blocklistSync
+                    ? blocklistSync.succeeded
+                      ? (blocklistSync.message ?? "Last push succeeded.")
+                      : `Last push failed: ${blocklistSync.message ?? "no reason given"}.`
+                    : "Not synced yet. Turn on the sync in the content blocklist settings to push it into this client's Excluded file names."}
+                </p>
+              </div>
+              {blocklistSync ? (
+                <Chip tone={blocklistSync.succeeded ? "ok" : "bad"} className="shrink-0">
+                  {relative(blocklistSync.syncedUtc)}
+                </Chip>
+              ) : null}
+            </div>
+          ) : null}
         </DrawerSection>
       ) : null}
 
