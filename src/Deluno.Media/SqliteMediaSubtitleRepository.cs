@@ -61,7 +61,32 @@ public sealed class SqliteMediaSubtitleRepository(
             map.DatabaseName,
             cancellationToken);
 
-        var languageParameters = string.Join(", ", Enumerable.Range(0, languages.Count).Select(index => $"@lang{index}"));
+        // #843: a title's own override can name a language the library never
+        // asked for at all — "this one show needs Japanese, not the library
+        // default." Narrowing the held/waiting match to the library's own set
+        // would make that language invisible to this query even though the
+        // title genuinely lacks it, so the IN-list below is widened to every
+        // language *any* override in this catalogue names, and only the
+        // per-row effective list (resolved after reading) decides what is
+        // actually missing.
+        var allOverrideLanguages = new List<string>();
+        using (var overrideLanguagesCommand = connection.CreateCommand())
+        {
+            overrideLanguagesCommand.CommandText = $"SELECT languages FROM {map.SubtitleOverrideTable};";
+            using var overrideReader = await overrideLanguagesCommand.ExecuteReaderAsync(cancellationToken);
+            while (await overrideReader.ReadAsync(cancellationToken))
+            {
+                allOverrideLanguages.AddRange(overrideReader.GetString(0)
+                    .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
+            }
+        }
+
+        var matchLanguages = languages
+            .Concat(allOverrideLanguages)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+
+        var languageParameters = string.Join(", ", Enumerable.Range(0, matchLanguages.Length).Select(index => $"@lang{index}"));
 
         // What counts as held — the same predicate `CatalogueSubtitleRollup`
         // gives the bar.
@@ -120,32 +145,42 @@ public sealed class SqliteMediaSubtitleRepository(
                       AND att.failure_json IS NOT NULL
                     ORDER BY att.last_search_utc DESC
                     LIMIT 1
-                )
+                ),
+                ov.languages
             FROM {map.SubtitleFileSource}
             {map.SubtitleSearchJoin}
             {map.SubtitleFileLibraryJoin}
+            LEFT JOIN {map.SubtitleOverrideTable} ov ON ov.{map.TagMediaIdColumn} = {map.SubtitleOverrideFileTitleIdColumn}
             WHERE {map.SubtitleFileLibraryFilter}
               AND f.has_file = 1
               AND f.file_path IS NOT NULL
               -- Held *or* waiting on its backoff. Both have to be counted here
               -- rather than subtracted afterwards: the LIMIT is applied by
               -- SQLite, so a slice filtered in C# would come back full of titles
-              -- that are not due and do nothing at all.
+              -- that are not due and do nothing at all. A title with its own
+              -- override (#843) always passes this check instead of being
+              -- counted against the library's own language count, because its
+              -- effective language list can differ from the library's — the
+              -- precise "is it actually missing anything" question is answered
+              -- afterwards in C#, once the override has been resolved per row.
               AND (
-                    SELECT COUNT(*) FROM (
-                        SELECT sub.language AS language
-                        FROM {map.SubtitleTable} sub
-                        WHERE sub.{map.SubtitleMediaIdColumn} = {map.SubtitleFileIdColumn}
-                          AND {settledPredicate}
-                          AND sub.language IN ({languageParameters})
-                        UNION
-                        SELECT att.language
-                        FROM {map.SubtitleAttemptTable} att
-                        WHERE att.{map.SubtitleMediaIdColumn} = {map.SubtitleFileIdColumn}
-                          AND att.language IN ({languageParameters})
-                          AND att.next_eligible_search_utc > @now
-                    )
-              ) < @languageCount
+                    ov.languages IS NOT NULL
+                    OR (
+                          SELECT COUNT(*) FROM (
+                              SELECT sub.language AS language
+                              FROM {map.SubtitleTable} sub
+                              WHERE sub.{map.SubtitleMediaIdColumn} = {map.SubtitleFileIdColumn}
+                                AND {settledPredicate}
+                                AND sub.language IN ({languageParameters})
+                              UNION
+                              SELECT att.language
+                              FROM {map.SubtitleAttemptTable} att
+                              WHERE att.{map.SubtitleMediaIdColumn} = {map.SubtitleFileIdColumn}
+                                AND att.language IN ({languageParameters})
+                                AND att.next_eligible_search_utc > @now
+                          )
+                    ) < @languageCount
+              )
             -- Longest-waiting first, and never-tried before either. Without an
             -- order the slice is whatever SQLite hands back, which is the same
             -- ten titles every cycle while the rest of the library is never
@@ -163,24 +198,34 @@ public sealed class SqliteMediaSubtitleRepository(
         AddParameter(command, "@cutoff", (int)SubtitleCutoff.Rung);
         AddParameter(command, "@now", timeProvider.GetUtcNow().ToString("O"));
         AddParameter(command, "@limit", Math.Max(1, limit));
-        for (var index = 0; index < languages.Count; index++)
+        for (var index = 0; index < matchLanguages.Length; index++)
         {
-            AddParameter(command, $"@lang{index}", languages[index]);
+            AddParameter(command, $"@lang{index}", matchLanguages[index]);
         }
 
         var items = new List<MediaSubtitleWantedItem>();
         using var reader = await command.ExecuteReaderAsync(cancellationToken);
         while (await reader.ReadAsync(cancellationToken))
         {
-            // Ordinals 8, 9 and 10: the id and the path are 0 and 1, and the map's
-            // search columns are the six after them. Reading one short of that
-            // silently returns the release name as the held-language list, which
-            // never matches, and every file looks short of everything for ever.
+            // Ordinals 8, 9, 10 and 11: the id and the path are 0 and 1, and the
+            // map's search columns are the six after them. Reading one short of
+            // that silently returns the release name as the held-language list,
+            // which never matches, and every file looks short of everything for
+            // ever.
             var held = Split(reader, 8);
             var waiting = Split(reader, 9);
             var lastFailure = reader.IsDBNull(10) ? null : ReadFailure(reader.GetString(10));
 
-            var missing = languages
+            // #843: this title's own override, when it has one, replaces the
+            // library's language list entirely — not narrows it — which is
+            // exactly what a search asked to fetch a language the library
+            // never listed needs.
+            var overrideLanguages = reader.IsDBNull(11)
+                ? null
+                : reader.GetString(11).Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            var effectiveLanguages = overrideLanguages is { Length: > 0 } ? overrideLanguages : languages;
+
+            var missing = effectiveLanguages
                 .Where(language =>
                     !held.Contains(language, StringComparer.OrdinalIgnoreCase) &&
                     !waiting.Contains(language, StringComparer.OrdinalIgnoreCase))

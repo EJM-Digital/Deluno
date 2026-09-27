@@ -285,6 +285,55 @@ public sealed class SubtitleWantedQueryTests
         Assert.Equal(["en"], item.LanguagesToFetch);
     }
 
+    /// <summary>
+    /// #843: a title's own override replaces the library's language list for
+    /// this query too, not just for the detail drawer that reads it back — a
+    /// title asking for Japanese instead of the library's English must show
+    /// up wanting Japanese, and must stop being asked for English.
+    /// </summary>
+    [Fact]
+    public async Task A_titles_own_override_replaces_the_librarys_languages_here_too()
+    {
+        using var storage = TestStorage.Create();
+        var (movies, subtitles) = await CreateAsync(storage);
+        var overrides = new SqliteMediaSubtitleOverrideRepository(storage.Factory, new FixedTimeProvider(Now));
+        var id = await ImportAsync(movies, "Dune");
+
+        // The library only ever asks for English, and this file already has it.
+        await subtitles.RecordFetchedAsync(MediaKind.Movie, id, Row("en"), CancellationToken.None);
+
+        // Without an override, the library's own English is covered.
+        Assert.Empty(await subtitles.ListWantedAsync(
+            MediaKind.Movie, "library-movies", ["en"], 50, embeddedCounts: true, CancellationToken.None));
+
+        // This one title overrides to Japanese only — a language the library
+        // never listed at all, not merely a narrower slice of it.
+        await overrides.SetAsync(MediaKind.Movie, id, new SubtitleLanguageOverride(["ja"], "all"), CancellationToken.None);
+
+        var item = Assert.Single(await subtitles.ListWantedAsync(
+            MediaKind.Movie, "library-movies", ["en"], 50, embeddedCounts: true, CancellationToken.None));
+        Assert.Equal(["ja"], item.LanguagesToFetch);
+    }
+
+    /// <summary>
+    /// Once the overridden language is actually held, the title drops off the
+    /// list exactly as an ordinary library-default title would.
+    /// </summary>
+    [Fact]
+    public async Task A_titles_own_override_is_satisfied_once_that_language_is_held()
+    {
+        using var storage = TestStorage.Create();
+        var (movies, subtitles) = await CreateAsync(storage);
+        var overrides = new SqliteMediaSubtitleOverrideRepository(storage.Factory, new FixedTimeProvider(Now));
+        var id = await ImportAsync(movies, "Dune");
+
+        await overrides.SetAsync(MediaKind.Movie, id, new SubtitleLanguageOverride(["ja"], "all"), CancellationToken.None);
+        await subtitles.RecordFetchedAsync(MediaKind.Movie, id, Row("ja"), CancellationToken.None);
+
+        Assert.Empty(await subtitles.ListWantedAsync(
+            MediaKind.Movie, "library-movies", ["en"], 50, embeddedCounts: true, CancellationToken.None));
+    }
+
     [Fact]
     public void The_bar_and_the_fetcher_read_the_same_held_predicate()
     {
