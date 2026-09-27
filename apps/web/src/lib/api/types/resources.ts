@@ -27,6 +27,8 @@ export interface LibraryItem {
   maxItemsPerRun: number;
   searchWindowStartHour: number | null;
   searchWindowEndHour: number | null;
+  /** Shuffles automatic wanted-title search order instead of oldest-added first, so a recent add is never stuck behind a long backlog. */
+  randomizeSearchOrder?: boolean;
   automationStatus: string;
   searchRequested: boolean;
   lastSearchedUtc: string | null;

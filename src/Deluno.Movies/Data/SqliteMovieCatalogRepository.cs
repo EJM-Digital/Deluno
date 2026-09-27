@@ -1532,7 +1532,8 @@ public sealed class SqliteMovieCatalogRepository(
         CancellationToken cancellationToken,
         string? wantedStatus = null,
         CatalogueFilters? filters = null,
-        bool requireMonitored = true)
+        bool requireMonitored = true,
+        bool randomOrder = false)
     {
         if (sharedMediaStateRepository is not null)
         {
@@ -1545,7 +1546,8 @@ public sealed class SqliteMovieCatalogRepository(
                 cancellationToken,
                 wantedStatus,
                 filters,
-                requireMonitored);
+                requireMonitored,
+                randomOrder);
             return sharedItems.Select(MapWanted).ToArray();
         }
 
@@ -1584,8 +1586,7 @@ public sealed class SqliteMovieCatalogRepository(
                     {monitoredFilter}
                   ORDER BY
                       CASE w.wanted_status WHEN 'missing' THEN 0 ELSE 1 END,
-                      COALESCE(w.last_search_utc, w.missing_since_utc, w.updated_utc) ASC,
-                      m.title ASC
+                      {(randomOrder ? "RANDOM()" : "COALESCE(w.last_search_utc, w.missing_since_utc, w.updated_utc) ASC, m.title ASC")}
                   LIMIT @take;
                   """
                 : $"""
@@ -1615,8 +1616,7 @@ public sealed class SqliteMovieCatalogRepository(
                     )
                   ORDER BY
                       CASE w.wanted_status WHEN 'missing' THEN 0 ELSE 1 END,
-                      COALESCE(w.last_search_utc, w.missing_since_utc, w.updated_utc) ASC,
-                      m.title ASC
+                      {(randomOrder ? "RANDOM()" : "COALESCE(w.last_search_utc, w.missing_since_utc, w.updated_utc) ASC, m.title ASC")}
                   LIMIT @take;
                   """;
 

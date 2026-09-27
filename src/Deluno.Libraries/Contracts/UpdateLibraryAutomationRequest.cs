@@ -8,4 +8,5 @@ public sealed record UpdateLibraryAutomationRequest(
     int? RetryDelayHours,
     int? MaxItemsPerRun,
     int? SearchWindowStartHour,
-    int? SearchWindowEndHour);
+    int? SearchWindowEndHour,
+    bool RandomizeSearchOrder = false);

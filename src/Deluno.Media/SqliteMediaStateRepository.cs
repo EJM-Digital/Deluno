@@ -156,7 +156,8 @@ public sealed class SqliteMediaStateRepository(
         CancellationToken cancellationToken,
         string? wantedStatus = null,
         CatalogueFilters? filters = null,
-        bool requireMonitored = true)
+        bool requireMonitored = true,
+        bool randomOrder = false)
     {
         var map = MediaTableMap.For(kind);
         var availabilityColumn = AvailabilityColumn(kind, map.EntryAlias);
@@ -226,8 +227,7 @@ public sealed class SqliteMediaStateRepository(
               {customFilter}
             ORDER BY
                 CASE w.wanted_status WHEN 'missing' THEN 0 ELSE 1 END,
-                COALESCE(w.last_search_utc, w.missing_since_utc, w.updated_utc) ASC,
-                {map.EntryAlias}.title ASC
+                {(randomOrder ? "RANDOM()" : $"COALESCE(w.last_search_utc, w.missing_since_utc, w.updated_utc) ASC, {map.EntryAlias}.title ASC")}
             LIMIT @take;
             """;
 

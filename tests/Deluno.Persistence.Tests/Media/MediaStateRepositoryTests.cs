@@ -95,6 +95,62 @@ public sealed class MediaStateRepositoryTests
     [Theory]
     [InlineData(MediaKind.Movie)]
     [InlineData(MediaKind.Series)]
+    public async Task Eligible_wanted_titles_can_be_asked_for_in_random_order_instead_of_oldest_first(MediaKind kind)
+    {
+        using var storage = TestStorage.Create();
+        var now = new DateTimeOffset(2026, 8, 21, 5, 0, 0, TimeSpan.Zero);
+        var timeProvider = new FixedTimeProvider(now);
+        await InitializeSchemaAsync(storage, timeProvider, kind);
+
+        var repository = new SqliteMediaStateRepository(storage.Factory, timeProvider);
+        var mediaIds = new List<string>();
+        for (var i = 0; i < 6; i++)
+        {
+            var mediaId = await AddMediaAsync(storage, timeProvider, kind, i);
+            await repository.EnsureWantedStateAsync(
+                kind,
+                mediaId,
+                "main",
+                "missing",
+                "No accepted file exists.",
+                hasFile: false,
+                currentQuality: null,
+                targetQuality: "WEB 1080p",
+                qualityCutoffMet: false,
+                CancellationToken.None);
+            mediaIds.Add(mediaId);
+        }
+
+        async Task<string[]> OrderAsync(bool randomOrder) =>
+            (await repository.ListEligibleWantedAsync(
+                kind,
+                "main",
+                take: 10,
+                now,
+                ignoreRetryWindow: false,
+                CancellationToken.None,
+                randomOrder: randomOrder))
+                .Select(item => item.Id)
+                .ToArray();
+
+        var oldestFirst = await OrderAsync(randomOrder: false);
+        Assert.Equal(mediaIds, oldestFirst);
+        Assert.Equal(oldestFirst, await OrderAsync(randomOrder: false));
+
+        var seenOrders = new HashSet<string>();
+        for (var attempt = 0; attempt < 20; attempt++)
+        {
+            var order = await OrderAsync(randomOrder: true);
+            Assert.Equal(mediaIds.OrderBy(id => id), order.OrderBy(id => id));
+            seenOrders.Add(string.Join(",", order));
+        }
+
+        Assert.True(seenOrders.Count > 1, "Random order never varied across 20 attempts.");
+    }
+
+    [Theory]
+    [InlineData(MediaKind.Movie)]
+    [InlineData(MediaKind.Series)]
     public async Task Shared_store_lists_explicit_wanted_ids_outside_recent_summary_window(MediaKind kind)
     {
         using var storage = TestStorage.Create();
