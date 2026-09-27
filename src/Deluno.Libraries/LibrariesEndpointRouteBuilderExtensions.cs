@@ -562,8 +562,11 @@ public static class LibrariesEndpointRouteBuilderExtensions
                 lib.SearchIntervalHours,
                 lib.RetryDelayHours,
                 lib.MaxItemsPerRun,
+                lib.MaxMissingItemsPerRun,
+                lib.MaxUpgradeItemsPerRun,
                 lib.SearchWindowStartHour,
-                lib.SearchWindowEndHour
+                lib.SearchWindowEndHour,
+                lib.SearchWindowDays
             });
             return Results.Ok(new { exportedAt = DateTimeOffset.UtcNow, libraries = export });
         });
@@ -756,6 +759,16 @@ public static class LibrariesEndpointRouteBuilderExtensions
             errors["maxItemsPerRun"] = ["Choose how many titles Deluno should work through at a time."];
         }
 
+        if (request.MaxMissingItemsPerRun is <= 0)
+        {
+            errors["maxMissingItemsPerRun"] = ["Choose how many missing titles Deluno should work through at a time."];
+        }
+
+        if (request.MaxUpgradeItemsPerRun is <= 0)
+        {
+            errors["maxUpgradeItemsPerRun"] = ["Choose how many upgrade candidates Deluno should work through at a time."];
+        }
+
         return errors;
     }
 
@@ -808,7 +821,10 @@ public static class LibrariesEndpointRouteBuilderExtensions
             RetryDelayHours: item.RetryDelayHours,
             MaxItemsPerRun: item.MaxItemsPerRun,
             SearchWindowStartHour: item.SearchWindowStartHour,
-            SearchWindowEndHour: item.SearchWindowEndHour);
+            SearchWindowEndHour: item.SearchWindowEndHour,
+            MaxMissingItemsPerRun: item.MaxMissingItemsPerRun,
+            MaxUpgradeItemsPerRun: item.MaxUpgradeItemsPerRun,
+            SearchWindowDays: item.SearchWindowDays);
 
     /// <summary>
     /// Used to filter libraries by media scope for the bulk search-now

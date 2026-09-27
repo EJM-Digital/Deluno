@@ -101,7 +101,11 @@ public static class PlatformDatabaseMigrations
         new V0093DropGlobalRemoveCompletedDownloads(),
         new V0094QbittorrentAddTimeAndShareLimits(),
         new V0095SubtitleLanguageTypePreferences(),
-        new V0096SecurityAllowedHostsDefaultsOff()
+        new V0096SecurityAllowedHostsDefaultsOff(),
+        new V0097LibraryMissingUpgradeCaps(),
+        new V0098LibrarySearchWindowDays(),
+        new V0099IntakeSourceMinimumAvailability(),
+        new V0100TraktConnection()
     ];
 
     private sealed class V0001InitialSchema : SqliteSqlMigration

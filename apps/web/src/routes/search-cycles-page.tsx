@@ -102,9 +102,37 @@ interface AutomationForm {
   searchIntervalHours: string;
   retryDelayHours: string;
   maxItemsPerRun: string;
+  /** How many missing-item candidates a cycle works through, independent of maxUpgradeItemsPerRun (#830). */
+  maxMissingItemsPerRun: string;
+  /** How many upgrade candidates a cycle works through, independent of maxMissingItemsPerRun (#830). */
+  maxUpgradeItemsPerRun: string;
   searchWindowStartHour: string;
   searchWindowEndHour: string;
+  /** One flag per day (index 0 = Sunday ... 6 = Saturday), matching .NET DayOfWeek and JS Date.getDay() (#832). */
+  searchWindowDays: boolean[];
   randomizeSearchOrder: boolean;
+}
+
+/** Sunday-first, matching .NET DayOfWeek / JS Date.getDay() so the UI bit order matches the stored mask exactly (#832). */
+const WEEKDAYS = [
+  { bit: 0, label: "Sun" },
+  { bit: 1, label: "Mon" },
+  { bit: 2, label: "Tue" },
+  { bit: 3, label: "Wed" },
+  { bit: 4, label: "Thu" },
+  { bit: 5, label: "Fri" },
+  { bit: 6, label: "Sat" }
+];
+const ALL_DAYS_MASK = 0b111_1111;
+const DAY_NAMES = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+
+function daysMaskToFlags(mask: number | undefined): boolean[] {
+  const value = !mask || mask <= 0 || mask > ALL_DAYS_MASK ? ALL_DAYS_MASK : mask;
+  return WEEKDAYS.map(({ bit }) => ((value >> bit) & 1) === 1);
+}
+function daysFlagsToMask(flags: boolean[]): number {
+  const mask = flags.reduce((total, on, index) => (on ? total | (1 << index) : total), 0);
+  return mask === 0 ? ALL_DAYS_MASK : mask;
 }
 
 /**
@@ -230,8 +258,11 @@ export function SearchCyclesPage() {
         searchIntervalHours: Number(form.searchIntervalHours || 12),
         retryDelayHours: Number(form.retryDelayHours || 6),
         maxItemsPerRun: Number(form.maxItemsPerRun || 10),
+        maxMissingItemsPerRun: Number(form.maxMissingItemsPerRun || form.maxItemsPerRun || 10),
+        maxUpgradeItemsPerRun: Number(form.maxUpgradeItemsPerRun || form.maxItemsPerRun || 10),
         searchWindowStartHour: form.searchWindowStartHour === "" ? null : Number(form.searchWindowStartHour),
         searchWindowEndHour: form.searchWindowEndHour === "" ? null : Number(form.searchWindowEndHour),
+        searchWindowDays: daysFlagsToMask(form.searchWindowDays),
         randomizeSearchOrder: form.randomizeSearchOrder
       })
     });
@@ -448,7 +479,7 @@ export function SearchCyclesPage() {
               return (
                 <ListRow key={library.id} onClick={() => openLibrary(library)} selected={drawerId === library.id}>
                   <ListNameCell name={library.name} sub={library.mediaType === "tv" ? "TV shows" : "Movies"} />
-                  <ListCell primary={kinds} secondary={`Up to ${library.maxItemsPerRun} per run`} />
+                  <ListCell primary={kinds} secondary={`Up to ${library.maxMissingItemsPerRun ?? library.maxItemsPerRun} missing · ${library.maxUpgradeItemsPerRun ?? library.maxItemsPerRun} upgrades per run`} />
                   <ListCell primary={schedule} secondary={library.searchWindowStartHour !== null && library.searchWindowEndHour !== null ? `Only ${pad(library.searchWindowStartHour)}:00–${pad(library.searchWindowEndHour)}:00` : "Any time of day · each schedule runs independently"} />
                   <ListCell numeric primary={nextSearch ?? <span className="text-muted-foreground">—</span>} secondary={state?.lastError ? state.lastError : state?.lastCompletedUtc ? `Last ran ${agoLabel(state.lastCompletedUtc)}` : "Not run yet"} />
                   <ListCell mobile>
@@ -736,9 +767,14 @@ export function SearchCyclesPage() {
               <PresetField inputType="number" value={form.retryDelayHours} onChange={(value) => setForm((current) => ({ ...current, retryDelayHours: value }))} options={RETRY_OPTIONS} customLabel="Custom delay" customPlaceholder="Hours" />
             </Field>
           </FieldRow>
-          <Field label="Titles per run" help="Keeps a single cycle from flooding your indexers.">
-            <PresetField inputType="number" value={form.maxItemsPerRun} onChange={(value) => setForm((current) => ({ ...current, maxItemsPerRun: value }))} options={BATCH_OPTIONS} customLabel="Custom batch" customPlaceholder="Titles" />
-          </Field>
+          <FieldRow>
+            <Field label="Missing titles per run" help="Keeps a single cycle from flooding your indexers looking for missing titles.">
+              <PresetField inputType="number" value={form.maxMissingItemsPerRun} onChange={(value) => setForm((current) => ({ ...current, maxMissingItemsPerRun: value }))} options={BATCH_OPTIONS} customLabel="Custom batch" customPlaceholder="Titles" />
+            </Field>
+            <Field label="Upgrade candidates per run" help="Set independently from missing titles, so tuning one never changes the other (#830).">
+              <PresetField inputType="number" value={form.maxUpgradeItemsPerRun} onChange={(value) => setForm((current) => ({ ...current, maxUpgradeItemsPerRun: value }))} options={BATCH_OPTIONS} customLabel="Custom batch" customPlaceholder="Titles" />
+            </Field>
+          </FieldRow>
           <FieldRow>
             <Field label="Only search after" optional help="Leave both empty to search at any hour.">
               <Select value={form.searchWindowStartHour} onChange={(event) => setForm((current) => ({ ...current, searchWindowStartHour: event.target.value }))} placeholder="Any time" options={HOUR_OPTIONS} />
@@ -747,6 +783,30 @@ export function SearchCyclesPage() {
               <Select value={form.searchWindowEndHour} onChange={(event) => setForm((current) => ({ ...current, searchWindowEndHour: event.target.value }))} placeholder="Any time" options={HOUR_OPTIONS} />
             </Field>
           </FieldRow>
+          <Field label="Only search on" help="Turn off a day to pause searches entirely on it, whatever the hour window above allows.">
+            <div className="flex flex-wrap gap-1.5" role="group" aria-label="Days the search window applies on">
+              {WEEKDAYS.map(({ bit, label }) => {
+                const on = form.searchWindowDays[bit];
+                return (
+                  <Button
+                    key={bit}
+                    type="button"
+                    variant={on ? "default" : "outline"}
+                    size="sm"
+                    aria-pressed={on}
+                    aria-label={`${on ? "Searches on" : "Searches off"} ${DAY_NAMES[bit]}`}
+                    onClick={() => setForm((current) => {
+                      const next = [...current.searchWindowDays];
+                      next[bit] = !next[bit];
+                      return { ...current, searchWindowDays: next };
+                    })}
+                  >
+                    {label}
+                  </Button>
+                );
+              })}
+            </div>
+          </Field>
           <SwitchRow
             label="Search order"
             description={form.randomizeSearchOrder ? "Random — a new title never waits behind a long backlog." : "Oldest added first."}
@@ -796,7 +856,7 @@ function runsLabel(shown: number, total: number) {
 }
 
 function emptyAutomation(): AutomationForm {
-  return { autoSearchEnabled: true, missingSearchEnabled: true, upgradeSearchEnabled: true, searchIntervalHours: "12", retryDelayHours: "6", maxItemsPerRun: "10", searchWindowStartHour: "", searchWindowEndHour: "", randomizeSearchOrder: false };
+  return { autoSearchEnabled: true, missingSearchEnabled: true, upgradeSearchEnabled: true, searchIntervalHours: "12", retryDelayHours: "6", maxItemsPerRun: "10", maxMissingItemsPerRun: "10", maxUpgradeItemsPerRun: "10", searchWindowStartHour: "", searchWindowEndHour: "", searchWindowDays: daysMaskToFlags(ALL_DAYS_MASK), randomizeSearchOrder: false };
 }
 function automationFrom(library: LibraryItem): AutomationForm {
   return {
@@ -806,8 +866,11 @@ function automationFrom(library: LibraryItem): AutomationForm {
     searchIntervalHours: String(library.searchIntervalHours),
     retryDelayHours: String(library.retryDelayHours),
     maxItemsPerRun: String(library.maxItemsPerRun),
+    maxMissingItemsPerRun: String(library.maxMissingItemsPerRun ?? library.maxItemsPerRun),
+    maxUpgradeItemsPerRun: String(library.maxUpgradeItemsPerRun ?? library.maxItemsPerRun),
     searchWindowStartHour: library.searchWindowStartHour === null ? "" : String(library.searchWindowStartHour),
     searchWindowEndHour: library.searchWindowEndHour === null ? "" : String(library.searchWindowEndHour),
+    searchWindowDays: daysMaskToFlags(library.searchWindowDays),
     randomizeSearchOrder: library.randomizeSearchOrder ?? false
   };
 }

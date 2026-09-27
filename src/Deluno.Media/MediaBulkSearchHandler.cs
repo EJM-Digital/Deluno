@@ -69,6 +69,9 @@ public static class MediaBulkSearchHandler
                     SearchIntervalHours: library.SearchIntervalHours,
                     RetryDelayHours: library.RetryDelayHours,
                     MaxItemsPerRun: library.MaxItemsPerRun,
+                    MaxMissingItemsPerRun: library.MaxMissingItemsPerRun,
+                    MaxUpgradeItemsPerRun: library.MaxUpgradeItemsPerRun,
+                    SearchWindowDays: library.SearchWindowDays,
                     SearchWindowStartHour: library.SearchWindowStartHour,
                     SearchWindowEndHour: library.SearchWindowEndHour),
                 cancellationToken);

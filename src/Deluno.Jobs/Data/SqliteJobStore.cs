@@ -2463,7 +2463,9 @@ public sealed class SqliteJobStore(
                     checkMissing,
                     checkUpgrades,
                     searchKind,
-                    maxItems = library.MaxItemsPerRun,
+                    maxItems = library.MaxMissingItemsPerRun + library.MaxUpgradeItemsPerRun,
+                    maxMissingItems = library.MaxMissingItemsPerRun,
+                    maxUpgradeItems = library.MaxUpgradeItemsPerRun,
                     retryDelayHours = library.RetryDelayHours,
                     randomizeSearchOrder = library.RandomizeSearchOrder,
                     triggeredBy = manualRequest ? "manual" : "schedule",
@@ -3726,27 +3728,88 @@ public sealed class SqliteJobStore(
         LibraryAutomationPlanItem library,
         DateTimeOffset now)
     {
+        var daysMask = NormalizeSearchWindowDaysMask(library.SearchWindowDays);
+        var dayAllowedToday = SearchWindowDayAllowed(daysMask, now.DayOfWeek);
+
         if (!library.SearchWindowStartHour.HasValue || !library.SearchWindowEndHour.HasValue)
         {
-            return (true, now);
+            if (dayAllowedToday)
+            {
+                return (true, now);
+            }
+
+            return (false, NextAllowedSearchWindowDayStart(daysMask, now));
         }
 
         var currentHour = now.Hour;
         var windowStart = library.SearchWindowStartHour.Value;
         var windowEnd = library.SearchWindowEndHour.Value;
-        var inWindow = windowStart <= windowEnd
+        var inHourWindow = windowStart <= windowEnd
             ? currentHour >= windowStart && currentHour < windowEnd
             : currentHour >= windowStart || currentHour < windowEnd; // wraps midnight
 
-        if (inWindow)
+        if (inHourWindow && dayAllowedToday)
         {
             return (true, now);
+        }
+
+        if (inHourWindow)
+        {
+            // The hour window is open, but today itself is excluded (#832):
+            // skip straight to the next allowed day's window opening instead
+            // of treating "now" as in-window.
+            return (false, NextAllowedSearchWindowDayStart(daysMask, now.AddDays(1), windowStart));
         }
 
         var hoursUntilWindow = windowStart > currentHour
             ? windowStart - currentHour
             : 24 - currentHour + windowStart;
-        return (false, now.AddHours(hoursUntilWindow));
+        var candidateOpenUtc = now.AddHours(hoursUntilWindow);
+        if (SearchWindowDayAllowed(daysMask, candidateOpenUtc.DayOfWeek))
+        {
+            return (false, candidateOpenUtc);
+        }
+
+        return (false, NextAllowedSearchWindowDayStart(daysMask, candidateOpenUtc, windowStart));
+    }
+
+    /// <summary>Every day, used when a library's mask is unset or corrupt so the day axis never silently pauses a library that never configured one (#832).</summary>
+    private const int AllSearchWindowDaysMask = 0b111_1111;
+
+    private static int NormalizeSearchWindowDaysMask(int mask)
+        => mask <= 0 || mask > AllSearchWindowDaysMask ? AllSearchWindowDaysMask : mask;
+
+    private static bool SearchWindowDayAllowed(int mask, DayOfWeek day)
+        => ((mask >> (int)day) & 1) != 0;
+
+    /// <summary>Midnight of the next day (from <paramref name="from"/>, exclusive) whose bit is set in <paramref name="mask"/>.</summary>
+    private static DateTimeOffset NextAllowedSearchWindowDayStart(int mask, DateTimeOffset from)
+    {
+        for (var offset = 1; offset <= 7; offset++)
+        {
+            var candidate = from.AddDays(offset);
+            if (SearchWindowDayAllowed(mask, candidate.DayOfWeek))
+            {
+                return new DateTimeOffset(candidate.Year, candidate.Month, candidate.Day, 0, 0, 0, candidate.Offset);
+            }
+        }
+
+        return from.AddDays(1);
+    }
+
+    /// <summary>The next day (starting from <paramref name="from"/>, inclusive) whose bit is set in <paramref name="mask"/>, at <paramref name="windowStartHour"/>.</summary>
+    private static DateTimeOffset NextAllowedSearchWindowDayStart(int mask, DateTimeOffset from, int windowStartHour)
+    {
+        for (var offset = 0; offset <= 7; offset++)
+        {
+            var candidate = from.AddDays(offset);
+            if (SearchWindowDayAllowed(mask, candidate.DayOfWeek))
+            {
+                return new DateTimeOffset(candidate.Year, candidate.Month, candidate.Day, windowStartHour, 0, 0, candidate.Offset);
+            }
+        }
+
+        return from;
     }
 
     /// <summary>
