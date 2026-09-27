@@ -1093,6 +1093,16 @@ public sealed class FeedMediaSearchPlanner(
             query["apikey"] = indexer.ApiKey;
         }
 
+        // Extra parameters some indexers require beyond the standard set
+        // (#741). They never override a parameter Deluno itself set above.
+        if (!string.IsNullOrWhiteSpace(indexer.AdditionalParameters))
+        {
+            foreach (var (key, value) in ParseQuery(indexer.AdditionalParameters))
+            {
+                query.TryAdd(key, value);
+            }
+        }
+
         builder.Query = string.Join("&", query.Select(pair => $"{Uri.EscapeDataString(pair.Key)}={Uri.EscapeDataString(pair.Value)}"));
         return builder.Uri.ToString();
     }

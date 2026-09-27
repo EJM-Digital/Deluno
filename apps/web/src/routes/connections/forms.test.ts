@@ -131,6 +131,18 @@ describe("indexer form API path", () => {
   });
 });
 
+// #741: an indexer's extra query parameters round-trip through the form.
+describe("indexer form additional parameters", () => {
+  it("reads a saved indexer's additional parameters into the form", () => {
+    const form = indexerFormFrom({ ...savedIndexer(), additionalParameters: "token=abc123" });
+    expect(form.additionalParameters).toBe("token=abc123");
+  });
+
+  it("defaults a new indexer's additional parameters to blank", () => {
+    expect(emptyIndexerForm().additionalParameters).toBe("");
+  });
+});
+
 function savedIndexer(): IndexerItem {
   return {
     id: "1", name: "TorrentLeech", protocol: "torznab", privacy: "private", baseUrl: "https://www.torrentleech.org/", priority: 10, categories: "2000", tags: "",

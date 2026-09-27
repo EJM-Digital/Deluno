@@ -76,7 +76,7 @@ public sealed class SqliteConnectionsRepository(
                 minimum_age_minutes, retention_days, maximum_size_mb, prefer_indexer_flags, availability_delay_days,
                 rss_enabled, automatic_search_enabled, interactive_search_enabled,
                 last_health_failure_json, definition_id, definition_settings_json, definition_secrets,
-                api_path
+                api_path, additional_parameters
             FROM indexer_sources
             ORDER BY priority ASC, name ASC;
             """;
@@ -127,7 +127,8 @@ public sealed class SqliteConnectionsRepository(
                 DefinitionId = reader.IsDBNull(36) ? null : reader.GetString(36),
                 DefinitionSettings = reader.IsDBNull(37) ? null : ReadStringMap(reader.GetString(37)),
                 DefinitionSecrets = reader.IsDBNull(38) ? null : ReadStringMap(secretProtector.Unprotect("indexer:tracker-secrets", reader.GetString(38))),
-                ApiPath = reader.IsDBNull(39) ? null : reader.GetString(39)
+                ApiPath = reader.IsDBNull(39) ? null : reader.GetString(39),
+                AdditionalParameters = reader.IsDBNull(40) ? null : reader.GetString(40)
             });
         }
 
@@ -263,7 +264,8 @@ public sealed class SqliteConnectionsRepository(
             UpdatedUtc: now)
         {
             RequestIntervalSeconds = request.RequestIntervalSeconds,
-            ApiPath = NormalizeApiPath(request.ApiPath),
+            ApiPath = NormalizeBlankToNull(request.ApiPath),
+            AdditionalParameters = NormalizeBlankToNull(request.AdditionalParameters),
             SharingMode = request.SharingMode,
             SharingForHours = request.SharingForHours,
             SharingUntilRatio = request.SharingUntilRatio,
@@ -295,7 +297,7 @@ public sealed class SqliteConnectionsRepository(
                 sharing_mode, sharing_for_hours, sharing_until_ratio, sharing_stuck_action, sharing_stuck_after_days,
                 minimum_age_minutes, retention_days, maximum_size_mb, prefer_indexer_flags, availability_delay_days,
                 rss_enabled, automatic_search_enabled, interactive_search_enabled, definition_id,
-                definition_settings_json, definition_secrets, api_path
+                definition_settings_json, definition_secrets, api_path, additional_parameters
             )
             VALUES (
                 @id, @name, @protocol, @privacy, @baseUrl, @apiKey, @priority, @categories, @tags,
@@ -303,7 +305,7 @@ public sealed class SqliteConnectionsRepository(
                 @sharingMode, @sharingForHours, @sharingUntilRatio, @sharingStuckAction, @sharingStuckAfterDays,
                 @minimumAgeMinutes, @retentionDays, @maximumSizeMb, @preferIndexerFlags, @availabilityDelayDays,
                 @rssEnabled, @automaticSearchEnabled, @interactiveSearchEnabled, @definitionId,
-                @definitionSettings, @definitionSecrets, @apiPath
+                @definitionSettings, @definitionSecrets, @apiPath, @additionalParameters
             );
             """;
 
@@ -344,6 +346,7 @@ public sealed class SqliteConnectionsRepository(
         AddParameter(command, "@createdUtc", item.CreatedUtc.ToString("O"));
         AddParameter(command, "@updatedUtc", item.UpdatedUtc.ToString("O"));
         AddParameter(command, "@apiPath", item.ApiPath);
+        AddParameter(command, "@additionalParameters", item.AdditionalParameters);
         await command.ExecuteNonQueryAsync(cancellationToken);
 
         return item;
@@ -380,7 +383,10 @@ public sealed class SqliteConnectionsRepository(
             : request.RequestIntervalSeconds ?? existing.RequestIntervalSeconds;
         var newApiPath = request.ClearApiPath == true
             ? null
-            : NormalizeApiPath(request.ApiPath) ?? existing.ApiPath;
+            : NormalizeBlankToNull(request.ApiPath) ?? existing.ApiPath;
+        var newAdditionalParameters = request.ClearAdditionalParameters == true
+            ? null
+            : NormalizeBlankToNull(request.AdditionalParameters) ?? existing.AdditionalParameters;
 
         // Clearing drops the whole override at once rather than field by field:
         // "this source is no different from the rest" is a single intent, and
@@ -426,6 +432,7 @@ public sealed class SqliteConnectionsRepository(
                 media_scope = @mediaScope,
                 request_interval_seconds = @requestIntervalSeconds,
                 api_path = @apiPath,
+                additional_parameters = @additionalParameters,
                 sharing_mode = @sharingMode,
                 sharing_for_hours = @sharingForHours,
                 sharing_until_ratio = @sharingUntilRatio,
@@ -465,6 +472,7 @@ public sealed class SqliteConnectionsRepository(
         AddParameter(command, "@mediaScope", newScope);
         AddParameter(command, "@requestIntervalSeconds", newRequestInterval);
         AddParameter(command, "@apiPath", newApiPath);
+        AddParameter(command, "@additionalParameters", newAdditionalParameters);
         AddParameter(command, "@sharingMode", newSharingMode);
         AddParameter(command, "@sharingForHours", newSharingForHours);
         AddParameter(command, "@sharingUntilRatio", newSharingUntilRatio);
@@ -499,6 +507,7 @@ public sealed class SqliteConnectionsRepository(
             MediaScope = newScope,
             RequestIntervalSeconds = newRequestInterval,
             ApiPath = newApiPath,
+            AdditionalParameters = newAdditionalParameters,
             SharingMode = newSharingMode,
             SharingForHours = newSharingForHours,
             SharingUntilRatio = newSharingUntilRatio,
@@ -1118,7 +1127,7 @@ public sealed class SqliteConnectionsRepository(
     private static string NormalizeDownloadProtocol(string? value)
         => DownloadClientProtocolCatalog.NormalizeOrThrow(value);
 
-    /// <summary>A blank API path means "use the protocol's default" (#740), so it is stored as null rather than as an empty string.</summary>
-    private static string? NormalizeApiPath(string? value)
+    /// <summary>A blank optional text field is stored as null, not as an empty string.</summary>
+    private static string? NormalizeBlankToNull(string? value)
         => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 }
