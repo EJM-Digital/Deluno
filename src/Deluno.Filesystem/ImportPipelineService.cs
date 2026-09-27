@@ -3943,7 +3943,7 @@ public sealed partial class ImportPipelineService(
         // setting answers a different question, about the original download.
         var isProcessorOutput = IsProcessorOutput(sourcePath, library);
         var cleanupEnabled = isProcessorOutput
-            || (enforceCopyCleanup && string.Equals(transferModeUsed, "copy", StringComparison.OrdinalIgnoreCase))
+            || string.Equals(transferModeUsed, "copy", StringComparison.OrdinalIgnoreCase)
             || (library is not null && string.Equals(library.CleanupMode, "remove-source-after-import", StringComparison.OrdinalIgnoreCase));
 
         if (library is null || !cleanupEnabled)
