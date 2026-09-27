@@ -39,4 +39,12 @@ public interface IActivityFeedRepository
     // Default no-op so test doubles need not implement pruning; SqliteJobStore does the real work.
     Task<int> PruneActivityAsync(DateTimeOffset olderThan, CancellationToken cancellationToken)
         => Task.FromResult(0);
+
+    /// <summary>
+    /// Removes every stored Activity row (#871). This is the same table
+    /// decision explanations (DecisionExplanationActivity) are recorded to,
+    /// so clearing the timeline clears that automation-decision history too
+    /// -- there is nothing else it lives in to spare.
+    /// </summary>
+    Task<int> ClearActivityAsync(CancellationToken cancellationToken);
 }
