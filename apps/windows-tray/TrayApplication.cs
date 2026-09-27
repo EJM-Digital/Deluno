@@ -39,8 +39,7 @@ public sealed class TrayApplication : ApplicationContext
         _allowLanItem = new ToolStripMenuItem("Allow other devices on your network...", null, OnAllowLan) { Visible = false };
         _letAnyAddressInItem = new ToolStripMenuItem("Let any address in...", null, OnLetAnyAddressIn);
 
-        var version = Assembly.GetEntryAssembly()?.GetName().Version;
-        var aboutItem = new ToolStripMenuItem($"Deluno v{version?.ToString(3) ?? "0.1.0"}") { Enabled = false };
+        var aboutItem = new ToolStripMenuItem($"Deluno v{Deluno.Api.DelunoVersion.Running}") { Enabled = false };
 
         var menu = new ContextMenuStrip();
         menu.Items.AddRange([
