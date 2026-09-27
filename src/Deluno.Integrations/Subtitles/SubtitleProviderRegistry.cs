@@ -43,6 +43,28 @@ namespace Deluno.Integrations.Subtitles;
 /// Bazarr has and the original six did not, rather than padding the count.
 /// Supersubtitles needs no account and sits with the other two anonymous
 /// providers; Titlovi and Assrt both need one, so they sit after.</para>
+///
+/// <para><b>Two more, for the rest of #837's named list.</b> Addic7ed
+/// (English-language TV, one of the largest sources for it — the coordinator
+/// named it directly) needs no account: solving Addic7ed's own login
+/// CAPTCHA headlessly is not something this codebase does anywhere, and an
+/// account there only raises a daily download cap most single-user setups
+/// never hit, not what it can find. Ktuvit (Hebrew, also named directly)
+/// needs one on every call, so it sits after.</para>
+///
+/// <para><b>Napiprojekt is deliberately not here</b>, and it belongs beside
+/// the YifySubtitles note above rather than silently missing. NapiProjekt's
+/// real, reliable API is a hash lookup keyed on the exact video file's own
+/// bytes (a checksum of a specific byte range) — Deluno's subtitle search
+/// contract (<see cref="SubtitleSearchRequest"/>) carries a title, year,
+/// season/episode and release name, never the file itself, so that lookup has
+/// nothing to key on here. Its only other path in is an undocumented,
+/// regex-scraped HTML catalog search whose own reference implementation could
+/// not be verified end to end from this session's own read of it. Shipping a
+/// provider that answers wrong, or never, for the one language it exists to
+/// serve is worse than shipping none (DESIGN-002) — so it is left out, on the
+/// same standard applied above, until the search contract itself carries a
+/// file hash to give it something real to look up.</para>
 /// </summary>
 public sealed class SubtitleProviderRegistry(IEnumerable<ISubtitleProvider> providers) : ISubtitleProviderRegistry
 {
@@ -56,7 +78,9 @@ public sealed class SubtitleProviderRegistry(IEnumerable<ISubtitleProvider> prov
         "subsource",
         "subf2m",
         "titlovi",
-        "assrt"
+        "assrt",
+        "addic7ed",
+        "ktuvit"
     ];
 
     public IReadOnlyList<ISubtitleProvider> All { get; } =

@@ -113,6 +113,11 @@ public static class IntegrationsServiceCollectionExtensions
         services.AddSingleton<Subtitles.ISubtitleProvider, Subtitles.Providers.TitloviSubtitleProvider>();
         services.AddSingleton<Subtitles.ISubtitleProvider, Subtitles.Providers.AssrtSubtitleProvider>();
         services.AddSingleton<Subtitles.ISubtitleProvider, Subtitles.Providers.SupersubtitlesSubtitleProvider>();
+        // #837: the rest of the issue's own named list. Napiprojekt is
+        // deliberately not registered — see SubtitleProviderRegistry's own
+        // note on why.
+        services.AddSingleton<Subtitles.ISubtitleProvider, Subtitles.Providers.Addic7edSubtitleProvider>();
+        services.AddSingleton<Subtitles.ISubtitleProvider, Subtitles.Providers.KtuvitSubtitleProvider>();
         services.AddSingleton<Subtitles.ISubtitleProviderRegistry, Subtitles.SubtitleProviderRegistry>();
         services.AddSingleton<Subtitles.ISubtitleFetchService, Subtitles.SubtitleFetchService>();
 
