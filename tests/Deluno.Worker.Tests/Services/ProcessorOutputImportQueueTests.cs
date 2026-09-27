@@ -31,7 +31,7 @@ public sealed class ProcessorOutputImportQueueTests
         var movie = (MovieListItem)RuntimeHelpers.GetUninitializedObject(typeof(MovieListItem));
         var movies = new Mock<IMovieCatalogRepository>();
         movies.Setup(repository => repository.GetByIdAsync("movie-13", It.IsAny<CancellationToken>()))
-            .ReturnsAsync(movie with { Id = "movie-13", Title = "Dementia 13", ReleaseYear = 1963, ImdbId = "tt0056983" });
+            .ReturnsAsync(movie with { Id = "movie-13", Title = "Dementia 13", ReleaseYear = 1963, ImdbId = "tt0056983", OriginalTitle = "Dementia 13" });
         EnqueueJobRequest? queued = null;
         var scheduler = new Mock<IJobScheduler>();
         scheduler.Setup(instance => instance.EnqueueAsync(It.IsAny<EnqueueJobRequest>(), It.IsAny<CancellationToken>()))
@@ -58,6 +58,9 @@ public sealed class ProcessorOutputImportQueueTests
         Assert.Equal("proof-library", request.Preview.LibraryId);
         Assert.Equal("dispatch-9", request.DispatchId);
         Assert.Equal(output, request.Preview.SourcePath);
+        // #760: the {Original Title} naming token is sourced from the
+        // catalogue behind the grab, not left null for a processed import.
+        Assert.Equal("Dementia 13", request.Preview.OriginalTitle);
     }
 
     /// <summary>

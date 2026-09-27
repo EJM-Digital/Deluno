@@ -70,7 +70,8 @@ public sealed class ProcessorOutputImportQueue(
                 SeriesType: catalogue.SeriesType,
                 NumberingScheme: catalogue.NumberingScheme,
                 // The hand-off belongs to the library that grabbed the release.
-                LibraryId: library.Id),
+                LibraryId: library.Id,
+                OriginalTitle: catalogue.OriginalTitle),
             TransferMode: "auto",
             Overwrite: dispatch?.ReplacementAuthorized == true,
             AllowCopyFallback: true,
@@ -159,7 +160,8 @@ internal static class CatalogueImportNaming
                     SplitCsv(series.Genres),
                     series.Id,
                     series.SeriesType,
-                    series.NumberingScheme);
+                    series.NumberingScheme,
+                    series.OriginalTitle);
         }
 
         var movie = await movieCatalogRepository.GetByIdAsync(dispatch.EntityId, cancellationToken);
@@ -172,7 +174,8 @@ internal static class CatalogueImportNaming
                 null,
                 ReadMetadataText(movie.MetadataJson, "Studio", "studio"),
                 null,
-                SplitCsv(movie.Genres));
+                SplitCsv(movie.Genres),
+                OriginalTitle: movie.OriginalTitle);
     }
 
     /// <summary>
@@ -303,7 +306,10 @@ internal static class CatalogueImportNaming
         IReadOnlyList<string> Genres,
         string? SeriesId = null,
         string? SeriesType = null,
-        string? NumberingScheme = null)
+        string? NumberingScheme = null,
+        // #760: the title's own original-language title, for the
+        // {Original Title} naming token.
+        string? OriginalTitle = null)
     {
         public static CatalogueNaming Empty { get; } = new(null, null, null, null, null, null, []);
     }

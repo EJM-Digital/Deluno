@@ -1205,7 +1205,8 @@ public sealed class WorkPlanner(
                     SeriesType: catalogue.SeriesType,
                     NumberingScheme: catalogue.NumberingScheme,
                     // Into the library that grabbed it, not the first of its type (#526).
-                    LibraryId: library.Id),
+                    LibraryId: library.Id,
+                    OriginalTitle: catalogue.OriginalTitle),
                 TransferMode: "auto",
                 Overwrite: dispatch?.ReplacementAuthorized == true,
                 AllowCopyFallback: true,

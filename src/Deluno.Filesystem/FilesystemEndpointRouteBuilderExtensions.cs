@@ -808,7 +808,13 @@ public sealed record ImportPreviewRequest(
     /// The grab behind the file, so a preview names it as the import will: as
     /// the title grabbed, not the release (#617).
     /// </summary>
-    string? DispatchId = null);
+    string? DispatchId = null,
+    /// <summary>
+    /// The title's own original-language title, from the catalogue (#760),
+    /// for the {Original Title} naming token — never re-derived from the
+    /// release name, which usually only carries the library's own title.
+    /// </summary>
+    string? OriginalTitle = null);
 
 public sealed record ImportPreviewResponse(
     string SourcePath,
