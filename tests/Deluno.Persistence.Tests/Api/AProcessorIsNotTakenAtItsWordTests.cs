@@ -46,6 +46,75 @@ public sealed class AProcessorIsNotTakenAtItsWordTests
         Assert.Contains($"not {Ours}", said);
     }
 
+    /// <summary>
+    /// #891: today Deluno would only ever surface this via the hand-off's
+    /// ordinary stall timeout, up to a week later. It is told on Activity as
+    /// soon as the misplaced report arrives instead.
+    /// </summary>
+    [Fact]
+    public async Task A_file_claimed_by_another_hand_off_is_told_on_activity_immediately()
+    {
+        await using var app = await ApplicationTestHost.StartAsync();
+        var scene = await SceneAsync(app);
+        await HandoffAsync(app, scene, Theirs);
+        var handoff = await HandoffAsync(app, scene, Ours);
+
+        var response = await app.Client.PostAsJsonAsync("/api/integrations/processors/events", new
+        {
+            libraryId = scene.LibraryId,
+            handoffId = handoff.Id,
+            status = "completed",
+            outputPath = Path.Combine(scene.Output, Theirs, $"{Theirs}.mkv")
+        });
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+
+        var activity = await ActivityFeed(app).ListActivityAsync(20, "processor-handoff", handoff.Id, CancellationToken.None);
+        var told = Assert.Single(activity, item => item.Category == "processing.output.misplaced");
+        Assert.Contains(Ours, told.Message);
+        Assert.Contains(Theirs, told.Message);
+
+        // A second identical misreport (the processor retrying with the same
+        // broken path) does not tell twice.
+        var second = await app.Client.PostAsJsonAsync("/api/integrations/processors/events", new
+        {
+            libraryId = scene.LibraryId,
+            handoffId = handoff.Id,
+            status = "completed",
+            outputPath = Path.Combine(scene.Output, Theirs, $"{Theirs}.mkv")
+        });
+        Assert.Equal(HttpStatusCode.BadRequest, second.StatusCode);
+        var activityAfterRetry = await ActivityFeed(app).ListActivityAsync(20, "processor-handoff", handoff.Id, CancellationToken.None);
+        Assert.Single(activityAfterRetry, item => item.Category == "processing.output.misplaced");
+    }
+
+    /// <summary>
+    /// #891: an output path outside the library's configured clean output
+    /// folder -- a wrong path mapping, most likely -- is told right away
+    /// rather than waiting for the stall timeout.
+    /// </summary>
+    [Fact]
+    public async Task An_output_path_outside_the_configured_folder_is_told_on_activity_immediately()
+    {
+        await using var app = await ApplicationTestHost.StartAsync();
+        var scene = await SceneAsync(app);
+        var handoff = await HandoffAsync(app, scene, Ours);
+        var elsewhere = Path.Combine(scene.Downloads, Ours, $"{Ours}.mkv");
+
+        var response = await app.Client.PostAsJsonAsync("/api/integrations/processors/events", new
+        {
+            libraryId = scene.LibraryId,
+            handoffId = handoff.Id,
+            status = "completed",
+            outputPath = elsewhere
+        });
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        var activity = await ActivityFeed(app).ListActivityAsync(20, "processor-handoff", handoff.Id, CancellationToken.None);
+        var told = Assert.Single(activity, item => item.Category == "processing.output.misplaced");
+        Assert.Contains(Ours, told.Message);
+        Assert.Contains("outside", told.Message);
+    }
+
     [Fact]
     public async Task A_file_in_the_downloads_own_folder_is_accepted()
     {
@@ -291,6 +360,9 @@ public sealed class AProcessorIsNotTakenAtItsWordTests
 
     private static IProcessorRepository Repository(ApplicationTestHost app)
         => app.Services.GetRequiredService<IProcessorRepository>();
+
+    private static IActivityFeedRepository ActivityFeed(ApplicationTestHost app)
+        => app.Services.GetRequiredService<IActivityFeedRepository>();
 
     private static async Task<Scene> SceneAsync(ApplicationTestHost app)
     {
