@@ -41,6 +41,13 @@ public sealed record IndexerItem(
     public string? ApiPath { get; init; }
 
     /// <summary>
+    /// Extra Newznab/Torznab query parameters some indexers require (#741),
+    /// stored as a raw query string fragment (e.g. <c>token=abc&amp;extra=1</c>)
+    /// and appended to every search request sent to this indexer.
+    /// </summary>
+    public string? AdditionalParameters { get; init; }
+
+    /// <summary>
     /// This source's own sharing rule (#288). Every field is null by default,
     /// meaning "inherit the global setting", so a source only has to state what
     /// makes it different — a private tracker that wants a ratio, say, on an

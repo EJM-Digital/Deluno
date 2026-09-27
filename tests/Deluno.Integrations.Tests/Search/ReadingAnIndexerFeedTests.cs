@@ -41,6 +41,41 @@ public sealed class ReadingAnIndexerFeedTests
         Assert.Contains("apikey=key-1", query);
     }
 
+    /// <summary>#741: an indexer's extra query parameters ride along on every request.</summary>
+    [Fact]
+    public async Task A_feed_request_includes_the_indexers_additional_parameters()
+    {
+        Uri? asked = null;
+        var reader = Reader(request =>
+        {
+            asked = request.RequestUri;
+            return Rss(string.Empty);
+        });
+
+        await reader.ReadRecentAsync(Indexer() with { AdditionalParameters = "token=abc123&extra=1" }, CancellationToken.None);
+
+        var query = asked!.Query;
+        Assert.Contains("token=abc123", query);
+        Assert.Contains("extra=1", query);
+    }
+
+    /// <summary>An indexer with nothing extra configured behaves exactly as before.</summary>
+    [Fact]
+    public async Task A_feed_request_is_unaffected_when_additional_parameters_is_blank()
+    {
+        Uri? asked = null;
+        var reader = Reader(request =>
+        {
+            asked = request.RequestUri;
+            return Rss(string.Empty);
+        });
+
+        await reader.ReadRecentAsync(Indexer(), CancellationToken.None);
+
+        var keys = asked!.Query.TrimStart('?').Split('&').Select(part => part.Split('=')[0]).ToArray();
+        Assert.Equal(new[] { "t", "cat", "limit", "apikey" }, keys);
+    }
+
     [Fact]
     public async Task A_feed_that_answers_with_an_error_is_not_read_as_empty()
     {

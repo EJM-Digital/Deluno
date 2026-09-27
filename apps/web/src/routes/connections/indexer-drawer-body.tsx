@@ -158,6 +158,11 @@ export function IndexerDrawerBody({
             </div>
           </Field>
           <p className="text-[length:var(--type-caption)] text-muted-foreground">Custom intervals must be between 2 and 60 seconds. The default is 2 seconds.</p>
+          {form.protocol === "newznab" || form.protocol === "torznab" ? (
+            <Field label="Additional parameters" help="Extra query parameters some indexers require, such as a site-specific token or flag.">
+              <Input value={form.additionalParameters} onChange={(event) => setForm((current) => ({ ...current, additionalParameters: event.target.value }))} className="font-mono text-[length:var(--type-caption)]" placeholder="token=abc123" autoComplete="off" spellCheck={false} />
+            </Field>
+          ) : null}
         </Disclosure>
       </DrawerSection>
 

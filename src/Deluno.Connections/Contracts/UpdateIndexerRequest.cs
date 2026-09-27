@@ -21,6 +21,9 @@ public sealed record UpdateIndexerRequest(
     // ClearApiPath drops back to the protocol's standard /api path.
     string? ApiPath = null,
     bool? ClearApiPath = null,
+    // Extra Newznab/Torznab query parameters some indexers require (#741).
+    string? AdditionalParameters = null,
+    bool? ClearAdditionalParameters = null,
     // Null means "leave as is". ClearSharingPolicy drops the override entirely
     // so the source goes back to inheriting the global rule (#288).
     string? SharingMode = null,

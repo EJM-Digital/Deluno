@@ -14,6 +14,8 @@ public sealed record CreateIndexerRequest(
     int? RequestIntervalSeconds = null,
     // Non-default Newznab/Torznab API path (#740). Null/blank uses /api.
     string? ApiPath = null,
+    // Extra Newznab/Torznab query parameters some indexers require (#741).
+    string? AdditionalParameters = null,
     // Null means "inherit the global sharing rule" (#288).
     string? SharingMode = null,
     int? SharingForHours = null,

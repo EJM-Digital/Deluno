@@ -428,6 +428,45 @@ public sealed class IndexerPersistenceTests
         Assert.Null(Assert.Single(await repo.ListIndexersAsync(CancellationToken.None)).ApiPath);
     }
 
+    // ── AdditionalParameters (#741) ──────────────────────────────────────────
+
+    [Fact]
+    public async Task CreateIndexerAsync_persists_additional_parameters()
+    {
+        using var storage = TestStorage.Create();
+        var repo = await CreateRepositoryAsync(storage);
+
+        var created = await repo.CreateIndexerAsync(
+            BaseCreateRequest() with { AdditionalParameters = "token=abc123" },
+            CancellationToken.None);
+
+        Assert.Equal("token=abc123", created.AdditionalParameters);
+        var persisted = Assert.Single(await repo.ListIndexersAsync(CancellationToken.None));
+        Assert.Equal("token=abc123", persisted.AdditionalParameters);
+    }
+
+    [Fact]
+    public async Task UpdateIndexerAsync_can_set_and_clear_additional_parameters()
+    {
+        using var storage = TestStorage.Create();
+        var repo = await CreateRepositoryAsync(storage);
+        var created = await repo.CreateIndexerAsync(BaseCreateRequest(), CancellationToken.None);
+
+        var updated = await repo.UpdateIndexerAsync(
+            created.Id,
+            new UpdateIndexerRequest(null, null, null, null, null, null, null, null, null, null, AdditionalParameters: "token=abc123"),
+            CancellationToken.None);
+        Assert.NotNull(updated);
+        Assert.Equal("token=abc123", updated.AdditionalParameters);
+
+        var cleared = await repo.UpdateIndexerAsync(
+            created.Id,
+            new UpdateIndexerRequest(null, null, null, null, null, null, null, null, null, null, ClearAdditionalParameters: true),
+            CancellationToken.None);
+        Assert.NotNull(cleared);
+        Assert.Null(cleared.AdditionalParameters);
+    }
+
     // ── DeleteIndexerAsync ────────────────────────────────────────────────────
 
     [Fact]
