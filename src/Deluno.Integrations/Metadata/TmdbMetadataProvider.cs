@@ -118,6 +118,49 @@ public sealed class TmdbMetadataProvider(
             LastFailure);
     }
 
+    /// <summary>A fixed, always-findable title, so a probe result reflects reachability, not whether a made-up query happens to match anything.</summary>
+    private static readonly MetadataLookupRequest ReachabilityProbeRequest = new("Inception", "movies", null, null);
+    private const string ReachabilityProbeQuery = "Inception";
+
+    public async Task<MetadataProviderStatus> CheckReachabilityAsync(CancellationToken cancellationToken)
+    {
+        var config = await GetMetadataConfigurationAsync(cancellationToken);
+
+        if (config.ProviderMode is "broker" or "hybrid" && !string.IsNullOrWhiteSpace(config.BrokerUrl))
+        {
+            var brokerResult = await TryBrokerSearchAsync(
+                config.BrokerUrl, "movies", ReachabilityProbeRequest, ReachabilityProbeQuery, cancellationToken);
+
+            // A response (even an empty one) means the broker answered. Only
+            // fall through to a direct-TMDb probe when hybrid mode has one
+            // configured to fall back to -- broker-only mode reports exactly
+            // what it found, the same way a real search would.
+            if (brokerResult is not null || config.ProviderMode == "broker" || string.IsNullOrWhiteSpace(config.TmdbApiKey))
+            {
+                return await GetStatusAsync(cancellationToken);
+            }
+        }
+
+        if (!string.IsNullOrWhiteSpace(config.TmdbApiKey))
+        {
+            await ProbeDirectTmdbAsync(config.TmdbApiKey, cancellationToken);
+        }
+
+        return await GetStatusAsync(cancellationToken);
+    }
+
+    /// <summary>
+    /// The lightest reachable TMDb endpoint there is -- no query, no cache
+    /// write, no artwork fetch. Its only job is to make <see cref="LastFailure"/>
+    /// reflect whether TMDb answered just now.
+    /// </summary>
+    private Task ProbeDirectTmdbAsync(string apiKey, CancellationToken cancellationToken)
+        => GetJsonWithResilienceAsync<JsonElement>(
+            $"https://api.themoviedb.org/3/configuration?api_key={Uri.EscapeDataString(apiKey)}",
+            "metadata:tmdb:reachability",
+            "metadata.tmdb.reachability",
+            cancellationToken);
+
     public Task<IReadOnlyList<MetadataSearchResult>> SearchAsync(
         MetadataLookupRequest request,
         CancellationToken cancellationToken)

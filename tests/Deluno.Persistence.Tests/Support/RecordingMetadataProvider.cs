@@ -52,6 +52,9 @@ internal sealed class RecordingMetadataProvider(
     public Task<MetadataProviderStatus> GetStatusAsync(CancellationToken cancellationToken)
         => throw new NotSupportedException();
 
+    public Task<MetadataProviderStatus> CheckReachabilityAsync(CancellationToken cancellationToken)
+        => throw new NotSupportedException();
+
     public Task<MetadataProviderRecordLookup> ResolveProviderRecordAsync(
         MetadataLookupRequest request,
         CancellationToken cancellationToken)

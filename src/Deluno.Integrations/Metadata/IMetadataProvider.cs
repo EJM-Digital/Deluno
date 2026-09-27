@@ -4,6 +4,17 @@ public interface IMetadataProvider
 {
     Task<MetadataProviderStatus> GetStatusAsync(CancellationToken cancellationToken);
 
+    /// <summary>
+    /// Actually reaches out to whichever service is configured (the broker,
+    /// then a direct-TMDb fallback in hybrid mode, or direct TMDb alone) and
+    /// returns the status this produced. Unlike <see cref="GetStatusAsync"/>,
+    /// which only reports configuration and whatever the last unrelated call
+    /// happened to leave behind, this is the probe the health-check schedule
+    /// calls every fifteen minutes so a metadata outage is caught even when
+    /// nothing else has asked the provider anything in that window (#909).
+    /// </summary>
+    Task<MetadataProviderStatus> CheckReachabilityAsync(CancellationToken cancellationToken);
+
     Task<IReadOnlyList<MetadataSearchResult>> SearchAsync(
         MetadataLookupRequest request,
         CancellationToken cancellationToken);
