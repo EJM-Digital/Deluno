@@ -12,6 +12,15 @@ public class NotificationPreferences
     public bool AutomationErrorEnabled { get; set; } = true;
     public bool SystemWarningsEnabled { get; set; } = true;
 
+    /// <summary>
+    /// Covers both "health.degraded" and "health.restored" for every
+    /// provider type (indexers, download clients, media servers,
+    /// processors) with one decision, matching Deluno's single-user,
+    /// one-decision-per-concept style rather than per-provider-type
+    /// toggles (#859).
+    /// </summary>
+    public bool ProviderHealthChangedEnabled { get; set; } = true;
+
     // Delivery methods
     public bool InAppNotificationsEnabled { get; set; } = true;
     public bool EmailNotificationsEnabled { get; set; } = false;
