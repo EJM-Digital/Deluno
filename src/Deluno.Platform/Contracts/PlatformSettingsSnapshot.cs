@@ -12,7 +12,6 @@ public sealed record PlatformSettingsSnapshot(
     bool UseHardlinks,
     bool CleanupEmptyFolders,
     bool RemoveCompletedDownloads,
-    bool UnmonitorWhenCutoffMet,
     string MovieFolderFormat,
     string SeriesFolderFormat,
     string MovieFileFormat,

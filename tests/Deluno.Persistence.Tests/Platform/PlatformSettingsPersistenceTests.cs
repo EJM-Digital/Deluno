@@ -41,7 +41,6 @@ public sealed class PlatformSettingsPersistenceTests
                 UseHardlinks: true,
                 CleanupEmptyFolders: true,
                 RemoveCompletedDownloads: false,
-                UnmonitorWhenCutoffMet: true,
                 MovieFolderFormat: "{Movie Title} ({Release Year})",
                 SeriesFolderFormat: "{Series Title} ({Series Year})",
                 MovieFileFormat: "{Movie Title} ({Release Year}) [{Quality}] [{Custom Formats}]",
@@ -80,7 +79,6 @@ public sealed class PlatformSettingsPersistenceTests
         Assert.True(loaded.AutoStartJobs);
         Assert.True(loaded.RenameOnImport);
         Assert.True(loaded.UseHardlinks);
-        Assert.True(loaded.UnmonitorWhenCutoffMet);
         Assert.Equal("broker", loaded.MetadataProviderMode);
         Assert.Equal("https://metadata.example.test", loaded.MetadataBrokerUrl);
         Assert.True(loaded.MetadataTmdbApiKeyConfigured);

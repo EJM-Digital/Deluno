@@ -907,7 +907,6 @@ public sealed class FeedMediaSearchPlannerReasonTests
             UseHardlinks: false,
             CleanupEmptyFolders: true,
             RemoveCompletedDownloads: false,
-            UnmonitorWhenCutoffMet: false,
             MovieFolderFormat: "{Movie Title} ({Release Year})",
             SeriesFolderFormat: "{Series Title}",
             MovieFileFormat: "{Movie Title} ({Release Year}) [{Quality}] [{Custom Formats}]",

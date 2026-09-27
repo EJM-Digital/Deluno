@@ -85,7 +85,6 @@ public sealed class FileFilterQueryPlanTests
                     CurrentQuality: "Bluray-1080p",
                     TargetQuality: "Bluray-1080p",
                     QualityCutoffMet: true,
-                    UnmonitorWhenCutoffMet: true,
                     FilePath: @"D:\Media\Arrival (2016)\Arrival.2016.1080p.BluRay.x264.DTS-HD.MA.5.1-SPARKS.mkv",
                     FileSizeBytes: 8L * 1024 * 1024 * 1024)
             ],
@@ -183,7 +182,6 @@ public sealed class FileFilterQueryPlanTests
                     CurrentQuality: "Bluray-2160p",
                     TargetQuality: "Bluray-2160p",
                     QualityCutoffMet: true,
-                    UnmonitorWhenCutoffMet: true,
                     FilePath: @"E:K\Arrival (2016)\Arrival.2016.2160p.mkv",
                     FileSizeBytes: 40L * 1024 * 1024 * 1024)
             ],
@@ -282,7 +280,6 @@ public sealed class FileFilterQueryPlanTests
                     CurrentQuality: "Bluray-1080p",
                     TargetQuality: "Bluray-1080p",
                     QualityCutoffMet: true,
-                    UnmonitorWhenCutoffMet: true,
                     FilePath: filePath,
                     FileSizeBytes: 8L * 1024 * 1024 * 1024)
             ],

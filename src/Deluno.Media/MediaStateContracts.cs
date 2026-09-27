@@ -280,7 +280,6 @@ public sealed record MediaExistingImportRequest(
     string? CurrentQuality,
     string? TargetQuality,
     bool QualityCutoffMet,
-    bool UnmonitorWhenCutoffMet,
     string? FilePath,
     long? FileSizeBytes,
     /// <summary>

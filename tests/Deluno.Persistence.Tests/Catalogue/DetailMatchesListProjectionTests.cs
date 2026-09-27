@@ -90,7 +90,6 @@ public sealed class DetailMatchesListProjectionTests
             currentQuality: "Bluray-1080p",
             targetQuality: "Bluray-1080p",
             qualityCutoffMet: true,
-            unmonitorWhenCutoffMet: false,
             filePath: @"C:\Library\Movies\Interstellar (2014)\Interstellar.mkv",
             fileSizeBytes: 61_878_609,
             cancellationToken: CancellationToken.None);

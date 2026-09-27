@@ -37,7 +37,6 @@ public sealed class CatalogueMediaFactsTests
                     CurrentQuality: "Bluray-1080p",
                     TargetQuality: "Bluray-1080p",
                     QualityCutoffMet: true,
-                    UnmonitorWhenCutoffMet: true,
                     FilePath: @"D:\Media\Arrival (2016)\Arrival.2016.1080p.BluRay.x264.DTS-HD.MA.5.1-SPARKS.mkv",
                     FileSizeBytes: 8L * 1024 * 1024 * 1024)
             ],
@@ -202,7 +201,6 @@ public sealed class CatalogueMediaFactsTests
                     CurrentQuality: null,
                     TargetQuality: null,
                     QualityCutoffMet: false,
-                    UnmonitorWhenCutoffMet: false,
                     FilePath: filePath,
                     FileSizeBytes: sizeBytes)
             ],

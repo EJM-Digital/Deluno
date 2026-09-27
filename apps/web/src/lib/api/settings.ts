@@ -10,7 +10,6 @@ export interface PlatformSettingsPatch {
   useHardlinks?: boolean;
   cleanupEmptyFolders?: boolean;
   removeCompletedDownloads?: boolean;
-  unmonitorWhenCutoffMet?: boolean;
   movieFolderFormat?: string;
   seriesFolderFormat?: string;
   movieFileFormat?: string;

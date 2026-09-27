@@ -392,7 +392,6 @@ public sealed class APausedLibraryTests
                 UseHardlinks: true,
                 CleanupEmptyFolders: true,
                 RemoveCompletedDownloads: true,
-                UnmonitorWhenCutoffMet: true,
                 MovieFolderFormat: "{Movie}",
                 SeriesFolderFormat: "{Series}",
                 MovieFileFormat: "{Movie}",

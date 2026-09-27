@@ -32,7 +32,6 @@ public sealed class SecretStorageTests
                 UseHardlinks: true,
                 CleanupEmptyFolders: false,
                 RemoveCompletedDownloads: false,
-                UnmonitorWhenCutoffMet: false,
                 MovieFolderFormat: null,
                 SeriesFolderFormat: null,
                 MovieFileFormat: null,

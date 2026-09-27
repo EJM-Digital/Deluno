@@ -127,7 +127,6 @@ public sealed class ConformanceFilterTests
                     CurrentQuality: quality,
                     TargetQuality: quality,
                     QualityCutoffMet: true,
-                    UnmonitorWhenCutoffMet: true,
                     FilePath: $@"D:\Media\{title}\{title}.mkv",
                     FileSizeBytes: sizeBytes)
             ],

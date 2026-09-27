@@ -19,7 +19,6 @@ public sealed record ExistingSeriesImportRequest(
     string? CurrentQuality,
     string? TargetQuality,
     bool QualityCutoffMet,
-    bool UnmonitorWhenCutoffMet,
     string? FilePath,
     long? FileSizeBytes,
     IReadOnlyList<ImportedEpisodeItem>? Episodes,

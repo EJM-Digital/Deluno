@@ -452,7 +452,6 @@ public sealed class MediaStateRepositoryTests
                         "Bluray-1080p",
                         "Bluray-1080p",
                         QualityCutoffMet: true,
-                        UnmonitorWhenCutoffMet: true,
                         @"D:\Media\Imported movie (2016)\Imported.movie.2016.1080p.BluRay.x264-GROUP.mkv",
                         1024)
                 ],
@@ -493,7 +492,6 @@ public sealed class MediaStateRepositoryTests
                         "WEB-1080p",
                         "WEB-1080p",
                         QualityCutoffMet: false,
-                        UnmonitorWhenCutoffMet: true,
                         @"D:\Media\Imported series (2019)\Imported.series.S01E01.1080p.WEB-DL.mkv",
                         2048,
                         [
@@ -522,6 +520,80 @@ public sealed class MediaStateRepositoryTests
 
             Assert.Single(streamed);
             Assert.Equal(series.Id, streamed[0].MediaId);
+        }
+    }
+
+    /// <summary>
+    /// #872: "unmonitor when cutoff met" was removed end to end because
+    /// reaching the cutoff was never supposed to touch monitoring - the
+    /// user's monitoring choice is independent of it, and cutoff-met already
+    /// stops upgrade searches on its own via
+    /// <see cref="WantedStatuses.Searchable"/>. This proves both halves of
+    /// that design hold for both engines with nothing left to configure it:
+    /// a title imported already at its cutoff stays monitored, and its
+    /// wanted status is not one <see cref="WantedStatuses.IsSearchable"/>
+    /// would let a scheduled or RSS search pick up.
+    /// </summary>
+    [Theory]
+    [InlineData(MediaKind.Movie)]
+    [InlineData(MediaKind.Series)]
+    public async Task A_title_that_meets_its_cutoff_stays_monitored_and_unsearchable(MediaKind kind)
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(new DateTimeOffset(2026, 9, 27, 5, 0, 0, TimeSpan.Zero));
+        await InitializeSchemaAsync(storage, timeProvider, kind);
+        var shared = new SqliteMediaStateRepository(storage.Factory, timeProvider);
+
+        if (kind == MediaKind.Movie)
+        {
+            var repository = new SqliteMovieCatalogRepository(storage.Factory, timeProvider, shared);
+            await repository.ImportExistingBatchAsync(
+                "library-movies",
+                [
+                    new ExistingMovieImportRequest(
+                        "Already at cutoff",
+                        2016,
+                        "covered",
+                        "Current file already meets the cutoff.",
+                        "Bluray-1080p",
+                        "Bluray-1080p",
+                        QualityCutoffMet: true,
+                        @"D:\Media\Already at cutoff (2016)\Already.at.cutoff.2016.1080p.BluRay.mkv",
+                        1024)
+                ],
+                CancellationToken.None);
+
+            var item = Assert.Single(
+                (await repository.ListPageAsync(new CatalogueQuery(), CancellationToken.None)).Items);
+            Assert.True(item.Monitored);
+            Assert.False(WantedStatuses.IsSearchable(item.WantedStatus));
+        }
+        else
+        {
+            var repository = new SqliteSeriesCatalogRepository(storage.Factory, timeProvider, shared);
+            await repository.ImportExistingBatchAsync(
+                "library-series",
+                [
+                    new ExistingSeriesImportRequest(
+                        "Already at cutoff",
+                        2019,
+                        "covered",
+                        "Current file already meets the cutoff.",
+                        "WEB-1080p",
+                        "WEB-1080p",
+                        QualityCutoffMet: true,
+                        @"D:\Media\Already at cutoff (2019)\Already.at.cutoff.S01E01.1080p.WEB-DL.mkv",
+                        2048,
+                        [new ImportedEpisodeItem(1, 1, true, @"D:\Media\Already at cutoff\S01E01.mkv", 2048)])
+                ],
+                CancellationToken.None);
+
+            var series = Assert.Single(await repository.ListAsync(CancellationToken.None));
+            Assert.True(series.Monitored);
+
+            var detail = await repository.GetInventoryDetailAsync(series.Id, CancellationToken.None);
+            var episode = Assert.Single(detail!.Episodes);
+            Assert.False(WantedStatuses.IsSearchable(episode.WantedStatus));
         }
     }
 
@@ -572,7 +644,6 @@ public sealed class MediaStateRepositoryTests
                     "WEB-1080p",
                     "WEB-1080p",
                     QualityCutoffMet: true,
-                    UnmonitorWhenCutoffMet: false,
                     snapshot.FilePath,
                     snapshot.FileSizeBytes,
                     snapshot)],
@@ -593,7 +664,6 @@ public sealed class MediaStateRepositoryTests
                     "WEB-1080p",
                     "WEB-1080p",
                     QualityCutoffMet: true,
-                    UnmonitorWhenCutoffMet: false,
                     snapshot.FilePath,
                     snapshot.FileSizeBytes,
                     [new ImportedEpisodeItem(1, 1, true, snapshot.FilePath, snapshot.FileSizeBytes)],
@@ -702,7 +772,6 @@ public sealed class MediaStateRepositoryTests
                 "WEB 1080p",
                 "WEB 1080p",
                 QualityCutoffMet: true,
-                UnmonitorWhenCutoffMet: false,
                 FilePath: firstPath,
                 FileSizeBytes: 1_001,
                 Episodes:

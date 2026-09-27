@@ -31,7 +31,6 @@ export interface PlatformSettingsSnapshot {
   useHardlinks: boolean;
   cleanupEmptyFolders: boolean;
   removeCompletedDownloads: boolean;
-  unmonitorWhenCutoffMet: boolean;
   movieFolderFormat: string;
   seriesFolderFormat: string;
   movieFileFormat: string;
@@ -165,7 +164,6 @@ export const emptyPlatformSettingsSnapshot: PlatformSettingsSnapshot = {
   useHardlinks: false,
   cleanupEmptyFolders: true,
   removeCompletedDownloads: false,
-  unmonitorWhenCutoffMet: false,
   movieFolderFormat: "{Movie Title} ({Release Year})",
   seriesFolderFormat: "{Series Title} ({Series Year})",
   movieFileFormat: "{Movie Title} ({Release Year}) [{Quality}] [{Custom Formats}]",

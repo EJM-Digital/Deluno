@@ -2493,7 +2493,6 @@ public sealed class SqliteSeriesCatalogRepository(
         string? currentQuality,
         string? targetQuality,
         bool qualityCutoffMet,
-        bool unmonitorWhenCutoffMet,
         string? filePath,
         long? fileSizeBytes,
         IReadOnlyList<ImportedEpisodeItem>? episodes,
@@ -2518,7 +2517,6 @@ public sealed class SqliteSeriesCatalogRepository(
                     CurrentQuality: currentQuality,
                     TargetQuality: targetQuality,
                     QualityCutoffMet: qualityCutoffMet,
-                    UnmonitorWhenCutoffMet: unmonitorWhenCutoffMet,
                     FilePath: filePath,
                     FileSizeBytes: fileSizeBytes,
                     Episodes: episodes,
@@ -2587,7 +2585,7 @@ public sealed class SqliteSeriesCatalogRepository(
         CancellationToken cancellationToken)
     {
         var (title, startYear, wantedStatus, wantedReason, currentQuality, targetQuality,
-            qualityCutoffMet, unmonitorWhenCutoffMet, filePath, fileSizeBytes, episodes,
+            qualityCutoffMet, filePath, fileSizeBytes, episodes,
             preferenceEvaluation, alternateEpisodes, seasonPacks, preferenceEvaluations, knownSeriesId,
             upgradeUntilCutoff, upgradeUnknownItems, episodeImportSource) = request;
 
@@ -2671,7 +2669,6 @@ public sealed class SqliteSeriesCatalogRepository(
                     currentQuality,
                     targetQuality,
                     qualityCutoffMet,
-                    unmonitorWhenCutoffMet,
                     filePath,
                     fileSizeBytes,
                     preferenceEvaluation,

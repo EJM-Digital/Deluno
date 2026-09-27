@@ -111,7 +111,6 @@ public sealed class EpisodeRecoveryQueryTests
                     CurrentQuality: "HDTV-720p",
                     TargetQuality: "WEBDL-1080p",
                     QualityCutoffMet: false,
-                    UnmonitorWhenCutoffMet: false,
                     FilePath: episodes[0].FilePath,
                     FileSizeBytes: 1024,
                     Episodes: episodes)

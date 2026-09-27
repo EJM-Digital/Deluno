@@ -697,7 +697,6 @@ public sealed class ExistingLibraryImportService(
             CurrentQuality: decision.CurrentQuality,
             TargetQuality: decision.TargetQuality,
             QualityCutoffMet: decision.QualityCutoffMet,
-            UnmonitorWhenCutoffMet: false,
             FilePath: item.FilePath,
             FileSizeBytes: item.FileSizeBytes,
             PreferenceEvaluation: preferenceEvaluation);
@@ -736,7 +735,6 @@ public sealed class ExistingLibraryImportService(
             CurrentQuality: decision.CurrentQuality,
             TargetQuality: decision.TargetQuality,
             QualityCutoffMet: decision.QualityCutoffMet,
-            UnmonitorWhenCutoffMet: false,
             FilePath: item.FilePath,
             FileSizeBytes: item.FileSizeBytes,
             Episodes: DecideEpisodes(library, item.Episodes, model),

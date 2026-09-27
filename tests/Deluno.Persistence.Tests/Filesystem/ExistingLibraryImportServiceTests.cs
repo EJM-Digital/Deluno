@@ -483,7 +483,6 @@ public sealed class ExistingLibraryImportServiceTests
             "WEB 1080p",
             "WEB 1080p",
             qualityCutoffMet: true,
-            unmonitorWhenCutoffMet: false,
             filePath,
             1024,
             CancellationToken.None));

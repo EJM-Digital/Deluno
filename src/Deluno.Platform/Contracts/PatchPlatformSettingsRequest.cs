@@ -17,7 +17,6 @@ public sealed record PatchPlatformSettingsRequest(
     bool? UseHardlinks = null,
     bool? CleanupEmptyFolders = null,
     bool? RemoveCompletedDownloads = null,
-    bool? UnmonitorWhenCutoffMet = null,
     string? MovieFolderFormat = null,
     string? SeriesFolderFormat = null,
     string? MovieFileFormat = null,

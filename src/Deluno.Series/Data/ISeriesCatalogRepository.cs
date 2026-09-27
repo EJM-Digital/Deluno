@@ -254,7 +254,6 @@ public interface ISeriesCatalogRepository : ISeriesImportRecoveryRetentionReposi
         string? currentQuality,
         string? targetQuality,
         bool qualityCutoffMet,
-        bool unmonitorWhenCutoffMet,
         string? filePath,
         long? fileSizeBytes,
         IReadOnlyList<ImportedEpisodeItem>? episodes,
