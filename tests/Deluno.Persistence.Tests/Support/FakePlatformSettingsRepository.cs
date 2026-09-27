@@ -29,7 +29,6 @@ public sealed class FakePlatformSettingsRepository(PlatformSettingsSnapshot snap
             RenameOnImport: true,
             UseHardlinks: true,
             CleanupEmptyFolders: true,
-            RemoveCompletedDownloads: true,
             MovieFolderFormat: "{Movie}",
             SeriesFolderFormat: "{Series}",
             MovieFileFormat: "{Movie}",
