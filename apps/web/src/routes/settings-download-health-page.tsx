@@ -254,21 +254,30 @@ function TimingCard({ settings }: { settings: PlatformSettingsSnapshot }) {
 function HistoryRetentionCard({ settings }: { settings: PlatformSettingsSnapshot }) {
   const mutation = useApiMutation<PlatformSettingsPatch, PlatformSettingsSnapshot>("/api/settings", "PATCH");
   const [days, setDays] = useState(String(settings.historyRetentionDays));
+  // A setting with no screen is a defect: importRecoveryRetentionDays
+  // already existed and was patchable, but nothing anywhere let a person
+  // see or change it. Wired in here, next to Deluno's other retention
+  // setting, rather than a new card of its own.
+  const [importRecoveryDays, setImportRecoveryDays] = useState(String(settings.importRecoveryRetentionDays));
   const [saveState, setSaveState] = useState<"idle" | "saving" | "saved" | "error">("idle");
-  const [error, setError] = useState<string | null>(null);
-  const dirty = days !== String(settings.historyRetentionDays);
+  const [errors, setErrors] = useState<{ history?: string; importRecovery?: string }>({});
+  const dirty = days !== String(settings.historyRetentionDays) ||
+    importRecoveryDays !== String(settings.importRecoveryRetentionDays);
 
   async function save() {
-    const value = Number(days);
-    if (!Number.isFinite(value) || value < 1 || value > 3650) {
-      setError("Must be between 1 and 3650 days.");
-      return;
-    }
-    setError(null);
+    const historyValue = Number(days);
+    const importRecoveryValue = Number(importRecoveryDays);
+    const nextErrors: { history?: string; importRecovery?: string } = {};
+    if (!Number.isFinite(historyValue) || historyValue < 1 || historyValue > 3650) nextErrors.history = "Must be between 1 and 3650 days.";
+    if (!Number.isFinite(importRecoveryValue) || importRecoveryValue < 1) nextErrors.importRecovery = "Must be 1 day or more.";
+    setErrors(nextErrors);
+    if (Object.keys(nextErrors).length > 0) return;
+
     setSaveState("saving");
     try {
-      const next = await mutation.mutate({ historyRetentionDays: value });
+      const next = await mutation.mutate({ historyRetentionDays: historyValue, importRecoveryRetentionDays: importRecoveryValue });
       setDays(String(next.historyRetentionDays));
+      setImportRecoveryDays(String(next.importRecoveryRetentionDays));
       setSaveState("saved");
     } catch {
       setSaveState("error");
@@ -277,14 +286,24 @@ function HistoryRetentionCard({ settings }: { settings: PlatformSettingsSnapshot
 
   return (
     <ListCard title="History retention" count="How long Deluno keeps its own records">
-      <div className="grid gap-[var(--grid-gap)] p-[var(--card-pad-x)] sm:grid-cols-[1fr_auto] sm:items-end">
-        <Field label="Keep Activity and strike history for" error={error ?? undefined} help="Deluno's own record of what it did and when - never a title's files or its own retention, which stays under System -> Recycle bin.">
-          <div className="flex items-center gap-2">
-            <Input type="number" min="1" max="3650" step="1" value={days} onChange={(event) => setDays(event.target.value)} className="max-w-[8rem]" />
-            <span className="shrink-0 text-[length:var(--type-body-sm)] text-muted-foreground">days</span>
-          </div>
-        </Field>
-        <Button type="button" size="sm" onClick={() => void save()} disabled={!dirty || saveState === "saving"}>Save</Button>
+      <div className="grid gap-[var(--grid-gap)] p-[var(--card-pad-x)]">
+        <FieldRow>
+          <Field label="Keep Activity and strike history for" error={errors.history} help="Deluno's own record of what it did and when - never a title's files or its own retention, which stays under System -> Recycle bin.">
+            <div className="flex items-center gap-2">
+              <Input type="number" min="1" max="3650" step="1" value={days} onChange={(event) => setDays(event.target.value)} />
+              <span className="shrink-0 text-[length:var(--type-body-sm)] text-muted-foreground">days</span>
+            </div>
+          </Field>
+          <Field label="Keep unresolved import-recovery cases for" error={errors.importRecovery} help="How long a manual-import case (a completed download Deluno could not place on its own) is kept before it is cleared away unresolved.">
+            <div className="flex items-center gap-2">
+              <Input type="number" min="1" step="1" value={importRecoveryDays} onChange={(event) => setImportRecoveryDays(event.target.value)} />
+              <span className="shrink-0 text-[length:var(--type-body-sm)] text-muted-foreground">days</span>
+            </div>
+          </Field>
+        </FieldRow>
+        <div>
+          <Button type="button" size="sm" onClick={() => void save()} disabled={!dirty || saveState === "saving"}>Save</Button>
+        </div>
       </div>
       {saveState === "error" ? <p className="px-[var(--card-pad-x)] pb-[var(--card-pad-x)] text-[length:var(--type-caption)] text-destructive">Could not save. Try again.</p> : null}
     </ListCard>
