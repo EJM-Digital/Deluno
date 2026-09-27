@@ -407,6 +407,8 @@ public sealed class SabnzbdDownloadClient(IHttpClientFactory httpClientFactory) 
             {
                 DownloadClientHistoryOutcomes.Duplicate => DuplicateReason(item.FailMessage),
                 DownloadClientHistoryOutcomes.NeedsAttention => AttentionReason(item.FailMessage),
+                DownloadClientHistoryOutcomes.ScriptFailed or DownloadClientHistoryOutcomes.ScriptWarning
+                    => ScriptReason(item.Script, isFailure: outcome == DownloadClientHistoryOutcomes.ScriptFailed),
                 "failed" => FailureReason(item.FailMessage),
                 _ => string.IsNullOrWhiteSpace(item.FailMessage) ? QueueError(item.Status) : item.FailMessage
             };
@@ -469,6 +471,19 @@ public sealed class SabnzbdDownloadClient(IHttpClientFactory httpClientFactory) 
     /// <see cref="DownloadClientHistoryOutcomes.NeedsAttention"/>, parity with
     /// NZBGet's WARNING/SPACE: the release is not lost, so nothing is
     /// blocklisted or searched for either.</para>
+    ///
+    /// <para><b>A post-processing script's own failure or warning is not a bad
+    /// release either (#910).</b> SABnzbd runs the user's configured script
+    /// after the download and unpack finish, and reports what went wrong in
+    /// the same free-text <c>fail_msg</c> — "Script was aborted, please check
+    /// script_log for more information." for a hard failure that moves the job
+    /// to a Failed status, or a milder note left on an otherwise Completed job
+    /// for a script that merely warned. Mirroring NZBGet's FAILURE/SCRIPT and
+    /// WARNING/SCRIPT (<see cref="NzbGetDownloadClient.NormalizeOutcome"/>):
+    /// read as <see cref="DownloadClientHistoryOutcomes.ScriptFailed"/> or
+    /// <see cref="DownloadClientHistoryOutcomes.ScriptWarning"/>, so neither
+    /// blocklists or searches again, and both still hand the finished file to
+    /// the ordinary import path to be probed.</para>
     /// </summary>
     internal static string NormalizeHistoryOutcome(string status, string? failMessage)
     {
@@ -476,13 +491,17 @@ public sealed class SabnzbdDownloadClient(IHttpClientFactory httpClientFactory) 
             status.Equals("succeeded", StringComparison.OrdinalIgnoreCase) ||
             status.Equals("success", StringComparison.OrdinalIgnoreCase))
         {
-            return DownloadQueueStatuses.Completed;
+            // A script warning does not fail the job — SABnzbd leaves it
+            // Completed and only notes the warning in fail_msg — so it has to
+            // be read here, before the generic success case wins.
+            return IsScriptProblem(failMessage) ? DownloadClientHistoryOutcomes.ScriptWarning : DownloadQueueStatuses.Completed;
         }
 
         if (status.Contains("fail", StringComparison.OrdinalIgnoreCase) || status.Contains("error", StringComparison.OrdinalIgnoreCase))
         {
             if (IsDuplicateFailure(failMessage)) return DownloadClientHistoryOutcomes.Duplicate;
             if (IsDiskFullFailure(failMessage)) return DownloadClientHistoryOutcomes.NeedsAttention;
+            if (IsScriptProblem(failMessage)) return DownloadClientHistoryOutcomes.ScriptFailed;
             return "failed";
         }
 
@@ -498,8 +517,23 @@ public sealed class SabnzbdDownloadClient(IHttpClientFactory httpClientFactory) 
            (failMessage.Contains("disk full", StringComparison.OrdinalIgnoreCase) ||
             failMessage.Contains("disk is full", StringComparison.OrdinalIgnoreCase));
 
+    /// <summary>Whether SABnzbd's own free-text failure message is about its post-processing script rather than the release (#910).</summary>
+    internal static bool IsScriptProblem(string? failMessage)
+        => !string.IsNullOrWhiteSpace(failMessage) && failMessage.Contains("script", StringComparison.OrdinalIgnoreCase);
+
     internal static string FailureReason(string? failMessage)
         => string.IsNullOrWhiteSpace(failMessage) ? "SABnzbd could not download it." : $"SABnzbd could not download it: {failMessage}.";
+
+    /// <summary>
+    /// The words for a <see cref="DownloadClientHistoryOutcomes.ScriptFailed"/>
+    /// or <see cref="DownloadClientHistoryOutcomes.ScriptWarning"/> row (#910),
+    /// naming the script SABnzbd itself names in the history slot's
+    /// <c>script</c> field when it has one.
+    /// </summary>
+    internal static string ScriptReason(string? scriptName, bool isFailure)
+        => !string.IsNullOrWhiteSpace(scriptName) && !scriptName.Equals("none", StringComparison.OrdinalIgnoreCase)
+            ? $"Your client's script \"{scriptName}\" {(isFailure ? "failed" : "warned")}."
+            : "Your client's post-processing script reported a problem.";
 
     /// <summary>The words for a <see cref="DownloadClientHistoryOutcomes.Duplicate"/> row (#886) — deliberately not "failed", which reads as something went wrong.</summary>
     internal static string DuplicateReason(string? failMessage)
@@ -585,5 +619,5 @@ public sealed class SabnzbdDownloadClient(IHttpClientFactory httpClientFactory) 
     private sealed record SabSlot([property: JsonPropertyName("nzo_id")] string? NzoId, [property: JsonPropertyName("filename")] string? Filename, [property: JsonPropertyName("cat")] string? Category, [property: JsonPropertyName("status")] string? Status, [property: JsonPropertyName("mb")] string? Mb, [property: JsonPropertyName("mbleft")] string? Mbleft, [property: JsonPropertyName("timeleft")] string? TimeLeft);
     private sealed record SabHistoryResponse([property: JsonPropertyName("history")] SabHistory? History);
     private sealed record SabHistory([property: JsonPropertyName("slots")] IReadOnlyList<SabHistorySlot>? Slots);
-    private sealed record SabHistorySlot([property: JsonPropertyName("nzo_id")] string? NzoId, [property: JsonPropertyName("name")] string? Name, [property: JsonPropertyName("category")] string? Category, [property: JsonPropertyName("status")] string? Status, [property: JsonPropertyName("bytes")] JsonElement? Bytes, [property: JsonPropertyName("completed")] long? Completed, [property: JsonPropertyName("fail_message")] string? FailMessage, [property: JsonPropertyName("storage")] string? Storage);
+    private sealed record SabHistorySlot([property: JsonPropertyName("nzo_id")] string? NzoId, [property: JsonPropertyName("name")] string? Name, [property: JsonPropertyName("category")] string? Category, [property: JsonPropertyName("status")] string? Status, [property: JsonPropertyName("bytes")] JsonElement? Bytes, [property: JsonPropertyName("completed")] long? Completed, [property: JsonPropertyName("fail_message")] string? FailMessage, [property: JsonPropertyName("storage")] string? Storage, [property: JsonPropertyName("script")] string? Script);
 }
