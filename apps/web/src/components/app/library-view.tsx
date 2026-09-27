@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useNavigate, useNavigation, useSearchParams } from "react-router-dom";
 import type { MediaItem } from "../../lib/media-types";
 import {
@@ -30,6 +30,7 @@ import {
   type ViewMode,
 } from "./library-control-rail";
 import { useLibraryFilters } from "../../hooks/use-library-filters";
+import { useLatestRequest } from "../../hooks/use-latest-request";
 import { useBulkEdit } from "../../hooks/use-bulk-edit";
 import { createInitialLibraryForm, metadataCreatePayload, useLibraryCreate, type CreateFormDraft } from "../../hooks/use-library-create";
 import { authedFetch } from "../../lib/use-auth";
@@ -227,32 +228,71 @@ export function LibraryView({
     return { items: adaptSeriesItems(page.items), page };
   }, [variant]);
 
-  useEffect(() => {
-    let cancelled = false;
-    // Keep the previous page visible while the next one loads (#265): zeroing
-    // here flashed a "0 total" header and empty grid on every visit. Stale
-    // cross-variant rows cannot appear — the `key` on LibraryView remounts the
-    // component per variant.
-    //
+  // Which change this is decides how the shelf may look while the fetch is in
+  // flight, and #934 was two bugs from treating every change the same way:
+  // a chip switch showed the *previous* filter's titles for the whole 250ms
+  // debounce (a ghost), and a chip nobody had opened yet in this session
+  // showed nothing at all until the fetch landed. Neither is acceptable for a
+  // click that changed what is selected on screen; both are fine for a
+  // keystroke in the search box, which is why that case keeps the old
+  // behaviour of holding its results steady while the next debounced fetch
+  // replaces them.
+  //
+  // "Structural" below means every axis but the free-text query: quick
+  // filter, monitoring, library, sort and conditions. A change to any of them
+  // is instant and clears to a cached snapshot or a skeleton in the same
+  // paint as the click that caused it; only the query keeps the debounce and
+  // the "leave the old rows up" behaviour #265 was written for.
+  const prevStructuralKeyRef = useRef<string | null>(null);
+  const { next: nextRequest, isStale: isRequestStale } = useLatestRequest();
+
+  useLayoutEffect(() => {
     // A snapshot of *this* query, if we have one, is shown at once; results
-    // from a different query are never replayed here (#270).
+    // from a different query are never replayed here (#270). Cross-variant
+    // rows cannot appear either — the `key` on LibraryView remounts the
+    // component per variant.
     const remembered = catalogueCache.get(cacheKeyRef.current);
+
+    const structuralParams = buildCatalogueParams();
+    structuralParams.delete("search");
+    const structuralKey = `${variant}?${structuralParams}`;
+    const isFirstRun = prevStructuralKeyRef.current === null;
+    const isStructuralChange = !isFirstRun && prevStructuralKeyRef.current !== structuralKey;
+    prevStructuralKeyRef.current = structuralKey;
+
     if (remembered) {
       setLibraryItems(remembered.items);
       setTotalCount(remembered.totalCount);
       setFacets(remembered.facets);
+      setIsCatalogueLoading(false);
+    } else if (isStructuralChange || isFirstRun) {
+      // Nothing cached for a chip/monitoring/library/sort/conditions change:
+      // clear to the skeleton immediately rather than let the previous
+      // filter's titles sit on screen while the new page loads.
+      setLibraryItems([]);
+      setTotalCount(0);
+      setFacets(null);
+      setIsCatalogueLoading(true);
     }
+    // Anything else — a query edit with nothing cached — falls through with
+    // the prior render's rows untouched, same as before #934.
+
+    let cancelled = false;
+    const requestId = nextRequest();
     setNextPageToken(null);
-    setIsCatalogueLoading(true);
     isFillingRef.current = false;
-    // The delay is a debounce for typing in the search box; the first load of
-    // a mounted view has nothing to debounce and used to eat it as pure lag.
-    const delay = hasLoadedOnceRef.current ? 250 : 0;
+    // The delay is a debounce for typing in the search box; a structural
+    // change, and the first load of a mounted view, have nothing to debounce
+    // and used to eat it as pure lag (that lag was the ghost window in #934).
+    const delay = hasLoadedOnceRef.current && !isStructuralChange && !isFirstRun ? 250 : 0;
     let firstSliceLanded = false;
     const timer = window.setTimeout(async () => {
+      // A later click (or keystroke) retires this token before this runs, so
+      // a response that lands out of order is dropped rather than rendered.
+      const stale = () => cancelled || isRequestStale(requestId);
       try {
         const { items, page } = await fetchCataloguePage(buildCatalogueParams());
-        if (cancelled) return;
+        if (stale()) return;
 
         setLibraryItems(items);
         setTotalCount(page.totalCount ?? 0);
@@ -292,15 +332,15 @@ export function LibraryView({
         isFillingRef.current = true;
         let token = page.nextPageToken;
         setIsLoadingMore(Boolean(token));
-        while (!cancelled && token) {
+        while (!stale() && token) {
           const slice = await fetchCataloguePage(buildCatalogueParams(token, FILL_PAGE_SIZE));
-          if (cancelled) return;
+          if (stale()) return;
           setLibraryItems((current) => [...current, ...slice.items]);
           token = slice.page.nextPageToken;
           setNextPageToken(token);
         }
       } catch {
-        if (cancelled) return;
+        if (stale()) return;
         // A slice that fails leaves the shelf holding what did arrive rather
         // than emptying it; only a failed *first* slice means "we have nothing".
         if (firstSliceLanded) {
@@ -315,7 +355,7 @@ export function LibraryView({
         }
       } finally {
         isFillingRef.current = false;
-        if (!cancelled) {
+        if (!stale()) {
           hasLoadedOnceRef.current = true;
           setHasLoadedOnce(true);
           setIsCatalogueLoading(false);
@@ -324,7 +364,7 @@ export function LibraryView({
       }
     }, delay);
     return () => { cancelled = true; window.clearTimeout(timer); };
-  }, [buildCatalogueParams, fetchCataloguePage, refreshVersion, setSelectedIds, variant]);
+  }, [buildCatalogueParams, fetchCataloguePage, isRequestStale, nextRequest, refreshVersion, setSelectedIds, variant]);
 
   /**
    * The shelf reaching its end while titles are still outstanding.
@@ -1058,6 +1098,7 @@ export function LibraryView({
         <LibraryResults
           variant={variant}
           hasLoadedOnce={hasLoadedOnce}
+          isQueryLoading={isCatalogueLoading}
           items={filtered}
           label={label}
           singular={singular}
