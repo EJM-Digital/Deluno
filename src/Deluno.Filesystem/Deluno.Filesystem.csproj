@@ -6,6 +6,7 @@
     <ProjectReference Include="..\Deluno.Contracts\Deluno.Contracts.csproj" />
     <ProjectReference Include="..\Deluno.Jobs\Deluno.Jobs.csproj" />
     <ProjectReference Include="..\Deluno.Libraries\Deluno.Libraries.csproj" />
+    <ProjectReference Include="..\Deluno.Media\Deluno.Media.csproj" />
     <ProjectReference Include="..\Deluno.Movies\Deluno.Movies.csproj" />
     <ProjectReference Include="..\Deluno.Platform\Deluno.Platform.csproj" />
     <ProjectReference Include="..\Deluno.Quality\Deluno.Quality.csproj" />

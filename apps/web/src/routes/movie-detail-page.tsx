@@ -53,6 +53,7 @@ import { RemoveMediaDialog, type MediaRemovalPreview, type RemoveMediaOptions } 
 import { DecisionExplanationList } from "../components/app/decision-explanation-list";
 import { MediaMetadataDrawer } from "../components/app/media-metadata-drawer";
 import { MovieEditDrawer } from "../components/app/movie-edit-drawer";
+import { MovieFilesCard } from "../components/app/movie-files-card";
 import { HeroBackdrop } from "../components/app/hero-backdrop";
 import { MetadataProviderIssueNotice } from "../components/app/metadata-provider-issue-notice";
 import { SourceMark } from "../components/app/source-mark";
@@ -1212,6 +1213,8 @@ export function MovieDetailPage() {
           ) : null}
 
           <DecisionExplanationList decisions={decisions} />
+
+          <MovieFilesCard movieId={movie.id} />
 
           <ListCard title="Searches" count={movieSearches.length ? `Latest ${Math.min(movieSearches.length, 12)} of ${movieSearches.length}` : undefined}>
             {movieSearches.length === 0 ? (

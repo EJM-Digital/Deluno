@@ -2744,6 +2744,38 @@ public sealed class SqliteMovieCatalogRepository(
         return value is DBNull or null ? null : value.ToString();
     }
 
+    public async Task<bool> UpdateCurrentQualityOverrideAsync(string movieId, string quality, CancellationToken cancellationToken)
+    {
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Movies,
+            cancellationToken);
+
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            "UPDATE movie_wanted_state SET current_quality = @quality WHERE movie_id = @movieId AND file_path IS NOT NULL;";
+        AddParameter(command, "@movieId", movieId);
+        AddParameter(command, "@quality", quality);
+        return await command.ExecuteNonQueryAsync(cancellationToken) > 0;
+    }
+
+    public async Task<bool> ClearFileAsync(string movieId, string filePath, CancellationToken cancellationToken)
+    {
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Movies,
+            cancellationToken);
+
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            """
+            UPDATE movie_wanted_state
+            SET has_file = 0, file_path = NULL, file_size_bytes = NULL, current_quality = NULL
+            WHERE movie_id = @movieId AND file_path = @filePath;
+            """;
+        AddParameter(command, "@movieId", movieId);
+        AddParameter(command, "@filePath", filePath);
+        return await command.ExecuteNonQueryAsync(cancellationToken) > 0;
+    }
+
     public async Task<bool> UpdateQualityProfileAsync(string movieId, string qualityProfileId, CancellationToken cancellationToken)
     {
         await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
