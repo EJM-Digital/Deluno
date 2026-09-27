@@ -300,6 +300,8 @@ public static class MoviesEndpointRouteBuilderExtensions
                 start,
                 end,
                 Math.Clamp(take ?? 500, 1, 2000),
+                includeUnmonitored: true,
+                tagNames: null,
                 cancellationToken);
             return Results.Ok(items);
         });

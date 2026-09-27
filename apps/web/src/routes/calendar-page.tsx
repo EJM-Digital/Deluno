@@ -10,12 +10,13 @@
  */
 import { useMemo, useState } from "react";
 import { useLoaderData, useNavigate, useRevalidator } from "react-router-dom";
-import { CalendarPlus, ChevronLeft, ChevronRight } from "lucide-react";
+import { CalendarPlus, ChevronLeft, ChevronRight, SlidersHorizontal } from "lucide-react";
 import { fetchJson } from "../lib/api";
 import { cn } from "../lib/utils";
 import { CalendarSubscribeDrawer } from "../components/app/calendar-subscribe-drawer";
 import { Button } from "../components/ui/button";
 import { Card } from "../components/ui/card";
+import { Drawer, DrawerFooter, DrawerSection } from "../components/ui/drawer";
 import { ListGroupHeader } from "../components/ui/media-type-split";
 import {
   LIST_TRACK,
@@ -29,6 +30,7 @@ import {
 import { PageToolbar } from "../components/ui/page-toolbar";
 import { SegmentedControl } from "../components/ui/segmented-control";
 import { SummaryStrip } from "../components/ui/summary-strip";
+import { SwitchRow } from "../components/ui/switch";
 import { TitleMarkDot, TitleMarkLabel } from "../components/ui/title-mark";
 import type { TitleMarkInput } from "../components/ui/title-mark";
 import {
@@ -95,8 +97,37 @@ export async function calendarLoader(): Promise<CalendarLoaderData> {
   return { episodes, movies };
 }
 
-type Scope = "week" | "month";
+/**
+ * The range a scope covers. Day and Agenda (#786) join Week and Month; both
+ * always render as a list rather than a 7-column grid, because a single day
+ * or a flowing window of upcoming things has no week shape to draw.
+ */
+type Scope = "day" | "week" | "month" | "agenda";
 type View = "grid" | "list";
+
+/** How many days ahead an Agenda page covers — Radarr's own default window. */
+const AGENDA_WINDOW_DAYS = 14;
+
+/** These two scopes are never shown as a calendar grid. */
+function isListOnlyScope(scope: Scope): boolean {
+  return scope === "day" || scope === "agenda";
+}
+
+interface CalendarOptions {
+  /** Highlights an entry still short of its quality cutoff — Radarr's own options toggle. */
+  highlightCutoffUnmet: boolean;
+  /** Which movie release kinds appear on the calendar at all. */
+  showInCinemas: boolean;
+  showDigital: boolean;
+  showPhysical: boolean;
+}
+
+const DEFAULT_CALENDAR_OPTIONS: CalendarOptions = {
+  highlightCutoffUnmet: false,
+  showInCinemas: true,
+  showDigital: true,
+  showPhysical: true
+};
 
 interface CalendarEntry {
   id: string;
@@ -124,6 +155,8 @@ interface CalendarEntry {
    */
   mark: TitleMarkInput;
   href: string;
+  /** Which release this row is, for the movie release-type toggles. Absent for an episode. */
+  movieKind?: MovieCalendarEntry["kind"];
 }
 
 export function CalendarPage() {
@@ -134,14 +167,28 @@ export function CalendarPage() {
   const [view, setView] = useState<View>("grid");
   const [offset, setOffset] = useState(0);
   const [subscribeOpen, setSubscribeOpen] = useState(false);
+  const [optionsOpen, setOptionsOpen] = useState(false);
+  const [options, setOptions] = useState<CalendarOptions>(DEFAULT_CALENDAR_OPTIONS);
   const { preferences } = useDisplayPreferences();
+
+  // Day and Agenda have no week shape to draw, so they always read as the
+  // list — the segmented Calendar/List control only ever meant something for
+  // Week and Month (#786).
+  const effectiveView: View = isListOnlyScope(scope) ? "list" : view;
 
   const entries = useMemo(() => buildEntries(loaderData), [loaderData]);
   const range = useMemo(() => buildRange(scope, offset, preferences), [offset, preferences, scope]);
 
   const visible = useMemo(
-    () => entries.filter((entry) => entry.date >= range.start && entry.date < range.end),
-    [entries, range]
+    () =>
+      entries.filter((entry) => {
+        if (entry.date < range.start || entry.date >= range.end) return false;
+        if (entry.movieKind === "inCinemas" && !options.showInCinemas) return false;
+        if (entry.movieKind === "digital" && !options.showDigital) return false;
+        if (entry.movieKind === "physical" && !options.showPhysical) return false;
+        return true;
+      }),
+    [entries, range, options.showDigital, options.showInCinemas, options.showPhysical]
   );
 
   const byDay = useMemo(() => {
@@ -195,23 +242,31 @@ export function CalendarPage() {
               setOffset(0);
             }}
             options={[
+              { value: "day", label: "Day" },
               { value: "week", label: "Week" },
-              { value: "month", label: "Month" }
+              { value: "month", label: "Month" },
+              { value: "agenda", label: "Agenda" }
             ]}
           />
         }
         actions={
           <>
-            <SegmentedControl<View>
-              aria-label="View"
-              className="mr-1 w-auto"
-              value={view}
-              onValueChange={setView}
-              options={[
-                { value: "grid", label: "Calendar" },
-                { value: "list", label: "List" }
-              ]}
-            />
+            {isListOnlyScope(scope) ? null : (
+              <SegmentedControl<View>
+                aria-label="View"
+                className="mr-1 w-auto"
+                value={effectiveView}
+                onValueChange={setView}
+                options={[
+                  { value: "grid", label: "Calendar" },
+                  { value: "list", label: "List" }
+                ]}
+              />
+            )}
+            <Button type="button" size="sm" variant="outline" className="mr-1" onClick={() => setOptionsOpen(true)}>
+              <SlidersHorizontal className="h-3.5 w-3.5" />
+              Options
+            </Button>
             <span className="mr-1 text-[length:var(--type-body-sm)] font-medium text-foreground">{range.label}</span>
             <Button type="button" variant="outline" size="icon" aria-label={`Previous ${scope}`} onClick={() => setOffset((value) => value - 1)}>
               <ChevronLeft className="h-4 w-4" />
@@ -236,7 +291,7 @@ export function CalendarPage() {
         ]}
       />
 
-      {view === "grid" ? (
+      {effectiveView === "grid" ? (
         <Card as="section" className="dark:border-white/[0.07]">
           <header className="flex min-h-[var(--list-header-height)] items-center gap-3 border-b border-hairline px-[var(--card-pad-x)]">
             <h2 className="text-[length:var(--type-card-title)] font-semibold leading-none text-foreground">{range.label}</h2>
@@ -291,7 +346,8 @@ export function CalendarPage() {
                       className={cn(
                         "w-full truncate rounded-[6px] border px-1.5 py-1 text-left text-[length:var(--type-micro)] leading-tight transition-colors",
                         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                        "border-hairline bg-surface-2 text-foreground hover:bg-surface-3"
+                        "border-hairline bg-surface-2 text-foreground hover:bg-surface-3",
+                        options.highlightCutoffUnmet && entry.mark.wantedStatus === "upgrade" && "ring-1 ring-inset ring-warning/70"
                       )}
                     >
                       {/* The dot carries the colour, as it does everywhere else.
@@ -348,7 +404,15 @@ export function CalendarPage() {
                   detail={`${dayEntries.length} ${dayEntries.length === 1 ? "thing" : "things"}`}
                 />
                 {dayEntries.map((entry) => (
-                  <ListRow key={entry.id} onClick={() => navigate(entry.href)}>
+                  <ListRow
+                    key={entry.id}
+                    onClick={() => navigate(entry.href)}
+                    className={
+                      options.highlightCutoffUnmet && entry.mark.wantedStatus === "upgrade"
+                        ? "bg-warning/[0.06]"
+                        : undefined
+                    }
+                  >
                     <ListNameCell name={entry.name} sub={entry.sub} />
                     <ListCell primary={entry.kindLabel} mobile />
                     <ListCell primary={formatCalendarTime(entry.date, preferences)} />
@@ -366,6 +430,40 @@ export function CalendarPage() {
       )}
 
       <CalendarSubscribeDrawer open={subscribeOpen} onOpenChange={setSubscribeOpen} />
+
+      <Drawer
+        open={optionsOpen}
+        onOpenChange={setOptionsOpen}
+        title="Calendar options"
+        description="What shows on the calendar, and how it is highlighted"
+        footer={<DrawerFooter readOnly state="clean" saveLabel="Close" onCancel={() => setOptionsOpen(false)} />}
+      >
+        <DrawerSection title="Highlighting">
+          <SwitchRow
+            label="Highlight titles below cutoff"
+            description="Rings an entry that has a file but has not yet reached the quality you asked for."
+            checked={options.highlightCutoffUnmet}
+            onCheckedChange={(checked) => setOptions((current) => ({ ...current, highlightCutoffUnmet: checked }))}
+          />
+        </DrawerSection>
+        <DrawerSection title="Movie release types">
+          <SwitchRow
+            label="In cinemas"
+            checked={options.showInCinemas}
+            onCheckedChange={(checked) => setOptions((current) => ({ ...current, showInCinemas: checked }))}
+          />
+          <SwitchRow
+            label="Digital"
+            checked={options.showDigital}
+            onCheckedChange={(checked) => setOptions((current) => ({ ...current, showDigital: checked }))}
+          />
+          <SwitchRow
+            label="Physical"
+            checked={options.showPhysical}
+            onCheckedChange={(checked) => setOptions((current) => ({ ...current, showPhysical: checked }))}
+          />
+        </DrawerSection>
+      </Drawer>
     </div>
   );
 }
@@ -446,7 +544,8 @@ function buildEntries(data: CalendarLoaderData): CalendarEntry[] {
     mediaType: "movie",
     detail: movieKindDetail(movie.kind),
     mark: { monitored: movie.monitored, wantedStatus: movie.wantedStatus },
-    href: `/movies/${movie.movieId}`
+    href: `/movies/${movie.movieId}`,
+    movieKind: movie.kind
   }));
 
   return [...episodes, ...movies].sort((left, right) => left.date.getTime() - right.date.getTime());
@@ -478,12 +577,28 @@ function buildRange(scope: Scope, offset: number, preferences: DisplayPreference
   const anchor = new Date();
   anchor.setHours(0, 0, 0, 0);
 
+  if (scope === "day") {
+    const start = new Date(anchor);
+    start.setDate(anchor.getDate() + offset);
+    const end = new Date(start);
+    end.setDate(start.getDate() + 1);
+    return { start, end, label: formatDayLabel(start, preferences) };
+  }
+
   if (scope === "week") {
     const weekday = dayIndex(anchor, preferences.calendarFirstDayOfWeek);
     const start = new Date(anchor);
     start.setDate(anchor.getDate() - weekday + offset * 7);
     const end = new Date(start);
     end.setDate(start.getDate() + 7);
+    return { start, end, label: formatWeekLabel(start, end, preferences) };
+  }
+
+  if (scope === "agenda") {
+    const start = new Date(anchor);
+    start.setDate(anchor.getDate() + offset * AGENDA_WINDOW_DAYS);
+    const end = new Date(start);
+    end.setDate(start.getDate() + AGENDA_WINDOW_DAYS);
     return { start, end, label: formatWeekLabel(start, end, preferences) };
   }
 

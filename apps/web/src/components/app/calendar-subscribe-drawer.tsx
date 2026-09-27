@@ -16,6 +16,8 @@ import { CalendarPlus, Check, Copy, LoaderCircle } from "lucide-react";
 import { toast } from "../shell/toaster";
 import { Button } from "../ui/button";
 import { Drawer, DrawerFacts, DrawerFooter, DrawerSection } from "../ui/drawer";
+import { Input } from "../ui/input";
+import { SwitchRow } from "../ui/switch";
 import { authedFetch } from "../../lib/use-auth";
 import { fetchJson, type ApiKeyItem, type CreatedApiKeyResponse } from "../../lib/api";
 
@@ -27,6 +29,10 @@ export function CalendarSubscribeDrawer({ open, onOpenChange }: { open: boolean;
   const [url, setUrl] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [copied, setCopied] = useState(false);
+  // #786: Radarr/Sonarr's own feed options — off by default, same as the
+  // calendar's own unmonitored filter everywhere else in Deluno.
+  const [includeUnmonitored, setIncludeUnmonitored] = useState(false);
+  const [tagFilter, setTagFilter] = useState("");
 
   const load = useCallback(async () => {
     try {
@@ -60,7 +66,15 @@ export function CalendarSubscribeDrawer({ open, onOpenChange }: { open: boolean;
         body: JSON.stringify({ name: KEY_NAME, scopes: "read" })
       });
 
-      setUrl(`${window.location.origin}/api/calendar/feed.ics?apikey=${encodeURIComponent(created.apiKey)}`);
+      const params = new URLSearchParams({ apikey: created.apiKey });
+      if (includeUnmonitored) params.set("unmonitored", "true");
+      const tags = tagFilter
+        .split(",")
+        .map((tag) => tag.trim())
+        .filter((tag) => tag.length > 0);
+      if (tags.length > 0) params.set("tag", tags.join(","));
+
+      setUrl(`${window.location.origin}/api/calendar/feed.ics?${params.toString()}`);
       setExisting([created.item]);
       toast.success("Calendar link ready");
     } catch (error) {
@@ -119,6 +133,26 @@ export function CalendarSubscribeDrawer({ open, onOpenChange }: { open: boolean;
                 ? "A calendar link already exists but cannot be shown again. Creating a new one revokes it, so any calendar already subscribed will stop updating until you give it the new link."
                 : "Deluno will create a read-only key and build the link for you. You can revoke it at any time from System → API."}
           </p>
+          <SwitchRow
+            label="Include unmonitored titles"
+            description="Off by default, the same as Radarr/Sonarr's own feed — Deluno is not watching for these, so most people do not want them cluttering a calendar."
+            checked={includeUnmonitored}
+            onCheckedChange={setIncludeUnmonitored}
+          />
+          <div className="grid gap-1.5">
+            <label htmlFor="calendar-feed-tags" className="density-help font-medium text-foreground">
+              Only these tags (optional)
+            </label>
+            <Input
+              id="calendar-feed-tags"
+              value={tagFilter}
+              onChange={(event) => setTagFilter(event.target.value)}
+              placeholder="e.g. Anime, Kids"
+            />
+            <p className="density-help leading-relaxed text-muted-foreground">
+              Comma-separated tag names. Leave blank for every tag.
+            </p>
+          </div>
           <div>
             <Button type="button" disabled={busy || existing === null} onClick={() => void handleCreate()}>
               {busy ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <CalendarPlus className="h-4 w-4" />}
