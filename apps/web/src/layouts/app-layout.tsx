@@ -34,6 +34,7 @@ import { configurationNavAreas, maintenanceNavItems, settingsPageMeta } from "..
 import { DelunoNavGlyph, type DelunoNavGlyphKind } from "../components/shell/deluno-nav-glyph";
 import { AppMark } from "../components/shell/app-mark";
 import { NotificationsBell } from "../components/shell/notifications-bell";
+import { OutageBanner } from "../components/app/outage-banner";
 import { TOPBAR_CONTROL, TOPBAR_ICON, TOPBAR_ICON_BUTTON } from "./topbar-tokens";
 
 /** The shape both sidebar area lists share. */
@@ -278,6 +279,11 @@ function AppLayoutContent() {
 
         <CommandPalette open={commandOpen} onOpenChange={setCommandOpen} theme={resolvedTheme} onToggleTheme={() => setThemeAndSave(resolvedTheme === "dark" ? "light" : "dark")} />
         <KeyboardHintOverlay open={helpOpen} onOpenChange={setHelpOpen} shortcuts={globalShortcuts.map((s) => ({ keys: s.keys, label: s.label, group: s.group }))} />
+
+        {/* App-wide, not page-scoped: an outage pauses cleanup and searching
+            everywhere, so the one banner that says so shows above every
+            screen rather than living on System (#901). */}
+        <OutageBanner />
 
         <div className="min-h-dvh">
           <DesktopSidebar attention={attention} user={user} onLogout={logout} />
