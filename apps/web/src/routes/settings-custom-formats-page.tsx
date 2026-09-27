@@ -180,7 +180,10 @@ const CONDITION_TYPES = [
   { value: "language", label: "Language" },
   // #745: matched against what the indexer itself reported for the release
   // (see KNOWN_INDEXER_FLAGS), never against the release name.
-  { value: "indexerFlag", label: "Indexer flag" }
+  { value: "indexerFlag", label: "Indexer flag" },
+  // #775: a min/max range against the release's parsed year or its size.
+  { value: "year", label: "Year" },
+  { value: "size", label: "Size" }
 ] as const;
 
 type ConditionType = (typeof CONDITION_TYPES)[number]["value"];
@@ -1169,7 +1172,7 @@ export function SettingsCustomFormatsPage() {
                   <Field label="Match on">
                     <Select
                       value={condition.type}
-                      onChange={(event) => updateCondition(setForm, index, { type: event.target.value as ConditionType })}
+                      onChange={(event) => updateCondition(setForm, index, { type: event.target.value as ConditionType, value: "" })}
                       options={CONDITION_TYPES.map((type) => ({ value: type.value, label: type.label }))}
                     />
                   </Field>
@@ -1184,7 +1187,28 @@ export function SettingsCustomFormatsPage() {
                     />
                   </Field>
                 </FieldRow>
-                {condition.type === "indexerFlag" ? (
+                {condition.type === "year" || condition.type === "size" ? (
+                  // #775: a min/max range, not a text search. Either side can
+                  // be left blank for an open-ended range ("2020 or later").
+                  <FieldRow>
+                    <Field label={condition.type === "year" ? "From year" : "Minimum size (GB)"} optional>
+                      <Input
+                        type="number"
+                        value={parseRange(condition.value).min}
+                        onChange={(event) => updateCondition(setForm, index, { value: formatRange(event.target.value, parseRange(condition.value).max) })}
+                        placeholder="No minimum"
+                      />
+                    </Field>
+                    <Field label={condition.type === "year" ? "To year" : "Maximum size (GB)"} optional>
+                      <Input
+                        type="number"
+                        value={parseRange(condition.value).max}
+                        onChange={(event) => updateCondition(setForm, index, { value: formatRange(parseRange(condition.value).min, event.target.value) })}
+                        placeholder="No maximum"
+                      />
+                    </Field>
+                  </FieldRow>
+                ) : condition.type === "indexerFlag" ? (
                   // #773: a picker of the flags an indexer actually reports,
                   // not free text — the same known-flag list the indexer form
                   // itself offers (KNOWN_INDEXER_FLAGS), with "Other" for a
@@ -1563,6 +1587,21 @@ function splitCsv(value: string | null | undefined) {
 
 function guideUpdateCheckLabel(status: GuideUpdateCheckState["status"]) {
   return status === "up-to-date" ? "No tracked guide changes" : status === "update-available" ? "Guide changes need review" : status === "failed" ? "Guide check could not finish" : status === "never-checked" ? "Ready for the first guide check" : "Guide checks are off";
+}
+
+/**
+ * A year/size condition's value is stored as "min-max" (either side
+ * optional), matching what the matcher and an imported Radarr
+ * YearSpecification/SizeSpecification both use (#775).
+ */
+function parseRange(value: string): { min: string; max: string } {
+  const separator = value.indexOf("-");
+  if (separator < 0) return { min: value, max: "" };
+  return { min: value.slice(0, separator), max: value.slice(separator + 1) };
+}
+
+function formatRange(min: string, max: string): string {
+  return `${min.trim()}-${max.trim()}`;
 }
 
 function updateCondition(setForm: React.Dispatch<React.SetStateAction<RuleForm>>, index: number, patch: Partial<Condition>) {
