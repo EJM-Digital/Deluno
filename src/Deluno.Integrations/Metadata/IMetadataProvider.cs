@@ -52,4 +52,15 @@ public interface IMetadataProvider
     Task<MetadataCollection?> GetMovieCollectionAsync(
         string providerId,
         CancellationToken cancellationToken);
+
+    /// <summary>
+    /// The provider's own "popular" list for a media kind — Discover's TMDb
+    /// grid (#785). Returns an empty list rather than throwing when the
+    /// provider cannot answer (broker-only mode with no popular route, or no
+    /// TMDb key configured), the same rule every other lookup here follows.
+    /// </summary>
+    Task<IReadOnlyList<MetadataSearchResult>> GetPopularAsync(
+        string mediaType,
+        int page,
+        CancellationToken cancellationToken);
 }

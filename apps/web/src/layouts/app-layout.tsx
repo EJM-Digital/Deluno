@@ -83,7 +83,8 @@ const libraryNav = [
   { to: "/movies", label: "Movies", icon: "movies", end: false, attention: "movies" as const },
   { to: "/tv", label: "TV Shows", icon: "shows", end: false, attention: "tv" as const },
   { to: "/collections", label: "Collections", icon: "library", end: false, attention: "none" as const },
-  { to: "/calendar", label: "Schedule", icon: "schedule", end: false, attention: "none" as const }
+  { to: "/calendar", label: "Schedule", icon: "schedule", end: false, attention: "none" as const },
+  { to: "/discover", label: "Discover", icon: "discover", end: false, attention: "none" as const }
 ] as const;
 
 const operationsNav = [
@@ -97,6 +98,7 @@ const routeMeta = [
   { match: (path: string) => path.startsWith("/tv"), title: "TV Shows", subtitle: "Manage your shows, episodes, and upgrades" },
   { match: (path: string) => path.startsWith("/collections"), title: "Collections", subtitle: "Follow movie franchises and keep their libraries current" },
   { match: (path: string) => path.startsWith("/calendar"), title: "Schedule", subtitle: "Upcoming releases and retry windows" },
+  { match: (path: string) => path.startsWith("/discover"), title: "Discover", subtitle: "Browse what TMDb and your lists recommend, and add what you want" },
   { match: (path: string) => path.startsWith("/queue"), title: "Transfers", subtitle: "Follow downloads through processing and safe import" },
   { match: (path: string) => path.startsWith("/indexers"), title: "Find & Download", subtitle: "Search sources and download clients Deluno uses" },
   { match: (path: string) => path.startsWith("/search-cycles") || path.startsWith("/settings/automation"), title: "Automation & Recovery", subtitle: "What Deluno searches for on a schedule, and how it recovers when a download fails" },
@@ -130,7 +132,7 @@ const routeMeta = [
  * mistaken for one, or the topbar yields its heading to a page without one.
  */
 const MEDIA_SUB_ROUTES = new Set(["episodes", "wanted", "upgrades", "import", "library"]);
-const TOOLBAR_ROUTE_PREFIXES = ["/activity", "/calendar", "/collections", "/indexers", "/queue", "/search-cycles", "/settings", "/system"];
+const TOOLBAR_ROUTE_PREFIXES = ["/activity", "/calendar", "/collections", "/discover", "/indexers", "/queue", "/search-cycles", "/settings", "/system"];
 
 function isDetailRoute(pathname: string) {
   const match = /^\/(?:movies|tv)\/([^/]+)$/.exec(pathname);
@@ -254,7 +256,7 @@ function AppLayoutContent() {
   useEffect(() => {
     let armed = false;
     let timer: number;
-    const go: Record<string, string> = { o: "/", m: "/movies", t: "/tv", q: "/queue", i: "/indexers", x: "/search-cycles", a: "/activity", c: "/calendar", s: "/settings", y: "/system" };
+    const go: Record<string, string> = { o: "/", m: "/movies", t: "/tv", q: "/queue", i: "/indexers", x: "/search-cycles", a: "/activity", c: "/calendar", d: "/discover", s: "/settings", y: "/system" };
     function onKeyDown(e: KeyboardEvent) {
       if (e.metaKey || e.ctrlKey || e.altKey || isEditableTarget(e.target)) { armed = false; return; }
       if (armed) {

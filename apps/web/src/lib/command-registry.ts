@@ -4,6 +4,7 @@ import {
   Calendar,
   Clapperboard,
   Command,
+  Compass,
   Cpu,
   Download,
   Film,
@@ -126,6 +127,15 @@ export const navigationCommands: CommandItem[] = [
     icon: Calendar,
     to: "/calendar",
     shortcut: ["g", "c"]
+  },
+  {
+    id: "nav.discover",
+    label: "Discover",
+    keywords: ["discover", "recommendations", "tmdb", "lists", "add"],
+    group: "navigation",
+    icon: Compass,
+    to: "/discover",
+    shortcut: ["g", "d"]
   },
   {
     id: "nav.settings",

@@ -489,6 +489,65 @@ export interface ImportBatchExecuteResponse {
   results: ImportBatchExecuteResult[];
 }
 
+/** #785: Discover — TMDb's own "popular" list plus every configured import list's entries. */
+export interface DiscoverItem {
+  provider: string;
+  providerId: string;
+  title: string;
+  year: number | null;
+  overview: string | null;
+  posterUrl: string | null;
+  backdropUrl: string | null;
+  rating: number | null;
+  imdbId: string | null;
+  externalUrl: string | null;
+  inLibrary: boolean;
+  libraryEntryId: string | null;
+  excluded: boolean;
+}
+
+export interface DiscoverListEntry {
+  title: string;
+  year: number | null;
+  imdbId: string | null;
+  status: string;
+  reason: string;
+  inLibrary: boolean;
+  excluded: boolean;
+}
+
+export interface DiscoverListSection {
+  sourceId: string;
+  sourceName: string;
+  items: DiscoverListEntry[];
+}
+
+export interface DiscoverResponse {
+  popular: DiscoverItem[];
+  lists: DiscoverListSection[];
+}
+
+export interface DiscoverAddRequest {
+  mediaType: string;
+  title: string;
+  year: number | null;
+  imdbId: string | null;
+  provider: string | null;
+  providerId: string | null;
+  overview: string | null;
+  posterUrl: string | null;
+  backdropUrl: string | null;
+  libraryId: string | null;
+  qualityProfileId: string | null;
+  monitored: boolean;
+}
+
+export interface DiscoverAddResponse {
+  id: string;
+  mediaType: string;
+  libraryId: string | null;
+}
+
 export interface MediaPlanAutomationIntent {
   scenarioId: string | null;
   scenarioVersion: number | null;

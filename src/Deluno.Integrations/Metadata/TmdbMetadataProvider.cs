@@ -1792,6 +1792,108 @@ public sealed class TmdbMetadataProvider(
             : await GetTmdbCollectionAsync(id, apiKey, cancellationToken);
     }
 
+    /// <summary>
+    /// Discover's TMDb recommendations grid (#785). Same broker-then-direct
+    /// shape every other lookup in this provider follows, but with no OMDb
+    /// fallback and no DB search cache — a popular list is not a title lookup
+    /// a person is waiting on, and it goes stale in hours rather than days.
+    /// </summary>
+    public async Task<IReadOnlyList<MetadataSearchResult>> GetPopularAsync(
+        string mediaType,
+        int page,
+        CancellationToken cancellationToken)
+    {
+        var normalizedMediaType = NormalizeMediaType(mediaType);
+        var config = await GetMetadataConfigurationAsync(cancellationToken);
+        var pageNumber = Math.Clamp(page, 1, 500);
+
+        if (config.ProviderMode is "broker" or "hybrid" && !string.IsNullOrWhiteSpace(config.BrokerUrl))
+        {
+            var fromBroker = await TryBrokerPopularAsync(config.BrokerUrl, normalizedMediaType, pageNumber, cancellationToken);
+            if (fromBroker is { Count: > 0 })
+            {
+                return await LocalizeArtworkAsync(fromBroker, cancellationToken);
+            }
+
+            if (config.ProviderMode == "broker")
+            {
+                return [];
+            }
+        }
+
+        var apiKey = config.TmdbApiKey ?? await GetApiKeyAsync(cancellationToken);
+        if (string.IsNullOrWhiteSpace(apiKey))
+        {
+            return [];
+        }
+
+        var direct = await GetTmdbPopularAsync(normalizedMediaType, pageNumber, apiKey, config.Language, cancellationToken);
+        return await LocalizeArtworkAsync(direct, cancellationToken);
+    }
+
+    private async Task<IReadOnlyList<MetadataSearchResult>?> TryBrokerPopularAsync(
+        string brokerUrl,
+        string mediaType,
+        int page,
+        CancellationToken cancellationToken)
+    {
+        var url = $"{BuildGatewayBaseUrl(brokerUrl)}/{mediaType}/popular?page={page.ToString(CultureInfo.InvariantCulture)}";
+        var response = await GetJsonWithResilienceAsync<TmdbSearchResponse>(
+            url,
+            $"metadata:broker:popular:{BuildHostKey(brokerUrl)}",
+            "metadata.broker.popular",
+            cancellationToken);
+
+        return response?.Results is { Count: > 0 } results
+            ? results.Select(item => ToDiscoverResult(item, mediaType)).ToArray()
+            : null;
+    }
+
+    private async Task<IReadOnlyList<MetadataSearchResult>> GetTmdbPopularAsync(
+        string mediaType,
+        int page,
+        string apiKey,
+        string? language,
+        CancellationToken cancellationToken)
+    {
+        var languageParam = string.IsNullOrWhiteSpace(language) ? string.Empty : $"&language={Uri.EscapeDataString(language)}";
+        var url = $"https://api.themoviedb.org/3/{(mediaType == "tv" ? "tv" : "movie")}/popular"
+            + $"?api_key={Uri.EscapeDataString(apiKey)}&page={page.ToString(CultureInfo.InvariantCulture)}{languageParam}";
+        var response = await GetJsonWithResilienceAsync<TmdbSearchResponse>(
+            url,
+            "metadata:tmdb:popular",
+            "metadata.tmdb.popular",
+            cancellationToken);
+
+        return response?.Results is { Count: > 0 } results
+            ? results.Select(item => ToDiscoverResult(item, mediaType)).ToArray()
+            : [];
+    }
+
+    /// <summary>
+    /// A popular-list item to a search result, without the per-title detail
+    /// fetch <see cref="ToResultAsync"/> does for a real search hit — Discover
+    /// shows a grid of many titles at once, and one detail call per card would
+    /// turn opening the page into dozens of requests for facts the card does
+    /// not display (cast, crew, full ratings breakdown).
+    /// </summary>
+    private MetadataSearchResult ToDiscoverResult(TmdbSearchItem item, string mediaType)
+        => new(
+            Provider: ProviderName,
+            ProviderId: item.Id.ToString(CultureInfo.InvariantCulture),
+            MediaType: mediaType,
+            Title: NullIfBlank(item.Title ?? item.Name) ?? "Untitled",
+            OriginalTitle: NullIfBlank(item.OriginalTitle ?? item.OriginalName),
+            Year: TryParseYear(item.ReleaseDate ?? item.FirstAirDate),
+            Overview: NullIfBlank(item.Overview),
+            PosterUrl: BuildTmdbArtworkUrl(item.PosterPath, ArtworkSizes.Poster),
+            BackdropUrl: BuildTmdbArtworkUrl(item.BackdropPath, ArtworkSizes.Backdrop),
+            Rating: item.VoteAverage,
+            Ratings: [],
+            Genres: [],
+            ImdbId: null,
+            ExternalUrl: BuildTmdbUrl(mediaType, item.Id));
+
     private string BuildGatewayBaseUrl(string brokerUrl)
     {
         var trimmed = brokerUrl.TrimEnd('/');
