@@ -51,6 +51,14 @@ export function useBulkEdit({
   const [bulkOptionsLoading, setBulkOptionsLoading] = useState(false);
   const [undoStack, setUndoStack] = useState<BulkHistoryEntry[]>([]);
   const [redoStack, setRedoStack] = useState<BulkHistoryEntry[]>([]);
+  // "Select all" is a standing intent, not a one-time snapshot of whatever
+  // happened to be loaded when the button was clicked (#789). While this is
+  // true, every id `libraryItems` holds is selected — including ones the
+  // background fill appends after the click, and the ones a narrower filter
+  // swaps in later. It goes false the moment a single row is toggled by hand,
+  // or the whole selection is cleared, so a partial pick is never mistaken
+  // for "everything".
+  const [selectAllActive, setSelectAllActive] = useState(false);
 
   useEffect(() => {
     if (!isBulkToolsOpen) return;
@@ -74,11 +82,25 @@ export function useBulkEdit({
 
   useEffect(() => {
     function onKey(event: KeyboardEvent) {
-      if (event.key === "Escape" && selectedIds.length > 0) { event.preventDefault(); setSelectedIds([]); }
+      if (event.key === "Escape" && selectedIds.length > 0) {
+        event.preventDefault();
+        setSelectedIds([]);
+        setSelectAllActive(false);
+      }
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [selectedIds.length]);
+
+  // The shelf keeps loading after the click (background fill, or a follow-up
+  // filter narrowing the same query) and this is what keeps "select all"
+  // meaning all of it rather than "all of it as of a moment ago". Every time
+  // the loaded set changes while the intent is active, the selection is
+  // resynced to match it exactly.
+  useEffect(() => {
+    if (!selectAllActive) return;
+    setSelectedIds(libraryItems.map((item) => item.id));
+  }, [libraryItems, selectAllActive, setSelectedIds]);
 
   async function applyMonitoring(ids: string[], monitored: boolean) {
     const response = await authedFetch(
@@ -578,6 +600,7 @@ export function useBulkEdit({
 
       setBulkConfirming(false);
       setIsBulkToolsOpen(false);
+      setSelectAllActive(false);
       setSelectedIds([]);
     } catch (error) {
       const message = error instanceof Error ? error.message : "Bulk operation failed.";
@@ -589,6 +612,10 @@ export function useBulkEdit({
   }
 
   function toggleSelectedId(id: string) {
+    // A hand-picked change always wins over the standing "select all" intent -
+    // otherwise the very next loaded page would silently put back the one row
+    // someone just deselected.
+    setSelectAllActive(false);
     setSelectedIds((current) =>
       current.includes(id) ? current.filter((entry) => entry !== id) : [...current, id]
     );
@@ -596,12 +623,20 @@ export function useBulkEdit({
 
   function toggleSelectAllVisible() {
     const visibleIds = libraryItems.map((item) => item.id);
-    const allVisibleSelected = visibleIds.every((id) => selectedIds.includes(id));
-    setSelectedIds(allVisibleSelected ? [] : visibleIds);
+    const allVisibleSelected = visibleIds.length > 0 && visibleIds.every((id) => selectedIds.includes(id));
+    if (allVisibleSelected) {
+      setSelectAllActive(false);
+      setSelectedIds([]);
+    } else {
+      setSelectAllActive(true);
+      setSelectedIds(visibleIds);
+    }
   }
 
-
-
+  function clearSelection() {
+    setSelectAllActive(false);
+    setSelectedIds([]);
+  }
 
   return {
     selectedIds, setSelectedIds, isBulkUpdating, setIsBulkUpdating, isBulkToolsOpen, setIsBulkToolsOpen,
@@ -612,6 +647,7 @@ export function useBulkEdit({
     bulkRenameTemplate, setBulkRenameTemplate, bulkRenamePreview, setBulkRenamePreview,
     bulkConfirming, setBulkConfirming, bulkError, setBulkError, bulkLibraries, bulkQualityProfiles,
     bulkOptionsLoading, undoStack, redoStack, runUndo, runRedo, openBulkTools,
-    executeBulkToolsOperation, toggleSelectedId, toggleSelectAllVisible
+    executeBulkToolsOperation, toggleSelectedId, toggleSelectAllVisible,
+    selectAllActive, clearSelection
   };
 }

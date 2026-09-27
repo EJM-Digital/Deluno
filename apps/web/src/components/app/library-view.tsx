@@ -194,7 +194,7 @@ export function LibraryView({
     bulkRenameTemplate, setBulkRenameTemplate, bulkRenamePreview, setBulkRenamePreview,
     bulkConfirming, setBulkConfirming, bulkError, setBulkError, bulkLibraries, bulkQualityProfiles,
     bulkOptionsLoading, undoStack, redoStack, runUndo, runRedo, openBulkTools,
-    executeBulkToolsOperation, toggleSelectedId, toggleSelectAllVisible
+    executeBulkToolsOperation, toggleSelectedId, toggleSelectAllVisible, clearSelection
   } = useBulkEdit({ libraryItems, setLibraryItems, variant });
 
   const {
@@ -1114,7 +1114,7 @@ export function LibraryView({
           onRedo={() => void runRedo()}
           onOpenBulkTools={openBulkTools}
           onRemove={() => setIsRemovalConfirmationOpen(true)}
-          onClear={() => setSelectedIds([])}
+          onClear={clearSelection}
         />
 
         <LibraryResults
