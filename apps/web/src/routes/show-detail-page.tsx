@@ -44,6 +44,7 @@ import { AcquisitionBlockersCard } from "../components/app/acquisition-blockers-
 import { LibraryMembershipCard, type LibraryMembership } from "../components/app/library-membership-card";
 import { RetentionTitleCard } from "../components/app/retention-title-card";
 import { RemoveMediaDialog, type MediaRemovalPreview, type RemoveMediaOptions } from "../components/app/remove-media-dialog";
+import { CountryReleaseRow } from "../components/app/country-release-row";
 import { CreditsRow, readStoredCredits } from "../components/app/credits-row";
 import { DownloadDispatchDrawer } from "../components/app/download-dispatch-drawer";
 import { BlockReleaseAction } from "../components/app/block-release-action";
@@ -77,7 +78,7 @@ import { toast } from "../components/shell/toaster";
 import { wantedStatusPresentation } from "../lib/status-tones";
 import { TitleMarkLabel } from "../components/ui/title-mark";
 import { formatAirDateTime, formatDateTime as formatPreferenceDateTime, formatRuntime, formatShortDate, useDisplayPreferences } from "../lib/display-preferences";
-import { readAlternateTitles, readArtworkExtras } from "../lib/ui-adapters";
+import { readAlternateTitles, readArtworkExtras, readReleaseFactsByCountry, selectCountryFacts } from "../lib/ui-adapters";
 
 interface ShowDetailLoaderData {
   acquisitionBlockers: AcquisitionBlockersResponse | null;
@@ -151,7 +152,7 @@ export function ShowDetailPage() {
   const { acquisitionBlockers, activity, decisions, dispatches, importRecovery, inventory, libraries, memberships, metadataIssue, origins, removalPreview, searchHistory, series } = loaderData;
   const navigate = useNavigate();
   const revalidator = useRevalidator();
-  const { preferences } = useDisplayPreferences();
+  const { preferences, certificationCountry } = useDisplayPreferences();
 
   const [busyAction, setBusyAction] = useState<string | null>(null);
   const [isRemoveConfirmationOpen, setIsRemoveConfirmationOpen] = useState(false);
@@ -222,6 +223,11 @@ export function ShowDetailPage() {
   // #864: a transparent logo/wordmark and extra backdrop stills, beyond the
   // poster and backdrop already shown. No banner: TMDb has never reported one.
   const { logoUrl, screenshots } = readArtworkExtras(series.metadataJson);
+  // #862: every country TMDb answered for, unreduced, so the certification
+  // country setting can pick between them without a re-fetch.
+  const releaseFactsByCountry = readReleaseFactsByCountry(series.metadataJson);
+  const selectedCountryFacts = selectCountryFacts(releaseFactsByCountry, certificationCountry);
+  const otherCountryFacts = releaseFactsByCountry.filter((entry) => entry !== selectedCountryFacts);
   const meta = useMemo<Record<string, unknown> | null>(() => {
     if (!series.metadataJson) return null;
     try { return JSON.parse(series.metadataJson) as Record<string, unknown>; } catch { return null; }
@@ -1036,6 +1042,25 @@ export function ShowDetailPage() {
             <div className="mt-2 flex gap-3 overflow-x-auto pb-1">
               {screenshots.map((url) => (
                 <img key={url} src={url} alt="" className="h-32 w-56 shrink-0 rounded-lg border border-hairline object-cover" />
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      ) : null}
+      {/*
+        #862: a show's certification is per country (release dates are a
+        movie-only TMDb concept, so only Certification is populated here).
+        The certification country setting's pick leads; the rest stay
+        reachable underneath.
+      */}
+      {releaseFactsByCountry.length ? (
+        <Card>
+          <CardContent className="p-4">
+            <p className="text-[length:var(--type-micro)] font-bold uppercase tracking-[0.18em] text-muted-foreground">Certification by country</p>
+            <div className="mt-2 space-y-2 text-sm">
+              {selectedCountryFacts ? <CountryReleaseRow facts={selectedCountryFacts} preferences={preferences} highlighted /> : null}
+              {otherCountryFacts.map((facts) => (
+                <CountryReleaseRow key={facts.country} facts={facts} preferences={preferences} />
               ))}
             </div>
           </CardContent>

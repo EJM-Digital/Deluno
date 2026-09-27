@@ -252,16 +252,26 @@ export function formatRuntime(minutes: number | null | undefined, preferences: D
 interface DisplayPreferencesContextValue {
   preferences: DisplayPreferences;
   replaceFromSettings: (settings: Partial<PlatformSettingsSnapshot>) => void;
+  /**
+   * `metadata.certificationCountry` (#862) — carried here rather than
+   * fetched again on the detail pages that need it, because this provider
+   * already fetches `/api/settings` once on app load for the rest of
+   * `DisplayPreferences`. Defaults to "US", the same fallback
+   * `ResolveCertification` uses server-side when nothing else applies.
+   */
+  certificationCountry: string;
 }
 
 const DisplayPreferencesContext = createContext<DisplayPreferencesContextValue | null>(null);
 
 export function DisplayPreferencesProvider({ token, children }: { token: string | null; children: ReactNode }) {
   const [preferences, setPreferences] = useState<DisplayPreferences>(DEFAULT_DISPLAY_PREFERENCES);
+  const [certificationCountry, setCertificationCountry] = useState("US");
   const { setTheme } = useTheme();
 
   const replaceFromSettings = useCallback((settings: Partial<PlatformSettingsSnapshot>) => {
     setPreferences(displayPreferencesFromSettings(settings));
+    setCertificationCountry(settings.metadataCertificationCountry?.trim() || "US");
   }, []);
 
   // The saved theme used to sit in Settings -> Interface and nowhere else:
@@ -287,11 +297,14 @@ export function DisplayPreferencesProvider({ token, children }: { token: string 
     };
   }, [replaceFromSettings, setTheme, token]);
 
-  const value = useMemo(() => ({ preferences, replaceFromSettings }), [preferences, replaceFromSettings]);
+  const value = useMemo(
+    () => ({ preferences, replaceFromSettings, certificationCountry }),
+    [preferences, replaceFromSettings, certificationCountry]
+  );
   return <DisplayPreferencesContext.Provider value={value}>{children}</DisplayPreferencesContext.Provider>;
 }
 
 export function useDisplayPreferences() {
   const context = useContext(DisplayPreferencesContext);
-  return context ?? { preferences: DEFAULT_DISPLAY_PREFERENCES, replaceFromSettings: () => undefined };
+  return context ?? { preferences: DEFAULT_DISPLAY_PREFERENCES, replaceFromSettings: () => undefined, certificationCountry: "US" };
 }

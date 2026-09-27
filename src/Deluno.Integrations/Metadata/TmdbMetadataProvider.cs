@@ -1581,7 +1581,60 @@ public sealed class TmdbMetadataProvider(
             Certification: ResolveCertification(mediaType, certificationCountry, detail.ReleaseDates, detail.ContentRatings),
             AlternateTitles: detail.AlternativeTitles?.Names(title, detail.OriginalTitle ?? detail.OriginalName),
             LogoUrl: BuildTmdbArtworkUrl(detail.Images?.Logos?.FirstOrDefault()?.FilePath, ArtworkSizes.Logo),
-            Screenshots: BuildScreenshotUrls(detail.Images?.Backdrops, detail.BackdropPath));
+            Screenshots: BuildScreenshotUrls(detail.Images?.Backdrops, detail.BackdropPath),
+            ReleaseFactsByCountry: BuildReleaseFactsByCountry(mediaType, detail.ReleaseDates, detail.ContentRatings));
+    }
+
+    /// <summary>
+    /// Every country TMDb answered for, unreduced (#862) — the same
+    /// <c>detail.ReleaseDates</c>/<c>detail.ContentRatings</c>
+    /// <see cref="ResolveCertification"/> already picks one country's
+    /// certification out of, kept here in full so a later certification
+    /// country change can pick a different one already-stored country
+    /// without a re-fetch.
+    /// </summary>
+    private static IReadOnlyList<MetadataCountryFacts>? BuildReleaseFactsByCountry(
+        string mediaType,
+        TmdbReleaseDatesResponse? releaseDates,
+        TmdbContentRatingsResponse? contentRatings)
+    {
+        if (mediaType == "tv")
+        {
+            // TMDb has no per-country premiere/digital/physical dates for a
+            // show, only content_ratings' per-country certification.
+            var facts = contentRatings?.Results?
+                .Where(entry => !string.IsNullOrWhiteSpace(entry.Country))
+                .Select(entry => new MetadataCountryFacts(entry.Country!.ToUpperInvariant(), null, null, null, NullIfBlank(entry.Rating)))
+                .ToArray();
+            return facts is { Length: > 0 } ? facts : null;
+        }
+
+        var movieFacts = releaseDates?.Results?
+            .Where(country => !string.IsNullOrWhiteSpace(country.Country))
+            .Select(country =>
+            {
+                DateOnly? cinemas = null;
+                DateOnly? digital = null;
+                DateOnly? physical = null;
+                string? certification = null;
+                foreach (var entry in country.ReleaseDates ?? [])
+                {
+                    var date = ParseDateOnly(entry.ReleaseDate);
+                    if (date is not null)
+                    {
+                        if (entry.Type is 2 or 3 && (cinemas is null || date < cinemas)) cinemas = date;
+                        else if (entry.Type is 4 && (digital is null || date < digital)) digital = date;
+                        else if (entry.Type is 5 && (physical is null || date < physical)) physical = date;
+                    }
+
+                    certification ??= NullIfBlank(entry.Certification);
+                }
+
+                return new MetadataCountryFacts(country.Country!.ToUpperInvariant(), cinemas, digital, physical, certification);
+            })
+            .Where(facts => facts.InCinemas is not null || facts.Digital is not null || facts.Physical is not null || facts.Certification is not null)
+            .ToArray();
+        return movieFacts is { Length: > 0 } ? movieFacts : null;
     }
 
     /// <summary>

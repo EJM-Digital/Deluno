@@ -1283,6 +1283,115 @@ public sealed class TmdbMetadataProviderTests : IDisposable
     }
 
     /// <summary>
+    /// #862: TMDb reports a release date and certification per country, and
+    /// GetTmdbReleaseDatesAsync (used for availability decisions) had always
+    /// reduced every country to a single earliest date, discarding the rest.
+    /// ReleaseFactsByCountry is the unreduced data those are chosen from —
+    /// this covers every country TMDb answered for surviving onto the search
+    /// result, and the single Certification field still resolving to the
+    /// certification-country setting's pick exactly as before.
+    /// </summary>
+    [Fact]
+    public async Task ResolveProviderRecordAsync_keeps_every_countrys_release_dates_and_certification()
+    {
+        var settings = new Mock<IPlatformSettingsRepository>();
+        settings.Setup(repo => repo.GetAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(CreateSettingsSnapshot("direct", string.Empty, certificationCountry: "GB"));
+
+        var storageOptions = Options.Create(new StoragePathOptions { DataRoot = _dataRoot });
+        var factory = new SqliteDatabaseConnectionFactory(storageOptions);
+        var timeProvider = new FakeTimeProvider(DateTimeOffset.Parse("2026-09-25T00:00:00Z"));
+        await new CacheSchemaInitializer(
+            factory,
+            new SqliteDatabaseMigrator(factory, timeProvider),
+            NullLogger<CacheSchemaInitializer>.Instance).StartAsync(CancellationToken.None);
+
+        var provider = new TmdbMetadataProvider(
+            new HttpClient(new StubHttpMessageHandler(request =>
+            {
+                var uri = request.RequestUri!;
+                if (!uri.AbsolutePath.Contains("/movie/", StringComparison.Ordinal))
+                {
+                    return new HttpResponseMessage(HttpStatusCode.NotFound);
+                }
+
+                const string payload = """
+                {
+                  "id": 603,
+                  "title": "The Matrix",
+                  "release_date": "1999-03-30",
+                  "release_dates": {
+                    "results": [
+                      {
+                        "iso_3166_1": "US",
+                        "release_dates": [
+                          { "type": 3, "release_date": "1999-03-31T00:00:00.000Z", "certification": "R" },
+                          { "type": 4, "release_date": "1999-09-21T00:00:00.000Z", "certification": "R" }
+                        ]
+                      },
+                      {
+                        "iso_3166_1": "GB",
+                        "release_dates": [
+                          { "type": 2, "release_date": "1999-06-11T00:00:00.000Z", "certification": "15" }
+                        ]
+                      },
+                      {
+                        "iso_3166_1": "AU",
+                        "release_dates": [
+                          { "type": 3, "release_date": "1999-04-08T00:00:00.000Z", "certification": "M" }
+                        ]
+                      }
+                    ]
+                  }
+                }
+                """;
+                return new HttpResponseMessage(HttpStatusCode.OK)
+                {
+                    Content = new StringContent(payload, Encoding.UTF8, "application/json")
+                };
+            })),
+            new ConfigurationBuilder()
+                .AddInMemoryCollection(new Dictionary<string, string?>
+                {
+                    ["Deluno:Metadata:TMDbApiKey"] = "test-key"
+                })
+                .Build(),
+            settings.Object,
+            factory,
+            storageOptions,
+            timeProvider,
+            new PassthroughResiliencePolicy(),
+            new OutboundRequestThrottle(timeProvider, NullLogger<OutboundRequestThrottle>.Instance),
+            NullLogger<TmdbMetadataProvider>.Instance);
+
+        var lookup = await provider.ResolveProviderRecordAsync(
+            new MetadataLookupRequest(null, "movies", null, "603"),
+            CancellationToken.None);
+
+        Assert.Equal(MetadataProviderRecordStatus.Found, lookup.Status);
+        var facts = lookup.Result?.ReleaseFactsByCountry;
+        Assert.NotNull(facts);
+        Assert.Equal(3, facts!.Count);
+
+        var us = Assert.Single(facts, entry => entry.Country == "US");
+        Assert.Equal(new DateOnly(1999, 3, 31), us.InCinemas);
+        Assert.Equal(new DateOnly(1999, 9, 21), us.Digital);
+        Assert.Null(us.Physical);
+        Assert.Equal("R", us.Certification);
+
+        var gb = Assert.Single(facts, entry => entry.Country == "GB");
+        Assert.Equal(new DateOnly(1999, 6, 11), gb.InCinemas);
+        Assert.Equal("15", gb.Certification);
+
+        var au = Assert.Single(facts, entry => entry.Country == "AU");
+        Assert.Equal("M", au.Certification);
+
+        // The certification-country setting (GB) still resolves the single,
+        // already-existing Certification field the rest of Deluno reads.
+        Assert.Equal("15", lookup.Result?.Certification);
+    }
+
+    /// <summary>
     /// #860: TMDb only gives a calendar date per episode, so every episode
     /// used to collapse to exactly midnight UTC. TVmaze's airstamp is the
     /// network's real broadcast instant; an episode it has data for should
