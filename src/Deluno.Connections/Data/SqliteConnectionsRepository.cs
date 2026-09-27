@@ -168,7 +168,9 @@ public sealed class SqliteConnectionsRepository(
                 last_health_failure_category, last_health_latency_ms, last_health_test_utc,
                 created_utc, updated_utc,
                 last_health_failure_json, use_ssl, url_base, add_paused, tags,
-                remove_completed, remove_failed
+                remove_completed, remove_failed,
+                skip_hash_check, sequential_download, first_last_piece_prio,
+                share_ratio_limit, share_seeding_time_limit_minutes, share_inactive_seeding_time_limit_minutes
             FROM download_clients
             ORDER BY priority ASC, name ASC;
             """;
@@ -202,7 +204,13 @@ public sealed class SqliteConnectionsRepository(
                 AddPaused: reader.GetInt64(23) == 1,
                 Tags: reader.GetString(24),
                 RemoveCompleted: reader.GetInt64(25) == 1,
-                RemoveFailed: reader.GetInt64(26) == 1)
+                RemoveFailed: reader.GetInt64(26) == 1,
+                SkipHashCheck: reader.GetInt64(27) == 1,
+                SequentialDownload: reader.GetInt64(28) == 1,
+                FirstLastPiecePrio: reader.GetInt64(29) == 1,
+                ShareRatioLimit: reader.IsDBNull(30) ? null : reader.GetDouble(30),
+                ShareSeedingTimeLimitMinutes: reader.IsDBNull(31) ? null : reader.GetInt32(31),
+                ShareInactiveSeedingTimeLimitMinutes: reader.IsDBNull(32) ? null : reader.GetInt32(32))
             {
                 LastHealthFailure = reader.IsDBNull(20) ? null : DeserializeFailure(reader.GetString(20))
             });
@@ -682,7 +690,13 @@ public sealed class SqliteConnectionsRepository(
             AddPaused: request.AddPaused,
             Tags: NormalizeCsv(request.Tags),
             RemoveCompleted: request.RemoveCompleted,
-            RemoveFailed: request.RemoveFailed);
+            RemoveFailed: request.RemoveFailed,
+            SkipHashCheck: request.SkipHashCheck,
+            SequentialDownload: request.SequentialDownload,
+            FirstLastPiecePrio: request.FirstLastPiecePrio,
+            ShareRatioLimit: request.ShareRatioLimit,
+            ShareSeedingTimeLimitMinutes: request.ShareSeedingTimeLimitMinutes,
+            ShareInactiveSeedingTimeLimitMinutes: request.ShareInactiveSeedingTimeLimitMinutes);
 
         await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
             DelunoDatabaseNames.Platform,
@@ -696,14 +710,18 @@ public sealed class SqliteConnectionsRepository(
                 use_ssl, url_base, add_paused,
                 movies_category, tv_category, category_template, priority,
                 is_enabled, health_status, last_health_message, created_utc, updated_utc, tags,
-                remove_completed, remove_failed
+                remove_completed, remove_failed,
+                skip_hash_check, sequential_download, first_last_piece_prio,
+                share_ratio_limit, share_seeding_time_limit_minutes, share_inactive_seeding_time_limit_minutes
             )
             VALUES (
                 @id, @name, @protocol, @host, @port, @username, @secret, @endpointUrl,
                 @useSsl, @urlBase, @addPaused,
                 @moviesCategory, @tvCategory, @categoryTemplate, @priority,
                 @isEnabled, @healthStatus, @lastHealthMessage, @createdUtc, @updatedUtc, @tags,
-                @removeCompleted, @removeFailed
+                @removeCompleted, @removeFailed,
+                @skipHashCheck, @sequentialDownload, @firstLastPiecePrio,
+                @shareRatioLimit, @shareSeedingTimeLimitMinutes, @shareInactiveSeedingTimeLimitMinutes
             );
             """;
 
@@ -735,6 +753,12 @@ public sealed class SqliteConnectionsRepository(
         AddParameter(command, "@tags", item.Tags);
         AddParameter(command, "@removeCompleted", item.RemoveCompleted ? 1 : 0);
         AddParameter(command, "@removeFailed", item.RemoveFailed ? 1 : 0);
+        AddParameter(command, "@skipHashCheck", item.SkipHashCheck ? 1 : 0);
+        AddParameter(command, "@sequentialDownload", item.SequentialDownload ? 1 : 0);
+        AddParameter(command, "@firstLastPiecePrio", item.FirstLastPiecePrio ? 1 : 0);
+        AddParameter(command, "@shareRatioLimit", item.ShareRatioLimit);
+        AddParameter(command, "@shareSeedingTimeLimitMinutes", item.ShareSeedingTimeLimitMinutes);
+        AddParameter(command, "@shareInactiveSeedingTimeLimitMinutes", item.ShareInactiveSeedingTimeLimitMinutes);
         await command.ExecuteNonQueryAsync(cancellationToken);
 
         return item;
@@ -871,6 +895,12 @@ public sealed class SqliteConnectionsRepository(
         var newTags     = request.Tags is not null ? NormalizeCsv(request.Tags) : existing.Tags;
         var newRemoveCompleted = request.RemoveCompleted ?? existing.RemoveCompleted;
         var newRemoveFailed    = request.RemoveFailed ?? existing.RemoveFailed;
+        var newSkipHashCheck = request.SkipHashCheck ?? existing.SkipHashCheck;
+        var newSequentialDownload = request.SequentialDownload ?? existing.SequentialDownload;
+        var newFirstLastPiecePrio = request.FirstLastPiecePrio ?? existing.FirstLastPiecePrio;
+        var newShareRatioLimit = request.ClearShareRatioLimit ? null : request.ShareRatioLimit ?? existing.ShareRatioLimit;
+        var newShareSeedingTimeLimitMinutes = request.ClearShareSeedingTimeLimitMinutes ? null : request.ShareSeedingTimeLimitMinutes ?? existing.ShareSeedingTimeLimitMinutes;
+        var newShareInactiveSeedingTimeLimitMinutes = request.ClearShareInactiveSeedingTimeLimitMinutes ? null : request.ShareInactiveSeedingTimeLimitMinutes ?? existing.ShareInactiveSeedingTimeLimitMinutes;
 
         var newHealth = newEnabled && !existing.IsEnabled ? "untested" : existing.HealthStatus;
         var newMsg    = newEnabled && !existing.IsEnabled ? "Re-enabled — test connection to confirm." : existing.LastHealthMessage;
@@ -900,7 +930,13 @@ public sealed class SqliteConnectionsRepository(
                 updated_utc = @updatedUtc,
                 tags = @tags,
                 remove_completed = @removeCompleted,
-                remove_failed = @removeFailed
+                remove_failed = @removeFailed,
+                skip_hash_check = @skipHashCheck,
+                sequential_download = @sequentialDownload,
+                first_last_piece_prio = @firstLastPiecePrio,
+                share_ratio_limit = @shareRatioLimit,
+                share_seeding_time_limit_minutes = @shareSeedingTimeLimitMinutes,
+                share_inactive_seeding_time_limit_minutes = @shareInactiveSeedingTimeLimitMinutes
             WHERE id = @id;
             """;
 
@@ -931,6 +967,12 @@ public sealed class SqliteConnectionsRepository(
         AddParameter(command, "@tags", newTags);
         AddParameter(command, "@removeCompleted", newRemoveCompleted ? 1 : 0);
         AddParameter(command, "@removeFailed", newRemoveFailed ? 1 : 0);
+        AddParameter(command, "@skipHashCheck", newSkipHashCheck ? 1 : 0);
+        AddParameter(command, "@sequentialDownload", newSequentialDownload ? 1 : 0);
+        AddParameter(command, "@firstLastPiecePrio", newFirstLastPiecePrio ? 1 : 0);
+        AddParameter(command, "@shareRatioLimit", newShareRatioLimit);
+        AddParameter(command, "@shareSeedingTimeLimitMinutes", newShareSeedingTimeLimitMinutes);
+        AddParameter(command, "@shareInactiveSeedingTimeLimitMinutes", newShareInactiveSeedingTimeLimitMinutes);
 
         if (await command.ExecuteNonQueryAsync(cancellationToken) == 0) return null;
 
@@ -956,6 +998,12 @@ public sealed class SqliteConnectionsRepository(
             Tags             = newTags,
             RemoveCompleted  = newRemoveCompleted,
             RemoveFailed     = newRemoveFailed,
+            SkipHashCheck    = newSkipHashCheck,
+            SequentialDownload = newSequentialDownload,
+            FirstLastPiecePrio = newFirstLastPiecePrio,
+            ShareRatioLimit  = newShareRatioLimit,
+            ShareSeedingTimeLimitMinutes = newShareSeedingTimeLimitMinutes,
+            ShareInactiveSeedingTimeLimitMinutes = newShareInactiveSeedingTimeLimitMinutes,
             UpdatedUtc       = now
         };
     }

@@ -42,20 +42,31 @@ public sealed class QbittorrentDownloadClient(Func<HttpMessageHandler>? handlerF
         using var handler = this.handlerFactory();
         using var http = new HttpClient(handler) { BaseAddress = baseUri, Timeout = TimeSpan.FromSeconds(10) };
         await AuthenticateAsync(http, client, cancellationToken);
+        // #811: the rest of qBittorrent's add-time options, sent only when
+        // Deluno's setting for them is not the client's own default (off).
+        // Tags reuse #808's routing field rather than a second one -- the same
+        // names Deluno already routes by now show up on the torrent itself.
+        var addTimePairs = new List<KeyValuePair<string, string>>
+        {
+            new("skip_checking", client.SkipHashCheck ? "true" : "false"),
+            new("sequentialDownload", client.SequentialDownload ? "true" : "false"),
+            new("firstLastPiecePrio", client.FirstLastPiecePrio ? "true" : "false")
+        };
+        if (!string.IsNullOrWhiteSpace(client.Tags))
+        {
+            addTimePairs.Add(new("tags", client.Tags));
+        }
+
         // A .torrent Deluno fetched with a tracker's sign-in goes up as a file;
         // qBittorrent could not fetch it by URL itself (#606).
         using HttpContent body = request.TorrentFile is { } file
-            ? new MultipartFormDataContent
-            {
-                { new ByteArrayContent(file), "torrents", "release.torrent" },
-                { new StringContent(DownloadClientHelpers.ResolveCategory(client, request)), "category" },
-                { new StringContent(client.AddPaused ? "true" : "false"), "paused" }
-            }
+            ? BuildMultipartAddRequest(file, client, request, addTimePairs)
             : new FormUrlEncodedContent(
             [
                 new KeyValuePair<string, string>("urls", request.DownloadUrl),
                 new KeyValuePair<string, string>("category", DownloadClientHelpers.ResolveCategory(client, request)),
-                new KeyValuePair<string, string>("paused", client.AddPaused ? "true" : "false")
+                new KeyValuePair<string, string>("paused", client.AddPaused ? "true" : "false"),
+                .. addTimePairs
             ]);
         // What was there before, so the answer below can be about what actually
         // happened rather than about what was asked.
@@ -156,10 +167,72 @@ public sealed class QbittorrentDownloadClient(Func<HttpMessageHandler>? handlerF
             ? after.Except(before).FirstOrDefault()
             : null;
 
+        // #811: setShareLimits, once the hash is known. Best-effort -- a
+        // failure here does not fail the grab, since the download itself
+        // already succeeded; the client just keeps its own default limits.
+        if (added is not null && HasShareLimits(client))
+        {
+            await TrySetShareLimitsAsync(http, client, added, cancellationToken);
+        }
+
         return DownloadClientHelpers.GrabSuccess(client, request, "Release URL sent to qBittorrent.") with
         {
             ExternalId = added
         };
+    }
+
+    private static bool HasShareLimits(DownloadClientItem client)
+        => client.ShareRatioLimit is not null
+            || client.ShareSeedingTimeLimitMinutes is not null
+            || client.ShareInactiveSeedingTimeLimitMinutes is not null;
+
+    /// <summary>
+    /// qBittorrent's setShareLimits, applied to the one torrent this grab just
+    /// added. -1 is qBittorrent's own "no limit"; a Deluno field left unset
+    /// sends qBittorrent's global default (-2) rather than inventing a limit
+    /// nobody configured.
+    /// </summary>
+    private static async Task TrySetShareLimitsAsync(HttpClient http, DownloadClientItem client, string hash, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var pairs = new[]
+            {
+                new KeyValuePair<string, string>("hashes", hash),
+                new KeyValuePair<string, string>("ratioLimit", (client.ShareRatioLimit ?? -2).ToString(System.Globalization.CultureInfo.InvariantCulture)),
+                new KeyValuePair<string, string>("seedingTimeLimit", (client.ShareSeedingTimeLimitMinutes ?? -2).ToString(System.Globalization.CultureInfo.InvariantCulture)),
+                new KeyValuePair<string, string>("inactiveSeedingTimeLimit", (client.ShareInactiveSeedingTimeLimitMinutes ?? -2).ToString(System.Globalization.CultureInfo.InvariantCulture))
+            };
+            using var response = await http.PostAsync("api/v2/torrents/setShareLimits", new FormUrlEncodedContent(pairs), cancellationToken);
+            response.EnsureSuccessStatusCode();
+        }
+        catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException)
+        {
+            // Left alone: the grab already succeeded, and the client keeps
+            // seeding under its own default limits until the next successful
+            // attempt at this torrent's own settings sets them.
+        }
+    }
+
+    /// <summary>Builds the multipart add-torrent request for a .torrent file body, with #811's add-time fields alongside the existing category/paused ones.</summary>
+    private static MultipartFormDataContent BuildMultipartAddRequest(
+        byte[] file,
+        DownloadClientItem client,
+        DownloadClientGrabRequest request,
+        IReadOnlyList<KeyValuePair<string, string>> addTimePairs)
+    {
+        var content = new MultipartFormDataContent
+        {
+            { new ByteArrayContent(file), "torrents", "release.torrent" },
+            { new StringContent(DownloadClientHelpers.ResolveCategory(client, request)), "category" },
+            { new StringContent(client.AddPaused ? "true" : "false"), "paused" }
+        };
+        foreach (var pair in addTimePairs)
+        {
+            content.Add(new StringContent(pair.Value), pair.Key);
+        }
+
+        return content;
     }
 
     public override async Task<DownloadClientTelemetrySnapshot?> GetSnapshotAsync(DownloadClientItem client, DateTimeOffset capturedUtc, CancellationToken cancellationToken)

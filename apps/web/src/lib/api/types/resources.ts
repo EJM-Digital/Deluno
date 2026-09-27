@@ -928,6 +928,18 @@ export interface DownloadClientItem {
   removeCompleted?: boolean;
   /** Remove a download from this client once Deluno records it as failed. Off by default; distinct from the blocklist/replacement-search decision, which is unaffected. */
   removeFailed?: boolean;
+  /** #811 (qBittorrent only): skip hash-checking a grab at add time. */
+  skipHashCheck?: boolean;
+  /** #811 (qBittorrent only): download pieces in order rather than rarest-first. */
+  sequentialDownload?: boolean;
+  /** #811 (qBittorrent only): prioritize the first and last pieces. */
+  firstLastPiecePrio?: boolean;
+  /** #811 (qBittorrent only): ratio at which this client's own share limits stop seeding a grab. Null uses the client's own default. */
+  shareRatioLimit?: number | null;
+  /** #811 (qBittorrent only): minutes to seed before the client's own share limits stop it. */
+  shareSeedingTimeLimitMinutes?: number | null;
+  /** #811 (qBittorrent only): minutes of no upload activity before the client's own share limits stop seeding. */
+  shareInactiveSeedingTimeLimitMinutes?: number | null;
 }
 
 export interface ExistingLibraryCandidate {
