@@ -3,6 +3,9 @@ import { fireEvent } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { GuidePackage, QualityModelSnapshot } from "../lib/api";
+import { authedFetch } from "../lib/use-auth";
+
+vi.mock("../lib/use-auth", () => ({ authedFetch: vi.fn() }));
 
 /**
  * The plain choices behind a quality profile's score guardrails and preferred
@@ -33,9 +36,31 @@ const guide: GuidePackage = {
   schemaVersion: 1,
   source: { sourceName: "test", repositoryUrl: "", guideUrl: "", upstreamRevision: "1", reviewedUtc: "", adaptation: "" },
   integritySha256: "",
-  qualityTiers: [],
+  qualityTiers: [
+    { id: "web-720p", label: "WEB 720p", source: "web", resolution: "720p", minMbPerMin: 1, maxMbPerMin: 4, rank: 1 },
+    { id: "web-1080p", label: "WEB 1080p", source: "web", resolution: "1080p", minMbPerMin: 2, maxMbPerMin: 8, rank: 2 }
+  ],
   customFormats: [],
-  qualityProfiles: [],
+  // #778: TRaSH's own score guardrails for this pinned profile - the starter
+  // picker's mapping into a saved profile is expected to carry these three
+  // numbers through exactly, not the generic defaults.
+  qualityProfiles: [
+    {
+      id: "balanced-movies",
+      name: "Balanced",
+      tagline: "",
+      description: "A balanced starting point.",
+      highlights: [],
+      mediaType: "movies",
+      qualityOrder: ["web-1080p", "web-720p"],
+      cutoffQualityId: "web-1080p",
+      upgradeAllowed: true,
+      minFormatScore: 1500,
+      cutoffFormatScore: 6000,
+      minUpgradeFormatScore: 100,
+      recommendedFormats: []
+    }
+  ],
   bundles: []
 };
 
@@ -120,5 +145,42 @@ describe("quality profile plain choices (#938)", () => {
     fireEvent.change(screen.getByRole("combobox", { name: "Preferred language" }), { target: { value: "en" } });
 
     expect(requireLanguage.disabled).toBe(false);
+  });
+});
+
+/**
+ * #778: TRaSH's pinned profile definitions already carry minFormatScore,
+ * cutoffFormatScore and minUpgradeFormatScore, but nothing server-side turns a
+ * pinned guide profile into a saved QualityProfile - the web starter picker
+ * (applyStarter, settings-profiles-page.tsx) building a CreateQualityProfileRequest
+ * client-side and POSTing it to POST /api/quality-profiles is the only route
+ * from guide data to a persisted profile. This exercises that mapping end to
+ * end: choosing the starter through to the exact numbers the saved request
+ * carries.
+ */
+describe("TRaSH starter picker carries the guide's score guardrails into the saved profile (#778)", () => {
+  afterEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("sends the pinned profile's own minFormatScore, cutoffFormatScore and minUpgradeFormatScore, not the generic defaults", async () => {
+    vi.mocked(authedFetch).mockResolvedValue({ ok: true, json: async () => ({ id: "new" }) } as Response);
+
+    renderPage();
+    fireEvent.click(screen.getAllByRole("button", { name: "New quality profile" })[0]);
+    await screen.findByRole("dialog");
+
+    fireEvent.change(screen.getByRole("combobox", { name: "Choose a template" }), { target: { value: "balanced-movies" } });
+    fireEvent.click(screen.getByRole("button", { name: "Create quality profile" }));
+
+    await vi.waitFor(() => expect(authedFetch).toHaveBeenCalled());
+
+    const [, init] = vi.mocked(authedFetch).mock.calls[0];
+    const body = JSON.parse((init as RequestInit).body as string);
+    expect(body.scoreLimits).toEqual({
+      minFormatScore: 1500,
+      cutoffFormatScore: 6000,
+      minUpgradeFormatScore: 100
+    });
   });
 });
