@@ -79,5 +79,8 @@ public static class PlatformSettingsPatchMerger
             ReplaceIllegalCharacters: patch.ReplaceIllegalCharacters ?? current.ReplaceIllegalCharacters,
             ColonReplacementMode: patch.ColonReplacementMode ?? current.ColonReplacementMode,
             DailyEpisodeFileFormat: patch.DailyEpisodeFileFormat ?? current.DailyEpisodeFileFormat,
-            AnimeEpisodeFileFormat: patch.AnimeEpisodeFileFormat ?? current.AnimeEpisodeFileFormat);
+            AnimeEpisodeFileFormat: patch.AnimeEpisodeFileFormat ?? current.AnimeEpisodeFileFormat,
+            SetPermissionsOnImport: patch.SetPermissionsOnImport ?? current.SetPermissionsOnImport,
+            FolderChmod: patch.FolderChmod ?? current.FolderChmod,
+            ChownGroup: patch.ChownGroup ?? current.ChownGroup);
 }

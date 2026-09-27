@@ -341,7 +341,10 @@ function ImportPolicyPage() {
         renameOnImport: form.renameOnImport,
         useHardlinks: form.useHardlinks,
         libraryFreeSpaceWarnPercent: form.libraryFreeSpaceWarnPercent,
-        libraryFreeSpacePausePercent: form.libraryFreeSpacePausePercent
+        libraryFreeSpacePausePercent: form.libraryFreeSpacePausePercent,
+        setPermissionsOnImport: form.setPermissionsOnImport,
+        folderChmod: form.folderChmod,
+        chownGroup: form.chownGroup
       });
       setSaved(nextSettings);
       setForm(nextSettings);
@@ -432,6 +435,23 @@ function ImportPolicyFields({
             </div>
           </Field>
         </FieldRow>
+      </div>
+      <div className="border-t border-hairline p-[var(--card-pad-x)]">
+        <div className="grid content-start gap-1.5 pb-[var(--grid-gap)]">
+          <p className="text-[length:var(--type-body-sm)] font-medium leading-tight text-foreground">Permissions</p>
+          <p className="text-[length:var(--type-caption)] leading-snug text-muted-foreground">Set file mode and group ownership when Deluno imports a file. This only takes effect when Deluno's own process owns the file — the same limit Radarr and Sonarr document for their Permissions section.</p>
+        </div>
+        <SwitchRow label="Set permissions on import" description="Apply the chmod and group below to every media file Deluno imports." checked={form.setPermissionsOnImport} onCheckedChange={(checked) => onFormChange((current) => ({ ...current, setPermissionsOnImport: checked }))} />
+        {form.setPermissionsOnImport ? (
+          <FieldRow>
+            <Field label="Chmod" help="Octal file mode, such as 755 or 0644.">
+              <Input value={form.folderChmod ?? ""} onChange={(event) => onFormChange((current) => ({ ...current, folderChmod: event.target.value }))} placeholder="755" className="max-w-[7rem]" />
+            </Field>
+            <Field label="Chown group" help="Group name or GID applied to imported files. Leave blank to leave group ownership unchanged.">
+              <Input value={form.chownGroup ?? ""} onChange={(event) => onFormChange((current) => ({ ...current, chownGroup: event.target.value }))} placeholder="media" />
+            </Field>
+          </FieldRow>
+        ) : null}
       </div>
     </>
   );

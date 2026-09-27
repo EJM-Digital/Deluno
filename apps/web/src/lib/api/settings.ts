@@ -77,4 +77,8 @@ export interface PlatformSettingsPatch {
   replaceIllegalCharacters?: boolean;
   /** #759: one of "smart" (default) | "delete" | "dash" | "space-dash" | "space-dash-space". */
   colonReplacementMode?: string;
+  /** #766: matches Radarr/Sonarr's Permissions section. Off by default; only takes effect on import, on non-Windows hosts, when Deluno's process owns the file. */
+  setPermissionsOnImport?: boolean;
+  folderChmod?: string | null;
+  chownGroup?: string | null;
 }

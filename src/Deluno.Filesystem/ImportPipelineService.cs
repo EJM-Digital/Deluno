@@ -1,4 +1,5 @@
 using System.ComponentModel;
+using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text.Json;
@@ -441,6 +442,7 @@ public sealed partial class ImportPipelineService(
             var stagedSize = VerifyStagedImport(stagingPath);
             File.Move(stagingPath, preview.DestinationPath, overwrite: request.Overwrite);
             VerifyFinalImport(preview.DestinationPath, stagedSize);
+            await ApplyImportPermissionsAsync(preview.DestinationPath, settings, cancellationToken);
 
             var catalogImportResult = await MarkCatalogImportedAsync(
                 request.Preview,
@@ -1238,6 +1240,7 @@ public sealed partial class ImportPipelineService(
                 var stagedSize = VerifyStagedImport(placement.StagingPath);
                 File.Move(placement.StagingPath, placement.File.Preview.DestinationPath, overwrite: false);
                 VerifyFinalImport(placement.File.Preview.DestinationPath, stagedSize);
+                await ApplyImportPermissionsAsync(placement.File.Preview.DestinationPath, settings, cancellationToken);
                 placements[index] = placement with { Finalized = true };
             }
 
@@ -3587,6 +3590,82 @@ public sealed partial class ImportPipelineService(
         if (length != expectedSize)
         {
             throw new IOException($"The final imported file size ({length}) does not match the staged file size ({expectedSize}).");
+        }
+    }
+
+    /// <summary>
+    /// #766: mirrors Radarr/Sonarr's Permissions section. Only takes effect on
+    /// non-Windows hosts, only when enabled, and only actually changes anything
+    /// when Deluno's own process owns the file — the same caveat Radarr/Sonarr
+    /// document for their own chmod/chown.
+    /// </summary>
+    private async Task ApplyImportPermissionsAsync(string destinationPath, PlatformSettingsSnapshot settings, CancellationToken cancellationToken)
+    {
+        if (!settings.SetPermissionsOnImport || RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+        {
+            return;
+        }
+
+        if (!string.IsNullOrEmpty(settings.FolderChmod))
+        {
+            try
+            {
+                File.SetUnixFileMode(destinationPath, (UnixFileMode)Convert.ToInt32(settings.FolderChmod, 8));
+            }
+            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or FormatException or OverflowException)
+            {
+                logger.LogWarning(exception, "Could not set permissions {Chmod} on {DestinationPath}. This only works when Deluno's own process owns the file.", settings.FolderChmod, destinationPath);
+            }
+        }
+
+        if (!string.IsNullOrWhiteSpace(settings.ChownGroup))
+        {
+            await TryChownGroupAsync(destinationPath, settings.ChownGroup, cancellationToken);
+        }
+    }
+
+    private async Task TryChownGroupAsync(string destinationPath, string group, CancellationToken cancellationToken)
+    {
+        var startInfo = new ProcessStartInfo
+        {
+            FileName = "chgrp",
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+            CreateNoWindow = true
+        };
+        startInfo.ArgumentList.Add(group);
+        startInfo.ArgumentList.Add(destinationPath);
+
+        Process? process;
+        try
+        {
+            process = Process.Start(startInfo);
+        }
+        catch (Win32Exception exception)
+        {
+            logger.LogWarning(exception, "Could not run chgrp {Group} for {DestinationPath}: the chgrp binary was not found.", group, destinationPath);
+            return;
+        }
+
+        if (process is null)
+        {
+            return;
+        }
+
+        using (process)
+        {
+            var errorTask = process.StandardError.ReadToEndAsync(cancellationToken);
+            await process.WaitForExitAsync(cancellationToken);
+            if (process.ExitCode != 0)
+            {
+                logger.LogWarning(
+                    "chgrp {Group} for {DestinationPath} exited with code {ExitCode}: {Error}. This only works when Deluno's own process owns the file.",
+                    group,
+                    destinationPath,
+                    process.ExitCode,
+                    (await errorTask).Trim());
+            }
         }
     }
 
