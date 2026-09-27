@@ -54,6 +54,30 @@ public static partial class ReleaseNameQuality
         };
     }
 
+    /// <summary>
+    /// The resolution a release's name claims, and the picture width that
+    /// claim requires at minimum -- judged by width, not height, so a cropped
+    /// widescreen 3840&#215;1600 still counts as 2160p (#917). Null means the
+    /// name says nothing Deluno can check a picture against.
+    /// </summary>
+    public static (string Label, int MinimumWidth)? ClaimedResolution(string? releaseName)
+    {
+        if (string.IsNullOrWhiteSpace(releaseName))
+        {
+            return null;
+        }
+
+        return ResolutionOf(releaseName) switch
+        {
+            "2160p" => ("2160p", 3200),
+            "1080p" => ("1080p", 1600),
+            "720p" => ("720p", 1100),
+            "576p" => ("576p", 700),
+            "480p" => ("480p", 600),
+            _ => null
+        };
+    }
+
     private static string? ResolutionOf(string name)
     {
         if (Uhd().IsMatch(name)) return "2160p";

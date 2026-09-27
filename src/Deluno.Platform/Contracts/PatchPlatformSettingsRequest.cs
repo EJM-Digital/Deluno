@@ -106,4 +106,6 @@ public sealed record PatchPlatformSettingsRequest(
     /// <summary>#815: which tracker-privacy downloads the global sharing policy covers.</summary>
     string? SharingPrivacyScope = null,
     bool? MaxSearchesPerHourEnabled = null,
-    int? MaxSearchesPerHour = null);
+    int? MaxSearchesPerHour = null,
+    bool? DownloadIntegrityCheckEnabled = null,
+    int? DownloadIntegrityMinimumRuntimePercent = null);

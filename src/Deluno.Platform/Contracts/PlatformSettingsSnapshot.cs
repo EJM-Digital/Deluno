@@ -201,4 +201,10 @@ public sealed record PlatformSettingsSnapshot(
     // (#936); when on, the search scheduler defers a query once the
     // instance's rolling-hour total reaches this number.
     bool MaxSearchesPerHourEnabled = false,
-    int MaxSearchesPerHour = 200);
+    int MaxSearchesPerHour = 200,
+    // Checkpoint A (#917): a brand-new check that can reject a release
+    // outright, so off by default for every install (#936) until a person
+    // turns it on. MinimumRuntimePercent is the "much shorter than known"
+    // threshold's own setting, with the sensible default the issue names.
+    bool DownloadIntegrityCheckEnabled = false,
+    int DownloadIntegrityMinimumRuntimePercent = 80);

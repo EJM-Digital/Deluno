@@ -100,5 +100,7 @@ public static class PlatformSettingsPatchMerger
             HistoryRetentionDays: patch.HistoryRetentionDays ?? current.HistoryRetentionDays,
             SharingPrivacyScope: patch.SharingPrivacyScope ?? current.SharingPrivacyScope,
             MaxSearchesPerHourEnabled: patch.MaxSearchesPerHourEnabled ?? current.MaxSearchesPerHourEnabled,
-            MaxSearchesPerHour: patch.MaxSearchesPerHour ?? current.MaxSearchesPerHour);
+            MaxSearchesPerHour: patch.MaxSearchesPerHour ?? current.MaxSearchesPerHour,
+            DownloadIntegrityCheckEnabled: patch.DownloadIntegrityCheckEnabled ?? current.DownloadIntegrityCheckEnabled,
+            DownloadIntegrityMinimumRuntimePercent: patch.DownloadIntegrityMinimumRuntimePercent ?? current.DownloadIntegrityMinimumRuntimePercent);
 }
