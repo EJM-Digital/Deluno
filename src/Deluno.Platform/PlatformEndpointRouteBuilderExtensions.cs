@@ -435,6 +435,12 @@ public static class PlatformEndpointRouteBuilderExtensions
             errors["libraryFreeSpaceWarnPercent"] = ["Choose a percentage between 1 and 50."];
         }
 
+        if (!string.IsNullOrWhiteSpace(request.ProperRepackAcquisitionMode) &&
+            request.ProperRepackAcquisitionMode.Trim().ToLowerInvariant() is not ("prefer-and-upgrade" or "do-not-upgrade-automatically" or "do-not-prefer"))
+        {
+            errors["properRepackAcquisitionMode"] = ["Choose one of: prefer-and-upgrade, do-not-upgrade-automatically, or do-not-prefer."];
+        }
+
         if (!string.IsNullOrWhiteSpace(request.FolderChmod) &&
             (request.FolderChmod.Trim().Length is not (3 or 4) || !request.FolderChmod.Trim().All(digit => digit is >= '0' and <= '7')))
         {

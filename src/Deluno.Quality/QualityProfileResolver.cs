@@ -27,7 +27,11 @@ public static class QualityProfileResolver
         IReleasePreferencePlanRepository? planRepository,
         string? qualityProfileId,
         CancellationToken cancellationToken,
-        IReadOnlyList<CustomFormatItem>? customFormats = null)
+        IReadOnlyList<CustomFormatItem>? customFormats = null,
+        // #767: the global Proper/Repack acquisition choice. Callers that do
+        // not pass one keep the compiler's own default ("prefer-and-upgrade"),
+        // unchanged from before this setting existed.
+        string? properRepackAcquisitionMode = null)
     {
         if (string.IsNullOrWhiteSpace(qualityProfileId))
         {
@@ -48,7 +52,7 @@ public static class QualityProfileResolver
             // path must compile the same profile-scoped plan or a valid
             // installed snapshot is rejected as stale forever.
             customFormats ??= await repository.ListCustomFormatsAsync(cancellationToken);
-            return ReleasePreferencePlanFactory.CreateQualityPlan(profile, customFormats);
+            return ReleasePreferencePlanFactory.CreateQualityPlan(profile, customFormats, properRepackAcquisitionMode: properRepackAcquisitionMode);
         }
 
         if (planRepository is null)

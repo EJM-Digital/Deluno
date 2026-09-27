@@ -73,4 +73,5 @@ public sealed record UpdatePlatformSettingsRequest(
     string? AnimeEpisodeFileFormat = null,
     bool? SetPermissionsOnImport = null,
     string? FolderChmod = null,
-    string? ChownGroup = null);
+    string? ChownGroup = null,
+    string? ProperRepackAcquisitionMode = null);
