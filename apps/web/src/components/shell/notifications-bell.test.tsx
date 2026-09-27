@@ -55,8 +55,8 @@ const events: ActivityEventItem[] = [
   },
   {
     id: "evt-1",
-    category: "search.completed",
-    message: "Finished checking Movies",
+    category: "filesystem.import.completed",
+    message: "Imported The Oldest Film",
     severity: "info",
     detailsJson: null,
     relatedJobId: null,
@@ -90,12 +90,12 @@ describe("notifications bell (#907)", () => {
     fetchPageItems.mockResolvedValue(events);
     await openPanel();
 
-    expect(fetchPageItems).toHaveBeenCalledWith("/api/activity?pageSize=10");
-    const rows = await screen.findAllByRole("button", { name: /Import failed|Sent The Middle|Finished checking/ });
+    expect(fetchPageItems).toHaveBeenCalledWith("/api/activity?pageSize=60");
+    const rows = await screen.findAllByRole("button", { name: /Import failed|Sent The Middle|Imported The Oldest/ });
     expect(rows.map((row) => row.textContent)).toEqual([
       expect.stringContaining("Import failed for The Newest Film"),
       expect.stringContaining("Sent The Middle Episode to qBittorrent"),
-      expect.stringContaining("Finished checking Movies")
+      expect.stringContaining("Imported The Oldest Film")
     ]);
   });
 
@@ -106,7 +106,7 @@ describe("notifications bell (#907)", () => {
     const failedRow = await screen.findByRole("button", { name: /Import failed for The Newest Film/ });
     expect(within(failedRow).getByText("Failed")).toBeTruthy();
 
-    const quietRow = screen.getByRole("button", { name: /Finished checking Movies/ });
+    const quietRow = screen.getByRole("button", { name: /Imported The Oldest Film/ });
     expect(within(quietRow).queryByText("Failed")).toBeNull();
     expect(within(quietRow).queryByText("Attention")).toBeNull();
   });
@@ -123,7 +123,7 @@ describe("notifications bell (#907)", () => {
     expect(navigate).toHaveBeenLastCalledWith("/queue");
 
     await user.click(screen.getByRole("button", { name: /Notifications/i }));
-    await user.click(await screen.findByRole("button", { name: /Finished checking Movies/ }));
+    await user.click(await screen.findByRole("button", { name: /Imported The Oldest Film/ }));
     expect(navigate).toHaveBeenLastCalledWith("/activity");
   });
 
@@ -168,5 +168,65 @@ describe("notifications bell (#907)", () => {
     for (const button of buttons) {
       expect(button.getAttribute("tabindex")).not.toBe("-1");
     }
+  });
+});
+
+describe("the bell shows what matters, not routine job noise (#916)", () => {
+  afterEach(() => {
+    fetchPageItems.mockReset();
+    navigate.mockReset();
+  });
+
+  const routineRun: ActivityEventItem[] = [
+    {
+      id: "job-completed",
+      category: "job.completed",
+      message: "Every file Deluno holds has been read and evaluated under its current preference plan. (Movies)",
+      severity: "info",
+      detailsJson: null,
+      relatedJobId: "job-42",
+      relatedEntityType: "movie",
+      relatedEntityId: null,
+      createdUtc: "2026-09-27T12:05:00Z"
+    },
+    {
+      id: "job-started",
+      category: "job.started",
+      message: "Started reading what your files actually are (Movies).",
+      severity: "info",
+      detailsJson: null,
+      relatedJobId: "job-42",
+      relatedEntityType: "movie",
+      relatedEntityId: null,
+      createdUtc: "2026-09-27T12:04:00Z"
+    },
+    {
+      id: "job-queued",
+      category: "job.queued",
+      message: "Added a media read (Movies) to the queue.",
+      severity: "info",
+      detailsJson: null,
+      relatedJobId: "job-42",
+      relatedEntityType: "movie",
+      relatedEntityId: null,
+      createdUtc: "2026-09-27T12:03:00Z"
+    }
+  ];
+
+  it("does not show a routine background job's own queued/started/completed lines", async () => {
+    fetchPageItems.mockResolvedValue(routineRun);
+    await openPanel();
+
+    expect(screen.getByText("Nothing has happened yet.")).toBeInTheDocument();
+  });
+
+  it("shows what needs attention beside routine noise, not crowded out by it", async () => {
+    fetchPageItems.mockResolvedValue([...routineRun, ...events]);
+    await openPanel();
+
+    const rows = screen.getAllByRole("button").filter((button) => button.textContent?.includes("Import failed") || button.textContent?.includes("Sent The Middle") || button.textContent?.includes("Imported The Oldest"));
+    expect(rows).toHaveLength(3);
+    expect(screen.queryByText(/Started reading what your files/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Added a media read/)).not.toBeInTheDocument();
   });
 });

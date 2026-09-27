@@ -165,7 +165,7 @@ public sealed class SqliteJobStore(
             connection,
             transaction,
             category: "job.queued",
-            message: FormatQueuedMessage(job.JobType, job.Source, job.PayloadJson),
+            message: FormatQueuedMessage(job.JobType, job.Source, job.PayloadJson, job.RelatedEntityType),
             detailsJson: job.PayloadJson,
             relatedJobId: job.Id,
             relatedEntityType: job.RelatedEntityType,
@@ -182,7 +182,7 @@ public sealed class SqliteJobStore(
             cancellationToken);
         await realtimeEventPublisher.PublishActivityEventAddedAsync(
             Guid.CreateVersion7().ToString("N"),
-            FormatQueuedMessage(job.JobType, job.Source, job.PayloadJson),
+            FormatQueuedMessage(job.JobType, job.Source, job.PayloadJson, job.RelatedEntityType),
             "job.queued",
             SeverityForCategory("job.queued"),
             now.ToString("O"),
@@ -952,7 +952,7 @@ public sealed class SqliteJobStore(
                 connection,
                 transaction,
                 category: "job.started",
-                message: FormatStartedMessage(leasedJob.JobType, leasedJob.PayloadJson),
+                message: FormatStartedMessage(leasedJob.JobType, leasedJob.PayloadJson, leasedJob.RelatedEntityType),
                 detailsJson: leasedJob.PayloadJson,
                 relatedJobId: leasedJob.Id,
                 relatedEntityType: leasedJob.RelatedEntityType,
@@ -2262,7 +2262,7 @@ public sealed class SqliteJobStore(
 
                 await InsertJobAsync(connection, transaction, subtitleJob, cancellationToken);
                 queuedAny = true;
-                await InsertActivityAsync(connection, transaction, "job.queued", FormatQueuedMessage(subtitleJob.JobType, subtitleJob.Source, subtitleJob.PayloadJson), subtitleJob.PayloadJson, subtitleJob.Id, subtitleJob.RelatedEntityType, subtitleJob.RelatedEntityId, now, cancellationToken);
+                await InsertActivityAsync(connection, transaction, "job.queued", FormatQueuedMessage(subtitleJob.JobType, subtitleJob.Source, subtitleJob.PayloadJson, subtitleJob.RelatedEntityType), subtitleJob.PayloadJson, subtitleJob.Id, subtitleJob.RelatedEntityType, subtitleJob.RelatedEntityId, now, cancellationToken);
             }
 
             // And then go and get the ones that are still missing.
@@ -2311,7 +2311,7 @@ public sealed class SqliteJobStore(
 
                 await InsertJobAsync(connection, transaction, subtitleSearchJob, cancellationToken);
                 queuedAny = true;
-                await InsertActivityAsync(connection, transaction, "job.queued", FormatQueuedMessage(subtitleSearchJob.JobType, subtitleSearchJob.Source, subtitleSearchJob.PayloadJson), subtitleSearchJob.PayloadJson, subtitleSearchJob.Id, subtitleSearchJob.RelatedEntityType, subtitleSearchJob.RelatedEntityId, now, cancellationToken);
+                await InsertActivityAsync(connection, transaction, "job.queued", FormatQueuedMessage(subtitleSearchJob.JobType, subtitleSearchJob.Source, subtitleSearchJob.PayloadJson, subtitleSearchJob.RelatedEntityType), subtitleSearchJob.PayloadJson, subtitleSearchJob.Id, subtitleSearchJob.RelatedEntityType, subtitleSearchJob.RelatedEntityId, now, cancellationToken);
             }
                 subtitleNextSearchUtc = now.Add(SubtitleCycleInterval);
             }
@@ -2560,7 +2560,7 @@ public sealed class SqliteJobStore(
                 // next search all change — so this one is unconditional.
                 changedLibraryIds.Add(library.LibraryId);
 
-                await InsertActivityAsync(connection, transaction, "job.queued", FormatQueuedMessage(job.JobType, job.Source, job.PayloadJson), job.PayloadJson, job.Id, job.RelatedEntityType, job.RelatedEntityId, now, cancellationToken);
+                await InsertActivityAsync(connection, transaction, "job.queued", FormatQueuedMessage(job.JobType, job.Source, job.PayloadJson, job.RelatedEntityType), job.PayloadJson, job.Id, job.RelatedEntityType, job.RelatedEntityId, now, cancellationToken);
                 queuedJobTypes.Add(job.JobType);
             }
 
@@ -4200,7 +4200,7 @@ public sealed class SqliteJobStore(
     private static DateTimeOffset ParseTimestamp(string value)
         => DateTimeOffset.Parse(value, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind);
 
-    private static string FormatQueuedMessage(string jobType, string source, string? payloadJson)
+    private static string FormatQueuedMessage(string jobType, string source, string? payloadJson, string? relatedEntityType = null)
     {
         if (LibrarySearchJobTypes.IsLibrarySearch(jobType))
         {
@@ -4215,11 +4215,11 @@ public sealed class SqliteJobStore(
         }
 
         return JobTypeWords.TryGetValue(jobType, out var words)
-            ? $"Added {words.Queued} to the queue."
+            ? $"Added {words.Queued}{MediaKindSuffix(jobType, relatedEntityType)} to the queue."
             : $"Added a background task from {FormatSourceName(source)}.";
     }
 
-    private static string FormatStartedMessage(string jobType, string? payloadJson)
+    private static string FormatStartedMessage(string jobType, string? payloadJson, string? relatedEntityType = null)
     {
         if (LibrarySearchJobTypes.IsLibrarySearch(jobType))
         {
@@ -4233,8 +4233,42 @@ public sealed class SqliteJobStore(
         }
 
         return JobTypeWords.TryGetValue(jobType, out var words)
-            ? words.Started
+            ? words.Started.TrimEnd('.') + MediaKindSuffix(jobType, relatedEntityType) + "."
             : "Started a background task.";
+    }
+
+    /// <summary>
+    /// Job types whose own words already name Movies or TV, so appending it a
+    /// second time would read as "Started refreshing movie metadata (Movies)."
+    /// </summary>
+    private static readonly IReadOnlySet<string> JobTypesThatAlreadyNameTheirMediaKind = new HashSet<string>(StringComparer.Ordinal)
+    {
+        "movies.catalog.refresh", "series.catalog.refresh",
+        "movies.metadata.refresh", "series.metadata.refresh",
+        "movies.quality.recalculate", "series.quality.recalculate",
+        "movies.collection.sync"
+    };
+
+    /// <summary>
+    /// " (Movies)" / " (TV)", for the job types (#916, most visibly
+    /// <c>library.media.probe</c>) whose own wording is the same whichever
+    /// kind of library they ran for — the routine-job flood this fixed had
+    /// six near-identical lines an hour with nothing saying which library
+    /// among them.
+    /// </summary>
+    private static string MediaKindSuffix(string jobType, string? relatedEntityType)
+    {
+        if (JobTypesThatAlreadyNameTheirMediaKind.Contains(jobType))
+        {
+            return string.Empty;
+        }
+
+        return relatedEntityType?.Trim().ToLowerInvariant() switch
+        {
+            "movie" => " (Movies)",
+            "series" => " (TV)",
+            _ => string.Empty
+        };
     }
 
     private static string FormatQueuedTitle(string jobType, string? payloadJson)

@@ -123,7 +123,10 @@ public sealed class LibraryMediaProbeJobHandler(
             expectedPlans);
         if (candidates.Count == 0)
         {
-            return "Every file Deluno holds has been read and evaluated under its current preference plan.";
+            // #916: named, because "Every file has been read" said nothing
+            // about which library it read — six near-identical unlabelled
+            // lines an hour is what buried the events worth reading.
+            return $"Every file Deluno holds has been read and evaluated under its current preference plan. ({MediaKindLabel(kind)})";
         }
 
         var wantedItems = await mediaStateRepository.ListWantedByIdsAsync(
@@ -272,10 +275,14 @@ public sealed class LibraryMediaProbeJobHandler(
                 preferenceSnapshots);
         }
 
+        var kindLabel = MediaKindLabel(kind);
         return unreadable == 0
-            ? $"Read {read} file{(read == 1 ? "" : "s")}."
-            : $"Read {read} of {candidates.Count} files; {unreadable} could not be read.";
+            ? $"Read {read} file{(read == 1 ? "" : "s")}. ({kindLabel})"
+            : $"Read {read} of {candidates.Count} files; {unreadable} could not be read. ({kindLabel})";
     }
+
+    /// <summary>"Movies" / "TV", in the same words the rest of Activity uses for these kinds.</summary>
+    private static string MediaKindLabel(MediaKind kind) => kind == MediaKind.Series ? "TV" : "Movies";
 
     private static bool TryResolvePreferenceContext(
         MediaFileProbeCandidate candidate,

@@ -29,6 +29,42 @@ const loaderData = {
       relatedEntityType: "movie",
       relatedEntityId: "movie-1",
       createdUtc: "2026-09-27T09:00:00Z"
+    },
+    {
+      id: "job-completed",
+      category: "job.completed",
+      message: "Every file Deluno holds has been read and evaluated under its current preference plan. (Movies)",
+      severity: "info",
+      detail: undefined,
+      detailsJson: null,
+      relatedJobId: "job-42",
+      relatedEntityType: "movie",
+      relatedEntityId: null,
+      createdUtc: "2026-09-27T08:05:00Z"
+    },
+    {
+      id: "job-started",
+      category: "job.started",
+      message: "Started reading what your files actually are (Movies).",
+      severity: "info",
+      detail: undefined,
+      detailsJson: null,
+      relatedJobId: "job-42",
+      relatedEntityType: "movie",
+      relatedEntityId: null,
+      createdUtc: "2026-09-27T08:04:00Z"
+    },
+    {
+      id: "job-queued",
+      category: "job.queued",
+      message: "Added a media read (Movies) to the queue.",
+      severity: "info",
+      detail: undefined,
+      detailsJson: null,
+      relatedJobId: "job-42",
+      relatedEntityType: "movie",
+      relatedEntityId: null,
+      createdUtc: "2026-09-27T08:03:00Z"
     }
   ] as ActivityEventItem[],
   dispatches: [],
@@ -139,5 +175,34 @@ describe("Import issues show the specific rejection reason (#798)", () => {
     expect(within(dialog).getByText("No video stream was detected in this file.")).toBeInTheDocument();
     expect(within(dialog).getByText(/Choose a valid video file/)).toBeInTheDocument();
     expect(within(dialog).getByText(/Arrival\.mkv/)).toBeInTheDocument();
+  });
+});
+
+describe("A routine job's queued/started/completed fold into one row (#916)", () => {
+  it("shows one row for the job run, not three", async () => {
+    render(
+      <MemoryRouter>
+        <ActivityPage />
+      </MemoryRouter>
+    );
+    await userEvent.click(screen.getByRole("radio", { name: "Events" }));
+
+    expect(screen.getByText("Every file Deluno holds has been read and evaluated under its current preference plan. (Movies)")).toBeInTheDocument();
+    expect(screen.queryByText("Started reading what your files actually are (Movies).")).not.toBeInTheDocument();
+    expect(screen.queryByText("Added a media read (Movies) to the queue.")).not.toBeInTheDocument();
+  });
+
+  it("opens the queued and started steps in the drawer", async () => {
+    render(
+      <MemoryRouter>
+        <ActivityPage />
+      </MemoryRouter>
+    );
+    await userEvent.click(screen.getByRole("radio", { name: "Events" }));
+    await userEvent.click(screen.getByText("Every file Deluno holds has been read and evaluated under its current preference plan. (Movies)"));
+
+    const dialog = screen.getByRole("dialog");
+    expect(within(dialog).getByText("Started reading what your files actually are (Movies).")).toBeInTheDocument();
+    expect(within(dialog).getByText("Added a media read (Movies) to the queue.")).toBeInTheDocument();
   });
 });

@@ -162,7 +162,7 @@ public sealed class LibraryMediaProbeJobHandlerTests
             TestJobs.Create("library.media.probe", relatedEntityType: "movies"),
             CancellationToken.None);
 
-        Assert.Equal("Read 1 file.", result);
+        Assert.Equal("Read 1 file. (Movies)", result);
         mediaState.VerifyAll();
         return saved!;
     }
