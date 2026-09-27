@@ -5,18 +5,20 @@ namespace Deluno.Worker.HealthChecks.Checks;
 
 /// <summary>
 /// Each download client's own download folder free space, where the client's
-/// API actually reports it (#909). NZBGet and SABnzbd already fold a low-disk
-/// warning into their telemetry snapshot's health (see
-/// <c>DownloadClientHelpers.EvaluateDiskSpaceHealth</c>, #663); this reads
-/// that same snapshot rather than asking the client twice. Protocols that
-/// have no free-space field in their API say so plainly instead of guessing.
+/// API actually reports it (#909). Every adapter that can ask its client
+/// folds the same low-disk warning into its snapshot's health (see
+/// <c>DownloadClientHelpers.EvaluateDiskSpaceHealth</c>, #663) and now also
+/// carries the raw number on <see cref="DownloadClientTelemetrySnapshot.FreeSpaceBytes"/>;
+/// this reads that snapshot rather than asking the client twice. uTorrent's
+/// WebUI has no free-space call at all, so it says exactly that instead of
+/// guessing.
 /// </summary>
 public sealed class ClientDownloadFolderFreeSpaceHealthCheck(IDownloadClientTelemetryService telemetry) : IHealthCheck
 {
-    /// <summary>Protocols whose snapshot health already folds in a real free-space reading (#663).</summary>
-    private static readonly HashSet<string> ProtocolsThatReportFreeSpace = new(StringComparer.OrdinalIgnoreCase)
+    /// <summary>Protocols whose API has no free-space call for Deluno to read at all.</summary>
+    private static readonly HashSet<string> ProtocolsWithNoFreeSpaceApi = new(StringComparer.OrdinalIgnoreCase)
     {
-        "nzbget", "sabnzbd"
+        "utorrent"
     };
 
     public string Category => HealthCheckCategories.DownloadClient;
@@ -31,11 +33,19 @@ public sealed class ClientDownloadFolderFreeSpaceHealthCheck(IDownloadClientTele
             var id = $"download-client:{client.ClientId}:free-space";
             var name = $"{client.ClientName}'s download folder space";
 
-            if (!ProtocolsThatReportFreeSpace.Contains(client.Protocol))
+            if (ProtocolsWithNoFreeSpaceApi.Contains(client.Protocol))
             {
                 outcomes.Add(HealthCheckOutcome.Unknown(
                     id, Category, name,
-                    $"Not reported by {client.ClientName}: {client.Protocol} does not tell Deluno how much space its download folder has left."));
+                    $"{client.ClientName} doesn't report free space: uTorrent's WebUI has no call for it."));
+                continue;
+            }
+
+            if (client.FreeSpaceBytes is not { } freeBytes)
+            {
+                outcomes.Add(HealthCheckOutcome.Unknown(
+                    id, Category, name,
+                    $"Deluno could not read free space from {client.ClientName} on its last check."));
                 continue;
             }
 
@@ -45,13 +55,14 @@ public sealed class ClientDownloadFolderFreeSpaceHealthCheck(IDownloadClientTele
             // reporting uses.
             var lowSpace = client.LastHealthMessage is { Length: > 0 } message &&
                            message.Contains("free — downloads will start failing", StringComparison.OrdinalIgnoreCase);
+            var freeGb = Math.Round(freeBytes / 1_000_000_000d, 1);
 
             outcomes.Add(lowSpace
                 ? HealthCheckOutcome.Problem(
                     id, Category, name, client.LastHealthMessage!,
                     cause: "The download client's own download folder is running low on space.",
                     fix: $"Free up space where {client.ClientName} downloads to, or move some of its downloads elsewhere.")
-                : HealthCheckOutcome.Ok(id, Category, name, $"{client.ClientName} reports enough free space."));
+                : HealthCheckOutcome.Ok(id, Category, name, $"{client.ClientName} reports {freeGb:0.#} GB free."));
         }
 
         return outcomes;

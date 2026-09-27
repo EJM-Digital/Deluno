@@ -72,7 +72,30 @@ public sealed class DelugeDownloadClient(IHttpClientFactory httpClientFactory) :
         })
             .Select(item => DownloadClientHelpers.ReconcileTorrentStatus(item, capturedUtc))
             .ToArray();
-        return CreateSnapshot(client, queue, capturedUtc, "healthy", $"Connected to Deluge at {baseUri.Host}:{baseUri.Port}.");
+        var freeSpaceBytes = await GetFreeSpaceBytesAsync(http, baseUri, cancellationToken);
+        var (health, message) = DownloadClientHelpers.EvaluateDiskSpaceHealth(
+            $"Connected to Deluge at {baseUri.Host}:{baseUri.Port}.",
+            freeSpaceBytes,
+            null);
+        return CreateSnapshot(client, queue, capturedUtc, health, message, freeSpaceBytes: freeSpaceBytes);
+    }
+
+    /// <summary>
+    /// Deluge's <c>core.get_free_space</c>, asked with no path so it answers
+    /// about its own default download location (#909).
+    /// </summary>
+    private static async Task<long?> GetFreeSpaceBytesAsync(HttpClient http, Uri baseUri, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var response = await DownloadClientHelpers.PostJsonAsync<DelugeResponse<long?>>(
+                http, new Uri(baseUri, "json"), new DelugeRequest("core.get_free_space", [], 8), cancellationToken);
+            return response?.Result;
+        }
+        catch (Exception exception) when (exception is HttpRequestException or JsonException or TaskCanceledException)
+        {
+            return null;
+        }
     }
 
     public override async Task<DownloadClientActionResult> ExecuteActionAsync(DownloadClientItem client, string action, string queueItemId, CancellationToken cancellationToken)

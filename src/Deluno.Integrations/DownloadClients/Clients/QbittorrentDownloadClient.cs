@@ -168,7 +168,32 @@ public sealed class QbittorrentDownloadClient(Func<HttpMessageHandler>? handlerF
             IsSetupProblem: IsSetupProblemState(item.State)))
             .Select(item => DownloadClientHelpers.ReconcileTorrentStatus(item, capturedUtc))
             .ToArray();
-        return CreateSnapshot(client, queue, capturedUtc, "healthy", $"Connected to qBittorrent at {baseUri.Host}:{baseUri.Port}.");
+        var freeSpaceBytes = await GetFreeSpaceBytesAsync(http, cancellationToken);
+        var (health, message) = DownloadClientHelpers.EvaluateDiskSpaceHealth(
+            $"Connected to qBittorrent at {baseUri.Host}:{baseUri.Port}.",
+            freeSpaceBytes,
+            null);
+        return CreateSnapshot(client, queue, capturedUtc, health, message, freeSpaceBytes: freeSpaceBytes);
+    }
+
+    /// <summary>
+    /// <c>server_state.free_space_on_disk</c> from qBittorrent's sync call
+    /// (#909) -- a second, cheap request rather than folding this into
+    /// <c>torrents/info</c>, which has no such field. A client that will not
+    /// answer this at all (an old version, or a momentary hiccup) reports
+    /// nothing rather than a false low-space warning.
+    /// </summary>
+    private static async Task<long?> GetFreeSpaceBytesAsync(HttpClient http, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var mainData = await http.GetFromJsonAsync<QbitMainData>("api/v2/sync/maindata", cancellationToken);
+            return mainData?.ServerState?.FreeSpaceOnDisk;
+        }
+        catch (Exception exception) when (exception is HttpRequestException or JsonException or TaskCanceledException)
+        {
+            return null;
+        }
     }
 
     public override async Task<DownloadClientCategoryCheckResult> CheckCategoryAsync(
@@ -462,4 +487,8 @@ public sealed class QbittorrentDownloadClient(Func<HttpMessageHandler>? handlerF
         [property: JsonPropertyName("content_path")] string? ContentPath,
         [property: JsonPropertyName("ratio")] double? Ratio = null,
         [property: JsonPropertyName("seeding_time")] long? SeedingTimeSeconds = null);
+
+    private sealed record QbitMainData([property: JsonPropertyName("server_state")] QbitServerState? ServerState);
+
+    private sealed record QbitServerState([property: JsonPropertyName("free_space_on_disk")] long? FreeSpaceOnDisk);
 }

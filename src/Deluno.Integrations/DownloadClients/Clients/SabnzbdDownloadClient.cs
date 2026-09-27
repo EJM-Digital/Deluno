@@ -107,11 +107,12 @@ public sealed class SabnzbdDownloadClient(IHttpClientFactory httpClientFactory) 
                 QueueError(item.Status), capturedUtc);
         }).ToArray();
         var history = await GetHistoryCoreAsync(http, client, baseUri, apiKey, capturedUtc, cancellationToken);
+        var freeSpaceBytes = ParseGbString(payload?.Queue?.DiskSpace1);
         var (health, message) = DownloadClientHelpers.EvaluateDiskSpaceHealth(
             $"Connected to SABnzbd at {baseUri.Host}:{baseUri.Port}.",
-            ParseGbString(payload?.Queue?.DiskSpace1),
+            freeSpaceBytes,
             ParseGbString(payload?.Queue?.DiskSpaceTotal1));
-        return CreateSnapshot(client, queue, capturedUtc, health, message, history.Count > 0 ? history : null);
+        return CreateSnapshot(client, queue, capturedUtc, health, message, history.Count > 0 ? history : null, freeSpaceBytes: freeSpaceBytes);
     }
 
     public override async Task<IReadOnlyList<DownloadClientHistoryItem>> GetHistoryAsync(DownloadClientItem client, DateTimeOffset capturedUtc, CancellationToken cancellationToken)
