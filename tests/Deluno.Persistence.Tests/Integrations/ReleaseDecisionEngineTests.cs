@@ -200,6 +200,26 @@ public sealed class ReleaseDecisionEngineTests
     }
 
     [Fact]
+    public void Decide_returns_rejected_for_r5_release()
+    {
+        var decision = ReleaseDecisionEngine.Decide(GoodInput(
+            releaseName: "Movie.2024.R5.x264-GRP"));
+
+        Assert.Equal("rejected", decision.Status);
+        Assert.Contains(decision.RiskFlags, r => r.Contains("blocked token", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void Decide_returns_rejected_for_vhsrip_release()
+    {
+        var decision = ReleaseDecisionEngine.Decide(GoodInput(
+            releaseName: "Movie.2024.VHSRip.XviD-GRP"));
+
+        Assert.Equal("rejected", decision.Status);
+        Assert.Contains(decision.RiskFlags, r => r.Contains("blocked token", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
     public void Decide_returns_rejected_for_never_grab_pattern_match()
     {
         var decision = ReleaseDecisionEngine.Decide(GoodInput(
