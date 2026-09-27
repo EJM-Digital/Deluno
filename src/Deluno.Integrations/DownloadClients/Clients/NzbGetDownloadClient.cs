@@ -48,7 +48,11 @@ public sealed class NzbGetDownloadClient(IHttpClientFactory httpClientFactory) :
             cancellationToken);
         if (response?.Error is { } error)
         {
-            return DownloadClientHelpers.GrabFailure(client, request, $"NZBGet refused the release: {error.Message ?? "no reason given"}.");
+            // #876: NZBGet answered the same request with an explicit reason
+            // it would not take the release — a dead link or an NZB it could
+            // not parse, not a setup problem — so the caller blocklists it and
+            // lets the next search pick a different one.
+            return DownloadClientHelpers.DeadReleaseGrabFailure(client, request, $"NZBGet refused the release: {error.Message ?? "no reason given"}.");
         }
 
         if (response?.Result is not > 0)

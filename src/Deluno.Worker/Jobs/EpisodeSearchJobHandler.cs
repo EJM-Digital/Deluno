@@ -190,6 +190,18 @@ public sealed class EpisodeSearchJobHandler(
                 decisionPlan.DispatchRequest,
                 cancellationToken);
 
+            await SearchExecutionSupport.BlockDeadReleaseAsync(
+                blockedReleases,
+                activityFeedRepository,
+                grabResult,
+                "tv",
+                "episode",
+                payload.EpisodeId,
+                seriesItem?.Title ?? bestCandidate!.ReleaseName,
+                bestCandidate!.IndexerName,
+                downloadClient.DownloadClientName,
+                cancellationToken);
+
             await jobQueueRepository.RecordDownloadDispatchAsync(
                 payload.LibraryId,
                 "tv",

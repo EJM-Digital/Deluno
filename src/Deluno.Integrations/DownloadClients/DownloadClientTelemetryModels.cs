@@ -151,6 +151,14 @@ public static class DownloadClientHistoryOutcomes
 
 public static class DownloadQueueStatuses
 {
+    /// <summary>
+    /// A grab result's status when the client itself said, in the same
+    /// request, that the release it was handed is unusable (#876) — a dead
+    /// link or a file it could not parse. The caller blocklists the release
+    /// and lets the next search pick a different one, instead of waiting for
+    /// an ordinary retry cycle to fail the same way again.
+    /// </summary>
+    public const string DeadRelease = "deadRelease";
     public const string Downloading = "downloading";
     public const string Queued = "queued";
     public const string ImportReady = "importReady";

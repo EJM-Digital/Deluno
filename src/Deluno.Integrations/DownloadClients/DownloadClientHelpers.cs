@@ -108,6 +108,26 @@ internal static class DownloadClientHelpers
                 message)
         };
 
+    /// <summary>
+    /// Distinct from <see cref="GrabFailure"/>'s "configuration": nothing here
+    /// is a setup problem, it is the client saying outright that the release
+    /// it was handed is unusable (#876) — a dead link or a file it could not
+    /// parse. The caller (a search handler) blocklists the release and lets
+    /// the next search pick a different one, instead of waiting for its
+    /// ordinary retry cycle to fail the same way again.
+    /// </summary>
+    internal static DownloadClientGrabResult DeadReleaseGrabFailure(DownloadClientItem client, DownloadClientGrabRequest request, string message)
+        => new(client.Id, request.ReleaseName, false, DownloadQueueStatuses.DeadRelease, message)
+        {
+            Failure = IntegrationFailureFactory.FromLegacy(
+                "download-client",
+                client.Id,
+                client.Name,
+                "grab",
+                "rejected",
+                message)
+        };
+
     internal static DownloadClientActionResult MissingAddress(DownloadClientItem client, string queueItemId, string action)
         => new(client.Id, queueItemId, action, false, "Client address is missing.")
         {

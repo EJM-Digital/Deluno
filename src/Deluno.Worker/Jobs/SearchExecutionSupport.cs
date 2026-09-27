@@ -70,6 +70,61 @@ internal static class SearchExecutionSupport
     }
 
     /// <summary>
+    /// #876 (cleanup sheet B2): a grab the client refused outright — a dead
+    /// link or a file it could not parse — is nobody's setup problem and
+    /// nothing worth retrying unchanged. Blocklisting it here is what stops a
+    /// later automatic search picking the exact same bad release and failing
+    /// the same way again; the next search naturally tries a different one.
+    ///
+    /// <para>A no-op for any other grab outcome, including an ordinary
+    /// connectivity failure (#875) — those are the client's or the network's
+    /// fault, not the release's, and must never end up on the blocklist.</para>
+    /// </summary>
+    internal static async Task BlockDeadReleaseAsync(
+        IBlockedReleaseRepository? blockedReleases,
+        IActivityFeedRepository activityFeedRepository,
+        DownloadClientGrabResult grabResult,
+        string mediaType,
+        string entityType,
+        string entityId,
+        string title,
+        string indexerName,
+        string clientName,
+        CancellationToken cancellationToken)
+    {
+        if (blockedReleases is null || grabResult.Status != DownloadQueueStatuses.DeadRelease)
+        {
+            return;
+        }
+
+        await blockedReleases.BlockAsync(
+            new BlockedRelease(
+                Guid.NewGuid().ToString("n"),
+                BlockedReleaseKeys.For(grabResult.ReleaseName, indexerName),
+                grabResult.ReleaseName,
+                indexerName,
+                mediaType,
+                entityId,
+                title,
+                ImportFailurePolicy.DeadOrBrokenLink,
+                grabResult.Message,
+                null,
+                null,
+                null,
+                DateTimeOffset.MinValue),
+            cancellationToken);
+
+        await activityFeedRepository.RecordActivityAsync(
+            "download.release.dead-link",
+            $"{grabResult.ReleaseName} could not be sent to {clientName}: {grabResult.Message} Deluno blocklisted it and will pick a different release next search.",
+            null,
+            null,
+            entityType,
+            entityId,
+            cancellationToken);
+    }
+
+    /// <summary>
     /// Why a release the search chose is not sent, when this title or that exact
     /// release already has a download on its way; null when nothing is (#555).
     ///
