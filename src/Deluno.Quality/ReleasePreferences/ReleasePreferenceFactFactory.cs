@@ -105,7 +105,10 @@ public static class ReleasePreferenceFactFactory
         ReleasePreferencePlan plan,
         string? releaseName,
         string? quality = null,
-        string evidenceSource = "release-title")
+        string evidenceSource = "release-title",
+        // The flags the indexer reported for this candidate (#745), e.g.
+        // "freeleech" — never derived from the release name itself.
+        string? indexerFlags = null)
     {
         ArgumentNullException.ThrowIfNull(plan);
         var facts = new List<PreferenceFact>();
@@ -158,7 +161,7 @@ public static class ReleasePreferenceFactFactory
         AddObserved(facts, "streaming.service", DetectService(lower), evidenceSource);
         AddObserved(facts, "audio.language", DetectLanguage(lower), evidenceSource);
         AddObserved(facts, "unwanted", DetectUnwanted(lower), evidenceSource);
-        AddPlanMatcherFacts(facts, plan, releaseName);
+        AddPlanMatcherFacts(facts, plan, releaseName, indexerFlags);
 
         return facts;
     }
@@ -166,9 +169,10 @@ public static class ReleasePreferenceFactFactory
     private static void AddPlanMatcherFacts(
         ICollection<PreferenceFact> facts,
         ReleasePreferencePlan plan,
-        string releaseName)
+        string releaseName,
+        string? indexerFlags)
     {
-        foreach (var result in ReleasePreferenceFormatEvidenceFactory.Evaluate(plan, releaseName))
+        foreach (var result in ReleasePreferenceFormatEvidenceFactory.Evaluate(plan, releaseName, indexerFlags: indexerFlags))
         {
             foreach (var (traitId, state) in result.TraitIds
                          .Select(traitId => (traitId, PreferenceFactState.Present))

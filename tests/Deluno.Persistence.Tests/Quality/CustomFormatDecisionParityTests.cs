@@ -59,15 +59,70 @@ public sealed class CustomFormatDecisionParityTests
     [Fact]
     public void A_partially_supported_imported_matcher_is_review_only()
     {
+        // LanguageSpecification is Radarr's own external condition shape and is
+        // still unmapped here — unlike IndexerFlagSpecification (#745), which
+        // this matcher now understands (see the indexer-flag tests below).
         const string definition =
             "[{\"implementation\":\"SourceSpecification\",\"fields\":[{\"name\":\"value\",\"value\":\"web-dl\"}]},"
-            + "{\"implementation\":\"IndexerFlagSpecification\",\"fields\":[{\"name\":\"value\",\"value\":\"freeleech\"}]}]";
+            + "{\"implementation\":\"LanguageSpecification\",\"fields\":[{\"name\":\"value\",\"value\":\"english\"}]}]";
 
         Assert.False(CustomFormatDefinitionMatcher.CanEvaluate(definition));
         Assert.False(CustomFormatDefinitionMatcher.Evaluate(
             "Movie.2026.1080p.WEB-DL-GRP",
             definition,
             anyCondition: false).IsMatch);
+    }
+
+    [Fact]
+    public void An_indexer_flag_condition_imported_from_radarr_is_fully_supported()
+    {
+        const string definition =
+            "[{\"implementation\":\"SourceSpecification\",\"fields\":[{\"name\":\"value\",\"value\":\"web-dl\"}]},"
+            + "{\"implementation\":\"IndexerFlagSpecification\",\"fields\":[{\"name\":\"value\",\"value\":\"freeleech\"}]}]";
+
+        Assert.True(CustomFormatDefinitionMatcher.CanEvaluate(definition));
+        Assert.True(CustomFormatDefinitionMatcher.Evaluate(
+            "Movie.2026.1080p.WEB-DL-GRP",
+            definition,
+            anyCondition: false,
+            indexerFlags: "freeleech").IsMatch);
+        Assert.False(CustomFormatDefinitionMatcher.Evaluate(
+            "Movie.2026.1080p.WEB-DL-GRP",
+            definition,
+            anyCondition: false,
+            indexerFlags: null).IsMatch);
+    }
+
+    [Fact]
+    public void A_freeleech_release_earns_the_custom_format_score_a_tied_release_does_not()
+    {
+        var now = DateTimeOffset.Parse("2026-09-27T00:00:00Z");
+        var format = new CustomFormatItem(
+            "freeleech-format",
+            "Freeleech",
+            "movies",
+            Score: 50,
+            TrashId: null,
+            Conditions: "[{\"type\":\"indexerFlag\",\"value\":\"freeleech\",\"required\":true}]",
+            UpgradeAllowed: true,
+            now,
+            now);
+
+        var flaggedScore = CustomFormatMatcher.EvaluateUpgradeScore(
+            "Movie.2026.1080p.WEB-DL-GRP",
+            [format],
+            out var flaggedMatches,
+            indexerFlags: "freeleech");
+        var plainScore = CustomFormatMatcher.EvaluateUpgradeScore(
+            "Movie.2026.1080p.WEB-DL-GRP",
+            [format],
+            out var plainMatches,
+            indexerFlags: null);
+
+        Assert.Equal(50, flaggedScore);
+        Assert.Single(flaggedMatches);
+        Assert.Equal(0, plainScore);
+        Assert.Empty(plainMatches);
     }
 
     [Theory]
@@ -244,6 +299,47 @@ public sealed class CustomFormatDecisionParityTests
             "[{\"implementation\":\"QualityModifierSpecification\",\"fields\":{\"value\":99}}]";
 
         Assert.False(CustomFormatDefinitionMatcher.CanEvaluate(definition));
+    }
+
+    /// <summary>
+    /// #745: the typed decision path (which candidate scoring actually uses
+    /// once a plan exists) reaches this same matcher through
+    /// ReleasePreferenceFormatEvidenceFactory, so an indexer-flag condition
+    /// has to agree with the dry-run preview on both a match and a miss.
+    /// </summary>
+    [Theory]
+    [InlineData("freeleech", true)]
+    [InlineData("half leech", false)]
+    [InlineData(null, false)]
+    public void Indexer_flag_condition_matches_the_same_way_in_dry_run_and_the_typed_plan(string? indexerFlags, bool expected)
+    {
+        var now = DateTimeOffset.Parse("2026-09-15T00:00:00Z");
+        var format = new CustomFormatItem(
+            "freeleech-format",
+            "Freeleech",
+            "movies",
+            50,
+            null,
+            "[{\"type\":\"indexerFlag\",\"value\":\"freeleech\",\"required\":true}]",
+            true,
+            now,
+            now);
+        var plan = ReleasePreferencePlanFactory.CreateQualityPlan(
+            "movies",
+            "WEB 1080p",
+            ["WEB 1080p"],
+            customFormats: [format],
+            formatIntents: new Dictionary<string, string>
+            {
+                [format.Id] = ProfileFormatIntents.Prefer
+            });
+        const string releaseName = "Movie.2026.1080p.WEB-DL-GRP";
+
+        var dryRun = Assert.Single(CustomFormatMatcher.DryRun(releaseName, [format], indexerFlags));
+        var typed = Assert.Single(ReleasePreferenceFormatEvidenceFactory.Evaluate(plan, releaseName, [format], indexerFlags: indexerFlags));
+
+        Assert.Equal(expected, dryRun.IsMatch);
+        Assert.Equal(dryRun.IsMatch, typed.IsMatch);
     }
 
     private sealed record MatchCase(

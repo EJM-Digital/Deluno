@@ -1,6 +1,14 @@
 export type IndexerProtocol = "tracker" | "torznab" | "newznab" | "rss" | "custom";
 export type MediaScope = "movies" | "tv" | "both";
 
+/**
+ * Common Cardigann/tracker flag labels (#745), for the "prefer these flags"
+ * picker and the Indexer flag custom-format condition. A site can still
+ * report, and a rule can still type, any other value — these are only the
+ * ones seen often enough to offer up front.
+ */
+export const KNOWN_INDEXER_FLAGS = ["Freeleech", "Half Leech", "Double Upload", "Internal", "Reward Points"];
+
 export const INDEXER_PRESETS: { protocol: IndexerProtocol; label: string; hint: string; requiresApiKey: boolean; placeholder: string; defaultCategories: (scope: MediaScope) => string }[] = [
   // #606: Deluno searches these itself, from definitions of Deluno's own; no Prowlarr or Jackett in between.
   { protocol: "tracker", label: "Tracker (built in)", hint: "A torrent site Deluno searches itself. No Prowlarr or Jackett needed.", requiresApiKey: false, placeholder: "https://tracker.example/", defaultCategories: (scope) => (scope === "movies" ? "2000,2010,2020,2030,2040,2045,2050,2060,2070" : scope === "tv" ? "5000,5010,5020,5030,5040,5045,5050,5060,5070" : "2000,2010,2020,2030,2040,2045,2050,2060,5000,5010,5020,5030,5040,5045,5050") },

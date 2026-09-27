@@ -412,7 +412,8 @@ public static partial class ReleaseDecisionEngine
                 ReleasePreferenceFactFactory.FromReleaseName(
                     preferencePlan,
                     input.ReleaseName,
-                    normalizedCandidate),
+                    normalizedCandidate,
+                    indexerFlags: input.IndexerFlags),
                 input.Seeders,
                 isSeasonPack);
             preferenceEvaluation = ReleasePreferenceEvaluator.Evaluate(

@@ -921,11 +921,12 @@ public sealed class FeedMediaSearchPlanner(
                 customFormatBonus = CustomFormatMatcher.EvaluateUpgradeScore(
                     releaseName,
                     customFormats,
-                    out matchedFormats);
+                    out matchedFormats,
+                    indexerFlags);
             }
             else
             {
-                matchedFormats = CustomFormatMatcher.EvaluateMatches(releaseName, customFormats);
+                matchedFormats = CustomFormatMatcher.EvaluateMatches(releaseName, customFormats, indexerFlags);
             }
             var decision = ReleaseDecisionEngine.Decide(new ReleaseDecisionInput(
                 releaseName,

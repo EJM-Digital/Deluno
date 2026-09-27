@@ -176,7 +176,10 @@ const CONDITION_TYPES = [
   { value: "hdr", label: "HDR format" },
   { value: "codec", label: "Video codec" },
   { value: "releaseGroup", label: "Release group" },
-  { value: "language", label: "Language" }
+  { value: "language", label: "Language" },
+  // #745: matched against what the indexer itself reported for the release
+  // (see KNOWN_INDEXER_FLAGS), never against the release name.
+  { value: "indexerFlag", label: "Indexer flag" }
 ] as const;
 
 type ConditionType = (typeof CONDITION_TYPES)[number]["value"];

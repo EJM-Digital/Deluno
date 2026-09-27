@@ -15,8 +15,9 @@ public static class ReleasePreferenceFormatEvidenceFactory
         ReleasePreferencePlan plan,
         string filePath,
         IReadOnlyList<CustomFormatItem>? customFormats,
-        GuidePackage? package = null)
-        => Evaluate(plan, filePath, customFormats, package)
+        GuidePackage? package = null,
+        string? indexerFlags = null)
+        => Evaluate(plan, filePath, customFormats, package, indexerFlags)
             .Where(item => item.IsMatch)
             .ToArray();
 
@@ -30,7 +31,11 @@ public static class ReleasePreferenceFormatEvidenceFactory
         ReleasePreferencePlan plan,
         string filePath,
         IReadOnlyList<CustomFormatItem>? customFormats = null,
-        GuidePackage? package = null)
+        GuidePackage? package = null,
+        // The flags the indexer reported for this exact release (#745). Null
+        // for an installed-file re-evaluation, where there is no indexer left
+        // to ask; a fresh search candidate carries its own.
+        string? indexerFlags = null)
     {
         ArgumentNullException.ThrowIfNull(plan);
         if (string.IsNullOrWhiteSpace(filePath))
@@ -82,7 +87,8 @@ public static class ReleasePreferenceFormatEvidenceFactory
                     filePath,
                     source.MatcherDefinition,
                     source.MatcherAny,
-                    plan.MediaType).IsMatch;
+                    plan.MediaType,
+                    indexerFlags).IsMatch;
                 matcherAvailable = true;
             }
             else if (!string.IsNullOrWhiteSpace(customFormat?.TrashId)
@@ -96,7 +102,8 @@ public static class ReleasePreferenceFormatEvidenceFactory
                     filePath,
                     GuideFormatConditions.For(guideFormat),
                     anyCondition: !GuideFormatConditions.IsGenuine(guideFormat),
-                    plan.MediaType).IsMatch;
+                    plan.MediaType,
+                    indexerFlags).IsMatch;
                 mappedTraitIds = PreferenceTraitRegistry.Current.CanonicalizeIds(guideFormat.MappedTraitIds);
                 matcherAvailable = true;
             }
