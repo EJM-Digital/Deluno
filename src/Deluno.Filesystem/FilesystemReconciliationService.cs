@@ -126,12 +126,46 @@ public sealed class FilesystemReconciliationService(
                     token.Path,
                     cancellationToken);
 
-            await RecordRepairAsync(token, action, repaired, cancellationToken);
+            // A file the reconciliation scan finds gone is a file that
+            // disappeared outside Deluno - Deluno's own removals (retention,
+            // an upgrade, a delete from Deluno itself) never reach this path,
+            // because they call MarkTrackedFileMissingAsync directly rather
+            // than going through a reconciliation issue. So the moment this
+            // repair runs, the title (or episode) stopped being something the
+            // user still wants: unmonitor it in the same pass, so it is never
+            // searched for and downloaded again on nothing but the user's own
+            // deletion. Cleanup sheet row K2, #931.
+            if (repaired)
+            {
+                if (token.MediaType == "tv" && !string.IsNullOrWhiteSpace(token.EpisodeId))
+                {
+                    await seriesCatalogRepository.UpdateEpisodeMonitoredAsync(
+                        [token.EpisodeId],
+                        monitored: false,
+                        cancellationToken);
+                }
+                else if (token.MediaType == "tv")
+                {
+                    await seriesCatalogRepository.UpdateMonitoredAsync(
+                        [token.EntityId],
+                        monitored: false,
+                        cancellationToken);
+                }
+                else
+                {
+                    await movieCatalogRepository.UpdateMonitoredAsync(
+                        [token.EntityId],
+                        monitored: false,
+                        cancellationToken);
+                }
+            }
+
+            await RecordMarkMissingRepairAsync(token, repaired, cancellationToken);
             return new FilesystemReconciliationRepairResult(
                 repaired,
                 action,
                 repaired
-                    ? "The tracked item was safely marked missing. Deluno did not delete any files."
+                    ? "The tracked item was safely marked missing and unmonitored. Deluno did not delete any files."
                     : "No matching tracked item was updated.");
         }
 
@@ -231,7 +265,7 @@ public sealed class FilesystemReconciliationService(
         LibraryItem library,
         TrackedFile item)
         => new(
-            Id: EncodeIssueToken("missingTrackedFile", item.MediaType, library.Id, item.EntityId, item.EpisodeId, item.Path),
+            Id: EncodeIssueToken("missingTrackedFile", item.MediaType, library.Id, item.EntityId, item.EpisodeId, item.Path, item.Title),
             Kind: "missingTrackedFile",
             Severity: "critical",
             MediaType: item.MediaType,
@@ -375,6 +409,39 @@ public sealed class FilesystemReconciliationService(
             cancellationToken);
     }
 
+    /// <summary>
+    /// Told in plain words, by name: a title going from held to unmonitored is
+    /// something a person will notice on a shelf, and they should learn why
+    /// from Deluno rather than guess. #931.
+    /// </summary>
+    private async Task RecordMarkMissingRepairAsync(
+        IssueToken token,
+        bool repaired,
+        CancellationToken cancellationToken)
+    {
+        var name = string.IsNullOrWhiteSpace(token.Title) ? Path.GetFileName(token.Path) : token.Title;
+        await activityFeedRepository.RecordActivityAsync(
+            repaired ? "filesystem.reconciliation.unmonitored" : "filesystem.reconciliation.repair-failed",
+            repaired
+                ? $"{name}'s file was removed outside Deluno, so Deluno stopped wanting it."
+                : $"Reconciliation repair 'mark-missing' failed for {Path.GetFileName(token.Path)}.",
+            JsonSerializer.Serialize(new
+            {
+                token.Kind,
+                token.MediaType,
+                token.LibraryId,
+                token.EntityId,
+                token.EpisodeId,
+                token.Path,
+                Action = "mark-missing",
+                Repaired = repaired
+            }),
+            null,
+            token.MediaType == "tv" ? "series" : "movie",
+            token.EntityId,
+            cancellationToken);
+    }
+
     private static IEnumerable<string> EnumerateFilesSafe(string rootPath)
     {
         try
@@ -451,14 +518,16 @@ public sealed class FilesystemReconciliationService(
         string libraryId,
         string entityId,
         string? episodeId,
-        string path)
+        string path,
+        string? title = null)
         => WebEncoders.Base64UrlEncode(Encoding.UTF8.GetBytes(JsonSerializer.Serialize(new IssueToken(
             kind,
             mediaType,
             libraryId,
             entityId,
             episodeId,
-            path))));
+            path,
+            title))));
 
     private static IssueToken DecodeIssueToken(string issueId)
         => JsonSerializer.Deserialize<IssueToken>(Encoding.UTF8.GetString(WebEncoders.Base64UrlDecode(issueId)))
@@ -479,5 +548,6 @@ public sealed class FilesystemReconciliationService(
         string LibraryId,
         string EntityId,
         string? EpisodeId,
-        string Path);
+        string Path,
+        string? Title = null);
 }
