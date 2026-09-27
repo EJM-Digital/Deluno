@@ -5,6 +5,7 @@ using System.Text.RegularExpressions;
 using System.Xml.Linq;
 using Deluno.Contracts;
 using Deluno.Integrations.Metadata;
+using Deluno.Integrations.Trakt;
 using Deluno.Jobs.Contracts;
 using Deluno.Jobs.Data;
 using Deluno.Movies.Contracts;
@@ -38,7 +39,9 @@ public sealed class IntakeSyncService(
     IConfiguration configuration,
     TimeProvider timeProvider,
     IHttpClientFactory httpClientFactory,
-    ILogger<IntakeSyncService> logger)
+    ILogger<IntakeSyncService> logger,
+    ITraktTokenProvider? traktTokenProvider = null,
+    ITraktClient? traktClient = null)
     : IIntakeSyncService, IIntakeListPreviewService, IIntakeListApprovalService
 {
     private const int PreviewLimit = 100;
@@ -581,6 +584,11 @@ public sealed class IntakeSyncService(
             "mdblist" => await FetchMdbListAsync(source, mediaType, cancellationToken),
             "imdb" => await FetchImdbListAsync(source, mediaType, cancellationToken),
             "trakt" => await FetchTraktListAsync(source, mediaType, cancellationToken),
+            "trakt-trending" => await FetchTraktBuiltInListAsync("trending", mediaType, cancellationToken),
+            "trakt-popular" => await FetchTraktBuiltInListAsync("popular", mediaType, cancellationToken),
+            "trakt-anticipated" => await FetchTraktBuiltInListAsync("anticipated", mediaType, cancellationToken),
+            "trakt-watched" => await FetchTraktBuiltInListAsync("watched/weekly", mediaType, cancellationToken),
+            "trakt-recommended" => await FetchTraktRecommendedAsync(mediaType, cancellationToken),
             "stevenlu" => await FetchStevenLuListAsync(source, cancellationToken),
             "rss" or "letterboxd" or "url-list" => await FetchGenericListAsync(source, mediaType, cancellationToken),
             _ => await FetchGenericListAsync(source, mediaType, cancellationToken)
@@ -897,12 +905,123 @@ public sealed class IntakeSyncService(
         return results;
     }
 
+    /// <summary>
+    /// A Trakt list or watchlist (#846). Connected, this reads the
+    /// authenticated Trakt API — the only way to reach a private list — and
+    /// falls back to the public RSS feed exactly as before when nobody has
+    /// connected Trakt yet, so an existing RSS-based source keeps working
+    /// unchanged.
+    /// </summary>
     private async Task<IReadOnlyList<IntakeEntry>> FetchTraktListAsync(IntakeSourceItem source, string mediaType, CancellationToken cancellationToken)
     {
+        var auth = await GetTraktAuthAsync(cancellationToken);
+        if (auth is not null)
+        {
+            var apiPath = ResolveTraktApiPath(source.FeedUrl);
+            var json = await traktClient!.GetAsync(auth.ClientId, auth.AccessToken, apiPath, cancellationToken);
+            return ParseTraktItems(json, mediaType);
+        }
+
         var rssUrl = ResolveTraktRssUrl(source.FeedUrl);
         using var client = httpClientFactory.CreateClient(IntakeHttpClientName);
         var xml = await client.GetStringAsync(rssUrl, cancellationToken);
         return ParseRss(xml, mediaType);
+    }
+
+    /// <summary>
+    /// Trakt's own built-in lists — Trending, Popular, Anticipated and Top
+    /// Watched — which have no RSS equivalent at all (#846). Always
+    /// authenticated: unlike a personal list or watchlist there is no
+    /// unauthenticated fallback for these.
+    /// </summary>
+    private async Task<IReadOnlyList<IntakeEntry>> FetchTraktBuiltInListAsync(string kind, string mediaType, CancellationToken cancellationToken)
+    {
+        var auth = await GetTraktAuthAsync(cancellationToken)
+            ?? throw new InvalidOperationException("Connect Trakt in Settings to use this built-in Trakt list.");
+        var mediaSegment = mediaType == "tv" ? "shows" : "movies";
+        var json = await traktClient!.GetAsync(auth.ClientId, auth.AccessToken, $"/{mediaSegment}/{kind}", cancellationToken);
+        return ParseTraktItems(json, mediaType);
+    }
+
+    /// <summary>Trakt's personalized Recommended list (#846) — the one built-in list scoped to the connected account rather than global.</summary>
+    private async Task<IReadOnlyList<IntakeEntry>> FetchTraktRecommendedAsync(string mediaType, CancellationToken cancellationToken)
+    {
+        var auth = await GetTraktAuthAsync(cancellationToken)
+            ?? throw new InvalidOperationException("Connect Trakt in Settings to use Trakt's Recommended list.");
+        var mediaSegment = mediaType == "tv" ? "shows" : "movies";
+        var json = await traktClient!.GetAsync(auth.ClientId, auth.AccessToken, $"/recommendations/{mediaSegment}", cancellationToken);
+        return ParseTraktItems(json, mediaType);
+    }
+
+    private async Task<TraktAuthContext?> GetTraktAuthAsync(CancellationToken cancellationToken)
+        => traktTokenProvider is null ? null : await traktTokenProvider.GetAuthContextAsync(cancellationToken);
+
+    /// <summary>
+    /// A Trakt list/watchlist URL's path is also its authenticated API path
+    /// (the list-items endpoint), once <c>.rss</c> is off and lists ask for
+    /// <c>/items</c>: <c>/users/x/lists/y</c> -> <c>/users/x/lists/y/items</c>,
+    /// <c>/users/x/watchlist</c> stays as it is.
+    /// </summary>
+    private static string ResolveTraktApiPath(string feedUrl)
+    {
+        var trimmed = feedUrl.Trim();
+        var path = Uri.TryCreate(trimmed, UriKind.Absolute, out var uri) && uri.Host.Contains("trakt.tv", StringComparison.OrdinalIgnoreCase)
+            ? uri.AbsolutePath
+            : $"/users/{Uri.EscapeDataString(trimmed)}/watchlist";
+        path = path.TrimEnd('/');
+        if (path.EndsWith(".rss", StringComparison.OrdinalIgnoreCase))
+        {
+            path = path[..^4];
+        }
+
+        return path.Contains("/lists/", StringComparison.OrdinalIgnoreCase) && !path.EndsWith("/items", StringComparison.OrdinalIgnoreCase)
+            ? $"{path}/items"
+            : path;
+    }
+
+    /// <summary>
+    /// Trakt's own JSON shapes all reduce to the same thing: an array whose
+    /// entries are either a bare movie/show object (Popular, Recommended) or
+    /// one wrapped in a "movie"/"show"/"type" envelope (list items, watchlist,
+    /// Trending, Anticipated, Top Watched).
+    /// </summary>
+    private static IReadOnlyList<IntakeEntry> ParseTraktItems(string json, string mediaType)
+    {
+        using var document = JsonDocument.Parse(json);
+        if (document.RootElement.ValueKind != JsonValueKind.Array)
+        {
+            return [];
+        }
+
+        var results = new List<IntakeEntry>();
+        foreach (var element in document.RootElement.EnumerateArray())
+        {
+            var item = element.TryGetProperty("movie", out var movie) ? movie
+                : element.TryGetProperty("show", out var show) ? show
+                : element;
+            var title = ReadString(item, "title");
+            if (string.IsNullOrWhiteSpace(title))
+            {
+                continue;
+            }
+
+            var year = item.TryGetProperty("year", out var yearProp) && yearProp.ValueKind == JsonValueKind.Number
+                ? yearProp.GetInt32()
+                : (int?)null;
+            var imdbId = item.TryGetProperty("ids", out var ids) ? ReadString(ids, "imdb") : null;
+            results.Add(new IntakeEntry(
+                Title: title,
+                Year: year,
+                MediaType: mediaType,
+                ImdbId: imdbId,
+                GenresCsv: string.Empty,
+                Rating: null,
+                ReleaseDateUtc: null,
+                Certification: null,
+                Audience: "any"));
+        }
+
+        return results;
     }
 
     private async Task<IReadOnlyList<IntakeEntry>> FetchGenericListAsync(IntakeSourceItem source, string mediaType, CancellationToken cancellationToken)

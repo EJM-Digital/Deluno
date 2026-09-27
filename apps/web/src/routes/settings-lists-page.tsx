@@ -36,7 +36,8 @@ import {
   type LibraryItem,
   type MediaExclusionItem,
   type PlatformSettingsSnapshot,
-  type QualityProfileItem
+  type QualityProfileItem,
+  type TraktConnectionStatus
 } from "../lib/api";
 import { settingsOverviewLoader } from "./settings-overview-page";
 import { authedFetch } from "../lib/use-auth";
@@ -53,7 +54,12 @@ const PROVIDERS = [
   { label: "TMDb person", value: "tmdb-person" },
   { label: "Letterboxd", value: "letterboxd" },
   { label: "RSS feed", value: "rss" },
-  { label: "StevenLu", value: "stevenlu" }
+  { label: "StevenLu", value: "stevenlu" },
+  { label: "Trakt Trending (connected)", value: "trakt-trending" },
+  { label: "Trakt Popular (connected)", value: "trakt-popular" },
+  { label: "Trakt Anticipated (connected)", value: "trakt-anticipated" },
+  { label: "Trakt Top Watched (connected)", value: "trakt-watched" },
+  { label: "Trakt Recommended (connected)", value: "trakt-recommended" }
 ];
 const TMDB_PERSON_CREDIT_TYPES = [
   { value: "cast", label: "Cast", description: "Films and shows where this person acts." },
@@ -79,6 +85,7 @@ interface LoaderData {
   settings: PlatformSettingsSnapshot;
   intakeSources: IntakeSourceItem[];
   exclusions: MediaExclusionItem[];
+  traktStatus: TraktConnectionStatus;
 }
 
 interface ListForm {
@@ -106,14 +113,100 @@ type DrawerMode = { kind: "closed" } | { kind: "create" } | { kind: "edit"; id: 
 
 export async function settingsListsLoader(): Promise<LoaderData> {
   const overview = await settingsOverviewLoader();
-  const exclusions = await fetchJson<MediaExclusionItem[]>("/api/exclusions");
-  return { ...overview, exclusions };
+  const [exclusions, traktStatus] = await Promise.all([
+    fetchJson<MediaExclusionItem[]>("/api/exclusions"),
+    fetchJson<TraktConnectionStatus>("/api/trakt/status")
+  ]);
+  return { ...overview, exclusions, traktStatus };
 }
 
 export function SettingsListsPage() {
-  const { intakeSources, libraries, exclusions } = useLoaderData() as LoaderData;
+  const { intakeSources, libraries, exclusions, traktStatus } = useLoaderData() as LoaderData;
   const revalidator = useRevalidator();
   const { preferences } = useDisplayPreferences();
+
+  /* ------------------------------------------------------ Trakt (#846) */
+  const [traktBusy, setTraktBusy] = useState(false);
+  const [traktCredentials, setTraktCredentials] = useState({ clientId: "", clientSecret: "" });
+  const [traktDevice, setTraktDevice] = useState<{ deviceCode: string; userCode: string; verificationUrl: string } | null>(null);
+
+  async function saveTraktCredentials() {
+    if (!traktCredentials.clientId.trim() || !traktCredentials.clientSecret.trim()) {
+      toast.error("Enter both the Client ID and Client Secret from your Trakt app.");
+      return;
+    }
+    setTraktBusy(true);
+    try {
+      const response = await authedFetch("/api/trakt/credentials", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(traktCredentials)
+      });
+      if (!response.ok) throw new Error("Could not save the Trakt app credentials.");
+      toast.success("Trakt app credentials saved");
+      revalidator.revalidate();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not save the Trakt app credentials.");
+    } finally {
+      setTraktBusy(false);
+    }
+  }
+
+  async function startTraktConnect() {
+    setTraktBusy(true);
+    try {
+      const response = await authedFetch("/api/trakt/connect", { method: "POST" });
+      if (!response.ok) throw new Error("Could not start connecting Trakt.");
+      const data = await response.json();
+      setTraktDevice({ deviceCode: data.deviceCode, userCode: data.userCode, verificationUrl: data.verificationUrl });
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not start connecting Trakt.");
+    } finally {
+      setTraktBusy(false);
+    }
+  }
+
+  async function checkTraktConnect() {
+    if (!traktDevice) return;
+    setTraktBusy(true);
+    try {
+      const response = await authedFetch("/api/trakt/connect/poll", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ deviceCode: traktDevice.deviceCode })
+      });
+      if (!response.ok) throw new Error("Could not check Trakt.");
+      const data = await response.json();
+      if (data.status === "connected") {
+        setTraktDevice(null);
+        toast.success("Trakt connected");
+        revalidator.revalidate();
+      } else if (data.status === "expired" || data.status === "denied") {
+        setTraktDevice(null);
+        toast.error(data.status === "expired" ? "That code expired — start again." : "Trakt declined the request — start again.");
+      } else {
+        toast.error(`Not approved yet — open ${traktDevice.verificationUrl} and enter ${traktDevice.userCode}.`);
+      }
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not check Trakt.");
+    } finally {
+      setTraktBusy(false);
+    }
+  }
+
+  async function disconnectTrakt() {
+    setTraktBusy(true);
+    try {
+      const response = await authedFetch("/api/trakt/disconnect", { method: "POST" });
+      if (!response.ok) throw new Error("Could not disconnect Trakt.");
+      toast.success("Trakt disconnected");
+      revalidator.revalidate();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not disconnect Trakt.");
+    } finally {
+      setTraktBusy(false);
+    }
+  }
 
   const [togglingId, setTogglingId] = useState<string | null>(null);
   const [restoringExclusionId, setRestoringExclusionId] = useState<string | null>(null);
@@ -373,6 +466,60 @@ export function SettingsListsPage() {
         }
       />
 
+      <ListCard
+        title="Trakt"
+        count={traktStatus.connected ? (traktStatus.needsReconnect ? "Needs reconnect" : "Connected") : "Not connected"}
+      >
+        <div className="grid gap-[var(--grid-gap)] p-[var(--card-pad-x)]">
+          <p className="text-[length:var(--type-caption)] text-muted-foreground">
+            Connect a Trakt account to reach private lists and Trakt&rsquo;s own Trending, Popular, Anticipated, Top Watched and Recommended lists — none of which have a public RSS feed.
+          </p>
+          {!traktStatus.clientConfigured ? (
+            <FieldRow>
+              <Field label="Client ID">
+                <Input value={traktCredentials.clientId} onChange={(event) => setTraktCredentials((current) => ({ ...current, clientId: event.target.value }))} autoComplete="off" spellCheck={false} />
+              </Field>
+              <Field label="Client Secret">
+                <Input value={traktCredentials.clientSecret} onChange={(event) => setTraktCredentials((current) => ({ ...current, clientSecret: event.target.value }))} type="password" autoComplete="off" spellCheck={false} />
+              </Field>
+            </FieldRow>
+          ) : null}
+          <div className="flex flex-wrap items-center gap-2">
+            {!traktStatus.clientConfigured ? (
+              <Button type="button" size="sm" disabled={traktBusy} onClick={() => void saveTraktCredentials()}>
+                Save Trakt app credentials
+              </Button>
+            ) : traktDevice ? (
+              <>
+                <span className="text-[length:var(--type-caption)]">
+                  Open <a className="underline" href={traktDevice.verificationUrl} target="_blank" rel="noreferrer">{traktDevice.verificationUrl}</a> and enter code <strong className="font-mono">{traktDevice.userCode}</strong>
+                </span>
+                <Button type="button" size="sm" variant="outline" disabled={traktBusy} onClick={() => void checkTraktConnect()}>
+                  I&rsquo;ve approved it — check now
+                </Button>
+              </>
+            ) : traktStatus.connected ? (
+              <>
+                {traktStatus.needsReconnect ? (
+                  <Button type="button" size="sm" disabled={traktBusy} onClick={() => void startTraktConnect()}>
+                    Reconnect Trakt
+                  </Button>
+                ) : null}
+                <Button type="button" size="sm" variant="outline" disabled={traktBusy} onClick={() => void disconnectTrakt()}>
+                  Disconnect
+                </Button>
+              </>
+            ) : (
+              <Button type="button" size="sm" disabled={traktBusy} onClick={() => void startTraktConnect()}>
+                Connect Trakt
+              </Button>
+            )}
+          </div>
+          {traktStatus.needsReconnect && !traktDevice ? (
+            <p className="text-[length:var(--type-caption)] text-destructive">Trakt stopped renewing its own connection. Reconnect to keep Trakt lists working.</p>
+          ) : null}
+        </div>
+      </ListCard>
 
       <ListCard title="Import Lists" count={intakeSources.length ? `${intakeSources.length} ${intakeSources.length === 1 ? "list" : "lists"} · ${intakeSources.filter((item) => item.isEnabled).length} enabled · add titles from watchlists and feeds` : undefined}>
         {intakeSources.length === 0 ? (
