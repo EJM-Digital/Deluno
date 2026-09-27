@@ -32,6 +32,7 @@ import { dismissFailedJob, fetchFailedJobs } from "../lib/failed-jobs";
 import { authedFetch } from "../lib/use-auth";
 import { Button } from "../components/ui/button";
 import { Chip } from "../components/ui/chip";
+import { ColumnPicker } from "../components/ui/column-picker";
 import { Drawer, DrawerDanger, DrawerFacts, DrawerFooter, DrawerSection } from "../components/ui/drawer";
 import {
   LIST_TRACK,
@@ -42,6 +43,7 @@ import {
   ListRow,
   ListTable
 } from "../components/ui/list-card";
+import { MenuSelect } from "../components/ui/menu-select";
 import { PageToolbar } from "../components/ui/page-toolbar";
 import { SegmentedControl } from "../components/ui/segmented-control";
 import { SummaryStrip } from "../components/ui/summary-strip";
@@ -50,6 +52,9 @@ import { DownloadDispatchDrawer } from "../components/app/download-dispatch-draw
 import { useLiveInterval } from "../hooks/use-live-interval";
 import { RealtimeGroups, useSignalREvent } from "../lib/use-signalr";
 import { formatDateTime as formatPreferenceDateTime, useDisplayPreferences } from "../lib/display-preferences";
+import { ACTIVITY_EVENT_TYPE_LABELS, activityEventType, categoryLabel, type ActivityEventType } from "../lib/activity-format";
+import { reasonWords } from "../lib/failure-reasons";
+import { useColumnVisibility, type ColumnDefinition } from "../lib/use-column-visibility";
 
 interface ActivityLoaderData {
   activity: ActivityEventItem[];
@@ -61,6 +66,15 @@ interface ActivityLoaderData {
 }
 
 type Section = "jobs" | "events" | "imports";
+
+/** Persisted column choice for the Events table (#798). Category and When are
+ * always useful; Type and Related are the ones worth hiding on a narrow list. */
+const EVENT_OPTIONAL_COLUMNS: readonly ColumnDefinition[] = [
+  { key: "category", label: "Category", defaultVisible: true },
+  { key: "type", label: "Type", defaultVisible: true },
+  { key: "related", label: "Related", defaultVisible: false },
+  { key: "when", label: "When", defaultVisible: true }
+];
 
 export async function activityLoader(): Promise<ActivityLoaderData> {
   const [jobs, failedJobs, activity, dispatches, movieRecovery, seriesRecovery] = await Promise.all([
@@ -83,8 +97,11 @@ export function ActivityPage() {
   const [openJobId, setOpenJobId] = useState<string | null>(null);
   const [openDispatchId, setOpenDispatchId] = useState<string | null>(null);
   const [openEventId, setOpenEventId] = useState<string | null>(null);
+  const [openImportCaseId, setOpenImportCaseId] = useState<string | null>(null);
+  const [eventTypeFilter, setEventTypeFilter] = useState<"all" | ActivityEventType>("all");
   const [busy, setBusy] = useState(false);
   const { preferences } = useDisplayPreferences();
+  const eventColumns = useColumnVisibility("activity-page.events-columns", EVENT_OPTIONAL_COLUMNS);
 
   // Active work needs a short refresh, and it keeps running while the tab is
   // hidden so the screen is already current when it is looked at (#641).
@@ -127,6 +144,18 @@ export function ActivityPage() {
   const openJob = failed.find((job) => job.id === openJobId) ?? jobs.find((job) => job.id === openJobId) ?? null;
   const openDispatch = dispatches.find((dispatch) => dispatch.id === openDispatchId) ?? null;
   const openEvent = activity.find((event) => event.id === openEventId) ?? null;
+  const openImportCase = importCases.find((item) => `${item.mediaLabel}-${item.id}` === openImportCaseId) ?? null;
+
+  // Only the types actually present are offered (#798): a dropdown of eight
+  // options where six are always empty is not a filter, it is a maze.
+  const presentEventTypes = useMemo(
+    () => [...new Set(activity.map((event) => activityEventType(event)))],
+    [activity]
+  );
+  const filteredActivity = useMemo(
+    () => (eventTypeFilter === "all" ? activity : activity.filter((event) => activityEventType(event) === eventTypeFilter)),
+    [activity, eventTypeFilter]
+  );
 
   async function handleRetryFailedJobs() {
     setBusy(true);
@@ -287,16 +316,50 @@ export function ActivityPage() {
       ) : null}
 
       {section === "events" ? (
-        <ListCard title="Events" count={activity.length ? `Latest ${activity.length}` : undefined}>
+        <ListCard
+          title="Events"
+          count={filteredActivity.length !== activity.length ? `${filteredActivity.length} of ${activity.length}` : activity.length ? `Latest ${activity.length}` : undefined}
+          actions={
+            <>
+              {presentEventTypes.length > 1 ? (
+                <MenuSelect
+                  label="Filter by event type"
+                  value={eventTypeFilter}
+                  onChange={(value) => setEventTypeFilter(value as "all" | ActivityEventType)}
+                  options={[
+                    { value: "all", label: "All events" },
+                    ...presentEventTypes.map((type) => ({ value: type, label: ACTIVITY_EVENT_TYPE_LABELS[type] }))
+                  ]}
+                  triggerClassName="h-[var(--control-height-sm)] rounded-[8px] border border-hairline bg-surface-1 px-2.5 text-[length:var(--type-caption)] font-semibold text-muted-foreground hover:text-foreground"
+                />
+              ) : null}
+              <ColumnPicker columns={EVENT_OPTIONAL_COLUMNS} isVisible={eventColumns.isVisible} onToggle={eventColumns.toggle} />
+            </>
+          }
+        >
           {activity.length === 0 ? (
             <ListEmpty title="Nothing has happened yet" description="Every consequential thing Deluno does is recorded here, with the reason behind it." />
+          ) : filteredActivity.length === 0 ? (
+            <ListEmpty title="Nothing of this type" description="Choose a different event type, or All events, to see the rest of the list." />
           ) : (
-            <ListTable columns={[{ label: "Event" }, { label: "Category", mobile: true }, { label: "When" }]}>
-              {activity.map((event) => (
+            <ListTable
+              columns={[
+                { label: "Event" },
+                ...(eventColumns.isVisible("category") ? [{ label: "Category", mobile: true as const }] : []),
+                ...(eventColumns.isVisible("type") ? [{ label: "Type" }] : []),
+                ...(eventColumns.isVisible("related") ? [{ label: "Related" }] : []),
+                ...(eventColumns.isVisible("when") ? [{ label: "When" }] : [])
+              ]}
+            >
+              {filteredActivity.map((event) => (
                 <ListRow key={event.id} onClick={() => setOpenEventId(event.id)} selected={openEventId === event.id}>
                   <ListNameCell name={event.message} sub={event.detail} />
-                  <ListCell primary={event.category} mobile />
-                  <ListCell primary={formatPreferenceDateTime(event.createdUtc, preferences)} />
+                  {eventColumns.isVisible("category") ? <ListCell primary={categoryLabel(event.category)} mobile /> : null}
+                  {eventColumns.isVisible("type") ? <ListCell primary={ACTIVITY_EVENT_TYPE_LABELS[activityEventType(event)]} /> : null}
+                  {eventColumns.isVisible("related") ? (
+                    <ListCell primary={event.relatedEntityType ?? "—"} secondary={event.relatedEntityId ?? undefined} />
+                  ) : null}
+                  {eventColumns.isVisible("when") ? <ListCell primary={formatPreferenceDateTime(event.createdUtc, preferences)} /> : null}
                 </ListRow>
               ))}
             </ListTable>
@@ -313,7 +376,6 @@ export function ActivityPage() {
             <ListEmpty title="Nothing stuck" description="Downloads that finish but cannot be filed — wrong quality, no match, corrupt — land here for a decision." />
           ) : (
             <ListTable
-              chevron={false}
               columns={[
                 { label: "Issue" },
                 { label: "Media", mobile: true },
@@ -321,14 +383,17 @@ export function ActivityPage() {
                 { label: "Found" }
               ]}
             >
-              {importCases.map((item) => (
-                <ListRow key={`${item.mediaLabel}-${item.id}`}>
-                  <ListNameCell name={`${formatFailureKind(item.failureKind)} · ${item.title}`} sub={item.summary} />
-                  <ListCell primary={item.mediaLabel} mobile />
-                  <ListCell primary={item.recommendedAction} />
-                  <ListCell primary={formatPreferenceDateTime(item.detectedUtc, preferences)} />
-                </ListRow>
-              ))}
+              {importCases.map((item) => {
+                const id = `${item.mediaLabel}-${item.id}`;
+                return (
+                  <ListRow key={id} onClick={() => setOpenImportCaseId(id)} selected={openImportCaseId === id}>
+                    <ListNameCell name={`${reasonWords(item.failureKind)} · ${item.title}`} sub={item.summary} />
+                    <ListCell primary={item.mediaLabel} mobile />
+                    <ListCell primary={item.recommendedAction} />
+                    <ListCell primary={formatPreferenceDateTime(item.detectedUtc, preferences)} />
+                  </ListRow>
+                );
+              })}
             </ListTable>
           )}
         </ListCard>
@@ -444,6 +509,43 @@ export function ActivityPage() {
           </>
         ) : null}
       </Drawer>
+
+      <Drawer
+        open={openImportCase !== null}
+        onOpenChange={(next) => {
+          if (!next) setOpenImportCaseId(null);
+        }}
+        title={openImportCase ? `${reasonWords(openImportCase.failureKind)} · ${openImportCase.title}` : "Import issue"}
+        description={openImportCase ? `${openImportCase.mediaLabel} · found ${formatPreferenceDateTime(openImportCase.detectedUtc, preferences)}` : undefined}
+        footer={<DrawerFooter state="clean" readOnly saveLabel="Close" onCancel={() => setOpenImportCaseId(null)} />}
+      >
+        {openImportCase ? (
+          <>
+            {/*
+              #798: the row already names the failure code in plain words and
+              shows its summary as the sub-line; this is where the summary is
+              read in full rather than truncated, alongside what Deluno
+              recommends and the raw evidence it kept, so "Quality rejected"
+              never has to stand for the actual reason on its own.
+            */}
+            <DrawerSection title="Why this needs a decision">
+              <p className="whitespace-pre-wrap text-[length:var(--type-body-sm)] leading-relaxed text-foreground">{openImportCase.summary}</p>
+            </DrawerSection>
+
+            <DrawerSection title="What Deluno recommends">
+              <p className="text-[length:var(--type-body-sm)] leading-relaxed text-muted-foreground">{openImportCase.recommendedAction}</p>
+            </DrawerSection>
+
+            {openImportCase.detailsJson ? (
+              <DrawerSection title="Evidence">
+                <pre className="overflow-x-auto rounded-[10px] border border-hairline bg-surface-1 p-3 font-mono text-[length:var(--type-caption)] text-muted-foreground">
+                  {prettyJson(openImportCase.detailsJson)}
+                </pre>
+              </DrawerSection>
+            ) : null}
+          </>
+        ) : null}
+      </Drawer>
     </div>
   );
 }
@@ -478,23 +580,6 @@ function dispatchTone(status: string): "ok" | "warn" | "bad" | "info" {
       return "warn";
     default:
       return "info";
-  }
-}
-
-function formatFailureKind(value: string) {
-  switch (value) {
-    case "quality":
-      return "Quality rejected";
-    case "unmatched":
-      return "Needs matching";
-    case "corrupt":
-      return "Corrupt";
-    case "downloadFailed":
-      return "Download failed";
-    case "importFailed":
-      return "Import failed";
-    default:
-      return "Needs review";
   }
 }
 
