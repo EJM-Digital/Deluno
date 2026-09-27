@@ -158,6 +158,18 @@ export interface SubtitleSearchCandidateItem {
   matchDescription: string;
 }
 
+/**
+ * One row of a title's append-only subtitle search history (#840) — the
+ * same data the Wanted screen's status reads from, shown from the title's
+ * own subtitle panel: "what has Deluno already tried".
+ */
+export interface MediaSubtitleAttemptHistoryEntry {
+  language: string;
+  provider: string | null;
+  outcome: string;
+  attemptedUtc: string;
+}
+
 export interface LibrarySourceLinkItem {
   id: string;
   libraryId: string;

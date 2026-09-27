@@ -32,6 +32,7 @@ import {
   type SeriesSearchHistoryItem,
   type AcquisitionBlockersResponse,
   type MediaSubtitleRow,
+  type MediaSubtitleAttemptHistoryEntry,
   type SubtitleLanguageOption
 } from "../lib/api";
 import { subtitleTypeLabel, subtitleSourceLabel, timingStatusLabel } from "../lib/subtitle-display";
@@ -200,6 +201,8 @@ export function ShowDetailPage() {
   // same row does not refetch, the same way the movie page's loader gives it
   // for free but an episode drawer opens on demand.
   const [episodeSubtitles, setEpisodeSubtitles] = useState<Record<string, MediaSubtitleRow[]>>({});
+  // #840: what has already been tried for this episode's subtitles.
+  const [episodeSubtitleHistory, setEpisodeSubtitleHistory] = useState<Record<string, MediaSubtitleAttemptHistoryEntry[]>>({});
   const [openSearchId, setOpenSearchId] = useState<string | null>(null);
   const [openDispatchId, setOpenDispatchId] = useState<string | null>(null);
   const [episodeFilter, setEpisodeFilter] = useState<EpisodeFilter>("all");
@@ -312,12 +315,36 @@ export function ShowDetailPage() {
     };
   }, [openEpisodeId, episodeSubtitles]);
 
+  useEffect(() => {
+    if (!openEpisodeId || episodeSubtitleHistory[openEpisodeId]) {
+      return;
+    }
+    let cancelled = false;
+    fetchJson<MediaSubtitleAttemptHistoryEntry[]>(`/api/series/episodes/${openEpisodeId}/subtitles/history`)
+      .then((rows) => {
+        if (!cancelled) {
+          setEpisodeSubtitleHistory((current) => ({ ...current, [openEpisodeId]: rows }));
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setEpisodeSubtitleHistory((current) => ({ ...current, [openEpisodeId]: [] }));
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [openEpisodeId, episodeSubtitleHistory]);
+
   // Re-reads one episode's subtitle rows after a resync or an out-of-sync
   // action changes them — the cache above only fills on first open, so an
   // action taken from an already-open drawer needs its own refresh.
   function refetchEpisodeSubtitles(episodeId: string) {
     fetchJson<MediaSubtitleRow[]>(`/api/series/episodes/${episodeId}/subtitles`)
       .then((rows) => setEpisodeSubtitles((current) => ({ ...current, [episodeId]: rows })))
+      .catch(() => {});
+    fetchJson<MediaSubtitleAttemptHistoryEntry[]>(`/api/series/episodes/${episodeId}/subtitles/history`)
+      .then((rows) => setEpisodeSubtitleHistory((current) => ({ ...current, [episodeId]: rows })))
       .catch(() => {});
   }
 
@@ -1908,6 +1935,20 @@ export function ShowDetailPage() {
                           </>
                         ) : null}
                       </div>
+                    </ListRow>
+                  ))}
+                </ListTable>
+              </DrawerSection>
+            ) : null}
+
+            {(episodeSubtitleHistory[openEpisode.episodeId]?.length ?? 0) > 0 ? (
+              <DrawerSection title="Subtitle search history" aside={`Last ${episodeSubtitleHistory[openEpisode.episodeId]!.length}`}>
+                <ListTable chevron={false} columns={[{ label: "Language" }, { label: "Provider", mobile: true }, { label: "What happened" }]}>
+                  {episodeSubtitleHistory[openEpisode.episodeId]!.map((entry, index) => (
+                    <ListRow key={`${entry.language}-${entry.attemptedUtc}-${index}`}>
+                      <ListNameCell name={entry.language.toUpperCase()} sub={new Date(entry.attemptedUtc).toLocaleString()} />
+                      <ListCell primary={entry.provider ?? "—"} mobile />
+                      <ListCell primary={entry.outcome} />
                     </ListRow>
                   ))}
                 </ListTable>
