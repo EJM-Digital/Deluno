@@ -178,6 +178,29 @@ public static partial class ReleaseDecisionEngine
             ? ScorePreferredIndexerFlags(input.IndexerFlags, input.PreferIndexerFlags, reasons)
             : 0;
 
+        // #744: a per-indexer keyword gate, separate from PreferIndexerFlags
+        // (which only nudges ranking and never rejects). Required words are
+        // an all-must-match list; ignored words reject on any match.
+        if (!string.IsNullOrWhiteSpace(input.RequiredWords))
+        {
+            var missingRequired = ReleaseProfileRuleEvaluator.SplitTerms(input.RequiredWords)
+                .FirstOrDefault(term => !ReleaseProfileRuleEvaluator.ContainsTerm(input.ReleaseName, term));
+            if (!string.IsNullOrWhiteSpace(missingRequired))
+            {
+                Refuse($"Release name is missing this indexer's required word '{missingRequired}'.");
+            }
+        }
+
+        if (!string.IsNullOrWhiteSpace(input.IgnoredWords))
+        {
+            var matchedIgnored = ReleaseProfileRuleEvaluator.SplitTerms(input.IgnoredWords)
+                .FirstOrDefault(term => ReleaseProfileRuleEvaluator.ContainsTerm(input.ReleaseName, term));
+            if (!string.IsNullOrWhiteSpace(matchedIgnored))
+            {
+                Refuse($"Release name contains this indexer's ignored word '{matchedIgnored}'.");
+            }
+        }
+
         var matchedNeverGrab = MatchNeverGrabPattern(input.ReleaseName, input.NeverGrabPatterns);
         if (!string.IsNullOrWhiteSpace(matchedNeverGrab))
         {
@@ -951,6 +974,13 @@ public sealed record ReleaseDecisionInput(
     int? MinimumSeeders = null,
     string? IndexerFlags = null,
     string? PreferIndexerFlags = null,
+    /// <summary>
+    /// Comma-separated, case-insensitive keyword lists that require or
+    /// reject a release from this indexer before it can be grabbed (#744).
+    /// Separate from <see cref="PreferIndexerFlags"/>, which only ranks.
+    /// </summary>
+    string? RequiredWords = null,
+    string? IgnoredWords = null,
     DateTimeOffset? AvailableUtc = null,
     int? AvailabilityDelayDays = null,
     ReleasePreferencePlan? PreferencePlan = null,

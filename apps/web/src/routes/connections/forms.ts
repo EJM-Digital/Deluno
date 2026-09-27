@@ -44,6 +44,10 @@ export interface IndexerForm {
   /** The seeder floor a torrent from this indexer must clear to be grabbed (#738). Blank means unrestricted. */
   minimumSeeders: string;
   preferIndexerFlags: string;
+  /** Comma-separated words a release's title must contain to be grabbed from this indexer (#744). */
+  requiredWords: string;
+  /** Comma-separated words that reject a release from this indexer before grab (#744). */
+  ignoredWords: string;
   availabilityDelayDays: string;
   rssEnabled: boolean;
   automaticSearchEnabled: boolean;
@@ -55,8 +59,8 @@ export interface IndexerForm {
   /** Secrets typed in this session. Blank means keep the saved one: the screen never has it to show. */
   trackerSecrets: Record<string, string>;
 }
-export function emptyIndexerForm(): IndexerForm { return { name: "", protocol: "newznab", scope: "both", baseUrl: "", apiKey: "", apiPath: "", additionalParameters: "", animeCategories: "", priority: "10", requestIntervalSeconds: "", categories: INDEXER_PRESETS.find((preset) => preset.protocol === "newznab")!.defaultCategories("both"), isEnabled: true, sharingRule: "inherit", minimumAgeMinutes: "", retentionDays: "", maximumSizeMb: "", minimumSeeders: "", preferIndexerFlags: "", availabilityDelayDays: "", rssEnabled: true, automaticSearchEnabled: true, interactiveSearchEnabled: true, definitionId: "", trackerSettings: {}, trackerSecrets: {} }; }
-export function indexerFormFrom(item: IndexerItem): IndexerForm { return { name: item.name, protocol: (["tracker", "torznab", "newznab", "rss", "custom"].includes(item.protocol) ? item.protocol : "custom") as IndexerProtocol, scope: item.mediaScope ?? "both", baseUrl: item.baseUrl, apiKey: "", apiPath: item.apiPath ?? "", additionalParameters: item.additionalParameters ?? "", animeCategories: item.animeCategories ?? "", priority: String(item.priority), requestIntervalSeconds: item.requestIntervalSeconds == null ? "" : String(item.requestIntervalSeconds), categories: item.categories, isEnabled: item.isEnabled, sharingRule: sharingRuleFrom(item), minimumAgeMinutes: item.minimumAgeMinutes == null ? "" : String(item.minimumAgeMinutes), retentionDays: item.retentionDays == null ? "" : String(item.retentionDays), maximumSizeMb: item.maximumSizeMb == null ? "" : String(item.maximumSizeMb), minimumSeeders: item.minimumSeeders == null ? "" : String(item.minimumSeeders), preferIndexerFlags: item.preferIndexerFlags ?? "", availabilityDelayDays: item.availabilityDelayDays == null ? "" : String(item.availabilityDelayDays), rssEnabled: item.rssEnabled !== false, automaticSearchEnabled: item.automaticSearchEnabled !== false, interactiveSearchEnabled: item.interactiveSearchEnabled !== false, definitionId: item.definitionId ?? "", trackerSettings: { ...(item.definitionSettings ?? {}) }, trackerSecrets: {} }; }
+export function emptyIndexerForm(): IndexerForm { return { name: "", protocol: "newznab", scope: "both", baseUrl: "", apiKey: "", apiPath: "", additionalParameters: "", animeCategories: "", priority: "10", requestIntervalSeconds: "", categories: INDEXER_PRESETS.find((preset) => preset.protocol === "newznab")!.defaultCategories("both"), isEnabled: true, sharingRule: "inherit", minimumAgeMinutes: "", retentionDays: "", maximumSizeMb: "", minimumSeeders: "", preferIndexerFlags: "", requiredWords: "", ignoredWords: "", availabilityDelayDays: "", rssEnabled: true, automaticSearchEnabled: true, interactiveSearchEnabled: true, definitionId: "", trackerSettings: {}, trackerSecrets: {} }; }
+export function indexerFormFrom(item: IndexerItem): IndexerForm { return { name: item.name, protocol: (["tracker", "torznab", "newznab", "rss", "custom"].includes(item.protocol) ? item.protocol : "custom") as IndexerProtocol, scope: item.mediaScope ?? "both", baseUrl: item.baseUrl, apiKey: "", apiPath: item.apiPath ?? "", additionalParameters: item.additionalParameters ?? "", animeCategories: item.animeCategories ?? "", priority: String(item.priority), requestIntervalSeconds: item.requestIntervalSeconds == null ? "" : String(item.requestIntervalSeconds), categories: item.categories, isEnabled: item.isEnabled, sharingRule: sharingRuleFrom(item), minimumAgeMinutes: item.minimumAgeMinutes == null ? "" : String(item.minimumAgeMinutes), retentionDays: item.retentionDays == null ? "" : String(item.retentionDays), maximumSizeMb: item.maximumSizeMb == null ? "" : String(item.maximumSizeMb), minimumSeeders: item.minimumSeeders == null ? "" : String(item.minimumSeeders), preferIndexerFlags: item.preferIndexerFlags ?? "", requiredWords: item.requiredWords ?? "", ignoredWords: item.ignoredWords ?? "", availabilityDelayDays: item.availabilityDelayDays == null ? "" : String(item.availabilityDelayDays), rssEnabled: item.rssEnabled !== false, automaticSearchEnabled: item.automaticSearchEnabled !== false, interactiveSearchEnabled: item.interactiveSearchEnabled !== false, definitionId: item.definitionId ?? "", trackerSettings: { ...(item.definitionSettings ?? {}) }, trackerSecrets: {} }; }
 export function sameIndexer(a: IndexerForm, b: IndexerForm) { return (Object.keys(a) as (keyof IndexerForm)[]).every((key) => typeof a[key] === "object" ? sameRecord(a[key] as Record<string, string>, b[key] as Record<string, string>) : a[key] === b[key]); }
 /** The same values, ignoring keys that are blank on one side and missing on the other. */
 function sameRecord(a: Record<string, string>, b: Record<string, string>) { return [...new Set([...Object.keys(a), ...Object.keys(b)])].every((key) => (a[key] ?? "") === (b[key] ?? "")); }
@@ -102,6 +106,8 @@ export function indexerFormErrors(form: IndexerForm, creating: boolean): Record<
     if (value.trim() && (!/^\d+$/.test(value.trim()) || Number(value) < 0)) errors[key] = `${label} must be a non-negative whole number.`;
   }
   if (form.preferIndexerFlags.length > 500) errors.preferIndexerFlags = "Preferred flags must be 500 characters or fewer.";
+  if (form.requiredWords.length > 500) errors.requiredWords = "Required words must be 500 characters or fewer.";
+  if (form.ignoredWords.length > 500) errors.ignoredWords = "Ignored words must be 500 characters or fewer.";
   return errors;
 }
 

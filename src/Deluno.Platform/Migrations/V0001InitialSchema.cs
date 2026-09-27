@@ -90,7 +90,9 @@ public static class PlatformDatabaseMigrations
         new V0082DownloadClientTags(),
         new V0083MediaServerRefreshBacklog(),
         new V0084RenameFoldersOnImportDefaultsExisting(),
-        new V0083IndexerMinimumSeeders()
+        new V0083IndexerMinimumSeeders(),
+        new V0083IndexerMinimumSeeders(),
+        new V0084IndexerRequiredIgnoredWords()
     ];
 
     private sealed class V0001InitialSchema : SqliteSqlMigration

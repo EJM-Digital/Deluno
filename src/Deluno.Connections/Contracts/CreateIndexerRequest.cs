@@ -31,6 +31,10 @@ public sealed record CreateIndexerRequest(
     // (#738). Null means unrestricted.
     int? MinimumSeeders = null,
     string? PreferIndexerFlags = null,
+    // Comma-separated, case-insensitive keyword lists that reject a release
+    // before grab (#744), separate from PreferIndexerFlags' ranking nudge.
+    string? RequiredWords = null,
+    string? IgnoredWords = null,
     int? AvailabilityDelayDays = null,
     bool RssEnabled = true,
     bool AutomaticSearchEnabled = true,

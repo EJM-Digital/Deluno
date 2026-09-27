@@ -737,6 +737,10 @@ export interface IndexerItem {
   /** The seeder floor a torrent from this indexer must clear to be grabbed (#738). Null means unrestricted. */
   minimumSeeders?: number | null;
   preferIndexerFlags?: string | null;
+  /** Comma-separated, case-insensitive words a release's title must contain to be grabbed from this indexer (#744). */
+  requiredWords?: string | null;
+  /** Comma-separated, case-insensitive words that reject a release from this indexer before grab (#744). */
+  ignoredWords?: string | null;
   availabilityDelayDays?: number | null;
   rssEnabled?: boolean;
   automaticSearchEnabled?: boolean;

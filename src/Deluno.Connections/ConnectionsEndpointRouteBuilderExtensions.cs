@@ -140,6 +140,8 @@ public static class ConnectionsEndpointRouteBuilderExtensions
                 MaximumSizeMb = request.MaximumSizeMb,
                 MinimumSeeders = request.MinimumSeeders,
                 PreferIndexerFlags = request.PreferIndexerFlags,
+                RequiredWords = request.RequiredWords,
+                IgnoredWords = request.IgnoredWords,
                 AvailabilityDelayDays = request.AvailabilityDelayDays,
                 RssEnabled = request.RssEnabled,
                 AutomaticSearchEnabled = request.AutomaticSearchEnabled,
@@ -763,7 +765,9 @@ public static class ConnectionsEndpointRouteBuilderExtensions
             request.MaximumSizeMb,
             request.PreferIndexerFlags,
             request.AvailabilityDelayDays,
-            request.MinimumSeeders);
+            request.MinimumSeeders,
+            request.RequiredWords,
+            request.IgnoredWords);
 
         return errors;
     }
@@ -801,6 +805,16 @@ public static class ConnectionsEndpointRouteBuilderExtensions
         {
             errors["preferIndexerFlags"] = ["Indexer flags must be 500 characters or fewer."];
         }
+
+        if (request.ClearRequiredWords != true && request.RequiredWords is { Length: > 500 })
+        {
+            errors["requiredWords"] = ["Required words must be 500 characters or fewer."];
+        }
+
+        if (request.ClearIgnoredWords != true && request.IgnoredWords is { Length: > 500 })
+        {
+            errors["ignoredWords"] = ["Ignored words must be 500 characters or fewer."];
+        }
         return errors;
     }
 
@@ -811,7 +825,9 @@ public static class ConnectionsEndpointRouteBuilderExtensions
         int? maximumSizeMb,
         string? preferIndexerFlags,
         int? availabilityDelayDays,
-        int? minimumSeeders = null)
+        int? minimumSeeders = null,
+        string? requiredWords = null,
+        string? ignoredWords = null)
     {
         AddNonNegativeError(errors, "minimumAgeMinutes", minimumAgeMinutes, "Minimum age cannot be negative.");
         AddNonNegativeError(errors, "retentionDays", retentionDays, "Retention cannot be negative.");
@@ -821,6 +837,16 @@ public static class ConnectionsEndpointRouteBuilderExtensions
         if (preferIndexerFlags is { Length: > 500 })
         {
             errors["preferIndexerFlags"] = ["Indexer flags must be 500 characters or fewer."];
+        }
+
+        if (requiredWords is { Length: > 500 })
+        {
+            errors["requiredWords"] = ["Required words must be 500 characters or fewer."];
+        }
+
+        if (ignoredWords is { Length: > 500 })
+        {
+            errors["ignoredWords"] = ["Ignored words must be 500 characters or fewer."];
         }
     }
 

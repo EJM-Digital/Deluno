@@ -26,7 +26,9 @@ public sealed class ReleaseDecisionEngineTests
         int? maximumSizeMb = null,
         int? minimumSeeders = null,
         string? indexerFlags = null,
-        string? preferIndexerFlags = null)
+        string? preferIndexerFlags = null,
+        string? requiredWords = null,
+        string? ignoredWords = null)
         => new(
             ReleaseName: releaseName,
             Quality: quality,
@@ -48,7 +50,9 @@ public sealed class ReleaseDecisionEngineTests
             MaximumSizeMb: maximumSizeMb,
             MinimumSeeders: minimumSeeders,
             IndexerFlags: indexerFlags,
-            PreferIndexerFlags: preferIndexerFlags);
+            PreferIndexerFlags: preferIndexerFlags,
+            RequiredWords: requiredWords,
+            IgnoredWords: ignoredWords);
 
     // ── Allowed qualities (#283) ──────────────────────────────────────────
 
@@ -419,6 +423,49 @@ public sealed class ReleaseDecisionEngineTests
     public void Decide_ignores_minimum_seeders_for_a_usenet_indexer()
     {
         var decision = ReleaseDecisionEngine.Decide(GoodInput(seeders: null, minimumSeeders: 5, indexerProtocol: "newznab"));
+
+        Assert.NotEqual("rejected", decision.Status);
+    }
+
+    // ── Required/Ignored words (#744) ───────────────────────────────────────
+
+    [Fact]
+    public void Decide_rejects_a_release_matching_an_ignored_word()
+    {
+        var decision = ReleaseDecisionEngine.Decide(GoodInput(
+            releaseName: "Movie.2024.1080p.WEB-DL.KORSUB.DDP5.1-GRP",
+            ignoredWords: "korsub, cam"));
+
+        Assert.Equal("rejected", decision.Status);
+        Assert.Contains(decision.RiskFlags, r => r.Contains("ignored word 'korsub'", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void Decide_rejects_a_release_missing_a_required_word()
+    {
+        var decision = ReleaseDecisionEngine.Decide(GoodInput(
+            releaseName: "Movie.2024.1080p.WEB-DL.DDP5.1-GRP",
+            requiredWords: "remux"));
+
+        Assert.Equal("rejected", decision.Status);
+        Assert.Contains(decision.RiskFlags, r => r.Contains("required word 'remux'", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void Decide_passes_through_when_required_and_ignored_words_are_empty()
+    {
+        var decision = ReleaseDecisionEngine.Decide(GoodInput(requiredWords: null, ignoredWords: null));
+
+        Assert.NotEqual("rejected", decision.Status);
+    }
+
+    [Fact]
+    public void Decide_accepts_a_release_that_has_a_required_word_and_avoids_ignored_words()
+    {
+        var decision = ReleaseDecisionEngine.Decide(GoodInput(
+            releaseName: "Movie.2024.1080p.WEB-DL.REMUX.DDP5.1-GRP",
+            requiredWords: "remux",
+            ignoredWords: "cam, korsub"));
 
         Assert.NotEqual("rejected", decision.Status);
     }
