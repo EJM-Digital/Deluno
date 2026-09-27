@@ -509,18 +509,20 @@ public sealed class SqlitePlatformSettingsRepository(
             DownloadHealthStrikeThreshold: ReadDownloadHealthStrikeThreshold(settings),
             CleanupBlockReleaseAfterThreshold: !string.Equals(GetValue(settings, "cleanup.blockReleaseAfterThreshold"), "false", StringComparison.OrdinalIgnoreCase),
             CleanupQueueReplacementAfterThreshold: !string.Equals(GetValue(settings, "cleanup.queueReplacementAfterThreshold"), "false", StringComparison.OrdinalIgnoreCase),
-            // #936 reverses #904's "on by default": a brand-new install reads
-            // a missing key as off, same reasoning as RenameOnImport above.
-            // An install that already existed keeps reading "on" because
-            // V0071AutomationDefaultsOff froze an explicit "true" for it.
+            // #904's "default on" change (commit 2e9f2125) never shipped in a
+            // release: v1.0.0-rc.22 already read a missing key here as off
+            // (this same "true" comparison), so #936 does not need to change
+            // this line or freeze anything for it — a missing value has
+            // always read as off in every release anyone has actually run.
             CleanupRemoveClientEntryAfterThreshold: string.Equals(GetValue(settings, "cleanup.removeClientEntryAfterThreshold"), "true", StringComparison.OrdinalIgnoreCase),
             SharingMode: SharingPolicy.NormalizeMode(GetValue(settings, "sharing.mode")),
             SharingForHours: ReadOptionalInt(GetValue(settings, "sharing.forHours"), SharingPolicy.Default.ForHours),
             SharingUntilRatio: ReadOptionalDouble(GetValue(settings, "sharing.untilRatio")),
             SharingStuckAction: SharingPolicy.NormalizeStuckAction(GetValue(settings, "sharing.stuckAction")),
             SharingStuckAfterDays: ReadOptionalInt(GetValue(settings, "sharing.stuckAfterDays"), SharingPolicy.Default.StuckAfterDays) ?? SharingPolicy.Default.StuckAfterDays,
-            // #936 reverses #904's "on by default", same reasoning as
-            // CleanupRemoveClientEntryAfterThreshold above.
+            // Same reasoning as CleanupRemoveClientEntryAfterThreshold above:
+            // #904's "default on" never shipped, so this line and a missing
+            // value's meaning are unchanged by #936.
             CleanupPurgePayloadAfterThreshold: string.Equals(GetValue(settings, "cleanup.purgePayloadAfterThreshold"), "true", StringComparison.OrdinalIgnoreCase),
             WorkflowVerified: string.Equals(GetValue(settings, "setup.workflowVerified"), "true", StringComparison.OrdinalIgnoreCase),
             UiColorMode: NormalizeUiColorMode(GetValue(settings, "ui.colorMode")),
