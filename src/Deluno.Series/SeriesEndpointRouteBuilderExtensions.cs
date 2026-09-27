@@ -8,6 +8,7 @@ using Deluno.Intake.Contracts;
 using Deluno.Intake.Data;
 using Deluno.Integrations.DownloadClients;
 using Deluno.Integrations.Search;
+using Deluno.Integrations.Subtitles;
 using Deluno.Integrations.Metadata;
 using Deluno.Libraries.Contracts;
 using Deluno.Libraries.Data;
@@ -2346,6 +2347,233 @@ public static class SeriesEndpointRouteBuilderExtensions
             return Results.Ok(new { message = "This show now follows its library's subtitle languages again." });
         });
 
+        /*
+          #841: the movies twins, for one episode - every ranked candidate
+          from every provider (manual search), picking one, blacklisting one
+          never downloaded, and a person's own upload. The show and episode
+          number come from the series inventory rather than a field on the
+          episode row itself, the same way LibrarySubtitleSearchJobHandler
+          reads them off ListWantedAsync's own item.
+        */
+        series.MapGet("/episodes/{episodeId}/subtitles/{language}/candidates", async (
+            HttpContext httpContext,
+            string episodeId,
+            string language,
+            ISeriesCatalogRepository repository,
+            ILibrariesRepository librariesRepository,
+            IMediaSubtitleRepository subtitles,
+            ISubtitleFetchService fetchService,
+            CancellationToken cancellationToken) =>
+        {
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
+            if (denied is not null)
+            {
+                return denied;
+            }
+
+            var context = await ResolveEpisodeSearchContextAsync(repository, episodeId, cancellationToken);
+            if (context is null)
+            {
+                return Results.NotFound();
+            }
+
+            var libraries = await librariesRepository.ListLibrariesAsync(cancellationToken);
+            var library = libraries.FirstOrDefault(item => item.Id == context.Show.LibraryId);
+            var blockedKeys = await subtitles.ListBlockedKeysAsync(MediaKind.Series, episodeId, cancellationToken);
+
+            var request = new SubtitleSearchRequest(
+                context.Show.Title, context.Show.StartYear, context.Episode.SeasonNumber, context.Episode.EpisodeNumber,
+                context.Episode.Title, context.Show.ReleaseGroup, context.Show.ImdbId, [language], IsEpisode: true);
+            var candidates = await fetchService.SearchCandidatesAsync(
+                request, language, isEpisodeMedia: true, context.FilePath, excludeHearingImpaired: false,
+                cancellationToken, library?.SubtitleNamePolicy, blockedKeys);
+
+            return Results.Ok(candidates);
+        });
+
+        series.MapPost("/episodes/{episodeId}/subtitles/{language}/candidates/pick", async (
+            HttpContext httpContext,
+            string episodeId,
+            string language,
+            [FromBody] PickSubtitleCandidateRequest request,
+            ISeriesCatalogRepository repository,
+            ILibrariesRepository librariesRepository,
+            IMediaSubtitleRepository subtitles,
+            ISubtitleFetchService fetchService,
+            IRealtimeEventPublisher realtimeEventPublisher,
+            CancellationToken cancellationToken) =>
+        {
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
+            if (denied is not null)
+            {
+                return denied;
+            }
+
+            var context = await ResolveEpisodeSearchContextAsync(repository, episodeId, cancellationToken);
+            if (context is null || string.IsNullOrWhiteSpace(context.FilePath))
+            {
+                return Results.NotFound();
+            }
+
+            if (string.IsNullOrWhiteSpace(request.ProviderKey) || string.IsNullOrWhiteSpace(request.DownloadToken))
+            {
+                return Results.ValidationProblem(new Dictionary<string, string[]>
+                {
+                    ["providerKey"] = ["Choose a candidate from the search results first."]
+                });
+            }
+
+            var libraries = await librariesRepository.ListLibrariesAsync(cancellationToken);
+            var library = libraries.FirstOrDefault(item => item.Id == context.Show.LibraryId);
+            var searchRequest = new SubtitleSearchRequest(
+                context.Show.Title, context.Show.StartYear, context.Episode.SeasonNumber, context.Episode.EpisodeNumber,
+                context.Episode.Title, context.Show.ReleaseGroup, context.Show.ImdbId, [language], IsEpisode: true);
+
+            var outcome = await fetchService.DownloadCandidateAsync(
+                searchRequest, request.ProviderKey, request.DownloadToken, language, isEpisodeMedia: true,
+                context.FilePath, cancellationToken, library?.SubtitleContentPolicy, library?.SubtitleNamePolicy,
+                library?.SubtitleOmitLanguageCode ?? false);
+
+            if (!outcome.Found || outcome.WrittenPath is null)
+            {
+                return Results.UnprocessableEntity(new { message = outcome.Reason });
+            }
+
+            await subtitles.RecordFetchedAsync(
+                MediaKind.Series, episodeId,
+                new MediaSubtitleRow(
+                    Language: language,
+                    Source: "manual",
+                    Forced: false,
+                    HearingImpaired: outcome.HearingImpaired,
+                    FilePath: outcome.WrittenPath,
+                    StreamIndex: null,
+                    Codec: "srt",
+                    Provider: outcome.ProviderKey,
+                    MatchRung: (int)outcome.Match,
+                    SourceKey: outcome.SourceKey),
+                cancellationToken);
+
+            await realtimeEventPublisher.PublishEntityChangedAsync("Episode", episodeId, cancellationToken);
+
+            return Results.Ok(new { written = true, message = outcome.Reason });
+        });
+
+        series.MapPost("/episodes/{episodeId}/subtitles/{language}/blacklist", async (
+            HttpContext httpContext,
+            string episodeId,
+            string language,
+            [FromBody] BlacklistSubtitleCandidateRequest request,
+            ISeriesCatalogRepository repository,
+            IMediaSubtitleRepository subtitles,
+            CancellationToken cancellationToken) =>
+        {
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
+            if (denied is not null)
+            {
+                return denied;
+            }
+
+            if (await repository.GetEpisodeSeriesIdAsync(episodeId, cancellationToken) is null)
+            {
+                return Results.NotFound();
+            }
+
+            if (string.IsNullOrWhiteSpace(request.ProviderKey) || string.IsNullOrWhiteSpace(request.DownloadToken))
+            {
+                return Results.ValidationProblem(new Dictionary<string, string[]>
+                {
+                    ["providerKey"] = ["Choose a candidate from the search results first."]
+                });
+            }
+
+            var blockKey = SubtitleBlockKeys.For(request.ProviderKey, request.DownloadToken);
+            var reason = string.IsNullOrWhiteSpace(request.Reason) ? "You blacklisted this candidate." : request.Reason;
+            await subtitles.BlockSubtitleAsync(
+                MediaKind.Series, episodeId, language, blockKey, request.ProviderKey, request.ReleaseName, reason, cancellationToken);
+
+            return Results.Ok(new { blacklisted = true });
+        });
+
+        series.MapPost("/episodes/{episodeId}/subtitles/{language}/upload", async (
+            HttpContext httpContext,
+            string episodeId,
+            string language,
+            IFormFile file,
+            ISeriesCatalogRepository repository,
+            ILibrariesRepository librariesRepository,
+            IMediaSubtitleRepository subtitles,
+            ISubtitleFileWriter fileWriter,
+            IRealtimeEventPublisher realtimeEventPublisher,
+            CancellationToken cancellationToken) =>
+        {
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
+            if (denied is not null)
+            {
+                return denied;
+            }
+
+            var context = await ResolveEpisodeSearchContextAsync(repository, episodeId, cancellationToken);
+            if (context is null || string.IsNullOrWhiteSpace(context.FilePath))
+            {
+                return Results.NotFound();
+            }
+
+            if (file.Length == 0)
+            {
+                return Results.ValidationProblem(new Dictionary<string, string[]>
+                {
+                    ["file"] = ["Choose a .srt or .ass file to upload."]
+                });
+            }
+
+            byte[] uploaded;
+            await using (var stream = file.OpenReadStream())
+            await using (var buffer = new MemoryStream())
+            {
+                await stream.CopyToAsync(buffer, cancellationToken);
+                uploaded = buffer.ToArray();
+            }
+
+            if (!SubtitleArchive.LooksLikeSubtitle(uploaded))
+            {
+                return Results.ValidationProblem(new Dictionary<string, string[]>
+                {
+                    ["file"] = ["That file does not look like a subtitle."]
+                });
+            }
+
+            var libraries = await librariesRepository.ListLibrariesAsync(cancellationToken);
+            var library = libraries.FirstOrDefault(item => item.Id == context.Show.LibraryId);
+            var modification = SubtitleContentModifier.Apply(uploaded, library?.SubtitleContentPolicy);
+            var written = await fileWriter.WriteAsync(
+                context.FilePath, language, hearingImpaired: false, modification.Content, cancellationToken,
+                library?.SubtitleOmitLanguageCode ?? false);
+
+            await subtitles.RecordFetchedAsync(
+                MediaKind.Series, episodeId,
+                new MediaSubtitleRow(
+                    Language: language,
+                    Source: "uploaded",
+                    Forced: false,
+                    HearingImpaired: false,
+                    FilePath: written,
+                    StreamIndex: null,
+                    Codec: "srt",
+                    Provider: null,
+                    MatchRung: (int)SubtitleCutoff.Rung),
+                cancellationToken);
+
+            await realtimeEventPublisher.PublishEntityChangedAsync("Episode", episodeId, cancellationToken);
+
+            return Results.Ok(new
+            {
+                written = true,
+                appliedModifications = modification.AppliedRules,
+                message = $"Your {language} subtitle was written and is now held for this episode."
+            });
+        }).DisableAntiforgery();
+
         series.MapPost("/bulk/quality-profile", async (
             HttpContext httpContext,
             [FromBody] BulkQualityProfileRequest request,
@@ -3770,6 +3998,45 @@ public static class SeriesEndpointRouteBuilderExtensions
     private sealed record BulkSubtitleRescanRequest(IReadOnlyList<string>? SeriesIds);
 
     private sealed record SetSubtitleLanguageOverrideRequest(IReadOnlyList<string>? Languages, string? Mode);
+
+    private sealed record PickSubtitleCandidateRequest(string? ProviderKey, string? DownloadToken);
+
+    private sealed record BlacklistSubtitleCandidateRequest(string? ProviderKey, string? DownloadToken, string? ReleaseName, string? Reason);
+
+    /// <summary>
+    /// Everything a subtitle search for one episode needs and a path alone
+    /// cannot say — the show it belongs to, for its title/year/release group/
+    /// imdb id, and the season/episode number and episode title, read off the
+    /// series inventory the same way <c>LibrarySubtitleSearchJobHandler</c>
+    /// reads them off <c>ListWantedAsync</c>'s own item (#841).
+    /// </summary>
+    private sealed record EpisodeSearchContext(SeriesListItem Show, SeriesEpisodeInventoryItem Episode, string? FilePath);
+
+    private static async Task<EpisodeSearchContext?> ResolveEpisodeSearchContextAsync(
+        ISeriesCatalogRepository repository, string episodeId, CancellationToken cancellationToken)
+    {
+        var seriesId = await repository.GetEpisodeSeriesIdAsync(episodeId, cancellationToken);
+        if (seriesId is null)
+        {
+            return null;
+        }
+
+        var show = await repository.GetByIdAsync(seriesId, cancellationToken);
+        if (show is null)
+        {
+            return null;
+        }
+
+        var inventory = await repository.GetInventoryDetailAsync(seriesId, cancellationToken);
+        var episode = inventory?.Episodes.FirstOrDefault(item => item.EpisodeId == episodeId);
+        if (episode is null)
+        {
+            return null;
+        }
+
+        var filePath = await repository.GetEpisodeFilePathAsync(episodeId, cancellationToken);
+        return new EpisodeSearchContext(show, episode, filePath);
+    }
 
     private sealed record BulkQualityProfileRequest(
         IReadOnlyList<string>? SeriesIds,
