@@ -1,0 +1,71 @@
+import { useEffect, useRef, useState } from "react";
+import { WifiOff } from "lucide-react";
+import { fetchJson } from "../../lib/api";
+
+export type ConnectivityStatus = {
+  isOutage: boolean;
+  sinceUtc: string | null;
+  checkedUtc: string;
+  checkedHosts: string[];
+  message: string;
+};
+
+const POLL_INTERVAL_MS = 15_000;
+
+function formatSince(sinceUtc: string | null): string {
+  if (!sinceUtc) return "";
+  const date = new Date(sinceUtc);
+  if (Number.isNaN(date.getTime())) return "";
+  return date.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
+}
+
+/**
+ * One app-wide strip while the internet is down (#901): cleanup and searching
+ * pause everywhere Deluno would otherwise judge a download, and this is the
+ * one place that says so. It clears itself the moment the next poll finds the
+ * connection back — nothing to dismiss, because there is nothing left to say
+ * once it is gone.
+ */
+export function OutageBanner() {
+  const [status, setStatus] = useState<ConnectivityStatus | null>(null);
+  const active = useRef(true);
+
+  useEffect(() => {
+    active.current = true;
+
+    async function poll() {
+      try {
+        const next = await fetchJson<ConnectivityStatus>("/api/system/connectivity");
+        if (active.current) setStatus(next);
+      } catch {
+        // A failed poll says nothing about connectivity; the banner just
+        // keeps whatever it last knew until the next successful check.
+      }
+    }
+
+    void poll();
+    const timer = window.setInterval(() => void poll(), POLL_INTERVAL_MS);
+    return () => {
+      active.current = false;
+      window.clearInterval(timer);
+    };
+  }, []);
+
+  if (!status || !status.isOutage) {
+    return null;
+  }
+
+  const since = formatSince(status.sinceUtc);
+
+  return (
+    <div
+      role="status"
+      className="flex items-center justify-center gap-2 border-b border-warning/40 bg-warning/15 px-4 py-2 text-center text-[length:var(--type-body-sm)] font-medium text-warning-foreground"
+    >
+      <WifiOff className="h-4 w-4 shrink-0" aria-hidden />
+      <span>
+        {since ? `Internet down since ${since}` : "Internet down"} — cleanup and searching paused until it&apos;s back.
+      </span>
+    </div>
+  );
+}
