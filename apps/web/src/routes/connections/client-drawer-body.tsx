@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Loader2, Plus, Trash2 } from "lucide-react";
-import { fetchJson, type DownloadClientItem, type DownloadClientPathMappingItem, type TagItem } from "../../lib/api";
+import { fetchJson, type DownloadClientItem, type DownloadClientPathMappingItem, type SharingRuleItem, type TagItem } from "../../lib/api";
 import { Button } from "../../components/ui/button";
 import { Chip } from "../../components/ui/chip";
 import { Disclosure } from "../../components/ui/disclosure";
@@ -249,6 +249,8 @@ export function ClientDrawerBody({
         </Disclosure>
       ) : null}
 
+      {editing ? <SharingRulesEditor tagOptions={tagOptions} /> : null}
+
       {editing && chip ? (
         <DrawerSection title="Health">
           <dl className="grid grid-cols-[120px_1fr] items-center gap-x-[var(--grid-gap)] gap-y-2 text-[length:var(--type-body-sm)]">
@@ -275,5 +277,144 @@ export function ClientDrawerBody({
         </DrawerSection>
       ) : null}
     </>
+  );
+}
+
+/**
+ * The seeding-rule matrix (#820): exceptions to the global sharing rule,
+ * scoped by category, tracker domain, or tag, each with its own Min Seeders
+ * and Max Inactive Days guards. Shared across every download client — like
+ * the sharing rule itself, a rule here is not about which client a download
+ * landed in, so it is one list rather than one per client.
+ */
+function SharingRulesEditor({ tagOptions }: { tagOptions: string[] }) {
+  const [open, setOpen] = useState(false);
+  const [rules, setRules] = useState<SharingRuleItem[]>([]);
+  const [loaded, setLoaded] = useState(false);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [draft, setDraft] = useState({ category: "", tracker: "", tags: "", minSeeders: "", maxInactiveDays: "" });
+
+  useEffect(() => {
+    if (!open || loaded) return;
+    let cancelled = false;
+    void fetchJson<SharingRuleItem[]>("/api/sharing-rules")
+      .then((items) => { if (!cancelled) { setRules(items); setLoaded(true); } })
+      .catch(() => { if (!cancelled) setError("Deluno could not load the seeding-rule matrix."); });
+    return () => { cancelled = true; };
+  }, [open, loaded]);
+
+  const sorted = [...rules].sort((a, b) => a.priority - b.priority);
+
+  async function addRule() {
+    if (!draft.category.trim() && !draft.tracker.trim() && !draft.tags.trim()) {
+      setError("Match this rule against a category, a tracker, or a tag.");
+      return;
+    }
+    setBusy("add");
+    setError(null);
+    try {
+      const nextPriority = sorted.length ? Math.max(...sorted.map((rule) => rule.priority)) + 1 : 1;
+      const created = await fetchJson<SharingRuleItem>("/api/sharing-rules", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          priority: nextPriority,
+          categoryPattern: draft.category.trim() || null,
+          trackerPattern: draft.tracker.trim() || null,
+          tagsCsv: draft.tags.trim() || null,
+          minSeeders: draft.minSeeders.trim() ? Number(draft.minSeeders) : null,
+          maxInactiveDays: draft.maxInactiveDays.trim() ? Number(draft.maxInactiveDays) : null,
+          isEnabled: true
+        })
+      });
+      setRules((current) => [...current, created]);
+      setDraft({ category: "", tracker: "", tags: "", minSeeders: "", maxInactiveDays: "" });
+    } catch {
+      setError("This rule could not be saved.");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function removeRule(id: string) {
+    setBusy(`remove:${id}`);
+    setError(null);
+    try {
+      await fetchJson(`/api/sharing-rules/${id}`, { method: "DELETE" });
+      setRules((current) => current.filter((rule) => rule.id !== id));
+    } catch {
+      setError("This rule could not be removed.");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  function describeRule(rule: SharingRuleItem): string {
+    const scope = [
+      rule.categoryPattern ? `category ${rule.categoryPattern}` : null,
+      rule.trackerPattern ? `tracker ${rule.trackerPattern}` : null,
+      rule.tagsCsv ? `tags ${rule.tagsCsv}` : null
+    ].filter(Boolean).join(", ");
+    const guards = [
+      rule.minSeeders ? `hold below ${rule.minSeeders} seeders` : null,
+      rule.maxInactiveDays ? `hold past ${rule.maxInactiveDays} inactive days` : null
+    ].filter(Boolean).join(" · ");
+    return [scope, guards].filter(Boolean).join(" — ") || "Matches nothing yet";
+  }
+
+  return (
+    <Disclosure
+      title="Seeding rules"
+      summary={loaded && rules.length ? `${rules.length} ${rules.length === 1 ? "rule" : "rules"}` : "Exceptions to the sharing rule, by category, tracker, or tag"}
+      open={open}
+      onOpenChange={setOpen}
+    >
+      <p className="text-[length:var(--type-caption)] text-muted-foreground">
+        Hold specific downloads to a different seed target, or refuse to reclaim them below a minimum seeder count or past a run of inactivity — evaluated in priority order, before Deluno&apos;s normal sharing rule.
+      </p>
+      {error ? <p className="text-[length:var(--type-caption)] text-destructive">{error}</p> : null}
+      {sorted.length ? (
+        <div className="grid gap-2">
+          {sorted.map((rule) => (
+            <div key={rule.id} className="flex min-h-10 items-center gap-2 rounded-[10px] border border-hairline px-[var(--field-pad-x)] text-[length:var(--type-caption)]">
+              <span className="text-muted-foreground">{rule.priority}.</span>
+              <span className="min-w-0 flex-1 truncate text-foreground" title={describeRule(rule)}>{describeRule(rule)}</span>
+              <Button type="button" variant="ghost" size="icon" className="h-7 w-7" aria-label={`Remove seeding rule ${rule.priority}`} onClick={() => removeRule(rule.id)} disabled={busy !== null}>
+                {busy === `remove:${rule.id}` ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
+              </Button>
+            </div>
+          ))}
+        </div>
+      ) : null}
+      <FieldRow>
+        <Field label="Category" optional>
+          <Input value={draft.category} onChange={(event) => setDraft((current) => ({ ...current, category: event.target.value }))} placeholder="tv-anime" autoComplete="off" />
+        </Field>
+        <Field label="Tracker domain" optional help="example.com or *.example.com for its subdomains">
+          <Input value={draft.tracker} onChange={(event) => setDraft((current) => ({ ...current, tracker: event.target.value }))} placeholder="*.example.com" autoComplete="off" />
+        </Field>
+      </FieldRow>
+      <FieldRow>
+        <Field label="Tags" optional>
+          <Input value={draft.tags} onChange={(event) => setDraft((current) => ({ ...current, tags: event.target.value }))} list="sharing-rule-tag-options" placeholder="Comma-separated" autoComplete="off" />
+          <datalist id="sharing-rule-tag-options">
+            {tagOptions.map((tag) => <option key={tag} value={tag} />)}
+          </datalist>
+        </Field>
+      </FieldRow>
+      <FieldRow>
+        <Field label="Min seeders" optional help="Hold this download rather than reclaim it while fewer than this many peers are seeding it">
+          <Input type="number" min={0} value={draft.minSeeders} onChange={(event) => setDraft((current) => ({ ...current, minSeeders: event.target.value }))} placeholder="e.g. 5" />
+        </Field>
+        <Field label="Max inactive days" optional help="Hold this download once it has gone this many days with no upload or download activity">
+          <Input type="number" min={0} value={draft.maxInactiveDays} onChange={(event) => setDraft((current) => ({ ...current, maxInactiveDays: event.target.value }))} placeholder="e.g. 10" />
+        </Field>
+      </FieldRow>
+      <Button type="button" variant="outline" size="sm" className="w-max" onClick={addRule} disabled={busy !== null}>
+        {busy === "add" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />}
+        Add rule
+      </Button>
+    </Disclosure>
   );
 }
