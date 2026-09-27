@@ -958,6 +958,9 @@ export interface NotificationPreferences {
   renameEnabled: boolean;
   fileDeletedEnabled: boolean;
   manualInteractionRequiredEnabled: boolean;
+  grabEnabled: boolean;
+  addedEnabled: boolean;
+  updateEnabled: boolean;
   inAppNotificationsEnabled: boolean;
   emailNotificationsEnabled: boolean;
   webhookNotificationsEnabled: boolean;

@@ -63,6 +63,26 @@ const SUBTITLE_PREFERENCE_ROWS: Array<{
   { key: "subtitleFailedEnabled", name: "Subtitle search failed", description: "A wanted language could not be found after trying every provider." }
 ];
 
+/**
+ * Every lifecycle trigger beyond import-failed (#856). None of these had a
+ * screen before this — including the four (Upgrade, Rename, File delete,
+ * Manual interaction) already implemented and gated in the backend. Each
+ * defaults off, matching today's behaviour, so nothing new fires unannounced.
+ */
+const LIFECYCLE_PREFERENCE_ROWS: Array<{
+  key: keyof NotificationPreferences;
+  name: string;
+  description: string;
+}> = [
+  { key: "grabEnabled", name: "Grab", description: "A release was sent to a download client." },
+  { key: "addedEnabled", name: "Title added", description: "A movie or show was added to the library." },
+  { key: "upgradeEnabled", name: "Upgrade", description: "A better release replaced a file already held." },
+  { key: "renameEnabled", name: "Rename", description: "A file was renamed to match the naming settings." },
+  { key: "fileDeletedEnabled", name: "File delete", description: "A file was removed, including one replaced by an upgrade." },
+  { key: "manualInteractionRequiredEnabled", name: "Manual interaction required", description: "An import failed in a way only a person can resolve." },
+  { key: "providerHealthChangedEnabled", name: "Provider health changed", description: "An indexer, download client, media server, or processor became unhealthy or recovered." }
+];
+
 interface WebhookForm {
   name: string;
   url: string;
@@ -295,6 +315,26 @@ export function SettingsNotificationsPage() {
               <Switch size="sm" aria-label="Send notifications" checked={settings.enableNotifications} disabled={busy === "global"} onCheckedChange={(checked) => void toggleGlobal(checked)} />
             </ListCell>
           </ListRow>
+        </ListTable>
+      </ListCard>
+
+      <ListCard title="Lifecycle notifications" count="Independently toggleable · off by default so nothing new fires unannounced">
+        <ListTable columns={[{ label: "Event" }, { label: "Fires when" }, { label: "On", width: LIST_TRACK.toggle, mobile: true }]} chevron={false}>
+          {LIFECYCLE_PREFERENCE_ROWS.map((row) => (
+            <ListRow key={row.key}>
+              <ListNameCell name={row.name} />
+              <ListCell primary={row.description} />
+              <ListCell mobile>
+                <Switch
+                  size="sm"
+                  aria-label={row.name}
+                  checked={Boolean(preferences[row.key])}
+                  disabled={busyPreference === row.key}
+                  onCheckedChange={(checked) => void togglePreference(row.key, checked)}
+                />
+              </ListCell>
+            </ListRow>
+          ))}
         </ListTable>
       </ListCard>
 

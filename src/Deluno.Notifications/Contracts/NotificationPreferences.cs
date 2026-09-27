@@ -32,6 +32,9 @@ public class NotificationPreferences
     public bool RenameEnabled { get; set; } = false;
     public bool FileDeletedEnabled { get; set; } = false;
     public bool ManualInteractionRequiredEnabled { get; set; } = false;
+    public bool GrabEnabled { get; set; } = false;
+    public bool AddedEnabled { get; set; } = false;
+    public bool UpdateEnabled { get; set; } = false;
 
     // Delivery methods
     public bool InAppNotificationsEnabled { get; set; } = true;

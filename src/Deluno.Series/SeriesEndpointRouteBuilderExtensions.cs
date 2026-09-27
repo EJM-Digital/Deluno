@@ -12,6 +12,7 @@ using Deluno.Integrations.Metadata;
 using Deluno.Libraries.Contracts;
 using Deluno.Libraries.Data;
 using Deluno.Media;
+using Deluno.Notifications;
 using Deluno.Platform.Data;
 using Deluno.Platform.Contracts;
 using Deluno.Platform;
@@ -2597,6 +2598,8 @@ public static class SeriesEndpointRouteBuilderExtensions
             IJobScheduler jobScheduler,
             IRealtimeEventPublisher realtimeEventPublisher,
             IMediaStateRepository mediaState,
+            IOutboundNotificationService notificationService,
+            INotificationService notificationPreferences,
             CancellationToken cancellationToken) =>
         {
             var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
@@ -2618,6 +2621,7 @@ public static class SeriesEndpointRouteBuilderExtensions
                 return Results.ValidationProblem(new Dictionary<string, string[]> { ["libraryId"] = ["Choose one of your TV libraries."] });
             }
 
+            var requestStartedUtc = DateTimeOffset.UtcNow;
             var item = await repository.AddAsync(request, cancellationToken);
             // Only the library the person chose, or the one it is already in (#530).
             var already = (await mediaState.ListWantedByIdsAsync(MediaKind.Series, [item.Id], cancellationToken))
@@ -2716,6 +2720,22 @@ public static class SeriesEndpointRouteBuilderExtensions
                     RelatedEntityId: item.Id),
                 cancellationToken);
             await realtimeEventPublisher.PublishEntityChangedAsync("Series", item.Id, cancellationToken);
+
+            // On Title Added (#856): AddAsync dedupes, so a title already in
+            // the catalogue returns its existing row with its original
+            // CreatedUtc -- only a row created within this request is a
+            // genuinely new title.
+            if (item.CreatedUtc >= requestStartedUtc &&
+                (await notificationPreferences.GetPreferencesAsync(cancellationToken)).AddedEnabled)
+            {
+                await notificationService.DispatchAsync(
+                    "title.added",
+                    $"Added: {item.Title}",
+                    $"{item.Title} was added to the library.",
+                    JsonSerializer.Serialize(new { item.Id, item.Title, mediaType = "tv" }),
+                    cancellationToken);
+            }
+
             return Results.Created($"/api/series/{item.Id}", item);
         });
 
