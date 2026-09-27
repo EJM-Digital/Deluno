@@ -79,14 +79,16 @@ public sealed class LibraryFileCheckService(
 
         // Worth telling somebody about: a title going from held to missing is a
         // thing they will see on a shelf, and they should learn it from Deluno
-        // rather than from a gap.
+        // rather than from a gap. Each affected title also gets its own,
+        // named entry (RecordMarkMissingRepairAsync in the reconciliation
+        // service); this is the summary of the pass as a whole.
         if (corrected > 0)
         {
             await activityFeedRepository.RecordActivityAsync(
                 "library.file.missing",
                 corrected == 1
-                    ? "A file Deluno was holding is no longer on disk. That title is now missing and will be searched for again."
-                    : $"{corrected} files Deluno was holding are no longer on disk. Those titles are now missing and will be searched for again.",
+                    ? "A file Deluno was holding is no longer on disk. That title is now missing and unmonitored, so Deluno stopped wanting it."
+                    : $"{corrected} files Deluno was holding are no longer on disk. Those titles are now missing and unmonitored, so Deluno stopped wanting them.",
                 JsonSerializer.Serialize(new { corrected, unreachable }, PayloadJsonOptions),
                 null,
                 "library",

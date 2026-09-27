@@ -63,8 +63,12 @@ public sealed class DownloadClientTelemetryService(
         // (#280).
         var handoffs = await processorRepository.ListProcessorHandoffsAsync(null, 250, cancellationToken);
         var snapshots = new List<DownloadClientTelemetrySnapshot>();
+        var orderedClients = clients
+            .OrderBy(item => item.Priority)
+            .ThenBy(item => item.Name, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
 
-        foreach (var client in clients.OrderBy(item => item.Priority).ThenBy(item => item.Name, StringComparer.OrdinalIgnoreCase))
+        foreach (var client in orderedClients)
         {
             if (!client.IsEnabled)
             {
@@ -115,10 +119,74 @@ public sealed class DownloadClientTelemetryService(
             .ToArray();
         var healthAnnotatedSnapshots = await Task.WhenAll(mappedSnapshots.Select(snapshot => AttachHealthFindingsAsync(snapshot, platformSettings.DownloadHealthStrikeThreshold, platformSettings.CleanupBlockReleaseAfterThreshold, downloadHealthRules, cancellationToken)));
 
+        // The summary and every per-item health finding above are computed
+        // against the client's whole queue on purpose (cleanup sheet row M2,
+        // #933): a download somebody else sent still counts towards free
+        // space and still gets struck for stalling, and #560's cleanup still
+        // sees it as a holding file. Only the rows a person is shown are
+        // narrowed - to the ones Deluno itself sent - because listing every
+        // download strangers or other tools left in the client is not "the
+        // Queue", it is "everything in the client".
+        var overviewSummary = Summarize(healthAnnotatedSnapshots.SelectMany(snapshot => snapshot.Queue));
+        var dispatchesByClientId = settledDispatches
+            .GroupBy(dispatch => dispatch.DownloadClientId, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(
+                group => group.Key,
+                group => (IReadOnlyList<DownloadDispatchItem>)group.ToArray(),
+                StringComparer.OrdinalIgnoreCase);
+
+        var visibleSnapshots = orderedClients
+            .Zip(healthAnnotatedSnapshots, (client, snapshot) => snapshot with
+            {
+                Queue = snapshot.Queue
+                    .Where(item => IsDelunosOwnDownload(
+                        client,
+                        item,
+                        dispatchesByClientId.GetValueOrDefault(client.Id, Array.Empty<DownloadDispatchItem>()),
+                        routeCategoriesByLibrary))
+                    .ToArray()
+            })
+            .ToArray();
+
         return new DownloadTelemetryOverview(
-            Summary: Summarize(healthAnnotatedSnapshots.SelectMany(snapshot => snapshot.Queue)),
-            Clients: healthAnnotatedSnapshots,
+            Summary: overviewSummary,
+            Clients: visibleSnapshots,
             CapturedUtc: capturedUtc);
+    }
+
+    /// <summary>
+    /// Whether a client queue row is a download Deluno itself sent (cleanup
+    /// sheet row M2, #933). Matched first against the dispatch Deluno
+    /// recorded when it grabbed the release - the hash or item id the client
+    /// gave back - and only when nothing matches there, against the category
+    /// or label Deluno routes its own downloads through, the same test
+    /// <see cref="IsDelunoCategory"/> already applies before cleanup touches a
+    /// client entry. An item added to the client by another tool or by hand
+    /// matches neither and is left off the Queue - and, because this is the
+    /// only place that reads <see cref="DownloadClientTelemetrySnapshot.Queue"/>
+    /// for display, never touched by anything downstream of it either.
+    /// </summary>
+    internal static bool IsDelunosOwnDownload(
+        DownloadClientItem client,
+        DownloadQueueItem item,
+        IReadOnlyList<DownloadDispatchItem> clientDispatches,
+        IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>> routeCategoriesByLibrary)
+    {
+        var matchedByDispatch = clientDispatches.Any(dispatch =>
+            string.Equals(dispatch.TorrentHashOrItemId, item.Id, StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(dispatch.Id, item.Id, StringComparison.OrdinalIgnoreCase));
+        if (matchedByDispatch)
+        {
+            return true;
+        }
+
+        var routeCategory = !string.IsNullOrWhiteSpace(item.LibraryId) &&
+            routeCategoriesByLibrary.TryGetValue(item.LibraryId, out var categories) &&
+            categories.TryGetValue(client.Id, out var configuredRouteCategory)
+            ? configuredRouteCategory
+            : null;
+
+        return IsDelunoCategory(client, item.Category, item.MediaType, routeCategory);
     }
 
     public async Task<DownloadClientActionResult> ExecuteActionAsync(
