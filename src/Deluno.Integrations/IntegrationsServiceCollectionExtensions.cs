@@ -57,6 +57,10 @@ public static class IntegrationsServiceCollectionExtensions
         services.AddSingleton<IDownloadClient, DelugeDownloadClient>();
         services.AddSingleton<IDownloadClient, UTorrentDownloadClient>();
         services.AddSingleton<IDownloadClientRegistry, DownloadClientRegistry>();
+        // Singleton: it is read from DownloadDispatchPollingService, itself a
+        // singleton, and every dependency it takes (the connections repository,
+        // the client registry) already is one.
+        services.AddSingleton<Deluno.Contracts.IGrabAppearanceLookupService, GrabAppearanceLookupService>();
         services.AddScoped<IDownloadClientTelemetryService, DownloadClientTelemetryService>();
         services.AddScoped<IOrphanedDownloadService, OrphanedDownloadService>();
         services.AddScoped<ILeftoverDownloadCleanupService, LeftoverDownloadCleanupService>();

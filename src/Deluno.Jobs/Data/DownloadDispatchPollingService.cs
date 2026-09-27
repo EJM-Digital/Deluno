@@ -14,7 +14,10 @@ public sealed class DownloadDispatchPollingService(
     IActivityFeedRepository activityFeedRepository,
     IDownloadDispatchesRepository downloadDispatchesRepository,
     IDispatchAlertRepository alertRepository,
-    IRealtimeEventPublisher realtimeEventPublisher)
+    IRealtimeEventPublisher realtimeEventPublisher,
+    IGrabAppearanceLookupService? appearanceLookup = null,
+    IBlockedReleaseRepository? blockedReleaseRepository = null,
+    IJobScheduler? jobScheduler = null)
     : IDownloadDispatchPollingService
 {
     private static readonly TimeSpan GrabTimeout = TimeSpan.FromHours(2);
@@ -30,7 +33,8 @@ public sealed class DownloadDispatchPollingService(
             DetectionTimeoutsDetected: 0,
             ImportTimeoutsDetected: 0,
             ImportFailuresDetected: 0,
-            RecoveryCasesRecorded: 0);
+            RecoveryCasesRecorded: 0,
+            GrabAppearanceResolved: 0);
 
         await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
             DelunoDatabaseNames.Jobs,
@@ -78,24 +82,43 @@ public sealed class DownloadDispatchPollingService(
                 var age = now - dispatch.GrabAttemptedUtc;
                 if (age > GrabTimeout)
                 {
-                    // Whatever has been said about it already, the download
-                    // itself ends here, so it stops reading "Sent" and a person
-                    // can dismiss it. A late detection brings it back.
-                    await downloadDispatchesRepository.MarkNeverDetectedAsync(
-                        dispatch.Id,
-                        $"{dispatch.DownloadClientName} accepted this download and then never showed it.",
-                        cancellationToken);
-                }
+                    // #911: the appearance timeout has expired. Looked into
+                    // once, the first time it expires; a dispatch already
+                    // ended by an earlier pass is not asked about again.
+                    var alreadyRecorded = await alertRepository.HasUnresolvedAlertAsync(dispatch.Id, "grab-timeout", cancellationToken);
+                    var lookup = alreadyRecorded ? null : await SafeLookUpAsync(dispatch, cancellationToken);
 
-                if (age > GrabTimeout && !await alertRepository.HasUnresolvedAlertAsync(dispatch.Id, "grab-timeout", cancellationToken))
-                {
-                    await RecordGrabTimeoutRecoveryAsync(
-                        dispatch,
-                        recoveryHandler,
-                        recoveryActivities,
-                        alertRepository,
-                        cancellationToken);
-                    report = report with { GrabTimeoutsDetected = report.GrabTimeoutsDetected + 1, RecoveryCasesRecorded = report.RecoveryCasesRecorded + 1 };
+                    if (lookup is { Outcome: GrabAppearanceOutcome.FoundAsExpected or GrabAppearanceOutcome.FoundUnderAnotherCategory or GrabAppearanceOutcome.Duplicate })
+                    {
+                        await FollowExistingItemAsync(dispatch, lookup, recoveryActivities, cancellationToken);
+                        report = report with { GrabAppearanceResolved = report.GrabAppearanceResolved + 1 };
+                    }
+                    else if (lookup is { Outcome: GrabAppearanceOutcome.Rejected })
+                    {
+                        await BlocklistAndSearchAgainAsync(dispatch, lookup, recoveryActivities, cancellationToken);
+                        report = report with { GrabAppearanceResolved = report.GrabAppearanceResolved + 1 };
+                    }
+                    else
+                    {
+                        // Nothing found anywhere (or the client could not be
+                        // reached, or nothing could look at all): whatever has
+                        // been said about it already, the download itself ends
+                        // here, so it stops reading "Sent" and a person can
+                        // dismiss it. A late detection brings it back.
+                        await downloadDispatchesRepository.MarkNeverDetectedAsync(
+                            dispatch.Id,
+                            $"{dispatch.DownloadClientName} accepted this download and then never showed it.",
+                            cancellationToken);
+
+                        if (!alreadyRecorded)
+                        {
+                            var unreachableDetail = lookup?.Outcome == GrabAppearanceOutcome.Unreachable
+                                ? lookup.Detail ?? "unreachable"
+                                : null;
+                            await RecordGrabTimeoutRecoveryAsync(dispatch, recoveryActivities, cancellationToken, unreachableDetail);
+                            report = report with { GrabTimeoutsDetected = report.GrabTimeoutsDetected + 1, RecoveryCasesRecorded = report.RecoveryCasesRecorded + 1 };
+                        }
+                    }
                 }
             }
             else if (dispatch.DetectedUtc is not null && dispatch.ImportStatus is null)
@@ -179,7 +202,7 @@ public sealed class DownloadDispatchPollingService(
                 id, library_id, media_type, entity_type, entity_id, release_name,
                 download_client_id, download_client_name, grab_status, grab_attempted_utc,
                 detected_utc, import_status, import_detected_utc, import_failure_code, import_failure_message,
-                client_completed_utc
+                client_completed_utc, indexer_name, torrent_hash_or_item_id
             FROM download_dispatches
             -- A download that was imported or archived is finished, whatever an
             -- earlier stage recorded. The import can complete through a
@@ -217,18 +240,190 @@ public sealed class DownloadDispatchPollingService(
                 ImportDetectedUtc: reader.IsDBNull(12) ? null : DateTimeOffset.Parse(reader.GetString(12)),
                 ImportFailureCode: reader.IsDBNull(13) ? null : reader.GetString(13),
                 ImportFailureMessage: reader.IsDBNull(14) ? null : reader.GetString(14),
-                ClientCompletedUtc: reader.IsDBNull(15) ? null : DateTimeOffset.Parse(reader.GetString(15))));
+                ClientCompletedUtc: reader.IsDBNull(15) ? null : DateTimeOffset.Parse(reader.GetString(15)),
+                IndexerName: reader.IsDBNull(16) ? "" : reader.GetString(16),
+                TorrentHashOrItemId: reader.IsDBNull(17) ? null : reader.GetString(17)));
         }
 
         return items;
     }
 
+    /// <summary>
+    /// The #911 lookup itself, defended against a client adapter throwing
+    /// something this poller did not expect — that is answered exactly like
+    /// an unreachable client, not by breaking the whole polling pass over one
+    /// download.
+    /// </summary>
+    private async Task<GrabAppearanceLookupResult?> SafeLookUpAsync(
+        UnresolvedDispatch dispatch,
+        CancellationToken cancellationToken)
+    {
+        if (appearanceLookup is null)
+        {
+            return null;
+        }
+
+        try
+        {
+            return await appearanceLookup.LookupAsync(
+                dispatch.DownloadClientId,
+                dispatch.MediaType,
+                category: null,
+                dispatch.TorrentHashOrItemId,
+                dispatch.ReleaseName,
+                cancellationToken);
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            return new GrabAppearanceLookupResult(GrabAppearanceOutcome.Unreachable, Detail: exception.Message);
+        }
+    }
+
+    /// <summary>
+    /// It was there all along — under the category Deluno expected, a
+    /// category setting that is wrong, or as a duplicate the client's own
+    /// check already declined. Either way, Deluno follows the copy the client
+    /// holds rather than treating a live download as gone (#877, #886, #911).
+    /// </summary>
+    private async Task FollowExistingItemAsync(
+        UnresolvedDispatch dispatch,
+        GrabAppearanceLookupResult lookup,
+        ICollection<ActivityEventItem> recoveryActivities,
+        CancellationToken cancellationToken)
+    {
+        var followId = lookup.QueueItemId ?? dispatch.TorrentHashOrItemId;
+        await downloadDispatchesRepository.RecordDetectionAsync(
+            dispatch.Id, followId, downloadedBytes: null, completed: false, cancellationToken);
+
+        var (category, message) = lookup.Outcome switch
+        {
+            GrabAppearanceOutcome.Duplicate => (
+                "download.grab.duplicate",
+                $"{dispatch.DownloadClientName} already held {dispatch.ReleaseName}. Deluno is following the copy it has."),
+            GrabAppearanceOutcome.FoundUnderAnotherCategory => (
+                "download.grab.foundElsewhere",
+                $"{dispatch.ReleaseName} was under {lookup.FoundCategory} in {dispatch.DownloadClientName}, not {lookup.ExpectedCategory}. Deluno is following it there — the {(string.Equals(dispatch.MediaType, "tv", StringComparison.OrdinalIgnoreCase) ? "TV" : "movies")} category setting for {dispatch.DownloadClientName} may be wrong."),
+            _ => (
+                "download.grab.foundElsewhere",
+                $"{dispatch.ReleaseName} was already in {dispatch.DownloadClientName}'s queue. Deluno is following it.")
+        };
+
+        recoveryActivities.Add(CreateRecoveryActivity(
+            category,
+            message,
+            JsonSerializer.Serialize(new
+            {
+                DispatchId = dispatch.Id,
+                dispatch.DownloadClientId,
+                dispatch.DownloadClientName,
+                dispatch.ReleaseName,
+                foundCategory = lookup.FoundCategory,
+                expectedCategory = lookup.ExpectedCategory
+            }),
+            "download",
+            dispatch.Id));
+    }
+
+    /// <summary>
+    /// The client itself said this release was no good. Blocklisted with the
+    /// #874 key (hash first, name for every indexer, whichever the search
+    /// finds a key for) and a fresh search started at once, the same way a
+    /// processor's rejection already does (#911, mirroring
+    /// <c>ProcessorFailureReportHandler</c>).
+    /// </summary>
+    private async Task BlocklistAndSearchAgainAsync(
+        UnresolvedDispatch dispatch,
+        GrabAppearanceLookupResult lookup,
+        ICollection<ActivityEventItem> recoveryActivities,
+        CancellationToken cancellationToken)
+    {
+        var reason = string.IsNullOrWhiteSpace(lookup.Detail)
+            ? $"{dispatch.DownloadClientName} rejected this release."
+            : $"{dispatch.DownloadClientName} rejected this release: {lookup.Detail}";
+
+        if (blockedReleaseRepository is not null)
+        {
+            try
+            {
+                await blockedReleaseRepository.BlockAsync(
+                    new BlockedRelease(
+                        Guid.NewGuid().ToString("n"),
+                        BlockedReleaseKeys.For(dispatch.ReleaseName, dispatch.IndexerName),
+                        dispatch.ReleaseName,
+                        dispatch.IndexerName,
+                        dispatch.MediaType,
+                        dispatch.EntityId,
+                        dispatch.ReleaseName,
+                        ImportFailurePolicy.ClientReportedFailure,
+                        reason,
+                        dispatch.TorrentHashOrItemId,
+                        dispatch.DownloadClientId,
+                        dispatch.DownloadClientName,
+                        DateTimeOffset.MinValue),
+                    cancellationToken);
+            }
+            catch (Exception exception) when (exception is not OperationCanceledException)
+            {
+                // Left unblocked; the next pass finds the same rejection and
+                // tries again rather than this one going silent about it.
+            }
+        }
+
+        await downloadDispatchesRepository.ArchiveDispatchAsync(dispatch.Id, reason, cancellationToken);
+
+        if (jobScheduler is not null)
+        {
+            try
+            {
+                await jobScheduler.EnqueueAsync(
+                    new EnqueueJobRequest(
+                        LibrarySearchJobTypes.For(dispatch.MediaType),
+                        "grab-rejected",
+                        JsonSerializer.Serialize(new
+                        {
+                            libraryId = dispatch.LibraryId,
+                            mediaType = dispatch.MediaType,
+                            checkMissing = true,
+                            checkUpgrades = true,
+                            maxItems = 1,
+                            retryDelayHours = 24,
+                            triggeredBy = "grab-rejected",
+                            targetEntityId = dispatch.EntityId
+                        }),
+                        "download_dispatch",
+                        dispatch.Id,
+                        IdempotencyKey: $"grab-rejected:{dispatch.Id}",
+                        DedupeKey: $"grab-rejected:{dispatch.Id}"),
+                    cancellationToken);
+            }
+            catch (Exception exception) when (exception is not OperationCanceledException)
+            {
+                // The blocklist entry alone still keeps this release from
+                // being sent again; the title's own scheduled search picks it
+                // back up regardless.
+            }
+        }
+
+        recoveryActivities.Add(CreateRecoveryActivity(
+            "download.grab.rejected",
+            $"{dispatch.DownloadClientName} rejected {dispatch.ReleaseName}. Deluno blocklisted it and is searching for another copy.",
+            JsonSerializer.Serialize(new
+            {
+                DispatchId = dispatch.Id,
+                dispatch.DownloadClientId,
+                dispatch.DownloadClientName,
+                dispatch.ReleaseName,
+                detail = lookup.Detail
+            }),
+            "download",
+            dispatch.Id));
+    }
+
     private async Task RecordGrabTimeoutRecoveryAsync(
         UnresolvedDispatch dispatch,
-        IDispatchRecoveryHandler recoveryHandler,
         ICollection<ActivityEventItem> recoveryActivities,
-        IDispatchAlertRepository alertRepository,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        string? unreachableDetail)
     {
         var title = dispatch.ReleaseName;
         var detailsJson = JsonSerializer.Serialize(new
@@ -237,7 +432,8 @@ public sealed class DownloadDispatchPollingService(
             dispatch.DownloadClientId,
             dispatch.DownloadClientName,
             dispatch.ReleaseName,
-            dispatch.MediaType
+            dispatch.MediaType,
+            unreachable = unreachableDetail is not null
         });
 
         await recoveryHandler.HandleGrabTimeoutAsync(
@@ -249,9 +445,13 @@ public sealed class DownloadDispatchPollingService(
             detailsJson,
             cancellationToken);
 
+        var message = unreachableDetail is null
+            ? $"{title} was not found anywhere in {dispatch.DownloadClientName}'s queue or history after {GrabTimeout.TotalHours:F0} hours. Deluno stopped waiting for it."
+            : $"Deluno could not reach {dispatch.DownloadClientName} to check on {title} after {GrabTimeout.TotalHours:F0} hours. It will look again — this is a setup problem with {dispatch.DownloadClientName}, not the release.";
+
         recoveryActivities.Add(CreateRecoveryActivity(
-            "download.grab.timeout",
-            $"{title} was not detected in {dispatch.DownloadClientName} after {GrabTimeout.TotalHours:F0} hours.",
+            unreachableDetail is null ? "download.grab.timeout" : "download.grab.unreachable",
+            message,
             detailsJson,
             "download",
             dispatch.Id));
@@ -259,7 +459,9 @@ public sealed class DownloadDispatchPollingService(
         await alertRepository.CreateAlertAsync(
             dispatch.Id,
             title,
-            $"Download not detected in {dispatch.DownloadClientName}",
+            unreachableDetail is null
+                ? $"Download not detected in {dispatch.DownloadClientName}"
+                : $"Deluno could not reach {dispatch.DownloadClientName}",
             "grab-timeout",
             "warning",
             new Dictionary<string, string> { { "client", dispatch.DownloadClientName } },
@@ -473,5 +675,7 @@ public sealed class DownloadDispatchPollingService(
         DateTimeOffset? ImportDetectedUtc,
         string? ImportFailureCode,
         string? ImportFailureMessage,
-        DateTimeOffset? ClientCompletedUtc);
+        DateTimeOffset? ClientCompletedUtc,
+        string IndexerName = "",
+        string? TorrentHashOrItemId = null);
 }
