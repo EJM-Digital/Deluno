@@ -93,6 +93,11 @@ public sealed record MediaTableMap(
     /// </summary>
     string SubtitleAttemptTable,
     /// <summary>
+    /// Where a subtitle Deluno refuses to offer again is remembered, so
+    /// automatic and manual search alike skip it (#897).
+    /// </summary>
+    string SubtitleBlockTable,
+    /// <summary>
     /// The catalogue-local join table for user-owned platform tags. The table
     /// name is shared; the database and entry table are the two mapped parts.
     /// </summary>
@@ -134,6 +139,7 @@ public sealed record MediaTableMap(
                 // title, year, season, episode, episode title, release name
                 "t.title, t.release_year, NULL, NULL, NULL, f.release_group",
                 "movie_subtitle_attempt",
+                "movie_subtitle_block",
                 "media_tags",
                 "media_id",
                 "media_preference_evaluations"),
@@ -175,6 +181,7 @@ public sealed record MediaTableMap(
                 // "Good News About Hell" is.
                 "t.title, t.start_year, f.season_number, f.episode_number, f.title, NULL",
                 "episode_subtitle_attempt",
+                "episode_subtitle_block",
                 "media_tags",
                 "media_id",
                 "media_preference_evaluations"),

@@ -93,6 +93,57 @@ public sealed class SubtitleFetchTests
         Assert.Equal("download", outcome.Failure!.Operation);
     }
 
+    /// <summary>
+    /// Before #898 a malformed download gave up on the whole provider. A
+    /// provider can offer several candidates for one language, and a bad one
+    /// among them is not evidence the rest are bad too.
+    /// </summary>
+    [Fact]
+    public async Task A_malformed_candidate_does_not_give_up_on_the_rest_of_the_provider()
+    {
+        var html = Encoding.UTF8.GetBytes("<!DOCTYPE html><html><body>Please sign in</body></html>");
+        var provider = new FakeProvider(
+            "first",
+            [
+                Candidate("en") with { DownloadToken = "bad", DownloadCount = 999 },
+                Candidate("en") with { DownloadToken = "good", DownloadCount = 1 }
+            ],
+            Srt);
+        provider.PayloadByToken["bad"] = html;
+        provider.PayloadByToken["good"] = Srt;
+        var writer = new FakeWriter();
+        var service = Build([provider], writer);
+
+        var outcome = await service.FetchAsync(Request(), "en", false, @"D:\Media\Dune\Dune.mkv", false, CancellationToken.None);
+
+        Assert.True(outcome.Found);
+        Assert.Equal("good", provider.LastDownloadToken);
+        var rejected = Assert.Single(outcome.RejectedCandidates!);
+        Assert.Equal("first|bad", rejected.BlockKey);
+        Assert.Equal("first", rejected.ProviderKey);
+    }
+
+    [Fact]
+    public async Task A_blocked_candidate_is_never_offered_again()
+    {
+        var provider = new FakeProvider(
+            "first",
+            [
+                Candidate("en") with { DownloadToken = "blocked", DownloadCount = 999 },
+                Candidate("en") with { DownloadToken = "ok", DownloadCount = 1 }
+            ],
+            Srt);
+        var writer = new FakeWriter();
+        var service = Build([provider], writer);
+
+        var outcome = await service.FetchAsync(
+            Request(), "en", false, @"D:\Media\Dune\Dune.mkv", false, CancellationToken.None,
+            blockedKeys: ["first|blocked"]);
+
+        Assert.True(outcome.Found);
+        Assert.Equal("ok", provider.LastDownloadToken);
+    }
+
     [Fact]
     public async Task Unwraps_a_zip_because_half_of_them_send_one()
     {
@@ -374,6 +425,9 @@ public sealed class SubtitleFetchTests
         public int Searches { get; private set; }
         public string? LastDownloadToken { get; private set; }
 
+        /// <summary>Overrides <c>payload</c> for one candidate's token, so a test can make one candidate bad and another good.</summary>
+        public Dictionary<string, byte[]> PayloadByToken { get; } = [];
+
         public Task<IReadOnlyList<SubtitleCandidate>> SearchAsync(
             SubtitleSearchRequest request, SubtitleProviderCredentials credentials, CancellationToken cancellationToken)
         {
@@ -387,7 +441,7 @@ public sealed class SubtitleFetchTests
             SubtitleCandidate candidate, SubtitleProviderCredentials credentials, CancellationToken cancellationToken)
         {
             LastDownloadToken = candidate.DownloadToken;
-            return Task.FromResult(payload);
+            return Task.FromResult(PayloadByToken.TryGetValue(candidate.DownloadToken, out var specific) ? specific : payload);
         }
     }
 

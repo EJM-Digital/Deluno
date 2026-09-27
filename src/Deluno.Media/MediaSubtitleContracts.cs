@@ -29,7 +29,19 @@ public sealed record MediaSubtitleRow(
     /// otherwise would invent the fact this column exists to stop inventing.
     /// </para>
     /// </summary>
-    int MatchRung = 0);
+    int MatchRung = 0,
+    /// <summary>
+    /// <see cref="Deluno.Contracts.SubtitleBlockKeys"/> for the exact candidate
+    /// Deluno fetched, so a later "reject this one" (#895, #897, #841) can
+    /// blocklist the file it actually downloaded rather than every candidate
+    /// that provider ever offers for the language.
+    ///
+    /// <para>Null for anything Deluno did not fetch itself — embedded, or
+    /// found beside the video — because there is no provider candidate to
+    /// name, and for a subtitle fetched before this column existed, which is
+    /// an honest gap rather than one worth inventing history for.</para>
+    /// </summary>
+    string? SourceKey = null);
 
 /// <summary>
 /// When a file was last read for subtitles, and what it looked like at the
@@ -119,6 +131,21 @@ public sealed record MediaSubtitleWantedItem(
     IReadOnlyList<string> LanguagesToFetch,
     IntegrationFailure? LastFailure = null);
 
+/// <summary>
+/// One subtitle Deluno has decided never to offer again for one file, and why.
+///
+/// <para>The subtitle equivalent of <c>BlockedRelease</c>: permanent until
+/// somebody clears it, and never hidden — every block is listed with its
+/// reason (#897, #895, #898, #841).</para>
+/// </summary>
+public sealed record MediaSubtitleBlock(
+    string Language,
+    string BlockKey,
+    string? ProviderKey,
+    string? ReleaseName,
+    string Reason,
+    DateTimeOffset BlockedUtc);
+
 public interface IMediaSubtitleRepository
 {
 
@@ -201,5 +228,39 @@ public interface IMediaSubtitleRepository
     Task<IReadOnlyList<MediaSubtitleRow>> ListSubtitlesAsync(
         MediaKind kind,
         string mediaId,
+        CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Refuses one subtitle for one file. Automatic and manual search alike
+    /// skip it from now on; deleting the file it is already on disk as is the
+    /// caller's job, not this repository's.
+    /// </summary>
+    Task BlockSubtitleAsync(
+        MediaKind kind,
+        string mediaId,
+        string language,
+        string blockKey,
+        string? providerKey,
+        string? releaseName,
+        string reason,
+        CancellationToken cancellationToken);
+
+    /// <summary>Every subtitle refused for one file, for the screen that lists them.</summary>
+    Task<IReadOnlyList<MediaSubtitleBlock>> ListBlockedAsync(
+        MediaKind kind,
+        string mediaId,
+        CancellationToken cancellationToken);
+
+    /// <summary>The block keys already refused for this file, so a search can skip them.</summary>
+    Task<IReadOnlySet<string>> ListBlockedKeysAsync(
+        MediaKind kind,
+        string mediaId,
+        CancellationToken cancellationToken);
+
+    /// <summary>Undoes a block. Returns whether one was actually there to undo.</summary>
+    Task<bool> UnblockSubtitleAsync(
+        MediaKind kind,
+        string mediaId,
+        string blockKey,
         CancellationToken cancellationToken);
 }
