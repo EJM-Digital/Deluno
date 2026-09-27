@@ -4348,6 +4348,90 @@ public sealed class ImportPipelineServiceTests
     }
 
     /// <summary>
+    /// #889 (cleanup sheet E9): a season pack used to stop entirely the moment
+    /// one matched file had its own problem - nine good episodes and one
+    /// corrupt file imported none of them. Now the corrupt file is treated
+    /// like any other thing Deluno cannot use: named and left alone, while
+    /// every episode that is fine still imports, is removed from the client,
+    /// and is not blocklisted.
+    /// </summary>
+    [Fact]
+    public async Task Tv_pack_imports_good_episodes_when_one_matched_file_is_corrupt_and_never_blocklists()
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-04-29T08:00:00Z"));
+        await InitializeAllAsync(storage, timeProvider);
+        var downloadsPath = Path.Combine(storage.DataRoot, "downloads");
+        var movieRootPath = Path.Combine(storage.DataRoot, "movies");
+        var seriesRootPath = Path.Combine(storage.DataRoot, "series");
+        Directory.CreateDirectory(downloadsPath);
+        Directory.CreateDirectory(movieRootPath);
+        Directory.CreateDirectory(seriesRootPath);
+        var platform = CreatePlatformRepository(storage, timeProvider);
+        var libraries = CreateLibrariesRepository(storage, timeProvider);
+        await SaveSettingsAsync(platform, movieRootPath, downloadsPath, seriesRootPath);
+        await CreateTvLibraryAsync(libraries, seriesRootPath, downloadsPath);
+        var repository = new SqliteSeriesCatalogRepository(storage.Factory, timeProvider);
+        var series = await repository.AddAsync(new CreateSeriesRequest("Mixed Pack", 2026, null), CancellationToken.None);
+        await repository.SyncEpisodeCatalogueAsync(
+            series.Id,
+            [
+                new CatalogueEpisodeItem(1, 1, "One", null, timeProvider.GetUtcNow().AddDays(-3)),
+                new CatalogueEpisodeItem(1, 2, "Two", null, timeProvider.GetUtcNow().AddDays(-2)),
+                new CatalogueEpisodeItem(1, 3, "Three", null, timeProvider.GetUtcNow().AddDays(-1))
+            ],
+            "provider",
+            CancellationToken.None);
+        var packDirectory = Path.Combine(downloadsPath, "Mixed.Pack.S01");
+        Directory.CreateDirectory(packDirectory);
+        var episodePaths = new Dictionary<int, string>();
+        foreach (var episode in new[] { 1, 2, 3 })
+        {
+            var source = Path.Combine(packDirectory, $"Mixed.Pack.S01E{episode:D2}.mkv");
+            await File.WriteAllBytesAsync(source, Enumerable.Repeat((byte)(0x50 + episode), 4096).ToArray());
+            File.SetLastWriteTimeUtc(source, DateTime.UtcNow.AddMinutes(-1));
+            episodePaths[episode] = source;
+        }
+        var corruptPath = episodePaths[2];
+
+        var service = CreateService(
+            storage,
+            timeProvider,
+            platform,
+            libraries,
+            new SqliteMovieCatalogRepository(storage.Factory, timeProvider),
+            mediaProbeService: new PerPathProbeService(corruptPath, "moov atom not found"));
+        var request = new ImportExecuteRequest(
+            new ImportPreviewRequest(
+                packDirectory, null, "tv", series.Title, series.StartYear, [], [], null, null,
+                SeriesId: series.Id, SeriesType: SeriesTypes.Standard, NumberingScheme: SeriesNumberingSchemes.Standard),
+            "copy", false, true);
+
+        var result = await service.ExecuteAsync(request, CancellationToken.None);
+
+        Assert.True(result.Succeeded, result.Message);
+        Assert.Equal(200, result.StatusCode);
+        Assert.Equal(2, result.Response!.PackFiles!.Count);
+        var skipped = Assert.Single(result.Response.SkippedFiles!);
+        Assert.Equal(corruptPath, skipped.SourcePath);
+        Assert.Contains("S01E02", skipped.Reason, StringComparison.Ordinal);
+        Assert.Contains("moov atom not found", skipped.Reason, StringComparison.Ordinal);
+
+        // The corrupt file is named, not deleted or blocklisted (#889's "your
+        // call" for cleanup means Deluno never removes it on its own).
+        Assert.True(File.Exists(corruptPath));
+        var recovery = await repository.GetImportRecoverySummaryAsync(CancellationToken.None);
+        Assert.DoesNotContain(recovery.RecentCases, item => item.FailureKind == "blocked" || item.Summary.Contains("blocklist", StringComparison.OrdinalIgnoreCase));
+
+        var detail = await repository.GetInventoryDetailAsync(series.Id, CancellationToken.None);
+        Assert.True(detail!.Episodes.Single(episode => episode.EpisodeNumber == 1).HasFile);
+        Assert.True(detail.Episodes.Single(episode => episode.EpisodeNumber == 3).HasFile);
+        // Still missing, not blocked - the ordinary "search for missing
+        // episodes" job will look for it again on its own.
+        Assert.False(detail.Episodes.Single(episode => episode.EpisodeNumber == 2).HasFile);
+    }
+
+    /// <summary>
     /// #652: a season-0 special the catalogue DOES list is not an extra. It
     /// resolves like any other episode and is imported as that special.
     /// </summary>
@@ -6289,6 +6373,28 @@ public sealed class ImportPipelineServiceTests
                 ],
                 AudioStreams: [],
                 SubtitleStreams: []));
+    }
+
+    /// <summary>
+    /// #889: lets a test make ffprobe fail for exactly one file in a pack,
+    /// the way a genuinely corrupt episode would, while every other file
+    /// probes cleanly.
+    /// </summary>
+    private sealed class PerPathProbeService(string failingPath, string failureMessage) : IMediaProbeService
+    {
+        public Task<MediaProbeInfo> ProbeAsync(string path, CancellationToken cancellationToken)
+            => string.Equals(path, failingPath, StringComparison.OrdinalIgnoreCase)
+                ? Task.FromResult(new MediaProbeInfo(
+                    Status: "failed",
+                    Tool: "test",
+                    Message: failureMessage,
+                    DurationSeconds: null,
+                    Container: null,
+                    Bitrate: null,
+                    VideoStreams: [],
+                    AudioStreams: [],
+                    SubtitleStreams: []))
+                : new SuccessfulProbeService().ProbeAsync(path, cancellationToken);
     }
 
     private sealed class ProbeMustNotRunService : IMediaProbeService
