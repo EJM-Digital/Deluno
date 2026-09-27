@@ -51,6 +51,18 @@ test.describe("mobile route matrix", () => {
   test.skip(({ isMobile }) => !isMobile, "Phone-width behaviour only.");
 
   test("no owner route scrolls the page sideways", async ({ page }) => {
+    // 27 full navigations, each waiting out trackDataRequests' quiet window,
+    // is several times the work of a typical smoke test (crud-flows.spec.ts
+    // sets its own 60s budget for the same reason). Comfortably under load
+    // this settles in ~15-20s total; under the load of a full suite run
+    // (hundreds of prior tests sharing the one dev server) it was seen to
+    // clear 30s and trip the default test timeout with nothing actually
+    // stuck -- every route it reached had already gone quiet on its own.
+    // #937's worker ticker was investigated and ruled out: none of its
+    // subscribers (5s/15s/45s/60s) fire anywhere near fast enough to keep
+    // a single route from settling; the per-route settle times captured
+    // while chasing this were consistently under 2.5s each.
+    test.setTimeout(90_000);
     await authenticateAndNavigate(page, "/movies");
     const data = trackDataRequests(page);
 
