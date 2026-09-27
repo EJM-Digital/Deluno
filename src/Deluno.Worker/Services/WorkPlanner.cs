@@ -313,6 +313,21 @@ public sealed class WorkPlanner(
             "Blocked release cleanup failed.",
             cancellationToken);
 
+    /// <summary>
+    /// #888: gives up on an unmatched import nobody acted on within the
+    /// chosen limit. A no-op unless "give up after N days" is the setting in
+    /// force - the service itself checks that first, so this only adds the
+    /// schedule.
+    /// </summary>
+    public Task RunUnmatchedImportGiveUpAsync(
+        IUnmatchedImportGiveUpService giveUpService,
+        CancellationToken cancellationToken)
+        => RunScheduledPassAsync(
+            SystemTasks.UnmatchedImportGiveUp,
+            () => giveUpService.RunAsync(cancellationToken),
+            "Unmatched-import give-up pass failed.",
+            cancellationToken);
+
     public Task RunRecycleBinCleanupAsync(
         IRecycleBinService recycleBinService,
         CancellationToken cancellationToken)

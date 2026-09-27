@@ -390,6 +390,9 @@ public sealed class DelunoHeartbeatWorker(
                 services.GetRequiredService<ILibraryFileCheckService>(),
                 settings.LibraryFileCheckHours,
                 stoppingToken);
+            await workPlanner.RunUnmatchedImportGiveUpAsync(
+                services.GetRequiredService<IUnmatchedImportGiveUpService>(),
+                stoppingToken);
         }
 
         if (lane.JobTypes.Count == 0)

@@ -106,5 +106,7 @@ public static class PlatformSettingsPatchMerger
             DownloadIntegrityMinimumRuntimePercent: patch.DownloadIntegrityMinimumRuntimePercent ?? current.DownloadIntegrityMinimumRuntimePercent,
             MinimumFreeSpaceMb: patch.MinimumFreeSpaceMb ?? current.MinimumFreeSpaceMb,
             SkipFreeSpaceCheck: patch.SkipFreeSpaceCheck ?? current.SkipFreeSpaceCheck,
-            RemoveAndDeletePackedArchivesFromClient: patch.RemoveAndDeletePackedArchivesFromClient ?? current.RemoveAndDeletePackedArchivesFromClient);
+            RemoveAndDeletePackedArchivesFromClient: patch.RemoveAndDeletePackedArchivesFromClient ?? current.RemoveAndDeletePackedArchivesFromClient,
+            UnmatchedImportPolicy: patch.UnmatchedImportPolicy ?? current.UnmatchedImportPolicy,
+            UnmatchedImportGiveUpDays: patch.UnmatchedImportGiveUpDays ?? current.UnmatchedImportGiveUpDays);
 }

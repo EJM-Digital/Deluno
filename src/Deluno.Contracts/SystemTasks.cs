@@ -88,6 +88,7 @@ public static class SystemTasks
     public const string SceneMappingRefresh = "scene.mapping.refresh";
     public const string EpisodeGroupRefresh = "episode.group.refresh";
     public const string DownloadLeftoverCleanup = "download.leftover.cleanup";
+    public const string UnmatchedImportGiveUp = "import.unmatched.give-up";
 
     /// <summary>
     /// Ordered as somebody reading the screen would want them: the things that
@@ -210,7 +211,13 @@ public static class SystemTasks
         new(DownloadLeftoverCleanup, "Clean up leftover downloads",
             "Deletes a download-folder leftover nothing is using once it is old enough, with the reason written to Activity.",
             TimeSpan.FromHours(1),
-            IsConfigurable: true)
+            IsConfigurable: true),
+        // #888: only ever does anything when "give up after N days" is the
+        // chosen unmatched-import policy - hourly is cheap insurance against
+        // a case sitting a day past its limit before anyone notices.
+        new(UnmatchedImportGiveUp, "Give up on old unmatched imports",
+            "When you chose 'give up after N days', removes, deletes and blocklists a file Deluno still could not match once that many days have passed.",
+            TimeSpan.FromHours(1))
     ];
 
     /// <summary>

@@ -4432,6 +4432,123 @@ public sealed class ImportPipelineServiceTests
     }
 
     /// <summary>
+    /// #888: today's only behaviour, and every install's default - an
+    /// unmatched file is held for manual import no matter how many times the
+    /// same release fails to match. Nothing is ever blocklisted on its own.
+    /// </summary>
+    [Fact]
+    public async Task Unmatched_import_is_never_blocklisted_by_default()
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-04-29T08:00:00Z"));
+        await InitializeAllAsync(storage, timeProvider);
+        var downloadsPath = Path.Combine(storage.DataRoot, "downloads");
+        var movieRootPath = Path.Combine(storage.DataRoot, "movies");
+        var seriesRootPath = Path.Combine(storage.DataRoot, "series");
+        Directory.CreateDirectory(downloadsPath);
+        Directory.CreateDirectory(movieRootPath);
+        Directory.CreateDirectory(seriesRootPath);
+        var platform = CreatePlatformRepository(storage, timeProvider);
+        var libraries = CreateLibrariesRepository(storage, timeProvider);
+        await SaveSettingsAsync(platform, movieRootPath, downloadsPath, seriesRootPath);
+        await CreateTvLibraryAsync(libraries, seriesRootPath, downloadsPath);
+        var library = Assert.Single(await libraries.ListLibrariesAsync(CancellationToken.None));
+        var repository = new SqliteSeriesCatalogRepository(storage.Factory, timeProvider);
+        var series = await repository.AddAsync(new CreateSeriesRequest("Cannot Match", 2026, null), CancellationToken.None);
+
+        var jobStore = new SqliteJobStore(storage.Factory, timeProvider, new NullRealtimeEventPublisher(), new NullDownloadDispatchesRepository());
+        var dispatches = new SqliteDownloadDispatchesRepository(storage.Factory, timeProvider);
+        var blockedReleases = new SqliteBlockedReleaseRepository(storage.Factory, timeProvider);
+        const string releaseName = "Cannot.Match.2026.WEB-DL-DELUNO";
+        var service = CreateService(
+            storage, timeProvider, platform, libraries, new SqliteMovieCatalogRepository(storage.Factory, timeProvider),
+            seriesCatalogRepository: repository, downloadDispatchesRepository: dispatches, blockedReleases: blockedReleases);
+
+        for (var attempt = 1; attempt <= 2; attempt++)
+        {
+            var sourcePath = Path.Combine(downloadsPath, $"cannot-match-{attempt}.mkv");
+            await File.WriteAllBytesAsync(sourcePath, Enumerable.Repeat((byte)0x11, 2048).ToArray());
+            File.SetLastWriteTimeUtc(sourcePath, DateTime.UtcNow.AddMinutes(-1));
+            var dispatchId = await jobStore.RecordDownloadDispatchAsync(
+                library.Id, "tv", "series", series.Id, releaseName, "TestIndexer", "client-1", "TestClient", "sent",
+                notesJson: null, cancellationToken: CancellationToken.None);
+
+            var result = await service.ExecuteAsync(
+                new ImportExecuteRequest(
+                    new ImportPreviewRequest(sourcePath, null, "tv", series.Title, series.StartYear, [], [], null, null,
+                        SeriesId: series.Id, SeriesType: SeriesTypes.Standard, NumberingScheme: SeriesNumberingSchemes.Standard),
+                    "copy", false, true, DispatchId: dispatchId),
+                CancellationToken.None);
+            Assert.False(result.Succeeded);
+            Assert.Equal(409, result.StatusCode);
+        }
+
+        Assert.Empty(await blockedReleases.ListKeysAsync(CancellationToken.None));
+    }
+
+    /// <summary>
+    /// #888 (cleanup sheet E5): the owner chose a setting so an unmatched file
+    /// does not have to be held for ever. With "retry once then treat it as
+    /// bad" chosen, a second unmatched failure of the same release is
+    /// blocklisted the same way any other confirmed-bad release would be.
+    /// </summary>
+    [Fact]
+    public async Task Unmatched_import_is_blocklisted_after_one_retry_when_that_policy_is_chosen()
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-04-29T08:00:00Z"));
+        await InitializeAllAsync(storage, timeProvider);
+        var downloadsPath = Path.Combine(storage.DataRoot, "downloads");
+        var movieRootPath = Path.Combine(storage.DataRoot, "movies");
+        var seriesRootPath = Path.Combine(storage.DataRoot, "series");
+        Directory.CreateDirectory(downloadsPath);
+        Directory.CreateDirectory(movieRootPath);
+        Directory.CreateDirectory(seriesRootPath);
+        var platform = CreatePlatformRepository(storage, timeProvider);
+        var libraries = CreateLibrariesRepository(storage, timeProvider);
+        await SaveSettingsAsync(platform, movieRootPath, downloadsPath, seriesRootPath);
+        await platform.SaveAsync(
+            PlatformSettingsPatchMerger.Apply(
+                await platform.GetAsync(CancellationToken.None),
+                new PatchPlatformSettingsRequest(UnmatchedImportPolicy: UnmatchedImportPolicies.RetryOnceThenBad)),
+            CancellationToken.None);
+        await CreateTvLibraryAsync(libraries, seriesRootPath, downloadsPath);
+        var library = Assert.Single(await libraries.ListLibrariesAsync(CancellationToken.None));
+        var repository = new SqliteSeriesCatalogRepository(storage.Factory, timeProvider);
+        var series = await repository.AddAsync(new CreateSeriesRequest("Cannot Match Retry", 2026, null), CancellationToken.None);
+
+        var jobStore = new SqliteJobStore(storage.Factory, timeProvider, new NullRealtimeEventPublisher(), new NullDownloadDispatchesRepository());
+        var dispatches = new SqliteDownloadDispatchesRepository(storage.Factory, timeProvider);
+        var blockedReleases = new SqliteBlockedReleaseRepository(storage.Factory, timeProvider);
+        const string releaseName = "Cannot.Match.Retry.2026.WEB-DL-DELUNO";
+        var service = CreateService(
+            storage, timeProvider, platform, libraries, new SqliteMovieCatalogRepository(storage.Factory, timeProvider),
+            seriesCatalogRepository: repository, downloadDispatchesRepository: dispatches, blockedReleases: blockedReleases);
+
+        for (var attempt = 1; attempt <= 2; attempt++)
+        {
+            var sourcePath = Path.Combine(downloadsPath, $"cannot-match-retry-{attempt}.mkv");
+            await File.WriteAllBytesAsync(sourcePath, Enumerable.Repeat((byte)0x22, 2048).ToArray());
+            File.SetLastWriteTimeUtc(sourcePath, DateTime.UtcNow.AddMinutes(-1));
+            var dispatchId = await jobStore.RecordDownloadDispatchAsync(
+                library.Id, "tv", "series", series.Id, releaseName, "TestIndexer", "client-1", "TestClient", "sent",
+                notesJson: null, cancellationToken: CancellationToken.None);
+
+            var result = await service.ExecuteAsync(
+                new ImportExecuteRequest(
+                    new ImportPreviewRequest(sourcePath, null, "tv", series.Title, series.StartYear, [], [], null, null,
+                        SeriesId: series.Id, SeriesType: SeriesTypes.Standard, NumberingScheme: SeriesNumberingSchemes.Standard),
+                    "copy", false, true, DispatchId: dispatchId),
+                CancellationToken.None);
+            Assert.False(result.Succeeded);
+            Assert.Equal(409, result.StatusCode);
+        }
+
+        var blockedKeys = await blockedReleases.ListKeysAsync(CancellationToken.None);
+        Assert.Contains(BlockedReleaseKeys.For(releaseName, "TestIndexer"), blockedKeys);
+    }
+
+    /// <summary>
     /// #652: a season-0 special the catalogue DOES list is not an extra. It
     /// resolves like any other episode and is imported as that special.
     /// </summary>
@@ -6136,7 +6253,9 @@ public sealed class ImportPipelineServiceTests
         INotificationService? notificationService = null,
         IConnectionsRepository? connectionsRepository = null,
         Deluno.Recovery.Services.IDownloadClientActionGateway? downloadClientActions = null,
-        Func<string, long?>? freeSpaceBytesProbe = null)
+        Func<string, long?>? freeSpaceBytesProbe = null,
+        IBlockedReleaseRepository? blockedReleases = null,
+        IImportFailureRuleRepository? failureRules = null)
         => new(
             platform,
             librariesRepository,
@@ -6153,6 +6272,8 @@ public sealed class ImportPipelineServiceTests
             null,
             null,
             qualityRepository,
+            blockedReleases: blockedReleases,
+            failureRules: failureRules,
             mediaServerJobScheduler: mediaServerJobScheduler,
             settleWindow: settleWindow ?? TimeSpan.Zero,
             notificationService: notificationService,
