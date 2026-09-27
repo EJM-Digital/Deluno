@@ -181,6 +181,9 @@ public static class JobLanes
         // one. A slow or down media server must never be able to delay a file
         // import queued right beside it.
         new("media-servers.notify", [MediaServerJobTypes.Refresh], BatchSize: RemoteWidth, MaxConcurrency: RemoteWidth),
+        // #920: a failed refresh retries on its own lane, so a server that stays
+        // down never starves the ordinary post-import refresh.
+        new("media-servers.retry", [MediaServerJobTypes.RefreshRetry], BatchSize: RemoteWidth, MaxConcurrency: RemoteWidth / 2),
 
         // Indexers, one lane per catalogue so neither can starve the other.
         //
