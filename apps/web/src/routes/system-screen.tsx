@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
-import { useLoaderData, useLocation, useRevalidator } from "react-router-dom";
+import { useLoaderData, useLocation, useNavigate, useRevalidator } from "react-router-dom";
 import {
   Activity,
   BellRing,
@@ -1329,13 +1329,54 @@ function UpgradeCard({ status, children }: { status: UpdateStatusResponse; child
  * on screen until the same check reports ok again; a snooze hides it from
  * asking for attention without pretending it passed.
  */
+/** What a processor-output safety-net row's detailsJson carries (#921). */
+interface ProcessorOutputItemDetails {
+  libraryId: string;
+  path: string;
+  kind: "file" | "folder" | "scraps";
+  isMedia: boolean;
+}
+
+function processorOutputDetails(check: HealthCheckResultItem): ProcessorOutputItemDetails | null {
+  if (!check.id.startsWith("processor-output:") || !check.detailsJson) return null;
+  try {
+    return JSON.parse(check.detailsJson) as ProcessorOutputItemDetails;
+  } catch {
+    return null;
+  }
+}
+
 function HealthChecksCard({ checks, onChanged }: { checks: HealthCheckResultItem[]; onChanged: () => void }) {
+  const navigate = useNavigate();
   const [busyId, setBusyId] = useState<string | null>(null);
   const problems = checks.filter((check) => check.status !== "ok");
   const sorted = [...checks].sort((a, b) => {
     const rank = (status: string) => (status === "problem" ? 0 : status === "unknown" ? 1 : 2);
     return rank(a.status) - rank(b.status);
   });
+
+  function importProcessorOutputItem(details: ProcessorOutputItemDetails) {
+    const params = new URLSearchParams({ manualImportPath: details.path, manualImportMediaType: details.kind === "folder" ? "tv" : "movies" });
+    navigate(`/queue?${params.toString()}`);
+  }
+
+  async function deleteProcessorOutputItem(check: HealthCheckResultItem, details: ProcessorOutputItemDetails) {
+    setBusyId(check.id);
+    try {
+      const response = await authedFetch("/api/integrations/processors/output/delete", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ libraryId: details.libraryId, path: details.path })
+      });
+      if (response.ok) {
+        onChanged();
+      }
+    } catch {
+      // The row simply stays; nothing silently succeeded.
+    } finally {
+      setBusyId(null);
+    }
+  }
 
   async function snooze(check: HealthCheckResultItem) {
     setBusyId(check.id);
@@ -1383,6 +1424,11 @@ function HealthChecksCard({ checks, onChanged }: { checks: HealthCheckResultItem
         >
           {sorted.map((check) => {
             const isSnoozed = check.snoozedUntilUtc !== null && new Date(check.snoozedUntilUtc).getTime() > Date.now();
+            // A safety-net row for one unexpected item in a processor output
+            // folder (#921) is acted on directly -- Import or Delete -- not
+            // snoozed, because snoozing only hides a problem that stays true;
+            // this one is meant to be dealt with and then gone.
+            const outputDetails = processorOutputDetails(check);
             return (
               <ListRow key={check.id}>
                 <ListNameCell name={check.name} sub={categoryLabel(check.category)} />
@@ -1395,7 +1441,36 @@ function HealthChecksCard({ checks, onChanged }: { checks: HealthCheckResultItem
                     <Chip tone={check.status === "ok" ? "ok" : check.status === "problem" ? (isSnoozed ? "idle" : "bad") : "warn"}>
                       {check.status === "ok" ? "ok" : isSnoozed ? "snoozed" : check.status}
                     </Chip>
-                    {check.status !== "ok" ? (
+                    {outputDetails ? (
+                      <div className="flex gap-1.5">
+                        {outputDetails.isMedia ? (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-6 px-2 text-[length:var(--type-caption)]"
+                            disabled={busyId === check.id}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              importProcessorOutputItem(outputDetails);
+                            }}
+                          >
+                            Import
+                          </Button>
+                        ) : null}
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-6 px-2 text-[length:var(--type-caption)] text-destructive"
+                          disabled={busyId === check.id}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            void deleteProcessorOutputItem(check, outputDetails);
+                          }}
+                        >
+                          Delete
+                        </Button>
+                      </div>
+                    ) : check.status !== "ok" ? (
                       <Button
                         variant="ghost"
                         size="sm"

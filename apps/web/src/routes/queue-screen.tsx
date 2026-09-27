@@ -18,8 +18,8 @@
  * …/handoffs/{id}/retry, /api/filesystem/import/{preview,jobs,execute}.
  */
 import { statusPresentation, statusTone } from "../lib/status-tones";
-import { useMemo, useRef, useState } from "react";
-import { Link, useLoaderData, useRevalidator } from "react-router-dom";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Link, useLoaderData, useRevalidator, useSearchParams } from "react-router-dom";
 import { Loader2, Pause, Play, RefreshCw, RotateCw, Trash2, Upload } from "lucide-react";
 import {
   ApiRequestError,
@@ -216,6 +216,29 @@ export function QueuePage() {
   // DrawerFooter only renders a message for a non-clean state, so the outcome of a
   // preview or a queue has to move the state, not just the text.
   const [manualState, setManualState] = useState<"clean" | "saving" | "saved" | "error">("clean");
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  // System -> Health's Import button for a stray item in a processor output
+  // folder (#921) lands here with the path already known, rather than
+  // asking a person to retype what Health already named.
+  useEffect(() => {
+    const path = searchParams.get("manualImportPath");
+    if (!path) return;
+    const mediaType = searchParams.get("manualImportMediaType") === "tv" ? "tv" : "movies";
+    setManualImport((current) => ({ ...current, sourcePath: path, mediaType }));
+    setManualMessage(null);
+    setManualState("clean");
+    setDrawer({ kind: "manual" });
+    setSearchParams((current) => {
+      const next = new URLSearchParams(current);
+      next.delete("manualImportPath");
+      next.delete("manualImportMediaType");
+      return next;
+    }, { replace: true });
+    // Only ever consumed once, when Health hands a path over -- not every
+    // time some other state on this screen changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams]);
 
   // #783: a second mode on the same drawer — one file, typed once (above), or
   // a whole folder, scanned and reviewed row by row.
