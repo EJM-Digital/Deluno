@@ -230,6 +230,42 @@ public sealed class ReferenceSearchFlowTests
         Assert.Null(await pipeline.ChooseDownloadClientAsync(torznab.Id, usenetOnly));
     }
 
+    /// <summary>
+    /// Radarr/Sonarr's own tag rule (#808): a client carrying tags is used
+    /// only for a title sharing one of them, so an anime library can keep its
+    /// own client without every other title losing access to the general one.
+    /// </summary>
+    [Fact]
+    public async Task A_tagged_client_is_used_only_for_a_title_sharing_its_tag()
+    {
+        using var storage = TestStorage.Create();
+        var time = new FixedTimeProvider(DateTimeOffset.Parse("2026-09-19T00:00:00Z"));
+        var (pipeline, connections, _) = await CreatePipelineAsync(storage, time);
+        var indexer = await HealthyIndexerAsync(connections, "Torznab fixture", "torznab");
+        var general = await HealthyClientAsync(connections, "qBittorrent", "qbittorrent");
+        var animeOnly = await TaggedClientAsync(connections, "qBittorrent Anime", "qbittorrent", "anime");
+        // The anime client is tried first (#808): when its tag does not match, it
+        // is skipped and the general client below it still takes the release.
+        var links = Request(time, [indexer], [(animeOnly, 1), (general, 2)]).DownloadClients;
+
+        Assert.Equal(general.Id, (await pipeline.ChooseDownloadClientAsync(indexer.Id, links, CancellationToken.None, titleTags: null))?.DownloadClientId);
+        Assert.Equal(general.Id, (await pipeline.ChooseDownloadClientAsync(indexer.Id, links, CancellationToken.None, titleTags: ["kids"]))?.DownloadClientId);
+        Assert.Equal(animeOnly.Id, (await pipeline.ChooseDownloadClientAsync(indexer.Id, links, CancellationToken.None, titleTags: ["anime"]))?.DownloadClientId);
+    }
+
+    [Fact]
+    public async Task An_untagged_title_never_reaches_a_tagged_only_client_even_when_it_would_otherwise_win_on_priority()
+    {
+        using var storage = TestStorage.Create();
+        var time = new FixedTimeProvider(DateTimeOffset.Parse("2026-09-19T00:00:00Z"));
+        var (pipeline, connections, _) = await CreatePipelineAsync(storage, time);
+        var indexer = await HealthyIndexerAsync(connections, "Torznab fixture", "torznab");
+        var animeOnly = await TaggedClientAsync(connections, "qBittorrent Anime", "qbittorrent", "anime");
+        var links = Request(time, [indexer], [(animeOnly, 1)]).DownloadClients;
+
+        Assert.Null(await pipeline.ChooseDownloadClientAsync(indexer.Id, links, CancellationToken.None, titleTags: null));
+    }
+
     private static async Task<(AcquisitionDecisionPipeline Pipeline, SqliteConnectionsRepository Connections, TorznabFixtureHandler Handler)> CreatePipelineAsync(
         TestStorage storage,
         FixedTimeProvider time)
@@ -266,6 +302,15 @@ public sealed class ReferenceSearchFlowTests
         var client = await connections.CreateDownloadClientAsync(new CreateDownloadClientRequest(
             name, protocol, "localhost", 8080, null, null,
             @"C:\Downloads", "configured-movies", "configured-tv", null, 1, true), CancellationToken.None);
+        await connections.UpdateDownloadClientHealthAsync(client.Id, "healthy", "Fixture verified.", null, 1, CancellationToken.None);
+        return client;
+    }
+
+    private static async Task<DownloadClientItem> TaggedClientAsync(SqliteConnectionsRepository connections, string name, string protocol, string tags)
+    {
+        var client = await connections.CreateDownloadClientAsync(new CreateDownloadClientRequest(
+            name, protocol, "localhost", 8080, null, null,
+            @"C:\Downloads", "configured-movies", "configured-tv", null, 1, true, Tags: tags), CancellationToken.None);
         await connections.UpdateDownloadClientHealthAsync(client.Id, "healthy", "Fixture verified.", null, 1, CancellationToken.None);
         return client;
     }

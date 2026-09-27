@@ -15,4 +15,6 @@ public sealed record CreateDownloadClientRequest(
     bool IsEnabled,
     bool UseSsl = false,
     string? UrlBase = null,
-    bool AddPaused = false);
+    bool AddPaused = false,
+    /// <summary>Comma-separated tag names. A client with no tags is used for any title; a tagged client is used only for a title sharing one of its tags (#808).</summary>
+    string? Tags = null);

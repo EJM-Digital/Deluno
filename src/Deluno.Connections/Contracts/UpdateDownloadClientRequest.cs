@@ -19,4 +19,6 @@ public sealed record UpdateDownloadClientRequest(
     bool? IsEnabled,
     bool? UseSsl = null,
     string? UrlBase = null,
-    bool? AddPaused = null);
+    bool? AddPaused = null,
+    /// <summary>Comma-separated tag names. Null leaves the saved tags unchanged; an empty string clears them.</summary>
+    string? Tags = null);

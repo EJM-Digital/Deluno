@@ -804,6 +804,8 @@ export interface DownloadClientItem {
   lastHealthTestUtc?: string | null;
   createdUtc: string;
   updatedUtc: string;
+  /** Comma-separated tag names. Empty means this client is used for any title; otherwise it is used only for a title sharing one of these tags. */
+  tags?: string;
 }
 
 export interface ExistingLibraryCandidate {

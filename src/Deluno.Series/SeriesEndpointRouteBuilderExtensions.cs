@@ -2178,7 +2178,8 @@ public static class SeriesEndpointRouteBuilderExtensions
                 cancellationToken,
                 guidePackageStore,
                 releasePreferencePlanRepository,
-                libraryId);
+                libraryId,
+                tagStore);
 
             if (result.NotFound)
             {

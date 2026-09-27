@@ -31,7 +31,8 @@ public interface IAcquisitionDecisionPipeline
     Task<LibraryDownloadClientLinkItem?> ChooseDownloadClientAsync(
         string? indexerId,
         IReadOnlyList<LibraryDownloadClientLinkItem> routedClients,
-        CancellationToken cancellationToken = default);
+        CancellationToken cancellationToken = default,
+        IReadOnlyList<string>? titleTags = null);
 }
 
 public sealed class AcquisitionDecisionPipeline : IAcquisitionDecisionPipeline
@@ -128,7 +129,7 @@ public sealed class AcquisitionDecisionPipeline : IAcquisitionDecisionPipeline
         // The client is chosen for the release that won, not before the search:
         // a torrent goes to a torrent client and an NZB to a Usenet one.
         var selectedClient = await SelectDownloadClientAsync(
-            readyConnections.ClientsFor(bestCandidate?.IndexerId),
+            readyConnections.ClientsFor(bestCandidate?.IndexerId, request.TagNames),
             cancellationToken);
         var outcome = sourceCount == 0 || clientCount == 0
             ? "blocked"
@@ -160,27 +161,39 @@ public sealed class AcquisitionDecisionPipeline : IAcquisitionDecisionPipeline
     public async Task<LibraryDownloadClientLinkItem?> ChooseDownloadClientAsync(
         string? indexerId,
         IReadOnlyList<LibraryDownloadClientLinkItem> routedClients,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        IReadOnlyList<string>? titleTags = null)
     {
         var byPriority = routedClients.OrderBy(client => client.Priority).ToArray();
-        if (connectionsRepository is null || string.IsNullOrWhiteSpace(indexerId))
+        if (connectionsRepository is null)
         {
             return byPriority.FirstOrDefault();
+        }
+
+        var clients = (await connectionsRepository.ListDownloadClientsAsync(cancellationToken))
+            .ToDictionary(item => item.Id, StringComparer.OrdinalIgnoreCase);
+
+        if (string.IsNullOrWhiteSpace(indexerId))
+        {
+            return byPriority.FirstOrDefault(client =>
+                !clients.TryGetValue(client.DownloadClientId, out var detail)
+                || DownloadClientTagMatch.IsEligible(detail.Tags, titleTags));
         }
 
         var source = (await connectionsRepository.ListIndexersAsync(cancellationToken))
             .FirstOrDefault(item => string.Equals(item.Id, indexerId, StringComparison.OrdinalIgnoreCase));
         if (source is null)
         {
-            return byPriority.FirstOrDefault();
+            return byPriority.FirstOrDefault(client =>
+                !clients.TryGetValue(client.DownloadClientId, out var detail)
+                || DownloadClientTagMatch.IsEligible(detail.Tags, titleTags));
         }
 
         var kind = DownloadProtocols.SourceKind(source.Protocol);
-        var clients = (await connectionsRepository.ListDownloadClientsAsync(cancellationToken))
-            .ToDictionary(item => item.Id, StringComparer.OrdinalIgnoreCase);
         return byPriority.FirstOrDefault(client =>
             clients.TryGetValue(client.DownloadClientId, out var detail)
-            && string.Equals(DownloadProtocols.ClientKind(detail.Protocol), kind, StringComparison.OrdinalIgnoreCase));
+            && string.Equals(DownloadProtocols.ClientKind(detail.Protocol), kind, StringComparison.OrdinalIgnoreCase)
+            && DownloadClientTagMatch.IsEligible(detail.Tags, titleTags));
     }
 
     public AcquisitionSelectedReleaseDecision EvaluateSelectedRelease(AcquisitionSelectedReleaseRequest request)
@@ -629,17 +642,23 @@ public sealed class AcquisitionDecisionPipeline : IAcquisitionDecisionPipeline
         /// The ready clients that can take a release from this source. When the
         /// source or a client is not known here (a planner built without a
         /// connections store), every client stays eligible, as before.
+        ///
+        /// <para>A client carrying tags is used only for a title sharing one of
+        /// them; an untagged client takes any title, tagged or not (#808), the
+        /// same rule Radarr/Sonarr apply.</para>
         /// </summary>
-        public IReadOnlyList<LibraryDownloadClientLinkItem> ClientsFor(string? indexerId)
+        public IReadOnlyList<LibraryDownloadClientLinkItem> ClientsFor(string? indexerId, IReadOnlyList<string>? titleTags = null)
         {
-            if (string.IsNullOrWhiteSpace(indexerId) || !SourceKinds.TryGetValue(indexerId, out var kind))
-            {
-                return DownloadClients;
-            }
+            var byKind = string.IsNullOrWhiteSpace(indexerId) || !SourceKinds.TryGetValue(indexerId, out var kind)
+                ? DownloadClients
+                : DownloadClients
+                    .Where(client => !DownloadClientDetails.TryGetValue(client.DownloadClientId, out var detail)
+                        || string.Equals(DownloadProtocols.ClientKind(detail.Protocol), kind, StringComparison.OrdinalIgnoreCase))
+                    .ToArray();
 
-            return DownloadClients
+            return byKind
                 .Where(client => !DownloadClientDetails.TryGetValue(client.DownloadClientId, out var detail)
-                    || string.Equals(DownloadProtocols.ClientKind(detail.Protocol), kind, StringComparison.OrdinalIgnoreCase))
+                    || DownloadClientTagMatch.IsEligible(detail.Tags, titleTags))
                 .ToArray();
         }
     }
@@ -661,6 +680,36 @@ public sealed class AcquisitionDecisionPipeline : IAcquisitionDecisionPipeline
                 BoostPoints: 0,
                 Explanation: "Ranking model disabled.");
     }
+}
+
+/// <summary>
+/// Radarr/Sonarr's own tag-routing rule (#808): a client carrying tags is
+/// used only for a title sharing one of them, and an untagged client takes
+/// any title regardless of its tags.
+/// </summary>
+public static class DownloadClientTagMatch
+{
+    public static bool IsEligible(string? clientTags, IReadOnlyList<string>? titleTags)
+    {
+        var required = Split(clientTags);
+        if (required.Count == 0)
+        {
+            return true;
+        }
+
+        if (titleTags is null || titleTags.Count == 0)
+        {
+            return false;
+        }
+
+        var held = titleTags.Select(tag => tag.Trim()).Where(tag => tag.Length > 0).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        return required.Any(held.Contains);
+    }
+
+    private static IReadOnlyList<string> Split(string? csv) =>
+        string.IsNullOrWhiteSpace(csv)
+            ? []
+            : csv.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
 }
 
 public sealed record AcquisitionDecisionRequest(

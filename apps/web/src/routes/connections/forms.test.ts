@@ -77,6 +77,13 @@ describe("client form Use SSL and URL Base", () => {
     expect(clientFormFrom({ ...baseItem, priority: 37 }).priority).toBe("37");
   });
 
+  // #808 — no Tags field existed at all; reopening a saved client has to show
+  // whatever tags it carries, and an untagged client reads back blank.
+  it("reads a saved client's tags into the form on reopen", () => {
+    expect(clientFormFrom({ ...baseItem, tags: "anime,4k" }).tags).toBe("anime,4k");
+    expect(clientFormFrom({ ...baseItem, tags: undefined }).tags).toBe("");
+  });
+
   it("a new indexer says what is missing instead of nothing", () => {
     const errors = indexerFormErrors(emptyIndexerForm(), true);
     expect(Object.keys(errors).sort()).toEqual(["apiKey", "baseUrl", "name"]);

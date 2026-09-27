@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Loader2, Plus, Trash2 } from "lucide-react";
-import type { DownloadClientItem, DownloadClientPathMappingItem } from "../../lib/api";
+import { fetchJson, type DownloadClientItem, type DownloadClientPathMappingItem, type TagItem } from "../../lib/api";
 import { Button } from "../../components/ui/button";
 import { Chip } from "../../components/ui/chip";
 import { Disclosure } from "../../components/ui/disclosure";
@@ -44,6 +44,19 @@ export function ClientDrawerBody({
 }) {
   const [pathMappingOpen, setPathMappingOpen] = useState(false);
   const [advancedOpen, setAdvancedOpen] = useState(false);
+  const [tagOptions, setTagOptions] = useState<string[]>([]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void fetchJson<TagItem[]>("/api/tags")
+      .then((items) => {
+        if (!cancelled) setTagOptions(items.map((item) => item.name).filter(Boolean).sort((a, b) => a.localeCompare(b)));
+      })
+      .catch(() => {
+        // Tags are optional suggestions; the free-form field still works without them.
+      });
+    return () => { cancelled = true; };
+  }, []);
   const preset = CLIENT_PRESETS.find((item) => item.protocol === form.protocol);
   /**
    * A client saved by an older Deluno can carry a protocol nothing can dispatch
@@ -126,6 +139,12 @@ export function ClientDrawerBody({
       <Disclosure title="Advanced" summary={`Priority ${form.priority || "1"}`} open={advancedOpen} onOpenChange={setAdvancedOpen}>
         <Field label="Priority" error={errors.priority} help="1 (highest) to 50 (lowest). Used to order same-type clients when Deluno round-robins downloads between them.">
           <Input type="number" min={1} max={50} value={form.priority} onChange={(event) => { clearError("priority"); setForm((current) => ({ ...current, priority: event.target.value })); }} />
+        </Field>
+        <Field label="Tags" optional help="Leave blank to use this client for any title. With tags set, Deluno sends a release here only when its title shares one of them — for example, keep an anime library on its own client.">
+          <Input value={form.tags} onChange={(event) => setForm((current) => ({ ...current, tags: event.target.value }))} list="client-tag-options" placeholder="Add tags, comma-separated" autoComplete="off" />
+          <datalist id="client-tag-options">
+            {tagOptions.map((tag) => <option key={tag} value={tag} />)}
+          </datalist>
         </Field>
         {preset?.kind === "Usenet" ? (
           <Field label="URL base" help={`For example "sabnzbd" if this client is reached at a path like https://host/sabnzbd/ through a reverse proxy.`}>
