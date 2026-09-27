@@ -37,6 +37,7 @@ import {
 import { subtitleTypeLabel, subtitleSourceLabel, timingStatusLabel } from "../lib/subtitle-display";
 import { SubtitleTimingActions } from "../components/app/subtitle-timing-actions";
 import { SubtitleOverrideCard } from "../components/app/subtitle-override-card";
+import { SubtitleManualSearchDialog } from "../components/app/subtitle-manual-search-dialog";
 import { authedFetch } from "../lib/use-auth";
 import { cn } from "../lib/utils";
 import { isEpisodeMissing, isEpisodeUpcoming, summariseEpisodes } from "../lib/episode-progress";
@@ -192,6 +193,8 @@ export function ShowDetailPage() {
   const [openCandidate, setOpenCandidate] = useState<SearchPlanCandidate | null>(null);
   const [forceReason, setForceReason] = useState<string | null>(null);
   const [openEpisodeId, setOpenEpisodeId] = useState<string | null>(null);
+  // Which language's manual search dialog (#841) is open, or null for none.
+  const [manualSearchLanguage, setManualSearchLanguage] = useState<string | null>(null);
   // Which of the three types (plain / hearing-impaired / forced, #923) each
   // subtitle this episode's file has is — cached per episode so reopening the
   // same row does not refetch, the same way the movie page's loader gives it
@@ -1883,20 +1886,42 @@ export function ShowDetailPage() {
                       <ListCell primary={subtitleTypeLabel(subtitle)} />
                       <ListCell primary={subtitle.provider ?? subtitleSourceLabel(subtitle.source)} mobile />
                       <ListCell primary={timingStatusLabel(subtitle)} secondary={subtitle.timingReason ?? undefined} mobile />
-                      <div role="cell">
+                      <div role="cell" className="flex items-center justify-end gap-1.5">
                         {!subtitle.forced ? (
-                          <SubtitleTimingActions
-                            basePath={`/api/series/episodes/${openEpisode.episodeId}`}
-                            language={subtitle.language}
-                            timingStatus={subtitle.timingStatus}
-                            onChanged={() => refetchEpisodeSubtitles(openEpisode.episodeId)}
-                          />
+                          <>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              aria-label={`Search ${subtitle.language.toUpperCase()} subtitles by hand`}
+                              onClick={() => setManualSearchLanguage(subtitle.language)}
+                            >
+                              <Search className="h-3.5 w-3.5" />
+                              Manual search
+                            </Button>
+                            <SubtitleTimingActions
+                              basePath={`/api/series/episodes/${openEpisode.episodeId}`}
+                              language={subtitle.language}
+                              timingStatus={subtitle.timingStatus}
+                              onChanged={() => refetchEpisodeSubtitles(openEpisode.episodeId)}
+                            />
+                          </>
                         ) : null}
                       </div>
                     </ListRow>
                   ))}
                 </ListTable>
               </DrawerSection>
+            ) : null}
+
+            {manualSearchLanguage && openEpisode ? (
+              <SubtitleManualSearchDialog
+                open={manualSearchLanguage !== null}
+                onOpenChange={(next) => { if (!next) setManualSearchLanguage(null); }}
+                basePath={`/api/series/episodes/${openEpisode.episodeId}`}
+                language={manualSearchLanguage}
+                onChanged={() => refetchEpisodeSubtitles(openEpisode.episodeId)}
+              />
             ) : null}
 
             <DrawerSection title="Automation" aside={wantedStatusPresentation(openEpisode.wantedStatus).label}>

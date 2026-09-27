@@ -35,6 +35,7 @@ import {
 import { subtitleTypeLabel, subtitleSourceLabel, timingStatusLabel } from "../lib/subtitle-display";
 import { SubtitleTimingActions } from "../components/app/subtitle-timing-actions";
 import { SubtitleOverrideCard } from "../components/app/subtitle-override-card";
+import { SubtitleManualSearchDialog } from "../components/app/subtitle-manual-search-dialog";
 import { AcquisitionBlockersCard } from "../components/app/acquisition-blockers-card";
 import { LibraryMembershipCard, type LibraryMembership } from "../components/app/library-membership-card";
 import { RetentionTitleCard } from "../components/app/retention-title-card";
@@ -200,6 +201,8 @@ export function MovieDetailPage() {
   const { preferences, certificationCountry } = useDisplayPreferences();
 
   const [busyAction, setBusyAction] = useState<string | null>(null);
+  // Which language's manual search dialog (#841) is open, or null for none.
+  const [manualSearchLanguage, setManualSearchLanguage] = useState<string | null>(null);
   const [isRemoveConfirmationOpen, setIsRemoveConfirmationOpen] = useState(false);
   const [isMetadataOpen, setIsMetadataOpen] = useState(false);
   const [isEditOpen, setIsEditOpen] = useState(false);
@@ -1185,20 +1188,42 @@ export function MovieDetailPage() {
                     <ListCell primary={subtitleTypeLabel(subtitle)} />
                     <ListCell primary={subtitle.provider ?? subtitleSourceLabel(subtitle.source)} mobile />
                     <ListCell primary={timingStatusLabel(subtitle)} secondary={subtitle.timingReason ?? undefined} mobile />
-                    <div role="cell">
+                    <div role="cell" className="flex items-center justify-end gap-1.5">
                       {!subtitle.forced ? (
-                        <SubtitleTimingActions
-                          basePath={`/api/movies/${movie.id}`}
-                          language={subtitle.language}
-                          timingStatus={subtitle.timingStatus}
-                          onChanged={() => revalidator.revalidate()}
-                        />
+                        <>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            aria-label={`Search ${subtitle.language.toUpperCase()} subtitles by hand`}
+                            onClick={() => setManualSearchLanguage(subtitle.language)}
+                          >
+                            <Search className="h-3.5 w-3.5" />
+                            Manual search
+                          </Button>
+                          <SubtitleTimingActions
+                            basePath={`/api/movies/${movie.id}`}
+                            language={subtitle.language}
+                            timingStatus={subtitle.timingStatus}
+                            onChanged={() => revalidator.revalidate()}
+                          />
+                        </>
                       ) : null}
                     </div>
                   </ListRow>
                 ))}
               </ListTable>
             </ListCard>
+          ) : null}
+
+          {manualSearchLanguage ? (
+            <SubtitleManualSearchDialog
+              open={manualSearchLanguage !== null}
+              onOpenChange={(next) => { if (!next) setManualSearchLanguage(null); }}
+              basePath={`/api/movies/${movie.id}`}
+              language={manualSearchLanguage}
+              onChanged={() => revalidator.revalidate()}
+            />
           ) : null}
 
           <ListCard title="Automation" count={movie.monitored ? "Monitored" : "Unmonitored"}>

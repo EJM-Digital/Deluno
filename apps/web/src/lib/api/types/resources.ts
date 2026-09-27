@@ -139,6 +139,25 @@ export interface SubtitleLanguageOption {
   name: string;
 }
 
+/**
+ * One candidate a manual subtitle search found (#841) — ranked, never
+ * downloaded until picked. `downloadToken` and `providerKey` together
+ * identify it for both `candidates/pick` and `blacklist`.
+ */
+export interface SubtitleSearchCandidateItem {
+  providerKey: string;
+  providerName: string;
+  blockKey: string;
+  downloadToken: string;
+  language: string;
+  hearingImpaired: boolean;
+  releaseName: string | null;
+  uploader: string | null;
+  downloadCount: number | null;
+  match: number;
+  matchDescription: string;
+}
+
 export interface LibrarySourceLinkItem {
   id: string;
   libraryId: string;
