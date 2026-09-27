@@ -509,11 +509,23 @@ public interface ISeriesCatalogRepository : ISeriesImportRecoveryRetentionReposi
         string source,
         CancellationToken cancellationToken);
 
-    /// <summary>Episodes airing inside a window, ordered by air date.</summary>
+    /// <summary>
+    /// Episodes airing inside a window, ordered by air date.
+    /// </summary>
+    /// <param name="includeUnmonitored">
+    /// Radarr/Sonarr's calendar hides unmonitored episodes unless asked
+    /// otherwise (#786); <c>false</c> keeps that default.
+    /// </param>
+    /// <param name="tagNames">
+    /// When given, only episodes of a show carrying at least one of these
+    /// tags (#786).
+    /// </param>
     Task<IReadOnlyList<SeriesCalendarEpisodeItem>> ListCalendarEpisodesAsync(
         DateTimeOffset fromUtc,
         DateTimeOffset toUtc,
         int take,
+        bool includeUnmonitored,
+        IReadOnlyList<string>? tagNames,
         CancellationToken cancellationToken);
 
     /// <summary>Episodes still wanted across every series.</summary>

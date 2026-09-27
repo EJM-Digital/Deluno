@@ -37,6 +37,8 @@ public static class CalendarFeedEndpointRouteBuilderExtensions
             string? apikey,
             int? past,
             int? future,
+            bool? unmonitored,
+            string? tag,
             ISecurityRepository securityRepository,
             ISeriesCatalogRepository seriesRepository,
             IMovieCatalogRepository movieRepository,
@@ -58,11 +60,21 @@ public static class CalendarFeedEndpointRouteBuilderExtensions
             var start = now.AddDays(-pastDays);
             var end = now.AddDays(futureDays);
 
-            var episodes = await seriesRepository.ListCalendarEpisodesAsync(start, end, 2000, cancellationToken);
+            // Radarr/Sonarr's feed defaults to monitored-only and every tag; both
+            // are opt-in query parameters so an existing subscription's URL keeps
+            // behaving the same way it always has (#786).
+            var includeUnmonitored = unmonitored ?? false;
+            var tagNames = string.IsNullOrWhiteSpace(tag)
+                ? null
+                : tag.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
+            var episodes = await seriesRepository.ListCalendarEpisodesAsync(start, end, 2000, includeUnmonitored, tagNames, cancellationToken);
             var movies = await movieRepository.ListCalendarMoviesAsync(
                 DateOnly.FromDateTime(start.UtcDateTime),
                 DateOnly.FromDateTime(end.UtcDateTime),
                 2000,
+                includeUnmonitored,
+                tagNames,
                 cancellationToken);
 
             var settings = await platformSettingsRepository.GetAsync(cancellationToken);

@@ -2805,6 +2805,8 @@ public sealed class SqliteMovieCatalogRepository(
         DateOnly fromDate,
         DateOnly toDate,
         int take,
+        bool includeUnmonitored,
+        IReadOnlyList<string>? tagNames,
         CancellationToken cancellationToken)
     {
         await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
@@ -2812,6 +2814,8 @@ public sealed class SqliteMovieCatalogRepository(
             cancellationToken);
 
         using var command = connection.CreateCommand();
+        var monitoredClause = includeUnmonitored ? "1 = 1" : "m.monitored = 1";
+        var tagClause = MediaTagFilter.BuildClause("m.id", tagNames, command);
         // One joined wanted-state row, not a correlated EXISTS. The calendar was
         // the last place still asking "is there a file anywhere for this movie"
         // as its own subquery, which is the shape CatalogueWantedState exists to
@@ -2836,6 +2840,8 @@ public sealed class SqliteMovieCatalogRepository(
             ) AS m
             {CatalogueWantedState.Join("m", "movie_wanted_state", "movie_id", scopedToLibrary: false)}
             WHERE m.date >= @fromDate AND m.date < @toDate
+              AND {monitoredClause}
+              AND {tagClause}
             ORDER BY m.date ASC, m.title ASC
             LIMIT @take;
             """;

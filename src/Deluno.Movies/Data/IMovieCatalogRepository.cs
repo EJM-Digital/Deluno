@@ -351,11 +351,23 @@ public interface IMovieCatalogRepository : IMovieImportRecoveryRetentionReposito
         string minimumAvailability,
         CancellationToken cancellationToken);
 
-    /// <summary>Movies with a cinema, digital or physical release inside a window.</summary>
+    /// <summary>
+    /// Movies with a cinema, digital or physical release inside a window.
+    /// </summary>
+    /// <param name="includeUnmonitored">
+    /// Radarr's calendar hides unmonitored titles unless asked otherwise (#786);
+    /// <c>false</c> keeps that default.
+    /// </param>
+    /// <param name="tagNames">
+    /// When given, only movies carrying at least one of these tags. Matched by
+    /// name, the same way a saved filter condition matches a tag (#786).
+    /// </param>
     Task<IReadOnlyList<MovieCalendarItem>> ListCalendarMoviesAsync(
         DateOnly fromDate,
         DateOnly toDate,
         int take,
+        bool includeUnmonitored,
+        IReadOnlyList<string>? tagNames,
         CancellationToken cancellationToken);
 
     /// <summary>Per-day counts for the dashboard, straight from stored timestamps.</summary>

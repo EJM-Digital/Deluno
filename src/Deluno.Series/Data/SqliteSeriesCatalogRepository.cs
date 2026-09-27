@@ -4821,6 +4821,8 @@ public sealed class SqliteSeriesCatalogRepository(
         DateTimeOffset fromUtc,
         DateTimeOffset toUtc,
         int take,
+        bool includeUnmonitored,
+        IReadOnlyList<string>? tagNames,
         CancellationToken cancellationToken)
     {
         await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
@@ -4828,8 +4830,12 @@ public sealed class SqliteSeriesCatalogRepository(
             cancellationToken);
 
         using var command = connection.CreateCommand();
+        // A show's own tags — not the episode's — are what a reader means by
+        // "this show's tag", so the tag clause keys on the series id.
+        var monitoredClause = includeUnmonitored ? "1 = 1" : "e.monitored = 1";
+        var tagClause = MediaTagFilter.BuildClause("e.series_id", tagNames, command);
         command.CommandText =
-            """
+            $"""
             SELECT
                 e.id, e.series_id, s.title, s.poster_url,
                 e.season_number, e.episode_number, e.title, e.air_date_utc,
@@ -4841,6 +4847,8 @@ public sealed class SqliteSeriesCatalogRepository(
             WHERE e.air_date_utc IS NOT NULL
               AND e.air_date_utc >= @fromUtc
               AND e.air_date_utc < @toUtc
+              AND {monitoredClause}
+              AND {tagClause}
             ORDER BY e.air_date_utc ASC, s.title ASC, e.season_number ASC, e.episode_number ASC
             LIMIT @take;
             """;
