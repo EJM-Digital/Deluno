@@ -20,6 +20,7 @@ using Deluno.Realtime;
 using Deluno.Series;
 using Deluno.Worker;
 using Microsoft.AspNetCore.DataProtection;
+using Microsoft.AspNetCore.HttpOverrides;
 using UserAuthorization = Deluno.Security.UserAuthorization;
 
 namespace Deluno.Tray;
@@ -57,6 +58,18 @@ public sealed class DelunoServer : IDisposable
         // listener on the same port, which on Windows fails with WSAEADDRINUSE
         // because [::]:port and http://+:port overlap. The explicit
         // ListenAnyIP() above is sufficient.
+
+        // Allowed Hosts (#939): the same forwarding configuration
+        // Deluno.Host uses, so a reverse proxy in front of the Windows
+        // install is honoured too. See Deluno.Host/Program.cs for why
+        // KnownIPNetworks/KnownProxies are cleared rather than left at their
+        // loopback-only default.
+        builder.Services.Configure<ForwardedHeadersOptions>(options =>
+        {
+            options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto | ForwardedHeaders.XForwardedHost;
+            options.KnownIPNetworks.Clear();
+            options.KnownProxies.Clear();
+        });
 
         builder.Services.AddSingleton<IUpdateOrchestrator, VelopackUpdateOrchestrator>();
         Firewall = new WindowsFirewallLanAccess(port);
@@ -104,6 +117,14 @@ public sealed class DelunoServer : IDisposable
             context.Response.Headers["Referrer-Policy"] = "strict-origin-when-cross-origin";
             await next();
         });
+
+        _app.UseForwardedHeaders();
+
+        // Allowed Hosts (#939): the same enforcement Deluno.Host applies,
+        // ahead of routing so it covers the UI, the API, SignalR/websocket
+        // upgrades and the external integration API alike. Off by default
+        // and never turned on by an update (#936).
+        _app.UseDelunoAllowedHosts();
 
         _app.UseDefaultFiles();
         _app.UseStaticFiles();
