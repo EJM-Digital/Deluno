@@ -87,8 +87,12 @@ public sealed class AGrabThatNeverAppearedIsLookedUpTests
         Assert.Contains(activity.Recorded, item => item.Category == "download.grab.rejected");
     }
 
+    /// <summary>
+    /// #911 acceptance: an unreachable client is a setup problem or an
+    /// outage, never a bad release — it is retried, and told, never ended.
+    /// </summary>
     [Fact]
-    public async Task An_unreachable_client_ends_the_download_without_blocklisting_it()
+    public async Task An_unreachable_client_retries_and_tells_you_without_ending_the_download()
     {
         var (poller, dispatches, blocked, activity) = await CreateAsync(new GrabAppearanceLookupResult(
             GrabAppearanceOutcome.Unreachable, Detail: "qBittorrent did not answer."));
@@ -97,16 +101,35 @@ public sealed class AGrabThatNeverAppearedIsLookedUpTests
         var report = await poller.PollAsync(CancellationToken.None);
 
         var dispatch = await dispatches.Repository.GetDispatchAsync("gone", CancellationToken.None);
-        Assert.Equal("failed", dispatch?.Status);
+        Assert.Equal("sent", dispatch?.Status);
+        Assert.Null(dispatch?.DetectedUtc);
         Assert.Empty(await blocked.ListAsync(CancellationToken.None));
-        Assert.Equal(1, report.GrabTimeoutsDetected);
-        Assert.Equal(0, report.GrabAppearanceResolved);
+        Assert.Equal(0, report.GrabTimeoutsDetected);
+        Assert.Equal(1, report.GrabAppearanceRetried);
         var recorded = Assert.Single(activity.Recorded, item => item.Category == "download.grab.unreachable");
         Assert.Contains("setup problem", recorded.Message);
     }
 
+    /// <summary>An outage that lasts several polls is told once, not once per pass.</summary>
     [Fact]
-    public async Task Not_found_anywhere_ends_the_download_the_ordinary_way()
+    public async Task An_unreachable_client_only_says_so_once_while_it_stays_unreachable()
+    {
+        var (poller, dispatches, _, activity) = await CreateAsync(new GrabAppearanceLookupResult(
+            GrabAppearanceOutcome.Unreachable, Detail: "qBittorrent did not answer."));
+        await InsertAsync(dispatches.Storage, "gone", TimeSpan.FromHours(3));
+
+        await poller.PollAsync(CancellationToken.None);
+        var report = await poller.PollAsync(CancellationToken.None);
+
+        var dispatch = await dispatches.Repository.GetDispatchAsync("gone", CancellationToken.None);
+        Assert.Equal("sent", dispatch?.Status);
+        Assert.Equal(1, report.GrabAppearanceRetried);
+        Assert.Single(activity.Recorded, item => item.Category == "download.grab.unreachable");
+    }
+
+    /// <summary>#911: not found the first time is retried once, silently, before it is treated as gone.</summary>
+    [Fact]
+    public async Task Not_found_the_first_time_is_retried_once_before_giving_up()
     {
         var (poller, dispatches, blocked, activity) = await CreateAsync(
             new GrabAppearanceLookupResult(GrabAppearanceOutcome.NotThere));
@@ -115,15 +138,36 @@ public sealed class AGrabThatNeverAppearedIsLookedUpTests
         var report = await poller.PollAsync(CancellationToken.None);
 
         var dispatch = await dispatches.Repository.GetDispatchAsync("gone", CancellationToken.None);
+        Assert.Equal("sent", dispatch?.Status);
+        Assert.Empty(await blocked.ListAsync(CancellationToken.None));
+        Assert.Equal(0, report.GrabTimeoutsDetected);
+        Assert.Equal(1, report.GrabAppearanceRetried);
+        Assert.DoesNotContain(activity.Recorded, item => item.Category == "download.grab.timeout");
+    }
+
+    /// <summary>Still not found on the retry: genuinely gone, ended the ordinary way, with the release name and client told in Activity.</summary>
+    [Fact]
+    public async Task Not_found_on_the_retry_ends_the_download_and_names_the_release_and_client()
+    {
+        var (poller, dispatches, blocked, activity) = await CreateAsync(
+            new GrabAppearanceLookupResult(GrabAppearanceOutcome.NotThere));
+        await InsertAsync(dispatches.Storage, "gone", TimeSpan.FromHours(3));
+
+        await poller.PollAsync(CancellationToken.None);
+        var report = await poller.PollAsync(CancellationToken.None);
+
+        var dispatch = await dispatches.Repository.GetDispatchAsync("gone", CancellationToken.None);
         Assert.Equal("failed", dispatch?.Status);
         Assert.Empty(await blocked.ListAsync(CancellationToken.None));
         Assert.Equal(1, report.GrabTimeoutsDetected);
-        Assert.Contains(activity.Recorded, item => item.Category == "download.grab.timeout");
+        var recorded = Assert.Single(activity.Recorded, item => item.Category == "download.grab.timeout");
+        Assert.Contains("gone.2010.1080p.WEB-DL-DELUNO", recorded.Message);
+        Assert.Contains("qBittorrent", recorded.Message);
     }
 
-    /// <summary>A lookup service that throws is read exactly like an unreachable client, not a broken poll.</summary>
+    /// <summary>A lookup service that throws is read exactly like an unreachable client: retried, never ended.</summary>
     [Fact]
-    public async Task A_lookup_that_throws_is_read_as_unreachable()
+    public async Task A_lookup_that_throws_is_read_as_unreachable_and_retried()
     {
         var (poller, dispatches, blocked, _) = await CreateAsync(lookup: null, throwing: true);
         await InsertAsync(dispatches.Storage, "gone", TimeSpan.FromHours(3));
@@ -131,8 +175,43 @@ public sealed class AGrabThatNeverAppearedIsLookedUpTests
         var report = await poller.PollAsync(CancellationToken.None);
 
         var dispatch = await dispatches.Repository.GetDispatchAsync("gone", CancellationToken.None);
-        Assert.Equal("failed", dispatch?.Status);
+        Assert.Equal("sent", dispatch?.Status);
         Assert.Empty(await blocked.ListAsync(CancellationToken.None));
+        Assert.Equal(0, report.GrabTimeoutsDetected);
+        Assert.Equal(1, report.GrabAppearanceRetried);
+    }
+
+    /// <summary>No lookup service configured at all: nothing can say why, so this still ends the download the ordinary way, as before #911.</summary>
+    [Fact]
+    public async Task No_lookup_service_configured_still_ends_the_download_the_ordinary_way()
+    {
+        var storage = TestStorage.Create();
+        var clock = new FixedTimeProvider(Start);
+        await new JobsSchemaInitializer(
+            storage.Factory,
+            new SqliteDatabaseMigrator(storage.Factory, clock),
+            NullLogger<JobsSchemaInitializer>.Instance).StartAsync(CancellationToken.None);
+
+        var dispatches = new SqliteDownloadDispatchesRepository(storage.Factory, clock);
+        var alerts = new SqliteDispatchAlertRepository(storage.Factory, clock);
+        var blocked = new SqliteBlockedReleaseRepository(storage.Factory, clock);
+        var activity = new RecordingActivityFeed();
+
+        var poller = new DownloadDispatchPollingService(
+            storage.Factory,
+            clock,
+            new QuietRecoveryHandler(),
+            activity,
+            dispatches,
+            alerts,
+            new NullRealtimeEventPublisher());
+
+        await InsertAsync(storage, "gone", TimeSpan.FromHours(3));
+
+        var report = await poller.PollAsync(CancellationToken.None);
+
+        var dispatch = await dispatches.GetDispatchAsync("gone", CancellationToken.None);
+        Assert.Equal("failed", dispatch?.Status);
         Assert.Equal(1, report.GrabTimeoutsDetected);
     }
 

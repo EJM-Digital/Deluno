@@ -82,40 +82,75 @@ public sealed class DownloadDispatchPollingService(
                 var age = now - dispatch.GrabAttemptedUtc;
                 if (age > GrabTimeout)
                 {
-                    // #911: the appearance timeout has expired. Looked into
-                    // once, the first time it expires; a dispatch already
-                    // ended by an earlier pass is not asked about again.
-                    var alreadyRecorded = await alertRepository.HasUnresolvedAlertAsync(dispatch.Id, "grab-timeout", cancellationToken);
-                    var lookup = alreadyRecorded ? null : await SafeLookUpAsync(dispatch, cancellationToken);
-
-                    if (lookup is { Outcome: GrabAppearanceOutcome.FoundAsExpected or GrabAppearanceOutcome.FoundUnderAnotherCategory or GrabAppearanceOutcome.Duplicate })
+                    // #911: the appearance timeout has expired. A dispatch
+                    // already ended by an earlier pass (a genuine, final
+                    // grab-timeout) is not asked about again — it is only
+                    // self-healed, in case it somehow still reads "Sent" (the
+                    // rig's own case: the alert was raised and acknowledged
+                    // days ago, and the dispatch itself was never marked). An
+                    // unreachable client or a still-not-found release, on the
+                    // other hand, keeps being asked, every pass, until one of
+                    // those settles it.
+                    var alreadyEnded = await alertRepository.HasUnresolvedAlertAsync(dispatch.Id, "grab-timeout", cancellationToken);
+                    if (alreadyEnded)
                     {
-                        await FollowExistingItemAsync(dispatch, lookup, recoveryActivities, cancellationToken);
-                        report = report with { GrabAppearanceResolved = report.GrabAppearanceResolved + 1 };
-                    }
-                    else if (lookup is { Outcome: GrabAppearanceOutcome.Rejected })
-                    {
-                        await BlocklistAndSearchAgainAsync(dispatch, lookup, recoveryActivities, cancellationToken);
-                        report = report with { GrabAppearanceResolved = report.GrabAppearanceResolved + 1 };
-                    }
-                    else
-                    {
-                        // Nothing found anywhere (or the client could not be
-                        // reached, or nothing could look at all): whatever has
-                        // been said about it already, the download itself ends
-                        // here, so it stops reading "Sent" and a person can
-                        // dismiss it. A late detection brings it back.
                         await downloadDispatchesRepository.MarkNeverDetectedAsync(
                             dispatch.Id,
                             $"{dispatch.DownloadClientName} accepted this download and then never showed it.",
                             cancellationToken);
+                    }
+                    else
+                    {
+                        var lookup = appearanceLookup is null ? null : await SafeLookUpAsync(dispatch, cancellationToken);
 
-                        if (!alreadyRecorded)
+                        if (lookup is { Outcome: GrabAppearanceOutcome.FoundAsExpected or GrabAppearanceOutcome.FoundUnderAnotherCategory or GrabAppearanceOutcome.Duplicate })
                         {
-                            var unreachableDetail = lookup?.Outcome == GrabAppearanceOutcome.Unreachable
-                                ? lookup.Detail ?? "unreachable"
-                                : null;
-                            await RecordGrabTimeoutRecoveryAsync(dispatch, recoveryActivities, cancellationToken, unreachableDetail);
+                            await FollowExistingItemAsync(dispatch, lookup, recoveryActivities, cancellationToken);
+                            report = report with { GrabAppearanceResolved = report.GrabAppearanceResolved + 1 };
+                        }
+                        else if (lookup is { Outcome: GrabAppearanceOutcome.Rejected })
+                        {
+                            await BlocklistAndSearchAgainAsync(dispatch, lookup, recoveryActivities, cancellationToken);
+                            report = report with { GrabAppearanceResolved = report.GrabAppearanceResolved + 1 };
+                        }
+                        else if (lookup is { Outcome: GrabAppearanceOutcome.Unreachable })
+                        {
+                            // A local setup problem or an internet outage is
+                            // never a bad release (#880/#901): keep waiting
+                            // and keep asking every pass, rather than ending
+                            // the download. The notice itself is
+                            // deduplicated, so an outage that lasts several
+                            // polls says so once, not every hour.
+                            if (!await alertRepository.HasUnresolvedAlertAsync(dispatch.Id, "grab-unreachable", cancellationToken))
+                            {
+                                await RecordUnreachableRetryAsync(dispatch, lookup, cancellationToken);
+                            }
+
+                            report = report with { GrabAppearanceRetried = report.GrabAppearanceRetried + 1 };
+                        }
+                        else if (lookup is { Outcome: GrabAppearanceOutcome.NotThere })
+                        {
+                            // Retried once before giving up on it, in case the
+                            // client's own queue simply had not caught up
+                            // with the grab yet.
+                            var alreadyRetriedNotThere = await alertRepository.HasUnresolvedAlertAsync(dispatch.Id, "grab-not-there-retry", cancellationToken);
+                            if (!alreadyRetriedNotThere)
+                            {
+                                await RecordNotThereRetryAsync(dispatch, cancellationToken);
+                                report = report with { GrabAppearanceRetried = report.GrabAppearanceRetried + 1 };
+                            }
+                            else
+                            {
+                                await EndAsNeverDetectedAsync(dispatch, recoveryActivities, cancellationToken);
+                                report = report with { GrabTimeoutsDetected = report.GrabTimeoutsDetected + 1, RecoveryCasesRecorded = report.RecoveryCasesRecorded + 1 };
+                            }
+                        }
+                        else
+                        {
+                            // No lookup service configured at all: nothing can
+                            // say why, so this ends the download the ordinary
+                            // way, the same as before #911.
+                            await EndAsNeverDetectedAsync(dispatch, recoveryActivities, cancellationToken);
                             report = report with { GrabTimeoutsDetected = report.GrabTimeoutsDetected + 1, RecoveryCasesRecorded = report.RecoveryCasesRecorded + 1 };
                         }
                     }
@@ -280,6 +315,89 @@ public sealed class DownloadDispatchPollingService(
     }
 
     /// <summary>
+    /// The client could not be reached to say why the release never appeared
+    /// — a setup problem or an internet outage, never a bad release
+    /// (#880/#901, #911). This never ends the download: the next pass asks
+    /// again, and keeps asking for as long as the client stays unreachable.
+    /// The alert this writes is only how the notice is deduplicated — one
+    /// activity entry per outage, not one per poll.
+    /// </summary>
+    private async Task RecordUnreachableRetryAsync(
+        UnresolvedDispatch dispatch,
+        GrabAppearanceLookupResult lookup,
+        CancellationToken cancellationToken)
+    {
+        var title = dispatch.ReleaseName;
+        var detail = string.IsNullOrWhiteSpace(lookup.Detail) ? "it did not answer" : lookup.Detail;
+        var detailsJson = JsonSerializer.Serialize(new
+        {
+            DispatchId = dispatch.Id,
+            dispatch.DownloadClientId,
+            dispatch.DownloadClientName,
+            dispatch.ReleaseName,
+            dispatch.MediaType,
+            detail
+        });
+
+        await activityFeedRepository.RecordActivityAsync(
+            "download.grab.unreachable",
+            $"Deluno could not reach {dispatch.DownloadClientName} to check on {title}: {detail}. This is a setup problem with {dispatch.DownloadClientName}, not the release — Deluno will keep checking.",
+            detailsJson,
+            null,
+            "download",
+            dispatch.Id,
+            cancellationToken);
+
+        await alertRepository.CreateAlertAsync(
+            dispatch.Id,
+            title,
+            $"Deluno could not reach {dispatch.DownloadClientName}",
+            "grab-unreachable",
+            "warning",
+            new Dictionary<string, string> { { "client", dispatch.DownloadClientName } },
+            cancellationToken);
+    }
+
+    /// <summary>
+    /// The client was reached and has nothing under this hash/id or name
+    /// anywhere, the first time this was checked (#911). Retried once, in
+    /// case the client's own queue simply had not caught up with the grab
+    /// yet, before the next pass treats it as genuinely gone. Nothing is told
+    /// to the person yet — there is nothing to tell until the retry confirms
+    /// it.
+    /// </summary>
+    private async Task RecordNotThereRetryAsync(UnresolvedDispatch dispatch, CancellationToken cancellationToken)
+    {
+        await alertRepository.CreateAlertAsync(
+            dispatch.Id,
+            dispatch.ReleaseName,
+            $"Deluno is checking {dispatch.DownloadClientName} again before giving up on {dispatch.ReleaseName}",
+            "grab-not-there-retry",
+            "warning",
+            new Dictionary<string, string> { { "client", dispatch.DownloadClientName } },
+            cancellationToken);
+    }
+
+    /// <summary>
+    /// Genuinely gone: not there the first time it was checked, and still not
+    /// there on the retry, or the client could not even be asked (no lookup
+    /// service configured at all). The download stops reading "Sent" and a
+    /// person can dismiss it; a late detection brings it back.
+    /// </summary>
+    private async Task EndAsNeverDetectedAsync(
+        UnresolvedDispatch dispatch,
+        ICollection<ActivityEventItem> recoveryActivities,
+        CancellationToken cancellationToken)
+    {
+        await downloadDispatchesRepository.MarkNeverDetectedAsync(
+            dispatch.Id,
+            $"{dispatch.DownloadClientName} accepted this download and then never showed it.",
+            cancellationToken);
+
+        await RecordGrabTimeoutRecoveryAsync(dispatch, recoveryActivities, cancellationToken);
+    }
+
+    /// <summary>
     /// It was there all along — under the category Deluno expected, a
     /// category setting that is wrong, or as a duplicate the client's own
     /// check already declined. Either way, Deluno follows the copy the client
@@ -419,11 +537,17 @@ public sealed class DownloadDispatchPollingService(
             dispatch.Id));
     }
 
+    /// <summary>
+    /// Genuinely gone: nothing found anywhere, on the first check when no
+    /// lookup service is configured at all, or on the retry when #911's
+    /// lookup already gave it one more look. Written to Activity with the
+    /// release name and the client, so it is never a mystery which download
+    /// or which client this was about.
+    /// </summary>
     private async Task RecordGrabTimeoutRecoveryAsync(
         UnresolvedDispatch dispatch,
         ICollection<ActivityEventItem> recoveryActivities,
-        CancellationToken cancellationToken,
-        string? unreachableDetail)
+        CancellationToken cancellationToken)
     {
         var title = dispatch.ReleaseName;
         var detailsJson = JsonSerializer.Serialize(new
@@ -432,8 +556,7 @@ public sealed class DownloadDispatchPollingService(
             dispatch.DownloadClientId,
             dispatch.DownloadClientName,
             dispatch.ReleaseName,
-            dispatch.MediaType,
-            unreachable = unreachableDetail is not null
+            dispatch.MediaType
         });
 
         await recoveryHandler.HandleGrabTimeoutAsync(
@@ -445,13 +568,9 @@ public sealed class DownloadDispatchPollingService(
             detailsJson,
             cancellationToken);
 
-        var message = unreachableDetail is null
-            ? $"{title} was not found anywhere in {dispatch.DownloadClientName}'s queue or history after {GrabTimeout.TotalHours:F0} hours. Deluno stopped waiting for it."
-            : $"Deluno could not reach {dispatch.DownloadClientName} to check on {title} after {GrabTimeout.TotalHours:F0} hours. It will look again — this is a setup problem with {dispatch.DownloadClientName}, not the release.";
-
         recoveryActivities.Add(CreateRecoveryActivity(
-            unreachableDetail is null ? "download.grab.timeout" : "download.grab.unreachable",
-            message,
+            "download.grab.timeout",
+            $"{title} was not found anywhere in {dispatch.DownloadClientName}'s queue or history after {GrabTimeout.TotalHours:F0} hours. Deluno stopped waiting for it.",
             detailsJson,
             "download",
             dispatch.Id));
@@ -459,9 +578,7 @@ public sealed class DownloadDispatchPollingService(
         await alertRepository.CreateAlertAsync(
             dispatch.Id,
             title,
-            unreachableDetail is null
-                ? $"Download not detected in {dispatch.DownloadClientName}"
-                : $"Deluno could not reach {dispatch.DownloadClientName}",
+            $"Download not detected in {dispatch.DownloadClientName}",
             "grab-timeout",
             "warning",
             new Dictionary<string, string> { { "client", dispatch.DownloadClientName } },
