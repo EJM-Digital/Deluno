@@ -132,7 +132,7 @@ test.describe("first-run and auth screens", () => {
       await route.fulfill({ status: 200, contentType: "application/json", body: "[]" });
     });
     await authenticateAndNavigate(page, "/setup-guide");
-    await page.getByRole("button", { name: /6 Start/ }).click();
+    await page.getByRole("button", { name: /^\d+ Start/ }).click();
 
     await expect(page.getByRole("button", { name: "Create baseline" })).toBeDisabled();
     // Untested connections no longer block the baseline (#246) — the guide
