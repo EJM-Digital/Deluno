@@ -19,7 +19,7 @@ export const INDEXER_PRESETS: { protocol: IndexerProtocol; label: string; hint: 
 ];
 
 export const CLIENT_PRESETS = [
-  { protocol: "qbittorrent", label: "qBittorrent", kind: "Torrent", defaultPort: 8080, defaultMoviesCategory: "deluno-movies", defaultTvCategory: "deluno-tv", authMode: "Web UI login", setupHint: "Enable the Web UI and use the same username and password you use in qBittorrent." },
+  { protocol: "qbittorrent", label: "qBittorrent", kind: "Torrent", defaultPort: 8080, defaultMoviesCategory: "deluno-movies", defaultTvCategory: "deluno-tv", authMode: "Web UI login", setupHint: "Enable the Web UI and use the same username and password you use in qBittorrent. On qBittorrent 5.2+ you can instead leave the username blank and paste an API key into the password field." },
   { protocol: "transmission", label: "Transmission", kind: "Torrent", defaultPort: 9091, defaultMoviesCategory: "deluno-movies", defaultTvCategory: "deluno-tv", authMode: "Basic auth", setupHint: "Use the RPC port. Deluno handles the Transmission session token automatically." },
   { protocol: "deluge", label: "Deluge", kind: "Torrent", defaultPort: 8112, defaultMoviesCategory: "deluno-movies", defaultTvCategory: "deluno-tv", authMode: "Password", setupHint: "Use the Deluge Web UI password. Labels are used as Deluno categories." },
   { protocol: "utorrent", label: "uTorrent", kind: "Torrent", defaultPort: 8080, defaultMoviesCategory: "deluno-movies", defaultTvCategory: "deluno-tv", authMode: "Token auth", setupHint: "Use the Web UI credentials. uTorrent may not expose a reliable finished path, so imports can need a file-location link." },

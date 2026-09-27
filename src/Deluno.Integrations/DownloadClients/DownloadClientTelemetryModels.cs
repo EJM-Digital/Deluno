@@ -293,7 +293,18 @@ public sealed record DownloadQueueItem(
     /// <c>trackerStats</c>, Deluge's <c>tracker_status</c>) and normalizes them
     /// here. Usenet clients never set this to anything but Unknown.
     /// </summary>
-    string TrackerStatus = Deluno.Contracts.DownloadTrackerStatuses.Unknown);
+    string TrackerStatus = Deluno.Contracts.DownloadTrackerStatuses.Unknown,
+    /// <summary>
+    /// #811: how much of this torrent's data is available across its peers
+    /// right now (qBittorrent's own <c>availability</c>, 0-1, can exceed 1.0
+    /// when more than one full copy is available). Null where the protocol
+    /// has no such reading.
+    /// </summary>
+    double? Availability = null,
+    /// <summary>#811: when the client last saw any activity on this item (qBittorrent's <c>last_activity</c>). Null where the protocol has no such reading.</summary>
+    DateTimeOffset? LastActivityUtc = null,
+    /// <summary>#811: when the client finished this item (qBittorrent's <c>completion_on</c>). Null while still in progress, or where the protocol has no such reading.</summary>
+    DateTimeOffset? CompletionUtc = null);
 
 /// <summary>
 /// An observational queue-health signal. These findings never cause Deluno to remove
