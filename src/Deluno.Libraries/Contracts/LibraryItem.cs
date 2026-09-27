@@ -94,4 +94,11 @@ public sealed record LibraryItem(
     /// backlog (#831). Off by default: the order is unchanged from before
     /// this existed.
     /// </summary>
-    bool RandomizeSearchOrder = false);
+    bool RandomizeSearchOrder = false,
+    /// <summary>
+    /// Per-language hearing-impaired and forced-track preferences (#835,
+    /// #836, #923). A wanted language with no row here gets the defaults —
+    /// hearing-impaired is coverage with a plain track winning a tie, and
+    /// forced is never fetched.
+    /// </summary>
+    IReadOnlyList<SubtitleLanguageTypePreference>? SubtitleLanguageTypePreferences = null);

@@ -204,7 +204,7 @@ public sealed class LibrarySubtitleSearchNotificationTests
             string language,
             bool isEpisodeMedia,
             string videoPath,
-            bool excludeHearingImpaired,
+            string hearingImpairedPreference,
             CancellationToken cancellationToken,
             SubtitleContentModificationPolicy? contentPolicy = null,
             SubtitleNamePolicy? namePolicy = null,

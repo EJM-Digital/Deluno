@@ -105,6 +105,7 @@ public sealed class LibrarySubtitleSearchJobHandler(
 
         var tally = new SubtitleDecisionTally();
         var noProviders = false;
+        var typePreferences = SubtitleLanguageTypePreferenceCodec.Normalize(library.SubtitleLanguageTypePreferences);
 
         foreach (var item in wanted)
         {
@@ -132,17 +133,18 @@ public sealed class LibrarySubtitleSearchJobHandler(
             foreach (var language in item.LanguagesToFetch)
             {
                 var blockedKeys = await mediaSubtitleRepository.ListBlockedKeysAsync(kind, item.MediaId, cancellationToken);
+                var typePreference = SubtitleLanguageTypePreferenceCodec.For(typePreferences, language);
 
                 var outcome = await subtitleFetchService.FetchAsync(
                     request,
                     language,
                     isEpisodeMedia: kind == MediaKind.Series,
                     videoPath: item.FilePath,
-                    // The setting for this arrives with #321's languages work.
-                    // Until then a hearing-impaired track is coverage, which is
-                    // what DESIGN-002 settled, and the pick prefers a plain one
-                    // where both exist.
-                    excludeHearingImpaired: false,
+                    // Per-language, from the library's own setting (#836).
+                    // Nobody who has never opened it gets the default: either
+                    // is coverage, and the pick prefers a plain one where both
+                    // exist — exactly what this always did.
+                    hearingImpairedPreference: typePreference.HearingImpaired,
                     cancellationToken,
                     library.SubtitleContentPolicy,
                     library.SubtitleNamePolicy,

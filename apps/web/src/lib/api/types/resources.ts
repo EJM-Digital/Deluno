@@ -59,6 +59,23 @@ export interface LibraryItem {
   subtitleNamePolicy?: SubtitleNamePolicy | null;
   /** Whether a written subtitle leaves the language code out of its name. */
   subtitleOmitLanguageCode?: boolean;
+  /**
+   * Per-language hearing-impaired and forced-track preferences (#835, #836,
+   * #923). A wanted language with no row here gets the defaults — hearing-
+   * impaired is coverage with a plain track winning a tie, and forced is
+   * never fetched.
+   */
+  subtitleLanguageTypePreferences?: SubtitleLanguageTypePreference[] | null;
+}
+
+/** Bazarr's per-language required/not-required/only, in Deluno's own words. */
+export type SubtitleHearingImpairedPreference = "plain-only" | "plain-preferred" | "hi-preferred";
+
+export interface SubtitleLanguageTypePreference {
+  language: string;
+  hearingImpaired: SubtitleHearingImpairedPreference | string;
+  /** Also fetch a forced track for this language as an extra file, never counted as coverage. */
+  includeForced: boolean;
 }
 
 export interface SubtitleNamePolicy {

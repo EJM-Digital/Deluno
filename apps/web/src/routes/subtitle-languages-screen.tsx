@@ -15,7 +15,13 @@ import { LIST_TRACK, ListCard, ListCell, ListEmpty, ListNameCell, ListRow, ListT
 import { MenuSelect } from "../components/ui/menu-select";
 import { PageToolbar } from "../components/ui/page-toolbar";
 import { Switch } from "../components/ui/switch";
-import type { LibraryItem, SubtitleContentModificationPolicy, SubtitleLanguageOption, SubtitleTimingPolicy } from "../lib/api/types/resources";
+import type {
+  LibraryItem,
+  SubtitleContentModificationPolicy,
+  SubtitleLanguageOption,
+  SubtitleLanguageTypePreference,
+  SubtitleTimingPolicy
+} from "../lib/api/types/resources";
 
 const TABS = configurationNavAreas.find((area) => area.to === "/settings/libraries")?.items ?? [];
 
@@ -39,6 +45,16 @@ interface Form {
   mustContain: string;
   mustNotContain: string;
   omitLanguageCode: boolean;
+  languageTypePreferences: SubtitleLanguageTypePreference[];
+}
+
+/** What a language gets when nobody has ever opened this row — exactly what every library did before this setting existed. */
+function defaultTypePreference(language: string): SubtitleLanguageTypePreference {
+  return { language, hearingImpaired: "plain-preferred", includeForced: false };
+}
+
+function typePreferenceFor(preferences: SubtitleLanguageTypePreference[], language: string): SubtitleLanguageTypePreference {
+  return preferences.find((preference) => preference.language === language) ?? defaultTypePreference(language);
 }
 
 const EMPTY_CONTENT_POLICY: SubtitleContentModificationPolicy = {
@@ -125,7 +141,8 @@ export function SubtitleLanguagesPage() {
     timingPolicy: EMPTY_TIMING_POLICY,
     mustContain: "",
     mustNotContain: "",
-    omitLanguageCode: false
+    omitLanguageCode: false,
+    languageTypePreferences: []
   });
   const [busy, setBusy] = useState(false);
 
@@ -142,7 +159,8 @@ export function SubtitleLanguagesPage() {
       timingPolicy: { ...EMPTY_TIMING_POLICY, ...(library.subtitleTimingPolicy ?? {}) },
       mustContain: (library.subtitleNamePolicy?.mustContain ?? []).join(", "),
       mustNotContain: (library.subtitleNamePolicy?.mustNotContain ?? []).join(", "),
-      omitLanguageCode: library.subtitleOmitLanguageCode ?? false
+      omitLanguageCode: library.subtitleOmitLanguageCode ?? false,
+      languageTypePreferences: library.subtitleLanguageTypePreferences ?? []
     });
   }
 
@@ -316,6 +334,38 @@ export function SubtitleLanguagesPage() {
                     onCheckedChange={(embeddedCounts) => setForm({ ...form, embeddedCounts })}
                   />
                 </Field>
+                </DrawerSection>
+
+                <DrawerSection title="Subtitle type, per language">
+                  <p className="text-[length:var(--type-caption)] text-muted-foreground">
+                    Hearing-impaired is watchable and counts as coverage either way — this only decides which one wins when both exist, or whether a hearing-impaired track is refused outright.
+                  </p>
+                  {form.languages.map((code) => {
+                    const preference = typePreferenceFor(form.languageTypePreferences, code);
+                    return (
+                      <Field key={code} label={nameOf(code, languages)}>
+                        <MenuSelect
+                          label={`Hearing-impaired subtitles for ${nameOf(code, languages)}`}
+                          value={preference.hearingImpaired}
+                          onChange={(hearingImpaired: string) =>
+                            setForm({
+                              ...form,
+                              languageTypePreferences: [
+                                ...form.languageTypePreferences.filter((item) => item.language !== code),
+                                { ...preference, hearingImpaired }
+                              ]
+                            })
+                          }
+                          options={[
+                            { value: "plain-preferred", label: "Plain preferred", hint: "Either is coverage. A plain track wins a tie — the default." },
+                            { value: "plain-only", label: "Plain only", hint: "Never take a hearing-impaired track for this language." },
+                            { value: "hi-preferred", label: "Hearing-impaired preferred", hint: "Either is coverage, but hearing-impaired wins a tie." }
+                          ]}
+                          className="max-w-sm"
+                        />
+                      </Field>
+                    );
+                  })}
                 </DrawerSection>
 
                 <DrawerSection title="Timing repair">

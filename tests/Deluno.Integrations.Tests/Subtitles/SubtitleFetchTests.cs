@@ -31,7 +31,7 @@ public sealed class SubtitleFetchTests
         var writer = new FakeWriter();
         var service = Build([first, second], writer);
 
-        var outcome = await service.FetchAsync(Request(), "en", false, @"D:\Media\Dune\Dune.mkv", false, CancellationToken.None);
+        var outcome = await service.FetchAsync(Request(), "en", false, @"D:\Media\Dune\Dune.mkv", SubtitleHearingImpairedPreferences.PlainPreferred, CancellationToken.None);
 
         Assert.True(outcome.Found);
         Assert.Equal("first", outcome.ProviderKey);
@@ -57,7 +57,7 @@ public sealed class SubtitleFetchTests
             "en",
             false,
             @"D:\Media\Dune\Dune.mkv",
-            false,
+            SubtitleHearingImpairedPreferences.PlainPreferred,
             CancellationToken.None,
             new SubtitleContentModificationPolicy(
                 StripHearingImpairedAnnotations: true,
@@ -85,7 +85,7 @@ public sealed class SubtitleFetchTests
         var writer = new FakeWriter();
         var service = Build([provider], writer);
 
-        var outcome = await service.FetchAsync(Request(), "en", false, @"D:\Media\Dune\Dune.mkv", false, CancellationToken.None);
+        var outcome = await service.FetchAsync(Request(), "en", false, @"D:\Media\Dune\Dune.mkv", SubtitleHearingImpairedPreferences.PlainPreferred, CancellationToken.None);
 
         Assert.False(outcome.Found);
         Assert.Empty(writer.Written);
@@ -114,7 +114,7 @@ public sealed class SubtitleFetchTests
         var writer = new FakeWriter();
         var service = Build([provider], writer);
 
-        var outcome = await service.FetchAsync(Request(), "en", false, @"D:\Media\Dune\Dune.mkv", false, CancellationToken.None);
+        var outcome = await service.FetchAsync(Request(), "en", false, @"D:\Media\Dune\Dune.mkv", SubtitleHearingImpairedPreferences.PlainPreferred, CancellationToken.None);
 
         Assert.True(outcome.Found);
         Assert.Equal("good", provider.LastDownloadToken);
@@ -137,7 +137,7 @@ public sealed class SubtitleFetchTests
         var service = Build([provider], writer);
 
         var outcome = await service.FetchAsync(
-            Request(), "en", false, @"D:\Media\Dune\Dune.mkv", false, CancellationToken.None,
+            Request(), "en", false, @"D:\Media\Dune\Dune.mkv", SubtitleHearingImpairedPreferences.PlainPreferred, CancellationToken.None,
             blockedKeys: ["first|blocked"]);
 
         Assert.True(outcome.Found);
@@ -151,7 +151,7 @@ public sealed class SubtitleFetchTests
         var writer = new FakeWriter();
         var service = Build([provider], writer);
 
-        var outcome = await service.FetchAsync(Request(), "en", false, @"D:\Media\Dune\Dune.mkv", false, CancellationToken.None);
+        var outcome = await service.FetchAsync(Request(), "en", false, @"D:\Media\Dune\Dune.mkv", SubtitleHearingImpairedPreferences.PlainPreferred, CancellationToken.None);
 
         Assert.True(outcome.Found);
         Assert.Equal(Srt, Assert.Single(writer.Written).Payload);
@@ -172,11 +172,91 @@ public sealed class SubtitleFetchTests
         var writer = new FakeWriter();
         var service = Build([provider], writer);
 
-        var outcome = await service.FetchAsync(Request(), "en", false, @"D:\Media\Dune\Dune.mkv", false, CancellationToken.None);
+        var outcome = await service.FetchAsync(Request(), "en", false, @"D:\Media\Dune\Dune.mkv", SubtitleHearingImpairedPreferences.PlainPreferred, CancellationToken.None);
 
         Assert.True(outcome.Found);
         Assert.False(outcome.HearingImpaired);
         Assert.Equal("Dune.en.srt", Path.GetFileName(Assert.Single(writer.Written).Path));
+    }
+
+    [Fact]
+    public async Task Plain_only_refuses_a_hearing_impaired_candidate_and_takes_the_next_one()
+    {
+        // "Wrong type is rejected and the next fetched" (#923): there is no
+        // blocklist step needed for this — the wrong type is filtered before
+        // ranking, so a plain candidate from the same provider is simply what
+        // gets picked instead.
+        var provider = new FakeProvider("first",
+        [
+            Candidate("en") with { HearingImpaired = true, DownloadToken = "hi", DownloadCount = 999 },
+            Candidate("en") with { DownloadToken = "plain", DownloadCount = 1 }
+        ], Srt);
+        var writer = new FakeWriter();
+        var service = Build([provider], writer);
+
+        var outcome = await service.FetchAsync(
+            Request(), "en", false, @"D:\Media\Dune\Dune.mkv",
+            SubtitleHearingImpairedPreferences.PlainOnly, CancellationToken.None);
+
+        Assert.True(outcome.Found);
+        Assert.False(outcome.HearingImpaired);
+        Assert.Equal("plain", provider.LastDownloadToken);
+    }
+
+    [Fact]
+    public async Task Plain_only_reports_no_subtitle_when_every_candidate_is_hearing_impaired()
+    {
+        var provider = new FakeProvider("first",
+            [Candidate("en") with { HearingImpaired = true }], Srt);
+        var service = Build([provider], new FakeWriter());
+
+        var outcome = await service.FetchAsync(
+            Request(), "en", false, @"D:\Media\Dune\Dune.mkv",
+            SubtitleHearingImpairedPreferences.PlainOnly, CancellationToken.None);
+
+        Assert.False(outcome.Found);
+    }
+
+    [Fact]
+    public async Task Hearing_impaired_preferred_takes_it_over_a_plain_one_on_a_tie()
+    {
+        var provider = new FakeProvider("first",
+        [
+            Candidate("en") with { DownloadToken = "plain", DownloadCount = 500 },
+            Candidate("en") with { HearingImpaired = true, DownloadToken = "hi", DownloadCount = 10 }
+        ], Srt);
+        var writer = new FakeWriter();
+        var service = Build([provider], writer);
+
+        var outcome = await service.FetchAsync(
+            Request(), "en", false, @"D:\Media\Dune\Dune.mkv",
+            SubtitleHearingImpairedPreferences.HearingImpairedPreferred, CancellationToken.None);
+
+        Assert.True(outcome.Found);
+        Assert.True(outcome.HearingImpaired);
+        Assert.Equal("hi", provider.LastDownloadToken);
+    }
+
+    [Fact]
+    public async Task Hearing_impaired_preferred_never_beats_a_better_release_match()
+    {
+        // The rung is said out loud for a reason: preference only breaks a
+        // tie, it never outranks a subtitle actually cut for this release.
+        var provider = new FakeProvider("first",
+        [
+            Candidate("en") with { DownloadToken = "hi", HearingImpaired = true, ReleaseName = "Dune.2021.WEBRip" },
+            Candidate("en") with { DownloadToken = "plain", ReleaseName = "Dune.2021.1080p.BluRay-NTb" }
+        ], Srt);
+        var writer = new FakeWriter();
+        var service = Build([provider], writer);
+
+        var outcome = await service.FetchAsync(
+            Request(), "en", false, @"D:\Media\Dune\Dune.2021.1080p.BluRay-NTb.mkv",
+            SubtitleHearingImpairedPreferences.HearingImpairedPreferred, CancellationToken.None);
+
+        Assert.True(outcome.Found);
+        Assert.False(outcome.HearingImpaired);
+        Assert.Equal("plain", provider.LastDownloadToken);
     }
 
     [Fact]
@@ -186,7 +266,7 @@ public sealed class SubtitleFetchTests
         var repository = new FakeRepository([Connection("first")]);
         var service = Build([provider], new FakeWriter(), repository);
 
-        await service.FetchAsync(Request(), "en", false, @"D:\Media\Dune\Dune.mkv", false, CancellationToken.None);
+        await service.FetchAsync(Request(), "en", false, @"D:\Media\Dune\Dune.mkv", SubtitleHearingImpairedPreferences.PlainPreferred, CancellationToken.None);
 
         var health = Assert.Single(repository.Health);
         Assert.Equal("rate-limited", health.Status);
@@ -206,7 +286,7 @@ public sealed class SubtitleFetchTests
         var tvOnly = new FakeProvider("first", [Candidate("en")], Srt) { Scope = SubtitleProviderScope.TvOnly };
         var service = Build([tvOnly], new FakeWriter());
 
-        var outcome = await service.FetchAsync(Request(), "en", isEpisodeMedia: false, @"D:\Media\Dune\Dune.mkv", false, CancellationToken.None);
+        var outcome = await service.FetchAsync(Request(), "en", isEpisodeMedia: false, @"D:\Media\Dune\Dune.mkv", SubtitleHearingImpairedPreferences.PlainPreferred, CancellationToken.None);
 
         Assert.False(outcome.Found);
         Assert.Equal(0, tvOnly.Searches);
@@ -225,7 +305,7 @@ public sealed class SubtitleFetchTests
         var repository = new FakeRepository([Connection("first"), Connection("second")]);
         var service = Build([unreachable, working], new FakeWriter(), repository);
 
-        var outcome = await service.FetchAsync(Request(), "en", false, @"D:\Media\Dune\Dune.mkv", false, CancellationToken.None);
+        var outcome = await service.FetchAsync(Request(), "en", false, @"D:\Media\Dune\Dune.mkv", SubtitleHearingImpairedPreferences.PlainPreferred, CancellationToken.None);
 
         Assert.Equal("failed", repository.Health[0].Status);
         Assert.False(repository.Health[0].Success);
@@ -242,7 +322,7 @@ public sealed class SubtitleFetchTests
     {
         var service = Build([], new FakeWriter(), new FakeRepository([]));
 
-        var outcome = await service.FetchAsync(Request(), "en", false, @"D:\Media\Dune\Dune.mkv", false, CancellationToken.None);
+        var outcome = await service.FetchAsync(Request(), "en", false, @"D:\Media\Dune\Dune.mkv", SubtitleHearingImpairedPreferences.PlainPreferred, CancellationToken.None);
 
         Assert.False(outcome.Found);
         Assert.Contains("No subtitle providers", outcome.Reason, StringComparison.Ordinal);
@@ -289,7 +369,7 @@ public sealed class SubtitleFetchTests
             "en",
             false,
             @"D:\Media\Dune\Dune.2021.1080p.HDTV.x264-GROUP.mkv",
-            false,
+            SubtitleHearingImpairedPreferences.PlainPreferred,
             CancellationToken.None,
             namePolicy: new SubtitleNamePolicy(MustNotContain: ["hdtv"]));
 
@@ -312,7 +392,7 @@ public sealed class SubtitleFetchTests
             "en",
             false,
             @"D:\Media\Dune\Dune.mkv",
-            false,
+            SubtitleHearingImpairedPreferences.PlainPreferred,
             CancellationToken.None,
             namePolicy: new SubtitleNamePolicy(MustContain: ["ntb"]));
 
@@ -335,7 +415,7 @@ public sealed class SubtitleFetchTests
             "en",
             false,
             @"D:\Media\Dune\Dune.mkv",
-            false,
+            SubtitleHearingImpairedPreferences.PlainPreferred,
             CancellationToken.None,
             namePolicy: new SubtitleNamePolicy(MustNotContain: ["cam"]));
 
