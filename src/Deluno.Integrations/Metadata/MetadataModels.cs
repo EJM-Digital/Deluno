@@ -95,7 +95,22 @@ public sealed record MetadataSearchResult(
     /// filed under one of these ("Ne Zha 2" listed as "哪吒之魔童闹海" on a
     /// tracker) has nothing to match against without them (#861).
     /// </summary>
-    IReadOnlyList<string>? AlternateTitles = null)
+    IReadOnlyList<string>? AlternateTitles = null,
+    /// <summary>
+    /// A wide, TV-style banner image. No metadata source Deluno calls today
+    /// (TMDb included) reports one — TheTVDB does, which is where Sonarr's
+    /// come from — so this stays null until a source that has one is added
+    /// (#864). Kept on the model now so that source does not need a second
+    /// migration of every place a poster/backdrop pair is read.
+    /// </summary>
+    string? BannerUrl = null,
+    /// <summary>A transparent logo/wordmark, distinct from the poster and backdrop art (#864).</summary>
+    string? LogoUrl = null,
+    /// <summary>
+    /// Extra backdrop/fanart stills beyond <see cref="BackdropUrl"/>, for a
+    /// gallery view rather than the single hero image (#864).
+    /// </summary>
+    IReadOnlyList<string>? Screenshots = null)
 {
     /// <summary>
     /// The catalogue entry Deluno would land on if this result were added, when
@@ -142,7 +157,9 @@ public sealed record MetadataCollection(
     string? Overview,
     string? PosterUrl,
     string? BackdropUrl,
-    IReadOnlyList<MetadataCollectionMovie> Movies);
+    IReadOnlyList<MetadataCollectionMovie> Movies,
+    /// <summary>A transparent logo/wordmark for the collection itself, where the provider has one (#864).</summary>
+    string? LogoUrl = null);
 
 /// <summary>One movie in a provider collection, whether Deluno holds it or not.</summary>
 public sealed record MetadataCollectionMovie(
@@ -153,7 +170,9 @@ public sealed record MetadataCollectionMovie(
     string? PosterUrl,
     string? BackdropUrl,
     string? ExternalUrl,
-    string? ImdbId = null);
+    string? ImdbId = null,
+    /// <summary>A transparent logo/wordmark for this movie, where the provider has one (#864).</summary>
+    string? LogoUrl = null);
 
 /// <summary>One season of a series as the provider describes it.</summary>
 public sealed record MetadataSeason(
