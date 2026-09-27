@@ -304,6 +304,13 @@ export const router = createBrowserRouter([
         })
       },
       {
+        path: "indexers/history",
+        lazy: withSkeleton(async () => {
+          const module = await import("./routes/indexer-history-page");
+          return { loader: module.indexerHistoryLoader, Component: module.IndexerHistoryPage };
+        })
+      },
+      {
         path: "indexers/download-clients",
         lazy: withSkeleton(async () => {
           const module = await import("./routes/connections-screen");

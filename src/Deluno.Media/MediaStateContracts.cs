@@ -438,6 +438,18 @@ public interface IMediaStateRepository
 
     Task<IReadOnlyList<MediaSearchHistoryItem>> ListSearchHistoryAsync(
         MediaKind kind,
+        CancellationToken cancellationToken)
+        => ListSearchHistoryAsync(kind, 20, cancellationToken);
+
+    /// <summary>
+    /// The same rows, with a caller-chosen limit rather than the fixed 20
+    /// (#754) -- the combined Indexer History screen reads a much wider
+    /// window before merging with the other media kind and its own
+    /// RSS-sync/auth-failure events.
+    /// </summary>
+    Task<IReadOnlyList<MediaSearchHistoryItem>> ListSearchHistoryAsync(
+        MediaKind kind,
+        int limit,
         CancellationToken cancellationToken);
 
     Task<MediaImportRecoverySummary> GetImportRecoverySummaryAsync(

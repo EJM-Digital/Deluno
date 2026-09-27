@@ -1524,6 +1524,52 @@ public sealed class SqliteMovieCatalogRepository(
         return items;
     }
 
+    public async Task<IReadOnlyList<MovieSearchHistoryItem>> ListRecentSearchHistoryAsync(int limit, CancellationToken cancellationToken)
+    {
+        var boundedLimit = Math.Clamp(limit, 1, 500);
+        if (sharedMediaStateRepository is not null)
+        {
+            var sharedItems = await sharedMediaStateRepository.ListSearchHistoryAsync(
+                MediaKind.Movie,
+                boundedLimit,
+                cancellationToken);
+            return sharedItems.Select(MapSearchHistory).ToArray();
+        }
+
+        var items = new List<MovieSearchHistoryItem>();
+
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Movies,
+            cancellationToken);
+
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            $"""
+            SELECT
+                id, movie_id, library_id, trigger_kind, outcome, release_name, indexer_name, details_json, created_utc
+            FROM movie_search_history
+            ORDER BY created_utc DESC
+            LIMIT {boundedLimit};
+            """;
+
+        using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            items.Add(new MovieSearchHistoryItem(
+                Id: reader.GetString(0),
+                MovieId: reader.GetString(1),
+                LibraryId: reader.GetString(2),
+                TriggerKind: reader.GetString(3),
+                Outcome: reader.GetString(4),
+                ReleaseName: reader.IsDBNull(5) ? null : reader.GetString(5),
+                IndexerName: reader.IsDBNull(6) ? null : reader.GetString(6),
+                DetailsJson: reader.IsDBNull(7) ? null : reader.GetString(7),
+                CreatedUtc: ParseTimestamp(reader.GetString(8))));
+        }
+
+        return items;
+    }
+
     public async Task<IReadOnlyList<MovieWantedItem>> ListEligibleWantedAsync(
         string libraryId,
         int take,

@@ -93,6 +93,7 @@ GET /api/filesystem/directories
 GET /api/filesystem/reconciliation
 GET /api/health/live
 GET /api/health/ready
+GET /api/indexer-history
 GET /api/indexer-proxies/
 GET /api/indexers/
 GET /api/indexers/scoreboard
@@ -310,6 +311,7 @@ POST /api/filesystem/import/season-pack/leftovers/delete
 POST /api/filesystem/native-folder-picker
 POST /api/filesystem/path-diagnostics
 POST /api/filesystem/reconciliation/repair
+POST /api/indexer-history/clear
 POST /api/indexer-proxies/
 POST /api/indexers/
 POST /api/indexers/test

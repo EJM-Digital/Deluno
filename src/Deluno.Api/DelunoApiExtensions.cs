@@ -3,6 +3,7 @@ using Deluno.Contracts.Manifest;
 using Deluno.Api.Backup;
 using Deluno.Api.Downloads;
 using Deluno.Api.Health;
+using Deluno.Api.IndexerHistory;
 using Deluno.Api.Monitoring;
 using Deluno.Api.Network;
 using Deluno.Api.SystemInfo;
@@ -34,6 +35,8 @@ public static class DelunoApiExtensions
         services.TryAddSingleton<IUpdateOrchestrator, DefaultUpdateOrchestrator>();
         services.TryAddSingleton<ILanAccess, UncheckedLanAccess>();
         services.TryAddSingleton<IBundledComponentDetection, UncheckedBundledComponentDetection>();
+        services.AddSingleton<IIndexerHistoryEventStore, SqliteIndexerHistoryEventStore>();
+        services.AddSingleton<IIndexerHistoryService, IndexerHistoryService>();
         return services;
     }
 
@@ -96,6 +99,7 @@ public static class DelunoApiExtensions
         endpoints.MapDelunoDashboardMetricsEndpoints();
         endpoints.MapDelunoBlockedReleaseEndpoints();
         endpoints.MapDelunoImportFailureRuleEndpoints();
+        endpoints.MapDelunoIndexerHistoryEndpoints();
 
         return endpoints;
     }

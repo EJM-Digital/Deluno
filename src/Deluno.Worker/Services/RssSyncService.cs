@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Deluno.Api.IndexerHistory;
 using Deluno.Connections.Data;
 using Deluno.Contracts;
 using Deluno.Integrations.Search;
@@ -41,6 +42,7 @@ public sealed class RssSyncService(
     IRssSyncStateRepository stateRepository,
     IJobScheduler jobScheduler,
     IActivityFeedRepository activityFeed,
+    IIndexerHistoryEventStore indexerHistory,
     TimeProvider timeProvider,
     ILogger<RssSyncService> logger)
 {
@@ -112,6 +114,15 @@ public sealed class RssSyncService(
                 // Not read is not empty: the mark stays, and the next pass
                 // picks up what this one could not see.
                 logger.LogInformation("RSS sync skipped {Indexer}: {Problem}", indexer.Name, feed.Problem);
+                await indexerHistory.RecordAsync(
+                    new RecordIndexerHistoryEventRequest(
+                        indexer.Id,
+                        indexer.Name,
+                        IsAuthFailureMessage(feed.Problem) ? IndexerHistoryEventTypes.AuthFailure : IndexerHistoryEventTypes.RssSync,
+                        "failed",
+                        feed.Problem ?? $"{indexer.Name}'s RSS feed could not be read.",
+                        null),
+                    cancellationToken);
                 continue;
             }
 
@@ -125,6 +136,17 @@ public sealed class RssSyncService(
                 ? feed.Releases
                 : feed.Releases.Where(release => release.PublishedUtc > mark).ToArray();
             fresh += releases.Count;
+            await indexerHistory.RecordAsync(
+                new RecordIndexerHistoryEventRequest(
+                    indexer.Id,
+                    indexer.Name,
+                    IndexerHistoryEventTypes.RssSync,
+                    "read",
+                    releases.Count == 0
+                        ? $"Read {indexer.Name}'s RSS feed. Nothing new."
+                        : $"Read {indexer.Name}'s RSS feed. {releases.Count} new release{(releases.Count == 1 ? "" : "s")}.",
+                    null),
+                cancellationToken);
 
             foreach (var release in releases)
             {
@@ -304,4 +326,20 @@ public sealed class RssSyncService(
             return false;
         }
     }
+
+    /// <summary>
+    /// A feed read failure is classed as an auth failure (#754) when its own
+    /// message names the shape an expired key or a bad login takes -- an
+    /// HTTP 401/403, or a tracker exception naming the credential itself.
+    /// Never guessed from a status code Deluno cannot see (a public tracker's
+    /// own scrape failure, say): only a message that already says so.
+    /// </summary>
+    private static bool IsAuthFailureMessage(string? problem)
+        => problem is not null
+           && (problem.Contains("401", StringComparison.Ordinal)
+               || problem.Contains("403", StringComparison.Ordinal)
+               || problem.Contains("unauthorized", StringComparison.OrdinalIgnoreCase)
+               || problem.Contains("api key", StringComparison.OrdinalIgnoreCase)
+               || problem.Contains("login", StringComparison.OrdinalIgnoreCase)
+               || problem.Contains("credential", StringComparison.OrdinalIgnoreCase));
 }
