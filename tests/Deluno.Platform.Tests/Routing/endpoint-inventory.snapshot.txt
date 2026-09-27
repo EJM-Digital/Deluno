@@ -244,6 +244,7 @@ POST /api/backups/
 POST /api/backups/restore
 POST /api/backups/restore/preview
 POST /api/blocked-releases
+POST /api/blocked-releases/cleanup-all
 POST /api/blocked-releases/{id}/cleanup
 POST /api/blocked-releases/{id}/refuse
 POST /api/companion-tools/install
