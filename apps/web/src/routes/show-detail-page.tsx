@@ -343,6 +343,24 @@ export function ShowDetailPage() {
     }
   }
 
+  async function handleMonitorNewEpisodesPreset(monitorNewEpisodes: boolean) {
+    setBusyAction("monitor-new-episodes");
+
+    try {
+      const response = await authedFetch(`/api/series/${series.id}/monitor-new-episodes`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ monitorNewEpisodes })
+      });
+      if (!response.ok) throw new Error("series-monitor-new-episodes-failed");
+      revalidator.revalidate();
+    } catch {
+      toast.error("This show's new-episode preset could not be changed.");
+    } finally {
+      setBusyAction(null);
+    }
+  }
+
   async function handleRemoveFromDeluno(options: RemoveMediaOptions) {
     setBusyAction("remove");
     try {
@@ -1287,6 +1305,20 @@ export function ShowDetailPage() {
                     checked={series.monitored}
                     disabled={busyAction !== null}
                     onCheckedChange={(checked) => void handleSeriesMonitoring(checked)}
+                  />
+                </div>
+              </ListRow>
+              <ListRow>
+                <ListNameCell
+                  name="Monitor new episodes"
+                  sub="When a refresh discovers an episode this show has never listed before, monitor it automatically."
+                />
+                <div role="cell" className="flex justify-end">
+                  <Switch
+                    aria-label="Monitor new episodes"
+                    checked={series.monitorNewEpisodes ?? true}
+                    disabled={busyAction !== null}
+                    onCheckedChange={(checked) => void handleMonitorNewEpisodesPreset(checked)}
                   />
                 </div>
               </ListRow>

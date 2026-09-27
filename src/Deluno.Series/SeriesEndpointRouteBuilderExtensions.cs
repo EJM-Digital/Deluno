@@ -2353,6 +2353,31 @@ public static class SeriesEndpointRouteBuilderExtensions
             return Results.Ok(new { updated = true });
         });
 
+        // The series screen/drawer's own control for the "monitor new
+        // episodes" preset (#801) - changeable at any time, not only at add
+        // time, and applied the next time this series' episode catalogue is
+        // synced (SyncEpisodeCatalogueAsync).
+        series.MapPut("/{id}/monitor-new-episodes", async (
+            string id,
+            [FromBody] UpdateSeriesMonitorNewEpisodesRequest request,
+            HttpContext httpContext,
+            ISeriesCatalogRepository repository,
+            IRealtimeEventPublisher realtimeEventPublisher,
+            CancellationToken cancellationToken) =>
+        {
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
+            if (denied is not null)
+            {
+                return denied;
+            }
+
+            var updated = await repository.UpdateMonitorNewEpisodesAsync(id, request.MonitorNewEpisodes, cancellationToken);
+            if (!updated) return Results.NotFound();
+
+            await realtimeEventPublisher.PublishEntityChangedAsync("Series", id, cancellationToken);
+            return Results.Ok(new { updated = true, monitorNewEpisodes = request.MonitorNewEpisodes });
+        });
+
         series.MapGet("/{id}/monitored-missing", async (
             string id,
             ISeriesCatalogRepository repository,
@@ -3123,6 +3148,8 @@ public static class SeriesEndpointRouteBuilderExtensions
 
     private sealed record UpdateSeriesReplacementProtectionRequest(
         bool PreventLowerQualityReplacements);
+
+    private sealed record UpdateSeriesMonitorNewEpisodesRequest(bool MonitorNewEpisodes);
 
     private sealed record BulkSubtitleRescanRequest(IReadOnlyList<string>? SeriesIds);
 

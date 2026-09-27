@@ -470,6 +470,69 @@ public sealed class SeriesCatalogueSyncPersistenceTests
         Assert.Equal(0L, Convert.ToInt64(monitoredCount));
     }
 
+    /// <summary>
+    /// The per-series "monitor new episodes" preset (#801): a monitored show
+    /// that has opted out of auto-monitoring newly discovered episodes still
+    /// gets those episodes added to its catalogue - just unmonitored - the
+    /// same way an unmonitored series' episodes are (#653), one level down.
+    /// </summary>
+    [Fact]
+    public async Task SyncEpisodeCatalogueAsync_leaves_new_episodes_unmonitored_when_the_preset_is_off()
+    {
+        var now = DateTimeOffset.Parse("2026-09-27T04:54:16Z");
+        var (storage, repository, _, seriesId) = await CreateSeriesAsync(now);
+        using var _ = storage;
+
+        var updated = await repository.UpdateMonitorNewEpisodesAsync(seriesId, monitorNewEpisodes: false, CancellationToken.None);
+        Assert.True(updated);
+
+        await repository.SyncEpisodeCatalogueAsync(
+            seriesId,
+            [
+                new CatalogueEpisodeItem(1, 1, "S1E1", null, now.AddDays(-30)),
+                new CatalogueEpisodeItem(1, 2, "S1E2", null, now.AddDays(-28)),
+            ],
+            source: "tmdb",
+            CancellationToken.None);
+
+        await using var connection = await storage.Factory.OpenConnectionAsync("series", CancellationToken.None);
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT SUM(monitored) FROM episode_entries WHERE series_id = @seriesId;";
+        AddParam(command, "@seriesId", seriesId);
+
+        var monitoredCount = await command.ExecuteScalarAsync();
+        Assert.Equal(0L, Convert.ToInt64(monitoredCount));
+
+        var series = await repository.GetByIdAsync(seriesId, CancellationToken.None);
+        Assert.False(series!.MonitorNewEpisodes);
+    }
+
+    /// <summary>The preset defaults to on, matching every series' behaviour before it existed.</summary>
+    [Fact]
+    public async Task SyncEpisodeCatalogueAsync_monitors_new_episodes_by_default()
+    {
+        var now = DateTimeOffset.Parse("2026-09-27T04:54:16Z");
+        var (storage, repository, _, seriesId) = await CreateSeriesAsync(now);
+        using var _ = storage;
+
+        var series = await repository.GetByIdAsync(seriesId, CancellationToken.None);
+        Assert.True(series!.MonitorNewEpisodes);
+
+        await repository.SyncEpisodeCatalogueAsync(
+            seriesId,
+            [new CatalogueEpisodeItem(1, 1, "S1E1", null, now.AddDays(-30))],
+            source: "tmdb",
+            CancellationToken.None);
+
+        await using var connection = await storage.Factory.OpenConnectionAsync("series", CancellationToken.None);
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT SUM(monitored) FROM episode_entries WHERE series_id = @seriesId;";
+        AddParam(command, "@seriesId", seriesId);
+
+        var monitoredCount = await command.ExecuteScalarAsync();
+        Assert.Equal(1L, Convert.ToInt64(monitoredCount));
+    }
+
     [Fact]
     public async Task SyncEpisodeCatalogueAsync_backfills_wanted_state_idempotently()
     {
