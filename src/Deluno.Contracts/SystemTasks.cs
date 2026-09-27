@@ -88,7 +88,7 @@ public static class SystemTasks
     public const string SceneMappingRefresh = "scene.mapping.refresh";
     public const string EpisodeGroupRefresh = "episode.group.refresh";
     public const string DownloadLeftoverCleanup = "download.leftover.cleanup";
-    public const string UnmatchedImportGiveUp = "import.unmatched.give-up";
+    public const string UnmatchedImportGiveUp = "unmatched.import.giveUp";
 
     /// <summary>
     /// Ordered as somebody reading the screen would want them: the things that
